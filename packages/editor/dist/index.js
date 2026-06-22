@@ -1,6 +1,6 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
-import * as React17 from 'react';
-import React17__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React18 from 'react';
+import React18__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { parse } from 'acorn';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
@@ -14420,8 +14420,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React17__default.Children.count(children);
-  const childArray = React17__default.Children.toArray(children);
+  const count = React18__default.Children.count(children);
+  const childArray = React18__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -14466,7 +14466,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React17__default.useEffect(() => {
+  React18__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -14482,7 +14482,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React17__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React18__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -14774,9 +14774,9 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners9 = /* @__PURE__ */ new Set();
+  const listeners10 = /* @__PURE__ */ new Set();
   const notify5 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners9) l();
+    for (const l of listeners10) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify5(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify5(), "onStackItemPopped");
@@ -14786,7 +14786,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners9,
+    listeners: listeners10,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -14829,10 +14829,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners9 = active.listeners;
-  listeners9.add(cb);
+  const listeners10 = active.listeners;
+  listeners10.add(cb);
   return () => {
-    listeners9.delete(cb);
+    listeners10.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -15357,12 +15357,12 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe3 = useCallback(
+  const subscribe4 = useCallback(
     (onStoreChange) => subscribe(id, onStoreChange),
     [id]
   );
   const getSnapshot = useCallback(() => getFile(id), [id]);
-  const file = useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
+  const file = useSyncExternalStore(subscribe4, getSnapshot, getSnapshot);
   const setContent2 = useCallback(
     (content) => setContent(id, content),
     [id]
@@ -21419,7 +21419,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
   const bufferedSchedulers = [];
   const zoneEntries = [];
   const audioCtx = components.audio?.audioCtx;
-  editor.changeViewZones((accessor2) => {
+  editor.changeViewZones((accessor3) => {
     for (const [trackKey, { vizId, afterLine, ...reqExtra }] of vizRequests) {
       const contentHash = reqExtra.contentHash ?? "";
       const descriptor = resolveDescriptor(vizId, vizDescriptors);
@@ -21465,7 +21465,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         domNode: container,
         suppressMouseDown: true
       };
-      const zoneId = accessor2.addZone(zoneDesc);
+      const zoneId = accessor3.addZone(zoneDesc);
       const makeInner = /* @__PURE__ */ __name(() => typeof descriptor.factory === "function" ? descriptor.factory() : descriptor.factory, "makeInner");
       let relayout = /* @__PURE__ */ __name(() => {
       }, "relayout");
@@ -21634,7 +21634,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
   void (async () => {
     try {
       const presets = await VizPresetStore.getAll();
-      editor.changeViewZones((accessor2) => {
+      editor.changeViewZones((accessor3) => {
         for (const entry of zoneEntries) {
           const override = fileId ? getZoneCropOverride(fileId, entry.trackKey) : void 0;
           const normViz = normalize(entry.vizId);
@@ -21651,7 +21651,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           const finalH = hOverride ?? layout.zoneH;
           entry.zoneDesc.heightInPx = finalH;
           entry.container.style.height = `${finalH}px`;
-          accessor2.layoutZone(entry.zoneId);
+          accessor3.layoutZone(entry.zoneId);
           if (hOverride != null) {
             const nw = entry.native.w, nh = entry.native.h;
             const cropW = Math.max(0.01, entry.crop.w);
@@ -21692,7 +21692,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     }
   })();
   const recomputeAllZones = /* @__PURE__ */ __name(() => {
-    editor.changeViewZones((accessor2) => {
+    editor.changeViewZones((accessor3) => {
       for (const entry of zoneEntries) {
         if (entry.container.dataset.resizing) continue;
         const contentW = editor.getLayoutInfo().contentWidth || 400;
@@ -21701,7 +21701,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         const finalH = hOverride ?? layout.zoneH;
         entry.zoneDesc.heightInPx = finalH;
         entry.container.style.height = `${finalH}px`;
-        accessor2.layoutZone(entry.zoneId);
+        accessor3.layoutZone(entry.zoneId);
         if (hOverride != null) {
           const nw = entry.native.w, nh = entry.native.h;
           const cropW = Math.max(0.01, entry.crop.w);
@@ -21764,10 +21764,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       }
     }
     if (changed.length === 0) return;
-    editor.changeViewZones((accessor2) => {
+    editor.changeViewZones((accessor3) => {
       for (const entry of changed) {
-        accessor2.removeZone(entry.zoneId);
-        entry.zoneId = accessor2.addZone(entry.zoneDesc);
+        accessor3.removeZone(entry.zoneId);
+        entry.zoneId = accessor3.addZone(entry.zoneDesc);
       }
     });
   }, "reAnchorZones");
@@ -21845,8 +21845,8 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       visibilityCleanups.forEach((fn) => fn());
       renderers.forEach((r) => r.destroy());
       bufferedSchedulers.forEach((s) => s.dispose());
-      editor.changeViewZones((accessor2) => {
-        zoneEntries.forEach((e) => accessor2.removeZone(e.zoneId));
+      editor.changeViewZones((accessor3) => {
+        zoneEntries.forEach((e) => accessor3.removeZone(e.zoneId));
       });
       zoneEntries.forEach((e) => e.vizDecoration?.clear());
     },
@@ -22898,7 +22898,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React17__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React18__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -22983,8 +22983,8 @@ function keyFor(fileId) {
 }
 __name(keyFor, "keyFor");
 function getVizLive(fileId) {
-  const cached = values.get(fileId);
-  if (cached !== void 0) return cached;
+  const cached2 = values.get(fileId);
+  if (cached2 !== void 0) return cached2;
   const ls = safeLocalStorage3();
   const raw = ls?.getItem(keyFor(fileId));
   const on = raw === "0" ? false : true;
@@ -23120,7 +23120,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React17__default.useMemo(() => {
+  const providerNode = React18__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -23413,25 +23413,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React17.useMemo(
+  const changedIds = React18.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
     [commit, pickerFileIds]
   );
-  const [mode, setMode] = React17.useState(defaultMode);
-  React17.useEffect(() => {
+  const [mode, setMode] = React18.useState(defaultMode);
+  React18.useEffect(() => {
     setMode(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React17.useState(
+  const [fileId, setFileId] = React18.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React17.useRef(null);
-  const handleMount = React17.useCallback(
+  const diffEditorRef = React18.useRef(null);
+  const handleMount = React18.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -23441,7 +23441,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -23566,18 +23566,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React17.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React17.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React17.useState(
+  const snapshot = React18.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React18.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React18.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React17.useCallback(
+  const handleMount = React18.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -24468,7 +24468,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React17.createElement(
+  return React18.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -24486,25 +24486,25 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React17.createElement(EmptyTimelineStub)
+  content: React18.createElement(EmptyTimelineStub)
 });
 function useActiveChunk() {
-  const [editor, setEditor] = React17.useState(() => getActiveEditor());
-  const [chunk, setChunk] = React17.useState(null);
-  const writebackRef = React17.useRef(null);
-  const editorRef = React17.useRef(null);
-  const anchorRef = React17.useRef(null);
+  const [editor, setEditor] = React18.useState(() => getActiveEditor());
+  const [chunk, setChunk] = React18.useState(null);
+  const writebackRef = React18.useRef(null);
+  const editorRef = React18.useRef(null);
+  const anchorRef = React18.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
   }, [editor]);
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -24531,7 +24531,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React17.useCallback(
+  const applyEdit = React18.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -24546,8 +24546,8 @@ function useActiveChunk() {
     },
     []
   );
-  const beginGesture = React17.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React17.useCallback(() => writebackRef.current?.endGesture(), []);
+  const beginGesture = React18.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React18.useCallback(() => writebackRef.current?.endGesture(), []);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -25242,7 +25242,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React17.createElement(
+  return React18.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -25261,12 +25261,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React17.createElement("span", {
+    icon ? React18.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React17.createElement("span", null, hint)
+    React18.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -25320,14 +25320,14 @@ function gainUnchanged(g, cur) {
 __name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React17.useState(null);
-  const modelRef = React17.useRef(null);
-  React17.useEffect(() => {
+  const [model, setModel] = React18.useState(null);
+  const modelRef = React18.useRef(null);
+  React18.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React17.useRef(opts);
+  const optsRef = React18.useRef(opts);
   optsRef.current = opts;
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -25349,7 +25349,7 @@ function useGridModel(opts) {
     modelRef.current = next;
     setModel(next);
   }, [chunk]);
-  const mutate = React17.useCallback(
+  const mutate = React18.useCallback(
     (fn) => {
       const o = optsRef.current;
       const prev = modelRef.current;
@@ -25399,8 +25399,8 @@ function cycleToStep(cycle, steps, bars) {
 }
 __name(cycleToStep, "cycleToStep");
 function usePlayingStep(steps, bars) {
-  const [step, setStep] = React17.useState(null);
-  React17.useEffect(() => {
+  const [step, setStep] = React18.useState(null);
+  React18.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const next = cycleToStep(readCurrentCycle(), steps, bars);
@@ -25607,9 +25607,9 @@ function SequencerGrid() {
     serializeGain: serializeStepGain
   });
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
-  const gestureRef = React17.useRef(null);
+  const gestureRef = React18.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
-  const paintCell = React17.useCallback(
+  const paintCell = React18.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
         const lane = prev.lanes[laneIndex];
@@ -25621,19 +25621,19 @@ function SequencerGrid() {
     },
     [mutate]
   );
-  const addVoice = React17.useCallback(
+  const addVoice = React18.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React17.useCallback(
+  const removeVoice = React18.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -25700,7 +25700,7 @@ function SequencerGrid() {
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
   if (!model) {
-    return React17.createElement(VisualEditStandby, {
+    return React18.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && isStepChunk(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -25923,15 +25923,15 @@ function PianoRollGrid() {
     applyGain: applyRollGain,
     serializeGain: serializeRollGain
   });
-  const dragRef = React17.useRef(null);
-  const velRef = React17.useRef(null);
+  const dragRef = React18.useRef(null);
+  const velRef = React18.useRef(null);
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
-  const [range, setRange] = React17.useState({
+  const [range, setRange] = React18.useState({
     lo: DEFAULT_LO,
     hi: DEFAULT_HI
   });
-  const stmtIdRef = React17.useRef(null);
-  React17.useEffect(() => {
+  const stmtIdRef = React18.useRef(null);
+  React18.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = contentRange(model);
@@ -25946,7 +25946,7 @@ function PianoRollGrid() {
       }));
     }
   }, [model, chunk]);
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
@@ -25957,7 +25957,7 @@ function PianoRollGrid() {
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
@@ -26036,7 +26036,7 @@ function PianoRollGrid() {
     d.moved = true;
   }, "onCellEnter");
   if (!model) {
-    return React17.createElement(VisualEditStandby, {
+    return React18.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && isRollChunk(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -26229,7 +26229,7 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React17.useRef(null);
+  const dragRef = React18.useRef(null);
   const pos = Math.max(0, Math.min(1, toPosition(value, range)));
   const angle = -135 + pos * 270;
   const onPointerDown = /* @__PURE__ */ __name((e) => {
@@ -26452,6 +26452,101 @@ function readChainMethod(chunk, names) {
   return null;
 }
 __name(readChainMethod, "readChainMethod");
+function soundfontLabel(name) {
+  return name.replace(/^gm_/, "").split("_").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+__name(soundfontLabel, "soundfontLabel");
+function simpleLabel(name) {
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+__name(simpleLabel, "simpleLabel");
+function groupSoundCatalog(dict) {
+  if (!dict) return null;
+  const synths = [];
+  const soundfonts = [];
+  const samples = [];
+  for (const name of Object.keys(dict)) {
+    if (name.startsWith("_")) continue;
+    const data = dict[name]?.data;
+    if (data?.tag === "drum-machines") continue;
+    switch (data?.type) {
+      case "synth":
+        synths.push(name);
+        break;
+      case "soundfont":
+        soundfonts.push(name);
+        break;
+      case "sample":
+        samples.push(name);
+        break;
+    }
+  }
+  if (synths.length + soundfonts.length + samples.length === 0) return null;
+  const groups = [];
+  if (synths.length) {
+    groups.push({
+      group: "Synths",
+      options: synths.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
+    });
+  }
+  if (soundfonts.length) {
+    groups.push({
+      group: "Soundfonts",
+      options: soundfonts.sort().map((v) => ({ value: v, label: soundfontLabel(v) }))
+    });
+  }
+  if (samples.length) {
+    groups.push({
+      group: "Samples",
+      options: samples.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
+    });
+  }
+  return groups;
+}
+__name(groupSoundCatalog, "groupSoundCatalog");
+var accessor2 = null;
+var listeners9 = /* @__PURE__ */ new Set();
+var cached = null;
+function recompute() {
+  if (!accessor2) {
+    cached = null;
+    return;
+  }
+  try {
+    cached = accessor2();
+  } catch {
+    cached = null;
+  }
+}
+__name(recompute, "recompute");
+function setSoundCatalogAccessor(fn) {
+  accessor2 = fn;
+  recompute();
+  listeners9.forEach((l) => l());
+}
+__name(setSoundCatalogAccessor, "setSoundCatalogAccessor");
+function notifySoundCatalogChanged() {
+  recompute();
+  listeners9.forEach((l) => l());
+}
+__name(notifySoundCatalogChanged, "notifySoundCatalogChanged");
+function readSoundCatalog() {
+  return cached;
+}
+__name(readSoundCatalog, "readSoundCatalog");
+function subscribe3(listener) {
+  listeners9.add(listener);
+  return () => listeners9.delete(listener);
+}
+__name(subscribe3, "subscribe");
+function useSoundCatalog() {
+  return React18.useSyncExternalStore(
+    subscribe3,
+    () => readSoundCatalog(),
+    () => null
+  );
+}
+__name(useSoundCatalog, "useSoundCatalog");
 var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
 function parseManagedGain(raw) {
   const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
@@ -26551,8 +26646,9 @@ function SoundSelect({
 __name(SoundSelect, "SoundSelect");
 function Mixer() {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
+  const liveInstruments = useSoundCatalog();
   const knobs = chunk ? knobsFromChunk(chunk) : [];
-  const writeKnob = React17.useCallback(
+  const writeKnob = React18.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => {
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex];
@@ -26567,7 +26663,7 @@ function Mixer() {
     },
     [applyEdit]
   );
-  const addTransform = React17.useCallback(
+  const addTransform = React18.useCallback(
     (method, value) => {
       applyEdit((fresh, wb) => {
         if (fresh.chain.some((c) => c.name === method)) return;
@@ -26576,7 +26672,7 @@ function Mixer() {
     },
     [applyEdit]
   );
-  const writeChainMethod = React17.useCallback(
+  const writeChainMethod = React18.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -26588,7 +26684,7 @@ function Mixer() {
     [applyEdit]
   );
   if (!chunk || chunk.chain.length === 0) {
-    return React17.createElement(VisualEditStandby, {
+    return React18.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -26614,7 +26710,7 @@ function Mixer() {
           SoundSelect,
           {
             label: "Instrument",
-            groups: INSTRUMENTS,
+            groups: liveInstruments ?? INSTRUMENTS,
             value: readChainMethod(chunk, ["sound", "s"])?.value ?? "",
             placeholder: "Default synth",
             onChange: (v) => writeChainMethod(["sound", "s"], "sound", v)
@@ -26720,7 +26816,7 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React17.createElement(Panel)
+      content: React18.createElement(Panel)
     });
   }
 }
@@ -26734,24 +26830,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React17.useState(opts.initial);
-  const [dragging, setDragging] = React17.useState(false);
-  const startYRef = React17.useRef(0);
-  const startValueRef = React17.useRef(opts.initial);
-  const pointerIdRef = React17.useRef(null);
-  const draggingRef = React17.useRef(false);
-  const minRef = React17.useRef(opts.min);
-  const maxRef = React17.useRef(opts.max);
-  React17.useEffect(() => {
+  const [value, setValueState] = React18.useState(opts.initial);
+  const [dragging, setDragging] = React18.useState(false);
+  const startYRef = React18.useRef(0);
+  const startValueRef = React18.useRef(opts.initial);
+  const pointerIdRef = React18.useRef(null);
+  const draggingRef = React18.useRef(false);
+  const minRef = React18.useRef(opts.min);
+  const maxRef = React18.useRef(opts.max);
+  React18.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React17.useCallback((v) => {
+  const setValue = React18.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React17.useCallback(
+  const onPointerDown = React18.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -26766,7 +26862,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React17.useCallback(
+  const endDrag = React18.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -26781,7 +26877,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React17.useCallback(
+  const onPointerMove = React18.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -26797,13 +26893,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React17.useCallback(
+  const onPointerUp = React18.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React17.useCallback(
+  const onPointerCancel = React18.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -26831,15 +26927,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React17.useState(
+  const [tabs2, setTabs] = React18.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React17.useState(readPersistedOpen);
-  const [height, setHeight] = React17.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React17.useState(
+  const [open, setOpen] = React18.useState(readPersistedOpen);
+  const [height, setHeight] = React18.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React18.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -26849,10 +26945,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -26864,24 +26960,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React17.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React17.useCallback(
+  const tabButtonRefs = React18.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React18.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React17.useCallback((id) => {
+  const focusTab = React18.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React17.useCallback(
+  const onTabsKeyDown = React18.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -28992,7 +29088,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsx(React17__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsx(React18__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsx(
                 SplitPane,
@@ -29000,7 +29096,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsx(React17__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsx(React18__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -31118,7 +31214,7 @@ function usePopoutPreview({
 __name(usePopoutPreview, "usePopoutPreview");
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
-  const subscribe3 = useCallback(
+  const subscribe4 = useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -31130,7 +31226,7 @@ function useTrackMeta(fileId, trackId) {
     if (!fileId) return EMPTY_META;
     return getTrackMeta(fileId, trackId);
   }, [fileId, trackId]);
-  const meta = useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
+  const meta = useSyncExternalStore(subscribe4, getSnapshot, getSnapshot);
   const set = useCallback(
     (partial) => {
       if (!fileId) return;
@@ -31469,10 +31565,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React17.useReducer((x) => x + 1, 0);
-  React17.useEffect(() => subscribeToHistory(force), []);
-  React17.useEffect(() => subscribeToRuntimeView(force), []);
-  React17.useEffect(() => {
+  const [, force] = React18.useReducer((x) => x + 1, 0);
+  React18.useEffect(() => subscribeToHistory(force), []);
+  React18.useEffect(() => subscribeToRuntimeView(force), []);
+  React18.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -31489,17 +31585,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React17.useState(null);
-  const [forkName, setForkName] = React17.useState("");
-  const [committing, setCommitting] = React17.useState(false);
-  const [commitLabel, setCommitLabel] = React17.useState("");
-  const [expanded, setExpanded] = React17.useState(null);
-  const [hovered, setHovered] = React17.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React17.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React17.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React17.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React18.useState(null);
+  const [forkName, setForkName] = React18.useState("");
+  const [committing, setCommitting] = React18.useState(false);
+  const [commitLabel, setCommitLabel] = React18.useState("");
+  const [expanded, setExpanded] = React18.useState(null);
+  const [hovered, setHovered] = React18.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React18.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React18.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React18.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React17.useEffect(() => {
+  React18.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -33685,6 +33781,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, removeArm, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifySoundCatalogChanged, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, removeArm, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map
