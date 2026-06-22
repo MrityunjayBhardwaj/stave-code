@@ -1310,36 +1310,56 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                 getHapStream={props.getHapStream}
               />
             )}
-            {playheadVisible && (
-              <div data-full-song="playhead" style={{ ...styles.playhead, left: playheadX }} />
-            )}
-            {trimEdgeX != null && (
-              <div data-full-song="trim-edge" style={{ ...styles.trimEdge, left: trimEdgeX }} />
-            )}
-            {selectionRect && (
-              <div
-                data-full-song="clip-selection"
-                style={{
-                  ...styles.clipSelection,
-                  left: selectionRect.left,
-                  width: selectionRect.width,
-                  top: selectionRect.top,
-                  height: selectionRect.height,
-                }}
-              />
-            )}
-            {moveGhost && (
-              <div
-                data-full-song="clip-move-ghost"
-                style={{
-                  ...styles.moveGhost,
-                  left: moveGhost.left,
-                  width: moveGhost.width,
-                  top: moveGhost.top,
-                  height: moveGhost.height,
-                }}
-              />
-            )}
+            {/* Marks overlay (#506): playhead, trim edge, clip selection and move
+                ghost live here, pinned to the viewport EXACTLY like the base
+                canvas + live overlay (sticky left:0, pulled back over them with a
+                negative margin) and offset by the SAME React-state `scrollLeft`
+                the canvas draws against. Keeping every mark on the canvas's scroll
+                clock — not the natively-scrolled content's integer `el.scrollLeft`
+                — stops the playhead jittering against the lanes: the old
+                content-space `left: playheadX` differenced the native, integer-
+                quantized, current-frame scroll against the canvas's float,
+                one-frame-lagged React scroll, a ~2px per-frame sawtooth. */}
+            <div
+              data-full-song="marks"
+              style={{
+                ...styles.marksOverlay,
+                marginTop: -layout.totalHeight,
+                width: areaWidth,
+                height: layout.totalHeight,
+              }}
+            >
+              {playheadVisible && (
+                <div data-full-song="playhead" style={{ ...styles.playhead, left: playheadX - scrollLeft }} />
+              )}
+              {trimEdgeX != null && (
+                <div data-full-song="trim-edge" style={{ ...styles.trimEdge, left: trimEdgeX - scrollLeft }} />
+              )}
+              {selectionRect && (
+                <div
+                  data-full-song="clip-selection"
+                  style={{
+                    ...styles.clipSelection,
+                    left: selectionRect.left - scrollLeft,
+                    width: selectionRect.width,
+                    top: selectionRect.top,
+                    height: selectionRect.height,
+                  }}
+                />
+              )}
+              {moveGhost && (
+                <div
+                  data-full-song="clip-move-ghost"
+                  style={{
+                    ...styles.moveGhost,
+                    left: moveGhost.left - scrollLeft,
+                    width: moveGhost.width,
+                    top: moveGhost.top,
+                    height: moveGhost.height,
+                  }}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1573,6 +1593,15 @@ const styles = {
     overflowY: 'hidden' as const,
     background: 'var(--bg-input, #0f0f1a)',
     cursor: 'pointer' as const,
+  },
+  // Sticky viewport pin for the interactive marks (#506) — mirrors the base
+  // canvas + live overlay (sticky left:0, marginTop:-height set inline). Children
+  // are positioned in viewport space (`contentX - scrollLeft`) so they ride the
+  // canvas's React-state scroll clock, never the natively-scrolled content.
+  marksOverlay: {
+    position: 'sticky' as const,
+    left: 0,
+    pointerEvents: 'none' as const,
   },
   playhead: {
     position: 'absolute' as const,
