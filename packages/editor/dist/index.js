@@ -25413,6 +25413,165 @@ function usePlayingStep(steps, bars) {
   return step;
 }
 __name(usePlayingStep, "usePlayingStep");
+
+// src/visualEdit/notation/lane.ts
+function addLane(model, sound) {
+  const token = sound.trim();
+  if (token === "" || model.lanes.some((l) => l.sound === token)) return model;
+  const lane = {
+    sound: token,
+    part: model.lanes[0]?.part,
+    cells: Array(model.steps).fill(false)
+  };
+  return { ...model, lanes: [...model.lanes, lane] };
+}
+__name(addLane, "addLane");
+function removeLane(model, sound) {
+  if (!model.lanes.some((l) => l.sound === sound)) return model;
+  return { ...model, lanes: model.lanes.filter((l) => l.sound !== sound) };
+}
+__name(removeLane, "removeLane");
+
+// src/visualEdit/panels/soundCatalog.ts
+var INSTRUMENTS = [
+  {
+    group: "Synths",
+    options: [
+      { value: "sawtooth", label: "Sawtooth" },
+      { value: "square", label: "Square" },
+      { value: "triangle", label: "Triangle" },
+      { value: "sine", label: "Sine" }
+    ]
+  },
+  {
+    group: "Keys",
+    options: [
+      { value: "piano", label: "Piano" },
+      { value: "gm_epiano1", label: "E-Piano" },
+      { value: "gm_harpsichord", label: "Harpsichord" },
+      { value: "gm_church_organ", label: "Organ" },
+      { value: "gm_vibraphone", label: "Vibraphone" },
+      { value: "gm_marimba", label: "Marimba" }
+    ]
+  },
+  {
+    group: "Strings",
+    options: [
+      { value: "gm_violin", label: "Violin" },
+      { value: "gm_cello", label: "Cello" },
+      { value: "gm_string_ensemble_1", label: "String Ensemble" },
+      { value: "gm_pizzicato_strings", label: "Pizzicato Strings" }
+    ]
+  },
+  {
+    group: "Winds & Brass",
+    options: [
+      { value: "gm_alto_sax", label: "Alto Sax" },
+      { value: "gm_tenor_sax", label: "Tenor Sax" },
+      { value: "gm_flute", label: "Flute" },
+      { value: "gm_clarinet", label: "Clarinet" },
+      { value: "gm_trumpet", label: "Trumpet" },
+      { value: "gm_trombone", label: "Trombone" }
+    ]
+  },
+  {
+    group: "Guitar & Bass",
+    options: [
+      { value: "gm_acoustic_guitar_nylon", label: "Nylon Guitar" },
+      { value: "gm_electric_guitar_clean", label: "Electric Guitar" },
+      { value: "gm_acoustic_bass", label: "Acoustic Bass" },
+      { value: "gm_synth_bass_1", label: "Synth Bass" }
+    ]
+  },
+  {
+    group: "Voice & Pad",
+    options: [
+      { value: "gm_choir_aahs", label: "Choir" },
+      { value: "gm_pad_warm", label: "Warm Pad" },
+      { value: "gm_lead_2_sawtooth", label: "Saw Lead" }
+    ]
+  }
+];
+var DRUM_KITS = [
+  {
+    group: "Roland",
+    options: [
+      { value: "RolandTR808", label: "Roland TR-808" },
+      { value: "RolandTR909", label: "Roland TR-909" },
+      { value: "RolandTR707", label: "Roland TR-707" },
+      { value: "RolandTR727", label: "Roland TR-727" },
+      { value: "RolandTR606", label: "Roland TR-606" },
+      { value: "RolandTR505", label: "Roland TR-505" },
+      { value: "RolandTR626", label: "Roland TR-626" },
+      { value: "RolandCompurhythm1000", label: "Roland CR-1000" },
+      { value: "RolandCompurhythm78", label: "Roland CR-78" },
+      { value: "RolandR8", label: "Roland R-8" }
+    ]
+  },
+  {
+    group: "Yamaha",
+    options: [
+      { value: "YamahaRX5", label: "Yamaha RX5" },
+      { value: "YamahaRX21", label: "Yamaha RX21" },
+      { value: "YamahaRY30", label: "Yamaha RY30" },
+      { value: "YamahaRM50", label: "Yamaha RM50" },
+      { value: "YamahaTG33", label: "Yamaha TG33" }
+    ]
+  },
+  {
+    group: "Akai",
+    options: [
+      { value: "AkaiLinn", label: "Akai Linn" },
+      { value: "AkaiMPC60", label: "Akai MPC60" },
+      { value: "AkaiXR10", label: "Akai XR10" }
+    ]
+  },
+  {
+    group: "Linn",
+    options: [
+      { value: "LinnDrum", label: "LinnDrum" },
+      { value: "LinnLM1", label: "Linn LM-1" },
+      { value: "LinnLM2", label: "Linn LM-2" },
+      { value: "Linn9000", label: "Linn 9000" }
+    ]
+  },
+  {
+    group: "Other classics",
+    options: [
+      { value: "AlesisHR16", label: "Alesis HR-16" },
+      { value: "AlesisSR16", label: "Alesis SR-16" },
+      { value: "BossDR55", label: "Boss DR-55" },
+      { value: "BossDR110", label: "Boss DR-110" },
+      { value: "BossDR550", label: "Boss DR-550" },
+      { value: "CasioRZ1", label: "Casio RZ-1" },
+      { value: "EmuDrumulator", label: "E-mu Drumulator" },
+      { value: "EmuSP12", label: "E-mu SP-12" },
+      { value: "KorgKR55", label: "Korg KR-55" },
+      { value: "KorgMinipops", label: "Korg Mini Pops" },
+      { value: "OberheimDMX", label: "Oberheim DMX" },
+      { value: "SequentialCircuitsDrumtracks", label: "Sequential Drumtraks" },
+      { value: "SimmonsSDS5", label: "Simmons SDS-5" },
+      { value: "RhythmAce", label: "Rhythm Ace" }
+    ]
+  }
+];
+var DRUM_SOUNDS = [
+  { value: "bd", label: "Kick (bd)" },
+  { value: "sd", label: "Snare (sd)" },
+  { value: "rim", label: "Rim (rim)" },
+  { value: "cp", label: "Clap (cp)" },
+  { value: "hh", label: "Hi-Hat (hh)" },
+  { value: "oh", label: "Open Hat (oh)" },
+  { value: "lt", label: "Low Tom (lt)" },
+  { value: "mt", label: "Mid Tom (mt)" },
+  { value: "ht", label: "Hi Tom (ht)" },
+  { value: "cr", label: "Crash (cr)" },
+  { value: "rd", label: "Ride (rd)" },
+  { value: "sh", label: "Shaker (sh)" },
+  { value: "cb", label: "Cowbell (cb)" },
+  { value: "perc", label: "Perc (perc)" },
+  { value: "tb", label: "Tambourine (tb)" }
+];
 var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
 var VELOCITY_FULL_PX = 80;
 var DRAG_THRESHOLD = 4;
@@ -25459,6 +25618,18 @@ function SequencerGrid() {
         }
         return toggleCell(prev, laneIndex, stepIndex, value);
       });
+    },
+    [mutate]
+  );
+  const addVoice = React17.useCallback(
+    (sound) => {
+      mutate((prev) => addLane(prev, sound));
+    },
+    [mutate]
+  );
+  const removeVoice = React17.useCallback(
+    (sound) => {
+      mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
@@ -25547,78 +25718,131 @@ function SequencerGrid() {
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: "none"
       },
-      children: /* @__PURE__ */ jsx("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: "100%" }, children: model.lanes.map((lane, laneIndex) => /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
-        /* @__PURE__ */ jsx(
-          "span",
-          {
-            style: {
-              width: 56,
-              fontSize: 11,
-              color: "var(--foreground, #e6e6ea)",
-              textAlign: "right",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap"
-            },
-            title: lane.sound,
-            children: lane.sound
-          }
-        ),
-        /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((on, stepIndex) => {
-          const gain = model.gains?.[stepIndex] ?? 1;
-          const isPlaying = stepIndex === playingStep;
-          return /* @__PURE__ */ jsx(
+      children: /* @__PURE__ */ jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: "100%" }, children: [
+        model.lanes.map((lane, laneIndex) => /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+          /* @__PURE__ */ jsx(
+            "span",
+            {
+              style: {
+                width: 56,
+                fontSize: 11,
+                color: "var(--foreground, #e6e6ea)",
+                textAlign: "right",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap"
+              },
+              title: lane.sound,
+              children: lane.sound
+            }
+          ),
+          /* @__PURE__ */ jsx(
             "button",
             {
               type: "button",
-              "aria-pressed": on,
-              "aria-label": `${lane.sound} step ${stepIndex + 1}`,
-              "data-seq-cell": `${laneIndex}:${stepIndex}`,
-              "data-gain": on && gainScoped ? gain : void 0,
-              "data-playing": isPlaying ? "true" : void 0,
-              onPointerDown: (e) => {
-                e.preventDefault();
-                onCellDown(laneIndex, stepIndex, on, e);
-              },
-              onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
+              "aria-label": `remove ${lane.sound}`,
+              "data-seq-remove-voice": lane.sound,
+              title: `Remove ${lane.sound}`,
+              onClick: () => removeVoice(lane.sound),
               style: {
-                position: "relative",
-                flex: "1 1 0",
-                minWidth: 16,
-                maxWidth: 56,
-                height: 22,
+                width: 16,
+                height: 16,
+                flex: "0 0 auto",
                 padding: 0,
-                overflow: "hidden",
-                border: isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                lineHeight: "14px",
+                fontSize: 12,
                 borderRadius: 3,
-                // subtle gap at each bar boundary
-                marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
-                background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-                cursor: gainScoped && on ? "ns-resize" : "pointer"
+                border: "1px solid var(--border, #3a3a42)",
+                background: "transparent",
+                color: "var(--foreground-muted, #a0a0aa)",
+                cursor: "pointer"
               },
-              children: on && // bottom-anchored fill = velocity (full when neutral); when
-              // gain is out of scope it always reads full, so the cell
-              // looks exactly like the pre-velocity solid square.
-              /* @__PURE__ */ jsx(
-                "span",
-                {
-                  "data-seq-fill": true,
-                  style: {
-                    position: "absolute",
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    height: `${clamp01(gainScoped ? gain : 1) * 100}%`,
-                    background: "var(--accent, #6ea8fe)",
-                    pointerEvents: "none"
+              children: "\xD7"
+            }
+          ),
+          /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((on, stepIndex) => {
+            const gain = model.gains?.[stepIndex] ?? 1;
+            const isPlaying = stepIndex === playingStep;
+            return /* @__PURE__ */ jsx(
+              "button",
+              {
+                type: "button",
+                "aria-pressed": on,
+                "aria-label": `${lane.sound} step ${stepIndex + 1}`,
+                "data-seq-cell": `${laneIndex}:${stepIndex}`,
+                "data-gain": on && gainScoped ? gain : void 0,
+                "data-playing": isPlaying ? "true" : void 0,
+                onPointerDown: (e) => {
+                  e.preventDefault();
+                  onCellDown(laneIndex, stepIndex, on, e);
+                },
+                onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
+                style: {
+                  position: "relative",
+                  flex: "1 1 0",
+                  minWidth: 16,
+                  maxWidth: 56,
+                  height: 22,
+                  padding: 0,
+                  overflow: "hidden",
+                  border: isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                  borderRadius: 3,
+                  // subtle gap at each bar boundary
+                  marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
+                  background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
+                  cursor: gainScoped && on ? "ns-resize" : "pointer"
+                },
+                children: on && // bottom-anchored fill = velocity (full when neutral); when
+                // gain is out of scope it always reads full, so the cell
+                // looks exactly like the pre-velocity solid square.
+                /* @__PURE__ */ jsx(
+                  "span",
+                  {
+                    "data-seq-fill": true,
+                    style: {
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: `${clamp01(gainScoped ? gain : 1) * 100}%`,
+                      background: "var(--accent, #6ea8fe)",
+                      pointerEvents: "none"
+                    }
                   }
-                }
-              )
-            },
-            stepIndex
-          );
-        }) })
-      ] }, `${lane.sound}:${lane.part ?? 0}`)) })
+                )
+              },
+              stepIndex
+            );
+          }) })
+        ] }, `${lane.sound}:${lane.part ?? 0}`)),
+        /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 4 }, children: [
+          /* @__PURE__ */ jsx("span", { style: { width: 56, flex: "0 0 auto" } }),
+          /* @__PURE__ */ jsxs(
+            "select",
+            {
+              "data-seq-add-voice": true,
+              "aria-label": "add drum voice",
+              value: "",
+              onChange: (e) => {
+                if (e.target.value) addVoice(e.target.value);
+              },
+              style: {
+                fontSize: 11,
+                padding: "3px 8px",
+                borderRadius: 4,
+                border: "1px dashed var(--border, #3a3a42)",
+                background: "var(--background-elevated, #26262c)",
+                color: "var(--foreground-muted, #a0a0aa)",
+                cursor: "pointer"
+              },
+              children: [
+                /* @__PURE__ */ jsx("option", { value: "", children: "+ add voice\u2026" }),
+                DRUM_SOUNDS.map((s) => /* @__PURE__ */ jsx("option", { value: s.value, children: s.label }, s.value))
+              ]
+            }
+          )
+        ] })
+      ] })
     }
   );
 }
@@ -26215,6 +26439,19 @@ var QUICK_TRANSFORMS = [
   { label: "Speed", method: "speed", value: 1.5 },
   { label: "Gain", method: "gain", value: 0.8 }
 ];
+
+// src/visualEdit/panels/chainMethod.ts
+function readChainMethod(chunk, names) {
+  const call = chunk.chain.find((c) => names.includes(c.name) && c.args.length >= 1);
+  const arg = call?.args[0];
+  if (!call || !arg) return null;
+  const q = arg.raw[0];
+  if ((q === '"' || q === "'" || q === "`") && arg.raw[arg.raw.length - 1] === q) {
+    return { name: call.name, value: arg.raw.slice(1, -1), range: arg.range };
+  }
+  return null;
+}
+__name(readChainMethod, "readChainMethod");
 var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
 function parseManagedGain(raw) {
   const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
@@ -26267,6 +26504,51 @@ function knobsFromChunk(chunk) {
   return knobs;
 }
 __name(knobsFromChunk, "knobsFromChunk");
+function SoundSelect({
+  label,
+  groups,
+  value,
+  placeholder,
+  onChange
+}) {
+  const known = groups.some((g) => g.options.some((o) => o.value === value));
+  return /* @__PURE__ */ jsxs(
+    "label",
+    {
+      "data-mixer-sound": label.toLowerCase(),
+      style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11 },
+      children: [
+        /* @__PURE__ */ jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: label }),
+        /* @__PURE__ */ jsxs(
+          "select",
+          {
+            "data-mixer-sound-select": label.toLowerCase(),
+            value: known ? value : value === "" ? "" : "__custom__",
+            onChange: (e) => e.target.value !== "__custom__" && onChange(e.target.value),
+            style: {
+              padding: "4px 8px",
+              fontSize: 12,
+              borderRadius: 4,
+              border: "1px solid var(--border, #3a3a42)",
+              background: "var(--background-elevated, #26262c)",
+              color: "var(--foreground, #e6e6ea)",
+              maxWidth: 220
+            },
+            children: [
+              /* @__PURE__ */ jsx("option", { value: "", children: placeholder }),
+              value !== "" && !known && /* @__PURE__ */ jsxs("option", { value: "__custom__", children: [
+                value,
+                " (current)"
+              ] }),
+              groups.map((g) => /* @__PURE__ */ jsx("optgroup", { label: g.group, children: g.options.map((o) => /* @__PURE__ */ jsx("option", { value: o.value, children: o.label }, o.value)) }, g.group))
+            ]
+          }
+        )
+      ]
+    }
+  );
+}
+__name(SoundSelect, "SoundSelect");
 function Mixer() {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const knobs = chunk ? knobsFromChunk(chunk) : [];
@@ -26294,6 +26576,17 @@ function Mixer() {
     },
     [applyEdit]
   );
+  const writeChainMethod = React17.useCallback(
+    (names, canonical, value) => {
+      if (value === "") return;
+      applyEdit((fresh, wb) => {
+        const cur = readChainMethod(fresh, names);
+        if (cur) wb.replaceRange(cur.range, `'${value}'`, "knob");
+        else wb.insertAt(fresh.exprRange[1], `.${canonical}('${value}')`, "knob");
+      });
+    },
+    [applyEdit]
+  );
   if (!chunk || chunk.chain.length === 0) {
     return React17.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
@@ -26302,6 +26595,7 @@ function Mixer() {
     });
   }
   const present = new Set(chunk.chain.map((c) => c.name));
+  const kind = patternKind(chunk);
   return /* @__PURE__ */ jsxs(
     "div",
     {
@@ -26316,6 +26610,26 @@ function Mixer() {
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       },
       children: [
+        kind === "roll" && /* @__PURE__ */ jsx(
+          SoundSelect,
+          {
+            label: "Instrument",
+            groups: INSTRUMENTS,
+            value: readChainMethod(chunk, ["sound", "s"])?.value ?? "",
+            placeholder: "Default synth",
+            onChange: (v) => writeChainMethod(["sound", "s"], "sound", v)
+          }
+        ),
+        kind === "step" && /* @__PURE__ */ jsx(
+          SoundSelect,
+          {
+            label: "Kit",
+            groups: DRUM_KITS,
+            value: readChainMethod(chunk, ["bank"])?.value ?? "",
+            placeholder: "Default kit",
+            onChange: (v) => writeChainMethod(["bank"], "bank", v)
+          }
+        ),
         /* @__PURE__ */ jsx("div", { "data-mixer-transforms": true, style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: QUICK_TRANSFORMS.map((t) => /* @__PURE__ */ jsxs(
           "button",
           {
