@@ -13,7 +13,7 @@ import {
   serializeStepGain,
   serializeRollGain,
 } from '../serialize'
-import { pitchToMidi, midiToPitch, isBlackKey } from '../pitch'
+import { pitchToMidi, midiToPitch, isBlackKey, cLabel } from '../pitch'
 import { placeNote, resizeNote } from '../place'
 import { resizeGrid, resizeRoll } from '../resize'
 import type { StepGridModel, PianoRollModel } from '../model'
@@ -479,6 +479,13 @@ describe('pitch', () => {
   it('flags black keys', () => {
     expect(isBlackKey(49)).toBe(true) // c#3
     expect(isBlackKey(48)).toBe(false) // c3
+  })
+  it('labels C rows for the keyboard gutter (#430), null elsewhere', () => {
+    expect(cLabel(48)).toBe('C3') // c3
+    expect(cLabel(60)).toBe('C4') // c4
+    expect(cLabel(49)).toBeNull() // c#3
+    expect(cLabel(50)).toBeNull() // d3
+    expect(cLabel(48)).toBe(midiToPitch(48).toUpperCase()) // agrees with the note token
   })
 })
 

@@ -21,13 +21,15 @@ import * as React from 'react'
 import { parsePianoRoll, applyRollGain } from '../notation/parse'
 import { serializePianoRoll, serializeRollGain } from '../notation/serialize'
 import type { PianoRollModel, RollNote } from '../notation/model'
-import { pitchToMidi, midiToPitch, isBlackKey } from '../notation/pitch'
+import { pitchToMidi, midiToPitch, isBlackKey, cLabel } from '../notation/pitch'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID } from './tabs'
 import { isRollChunk } from './patternKind'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import { placeNote, resizeNote } from '../notation/place'
+import { useNoteColorMode, velocityColor } from './noteColor'
+import { NoteColorToggle } from './NoteColorToggle'
 
 const ROLL_HINT = 'Click a melody to edit its notes.'
 
@@ -114,6 +116,9 @@ export function PianoRollGrid(): React.ReactElement {
   // A velocity-lane drag: vertical drag on a note's bar sets that group's gain.
   const velRef = React.useRef<{ start: number; startY: number; startGain: number } | null>(null)
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1)
+  const [colorMode] = useNoteColorMode()
+  // Pitch row the pointer is over → highlight its key on the keyboard (#430).
+  const [hoveredMidi, setHoveredMidi] = React.useState<number | null>(null)
 
   // Sticky pitch range: expand to fit, never shrink within a binding; reset on
   // statement change (#391).
@@ -265,33 +270,101 @@ export function PianoRollGrid(): React.ReactElement {
     <div
       data-bottom-panel-tab="piano-roll"
       style={{
-        padding: 16,
+        position: 'relative',
         height: '100%',
-        overflow: 'auto',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: 'none',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}>
-        {rows.map((midi) => {
+      {/* View ▸ Note Color (#428) — pinned top-right as an overlay, NOT in the
+          row flow: the piano roll is pitch-dense and the rows fill the panel, so
+          a header that consumed vertical space would push the lowest rows off the
+          bottom (and out of drag reach). The toggle floats over the empty
+          top-right (high-pitch) corner instead. */}
+      <div style={{ position: 'absolute', top: 4, right: 16, zIndex: 3 }}>
+        <NoteColorToggle />
+      </div>
+      <div style={{ padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' }}>
+        <div
+          style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}
+          onPointerLeave={() => setHoveredMidi(null)}
+        >
+          {rows.map((midi) => {
           // Piano black/white striping only makes sense for note-name rows;
           // for numeric patterns a row is a raw value (MIDI or degree), not a
           // key, so stripe uniformly and let the numeric label carry the pitch.
           const black = !model.numeric && isBlackKey(midi)
+          const hovered = midi === hoveredMidi
+          const keyC = cLabel(midi)
           return (
-            <div key={midi} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span
-                style={{
-                  width: 36,
-                  fontSize: 9,
-                  textAlign: 'right',
-                  color: black
-                    ? 'var(--foreground-muted, #a0a0aa)'
-                    : 'var(--foreground, #e6e6ea)',
-                }}
-              >
-                {tokenForRow(!!model.numeric, midi)}
-              </span>
+            <div
+              key={midi}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              // Don't chase hover mid-drag — a re-render here would interrupt the
+              // note move/resize gesture (which is driven by cell pointerenter).
+              onPointerEnter={() => {
+                if (!dragRef.current && !velRef.current) setHoveredMidi(midi)
+              }}
+            >
+              {model.numeric ? (
+                // Numeric rows are raw values/degrees, not piano keys — keep the
+                // value label (no keyboard graphic).
+                <span
+                  style={{
+                    width: 36,
+                    fontSize: 9,
+                    textAlign: 'right',
+                    color: 'var(--foreground, #e6e6ea)',
+                  }}
+                >
+                  {tokenForRow(true, midi)}
+                </span>
+              ) : (
+                // Graphical piano key (#430). Fixed-width key bed so the note
+                // cells stay column-aligned across every row (PV120 single
+                // vertical axis — same `rows` midi list). White keys fill the
+                // bed light; a black key is a shorter dark bar overlaid on the
+                // BACK (left) of the bed, leaving the white front edge visible —
+                // the keyboard look. C rows are labelled (C is always white).
+                <span
+                  data-roll-key={midi}
+                  data-roll-key-black={black ? 'true' : undefined}
+                  aria-hidden="true"
+                  style={{
+                    position: 'relative',
+                    width: 40,
+                    height: 16,
+                    flex: '0 0 auto',
+                    boxSizing: 'border-box',
+                    borderRadius: '2px 3px 3px 2px',
+                    border: '1px solid var(--border, #3a3a42)',
+                    background: hovered ? '#cdd3ff' : '#e8e8ec',
+                    color: '#3a3a42',
+                    fontSize: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    paddingRight: 3,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {black && (
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: '62%',
+                        background: hovered ? '#3a3a44' : '#1b1b20',
+                        borderRadius: '1px 2px 2px 1px',
+                      }}
+                    />
+                  )}
+                  <span style={{ position: 'relative' }}>{keyC ?? ''}</span>
+                </span>
+              )}
               <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
                 {Array.from({ length: model.steps }, (_, step) => {
                   const note = noteAt(model, midi, step)
@@ -324,7 +397,9 @@ export function PianoRollGrid(): React.ReactElement {
                             : '1px solid var(--border, #3a3a42)',
                         borderRadius: 2,
                         background: on
-                          ? 'var(--accent, #6ea8fe)'
+                          ? colorMode === 'velocity'
+                            ? velocityColor(note!.gain ?? 1)
+                            : 'var(--accent, #6ea8fe)'
                           : step === playingStep
                             ? 'var(--background, #34343c)'
                             : black
@@ -416,7 +491,7 @@ export function PianoRollGrid(): React.ReactElement {
                           right: 1,
                           bottom: 0,
                           height: `${clamp01(g) * 100}%`,
-                          background: 'var(--accent, #6ea8fe)',
+                          background: colorMode === 'velocity' ? velocityColor(g) : 'var(--accent, #6ea8fe)',
                           borderRadius: 2,
                           pointerEvents: 'none',
                         }}
@@ -427,7 +502,8 @@ export function PianoRollGrid(): React.ReactElement {
               })}
             </div>
           </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )

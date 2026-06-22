@@ -45,3 +45,13 @@ export function midiToPitch(midi: number): string {
 export function isBlackKey(midi: number): boolean {
   return SHARP_NAMES[((midi % 12) + 12) % 12].includes('#')
 }
+
+/**
+ * The C-octave label for the graphical keyboard (#430): `C3`, `C4`, … on every
+ * C row (the convention anchor on a piano), `null` on every other row. Same
+ * octave math as `midiToPitch`, so keyboard labels and note tokens never drift.
+ */
+export function cLabel(midi: number): string | null {
+  if (((midi % 12) + 12) % 12 !== 0) return null
+  return `C${Math.floor(midi / 12) - 1}`
+}
