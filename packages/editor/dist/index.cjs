@@ -4673,7 +4673,7 @@ var _StrudelEngine = class _StrudelEngine {
           }
         }
       }
-      const enriched = hapStream.emit(hap, deadline, duration, cps, audioCtxRef.currentTime, this.lastIRNodeLocLookup ?? void 0);
+      const enriched = hapStream.emit(hap, t, duration, cps, audioCtxRef.currentTime, this.lastIRNodeLocLookup ?? void 0);
       if (enriched.irNodeId && this.breakpointStore.has(enriched.irNodeId)) {
         this.repl?.scheduler?.pause();
         this.setPaused(true);

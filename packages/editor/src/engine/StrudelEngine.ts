@@ -480,10 +480,18 @@ export class StrudelEngine implements LiveCodingEngine {
     const audioCtxRef = audioCtx
 
     // Strudel's scheduler calls: onTrigger(hap, deadline, duration, cps, t)
-    //   deadline = AudioContext time when note plays
+    // (cyclist.mjs:64-71). NOTE the signature is the inverse of what the
+    // names suggest:
+    //   deadline = targetTime − phase — a small RELATIVE lookahead (~latency
+    //              0.1s), flagged "dumb and only here for backwards
+    //              compatibility" upstream. NOT an absolute time.
     //   duration = note duration in seconds
     //   cps = cycles per second
-    //   t = current AudioContext.currentTime
+    //   t = targetTime — the ABSOLUTE AudioContext time the note sounds.
+    // HapStream wants the absolute play-time as its 2nd arg (it stores it as
+    // `audioTime` and derives `scheduledAheadMs = (it − currentTime)`), so we
+    // pass `t`, NOT `deadline` (#512: passing the relative deadline made
+    // scheduledAheadMs grow hugely negative with session uptime).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const wrappedOutput = async (hap: any, deadline: number, duration: number, cps: number, t: number) => {
       perf.inc('audio.triggers') // #228 — scheduler event throughput (rate = count/uptime)
@@ -517,7 +525,7 @@ export class StrudelEngine implements LiveCodingEngine {
       // Phase 20-07 (T-α-2) — emit returns the enriched HapEvent so the
       // breakpoint hit-check below reads `irNodeId` in O(1) without
       // re-running findMatchedEvent. P50 single-strategy match preserved.
-      const enriched = hapStream.emit(hap, deadline, duration, cps, audioCtxRef.currentTime, this.lastIRNodeLocLookup ?? undefined)
+      const enriched = hapStream.emit(hap, t, duration, cps, audioCtxRef.currentTime, this.lastIRNodeLocLookup ?? undefined)
 
       // Phase 20-07 (PK13 step 9 / DEC-AMENDED-3) — breakpoint hit-check.
       // PERF: O(1) Set.has() on the audio scheduler hot path; do NOT
