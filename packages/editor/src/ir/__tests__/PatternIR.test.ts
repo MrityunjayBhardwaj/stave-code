@@ -442,9 +442,19 @@ describe('toStrudel', () => {
     expect(toStrudel(tree)).toBe('s("bd sd")')
   })
 
-  it('Stack produces stack(...)', () => {
+  it('Stack of uniform simple plays collapses to a mini chord (#508)', () => {
+    // A uniform-voice Stack of simple Plays IS a chord, so it round-trips to
+    // `[a,b,c]` mini-notation — the idiomatic source form, consistent with how a
+    // Seq collapses to `"a b"`. An EXPLICIT `stack(...)` call (userMethod:'stack')
+    // is preserved as `stack(...)`; see the parseStrudel round-trip suite.
     const tree = IR.stack(IR.play('c4'), IR.play('e4'))
-    const result = toStrudel(tree)
+    expect(toStrudel(tree)).toBe('note("[c4,e4]")')
+  })
+
+  it('Explicit stack() call is preserved as stack(...) (P62 code-invariance)', () => {
+    const tree = IR.stack(IR.play('c4'), IR.play('e4'))
+    const explicit = { ...tree, userMethod: 'stack' as const }
+    const result = toStrudel(explicit)
     expect(result).toContain('stack(')
     expect(result).toContain('note("c4")')
     expect(result).toContain('note("e4")')

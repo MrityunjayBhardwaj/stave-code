@@ -844,7 +844,8 @@ exports[`strudel.cc parity corpus — structural IR shape > arpoon parses to a s
                                                                       "body": {
                                                                         "children": [
                                                                           {
-                                                                            "children": [
+                                                                            "tag": "Stack",
+                                                                            "tracks": [
                                                                               {
                                                                                 "duration": 0.25,
                                                                                 "note": "0",
@@ -864,7 +865,6 @@ exports[`strudel.cc parity corpus — structural IR shape > arpoon parses to a s
                                                                                 "tag": "Play",
                                                                               },
                                                                             ],
-                                                                            "tag": "Seq",
                                                                           },
                                                                           {
                                                                             "duration": 0.25,
@@ -876,7 +876,8 @@ exports[`strudel.cc parity corpus — structural IR shape > arpoon parses to a s
                                                                             "tag": "Play",
                                                                           },
                                                                           {
-                                                                            "children": [
+                                                                            "tag": "Stack",
+                                                                            "tracks": [
                                                                               {
                                                                                 "duration": 0.25,
                                                                                 "note": "1",
@@ -896,7 +897,6 @@ exports[`strudel.cc parity corpus — structural IR shape > arpoon parses to a s
                                                                                 "tag": "Play",
                                                                               },
                                                                             ],
-                                                                            "tag": "Seq",
                                                                           },
                                                                           {
                                                                             "duration": 0.25,
@@ -1036,7 +1036,8 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-132-recursive
             "body": {
               "children": [
                 {
-                  "children": [
+                  "tag": "Stack",
+                  "tracks": [
                     {
                       "duration": 0.25,
                       "note": "0",
@@ -1056,7 +1057,6 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-132-recursive
                       "tag": "Play",
                     },
                   ],
-                  "tag": "Seq",
                 },
                 {
                   "duration": 0.25,
@@ -1068,7 +1068,8 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-132-recursive
                   "tag": "Play",
                 },
                 {
-                  "children": [
+                  "tag": "Stack",
+                  "tracks": [
                     {
                       "duration": 0.25,
                       "note": "1",
@@ -1088,7 +1089,6 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-132-recursive
                       "tag": "Play",
                     },
                   ],
-                  "tag": "Seq",
                 },
                 {
                   "duration": 0.25,
@@ -6473,7 +6473,8 @@ exports[`strudel.cc parity corpus — structural IR shape > flatrave parses to a
                 "tag": "Sleep",
               },
               {
-                "children": [
+                "tag": "Stack",
+                "tracks": [
                   {
                     "duration": 1,
                     "note": "cp",
@@ -6495,7 +6496,6 @@ exports[`strudel.cc parity corpus — structural IR shape > flatrave parses to a
                     "tag": "Play",
                   },
                 ],
-                "tag": "Seq",
               },
             ],
             "tag": "Seq",

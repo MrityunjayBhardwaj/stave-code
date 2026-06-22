@@ -124,6 +124,16 @@ function gen(ir: PatternIR): string {
       // for jux/off from 19-03. Belongs with the bidirectional-editing
       // follow-up (#8). RESEARCH §1.1 §B4.
       if (ir.tracks.length === 0) return '""'
+      // A chord — every track expressible in mini — round-trips to `[a,b,c]`
+      // mini-notation (the form the user typed), not `stack(...)` (#508). An
+      // EXPLICIT `stack(...)` call carries `userMethod: 'stack'` (parseStrudel) —
+      // preserve that source form (P62 code-invariance); only collapse Stacks
+      // that came from mini `[a,b,c]` (or programmatic `IR.stack`, no userMethod).
+      if (ir.userMethod !== 'stack') {
+        const useSample = hasSampleDescendant(ir)
+        const frag = miniFragment(ir, useSample)
+        if (frag !== null) return useSample ? `s("${frag}")` : `note("${frag}")`
+      }
       const parts = ir.tracks.map(gen)
       return `stack(\n  ${parts.join(',\n  ')}\n)`
     }
@@ -165,14 +175,23 @@ function gen(ir: PatternIR): string {
 
     case 'Cycle': {
       if (ir.items.length === 0) return '""'
+      // If all items are simple notes, use mini-notation
+      const allSimple = ir.items.every(item => item.tag === 'Play' || item.tag === 'Sleep')
+      if (!allSimple) {
+        // An item is a chord/sub-sequence (e.g. `<[c,e,g] [d,f,a]>`). Render the
+        // whole cycle as mini so a nested chord becomes `[a,b,c]`, NOT an invalid
+        // `stack(...)` inside the mini string (#508). Falls through to the legacy
+        // per-item join only if some item isn't mini-expressible.
+        const useSample = hasSampleDescendant(ir)
+        const frag = miniFragment(ir, useSample)
+        if (frag !== null) return useSample ? `s("${frag}")` : `note("${frag}")`
+      }
       // Cycle → mini-notation angle bracket alternation
       const notes = ir.items.map(item => {
         if (item.tag === 'Play') return String(item.note)
         if (item.tag === 'Sleep') return '~'
         return gen(item)
       })
-      // If all items are simple notes, use mini-notation
-      const allSimple = ir.items.every(item => item.tag === 'Play' || item.tag === 'Sleep')
       if (allSimple) {
         // Determine whether note or s pattern
         const firstPlay = ir.items.find(i => i.tag === 'Play')
@@ -339,6 +358,79 @@ function genPlay(note: string | number, params: PlayParams): string {
     return `s("${params.s}")`
   }
   return `note("${note}")`
+}
+
+/** True if any Play descendant carries a sample name (`.s`) — picks `s("…")`
+ *  vs `note("…")` for a mini-notation wrapper that may nest chords/sub-seqs. */
+function hasSampleDescendant(ir: PatternIR): boolean {
+  switch (ir.tag) {
+    case 'Play':
+      return !!ir.params.s
+    case 'Seq':
+      return ir.children.some(hasSampleDescendant)
+    case 'Stack':
+      return ir.tracks.some(hasSampleDescendant)
+    case 'Cycle':
+      return ir.items.some(hasSampleDescendant)
+    default:
+      return false
+  }
+}
+
+/**
+ * Render an IR node as a mini-notation FRAGMENT (no `note(…)`/`s(…)` wrapper),
+ * or null when it can't be expressed in mini. The inverse of `parseMini`'s
+ * structure: a chord `Stack` → `[a,b,c]`, a `Seq` → `a b c`, a `Cycle` →
+ * `<a b c>`. Lets a chord round-trip back to `[a,b,c]` in ANY mini context —
+ * standalone (`note("[c,e,g]")`) or nested in alternation
+ * (`note("<[c,e,g] [d,f,a]>")`) — instead of an invalid `stack(…)` inside a
+ * mini string (#508). `useSample` selects the note-vs-sample token, fixed by the
+ * wrapper from `hasSampleDescendant`, so every leaf agrees.
+ */
+function miniFragment(ir: PatternIR, useSample: boolean): string | null {
+  switch (ir.tag) {
+    case 'Sleep':
+      return '~'
+    case 'Play': {
+      // Only collapsible Plays (no FX params beyond s/gain/velocity/color) —
+      // same fence `canCollapse` applies to sequence collapse. Those extra
+      // params are lossy in mini (matches `collapseToMini`'s existing drop).
+      const { gain, velocity, color, ...rest } = ir.params
+      void gain
+      void velocity
+      void color
+      // `s` stays in `rest` so the only-s/gain/velocity/color fence still holds;
+      // delete it after the check so `rest` is the FX residue.
+      delete (rest as { s?: string }).s
+      if (Object.keys(rest).length > 0) return null
+      // The wrapper is a SINGLE `s("…")` or `note("…")`. A play whose sample-ness
+      // disagrees can't share it (a note token in `s("…")` would play as a sample
+      // name) — refuse so a mixed-voice stack falls back to `stack(...)`.
+      const isSample = !!ir.params.s
+      if (isSample !== useSample) return null
+      return useSample ? String(ir.params.s) : String(ir.note)
+    }
+    case 'Seq': {
+      if (ir.children.length === 0) return null
+      const parts = ir.children.map(c => miniFragment(c, useSample))
+      if (parts.some(p => p === null)) return null
+      return parts.join(' ')
+    }
+    case 'Stack': {
+      if (ir.tracks.length === 0) return null
+      const parts = ir.tracks.map(t => miniFragment(t, useSample))
+      if (parts.some(p => p === null)) return null
+      return `[${parts.join(',')}]`
+    }
+    case 'Cycle': {
+      if (ir.items.length === 0) return null
+      const parts = ir.items.map(it => miniFragment(it, useSample))
+      if (parts.some(p => p === null)) return null
+      return `<${parts.join(' ')}>`
+    }
+    default:
+      return null
+  }
 }
 
 /**

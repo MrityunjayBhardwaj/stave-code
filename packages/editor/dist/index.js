@@ -915,6 +915,11 @@ function gen(ir) {
     }
     case "Stack": {
       if (ir.tracks.length === 0) return '""';
+      if (ir.userMethod !== "stack") {
+        const useSample = hasSampleDescendant(ir);
+        const frag = miniFragment(ir, useSample);
+        if (frag !== null) return useSample ? `s("${frag}")` : `note("${frag}")`;
+      }
       const parts = ir.tracks.map(gen);
       return `stack(
   ${parts.join(",\n  ")}
@@ -942,12 +947,17 @@ function gen(ir) {
     }
     case "Cycle": {
       if (ir.items.length === 0) return '""';
+      const allSimple = ir.items.every((item) => item.tag === "Play" || item.tag === "Sleep");
+      if (!allSimple) {
+        const useSample = hasSampleDescendant(ir);
+        const frag = miniFragment(ir, useSample);
+        if (frag !== null) return useSample ? `s("${frag}")` : `note("${frag}")`;
+      }
       const notes = ir.items.map((item) => {
         if (item.tag === "Play") return String(item.note);
         if (item.tag === "Sleep") return "~";
         return gen(item);
       });
-      const allSimple = ir.items.every((item) => item.tag === "Play" || item.tag === "Sleep");
       if (allSimple) {
         const firstPlay = ir.items.find((i) => i.tag === "Play");
         if (firstPlay && firstPlay.tag === "Play" && firstPlay.params.s) {
@@ -1050,6 +1060,56 @@ function genPlay(note, params) {
   return `note("${note}")`;
 }
 __name(genPlay, "genPlay");
+function hasSampleDescendant(ir) {
+  switch (ir.tag) {
+    case "Play":
+      return !!ir.params.s;
+    case "Seq":
+      return ir.children.some(hasSampleDescendant);
+    case "Stack":
+      return ir.tracks.some(hasSampleDescendant);
+    case "Cycle":
+      return ir.items.some(hasSampleDescendant);
+    default:
+      return false;
+  }
+}
+__name(hasSampleDescendant, "hasSampleDescendant");
+function miniFragment(ir, useSample) {
+  switch (ir.tag) {
+    case "Sleep":
+      return "~";
+    case "Play": {
+      const { gain, velocity, color, ...rest } = ir.params;
+      delete rest.s;
+      if (Object.keys(rest).length > 0) return null;
+      const isSample = !!ir.params.s;
+      if (isSample !== useSample) return null;
+      return useSample ? String(ir.params.s) : String(ir.note);
+    }
+    case "Seq": {
+      if (ir.children.length === 0) return null;
+      const parts = ir.children.map((c) => miniFragment(c, useSample));
+      if (parts.some((p) => p === null)) return null;
+      return parts.join(" ");
+    }
+    case "Stack": {
+      if (ir.tracks.length === 0) return null;
+      const parts = ir.tracks.map((t) => miniFragment(t, useSample));
+      if (parts.some((p) => p === null)) return null;
+      return `[${parts.join(",")}]`;
+    }
+    case "Cycle": {
+      if (ir.items.length === 0) return null;
+      const parts = ir.items.map((it) => miniFragment(it, useSample));
+      if (parts.some((p) => p === null)) return null;
+      return `<${parts.join(" ")}>`;
+    }
+    default:
+      return null;
+  }
+}
+__name(miniFragment, "miniFragment");
 function canCollapse(children) {
   return children.every((child) => {
     if (child.tag === "Sleep") return true;
@@ -1843,31 +1903,49 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
       const openStart = tok.start;
       let closeEnd = tok.end;
       i++;
-      const subTokens = [];
+      const segments = [[]];
       let depth = 1;
+      let group = 0;
       while (i < tokens.length && depth > 0) {
         const t = tokens[i];
-        if (t.type === "lbracket") depth++;
-        if (t.type === "rbracket") {
+        if (t.type === "lbracket") {
+          depth++;
+          group++;
+        } else if (t.type === "rbracket") {
           depth--;
           if (depth === 0) {
             closeEnd = t.end;
             i++;
             break;
           }
+          group--;
+        } else if (t.type === "lcurly" || t.type === "langle") {
+          group++;
+        } else if (t.type === "rcurly" || t.type === "rangle") {
+          group--;
         }
-        subTokens.push(t);
+        if (group === 0 && t.type === "comma") {
+          segments.push([]);
+        } else {
+          segments[segments.length - 1].push(t);
+        }
         i++;
       }
-      const subNodes = parseTokens(subTokens, isSample, baseOffset);
-      if (subNodes.length > 0) {
-        let node = subNodes.length === 1 ? subNodes[0] : {
-          tag: "Seq",
-          children: subNodes,
-          loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }]
-        };
-        ({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset));
-        nodes.push(node);
+      const loc = [{ start: baseOffset + openStart, end: baseOffset + closeEnd }];
+      if (segments.length > 1) {
+        const tracks = segments.map((seg) => parseTokens(seg, isSample, baseOffset)).filter((s) => s.length > 0).map((s) => s.length === 1 ? s[0] : IR.seq(...s));
+        if (tracks.length > 0) {
+          let node = tracks.length === 1 ? tracks[0] : { tag: "Stack", tracks, loc };
+          ({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset));
+          nodes.push(node);
+        }
+      } else {
+        const subNodes = parseTokens(segments[0], isSample, baseOffset);
+        if (subNodes.length > 0) {
+          let node = subNodes.length === 1 ? subNodes[0] : { tag: "Seq", children: subNodes, loc };
+          ({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset));
+          nodes.push(node);
+        }
       }
     } else if (tok.type === "lcurly") {
       const openStart = tok.start;
