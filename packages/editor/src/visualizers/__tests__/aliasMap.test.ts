@@ -1,6 +1,6 @@
 /**
  * aliasMap — engine-keyed built-in aliases + the per-engine resolver
- * (Phase 21 aliases, forward-compat for Sonic Pi Web).
+ * (Phase 21 aliases, forward-compat for Sonic Web).
  *
  * Pure data + a pure resolver — plain-object assertions, no renderer/registry.
  */

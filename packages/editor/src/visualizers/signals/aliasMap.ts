@@ -31,7 +31,7 @@
  */
 
 /** The live-coding engine a viz sketch is currently driven by. Strudel is the
- *  only engine wired today; `sonicpi` is reserved for Sonic Pi Web (a thesis,
+ *  only engine wired today; `sonicpi` is reserved for Sonic Web (a thesis,
  *  not yet built — see `project_sonic_pi_web`). The union is open by intent:
  *  storage/sanitize keep ANY engine key with a valid value, so a future engine
  *  survives a round-trip through an older build. */
@@ -52,7 +52,7 @@ export type EngineAliasMap = Partial<Record<VizEngine, EngineAliasValue>>
 export type StoredSignalAliases = Record<string, EngineAliasMap>
 
 /** The active viz engine. Strudel is the only live engine today; this is the
- *  single wire-point — when Sonic Pi Web lands, source the active engine from
+ *  single wire-point — when Sonic Web lands, source the active engine from
  *  the running `LiveCodingEngine` at the renderer mount and pass it to
  *  `resolveAliasesForEngine`. */
 export const DEFAULT_VIZ_ENGINE: VizEngine = 'strudel'
@@ -61,7 +61,7 @@ export const DEFAULT_VIZ_ENGINE: VizEngine = 'strudel'
  * Built-in aliases, engine-keyed. Strudel values are the canonical Strudel
  * sound names; Sonic Pi values are sample symbols from the Sonic Pi source
  * (`synthinfo.rb` `@@grouped_samples`, the `:drum` group) so the built-in
- * signals work cross-engine the day Sonic Pi Web ships. Aliases with no
+ * signals work cross-engine the day Sonic Web ships. Aliases with no
  * canonical Sonic Pi sample (`uClap`, `uRim`) intentionally omit the `sonicpi`
  * slot rather than guess — they stay Strudel-only until a user maps them.
  */
