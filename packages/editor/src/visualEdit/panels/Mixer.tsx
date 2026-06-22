@@ -24,6 +24,7 @@ import { QUICK_TRANSFORMS } from './quickTransforms'
 import { patternKind } from './patternKind'
 import { readChainMethod } from './chainMethod'
 import { INSTRUMENTS, DRUM_KITS, type SoundGroup } from './soundCatalog'
+import { useSoundCatalog } from '../../workspace/soundRegistry'
 
 /**
  * A per-column `.gain("…")` velocity string the grid authored — flat numeric
@@ -175,6 +176,11 @@ function SoundSelect({
 
 export function Mixer(): React.ReactElement {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk()
+  // Live instrument registry (#514 / PV141 #6) — prefer the engine's real
+  // soundMap (synths/soundfonts/samples) over the curated shortlist; fall back
+  // to INSTRUMENTS until the live list is available. MUST be called before the
+  // standby early-return below — hooks run unconditionally (React rules-of-hooks).
+  const liveInstruments = useSoundCatalog()
 
   const knobs = chunk ? knobsFromChunk(chunk) : []
 
@@ -254,7 +260,7 @@ export function Mixer(): React.ReactElement {
       {kind === 'roll' && (
         <SoundSelect
           label="Instrument"
-          groups={INSTRUMENTS}
+          groups={liveInstruments ?? INSTRUMENTS}
           value={readChainMethod(chunk, ['sound', 's'])?.value ?? ''}
           placeholder="Default synth"
           onChange={(v) => writeChainMethod(['sound', 's'], 'sound', v)}

@@ -505,6 +505,15 @@ export {
 // playing step.
 export { setCurrentCycleAccessor, readCurrentCycle } from './workspace/currentCycle'
 
+// Live instrument registry (#514 / PV141 #6) — the app registers a reader over
+// superdough's soundMap; the Mixer's instrument picker enumerates it live.
+export {
+  setSoundCatalogAccessor,
+  notifySoundCatalogChanged,
+  groupSoundCatalog,
+  type SoundMapDict,
+} from './workspace/soundRegistry'
+
 // Visual-editing spine (#379) — chunk detection + tagged writeback + notation.
 // The durable layer the musician-facing write-back panels sit on; panels live
 // in @stave/app and import these via @stave/editor.
