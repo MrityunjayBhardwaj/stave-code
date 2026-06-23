@@ -1,6 +1,6 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
-import * as React18 from 'react';
-import React18__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React20 from 'react';
+import React20__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { parse } from 'acorn';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
@@ -14420,8 +14420,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React18__default.Children.count(children);
-  const childArray = React18__default.Children.toArray(children);
+  const count = React20__default.Children.count(children);
+  const childArray = React20__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -14466,7 +14466,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React18__default.useEffect(() => {
+  React20__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -14482,7 +14482,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React18__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React20__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -22898,7 +22898,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React18__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React20__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -23120,7 +23120,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React18__default.useMemo(() => {
+  const providerNode = React20__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -23413,25 +23413,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React18.useMemo(
+  const changedIds = React20.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
     [commit, pickerFileIds]
   );
-  const [mode, setMode2] = React18.useState(defaultMode);
-  React18.useEffect(() => {
+  const [mode, setMode2] = React20.useState(defaultMode);
+  React20.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React18.useState(
+  const [fileId, setFileId] = React20.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React18.useRef(null);
-  const handleMount = React18.useCallback(
+  const diffEditorRef = React20.useRef(null);
+  const handleMount = React20.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -23441,7 +23441,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -23566,18 +23566,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React18.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React18.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React18.useState(
+  const snapshot = React20.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React20.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React20.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React18.useCallback(
+  const handleMount = React20.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -24468,7 +24468,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React18.createElement(
+  return React20.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -24486,25 +24486,25 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React18.createElement(EmptyTimelineStub)
+  content: React20.createElement(EmptyTimelineStub)
 });
 function useActiveChunk() {
-  const [editor, setEditor] = React18.useState(() => getActiveEditor());
-  const [chunk, setChunk] = React18.useState(null);
-  const writebackRef = React18.useRef(null);
-  const editorRef = React18.useRef(null);
-  const anchorRef = React18.useRef(null);
+  const [editor, setEditor] = React20.useState(() => getActiveEditor());
+  const [chunk, setChunk] = React20.useState(null);
+  const writebackRef = React20.useRef(null);
+  const editorRef = React20.useRef(null);
+  const anchorRef = React20.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
   }, [editor]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -24531,7 +24531,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React18.useCallback(
+  const applyEdit = React20.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -24546,8 +24546,8 @@ function useActiveChunk() {
     },
     []
   );
-  const beginGesture = React18.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React18.useCallback(() => writebackRef.current?.endGesture(), []);
+  const beginGesture = React20.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React20.useCallback(() => writebackRef.current?.endGesture(), []);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -25247,7 +25247,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React18.createElement(
+  return React20.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -25266,12 +25266,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React18.createElement("span", {
+    icon ? React20.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React18.createElement("span", null, hint)
+    React20.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -25325,14 +25325,14 @@ function gainUnchanged(g, cur) {
 __name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React18.useState(null);
-  const modelRef = React18.useRef(null);
-  React18.useEffect(() => {
+  const [model, setModel] = React20.useState(null);
+  const modelRef = React20.useRef(null);
+  React20.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React18.useRef(opts);
+  const optsRef = React20.useRef(opts);
   optsRef.current = opts;
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -25354,7 +25354,7 @@ function useGridModel(opts) {
     modelRef.current = next;
     setModel(next);
   }, [chunk]);
-  const mutate = React18.useCallback(
+  const mutate = React20.useCallback(
     (fn) => {
       const o = optsRef.current;
       const prev = modelRef.current;
@@ -25404,8 +25404,8 @@ function cycleToStep(cycle, steps, bars) {
 }
 __name(cycleToStep, "cycleToStep");
 function usePlayingStep(steps, bars) {
-  const [step, setStep] = React18.useState(null);
-  React18.useEffect(() => {
+  const [step, setStep] = React20.useState(null);
+  React20.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const next = cycleToStep(readCurrentCycle(), steps, bars);
@@ -25648,7 +25648,7 @@ function subscribe3(listener) {
 }
 __name(subscribe3, "subscribe");
 function useNoteColorMode() {
-  const mode = React18.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
+  const mode = React20.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -25706,10 +25706,125 @@ function NoteColorToggle() {
   );
 }
 __name(NoteColorToggle, "NoteColorToggle");
+
+// src/visualEdit/notation/place.ts
+function placeNote(model, pitch, start, duration) {
+  const groupAt = model.notes.find((n) => n.start === start);
+  if (groupAt) {
+    return { ...model, notes: [...model.notes, { pitch, start, duration: groupAt.duration }] };
+  }
+  const nextStart = Math.min(
+    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+    model.steps
+  );
+  const notes = model.notes.map(
+    (n) => n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
+  );
+  notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
+  return { ...model, notes };
+}
+__name(placeNote, "placeNote");
+function resizeNote(model, start, duration) {
+  const nextStart = Math.min(
+    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+    model.steps
+  );
+  const capped = Math.max(1, Math.min(duration, nextStart - start));
+  return {
+    ...model,
+    notes: model.notes.map((n) => n.start === start ? { ...n, duration: capped } : n)
+  };
+}
+__name(resizeNote, "resizeNote");
+
+// src/visualEdit/panels/inspector.ts
+var VELOCITY_MAX = 127;
+var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+function gainToVelocity(gain) {
+  return Math.round(clamp012(gain) * VELOCITY_MAX);
+}
+__name(gainToVelocity, "gainToVelocity");
+function velocityToGain(velocity) {
+  const v = Math.max(0, Math.min(VELOCITY_MAX, Math.round(velocity)));
+  return v / VELOCITY_MAX;
+}
+__name(velocityToGain, "velocityToGain");
+function gainAtStart(model, start) {
+  return model.notes.find((n) => n.start === start)?.gain ?? 1;
+}
+__name(gainAtStart, "gainAtStart");
+function resolveRollFields(model, sel) {
+  const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start);
+  if (!note) return null;
+  return {
+    kind: "roll",
+    pitch: note.pitch,
+    midi: pitchToMidi(note.pitch),
+    velocity: gainToVelocity(note.gain ?? 1),
+    position: note.start,
+    length: note.duration
+  };
+}
+__name(resolveRollFields, "resolveRollFields");
+function resolveStepFields(model, sel) {
+  const lane = model.lanes[sel.lane];
+  if (!lane || sel.step >= lane.cells.length || !lane.cells[sel.step]) return null;
+  return {
+    kind: "step",
+    sound: lane.sound,
+    velocity: gainToVelocity(model.gains?.[sel.step] ?? 1),
+    position: sel.step
+  };
+}
+__name(resolveStepFields, "resolveStepFields");
+function setGroupGain(model, start, gain) {
+  return {
+    ...model,
+    notes: model.notes.map((n) => n.start === start ? { ...n, gain } : n)
+  };
+}
+__name(setGroupGain, "setGroupGain");
+function setColumnGain(model, stepIndex, gain) {
+  const gains = model.gains ? [...model.gains] : Array(model.steps).fill(1);
+  if (gains[stepIndex] === gain) return model;
+  gains[stepIndex] = gain;
+  return { ...model, gains };
+}
+__name(setColumnGain, "setColumnGain");
+function rollPitchToken(model, midi) {
+  return model.numeric ? String(midi) : midiToPitch(midi);
+}
+__name(rollPitchToken, "rollPitchToken");
+function setRollPitch(model, sel, newMidi) {
+  const token = rollPitchToken(model, newMidi);
+  if (token === sel.pitch) return model;
+  if (model.notes.some((n) => n.start === sel.start && n.pitch === token)) return model;
+  return {
+    ...model,
+    notes: model.notes.map(
+      (n) => n.pitch === sel.pitch && n.start === sel.start ? { ...n, pitch: token } : n
+    )
+  };
+}
+__name(setRollPitch, "setRollPitch");
+function setRollStart(model, sel, newStart) {
+  const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start);
+  if (!note) return model;
+  const clamped = Math.max(0, Math.min(newStart, model.steps - 1));
+  if (clamped === note.start) return model;
+  const base = model.notes.filter((n) => n !== note);
+  const dur = Math.max(1, Math.min(note.duration, model.steps - clamped));
+  return { ...model, notes: [...base, { ...note, start: clamped, duration: dur }] };
+}
+__name(setRollStart, "setRollStart");
+function setRollDuration(model, start, newDuration) {
+  return resizeNote(model, start, newDuration);
+}
+__name(setRollDuration, "setRollDuration");
 var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
 var VELOCITY_FULL_PX = 80;
 var DRAG_THRESHOLD = 4;
-var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function toggleCell(model, laneIndex, stepIndex, value) {
   return {
     ...model,
@@ -25719,19 +25834,12 @@ function toggleCell(model, laneIndex, stepIndex, value) {
   };
 }
 __name(toggleCell, "toggleCell");
-function setColumnGain(model, stepIndex, gain) {
-  const gains = model.gains ? [...model.gains] : Array(model.steps).fill(1);
-  if (gains[stepIndex] === gain) return model;
-  gains[stepIndex] = gain;
-  return { ...model, gains };
-}
-__name(setColumnGain, "setColumnGain");
 function gainInScope(model) {
   if (model.gainForeign || (model.bars ?? 1) > 1) return false;
   return new Set(model.lanes.map((l) => l.part ?? 0)).size === 1;
 }
 __name(gainInScope, "gainInScope");
-function SequencerGrid() {
+function SequencerGrid({ selected, onSelect } = {}) {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "seq",
     eligible: isStepChunk,
@@ -25742,9 +25850,14 @@ function SequencerGrid() {
   });
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const gestureRef = React18.useRef(null);
+  const onSelectRef = React20.useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const selectedRef = React20.useRef(selected);
+  selectedRef.current = selected;
+  const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
+  const gestureRef = React20.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
-  const paintCell = React18.useCallback(
+  const paintCell = React20.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
         const lane = prev.lanes[laneIndex];
@@ -25756,19 +25869,19 @@ function SequencerGrid() {
     },
     [mutate]
   );
-  const addVoice = React18.useCallback(
+  const addVoice = React20.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React18.useCallback(
+  const removeVoice = React20.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -25786,7 +25899,7 @@ function SequencerGrid() {
         }
       }
       if (g.mode === "velocity") {
-        const next = clamp012(g.startGain - dy / VELOCITY_FULL_PX);
+        const next = clamp013(g.startGain - dy / VELOCITY_FULL_PX);
         mutate((prev) => setColumnGain(prev, g.step, next));
       }
     }, "onMove");
@@ -25794,7 +25907,6 @@ function SequencerGrid() {
       const g = gestureRef.current;
       if (!g) return;
       gestureRef.current = null;
-      if (g.mode === "pending") paintCell(g.lane, g.step, g.paintValue);
       endGesture();
     }, "onUp");
     window.addEventListener("pointermove", onMove);
@@ -25807,6 +25919,7 @@ function SequencerGrid() {
   const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current4, e) => {
     beginGesture();
     if (current4) {
+      select({ kind: "step", lane: laneIndex, step: stepIndex });
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
@@ -25827,6 +25940,7 @@ function SequencerGrid() {
         paintValue: true
       };
       paintCell(laneIndex, stepIndex, true);
+      select({ kind: "step", lane: laneIndex, step: stepIndex });
     }
   }, "onCellDown");
   const onCellEnter = /* @__PURE__ */ __name((laneIndex, stepIndex) => {
@@ -25834,8 +25948,14 @@ function SequencerGrid() {
     if (!g || g.mode !== "paint") return;
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
+  const removeSelected = /* @__PURE__ */ __name(() => {
+    const sel = selectedRef.current;
+    if (!sel || sel.kind !== "step") return;
+    paintCell(sel.lane, sel.step, false);
+    select(null);
+  }, "removeSelected");
   if (!model) {
-    return React18.createElement(VisualEditStandby, {
+    return React20.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && isStepChunk(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -25846,10 +25966,19 @@ function SequencerGrid() {
     "div",
     {
       "data-bottom-panel-tab": "sequencer",
+      tabIndex: 0,
+      onPointerDownCapture: (e) => e.currentTarget.focus({ preventScroll: true }),
+      onKeyDown: (e) => {
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          removeSelected();
+        }
+      },
       style: {
         padding: 16,
         height: "100%",
         overflow: "auto",
+        outline: "none",
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: "none"
       },
@@ -25920,6 +26049,7 @@ function SequencerGrid() {
             /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((on, stepIndex) => {
               const gain = model.gains?.[stepIndex] ?? 1;
               const isPlaying = stepIndex === playingStep;
+              const isSel = on && selected?.kind === "step" && selected.lane === laneIndex && selected.step === stepIndex;
               return /* @__PURE__ */ jsx(
                 "button",
                 {
@@ -25927,6 +26057,7 @@ function SequencerGrid() {
                   "aria-pressed": on,
                   "aria-label": `${lane.sound} step ${stepIndex + 1}`,
                   "data-seq-cell": `${laneIndex}:${stepIndex}`,
+                  "data-seq-selected": isSel ? "true" : void 0,
                   "data-gain": on && gainScoped ? gain : void 0,
                   "data-playing": isPlaying ? "true" : void 0,
                   onPointerDown: (e) => {
@@ -25947,7 +26078,9 @@ function SequencerGrid() {
                     // subtle gap at each bar boundary
                     marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
                     background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-                    cursor: gainScoped && on ? "ns-resize" : "pointer"
+                    cursor: gainScoped && on ? "ns-resize" : "pointer",
+                    // selection ring (#432), distinct from the playhead border
+                    boxShadow: isSel ? "inset 0 0 0 2px var(--foreground, #e6e6ea)" : void 0
                   },
                   children: on && // bottom-anchored fill = velocity (full when neutral); when
                   // gain is out of scope it always reads full, so the cell
@@ -25963,7 +26096,7 @@ function SequencerGrid() {
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
+                        height: `${clamp013(gainScoped ? gain : 1) * 100}%`,
                         background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
                         pointerEvents: "none"
                       }
@@ -26007,58 +26140,17 @@ function SequencerGrid() {
   );
 }
 __name(SequencerGrid, "SequencerGrid");
-
-// src/visualEdit/notation/place.ts
-function placeNote(model, pitch, start, duration) {
-  const groupAt = model.notes.find((n) => n.start === start);
-  if (groupAt) {
-    return { ...model, notes: [...model.notes, { pitch, start, duration: groupAt.duration }] };
-  }
-  const nextStart = Math.min(
-    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-    model.steps
-  );
-  const notes = model.notes.map(
-    (n) => n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
-  );
-  notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
-  return { ...model, notes };
-}
-__name(placeNote, "placeNote");
-function resizeNote(model, start, duration) {
-  const nextStart = Math.min(
-    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-    model.steps
-  );
-  const capped = Math.max(1, Math.min(duration, nextStart - start));
-  return {
-    ...model,
-    notes: model.notes.map((n) => n.start === start ? { ...n, duration: capped } : n)
-  };
-}
-__name(resizeNote, "resizeNote");
 var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
 var LANE_HEIGHT = 48;
 var VELOCITY_FULL_PX2 = 80;
-var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+var clamp014 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function gainInScope2(model) {
   return !model.gainForeign && (model.bars ?? 1) === 1;
 }
 __name(gainInScope2, "gainInScope");
-function gainAtStart(model, start) {
-  return model.notes.find((n) => n.start === start)?.gain ?? 1;
-}
-__name(gainAtStart, "gainAtStart");
-function setGroupGain(model, start, gain) {
-  return {
-    ...model,
-    notes: model.notes.map((n) => n.start === start ? { ...n, gain } : n)
-  };
-}
-__name(setGroupGain, "setGroupGain");
 var tokenForRow = /* @__PURE__ */ __name((numeric, midi) => numeric ? String(midi) : midiToPitch(midi), "tokenForRow");
 function contentRange(model) {
   const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m) => m !== null);
@@ -26074,7 +26166,7 @@ function noteAt(model, midi, step) {
   );
 }
 __name(noteAt, "noteAt");
-function PianoRollGrid() {
+function PianoRollGrid({ selected, onSelect } = {}) {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "roll",
     eligible: isRollChunk,
@@ -26083,17 +26175,22 @@ function PianoRollGrid() {
     applyGain: applyRollGain,
     serializeGain: serializeRollGain
   });
-  const dragRef = React18.useRef(null);
-  const velRef = React18.useRef(null);
+  const dragRef = React20.useRef(null);
+  const velRef = React20.useRef(null);
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const [hoveredMidi, setHoveredMidi] = React18.useState(null);
-  const [range, setRange] = React18.useState({
+  const [hoveredMidi, setHoveredMidi] = React20.useState(null);
+  const onSelectRef = React20.useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const selectedRef = React20.useRef(selected);
+  selectedRef.current = selected;
+  const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
+  const [range, setRange] = React20.useState({
     lo: DEFAULT_LO,
     hi: DEFAULT_HI
   });
-  const stmtIdRef = React18.useRef(null);
-  React18.useEffect(() => {
+  const stmtIdRef = React20.useRef(null);
+  React20.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = contentRange(model);
@@ -26108,22 +26205,22 @@ function PianoRollGrid() {
       }));
     }
   }, [model, chunk]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
-      if (!d.moved && d.mode === "move") mutate((prev) => ({ ...prev, notes: d.baseNotes }));
+      if (!d.moved && d.mode === "move") select({ kind: "roll", pitch: d.origPitch, start: d.origStart });
       endGesture();
     }, "onUp");
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
-      const next = clamp013(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX2);
+      const next = clamp014(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX2);
       mutate((prev) => setGroupGain(prev, v.start, next));
     }, "onMove");
     const onUp = /* @__PURE__ */ __name(() => {
@@ -26141,6 +26238,8 @@ function PianoRollGrid() {
   const onBarDown = /* @__PURE__ */ __name((start, e) => {
     if (!model) return;
     velRef.current = { start, startY: e.clientY, startGain: gainAtStart(model, start) };
+    const rep = model.notes.find((n) => n.start === start);
+    if (rep) select({ kind: "roll", pitch: rep.pitch, start });
     beginGesture();
   }, "onBarDown");
   const onCellDown = /* @__PURE__ */ __name((midi, step) => {
@@ -26160,6 +26259,7 @@ function PianoRollGrid() {
       beginGesture();
     } else {
       mutate((prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1));
+      select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
     }
   }, "onCellDown");
   const onResizeDown = /* @__PURE__ */ __name((note) => {
@@ -26183,6 +26283,7 @@ function PianoRollGrid() {
       const dur2 = step - d.origStart + 1;
       mutate((prev) => resizeNote(prev, d.origStart, dur2));
       d.moved = true;
+      select({ kind: "roll", pitch: d.origPitch, start: d.origStart });
       return;
     }
     const newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1));
@@ -26196,9 +26297,19 @@ function PianoRollGrid() {
     };
     mutate(() => moved);
     d.moved = true;
+    select({ kind: "roll", pitch: newPitch, start: newStart });
   }, "onCellEnter");
+  const removeSelected = /* @__PURE__ */ __name(() => {
+    const sel = selectedRef.current;
+    if (!sel || sel.kind !== "roll") return;
+    mutate((prev) => ({
+      ...prev,
+      notes: prev.notes.filter((n) => !(n.pitch === sel.pitch && n.start === sel.start))
+    }));
+    select(null);
+  }, "removeSelected");
   if (!model) {
-    return React18.createElement(VisualEditStandby, {
+    return React20.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && isRollChunk(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -26210,9 +26321,19 @@ function PianoRollGrid() {
     "div",
     {
       "data-bottom-panel-tab": "piano-roll",
+      tabIndex: 0,
+      onPointerDownCapture: (e) => e.currentTarget.focus({ preventScroll: true }),
+      onKeyDown: (e) => {
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          removeSelected();
+        }
+      },
       style: {
         position: "relative",
         height: "100%",
+        outline: "none",
+        // focusable for the Delete key (#432); scroll is on the inner div (#518)
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: "none"
       },
@@ -26307,6 +26428,7 @@ function PianoRollGrid() {
                         const on = note !== void 0;
                         const isHead = on && note.start === step;
                         const isTail = on && note.start + note.duration - 1 === step;
+                        const isSel = on && selected?.kind === "roll" && note.pitch === selected.pitch && note.start === selected.start;
                         return /* @__PURE__ */ jsx(
                           "button",
                           {
@@ -26314,6 +26436,7 @@ function PianoRollGrid() {
                             "aria-pressed": on,
                             "aria-label": `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
                             "data-roll-cell": `${midi}:${step}`,
+                            "data-roll-selected": isSel ? "true" : void 0,
                             "data-playing": step === playingStep ? "true" : void 0,
                             onPointerDown: (e) => {
                               e.preventDefault();
@@ -26331,7 +26454,9 @@ function PianoRollGrid() {
                               borderRadius: 2,
                               background: on ? colorMode === "velocity" ? velocityColor(note.gain ?? 1) : "var(--accent, #6ea8fe)" : step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
                               opacity: on && !isHead ? 0.7 : 1,
-                              cursor: "pointer"
+                              cursor: "pointer",
+                              // selection ring (#432) — distinct from the playhead border
+                              boxShadow: isSel ? "inset 0 0 0 2px var(--foreground, #e6e6ea)" : void 0
                             },
                             children: isTail && /* @__PURE__ */ jsx(
                               "span",
@@ -26415,7 +26540,7 @@ function PianoRollGrid() {
                                 left: 1,
                                 right: 1,
                                 bottom: 0,
-                                height: `${clamp013(g) * 100}%`,
+                                height: `${clamp014(g) * 100}%`,
                                 background: colorMode === "velocity" ? velocityColor(g) : "var(--accent, #6ea8fe)",
                                 borderRadius: 2,
                                 pointerEvents: "none"
@@ -26466,7 +26591,7 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React18.useRef(null);
+  const dragRef = React20.useRef(null);
   const pos = Math.max(0, Math.min(1, toPosition(value, range)));
   const angle = -135 + pos * 270;
   const onPointerDown = /* @__PURE__ */ __name((e) => {
@@ -26689,6 +26814,378 @@ function readChainMethod(chunk, names) {
   return null;
 }
 __name(readChainMethod, "readChainMethod");
+function soundfontLabel(name) {
+  return name.replace(/^gm_/, "").split("_").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+__name(soundfontLabel, "soundfontLabel");
+function simpleLabel(name) {
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+__name(simpleLabel, "simpleLabel");
+function groupSoundCatalog(dict) {
+  if (!dict) return null;
+  const synths = [];
+  const soundfonts = [];
+  const samples = [];
+  for (const name of Object.keys(dict)) {
+    if (name.startsWith("_")) continue;
+    const data = dict[name]?.data;
+    if (data?.tag === "drum-machines") continue;
+    switch (data?.type) {
+      case "synth":
+        synths.push(name);
+        break;
+      case "soundfont":
+        soundfonts.push(name);
+        break;
+      case "sample":
+        samples.push(name);
+        break;
+    }
+  }
+  if (synths.length + soundfonts.length + samples.length === 0) return null;
+  const groups = [];
+  if (synths.length) {
+    groups.push({
+      group: "Synths",
+      options: synths.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
+    });
+  }
+  if (soundfonts.length) {
+    groups.push({
+      group: "Soundfonts",
+      options: soundfonts.sort().map((v) => ({ value: v, label: soundfontLabel(v) }))
+    });
+  }
+  if (samples.length) {
+    groups.push({
+      group: "Samples",
+      options: samples.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
+    });
+  }
+  return groups;
+}
+__name(groupSoundCatalog, "groupSoundCatalog");
+function banksFromDrumMachineManifest(manifest) {
+  if (!manifest) return [];
+  const banks = /* @__PURE__ */ new Set();
+  for (const key of Object.keys(manifest)) {
+    if (key.startsWith("_")) continue;
+    const i = key.lastIndexOf("_");
+    if (i <= 0) continue;
+    banks.add(key.slice(0, i));
+  }
+  return [...banks].sort();
+}
+__name(banksFromDrumMachineManifest, "banksFromDrumMachineManifest");
+var KIT_MAKERS = [
+  { prefix: "Roland", group: "Roland" },
+  { prefix: "Yamaha", group: "Yamaha" },
+  { prefix: "Akai", group: "Akai" },
+  { prefix: "Korg", group: "Korg" },
+  { prefix: "Boss", group: "Boss" },
+  { prefix: "Casio", group: "Casio" },
+  { prefix: "Alesis", group: "Alesis" },
+  { prefix: "Emu", group: "E-mu" },
+  { prefix: "Linn", group: "Linn" },
+  { prefix: "Oberheim", group: "Oberheim" },
+  { prefix: "SequentialCircuits", group: "Sequential" },
+  { prefix: "Simmons", group: "Simmons" }
+];
+var KIT_GROUP_ORDER = [
+  "Roland",
+  "Yamaha",
+  "Akai",
+  "Korg",
+  "Boss",
+  "Casio",
+  "Alesis",
+  "E-mu",
+  "Linn",
+  "Oberheim",
+  "Sequential",
+  "Simmons",
+  "Other"
+];
+function spaceCamel(s) {
+  return s.replace(/([a-z])([A-Z])/g, "$1 $2").trim();
+}
+__name(spaceCamel, "spaceCamel");
+function groupDrumKits(bankNames) {
+  if (!bankNames || bankNames.length === 0) return null;
+  const byGroup = /* @__PURE__ */ new Map();
+  for (const bank of bankNames) {
+    const maker = KIT_MAKERS.find((m) => bank.startsWith(m.prefix));
+    const group = maker?.group ?? "Other";
+    const rest = maker ? bank.slice(maker.prefix.length) : bank;
+    const label = spaceCamel(rest) || bank;
+    const opts = byGroup.get(group) ?? [];
+    opts.push({ value: bank, label });
+    byGroup.set(group, opts);
+  }
+  const groups = [];
+  for (const group of KIT_GROUP_ORDER) {
+    const opts = byGroup.get(group);
+    if (opts && opts.length) {
+      groups.push({
+        group,
+        options: opts.sort((a, b) => a.label.localeCompare(b.label))
+      });
+    }
+  }
+  return groups.length ? groups : null;
+}
+__name(groupDrumKits, "groupDrumKits");
+function createCatalogStore() {
+  let accessor2 = null;
+  let cached = null;
+  const listeners10 = /* @__PURE__ */ new Set();
+  const recompute = /* @__PURE__ */ __name(() => {
+    if (!accessor2) {
+      cached = null;
+      return;
+    }
+    try {
+      cached = accessor2();
+    } catch {
+      cached = null;
+    }
+  }, "recompute");
+  const setAccessor = /* @__PURE__ */ __name((fn) => {
+    accessor2 = fn;
+    recompute();
+    listeners10.forEach((l) => l());
+  }, "setAccessor");
+  const notify5 = /* @__PURE__ */ __name(() => {
+    recompute();
+    listeners10.forEach((l) => l());
+  }, "notify");
+  const read2 = /* @__PURE__ */ __name(() => cached, "read");
+  const subscribe4 = /* @__PURE__ */ __name((listener) => {
+    listeners10.add(listener);
+    return () => listeners10.delete(listener);
+  }, "subscribe");
+  const useCatalog = /* @__PURE__ */ __name(() => React20.useSyncExternalStore(subscribe4, read2, () => null), "useCatalog");
+  return { setAccessor, notify: notify5, read: read2, useCatalog };
+}
+__name(createCatalogStore, "createCatalogStore");
+var instrumentStore = createCatalogStore();
+var setSoundCatalogAccessor = instrumentStore.setAccessor;
+var notifySoundCatalogChanged = instrumentStore.notify;
+instrumentStore.read;
+var useSoundCatalog = instrumentStore.useCatalog;
+var drumKitStore = createCatalogStore();
+var setDrumKitAccessor = drumKitStore.setAccessor;
+var notifyDrumKitChanged = drumKitStore.notify;
+drumKitStore.read;
+var useDrumKitCatalog = drumKitStore.useCatalog;
+var labelStyle = {
+  fontSize: 10,
+  color: "var(--foreground-muted, #a0a0aa)",
+  textTransform: "uppercase",
+  letterSpacing: 0.4
+};
+var valueStyle = {
+  fontSize: 13,
+  color: "var(--foreground, #e6e6ea)",
+  fontVariantNumeric: "tabular-nums"
+};
+var rowStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8
+};
+function Stepper({
+  field,
+  display,
+  onStep,
+  disabled
+}) {
+  const btn2 = {
+    width: 22,
+    height: 22,
+    padding: 0,
+    borderRadius: 4,
+    border: "1px solid var(--border, #3a3a42)",
+    background: "var(--background-elevated, #26262c)",
+    color: disabled ? "var(--foreground-muted, #6a6a72)" : "var(--foreground, #e6e6ea)",
+    cursor: disabled ? "default" : "pointer"
+  };
+  return /* @__PURE__ */ jsxs("div", { style: rowStyle, children: [
+    /* @__PURE__ */ jsx("span", { style: labelStyle, children: field }),
+    /* @__PURE__ */ jsxs("span", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
+      /* @__PURE__ */ jsx(
+        "button",
+        {
+          type: "button",
+          "aria-label": `${field} down`,
+          "data-inspector-step": `${field}:down`,
+          disabled,
+          onClick: () => onStep(-1),
+          style: btn2,
+          children: "\u2212"
+        }
+      ),
+      /* @__PURE__ */ jsx("span", { "data-inspector-value": field, style: { ...valueStyle, minWidth: 32, textAlign: "center" }, children: display }),
+      /* @__PURE__ */ jsx(
+        "button",
+        {
+          type: "button",
+          "aria-label": `${field} up`,
+          "data-inspector-step": `${field}:up`,
+          disabled,
+          onClick: () => onStep(1),
+          style: btn2,
+          children: "\uFF0B"
+        }
+      )
+    ] })
+  ] });
+}
+__name(Stepper, "Stepper");
+function Inspector({ selected, onSelect }) {
+  const rollGrid = useGridModel({
+    source: "roll",
+    eligible: isRollChunk,
+    parse: parsePianoRoll,
+    serialize: serializePianoRoll,
+    applyGain: applyRollGain,
+    serializeGain: serializeRollGain
+  });
+  const stepGrid = useGridModel({
+    source: "seq",
+    eligible: isStepChunk,
+    parse: parseStepGrid,
+    serialize: serializeStepGrid,
+    applyGain: applyStepGain,
+    serializeGain: serializeStepGain
+  });
+  if (!selected) return null;
+  if (selected.kind === "roll") {
+    const model2 = rollGrid.model;
+    if (!model2) return null;
+    const f2 = resolveRollFields(model2, selected);
+    if (!f2) return null;
+    const { mutate, beginGesture, endGesture } = rollGrid;
+    const stepPitch = /* @__PURE__ */ __name((delta) => {
+      if (f2.midi === null) return;
+      const newMidi = f2.midi + delta;
+      const token = rollPitchToken(model2, newMidi);
+      if (token === selected.pitch) return;
+      if (model2.notes.some((n) => n.start === selected.start && n.pitch === token)) return;
+      mutate((m) => setRollPitch(m, selected, newMidi));
+      onSelect?.({ kind: "roll", pitch: token, start: selected.start });
+    }, "stepPitch");
+    const stepPosition = /* @__PURE__ */ __name((delta) => {
+      const newStart = Math.max(0, Math.min(selected.start + delta, model2.steps - 1));
+      if (newStart === selected.start) return;
+      mutate((m) => setRollStart(m, selected, newStart));
+      onSelect?.({ kind: "roll", pitch: selected.pitch, start: newStart });
+    }, "stepPosition");
+    const stepLength = /* @__PURE__ */ __name((delta) => {
+      mutate((m) => setRollDuration(m, selected.start, f2.length + delta));
+    }, "stepLength");
+    const setVelocity = /* @__PURE__ */ __name((v) => {
+      mutate((m) => setGroupGain(m, selected.start, velocityToGain(v)));
+    }, "setVelocity");
+    return /* @__PURE__ */ jsxs(InspectorShell, { title: f2.pitch, children: [
+      /* @__PURE__ */ jsx(Stepper, { field: "pitch", display: f2.pitch, onStep: stepPitch, disabled: f2.midi === null }),
+      /* @__PURE__ */ jsx(
+        VelocityRow,
+        {
+          velocity: f2.velocity,
+          onChange: setVelocity,
+          onGestureStart: beginGesture,
+          onGestureEnd: endGesture
+        }
+      ),
+      /* @__PURE__ */ jsx(Stepper, { field: "position", display: String(f2.position + 1), onStep: stepPosition }),
+      /* @__PURE__ */ jsx(Stepper, { field: "length", display: String(f2.length), onStep: stepLength })
+    ] });
+  }
+  const model = stepGrid.model;
+  if (!model) return null;
+  const f = resolveStepFields(model, selected);
+  if (!f) return null;
+  return /* @__PURE__ */ jsxs(InspectorShell, { title: f.sound, children: [
+    /* @__PURE__ */ jsxs("div", { style: rowStyle, children: [
+      /* @__PURE__ */ jsx("span", { style: labelStyle, children: "sound" }),
+      /* @__PURE__ */ jsx("span", { "data-inspector-value": "sound", style: valueStyle, children: f.sound })
+    ] }),
+    /* @__PURE__ */ jsx(
+      VelocityRow,
+      {
+        velocity: f.velocity,
+        onChange: (v) => stepGrid.mutate((m) => setColumnGain(m, selected.step, velocityToGain(v))),
+        onGestureStart: stepGrid.beginGesture,
+        onGestureEnd: stepGrid.endGesture
+      }
+    ),
+    /* @__PURE__ */ jsxs("div", { style: rowStyle, children: [
+      /* @__PURE__ */ jsx("span", { style: labelStyle, children: "position" }),
+      /* @__PURE__ */ jsx("span", { "data-inspector-value": "position", style: valueStyle, children: f.position + 1 })
+    ] })
+  ] });
+}
+__name(Inspector, "Inspector");
+function InspectorShell({
+  title,
+  children
+}) {
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-mixer-inspector": true,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        padding: 10,
+        borderRadius: 6,
+        border: "1px solid var(--border, #3a3a42)",
+        background: "var(--background, #1c1c20)"
+      },
+      children: [
+        /* @__PURE__ */ jsxs("div", { style: { ...labelStyle, color: "var(--foreground, #e6e6ea)", fontSize: 11 }, children: [
+          "Note \xB7 ",
+          title
+        ] }),
+        children
+      ]
+    }
+  );
+}
+__name(InspectorShell, "InspectorShell");
+function VelocityRow({
+  velocity,
+  onChange,
+  onGestureStart,
+  onGestureEnd
+}) {
+  return /* @__PURE__ */ jsxs("div", { style: rowStyle, children: [
+    /* @__PURE__ */ jsx("span", { style: labelStyle, children: "velocity" }),
+    /* @__PURE__ */ jsxs("span", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+      /* @__PURE__ */ jsx(
+        "input",
+        {
+          type: "range",
+          min: 0,
+          max: VELOCITY_MAX,
+          value: velocity,
+          "data-inspector-velocity": true,
+          "aria-label": "velocity",
+          onPointerDown: onGestureStart,
+          onPointerUp: onGestureEnd,
+          onChange: (e) => onChange(Number(e.target.value)),
+          style: { width: 120 }
+        }
+      ),
+      /* @__PURE__ */ jsx("span", { "data-inspector-value": "velocity", style: { ...valueStyle, minWidth: 28, textAlign: "right" }, children: velocity })
+    ] })
+  ] });
+}
+__name(VelocityRow, "VelocityRow");
 var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
 function parseManagedGain(raw) {
   const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
@@ -26786,10 +27283,12 @@ function SoundSelect({
   );
 }
 __name(SoundSelect, "SoundSelect");
-function Mixer() {
+function Mixer({ selected, onSelect } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
+  const liveInstruments = useSoundCatalog();
+  const liveKits = useDrumKitCatalog();
   const knobs = chunk ? knobsFromChunk(chunk) : [];
-  const writeKnob = React18.useCallback(
+  const writeKnob = React20.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => {
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex];
@@ -26804,7 +27303,7 @@ function Mixer() {
     },
     [applyEdit]
   );
-  const addTransform = React18.useCallback(
+  const addTransform = React20.useCallback(
     (method, value) => {
       applyEdit((fresh, wb) => {
         if (fresh.chain.some((c) => c.name === method)) return;
@@ -26813,7 +27312,7 @@ function Mixer() {
     },
     [applyEdit]
   );
-  const writeChainMethod = React18.useCallback(
+  const writeChainMethod = React20.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -26825,7 +27324,7 @@ function Mixer() {
     [applyEdit]
   );
   if (!chunk || chunk.chain.length === 0) {
-    return React18.createElement(VisualEditStandby, {
+    return React20.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -26847,11 +27346,12 @@ function Mixer() {
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       },
       children: [
+        /* @__PURE__ */ jsx(Inspector, { selected, onSelect }),
         kind === "roll" && /* @__PURE__ */ jsx(
           SoundSelect,
           {
             label: "Instrument",
-            groups: INSTRUMENTS,
+            groups: liveInstruments ?? INSTRUMENTS,
             value: readChainMethod(chunk, ["sound", "s"])?.value ?? "",
             placeholder: "Default synth",
             onChange: (v) => writeChainMethod(["sound", "s"], "sound", v)
@@ -26861,7 +27361,7 @@ function Mixer() {
           SoundSelect,
           {
             label: "Kit",
-            groups: DRUM_KITS,
+            groups: liveKits ?? DRUM_KITS,
             value: readChainMethod(chunk, ["bank"])?.value ?? "",
             placeholder: "Default kit",
             onChange: (v) => writeChainMethod(["bank"], "bank", v)
@@ -26911,7 +27411,16 @@ var MIXER_WIDTH = 300;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = patternKind(chunk);
-  const grid = kind === "step" ? /* @__PURE__ */ jsx(SequencerGrid, {}) : kind === "roll" ? /* @__PURE__ */ jsx(PianoRollGrid, {}) : /* @__PURE__ */ jsx(
+  const [selected, setSelected] = React20.useState(null);
+  const stmtId = chunk ? chunk.statementRange[0] : null;
+  const stmtRef = React20.useRef(stmtId);
+  React20.useEffect(() => {
+    if (stmtRef.current !== stmtId) {
+      stmtRef.current = stmtId;
+      setSelected(null);
+    }
+  }, [stmtId]);
+  const grid = kind === "step" ? /* @__PURE__ */ jsx(SequencerGrid, { selected, onSelect: setSelected }) : kind === "roll" ? /* @__PURE__ */ jsx(PianoRollGrid, { selected, onSelect: setSelected }) : /* @__PURE__ */ jsx(
     VisualEditStandby,
     {
       panel: PATTERN_TAB_ID,
@@ -26937,7 +27446,7 @@ function PatternPanel() {
               overflow: "hidden",
               borderLeft: "1px solid var(--border, #3a3a42)"
             },
-            children: /* @__PURE__ */ jsx(Mixer, {})
+            children: /* @__PURE__ */ jsx(Mixer, { selected, onSelect: setSelected })
           }
         )
       ]
@@ -26957,7 +27466,7 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React18.createElement(Panel)
+      content: React20.createElement(Panel)
     });
   }
 }
@@ -26971,24 +27480,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React18.useState(opts.initial);
-  const [dragging, setDragging] = React18.useState(false);
-  const startYRef = React18.useRef(0);
-  const startValueRef = React18.useRef(opts.initial);
-  const pointerIdRef = React18.useRef(null);
-  const draggingRef = React18.useRef(false);
-  const minRef = React18.useRef(opts.min);
-  const maxRef = React18.useRef(opts.max);
-  React18.useEffect(() => {
+  const [value, setValueState] = React20.useState(opts.initial);
+  const [dragging, setDragging] = React20.useState(false);
+  const startYRef = React20.useRef(0);
+  const startValueRef = React20.useRef(opts.initial);
+  const pointerIdRef = React20.useRef(null);
+  const draggingRef = React20.useRef(false);
+  const minRef = React20.useRef(opts.min);
+  const maxRef = React20.useRef(opts.max);
+  React20.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React18.useCallback((v) => {
+  const setValue = React20.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React18.useCallback(
+  const onPointerDown = React20.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -27003,7 +27512,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React18.useCallback(
+  const endDrag = React20.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -27018,7 +27527,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React18.useCallback(
+  const onPointerMove = React20.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -27034,13 +27543,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React18.useCallback(
+  const onPointerUp = React20.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React18.useCallback(
+  const onPointerCancel = React20.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -27068,15 +27577,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React18.useState(
+  const [tabs2, setTabs] = React20.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React18.useState(readPersistedOpen);
-  const [height, setHeight] = React18.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React18.useState(
+  const [open, setOpen] = React20.useState(readPersistedOpen);
+  const [height, setHeight] = React20.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React20.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -27086,10 +27595,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -27101,24 +27610,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React18.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React18.useCallback(
+  const tabButtonRefs = React20.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React20.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React18.useCallback((id) => {
+  const focusTab = React20.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React18.useCallback(
+  const onTabsKeyDown = React20.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -29229,7 +29738,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsx(React18__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsx(React20__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsx(
                 SplitPane,
@@ -29237,7 +29746,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsx(React18__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsx(React20__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -31706,10 +32215,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React18.useReducer((x) => x + 1, 0);
-  React18.useEffect(() => subscribeToHistory(force), []);
-  React18.useEffect(() => subscribeToRuntimeView(force), []);
-  React18.useEffect(() => {
+  const [, force] = React20.useReducer((x) => x + 1, 0);
+  React20.useEffect(() => subscribeToHistory(force), []);
+  React20.useEffect(() => subscribeToRuntimeView(force), []);
+  React20.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -31726,17 +32235,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React18.useState(null);
-  const [forkName, setForkName] = React18.useState("");
-  const [committing, setCommitting] = React18.useState(false);
-  const [commitLabel, setCommitLabel] = React18.useState("");
-  const [expanded, setExpanded] = React18.useState(null);
-  const [hovered, setHovered] = React18.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React18.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React18.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React18.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React20.useState(null);
+  const [forkName, setForkName] = React20.useState("");
+  const [committing, setCommitting] = React20.useState(false);
+  const [commitLabel, setCommitLabel] = React20.useState("");
+  const [expanded, setExpanded] = React20.useState(null);
+  const [hovered, setHovered] = React20.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React20.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React20.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React20.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -33922,6 +34431,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, removeArm, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, removeArm, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

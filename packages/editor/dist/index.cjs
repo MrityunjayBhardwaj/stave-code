@@ -1,7 +1,7 @@
 'use strict';
 
 var core = require('@strudel/core');
-var React18 = require('react');
+var React20 = require('react');
 var p5 = require('p5');
 var acorn = require('acorn');
 var jsxRuntime = require('react/jsx-runtime');
@@ -28,7 +28,7 @@ function _interopNamespace(e) {
   return Object.freeze(n);
 }
 
-var React18__namespace = /*#__PURE__*/_interopNamespace(React18);
+var React20__namespace = /*#__PURE__*/_interopNamespace(React20);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
 var Y3__namespace = /*#__PURE__*/_interopNamespace(Y3);
@@ -14446,14 +14446,14 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React18__namespace.default.Children.count(children);
-  const childArray = React18__namespace.default.Children.toArray(children);
+  const count = React20__namespace.default.Children.count(children);
+  const childArray = React20__namespace.default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
-  const [sizes, setSizes] = React18.useState(defaultSizes);
-  const containerRef = React18.useRef(null);
-  const draggingRef = React18.useRef(null);
+  const [sizes, setSizes] = React20.useState(defaultSizes);
+  const containerRef = React20.useRef(null);
+  const draggingRef = React20.useRef(null);
   const isHorizontal = direction === "horizontal";
-  const handleMouseDown = React18.useCallback((dividerIndex, e) => {
+  const handleMouseDown = React20.useCallback((dividerIndex, e) => {
     e.preventDefault();
     draggingRef.current = dividerIndex;
     const startPos = isHorizontal ? e.clientX : e.clientY;
@@ -14492,7 +14492,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React18__namespace.default.useEffect(() => {
+  React20__namespace.default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -14508,7 +14508,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React18__namespace.default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React20__namespace.default.Fragment, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
@@ -15383,13 +15383,13 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe4 = React18.useCallback(
+  const subscribe4 = React20.useCallback(
     (onStoreChange) => subscribe(id, onStoreChange),
     [id]
   );
-  const getSnapshot = React18.useCallback(() => getFile(id), [id]);
-  const file = React18.useSyncExternalStore(subscribe4, getSnapshot, getSnapshot);
-  const setContent2 = React18.useCallback(
+  const getSnapshot = React20.useCallback(() => getFile(id), [id]);
+  const file = React20.useSyncExternalStore(subscribe4, getSnapshot, getSnapshot);
+  const setContent2 = React20.useCallback(
     (content) => setContent(id, content),
     [id]
   );
@@ -20579,13 +20579,13 @@ function teardown(timeoutIds, collections) {
 }
 __name(teardown, "teardown");
 function useHighlighting(editor, hapStream) {
-  const timeoutIdsRef = React18.useRef([]);
-  const hapCollectionsRef = React18.useRef(/* @__PURE__ */ new Map());
-  const hapCounterRef = React18.useRef(0);
-  const clearAll = React18.useCallback(() => {
+  const timeoutIdsRef = React20.useRef([]);
+  const hapCollectionsRef = React20.useRef(/* @__PURE__ */ new Map());
+  const hapCounterRef = React20.useRef(0);
+  const clearAll = React20.useCallback(() => {
     teardown(timeoutIdsRef.current, hapCollectionsRef.current);
   }, []);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!editor || !hapStream) return;
     ensureBaseHighlightStyle();
     const handler = /* @__PURE__ */ __name((event) => {
@@ -20794,12 +20794,12 @@ function ensureBaseBreakpointStyle() {
 }
 __name(ensureBaseBreakpointStyle, "ensureBaseBreakpointStyle");
 function useBreakpoints(editor, store, onResume) {
-  const collectionRef = React18.useRef(null);
-  const clearAll = React18.useCallback(() => {
+  const collectionRef = React20.useRef(null);
+  const clearAll = React20.useCallback(() => {
     collectionRef.current?.clear();
     collectionRef.current = null;
   }, []);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!editor || !onResume) return;
     const action = editor.addAction({
       id: "stave.debugger.resume",
@@ -20814,7 +20814,7 @@ function useBreakpoints(editor, store, onResume) {
       action.dispose();
     };
   }, [editor, onResume]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!editor || !store) return;
     ensureBaseBreakpointStyle();
     let currentSnapshot = getIRSnapshot();
@@ -22650,30 +22650,30 @@ function EditorView({
   onCropViz
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
-  const containerRef = React18.useRef(null);
-  const [, forceViewTick] = React18.useState(0);
-  React18.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
+  const containerRef = React20.useRef(null);
+  const [, forceViewTick] = React20.useState(0);
+  React20.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
   const viewedContent = getViewedContent(fileId);
   const viewing = viewedContent !== null;
   const viewedCommit = getViewedCommit();
-  const editorRef = React18.useRef(null);
-  const monacoRef = React18.useRef(null);
-  const viewZoneHandleRef = React18.useRef(null);
-  const lastPayloadRef = React18.useRef(null);
-  const [hapStream, setHapStream] = React18.useState(null);
-  const [breakpointStore, setBreakpointStore] = React18.useState(null);
-  const [onResume, setOnResume] = React18.useState(null);
-  const [editorReady, setEditorReady] = React18.useState(false);
-  React18.useEffect(() => {
+  const editorRef = React20.useRef(null);
+  const monacoRef = React20.useRef(null);
+  const viewZoneHandleRef = React20.useRef(null);
+  const lastPayloadRef = React20.useRef(null);
+  const [hapStream, setHapStream] = React20.useState(null);
+  const [breakpointStore, setBreakpointStore] = React20.useState(null);
+  const [onResume, setOnResume] = React20.useState(null);
+  const [editorReady, setEditorReady] = React20.useState(false);
+  React20.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const monaco = monacoRef.current;
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
       { kind: "file", fileId },
@@ -22704,7 +22704,7 @@ function EditorView({
       viewZoneHandleRef.current = null;
     };
   }, [fileId, editorReady]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!fileId) return;
     const remount = /* @__PURE__ */ __name(() => {
       const payload = lastPayloadRef.current;
@@ -22728,12 +22728,12 @@ function EditorView({
   }, [fileId]);
   useHighlighting(editorRef.current, hapStream);
   useBreakpoints(editorRef.current, breakpointStore, onResume ?? void 0);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     return () => {
       if (editorRef.current) unregisterEditor(fileId, editorRef.current);
     };
   }, [fileId]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     if (!editor || !monaco) return;
@@ -22745,9 +22745,9 @@ function EditorView({
       clearEvalErrors(monaco, model);
     }
   }, [error]);
-  const onPlayRef = React18.useRef(onPlay);
+  const onPlayRef = React20.useRef(onPlay);
   onPlayRef.current = onPlay;
-  const onStopRef = React18.useRef(onStop);
+  const onStopRef = React20.useRef(onStop);
   onStopRef.current = onStop;
   const handleMonacoMount = /* @__PURE__ */ __name((editor, monaco) => {
     editorRef.current = editor;
@@ -22924,7 +22924,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React18__namespace.default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React20__namespace.default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -23071,34 +23071,34 @@ function PreviewView({
   paused = false
 }) {
   const { file } = useWorkspaceFile(fileId);
-  const containerRef = React18.useRef(null);
-  const [audioPayload, setAudioPayload] = React18.useState(null);
-  const [reloadTick, setReloadTick] = React18.useState(0);
-  const [, forceSourcesRerender] = React18.useState(0);
-  const catchUpNeededRef = React18.useRef(false);
-  const [liveOn, setLiveOn] = React18.useState(() => getVizLive(fileId));
-  React18.useEffect(() => {
+  const containerRef = React20.useRef(null);
+  const [audioPayload, setAudioPayload] = React20.useState(null);
+  const [reloadTick, setReloadTick] = React20.useState(0);
+  const [, forceSourcesRerender] = React20.useState(0);
+  const catchUpNeededRef = React20.useRef(false);
+  const [liveOn, setLiveOn] = React20.useState(() => getVizLive(fileId));
+  React20.useEffect(() => {
     setLiveOn(getVizLive(fileId));
     return onVizLiveChange(fileId, setLiveOn);
   }, [fileId]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const unsubscribe = workspaceAudioBus.subscribe(sourceRef, (payload) => {
       setAudioPayload(payload);
     });
     return unsubscribe;
   }, [sourceRef]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const unsubscribe = workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
     return unsubscribe;
   }, []);
   const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!file) return;
     if (provider.reload === "manual") return;
     if (!liveOn) {
@@ -23128,8 +23128,8 @@ function PreviewView({
     liveOn,
     file
   ]);
-  const prevEffectivelyHiddenRef = React18.useRef(effectivelyHidden);
-  React18.useEffect(() => {
+  const prevEffectivelyHiddenRef = React20.useRef(effectivelyHidden);
+  React20.useEffect(() => {
     const wasHidden = prevEffectivelyHiddenRef.current;
     prevEffectivelyHiddenRef.current = effectivelyHidden;
     if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
@@ -23137,8 +23137,8 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
-  const prevLiveOnRef = React18.useRef(liveOn);
-  React18.useEffect(() => {
+  const prevLiveOnRef = React20.useRef(liveOn);
+  React20.useEffect(() => {
     const wasOff = !prevLiveOnRef.current;
     prevLiveOnRef.current = liveOn;
     if (wasOff && liveOn && catchUpNeededRef.current) {
@@ -23146,7 +23146,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React18__namespace.default.useMemo(() => {
+  const providerNode = React20__namespace.default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -23325,9 +23325,9 @@ var CHORD_MAP = {
   w: "workspace.openPreviewInWindow"
 };
 function useKeyboardCommands(opts) {
-  const optsRef = React18.useRef(opts);
+  const optsRef = React20.useRef(opts);
   optsRef.current = opts;
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     let chordPending = false;
     let chordTimer = null;
     function clearChord() {
@@ -23439,25 +23439,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React18__namespace.useMemo(
+  const changedIds = React20__namespace.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
     [commit, pickerFileIds]
   );
-  const [mode, setMode2] = React18__namespace.useState(defaultMode);
-  React18__namespace.useEffect(() => {
+  const [mode, setMode2] = React20__namespace.useState(defaultMode);
+  React20__namespace.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React18__namespace.useState(
+  const [fileId, setFileId] = React20__namespace.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React18__namespace.useRef(null);
-  const handleMount = React18__namespace.useCallback(
+  const diffEditorRef = React20__namespace.useRef(null);
+  const handleMount = React20__namespace.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -23467,7 +23467,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -23592,18 +23592,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React18__namespace.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React18__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React18__namespace.useState(
+  const snapshot = React20__namespace.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React20__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React20__namespace.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React18__namespace.useCallback(
+  const handleMount = React20__namespace.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -24494,7 +24494,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React18__namespace.createElement(
+  return React20__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -24512,25 +24512,25 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React18__namespace.createElement(EmptyTimelineStub)
+  content: React20__namespace.createElement(EmptyTimelineStub)
 });
 function useActiveChunk() {
-  const [editor, setEditor] = React18__namespace.useState(() => getActiveEditor());
-  const [chunk, setChunk] = React18__namespace.useState(null);
-  const writebackRef = React18__namespace.useRef(null);
-  const editorRef = React18__namespace.useRef(null);
-  const anchorRef = React18__namespace.useRef(null);
+  const [editor, setEditor] = React20__namespace.useState(() => getActiveEditor());
+  const [chunk, setChunk] = React20__namespace.useState(null);
+  const writebackRef = React20__namespace.useRef(null);
+  const editorRef = React20__namespace.useRef(null);
+  const anchorRef = React20__namespace.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
   }, [editor]);
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -24557,7 +24557,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React18__namespace.useCallback(
+  const applyEdit = React20__namespace.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -24572,8 +24572,8 @@ function useActiveChunk() {
     },
     []
   );
-  const beginGesture = React18__namespace.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React18__namespace.useCallback(() => writebackRef.current?.endGesture(), []);
+  const beginGesture = React20__namespace.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React20__namespace.useCallback(() => writebackRef.current?.endGesture(), []);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -25273,7 +25273,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React18__namespace.createElement(
+  return React20__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -25292,12 +25292,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React18__namespace.createElement("span", {
+    icon ? React20__namespace.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React18__namespace.createElement("span", null, hint)
+    React20__namespace.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -25351,14 +25351,14 @@ function gainUnchanged(g, cur) {
 __name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React18__namespace.useState(null);
-  const modelRef = React18__namespace.useRef(null);
-  React18__namespace.useEffect(() => {
+  const [model, setModel] = React20__namespace.useState(null);
+  const modelRef = React20__namespace.useRef(null);
+  React20__namespace.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React18__namespace.useRef(opts);
+  const optsRef = React20__namespace.useRef(opts);
   optsRef.current = opts;
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -25380,7 +25380,7 @@ function useGridModel(opts) {
     modelRef.current = next;
     setModel(next);
   }, [chunk]);
-  const mutate = React18__namespace.useCallback(
+  const mutate = React20__namespace.useCallback(
     (fn) => {
       const o = optsRef.current;
       const prev = modelRef.current;
@@ -25430,8 +25430,8 @@ function cycleToStep(cycle, steps, bars) {
 }
 __name(cycleToStep, "cycleToStep");
 function usePlayingStep(steps, bars) {
-  const [step, setStep] = React18__namespace.useState(null);
-  React18__namespace.useEffect(() => {
+  const [step, setStep] = React20__namespace.useState(null);
+  React20__namespace.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const next = cycleToStep(readCurrentCycle(), steps, bars);
@@ -25674,7 +25674,7 @@ function subscribe3(listener) {
 }
 __name(subscribe3, "subscribe");
 function useNoteColorMode() {
-  const mode = React18__namespace.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
+  const mode = React20__namespace.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -25732,10 +25732,125 @@ function NoteColorToggle() {
   );
 }
 __name(NoteColorToggle, "NoteColorToggle");
+
+// src/visualEdit/notation/place.ts
+function placeNote(model, pitch, start, duration) {
+  const groupAt = model.notes.find((n) => n.start === start);
+  if (groupAt) {
+    return { ...model, notes: [...model.notes, { pitch, start, duration: groupAt.duration }] };
+  }
+  const nextStart = Math.min(
+    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+    model.steps
+  );
+  const notes = model.notes.map(
+    (n) => n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
+  );
+  notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
+  return { ...model, notes };
+}
+__name(placeNote, "placeNote");
+function resizeNote(model, start, duration) {
+  const nextStart = Math.min(
+    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+    model.steps
+  );
+  const capped = Math.max(1, Math.min(duration, nextStart - start));
+  return {
+    ...model,
+    notes: model.notes.map((n) => n.start === start ? { ...n, duration: capped } : n)
+  };
+}
+__name(resizeNote, "resizeNote");
+
+// src/visualEdit/panels/inspector.ts
+var VELOCITY_MAX = 127;
+var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+function gainToVelocity(gain) {
+  return Math.round(clamp012(gain) * VELOCITY_MAX);
+}
+__name(gainToVelocity, "gainToVelocity");
+function velocityToGain(velocity) {
+  const v = Math.max(0, Math.min(VELOCITY_MAX, Math.round(velocity)));
+  return v / VELOCITY_MAX;
+}
+__name(velocityToGain, "velocityToGain");
+function gainAtStart(model, start) {
+  return model.notes.find((n) => n.start === start)?.gain ?? 1;
+}
+__name(gainAtStart, "gainAtStart");
+function resolveRollFields(model, sel) {
+  const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start);
+  if (!note) return null;
+  return {
+    kind: "roll",
+    pitch: note.pitch,
+    midi: pitchToMidi(note.pitch),
+    velocity: gainToVelocity(note.gain ?? 1),
+    position: note.start,
+    length: note.duration
+  };
+}
+__name(resolveRollFields, "resolveRollFields");
+function resolveStepFields(model, sel) {
+  const lane = model.lanes[sel.lane];
+  if (!lane || sel.step >= lane.cells.length || !lane.cells[sel.step]) return null;
+  return {
+    kind: "step",
+    sound: lane.sound,
+    velocity: gainToVelocity(model.gains?.[sel.step] ?? 1),
+    position: sel.step
+  };
+}
+__name(resolveStepFields, "resolveStepFields");
+function setGroupGain(model, start, gain) {
+  return {
+    ...model,
+    notes: model.notes.map((n) => n.start === start ? { ...n, gain } : n)
+  };
+}
+__name(setGroupGain, "setGroupGain");
+function setColumnGain(model, stepIndex, gain) {
+  const gains = model.gains ? [...model.gains] : Array(model.steps).fill(1);
+  if (gains[stepIndex] === gain) return model;
+  gains[stepIndex] = gain;
+  return { ...model, gains };
+}
+__name(setColumnGain, "setColumnGain");
+function rollPitchToken(model, midi) {
+  return model.numeric ? String(midi) : midiToPitch(midi);
+}
+__name(rollPitchToken, "rollPitchToken");
+function setRollPitch(model, sel, newMidi) {
+  const token = rollPitchToken(model, newMidi);
+  if (token === sel.pitch) return model;
+  if (model.notes.some((n) => n.start === sel.start && n.pitch === token)) return model;
+  return {
+    ...model,
+    notes: model.notes.map(
+      (n) => n.pitch === sel.pitch && n.start === sel.start ? { ...n, pitch: token } : n
+    )
+  };
+}
+__name(setRollPitch, "setRollPitch");
+function setRollStart(model, sel, newStart) {
+  const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start);
+  if (!note) return model;
+  const clamped = Math.max(0, Math.min(newStart, model.steps - 1));
+  if (clamped === note.start) return model;
+  const base = model.notes.filter((n) => n !== note);
+  const dur = Math.max(1, Math.min(note.duration, model.steps - clamped));
+  return { ...model, notes: [...base, { ...note, start: clamped, duration: dur }] };
+}
+__name(setRollStart, "setRollStart");
+function setRollDuration(model, start, newDuration) {
+  return resizeNote(model, start, newDuration);
+}
+__name(setRollDuration, "setRollDuration");
 var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
 var VELOCITY_FULL_PX = 80;
 var DRAG_THRESHOLD = 4;
-var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function toggleCell(model, laneIndex, stepIndex, value) {
   return {
     ...model,
@@ -25745,19 +25860,12 @@ function toggleCell(model, laneIndex, stepIndex, value) {
   };
 }
 __name(toggleCell, "toggleCell");
-function setColumnGain(model, stepIndex, gain) {
-  const gains = model.gains ? [...model.gains] : Array(model.steps).fill(1);
-  if (gains[stepIndex] === gain) return model;
-  gains[stepIndex] = gain;
-  return { ...model, gains };
-}
-__name(setColumnGain, "setColumnGain");
 function gainInScope(model) {
   if (model.gainForeign || (model.bars ?? 1) > 1) return false;
   return new Set(model.lanes.map((l) => l.part ?? 0)).size === 1;
 }
 __name(gainInScope, "gainInScope");
-function SequencerGrid() {
+function SequencerGrid({ selected, onSelect } = {}) {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "seq",
     eligible: isStepChunk,
@@ -25768,9 +25876,14 @@ function SequencerGrid() {
   });
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const gestureRef = React18__namespace.useRef(null);
+  const onSelectRef = React20__namespace.useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const selectedRef = React20__namespace.useRef(selected);
+  selectedRef.current = selected;
+  const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
+  const gestureRef = React20__namespace.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
-  const paintCell = React18__namespace.useCallback(
+  const paintCell = React20__namespace.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
         const lane = prev.lanes[laneIndex];
@@ -25782,19 +25895,19 @@ function SequencerGrid() {
     },
     [mutate]
   );
-  const addVoice = React18__namespace.useCallback(
+  const addVoice = React20__namespace.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React18__namespace.useCallback(
+  const removeVoice = React20__namespace.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -25812,7 +25925,7 @@ function SequencerGrid() {
         }
       }
       if (g.mode === "velocity") {
-        const next = clamp012(g.startGain - dy / VELOCITY_FULL_PX);
+        const next = clamp013(g.startGain - dy / VELOCITY_FULL_PX);
         mutate((prev) => setColumnGain(prev, g.step, next));
       }
     }, "onMove");
@@ -25820,7 +25933,6 @@ function SequencerGrid() {
       const g = gestureRef.current;
       if (!g) return;
       gestureRef.current = null;
-      if (g.mode === "pending") paintCell(g.lane, g.step, g.paintValue);
       endGesture();
     }, "onUp");
     window.addEventListener("pointermove", onMove);
@@ -25833,6 +25945,7 @@ function SequencerGrid() {
   const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current4, e) => {
     beginGesture();
     if (current4) {
+      select({ kind: "step", lane: laneIndex, step: stepIndex });
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
@@ -25853,6 +25966,7 @@ function SequencerGrid() {
         paintValue: true
       };
       paintCell(laneIndex, stepIndex, true);
+      select({ kind: "step", lane: laneIndex, step: stepIndex });
     }
   }, "onCellDown");
   const onCellEnter = /* @__PURE__ */ __name((laneIndex, stepIndex) => {
@@ -25860,8 +25974,14 @@ function SequencerGrid() {
     if (!g || g.mode !== "paint") return;
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
+  const removeSelected = /* @__PURE__ */ __name(() => {
+    const sel = selectedRef.current;
+    if (!sel || sel.kind !== "step") return;
+    paintCell(sel.lane, sel.step, false);
+    select(null);
+  }, "removeSelected");
   if (!model) {
-    return React18__namespace.createElement(VisualEditStandby, {
+    return React20__namespace.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && isStepChunk(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -25872,10 +25992,19 @@ function SequencerGrid() {
     "div",
     {
       "data-bottom-panel-tab": "sequencer",
+      tabIndex: 0,
+      onPointerDownCapture: (e) => e.currentTarget.focus({ preventScroll: true }),
+      onKeyDown: (e) => {
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          removeSelected();
+        }
+      },
       style: {
         padding: 16,
         height: "100%",
         overflow: "auto",
+        outline: "none",
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: "none"
       },
@@ -25946,6 +26075,7 @@ function SequencerGrid() {
             /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((on, stepIndex) => {
               const gain = model.gains?.[stepIndex] ?? 1;
               const isPlaying = stepIndex === playingStep;
+              const isSel = on && selected?.kind === "step" && selected.lane === laneIndex && selected.step === stepIndex;
               return /* @__PURE__ */ jsxRuntime.jsx(
                 "button",
                 {
@@ -25953,6 +26083,7 @@ function SequencerGrid() {
                   "aria-pressed": on,
                   "aria-label": `${lane.sound} step ${stepIndex + 1}`,
                   "data-seq-cell": `${laneIndex}:${stepIndex}`,
+                  "data-seq-selected": isSel ? "true" : void 0,
                   "data-gain": on && gainScoped ? gain : void 0,
                   "data-playing": isPlaying ? "true" : void 0,
                   onPointerDown: (e) => {
@@ -25973,7 +26104,9 @@ function SequencerGrid() {
                     // subtle gap at each bar boundary
                     marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
                     background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-                    cursor: gainScoped && on ? "ns-resize" : "pointer"
+                    cursor: gainScoped && on ? "ns-resize" : "pointer",
+                    // selection ring (#432), distinct from the playhead border
+                    boxShadow: isSel ? "inset 0 0 0 2px var(--foreground, #e6e6ea)" : void 0
                   },
                   children: on && // bottom-anchored fill = velocity (full when neutral); when
                   // gain is out of scope it always reads full, so the cell
@@ -25989,7 +26122,7 @@ function SequencerGrid() {
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
+                        height: `${clamp013(gainScoped ? gain : 1) * 100}%`,
                         background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
                         pointerEvents: "none"
                       }
@@ -26033,58 +26166,17 @@ function SequencerGrid() {
   );
 }
 __name(SequencerGrid, "SequencerGrid");
-
-// src/visualEdit/notation/place.ts
-function placeNote(model, pitch, start, duration) {
-  const groupAt = model.notes.find((n) => n.start === start);
-  if (groupAt) {
-    return { ...model, notes: [...model.notes, { pitch, start, duration: groupAt.duration }] };
-  }
-  const nextStart = Math.min(
-    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-    model.steps
-  );
-  const notes = model.notes.map(
-    (n) => n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
-  );
-  notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
-  return { ...model, notes };
-}
-__name(placeNote, "placeNote");
-function resizeNote(model, start, duration) {
-  const nextStart = Math.min(
-    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-    model.steps
-  );
-  const capped = Math.max(1, Math.min(duration, nextStart - start));
-  return {
-    ...model,
-    notes: model.notes.map((n) => n.start === start ? { ...n, duration: capped } : n)
-  };
-}
-__name(resizeNote, "resizeNote");
 var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
 var LANE_HEIGHT = 48;
 var VELOCITY_FULL_PX2 = 80;
-var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+var clamp014 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function gainInScope2(model) {
   return !model.gainForeign && (model.bars ?? 1) === 1;
 }
 __name(gainInScope2, "gainInScope");
-function gainAtStart(model, start) {
-  return model.notes.find((n) => n.start === start)?.gain ?? 1;
-}
-__name(gainAtStart, "gainAtStart");
-function setGroupGain(model, start, gain) {
-  return {
-    ...model,
-    notes: model.notes.map((n) => n.start === start ? { ...n, gain } : n)
-  };
-}
-__name(setGroupGain, "setGroupGain");
 var tokenForRow = /* @__PURE__ */ __name((numeric, midi) => numeric ? String(midi) : midiToPitch(midi), "tokenForRow");
 function contentRange(model) {
   const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m) => m !== null);
@@ -26100,7 +26192,7 @@ function noteAt(model, midi, step) {
   );
 }
 __name(noteAt, "noteAt");
-function PianoRollGrid() {
+function PianoRollGrid({ selected, onSelect } = {}) {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "roll",
     eligible: isRollChunk,
@@ -26109,17 +26201,22 @@ function PianoRollGrid() {
     applyGain: applyRollGain,
     serializeGain: serializeRollGain
   });
-  const dragRef = React18__namespace.useRef(null);
-  const velRef = React18__namespace.useRef(null);
+  const dragRef = React20__namespace.useRef(null);
+  const velRef = React20__namespace.useRef(null);
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const [hoveredMidi, setHoveredMidi] = React18__namespace.useState(null);
-  const [range, setRange] = React18__namespace.useState({
+  const [hoveredMidi, setHoveredMidi] = React20__namespace.useState(null);
+  const onSelectRef = React20__namespace.useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const selectedRef = React20__namespace.useRef(selected);
+  selectedRef.current = selected;
+  const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
+  const [range, setRange] = React20__namespace.useState({
     lo: DEFAULT_LO,
     hi: DEFAULT_HI
   });
-  const stmtIdRef = React18__namespace.useRef(null);
-  React18__namespace.useEffect(() => {
+  const stmtIdRef = React20__namespace.useRef(null);
+  React20__namespace.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = contentRange(model);
@@ -26134,22 +26231,22 @@ function PianoRollGrid() {
       }));
     }
   }, [model, chunk]);
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
-      if (!d.moved && d.mode === "move") mutate((prev) => ({ ...prev, notes: d.baseNotes }));
+      if (!d.moved && d.mode === "move") select({ kind: "roll", pitch: d.origPitch, start: d.origStart });
       endGesture();
     }, "onUp");
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
-      const next = clamp013(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX2);
+      const next = clamp014(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX2);
       mutate((prev) => setGroupGain(prev, v.start, next));
     }, "onMove");
     const onUp = /* @__PURE__ */ __name(() => {
@@ -26167,6 +26264,8 @@ function PianoRollGrid() {
   const onBarDown = /* @__PURE__ */ __name((start, e) => {
     if (!model) return;
     velRef.current = { start, startY: e.clientY, startGain: gainAtStart(model, start) };
+    const rep = model.notes.find((n) => n.start === start);
+    if (rep) select({ kind: "roll", pitch: rep.pitch, start });
     beginGesture();
   }, "onBarDown");
   const onCellDown = /* @__PURE__ */ __name((midi, step) => {
@@ -26186,6 +26285,7 @@ function PianoRollGrid() {
       beginGesture();
     } else {
       mutate((prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1));
+      select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
     }
   }, "onCellDown");
   const onResizeDown = /* @__PURE__ */ __name((note) => {
@@ -26209,6 +26309,7 @@ function PianoRollGrid() {
       const dur2 = step - d.origStart + 1;
       mutate((prev) => resizeNote(prev, d.origStart, dur2));
       d.moved = true;
+      select({ kind: "roll", pitch: d.origPitch, start: d.origStart });
       return;
     }
     const newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1));
@@ -26222,9 +26323,19 @@ function PianoRollGrid() {
     };
     mutate(() => moved);
     d.moved = true;
+    select({ kind: "roll", pitch: newPitch, start: newStart });
   }, "onCellEnter");
+  const removeSelected = /* @__PURE__ */ __name(() => {
+    const sel = selectedRef.current;
+    if (!sel || sel.kind !== "roll") return;
+    mutate((prev) => ({
+      ...prev,
+      notes: prev.notes.filter((n) => !(n.pitch === sel.pitch && n.start === sel.start))
+    }));
+    select(null);
+  }, "removeSelected");
   if (!model) {
-    return React18__namespace.createElement(VisualEditStandby, {
+    return React20__namespace.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && isRollChunk(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -26236,9 +26347,19 @@ function PianoRollGrid() {
     "div",
     {
       "data-bottom-panel-tab": "piano-roll",
+      tabIndex: 0,
+      onPointerDownCapture: (e) => e.currentTarget.focus({ preventScroll: true }),
+      onKeyDown: (e) => {
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          removeSelected();
+        }
+      },
       style: {
         position: "relative",
         height: "100%",
+        outline: "none",
+        // focusable for the Delete key (#432); scroll is on the inner div (#518)
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: "none"
       },
@@ -26333,6 +26454,7 @@ function PianoRollGrid() {
                         const on = note !== void 0;
                         const isHead = on && note.start === step;
                         const isTail = on && note.start + note.duration - 1 === step;
+                        const isSel = on && selected?.kind === "roll" && note.pitch === selected.pitch && note.start === selected.start;
                         return /* @__PURE__ */ jsxRuntime.jsx(
                           "button",
                           {
@@ -26340,6 +26462,7 @@ function PianoRollGrid() {
                             "aria-pressed": on,
                             "aria-label": `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
                             "data-roll-cell": `${midi}:${step}`,
+                            "data-roll-selected": isSel ? "true" : void 0,
                             "data-playing": step === playingStep ? "true" : void 0,
                             onPointerDown: (e) => {
                               e.preventDefault();
@@ -26357,7 +26480,9 @@ function PianoRollGrid() {
                               borderRadius: 2,
                               background: on ? colorMode === "velocity" ? velocityColor(note.gain ?? 1) : "var(--accent, #6ea8fe)" : step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
                               opacity: on && !isHead ? 0.7 : 1,
-                              cursor: "pointer"
+                              cursor: "pointer",
+                              // selection ring (#432) — distinct from the playhead border
+                              boxShadow: isSel ? "inset 0 0 0 2px var(--foreground, #e6e6ea)" : void 0
                             },
                             children: isTail && /* @__PURE__ */ jsxRuntime.jsx(
                               "span",
@@ -26441,7 +26566,7 @@ function PianoRollGrid() {
                                 left: 1,
                                 right: 1,
                                 bottom: 0,
-                                height: `${clamp013(g) * 100}%`,
+                                height: `${clamp014(g) * 100}%`,
                                 background: colorMode === "velocity" ? velocityColor(g) : "var(--accent, #6ea8fe)",
                                 borderRadius: 2,
                                 pointerEvents: "none"
@@ -26492,7 +26617,7 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React18__namespace.useRef(null);
+  const dragRef = React20__namespace.useRef(null);
   const pos = Math.max(0, Math.min(1, toPosition(value, range)));
   const angle = -135 + pos * 270;
   const onPointerDown = /* @__PURE__ */ __name((e) => {
@@ -26715,6 +26840,378 @@ function readChainMethod(chunk, names) {
   return null;
 }
 __name(readChainMethod, "readChainMethod");
+function soundfontLabel(name) {
+  return name.replace(/^gm_/, "").split("_").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+__name(soundfontLabel, "soundfontLabel");
+function simpleLabel(name) {
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+__name(simpleLabel, "simpleLabel");
+function groupSoundCatalog(dict) {
+  if (!dict) return null;
+  const synths = [];
+  const soundfonts = [];
+  const samples = [];
+  for (const name of Object.keys(dict)) {
+    if (name.startsWith("_")) continue;
+    const data = dict[name]?.data;
+    if (data?.tag === "drum-machines") continue;
+    switch (data?.type) {
+      case "synth":
+        synths.push(name);
+        break;
+      case "soundfont":
+        soundfonts.push(name);
+        break;
+      case "sample":
+        samples.push(name);
+        break;
+    }
+  }
+  if (synths.length + soundfonts.length + samples.length === 0) return null;
+  const groups = [];
+  if (synths.length) {
+    groups.push({
+      group: "Synths",
+      options: synths.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
+    });
+  }
+  if (soundfonts.length) {
+    groups.push({
+      group: "Soundfonts",
+      options: soundfonts.sort().map((v) => ({ value: v, label: soundfontLabel(v) }))
+    });
+  }
+  if (samples.length) {
+    groups.push({
+      group: "Samples",
+      options: samples.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
+    });
+  }
+  return groups;
+}
+__name(groupSoundCatalog, "groupSoundCatalog");
+function banksFromDrumMachineManifest(manifest) {
+  if (!manifest) return [];
+  const banks = /* @__PURE__ */ new Set();
+  for (const key of Object.keys(manifest)) {
+    if (key.startsWith("_")) continue;
+    const i = key.lastIndexOf("_");
+    if (i <= 0) continue;
+    banks.add(key.slice(0, i));
+  }
+  return [...banks].sort();
+}
+__name(banksFromDrumMachineManifest, "banksFromDrumMachineManifest");
+var KIT_MAKERS = [
+  { prefix: "Roland", group: "Roland" },
+  { prefix: "Yamaha", group: "Yamaha" },
+  { prefix: "Akai", group: "Akai" },
+  { prefix: "Korg", group: "Korg" },
+  { prefix: "Boss", group: "Boss" },
+  { prefix: "Casio", group: "Casio" },
+  { prefix: "Alesis", group: "Alesis" },
+  { prefix: "Emu", group: "E-mu" },
+  { prefix: "Linn", group: "Linn" },
+  { prefix: "Oberheim", group: "Oberheim" },
+  { prefix: "SequentialCircuits", group: "Sequential" },
+  { prefix: "Simmons", group: "Simmons" }
+];
+var KIT_GROUP_ORDER = [
+  "Roland",
+  "Yamaha",
+  "Akai",
+  "Korg",
+  "Boss",
+  "Casio",
+  "Alesis",
+  "E-mu",
+  "Linn",
+  "Oberheim",
+  "Sequential",
+  "Simmons",
+  "Other"
+];
+function spaceCamel(s) {
+  return s.replace(/([a-z])([A-Z])/g, "$1 $2").trim();
+}
+__name(spaceCamel, "spaceCamel");
+function groupDrumKits(bankNames) {
+  if (!bankNames || bankNames.length === 0) return null;
+  const byGroup = /* @__PURE__ */ new Map();
+  for (const bank of bankNames) {
+    const maker = KIT_MAKERS.find((m) => bank.startsWith(m.prefix));
+    const group = maker?.group ?? "Other";
+    const rest = maker ? bank.slice(maker.prefix.length) : bank;
+    const label = spaceCamel(rest) || bank;
+    const opts = byGroup.get(group) ?? [];
+    opts.push({ value: bank, label });
+    byGroup.set(group, opts);
+  }
+  const groups = [];
+  for (const group of KIT_GROUP_ORDER) {
+    const opts = byGroup.get(group);
+    if (opts && opts.length) {
+      groups.push({
+        group,
+        options: opts.sort((a, b) => a.label.localeCompare(b.label))
+      });
+    }
+  }
+  return groups.length ? groups : null;
+}
+__name(groupDrumKits, "groupDrumKits");
+function createCatalogStore() {
+  let accessor2 = null;
+  let cached = null;
+  const listeners10 = /* @__PURE__ */ new Set();
+  const recompute = /* @__PURE__ */ __name(() => {
+    if (!accessor2) {
+      cached = null;
+      return;
+    }
+    try {
+      cached = accessor2();
+    } catch {
+      cached = null;
+    }
+  }, "recompute");
+  const setAccessor = /* @__PURE__ */ __name((fn) => {
+    accessor2 = fn;
+    recompute();
+    listeners10.forEach((l) => l());
+  }, "setAccessor");
+  const notify5 = /* @__PURE__ */ __name(() => {
+    recompute();
+    listeners10.forEach((l) => l());
+  }, "notify");
+  const read2 = /* @__PURE__ */ __name(() => cached, "read");
+  const subscribe4 = /* @__PURE__ */ __name((listener) => {
+    listeners10.add(listener);
+    return () => listeners10.delete(listener);
+  }, "subscribe");
+  const useCatalog = /* @__PURE__ */ __name(() => React20__namespace.useSyncExternalStore(subscribe4, read2, () => null), "useCatalog");
+  return { setAccessor, notify: notify5, read: read2, useCatalog };
+}
+__name(createCatalogStore, "createCatalogStore");
+var instrumentStore = createCatalogStore();
+var setSoundCatalogAccessor = instrumentStore.setAccessor;
+var notifySoundCatalogChanged = instrumentStore.notify;
+instrumentStore.read;
+var useSoundCatalog = instrumentStore.useCatalog;
+var drumKitStore = createCatalogStore();
+var setDrumKitAccessor = drumKitStore.setAccessor;
+var notifyDrumKitChanged = drumKitStore.notify;
+drumKitStore.read;
+var useDrumKitCatalog = drumKitStore.useCatalog;
+var labelStyle = {
+  fontSize: 10,
+  color: "var(--foreground-muted, #a0a0aa)",
+  textTransform: "uppercase",
+  letterSpacing: 0.4
+};
+var valueStyle = {
+  fontSize: 13,
+  color: "var(--foreground, #e6e6ea)",
+  fontVariantNumeric: "tabular-nums"
+};
+var rowStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8
+};
+function Stepper({
+  field,
+  display,
+  onStep,
+  disabled
+}) {
+  const btn2 = {
+    width: 22,
+    height: 22,
+    padding: 0,
+    borderRadius: 4,
+    border: "1px solid var(--border, #3a3a42)",
+    background: "var(--background-elevated, #26262c)",
+    color: disabled ? "var(--foreground-muted, #6a6a72)" : "var(--foreground, #e6e6ea)",
+    cursor: disabled ? "default" : "pointer"
+  };
+  return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: rowStyle, children: [
+    /* @__PURE__ */ jsxRuntime.jsx("span", { style: labelStyle, children: field }),
+    /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
+      /* @__PURE__ */ jsxRuntime.jsx(
+        "button",
+        {
+          type: "button",
+          "aria-label": `${field} down`,
+          "data-inspector-step": `${field}:down`,
+          disabled,
+          onClick: () => onStep(-1),
+          style: btn2,
+          children: "\u2212"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntime.jsx("span", { "data-inspector-value": field, style: { ...valueStyle, minWidth: 32, textAlign: "center" }, children: display }),
+      /* @__PURE__ */ jsxRuntime.jsx(
+        "button",
+        {
+          type: "button",
+          "aria-label": `${field} up`,
+          "data-inspector-step": `${field}:up`,
+          disabled,
+          onClick: () => onStep(1),
+          style: btn2,
+          children: "\uFF0B"
+        }
+      )
+    ] })
+  ] });
+}
+__name(Stepper, "Stepper");
+function Inspector({ selected, onSelect }) {
+  const rollGrid = useGridModel({
+    source: "roll",
+    eligible: isRollChunk,
+    parse: parsePianoRoll,
+    serialize: serializePianoRoll,
+    applyGain: applyRollGain,
+    serializeGain: serializeRollGain
+  });
+  const stepGrid = useGridModel({
+    source: "seq",
+    eligible: isStepChunk,
+    parse: parseStepGrid,
+    serialize: serializeStepGrid,
+    applyGain: applyStepGain,
+    serializeGain: serializeStepGain
+  });
+  if (!selected) return null;
+  if (selected.kind === "roll") {
+    const model2 = rollGrid.model;
+    if (!model2) return null;
+    const f2 = resolveRollFields(model2, selected);
+    if (!f2) return null;
+    const { mutate, beginGesture, endGesture } = rollGrid;
+    const stepPitch = /* @__PURE__ */ __name((delta) => {
+      if (f2.midi === null) return;
+      const newMidi = f2.midi + delta;
+      const token = rollPitchToken(model2, newMidi);
+      if (token === selected.pitch) return;
+      if (model2.notes.some((n) => n.start === selected.start && n.pitch === token)) return;
+      mutate((m) => setRollPitch(m, selected, newMidi));
+      onSelect?.({ kind: "roll", pitch: token, start: selected.start });
+    }, "stepPitch");
+    const stepPosition = /* @__PURE__ */ __name((delta) => {
+      const newStart = Math.max(0, Math.min(selected.start + delta, model2.steps - 1));
+      if (newStart === selected.start) return;
+      mutate((m) => setRollStart(m, selected, newStart));
+      onSelect?.({ kind: "roll", pitch: selected.pitch, start: newStart });
+    }, "stepPosition");
+    const stepLength = /* @__PURE__ */ __name((delta) => {
+      mutate((m) => setRollDuration(m, selected.start, f2.length + delta));
+    }, "stepLength");
+    const setVelocity = /* @__PURE__ */ __name((v) => {
+      mutate((m) => setGroupGain(m, selected.start, velocityToGain(v)));
+    }, "setVelocity");
+    return /* @__PURE__ */ jsxRuntime.jsxs(InspectorShell, { title: f2.pitch, children: [
+      /* @__PURE__ */ jsxRuntime.jsx(Stepper, { field: "pitch", display: f2.pitch, onStep: stepPitch, disabled: f2.midi === null }),
+      /* @__PURE__ */ jsxRuntime.jsx(
+        VelocityRow,
+        {
+          velocity: f2.velocity,
+          onChange: setVelocity,
+          onGestureStart: beginGesture,
+          onGestureEnd: endGesture
+        }
+      ),
+      /* @__PURE__ */ jsxRuntime.jsx(Stepper, { field: "position", display: String(f2.position + 1), onStep: stepPosition }),
+      /* @__PURE__ */ jsxRuntime.jsx(Stepper, { field: "length", display: String(f2.length), onStep: stepLength })
+    ] });
+  }
+  const model = stepGrid.model;
+  if (!model) return null;
+  const f = resolveStepFields(model, selected);
+  if (!f) return null;
+  return /* @__PURE__ */ jsxRuntime.jsxs(InspectorShell, { title: f.sound, children: [
+    /* @__PURE__ */ jsxRuntime.jsxs("div", { style: rowStyle, children: [
+      /* @__PURE__ */ jsxRuntime.jsx("span", { style: labelStyle, children: "sound" }),
+      /* @__PURE__ */ jsxRuntime.jsx("span", { "data-inspector-value": "sound", style: valueStyle, children: f.sound })
+    ] }),
+    /* @__PURE__ */ jsxRuntime.jsx(
+      VelocityRow,
+      {
+        velocity: f.velocity,
+        onChange: (v) => stepGrid.mutate((m) => setColumnGain(m, selected.step, velocityToGain(v))),
+        onGestureStart: stepGrid.beginGesture,
+        onGestureEnd: stepGrid.endGesture
+      }
+    ),
+    /* @__PURE__ */ jsxRuntime.jsxs("div", { style: rowStyle, children: [
+      /* @__PURE__ */ jsxRuntime.jsx("span", { style: labelStyle, children: "position" }),
+      /* @__PURE__ */ jsxRuntime.jsx("span", { "data-inspector-value": "position", style: valueStyle, children: f.position + 1 })
+    ] })
+  ] });
+}
+__name(Inspector, "Inspector");
+function InspectorShell({
+  title,
+  children
+}) {
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    "div",
+    {
+      "data-mixer-inspector": true,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        padding: 10,
+        borderRadius: 6,
+        border: "1px solid var(--border, #3a3a42)",
+        background: "var(--background, #1c1c20)"
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { ...labelStyle, color: "var(--foreground, #e6e6ea)", fontSize: 11 }, children: [
+          "Note \xB7 ",
+          title
+        ] }),
+        children
+      ]
+    }
+  );
+}
+__name(InspectorShell, "InspectorShell");
+function VelocityRow({
+  velocity,
+  onChange,
+  onGestureStart,
+  onGestureEnd
+}) {
+  return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: rowStyle, children: [
+    /* @__PURE__ */ jsxRuntime.jsx("span", { style: labelStyle, children: "velocity" }),
+    /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+      /* @__PURE__ */ jsxRuntime.jsx(
+        "input",
+        {
+          type: "range",
+          min: 0,
+          max: VELOCITY_MAX,
+          value: velocity,
+          "data-inspector-velocity": true,
+          "aria-label": "velocity",
+          onPointerDown: onGestureStart,
+          onPointerUp: onGestureEnd,
+          onChange: (e) => onChange(Number(e.target.value)),
+          style: { width: 120 }
+        }
+      ),
+      /* @__PURE__ */ jsxRuntime.jsx("span", { "data-inspector-value": "velocity", style: { ...valueStyle, minWidth: 28, textAlign: "right" }, children: velocity })
+    ] })
+  ] });
+}
+__name(VelocityRow, "VelocityRow");
 var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
 function parseManagedGain(raw) {
   const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
@@ -26812,10 +27309,12 @@ function SoundSelect({
   );
 }
 __name(SoundSelect, "SoundSelect");
-function Mixer() {
+function Mixer({ selected, onSelect } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
+  const liveInstruments = useSoundCatalog();
+  const liveKits = useDrumKitCatalog();
   const knobs = chunk ? knobsFromChunk(chunk) : [];
-  const writeKnob = React18__namespace.useCallback(
+  const writeKnob = React20__namespace.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => {
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex];
@@ -26830,7 +27329,7 @@ function Mixer() {
     },
     [applyEdit]
   );
-  const addTransform = React18__namespace.useCallback(
+  const addTransform = React20__namespace.useCallback(
     (method, value) => {
       applyEdit((fresh, wb) => {
         if (fresh.chain.some((c) => c.name === method)) return;
@@ -26839,7 +27338,7 @@ function Mixer() {
     },
     [applyEdit]
   );
-  const writeChainMethod = React18__namespace.useCallback(
+  const writeChainMethod = React20__namespace.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -26851,7 +27350,7 @@ function Mixer() {
     [applyEdit]
   );
   if (!chunk || chunk.chain.length === 0) {
-    return React18__namespace.createElement(VisualEditStandby, {
+    return React20__namespace.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -26873,11 +27372,12 @@ function Mixer() {
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       },
       children: [
+        /* @__PURE__ */ jsxRuntime.jsx(Inspector, { selected, onSelect }),
         kind === "roll" && /* @__PURE__ */ jsxRuntime.jsx(
           SoundSelect,
           {
             label: "Instrument",
-            groups: INSTRUMENTS,
+            groups: liveInstruments ?? INSTRUMENTS,
             value: readChainMethod(chunk, ["sound", "s"])?.value ?? "",
             placeholder: "Default synth",
             onChange: (v) => writeChainMethod(["sound", "s"], "sound", v)
@@ -26887,7 +27387,7 @@ function Mixer() {
           SoundSelect,
           {
             label: "Kit",
-            groups: DRUM_KITS,
+            groups: liveKits ?? DRUM_KITS,
             value: readChainMethod(chunk, ["bank"])?.value ?? "",
             placeholder: "Default kit",
             onChange: (v) => writeChainMethod(["bank"], "bank", v)
@@ -26937,7 +27437,16 @@ var MIXER_WIDTH = 300;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = patternKind(chunk);
-  const grid = kind === "step" ? /* @__PURE__ */ jsxRuntime.jsx(SequencerGrid, {}) : kind === "roll" ? /* @__PURE__ */ jsxRuntime.jsx(PianoRollGrid, {}) : /* @__PURE__ */ jsxRuntime.jsx(
+  const [selected, setSelected] = React20__namespace.useState(null);
+  const stmtId = chunk ? chunk.statementRange[0] : null;
+  const stmtRef = React20__namespace.useRef(stmtId);
+  React20__namespace.useEffect(() => {
+    if (stmtRef.current !== stmtId) {
+      stmtRef.current = stmtId;
+      setSelected(null);
+    }
+  }, [stmtId]);
+  const grid = kind === "step" ? /* @__PURE__ */ jsxRuntime.jsx(SequencerGrid, { selected, onSelect: setSelected }) : kind === "roll" ? /* @__PURE__ */ jsxRuntime.jsx(PianoRollGrid, { selected, onSelect: setSelected }) : /* @__PURE__ */ jsxRuntime.jsx(
     VisualEditStandby,
     {
       panel: PATTERN_TAB_ID,
@@ -26963,7 +27472,7 @@ function PatternPanel() {
               overflow: "hidden",
               borderLeft: "1px solid var(--border, #3a3a42)"
             },
-            children: /* @__PURE__ */ jsxRuntime.jsx(Mixer, {})
+            children: /* @__PURE__ */ jsxRuntime.jsx(Mixer, { selected, onSelect: setSelected })
           }
         )
       ]
@@ -26983,7 +27492,7 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React18__namespace.createElement(Panel)
+      content: React20__namespace.createElement(Panel)
     });
   }
 }
@@ -26997,24 +27506,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React18__namespace.useState(opts.initial);
-  const [dragging, setDragging] = React18__namespace.useState(false);
-  const startYRef = React18__namespace.useRef(0);
-  const startValueRef = React18__namespace.useRef(opts.initial);
-  const pointerIdRef = React18__namespace.useRef(null);
-  const draggingRef = React18__namespace.useRef(false);
-  const minRef = React18__namespace.useRef(opts.min);
-  const maxRef = React18__namespace.useRef(opts.max);
-  React18__namespace.useEffect(() => {
+  const [value, setValueState] = React20__namespace.useState(opts.initial);
+  const [dragging, setDragging] = React20__namespace.useState(false);
+  const startYRef = React20__namespace.useRef(0);
+  const startValueRef = React20__namespace.useRef(opts.initial);
+  const pointerIdRef = React20__namespace.useRef(null);
+  const draggingRef = React20__namespace.useRef(false);
+  const minRef = React20__namespace.useRef(opts.min);
+  const maxRef = React20__namespace.useRef(opts.max);
+  React20__namespace.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React18__namespace.useCallback((v) => {
+  const setValue = React20__namespace.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React18__namespace.useCallback(
+  const onPointerDown = React20__namespace.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -27029,7 +27538,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React18__namespace.useCallback(
+  const endDrag = React20__namespace.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -27044,7 +27553,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React18__namespace.useCallback(
+  const onPointerMove = React20__namespace.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -27060,13 +27569,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React18__namespace.useCallback(
+  const onPointerUp = React20__namespace.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React18__namespace.useCallback(
+  const onPointerCancel = React20__namespace.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -27094,15 +27603,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React18__namespace.useState(
+  const [tabs2, setTabs] = React20__namespace.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React18__namespace.useState(readPersistedOpen);
-  const [height, setHeight] = React18__namespace.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React18__namespace.useState(
+  const [open, setOpen] = React20__namespace.useState(readPersistedOpen);
+  const [height, setHeight] = React20__namespace.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React20__namespace.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -27112,10 +27621,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -27127,24 +27636,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React18__namespace.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React18__namespace.useCallback(
+  const tabButtonRefs = React20__namespace.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React20__namespace.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React18__namespace.useCallback((id) => {
+  const focusTab = React20__namespace.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React18__namespace.useCallback(
+  const onTabsKeyDown = React20__namespace.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -27390,16 +27899,16 @@ function GroupTabBar({
   onSplitDown,
   onCloseGroup
 }) {
-  const scrollRef = React18.useRef(null);
-  const activeTabElRef = React18.useRef(null);
-  const menuBtnRef = React18.useRef(null);
-  const menuRef = React18.useRef(null);
-  const [overflow, setOverflow] = React18.useState({
+  const scrollRef = React20.useRef(null);
+  const activeTabElRef = React20.useRef(null);
+  const menuBtnRef = React20.useRef(null);
+  const menuRef = React20.useRef(null);
+  const [overflow, setOverflow] = React20.useState({
     left: false,
     right: false
   });
-  const [menuOpen, setMenuOpen] = React18.useState(false);
-  React18.useEffect(() => {
+  const [menuOpen, setMenuOpen] = React20.useState(false);
+  React20.useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const update = /* @__PURE__ */ __name(() => {
@@ -27418,12 +27927,12 @@ function GroupTabBar({
       ro?.disconnect();
     };
   }, [group.tabs.length]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const el = activeTabElRef.current;
     if (!el || typeof el.scrollIntoView !== "function") return;
     el.scrollIntoView({ inline: "nearest", block: "nearest" });
   }, [group.activeTabId]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!menuOpen) return;
     const onDoc = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -27735,7 +28244,7 @@ function GroupTabBar({
   );
 }
 __name(GroupTabBar, "GroupTabBar");
-var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
+var WorkspaceShell = React20.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
   initialTabs = [],
   initialGroups,
   initialLayout,
@@ -27757,28 +28266,28 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
   onEditViz,
   onCropViz
 }, forwardedRef) {
-  const shellRootRef = React18.useRef(null);
-  const initialState = React18.useRef(
+  const shellRootRef = React20.useRef(null);
+  const initialState = React20.useRef(
     initialGroups !== void 0 && initialLayout !== void 0 && initialLayout.length > 0 && initialActiveGroupId !== void 0 ? {
       groups: new Map(initialGroups),
       layout: initialLayout,
       activeGroupId: initialActiveGroupId
     } : createInitialGroupState(initialTabs)
   );
-  const [groups, setGroups] = React18.useState(
+  const [groups, setGroups] = React20.useState(
     () => initialState.current.groups
   );
-  const [layout, setLayout] = React18.useState(
+  const [layout, setLayout] = React20.useState(
     () => initialState.current.layout
   );
-  const [activeGroupId, setActiveGroupId] = React18.useState(
+  const [activeGroupId, setActiveGroupId] = React20.useState(
     () => initialState.current.activeGroupId
   );
-  const [bgOverrides, setBgOverrides] = React18.useState(
+  const [bgOverrides, setBgOverrides] = React20.useState(
     () => /* @__PURE__ */ new Map()
   );
-  const lastActiveBackdropRef = React18.useRef(null);
-  React18.useEffect(() => {
+  const lastActiveBackdropRef = React20.useRef(null);
+  React20.useEffect(() => {
     const g = groups.get(activeGroupId);
     const resolved = resolveBackdropFileId(g?.backgroundFileId, bgOverrides.get(activeGroupId)) ?? null;
     if (resolved !== lastActiveBackdropRef.current) {
@@ -27786,56 +28295,56 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
       onActiveBackdropChange?.(resolved);
     }
   }, [groups, bgOverrides, activeGroupId, onActiveBackdropChange]);
-  const didMountRef = React18.useRef(false);
-  React18.useEffect(() => {
+  const didMountRef = React20.useRef(false);
+  React20.useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
       return;
     }
     onGroupsChange?.({ groups, layout, activeGroupId });
   }, [groups, layout, activeGroupId, onGroupsChange]);
-  const [dragOverTarget, setDragOverTarget] = React18.useState(null);
-  const [dragOverEdge, setDragOverEdge] = React18.useState(
+  const [dragOverTarget, setDragOverTarget] = React20.useState(null);
+  const [dragOverEdge, setDragOverEdge] = React20.useState(
     null
   );
-  const [tabDragInProgress, setTabDragInProgress] = React18.useState(false);
-  const [pausedPreviews, setPausedPreviews] = React18.useState(
+  const [tabDragInProgress, setTabDragInProgress] = React20.useState(false);
+  const [pausedPreviews, setPausedPreviews] = React20.useState(
     () => /* @__PURE__ */ new Set()
   );
-  const [backdropQuality, setBackdropQualityState] = React18.useState(
+  const [backdropQuality, setBackdropQualityState] = React20.useState(
     () => getBackdropQuality()
   );
-  React18.useEffect(
+  React20.useEffect(
     () => onBackdropQualityChange(setBackdropQualityState),
     []
   );
-  const [backdropOpacity, setBackdropOpacityState] = React18.useState(
+  const [backdropOpacity, setBackdropOpacityState] = React20.useState(
     () => getBackdropOpacity()
   );
-  React18.useEffect(
+  React20.useEffect(
     () => onBackdropOpacityChange(setBackdropOpacityState),
     []
   );
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
   }, [theme]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     ensureTabbarScrollStyle();
   }, []);
-  const activeTab = React18.useMemo(() => {
+  const activeTab = React20.useMemo(() => {
     const group = groups.get(activeGroupId);
     if (!group || group.activeTabId === null) return null;
     return group.tabs.find((t) => t.id === group.activeTabId) ?? null;
   }, [groups, activeGroupId]);
-  const prevActiveTabRef = React18.useRef(void 0);
-  React18.useEffect(() => {
+  const prevActiveTabRef = React20.useRef(void 0);
+  React20.useEffect(() => {
     if (prevActiveTabRef.current !== activeTab) {
       prevActiveTabRef.current = activeTab;
       onActiveTabChange?.(activeTab);
     }
   }, [activeTab, onActiveTabChange]);
-  const updateGroup = React18.useCallback(
+  const updateGroup = React20.useCallback(
     (groupId, patch) => {
       setGroups((prev) => {
         const existing = prev.get(groupId);
@@ -27847,14 +28356,14 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleTabClick = React18.useCallback(
+  const handleTabClick = React20.useCallback(
     (groupId, tabId) => {
       updateGroup(groupId, (g) => ({ ...g, activeTabId: tabId }));
       setActiveGroupId(groupId);
     },
     [updateGroup]
   );
-  const handleTabClose = React18.useCallback(
+  const handleTabClose = React20.useCallback(
     (groupId, tabId) => {
       let closedTab = null;
       const existing = groups.get(groupId);
@@ -27919,7 +28428,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout, onTabClose]
   );
-  const handleSplit = React18.useCallback(
+  const handleSplit = React20.useCallback(
     (groupId, direction = "east") => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -27931,7 +28440,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const findNeighborGroupId = React18.useCallback(
+  const findNeighborGroupId = React20.useCallback(
     (closingId) => {
       for (const id of allGroupIds(layout)) {
         if (id !== closingId) return id;
@@ -27940,7 +28449,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [layout]
   );
-  const handleCloseGroup = React18.useCallback(
+  const handleCloseGroup = React20.useCallback(
     (groupId) => {
       const neighborId = findNeighborGroupId(groupId);
       if (!neighborId) return;
@@ -27967,7 +28476,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [findNeighborGroupId, activeGroupId]
   );
-  const splitGroupWithTab = React18.useCallback(
+  const splitGroupWithTab = React20.useCallback(
     (originGroupId, _direction, newTab) => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -27983,7 +28492,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const moveTabToNewQuadrant = React18.useCallback(
+  const moveTabToNewQuadrant = React20.useCallback(
     (sourceGroupId, tabId, targetGroupId, direction) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -28023,7 +28532,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout]
   );
-  const moveTabToNewEdgeGroup = React18.useCallback(
+  const moveTabToNewEdgeGroup = React20.useCallback(
     (sourceGroupId, tabId, position) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -28058,7 +28567,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups]
   );
-  const updateGroupBackground = React18.useCallback(
+  const updateGroupBackground = React20.useCallback(
     (groupId, backgroundFileId) => {
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
@@ -28070,7 +28579,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup, onBackgroundFileChange]
   );
-  const updateGroupOverride = React18.useCallback(
+  const updateGroupOverride = React20.useCallback(
     (groupId, overrideFileId) => {
       setBgOverrides((prev) => {
         const cur = prev.get(groupId) ?? null;
@@ -28083,7 +28592,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const updateGroupBackdropOpacity = React18.useCallback(
+  const updateGroupBackdropOpacity = React20.useCallback(
     (groupId, opacity) => {
       const prev = groups.get(groupId)?.backdropOpacity;
       const nextVal = opacity == null ? void 0 : Math.min(1, Math.max(0, opacity));
@@ -28092,7 +28601,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup]
   );
-  const updateGroupBackdropQuality = React18.useCallback(
+  const updateGroupBackdropQuality = React20.useCallback(
     (groupId, quality) => {
       const prev = groups.get(groupId)?.backdropQuality;
       const nextVal = quality ?? void 0;
@@ -28101,7 +28610,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup]
   );
-  const closeTabById = React18.useCallback(
+  const closeTabById = React20.useCallback(
     (tabId) => {
       let ownerGroupId = null;
       for (const [gid, g] of groups.entries()) {
@@ -28134,7 +28643,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout, handleTabClose]
   );
-  const findTabByFileId = React18.useCallback(
+  const findTabByFileId = React20.useCallback(
     (fileId, kind) => {
       for (const [gid, g] of groups.entries()) {
         for (const t of g.tabs) {
@@ -28147,14 +28656,14 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups]
   );
-  const findGroupWithAnyPreview = React18.useCallback(() => {
+  const findGroupWithAnyPreview = React20.useCallback(() => {
     for (const [gid, g] of groups.entries()) {
       if (g.tabs.some((t) => t.kind === "preview")) return gid;
     }
     return null;
   }, [groups]);
-  const shellActionsRef = React18.useRef(null);
-  const shellActions = React18.useMemo(
+  const shellActionsRef = React20.useRef(null);
+  const shellActions = React20.useMemo(
     () => ({
       addTab: /* @__PURE__ */ __name((groupId, tab) => {
         updateGroup(groupId, (g) => ({
@@ -28175,12 +28684,12 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId, onOpenPopoutPreview]
   );
   shellActionsRef.current = shellActions;
-  const getActiveTab = React18.useCallback(() => activeTab, [activeTab]);
-  const getActiveGroupId = React18.useCallback(() => activeGroupId, [activeGroupId]);
-  const getActiveGroup = React18.useCallback(() => {
+  const getActiveTab = React20.useCallback(() => activeTab, [activeTab]);
+  const getActiveGroupId = React20.useCallback(() => activeGroupId, [activeGroupId]);
+  const getActiveGroup = React20.useCallback(() => {
     return groups.get(activeGroupId) ?? null;
   }, [groups, activeGroupId]);
-  const getPreviewProviderForCommand = React18.useCallback(
+  const getPreviewProviderForCommand = React20.useCallback(
     (language) => {
       const fromRegistry = getPreviewProviderForLanguage(language);
       if (fromRegistry) return fromRegistry;
@@ -28205,7 +28714,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     shellActions,
     getPreviewProvider: getPreviewProviderForCommand
   });
-  const handleEdgeDrop = React18.useCallback(
+  const handleEdgeDrop = React20.useCallback(
     (e, position) => {
       e.preventDefault();
       e.stopPropagation();
@@ -28222,7 +28731,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [moveTabToNewEdgeGroup]
   );
-  const handleEdgeDragOver = React18.useCallback(
+  const handleEdgeDragOver = React20.useCallback(
     (e, position) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -28231,12 +28740,12 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [dragOverEdge]
   );
-  const handleEdgeDragLeave = React18.useCallback(() => {
+  const handleEdgeDragLeave = React20.useCallback(() => {
     setDragOverEdge(null);
   }, []);
-  const onSaveFileRef = React18.useRef(onSaveFile);
+  const onSaveFileRef = React20.useRef(onSaveFile);
   onSaveFileRef.current = onSaveFile;
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
@@ -28250,7 +28759,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab]);
-  const handleTabDragStart = React18.useCallback(
+  const handleTabDragStart = React20.useCallback(
     (e, groupId, tab) => {
       const payload = { sourceGroupId: groupId, tabId: tab.id };
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
@@ -28259,7 +28768,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const onDragEnd = /* @__PURE__ */ __name(() => {
       setTabDragInProgress(false);
       setDragOverEdge(null);
@@ -28272,7 +28781,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
       window.removeEventListener("drop", onDragEnd);
     };
   }, []);
-  const computeQuadrant = React18.useCallback(
+  const computeQuadrant = React20.useCallback(
     (e, el) => {
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return "center";
@@ -28297,7 +28806,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleTabBarDrop = React18.useCallback(
+  const handleTabBarDrop = React20.useCallback(
     (e, targetGroupId) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -28369,7 +28878,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleDropOnGroup = React18.useCallback(
+  const handleDropOnGroup = React20.useCallback(
     (e, targetGroupId) => {
       e.preventDefault();
       e.stopPropagation();
@@ -28438,7 +28947,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [computeQuadrant, groups, moveTabToNewQuadrant]
   );
-  const renderTabContent = React18.useCallback(
+  const renderTabContent = React20.useCallback(
     (tab, groupId, isActive) => {
       switch (tab.kind) {
         case "editor": {
@@ -28685,7 +29194,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
       closeTabById
     ]
   );
-  const renderGroup = React18.useCallback(
+  const renderGroup = React20.useCallback(
     (group) => {
       const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
       const isShellActiveGroup = activeGroupId === group.id;
@@ -28905,11 +29414,11 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
       theme
     ]
   );
-  const totalGroupCount = React18.useMemo(
+  const totalGroupCount = React20.useMemo(
     () => allGroupIds(layout).length,
     [layout]
   );
-  const previewTabIds = React18.useMemo(() => {
+  const previewTabIds = React20.useMemo(() => {
     const out = [];
     for (const g of groups.values()) {
       for (const t of g.tabs) {
@@ -28920,7 +29429,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
     }
     return out;
   }, [groups]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const unsubs = previewTabIds.map(
       ({ tabId, fileId }) => subscribe(fileId, () => {
         setGroups((prev) => {
@@ -28943,7 +29452,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
       for (const u of unsubs) u();
     };
   }, [previewTabIds]);
-  React18.useImperativeHandle(
+  React20.useImperativeHandle(
     forwardedRef,
     () => ({
       openOrFocusFile: /* @__PURE__ */ __name((fileId, options) => {
@@ -29255,7 +29764,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
             })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsxRuntime.jsx(React18__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsxRuntime.jsx(React20__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsxRuntime.jsx(
                 SplitPane,
@@ -29263,7 +29772,7 @@ var WorkspaceShell = React18.forwardRef(/* @__PURE__ */ __name(function Workspac
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsxRuntime.jsx(React18__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsxRuntime.jsx(React20__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -29915,14 +30424,14 @@ function LiveCodingEditor({
 }) {
   const isControlled = controlledCode !== void 0;
   const initialCode = controlledCode ?? defaultCode ?? DEFAULT_CODE;
-  const runtimeRef = React18.useRef(null);
-  const [isPlaying, setIsPlaying] = React18.useState(false);
-  const [error, setError] = React18.useState(null);
-  const [bpm, setBpm] = React18.useState(bpmProp);
-  const [autoRefresh, setAutoRefresh] = React18.useState(false);
-  const fileIdRef = React18.useRef(FILE_ID);
-  const [seeded, setSeeded] = React18.useState(false);
-  React18.useEffect(() => {
+  const runtimeRef = React20.useRef(null);
+  const [isPlaying, setIsPlaying] = React20.useState(false);
+  const [error, setError] = React20.useState(null);
+  const [bpm, setBpm] = React20.useState(bpmProp);
+  const [autoRefresh, setAutoRefresh] = React20.useState(false);
+  const fileIdRef = React20.useRef(FILE_ID);
+  const [seeded, setSeeded] = React20.useState(false);
+  React20.useEffect(() => {
     seedWorkspaceFile(
       fileIdRef.current,
       "pattern.strudel",
@@ -29931,7 +30440,7 @@ function LiveCodingEditor({
     );
     setSeeded(true);
   }, []);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!seeded) return;
     const rt = new LiveCodingRuntime(
       fileIdRef.current,
@@ -29967,41 +30476,41 @@ function LiveCodingEditor({
       runtimeRef.current = null;
     };
   }, [seeded, engine]);
-  const autoPlayedRef = React18.useRef(false);
-  React18.useEffect(() => {
+  const autoPlayedRef = React20.useRef(false);
+  React20.useEffect(() => {
     if (!autoPlay || !runtimeRef.current || autoPlayedRef.current) return;
     autoPlayedRef.current = true;
     runtimeRef.current.play();
   }, [autoPlay, seeded]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!isControlled || !seeded) return;
     const file = getFile(fileIdRef.current);
     if (file && controlledCode !== file.content) {
       setContent(fileIdRef.current, controlledCode);
     }
   }, [controlledCode, isControlled, seeded]);
-  const onChangeRef = React18.useRef(onChange);
+  const onChangeRef = React20.useRef(onChange);
   onChangeRef.current = onChange;
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!seeded) return;
     return subscribe(fileIdRef.current, () => {
       const file = getFile(fileIdRef.current);
       if (file) onChangeRef.current?.(file.content);
     });
   }, [seeded]);
-  const handlePlay = React18.useCallback(() => {
+  const handlePlay = React20.useCallback(() => {
     setError(null);
     runtimeRef.current?.play();
   }, []);
-  const handleStop = React18.useCallback(() => {
+  const handleStop = React20.useCallback(() => {
     runtimeRef.current?.stop();
   }, []);
-  const handleToggleAutoRefresh = React18.useCallback(() => {
+  const handleToggleAutoRefresh = React20.useCallback(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
     rt.setAutoRefresh(!rt.isAutoRefreshEnabled());
   }, []);
-  const chromeForTab = React18.useCallback(
+  const chromeForTab = React20.useCallback(
     (tab) => {
       if (tab.kind !== "editor") return void 0;
       const rt = runtimeRef.current;
@@ -30024,7 +30533,7 @@ function LiveCodingEditor({
     },
     [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra, autoRefresh, handleToggleAutoRefresh]
   );
-  const editorExtrasForTab = React18.useCallback(
+  const editorExtrasForTab = React20.useCallback(
     () => ({
       onPlay: handlePlay,
       onStop: handleStop,
@@ -30072,10 +30581,10 @@ function StrudelEditor({
   onExport,
   engineRef: engineRefProp
 }) {
-  const engineRef = React18.useRef(null);
-  const [bpm, setBpm] = React18.useState(120);
-  const [soundNames, setSoundNames] = React18.useState([]);
-  const [isExporting, setIsExporting] = React18.useState(false);
+  const engineRef = React20.useRef(null);
+  const [bpm, setBpm] = React20.useState(120);
+  const [soundNames, setSoundNames] = React20.useState([]);
+  const [isExporting, setIsExporting] = React20.useState(false);
   function getEngine() {
     if (!engineRef.current) {
       engineRef.current = new StrudelEngine();
@@ -30084,19 +30593,19 @@ function StrudelEditor({
     return engineRef.current;
   }
   __name(getEngine, "getEngine");
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (engineRefProp) {
       engineRefProp.current = engineRef.current;
     }
   });
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     return () => {
       engineRef.current?.dispose();
     };
   }, []);
-  const codeRef = React18.useRef(controlledCode ?? defaultCode);
+  const codeRef = React20.useRef(controlledCode ?? defaultCode);
   codeRef.current = controlledCode ?? defaultCode;
-  const handlePostEvaluate = React18.useCallback((engine2) => {
+  const handlePostEvaluate = React20.useCallback((engine2) => {
     const code = codeRef.current;
     const cpsMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/);
     if (cpsMatch) {
@@ -30109,7 +30618,7 @@ function StrudelEditor({
       setSoundNames(strudelEngine.getSoundNames());
     }
   }, [soundNames]);
-  const handleExport = React18.useCallback(async () => {
+  const handleExport = React20.useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
     try {
@@ -30692,7 +31201,7 @@ __name(mountVizRenderer, "mountVizRenderer");
 
 // src/visualizers/useVizRenderer.ts
 function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
-  const rendererRef = React18.useRef(null);
+  const rendererRef = React20.useRef(null);
   const components = {};
   if (hapStream) {
     components.streaming = { hapStream };
@@ -30706,7 +31215,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
   if (rendererRef.current) {
     rendererRef.current.update(components);
   }
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!containerRef.current) return;
     const size = {
       w: containerRef.current.clientWidth || 400,
@@ -30729,7 +31238,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
 }
 __name(useVizRenderer, "useVizRenderer");
 function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
-  const containerRef = React18.useRef(null);
+  const containerRef = React20.useRef(null);
   useVizRenderer(containerRef, source, hapStream, analyser, scheduler);
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
@@ -30887,9 +31396,9 @@ function VizDropdown({
   onNewViz,
   availableComponents
 }) {
-  const [open, setOpen] = React18.useState(false);
-  const ref = React18.useRef(null);
-  React18.useEffect(() => {
+  const [open, setOpen] = React20.useState(false);
+  const ref = React20.useRef(null);
+  React20.useEffect(() => {
     if (!open) return;
     const handler = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) {
@@ -31160,12 +31669,12 @@ function VizEditor({
   previewHeight: _previewHeight = 200,
   theme = "dark"
 }) {
-  const containerRef = React18.useRef(null);
-  const [initialTabs, setInitialTabs] = React18.useState(null);
-  React18.useEffect(() => {
+  const containerRef = React20.useRef(null);
+  const [initialTabs, setInitialTabs] = React20.useState(null);
+  React20.useEffect(() => {
     if (containerRef.current) applyTheme(containerRef.current, theme);
   }, [theme]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     VizPresetStore.getAll().then((presets) => {
       const tabs2 = [];
       for (const preset of presets) {
@@ -31185,7 +31694,7 @@ function VizEditor({
       setInitialTabs(tabs2.length > 0 ? tabs2 : []);
     });
   }, []);
-  const handleSaveFile = React18.useCallback(
+  const handleSaveFile = React20.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return;
@@ -31199,7 +31708,7 @@ function VizEditor({
     },
     [onPresetSaved]
   );
-  const previewProviderFor = React18.useCallback(
+  const previewProviderFor = React20.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return void 0;
@@ -31294,10 +31803,10 @@ function usePopoutPreview({
   onClose,
   theme = "dark"
 }) {
-  const windowRef = React18.useRef(null);
-  const rendererRef = React18.useRef(null);
-  const rafRef = React18.useRef(null);
-  const cleanup = React18.useCallback(() => {
+  const windowRef = React20.useRef(null);
+  const rendererRef = React20.useRef(null);
+  const rafRef = React20.useRef(null);
+  const cleanup = React20.useCallback(() => {
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -31309,7 +31818,7 @@ function usePopoutPreview({
     }
     windowRef.current = null;
   }, []);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!descriptor) {
       cleanup();
       return;
@@ -31368,7 +31877,7 @@ function usePopoutPreview({
       cleanup();
     };
   }, [descriptor?.id]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!rendererRef.current) return;
     const components = {};
     if (hapStream) components.streaming = { hapStream };
@@ -31381,7 +31890,7 @@ function usePopoutPreview({
 __name(usePopoutPreview, "usePopoutPreview");
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
-  const subscribe4 = React18.useCallback(
+  const subscribe4 = React20.useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -31389,12 +31898,12 @@ function useTrackMeta(fileId, trackId) {
     },
     [fileId]
   );
-  const getSnapshot = React18.useCallback(() => {
+  const getSnapshot = React20.useCallback(() => {
     if (!fileId) return EMPTY_META;
     return getTrackMeta(fileId, trackId);
   }, [fileId, trackId]);
-  const meta = React18.useSyncExternalStore(subscribe4, getSnapshot, getSnapshot);
-  const set = React18.useCallback(
+  const meta = React20.useSyncExternalStore(subscribe4, getSnapshot, getSnapshot);
+  const set = React20.useCallback(
     (partial) => {
       if (!fileId) return;
       setTrackMeta(fileId, trackId, partial);
@@ -31732,10 +32241,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React18__namespace.useReducer((x) => x + 1, 0);
-  React18__namespace.useEffect(() => subscribeToHistory(force), []);
-  React18__namespace.useEffect(() => subscribeToRuntimeView(force), []);
-  React18__namespace.useEffect(() => {
+  const [, force] = React20__namespace.useReducer((x) => x + 1, 0);
+  React20__namespace.useEffect(() => subscribeToHistory(force), []);
+  React20__namespace.useEffect(() => subscribeToRuntimeView(force), []);
+  React20__namespace.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -31752,17 +32261,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React18__namespace.useState(null);
-  const [forkName, setForkName] = React18__namespace.useState("");
-  const [committing, setCommitting] = React18__namespace.useState(false);
-  const [commitLabel, setCommitLabel] = React18__namespace.useState("");
-  const [expanded, setExpanded] = React18__namespace.useState(null);
-  const [hovered, setHovered] = React18__namespace.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React18__namespace.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React18__namespace.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React18__namespace.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React20__namespace.useState(null);
+  const [forkName, setForkName] = React20__namespace.useState("");
+  const [committing, setCommitting] = React20__namespace.useState(false);
+  const [commitLabel, setCommitLabel] = React20__namespace.useState("");
+  const [expanded, setExpanded] = React20__namespace.useState(null);
+  const [hovered, setHovered] = React20__namespace.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React20__namespace.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React20__namespace.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React20__namespace.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React18__namespace.useEffect(() => {
+  React20__namespace.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -32472,17 +32981,17 @@ function barString(v, cells = 8) {
 }
 __name(barString, "barString");
 function StaveInputsPanel({ kind }) {
-  const [open, setOpen] = React18.useState(false);
-  const [liveEnabled, setLiveEnabled] = React18.useState(true);
-  React18.useEffect(() => vizSignalProbe.acquire(), []);
-  React18.useEffect(() => {
+  const [open, setOpen] = React20.useState(false);
+  const [liveEnabled, setLiveEnabled] = React20.useState(true);
+  React20.useEffect(() => vizSignalProbe.acquire(), []);
+  React20.useEffect(() => {
     setLiveEnabled(getVizInputsLiveValuesEnabled());
     return onVizInputsLiveValuesChange(setLiveEnabled);
   }, []);
-  const rows = React18.useMemo(() => buildVizInputRows(kind), [kind]);
-  const liveRows = React18.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
-  const valueRefs = React18.useRef([]);
-  React18.useEffect(() => {
+  const rows = React20.useMemo(() => buildVizInputRows(kind), [kind]);
+  const liveRows = React20.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
+  const valueRefs = React20.useRef([]);
+  React20.useEffect(() => {
     if (!open || !liveEnabled) return;
     if (typeof requestAnimationFrame !== "function") return;
     let raf = 0;
@@ -32700,21 +33209,21 @@ function VizEditorChrome({
   onToggleBackground,
   isBackground
 }) {
-  const [liveOn, setLiveOn] = React18.useState(() => getVizLive(file.id));
-  React18.useEffect(() => {
+  const [liveOn, setLiveOn] = React20.useState(() => getVizLive(file.id));
+  React20.useEffect(() => {
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = React18.useState({
+  const [selectedSource, setSelectedSource] = React20.useState({
     kind: "default"
   });
-  const [, forceSourcesRerender] = React18.useState(0);
-  React18.useEffect(() => {
+  const [, forceSourcesRerender] = React20.useState(0);
+  React20.useEffect(() => {
     return workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
   }, []);
-  const handleSourceChange = React18.useCallback(
+  const handleSourceChange = React20.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
@@ -32732,7 +33241,7 @@ function VizEditorChrome({
     },
     [previewOpen, previewPaused, onChangePreviewSource, selectedSource]
   );
-  const handlePrimaryButtonClick = React18.useCallback(() => {
+  const handlePrimaryButtonClick = React20.useCallback(() => {
     if (previewOpen && onTogglePausePreview) {
       onTogglePausePreview();
       return;
@@ -32902,7 +33411,7 @@ function createCompiledVizProvider(opts) {
 __name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
   const { file, rendererType, audioSource, hidden, paused, fileId } = props;
-  const { descriptor, compileError } = React18.useMemo(() => {
+  const { descriptor, compileError } = React20.useMemo(() => {
     try {
       const preset = {
         id: file.id,
@@ -32938,9 +33447,9 @@ function CompiledVizMount(props) {
       return { descriptor: null, compileError: message };
     }
   }, [file.id, file.content, file.language, rendererType, file.path]);
-  const containerRef = React18.useRef(null);
-  const rendererRef = React18.useRef(null);
-  const components = React18.useMemo(() => {
+  const containerRef = React20.useRef(null);
+  const rendererRef = React20.useRef(null);
+  const components = React20.useMemo(() => {
     const bag = {};
     if (audioSource?.hapStream) {
       bag.streaming = { hapStream: audioSource.hapStream };
@@ -32972,7 +33481,7 @@ function CompiledVizMount(props) {
     }
     return bag;
   }, [audioSource]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;
     if (!el) return;
@@ -33032,7 +33541,7 @@ function CompiledVizMount(props) {
       }
     };
   }, [descriptor]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r || !r.update) return;
     try {
@@ -33040,7 +33549,7 @@ function CompiledVizMount(props) {
     } catch {
     }
   }, [components]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (hidden) {
@@ -33055,7 +33564,7 @@ function CompiledVizMount(props) {
       }
     }
   }, [hidden]);
-  React18.useEffect(() => {
+  React20.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (paused) {
@@ -34053,6 +34562,7 @@ exports.applyPersistedUiIconSize = applyPersistedUiIconSize;
 exports.applyPersistedVizQuality = applyPersistedVizQuality;
 exports.applyTheme = applyTheme;
 exports.backdropQualityFactor = backdropQualityFactor;
+exports.banksFromDrumMachineManifest = banksFromDrumMachineManifest;
 exports.buildAliasSuffix = buildAliasSuffix;
 exports.buildDefaultSnapshot = buildDefaultSnapshot;
 exports.bumpEditorFontSize = bumpEditorFontSize;
@@ -34166,6 +34676,8 @@ exports.getVizWorkerFactory = getVizWorkerFactory;
 exports.getVizWorkerOverride = getVizWorkerOverride;
 exports.getZoneCropOverride = getZoneCropOverride;
 exports.getZoneHeightOverride = getZoneHeightOverride;
+exports.groupDrumKits = groupDrumKits;
+exports.groupSoundCatalog = groupSoundCatalog;
 exports.hydraKaleidoscope = hydraKaleidoscope;
 exports.hydraPianoroll = hydraPianoroll;
 exports.hydraScope = hydraScope;
@@ -34216,6 +34728,8 @@ exports.mountVizRenderer = mountVizRenderer;
 exports.normalizeEdits = normalizeEdits;
 exports.normalizeStrudelHap = normalizeStrudelHap;
 exports.noteToMidi = noteToMidi;
+exports.notifyDrumKitChanged = notifyDrumKitChanged;
+exports.notifySoundCatalogChanged = notifySoundCatalogChanged;
 exports.onAdaptivePerfChange = onAdaptivePerfChange;
 exports.onBackdropOpacityChange = onBackdropOpacityChange;
 exports.onBackdropQualityChange = onBackdropQualityChange;
@@ -34303,6 +34817,7 @@ exports.setCaptureCapacity = setCaptureCapacity;
 exports.setChildOrder = setChildOrder;
 exports.setContent = setContent;
 exports.setCurrentCycleAccessor = setCurrentCycleAccessor;
+exports.setDrumKitAccessor = setDrumKitAccessor;
 exports.setEditorBackdropBlur = setEditorBackdropBlur;
 exports.setEditorFontSize = setEditorFontSize;
 exports.setEditorTheme = setEditorTheme;
@@ -34316,6 +34831,7 @@ exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
 exports.setPerfEnabled = setPerfEnabled;
 exports.setProjectBackgroundCrop = setProjectBackgroundCrop;
 exports.setSignalAliases = setSignalAliases;
+exports.setSoundCatalogAccessor = setSoundCatalogAccessor;
 exports.setSubfolderOrder = setSubfolderOrder;
 exports.setTierFlag = setTierFlag;
 exports.setTrackMeta = setTrackMeta;
