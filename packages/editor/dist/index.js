@@ -26140,6 +26140,38 @@ function SequencerGrid({ selected, onSelect } = {}) {
   );
 }
 __name(SequencerGrid, "SequencerGrid");
+
+// src/visualEdit/panels/division.ts
+var DIVISIONS = [
+  { value: "grid", label: "Grid", notesPerBar: null },
+  { value: "1/4", label: "1/4", notesPerBar: 4 },
+  { value: "1/8", label: "1/8", notesPerBar: 8 },
+  { value: "1/16", label: "1/16", notesPerBar: 16 },
+  { value: "1/8T", label: "1/8 T", notesPerBar: 12 },
+  { value: "1/16T", label: "1/16 T", notesPerBar: 24 }
+];
+var DEFAULT_DIVISION = "grid";
+function stepsPerBar(steps, bars) {
+  return bars && bars > 0 ? Math.round(steps / bars) : steps;
+}
+__name(stepsPerBar, "stepsPerBar");
+function snapInterval(spb, division2) {
+  const opt = DIVISIONS.find((d) => d.value === division2);
+  if (!opt || opt.notesPerBar === null) return null;
+  if (spb <= 0) return null;
+  const interval = spb / opt.notesPerBar;
+  return Number.isInteger(interval) && interval >= 1 ? interval : null;
+}
+__name(snapInterval, "snapInterval");
+function isRepresentable(spb, division2) {
+  return division2 === "grid" || snapInterval(spb, division2) !== null;
+}
+__name(isRepresentable, "isRepresentable");
+function snapColumn(col, interval) {
+  if (interval == null || interval <= 1) return col;
+  return Math.round(col / interval) * interval;
+}
+__name(snapColumn, "snapColumn");
 var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
@@ -26166,7 +26198,11 @@ function noteAt(model, midi, step) {
   );
 }
 __name(noteAt, "noteAt");
-function PianoRollGrid({ selected, onSelect } = {}) {
+function PianoRollGrid({
+  selected,
+  onSelect,
+  division: division2 = DEFAULT_DIVISION
+} = {}) {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "roll",
     eligible: isRollChunk,
@@ -26279,14 +26315,17 @@ function PianoRollGrid({ selected, onSelect } = {}) {
   const onCellEnter = /* @__PURE__ */ __name((midi, step) => {
     const d = dragRef.current;
     if (!d || !model) return;
+    const interval = snapInterval(stepsPerBar(model.steps, model.bars), division2);
     if (d.mode === "resize") {
-      const dur2 = step - d.origStart + 1;
+      let dur2 = step - d.origStart + 1;
+      if (interval) dur2 = Math.max(interval, snapColumn(d.origStart + dur2, interval) - d.origStart);
       mutate((prev) => resizeNote(prev, d.origStart, dur2));
       d.moved = true;
       select({ kind: "roll", pitch: d.origPitch, start: d.origStart });
       return;
     }
-    const newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1));
+    let newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1));
+    if (interval) newStart = Math.max(0, Math.min(snapColumn(newStart, interval), d.steps - 1));
     const newPitch = tokenForRow(!!model.numeric, midi);
     const dur = Math.max(1, Math.min(d.duration, d.steps - newStart));
     const moved = {
@@ -27283,7 +27322,56 @@ function SoundSelect({
   );
 }
 __name(SoundSelect, "SoundSelect");
-function Mixer({ selected, onSelect } = {}) {
+function rollStepsPerBar(chunk) {
+  if (!chunk || chunk.miniString === null || !isRollChunk(chunk)) return null;
+  const parsed = parsePianoRoll(chunk.miniString);
+  return parsed.ok ? stepsPerBar(parsed.model.steps, parsed.model.bars) : null;
+}
+__name(rollStepsPerBar, "rollStepsPerBar");
+function DivisionSelect({
+  division: division2,
+  spb,
+  onChange
+}) {
+  return /* @__PURE__ */ jsxs(
+    "label",
+    {
+      "data-mixer-division": true,
+      style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11 },
+      children: [
+        /* @__PURE__ */ jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: "Snap" }),
+        /* @__PURE__ */ jsx(
+          "select",
+          {
+            "data-mixer-division-select": true,
+            value: division2,
+            onChange: (e) => onChange(e.target.value),
+            style: {
+              padding: "4px 8px",
+              fontSize: 12,
+              borderRadius: 4,
+              border: "1px solid var(--border, #3a3a42)",
+              background: "var(--background-elevated, #26262c)",
+              color: "var(--foreground, #e6e6ea)",
+              maxWidth: 220
+            },
+            children: DIVISIONS.map((d) => {
+              const ok = spb == null || isRepresentable(spb, d.value);
+              return /* @__PURE__ */ jsx("option", { value: d.value, disabled: !ok, children: ok ? d.label : `${d.label} (n/a)` }, d.value);
+            })
+          }
+        )
+      ]
+    }
+  );
+}
+__name(DivisionSelect, "DivisionSelect");
+function Mixer({
+  selected,
+  onSelect,
+  division: division2,
+  onDivisionChange
+} = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
@@ -27332,6 +27420,7 @@ function Mixer({ selected, onSelect } = {}) {
   }
   const present = new Set(chunk.chain.map((c) => c.name));
   const kind = patternKind(chunk);
+  const rollSpb = kind === "roll" ? rollStepsPerBar(chunk) : null;
   return /* @__PURE__ */ jsxs(
     "div",
     {
@@ -27357,6 +27446,7 @@ function Mixer({ selected, onSelect } = {}) {
             onChange: (v) => writeChainMethod(["sound", "s"], "sound", v)
           }
         ),
+        kind === "roll" && division2 !== void 0 && onDivisionChange && /* @__PURE__ */ jsx(DivisionSelect, { division: division2, spb: rollSpb, onChange: onDivisionChange }),
         kind === "step" && /* @__PURE__ */ jsx(
           SoundSelect,
           {
@@ -27420,7 +27510,8 @@ function PatternPanel() {
       setSelected(null);
     }
   }, [stmtId]);
-  const grid = kind === "step" ? /* @__PURE__ */ jsx(SequencerGrid, { selected, onSelect: setSelected }) : kind === "roll" ? /* @__PURE__ */ jsx(PianoRollGrid, { selected, onSelect: setSelected }) : /* @__PURE__ */ jsx(
+  const [division2, setDivision] = React20.useState(DEFAULT_DIVISION);
+  const grid = kind === "step" ? /* @__PURE__ */ jsx(SequencerGrid, { selected, onSelect: setSelected }) : kind === "roll" ? /* @__PURE__ */ jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2 }) : /* @__PURE__ */ jsx(
     VisualEditStandby,
     {
       panel: PATTERN_TAB_ID,
@@ -27446,7 +27537,15 @@ function PatternPanel() {
               overflow: "hidden",
               borderLeft: "1px solid var(--border, #3a3a42)"
             },
-            children: /* @__PURE__ */ jsx(Mixer, { selected, onSelect: setSelected })
+            children: /* @__PURE__ */ jsx(
+              Mixer,
+              {
+                selected,
+                onSelect: setSelected,
+                division: division2,
+                onDivisionChange: setDivision
+              }
+            )
           }
         )
       ]

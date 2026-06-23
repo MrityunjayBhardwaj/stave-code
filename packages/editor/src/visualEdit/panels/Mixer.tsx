@@ -21,7 +21,9 @@ import { VisualEditStandby } from './VisualEditStandby'
 import { MIXER_TAB_ID } from './tabs'
 import { useActiveChunk } from './useActiveChunk'
 import { QUICK_TRANSFORMS } from './quickTransforms'
-import { patternKind } from './patternKind'
+import { patternKind, isRollChunk } from './patternKind'
+import { parsePianoRoll } from '../notation/parse'
+import { type Division, DIVISIONS, isRepresentable, stepsPerBar } from './division'
 import { readChainMethod } from './chainMethod'
 import { INSTRUMENTS, DRUM_KITS, type SoundGroup } from './soundCatalog'
 import { useSoundCatalog, useDrumKitCatalog } from '../../workspace/soundRegistry'
@@ -176,13 +178,80 @@ function SoundSelect({
   )
 }
 
+/**
+ * Columns-per-bar of the roll under the cursor, read straight off the chunk's
+ * mini (no model state — a pure parse), or null when it isn't a grid-editable
+ * melody. The division picker uses it to grey out divisions this grid can't
+ * snap to (#432 Slice 2).
+ */
+function rollStepsPerBar(chunk: ChunkInfo | null): number | null {
+  if (!chunk || chunk.miniString === null || !isRollChunk(chunk)) return null
+  const parsed = parsePianoRoll(chunk.miniString)
+  return parsed.ok ? stepsPerBar(parsed.model.steps, parsed.model.bars) : null
+}
+
+/**
+ * Snap/quantize division picker (#432 Slice 2) — Piano Roll only (the Sequencer
+ * is already cell-quantized, no continuous gesture to snap). Divisions the grid
+ * can't represent are disabled, never silently inert (honest control).
+ */
+function DivisionSelect({
+  division,
+  spb,
+  onChange,
+}: {
+  division: Division
+  spb: number | null
+  onChange: (d: Division) => void
+}): React.ReactElement {
+  return (
+    <label
+      data-mixer-division
+      style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}
+    >
+      <span style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>Snap</span>
+      <select
+        data-mixer-division-select
+        value={division}
+        onChange={(e) => onChange(e.target.value as Division)}
+        style={{
+          padding: '4px 8px',
+          fontSize: 12,
+          borderRadius: 4,
+          border: '1px solid var(--border, #3a3a42)',
+          background: 'var(--background-elevated, #26262c)',
+          color: 'var(--foreground, #e6e6ea)',
+          maxWidth: 220,
+        }}
+      >
+        {DIVISIONS.map((d) => {
+          const ok = spb == null || isRepresentable(spb, d.value)
+          return (
+            <option key={d.value} value={d.value} disabled={!ok}>
+              {ok ? d.label : `${d.label} (n/a)`}
+            </option>
+          )
+        })}
+      </select>
+    </label>
+  )
+}
+
 export interface MixerProps {
   /** the inspector's selected note/step (#432), owned by PatternPanel */
   selected?: SelectedNote | null
   onSelect?: (sel: SelectedNote | null) => void
+  /** Piano-Roll snap/quantize division (#432 Slice 2), owned by PatternPanel */
+  division?: Division
+  onDivisionChange?: (d: Division) => void
 }
 
-export function Mixer({ selected, onSelect }: MixerProps = {}): React.ReactElement {
+export function Mixer({
+  selected,
+  onSelect,
+  division,
+  onDivisionChange,
+}: MixerProps = {}): React.ReactElement {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk()
   // Live instrument registry (#514 / PV141 #6) — prefer the engine's real
   // soundMap (synths/soundfonts/samples) over the curated shortlist; fall back
@@ -254,6 +323,7 @@ export function Mixer({ selected, onSelect }: MixerProps = {}): React.ReactEleme
 
   const present = new Set(chunk.chain.map((c) => c.name))
   const kind = patternKind(chunk)
+  const rollSpb = kind === 'roll' ? rollStepsPerBar(chunk) : null
 
   return (
     <div
@@ -278,6 +348,9 @@ export function Mixer({ selected, onSelect }: MixerProps = {}): React.ReactEleme
           placeholder="Default synth"
           onChange={(v) => writeChainMethod(['sound', 's'], 'sound', v)}
         />
+      )}
+      {kind === 'roll' && division !== undefined && onDivisionChange && (
+        <DivisionSelect division={division} spb={rollSpb} onChange={onDivisionChange} />
       )}
       {kind === 'step' && (
         <SoundSelect

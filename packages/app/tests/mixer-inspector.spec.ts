@@ -132,10 +132,54 @@ test.describe('Mixer-as-inspector (#432)', () => {
     await expect(insp.locator('[data-inspector-value="sound"]')).toHaveText('bd')
     await expect(insp.locator('[data-inspector-value="position"]')).toHaveText('1')
 
+    // the Snap division control is Piano-Roll only — the step grid is already
+    // cell-quantized, so the Mixer shows no division picker here (#432 Slice 2).
+    await expect(drawer.locator('[data-mixer-division-select]')).toHaveCount(0)
+
     await setRange(insp.locator('[data-inspector-velocity]'), 64)
     await page.waitForTimeout(120)
     await expect(insp.locator('[data-inspector-value="velocity"]')).toHaveText('64')
     expect(await strudelValue(page)).toContain('.gain(')
+
+    expect(errors).toEqual([])
+  })
+
+  test('Piano Roll: the Snap division quantizes a move (#432 Slice 2)', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await boot(page)
+    // 16-step bar: 1/4 → snap interval 4 columns; 1/8-triplet doesn't divide it.
+    await setStrudelCode(page, '$: note("c3 ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~")')
+    const drawer = await openPattern(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    const div = drawer.locator('[data-mixer-division-select]')
+
+    // a division that doesn't divide this grid evenly is offered but disabled
+    // (honest). `<option disabled>` reads via the attribute — toBeDisabled() is
+    // unreliable on options, so assert the rendered attribute directly.
+    await expect(div.locator('option[value="1/8T"]')).toHaveAttribute('disabled', '')
+    await expect(div.locator('option[value="1/4"]')).not.toHaveAttribute('disabled', '')
+
+    await div.selectOption('1/4')
+    await page.waitForTimeout(80)
+
+    // drag c3 (step 0) to step 5 → snaps to the nearest 1/4 line (step 4)
+    const from = await grid.locator('[data-roll-cell="48:0"]').boundingBox()
+    const to = await grid.locator('[data-roll-cell="48:5"]').boundingBox()
+    if (!from || !to) throw new Error('missing cells')
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 })
+    await page.mouse.up()
+    await page.waitForTimeout(120)
+
+    // landed on step 4 (snapped), not 5 (raw); inspector follows it (1-indexed → 5)
+    await expect(grid.locator('[data-roll-cell="48:4"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-roll-cell="48:5"]')).toHaveAttribute('aria-pressed', 'false')
+    await expect(grid.locator('[data-roll-cell="48:0"]')).toHaveAttribute('aria-pressed', 'false')
+    await expect(
+      drawer.locator('[data-mixer-inspector] [data-inspector-value="position"]'),
+    ).toHaveText('5')
 
     expect(errors).toEqual([])
   })

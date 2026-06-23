@@ -31,6 +31,7 @@ import { placeNote, resizeNote } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
+import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 
 const ROLL_HINT = 'Click a melody to edit its notes.'
 
@@ -94,9 +95,15 @@ export interface PianoRollGridProps {
   /** the inspector's selected note (#432), owned by PatternPanel */
   selected?: SelectedNote | null
   onSelect?: (sel: SelectedNote | null) => void
+  /** snap/quantize division for move + resize (#432 Slice 2), owned by PatternPanel */
+  division?: Division
 }
 
-export function PianoRollGrid({ selected, onSelect }: PianoRollGridProps = {}): React.ReactElement {
+export function PianoRollGrid({
+  selected,
+  onSelect,
+  division = DEFAULT_DIVISION,
+}: PianoRollGridProps = {}): React.ReactElement {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<PianoRollModel>({
     source: 'roll',
     eligible: isRollChunk,
@@ -235,16 +242,23 @@ export function PianoRollGrid({ selected, onSelect }: PianoRollGridProps = {}): 
   const onCellEnter = (midi: number, step: number): void => {
     const d = dragRef.current
     if (!d || !model) return
+    // Snap interval in columns for the active division (#432 Slice 2); null when
+    // the division is the native grid or doesn't divide this grid evenly — then
+    // move/resize land on the raw hovered column, exactly as before.
+    const interval = snapInterval(stepsPerBar(model.steps, model.bars), division)
     if (d.mode === 'resize') {
       // duration = columns from the note start through the hovered column;
+      // snap the END edge to the division line (min one division when snapping).
       // resizeNote floors at 1 and caps at the next note (no overlap).
-      const dur = step - d.origStart + 1
+      let dur = step - d.origStart + 1
+      if (interval) dur = Math.max(interval, snapColumn(d.origStart + dur, interval) - d.origStart)
       mutate((prev) => resizeNote(prev, d.origStart, dur))
       d.moved = true
       select({ kind: 'roll', pitch: d.origPitch, start: d.origStart })
       return
     }
-    const newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1))
+    let newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1))
+    if (interval) newStart = Math.max(0, Math.min(snapColumn(newStart, interval), d.steps - 1))
     const newPitch = tokenForRow(!!model.numeric, midi)
     const dur = Math.max(1, Math.min(d.duration, d.steps - newStart))
     const moved: PianoRollModel = {

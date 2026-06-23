@@ -8270,6 +8270,33 @@ interface VisualEditStandbyProps {
 declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProps): React.ReactElement;
 
 /**
+ * division — pure snap/quantize helpers for the Pattern grids (#432 Slice 2).
+ *
+ * A "division" is the musical grid the user snaps move/resize to (Logic's Snap
+ * value): 1/4, 1/8, 1/16 and their triplets, plus `'grid'` = the pattern's own
+ * native cell (no extra snapping — the default, byte-identical to pre-#432
+ * behaviour).
+ *
+ * The grids work in integer step COLUMNS, so a division only snaps cleanly when
+ * it divides the grid evenly: the snap interval in columns is
+ * `stepsPerBar / notesPerBar`, and a division is REPRESENTABLE only when that's
+ * a whole number ≥ 1. A 16-step bar snaps to 1/4 (interval 4), 1/8 (2), 1/16
+ * (1) but NOT 1/8-triplet (16/12 = 1.33…) — triplets need a triplet grid
+ * (e.g. 12 steps). Non-representable divisions are surfaced DISABLED in the
+ * picker, never silently no-op'd (an honest control — pre-mortem #5).
+ *
+ * Time signature is assumed 4/4 (the grid model carries no metre): a bar is
+ * 4 quarters / 8 eighths / 16 sixteenths / 12 eighth-triplets / 24
+ * sixteenth-triplets. Documented limit for #432.
+ *
+ * Pure (no React, no DOM) so both the Piano Roll (snaps its move/resize) and the
+ * Mixer (renders the picker, greys out non-representable options) share one
+ * source of truth — one snap path, no drift.
+ */
+/** the snap grids the picker offers; `'grid'` = native cell (no extra snap) */
+type Division = 'grid' | '1/4' | '1/8' | '1/16' | '1/8T' | '1/16T';
+
+/**
  * inspector — pure selection model + field resolution/edit transforms for the
  * Mixer-as-inspector (#432).
  *
@@ -8316,8 +8343,11 @@ interface MixerProps {
     /** the inspector's selected note/step (#432), owned by PatternPanel */
     selected?: SelectedNote | null;
     onSelect?: (sel: SelectedNote | null) => void;
+    /** Piano-Roll snap/quantize division (#432 Slice 2), owned by PatternPanel */
+    division?: Division;
+    onDivisionChange?: (d: Division) => void;
 }
-declare function Mixer({ selected, onSelect }?: MixerProps): React.ReactElement;
+declare function Mixer({ selected, onSelect, division, onDivisionChange, }?: MixerProps): React.ReactElement;
 
 /**
  * Sequencer — drum/step grid (#382, per-column velocity #409).
@@ -8371,8 +8401,10 @@ interface PianoRollGridProps {
     /** the inspector's selected note (#432), owned by PatternPanel */
     selected?: SelectedNote | null;
     onSelect?: (sel: SelectedNote | null) => void;
+    /** snap/quantize division for move + resize (#432 Slice 2), owned by PatternPanel */
+    division?: Division;
 }
-declare function PianoRollGrid({ selected, onSelect }?: PianoRollGridProps): React.ReactElement;
+declare function PianoRollGrid({ selected, onSelect, division, }?: PianoRollGridProps): React.ReactElement;
 
 /**
  * Pattern — the single adaptive visual-editing panel (#398).
