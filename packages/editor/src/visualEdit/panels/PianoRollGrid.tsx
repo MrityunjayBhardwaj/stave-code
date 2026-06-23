@@ -28,6 +28,7 @@ import { isRollChunk } from './patternKind'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import { placeNote, resizeNote } from '../notation/place'
+import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 
 const ROLL_HINT = 'Click a melody to edit its notes.'
 
@@ -44,19 +45,6 @@ const clamp01 = (v: number): number => Math.max(0, Math.min(1, v))
 /** velocity is grid-aligned only for single-bar, non-foreign rolls */
 function gainInScope(model: PianoRollModel): boolean {
   return !model.gainForeign && (model.bars ?? 1) === 1
-}
-
-/** the gain shared by the note group starting at `start` (chord members share) */
-function gainAtStart(model: PianoRollModel, start: number): number {
-  return model.notes.find((n) => n.start === start)?.gain ?? 1
-}
-
-/** set the gain on every note of the group at `start` (chord shares one gain) */
-function setGroupGain(model: PianoRollModel, start: number, gain: number): PianoRollModel {
-  return {
-    ...model,
-    notes: model.notes.map((n) => (n.start === start ? { ...n, gain } : n)),
-  }
 }
 
 /**
@@ -100,7 +88,13 @@ interface DragState {
   moved: boolean
 }
 
-export function PianoRollGrid(): React.ReactElement {
+export interface PianoRollGridProps {
+  /** the inspector's selected note (#432), owned by PatternPanel */
+  selected?: SelectedNote | null
+  onSelect?: (sel: SelectedNote | null) => void
+}
+
+export function PianoRollGrid({ selected, onSelect }: PianoRollGridProps = {}): React.ReactElement {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<PianoRollModel>({
     source: 'roll',
     eligible: isRollChunk,
@@ -114,6 +108,14 @@ export function PianoRollGrid(): React.ReactElement {
   // A velocity-lane drag: vertical drag on a note's bar sets that group's gain.
   const velRef = React.useRef<{ start: number; startY: number; startGain: number } | null>(null)
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1)
+
+  // Latest selection + setter for use inside window-listener effects without
+  // re-subscribing (#432). The grid sets selection; PatternPanel owns it.
+  const onSelectRef = React.useRef(onSelect)
+  onSelectRef.current = onSelect
+  const selectedRef = React.useRef(selected)
+  selectedRef.current = selected
+  const select = (sel: SelectedNote | null): void => onSelectRef.current?.(sel)
 
   // Sticky pitch range: expand to fit, never shrink within a binding; reset on
   // statement change (#391).
@@ -146,9 +148,10 @@ export function PianoRollGrid(): React.ReactElement {
       const d = dragRef.current
       if (!d) return
       dragRef.current = null
-      // a press with no move on a note body = a click → remove it (rebuild from
-      // the base). A no-move on the resize handle does nothing (not a removal).
-      if (!d.moved && d.mode === 'move') mutate((prev) => ({ ...prev, notes: d.baseNotes }))
+      // a press with no move on a note body = a click → SELECT it (#432;
+      // removal moved to the Delete key). A no-move on the resize handle does
+      // nothing. A real drag already selected the note in onCellEnter.
+      if (!d.moved && d.mode === 'move') select({ kind: 'roll', pitch: d.origPitch, start: d.origStart })
       endGesture()
     }
     window.addEventListener('pointerup', onUp)
@@ -180,6 +183,8 @@ export function PianoRollGrid(): React.ReactElement {
   const onBarDown = (start: number, e: React.PointerEvent): void => {
     if (!model) return
     velRef.current = { start, startY: e.clientY, startGain: gainAtStart(model, start) }
+    const rep = model.notes.find((n) => n.start === start)
+    if (rep) select({ kind: 'roll', pitch: rep.pitch, start }) // inspect the group (#432)
     beginGesture()
   }
 
@@ -199,8 +204,9 @@ export function PianoRollGrid(): React.ReactElement {
       }
       beginGesture()
     } else {
-      // empty cell → place a one-step note (its own undo)
+      // empty cell → place a one-step note (its own undo) and select it (#432)
       mutate((prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1))
+      select({ kind: 'roll', pitch: tokenForRow(!!model.numeric, midi), start: step })
     }
   }
 
@@ -230,6 +236,7 @@ export function PianoRollGrid(): React.ReactElement {
       const dur = step - d.origStart + 1
       mutate((prev) => resizeNote(prev, d.origStart, dur))
       d.moved = true
+      select({ kind: 'roll', pitch: d.origPitch, start: d.origStart })
       return
     }
     const newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1))
@@ -245,6 +252,19 @@ export function PianoRollGrid(): React.ReactElement {
     // that can't serialize (overlap) is dropped by useGridModel.
     mutate(() => moved)
     d.moved = true
+    select({ kind: 'roll', pitch: newPitch, start: newStart }) // follow the note (#432)
+  }
+
+  // Delete/Backspace removes the selected note (#432 — removal moved off the
+  // plain click). One undo step; clears the selection.
+  const removeSelected = (): void => {
+    const sel = selectedRef.current
+    if (!sel || sel.kind !== 'roll') return
+    mutate((prev) => ({
+      ...prev,
+      notes: prev.notes.filter((n) => !(n.pitch === sel.pitch && n.start === sel.start)),
+    }))
+    select(null)
   }
 
   if (!model) {
@@ -264,10 +284,21 @@ export function PianoRollGrid(): React.ReactElement {
   return (
     <div
       data-bottom-panel-tab="piano-roll"
+      tabIndex={0}
+      // Cell pointerdowns call preventDefault (blocks default focus, P200), so
+      // focus the grid in the capture phase to receive the Delete key (#432).
+      onPointerDownCapture={(e) => (e.currentTarget as HTMLElement).focus({ preventScroll: true })}
+      onKeyDown={(e) => {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault()
+          removeSelected()
+        }
+      }}
       style={{
         padding: 16,
         height: '100%',
         overflow: 'auto',
+        outline: 'none',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: 'none',
       }}
@@ -298,6 +329,11 @@ export function PianoRollGrid(): React.ReactElement {
                   const on = note !== undefined
                   const isHead = on && note!.start === step
                   const isTail = on && note!.start + note!.duration - 1 === step
+                  const isSel =
+                    on &&
+                    selected?.kind === 'roll' &&
+                    note!.pitch === selected.pitch &&
+                    note!.start === selected.start
                   return (
                     <button
                       key={step}
@@ -305,6 +341,7 @@ export function PianoRollGrid(): React.ReactElement {
                       aria-pressed={on}
                       aria-label={`${tokenForRow(!!model.numeric, midi)} step ${step + 1}`}
                       data-roll-cell={`${midi}:${step}`}
+                      data-roll-selected={isSel ? 'true' : undefined}
                       data-playing={step === playingStep ? 'true' : undefined}
                       onPointerDown={(e) => {
                         e.preventDefault()
@@ -332,6 +369,10 @@ export function PianoRollGrid(): React.ReactElement {
                               : 'var(--background-elevated, #26262c)',
                         opacity: on && !isHead ? 0.7 : 1,
                         cursor: 'pointer',
+                        // selection ring (#432) — distinct from the playhead border
+                        boxShadow: isSel
+                          ? 'inset 0 0 0 2px var(--foreground, #e6e6ea)'
+                          : undefined,
                       }}
                     >
                       {isTail && (
