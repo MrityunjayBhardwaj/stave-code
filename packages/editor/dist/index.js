@@ -26172,6 +26172,25 @@ function snapColumn(col, interval) {
   return Math.round(col / interval) * interval;
 }
 __name(snapColumn, "snapColumn");
+
+// src/visualEdit/panels/clipboard.ts
+var clip = null;
+function setNoteClip(c) {
+  clip = c;
+}
+__name(setNoteClip, "setNoteClip");
+function getNoteClip() {
+  return clip;
+}
+__name(getNoteClip, "getNoteClip");
+function pasteTarget(c) {
+  return c.start + c.duration;
+}
+__name(pasteTarget, "pasteTarget");
+function advanceClip(c) {
+  return { ...c, start: pasteTarget(c) };
+}
+__name(advanceClip, "advanceClip");
 var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
@@ -26278,8 +26297,13 @@ function PianoRollGrid({
     if (rep) select({ kind: "roll", pitch: rep.pitch, start });
     beginGesture();
   }, "onBarDown");
-  const onCellDown = /* @__PURE__ */ __name((midi, step) => {
+  const onCellDown = /* @__PURE__ */ __name((midi, step, e) => {
     if (!model) return;
+    if (e.metaKey || e.ctrlKey) {
+      const hit = noteAt(model, midi, step);
+      select(hit ? { kind: "roll", pitch: hit.pitch, start: hit.start } : null);
+      return;
+    }
     const note = noteAt(model, midi, step);
     if (note) {
       dragRef.current = {
@@ -26347,6 +26371,22 @@ function PianoRollGrid({
     }));
     select(null);
   }, "removeSelected");
+  const copySelected = /* @__PURE__ */ __name(() => {
+    const sel = selectedRef.current;
+    if (!model || !sel || sel.kind !== "roll") return;
+    const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start);
+    if (!note) return;
+    setNoteClip({ pitch: note.pitch, start: note.start, duration: note.duration, gain: note.gain ?? 1 });
+  }, "copySelected");
+  const pasteClip = /* @__PURE__ */ __name(() => {
+    const clip2 = getNoteClip();
+    if (!model || !clip2) return;
+    const target = pasteTarget(clip2);
+    if (target >= model.steps) return;
+    mutate((prev) => setGroupGain(placeNote(prev, clip2.pitch, target, clip2.duration), target, clip2.gain));
+    setNoteClip(advanceClip(clip2));
+    select({ kind: "roll", pitch: clip2.pitch, start: target });
+  }, "pasteClip");
   if (!model) {
     return React20.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
@@ -26366,6 +26406,16 @@ function PianoRollGrid({
         if (e.key === "Delete" || e.key === "Backspace") {
           e.preventDefault();
           removeSelected();
+          return;
+        }
+        if (e.metaKey || e.ctrlKey) {
+          if (e.key === "c" || e.key === "C") {
+            e.preventDefault();
+            copySelected();
+          } else if (e.key === "v" || e.key === "V") {
+            e.preventDefault();
+            pasteClip();
+          }
         }
       },
       style: {
@@ -26479,7 +26529,7 @@ function PianoRollGrid({
                             "data-playing": step === playingStep ? "true" : void 0,
                             onPointerDown: (e) => {
                               e.preventDefault();
-                              onCellDown(midi, step);
+                              onCellDown(midi, step, e);
                             },
                             onPointerEnter: () => onCellEnter(midi, step),
                             style: {

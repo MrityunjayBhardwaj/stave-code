@@ -32,6 +32,7 @@ import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
+import { setNoteClip, getNoteClip, pasteTarget, advanceClip } from './clipboard'
 
 const ROLL_HINT = 'Click a melody to edit its notes.'
 
@@ -200,8 +201,16 @@ export function PianoRollGrid({
     beginGesture()
   }
 
-  const onCellDown = (midi: number, step: number): void => {
+  const onCellDown = (midi: number, step: number, e: React.PointerEvent): void => {
     if (!model) return
+    // ⌘/Ctrl-click → SELECT the note for copy/paste (#528): no move/place, just
+    // bind the selection. Modifier-gated so it's independent of the plain-click
+    // gesture (and survives the future click-toggle revert, #527).
+    if (e.metaKey || e.ctrlKey) {
+      const hit = noteAt(model, midi, step)
+      select(hit ? { kind: 'roll', pitch: hit.pitch, start: hit.start } : null)
+      return
+    }
     const note = noteAt(model, midi, step)
     if (note) {
       dragRef.current = {
@@ -286,6 +295,29 @@ export function PianoRollGrid({
     select(null)
   }
 
+  // ⌘/Ctrl-C → copy the selected note (pitch/start/duration/gain) to the
+  // session clipboard (#528).
+  const copySelected = (): void => {
+    const sel = selectedRef.current
+    if (!model || !sel || sel.kind !== 'roll') return
+    const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start)
+    if (!note) return
+    setNoteClip({ pitch: note.pitch, start: note.start, duration: note.duration, gain: note.gain ?? 1 })
+  }
+
+  // ⌘/Ctrl-V → place the clip right after itself (same pitch + velocity), one
+  // undo, then advance the clip so repeated paste tiles forward. No-op when the
+  // paste would run off the grid (#528).
+  const pasteClip = (): void => {
+    const clip = getNoteClip()
+    if (!model || !clip) return
+    const target = pasteTarget(clip)
+    if (target >= model.steps) return
+    mutate((prev) => setGroupGain(placeNote(prev, clip.pitch, target, clip.duration), target, clip.gain))
+    setNoteClip(advanceClip(clip))
+    select({ kind: 'roll', pitch: clip.pitch, start: target })
+  }
+
   if (!model) {
     return React.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
@@ -311,6 +343,16 @@ export function PianoRollGrid({
         if (e.key === 'Delete' || e.key === 'Backspace') {
           e.preventDefault()
           removeSelected()
+          return
+        }
+        if (e.metaKey || e.ctrlKey) {
+          if (e.key === 'c' || e.key === 'C') {
+            e.preventDefault()
+            copySelected()
+          } else if (e.key === 'v' || e.key === 'V') {
+            e.preventDefault()
+            pasteClip()
+          }
         }
       }}
       style={{
@@ -432,7 +474,7 @@ export function PianoRollGrid({
                       data-playing={step === playingStep ? 'true' : undefined}
                       onPointerDown={(e) => {
                         e.preventDefault()
-                        onCellDown(midi, step)
+                        onCellDown(midi, step, e)
                       }}
                       onPointerEnter={() => onCellEnter(midi, step)}
                       style={{
