@@ -31,6 +31,9 @@ import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import { addLane, removeLane } from '../notation/lane'
 import { DRUM_SOUNDS } from './soundCatalog'
+import { sampleVoice } from './drumVoices'
+import { useNoteColorMode, velocityColor } from './noteColor'
+import { NoteColorToggle } from './NoteColorToggle'
 
 const SEQ_HINT = 'Click a drum pattern to edit it as a step grid.'
 
@@ -83,6 +86,7 @@ export function SequencerGrid(): React.ReactElement {
   })
 
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1)
+  const [colorMode] = useNoteColorMode()
 
   // One pointer gesture from a cell press. An OFF cell paints immediately (snappy
   // step entry); an ON cell starts PENDING — a vertical drag past the threshold
@@ -225,21 +229,40 @@ export function SequencerGrid(): React.ReactElement {
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-        {model.lanes.map((lane, laneIndex) => (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+          <NoteColorToggle />
+        </div>
+        {model.lanes.map((lane, laneIndex) => {
+          const voice = sampleVoice(lane.sound)
+          return (
           <div key={`${lane.sound}:${lane.part ?? 0}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span
+              data-seq-voice={lane.sound}
               style={{
-                width: 56,
+                width: 72,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: 5,
                 fontSize: 11,
                 color: 'var(--foreground, #e6e6ea)',
-                textAlign: 'right',
                 overflow: 'hidden',
-                textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
               }}
               title={lane.sound}
             >
-              {lane.sound}
+              <span
+                data-seq-voice-dot
+                aria-hidden="true"
+                style={{
+                  width: 8,
+                  height: 8,
+                  flex: '0 0 auto',
+                  borderRadius: '50%',
+                  background: voice.color,
+                }}
+              />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{voice.label}</span>
             </span>
             <button
               type="button"
@@ -304,7 +327,9 @@ export function SequencerGrid(): React.ReactElement {
                     {on && (
                       // bottom-anchored fill = velocity (full when neutral); when
                       // gain is out of scope it always reads full, so the cell
-                      // looks exactly like the pre-velocity solid square.
+                      // looks exactly like the pre-velocity solid square. The
+                      // hue is the voice colour (#471), or a velocity ramp when
+                      // View ▸ Note Color = Velocity (#428).
                       <span
                         data-seq-fill
                         style={{
@@ -313,7 +338,10 @@ export function SequencerGrid(): React.ReactElement {
                           right: 0,
                           bottom: 0,
                           height: `${clamp01(gainScoped ? gain : 1) * 100}%`,
-                          background: 'var(--accent, #6ea8fe)',
+                          background:
+                            colorMode === 'velocity'
+                              ? velocityColor(gainScoped ? gain : 1)
+                              : voice.color,
                           pointerEvents: 'none',
                         }}
                       />
@@ -323,9 +351,10 @@ export function SequencerGrid(): React.ReactElement {
               })}
             </div>
           </div>
-        ))}
+          )
+        })}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-          <span style={{ width: 56, flex: '0 0 auto' }} />
+          <span style={{ width: 72, flex: '0 0 auto' }} />
           <select
             data-seq-add-voice
             aria-label="add drum voice"
