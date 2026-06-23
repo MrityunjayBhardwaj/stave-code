@@ -14800,9 +14800,9 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners10 = /* @__PURE__ */ new Set();
+  const listeners9 = /* @__PURE__ */ new Set();
   const notify5 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners10) l();
+    for (const l of listeners9) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify5(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify5(), "onStackItemPopped");
@@ -14812,7 +14812,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners10,
+    listeners: listeners9,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -14855,10 +14855,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners10 = active.listeners;
-  listeners10.add(cb);
+  const listeners9 = active.listeners;
+  listeners9.add(cb);
   return () => {
-    listeners10.delete(cb);
+    listeners9.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -15383,12 +15383,12 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe4 = React18.useCallback(
+  const subscribe3 = React18.useCallback(
     (onStoreChange) => subscribe(id, onStoreChange),
     [id]
   );
   const getSnapshot = React18.useCallback(() => getFile(id), [id]);
-  const file = React18.useSyncExternalStore(subscribe4, getSnapshot, getSnapshot);
+  const file = React18.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
   const setContent2 = React18.useCallback(
     (content) => setContent(id, content),
     [id]
@@ -21445,7 +21445,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
   const bufferedSchedulers = [];
   const zoneEntries = [];
   const audioCtx = components.audio?.audioCtx;
-  editor.changeViewZones((accessor3) => {
+  editor.changeViewZones((accessor2) => {
     for (const [trackKey, { vizId, afterLine, ...reqExtra }] of vizRequests) {
       const contentHash = reqExtra.contentHash ?? "";
       const descriptor = resolveDescriptor(vizId, vizDescriptors);
@@ -21491,7 +21491,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         domNode: container,
         suppressMouseDown: true
       };
-      const zoneId = accessor3.addZone(zoneDesc);
+      const zoneId = accessor2.addZone(zoneDesc);
       const makeInner = /* @__PURE__ */ __name(() => typeof descriptor.factory === "function" ? descriptor.factory() : descriptor.factory, "makeInner");
       let relayout = /* @__PURE__ */ __name(() => {
       }, "relayout");
@@ -21660,7 +21660,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
   void (async () => {
     try {
       const presets = await VizPresetStore.getAll();
-      editor.changeViewZones((accessor3) => {
+      editor.changeViewZones((accessor2) => {
         for (const entry of zoneEntries) {
           const override = fileId ? getZoneCropOverride(fileId, entry.trackKey) : void 0;
           const normViz = normalize(entry.vizId);
@@ -21677,7 +21677,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           const finalH = hOverride ?? layout.zoneH;
           entry.zoneDesc.heightInPx = finalH;
           entry.container.style.height = `${finalH}px`;
-          accessor3.layoutZone(entry.zoneId);
+          accessor2.layoutZone(entry.zoneId);
           if (hOverride != null) {
             const nw = entry.native.w, nh = entry.native.h;
             const cropW = Math.max(0.01, entry.crop.w);
@@ -21718,7 +21718,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     }
   })();
   const recomputeAllZones = /* @__PURE__ */ __name(() => {
-    editor.changeViewZones((accessor3) => {
+    editor.changeViewZones((accessor2) => {
       for (const entry of zoneEntries) {
         if (entry.container.dataset.resizing) continue;
         const contentW = editor.getLayoutInfo().contentWidth || 400;
@@ -21727,7 +21727,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         const finalH = hOverride ?? layout.zoneH;
         entry.zoneDesc.heightInPx = finalH;
         entry.container.style.height = `${finalH}px`;
-        accessor3.layoutZone(entry.zoneId);
+        accessor2.layoutZone(entry.zoneId);
         if (hOverride != null) {
           const nw = entry.native.w, nh = entry.native.h;
           const cropW = Math.max(0.01, entry.crop.w);
@@ -21790,10 +21790,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       }
     }
     if (changed.length === 0) return;
-    editor.changeViewZones((accessor3) => {
+    editor.changeViewZones((accessor2) => {
       for (const entry of changed) {
-        accessor3.removeZone(entry.zoneId);
-        entry.zoneId = accessor3.addZone(entry.zoneDesc);
+        accessor2.removeZone(entry.zoneId);
+        entry.zoneId = accessor2.addZone(entry.zoneDesc);
       }
     });
   }, "reAnchorZones");
@@ -21871,8 +21871,8 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       visibilityCleanups.forEach((fn) => fn());
       renderers.forEach((r) => r.destroy());
       bufferedSchedulers.forEach((s) => s.dispose());
-      editor.changeViewZones((accessor3) => {
-        zoneEntries.forEach((e) => accessor3.removeZone(e.zoneId));
+      editor.changeViewZones((accessor2) => {
+        zoneEntries.forEach((e) => accessor2.removeZone(e.zoneId));
       });
       zoneEntries.forEach((e) => e.vizDecoration?.clear());
     },
@@ -23009,8 +23009,8 @@ function keyFor(fileId) {
 }
 __name(keyFor, "keyFor");
 function getVizLive(fileId) {
-  const cached2 = values.get(fileId);
-  if (cached2 !== void 0) return cached2;
+  const cached = values.get(fileId);
+  if (cached !== void 0) return cached;
   const ls = safeLocalStorage3();
   const raw = ls?.getItem(keyFor(fileId));
   const on = raw === "0" ? false : true;
@@ -26530,49 +26530,119 @@ function groupSoundCatalog(dict) {
   return groups;
 }
 __name(groupSoundCatalog, "groupSoundCatalog");
-var accessor2 = null;
-var listeners9 = /* @__PURE__ */ new Set();
-var cached = null;
-function recompute() {
-  if (!accessor2) {
-    cached = null;
-    return;
+function banksFromDrumMachineManifest(manifest) {
+  if (!manifest) return [];
+  const banks = /* @__PURE__ */ new Set();
+  for (const key of Object.keys(manifest)) {
+    if (key.startsWith("_")) continue;
+    const i = key.lastIndexOf("_");
+    if (i <= 0) continue;
+    banks.add(key.slice(0, i));
   }
-  try {
-    cached = accessor2();
-  } catch {
-    cached = null;
+  return [...banks].sort();
+}
+__name(banksFromDrumMachineManifest, "banksFromDrumMachineManifest");
+var KIT_MAKERS = [
+  { prefix: "Roland", group: "Roland" },
+  { prefix: "Yamaha", group: "Yamaha" },
+  { prefix: "Akai", group: "Akai" },
+  { prefix: "Korg", group: "Korg" },
+  { prefix: "Boss", group: "Boss" },
+  { prefix: "Casio", group: "Casio" },
+  { prefix: "Alesis", group: "Alesis" },
+  { prefix: "Emu", group: "E-mu" },
+  { prefix: "Linn", group: "Linn" },
+  { prefix: "Oberheim", group: "Oberheim" },
+  { prefix: "SequentialCircuits", group: "Sequential" },
+  { prefix: "Simmons", group: "Simmons" }
+];
+var KIT_GROUP_ORDER = [
+  "Roland",
+  "Yamaha",
+  "Akai",
+  "Korg",
+  "Boss",
+  "Casio",
+  "Alesis",
+  "E-mu",
+  "Linn",
+  "Oberheim",
+  "Sequential",
+  "Simmons",
+  "Other"
+];
+function spaceCamel(s) {
+  return s.replace(/([a-z])([A-Z])/g, "$1 $2").trim();
+}
+__name(spaceCamel, "spaceCamel");
+function groupDrumKits(bankNames) {
+  if (!bankNames || bankNames.length === 0) return null;
+  const byGroup = /* @__PURE__ */ new Map();
+  for (const bank of bankNames) {
+    const maker = KIT_MAKERS.find((m) => bank.startsWith(m.prefix));
+    const group = maker?.group ?? "Other";
+    const rest = maker ? bank.slice(maker.prefix.length) : bank;
+    const label = spaceCamel(rest) || bank;
+    const opts = byGroup.get(group) ?? [];
+    opts.push({ value: bank, label });
+    byGroup.set(group, opts);
   }
+  const groups = [];
+  for (const group of KIT_GROUP_ORDER) {
+    const opts = byGroup.get(group);
+    if (opts && opts.length) {
+      groups.push({
+        group,
+        options: opts.sort((a, b) => a.label.localeCompare(b.label))
+      });
+    }
+  }
+  return groups.length ? groups : null;
 }
-__name(recompute, "recompute");
-function setSoundCatalogAccessor(fn) {
-  accessor2 = fn;
-  recompute();
-  listeners9.forEach((l) => l());
+__name(groupDrumKits, "groupDrumKits");
+function createCatalogStore() {
+  let accessor2 = null;
+  let cached = null;
+  const listeners9 = /* @__PURE__ */ new Set();
+  const recompute = /* @__PURE__ */ __name(() => {
+    if (!accessor2) {
+      cached = null;
+      return;
+    }
+    try {
+      cached = accessor2();
+    } catch {
+      cached = null;
+    }
+  }, "recompute");
+  const setAccessor = /* @__PURE__ */ __name((fn) => {
+    accessor2 = fn;
+    recompute();
+    listeners9.forEach((l) => l());
+  }, "setAccessor");
+  const notify5 = /* @__PURE__ */ __name(() => {
+    recompute();
+    listeners9.forEach((l) => l());
+  }, "notify");
+  const read2 = /* @__PURE__ */ __name(() => cached, "read");
+  const subscribe3 = /* @__PURE__ */ __name((listener) => {
+    listeners9.add(listener);
+    return () => listeners9.delete(listener);
+  }, "subscribe");
+  const useCatalog = /* @__PURE__ */ __name(() => React18__namespace.useSyncExternalStore(subscribe3, read2, () => null), "useCatalog");
+  return { setAccessor, notify: notify5, read: read2, useCatalog };
 }
-__name(setSoundCatalogAccessor, "setSoundCatalogAccessor");
-function notifySoundCatalogChanged() {
-  recompute();
-  listeners9.forEach((l) => l());
-}
-__name(notifySoundCatalogChanged, "notifySoundCatalogChanged");
-function readSoundCatalog() {
-  return cached;
-}
-__name(readSoundCatalog, "readSoundCatalog");
-function subscribe3(listener) {
-  listeners9.add(listener);
-  return () => listeners9.delete(listener);
-}
-__name(subscribe3, "subscribe");
-function useSoundCatalog() {
-  return React18__namespace.useSyncExternalStore(
-    subscribe3,
-    () => readSoundCatalog(),
-    () => null
-  );
-}
-__name(useSoundCatalog, "useSoundCatalog");
+__name(createCatalogStore, "createCatalogStore");
+var instrumentStore = createCatalogStore();
+var setSoundCatalogAccessor = instrumentStore.setAccessor;
+var notifySoundCatalogChanged = instrumentStore.notify;
+instrumentStore.read;
+var useSoundCatalog = instrumentStore.useCatalog;
+var drumKitStore = createCatalogStore();
+var setDrumKitAccessor = drumKitStore.setAccessor;
+var notifyDrumKitChanged = drumKitStore.notify;
+drumKitStore.read;
+var useDrumKitCatalog = drumKitStore.useCatalog;
 var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
 function parseManagedGain(raw) {
   const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
@@ -26673,6 +26743,7 @@ __name(SoundSelect, "SoundSelect");
 function Mixer() {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const liveInstruments = useSoundCatalog();
+  const liveKits = useDrumKitCatalog();
   const knobs = chunk ? knobsFromChunk(chunk) : [];
   const writeKnob = React18__namespace.useCallback(
     (entry, value) => {
@@ -26746,7 +26817,7 @@ function Mixer() {
           SoundSelect,
           {
             label: "Kit",
-            groups: DRUM_KITS,
+            groups: liveKits ?? DRUM_KITS,
             value: readChainMethod(chunk, ["bank"])?.value ?? "",
             placeholder: "Default kit",
             onChange: (v) => writeChainMethod(["bank"], "bank", v)
@@ -31240,7 +31311,7 @@ function usePopoutPreview({
 __name(usePopoutPreview, "usePopoutPreview");
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
-  const subscribe4 = React18.useCallback(
+  const subscribe3 = React18.useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -31252,7 +31323,7 @@ function useTrackMeta(fileId, trackId) {
     if (!fileId) return EMPTY_META;
     return getTrackMeta(fileId, trackId);
   }, [fileId, trackId]);
-  const meta = React18.useSyncExternalStore(subscribe4, getSnapshot, getSnapshot);
+  const meta = React18.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
   const set = React18.useCallback(
     (partial) => {
       if (!fileId) return;
@@ -33912,6 +33983,7 @@ exports.applyPersistedUiIconSize = applyPersistedUiIconSize;
 exports.applyPersistedVizQuality = applyPersistedVizQuality;
 exports.applyTheme = applyTheme;
 exports.backdropQualityFactor = backdropQualityFactor;
+exports.banksFromDrumMachineManifest = banksFromDrumMachineManifest;
 exports.buildAliasSuffix = buildAliasSuffix;
 exports.buildDefaultSnapshot = buildDefaultSnapshot;
 exports.bumpEditorFontSize = bumpEditorFontSize;
@@ -34025,6 +34097,7 @@ exports.getVizWorkerFactory = getVizWorkerFactory;
 exports.getVizWorkerOverride = getVizWorkerOverride;
 exports.getZoneCropOverride = getZoneCropOverride;
 exports.getZoneHeightOverride = getZoneHeightOverride;
+exports.groupDrumKits = groupDrumKits;
 exports.groupSoundCatalog = groupSoundCatalog;
 exports.hydraKaleidoscope = hydraKaleidoscope;
 exports.hydraPianoroll = hydraPianoroll;
@@ -34076,6 +34149,7 @@ exports.mountVizRenderer = mountVizRenderer;
 exports.normalizeEdits = normalizeEdits;
 exports.normalizeStrudelHap = normalizeStrudelHap;
 exports.noteToMidi = noteToMidi;
+exports.notifyDrumKitChanged = notifyDrumKitChanged;
 exports.notifySoundCatalogChanged = notifySoundCatalogChanged;
 exports.onAdaptivePerfChange = onAdaptivePerfChange;
 exports.onBackdropOpacityChange = onBackdropOpacityChange;
@@ -34164,6 +34238,7 @@ exports.setCaptureCapacity = setCaptureCapacity;
 exports.setChildOrder = setChildOrder;
 exports.setContent = setContent;
 exports.setCurrentCycleAccessor = setCurrentCycleAccessor;
+exports.setDrumKitAccessor = setDrumKitAccessor;
 exports.setEditorBackdropBlur = setEditorBackdropBlur;
 exports.setEditorFontSize = setEditorFontSize;
 exports.setEditorTheme = setEditorTheme;
