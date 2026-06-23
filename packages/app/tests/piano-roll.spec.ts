@@ -134,6 +134,44 @@ test.describe('Piano Roll (#383)', () => {
     await expect(grid.locator('[data-roll-cell="48:2"]')).toHaveAttribute('aria-pressed', 'true')
   })
 
+  test('a near-miss on the right edge resizes (not deletes) the note (#530)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 ~ ~ ~")')
+    const drawer = await openRoll(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    const cell = await grid.locator('[data-roll-cell="48:0"]').boundingBox()
+    const to = await grid.locator('[data-roll-cell="48:2"]').boundingBox()
+    if (!cell || !to) throw new Error('missing cells')
+    // grab the right edge but land ~6px short of it — a realistic miss inside the
+    // note body. Before #530 this started a move and a no-move release DELETED
+    // the note; now the right grab zone treats it as resize intent.
+    const x = cell.x + cell.width - 6
+    const y = cell.y + cell.height / 2
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(to.x + to.width / 2, y, { steps: 10 })
+    await page.mouse.up()
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: note("c3@3 ~")')
+    await expect(grid.locator('[data-roll-cell="48:2"]')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  test('a near-miss press with no drag does not delete the note (#530)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 ~ ~ ~")')
+    const drawer = await openRoll(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    const cell = await grid.locator('[data-roll-cell="48:0"]').boundingBox()
+    if (!cell) throw new Error('missing cell')
+    // press in the right grab zone, release without moving → resize intent, a
+    // no-move resize is a no-op (NOT a delete).
+    await page.mouse.move(cell.x + cell.width - 6, cell.y + cell.height / 2)
+    await page.mouse.down()
+    await page.mouse.up()
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: note("c3 ~ ~ ~")')
+  })
+
   test('pitch range stays put when a note is removed (#391)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c5 ~ ~ ~")') // c5 = midi 72

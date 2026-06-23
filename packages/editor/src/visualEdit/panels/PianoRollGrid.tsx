@@ -40,6 +40,18 @@ const DEFAULT_LO = 48 // c3
 const DEFAULT_HI = 72 // c5
 const MIN_SPAN = 12
 
+/**
+ * The right-edge grab zone of a note's tail cell, in px (#530). The visible
+ * handle is a thin strip, but a near-miss that lands a few px inside the body
+ * used to start a MOVE drag → a no-move release then DELETED the note
+ * (click-toggle), so "resize" read as "the note keeps vanishing". Treating the
+ * right `RESIZE_ZONE_PX` (or 40% of a wide cell) of the tail as resize-intent
+ * makes the edge reliably grabbable and non-destructive. Capped below half the
+ * cell so a centre click always stays in the move/delete area, even on a dense
+ * grid with narrow cells.
+ */
+const RESIZE_ZONE_PX = 8
+
 /** velocity lane height (px) and the drag distance that spans the full 0→1 */
 const LANE_HEIGHT = 48
 const VELOCITY_FULL_PX = 80
@@ -215,6 +227,16 @@ export function PianoRollGrid({
     }
     const note = noteAt(model, midi, step)
     if (note) {
+      // Pressing the right edge of the note's TAIL cell = resize intent (#530),
+      // even if the thin handle strip was missed. Widening this grab zone stops
+      // a near-miss from starting a move/delete instead of a resize.
+      const isTail = note.start + note.duration - 1 === step
+      const rect = e.currentTarget.getBoundingClientRect()
+      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, rect.width * 0.4))
+      if (isTail && e.clientX - rect.left >= rect.width - zone) {
+        onResizeDown(note)
+        return
+      }
       // a note: start a move drag; a press with no drag deletes it (onUp).
       dragRef.current = {
         mode: 'move',
@@ -523,7 +545,7 @@ export function PianoRollGrid({
                             top: 0,
                             bottom: 0,
                             right: 0,
-                            width: 5,
+                            width: RESIZE_ZONE_PX,
                             cursor: 'ew-resize',
                             background: 'var(--foreground, #e6e6ea)',
                             opacity: 0.45,
