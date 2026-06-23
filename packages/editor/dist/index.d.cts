@@ -8350,6 +8350,28 @@ interface MixerProps {
 declare function Mixer({ selected, onSelect, division, onDivisionChange, }?: MixerProps): React.ReactElement;
 
 /**
+ * tool — the Pattern grids' edit-tool model (#433, Logic-parity tool palette).
+ *
+ * Logic's Tool menu makes the grid's edit MODE explicit and selectable instead
+ * of purely context-inferred. Stave's grids already infer the gesture from
+ * context (empty cell → place, note → select/move, edge → resize, Delete →
+ * remove); a selected tool OVERRIDES that inference for the click/paint path.
+ *
+ * Phase 1 (#433) ships three working tools + three visible-but-disabled
+ * placeholders (their behaviour is Phase 2 — never a silent dead affordance):
+ *   - Pointer  → the existing smart gesture (select / move / resize)   [live]
+ *   - Pencil   → always draw (place note / step-on)                    [live]
+ *   - Eraser   → always remove (delete note / step-off)                [live]
+ *   - Velocity → velocity-drag tool                                    [Phase 2]
+ *   - Scissors → split a note                                          [Phase 2]
+ *   - Glue     → join adjacent notes                                   [Phase 2]
+ *
+ * Pure (no React/DOM) so the palette, both grids, and the future Phase-2
+ * Ctrl-Cmd temporary-tool all resolve gestures through one seam.
+ */
+type Tool = 'pointer' | 'pencil' | 'velocity' | 'eraser' | 'scissors' | 'glue';
+
+/**
  * Sequencer — drum/step grid (#382, per-column velocity #409).
  *
  * Parses the mini-notation of the `s(...)` / `sound(...)` statement under the
@@ -8375,8 +8397,10 @@ interface SequencerGridProps {
     /** the inspector's selected step (#432), owned by PatternPanel */
     selected?: SelectedNote | null;
     onSelect?: (sel: SelectedNote | null) => void;
+    /** the active edit tool (#433), owned by PatternPanel */
+    tool?: Tool;
 }
-declare function SequencerGrid({ selected, onSelect }?: SequencerGridProps): React.ReactElement;
+declare function SequencerGrid({ selected, onSelect, tool, }?: SequencerGridProps): React.ReactElement;
 
 /**
  * Piano Roll — note grid (#383, drag-move + range stability from #391).
@@ -8403,8 +8427,10 @@ interface PianoRollGridProps {
     onSelect?: (sel: SelectedNote | null) => void;
     /** snap/quantize division for move + resize (#432 Slice 2), owned by PatternPanel */
     division?: Division;
+    /** the active edit tool (#433), owned by PatternPanel */
+    tool?: Tool;
 }
-declare function PianoRollGrid({ selected, onSelect, division, }?: PianoRollGridProps): React.ReactElement;
+declare function PianoRollGrid({ selected, onSelect, division, tool, }?: PianoRollGridProps): React.ReactElement;
 
 /**
  * Pattern — the single adaptive visual-editing panel (#398).

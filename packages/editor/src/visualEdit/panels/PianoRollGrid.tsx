@@ -32,6 +32,7 @@ import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
+import { type Tool, DEFAULT_TOOL, resolveCellAction } from './tool'
 
 const ROLL_HINT = 'Click a melody to edit its notes.'
 
@@ -97,12 +98,15 @@ export interface PianoRollGridProps {
   onSelect?: (sel: SelectedNote | null) => void
   /** snap/quantize division for move + resize (#432 Slice 2), owned by PatternPanel */
   division?: Division
+  /** the active edit tool (#433), owned by PatternPanel */
+  tool?: Tool
 }
 
 export function PianoRollGrid({
   selected,
   onSelect,
   division = DEFAULT_DIVISION,
+  tool = DEFAULT_TOOL,
 }: PianoRollGridProps = {}): React.ReactElement {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<PianoRollModel>({
     source: 'roll',
@@ -202,6 +206,26 @@ export function PianoRollGrid({
 
   const onCellDown = (midi: number, step: number): void => {
     if (!model) return
+    // #433 — a selected Pencil/Eraser forces draw/erase, overriding the
+    // context-inferred select/move. Pointer (and not-yet-enabled tools) fall
+    // through to the existing smart gesture unchanged.
+    const action = resolveCellAction(tool)
+    if (action === 'erase') {
+      const hit = noteAt(model, midi, step)
+      if (hit) {
+        mutate((prev) => ({
+          ...prev,
+          notes: prev.notes.filter((n) => !(n.pitch === hit.pitch && n.start === hit.start)),
+        }))
+        select(null)
+      }
+      return
+    }
+    if (action === 'place') {
+      mutate((prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1))
+      select({ kind: 'roll', pitch: tokenForRow(!!model.numeric, midi), start: step })
+      return
+    }
     const note = noteAt(model, midi, step)
     if (note) {
       dragRef.current = {

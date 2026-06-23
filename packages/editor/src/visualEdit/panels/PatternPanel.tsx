@@ -27,6 +27,8 @@ import { VisualEditStandby } from './VisualEditStandby'
 import { PATTERN_TAB_ID } from './tabs'
 import type { SelectedNote } from './inspector'
 import { type Division, DEFAULT_DIVISION } from './division'
+import { type Tool, DEFAULT_TOOL } from './tool'
+import { ToolPalette } from './ToolPalette'
 
 /** width of the pinned Mixer column */
 const MIXER_WIDTH = 300
@@ -54,11 +56,16 @@ export function PatternPanel(): React.ReactElement {
   // (renders the picker) share one source.
   const [division, setDivision] = React.useState<Division>(DEFAULT_DIVISION)
 
+  // The active edit tool (#433). Like the division, a UI preference that
+  // PERSISTS across pattern switches (Logic keeps the tool selection global).
+  const [tool, setTool] = React.useState<Tool>(DEFAULT_TOOL)
+  const hasGrid = kind === 'step' || kind === 'roll'
+
   const grid =
     kind === 'step' ? (
-      <SequencerGrid selected={selected} onSelect={setSelected} />
+      <SequencerGrid selected={selected} onSelect={setSelected} tool={tool} />
     ) : kind === 'roll' ? (
-      <PianoRollGrid selected={selected} onSelect={setSelected} division={division} />
+      <PianoRollGrid selected={selected} onSelect={setSelected} division={division} tool={tool} />
     ) : (
       <VisualEditStandby
         panel={PATTERN_TAB_ID}
@@ -72,8 +79,21 @@ export function PatternPanel(): React.ReactElement {
       data-bottom-panel-tab="pattern"
       style={{ display: 'flex', height: '100%', width: '100%', minWidth: 0 }}
     >
-      {/* adaptive grid — Sequencer for drums, Piano Roll for melodies */}
-      <div data-pattern-grid style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
+      {/* adaptive grid — Sequencer for drums, Piano Roll for melodies. The tool
+          palette (#433) is a PINNED OVERLAY (top-left), not an in-flow row: any
+          element that takes vertical space above the grid shifts it down and
+          silently makes its move/resize drags inert (PV143, verified). The grid
+          keeps its full original layout; the toolbar floats over the top-left
+          like the NoteColor toggle floats top-right. */}
+      <div
+        data-pattern-grid
+        style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden', position: 'relative' }}
+      >
+        {hasGrid && (
+          <div style={{ position: 'absolute', top: 8, left: 12, zIndex: 4 }}>
+            <ToolPalette tool={tool} onTool={setTool} />
+          </div>
+        )}
         {grid}
       </div>
       {/* Mixer — pinned, constant across the grid switch */}

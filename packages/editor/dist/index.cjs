@@ -25847,6 +25847,28 @@ function setRollDuration(model, start, newDuration) {
   return resizeNote(model, start, newDuration);
 }
 __name(setRollDuration, "setRollDuration");
+
+// src/visualEdit/panels/tool.ts
+var TOOLS = [
+  { value: "pointer", label: "Pointer", icon: "inspect", enabled: true },
+  { value: "pencil", label: "Pencil", icon: "edit", enabled: true },
+  { value: "eraser", label: "Eraser", icon: "trash", enabled: true },
+  { value: "velocity", label: "Velocity", icon: "pulse", enabled: false },
+  { value: "scissors", label: "Scissors", icon: "split-horizontal", enabled: false },
+  { value: "glue", label: "Glue", icon: "link", enabled: false }
+];
+var DEFAULT_TOOL = "pointer";
+function resolveCellAction(tool) {
+  switch (tool) {
+    case "pencil":
+      return "place";
+    case "eraser":
+      return "erase";
+    default:
+      return "smart";
+  }
+}
+__name(resolveCellAction, "resolveCellAction");
 var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
 var VELOCITY_FULL_PX = 80;
 var DRAG_THRESHOLD = 4;
@@ -25865,7 +25887,11 @@ function gainInScope(model) {
   return new Set(model.lanes.map((l) => l.part ?? 0)).size === 1;
 }
 __name(gainInScope, "gainInScope");
-function SequencerGrid({ selected, onSelect } = {}) {
+function SequencerGrid({
+  selected,
+  onSelect,
+  tool = DEFAULT_TOOL
+} = {}) {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "seq",
     eligible: isStepChunk,
@@ -25944,6 +25970,22 @@ function SequencerGrid({ selected, onSelect } = {}) {
   }, [mutate, paintCell, endGesture, gainScoped]);
   const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current4, e) => {
     beginGesture();
+    const action = resolveCellAction(tool);
+    if (action !== "smart") {
+      const on = action === "place";
+      gestureRef.current = {
+        lane: laneIndex,
+        step: stepIndex,
+        startX: e.clientX,
+        startY: e.clientY,
+        startGain: 1,
+        mode: "paint",
+        paintValue: on
+      };
+      paintCell(laneIndex, stepIndex, on);
+      select(on ? { kind: "step", lane: laneIndex, step: stepIndex } : null);
+      return;
+    }
     if (current4) {
       select({ kind: "step", lane: laneIndex, step: stepIndex });
       gestureRef.current = {
@@ -26227,7 +26269,8 @@ __name(noteAt, "noteAt");
 function PianoRollGrid({
   selected,
   onSelect,
-  division: division2 = DEFAULT_DIVISION
+  division: division2 = DEFAULT_DIVISION,
+  tool = DEFAULT_TOOL
 } = {}) {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "roll",
@@ -26306,6 +26349,23 @@ function PianoRollGrid({
   }, "onBarDown");
   const onCellDown = /* @__PURE__ */ __name((midi, step) => {
     if (!model) return;
+    const action = resolveCellAction(tool);
+    if (action === "erase") {
+      const hit = noteAt(model, midi, step);
+      if (hit) {
+        mutate((prev) => ({
+          ...prev,
+          notes: prev.notes.filter((n) => !(n.pitch === hit.pitch && n.start === hit.start))
+        }));
+        select(null);
+      }
+      return;
+    }
+    if (action === "place") {
+      mutate((prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1));
+      select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
+      return;
+    }
     const note = noteAt(model, midi, step);
     if (note) {
       dragRef.current = {
@@ -27523,6 +27583,57 @@ function Mixer({
   );
 }
 __name(Mixer, "Mixer");
+function ToolPalette({ tool, onTool }) {
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "div",
+    {
+      "data-tool-palette": true,
+      role: "toolbar",
+      "aria-label": "grid tools",
+      style: {
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 2,
+        padding: "3px 4px",
+        borderRadius: 6,
+        border: "1px solid var(--border, #3a3a42)",
+        background: "var(--background-elevated, #26262c)",
+        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.35)"
+      },
+      children: TOOLS.map((t) => {
+        const active2 = tool === t.value;
+        return /* @__PURE__ */ jsxRuntime.jsx(
+          "button",
+          {
+            type: "button",
+            "data-tool": t.value,
+            "data-tool-active": active2 || void 0,
+            "aria-pressed": active2,
+            "aria-label": t.label,
+            title: t.enabled ? t.label : `${t.label} \u2014 coming in Phase 2`,
+            disabled: !t.enabled,
+            onClick: () => t.enabled && onTool(t.value),
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 26,
+              height: 24,
+              borderRadius: 4,
+              border: "1px solid transparent",
+              background: active2 ? "var(--accent, #6ea8fe)" : "transparent",
+              color: !t.enabled ? "var(--foreground-muted, #5a5a62)" : active2 ? "#fff" : "var(--foreground-muted, #a0a0aa)",
+              cursor: t.enabled ? "pointer" : "default"
+            },
+            children: /* @__PURE__ */ jsxRuntime.jsx("i", { className: `codicon codicon-${t.icon}`, "aria-hidden": "true", style: { fontSize: 14 } })
+          },
+          t.value
+        );
+      })
+    }
+  );
+}
+__name(ToolPalette, "ToolPalette");
 var MIXER_WIDTH = 300;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
@@ -27537,7 +27648,9 @@ function PatternPanel() {
     }
   }, [stmtId]);
   const [division2, setDivision] = React20__namespace.useState(DEFAULT_DIVISION);
-  const grid = kind === "step" ? /* @__PURE__ */ jsxRuntime.jsx(SequencerGrid, { selected, onSelect: setSelected }) : kind === "roll" ? /* @__PURE__ */ jsxRuntime.jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2 }) : /* @__PURE__ */ jsxRuntime.jsx(
+  const [tool, setTool] = React20__namespace.useState(DEFAULT_TOOL);
+  const hasGrid = kind === "step" || kind === "roll";
+  const grid = kind === "step" ? /* @__PURE__ */ jsxRuntime.jsx(SequencerGrid, { selected, onSelect: setSelected, tool }) : kind === "roll" ? /* @__PURE__ */ jsxRuntime.jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2, tool }) : /* @__PURE__ */ jsxRuntime.jsx(
     VisualEditStandby,
     {
       panel: PATTERN_TAB_ID,
@@ -27551,7 +27664,17 @@ function PatternPanel() {
       "data-bottom-panel-tab": "pattern",
       style: { display: "flex", height: "100%", width: "100%", minWidth: 0 },
       children: [
-        /* @__PURE__ */ jsxRuntime.jsx("div", { "data-pattern-grid": true, style: { flex: 1, minWidth: 0, height: "100%", overflow: "hidden" }, children: grid }),
+        /* @__PURE__ */ jsxRuntime.jsxs(
+          "div",
+          {
+            "data-pattern-grid": true,
+            style: { flex: 1, minWidth: 0, height: "100%", overflow: "hidden", position: "relative" },
+            children: [
+              hasGrid && /* @__PURE__ */ jsxRuntime.jsx("div", { style: { position: "absolute", top: 8, left: 12, zIndex: 4 }, children: /* @__PURE__ */ jsxRuntime.jsx(ToolPalette, { tool, onTool: setTool }) }),
+              grid
+            ]
+          }
+        ),
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {

@@ -35,6 +35,7 @@ import { sampleVoice } from './drumVoices'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
 import { type SelectedNote, setColumnGain } from './inspector'
+import { type Tool, DEFAULT_TOOL, resolveCellAction } from './tool'
 
 const SEQ_HINT = 'Click a drum pattern to edit it as a step grid.'
 
@@ -72,9 +73,15 @@ export interface SequencerGridProps {
   /** the inspector's selected step (#432), owned by PatternPanel */
   selected?: SelectedNote | null
   onSelect?: (sel: SelectedNote | null) => void
+  /** the active edit tool (#433), owned by PatternPanel */
+  tool?: Tool
 }
 
-export function SequencerGrid({ selected, onSelect }: SequencerGridProps = {}): React.ReactElement {
+export function SequencerGrid({
+  selected,
+  onSelect,
+  tool = DEFAULT_TOOL,
+}: SequencerGridProps = {}): React.ReactElement {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<StepGridModel>({
     source: 'seq',
     eligible: isStepChunk,
@@ -180,6 +187,25 @@ export function SequencerGrid({ selected, onSelect }: SequencerGridProps = {}): 
 
   const onCellDown = (laneIndex: number, stepIndex: number, current: boolean, e: React.PointerEvent): void => {
     beginGesture()
+    // #433 — a selected Pencil/Eraser forces draw/erase, overriding the
+    // context-inferred toggle. Both reuse the existing paint gesture (Pencil
+    // paints ON, Eraser paints OFF), so a drag keeps painting that value.
+    const action = resolveCellAction(tool)
+    if (action !== 'smart') {
+      const on = action === 'place'
+      gestureRef.current = {
+        lane: laneIndex,
+        step: stepIndex,
+        startX: e.clientX,
+        startY: e.clientY,
+        startGain: 1,
+        mode: 'paint',
+        paintValue: on,
+      }
+      paintCell(laneIndex, stepIndex, on)
+      select(on ? { kind: 'step', lane: laneIndex, step: stepIndex } : null)
+      return
+    }
     if (current) {
       // an ON cell: a plain click now SELECTS it (#432 — toggle-off moved to the
       // Delete key); a vertical drag still becomes velocity, a horizontal drag
