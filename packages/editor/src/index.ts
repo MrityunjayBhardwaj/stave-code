@@ -506,12 +506,18 @@ export {
 export { setCurrentCycleAccessor, readCurrentCycle } from './workspace/currentCycle'
 
 // Live instrument registry (#514 / PV141 #6) — the app registers a reader over
-// superdough's soundMap; the Mixer's instrument picker enumerates it live.
+// superdough's soundMap; the Mixer's instrument picker enumerates it live. The
+// Kit picker (#515) enumerates drum banks from the tidal-drum-machines manifest.
 export {
   setSoundCatalogAccessor,
   notifySoundCatalogChanged,
   groupSoundCatalog,
+  setDrumKitAccessor,
+  notifyDrumKitChanged,
+  groupDrumKits,
+  banksFromDrumMachineManifest,
   type SoundMapDict,
+  type DrumMachineManifest,
 } from './workspace/soundRegistry'
 
 // Visual-editing spine (#379) — chunk detection + tagged writeback + notation.

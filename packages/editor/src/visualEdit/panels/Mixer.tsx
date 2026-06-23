@@ -24,7 +24,7 @@ import { QUICK_TRANSFORMS } from './quickTransforms'
 import { patternKind } from './patternKind'
 import { readChainMethod } from './chainMethod'
 import { INSTRUMENTS, DRUM_KITS, type SoundGroup } from './soundCatalog'
-import { useSoundCatalog } from '../../workspace/soundRegistry'
+import { useSoundCatalog, useDrumKitCatalog } from '../../workspace/soundRegistry'
 
 /**
  * A per-column `.gain("…")` velocity string the grid authored — flat numeric
@@ -181,6 +181,9 @@ export function Mixer(): React.ReactElement {
   // to INSTRUMENTS until the live list is available. MUST be called before the
   // standby early-return below — hooks run unconditionally (React rules-of-hooks).
   const liveInstruments = useSoundCatalog()
+  // Live drum-kit registry (#515 / PV141 #6) — bank names from the
+  // tidal-drum-machines manifest; fall back to curated DRUM_KITS until ready.
+  const liveKits = useDrumKitCatalog()
 
   const knobs = chunk ? knobsFromChunk(chunk) : []
 
@@ -269,7 +272,7 @@ export function Mixer(): React.ReactElement {
       {kind === 'step' && (
         <SoundSelect
           label="Kit"
-          groups={DRUM_KITS}
+          groups={liveKits ?? DRUM_KITS}
           value={readChainMethod(chunk, ['bank'])?.value ?? ''}
           placeholder="Default kit"
           onChange={(v) => writeChainMethod(['bank'], 'bank', v)}

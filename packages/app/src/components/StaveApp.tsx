@@ -81,7 +81,11 @@ import {
   setSoundCatalogAccessor,
   notifySoundCatalogChanged,
   groupSoundCatalog,
+  setDrumKitAccessor,
+  groupDrumKits,
+  banksFromDrumMachineManifest,
   type SoundMapDict,
+  type DrumMachineManifest,
 } from "@stave/editor";
 import {
   applyPersistedPerfEnabled,
@@ -696,6 +700,39 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     return () => {
       window.clearInterval(id);
       setSoundCatalogAccessor(null);
+    };
+  }, []);
+
+  // #515 / PV141 #6 — enumerate live drum banks for the Mixer's Kit picker.
+  // Banks load from the tidal-drum-machines manifest (its keys are
+  // `Bank_voice`), which the engine also fetches at boot (StrudelEngine.ts:365),
+  // so this is usually an HTTP-cache hit. We fetch once, derive the distinct
+  // bank names, and register the kit reader; until it resolves (or on any fetch
+  // error) the picker falls back to the curated DRUM_KITS.
+  useEffect(() => {
+    // Same CDN base as StrudelEngine.ts:365 — kept in sync by grep if it moves.
+    const MANIFEST_URL = "https://strudel.b-cdn.net/tidal-drum-machines.json";
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(MANIFEST_URL);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const manifest = (await res.json()) as DrumMachineManifest;
+        if (cancelled) return;
+        const banks = banksFromDrumMachineManifest(manifest);
+        // setDrumKitAccessor recomputes + notifies subscribers internally; the
+        // manifest is static so one set is enough (no polling, unlike soundMap).
+        setDrumKitAccessor(() => groupDrumKits(banks));
+      } catch (e) {
+        console.warn(
+          "[StaveApp] drum-machine manifest fetch failed; Kit picker using curated list.",
+          e,
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+      setDrumKitAccessor(null);
     };
   }, []);
 
