@@ -26,6 +26,7 @@ import { Mixer } from './Mixer'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PATTERN_TAB_ID } from './tabs'
 import type { SelectedNote } from './inspector'
+import { type Division, DEFAULT_DIVISION } from './division'
 
 /** width of the pinned Mixer column */
 const MIXER_WIDTH = 300
@@ -47,11 +48,17 @@ export function PatternPanel(): React.ReactElement {
     }
   }, [stmtId])
 
+  // The Piano Roll snap/quantize division (#432 Slice 2). A UI preference, so —
+  // unlike the selection — it PERSISTS across pattern switches (Logic keeps the
+  // Snap value global). Owned here so the grid (snaps to it) and the Mixer
+  // (renders the picker) share one source.
+  const [division, setDivision] = React.useState<Division>(DEFAULT_DIVISION)
+
   const grid =
     kind === 'step' ? (
       <SequencerGrid selected={selected} onSelect={setSelected} />
     ) : kind === 'roll' ? (
-      <PianoRollGrid selected={selected} onSelect={setSelected} />
+      <PianoRollGrid selected={selected} onSelect={setSelected} division={division} />
     ) : (
       <VisualEditStandby
         panel={PATTERN_TAB_ID}
@@ -80,7 +87,12 @@ export function PatternPanel(): React.ReactElement {
           borderLeft: '1px solid var(--border, #3a3a42)',
         }}
       >
-        <Mixer selected={selected} onSelect={setSelected} />
+        <Mixer
+          selected={selected}
+          onSelect={setSelected}
+          division={division}
+          onDivisionChange={setDivision}
+        />
       </div>
     </div>
   )
