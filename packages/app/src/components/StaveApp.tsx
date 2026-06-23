@@ -78,6 +78,10 @@ import {
   readPersistedOpen,
   readPersistedActiveTabId,
   setCurrentCycleAccessor,
+  setSoundCatalogAccessor,
+  notifySoundCatalogChanged,
+  groupSoundCatalog,
+  type SoundMapDict,
 } from "@stave/editor";
 import {
   applyPersistedPerfEnabled,
@@ -658,6 +662,41 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   useEffect(() => {
     setCurrentCycleAccessor(() => getCycleRef.current());
     return () => setCurrentCycleAccessor(null);
+  }, []);
+
+  // #514 / PV141 #6 — expose the live instrument registry (superdough's
+  // `soundMap`) to the editor-seeded Mixer picker. The app owns superdough; the
+  // panel reads the grouped catalog through `useSoundCatalog` and falls back to
+  // the curated list until this is available. The soundMap grows async as CDN
+  // samples load, so we poll and notify while the count is still changing, then
+  // stop once it settles (the store's own subscribe API isn't contractual).
+  useEffect(() => {
+    const readDict = (): SoundMapDict | null =>
+      (globalThis as unknown as { soundMap?: { get?: () => SoundMapDict } })
+        .soundMap?.get?.() ?? null;
+    setSoundCatalogAccessor(() => groupSoundCatalog(readDict()));
+    let lastCount = -1;
+    let stable = 0;
+    const tick = () => {
+      const dict = readDict();
+      const count = dict ? Object.keys(dict).length : 0;
+      if (count !== lastCount) {
+        lastCount = count;
+        stable = 0;
+        notifySoundCatalogChanged();
+      } else {
+        stable += 1;
+      }
+    };
+    const id = window.setInterval(() => {
+      tick();
+      if (stable >= 4) window.clearInterval(id); // count settled → stop polling
+    }, 1500);
+    tick();
+    return () => {
+      window.clearInterval(id);
+      setSoundCatalogAccessor(null);
+    };
   }, []);
 
   const refreshProjects = useCallback(async () => {
