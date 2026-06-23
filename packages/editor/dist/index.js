@@ -26098,6 +26098,7 @@ var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
+var RESIZE_ZONE_PX = 8;
 var LANE_HEIGHT = 48;
 var VELOCITY_FULL_PX2 = 80;
 var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
@@ -26211,6 +26212,13 @@ function PianoRollGrid({
     }
     const note = noteAt(model, midi, step);
     if (note) {
+      const isTail = note.start + note.duration - 1 === step;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, rect.width * 0.4));
+      if (isTail && e.clientX - rect.left >= rect.width - zone) {
+        onResizeDown(note);
+        return;
+      }
       dragRef.current = {
         mode: "move",
         baseNotes: model.notes.filter((n) => n !== note),
@@ -26467,7 +26475,7 @@ function PianoRollGrid({
                                   top: 0,
                                   bottom: 0,
                                   right: 0,
-                                  width: 5,
+                                  width: RESIZE_ZONE_PX,
                                   cursor: "ew-resize",
                                   background: "var(--foreground, #e6e6ea)",
                                   opacity: 0.45,
