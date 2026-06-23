@@ -1,9 +1,10 @@
 /**
  * Copy / paste notes — #528.
  *
- * Real-browser proof of the simple model: ⌘/Ctrl-click selects a note, ⌘/Ctrl-C
- * copies it, ⌘/Ctrl-V pastes a copy right after itself (same pitch + velocity),
- * and repeated paste tiles it forward.
+ * The simple model: ⌘/Ctrl-click selects a cell, ⌘/Ctrl-C copies the note there,
+ * ⌘/Ctrl-click a target cell, ⌘/Ctrl-V stamps the copied note's shape (duration
+ * + velocity) at the target, replacing whatever's there. ⌘-click is select-only
+ * (no add/delete — that's plain click).
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
 
@@ -55,7 +56,7 @@ async function openPattern(page: Page): Promise<Locator> {
 }
 
 test.describe('Copy/paste notes (#528)', () => {
-  test('⌘-click selects, ⌘C copies, ⌘V pastes + tiles forward', async ({ page }) => {
+  test('⌘-click selects (no edit); ⌘C + ⌘-click target + ⌘V pastes there', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
     await boot(page)
@@ -63,40 +64,36 @@ test.describe('Copy/paste notes (#528)', () => {
     const drawer = await openPattern(page)
     const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
 
-    // ⌘-click c3 → selects it (no move/place)
+    // ⌘-click c3 → SELECTS it (does NOT delete — that's plain click)
     await grid.locator('[data-roll-cell="48:0"]').click({ modifiers: ['Meta'] })
     await expect(grid.locator('[data-roll-cell="48:0"]')).toHaveAttribute('data-roll-selected', 'true')
-    expect(await strudelValue(page)).toBe('$: note("c3 ~ ~ ~ ~ ~ ~ ~")') // select didn't edit
+    expect(await strudelValue(page)).toBe('$: note("c3 ~ ~ ~ ~ ~ ~ ~")') // unchanged
 
-    // ⌘C then ⌘V → a copy lands at step 1 (right after)
+    // ⌘C, then ⌘-click an empty target cell (c3 row, step 3), then ⌘V → paste there
     await page.keyboard.press('Meta+c')
+    await grid.locator('[data-roll-cell="48:3"]').click({ modifiers: ['Meta'] })
+    await expect(grid.locator('[data-roll-cell="48:3"]')).toHaveAttribute('data-roll-selected', 'true')
     await page.keyboard.press('Meta+v')
-    await page.waitForTimeout(100)
-    expect(await strudelValue(page)).toBe('$: note("c3 c3 ~ ~ ~ ~ ~ ~")')
-
-    // ⌘V again → tiles forward to step 2
-    await page.keyboard.press('Meta+v')
-    await page.waitForTimeout(100)
-    expect(await strudelValue(page)).toBe('$: note("c3 c3 c3 ~ ~ ~ ~ ~")')
+    await page.waitForTimeout(120)
+    expect(await strudelValue(page)).toBe('$: note("c3 ~ ~ c3 ~ ~ ~ ~")')
 
     expect(errors).toEqual([])
   })
 
-  test('paste preserves velocity (gain) of the copied note', async ({ page }) => {
+  test('paste carries the copied velocity', async ({ page }) => {
     await boot(page)
-    // c3 at a softened gain; copy it and the paste should carry the same gain
     await setStrudelCode(page, '$: note("c3 ~ ~ ~").gain("0.5 ~ ~ ~")')
     const drawer = await openPattern(page)
     const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
 
+    // copy the soft c3, ⌘-click an empty c3-row target (step 2), ⌘V → c3 @ 0.5
     await grid.locator('[data-roll-cell="48:0"]').click({ modifiers: ['Meta'] })
     await page.keyboard.press('Meta+c')
+    await grid.locator('[data-roll-cell="48:2"]').click({ modifiers: ['Meta'] })
     await page.keyboard.press('Meta+v')
     await page.waitForTimeout(120)
-    // the pasted note at step 1 carries the 0.5 gain (exact gain-string shape is
-    // serializer-owned; assert both the note and a non-neutral gain landed)
     const src = await strudelValue(page)
-    expect(src).toContain('note("c3 c3 ~ ~")')
-    expect(src).toContain('0.5')
+    expect(src).toContain('note("c3 ~ c3 ~")')
+    expect(src).toContain('0.5') // the pasted note carries the copied 0.5 velocity
   })
 })

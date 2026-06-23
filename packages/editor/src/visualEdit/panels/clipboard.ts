@@ -2,20 +2,18 @@
  * clipboard — copy/paste of Pattern-grid notes (#528).
  *
  * A tiny session-level clipboard (module singleton, so a copy survives a grid
- * remount / pattern switch, like a real clipboard). Holds one note's musical
- * data — pitch token, start column, duration, gain — captured on ⌘/Ctrl-C and
- * re-placed on ⌘/Ctrl-V.
+ * remount / pattern switch, like a real clipboard). Holds the copied note's
+ * SHAPE — pitch token, duration, gain — captured on ⌘/Ctrl-C.
  *
- * Paste lands the note RIGHT AFTER itself (`start + duration`) and advances the
- * clip to that spot, so repeated paste tiles the note forward one length at a
- * time. Pure placement helpers live here so the offset logic is unit-testable;
- * the grid does the actual `placeNote` + gain write-back.
+ * Paste lands at the CURRENTLY-SELECTED cell (⌘/Ctrl-click chooses the target
+ * position): the clip's duration + velocity are stamped at the selected
+ * pitch + step, replacing any note already there. So the flow is
+ * ⌘-click a note → ⌘C → ⌘-click a target cell → ⌘V.
  */
 
 export interface NoteClip {
-  /** the pitch token as written (`c3`, `60`) */
+  /** the copied note's pitch token (`c3`, `60`) — kept for reference */
   pitch: string
-  start: number
   duration: number
   /** 0…1 (may exceed 1); copied so paste preserves velocity */
   gain: number
@@ -29,14 +27,4 @@ export function setNoteClip(c: NoteClip | null): void {
 
 export function getNoteClip(): NoteClip | null {
   return clip
-}
-
-/** the start column a paste of `clip` lands on — right after the clip. */
-export function pasteTarget(c: NoteClip): number {
-  return c.start + c.duration
-}
-
-/** the clip advanced to its paste position, so the next paste tiles forward. */
-export function advanceClip(c: NoteClip): NoteClip {
-  return { ...c, start: pasteTarget(c) }
 }

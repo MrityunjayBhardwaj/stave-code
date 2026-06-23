@@ -25733,76 +25733,11 @@ function NoteColorToggle() {
 }
 __name(NoteColorToggle, "NoteColorToggle");
 
-// src/visualEdit/notation/place.ts
-function placeNote(model, pitch, start, duration) {
-  const groupAt = model.notes.find((n) => n.start === start);
-  if (groupAt) {
-    return { ...model, notes: [...model.notes, { pitch, start, duration: groupAt.duration }] };
-  }
-  const nextStart = Math.min(
-    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-    model.steps
-  );
-  const notes = model.notes.map(
-    (n) => n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
-  );
-  notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
-  return { ...model, notes };
-}
-__name(placeNote, "placeNote");
-function resizeNote(model, start, duration) {
-  const nextStart = Math.min(
-    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-    model.steps
-  );
-  const capped = Math.max(1, Math.min(duration, nextStart - start));
-  return {
-    ...model,
-    notes: model.notes.map((n) => n.start === start ? { ...n, duration: capped } : n)
-  };
-}
-__name(resizeNote, "resizeNote");
-
 // src/visualEdit/panels/inspector.ts
-var VELOCITY_MAX = 127;
-var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
-function gainToVelocity(gain) {
-  return Math.round(clamp012(gain) * VELOCITY_MAX);
-}
-__name(gainToVelocity, "gainToVelocity");
-function velocityToGain(velocity) {
-  const v = Math.max(0, Math.min(VELOCITY_MAX, Math.round(velocity)));
-  return v / VELOCITY_MAX;
-}
-__name(velocityToGain, "velocityToGain");
 function gainAtStart(model, start) {
   return model.notes.find((n) => n.start === start)?.gain ?? 1;
 }
 __name(gainAtStart, "gainAtStart");
-function resolveRollFields(model, sel) {
-  const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start);
-  if (!note) return null;
-  return {
-    kind: "roll",
-    pitch: note.pitch,
-    midi: pitchToMidi(note.pitch),
-    velocity: gainToVelocity(note.gain ?? 1),
-    position: note.start,
-    length: note.duration
-  };
-}
-__name(resolveRollFields, "resolveRollFields");
-function resolveStepFields(model, sel) {
-  const lane = model.lanes[sel.lane];
-  if (!lane || sel.step >= lane.cells.length || !lane.cells[sel.step]) return null;
-  return {
-    kind: "step",
-    sound: lane.sound,
-    velocity: gainToVelocity(model.gains?.[sel.step] ?? 1),
-    position: sel.step
-  };
-}
-__name(resolveStepFields, "resolveStepFields");
 function setGroupGain(model, start, gain) {
   return {
     ...model,
@@ -25817,40 +25752,10 @@ function setColumnGain(model, stepIndex, gain) {
   return { ...model, gains };
 }
 __name(setColumnGain, "setColumnGain");
-function rollPitchToken(model, midi) {
-  return model.numeric ? String(midi) : midiToPitch(midi);
-}
-__name(rollPitchToken, "rollPitchToken");
-function setRollPitch(model, sel, newMidi) {
-  const token = rollPitchToken(model, newMidi);
-  if (token === sel.pitch) return model;
-  if (model.notes.some((n) => n.start === sel.start && n.pitch === token)) return model;
-  return {
-    ...model,
-    notes: model.notes.map(
-      (n) => n.pitch === sel.pitch && n.start === sel.start ? { ...n, pitch: token } : n
-    )
-  };
-}
-__name(setRollPitch, "setRollPitch");
-function setRollStart(model, sel, newStart) {
-  const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start);
-  if (!note) return model;
-  const clamped = Math.max(0, Math.min(newStart, model.steps - 1));
-  if (clamped === note.start) return model;
-  const base = model.notes.filter((n) => n !== note);
-  const dur = Math.max(1, Math.min(note.duration, model.steps - clamped));
-  return { ...model, notes: [...base, { ...note, start: clamped, duration: dur }] };
-}
-__name(setRollStart, "setRollStart");
-function setRollDuration(model, start, newDuration) {
-  return resizeNote(model, start, newDuration);
-}
-__name(setRollDuration, "setRollDuration");
 var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
 var VELOCITY_FULL_PX = 80;
 var DRAG_THRESHOLD = 4;
-var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function toggleCell(model, laneIndex, stepIndex, value) {
   return {
     ...model,
@@ -25865,7 +25770,7 @@ function gainInScope(model) {
   return new Set(model.lanes.map((l) => l.part ?? 0)).size === 1;
 }
 __name(gainInScope, "gainInScope");
-function SequencerGrid({ selected, onSelect } = {}) {
+function SequencerGrid() {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "seq",
     eligible: isStepChunk,
@@ -25876,11 +25781,6 @@ function SequencerGrid({ selected, onSelect } = {}) {
   });
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const onSelectRef = React20__namespace.useRef(onSelect);
-  onSelectRef.current = onSelect;
-  const selectedRef = React20__namespace.useRef(selected);
-  selectedRef.current = selected;
-  const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
   const gestureRef = React20__namespace.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
   const paintCell = React20__namespace.useCallback(
@@ -25925,7 +25825,7 @@ function SequencerGrid({ selected, onSelect } = {}) {
         }
       }
       if (g.mode === "velocity") {
-        const next = clamp013(g.startGain - dy / VELOCITY_FULL_PX);
+        const next = clamp012(g.startGain - dy / VELOCITY_FULL_PX);
         mutate((prev) => setColumnGain(prev, g.step, next));
       }
     }, "onMove");
@@ -25933,6 +25833,7 @@ function SequencerGrid({ selected, onSelect } = {}) {
       const g = gestureRef.current;
       if (!g) return;
       gestureRef.current = null;
+      if (g.mode === "pending") paintCell(g.lane, g.step, false);
       endGesture();
     }, "onUp");
     window.addEventListener("pointermove", onMove);
@@ -25945,7 +25846,6 @@ function SequencerGrid({ selected, onSelect } = {}) {
   const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current4, e) => {
     beginGesture();
     if (current4) {
-      select({ kind: "step", lane: laneIndex, step: stepIndex });
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
@@ -25966,7 +25866,6 @@ function SequencerGrid({ selected, onSelect } = {}) {
         paintValue: true
       };
       paintCell(laneIndex, stepIndex, true);
-      select({ kind: "step", lane: laneIndex, step: stepIndex });
     }
   }, "onCellDown");
   const onCellEnter = /* @__PURE__ */ __name((laneIndex, stepIndex) => {
@@ -25974,12 +25873,6 @@ function SequencerGrid({ selected, onSelect } = {}) {
     if (!g || g.mode !== "paint") return;
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
-  const removeSelected = /* @__PURE__ */ __name(() => {
-    const sel = selectedRef.current;
-    if (!sel || sel.kind !== "step") return;
-    paintCell(sel.lane, sel.step, false);
-    select(null);
-  }, "removeSelected");
   if (!model) {
     return React20__namespace.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
@@ -25992,14 +25885,6 @@ function SequencerGrid({ selected, onSelect } = {}) {
     "div",
     {
       "data-bottom-panel-tab": "sequencer",
-      tabIndex: 0,
-      onPointerDownCapture: (e) => e.currentTarget.focus({ preventScroll: true }),
-      onKeyDown: (e) => {
-        if (e.key === "Delete" || e.key === "Backspace") {
-          e.preventDefault();
-          removeSelected();
-        }
-      },
       style: {
         padding: 16,
         height: "100%",
@@ -26075,7 +25960,6 @@ function SequencerGrid({ selected, onSelect } = {}) {
             /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((on, stepIndex) => {
               const gain = model.gains?.[stepIndex] ?? 1;
               const isPlaying = stepIndex === playingStep;
-              const isSel = on && selected?.kind === "step" && selected.lane === laneIndex && selected.step === stepIndex;
               return /* @__PURE__ */ jsxRuntime.jsx(
                 "button",
                 {
@@ -26083,7 +25967,6 @@ function SequencerGrid({ selected, onSelect } = {}) {
                   "aria-pressed": on,
                   "aria-label": `${lane.sound} step ${stepIndex + 1}`,
                   "data-seq-cell": `${laneIndex}:${stepIndex}`,
-                  "data-seq-selected": isSel ? "true" : void 0,
                   "data-gain": on && gainScoped ? gain : void 0,
                   "data-playing": isPlaying ? "true" : void 0,
                   onPointerDown: (e) => {
@@ -26104,9 +25987,7 @@ function SequencerGrid({ selected, onSelect } = {}) {
                     // subtle gap at each bar boundary
                     marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
                     background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-                    cursor: gainScoped && on ? "ns-resize" : "pointer",
-                    // selection ring (#432), distinct from the playhead border
-                    boxShadow: isSel ? "inset 0 0 0 2px var(--foreground, #e6e6ea)" : void 0
+                    cursor: gainScoped && on ? "ns-resize" : "pointer"
                   },
                   children: on && // bottom-anchored fill = velocity (full when neutral); when
                   // gain is out of scope it always reads full, so the cell
@@ -26122,7 +26003,7 @@ function SequencerGrid({ selected, onSelect } = {}) {
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        height: `${clamp013(gainScoped ? gain : 1) * 100}%`,
+                        height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
                         background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
                         pointerEvents: "none"
                       }
@@ -26167,6 +26048,36 @@ function SequencerGrid({ selected, onSelect } = {}) {
 }
 __name(SequencerGrid, "SequencerGrid");
 
+// src/visualEdit/notation/place.ts
+function placeNote(model, pitch, start, duration) {
+  const groupAt = model.notes.find((n) => n.start === start);
+  if (groupAt) {
+    return { ...model, notes: [...model.notes, { pitch, start, duration: groupAt.duration }] };
+  }
+  const nextStart = Math.min(
+    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+    model.steps
+  );
+  const notes = model.notes.map(
+    (n) => n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
+  );
+  notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
+  return { ...model, notes };
+}
+__name(placeNote, "placeNote");
+function resizeNote(model, start, duration) {
+  const nextStart = Math.min(
+    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+    model.steps
+  );
+  const capped = Math.max(1, Math.min(duration, nextStart - start));
+  return {
+    ...model,
+    notes: model.notes.map((n) => n.start === start ? { ...n, duration: capped } : n)
+  };
+}
+__name(resizeNote, "resizeNote");
+
 // src/visualEdit/panels/division.ts
 var DIVISIONS = [
   { value: "grid", label: "Grid", notesPerBar: null },
@@ -26209,21 +26120,13 @@ function getNoteClip() {
   return clip;
 }
 __name(getNoteClip, "getNoteClip");
-function pasteTarget(c) {
-  return c.start + c.duration;
-}
-__name(pasteTarget, "pasteTarget");
-function advanceClip(c) {
-  return { ...c, start: pasteTarget(c) };
-}
-__name(advanceClip, "advanceClip");
 var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
 var LANE_HEIGHT = 48;
 var VELOCITY_FULL_PX2 = 80;
-var clamp014 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function gainInScope2(model) {
   return !model.gainForeign && (model.bars ?? 1) === 1;
 }
@@ -26291,7 +26194,12 @@ function PianoRollGrid({
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
-      if (!d.moved && d.mode === "move") select({ kind: "roll", pitch: d.origPitch, start: d.origStart });
+      if (!d.moved && d.mode === "move") {
+        mutate((prev) => ({
+          ...prev,
+          notes: prev.notes.filter((n) => !(n.pitch === d.origPitch && n.start === d.origStart))
+        }));
+      }
       endGesture();
     }, "onUp");
     window.addEventListener("pointerup", onUp);
@@ -26301,7 +26209,7 @@ function PianoRollGrid({
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
-      const next = clamp014(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX2);
+      const next = clamp013(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX2);
       mutate((prev) => setGroupGain(prev, v.start, next));
     }, "onMove");
     const onUp = /* @__PURE__ */ __name(() => {
@@ -26319,15 +26227,12 @@ function PianoRollGrid({
   const onBarDown = /* @__PURE__ */ __name((start, e) => {
     if (!model) return;
     velRef.current = { start, startY: e.clientY, startGain: gainAtStart(model, start) };
-    const rep = model.notes.find((n) => n.start === start);
-    if (rep) select({ kind: "roll", pitch: rep.pitch, start });
     beginGesture();
   }, "onBarDown");
   const onCellDown = /* @__PURE__ */ __name((midi, step, e) => {
     if (!model) return;
     if (e.metaKey || e.ctrlKey) {
-      const hit = noteAt(model, midi, step);
-      select(hit ? { kind: "roll", pitch: hit.pitch, start: hit.start } : null);
+      select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
       return;
     }
     const note = noteAt(model, midi, step);
@@ -26345,7 +26250,6 @@ function PianoRollGrid({
       beginGesture();
     } else {
       mutate((prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1));
-      select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
     }
   }, "onCellDown");
   const onResizeDown = /* @__PURE__ */ __name((note) => {
@@ -26371,7 +26275,6 @@ function PianoRollGrid({
       if (interval) dur2 = Math.max(interval, snapColumn(d.origStart + dur2, interval) - d.origStart);
       mutate((prev) => resizeNote(prev, d.origStart, dur2));
       d.moved = true;
-      select({ kind: "roll", pitch: d.origPitch, start: d.origStart });
       return;
     }
     let newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1));
@@ -26386,7 +26289,6 @@ function PianoRollGrid({
     };
     mutate(() => moved);
     d.moved = true;
-    select({ kind: "roll", pitch: newPitch, start: newStart });
   }, "onCellEnter");
   const removeSelected = /* @__PURE__ */ __name(() => {
     const sel = selectedRef.current;
@@ -26402,16 +26304,19 @@ function PianoRollGrid({
     if (!model || !sel || sel.kind !== "roll") return;
     const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start);
     if (!note) return;
-    setNoteClip({ pitch: note.pitch, start: note.start, duration: note.duration, gain: note.gain ?? 1 });
+    setNoteClip({ pitch: note.pitch, duration: note.duration, gain: note.gain ?? 1 });
   }, "copySelected");
   const pasteClip = /* @__PURE__ */ __name(() => {
     const clip2 = getNoteClip();
-    if (!model || !clip2) return;
-    const target = pasteTarget(clip2);
-    if (target >= model.steps) return;
-    mutate((prev) => setGroupGain(placeNote(prev, clip2.pitch, target, clip2.duration), target, clip2.gain));
-    setNoteClip(advanceClip(clip2));
-    select({ kind: "roll", pitch: clip2.pitch, start: target });
+    const sel = selectedRef.current;
+    if (!model || !clip2 || !sel || sel.kind !== "roll") return;
+    mutate((prev) => {
+      const cleared = {
+        ...prev,
+        notes: prev.notes.filter((n) => !(n.start === sel.start && n.pitch === sel.pitch))
+      };
+      return setGroupGain(placeNote(cleared, sel.pitch, sel.start, clip2.duration), sel.start, clip2.gain);
+    });
   }, "pasteClip");
   if (!model) {
     return React20__namespace.createElement(VisualEditStandby, {
@@ -26543,7 +26448,7 @@ function PianoRollGrid({
                         const on = note !== void 0;
                         const isHead = on && note.start === step;
                         const isTail = on && note.start + note.duration - 1 === step;
-                        const isSel = on && selected?.kind === "roll" && note.pitch === selected.pitch && note.start === selected.start;
+                        const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
                         return /* @__PURE__ */ jsxRuntime.jsx(
                           "button",
                           {
@@ -26655,7 +26560,7 @@ function PianoRollGrid({
                                 left: 1,
                                 right: 1,
                                 bottom: 0,
-                                height: `${clamp014(g) * 100}%`,
+                                height: `${clamp013(g) * 100}%`,
                                 background: colorMode === "velocity" ? velocityColor(g) : "var(--accent, #6ea8fe)",
                                 borderRadius: 2,
                                 pointerEvents: "none"
@@ -27094,213 +26999,6 @@ var setDrumKitAccessor = drumKitStore.setAccessor;
 var notifyDrumKitChanged = drumKitStore.notify;
 drumKitStore.read;
 var useDrumKitCatalog = drumKitStore.useCatalog;
-var labelStyle = {
-  fontSize: 10,
-  color: "var(--foreground-muted, #a0a0aa)",
-  textTransform: "uppercase",
-  letterSpacing: 0.4
-};
-var valueStyle = {
-  fontSize: 13,
-  color: "var(--foreground, #e6e6ea)",
-  fontVariantNumeric: "tabular-nums"
-};
-var rowStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8
-};
-function Stepper({
-  field,
-  display,
-  onStep,
-  disabled
-}) {
-  const btn2 = {
-    width: 22,
-    height: 22,
-    padding: 0,
-    borderRadius: 4,
-    border: "1px solid var(--border, #3a3a42)",
-    background: "var(--background-elevated, #26262c)",
-    color: disabled ? "var(--foreground-muted, #6a6a72)" : "var(--foreground, #e6e6ea)",
-    cursor: disabled ? "default" : "pointer"
-  };
-  return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: rowStyle, children: [
-    /* @__PURE__ */ jsxRuntime.jsx("span", { style: labelStyle, children: field }),
-    /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
-      /* @__PURE__ */ jsxRuntime.jsx(
-        "button",
-        {
-          type: "button",
-          "aria-label": `${field} down`,
-          "data-inspector-step": `${field}:down`,
-          disabled,
-          onClick: () => onStep(-1),
-          style: btn2,
-          children: "\u2212"
-        }
-      ),
-      /* @__PURE__ */ jsxRuntime.jsx("span", { "data-inspector-value": field, style: { ...valueStyle, minWidth: 32, textAlign: "center" }, children: display }),
-      /* @__PURE__ */ jsxRuntime.jsx(
-        "button",
-        {
-          type: "button",
-          "aria-label": `${field} up`,
-          "data-inspector-step": `${field}:up`,
-          disabled,
-          onClick: () => onStep(1),
-          style: btn2,
-          children: "\uFF0B"
-        }
-      )
-    ] })
-  ] });
-}
-__name(Stepper, "Stepper");
-function Inspector({ selected, onSelect }) {
-  const rollGrid = useGridModel({
-    source: "roll",
-    eligible: isRollChunk,
-    parse: parsePianoRoll,
-    serialize: serializePianoRoll,
-    applyGain: applyRollGain,
-    serializeGain: serializeRollGain
-  });
-  const stepGrid = useGridModel({
-    source: "seq",
-    eligible: isStepChunk,
-    parse: parseStepGrid,
-    serialize: serializeStepGrid,
-    applyGain: applyStepGain,
-    serializeGain: serializeStepGain
-  });
-  if (!selected) return null;
-  if (selected.kind === "roll") {
-    const model2 = rollGrid.model;
-    if (!model2) return null;
-    const f2 = resolveRollFields(model2, selected);
-    if (!f2) return null;
-    const { mutate, beginGesture, endGesture } = rollGrid;
-    const stepPitch = /* @__PURE__ */ __name((delta) => {
-      if (f2.midi === null) return;
-      const newMidi = f2.midi + delta;
-      const token = rollPitchToken(model2, newMidi);
-      if (token === selected.pitch) return;
-      if (model2.notes.some((n) => n.start === selected.start && n.pitch === token)) return;
-      mutate((m) => setRollPitch(m, selected, newMidi));
-      onSelect?.({ kind: "roll", pitch: token, start: selected.start });
-    }, "stepPitch");
-    const stepPosition = /* @__PURE__ */ __name((delta) => {
-      const newStart = Math.max(0, Math.min(selected.start + delta, model2.steps - 1));
-      if (newStart === selected.start) return;
-      mutate((m) => setRollStart(m, selected, newStart));
-      onSelect?.({ kind: "roll", pitch: selected.pitch, start: newStart });
-    }, "stepPosition");
-    const stepLength = /* @__PURE__ */ __name((delta) => {
-      mutate((m) => setRollDuration(m, selected.start, f2.length + delta));
-    }, "stepLength");
-    const setVelocity = /* @__PURE__ */ __name((v) => {
-      mutate((m) => setGroupGain(m, selected.start, velocityToGain(v)));
-    }, "setVelocity");
-    return /* @__PURE__ */ jsxRuntime.jsxs(InspectorShell, { title: f2.pitch, children: [
-      /* @__PURE__ */ jsxRuntime.jsx(Stepper, { field: "pitch", display: f2.pitch, onStep: stepPitch, disabled: f2.midi === null }),
-      /* @__PURE__ */ jsxRuntime.jsx(
-        VelocityRow,
-        {
-          velocity: f2.velocity,
-          onChange: setVelocity,
-          onGestureStart: beginGesture,
-          onGestureEnd: endGesture
-        }
-      ),
-      /* @__PURE__ */ jsxRuntime.jsx(Stepper, { field: "position", display: String(f2.position + 1), onStep: stepPosition }),
-      /* @__PURE__ */ jsxRuntime.jsx(Stepper, { field: "length", display: String(f2.length), onStep: stepLength })
-    ] });
-  }
-  const model = stepGrid.model;
-  if (!model) return null;
-  const f = resolveStepFields(model, selected);
-  if (!f) return null;
-  return /* @__PURE__ */ jsxRuntime.jsxs(InspectorShell, { title: f.sound, children: [
-    /* @__PURE__ */ jsxRuntime.jsxs("div", { style: rowStyle, children: [
-      /* @__PURE__ */ jsxRuntime.jsx("span", { style: labelStyle, children: "sound" }),
-      /* @__PURE__ */ jsxRuntime.jsx("span", { "data-inspector-value": "sound", style: valueStyle, children: f.sound })
-    ] }),
-    /* @__PURE__ */ jsxRuntime.jsx(
-      VelocityRow,
-      {
-        velocity: f.velocity,
-        onChange: (v) => stepGrid.mutate((m) => setColumnGain(m, selected.step, velocityToGain(v))),
-        onGestureStart: stepGrid.beginGesture,
-        onGestureEnd: stepGrid.endGesture
-      }
-    ),
-    /* @__PURE__ */ jsxRuntime.jsxs("div", { style: rowStyle, children: [
-      /* @__PURE__ */ jsxRuntime.jsx("span", { style: labelStyle, children: "position" }),
-      /* @__PURE__ */ jsxRuntime.jsx("span", { "data-inspector-value": "position", style: valueStyle, children: f.position + 1 })
-    ] })
-  ] });
-}
-__name(Inspector, "Inspector");
-function InspectorShell({
-  title,
-  children
-}) {
-  return /* @__PURE__ */ jsxRuntime.jsxs(
-    "div",
-    {
-      "data-mixer-inspector": true,
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-        padding: 10,
-        borderRadius: 6,
-        border: "1px solid var(--border, #3a3a42)",
-        background: "var(--background, #1c1c20)"
-      },
-      children: [
-        /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { ...labelStyle, color: "var(--foreground, #e6e6ea)", fontSize: 11 }, children: [
-          "Note \xB7 ",
-          title
-        ] }),
-        children
-      ]
-    }
-  );
-}
-__name(InspectorShell, "InspectorShell");
-function VelocityRow({
-  velocity,
-  onChange,
-  onGestureStart,
-  onGestureEnd
-}) {
-  return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: rowStyle, children: [
-    /* @__PURE__ */ jsxRuntime.jsx("span", { style: labelStyle, children: "velocity" }),
-    /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
-      /* @__PURE__ */ jsxRuntime.jsx(
-        "input",
-        {
-          type: "range",
-          min: 0,
-          max: VELOCITY_MAX,
-          value: velocity,
-          "data-inspector-velocity": true,
-          "aria-label": "velocity",
-          onPointerDown: onGestureStart,
-          onPointerUp: onGestureEnd,
-          onChange: (e) => onChange(Number(e.target.value)),
-          style: { width: 120 }
-        }
-      ),
-      /* @__PURE__ */ jsxRuntime.jsx("span", { "data-inspector-value": "velocity", style: { ...valueStyle, minWidth: 28, textAlign: "right" }, children: velocity })
-    ] })
-  ] });
-}
-__name(VelocityRow, "VelocityRow");
 var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
 function parseManagedGain(raw) {
   const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
@@ -27442,12 +27140,7 @@ function DivisionSelect({
   );
 }
 __name(DivisionSelect, "DivisionSelect");
-function Mixer({
-  selected,
-  onSelect,
-  division: division2,
-  onDivisionChange
-} = {}) {
+function Mixer({ division: division2, onDivisionChange } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
@@ -27511,7 +27204,6 @@ function Mixer({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       },
       children: [
-        /* @__PURE__ */ jsxRuntime.jsx(Inspector, { selected, onSelect }),
         kind === "roll" && /* @__PURE__ */ jsxRuntime.jsx(
           SoundSelect,
           {
@@ -27587,7 +27279,7 @@ function PatternPanel() {
     }
   }, [stmtId]);
   const [division2, setDivision] = React20__namespace.useState(DEFAULT_DIVISION);
-  const grid = kind === "step" ? /* @__PURE__ */ jsxRuntime.jsx(SequencerGrid, { selected, onSelect: setSelected }) : kind === "roll" ? /* @__PURE__ */ jsxRuntime.jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2 }) : /* @__PURE__ */ jsxRuntime.jsx(
+  const grid = kind === "step" ? /* @__PURE__ */ jsxRuntime.jsx(SequencerGrid, {}) : kind === "roll" ? /* @__PURE__ */ jsxRuntime.jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2 }) : /* @__PURE__ */ jsxRuntime.jsx(
     VisualEditStandby,
     {
       panel: PATTERN_TAB_ID,
@@ -27613,15 +27305,7 @@ function PatternPanel() {
               overflow: "hidden",
               borderLeft: "1px solid var(--border, #3a3a42)"
             },
-            children: /* @__PURE__ */ jsxRuntime.jsx(
-              Mixer,
-              {
-                selected,
-                onSelect: setSelected,
-                division: division2,
-                onDivisionChange: setDivision
-              }
-            )
+            children: /* @__PURE__ */ jsxRuntime.jsx(Mixer, { division: division2, onDivisionChange: setDivision })
           }
         )
       ]

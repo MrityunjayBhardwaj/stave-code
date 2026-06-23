@@ -8297,35 +8297,6 @@ declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProp
 type Division = 'grid' | '1/4' | '1/8' | '1/16' | '1/8T' | '1/16T';
 
 /**
- * inspector — pure selection model + field resolution/edit transforms for the
- * Mixer-as-inspector (#432).
- *
- * A "selected note" is the event the inspector shows. It's a lightweight key
- * (not a reference), so it survives the model reseeds that every write triggers:
- *   - roll: a note is keyed by its `pitch` token + `start` column (chord members
- *     share `start` but differ in pitch);
- *   - step: a hit is keyed by `lane` index + `step` column.
- * Selection lives in `PatternPanel`; the grid sets it (click/edit) and the Mixer
- * reads it to resolve the event's fields and edit them.
- *
- * VELOCITY = `.gain` (grounded #427 Q1: Logic's 0–127 velocity maps to Stave's
- * per-note `.gain`, NOT `.velocity`). `setGroupGain`/`setColumnGain` live HERE so
- * the grid drag and the inspector field write the SAME `.gain` transform — one
- * path, no dual-representation drift (PV129).
- */
-
-/** The event the inspector is bound to, keyed by stable musical identity. */
-type SelectedNote = {
-    kind: 'roll';
-    pitch: string;
-    start: number;
-} | {
-    kind: 'step';
-    lane: number;
-    step: number;
-};
-
-/**
  * Mixer — the first write-back visual editor (#381).
  *
  * Finds the Strudel statement under the cursor (via `useActiveChunk`) and
@@ -8340,14 +8311,11 @@ type SelectedNote = {
  */
 
 interface MixerProps {
-    /** the inspector's selected note/step (#432), owned by PatternPanel */
-    selected?: SelectedNote | null;
-    onSelect?: (sel: SelectedNote | null) => void;
     /** Piano-Roll snap/quantize division (#432 Slice 2), owned by PatternPanel */
     division?: Division;
     onDivisionChange?: (d: Division) => void;
 }
-declare function Mixer({ selected, onSelect, division, onDivisionChange, }?: MixerProps): React.ReactElement;
+declare function Mixer({ division, onDivisionChange }?: MixerProps): React.ReactElement;
 
 /**
  * Sequencer — drum/step grid (#382, per-column velocity #409).
@@ -8371,12 +8339,38 @@ declare function Mixer({ selected, onSelect, division, onDivisionChange, }?: Mix
  * on EXTERNAL edits — see `useGridModel`.
  */
 
-interface SequencerGridProps {
-    /** the inspector's selected step (#432), owned by PatternPanel */
-    selected?: SelectedNote | null;
-    onSelect?: (sel: SelectedNote | null) => void;
-}
-declare function SequencerGrid({ selected, onSelect }?: SequencerGridProps): React.ReactElement;
+declare function SequencerGrid(): React.ReactElement;
+
+/**
+ * inspector — the Pattern grids' selection key + the shared `.gain` (velocity)
+ * write transforms.
+ *
+ * (Named for the former Mixer-as-inspector; the inspector panel was removed —
+ * pitch/position/velocity are read straight off the grid — but the selection
+ * KEY and the velocity transforms it shared with the grids live on. Selection
+ * is now the ⌘/Ctrl-click copy/paste target (#528); the velocity transforms are
+ * the grids' vertical-drag write path.)
+ *
+ * A "selected" cell is a lightweight key, not a reference, so it survives the
+ * model reseed every write triggers:
+ *   - roll: keyed by `pitch` token + `start` column;
+ *   - step: keyed by `lane` index + `step` column.
+ *
+ * VELOCITY = `.gain` (grounded #427 Q1). `setGroupGain`/`setColumnGain` live
+ * HERE so the grid drag writes the SAME `.gain` transform everywhere — one path,
+ * no dual-representation drift (PV129).
+ */
+
+/** The cell a grid has selected, keyed by stable musical identity. */
+type SelectedNote = {
+    kind: 'roll';
+    pitch: string;
+    start: number;
+} | {
+    kind: 'step';
+    lane: number;
+    step: number;
+};
 
 /**
  * Piano Roll — note grid (#383, drag-move + range stability from #391).

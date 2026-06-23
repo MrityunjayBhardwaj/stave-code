@@ -32,7 +32,7 @@ import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
-import { setNoteClip, getNoteClip, pasteTarget, advanceClip } from './clipboard'
+import { setNoteClip, getNoteClip } from './clipboard'
 
 const ROLL_HINT = 'Click a melody to edit its notes.'
 
@@ -161,10 +161,15 @@ export function PianoRollGrid({
       const d = dragRef.current
       if (!d) return
       dragRef.current = null
-      // a press with no move on a note body = a click → SELECT it (#432;
-      // removal moved to the Delete key). A no-move on the resize handle does
-      // nothing. A real drag already selected the note in onCellEnter.
-      if (!d.moved && d.mode === 'move') select({ kind: 'roll', pitch: d.origPitch, start: d.origStart })
+      // a press with no move on a note body = a click → DELETE it (click-toggle:
+      // click empty adds, click a note removes). A no-move on the resize handle
+      // does nothing; a real drag already moved/resized it.
+      if (!d.moved && d.mode === 'move') {
+        mutate((prev) => ({
+          ...prev,
+          notes: prev.notes.filter((n) => !(n.pitch === d.origPitch && n.start === d.origStart)),
+        }))
+      }
       endGesture()
     }
     window.addEventListener('pointerup', onUp)
@@ -196,23 +201,21 @@ export function PianoRollGrid({
   const onBarDown = (start: number, e: React.PointerEvent): void => {
     if (!model) return
     velRef.current = { start, startY: e.clientY, startGain: gainAtStart(model, start) }
-    const rep = model.notes.find((n) => n.start === start)
-    if (rep) select({ kind: 'roll', pitch: rep.pitch, start }) // inspect the group (#432)
     beginGesture()
   }
 
   const onCellDown = (midi: number, step: number, e: React.PointerEvent): void => {
     if (!model) return
-    // ⌘/Ctrl-click → SELECT the note for copy/paste (#528): no move/place, just
-    // bind the selection. Modifier-gated so it's independent of the plain-click
-    // gesture (and survives the future click-toggle revert, #527).
+    // ⌘/Ctrl-click → SELECT this cell (for copy/paste, #528): the position is a
+    // pitch token + step, so it works on an empty cell too (a paste target). No
+    // edit. Modifier-gated, independent of the plain-click toggle.
     if (e.metaKey || e.ctrlKey) {
-      const hit = noteAt(model, midi, step)
-      select(hit ? { kind: 'roll', pitch: hit.pitch, start: hit.start } : null)
+      select({ kind: 'roll', pitch: tokenForRow(!!model.numeric, midi), start: step })
       return
     }
     const note = noteAt(model, midi, step)
     if (note) {
+      // a note: start a move drag; a press with no drag deletes it (onUp).
       dragRef.current = {
         mode: 'move',
         baseNotes: model.notes.filter((n) => n !== note),
@@ -225,9 +228,8 @@ export function PianoRollGrid({
       }
       beginGesture()
     } else {
-      // empty cell → place a one-step note (its own undo) and select it (#432)
+      // empty cell → place a one-step note (its own undo). Direct edit, no select.
       mutate((prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1))
-      select({ kind: 'roll', pitch: tokenForRow(!!model.numeric, midi), start: step })
     }
   }
 
@@ -263,7 +265,6 @@ export function PianoRollGrid({
       if (interval) dur = Math.max(interval, snapColumn(d.origStart + dur, interval) - d.origStart)
       mutate((prev) => resizeNote(prev, d.origStart, dur))
       d.moved = true
-      select({ kind: 'roll', pitch: d.origPitch, start: d.origStart })
       return
     }
     let newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1))
@@ -280,7 +281,6 @@ export function PianoRollGrid({
     // that can't serialize (overlap) is dropped by useGridModel.
     mutate(() => moved)
     d.moved = true
-    select({ kind: 'roll', pitch: newPitch, start: newStart }) // follow the note (#432)
   }
 
   // Delete/Backspace removes the selected note (#432 — removal moved off the
@@ -295,27 +295,29 @@ export function PianoRollGrid({
     select(null)
   }
 
-  // ⌘/Ctrl-C → copy the selected note (pitch/start/duration/gain) to the
-  // session clipboard (#528).
+  // ⌘/Ctrl-C → copy the note at the selected cell (its shape: pitch/duration/
+  // gain) to the session clipboard (#528). No-op if the selected cell is empty.
   const copySelected = (): void => {
     const sel = selectedRef.current
     if (!model || !sel || sel.kind !== 'roll') return
     const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start)
     if (!note) return
-    setNoteClip({ pitch: note.pitch, start: note.start, duration: note.duration, gain: note.gain ?? 1 })
+    setNoteClip({ pitch: note.pitch, duration: note.duration, gain: note.gain ?? 1 })
   }
 
-  // ⌘/Ctrl-V → place the clip right after itself (same pitch + velocity), one
-  // undo, then advance the clip so repeated paste tiles forward. No-op when the
-  // paste would run off the grid (#528).
+  // ⌘/Ctrl-V → stamp the clip's duration + velocity at the SELECTED cell
+  // (⌘-clicked target), replacing any note already there. One undo (#528).
   const pasteClip = (): void => {
     const clip = getNoteClip()
-    if (!model || !clip) return
-    const target = pasteTarget(clip)
-    if (target >= model.steps) return
-    mutate((prev) => setGroupGain(placeNote(prev, clip.pitch, target, clip.duration), target, clip.gain))
-    setNoteClip(advanceClip(clip))
-    select({ kind: 'roll', pitch: clip.pitch, start: target })
+    const sel = selectedRef.current
+    if (!model || !clip || !sel || sel.kind !== 'roll') return
+    mutate((prev) => {
+      const cleared = {
+        ...prev,
+        notes: prev.notes.filter((n) => !(n.start === sel.start && n.pitch === sel.pitch)),
+      }
+      return setGroupGain(placeNote(cleared, sel.pitch, sel.start, clip.duration), sel.start, clip.gain)
+    })
   }
 
   if (!model) {
@@ -458,11 +460,12 @@ export function PianoRollGrid({
                   const on = note !== undefined
                   const isHead = on && note!.start === step
                   const isTail = on && note!.start + note!.duration - 1 === step
+                  // the ⌘-clicked copy/paste cell — highlighted whether or not a
+                  // note sits there, so an empty paste target is visible (#528).
                   const isSel =
-                    on &&
                     selected?.kind === 'roll' &&
-                    note!.pitch === selected.pitch &&
-                    note!.start === selected.start
+                    selected.start === step &&
+                    selected.pitch === tokenForRow(!!model.numeric, midi)
                   return (
                     <button
                       key={step}

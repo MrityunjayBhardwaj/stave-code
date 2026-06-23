@@ -35,9 +35,9 @@ export function PatternPanel(): React.ReactElement {
   const { chunk } = useActiveChunk()
   const kind = patternKind(chunk)
 
-  // The inspector's selected note/step (#432). Owned here so the grid (which
-  // sets it) and the Mixer (which reads + edits it) share one source. Cleared
-  // when the cursor moves to a different statement — selection is per-pattern.
+  // The copy/paste selection (#528) — a ⌘/Ctrl-clicked cell on the Piano Roll.
+  // Owned here so it survives the grid's own re-renders. Cleared when the cursor
+  // moves to a different statement — selection is per-pattern.
   const [selected, setSelected] = React.useState<SelectedNote | null>(null)
   const stmtId = chunk ? chunk.statementRange[0] : null
   const stmtRef = React.useRef<number | null>(stmtId)
@@ -56,7 +56,7 @@ export function PatternPanel(): React.ReactElement {
 
   const grid =
     kind === 'step' ? (
-      <SequencerGrid selected={selected} onSelect={setSelected} />
+      <SequencerGrid />
     ) : kind === 'roll' ? (
       <PianoRollGrid selected={selected} onSelect={setSelected} division={division} />
     ) : (
@@ -87,12 +87,7 @@ export function PatternPanel(): React.ReactElement {
           borderLeft: '1px solid var(--border, #3a3a42)',
         }}
       >
-        <Mixer
-          selected={selected}
-          onSelect={setSelected}
-          division={division}
-          onDivisionChange={setDivision}
-        />
+        <Mixer division={division} onDivisionChange={setDivision} />
       </div>
     </div>
   )
