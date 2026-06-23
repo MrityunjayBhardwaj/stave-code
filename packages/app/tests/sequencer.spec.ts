@@ -180,8 +180,9 @@ test.describe('Sequencer (#382)', () => {
     }
     await expect(grid.locator('[data-seq-cell="0:8"]')).toHaveCount(0) // no 9th column
 
-    // turning one step off expands the `*8` sugar into the canonical sequence
-    await grid.locator('[data-seq-cell="0:3"]').click()
+    // turning one step off (select + Delete, #432) expands the `*8` sugar
+    await grid.locator('[data-seq-cell="0:3"]').click() // select (no longer toggles off)
+    await page.keyboard.press('Delete') // turn off
     await page.waitForTimeout(100)
     expect(await strudelValue(page)).toBe('$: s("hh hh hh ~ hh hh hh hh")')
     await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveAttribute('aria-pressed', 'false')
@@ -228,8 +229,9 @@ test.describe('Sequencer (#382)', () => {
     }
     await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveCount(0) // no 4th column
 
-    // turning step 1 off expands the `!3` sugar into the canonical sequence
-    await grid.locator('[data-seq-cell="0:1"]').click()
+    // turning step 1 off (select + Delete, #432) expands the `!3` sugar
+    await grid.locator('[data-seq-cell="0:1"]').click() // select
+    await page.keyboard.press('Delete') // turn off
     await page.waitForTimeout(100)
     expect(await strudelValue(page)).toBe('$: s("bd ~ bd")')
     await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'false')
