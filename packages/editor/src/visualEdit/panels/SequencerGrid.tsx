@@ -34,6 +34,7 @@ import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice } from './drumVoices'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
+import { type SelectedNote, setColumnGain } from './inspector'
 
 const SEQ_HINT = 'Click a drum pattern to edit it as a step grid.'
 
@@ -61,21 +62,19 @@ function toggleCell(
   }
 }
 
-/** set one column's velocity (gains default to a neutral 1-filled array) */
-function setColumnGain(model: StepGridModel, stepIndex: number, gain: number): StepGridModel {
-  const gains = model.gains ? [...model.gains] : Array<number>(model.steps).fill(1)
-  if (gains[stepIndex] === gain) return model
-  gains[stepIndex] = gain
-  return { ...model, gains }
-}
-
 /** velocity is grid-aligned only for single-part, single-bar, non-foreign models */
 function gainInScope(model: StepGridModel): boolean {
   if (model.gainForeign || (model.bars ?? 1) > 1) return false
   return new Set(model.lanes.map((l) => l.part ?? 0)).size === 1
 }
 
-export function SequencerGrid(): React.ReactElement {
+export interface SequencerGridProps {
+  /** the inspector's selected step (#432), owned by PatternPanel */
+  selected?: SelectedNote | null
+  onSelect?: (sel: SelectedNote | null) => void
+}
+
+export function SequencerGrid({ selected, onSelect }: SequencerGridProps = {}): React.ReactElement {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<StepGridModel>({
     source: 'seq',
     eligible: isStepChunk,
@@ -87,6 +86,13 @@ export function SequencerGrid(): React.ReactElement {
 
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1)
   const [colorMode] = useNoteColorMode()
+
+  // Latest selection + setter for window-listener effects (#432).
+  const onSelectRef = React.useRef(onSelect)
+  onSelectRef.current = onSelect
+  const selectedRef = React.useRef(selected)
+  selectedRef.current = selected
+  const select = (sel: SelectedNote | null): void => onSelectRef.current?.(sel)
 
   // One pointer gesture from a cell press. An OFF cell paints immediately (snappy
   // step entry); an ON cell starts PENDING — a vertical drag past the threshold
@@ -160,7 +166,8 @@ export function SequencerGrid(): React.ReactElement {
       const g = gestureRef.current
       if (!g) return
       gestureRef.current = null
-      if (g.mode === 'pending') paintCell(g.lane, g.step, g.paintValue) // click → toggle
+      // a plain click on an ON cell no longer toggles off (#432 — it selected on
+      // down; Delete turns it off). Velocity/paint-off gestures already ran.
       endGesture()
     }
     window.addEventListener('pointermove', onMove)
@@ -174,7 +181,10 @@ export function SequencerGrid(): React.ReactElement {
   const onCellDown = (laneIndex: number, stepIndex: number, current: boolean, e: React.PointerEvent): void => {
     beginGesture()
     if (current) {
-      // ambiguous: velocity drag, paint-off, or toggle-off — decided on move/up
+      // an ON cell: a plain click now SELECTS it (#432 — toggle-off moved to the
+      // Delete key); a vertical drag still becomes velocity, a horizontal drag
+      // paint-off. Select on down so the inspector binds immediately.
+      select({ kind: 'step', lane: laneIndex, step: stepIndex })
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
@@ -185,7 +195,7 @@ export function SequencerGrid(): React.ReactElement {
         paintValue: false,
       }
     } else {
-      // empty cell → paint on immediately, then keep painting on enter
+      // empty cell → paint on immediately + select, then keep painting on enter
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
@@ -196,6 +206,7 @@ export function SequencerGrid(): React.ReactElement {
         paintValue: true,
       }
       paintCell(laneIndex, stepIndex, true)
+      select({ kind: 'step', lane: laneIndex, step: stepIndex })
     }
   }
 
@@ -203,6 +214,15 @@ export function SequencerGrid(): React.ReactElement {
     const g = gestureRef.current
     if (!g || g.mode !== 'paint') return
     paintCell(laneIndex, stepIndex, g.paintValue)
+  }
+
+  // Delete/Backspace turns the selected step off (#432 — removal moved off the
+  // plain click) and clears the selection.
+  const removeSelected = (): void => {
+    const sel = selectedRef.current
+    if (!sel || sel.kind !== 'step') return
+    paintCell(sel.lane, sel.step, false)
+    select(null)
   }
 
   if (!model) {
@@ -220,10 +240,21 @@ export function SequencerGrid(): React.ReactElement {
   return (
     <div
       data-bottom-panel-tab="sequencer"
+      tabIndex={0}
+      // cell pointerdowns preventDefault (block default focus, P200) → focus in
+      // the capture phase so Delete reaches the grid (#432).
+      onPointerDownCapture={(e) => (e.currentTarget as HTMLElement).focus({ preventScroll: true })}
+      onKeyDown={(e) => {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault()
+          removeSelected()
+        }
+      }}
       style={{
         padding: 16,
         height: '100%',
         overflow: 'auto',
+        outline: 'none',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: 'none',
       }}
@@ -290,6 +321,11 @@ export function SequencerGrid(): React.ReactElement {
               {lane.cells.map((on, stepIndex) => {
                 const gain = model.gains?.[stepIndex] ?? 1
                 const isPlaying = stepIndex === playingStep
+                const isSel =
+                  on &&
+                  selected?.kind === 'step' &&
+                  selected.lane === laneIndex &&
+                  selected.step === stepIndex
                 return (
                   <button
                     key={stepIndex}
@@ -297,6 +333,7 @@ export function SequencerGrid(): React.ReactElement {
                     aria-pressed={on}
                     aria-label={`${lane.sound} step ${stepIndex + 1}`}
                     data-seq-cell={`${laneIndex}:${stepIndex}`}
+                    data-seq-selected={isSel ? 'true' : undefined}
                     data-gain={on && gainScoped ? gain : undefined}
                     data-playing={isPlaying ? 'true' : undefined}
                     onPointerDown={(e) => {
@@ -322,6 +359,10 @@ export function SequencerGrid(): React.ReactElement {
                         ? 'var(--background, #34343c)'
                         : 'var(--background-elevated, #26262c)',
                       cursor: gainScoped && on ? 'ns-resize' : 'pointer',
+                      // selection ring (#432), distinct from the playhead border
+                      boxShadow: isSel
+                        ? 'inset 0 0 0 2px var(--foreground, #e6e6ea)'
+                        : undefined,
                     }}
                   >
                     {on && (

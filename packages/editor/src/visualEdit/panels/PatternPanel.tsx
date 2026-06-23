@@ -25,6 +25,7 @@ import { PianoRollGrid } from './PianoRollGrid'
 import { Mixer } from './Mixer'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PATTERN_TAB_ID } from './tabs'
+import type { SelectedNote } from './inspector'
 
 /** width of the pinned Mixer column */
 const MIXER_WIDTH = 300
@@ -33,11 +34,24 @@ export function PatternPanel(): React.ReactElement {
   const { chunk } = useActiveChunk()
   const kind = patternKind(chunk)
 
+  // The inspector's selected note/step (#432). Owned here so the grid (which
+  // sets it) and the Mixer (which reads + edits it) share one source. Cleared
+  // when the cursor moves to a different statement — selection is per-pattern.
+  const [selected, setSelected] = React.useState<SelectedNote | null>(null)
+  const stmtId = chunk ? chunk.statementRange[0] : null
+  const stmtRef = React.useRef<number | null>(stmtId)
+  React.useEffect(() => {
+    if (stmtRef.current !== stmtId) {
+      stmtRef.current = stmtId
+      setSelected(null)
+    }
+  }, [stmtId])
+
   const grid =
     kind === 'step' ? (
-      <SequencerGrid />
+      <SequencerGrid selected={selected} onSelect={setSelected} />
     ) : kind === 'roll' ? (
-      <PianoRollGrid />
+      <PianoRollGrid selected={selected} onSelect={setSelected} />
     ) : (
       <VisualEditStandby
         panel={PATTERN_TAB_ID}
@@ -66,7 +80,7 @@ export function PatternPanel(): React.ReactElement {
           borderLeft: '1px solid var(--border, #3a3a42)',
         }}
       >
-        <Mixer />
+        <Mixer selected={selected} onSelect={setSelected} />
       </div>
     </div>
   )

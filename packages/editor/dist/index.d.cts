@@ -8270,6 +8270,35 @@ interface VisualEditStandbyProps {
 declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProps): React.ReactElement;
 
 /**
+ * inspector — pure selection model + field resolution/edit transforms for the
+ * Mixer-as-inspector (#432).
+ *
+ * A "selected note" is the event the inspector shows. It's a lightweight key
+ * (not a reference), so it survives the model reseeds that every write triggers:
+ *   - roll: a note is keyed by its `pitch` token + `start` column (chord members
+ *     share `start` but differ in pitch);
+ *   - step: a hit is keyed by `lane` index + `step` column.
+ * Selection lives in `PatternPanel`; the grid sets it (click/edit) and the Mixer
+ * reads it to resolve the event's fields and edit them.
+ *
+ * VELOCITY = `.gain` (grounded #427 Q1: Logic's 0–127 velocity maps to Stave's
+ * per-note `.gain`, NOT `.velocity`). `setGroupGain`/`setColumnGain` live HERE so
+ * the grid drag and the inspector field write the SAME `.gain` transform — one
+ * path, no dual-representation drift (PV129).
+ */
+
+/** The event the inspector is bound to, keyed by stable musical identity. */
+type SelectedNote = {
+    kind: 'roll';
+    pitch: string;
+    start: number;
+} | {
+    kind: 'step';
+    lane: number;
+    step: number;
+};
+
+/**
  * Mixer — the first write-back visual editor (#381).
  *
  * Finds the Strudel statement under the cursor (via `useActiveChunk`) and
@@ -8283,7 +8312,12 @@ declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProp
  * (the conservatism rule).
  */
 
-declare function Mixer(): React.ReactElement;
+interface MixerProps {
+    /** the inspector's selected note/step (#432), owned by PatternPanel */
+    selected?: SelectedNote | null;
+    onSelect?: (sel: SelectedNote | null) => void;
+}
+declare function Mixer({ selected, onSelect }?: MixerProps): React.ReactElement;
 
 /**
  * Sequencer — drum/step grid (#382, per-column velocity #409).
@@ -8307,7 +8341,12 @@ declare function Mixer(): React.ReactElement;
  * on EXTERNAL edits — see `useGridModel`.
  */
 
-declare function SequencerGrid(): React.ReactElement;
+interface SequencerGridProps {
+    /** the inspector's selected step (#432), owned by PatternPanel */
+    selected?: SelectedNote | null;
+    onSelect?: (sel: SelectedNote | null) => void;
+}
+declare function SequencerGrid({ selected, onSelect }?: SequencerGridProps): React.ReactElement;
 
 /**
  * Piano Roll — note grid (#383, drag-move + range stability from #391).
@@ -8328,7 +8367,12 @@ declare function SequencerGrid(): React.ReactElement;
  * moves to a different statement (#391) — so editing doesn't make rows jump.
  */
 
-declare function PianoRollGrid(): React.ReactElement;
+interface PianoRollGridProps {
+    /** the inspector's selected note (#432), owned by PatternPanel */
+    selected?: SelectedNote | null;
+    onSelect?: (sel: SelectedNote | null) => void;
+}
+declare function PianoRollGrid({ selected, onSelect }?: PianoRollGridProps): React.ReactElement;
 
 /**
  * Pattern — the single adaptive visual-editing panel (#398).

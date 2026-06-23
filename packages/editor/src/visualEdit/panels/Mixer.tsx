@@ -25,6 +25,8 @@ import { patternKind } from './patternKind'
 import { readChainMethod } from './chainMethod'
 import { INSTRUMENTS, DRUM_KITS, type SoundGroup } from './soundCatalog'
 import { useSoundCatalog, useDrumKitCatalog } from '../../workspace/soundRegistry'
+import { Inspector } from './InspectorPanel'
+import type { SelectedNote } from './inspector'
 
 /**
  * A per-column `.gain("…")` velocity string the grid authored — flat numeric
@@ -174,7 +176,13 @@ function SoundSelect({
   )
 }
 
-export function Mixer(): React.ReactElement {
+export interface MixerProps {
+  /** the inspector's selected note/step (#432), owned by PatternPanel */
+  selected?: SelectedNote | null
+  onSelect?: (sel: SelectedNote | null) => void
+}
+
+export function Mixer({ selected, onSelect }: MixerProps = {}): React.ReactElement {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk()
   // Live instrument registry (#514 / PV141 #6) — prefer the engine's real
   // soundMap (synths/soundfonts/samples) over the curated shortlist; fall back
@@ -260,6 +268,8 @@ export function Mixer(): React.ReactElement {
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
       }}
     >
+      {/* selected-note inspector (#432) — renders only when a note is selected */}
+      <Inspector selected={selected} onSelect={onSelect} />
       {kind === 'roll' && (
         <SoundSelect
           label="Instrument"

@@ -4,7 +4,7 @@
  * Observes:
  *   - a melody renders notes on the right pitch rows / step columns;
  *   - clicking an empty cell places a note that round-trips the mini-notation;
- *   - clicking a note removes it;
+ *   - clicking a note selects it; Delete removes it (#432 — was click-removes);
  *   - a sound pattern (not a melody) falls back to standby.
  */
 import { test, expect, type Page } from '@playwright/test'
@@ -87,12 +87,14 @@ test.describe('Piano Roll (#383)', () => {
     expect(await strudelValue(page)).toBe('$: note("c3 ~ e3 ~")')
   })
 
-  test('clicking a note removes it', async ({ page }) => {
+  test('selecting a note + Delete removes it (#432)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c3 ~ ~ ~")')
     const drawer = await openRoll(page)
     const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
-    await grid.locator('[data-roll-cell="48:0"]').click() // remove c3
+    await grid.locator('[data-roll-cell="48:0"]').click() // select c3 (no longer removes)
+    await expect(grid.locator('[data-roll-cell="48:0"]')).toHaveAttribute('data-roll-selected', 'true')
+    await page.keyboard.press('Delete') // grid holds focus → removes the selected note
     await page.waitForTimeout(80)
     expect(await strudelValue(page)).toBe('$: note("~ ~ ~ ~")')
   })
@@ -140,7 +142,8 @@ test.describe('Piano Roll (#383)', () => {
     const drawer = await openRoll(page)
     const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
     await expect(grid.locator('[data-roll-cell="72:0"]')).toHaveCount(1)
-    await grid.locator('[data-roll-cell="72:0"]').click() // remove c5
+    await grid.locator('[data-roll-cell="72:0"]').click() // select c5
+    await page.keyboard.press('Delete') // remove it
     await page.waitForTimeout(80)
     expect(await strudelValue(page)).toBe('$: note("~ ~ ~ ~")')
     // the c5 row is still rendered (range didn't collapse to the default octave)
