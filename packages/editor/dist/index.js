@@ -18468,18 +18468,19 @@ function setEvalError(monaco, model, error) {
     const loc = parseErrorLocation(error);
     const lineCount = model.getLineCount();
     const validLine = loc && Number.isFinite(loc.line) && loc.line >= 1 && loc.line <= lineCount ? loc.line : null;
-    const validCol = loc && Number.isFinite(loc.col) && loc.col >= 1 ? loc.col : 1;
-    const lineNumber = validLine ?? 1;
-    const startColumn = validLine ? validCol : 1;
-    const endLineNumber = validLine ?? lineCount;
-    const endColumn = model.getLineMaxColumn(endLineNumber);
+    if (validLine == null) {
+      monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
+      return;
+    }
+    const startColumn = loc && Number.isFinite(loc.col) && loc.col >= 1 ? loc.col : 1;
+    const endColumn = model.getLineMaxColumn(validLine);
     monaco.editor.setModelMarkers(model, MARKER_OWNER, [
       {
         severity: monaco.MarkerSeverity.Error,
         message: error.message,
-        startLineNumber: lineNumber,
+        startLineNumber: validLine,
         startColumn,
-        endLineNumber,
+        endLineNumber: validLine,
         endColumn
       }
     ]);
