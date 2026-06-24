@@ -30,6 +30,8 @@ import { usePlayingStep } from './usePlayingStep'
 import { placeNote, resizeNote } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
+import { ResolutionControl } from './ResolutionControl'
+import { canDoublePianoRoll, canHalvePianoRoll, scalePianoRoll } from '../notation/resolution'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 import { setNoteClip, getNoteClip } from './clipboard'
@@ -342,6 +344,13 @@ export function PianoRollGrid({
     })
   }
 
+  // ×2 / ÷2 grid resolution (#479): pure ratio-preserving slot split/merge —
+  // note starts AND durations scale, so onsets are byte-identical (hap-verified).
+  // A direction that can't apply returns the same model → useGridModel skips.
+  const scaleResolution = (dir: 'double' | 'halve'): void => {
+    mutate((prev) => scalePianoRoll(prev, dir))
+  }
+
   if (!model) {
     return React.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
@@ -392,7 +401,22 @@ export function PianoRollGrid({
           a header that consumed vertical space would push the lowest rows off the
           bottom (and out of drag reach). The toggle floats over the empty
           top-right (high-pitch) corner instead. */}
-      <div style={{ position: 'absolute', top: 4, right: 16, zIndex: 3 }}>
+      <div
+        style={{
+          position: 'absolute',
+          top: 4,
+          right: 16,
+          zIndex: 3,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+        }}
+      >
+        <ResolutionControl
+          onScale={scaleResolution}
+          canDouble={canDoublePianoRoll(model)}
+          canHalve={canHalvePianoRoll(model)}
+        />
         <NoteColorToggle />
       </div>
       <div style={{ padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' }}>

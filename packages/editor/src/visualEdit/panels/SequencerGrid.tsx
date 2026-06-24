@@ -34,6 +34,8 @@ import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice } from './drumVoices'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
+import { ResolutionControl } from './ResolutionControl'
+import { canDoubleStepGrid, canHalveStepGrid, scaleStepGrid } from '../notation/resolution'
 import { setColumnGain } from './inspector'
 
 const SEQ_HINT = 'Click a drum pattern to edit it as a step grid.'
@@ -122,6 +124,15 @@ export function SequencerGrid(): React.ReactElement {
   const removeVoice = React.useCallback(
     (sound: string): void => {
       mutate((prev) => removeLane(prev, sound))
+    },
+    [mutate],
+  )
+
+  // ×2 / ÷2 grid resolution (#479): pure ratio-preserving slot split/merge. A
+  // direction that can't apply returns the same model → useGridModel skips.
+  const scaleResolution = React.useCallback(
+    (dir: 'double' | 'halve'): void => {
+      mutate((prev) => scaleStepGrid(prev, dir))
     },
     [mutate],
   )
@@ -229,7 +240,12 @@ export function SequencerGrid(): React.ReactElement {
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+          <ResolutionControl
+            onScale={scaleResolution}
+            canDouble={canDoubleStepGrid(model)}
+            canHalve={canHalveStepGrid(model)}
+          />
           <NoteColorToggle />
         </div>
         {model.lanes.map((lane, laneIndex) => {
