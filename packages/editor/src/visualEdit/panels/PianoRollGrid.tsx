@@ -31,7 +31,7 @@ import { placeNote, resizeNote } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
 import { ResolutionControl } from './ResolutionControl'
-import { canDoublePianoRoll, canHalvePianoRoll, scalePianoRoll } from '../notation/resolution'
+import { canScalePianoRollTo, scalePianoRollTo } from '../notation/resolution'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 import { setNoteClip, getNoteClip } from './clipboard'
@@ -344,11 +344,11 @@ export function PianoRollGrid({
     })
   }
 
-  // ×2 / ÷2 grid resolution (#479): pure ratio-preserving slot split/merge —
+  // Grid resolution (#479): scale to an absolute slot count by pure ×2/÷2 —
   // note starts AND durations scale, so onsets are byte-identical (hap-verified).
-  // A direction that can't apply returns the same model → useGridModel skips.
-  const scaleResolution = (dir: 'double' | 'halve'): void => {
-    mutate((prev) => scalePianoRoll(prev, dir))
+  // A target that can't apply losslessly returns the same model → mutate skips.
+  const scaleToSlots = (target: number): void => {
+    mutate((prev) => scalePianoRollTo(prev, target))
   }
 
   if (!model) {
@@ -413,9 +413,9 @@ export function PianoRollGrid({
         }}
       >
         <ResolutionControl
-          onScale={scaleResolution}
-          canDouble={canDoublePianoRoll(model)}
-          canHalve={canHalvePianoRoll(model)}
+          steps={model.steps}
+          canScaleTo={(target) => canScalePianoRollTo(model, target)}
+          onScaleTo={scaleToSlots}
         />
         <NoteColorToggle />
       </div>

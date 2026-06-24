@@ -1,10 +1,11 @@
 /**
  * Grid resolution — #479.
  *
- * The ×2 / ÷2 "Slots" control on both grid headers is ratio-preserving
- * mini-notation sugar: ×2 splits each column in two (hits keep their position),
- * ÷2 merges pairs back and is disabled when halving would be lossy. Verified by
- * BOTH the rendered grid and the written-back source.
+ * The "Slots" 4 / 8 / 16 / 32 control on both grid headers scales the grid to an
+ * absolute column count by ratio-preserving ×2 / ÷2 (hits keep their position).
+ * A target is enabled only when it's a lossless power-of-2 ratio of the current
+ * count; non-power-of-2 patterns show every preset disabled. Verified by BOTH the
+ * rendered grid and the written-back source.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
 
@@ -57,61 +58,79 @@ async function openPattern(page: Page): Promise<Locator> {
   return drawer
 }
 
-test.describe('Grid resolution ×2 / ÷2 (#479)', () => {
-  test('step grid: ×2 doubles the columns and keeps timing', async ({ page }) => {
+test.describe('Grid resolution 4/8/16/32 (#479)', () => {
+  test('step grid: choosing 8 doubles a 4-step grid and keeps timing', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd ~ sn ~")')
+    const drawer = await openPattern(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+
+    // 4 columns before; "4" is the active preset
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
+    await expect(grid.locator('[data-resolution-step="4"]')).toHaveAttribute(
+      'data-resolution-active',
+      'true',
+    )
+
+    await grid.locator('[data-resolution-step="8"]').click()
+    await page.waitForTimeout(120)
+
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ ~ ~ sn ~ ~ ~")')
+    await expect(grid.locator('[data-resolution-step="8"]')).toHaveAttribute(
+      'data-resolution-active',
+      'true',
+    )
+    expect(errors).toEqual([])
+  })
+
+  test('step grid: a lower target is disabled when halving is lossy, enabled when lossless', async ({
+    page,
+  }) => {
+    await boot(page)
+    // every column filled → halving to 4 would drop hits → "4" disabled
+    await setStrudelCode(page, '$: s("bd sd hh cp bd sd hh cp")')
+    const drawer = await openPattern(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await expect(grid.locator('[data-resolution-step="4"]')).toBeDisabled()
+    await expect(grid.locator('[data-resolution-step="16"]')).toBeEnabled()
+
+    // hits only on every 4th column → "4" lossless → enabled, merges down
+    await setStrudelCode(page, '$: s("bd ~ ~ ~ sn ~ ~ ~")')
+    await expect(grid.locator('[data-resolution-step="4"]')).toBeEnabled()
+    await grid.locator('[data-resolution-step="4"]').click()
+    await page.waitForTimeout(120)
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+  })
+
+  test('step grid: a non-power-of-2 (5-step) pattern disables every preset', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd ~ sn ~ bd")')
     const drawer = await openPattern(page)
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-
-    // 5 columns before — lane 0 (bd) has cells 0:0..0:4
-    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(5)
-
-    await grid.locator('[data-resolution-double]').click()
-    await page.waitForTimeout(120)
-
-    // 10 columns after, the source expands ratio-preserving
-    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(10)
-    expect(await getStrudelCode(page)).toBe('$: s("bd ~ ~ ~ sn ~ ~ ~ bd ~")')
-    expect(errors).toEqual([])
+    for (const n of ['4', '8', '16', '32']) {
+      await expect(grid.locator(`[data-resolution-step="${n}"]`)).toBeDisabled()
+    }
   })
 
-  test('step grid: ÷2 is disabled when an odd column carries a hit, enabled when lossless', async ({
-    page,
-  }) => {
-    await boot(page)
-    // bd on col 0, sn on col 1 (odd) → halving would drop sn → ÷2 disabled
-    await setStrudelCode(page, '$: s("bd sn")')
-    const drawer = await openPattern(page)
-    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    await expect(grid.locator('[data-resolution-halve]')).toBeDisabled()
-
-    // every odd column empty → ÷2 enabled and merges pairs back
-    await setStrudelCode(page, '$: s("bd ~ sn ~")')
-    await expect(grid.locator('[data-resolution-halve]')).toBeEnabled()
-    await grid.locator('[data-resolution-halve]').click()
-    await page.waitForTimeout(120)
-    expect(await getStrudelCode(page)).toBe('$: s("bd sn")')
-  })
-
-  test('piano roll: ×2 then ÷2 round-trips to the byte-identical source', async ({ page }) => {
+  test('piano roll: 8 then 4 round-trips to the byte-identical source', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
     await boot(page)
-    await setStrudelCode(page, '$: note("c3 e3 g3")')
+    await setStrudelCode(page, '$: note("c3 e3 g3 a3")')
     const drawer = await openPattern(page)
     const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
     await expect(grid).toHaveCount(1)
 
-    await grid.locator('[data-resolution-double]').click()
+    await grid.locator('[data-resolution-step="8"]').click()
     await page.waitForTimeout(120)
-    expect(await getStrudelCode(page)).toBe('$: note("c3@2 e3@2 g3@2")')
+    expect(await getStrudelCode(page)).toBe('$: note("c3@2 e3@2 g3@2 a3@2")')
 
-    await grid.locator('[data-resolution-halve]').click()
+    await grid.locator('[data-resolution-step="4"]').click()
     await page.waitForTimeout(120)
-    expect(await getStrudelCode(page)).toBe('$: note("c3 e3 g3")')
+    expect(await getStrudelCode(page)).toBe('$: note("c3 e3 g3 a3")')
     expect(errors).toEqual([])
   })
 })

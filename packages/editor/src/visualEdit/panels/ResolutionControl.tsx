@@ -1,38 +1,34 @@
 /**
- * ResolutionControl — the ×2 / ÷2 grid-resolution control shared by both grids
- * (#479). The substrate-honest "more / fewer slots": ×2 splits every column in
- * two (hits keep their position, new in-between slots open up), ÷2 merges pairs
- * back. Both are ratio-preserving mini-notation sugar — the haps are unchanged
- * (verified in `notation/resolution.ts`), so this is purely an editing-grid
+ * ResolutionControl — the "Slots" grid-resolution control shared by both grids
+ * (#479). Absolute slot-count targets (4 / 8 / 16 / 32): clicking one scales the
+ * grid to that column count by pure ×2 / ÷2, so hits keep their position and the
+ * haps are byte-identical (verified in `notation/resolution.ts`). It's an editing
  * affordance, not a musical change.
  *
- * `÷2` is disabled when halving would be lossy (an odd column carries a hit /
- * note) and `×2` when the grid is already at the column cap — the same
- * honest-control rule as the Snap picker (no silent no-op / corruption).
+ * A target is offered ENABLED only when it's losslessly reachable — a power-of-2
+ * ratio of the current count, and (going down) no hit/note falls on a dropped
+ * column. The current count is shown active; non-power-of-2 grids (a triplet's
+ * 12, a hand-written melody) show every preset disabled rather than re-time the
+ * pattern — the honest-control rule. Real fixed-rate length editing (changing the
+ * step COUNT without re-timing) needs polymeter and is a deferred follow-up.
  */
 import * as React from 'react'
 
-import type { ResolutionDir } from '../notation/resolution'
+import { RESOLUTION_PRESETS } from '../notation/resolution'
 
 export interface ResolutionControlProps {
-  onScale: (dir: ResolutionDir) => void
-  canDouble: boolean
-  canHalve: boolean
-}
-
-const BTN: React.CSSProperties = {
-  padding: '2px 8px',
-  fontSize: 11,
-  border: 'none',
-  background: 'transparent',
-  color: 'var(--foreground-muted, #a0a0aa)',
-  cursor: 'pointer',
+  /** current column count — the active preset */
+  steps: number
+  /** is `target` losslessly reachable from the current count? */
+  canScaleTo: (target: number) => boolean
+  /** scale the grid to `target` columns */
+  onScaleTo: (target: number) => void
 }
 
 export function ResolutionControl({
-  onScale,
-  canDouble,
-  canHalve,
+  steps,
+  canScaleTo,
+  onScaleTo,
 }: ResolutionControlProps): React.ReactElement {
   return (
     <div
@@ -50,37 +46,50 @@ export function ResolutionControl({
           overflow: 'hidden',
         }}
       >
-        <button
-          type="button"
-          data-resolution-halve
-          aria-label="fewer slots (÷2)"
-          title="Fewer slots — halve the grid resolution (keeps timing)"
-          disabled={!canHalve}
-          onClick={() => onScale('halve')}
-          style={{
-            ...BTN,
-            borderRight: '1px solid var(--border, #3a3a42)',
-            opacity: canHalve ? 1 : 0.4,
-            cursor: canHalve ? 'pointer' : 'not-allowed',
-          }}
-        >
-          ÷2
-        </button>
-        <button
-          type="button"
-          data-resolution-double
-          aria-label="more slots (×2)"
-          title="More slots — double the grid resolution (keeps timing)"
-          disabled={!canDouble}
-          onClick={() => onScale('double')}
-          style={{
-            ...BTN,
-            opacity: canDouble ? 1 : 0.4,
-            cursor: canDouble ? 'pointer' : 'not-allowed',
-          }}
-        >
-          ×2
-        </button>
+        {RESOLUTION_PRESETS.map((preset, i) => {
+          const active = preset === steps
+          const enabled = active || canScaleTo(preset)
+          return (
+            <button
+              key={preset}
+              type="button"
+              data-resolution-step={preset}
+              data-resolution-active={active ? 'true' : undefined}
+              aria-pressed={active}
+              aria-label={`${preset} slots`}
+              title={
+                active
+                  ? `${preset} slots (current)`
+                  : enabled
+                    ? `${preset} slots — keeps timing`
+                    : `${preset} slots — unavailable (would re-time this pattern)`
+              }
+              disabled={!enabled}
+              onClick={() => {
+                if (!active) onScaleTo(preset)
+              }}
+              style={{
+                padding: '2px 8px',
+                fontSize: 11,
+                border: 'none',
+                borderRight:
+                  i < RESOLUTION_PRESETS.length - 1
+                    ? '1px solid var(--border, #3a3a42)'
+                    : 'none',
+                background: active ? 'var(--accent, #6ea8fe)' : 'transparent',
+                color: active
+                  ? '#fff'
+                  : enabled
+                    ? 'var(--foreground, #e6e6ea)'
+                    : 'var(--foreground-muted, #a0a0aa)',
+                opacity: enabled ? 1 : 0.4,
+                cursor: active ? 'default' : enabled ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {preset}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

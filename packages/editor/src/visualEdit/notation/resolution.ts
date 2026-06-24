@@ -136,3 +136,60 @@ export function scalePianoRoll(model: PianoRollModel, dir: ResolutionDir): Piano
     notes: model.notes.map((n) => ({ ...n, start: n.start / 2, duration: n.duration / 2 })),
   }
 }
+
+/* ── absolute slot-count targets (the 4 / 8 / 16 / 32 control) ──── */
+
+/**
+ * The absolute slot counts the control offers. A target is reachable only when
+ * it's a power-of-2 ratio of the current count (so it's pure ×2/÷2 — any other
+ * ratio would re-time the pattern, the trap #479 rejects). A non-power-of-2 grid
+ * (a triplet's 12, a 5-note melody) therefore shows every preset disabled until
+ * real fixed-rate length editing (polymeter) lands — see the deferred follow-up.
+ */
+export const RESOLUTION_PRESETS = [4, 8, 16, 32] as const
+
+/** is n a power of two (≥1)? */
+function isPow2(n: number): boolean {
+  return n >= 1 && Number.isInteger(n) && (n & (n - 1)) === 0
+}
+
+/**
+ * Drive a grid to an absolute `target` column count by repeated ×2 / ÷2. Only a
+ * power-of-2 ratio to the current count is reachable, and every halving on the
+ * way down must be lossless (`scale` returns its input unchanged when it can't
+ * halve / would exceed the cap → we abort to the ORIGINAL model). Returns the
+ * model unchanged when the target isn't losslessly reachable, so the control
+ * disables it and `mutate` skips the write.
+ */
+function scaleTo<M extends { steps: number }>(
+  model: M,
+  target: number,
+  scale: (m: M, dir: ResolutionDir) => M,
+): M {
+  if (target < 1 || target === model.steps) return model
+  const up = target > model.steps
+  const ratio = up ? target / model.steps : model.steps / target
+  if (!isPow2(ratio)) return model
+  let cur = model
+  while (cur.steps !== target) {
+    const next = scale(cur, up ? 'double' : 'halve')
+    if (next === cur) return model // a halving wasn't lossless (or hit the cap)
+    cur = next
+  }
+  return cur
+}
+
+export function scaleStepGridTo(model: StepGridModel, target: number): StepGridModel {
+  return scaleTo(model, target, scaleStepGrid)
+}
+export function scalePianoRollTo(model: PianoRollModel, target: number): PianoRollModel {
+  return scaleTo(model, target, scalePianoRoll)
+}
+
+/** can the step grid losslessly reach exactly `target` columns? (false for the current count) */
+export function canScaleStepGridTo(model: StepGridModel, target: number): boolean {
+  return target !== model.steps && scaleStepGridTo(model, target) !== model
+}
+export function canScalePianoRollTo(model: PianoRollModel, target: number): boolean {
+  return target !== model.steps && scalePianoRollTo(model, target) !== model
+}

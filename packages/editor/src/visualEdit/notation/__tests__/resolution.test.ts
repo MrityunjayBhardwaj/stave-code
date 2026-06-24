@@ -9,6 +9,11 @@ import {
   canHalveStepGrid,
   canDoublePianoRoll,
   canHalvePianoRoll,
+  scaleStepGridTo,
+  scalePianoRollTo,
+  canScaleStepGridTo,
+  canScalePianoRollTo,
+  RESOLUTION_PRESETS,
   MAX_RESOLUTION_STEPS,
 } from '../resolution'
 import type { StepGridModel, PianoRollModel } from '../model'
@@ -170,5 +175,70 @@ describe('#479 resolution — piano roll ÷2 guards', () => {
     const doubled = scalePianoRoll(base, 'double')
     expect(doubled.notes.map((n) => n.gain ?? 1)).toEqual([0.5, 1])
     expect(serializePianoRoll(doubled)).toBe('c3@2 e3@2')
+  })
+})
+
+describe('#479 resolution — absolute slot targets (the 4/8/16/32 control)', () => {
+  it('the preset list is 4 / 8 / 16 / 32', () => {
+    expect([...RESOLUTION_PRESETS]).toEqual([4, 8, 16, 32])
+  })
+
+  it('step grid: scaling to a higher power-of-2 target doubles repeatedly', () => {
+    const m4 = step('bd ~ sn ~') // 4 columns
+    expect(serializeStepGrid(scaleStepGridTo(m4, 8))).toBe('bd ~ ~ ~ sn ~ ~ ~')
+    expect(scaleStepGridTo(m4, 16).steps).toBe(16) // ×4
+  })
+
+  it('step grid: scaling DOWN to a target halves when lossless', () => {
+    const m8 = step('bd ~ ~ ~ sn ~ ~ ~') // 8 columns, hits on 0 and 4
+    expect(serializeStepGrid(scaleStepGridTo(m8, 4))).toBe('bd ~ sn ~')
+    expect(serializeStepGrid(scaleStepGridTo(m8, 2))).toBe('bd sn') // 8→4→2
+  })
+
+  it('step grid: a non-power-of-2 ratio is unreachable (no re-timing)', () => {
+    const m5 = step('bd ~ sn ~ bd') // 5 columns
+    // 5 → 4 / 8 / 16 / 32 are none a power-of-2 ratio → every preset disabled
+    for (const target of RESOLUTION_PRESETS) {
+      expect(canScaleStepGridTo(m5, target), `5→${target}`).toBe(false)
+      expect(scaleStepGridTo(m5, target)).toBe(m5)
+    }
+  })
+
+  it('step grid: the current count is never offered (active, not clickable)', () => {
+    const m8 = step('bd ~ ~ ~ sn ~ ~ ~')
+    expect(canScaleStepGridTo(m8, 8)).toBe(false)
+    expect(canScaleStepGridTo(m8, 16)).toBe(true)
+    expect(canScaleStepGridTo(m8, 4)).toBe(true)
+  })
+
+  it('step grid: a target below a LOSSY column is disabled', () => {
+    const dense = step('bd sd hh cp bd sd hh cp') // 8 cols, every column filled
+    expect(canScaleStepGridTo(dense, 4)).toBe(false) // halving would drop hits
+    expect(canScaleStepGridTo(dense, 16)).toBe(true) // doubling up is fine
+    expect(scaleStepGridTo(dense, 4)).toBe(dense) // aborts to original
+  })
+
+  it('piano roll: scale up then back to source is byte-identical', () => {
+    const m4 = roll('c3 e3 g3 a3') // 4 columns
+    expect(serializePianoRoll(scalePianoRollTo(m4, 8))).toBe('c3@2 e3@2 g3@2 a3@2')
+    const round = serializePianoRoll(scalePianoRollTo(scalePianoRollTo(m4, 8), 4))
+    expect(round).toBe('c3 e3 g3 a3')
+  })
+
+  it('piano roll: a 3-note melody (non-power-of-2) disables every preset', () => {
+    const m3 = roll('c3 e3 g3') // 3 columns
+    for (const target of RESOLUTION_PRESETS) {
+      expect(canScalePianoRollTo(m3, target), `3→${target}`).toBe(false)
+    }
+  })
+
+  it('caps an upward target at the column ceiling', () => {
+    const wide: StepGridModel = {
+      steps: MAX_RESOLUTION_STEPS / 2,
+      lanes: [{ sound: 'bd', cells: Array<boolean>(MAX_RESOLUTION_STEPS / 2).fill(false) }],
+    }
+    // 128 → 256 is fine (== cap), but the doubling that would exceed it aborts.
+    expect(scaleStepGridTo(wide, MAX_RESOLUTION_STEPS).steps).toBe(MAX_RESOLUTION_STEPS)
+    expect(scaleStepGridTo(wide, MAX_RESOLUTION_STEPS * 2)).toBe(wide)
   })
 })
