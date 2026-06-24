@@ -22,7 +22,7 @@ import { useActiveChunk } from './useActiveChunk'
 import { patternKind } from './patternKind'
 import { SequencerGrid } from './SequencerGrid'
 import { PianoRollGrid } from './PianoRollGrid'
-import { Mixer } from './Mixer'
+import { MixerPanel } from '../mixer/MixerPanel'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PATTERN_TAB_ID } from './tabs'
 import type { SelectedNote } from './inspector'
@@ -87,7 +87,7 @@ export function PatternPanel(): React.ReactElement {
           borderLeft: '1px solid var(--border, #3a3a42)',
         }}
       >
-        <Mixer division={division} onDivisionChange={setDivision} />
+        <MixerPanel division={division} onDivisionChange={setDivision} />
       </div>
     </div>
   )
