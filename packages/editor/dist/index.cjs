@@ -25365,6 +25365,7 @@ __name(VisualEditStandby, "VisualEditStandby");
 
 // src/visualEdit/panels/tabs.ts
 var PATTERN_TAB_ID = "pattern";
+var MIXER_CONSOLE_TAB_ID = "mixer-console";
 var SEQUENCER_TAB_ID = "sequencer";
 var MIXER_TAB_ID = "mixer";
 var PIANO_ROLL_TAB_ID = "piano-roll";
@@ -25374,6 +25375,12 @@ var VISUAL_EDIT_TABS = [
     title: "Pattern",
     hint: "Click a drum or melodic pattern to edit it here.",
     icon: "symbol-array"
+  },
+  {
+    id: MIXER_CONSOLE_TAB_ID,
+    title: "Mixer",
+    hint: "Every track as a channel strip \u2014 fader, pan, mute, meter.",
+    icon: "settings"
   }
 ];
 function readChunkGain(chunk) {
@@ -28073,7 +28080,8 @@ function ChannelStrip({
   onMuteToggle,
   onGestureStart,
   onGestureEnd,
-  meters
+  meters,
+  showHeader = true
 }) {
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
   const gain = faderGain(strip);
@@ -28124,7 +28132,6 @@ function ChannelStrip({
     e.target.releasePointerCapture?.(e.pointerId);
     onGestureEnd?.();
   }, "endPan");
-  const summary = strip.headFn && strip.miniString !== null ? `${strip.headFn}("${strip.miniString}")` : strip.source ?? strip.headFn ?? "";
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -28146,7 +28153,7 @@ function ChannelStrip({
         color: "var(--foreground, #e6e6ea)"
       },
       children: [
-        /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 5, minWidth: 0 }, children: [
+        showHeader && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 5, minWidth: 0 }, children: [
           /* @__PURE__ */ jsxRuntime.jsx(
             "span",
             {
@@ -28200,21 +28207,6 @@ function ChannelStrip({
             }
           )
         ] }),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "span",
-          {
-            "data-mixer-strip-source": true,
-            title: summary,
-            style: {
-              fontSize: 10,
-              color: "var(--foreground-muted, #a0a0aa)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap"
-            },
-            children: summary
-          }
-        ),
         /* @__PURE__ */ jsxRuntime.jsxs(
           "div",
           {
@@ -28355,27 +28347,30 @@ function muteEdit(fresh, muted3) {
   return muted3 ? { range: [pos, pos], text: "_" } : { range: [pos, pos + 1], text: "" };
 }
 __name(muteEdit, "muteEdit");
-function MixerStrips() {
+function LocalMixerStrip() {
+  const { chunk } = useActiveChunk();
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel();
   const meters = useTrackMeters();
-  if (strips.length === 0) return null;
+  const anchor = chunk ? chunk.statementRange[0] : null;
+  const strip = anchor != null ? strips.find((s) => s.statementRange[0] === anchor) : void 0;
+  if (!strip) return null;
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
     {
-      "data-mixer-strips": true,
+      "data-mixer-local-strip": true,
       style: {
+        flexShrink: 0,
         display: "flex",
-        gap: 8,
         padding: 8,
-        overflowX: "auto",
-        overflowY: "hidden",
-        borderBottom: "1px solid var(--border, #3a3a42)",
-        background: "var(--background, #1c1c20)"
+        borderLeft: "1px solid var(--border, #3a3a42)",
+        background: "var(--background, #1c1c20)",
+        overflow: "hidden"
       },
-      children: strips.map((strip) => /* @__PURE__ */ jsxRuntime.jsx(
+      children: /* @__PURE__ */ jsxRuntime.jsx(
         ChannelStrip,
         {
           strip,
+          showHeader: false,
           onGainChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
             const e = gainEdit(fresh, value);
             if (e) wb.replaceRange(e.range, e.text, "mixer");
@@ -28384,30 +28379,24 @@ function MixerStrips() {
             const e = panEdit(fresh, value);
             if (e) wb.replaceRange(e.range, e.text, "mixer");
           }),
-          onMuteToggle: () => applyToStrip(strip.id, (fresh, wb) => {
-            const e = muteEdit(fresh, !strip.muted);
-            if (e) wb.replaceRange(e.range, e.text, "mixer");
-          }),
           onGestureStart: beginGesture,
           onGestureEnd: endGesture,
           meters
-        },
-        strip.id
-      ))
+        }
+      )
     }
   );
 }
-__name(MixerStrips, "MixerStrips");
-var PARAM_MIN_HEIGHT = 195;
+__name(LocalMixerStrip, "LocalMixerStrip");
 function MixerPanel({ division: division2, onDivisionChange } = {}) {
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
       "data-mixer-panel": true,
-      style: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0 },
+      style: { display: "flex", flexDirection: "row", height: "100%", minHeight: 0, minWidth: 0 },
       children: [
-        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flexShrink: 1, flexGrow: 0, minHeight: 0, maxHeight: "50%", overflowY: "auto" }, children: /* @__PURE__ */ jsxRuntime.jsx(MixerStrips, {}) }),
-        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: "1 1 0", minHeight: PARAM_MIN_HEIGHT, overflow: "hidden" }, children: /* @__PURE__ */ jsxRuntime.jsx(Mixer, { division: division2, onDivisionChange }) })
+        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: "1 1 0", minWidth: 0, height: "100%", overflow: "hidden" }, children: /* @__PURE__ */ jsxRuntime.jsx(Mixer, { division: division2, onDivisionChange }) }),
+        /* @__PURE__ */ jsxRuntime.jsx(LocalMixerStrip, {})
       ]
     }
   );
@@ -28461,10 +28450,87 @@ function PatternPanel() {
   );
 }
 __name(PatternPanel, "PatternPanel");
+function MixerStrips({
+  emptyFallback
+} = {}) {
+  const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel();
+  const meters = useTrackMeters();
+  if (strips.length === 0) return /* @__PURE__ */ jsxRuntime.jsx(jsxRuntime.Fragment, { children: emptyFallback ?? null });
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "div",
+    {
+      "data-mixer-strips": true,
+      style: {
+        display: "flex",
+        gap: 8,
+        padding: 8,
+        overflowX: "auto",
+        overflowY: "hidden",
+        borderBottom: "1px solid var(--border, #3a3a42)",
+        background: "var(--background, #1c1c20)"
+      },
+      children: strips.map((strip) => /* @__PURE__ */ jsxRuntime.jsx(
+        ChannelStrip,
+        {
+          strip,
+          onGainChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
+            const e = gainEdit(fresh, value);
+            if (e) wb.replaceRange(e.range, e.text, "mixer");
+          }),
+          onPanChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
+            const e = panEdit(fresh, value);
+            if (e) wb.replaceRange(e.range, e.text, "mixer");
+          }),
+          onMuteToggle: () => applyToStrip(strip.id, (fresh, wb) => {
+            const e = muteEdit(fresh, !strip.muted);
+            if (e) wb.replaceRange(e.range, e.text, "mixer");
+          }),
+          onGestureStart: beginGesture,
+          onGestureEnd: endGesture,
+          meters
+        },
+        strip.id
+      ))
+    }
+  );
+}
+__name(MixerStrips, "MixerStrips");
+function MixerConsolePanel() {
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "div",
+    {
+      "data-bottom-panel-tab": "mixer-console",
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        width: "100%",
+        minHeight: 0,
+        overflow: "hidden",
+        background: "var(--background, #1c1c20)"
+      },
+      children: /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: "1 1 0", minHeight: 0, overflowY: "auto" }, children: /* @__PURE__ */ jsxRuntime.jsx(
+        MixerStrips,
+        {
+          emptyFallback: /* @__PURE__ */ jsxRuntime.jsx(
+            VisualEditStandby,
+            {
+              panel: MIXER_CONSOLE_TAB_ID,
+              hint: "Add a pattern to see its channel strip.",
+              icon: "settings"
+            }
+          )
+        }
+      ) })
+    }
+  );
+}
+__name(MixerConsolePanel, "MixerConsolePanel");
 
 // src/workspace/bottomPanel/visualEditSeed.tsx
 var PANELS = {
-  [PATTERN_TAB_ID]: PatternPanel
+  [PATTERN_TAB_ID]: PatternPanel,
+  [MIXER_CONSOLE_TAB_ID]: MixerConsolePanel
 };
 function seedVisualEditTabs() {
   for (const tab of VISUAL_EDIT_TABS) {
@@ -35476,6 +35542,7 @@ exports.LiveCodingEditor = LiveCodingEditor;
 exports.LiveCodingRuntime = LiveCodingRuntime;
 exports.LiveRecorder = LiveRecorder;
 exports.MASTER_KEY = MASTER_KEY;
+exports.MIXER_CONSOLE_TAB_ID = MIXER_CONSOLE_TAB_ID;
 exports.MIXER_TAB_ID = MIXER_TAB_ID;
 exports.MainSignalSampler = MainSignalSampler;
 exports.Mixer = Mixer;
