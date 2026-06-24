@@ -3241,7 +3241,7 @@ declare function classifyChunk(info: ChunkInfo): ChunkType;
  * this to decide whether to re-parse its model (typed edit) or leave it
  * (panel-originated edit it already knows about).
  */
-type WriteSource = 'knob' | 'seq' | 'roll' | 'arrange.weights' | 'arrange.structure' | 'transport';
+type WriteSource = 'knob' | 'seq' | 'roll' | 'arrange.weights' | 'arrange.structure' | 'transport' | 'mixer';
 /** A single replacement, addressed by absolute pre-edit doc offsets. */
 interface OffsetEdit {
     /** absolute [start, end) offsets in the document as it was when detected */
