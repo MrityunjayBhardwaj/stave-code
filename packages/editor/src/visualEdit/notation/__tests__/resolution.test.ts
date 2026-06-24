@@ -13,6 +13,10 @@ import {
   scalePianoRollTo,
   canScaleStepGridTo,
   canScalePianoRollTo,
+  quantizeStepGridTo,
+  quantizePianoRollTo,
+  stepSlotState,
+  rollSlotState,
   RESOLUTION_PRESETS,
   MAX_RESOLUTION_STEPS,
 } from '../resolution'
@@ -179,8 +183,8 @@ describe('#479 resolution — piano roll ÷2 guards', () => {
 })
 
 describe('#479 resolution — absolute slot targets (the 4/8/16/32 control)', () => {
-  it('the preset list is 4 / 8 / 16 / 32', () => {
-    expect([...RESOLUTION_PRESETS]).toEqual([4, 8, 16, 32])
+  it('the preset list is 4 / 8 / 16 / 32 / 64', () => {
+    expect([...RESOLUTION_PRESETS]).toEqual([4, 8, 16, 32, 64])
   })
 
   it('step grid: scaling to a higher power-of-2 target doubles repeatedly', () => {
@@ -240,5 +244,66 @@ describe('#479 resolution — absolute slot targets (the 4/8/16/32 control)', ()
     // 128 → 256 is fine (== cap), but the doubling that would exceed it aborts.
     expect(scaleStepGridTo(wide, MAX_RESOLUTION_STEPS).steps).toBe(MAX_RESOLUTION_STEPS)
     expect(scaleStepGridTo(wide, MAX_RESOLUTION_STEPS * 2)).toBe(wide)
+  })
+})
+
+describe('#479 quantize-set — reduce any pattern to any slot count', () => {
+  it('step grid: a lossless ratio gives the SAME result as ×2/÷2', () => {
+    const m4 = step('bd ~ sn ~')
+    expect(serializeStepGrid(quantizeStepGridTo(m4, 8))).toBe('bd ~ ~ ~ sn ~ ~ ~') // == scaleTo
+    expect(serializeStepGrid(quantizeStepGridTo(step('bd ~ ~ ~ sn ~ ~ ~'), 4))).toBe('bd ~ sn ~')
+  })
+
+  it('step grid: a NON-power-of-2 reduce quantizes hits to the nearest slot', () => {
+    // 5 columns → 4: bd@0→0, sn@2→round(2*4/5)=2, bd@4→round(4*4/5)=3
+    expect(serializeStepGrid(quantizeStepGridTo(step('bd ~ sn ~ bd'), 4))).toBe('bd ~ sn bd')
+  })
+
+  it('step grid: a lossy reduce merges colliding hits instead of dropping them', () => {
+    // every column filled, 8 → 4: pairs (0,1)(2,3)(4,5)(6,7) each collapse to one hit
+    const dense = step('bd sd hh cp bd sd hh cp')
+    const out = quantizeStepGridTo(dense, 4)
+    expect(out.steps).toBe(4)
+    // each lane still present, no crash, serializes to a valid 4-col grid
+    expect(serializeStepGrid(out).split(' ').length).toBe(4)
+  })
+
+  it('piano roll: a non-power-of-2 reduce snaps notes and always serializes', () => {
+    // 3 → 4 (finer, non-divisor): each note snaps onto the 4-grid
+    expect(serializePianoRoll(quantizePianoRollTo(roll('c3 e3 g3'), 4))).not.toBeNull()
+  })
+
+  it('piano roll: REDUCES the long 64-step choir melody to 16 without dropping the write', () => {
+    const choir =
+      '~ ~ ~ ~ ~ ~ ~ ~ [e4,d5]@4 d5 ~ ~ ~ [g4,a#4]@2 d5 ~ ~ [f5,c#4] ~ ~ b4@4 g4 ~ ~ ~ [c5,d4]@4 e5 ~ f#5 ~ [b4,d4]@2 f5 ~ ~ c5 ~ ~ [g4,a4]@3 d5 ~ ~ ~ d5 e4@8'
+    const m = roll(choir)
+    expect(m.steps).toBe(64)
+    const out = quantizePianoRollTo(m, 16)
+    expect(out.steps).toBe(16)
+    const s = serializePianoRoll(out)
+    expect(s, 'reduced melody must serialize (no silent drop)').not.toBeNull()
+    // every note lands on the 16-grid, in range, no overlap (buildGroups would null otherwise)
+    expect(out.notes.every((n) => n.start >= 0 && n.start + n.duration <= 16)).toBe(true)
+  })
+
+  it('quantize is a no-op for the current count', () => {
+    const m = step('bd ~ sn ~')
+    expect(quantizeStepGridTo(m, 4)).toBe(m)
+  })
+
+  it('slot state classifies active / lossless / quantize', () => {
+    const m5 = step('bd ~ sn ~ bd') // 5 cols (non-power-of-2)
+    expect(stepSlotState(m5, 5)).toBe('active')
+    expect(stepSlotState(m5, 4)).toBe('quantize') // not a power-of-2 ratio → quantize, still offered
+    const m4 = step('bd ~ sn ~')
+    expect(stepSlotState(m4, 4)).toBe('active')
+    expect(stepSlotState(m4, 8)).toBe('lossless') // power-of-2 ratio
+    expect(rollSlotState(roll('c3 e3 g3'), 8)).toBe('quantize') // 3→8 not power-of-2
+  })
+
+  it('multi-bar grids stay lossless-only (quantize would not bar-align)', () => {
+    const mb = step('<bd sn>') // bars 2
+    // a lossy target is disabled rather than quantized for multi-bar
+    expect(stepSlotState(mb, 4)).not.toBe('quantize')
   })
 })

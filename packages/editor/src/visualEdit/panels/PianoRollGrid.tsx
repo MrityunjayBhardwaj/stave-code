@@ -31,7 +31,7 @@ import { placeNote, resizeNote } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
 import { ResolutionControl } from './ResolutionControl'
-import { canScalePianoRollTo, scalePianoRollTo } from '../notation/resolution'
+import { rollSlotState, quantizePianoRollTo } from '../notation/resolution'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 import { setNoteClip, getNoteClip } from './clipboard'
@@ -344,11 +344,11 @@ export function PianoRollGrid({
     })
   }
 
-  // Grid resolution (#479): scale to an absolute slot count by pure ×2/÷2 —
-  // note starts AND durations scale, so onsets are byte-identical (hap-verified).
-  // A target that can't apply losslessly returns the same model → mutate skips.
+  // Grid resolution (#479): set the grid to an absolute slot count — lossless
+  // ×2/÷2 when the ratio allows (onsets byte-identical), else quantize the notes
+  // onto the new grid. A no-op target returns the same model → mutate skips.
   const scaleToSlots = (target: number): void => {
-    mutate((prev) => scalePianoRollTo(prev, target))
+    mutate((prev) => quantizePianoRollTo(prev, target))
   }
 
   if (!model) {
@@ -414,7 +414,7 @@ export function PianoRollGrid({
       >
         <ResolutionControl
           steps={model.steps}
-          canScaleTo={(target) => canScalePianoRollTo(model, target)}
+          slotState={(target) => rollSlotState(model, target)}
           onScaleTo={scaleToSlots}
         />
         <NoteColorToggle />

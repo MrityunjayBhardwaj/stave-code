@@ -25,7 +25,7 @@
  * reference when it can't apply, so `useGridModel.mutate` skips the write and
  * the document is left untouched.
  */
-import type { PianoRollModel, StepGridModel } from './model'
+import type { PianoRollModel, RollNote, StepGridModel } from './model'
 
 /** which way the resolution control scales the grid */
 export type ResolutionDir = 'double' | 'halve'
@@ -137,16 +137,18 @@ export function scalePianoRoll(model: PianoRollModel, dir: ResolutionDir): Piano
   }
 }
 
-/* ── absolute slot-count targets (the 4 / 8 / 16 / 32 control) ──── */
+/* ── absolute slot-count targets (the 4 / 8 / 16 / 32 / 64 control) ── */
 
 /**
- * The absolute slot counts the control offers. A target is reachable only when
- * it's a power-of-2 ratio of the current count (so it's pure ×2/÷2 — any other
- * ratio would re-time the pattern, the trap #479 rejects). A non-power-of-2 grid
- * (a triplet's 12, a 5-note melody) therefore shows every preset disabled until
- * real fixed-rate length editing (polymeter) lands — see the deferred follow-up.
+ * The absolute slot counts the "Slots" control offers. Clicking one SETS the
+ * grid to that column count. When the target is a power-of-2 ratio of the current
+ * count it's a lossless ×2/÷2 (`scaleStepGridTo`/`scalePianoRollTo`); otherwise
+ * the grid QUANTIZES — every note snaps to the nearest of the new slots and
+ * notes that collide merge (`quantizeStepGridTo`/`quantizePianoRollTo`). So any
+ * pattern can be coarsened to any preset (a 64-step choir → 16), at the cost of
+ * timing for the non-lossless cases — the control marks which is which.
  */
-export const RESOLUTION_PRESETS = [4, 8, 16, 32] as const
+export const RESOLUTION_PRESETS = [4, 8, 16, 32, 64] as const
 
 /** is n a power of two (≥1)? */
 function isPow2(n: number): boolean {
@@ -192,4 +194,107 @@ export function canScaleStepGridTo(model: StepGridModel, target: number): boolea
 }
 export function canScalePianoRollTo(model: PianoRollModel, target: number): boolean {
   return target !== model.steps && scalePianoRollTo(model, target) !== model
+}
+
+/* ── quantize-set: snap any pattern onto a target slot count ────── */
+
+const clampInt = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v))
+
+/** the bucket a source column `c` of `from` slots maps onto in `to` slots */
+const bucket = (c: number, from: number, to: number): number =>
+  clampInt(Math.round((c * to) / from), 0, to - 1)
+
+/**
+ * Set a step grid to exactly `target` columns by quantizing: each ON cell snaps
+ * to the nearest target column, several hits in a column collapse to one (OR),
+ * and a bucket's gain is the loudest source hit that lands in it. Lossless when
+ * `target` is a power-of-2 ratio (identical to `scaleStepGridTo`); a quantize
+ * otherwise. Single-bar only — a multi-bar `<...>` grid keeps the lossless path
+ * (a target that isn't bar-aligned can't serialize). Returns the model unchanged
+ * for the current count, an invalid target, or multi-bar.
+ */
+export function quantizeStepGridTo(model: StepGridModel, target: number): StepGridModel {
+  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model
+  if ((model.bars ?? 1) > 1) return scaleStepGridTo(model, target)
+  const from = model.steps
+  const lanes = model.lanes.map((lane) => {
+    const cells = Array<boolean>(target).fill(false)
+    lane.cells.forEach((on, c) => {
+      if (on) cells[bucket(c, from, target)] = true
+    })
+    return { ...lane, cells }
+  })
+  let gains: number[] | undefined
+  if (model.gains) {
+    gains = Array<number>(target).fill(1)
+    const filled = new Set<number>()
+    for (let c = 0; c < from; c++) {
+      if (!model.lanes.some((l) => l.cells[c])) continue // only audible columns carry gain
+      const b = bucket(c, from, target)
+      const g = model.gains[c] ?? 1
+      gains[b] = filled.has(b) ? Math.max(gains[b], g) : g
+      filled.add(b)
+    }
+  }
+  return { ...model, steps: target, lanes, ...(gains ? { gains } : {}) }
+}
+
+/**
+ * Set a piano roll to exactly `target` columns by quantizing: each note's start
+ * (and duration) snaps to the new grid, notes that collide on a column merge
+ * (same pitch → one; different pitches → a chord sharing the column's duration),
+ * and durations are clamped so nothing overlaps or runs past the grid — so the
+ * result always serializes (no silent drop). Lossless when `target` is a
+ * power-of-2 ratio; a quantize otherwise. Single-bar only (multi-bar keeps the
+ * lossless path). Returns the model unchanged for current/invalid/multi-bar.
+ */
+export function quantizePianoRollTo(model: PianoRollModel, target: number): PianoRollModel {
+  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model
+  if ((model.bars ?? 1) > 1) return scalePianoRollTo(model, target)
+  const from = model.steps
+  // 1. quantize each note's start + duration onto the target grid
+  const q = model.notes
+    .map((n) => ({
+      pitch: n.pitch,
+      start: bucket(n.start, from, target),
+      duration: Math.max(1, Math.round((n.duration * target) / from)),
+      gain: n.gain ?? 1,
+    }))
+    .sort((a, b) => a.start - b.start)
+  // 2. group by start column, dropping a same-pitch collision (keep the first)
+  const byCol = new Map<number, { pitch: string; duration: number; gain: number }[]>()
+  for (const n of q) {
+    const grp = byCol.get(n.start) ?? []
+    if (grp.some((m) => m.pitch === n.pitch)) continue
+    grp.push({ pitch: n.pitch, duration: n.duration, gain: n.gain })
+    byCol.set(n.start, grp)
+  }
+  // 3. emit, clamping each group's shared duration to the next start (no overlap)
+  const starts = [...byCol.keys()].sort((a, b) => a - b)
+  const notes: RollNote[] = []
+  starts.forEach((start, i) => {
+    const limit = (i + 1 < starts.length ? starts[i + 1] : target) - start
+    const grp = byCol.get(start)!
+    const duration = clampInt(Math.min(...grp.map((m) => m.duration)), 1, limit)
+    const gain = Math.max(...grp.map((m) => m.gain)) // a chord shares one gain
+    for (const m of grp) notes.push({ pitch: m.pitch, start, duration, gain })
+  })
+  return { ...model, steps: target, notes }
+}
+
+/** how setting the grid to `target` slots behaves, for the control's label/state */
+export type SlotState = 'active' | 'lossless' | 'quantize' | 'disabled'
+
+function slotState(steps: number, bars: number | undefined, lossless: boolean, target: number): SlotState {
+  if (target === steps) return 'active'
+  if (lossless) return 'lossless'
+  if ((bars ?? 1) > 1) return 'disabled' // multi-bar can't quantize off the bar grid yet
+  return 'quantize'
+}
+
+export function stepSlotState(model: StepGridModel, target: number): SlotState {
+  return slotState(model.steps, model.bars, canScaleStepGridTo(model, target), target)
+}
+export function rollSlotState(model: PianoRollModel, target: number): SlotState {
+  return slotState(model.steps, model.bars, canScalePianoRollTo(model, target), target)
 }

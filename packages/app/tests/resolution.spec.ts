@@ -1,11 +1,11 @@
 /**
  * Grid resolution — #479.
  *
- * The "Slots" 4 / 8 / 16 / 32 control on both grid headers scales the grid to an
- * absolute column count by ratio-preserving ×2 / ÷2 (hits keep their position).
- * A target is enabled only when it's a lossless power-of-2 ratio of the current
- * count; non-power-of-2 patterns show every preset disabled. Verified by BOTH the
- * rendered grid and the written-back source.
+ * The "Slots" 4 / 8 / 16 / 32 / 64 control on both grid headers SETS the grid to
+ * an absolute column count: a lossless ×2/÷2 when the ratio allows (hits keep
+ * their position), else a quantize (notes snap to the nearest new slot, collisions
+ * merge) so ANY pattern can be coarsened. Verified by BOTH the rendered grid and
+ * the written-back source.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
 
@@ -58,7 +58,7 @@ async function openPattern(page: Page): Promise<Locator> {
   return drawer
 }
 
-test.describe('Grid resolution 4/8/16/32 (#479)', () => {
+test.describe('Grid resolution 4/8/16/32/64 (#479)', () => {
   test('step grid: choosing 8 doubles a 4-step grid and keeps timing', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
@@ -86,33 +86,69 @@ test.describe('Grid resolution 4/8/16/32 (#479)', () => {
     expect(errors).toEqual([])
   })
 
-  test('step grid: a lower target is disabled when halving is lossy, enabled when lossless', async ({
+  test('step grid: a lossless reduce keeps timing and is shown as a normal preset', async ({
     page,
   }) => {
     await boot(page)
-    // every column filled → halving to 4 would drop hits → "4" disabled
-    await setStrudelCode(page, '$: s("bd sd hh cp bd sd hh cp")')
+    // hits only on every 4th column → 8→4 is lossless
+    await setStrudelCode(page, '$: s("bd ~ ~ ~ sn ~ ~ ~")')
     const drawer = await openPattern(page)
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    await expect(grid.locator('[data-resolution-step="4"]')).toBeDisabled()
-    await expect(grid.locator('[data-resolution-step="16"]')).toBeEnabled()
-
-    // hits only on every 4th column → "4" lossless → enabled, merges down
-    await setStrudelCode(page, '$: s("bd ~ ~ ~ sn ~ ~ ~")')
     await expect(grid.locator('[data-resolution-step="4"]')).toBeEnabled()
+    await expect(grid.locator('[data-resolution-step="4"]')).not.toHaveAttribute(
+      'data-resolution-quantize',
+      'true',
+    )
     await grid.locator('[data-resolution-step="4"]').click()
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
   })
 
-  test('step grid: a non-power-of-2 (5-step) pattern disables every preset', async ({ page }) => {
+  test('step grid: a non-power-of-2 (5-step) pattern can still be reduced (quantize)', async ({
+    page,
+  }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd ~ sn ~ bd")')
     const drawer = await openPattern(page)
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    for (const n of ['4', '8', '16', '32']) {
-      await expect(grid.locator(`[data-resolution-step="${n}"]`)).toBeDisabled()
-    }
+    // every preset is OFFERED (quantize), not disabled — and marked as quantize
+    await expect(grid.locator('[data-resolution-step="4"]')).toBeEnabled()
+    await expect(grid.locator('[data-resolution-step="4"]')).toHaveAttribute(
+      'data-resolution-quantize',
+      'true',
+    )
+    // reduce 5 → 4: hits snap to the nearest of the 4 slots
+    await grid.locator('[data-resolution-step="4"]').click()
+    await page.waitForTimeout(120)
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn bd")')
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
+  })
+
+  test('piano roll: reduce a 64-step melody to 16 (quantize) writes a valid 16-slot pattern', async ({
+    page,
+  }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await boot(page)
+    await setStrudelCode(
+      page,
+      '$: note("~ ~ ~ ~ ~ ~ ~ ~ [e4,d5]@4 d5 ~ ~ ~ [g4,a#4]@2 d5 ~ ~ [f5,c#4] ~ ~ b4@4 g4 ~ ~ ~ [c5,d4]@4 e5 ~ f#5 ~ [b4,d4]@2 f5 ~ ~ c5 ~ ~ [g4,a4]@3 d5 ~ ~ ~ d5 e4@8")',
+    )
+    const drawer = await openPattern(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    // 16 is below the 64-step current → offered as a quantize target
+    await expect(grid.locator('[data-resolution-step="16"]')).toBeEnabled()
+    await expect(grid.locator('[data-resolution-step="16"]')).toHaveAttribute(
+      'data-resolution-quantize',
+      'true',
+    )
+    await grid.locator('[data-resolution-step="16"]').click()
+    await page.waitForTimeout(150)
+    const code = await getStrudelCode(page)
+    // the write happened (source changed) and it's a real 16-slot melody
+    expect(code).not.toContain('e4@8') // the original long tail is gone
+    expect(code).toContain('note(')
+    expect(errors).toEqual([])
   })
 
   test('piano roll: 8 then 4 round-trips to the byte-identical source', async ({ page }) => {
