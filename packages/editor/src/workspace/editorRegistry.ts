@@ -97,6 +97,21 @@ export function getActiveEditor(): MonacoEditor | null {
   return activeEditor
 }
 
+/**
+ * The fileId of the active editor, or null if none is active. Reverse-looks-up
+ * the registry (one registered editor per fileId). Visual-editing consumers that
+ * must follow the SAME file the active editor shows — e.g. the Mixer meters
+ * pinning the audio bus to the active program rather than the bus's "default"
+ * (most-recent) publisher, which can be a chord/sample/drum preview — use this.
+ */
+export function getActiveFileId(): string | null {
+  if (!activeEditor) return null
+  for (const [fileId, ed] of editors) {
+    if (ed === activeEditor) return fileId
+  }
+  return null
+}
+
 /** Subscribe to active-editor changes. Returns an unsubscribe fn. */
 export function onActiveEditorChange(cb: () => void): () => void {
   activeEditorListeners.add(cb)

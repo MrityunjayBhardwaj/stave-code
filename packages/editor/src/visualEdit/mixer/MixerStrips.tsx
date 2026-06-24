@@ -11,11 +11,14 @@
 import * as React from 'react'
 
 import { useMixerModel } from './useMixerModel'
+import { useTrackMeters } from './useTrackMeters'
 import { ChannelStrip } from './ChannelStrip'
 import { gainEdit, panEdit } from './writeStrip'
 
 export function MixerStrips(): React.ReactElement | null {
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel()
+  // One capped RAF loop + bus subscription for every strip's live meter (S2).
+  const meters = useTrackMeters()
   if (strips.length === 0) return null
 
   return (
@@ -49,6 +52,7 @@ export function MixerStrips(): React.ReactElement | null {
           }
           onGestureStart={beginGesture}
           onGestureEnd={endGesture}
+          meters={meters}
         />
       ))}
     </div>
