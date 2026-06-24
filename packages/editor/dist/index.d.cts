@@ -3290,6 +3290,11 @@ declare class Writeback {
     private writingSource;
     /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
     private inGesture;
+    /** whether the in-flight gesture has applied any edit — gates the one re-eval
+     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
+    private gestureDidEdit;
+    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
+    private reevalTimer;
     constructor(editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco);
     /**
      * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
@@ -3298,7 +3303,9 @@ declare class Writeback {
      * the undo grouping is affected. Idempotent if already in a gesture.
      */
     beginGesture(): void;
-    /** Close the gesture, sealing all its edits as one undo step. */
+    /** Close the gesture, sealing all its edits as one undo step — and, if the
+     * gesture changed anything, make it audible immediately (one re-eval on
+     * release, not per drag frame). */
     endGesture(): void;
     /**
      * The source of the edit currently being applied, or null. The host's
@@ -3326,6 +3333,19 @@ declare class Writeback {
      */
     applyFresh(chunk: ChunkInfo, edits: OffsetEdit[], source: WriteSource): boolean;
     private apply;
+    /**
+     * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
+     * the moment it commits. Centralised here so every visual surface — sequencer,
+     * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
+     * re-evals only a PLAYING file, and only when live mode isn't already doing
+     * it, so this never auto-starts audio nor double-evaluates.
+     *
+     * Trailing-debounced: rapid successive commits (e.g. clearing several
+     * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
+     * which also lets the Monaco→file-store sync settle so the re-eval reads the
+     * final content rather than racing a not-yet-synced edit.
+     */
+    private requestLiveReeval;
 }
 
 /**
