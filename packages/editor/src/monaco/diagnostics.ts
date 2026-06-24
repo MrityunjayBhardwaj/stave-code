@@ -19,16 +19,26 @@ function parseErrorLocation(error: Error): { line: number; col: number } | null 
 
 /**
  * Sets a red error squiggle on the model.
- * If the error has a parseable location, marks that line.
- * Otherwise marks the entire document.
+ * If the error has a parseable, in-range location, marks that single line.
+ * Otherwise places NO inline marker (and retires any prior one).
+ *
+ * A locationless error — no `at eval (<anonymous>:L:C)` frame, an empty
+ * stack, or a wrapper line past EOF — came from outside the user's visible
+ * code (a runtime/library throw with a bundle-only stack: a soundfont
+ * out-of-range, a per-hap failure, etc.). Painting the whole document red
+ * is misleading noise — the user's file as a whole did not fail — so we
+ * skip the inline marker; the Console row, toast, and status chip still
+ * carry the message. This mirrors the engineLog→Monaco bridge's
+ * skip-when-line-unknown rule (`engineLogMarkers.ts`); the two marker
+ * pipelines now agree (#532). Genuine syntax/eval errors are unaffected —
+ * Strudel's transpile+eval throw carries a real `at eval` line.
  *
  * Stack-parsed line numbers can exceed the model's line count — Strudel
  * transpiles user code into a wrapper so the reported line may sit past
- * the end of the visible document. Monaco throws `Illegal value for
- * lineNumber` when that happens; the throw cascades through React's
- * commit phase and unmounts the editor subtree. Clamp line/column into
- * model range and swallow any residual Monaco validation errors so a
- * bad stack trace never tears down the UI (hetvabhasa P37).
+ * the end of the visible document. Such an out-of-range line is treated as
+ * locationless (skip) rather than clamped to the whole document. Any
+ * residual Monaco validation error is swallowed so a bad stack trace never
+ * tears down the UI (hetvabhasa P37).
  */
 export function setEvalError(
   monaco: typeof Monaco,
@@ -43,21 +53,25 @@ export function setEvalError(
       loc && Number.isFinite(loc.line) && loc.line >= 1 && loc.line <= lineCount
         ? loc.line
         : null
-    const validCol =
-      loc && Number.isFinite(loc.col) && loc.col >= 1 ? loc.col : 1
 
-    const lineNumber = validLine ?? 1
-    const startColumn = validLine ? validCol : 1
-    const endLineNumber = validLine ?? lineCount
-    const endColumn = model.getLineMaxColumn(endLineNumber)
+    // No parseable in-range location → skip the inline marker and retire any
+    // prior eval marker on this model, rather than painting the whole file.
+    if (validLine == null) {
+      monaco.editor.setModelMarkers(model, MARKER_OWNER, [])
+      return
+    }
+
+    const startColumn =
+      loc && Number.isFinite(loc.col) && loc.col >= 1 ? loc.col : 1
+    const endColumn = model.getLineMaxColumn(validLine)
 
     monaco.editor.setModelMarkers(model, MARKER_OWNER, [
       {
         severity: monaco.MarkerSeverity.Error,
         message: error.message,
-        startLineNumber: lineNumber,
+        startLineNumber: validLine,
         startColumn,
-        endLineNumber,
+        endLineNumber: validLine,
         endColumn,
       },
     ])
