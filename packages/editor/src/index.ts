@@ -323,6 +323,8 @@ export {
   cycleEditorTheme,
   onThemeChange,
   applyPersistedTheme,
+  registerReevalHandler,
+  requestReeval,
 } from './workspace/editorRegistry'
 export type { EditorTheme, ResolvedTheme, SignalAliasMap } from './workspace/editorRegistry'
 export {

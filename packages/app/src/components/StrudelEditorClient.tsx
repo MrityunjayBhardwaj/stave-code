@@ -73,6 +73,7 @@ import {
   PIANOROLL_P5_CODE,
   setVizQuality,
   type VizQualityLevel,
+  registerReevalHandler,
 } from "@stave/editor";
 import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 
@@ -918,6 +919,19 @@ export default function StrudelEditorClient({
         runtimesRef.current.forEach((rt) => {
           if (rt.getIsPlaying()) void rt.play();
         });
+      }),
+    [],
+  );
+
+  // Live mute (Mixer S3): a mixer mute writes `_`-prefix into the file; this
+  // makes it audible immediately by re-evaluating that file — but ONLY if it's
+  // already playing, so muting never auto-starts audio the user hadn't started.
+  // `rt.play()` while playing re-evals (same as the checkout path above).
+  useEffect(
+    () =>
+      registerReevalHandler((fileId: string) => {
+        const rt = runtimesRef.current.get(fileId);
+        if (rt && rt.getIsPlaying()) void rt.play();
       }),
     [],
   );

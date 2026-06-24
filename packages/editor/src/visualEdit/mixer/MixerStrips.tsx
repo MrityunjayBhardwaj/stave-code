@@ -10,6 +10,7 @@
  */
 import * as React from 'react'
 
+import { getActiveFileId, requestReeval } from '../../workspace/editorRegistry'
 import { useMixerModel } from './useMixerModel'
 import { useTrackMeters } from './useTrackMeters'
 import { ChannelStrip } from './ChannelStrip'
@@ -50,12 +51,22 @@ export function MixerStrips(): React.ReactElement | null {
               if (e) wb.replaceRange(e.range, e.text, 'mixer')
             })
           }
-          onMuteToggle={() =>
+          onMuteToggle={() => {
+            let edited = false
             applyToStrip(strip.id, (fresh, wb) => {
               const e = muteEdit(fresh, !strip.muted)
-              if (e) wb.replaceRange(e.range, e.text, 'mixer')
+              if (e) {
+                wb.replaceRange(e.range, e.text, 'mixer')
+                edited = true
+              }
             })
-          }
+            // Live mute: a mixer edit doesn't auto-eval (that's live mode only),
+            // so make the mute audible NOW by asking the app to re-eval this file
+            // — it re-evals only if already playing, so we never auto-start audio.
+            // The Monaco write above already synced to the file store, so the
+            // re-eval reads the muted content.
+            if (edited) requestReeval(getActiveFileId())
+          }}
           onGestureStart={beginGesture}
           onGestureEnd={endGesture}
           meters={meters}

@@ -320,6 +320,47 @@ test.describe('Mixer strip mute (#543 / S3)', () => {
     expect(d2Max, 'sibling d2 plays — `_d1` does not break the eval or shift its captureId').toBeGreaterThan(15)
     expect(d1Max, 'muted `_d1` is silent — dark meter').toBeLessThan(8)
   })
+
+  test('LIVE mute: clicking mute while playing silences the track immediately (no manual re-eval)', async ({
+    page,
+  }) => {
+    await boot(page)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    await setStrudelCode(page, 'd1: s("bd*8").gain(0.9)\nd2: s("hh*8").gain(0.9)')
+
+    // start playback; both meters move.
+    let d1Max = 0
+    let d2Max = 0
+    for (let attempt = 0; attempt < 3 && (d1Max < 15 || d2Max < 15); attempt++) {
+      await play(page)
+      await page.waitForTimeout(500)
+      d1Max = 0
+      d2Max = 0
+      for (let i = 0; i < 30; i++) {
+        d1Max = Math.max(d1Max, await meterFill(page, drawer, 'd1'))
+        d2Max = Math.max(d2Max, await meterFill(page, drawer, 'd2'))
+        await page.waitForTimeout(33)
+      }
+    }
+    expect(d1Max, 'd1 plays before muting').toBeGreaterThan(15)
+    expect(d2Max, 'd2 plays before muting').toBeGreaterThan(15)
+
+    // click mute on d1 — and DO NOT re-evaluate. Live mute re-evals the playing
+    // file itself, so d1 goes silent (dark) within a beat while d2 keeps moving.
+    await clickMute(page, drawer, 'd1')
+    expect((await strudelValue(page)).split('\n')[0]).toBe('_d1: s("bd*8").gain(0.9)')
+    await page.waitForTimeout(600)
+    let d1Muted = 0
+    let d2Still = 0
+    for (let i = 0; i < 30; i++) {
+      d1Muted = Math.max(d1Muted, await meterFill(page, drawer, 'd1'))
+      d2Still = Math.max(d2Still, await meterFill(page, drawer, 'd2'))
+      await page.waitForTimeout(33)
+    }
+    expect(d1Muted, 'live mute silences d1 immediately — dark, no manual eval').toBeLessThan(8)
+    expect(d2Still, 'sibling d2 keeps playing').toBeGreaterThan(15)
+  })
 })
 
 test.describe('Mixer live meters (#540 / S2)', () => {

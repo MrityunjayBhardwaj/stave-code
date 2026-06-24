@@ -120,6 +120,27 @@ export function onActiveEditorChange(cb: () => void): () => void {
   }
 }
 
+// Re-evaluate seam — the app owns the runtime, the editor package doesn't, so a
+// visual-editing control that must take audible effect immediately (the Mixer's
+// live mute) requests a re-eval through here. The app registers a handler that
+// re-evaluates the file ONLY if it is currently playing — so a control edit
+// never auto-STARTS audio that the user hadn't started. No-op when no handler is
+// registered (tests, or before the app mounts).
+let reevalHandler: ((fileId: string) => void) | null = null
+
+/** App-side: register how to re-evaluate a playing file. Returns an unregister fn. */
+export function registerReevalHandler(fn: (fileId: string) => void): () => void {
+  reevalHandler = fn
+  return () => {
+    if (reevalHandler === fn) reevalHandler = null
+  }
+}
+
+/** Editor-side: request an immediate re-eval of `fileId` (no-op if unregistered). */
+export function requestReeval(fileId: string | null): void {
+  if (fileId) reevalHandler?.(fileId)
+}
+
 /**
  * Reveal the given line in the editor for `fileId` and set the cursor
  * at column 1. Returns true if the editor was found. Line numbers are
