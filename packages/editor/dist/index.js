@@ -27565,6 +27565,15 @@ function namedLabel(label) {
   return label && label !== "$" ? label : null;
 }
 __name(namedLabel, "namedLabel");
+function isMuted(label) {
+  return label != null && label.startsWith("_");
+}
+__name(isMuted, "isMuted");
+function bareLabel(label) {
+  if (label == null) return null;
+  return namedLabel(isMuted(label) ? label.slice(1) : label);
+}
+__name(bareLabel, "bareLabel");
 var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
 function stripKind(chunk) {
   const k = patternKind(chunk);
@@ -27605,17 +27614,15 @@ function stripColor(kind, miniString) {
   return VOICE_FALLBACK_COLOR;
 }
 __name(stripColor, "stripColor");
-function buildStripModel(chunk, index, anonIndex) {
+function buildStripModel(chunk, index, id) {
   const kind = stripKind(chunk);
   const source = readSource(chunk, kind);
-  const named = namedLabel(chunk.label);
-  const id = named ?? `$${anonIndex}`;
-  const name = named ?? source ?? chunk.headFn ?? `Track ${index + 1}`;
+  const name = bareLabel(chunk.label) ?? source ?? chunk.headFn ?? `Track ${index + 1}`;
   return {
     id,
     index,
     kind,
-    label: named,
+    label: bareLabel(chunk.label),
     name,
     headFn: chunk.headFn,
     miniString: chunk.miniString,
@@ -27624,20 +27631,29 @@ function buildStripModel(chunk, index, anonIndex) {
     pan: readScalar(chunk, "pan"),
     panForeign: isForeign(chunk, "pan"),
     sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
-    muted: false,
+    muted: isMuted(chunk.label),
+    muteable: chunk.label != null,
     color: stripColor(kind, chunk.miniString),
     chain: chunk.chain,
     exprRange: chunk.exprRange,
     statementRange: chunk.statementRange,
-    captureId: named ?? `$${anonIndex}`
+    // captureId === id: a NAMED strip joins on its bare label (`d1`); a muted
+    // track's id never matches a live scheduler key (it's `_$<n>` or a name the
+    // engine skipped while muted) → that strip's meter stays dark, exactly the
+    // muted behaviour (S2). For an all-unmuted doc this is byte-identical to S2.
+    captureId: id
   };
 }
 __name(buildStripModel, "buildStripModel");
 function buildStripModels(chunks) {
   let anon = 0;
   return chunks.map((chunk, index) => {
-    const isAnon = namedLabel(chunk.label) === null;
-    return buildStripModel(chunk, index, isAnon ? anon++ : anon);
+    const bare = bareLabel(chunk.label);
+    let id;
+    if (bare !== null) id = bare;
+    else if (isMuted(chunk.label)) id = `_$${index}`;
+    else id = `$${anon++}`;
+    return buildStripModel(chunk, index, id);
   });
 }
 __name(buildStripModels, "buildStripModels");
@@ -27975,10 +27991,12 @@ function ChannelStrip({
   strip,
   onGainChange,
   onPanChange,
+  onMuteToggle,
   onGestureStart,
   onGestureEnd,
   meters
 }) {
+  const muteEnabled = strip.muteable && onMuteToggle !== void 0;
   const gain = faderGain(strip);
   const pos = gain === null ? 0 : gainToFaderPos(gain);
   const faderEnabled = gain !== null && onGainChange !== void 0;
@@ -28034,6 +28052,7 @@ function ChannelStrip({
       "data-mixer-strip": true,
       "data-mixer-strip-id": strip.id,
       "data-mixer-strip-kind": strip.kind,
+      "data-mixer-strip-muted": strip.muted ? "" : void 0,
       style: {
         width: 84,
         flexShrink: 0,
@@ -28062,13 +28081,43 @@ function ChannelStrip({
               "data-mixer-strip-name": true,
               title: strip.name,
               style: {
+                flex: 1,
                 fontSize: 11,
                 fontWeight: 600,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-                whiteSpace: "nowrap"
+                whiteSpace: "nowrap",
+                opacity: strip.muted ? 0.45 : 1
               },
               children: strip.name
+            }
+          ),
+          /* @__PURE__ */ jsx(
+            "button",
+            {
+              type: "button",
+              "data-mixer-strip-mute": true,
+              "aria-label": `${strip.muted ? "Unmute" : "Mute"} ${strip.name}`,
+              "aria-pressed": strip.muted,
+              disabled: !muteEnabled,
+              onClick: () => onMuteToggle?.(),
+              title: strip.muteable ? strip.muted ? "Unmute" : "Mute" : "Only named/$: tracks can be muted",
+              style: {
+                flexShrink: 0,
+                width: 16,
+                height: 16,
+                padding: 0,
+                borderRadius: 3,
+                fontSize: 9,
+                fontWeight: 700,
+                lineHeight: "14px",
+                cursor: muteEnabled ? "pointer" : "default",
+                border: "1px solid var(--border, #3a3a42)",
+                background: strip.muted ? "var(--meter-red, #e0564a)" : "var(--background, #1c1c20)",
+                color: strip.muted ? "#fff" : "var(--foreground-muted, #a0a0aa)",
+                opacity: muteEnabled ? 1 : 0.3
+              },
+              children: "M"
             }
           )
         ] }),
@@ -28219,6 +28268,14 @@ function panEdit(fresh, value) {
   return { range: arg.range, text: formatNumber(value) };
 }
 __name(panEdit, "panEdit");
+function muteEdit(fresh, muted3) {
+  if (fresh.label === null) return null;
+  const isMuted2 = fresh.label.startsWith("_");
+  if (muted3 === isMuted2) return null;
+  const pos = fresh.statementRange[0];
+  return muted3 ? { range: [pos, pos], text: "_" } : { range: [pos, pos + 1], text: "" };
+}
+__name(muteEdit, "muteEdit");
 function MixerStrips() {
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel();
   const meters = useTrackMeters();
@@ -28246,6 +28303,10 @@ function MixerStrips() {
           }),
           onPanChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
             const e = panEdit(fresh, value);
+            if (e) wb.replaceRange(e.range, e.text, "mixer");
+          }),
+          onMuteToggle: () => applyToStrip(strip.id, (fresh, wb) => {
+            const e = muteEdit(fresh, !strip.muted);
             if (e) wb.replaceRange(e.range, e.text, "mixer");
           }),
           onGestureStart: beginGesture,
