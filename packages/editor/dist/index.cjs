@@ -25135,13 +25135,13 @@ function serializeStepGain(model) {
 }
 __name(serializeStepGain, "serializeStepGain");
 function gridBars(model, bars) {
-  const perBar = model.steps / bars;
+  const perBar2 = model.steps / bars;
   const cols = gridColumns(model.lanes, model.steps);
   const slots = [];
   for (let b = 0; b < bars; b++) {
-    const bar2 = cols.slice(b * perBar, (b + 1) * perBar);
+    const bar2 = cols.slice(b * perBar2, (b + 1) * perBar2);
     if (bar2.every((c) => c === "~")) slots.push("~");
-    else if (perBar === 1) slots.push(bar2[0]);
+    else if (perBar2 === 1) slots.push(bar2[0]);
     else slots.push(`[${bar2.join(" ")}]`);
   }
   return `<${slots.join(" ")}>`;
@@ -25188,24 +25188,24 @@ function serializePianoRoll(model) {
 }
 __name(serializePianoRoll, "serializePianoRoll");
 function rollBars(groups, steps, bars) {
-  const perBar = steps / bars;
-  if (!Number.isInteger(perBar)) return null;
+  const perBar2 = steps / bars;
+  if (!Number.isInteger(perBar2)) return null;
   const starts = [...groups.keys()].sort((a, b2) => a - b2);
   const slots = [];
   let b = 0;
   while (b < bars) {
-    const barStart = b * perBar;
-    const barEnd = barStart + perBar;
+    const barStart = b * perBar2;
+    const barEnd = barStart + perBar2;
     const atStart = groups.get(barStart);
-    if (atStart && atStart.duration % perBar === 0) {
-      const k = atStart.duration / perBar;
+    if (atStart && atStart.duration % perBar2 === 0) {
+      const k = atStart.duration / perBar2;
       const heldEnd = barStart + atStart.duration;
       if (starts.some((s) => s > barStart && s < heldEnd)) return null;
       slots.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
       b += k;
       continue;
     }
-    if (perBar === 1) {
+    if (perBar2 === 1) {
       slots.push("~");
       b++;
       continue;
@@ -25732,6 +25732,157 @@ function NoteColorToggle() {
   );
 }
 __name(NoteColorToggle, "NoteColorToggle");
+var BTN = {
+  padding: "2px 8px",
+  fontSize: 11,
+  border: "none",
+  background: "transparent",
+  color: "var(--foreground-muted, #a0a0aa)",
+  cursor: "pointer"
+};
+function ResolutionControl({
+  onScale,
+  canDouble,
+  canHalve
+}) {
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    "div",
+    {
+      "data-resolution-control": true,
+      style: { display: "flex", alignItems: "center", gap: 6, fontSize: 11 },
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: "Slots" }),
+        /* @__PURE__ */ jsxRuntime.jsxs(
+          "div",
+          {
+            role: "group",
+            "aria-label": "grid resolution",
+            style: {
+              display: "inline-flex",
+              border: "1px solid var(--border, #3a3a42)",
+              borderRadius: 4,
+              overflow: "hidden"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-resolution-halve": true,
+                  "aria-label": "fewer slots (\xF72)",
+                  title: "Fewer slots \u2014 halve the grid resolution (keeps timing)",
+                  disabled: !canHalve,
+                  onClick: () => onScale("halve"),
+                  style: {
+                    ...BTN,
+                    borderRight: "1px solid var(--border, #3a3a42)",
+                    opacity: canHalve ? 1 : 0.4,
+                    cursor: canHalve ? "pointer" : "not-allowed"
+                  },
+                  children: "\xF72"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-resolution-double": true,
+                  "aria-label": "more slots (\xD72)",
+                  title: "More slots \u2014 double the grid resolution (keeps timing)",
+                  disabled: !canDouble,
+                  onClick: () => onScale("double"),
+                  style: {
+                    ...BTN,
+                    opacity: canDouble ? 1 : 0.4,
+                    cursor: canDouble ? "pointer" : "not-allowed"
+                  },
+                  children: "\xD72"
+                }
+              )
+            ]
+          }
+        )
+      ]
+    }
+  );
+}
+__name(ResolutionControl, "ResolutionControl");
+
+// src/visualEdit/notation/resolution.ts
+var MAX_RESOLUTION_STEPS = 256;
+function perBar(steps, bars) {
+  return bars && bars > 0 ? steps / bars : steps;
+}
+__name(perBar, "perBar");
+function canDoubleStepGrid(model) {
+  return model.steps >= 1 && model.steps * 2 <= MAX_RESOLUTION_STEPS;
+}
+__name(canDoubleStepGrid, "canDoubleStepGrid");
+function canHalveStepGrid(model) {
+  if (model.steps < 2 || model.steps % 2 !== 0) return false;
+  if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false;
+  const oddCellEmpty = model.lanes.every(
+    (lane) => lane.cells.every((on, i) => i % 2 === 0 || !on)
+  );
+  if (!oddCellEmpty) return false;
+  if (model.gains) {
+    if (!model.gains.every((g, i) => i % 2 === 0 || g === 1)) return false;
+  }
+  return true;
+}
+__name(canHalveStepGrid, "canHalveStepGrid");
+function scaleStepGrid(model, dir) {
+  if (dir === "double") {
+    if (!canDoubleStepGrid(model)) return model;
+    return {
+      ...model,
+      steps: model.steps * 2,
+      lanes: model.lanes.map((lane) => ({
+        ...lane,
+        cells: lane.cells.flatMap((on) => [on, false])
+      })),
+      ...model.gains ? { gains: model.gains.flatMap((g) => [g, 1]) } : {}
+    };
+  }
+  if (!canHalveStepGrid(model)) return model;
+  return {
+    ...model,
+    steps: model.steps / 2,
+    lanes: model.lanes.map((lane) => ({
+      ...lane,
+      cells: lane.cells.filter((_, i) => i % 2 === 0)
+    })),
+    ...model.gains ? { gains: model.gains.filter((_, i) => i % 2 === 0) } : {}
+  };
+}
+__name(scaleStepGrid, "scaleStepGrid");
+function canDoublePianoRoll(model) {
+  return model.steps >= 1 && model.steps * 2 <= MAX_RESOLUTION_STEPS;
+}
+__name(canDoublePianoRoll, "canDoublePianoRoll");
+function canHalvePianoRoll(model) {
+  if (model.steps < 2 || model.steps % 2 !== 0) return false;
+  if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false;
+  return model.notes.every((n) => n.start % 2 === 0 && n.duration % 2 === 0);
+}
+__name(canHalvePianoRoll, "canHalvePianoRoll");
+function scalePianoRoll(model, dir) {
+  if (dir === "double") {
+    if (!canDoublePianoRoll(model)) return model;
+    return {
+      ...model,
+      steps: model.steps * 2,
+      notes: model.notes.map((n) => ({ ...n, start: n.start * 2, duration: n.duration * 2 }))
+    };
+  }
+  if (!canHalvePianoRoll(model)) return model;
+  return {
+    ...model,
+    steps: model.steps / 2,
+    notes: model.notes.map((n) => ({ ...n, start: n.start / 2, duration: n.duration / 2 }))
+  };
+}
+__name(scalePianoRoll, "scalePianoRoll");
 
 // src/visualEdit/panels/inspector.ts
 function gainAtStart(model, start) {
@@ -25804,6 +25955,12 @@ function SequencerGrid() {
   const removeVoice = React20__namespace.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
+    },
+    [mutate]
+  );
+  const scaleResolution = React20__namespace.useCallback(
+    (dir) => {
+      mutate((prev) => scaleStepGrid(prev, dir));
     },
     [mutate]
   );
@@ -25894,7 +26051,17 @@ function SequencerGrid() {
         touchAction: "none"
       },
       children: /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: "100%" }, children: [
-        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", justifyContent: "flex-end", marginBottom: 4 }, children: /* @__PURE__ */ jsxRuntime.jsx(NoteColorToggle, {}) }),
+        /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, marginBottom: 4 }, children: [
+          /* @__PURE__ */ jsxRuntime.jsx(
+            ResolutionControl,
+            {
+              onScale: scaleResolution,
+              canDouble: canDoubleStepGrid(model),
+              canHalve: canHalveStepGrid(model)
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx(NoteColorToggle, {})
+        ] }),
         model.lanes.map((lane, laneIndex) => {
           const voice = sampleVoice(lane.sound);
           return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
@@ -26326,6 +26493,9 @@ function PianoRollGrid({
       return setGroupGain(placeNote(cleared, sel.pitch, sel.start, clip2.duration), sel.start, clip2.gain);
     });
   }, "pasteClip");
+  const scaleResolution = /* @__PURE__ */ __name((dir) => {
+    mutate((prev) => scalePianoRoll(prev, dir));
+  }, "scaleResolution");
   if (!model) {
     return React20__namespace.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
@@ -26366,7 +26536,31 @@ function PianoRollGrid({
         touchAction: "none"
       },
       children: [
-        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { position: "absolute", top: 4, right: 16, zIndex: 3 }, children: /* @__PURE__ */ jsxRuntime.jsx(NoteColorToggle, {}) }),
+        /* @__PURE__ */ jsxRuntime.jsxs(
+          "div",
+          {
+            style: {
+              position: "absolute",
+              top: 4,
+              right: 16,
+              zIndex: 3,
+              display: "flex",
+              alignItems: "center",
+              gap: 12
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntime.jsx(
+                ResolutionControl,
+                {
+                  onScale: scaleResolution,
+                  canDouble: canDoublePianoRoll(model),
+                  canHalve: canHalvePianoRoll(model)
+                }
+              ),
+              /* @__PURE__ */ jsxRuntime.jsx(NoteColorToggle, {})
+            ]
+          }
+        ),
         /* @__PURE__ */ jsxRuntime.jsx("div", { style: { padding: 16, height: "100%", overflow: "auto", boxSizing: "border-box" }, children: /* @__PURE__ */ jsxRuntime.jsxs(
           "div",
           {
