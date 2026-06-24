@@ -42,6 +42,7 @@ export type WriteSource =
   | 'arrange.weights'
   | 'arrange.structure'
   | 'transport'
+  | 'mixer'
 
 /** A single replacement, addressed by absolute pre-edit doc offsets. */
 export interface OffsetEdit {
