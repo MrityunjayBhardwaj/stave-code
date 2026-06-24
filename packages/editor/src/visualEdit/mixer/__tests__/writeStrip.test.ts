@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 import { detectAllChunks } from '../../chunkDetect'
 import { applyEdits } from '../../writeback'
-import { gainEdit, panEdit, type StripEdit } from '../writeStrip'
+import { gainEdit, panEdit, muteEdit, type StripEdit } from '../writeStrip'
 
 /** the nth detected chunk of a doc */
 function chunkAt(src: string, i = 0) {
@@ -48,6 +48,37 @@ describe('panEdit', () => {
 
   it('hands off a patterned/signal pan (no edit)', () => {
     expect(panEdit(chunkAt('$: s("bd").pan(sine)'), 0.5)).toBeNull()
+  })
+})
+
+describe('muteEdit', () => {
+  it('mutes an anonymous $: by inserting the marker', () => {
+    expect(applied('$: s("bd")', muteEdit(chunkAt('$: s("bd")'), true))).toBe('_$: s("bd")')
+  })
+
+  it('mutes a named track by inserting the marker', () => {
+    expect(applied('d1: s("bd")', muteEdit(chunkAt('d1: s("bd")'), true))).toBe('_d1: s("bd")')
+  })
+
+  it('unmutes by deleting the leading marker (exact inverse — byte-identical round-trip)', () => {
+    const src = 'd1: s("bd").gain(0.5)'
+    const muted = applied(src, muteEdit(chunkAt(src), true))
+    expect(muted).toBe('_d1: s("bd").gain(0.5)')
+    expect(applied(muted, muteEdit(chunkAt(muted), false))).toBe(src)
+  })
+
+  it('is orthogonal to gain — muting never touches .gain (V-mixer-2)', () => {
+    const src = '$: s("bd").gain(0.5).pan(0.3)'
+    expect(applied(src, muteEdit(chunkAt(src), true))).toBe('_$: s("bd").gain(0.5).pan(0.3)')
+  })
+
+  it('no-ops when already in the requested state', () => {
+    expect(muteEdit(chunkAt('_$: s("bd")'), true)).toBeNull()
+    expect(muteEdit(chunkAt('$: s("bd")'), false)).toBeNull()
+  })
+
+  it('hands off an unlabelled statement (no marker to carry)', () => {
+    expect(muteEdit(chunkAt('s("bd")'), true)).toBeNull()
   })
 })
 

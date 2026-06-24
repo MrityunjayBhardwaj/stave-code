@@ -38,6 +38,44 @@ describe('buildStripModels — one strip per top-level statement', () => {
   })
 })
 
+describe('buildStripModels — mute read-back (S3)', () => {
+  it('reads the `_`-prefix marker as muted; an unmuted doc is not muted', () => {
+    expect(stripsOf('_d1: s("bd")')[0].muted).toBe(true)
+    expect(stripsOf('d1: s("bd")')[0].muted).toBe(false)
+    expect(stripsOf('_$: s("bd")')[0].muted).toBe(true)
+  })
+
+  it('keeps a named track id/name STABLE across mute (`_d1`→ id `d1`, name `d1`)', () => {
+    const [s] = stripsOf('_d1: s("bd")')
+    expect(s.id).toBe('d1')
+    expect(s.captureId).toBe('d1')
+    expect(s.name).toBe('d1') // marker stripped from the display name
+    expect(s.label).toBe('d1')
+  })
+
+  it('only labelled statements are muteable; a bare expression is not', () => {
+    expect(stripsOf('$: s("bd")')[0].muteable).toBe(true)
+    expect(stripsOf('d1: s("bd")')[0].muteable).toBe(true)
+    expect(stripsOf('s("bd")')[0].muteable).toBe(false)
+  })
+
+  it('muting a middle anonymous track keeps unmuted siblings\' captureIds aligned with the engine', () => {
+    // Engine skips `_`-ids without bumping anonIndex (StrudelEngine.ts:735-739),
+    // so the live scheduler keys are [$0, $1] for a/c. The strips must match.
+    const strips = stripsOf(['$: s("a")', '_$: s("b")', '$: s("c")'].join('\n'))
+    expect(strips.map((s) => s.muted)).toEqual([false, true, false])
+    expect(strips.map((s) => s.captureId)).toEqual(['$0', '_$1', '$1'])
+    // ids are unique (the muted-anon `_$1` never collides with an unmuted `$n`)
+    expect(new Set(strips.map((s) => s.id)).size).toBe(3)
+  })
+
+  it('two muted anonymous tracks get unique ids (no `_$` collision)', () => {
+    const strips = stripsOf(['_$: s("a")', '_$: s("b")'].join('\n'))
+    expect(strips.map((s) => s.muted)).toEqual([true, true])
+    expect(new Set(strips.map((s) => s.id)).size).toBe(2)
+  })
+})
+
 describe('buildStripModels — per-strip read model', () => {
   it('reads source: .bank for drums, .sound/.s for melody', () => {
     const [drum] = stripsOf('$: s("bd sn").bank("RolandTR909")')

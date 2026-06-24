@@ -13,7 +13,7 @@ import * as React from 'react'
 import { useMixerModel } from './useMixerModel'
 import { useTrackMeters } from './useTrackMeters'
 import { ChannelStrip } from './ChannelStrip'
-import { gainEdit, panEdit } from './writeStrip'
+import { gainEdit, panEdit, muteEdit } from './writeStrip'
 
 export function MixerStrips(): React.ReactElement | null {
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel()
@@ -47,6 +47,12 @@ export function MixerStrips(): React.ReactElement | null {
           onPanChange={(value) =>
             applyToStrip(strip.id, (fresh, wb) => {
               const e = panEdit(fresh, value)
+              if (e) wb.replaceRange(e.range, e.text, 'mixer')
+            })
+          }
+          onMuteToggle={() =>
+            applyToStrip(strip.id, (fresh, wb) => {
+              const e = muteEdit(fresh, !strip.muted)
               if (e) wb.replaceRange(e.range, e.text, 'mixer')
             })
           }
