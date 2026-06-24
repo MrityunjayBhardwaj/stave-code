@@ -25706,81 +25706,6 @@ function NoteColorToggle() {
   );
 }
 __name(NoteColorToggle, "NoteColorToggle");
-var BTN = {
-  padding: "2px 8px",
-  fontSize: 11,
-  border: "none",
-  background: "transparent",
-  color: "var(--foreground-muted, #a0a0aa)",
-  cursor: "pointer"
-};
-function ResolutionControl({
-  onScale,
-  canDouble,
-  canHalve
-}) {
-  return /* @__PURE__ */ jsxs(
-    "div",
-    {
-      "data-resolution-control": true,
-      style: { display: "flex", alignItems: "center", gap: 6, fontSize: 11 },
-      children: [
-        /* @__PURE__ */ jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: "Slots" }),
-        /* @__PURE__ */ jsxs(
-          "div",
-          {
-            role: "group",
-            "aria-label": "grid resolution",
-            style: {
-              display: "inline-flex",
-              border: "1px solid var(--border, #3a3a42)",
-              borderRadius: 4,
-              overflow: "hidden"
-            },
-            children: [
-              /* @__PURE__ */ jsx(
-                "button",
-                {
-                  type: "button",
-                  "data-resolution-halve": true,
-                  "aria-label": "fewer slots (\xF72)",
-                  title: "Fewer slots \u2014 halve the grid resolution (keeps timing)",
-                  disabled: !canHalve,
-                  onClick: () => onScale("halve"),
-                  style: {
-                    ...BTN,
-                    borderRight: "1px solid var(--border, #3a3a42)",
-                    opacity: canHalve ? 1 : 0.4,
-                    cursor: canHalve ? "pointer" : "not-allowed"
-                  },
-                  children: "\xF72"
-                }
-              ),
-              /* @__PURE__ */ jsx(
-                "button",
-                {
-                  type: "button",
-                  "data-resolution-double": true,
-                  "aria-label": "more slots (\xD72)",
-                  title: "More slots \u2014 double the grid resolution (keeps timing)",
-                  disabled: !canDouble,
-                  onClick: () => onScale("double"),
-                  style: {
-                    ...BTN,
-                    opacity: canDouble ? 1 : 0.4,
-                    cursor: canDouble ? "pointer" : "not-allowed"
-                  },
-                  children: "\xD72"
-                }
-              )
-            ]
-          }
-        )
-      ]
-    }
-  );
-}
-__name(ResolutionControl, "ResolutionControl");
 
 // src/visualEdit/notation/resolution.ts
 var MAX_RESOLUTION_STEPS = 256;
@@ -25857,6 +25782,102 @@ function scalePianoRoll(model, dir) {
   };
 }
 __name(scalePianoRoll, "scalePianoRoll");
+var RESOLUTION_PRESETS = [4, 8, 16, 32];
+function isPow2(n) {
+  return n >= 1 && Number.isInteger(n) && (n & n - 1) === 0;
+}
+__name(isPow2, "isPow2");
+function scaleTo(model, target, scale) {
+  if (target < 1 || target === model.steps) return model;
+  const up = target > model.steps;
+  const ratio = up ? target / model.steps : model.steps / target;
+  if (!isPow2(ratio)) return model;
+  let cur = model;
+  while (cur.steps !== target) {
+    const next = scale(cur, up ? "double" : "halve");
+    if (next === cur) return model;
+    cur = next;
+  }
+  return cur;
+}
+__name(scaleTo, "scaleTo");
+function scaleStepGridTo(model, target) {
+  return scaleTo(model, target, scaleStepGrid);
+}
+__name(scaleStepGridTo, "scaleStepGridTo");
+function scalePianoRollTo(model, target) {
+  return scaleTo(model, target, scalePianoRoll);
+}
+__name(scalePianoRollTo, "scalePianoRollTo");
+function canScaleStepGridTo(model, target) {
+  return target !== model.steps && scaleStepGridTo(model, target) !== model;
+}
+__name(canScaleStepGridTo, "canScaleStepGridTo");
+function canScalePianoRollTo(model, target) {
+  return target !== model.steps && scalePianoRollTo(model, target) !== model;
+}
+__name(canScalePianoRollTo, "canScalePianoRollTo");
+function ResolutionControl({
+  steps,
+  canScaleTo,
+  onScaleTo
+}) {
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-resolution-control": true,
+      style: { display: "flex", alignItems: "center", gap: 6, fontSize: 11 },
+      children: [
+        /* @__PURE__ */ jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: "Slots" }),
+        /* @__PURE__ */ jsx(
+          "div",
+          {
+            role: "group",
+            "aria-label": "grid resolution",
+            style: {
+              display: "inline-flex",
+              border: "1px solid var(--border, #3a3a42)",
+              borderRadius: 4,
+              overflow: "hidden"
+            },
+            children: RESOLUTION_PRESETS.map((preset, i) => {
+              const active2 = preset === steps;
+              const enabled = active2 || canScaleTo(preset);
+              return /* @__PURE__ */ jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-resolution-step": preset,
+                  "data-resolution-active": active2 ? "true" : void 0,
+                  "aria-pressed": active2,
+                  "aria-label": `${preset} slots`,
+                  title: active2 ? `${preset} slots (current)` : enabled ? `${preset} slots \u2014 keeps timing` : `${preset} slots \u2014 unavailable (would re-time this pattern)`,
+                  disabled: !enabled,
+                  onClick: () => {
+                    if (!active2) onScaleTo(preset);
+                  },
+                  style: {
+                    padding: "2px 8px",
+                    fontSize: 11,
+                    border: "none",
+                    borderRight: i < RESOLUTION_PRESETS.length - 1 ? "1px solid var(--border, #3a3a42)" : "none",
+                    background: active2 ? "var(--accent, #6ea8fe)" : "transparent",
+                    color: active2 ? "#fff" : enabled ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)",
+                    opacity: enabled ? 1 : 0.4,
+                    cursor: active2 ? "default" : enabled ? "pointer" : "not-allowed"
+                  },
+                  children: preset
+                },
+                preset
+              );
+            })
+          }
+        )
+      ]
+    }
+  );
+}
+__name(ResolutionControl, "ResolutionControl");
 
 // src/visualEdit/panels/inspector.ts
 function gainAtStart(model, start) {
@@ -25932,9 +25953,9 @@ function SequencerGrid() {
     },
     [mutate]
   );
-  const scaleResolution = React20.useCallback(
-    (dir) => {
-      mutate((prev) => scaleStepGrid(prev, dir));
+  const scaleToSlots = React20.useCallback(
+    (target) => {
+      mutate((prev) => scaleStepGridTo(prev, target));
     },
     [mutate]
   );
@@ -26029,9 +26050,9 @@ function SequencerGrid() {
           /* @__PURE__ */ jsx(
             ResolutionControl,
             {
-              onScale: scaleResolution,
-              canDouble: canDoubleStepGrid(model),
-              canHalve: canHalveStepGrid(model)
+              steps: model.steps,
+              canScaleTo: (target) => canScaleStepGridTo(model, target),
+              onScaleTo: scaleToSlots
             }
           ),
           /* @__PURE__ */ jsx(NoteColorToggle, {})
@@ -26467,9 +26488,9 @@ function PianoRollGrid({
       return setGroupGain(placeNote(cleared, sel.pitch, sel.start, clip2.duration), sel.start, clip2.gain);
     });
   }, "pasteClip");
-  const scaleResolution = /* @__PURE__ */ __name((dir) => {
-    mutate((prev) => scalePianoRoll(prev, dir));
-  }, "scaleResolution");
+  const scaleToSlots = /* @__PURE__ */ __name((target) => {
+    mutate((prev) => scalePianoRollTo(prev, target));
+  }, "scaleToSlots");
   if (!model) {
     return React20.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
@@ -26526,9 +26547,9 @@ function PianoRollGrid({
               /* @__PURE__ */ jsx(
                 ResolutionControl,
                 {
-                  onScale: scaleResolution,
-                  canDouble: canDoublePianoRoll(model),
-                  canHalve: canHalvePianoRoll(model)
+                  steps: model.steps,
+                  canScaleTo: (target) => canScalePianoRollTo(model, target),
+                  onScaleTo: scaleToSlots
                 }
               ),
               /* @__PURE__ */ jsx(NoteColorToggle, {})
