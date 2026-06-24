@@ -25,57 +25,9 @@ import { patternKind, isRollChunk } from './patternKind'
 import { parsePianoRoll } from '../notation/parse'
 import { type Division, DIVISIONS, isRepresentable, stepsPerBar } from './division'
 import { readChainMethod } from './chainMethod'
+import { type ManagedGain, parseManagedGain, scaleManagedGain } from '../mixer/gain'
 import { INSTRUMENTS, DRUM_KITS, type SoundGroup } from './soundCatalog'
 import { useSoundCatalog, useDrumKitCatalog } from '../../workspace/soundRegistry'
-
-/**
- * A per-column `.gain("…")` velocity string the grid authored — flat numeric
- * tokens (with optional `~` rests and `@n` holds). Carried on the gain knob so
- * dragging the knob rescales every column proportionally (a master fader over
- * the per-step velocities) instead of leaving the chunk with no gain control.
- */
-interface ManagedGain {
-  tokens: string[]
-  /** loudest column (the knob's value); rests/`~` excluded */
-  ceiling: number
-  /** the original quote character, preserved on write-back */
-  quote: string
-}
-
-const GAIN_TOKEN = /^(\d+(?:\.\d+)?)(@\d+)?$/
-
-/**
- * Read a `.gain` arg's raw text as a managed per-column velocity string, or
- * null when it isn't one we authored (a scalar, a single-token broadcast, a
- * signal/identifier, or a token shape we don't manage → the Mixer hands off and
- * shows no knob, exactly as before).
- */
-function parseManagedGain(raw: string): ManagedGain | null {
-  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === '`' ? raw[0] : ''
-  if (!quote || raw[raw.length - 1] !== quote) return null
-  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== '')
-  if (tokens.length < 2) return null // single token = broadcast, not per-column
-  let ceiling = 0
-  for (const t of tokens) {
-    if (t === '~') continue
-    const m = GAIN_TOKEN.exec(t)
-    if (!m) return null // a token we didn't author → foreign, hands off
-    ceiling = Math.max(ceiling, parseFloat(m[1]))
-  }
-  return { tokens, ceiling, quote }
-}
-
-/** Rescale every column so the loudest hits the knob's new value (shape kept). */
-function scaleManagedGain(mg: ManagedGain, value: number): string {
-  const factor = mg.ceiling > 0 ? value / mg.ceiling : null
-  const out = mg.tokens.map((t) => {
-    if (t === '~') return '~'
-    const m = GAIN_TOKEN.exec(t) as RegExpExecArray
-    const nv = factor === null ? value : parseFloat(m[1]) * factor
-    return formatNumber(Math.max(0, nv)) + (m[2] ?? '')
-  })
-  return mg.quote + out.join(' ') + mg.quote
-}
 
 /** one knob = one numeric argument of one chain call */
 interface KnobEntry {
