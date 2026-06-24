@@ -41,11 +41,29 @@ async function setStrudelCode(page: Page, code: string): Promise<void> {
   await page.waitForTimeout(150)
 }
 
+/**
+ * open the global Mixer console tab (#540 / S4 — the strip band lives here now)
+ * and return a locator SCOPED to its panel. Both tab bodies stay mounted (the
+ * bottom panel only hides the inactive one), so the Pattern tab's local strip
+ * also carries `data-mixer-strip-id` — scoping the returned locator to the
+ * console panel keeps strip selectors unambiguous.
+ */
 async function openMixer(page: Page) {
-  const drawer = page.locator('[data-bottom-panel="root"]')
-  await drawer.locator('[data-bottom-panel="toggle"]').click()
-  await drawer.locator('role=tab[name="Pattern"]').click()
-  return drawer
+  const root = page.locator('[data-bottom-panel="root"]')
+  await root.locator('[data-bottom-panel="toggle"]').click()
+  await root.locator('role=tab[name="Mixer"]').click()
+  return root.locator('[data-bottom-panel-tab="mixer-console"]')
+}
+
+/** open the Pattern tab — its grid (sequencer/roll) sits beside the cursor
+ *  track's local mixer strip, so a grid edit and that track's meter are
+ *  co-visible (the global Mixer tab shows strips but not the grid). Returns a
+ *  locator scoped to the Pattern panel. */
+async function openPattern(page: Page) {
+  const root = page.locator('[data-bottom-panel="root"]')
+  await root.locator('[data-bottom-panel="toggle"]').click()
+  await root.locator('role=tab[name="Pattern"]').click()
+  return root.locator('[data-bottom-panel-tab="pattern"]')
 }
 
 /** drag the drawer taller so the full strip (incl. fader) is on screen */
@@ -104,8 +122,8 @@ test.describe('Mixer strip row (#540 / S0)', () => {
     const strips = drawer.locator('[data-mixer-strip]')
     await expect(strips).toHaveCount(3)
     // names: anonymous $: fall back to head/source; the named track keeps its label
+    // (a mix console names channels — the source line was dropped in S4).
     await expect(strips.nth(1).locator('[data-mixer-strip-name]')).toHaveText('d1')
-    await expect(strips.nth(1).locator('[data-mixer-strip-source]')).toContainText('note("c e g")')
     // kinds projected from the head fn
     await expect(strips.nth(0)).toHaveAttribute('data-mixer-strip-kind', 'step')
     await expect(strips.nth(1)).toHaveAttribute('data-mixer-strip-kind', 'roll')
@@ -400,11 +418,13 @@ test.describe('Mixer strip mute (#543 / S3)', () => {
     page,
   }) => {
     await boot(page)
-    const drawer = await openMixer(page)
+    // The Pattern tab shows the Sequencer grid beside the cursor track's LOCAL
+    // mixer strip (with its meter) — so we can edit the steps and watch the
+    // meter in one view. Editing the sequencer is a DIFFERENT surface than the
+    // mixer write path, so this proves the live re-eval is centralised at
+    // Writeback (the meter darkens with no manual eval).
+    const drawer = await openPattern(page)
     await enlargeDrawer(page)
-    // a single step track — the strip band shows its meter, the param panel below
-    // shows the Sequencer for it. Editing the sequencer is a DIFFERENT surface
-    // than the mixer, so this proves the live re-eval is centralised at Writeback.
     await setStrudelCode(page, 'd1: s("bd*4")')
 
     let lit = 0
