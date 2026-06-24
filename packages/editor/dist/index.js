@@ -1192,12 +1192,12 @@ function detectDisplayPeriod(events, horizon) {
   const byLane = /* @__PURE__ */ new Map();
   for (const ev of events) {
     const key = laneKeyOf(ev);
-    let bucket = byLane.get(key);
-    if (!bucket) {
-      bucket = [];
-      byLane.set(key, bucket);
+    let bucket2 = byLane.get(key);
+    if (!bucket2) {
+      bucket2 = [];
+      byLane.set(key, bucket2);
     }
-    bucket.push(ev);
+    bucket2.push(ev);
   }
   if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
   let maxPeriod = 0;
@@ -13956,10 +13956,10 @@ function resampleByteRow(src, srcLen, dst, dstLen) {
     dst.fill(0, 0, dstLen);
     return;
   }
-  const bucket = srcLen / dstLen;
+  const bucket2 = srcLen / dstLen;
   for (let i = 0; i < dstLen; i++) {
-    const start = Math.floor(i * bucket);
-    const end = Math.max(start + 1, Math.floor((i + 1) * bucket));
+    const start = Math.floor(i * bucket2);
+    const end = Math.max(start + 1, Math.floor((i + 1) * bucket2));
     let sum = 0;
     let n = 0;
     for (let j = start; j < end && j < srcLen; j++) {
@@ -25782,7 +25782,7 @@ function scalePianoRoll(model, dir) {
   };
 }
 __name(scalePianoRoll, "scalePianoRoll");
-var RESOLUTION_PRESETS = [4, 8, 16, 32];
+var RESOLUTION_PRESETS = [4, 8, 16, 32, 64];
 function isPow2(n) {
   return n >= 1 && Number.isInteger(n) && (n & n - 1) === 0;
 }
@@ -25817,9 +25817,81 @@ function canScalePianoRollTo(model, target) {
   return target !== model.steps && scalePianoRollTo(model, target) !== model;
 }
 __name(canScalePianoRollTo, "canScalePianoRollTo");
+var clampInt = /* @__PURE__ */ __name((v, lo, hi) => Math.max(lo, Math.min(hi, v)), "clampInt");
+var bucket = /* @__PURE__ */ __name((c, from, to) => clampInt(Math.round(c * to / from), 0, to - 1), "bucket");
+function quantizeStepGridTo(model, target) {
+  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model;
+  if ((model.bars ?? 1) > 1) return scaleStepGridTo(model, target);
+  const from = model.steps;
+  const lanes = model.lanes.map((lane) => {
+    const cells = Array(target).fill(false);
+    lane.cells.forEach((on, c) => {
+      if (on) cells[bucket(c, from, target)] = true;
+    });
+    return { ...lane, cells };
+  });
+  let gains;
+  if (model.gains) {
+    gains = Array(target).fill(1);
+    const filled = /* @__PURE__ */ new Set();
+    for (let c = 0; c < from; c++) {
+      if (!model.lanes.some((l) => l.cells[c])) continue;
+      const b = bucket(c, from, target);
+      const g = model.gains[c] ?? 1;
+      gains[b] = filled.has(b) ? Math.max(gains[b], g) : g;
+      filled.add(b);
+    }
+  }
+  return { ...model, steps: target, lanes, ...gains ? { gains } : {} };
+}
+__name(quantizeStepGridTo, "quantizeStepGridTo");
+function quantizePianoRollTo(model, target) {
+  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model;
+  if ((model.bars ?? 1) > 1) return scalePianoRollTo(model, target);
+  const from = model.steps;
+  const q = model.notes.map((n) => ({
+    pitch: n.pitch,
+    start: bucket(n.start, from, target),
+    duration: Math.max(1, Math.round(n.duration * target / from)),
+    gain: n.gain ?? 1
+  })).sort((a, b) => a.start - b.start);
+  const byCol = /* @__PURE__ */ new Map();
+  for (const n of q) {
+    const grp = byCol.get(n.start) ?? [];
+    if (grp.some((m) => m.pitch === n.pitch)) continue;
+    grp.push({ pitch: n.pitch, duration: n.duration, gain: n.gain });
+    byCol.set(n.start, grp);
+  }
+  const starts = [...byCol.keys()].sort((a, b) => a - b);
+  const notes = [];
+  starts.forEach((start, i) => {
+    const limit = (i + 1 < starts.length ? starts[i + 1] : target) - start;
+    const grp = byCol.get(start);
+    const duration = clampInt(Math.min(...grp.map((m) => m.duration)), 1, limit);
+    const gain = Math.max(...grp.map((m) => m.gain));
+    for (const m of grp) notes.push({ pitch: m.pitch, start, duration, gain });
+  });
+  return { ...model, steps: target, notes };
+}
+__name(quantizePianoRollTo, "quantizePianoRollTo");
+function slotState(steps, bars, lossless, target) {
+  if (target === steps) return "active";
+  if (lossless) return "lossless";
+  if ((bars ?? 1) > 1) return "disabled";
+  return "quantize";
+}
+__name(slotState, "slotState");
+function stepSlotState(model, target) {
+  return slotState(model.steps, model.bars, canScaleStepGridTo(model, target), target);
+}
+__name(stepSlotState, "stepSlotState");
+function rollSlotState(model, target) {
+  return slotState(model.steps, model.bars, canScalePianoRollTo(model, target), target);
+}
+__name(rollSlotState, "rollSlotState");
 function ResolutionControl({
   steps,
-  canScaleTo,
+  slotState: slotState2,
   onScaleTo
 }) {
   return /* @__PURE__ */ jsxs(
@@ -25841,20 +25913,23 @@ function ResolutionControl({
               overflow: "hidden"
             },
             children: RESOLUTION_PRESETS.map((preset, i) => {
-              const active2 = preset === steps;
-              const enabled = active2 || canScaleTo(preset);
+              const state5 = preset === steps ? "active" : slotState2(preset);
+              const active2 = state5 === "active";
+              const clickable = state5 === "lossless" || state5 === "quantize";
+              const title = state5 === "active" ? `${preset} slots (current)` : state5 === "lossless" ? `${preset} slots \u2014 keeps timing` : state5 === "quantize" ? `${preset} slots \u2014 quantizes notes to the grid (changes timing)` : `${preset} slots \u2014 unavailable`;
               return /* @__PURE__ */ jsx(
                 "button",
                 {
                   type: "button",
                   "data-resolution-step": preset,
                   "data-resolution-active": active2 ? "true" : void 0,
+                  "data-resolution-quantize": state5 === "quantize" ? "true" : void 0,
                   "aria-pressed": active2,
                   "aria-label": `${preset} slots`,
-                  title: active2 ? `${preset} slots (current)` : enabled ? `${preset} slots \u2014 keeps timing` : `${preset} slots \u2014 unavailable (would re-time this pattern)`,
-                  disabled: !enabled,
+                  title,
+                  disabled: !active2 && !clickable,
                   onClick: () => {
-                    if (!active2) onScaleTo(preset);
+                    if (clickable) onScaleTo(preset);
                   },
                   style: {
                     padding: "2px 8px",
@@ -25862,11 +25937,13 @@ function ResolutionControl({
                     border: "none",
                     borderRight: i < RESOLUTION_PRESETS.length - 1 ? "1px solid var(--border, #3a3a42)" : "none",
                     background: active2 ? "var(--accent, #6ea8fe)" : "transparent",
-                    color: active2 ? "#fff" : enabled ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)",
-                    opacity: enabled ? 1 : 0.4,
-                    cursor: active2 ? "default" : enabled ? "pointer" : "not-allowed"
+                    color: active2 ? "#fff" : clickable ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)",
+                    // quantize targets are dimmer + italic — a visible "this changes timing" cue
+                    fontStyle: state5 === "quantize" ? "italic" : "normal",
+                    opacity: !active2 && !clickable ? 0.4 : state5 === "quantize" ? 0.75 : 1,
+                    cursor: active2 ? "default" : clickable ? "pointer" : "not-allowed"
                   },
-                  children: preset
+                  children: state5 === "quantize" ? `~${preset}` : preset
                 },
                 preset
               );
@@ -25955,7 +26032,7 @@ function SequencerGrid() {
   );
   const scaleToSlots = React20.useCallback(
     (target) => {
-      mutate((prev) => scaleStepGridTo(prev, target));
+      mutate((prev) => quantizeStepGridTo(prev, target));
     },
     [mutate]
   );
@@ -26051,7 +26128,7 @@ function SequencerGrid() {
             ResolutionControl,
             {
               steps: model.steps,
-              canScaleTo: (target) => canScaleStepGridTo(model, target),
+              slotState: (target) => stepSlotState(model, target),
               onScaleTo: scaleToSlots
             }
           ),
@@ -26489,7 +26566,7 @@ function PianoRollGrid({
     });
   }, "pasteClip");
   const scaleToSlots = /* @__PURE__ */ __name((target) => {
-    mutate((prev) => scalePianoRollTo(prev, target));
+    mutate((prev) => quantizePianoRollTo(prev, target));
   }, "scaleToSlots");
   if (!model) {
     return React20.createElement(VisualEditStandby, {
@@ -26548,7 +26625,7 @@ function PianoRollGrid({
                 ResolutionControl,
                 {
                   steps: model.steps,
-                  canScaleTo: (target) => canScalePianoRollTo(model, target),
+                  slotState: (target) => rollSlotState(model, target),
                   onScaleTo: scaleToSlots
                 }
               ),
