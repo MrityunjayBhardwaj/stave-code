@@ -923,15 +923,35 @@ export default function StrudelEditorClient({
     [],
   );
 
-  // Live mute (Mixer S3): a mixer mute writes `_`-prefix into the file; this
-  // makes it audible immediately by re-evaluating that file — but ONLY if it's
-  // already playing, so muting never auto-starts audio the user hadn't started.
-  // `rt.play()` while playing re-evals (same as the checkout path above).
+  // Live visual editing (Mixer S3 → all Pattern-tab surfaces): a visual mutation
+  // (mixer fader/pan/mute, sequencer step, piano-roll note, knob, …) writes the
+  // file via `Writeback`, which asks here to make it audible immediately. We
+  // re-eval ONLY if the file is already playing (so a control never auto-starts
+  // audio) AND only when live mode isn't already re-evaluating on its own (no
+  // double eval). `rt.play()` while playing re-evals (same as the checkout path).
+  // `rt.play()` is async and does NOT serialise — firing it for each of a burst
+  // of edits lets an earlier eval resolve last and clobber the final state. So
+  // we serialise per file: while a re-eval is in flight, mark the file pending;
+  // when it settles, if still pending, re-eval ONCE more reading the now-current
+  // content. The final state always wins, with no long debounce.
+  const reevalState = useRef<Map<string, { inFlight: boolean; pending: boolean }>>(new Map());
   useEffect(
     () =>
       registerReevalHandler((fileId: string) => {
         const rt = runtimesRef.current.get(fileId);
-        if (rt && rt.getIsPlaying()) void rt.play();
+        if (!(rt && rt.getIsPlaying() && !rt.isAutoRefreshEnabled())) return;
+        const st = reevalState.current.get(fileId) ?? { inFlight: false, pending: false };
+        reevalState.current.set(fileId, st);
+        if (st.inFlight) { st.pending = true; return; }
+        const run = (): void => {
+          st.pending = false;
+          st.inFlight = true;
+          Promise.resolve(rt.play()).finally(() => {
+            st.inFlight = false;
+            if (st.pending) run();
+          });
+        };
+        run();
       }),
     [],
   );

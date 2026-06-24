@@ -8,17 +8,13 @@
  * meters land in later slices). Returns null when the document has no editable
  * statements, so the host can fall back to the param panel's own standby.
  *
- * Live controls (S3): a mixer edit doesn't auto-evaluate (content-change re-eval
- * is live-mode only), so every control asks the app to re-evaluate the file the
- * moment it commits — `requestReeval` re-evals ONLY a playing file, so a control
- * never auto-starts audio. Mute (a click) re-evals immediately; the fader/pan
- * (continuous drags) re-eval once on gesture END rather than per move — a `.gain`
- * change only takes audible effect at the next cycle boundary, so per-frame
- * recompiles would be wasted work.
+ * Live while playing: every edit here goes through `Writeback`, which re-evals
+ * the playing file on commit (a single click immediately, a drag once on
+ * release) — so mute / fader / pan are all audible at once, no manual eval. That
+ * lives at the write boundary (shared by every visual surface), not here.
  */
 import * as React from 'react'
 
-import { getActiveFileId, requestReeval } from '../../workspace/editorRegistry'
 import { useMixerModel } from './useMixerModel'
 import { useTrackMeters } from './useTrackMeters'
 import { ChannelStrip } from './ChannelStrip'
@@ -28,19 +24,6 @@ export function MixerStrips(): React.ReactElement | null {
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel()
   // One capped RAF loop + bus subscription for every strip's live meter (S2).
   const meters = useTrackMeters()
-  // Whether the in-flight fader/pan gesture has written anything yet — so a bare
-  // click (down/up, no drag) doesn't fire a pointless re-eval on release.
-  const gestureEdited = React.useRef(false)
-
-  const onGestureStart = (): void => {
-    gestureEdited.current = false
-    beginGesture()
-  }
-  const onGestureEnd = (): void => {
-    endGesture()
-    if (gestureEdited.current) requestReeval(getActiveFileId())
-  }
-
   if (strips.length === 0) return null
 
   return (
@@ -63,39 +46,23 @@ export function MixerStrips(): React.ReactElement | null {
           onGainChange={(value) =>
             applyToStrip(strip.id, (fresh, wb) => {
               const e = gainEdit(fresh, value)
-              if (e) {
-                wb.replaceRange(e.range, e.text, 'mixer')
-                gestureEdited.current = true
-              }
+              if (e) wb.replaceRange(e.range, e.text, 'mixer')
             })
           }
           onPanChange={(value) =>
             applyToStrip(strip.id, (fresh, wb) => {
               const e = panEdit(fresh, value)
-              if (e) {
-                wb.replaceRange(e.range, e.text, 'mixer')
-                gestureEdited.current = true
-              }
+              if (e) wb.replaceRange(e.range, e.text, 'mixer')
             })
           }
-          onMuteToggle={() => {
-            let edited = false
+          onMuteToggle={() =>
             applyToStrip(strip.id, (fresh, wb) => {
               const e = muteEdit(fresh, !strip.muted)
-              if (e) {
-                wb.replaceRange(e.range, e.text, 'mixer')
-                edited = true
-              }
+              if (e) wb.replaceRange(e.range, e.text, 'mixer')
             })
-            // Live mute: a mixer edit doesn't auto-eval (that's live mode only),
-            // so make the mute audible NOW by asking the app to re-eval this file
-            // — it re-evals only if already playing, so we never auto-start audio.
-            // The Monaco write above already synced to the file store, so the
-            // re-eval reads the muted content.
-            if (edited) requestReeval(getActiveFileId())
-          }}
-          onGestureStart={onGestureStart}
-          onGestureEnd={onGestureEnd}
+          }
+          onGestureStart={beginGesture}
+          onGestureEnd={endGesture}
           meters={meters}
         />
       ))}

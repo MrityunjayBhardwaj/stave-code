@@ -112,6 +112,16 @@ export function getActiveFileId(): string | null {
   return null
 }
 
+/** The fileId registered for `editor`, or null. The write path uses this to
+ * re-evaluate the file that was actually EDITED (not necessarily the active
+ * one) when a visual mutation commits. */
+export function getFileIdForEditor(editor: MonacoEditor): string | null {
+  for (const [fileId, ed] of editors) {
+    if (ed === editor) return fileId
+  }
+  return null
+}
+
 /** Subscribe to active-editor changes. Returns an unsubscribe fn. */
 export function onActiveEditorChange(cb: () => void): () => void {
   activeEditorListeners.add(cb)

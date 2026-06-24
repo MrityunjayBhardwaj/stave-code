@@ -395,6 +395,55 @@ test.describe('Mixer strip mute (#543 / S3)', () => {
     }
     expect(low, 'meter follows the lowered fader live').toBeLessThan(high - 8)
   })
+
+  test('LIVE sequencer: silencing a track\'s steps while playing goes dark immediately (centralised at the write path)', async ({
+    page,
+  }) => {
+    await boot(page)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    // a single step track — the strip band shows its meter, the param panel below
+    // shows the Sequencer for it. Editing the sequencer is a DIFFERENT surface
+    // than the mixer, so this proves the live re-eval is centralised at Writeback.
+    await setStrudelCode(page, 'd1: s("bd*4")')
+
+    let lit = 0
+    for (let attempt = 0; attempt < 3 && lit < 15; attempt++) {
+      await play(page)
+      await page.waitForTimeout(500)
+      lit = 0
+      for (let i = 0; i < 30; i++) {
+        lit = Math.max(lit, await meterFill(page, drawer, 'd1'))
+        await page.waitForTimeout(33)
+      }
+    }
+    expect(lit, 'd1 pulses at bd*4').toBeGreaterThan(15)
+
+    // turn every step OFF in the sequencer — no manual re-eval. Each toggle is a
+    // Writeback gesture, so it re-evals on release; once the track has no hits its
+    // meter goes dark while it's still "playing".
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    for (let s = 0; s < 4; s++) {
+      const cell = grid.locator(`[data-seq-cell="0:${s}"]`)
+      if ((await cell.count()) && (await cell.getAttribute('aria-pressed')) === 'true') {
+        await cell.click()
+        await page.waitForTimeout(60)
+      }
+    }
+    // Let the live re-eval land AND the already-scheduled haps flush — Strudel
+    // schedules a cycle ahead, so a silenced pattern fades over ~1 cycle rather
+    // than cutting instantly (unlike mute, which removes the scheduler outright).
+    await page.waitForTimeout(3200)
+    // Measure the SUSTAINED level (mean of several reads) — the track is now
+    // silent, so the fill sits at ~0; a max-of-window would catch a flush blip.
+    let sum = 0
+    const N = 12
+    for (let i = 0; i < N; i++) {
+      sum += await meterFill(page, drawer, 'd1')
+      await page.waitForTimeout(40)
+    }
+    expect(sum / N, 'silencing the steps darkens the meter live, no manual eval').toBeLessThan(8)
+  })
 })
 
 test.describe('Mixer live meters (#540 / S2)', () => {
