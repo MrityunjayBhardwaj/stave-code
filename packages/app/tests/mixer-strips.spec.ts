@@ -361,6 +361,40 @@ test.describe('Mixer strip mute (#543 / S3)', () => {
     expect(d1Muted, 'live mute silences d1 immediately — dark, no manual eval').toBeLessThan(8)
     expect(d2Still, 'sibling d2 keeps playing').toBeGreaterThan(15)
   })
+
+  test('LIVE fader: dragging the fader while playing changes the level immediately (no manual re-eval)', async ({
+    page,
+  }) => {
+    await boot(page)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    await setStrudelCode(page, 'd1: s("bd*8").gain(0.9)')
+
+    // start playback; the meter runs high at gain 0.9.
+    let high = 0
+    for (let attempt = 0; attempt < 3 && high < 15; attempt++) {
+      await play(page)
+      await page.waitForTimeout(500)
+      high = 0
+      for (let i = 0; i < 30; i++) {
+        high = Math.max(high, await meterFill(page, drawer, 'd1'))
+        await page.waitForTimeout(33)
+      }
+    }
+    expect(high, 'd1 runs high at gain 0.9').toBeGreaterThan(15)
+
+    // drag the fader DOWN — and DO NOT re-evaluate. The gesture-end live re-eval
+    // applies the lower gain, so the meter drops within a beat on its own.
+    await dragFader(page, drawer, 'd1', -55) // negative = down → quieter
+    expect(await strudelValue(page)).toMatch(/gain\(0?\.\d+\)/) // gain lowered, still scalar
+    await page.waitForTimeout(600)
+    let low = 0
+    for (let i = 0; i < 30; i++) {
+      low = Math.max(low, await meterFill(page, drawer, 'd1'))
+      await page.waitForTimeout(33)
+    }
+    expect(low, 'meter follows the lowered fader live').toBeLessThan(high - 8)
+  })
 })
 
 test.describe('Mixer live meters (#540 / S2)', () => {

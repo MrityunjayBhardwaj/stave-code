@@ -7,6 +7,14 @@
  * one-undo text edit and the strips re-derive from the result (master strip and
  * meters land in later slices). Returns null when the document has no editable
  * statements, so the host can fall back to the param panel's own standby.
+ *
+ * Live controls (S3): a mixer edit doesn't auto-evaluate (content-change re-eval
+ * is live-mode only), so every control asks the app to re-evaluate the file the
+ * moment it commits — `requestReeval` re-evals ONLY a playing file, so a control
+ * never auto-starts audio. Mute (a click) re-evals immediately; the fader/pan
+ * (continuous drags) re-eval once on gesture END rather than per move — a `.gain`
+ * change only takes audible effect at the next cycle boundary, so per-frame
+ * recompiles would be wasted work.
  */
 import * as React from 'react'
 
@@ -20,6 +28,19 @@ export function MixerStrips(): React.ReactElement | null {
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel()
   // One capped RAF loop + bus subscription for every strip's live meter (S2).
   const meters = useTrackMeters()
+  // Whether the in-flight fader/pan gesture has written anything yet — so a bare
+  // click (down/up, no drag) doesn't fire a pointless re-eval on release.
+  const gestureEdited = React.useRef(false)
+
+  const onGestureStart = (): void => {
+    gestureEdited.current = false
+    beginGesture()
+  }
+  const onGestureEnd = (): void => {
+    endGesture()
+    if (gestureEdited.current) requestReeval(getActiveFileId())
+  }
+
   if (strips.length === 0) return null
 
   return (
@@ -42,13 +63,19 @@ export function MixerStrips(): React.ReactElement | null {
           onGainChange={(value) =>
             applyToStrip(strip.id, (fresh, wb) => {
               const e = gainEdit(fresh, value)
-              if (e) wb.replaceRange(e.range, e.text, 'mixer')
+              if (e) {
+                wb.replaceRange(e.range, e.text, 'mixer')
+                gestureEdited.current = true
+              }
             })
           }
           onPanChange={(value) =>
             applyToStrip(strip.id, (fresh, wb) => {
               const e = panEdit(fresh, value)
-              if (e) wb.replaceRange(e.range, e.text, 'mixer')
+              if (e) {
+                wb.replaceRange(e.range, e.text, 'mixer')
+                gestureEdited.current = true
+              }
             })
           }
           onMuteToggle={() => {
@@ -67,8 +94,8 @@ export function MixerStrips(): React.ReactElement | null {
             // re-eval reads the muted content.
             if (edited) requestReeval(getActiveFileId())
           }}
-          onGestureStart={beginGesture}
-          onGestureEnd={endGesture}
+          onGestureStart={onGestureStart}
+          onGestureEnd={onGestureEnd}
           meters={meters}
         />
       ))}

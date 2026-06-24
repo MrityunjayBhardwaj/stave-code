@@ -165,7 +165,12 @@ export function ChannelStrip({
     onGestureEnd?.()
   }
   const resetFader = (): void => {
-    if (faderEnabled) onGainChange?.(1)
+    if (!faderEnabled) return
+    // Wrap as a one-edit gesture so it's a single undo step AND triggers the
+    // same gesture-end live re-eval the drag does (double-click → unity, live).
+    onGestureStart?.()
+    onGainChange?.(1)
+    onGestureEnd?.()
   }
 
   const onPanDown = (e: React.PointerEvent<HTMLDivElement>): void => {
