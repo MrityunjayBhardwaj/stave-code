@@ -6512,6 +6512,18 @@ function onActiveEditorChange(cb) {
   };
 }
 __name(onActiveEditorChange, "onActiveEditorChange");
+var reevalHandler = null;
+function registerReevalHandler(fn) {
+  reevalHandler = fn;
+  return () => {
+    if (reevalHandler === fn) reevalHandler = null;
+  };
+}
+__name(registerReevalHandler, "registerReevalHandler");
+function requestReeval(fileId) {
+  if (fileId) reevalHandler?.(fileId);
+}
+__name(requestReeval, "requestReeval");
 function revealLineInFile(fileId, line) {
   const editor = editors.get(fileId);
   if (!editor) return false;
@@ -28331,10 +28343,17 @@ function MixerStrips() {
             const e = panEdit(fresh, value);
             if (e) wb.replaceRange(e.range, e.text, "mixer");
           }),
-          onMuteToggle: () => applyToStrip(strip.id, (fresh, wb) => {
-            const e = muteEdit(fresh, !strip.muted);
-            if (e) wb.replaceRange(e.range, e.text, "mixer");
-          }),
+          onMuteToggle: () => {
+            let edited = false;
+            applyToStrip(strip.id, (fresh, wb) => {
+              const e = muteEdit(fresh, !strip.muted);
+              if (e) {
+                wb.replaceRange(e.range, e.text, "mixer");
+                edited = true;
+              }
+            });
+            if (edited) requestReeval(getActiveFileId());
+          },
           onGestureStart: beginGesture,
           onGestureEnd: endGesture,
           meters
@@ -35702,12 +35721,14 @@ exports.registerBottomPanelTab = registerBottomPanelTab;
 exports.registerNamedViz = registerNamedViz;
 exports.registerPresetAsNamedViz = registerPresetAsNamedViz;
 exports.registerPreviewProvider = registerPreviewProvider;
+exports.registerReevalHandler = registerReevalHandler;
 exports.registerRuntimeProvider = registerRuntimeProvider;
 exports.removeArm = removeArm;
 exports.renameProject = renameProject;
 exports.renameWorkspaceFile = renameWorkspaceFile;
 exports.rendererForLanguage = rendererForLanguage;
 exports.reorderArm = reorderArm;
+exports.requestReeval = requestReeval;
 exports.resetFileStore = resetFileStore;
 exports.resetHistoryState = resetHistoryState;
 exports.resetUndoManager = resetUndoManager;
