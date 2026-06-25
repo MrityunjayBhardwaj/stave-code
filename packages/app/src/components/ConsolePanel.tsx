@@ -331,6 +331,15 @@ export function ConsolePanel(): React.ReactElement {
                     {e.line ? `:${e.line}` : ""}
                   </span>
                 )}
+                {(e.count ?? 1) > 1 && (
+                  <span
+                    style={styles.repeatBadge}
+                    data-testid="console-repeat-count"
+                    title={`Repeated ${e.count} times`}
+                  >
+                    ×{e.count}
+                  </span>
+                )}
               </div>
               <div style={styles.message}>{e.message}</div>
               {e.suggestion && (
@@ -568,6 +577,20 @@ const styles: Record<string, React.CSSProperties> = {
   levelIcon: {
     fontSize: 12,
     flexShrink: 0,
+  },
+  // #563 — "×N" repeat badge: identical entries coalesce into one row whose
+  // count ticks up instead of flooding the panel.
+  repeatBadge: {
+    display: "inline-block",
+    padding: "0 5px",
+    borderRadius: 8,
+    fontSize: 9,
+    fontWeight: 700 as const,
+    fontFamily: '"JetBrains Mono", monospace',
+    background: "var(--surface-3, rgba(255,255,255,0.08))",
+    color: "var(--text-secondary)",
+    flexShrink: 0,
+    marginLeft: "auto",
   },
   source: {
     color: "var(--text-tertiary)",

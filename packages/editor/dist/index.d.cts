@@ -7464,6 +7464,17 @@ interface LogEntry {
     suggestion?: LogSuggestion;
     /** Raw error stack for the "expand stack" fold. */
     stack?: string;
+    /**
+     * How many times this identical entry has been emitted (1 on first
+     * emit). Repeats — even non-consecutive ones — coalesce into this entry
+     * (same `id`, position kept, `ts` bumped) and increment `count`; the
+     * Console shows a `×N` badge. Without this a per-cycle runtime error
+     * (e.g. a soundfont out-of-range note firing every beat) would flood the
+     * panel with endless rows. (#563) Optional on the wire — `emitLog` always
+     * stamps it (1 on first emit), so a present entry always has it; treat
+     * absent as 1.
+     */
+    count?: number;
 }
 type LogListener = (entry: LogEntry | null, history: readonly LogEntry[]) => void;
 /**
@@ -7485,7 +7496,7 @@ type FixedListener = (marker: FixedMarker, markers: ReadonlyMap<string, number>)
  * `null` listener signal is reserved for `clearLog` / reset — emitLog
  * always passes the emitted entry.
  */
-declare function emitLog(partial: Omit<LogEntry, 'id' | 'ts'>): LogEntry;
+declare function emitLog(partial: Omit<LogEntry, 'id' | 'ts' | 'count'>): LogEntry;
 /**
  * Subscribe to every future log entry. Returns an unsubscribe. Does
  * NOT replay history — consumers that need it should call
