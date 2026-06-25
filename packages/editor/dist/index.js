@@ -1,6 +1,6 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
-import * as React22 from 'react';
-import React22__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React23 from 'react';
+import React23__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { parse } from 'acorn';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
@@ -6471,6 +6471,14 @@ function getActiveEditor() {
   return activeEditor;
 }
 __name(getActiveEditor, "getActiveEditor");
+function getActiveFileId() {
+  if (!activeEditor) return null;
+  for (const [fileId, ed] of editors) {
+    if (ed === activeEditor) return fileId;
+  }
+  return null;
+}
+__name(getActiveFileId, "getActiveFileId");
 function onActiveEditorChange(cb) {
   activeEditorListeners.add(cb);
   return () => {
@@ -14420,8 +14428,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React22__default.Children.count(children);
-  const childArray = React22__default.Children.toArray(children);
+  const count = React23__default.Children.count(children);
+  const childArray = React23__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -14466,7 +14474,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React22__default.useEffect(() => {
+  React23__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -14482,7 +14490,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React22__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React23__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -22898,7 +22906,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React22__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React23__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -23120,7 +23128,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React22__default.useMemo(() => {
+  const providerNode = React23__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -23413,25 +23421,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React22.useMemo(
+  const changedIds = React23.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
     [commit, pickerFileIds]
   );
-  const [mode, setMode2] = React22.useState(defaultMode);
-  React22.useEffect(() => {
+  const [mode, setMode2] = React23.useState(defaultMode);
+  React23.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React22.useState(
+  const [fileId, setFileId] = React23.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React22.useRef(null);
-  const handleMount = React22.useCallback(
+  const diffEditorRef = React23.useRef(null);
+  const handleMount = React23.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -23441,7 +23449,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -23566,18 +23574,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React22.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React22.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React22.useState(
+  const snapshot = React23.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React23.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React23.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React22.useCallback(
+  const handleMount = React23.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -24468,7 +24476,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React22.createElement(
+  return React23.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -24486,25 +24494,25 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React22.createElement(EmptyTimelineStub)
+  content: React23.createElement(EmptyTimelineStub)
 });
 function useActiveChunk() {
-  const [editor, setEditor] = React22.useState(() => getActiveEditor());
-  const [chunk, setChunk] = React22.useState(null);
-  const writebackRef = React22.useRef(null);
-  const editorRef = React22.useRef(null);
-  const anchorRef = React22.useRef(null);
+  const [editor, setEditor] = React23.useState(() => getActiveEditor());
+  const [chunk, setChunk] = React23.useState(null);
+  const writebackRef = React23.useRef(null);
+  const editorRef = React23.useRef(null);
+  const anchorRef = React23.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
   }, [editor]);
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -24531,7 +24539,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React22.useCallback(
+  const applyEdit = React23.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -24546,8 +24554,8 @@ function useActiveChunk() {
     },
     []
   );
-  const beginGesture = React22.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React22.useCallback(() => writebackRef.current?.endGesture(), []);
+  const beginGesture = React23.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React23.useCallback(() => writebackRef.current?.endGesture(), []);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -25247,7 +25255,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React22.createElement(
+  return React23.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -25266,12 +25274,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React22.createElement("span", {
+    icon ? React23.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React22.createElement("span", null, hint)
+    React23.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -25325,14 +25333,14 @@ function gainUnchanged(g, cur) {
 __name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React22.useState(null);
-  const modelRef = React22.useRef(null);
-  React22.useEffect(() => {
+  const [model, setModel] = React23.useState(null);
+  const modelRef = React23.useRef(null);
+  React23.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React22.useRef(opts);
+  const optsRef = React23.useRef(opts);
   optsRef.current = opts;
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -25354,7 +25362,7 @@ function useGridModel(opts) {
     modelRef.current = next;
     setModel(next);
   }, [chunk]);
-  const mutate = React22.useCallback(
+  const mutate = React23.useCallback(
     (fn) => {
       const o = optsRef.current;
       const prev = modelRef.current;
@@ -25404,8 +25412,8 @@ function cycleToStep(cycle, steps, bars) {
 }
 __name(cycleToStep, "cycleToStep");
 function usePlayingStep(steps, bars) {
-  const [step, setStep] = React22.useState(null);
-  React22.useEffect(() => {
+  const [step, setStep] = React23.useState(null);
+  React23.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const next = cycleToStep(readCurrentCycle(), steps, bars);
@@ -25648,7 +25656,7 @@ function subscribe3(listener) {
 }
 __name(subscribe3, "subscribe");
 function useNoteColorMode() {
-  const mode = React22.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
+  const mode = React23.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -26004,9 +26012,9 @@ function SequencerGrid() {
   });
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const gestureRef = React22.useRef(null);
+  const gestureRef = React23.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
-  const paintCell = React22.useCallback(
+  const paintCell = React23.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
         const lane = prev.lanes[laneIndex];
@@ -26018,25 +26026,25 @@ function SequencerGrid() {
     },
     [mutate]
   );
-  const addVoice = React22.useCallback(
+  const addVoice = React23.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React22.useCallback(
+  const removeVoice = React23.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
-  const scaleToSlots = React22.useCallback(
+  const scaleToSlots = React23.useCallback(
     (target) => {
       mutate((prev) => quantizeStepGridTo(prev, target));
     },
     [mutate]
   );
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -26103,7 +26111,7 @@ function SequencerGrid() {
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
   if (!model) {
-    return React22.createElement(VisualEditStandby, {
+    return React23.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && isStepChunk(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -26399,22 +26407,22 @@ function PianoRollGrid({
     applyGain: applyRollGain,
     serializeGain: serializeRollGain
   });
-  const dragRef = React22.useRef(null);
-  const velRef = React22.useRef(null);
+  const dragRef = React23.useRef(null);
+  const velRef = React23.useRef(null);
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const [hoveredMidi, setHoveredMidi] = React22.useState(null);
-  const onSelectRef = React22.useRef(onSelect);
+  const [hoveredMidi, setHoveredMidi] = React23.useState(null);
+  const onSelectRef = React23.useRef(onSelect);
   onSelectRef.current = onSelect;
-  const selectedRef = React22.useRef(selected);
+  const selectedRef = React23.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range, setRange] = React22.useState({
+  const [range, setRange] = React23.useState({
     lo: DEFAULT_LO,
     hi: DEFAULT_HI
   });
-  const stmtIdRef = React22.useRef(null);
-  React22.useEffect(() => {
+  const stmtIdRef = React23.useRef(null);
+  React23.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = contentRange(model);
@@ -26429,7 +26437,7 @@ function PianoRollGrid({
       }));
     }
   }, [model, chunk]);
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
@@ -26445,7 +26453,7 @@ function PianoRollGrid({
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
@@ -26569,7 +26577,7 @@ function PianoRollGrid({
     mutate((prev) => quantizePianoRollTo(prev, target));
   }, "scaleToSlots");
   if (!model) {
-    return React22.createElement(VisualEditStandby, {
+    return React23.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && isRollChunk(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -26885,7 +26893,7 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React22.useRef(null);
+  const dragRef = React23.useRef(null);
   const pos = Math.max(0, Math.min(1, toPosition(value, range)));
   const angle = -135 + pos * 270;
   const onPointerDown = /* @__PURE__ */ __name((e) => {
@@ -27298,7 +27306,7 @@ function createCatalogStore() {
     listeners10.add(listener);
     return () => listeners10.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React22.useSyncExternalStore(subscribe4, read2, () => null), "useCatalog");
+  const useCatalog = /* @__PURE__ */ __name(() => React23.useSyncExternalStore(subscribe4, read2, () => null), "useCatalog");
   return { setAccessor, notify: notify5, read: read2, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
@@ -27431,7 +27439,7 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
   const knobs = chunk ? knobsFromChunk(chunk) : [];
-  const writeKnob = React22.useCallback(
+  const writeKnob = React23.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => {
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex];
@@ -27446,7 +27454,7 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
     },
     [applyEdit]
   );
-  const addTransform = React22.useCallback(
+  const addTransform = React23.useCallback(
     (method, value) => {
       applyEdit((fresh, wb) => {
         if (fresh.chain.some((c) => c.name === method)) return;
@@ -27455,7 +27463,7 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
     },
     [applyEdit]
   );
-  const writeChainMethod = React22.useCallback(
+  const writeChainMethod = React23.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -27467,7 +27475,7 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
     [applyEdit]
   );
   if (!chunk || chunk.chain.length === 0) {
-    return React22.createElement(VisualEditStandby, {
+    return React23.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -27636,20 +27644,20 @@ __name(buildStripModels, "buildStripModels");
 
 // src/visualEdit/mixer/useMixerModel.ts
 function useMixerModel() {
-  const [editor, setEditor] = React22.useState(() => getActiveEditor());
-  const [strips, setStrips] = React22.useState([]);
-  const editorRef = React22.useRef(null);
-  const writebackRef = React22.useRef(null);
-  React22.useEffect(() => {
+  const [editor, setEditor] = React23.useState(() => getActiveEditor());
+  const [strips, setStrips] = React23.useState([]);
+  const editorRef = React23.useRef(null);
+  const writebackRef = React23.useRef(null);
+  React23.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
   }, [editor]);
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     if (!editor) {
       setStrips([]);
       return;
@@ -27667,7 +27675,7 @@ function useMixerModel() {
     const sub = model?.onDidChangeContent?.(rederive);
     return () => sub?.dispose?.();
   }, [editor]);
-  const applyToStrip = React22.useCallback(
+  const applyToStrip = React23.useCallback(
     (id, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -27681,8 +27689,8 @@ function useMixerModel() {
     },
     []
   );
-  const beginGesture = React22.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React22.useCallback(() => writebackRef.current?.endGesture(), []);
+  const beginGesture = React23.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React23.useCallback(() => writebackRef.current?.endGesture(), []);
   return { strips, applyToStrip, beginGesture, endGesture };
 }
 __name(useMixerModel, "useMixerModel");
@@ -27716,8 +27724,233 @@ function clamp014(v) {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 __name(clamp014, "clamp01");
+
+// src/visualEdit/mixer/meterMath.ts
+var DEFAULT_BALLISTICS = {
+  releaseMs: 300,
+  peakHoldMs: 1500,
+  peakFallMs: 1e3
+};
+var ZERO_METER = { rms: 0, peak: 0, peakHoldMs: 0 };
+function levelFromActiveHaps(haps, now2, eps = 1e-4) {
+  let level = 0;
+  for (const h of haps) {
+    if (h.begin <= now2 + eps && h.end > now2) {
+      const e = (h.gain ?? 1) * (h.velocity ?? 1);
+      if (e > level) level = e;
+    }
+  }
+  return level;
+}
+__name(levelFromActiveHaps, "levelFromActiveHaps");
+function advanceMeter(prev, instant, dtMs, b = DEFAULT_BALLISTICS) {
+  const live = instant > 0 ? instant : 0;
+  const dt = dtMs > 0 ? dtMs : 0;
+  let rms;
+  if (live >= prev.rms) {
+    rms = live;
+  } else {
+    const k = b.releaseMs > 0 ? Math.exp(-dt / b.releaseMs) : 0;
+    rms = live + (prev.rms - live) * k;
+  }
+  let peak = prev.peak;
+  let peakHoldMs = prev.peakHoldMs;
+  if (live >= prev.peak) {
+    peak = live;
+    peakHoldMs = b.peakHoldMs;
+  } else if (peakHoldMs > 0) {
+    peakHoldMs = Math.max(0, peakHoldMs - dt);
+  } else {
+    const fall = b.peakFallMs > 0 ? dt / b.peakFallMs : 1;
+    peak = Math.max(live, prev.peak - fall);
+  }
+  return { rms, peak, peakHoldMs };
+}
+__name(advanceMeter, "advanceMeter");
+
+// src/visualEdit/mixer/useTrackMeters.ts
+function schedulersOf(payload) {
+  if (!payload) return null;
+  return payload.engineComponents?.queryable?.trackSchedulers ?? null;
+}
+__name(schedulersOf, "schedulersOf");
+function levelColor(frac) {
+  if (frac >= 0.9) return "var(--meter-red, #ff5a52)";
+  if (frac >= 0.72) return "var(--meter-yellow, #ffcc4d)";
+  return "var(--meter-green, #44d07b)";
+}
+__name(levelColor, "levelColor");
+var MIN_FRAME_MS = 1e3 / 60;
+var QUERY_WINDOW_CYCLES = 0.01;
+function useTrackMeters() {
+  const elsRef = React23.useRef(/* @__PURE__ */ new Map());
+  const stateRef = React23.useRef(/* @__PURE__ */ new Map());
+  const schedulersRef = React23.useRef(null);
+  const rafRef = React23.useRef(null);
+  const lastTsRef = React23.useRef(0);
+  const [fileId, setFileId] = React23.useState(() => getActiveFileId());
+  React23.useEffect(() => {
+    setFileId(getActiveFileId());
+    return onActiveEditorChange(() => setFileId(getActiveFileId()));
+  }, []);
+  const register = React23.useCallback((captureId, els) => {
+    if (els) elsRef.current.set(captureId, els);
+    else {
+      elsRef.current.delete(captureId);
+      stateRef.current.delete(captureId);
+    }
+  }, []);
+  React23.useEffect(() => {
+    const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
+      schedulersRef.current = schedulersOf(payload);
+    }) : (() => {
+      schedulersRef.current = null;
+      return () => {
+      };
+    })();
+    const paintDark = /* @__PURE__ */ __name((els) => {
+      els.fill.style.height = "0%";
+      els.peak.style.bottom = "0%";
+      els.peak.style.opacity = "0";
+    }, "paintDark");
+    const instantLevel = /* @__PURE__ */ __name((sched) => {
+      let now2;
+      try {
+        now2 = sched.now();
+      } catch {
+        return 0;
+      }
+      if (!Number.isFinite(now2)) return 0;
+      let haps;
+      try {
+        haps = sched.query(now2, now2 + QUERY_WINDOW_CYCLES);
+      } catch {
+        return 0;
+      }
+      return levelFromActiveHaps(haps, now2);
+    }, "instantLevel");
+    const frame = /* @__PURE__ */ __name((ts) => {
+      rafRef.current = requestAnimationFrame(frame);
+      const last = lastTsRef.current;
+      const dt = last === 0 ? MIN_FRAME_MS : ts - last;
+      if (dt < MIN_FRAME_MS) return;
+      lastTsRef.current = ts;
+      const schedulers = schedulersRef.current;
+      for (const [captureId, els] of elsRef.current) {
+        const sched = schedulers?.get(captureId);
+        if (!sched) {
+          paintDark(els);
+          stateRef.current.delete(captureId);
+          continue;
+        }
+        const instant = instantLevel(sched);
+        const prev = stateRef.current.get(captureId) ?? ZERO_METER;
+        const next = advanceMeter(prev, instant, dt);
+        stateRef.current.set(captureId, next);
+        const lvl = gainToFaderPos(next.rms);
+        const pk = gainToFaderPos(next.peak);
+        els.fill.style.height = `${lvl * 100}%`;
+        els.fill.style.background = levelColor(lvl);
+        els.peak.style.bottom = `${pk * 100}%`;
+        els.peak.style.opacity = next.peak > 5e-4 ? "1" : "0";
+      }
+    }, "frame");
+    const start = /* @__PURE__ */ __name(() => {
+      if (rafRef.current === null) {
+        lastTsRef.current = 0;
+        rafRef.current = requestAnimationFrame(frame);
+      }
+    }, "start");
+    const stop = /* @__PURE__ */ __name(() => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    }, "stop");
+    const onVisibility = /* @__PURE__ */ __name(() => {
+      if (document.hidden) stop();
+      else start();
+    }, "onVisibility");
+    document.addEventListener("visibilitychange", onVisibility);
+    if (!document.hidden) start();
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      stop();
+      unsub();
+      schedulersRef.current = null;
+      stateRef.current.clear();
+    };
+  }, [fileId]);
+  return React23.useMemo(() => ({ register }), [register]);
+}
+__name(useTrackMeters, "useTrackMeters");
 var DRAG_SPAN_PX2 = 160;
 var FADER_HEIGHT = 80;
+function StripMeter({
+  captureId,
+  controller
+}) {
+  const fillRef = React23.useRef(null);
+  const peakRef = React23.useRef(null);
+  React23.useEffect(() => {
+    const fill = fillRef.current;
+    const peak = peakRef.current;
+    if (!fill || !peak) return;
+    controller.register(captureId, { fill, peak });
+    return () => controller.register(captureId, null);
+  }, [captureId, controller]);
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-mixer-strip-meter": true,
+      "data-mixer-meter-capture": captureId,
+      style: {
+        position: "relative",
+        width: 6,
+        height: "100%",
+        borderRadius: 2,
+        background: "var(--background, #1c1c20)",
+        border: "1px solid var(--border, #3a3a42)",
+        overflow: "hidden",
+        flexShrink: 0
+      },
+      children: [
+        /* @__PURE__ */ jsx(
+          "div",
+          {
+            ref: fillRef,
+            "data-mixer-meter-fill": true,
+            style: {
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: "0%",
+              background: "var(--meter-green, #44d07b)"
+            }
+          }
+        ),
+        /* @__PURE__ */ jsx(
+          "div",
+          {
+            ref: peakRef,
+            "data-mixer-meter-peak": true,
+            style: {
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: "0%",
+              height: 2,
+              background: "var(--foreground, #e6e6ea)",
+              opacity: 0
+            }
+          }
+        )
+      ]
+    }
+  );
+}
+__name(StripMeter, "StripMeter");
 function faderGain(strip) {
   switch (strip.gain.kind) {
     case "scalar":
@@ -27743,15 +27976,16 @@ function ChannelStrip({
   onGainChange,
   onPanChange,
   onGestureStart,
-  onGestureEnd
+  onGestureEnd,
+  meters
 }) {
   const gain = faderGain(strip);
   const pos = gain === null ? 0 : gainToFaderPos(gain);
   const faderEnabled = gain !== null && onGainChange !== void 0;
   const panEnabled = !strip.panForeign && onPanChange !== void 0;
   const panValue = strip.pan ?? 0.5;
-  const faderDrag = React22.useRef(null);
-  const panDrag = React22.useRef(null);
+  const faderDrag = React23.useRef(null);
+  const panDrag = React23.useRef(null);
   const onFaderDown = /* @__PURE__ */ __name((e) => {
     if (!faderEnabled) return;
     e.preventDefault();
@@ -27879,52 +28113,68 @@ function ChannelStrip({
         /* @__PURE__ */ jsxs(
           "div",
           {
-            "data-mixer-strip-fader": true,
-            onPointerDown: onFaderDown,
-            onPointerMove: onFaderMove,
-            onPointerUp: endFader,
-            onPointerCancel: endFader,
-            onDoubleClick: resetFader,
             style: {
-              position: "relative",
-              height: FADER_HEIGHT,
               display: "flex",
               justifyContent: "center",
-              opacity: gain === null ? 0.4 : 1,
-              cursor: faderEnabled ? "ns-resize" : "default",
-              touchAction: "none",
-              userSelect: "none"
+              alignItems: "stretch",
+              gap: 5,
+              height: FADER_HEIGHT
             },
             children: [
-              /* @__PURE__ */ jsx(
+              meters && /* @__PURE__ */ jsx(StripMeter, { captureId: strip.captureId, controller: meters }),
+              /* @__PURE__ */ jsxs(
                 "div",
                 {
+                  "data-mixer-strip-fader": true,
+                  onPointerDown: onFaderDown,
+                  onPointerMove: onFaderMove,
+                  onPointerUp: endFader,
+                  onPointerCancel: endFader,
+                  onDoubleClick: resetFader,
                   style: {
-                    position: "absolute",
-                    top: 0,
-                    bottom: 0,
-                    width: 4,
-                    borderRadius: 2,
-                    background: "var(--background, #1c1c20)",
-                    border: "1px solid var(--border, #3a3a42)",
-                    pointerEvents: "none"
-                  }
-                }
-              ),
-              gain !== null && /* @__PURE__ */ jsx(
-                "div",
-                {
-                  "data-mixer-strip-thumb": true,
-                  style: {
-                    position: "absolute",
-                    top: (1 - pos) * (FADER_HEIGHT - 6),
-                    width: 22,
-                    height: 6,
-                    borderRadius: 2,
-                    background: "var(--foreground, #e6e6ea)",
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.4)",
-                    pointerEvents: "none"
-                  }
+                    position: "relative",
+                    height: "100%",
+                    width: 26,
+                    display: "flex",
+                    justifyContent: "center",
+                    opacity: gain === null ? 0.4 : 1,
+                    cursor: faderEnabled ? "ns-resize" : "default",
+                    touchAction: "none",
+                    userSelect: "none"
+                  },
+                  children: [
+                    /* @__PURE__ */ jsx(
+                      "div",
+                      {
+                        style: {
+                          position: "absolute",
+                          top: 0,
+                          bottom: 0,
+                          width: 4,
+                          borderRadius: 2,
+                          background: "var(--background, #1c1c20)",
+                          border: "1px solid var(--border, #3a3a42)",
+                          pointerEvents: "none"
+                        }
+                      }
+                    ),
+                    gain !== null && /* @__PURE__ */ jsx(
+                      "div",
+                      {
+                        "data-mixer-strip-thumb": true,
+                        style: {
+                          position: "absolute",
+                          top: (1 - pos) * (FADER_HEIGHT - 6),
+                          width: 22,
+                          height: 6,
+                          borderRadius: 2,
+                          background: "var(--foreground, #e6e6ea)",
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.4)",
+                          pointerEvents: "none"
+                        }
+                      }
+                    )
+                  ]
                 }
               )
             ]
@@ -27971,6 +28221,7 @@ function panEdit(fresh, value) {
 __name(panEdit, "panEdit");
 function MixerStrips() {
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel();
+  const meters = useTrackMeters();
   if (strips.length === 0) return null;
   return /* @__PURE__ */ jsx(
     "div",
@@ -27998,7 +28249,8 @@ function MixerStrips() {
             if (e) wb.replaceRange(e.range, e.text, "mixer");
           }),
           onGestureStart: beginGesture,
-          onGestureEnd: endGesture
+          onGestureEnd: endGesture,
+          meters
         },
         strip.id
       ))
@@ -28025,16 +28277,16 @@ var MIXER_WIDTH = 300;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = patternKind(chunk);
-  const [selected, setSelected] = React22.useState(null);
+  const [selected, setSelected] = React23.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React22.useRef(stmtId);
-  React22.useEffect(() => {
+  const stmtRef = React23.useRef(stmtId);
+  React23.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setSelected(null);
     }
   }, [stmtId]);
-  const [division2, setDivision] = React22.useState(DEFAULT_DIVISION);
+  const [division2, setDivision] = React23.useState(DEFAULT_DIVISION);
   const grid = kind === "step" ? /* @__PURE__ */ jsx(SequencerGrid, {}) : kind === "roll" ? /* @__PURE__ */ jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2 }) : /* @__PURE__ */ jsx(
     VisualEditStandby,
     {
@@ -28081,7 +28333,7 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React22.createElement(Panel)
+      content: React23.createElement(Panel)
     });
   }
 }
@@ -28095,24 +28347,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React22.useState(opts.initial);
-  const [dragging, setDragging] = React22.useState(false);
-  const startYRef = React22.useRef(0);
-  const startValueRef = React22.useRef(opts.initial);
-  const pointerIdRef = React22.useRef(null);
-  const draggingRef = React22.useRef(false);
-  const minRef = React22.useRef(opts.min);
-  const maxRef = React22.useRef(opts.max);
-  React22.useEffect(() => {
+  const [value, setValueState] = React23.useState(opts.initial);
+  const [dragging, setDragging] = React23.useState(false);
+  const startYRef = React23.useRef(0);
+  const startValueRef = React23.useRef(opts.initial);
+  const pointerIdRef = React23.useRef(null);
+  const draggingRef = React23.useRef(false);
+  const minRef = React23.useRef(opts.min);
+  const maxRef = React23.useRef(opts.max);
+  React23.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React22.useCallback((v) => {
+  const setValue = React23.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React22.useCallback(
+  const onPointerDown = React23.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -28127,7 +28379,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React22.useCallback(
+  const endDrag = React23.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -28142,7 +28394,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React22.useCallback(
+  const onPointerMove = React23.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -28158,13 +28410,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React22.useCallback(
+  const onPointerUp = React23.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React22.useCallback(
+  const onPointerCancel = React23.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -28192,15 +28444,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React22.useState(
+  const [tabs2, setTabs] = React23.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React22.useState(readPersistedOpen);
-  const [height, setHeight] = React22.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React22.useState(
+  const [open, setOpen] = React23.useState(readPersistedOpen);
+  const [height, setHeight] = React23.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React23.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -28210,10 +28462,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -28225,24 +28477,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React22.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React22.useCallback(
+  const tabButtonRefs = React23.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React23.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React22.useCallback((id) => {
+  const focusTab = React23.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React22.useCallback(
+  const onTabsKeyDown = React23.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -30353,7 +30605,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsx(React22__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsx(React23__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsx(
                 SplitPane,
@@ -30361,7 +30613,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsx(React22__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsx(React23__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -32830,10 +33082,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React22.useReducer((x) => x + 1, 0);
-  React22.useEffect(() => subscribeToHistory(force), []);
-  React22.useEffect(() => subscribeToRuntimeView(force), []);
-  React22.useEffect(() => {
+  const [, force] = React23.useReducer((x) => x + 1, 0);
+  React23.useEffect(() => subscribeToHistory(force), []);
+  React23.useEffect(() => subscribeToRuntimeView(force), []);
+  React23.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -32850,17 +33102,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React22.useState(null);
-  const [forkName, setForkName] = React22.useState("");
-  const [committing, setCommitting] = React22.useState(false);
-  const [commitLabel, setCommitLabel] = React22.useState("");
-  const [expanded, setExpanded] = React22.useState(null);
-  const [hovered, setHovered] = React22.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React22.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React22.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React22.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React23.useState(null);
+  const [forkName, setForkName] = React23.useState("");
+  const [committing, setCommitting] = React23.useState(false);
+  const [commitLabel, setCommitLabel] = React23.useState("");
+  const [expanded, setExpanded] = React23.useState(null);
+  const [hovered, setHovered] = React23.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React23.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React23.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React23.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React22.useEffect(() => {
+  React23.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);

@@ -212,3 +212,79 @@ test.describe('Mixer strip write-back (#540 / S1)', () => {
     expect(await strudelValue(page)).toBe(original)
   })
 })
+
+const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
+
+/** evaluate/play the current doc (editor must be focused). */
+async function play(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ focus: () => void }> } } }).monaco
+    m?.editor?.getEditors?.()?.[0]?.focus()
+  })
+  await page.keyboard.press(`${MOD}+Enter`)
+}
+
+/** the live fill height (0..100) of a strip's meter bar. */
+async function meterFill(
+  page: Page,
+  drawer: ReturnType<Page['locator']>,
+  stripId: string,
+): Promise<number> {
+  return drawer
+    .locator(`[data-mixer-strip-id="${stripId}"] [data-mixer-meter-fill]`)
+    .evaluate((e) => parseFloat((e as HTMLElement).style.height) || 0)
+}
+
+test.describe('Mixer live meters (#540 / S2)', () => {
+  test('each strip fuses a meter keyed by its captureId; dark before play', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd*4")\nd1: note("c e g")')
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+
+    // one meter per strip, keyed by the strip's captureId (the analyser join).
+    await expect(drawer.locator('[data-mixer-strip-meter]')).toHaveCount(2)
+    await expect(
+      drawer.locator('[data-mixer-strip-id="$0"] [data-mixer-meter-capture="$0"]'),
+    ).toBeVisible()
+    await expect(
+      drawer.locator('[data-mixer-strip-id="d1"] [data-mixer-meter-capture="d1"]'),
+    ).toBeVisible()
+
+    // nothing playing yet → both bars dark.
+    expect(await meterFill(page, drawer, '$0')).toBeLessThan(2)
+    expect(await meterFill(page, drawer, 'd1')).toBeLessThan(2)
+  })
+
+  test('a playing track lights its own meter; a silent track stays dark (per-track)', async ({
+    page,
+  }) => {
+    await boot(page)
+    // Open the mixer BEFORE evaluating so the meter's bus subscription is live
+    // when the program publishes (and pinned to this file, not the bus default).
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    await setStrudelCode(page, '$: s("bd*8").gain(0.9)\n$: silence')
+
+    // Poll for the loud track's meter to move; re-eval once if the first
+    // evaluate raced the editor→file sync.
+    let loudMax = 0
+    let quietMax = 0
+    for (let attempt = 0; attempt < 2 && loudMax < 15; attempt++) {
+      await play(page)
+      await page.waitForTimeout(500)
+      loudMax = 0
+      quietMax = 0
+      for (let i = 0; i < 30; i++) {
+        loudMax = Math.max(loudMax, await meterFill(page, drawer, '$0'))
+        quietMax = Math.max(quietMax, await meterFill(page, drawer, '$1'))
+        await page.waitForTimeout(33)
+      }
+    }
+
+    // The loud track's meter moves; the silent track's stays dark — proof the
+    // join is per-track (a master-mix tap would light both).
+    expect(loudMax).toBeGreaterThan(15)
+    expect(quietMax).toBeLessThan(8)
+  })
+})
