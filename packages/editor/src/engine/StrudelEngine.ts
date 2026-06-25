@@ -12,6 +12,7 @@ import type { PatternIR } from '../ir/PatternIR'
 import type { IREvent } from '../ir/IREvent'
 import { getTierFlags, type TierFlags } from './tierFlags'
 import { resolveAlias } from './aliases'
+import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
 
 type HapHandler = (event: HapEvent) => void
 
@@ -546,6 +547,16 @@ export class StrudelEngine implements LiveCodingEngine {
         // Route scheduler-time errors (e.g. "sound X not found", "cannot parse as numeral")
         // through the registered handler so they surface in the editor UI, not just the console.
         const error = err instanceof Error ? err : new Error(String(err))
+        // A "no soundfont zone found" throw means this note's pitch fell outside the
+        // loaded instrument's sampled key-range. Upstream drops the preset + pitch
+        // from the message (`new Error(msg, name, ...)` ignores extra args —
+        // @strudel/soundfonts/fontloader.mjs:87), so the raw message is empty and
+        // useless. We still hold the offending `hap` here, so recover the note +
+        // instrument from it and rewrite the message into something actionable (#561).
+        if (isSoundfontZoneError(error.message)) {
+          const better = soundfontRangeMessage(hap?.value)
+          if (better) error.message = better
+        }
         this.runtimeErrorHandler?.(error)
       }
     }
