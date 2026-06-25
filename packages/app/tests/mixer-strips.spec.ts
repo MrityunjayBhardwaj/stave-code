@@ -519,3 +519,123 @@ test.describe('Mixer live meters (#540 / S2)', () => {
     expect(quietMax).toBeLessThan(8)
   })
 })
+
+/** click a strip's ▸/◂ expand toggle (Mixer console only). */
+async function toggleExpand(
+  page: Page,
+  drawer: ReturnType<Page['locator']>,
+  stripId: string,
+): Promise<void> {
+  await drawer.locator(`[data-mixer-strip-id="${stripId}"] [data-mixer-strip-expand]`).click()
+  await page.waitForTimeout(60)
+}
+
+test.describe('Mixer strip expand drawer (#550 / S4b)', () => {
+  test('the ▸ toggle opens that strip\'s drawer inline; ◂ collapses it (sticky)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd").gain(0.5)\nd1: note("c e").lpf(800)')
+    const drawer = await openMixer(page)
+
+    // nothing expanded by default
+    await expect(drawer.locator('[data-mixer-expand-drawer]')).toHaveCount(0)
+
+    await toggleExpand(page, drawer, 'd1')
+    await expect(drawer.locator('[data-mixer-expand-for="d1"]')).toHaveCount(1)
+    await expect(
+      drawer.locator('[data-mixer-strip-id="d1"] [data-mixer-strip-expand]'),
+    ).toHaveAttribute('aria-expanded', 'true')
+
+    // sticky: it stays open until toggled again
+    await toggleExpand(page, drawer, 'd1')
+    await expect(drawer.locator('[data-mixer-expand-for="d1"]')).toHaveCount(0)
+  })
+
+  test('the drawer binds to THAT strip\'s chain, not the cursor\'s track', async ({ page }) => {
+    await boot(page)
+    // cursor lands on line 1 ($0, a gain track); d1 carries an lpf instead.
+    await setStrudelCode(page, '$: s("bd").gain(0.2)\nd1: note("c e").lpf(800)')
+    const drawer = await openMixer(page)
+
+    await toggleExpand(page, drawer, 'd1')
+    const d1Drawer = drawer.locator('[data-mixer-expand-for="d1"]')
+    // d1's own chain → an lpf knob; NOT the cursor track's gain(0.2).
+    await expect(d1Drawer.locator('[data-knob="lpf"]')).toHaveCount(1)
+    await expect(d1Drawer.locator('[data-knob="gain"]')).toHaveCount(0)
+  })
+
+  test('dragging a knob in the drawer edits only that statement; siblings byte-identical; one undo', async ({
+    page,
+  }) => {
+    await boot(page)
+    const original = '$: s("bd").gain(0.5)\nd1: note("c e").lpf(800)\n$: s("hh*4").gain(0.5)'
+    await setStrudelCode(page, original)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+
+    await toggleExpand(page, drawer, 'd1')
+    const slider = drawer.locator('[data-mixer-expand-for="d1"] [data-knob="lpf"] [role="slider"]')
+    await expect(slider).toHaveCount(1)
+    await slider.scrollIntoViewIfNeeded()
+    const box = await slider.boundingBox()
+    if (!box) throw new Error('no lpf knob box')
+    const cx = box.x + box.width / 2
+    const cy = box.y + box.height / 2
+    await page.mouse.move(cx, cy)
+    await page.mouse.down()
+    await page.mouse.move(cx, cy - 40, { steps: 8 }) // up → louder cutoff
+    await page.mouse.up()
+    await page.waitForTimeout(80)
+
+    const lines = (await strudelValue(page)).split('\n')
+    // only the d1 line changed; the two anonymous gain lines are byte-identical
+    expect(lines[0]).toBe('$: s("bd").gain(0.5)')
+    expect(lines[2]).toBe('$: s("hh*4").gain(0.5)')
+    const m = lines[1].match(/^d1: note\("c e"\)\.lpf\((\d*\.?\d+)\)$/)
+    expect(m, `unexpected d1 line: ${lines[1]}`).not.toBeNull()
+    expect(Number(m![1])).toBeGreaterThan(800)
+
+    // one undo reverts the whole drag
+    await undo(page)
+    expect(await strudelValue(page)).toBe(original)
+  })
+
+  test('expanding a second strip keeps the first open (multi)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd").gain(0.5)\nd1: note("c e").lpf(800)')
+    const drawer = await openMixer(page)
+
+    await toggleExpand(page, drawer, '$0')
+    await toggleExpand(page, drawer, 'd1')
+    await expect(drawer.locator('[data-mixer-expand-drawer]')).toHaveCount(2)
+    await expect(drawer.locator('[data-mixer-expand-for="$0"]')).toHaveCount(1)
+    await expect(drawer.locator('[data-mixer-expand-for="d1"]')).toHaveCount(1)
+  })
+
+  test('expand never writes the file, and persists across a reload (V-mixer-1)', async ({ page }) => {
+    await boot(page)
+    const original = '$: s("bd").gain(0.5)\nd1: note("c e").lpf(800)'
+    await setStrudelCode(page, original)
+    let drawer = await openMixer(page)
+
+    await toggleExpand(page, drawer, 'd1')
+    await expect(drawer.locator('[data-mixer-expand-for="d1"]')).toHaveCount(1)
+    // expand is UI state — the document is untouched (V-mixer-1).
+    expect(await strudelValue(page)).toBe(original)
+
+    // reload: the expanded set is persisted in localStorage (per file), so the
+    // d1 drawer re-opens once its strip exists again — without touching the file.
+    await page.reload()
+    await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
+    await page.waitForFunction(
+      () => {
+        const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => unknown[] } } }).monaco
+        return (m?.editor?.getEditors?.()?.length ?? 0) > 0
+      },
+      { timeout: 15_000 },
+    )
+    drawer = await openMixer(page)
+    await setStrudelCode(page, original)
+    await expect(drawer.locator('[data-mixer-expand-for="d1"]')).toHaveCount(1)
+    expect(await strudelValue(page)).toBe(original)
+  })
+})

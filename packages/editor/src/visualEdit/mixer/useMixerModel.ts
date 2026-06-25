@@ -25,6 +25,15 @@ export interface MixerModel {
   /** one strip per top-level statement, in source order (re-derived on edits) */
   strips: StripModel[]
   /**
+   * The detected chunks behind `strips`, SAME index — `chunks[i]` is the chunk
+   * `strips[i]` projects from. The expand drawer (S4b) binds a strip's full knob
+   * chain to its render-time chunk by id (`chunks[strips.findIndex(...)]`).
+   * Stored alongside `strips` in one state so the two never drift. (The write
+   * path still re-derives a FRESH chunk at write time — `chunks` is for RENDER,
+   * `applyToStrip` for freshness.)
+   */
+  chunks: ChunkInfo[]
+  /**
    * Mutate the strip with this id through its fresh chunk. Re-derives against
    * the live model, so offsets are valid even after earlier edits in the same
    * gesture changed a literal's length. No-op if the strip can't be re-found.
@@ -35,10 +44,17 @@ export interface MixerModel {
   endGesture: () => void
 }
 
+/** the strip array + its source chunks, kept together so they can't drift */
+interface Derived {
+  strips: StripModel[]
+  chunks: ChunkInfo[]
+}
+const EMPTY_DERIVED: Derived = { strips: [], chunks: [] }
+
 export function useMixerModel(): MixerModel {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editor, setEditor] = React.useState<any>(() => getActiveEditor())
-  const [strips, setStrips] = React.useState<StripModel[]>([])
+  const [derived, setDerived] = React.useState<Derived>(EMPTY_DERIVED)
   const editorRef = React.useRef<any>(null) // eslint-disable-line @typescript-eslint/no-explicit-any
   const writebackRef = React.useRef<Writeback | null>(null)
 
@@ -61,16 +77,17 @@ export function useMixerModel(): MixerModel {
   // live text (invariant V-mixer-1).
   React.useEffect(() => {
     if (!editor) {
-      setStrips([])
+      setDerived(EMPTY_DERIVED)
       return
     }
     const rederive = (): void => {
       const model = editor.getModel?.()
       if (!model) {
-        setStrips([])
+        setDerived(EMPTY_DERIVED)
         return
       }
-      setStrips(buildStripModels(detectAllChunks(model.getValue())))
+      const chunks = detectAllChunks(model.getValue())
+      setDerived({ strips: buildStripModels(chunks), chunks })
     }
     rederive()
     const model = editor.getModel?.()
@@ -96,5 +113,5 @@ export function useMixerModel(): MixerModel {
   const beginGesture = React.useCallback(() => writebackRef.current?.beginGesture(), [])
   const endGesture = React.useCallback(() => writebackRef.current?.endGesture(), [])
 
-  return { strips, applyToStrip, beginGesture, endGesture }
+  return { strips: derived.strips, chunks: derived.chunks, applyToStrip, beginGesture, endGesture }
 }

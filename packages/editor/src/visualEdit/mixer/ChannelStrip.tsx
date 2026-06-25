@@ -41,6 +41,11 @@ interface ChannelStripProps {
   meters?: MeterController
   /** show the dot/name/mute header row. Off = the headerless local strip. */
   showHeader?: boolean
+  /** whether this strip's expand drawer is open (console variant). When
+   *  `onToggleExpand` is set, the header shows a ▸/◂ disclosure toggle. */
+  expanded?: boolean
+  /** toggle this strip's expand drawer — provided only by the Mixer console */
+  onToggleExpand?: () => void
 }
 
 /**
@@ -141,6 +146,8 @@ export function ChannelStrip({
   onGestureEnd,
   meters,
   showHeader = true,
+  expanded = false,
+  onToggleExpand,
 }: ChannelStripProps): React.ReactElement {
   const muteEnabled = strip.muteable && onMuteToggle !== undefined
   const gain = faderGain(strip)
@@ -203,7 +210,10 @@ export function ChannelStrip({
       data-mixer-strip-kind={strip.kind}
       data-mixer-strip-muted={strip.muted ? '' : undefined}
       style={{
-        width: 84,
+        // Console strips carry a 4-item header (dot · name · mute · expand);
+        // give them a touch more width so a short name like `d1` isn't squeezed
+        // to `d.`. The headerless local strip keeps the compact width.
+        width: onToggleExpand ? 96 : 84,
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
@@ -264,6 +274,32 @@ export function ChannelStrip({
         >
           M
         </button>
+        {onToggleExpand && (
+          <button
+            type="button"
+            data-mixer-strip-expand
+            aria-label={`${expanded ? 'Collapse' : 'Expand'} ${strip.name}`}
+            aria-expanded={expanded}
+            onClick={() => onToggleExpand()}
+            title={expanded ? 'Collapse channel' : 'Expand channel'}
+            style={{
+              flexShrink: 0,
+              width: 16,
+              height: 16,
+              padding: 0,
+              borderRadius: 3,
+              fontSize: 10,
+              fontWeight: 700,
+              lineHeight: '14px',
+              cursor: 'pointer',
+              border: '1px solid var(--border, #3a3a42)',
+              background: expanded ? 'var(--background-elevated, #26262c)' : 'var(--background, #1c1c20)',
+              color: 'var(--foreground-muted, #a0a0aa)',
+            }}
+          >
+            {expanded ? '◂' : '▸'}
+          </button>
+        )}
       </div>
       )}
 
