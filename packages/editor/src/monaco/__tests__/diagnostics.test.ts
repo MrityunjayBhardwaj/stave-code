@@ -84,26 +84,25 @@ describe('setEvalError', () => {
     })
   })
 
-  it('falls back to full-document range when stack has no eval location', () => {
+  it('skips the marker (empty set) when stack has no eval location (#532)', () => {
     const spy = vi.fn()
     const monaco = makeMonaco(spy)
     const model = makeModel(5, 40)
 
-    const error = new Error('something went wrong')
-    error.stack = 'Error: something went wrong\n    at Object.<anonymous> (file.js:1:1)'
+    // A runtime/library throw — bundle-only stack, no `at eval` frame.
+    const error = new Error('no soundfont zone found for preset ')
+    error.stack = 'Error: …\n    at Object.<anonymous> (chunk.js:1:1)'
 
     setEvalError(monaco, model, error)
 
-    const [, , markers] = spy.mock.calls[0]
-    expect(markers[0]).toMatchObject({
-      startLineNumber: 1,
-      startColumn: 1,
-      endLineNumber: 5,
-      endColumn: 40,
-    })
+    const [, owner, markers] = spy.mock.calls[0]
+    expect(owner).toBe('stave')
+    // No whole-document squiggle: the marker set is empty (and any prior
+    // eval marker is retired).
+    expect(markers).toEqual([])
   })
 
-  it('falls back to full-document range when stack is empty', () => {
+  it('skips the marker (empty set) when stack is empty (#532)', () => {
     const spy = vi.fn()
     const monaco = makeMonaco(spy)
     const model = makeModel(3, 20)
@@ -114,49 +113,42 @@ describe('setEvalError', () => {
     setEvalError(monaco, model, error)
 
     const [, , markers] = spy.mock.calls[0]
-    expect(markers[0]).toMatchObject({
-      startLineNumber: 1,
-      startColumn: 1,
-      endLineNumber: 3,
-      endColumn: 20,
-    })
+    expect(markers).toEqual([])
   })
 
-  it('uses error.message in the marker', () => {
+  it('uses error.message in the marker (with a parseable location)', () => {
     const spy = vi.fn()
     const monaco = makeMonaco(spy)
     const model = makeModel(2)
 
     const error = new Error('foo is not defined')
+    error.stack = `ReferenceError: foo is not defined\n    at eval (<anonymous>:1:1)`
     setEvalError(monaco, model, error)
 
     const [, , markers] = spy.mock.calls[0]
     expect(markers[0].message).toBe('foo is not defined')
   })
 
-  // --- P37 regression cases ---
+  // --- P37 regression cases (now: skip, not whole-document clamp) ---
 
-  it('clamps to full-document range when stack reports a line past EOF', () => {
+  it('skips the marker when stack reports a line past EOF (#532, P37)', () => {
     const spy = vi.fn()
     const monaco = makeMonaco(spy)
     const model = makeModel(4, 30)
 
-    // Strudel transpiler wraps user code; stack points at a synthetic line.
+    // Strudel transpiler wraps user code; stack points at a synthetic line
+    // past the visible document → treated as locationless (skip), never
+    // clamped to the whole file. Must still not throw (P37).
     const error = new Error('notes is not defined')
     error.stack = `ReferenceError: notes is not defined\n    at eval (<anonymous>:42:7)`
 
     expect(() => setEvalError(monaco, model, error)).not.toThrow()
 
     const [, , markers] = spy.mock.calls[0]
-    expect(markers[0]).toMatchObject({
-      startLineNumber: 1,
-      startColumn: 1,
-      endLineNumber: 4,
-      endColumn: 30,
-    })
+    expect(markers).toEqual([])
   })
 
-  it('clamps to full-document range when stack reports line 0', () => {
+  it('skips the marker when stack reports line 0 (#532, P37)', () => {
     const spy = vi.fn()
     const monaco = makeMonaco(spy)
     const model = makeModel(5, 20)
@@ -167,10 +159,7 @@ describe('setEvalError', () => {
     expect(() => setEvalError(monaco, model, error)).not.toThrow()
 
     const [, , markers] = spy.mock.calls[0]
-    expect(markers[0]).toMatchObject({
-      startLineNumber: 1,
-      endLineNumber: 5,
-    })
+    expect(markers).toEqual([])
   })
 
   it('never throws when Monaco.setModelMarkers itself throws', () => {
