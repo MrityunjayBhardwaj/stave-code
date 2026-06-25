@@ -556,6 +556,15 @@ export class StrudelEngine implements LiveCodingEngine {
         if (isSoundfontZoneError(error.message)) {
           const better = soundfontRangeMessage(hap?.value)
           if (better) error.message = better
+          // The hap's own `loc` is unreliable for these (chord members collapse
+          // to a degenerate offset — observed all → offset 1, #567). Instead tag
+          // the error with the offending INSTRUMENT so the app can locate the
+          // owning track's line via `statementOffsetForSource` (the stack itself
+          // is bundle-only). Read in StrudelEditorClient's onError.
+          const instrument = hap?.value?.s
+          if (typeof instrument === 'string') {
+            ;(error as Error & { staveLocateSource?: string }).staveLocateSource = instrument
+          }
         }
         this.runtimeErrorHandler?.(error)
       }

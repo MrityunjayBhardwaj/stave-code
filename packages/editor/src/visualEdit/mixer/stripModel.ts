@@ -14,7 +14,7 @@
  * numbering rule); it is verified against the engine in S2 (grounding gate GR1)
  * before any meter trusts it.
  */
-import type { ChunkInfo, ChainCall } from '../chunkDetect'
+import { detectAllChunks, type ChunkInfo, type ChainCall } from '../chunkDetect'
 import { patternKind } from '../panels/patternKind'
 import { readChainMethod } from '../panels/chainMethod'
 import { sampleVoice, VOICE_FALLBACK_COLOR } from '../panels/drumVoices'
@@ -199,4 +199,18 @@ export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
     else id = `$${anon++}`
     return buildStripModel(chunk, index, id)
   })
+}
+
+/**
+ * Char offset of the top-level statement whose instrument (`.sound`/`.s`/
+ * `.bank`) is `source`, or null when none matches. Used to LOCATE a per-hap
+ * runtime error (e.g. a soundfont out-of-range note) back to its owning track's
+ * line when the error's own stack is bundle-only and the hap's `loc` is
+ * degenerate (#567). Reuses the strips' own source-extraction so the locate
+ * agrees with what the Mixer shows. First match wins (rare: two tracks, one
+ * instrument).
+ */
+export function statementOffsetForSource(doc: string, source: string): number | null {
+  const strip = buildStripModels(detectAllChunks(doc)).find((s) => s.source === source)
+  return strip ? strip.statementRange[0] : null
 }
