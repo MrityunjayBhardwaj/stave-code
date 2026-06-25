@@ -118,6 +118,46 @@ describe('buildStripModels — stable id vs positional captureId (#555)', () => 
   })
 })
 
+// #559 — a top-level transport/config statement (`setcps`, `samples`, …) is not
+// a playable track: it must produce NO strip, and must not consume a positional
+// `$<n>` slot (which would shift every real track's captureId off the engine).
+describe('buildStripModels — transport/config statements are not tracks (#559)', () => {
+  it('drops a leading setcps(...) line and keeps only the real tracks', () => {
+    const strips = stripsOf(
+      ['setcps(0.5)', '$: s("bd")', '$: note("c e g")'].join('\n'),
+    )
+    expect(strips).toHaveLength(2)
+    expect(strips.map((s) => s.name)).toEqual(['s', 'note'])
+  })
+
+  it('renumbers anonymous captureIds to $0.. after dropping setcps (no off-by-one)', () => {
+    // Engine numbers anon $: patterns from $0 (StrudelEngine.ts:735-739); setcps
+    // never calls .p(), so the first real anon track must be $0, not $1.
+    const strips = stripsOf(
+      ['setcps(0.5).gain(0.3)', '$: s("bd")', '$: s("hh")'].join('\n'),
+    )
+    expect(strips.map((s) => s.captureId)).toEqual(['$0', '$1'])
+  })
+
+  it('drops every known transport/config head (samples, hush, setbpm, …)', () => {
+    for (const cfg of ['setcps(0.5)', 'setcpm(120)', 'samples("x")', 'hush()', 'all(x => x)']) {
+      expect(stripsOf([cfg, '$: s("bd")'].join('\n'))).toHaveLength(1)
+    }
+  })
+
+  it('keeps a bare pattern expression (unknown head) as a track — denylist is conservative', () => {
+    const strips = stripsOf(['s("bd")', '$: note("c e")'].join('\n'))
+    expect(strips).toHaveLength(2)
+    expect(strips[0].muteable).toBe(false) // bare expression, still a strip
+  })
+
+  it('keeps source-order index even when an earlier statement was filtered out', () => {
+    // setcps is filtered; the surviving track keeps its TRUE source position (1).
+    const [strip] = stripsOf(['setcps(0.5)', '$: s("bd")'].join('\n'))
+    expect(strip.index).toBe(1)
+  })
+})
+
 describe('buildStripModels — per-strip read model', () => {
   it('reads source: .bank for drums, .sound/.s for melody', () => {
     const [drum] = stripsOf('$: s("bd sn").bank("RolandTR909")')
