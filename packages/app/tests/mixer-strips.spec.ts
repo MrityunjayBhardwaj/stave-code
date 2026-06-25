@@ -760,3 +760,34 @@ test.describe('Mixer master + solo (#550 / S5)', () => {
     expect(await opacity('d1')).not.toBe('0.45') // soloed → full
   })
 })
+
+// Adaptive, aspect-locked strip sizing (#557): strips scale uniformly with the
+// drawer height — bigger faders when the drawer is tall — keeping their exact
+// aspect ratio (a uniform `zoom`, never a stretch).
+async function stripMetrics(
+  drawer: ReturnType<Page['locator']>,
+  id: string,
+): Promise<{ zoom: number; ratio: number }> {
+  return drawer.locator(`[data-mixer-strip-id="${id}"]`).evaluate((el) => {
+    const z = parseFloat(getComputedStyle(el as HTMLElement).zoom || '1') || 1
+    const r = (el as HTMLElement).getBoundingClientRect()
+    return { zoom: z, ratio: r.width / r.height }
+  })
+}
+
+test.describe('Mixer adaptive strip sizing (#557)', () => {
+  test('strips scale up with a taller drawer, keeping their aspect ratio', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, 'd1: s("bd*4")\nd2: s("hh*8")\n$: s("cp*2")')
+    const drawer = await openMixer(page)
+
+    const before = await stripMetrics(drawer, 'd1')
+    await enlargeDrawer(page) // drag the drawer taller
+    const after = await stripMetrics(drawer, 'd1')
+
+    // taller drawer → larger zoom (the strips grew to use it)
+    expect(after.zoom).toBeGreaterThan(before.zoom)
+    // aspect ratio is RETAINED across the scale (uniform zoom, not a stretch)
+    expect(after.ratio).toBeCloseTo(before.ratio, 2)
+  })
+})

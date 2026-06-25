@@ -52,6 +52,10 @@ interface ChannelStripProps {
   expanded?: boolean
   /** toggle this strip's expand drawer — provided only by the Mixer console */
   onToggleExpand?: () => void
+  /** aspect-locked zoom factor (1 = original). The Mixer console scales every
+   *  strip uniformly with the drawer height (`useStripScale`); a uniform `zoom`
+   *  keeps the exact aspect ratio and leaves the delta-based drag math intact. */
+  scale?: number
 }
 
 /**
@@ -157,6 +161,7 @@ export function ChannelStrip({
   showHeader = true,
   expanded = false,
   onToggleExpand,
+  scale = 1,
 }: ChannelStripProps): React.ReactElement {
   const muteEnabled = strip.muteable && onMuteToggle !== undefined
   const gain = faderGain(strip)
@@ -223,6 +228,12 @@ export function ChannelStrip({
         // buttons (row 2), so a short name like `d1` never truncates and one
         // compact width serves both the console and the headerless local strip.
         width: 84,
+        // Uniform aspect-locked scale (Mixer console scales with the drawer
+        // height). `zoom` scales the whole strip — layout box + every child — so
+        // the proportions are exact and the delta-based fader/pan drag is
+        // unaffected (it reads pointer deltas ÷ DRAG_SPAN_PX, never a bounding
+        // box). 1× elsewhere (the headerless local strip passes no scale).
+        zoom: scale,
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',

@@ -17,7 +17,7 @@ import { useMasterMeter } from './useMasterMeter'
 
 const FADER_HEIGHT = 80
 
-export function MasterStrip(): React.ReactElement {
+export function MasterStrip({ scale = 1 }: { scale?: number } = {}): React.ReactElement {
   const meter = useMasterMeter()
   const fillRef = React.useRef<HTMLDivElement>(null)
   const peakRef = React.useRef<HTMLDivElement>(null)
@@ -39,6 +39,10 @@ export function MasterStrip(): React.ReactElement {
         position: 'sticky',
         right: 0,
         width: 84,
+        // Scale in lockstep with the channel strips (useStripScale) so the master
+        // stays the same height as the channels it sits beside. `zoom` keeps the
+        // aspect ratio exact; the meter (a %-height bar) is unaffected.
+        zoom: scale,
         flexShrink: 0,
         alignSelf: 'flex-start',
         display: 'flex',

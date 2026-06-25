@@ -19,6 +19,7 @@ import { useMixerModel } from './useMixerModel'
 import { useTrackMeters } from './useTrackMeters'
 import { useExpandedStrips } from './expandStore'
 import { useSoloStrips } from './soloStore'
+import { useStripScale } from './useStripScale'
 import { ChannelStrip } from './ChannelStrip'
 import { ExpandDrawer } from './ExpandDrawer'
 import { MasterStrip } from './MasterStrip'
@@ -42,11 +43,19 @@ export function MixerStrips({
   // overlay that silences non-soloed tracks in the string sent to the engine.
   const { soloed, toggle: toggleSolo } = useSoloStrips()
   const soloActive = soloed.size > 0
+  // Adaptive, aspect-locked sizing (call before any early return → stable hook
+  // order): every strip scales uniformly with the band's height so the strips
+  // grow with the drawer and keep their proportions. `bandRef` is a CALLBACK ref
+  // — the band remounts across the empty-document fallback below, and a callback
+  // ref re-binds the ResizeObserver each time (an object ref would bind once,
+  // while the band was absent, and never re-measure).
+  const { scale, bandRef } = useStripScale()
   if (strips.length === 0) return <>{emptyFallback ?? null}</>
 
   return (
     <div
       data-mixer-strips
+      ref={bandRef}
       style={{
         display: 'flex',
         alignItems: 'stretch',
@@ -104,6 +113,7 @@ export function MixerStrips({
               meters={meters}
               expanded={isOpen}
               onToggleExpand={() => toggle(strip.id)}
+              scale={scale}
             />
             {isOpen && chunks[i] && (
               <ExpandDrawer
@@ -118,8 +128,9 @@ export function MixerStrips({
           </div>
         )
       })}
-      {/* synthetic master — meter-only, pinned to the right of the scroller (S5) */}
-      <MasterStrip />
+      {/* synthetic master — meter-only, pinned to the right of the scroller (S5).
+          Scales in lockstep with the channels so it stays the same height. */}
+      <MasterStrip scale={scale} />
     </div>
   )
 }
