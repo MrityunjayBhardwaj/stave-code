@@ -17,10 +17,12 @@ import * as React from 'react'
 
 import { registerBottomPanelTab } from './bottomPanelRegistry'
 import { PatternPanel } from '../../visualEdit/panels/PatternPanel'
-import { VISUAL_EDIT_TABS, PATTERN_TAB_ID } from '../../visualEdit/panels/tabs'
+import { MixerConsolePanel } from '../../visualEdit/mixer/MixerConsolePanel'
+import { VISUAL_EDIT_TABS, PATTERN_TAB_ID, MIXER_CONSOLE_TAB_ID } from '../../visualEdit/panels/tabs'
 
 const PANELS: Record<string, () => React.ReactElement> = {
   [PATTERN_TAB_ID]: PatternPanel,
+  [MIXER_CONSOLE_TAB_ID]: MixerConsolePanel,
 }
 
 /**

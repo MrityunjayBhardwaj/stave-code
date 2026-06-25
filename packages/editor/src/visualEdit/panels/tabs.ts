@@ -24,6 +24,15 @@ export interface VisualEditTabDef {
 export const PATTERN_TAB_ID = 'pattern'
 
 /**
+ * The channel-strip Mixer console (#540 / S4) — a SECOND top-level tab, peer of
+ * "Pattern". The Pattern tab is cursor-scoped (one track: its grid + knobs); the
+ * Mixer console is cursor-INDEPENDENT (all tracks at once, for mixing/DJing the
+ * whole composition). Distinct from `MIXER_TAB_ID` ('mixer'), which names the
+ * Pattern tab's inner param panel — this is the console surface, not the panel.
+ */
+export const MIXER_CONSOLE_TAB_ID = 'mixer-console'
+
+/**
  * Inner panel ids — no longer separate tabs (#398), but kept as the stable
  * `data-bottom-panel-tab` identity each grid/mixer renders inside the Pattern
  * panel, and as the standby test hook.
@@ -38,5 +47,11 @@ export const VISUAL_EDIT_TABS: readonly VisualEditTabDef[] = [
     title: 'Pattern',
     hint: 'Click a drum or melodic pattern to edit it here.',
     icon: 'symbol-array',
+  },
+  {
+    id: MIXER_CONSOLE_TAB_ID,
+    title: 'Mixer',
+    hint: 'Every track as a channel strip — fader, pan, mute, meter.',
+    icon: 'settings',
   },
 ]

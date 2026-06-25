@@ -3241,7 +3241,7 @@ declare function classifyChunk(info: ChunkInfo): ChunkType;
  * this to decide whether to re-parse its model (typed edit) or leave it
  * (panel-originated edit it already knows about).
  */
-type WriteSource = 'knob' | 'seq' | 'roll' | 'arrange.weights' | 'arrange.structure' | 'transport';
+type WriteSource = 'knob' | 'seq' | 'roll' | 'arrange.weights' | 'arrange.structure' | 'transport' | 'mixer';
 /** A single replacement, addressed by absolute pre-edit doc offsets. */
 interface OffsetEdit {
     /** absolute [start, end) offsets in the document as it was when detected */
@@ -3290,6 +3290,11 @@ declare class Writeback {
     private writingSource;
     /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
     private inGesture;
+    /** whether the in-flight gesture has applied any edit — gates the one re-eval
+     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
+    private gestureDidEdit;
+    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
+    private reevalTimer;
     constructor(editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco);
     /**
      * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
@@ -3298,7 +3303,9 @@ declare class Writeback {
      * the undo grouping is affected. Idempotent if already in a gesture.
      */
     beginGesture(): void;
-    /** Close the gesture, sealing all its edits as one undo step. */
+    /** Close the gesture, sealing all its edits as one undo step — and, if the
+     * gesture changed anything, make it audible immediately (one re-eval on
+     * release, not per drag frame). */
     endGesture(): void;
     /**
      * The source of the edit currently being applied, or null. The host's
@@ -3326,6 +3333,19 @@ declare class Writeback {
      */
     applyFresh(chunk: ChunkInfo, edits: OffsetEdit[], source: WriteSource): boolean;
     private apply;
+    /**
+     * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
+     * the moment it commits. Centralised here so every visual surface — sequencer,
+     * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
+     * re-evals only a PLAYING file, and only when live mode isn't already doing
+     * it, so this never auto-starts audio nor double-evaluates.
+     *
+     * Trailing-debounced: rapid successive commits (e.g. clearing several
+     * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
+     * which also lets the Monaco→file-store sync settle so the re-eval reads the
+     * final content rather than racing a not-yet-synced edit.
+     */
+    private requestLiveReeval;
 }
 
 /**
@@ -3340,6 +3360,16 @@ declare class Writeback {
  * symbol" lands wherever the editor is currently focused).
  */
 
+/** App-side: register how to re-evaluate a playing file. Returns an unregister fn. */
+declare function registerReevalHandler(fn: (fileId: string) => void): () => void;
+/** Editor-side: request an immediate re-eval of `fileId` (no-op if unregistered). */
+declare function requestReeval(fileId: string | null): void;
+/** Editor-side: register a transform applied to a file's source before eval.
+ *  Returns an unregister fn. Replaces any prior transform (one owner). */
+declare function registerEvalSourceTransform(fn: (fileId: string, raw: string) => string): () => void;
+/** App-side: apply the registered eval-source transform (identity if none, and
+ *  identity-on-throw so a transform bug can never break playback). */
+declare function applyEvalSourceTransform(fileId: string, raw: string): string;
 /**
  * Reveal the given line in the editor for `fileId` and set the cursor
  * at column 1. Returns true if the editor was found. Line numbers are
@@ -8297,57 +8327,28 @@ declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProp
 type Division = 'grid' | '1/4' | '1/8' | '1/16' | '1/8T' | '1/16T';
 
 /**
- * inspector — pure selection model + field resolution/edit transforms for the
- * Mixer-as-inspector (#432).
+ * Mixer — the Pattern tab's cursor-bound inspector (#381).
  *
- * A "selected note" is the event the inspector shows. It's a lightweight key
- * (not a reference), so it survives the model reseeds that every write triggers:
- *   - roll: a note is keyed by its `pitch` token + `start` column (chord members
- *     share `start` but differ in pitch);
- *   - step: a hit is keyed by `lane` index + `step` column.
- * Selection lives in `PatternPanel`; the grid sets it (click/edit) and the Mixer
- * reads it to resolve the event's fields and edit them.
+ * Finds the Strudel statement under the cursor (via `useActiveChunk`) and shows
+ * its full knob chain. Since S4b the body itself lives in `MixerBody` (shared
+ * with the Mixer console's per-strip expand drawer); `Mixer` is the thin wrapper
+ * that supplies the *cursor* binding: it tracks the chunk under the cursor and
+ * shows a standby when there's nothing editable there, then delegates the body
+ * (picker + Snap + transforms + knob grid) to `MixerBody`. Behaviour is
+ * unchanged from the pre-S4b single-file component — same write path, same DOM,
+ * same #381 tests.
  *
- * VELOCITY = `.gain` (grounded #427 Q1: Logic's 0–127 velocity maps to Stave's
- * per-note `.gain`, NOT `.velocity`). `setGroupGain`/`setColumnGain` live HERE so
- * the grid drag and the inspector field write the SAME `.gain` transform — one
- * path, no dual-representation drift (PV129).
- */
-
-/** The event the inspector is bound to, keyed by stable musical identity. */
-type SelectedNote = {
-    kind: 'roll';
-    pitch: string;
-    start: number;
-} | {
-    kind: 'step';
-    lane: number;
-    step: number;
-};
-
-/**
- * Mixer — the first write-back visual editor (#381).
- *
- * Finds the Strudel statement under the cursor (via `useActiveChunk`) and
- * renders a Knob for every numeric argument in its method chain (`.gain(0.6)`
- * → a "gain" knob at 0.6). Dragging a knob writes a surgical text edit of just
- * that literal through the tagged `Writeback` — the mini-notation and the rest
- * of the statement stay byte-identical, and the whole drag is one undo step.
- * Audio updates through the existing live-mode re-eval.
- *
- * Shows a standby state when the cursor isn't in a chunk with editable knobs
- * (the conservatism rule).
+ * Standby fires when the cursor isn't in a chunk with an editable chain (the
+ * conservatism rule); `MixerBody` itself never standbys (an empty-chain chunk
+ * still shows the transforms row to ADD effects — wanted in the drawer).
  */
 
 interface MixerProps {
-    /** the inspector's selected note/step (#432), owned by PatternPanel */
-    selected?: SelectedNote | null;
-    onSelect?: (sel: SelectedNote | null) => void;
     /** Piano-Roll snap/quantize division (#432 Slice 2), owned by PatternPanel */
     division?: Division;
     onDivisionChange?: (d: Division) => void;
 }
-declare function Mixer({ selected, onSelect, division, onDivisionChange, }?: MixerProps): React.ReactElement;
+declare function Mixer({ division, onDivisionChange }?: MixerProps): React.ReactElement;
 
 /**
  * Sequencer — drum/step grid (#382, per-column velocity #409).
@@ -8371,12 +8372,38 @@ declare function Mixer({ selected, onSelect, division, onDivisionChange, }?: Mix
  * on EXTERNAL edits — see `useGridModel`.
  */
 
-interface SequencerGridProps {
-    /** the inspector's selected step (#432), owned by PatternPanel */
-    selected?: SelectedNote | null;
-    onSelect?: (sel: SelectedNote | null) => void;
-}
-declare function SequencerGrid({ selected, onSelect }?: SequencerGridProps): React.ReactElement;
+declare function SequencerGrid(): React.ReactElement;
+
+/**
+ * inspector — the Pattern grids' selection key + the shared `.gain` (velocity)
+ * write transforms.
+ *
+ * (Named for the former Mixer-as-inspector; the inspector panel was removed —
+ * pitch/position/velocity are read straight off the grid — but the selection
+ * KEY and the velocity transforms it shared with the grids live on. Selection
+ * is now the ⌘/Ctrl-click copy/paste target (#528); the velocity transforms are
+ * the grids' vertical-drag write path.)
+ *
+ * A "selected" cell is a lightweight key, not a reference, so it survives the
+ * model reseed every write triggers:
+ *   - roll: keyed by `pitch` token + `start` column;
+ *   - step: keyed by `lane` index + `step` column.
+ *
+ * VELOCITY = `.gain` (grounded #427 Q1). `setGroupGain`/`setColumnGain` live
+ * HERE so the grid drag writes the SAME `.gain` transform everywhere — one path,
+ * no dual-representation drift (PV129).
+ */
+
+/** The cell a grid has selected, keyed by stable musical identity. */
+type SelectedNote = {
+    kind: 'roll';
+    pitch: string;
+    start: number;
+} | {
+    kind: 'step';
+    lane: number;
+    step: number;
+};
 
 /**
  * Piano Roll — note grid (#383, drag-move + range stability from #391).
@@ -8516,6 +8543,14 @@ interface VisualEditTabDef {
 }
 /** the single adaptive visual-editing tab (#398) */
 declare const PATTERN_TAB_ID = "pattern";
+/**
+ * The channel-strip Mixer console (#540 / S4) — a SECOND top-level tab, peer of
+ * "Pattern". The Pattern tab is cursor-scoped (one track: its grid + knobs); the
+ * Mixer console is cursor-INDEPENDENT (all tracks at once, for mixing/DJing the
+ * whole composition). Distinct from `MIXER_TAB_ID` ('mixer'), which names the
+ * Pattern tab's inner param panel — this is the console surface, not the panel.
+ */
+declare const MIXER_CONSOLE_TAB_ID = "mixer-console";
 /**
  * Inner panel ids — no longer separate tabs (#398), but kept as the stable
  * `data-bottom-panel-tab` identity each grid/mixer renders inside the Pattern
@@ -9091,4 +9126,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AudioPayload, type AudioReading, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, type CapabilityEnv, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DocKind, type DocsIndex, type DrumMachineManifest, type EditorTheme, EditorView, type EngineAliasMap, type EngineAliasValue, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, type LaneActivity, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, type MasterArray, type MasterScalar, Mixer, type NormalizedHap, OfflineRenderer, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, type PatternIR, type PatternKind, PatternPanel, type PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplerInputs, type SectionStats, SequencerGrid, type ShellSnapshot, type SignalAliasMap, SignalBus, type SignalFrame, type SignalReading, type SignalTransportReader, type SignalTransportWriter, type SnapshotMeta, type SongAnalysis, type SongSection, SonicPiEngine, type SoundMapDict, type SourceLocation, SplitPane, type StepGridModel, type StepLane, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, VizQualityLevel, type VizRefs, type VizRenderer, type VizRendererKind, type VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteSource, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, removeArm as pickRemoveArm, reorderArm as pickReorderArm, setWeight as pickSetWeight, splitArm as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, removeArm$1 as removeArm, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm$1 as splitArm, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AudioPayload, type AudioReading, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, type CapabilityEnv, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DocKind, type DocsIndex, type DrumMachineManifest, type EditorTheme, EditorView, type EngineAliasMap, type EngineAliasValue, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, type LaneActivity, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, type MasterArray, type MasterScalar, Mixer, type NormalizedHap, OfflineRenderer, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, type PatternIR, type PatternKind, PatternPanel, type PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplerInputs, type SectionStats, SequencerGrid, type ShellSnapshot, type SignalAliasMap, SignalBus, type SignalFrame, type SignalReading, type SignalTransportReader, type SignalTransportWriter, type SnapshotMeta, type SongAnalysis, type SongSection, SonicPiEngine, type SoundMapDict, type SourceLocation, SplitPane, type StepGridModel, type StepLane, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, VizQualityLevel, type VizRefs, type VizRenderer, type VizRendererKind, type VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteSource, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, removeArm as pickRemoveArm, reorderArm as pickReorderArm, setWeight as pickSetWeight, splitArm as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm$1 as removeArm, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm$1 as splitArm, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };

@@ -97,11 +97,89 @@ export function getActiveEditor(): MonacoEditor | null {
   return activeEditor
 }
 
+/**
+ * The fileId of the active editor, or null if none is active. Reverse-looks-up
+ * the registry (one registered editor per fileId). Visual-editing consumers that
+ * must follow the SAME file the active editor shows — e.g. the Mixer meters
+ * pinning the audio bus to the active program rather than the bus's "default"
+ * (most-recent) publisher, which can be a chord/sample/drum preview — use this.
+ */
+export function getActiveFileId(): string | null {
+  if (!activeEditor) return null
+  for (const [fileId, ed] of editors) {
+    if (ed === activeEditor) return fileId
+  }
+  return null
+}
+
+/** The fileId registered for `editor`, or null. The write path uses this to
+ * re-evaluate the file that was actually EDITED (not necessarily the active
+ * one) when a visual mutation commits. */
+export function getFileIdForEditor(editor: MonacoEditor): string | null {
+  for (const [fileId, ed] of editors) {
+    if (ed === editor) return fileId
+  }
+  return null
+}
+
 /** Subscribe to active-editor changes. Returns an unsubscribe fn. */
 export function onActiveEditorChange(cb: () => void): () => void {
   activeEditorListeners.add(cb)
   return () => {
     activeEditorListeners.delete(cb)
+  }
+}
+
+// Re-evaluate seam — the app owns the runtime, the editor package doesn't, so a
+// visual-editing control that must take audible effect immediately (the Mixer's
+// live mute) requests a re-eval through here. The app registers a handler that
+// re-evaluates the file ONLY if it is currently playing — so a control edit
+// never auto-STARTS audio that the user hadn't started. No-op when no handler is
+// registered (tests, or before the app mounts).
+let reevalHandler: ((fileId: string) => void) | null = null
+
+/** App-side: register how to re-evaluate a playing file. Returns an unregister fn. */
+export function registerReevalHandler(fn: (fileId: string) => void): () => void {
+  reevalHandler = fn
+  return () => {
+    if (reevalHandler === fn) reevalHandler = null
+  }
+}
+
+/** Editor-side: request an immediate re-eval of `fileId` (no-op if unregistered). */
+export function requestReeval(fileId: string | null): void {
+  if (fileId) reevalHandler?.(fileId)
+}
+
+// Eval-source transform seam — the Mixer's SOLO is ephemeral monitoring state
+// (design D3): it must never be written to the file, only applied to the STRING
+// sent to the engine. The app wraps its `getFileContent` closure with
+// `applyEvalSourceTransform`, so a registered transform (the solo overlay) can
+// rewrite the source at eval time. The DEFAULT is exact identity (no transform
+// registered → the raw content passes through byte-for-byte), so this can never
+// alter playback unless something is actively soloed. The mixer re-evals via the
+// existing `requestReeval` seam when solo changes.
+let evalSourceTransform: ((fileId: string, raw: string) => string) | null = null
+
+/** Editor-side: register a transform applied to a file's source before eval.
+ *  Returns an unregister fn. Replaces any prior transform (one owner). */
+export function registerEvalSourceTransform(
+  fn: (fileId: string, raw: string) => string,
+): () => void {
+  evalSourceTransform = fn
+  return () => {
+    if (evalSourceTransform === fn) evalSourceTransform = null
+  }
+}
+
+/** App-side: apply the registered eval-source transform (identity if none, and
+ *  identity-on-throw so a transform bug can never break playback). */
+export function applyEvalSourceTransform(fileId: string, raw: string): string {
+  if (!evalSourceTransform) return raw
+  try {
+    return evalSourceTransform(fileId, raw)
+  } catch {
+    return raw
   }
 }
 

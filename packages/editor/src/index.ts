@@ -323,6 +323,10 @@ export {
   cycleEditorTheme,
   onThemeChange,
   applyPersistedTheme,
+  registerReevalHandler,
+  requestReeval,
+  registerEvalSourceTransform,
+  applyEvalSourceTransform,
 } from './workspace/editorRegistry'
 export type { EditorTheme, ResolvedTheme, SignalAliasMap } from './workspace/editorRegistry'
 export {
@@ -576,6 +580,7 @@ export {
   knobRangeFor,
   VISUAL_EDIT_TABS,
   PATTERN_TAB_ID,
+  MIXER_CONSOLE_TAB_ID,
   SEQUENCER_TAB_ID,
   MIXER_TAB_ID,
   PIANO_ROLL_TAB_ID,

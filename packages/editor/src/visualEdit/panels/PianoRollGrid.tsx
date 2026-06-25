@@ -30,14 +30,29 @@ import { usePlayingStep } from './usePlayingStep'
 import { placeNote, resizeNote } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
+import { ResolutionControl } from './ResolutionControl'
+import { rollSlotState, quantizePianoRollTo } from '../notation/resolution'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
+import { setNoteClip, getNoteClip } from './clipboard'
 
 const ROLL_HINT = 'Click a melody to edit its notes.'
 
 const DEFAULT_LO = 48 // c3
 const DEFAULT_HI = 72 // c5
 const MIN_SPAN = 12
+
+/**
+ * The right-edge grab zone of a note's tail cell, in px (#530). The visible
+ * handle is a thin strip, but a near-miss that lands a few px inside the body
+ * used to start a MOVE drag → a no-move release then DELETED the note
+ * (click-toggle), so "resize" read as "the note keeps vanishing". Treating the
+ * right `RESIZE_ZONE_PX` (or 40% of a wide cell) of the tail as resize-intent
+ * makes the edge reliably grabbable and non-destructive. Capped below half the
+ * cell so a centre click always stays in the move/delete area, even on a dense
+ * grid with narrow cells.
+ */
+const RESIZE_ZONE_PX = 8
 
 /** velocity lane height (px) and the drag distance that spans the full 0→1 */
 const LANE_HEIGHT = 48
@@ -160,10 +175,15 @@ export function PianoRollGrid({
       const d = dragRef.current
       if (!d) return
       dragRef.current = null
-      // a press with no move on a note body = a click → SELECT it (#432;
-      // removal moved to the Delete key). A no-move on the resize handle does
-      // nothing. A real drag already selected the note in onCellEnter.
-      if (!d.moved && d.mode === 'move') select({ kind: 'roll', pitch: d.origPitch, start: d.origStart })
+      // a press with no move on a note body = a click → DELETE it (click-toggle:
+      // click empty adds, click a note removes). A no-move on the resize handle
+      // does nothing; a real drag already moved/resized it.
+      if (!d.moved && d.mode === 'move') {
+        mutate((prev) => ({
+          ...prev,
+          notes: prev.notes.filter((n) => !(n.pitch === d.origPitch && n.start === d.origStart)),
+        }))
+      }
       endGesture()
     }
     window.addEventListener('pointerup', onUp)
@@ -195,15 +215,31 @@ export function PianoRollGrid({
   const onBarDown = (start: number, e: React.PointerEvent): void => {
     if (!model) return
     velRef.current = { start, startY: e.clientY, startGain: gainAtStart(model, start) }
-    const rep = model.notes.find((n) => n.start === start)
-    if (rep) select({ kind: 'roll', pitch: rep.pitch, start }) // inspect the group (#432)
     beginGesture()
   }
 
-  const onCellDown = (midi: number, step: number): void => {
+  const onCellDown = (midi: number, step: number, e: React.PointerEvent): void => {
     if (!model) return
+    // ⌘/Ctrl-click → SELECT this cell (for copy/paste, #528): the position is a
+    // pitch token + step, so it works on an empty cell too (a paste target). No
+    // edit. Modifier-gated, independent of the plain-click toggle.
+    if (e.metaKey || e.ctrlKey) {
+      select({ kind: 'roll', pitch: tokenForRow(!!model.numeric, midi), start: step })
+      return
+    }
     const note = noteAt(model, midi, step)
     if (note) {
+      // Pressing the right edge of the note's TAIL cell = resize intent (#530),
+      // even if the thin handle strip was missed. Widening this grab zone stops
+      // a near-miss from starting a move/delete instead of a resize.
+      const isTail = note.start + note.duration - 1 === step
+      const rect = e.currentTarget.getBoundingClientRect()
+      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, rect.width * 0.4))
+      if (isTail && e.clientX - rect.left >= rect.width - zone) {
+        onResizeDown(note)
+        return
+      }
+      // a note: start a move drag; a press with no drag deletes it (onUp).
       dragRef.current = {
         mode: 'move',
         baseNotes: model.notes.filter((n) => n !== note),
@@ -216,9 +252,8 @@ export function PianoRollGrid({
       }
       beginGesture()
     } else {
-      // empty cell → place a one-step note (its own undo) and select it (#432)
+      // empty cell → place a one-step note (its own undo). Direct edit, no select.
       mutate((prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1))
-      select({ kind: 'roll', pitch: tokenForRow(!!model.numeric, midi), start: step })
     }
   }
 
@@ -254,7 +289,6 @@ export function PianoRollGrid({
       if (interval) dur = Math.max(interval, snapColumn(d.origStart + dur, interval) - d.origStart)
       mutate((prev) => resizeNote(prev, d.origStart, dur))
       d.moved = true
-      select({ kind: 'roll', pitch: d.origPitch, start: d.origStart })
       return
     }
     let newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1))
@@ -271,7 +305,6 @@ export function PianoRollGrid({
     // that can't serialize (overlap) is dropped by useGridModel.
     mutate(() => moved)
     d.moved = true
-    select({ kind: 'roll', pitch: newPitch, start: newStart }) // follow the note (#432)
   }
 
   // Delete/Backspace removes the selected note (#432 — removal moved off the
@@ -284,6 +317,38 @@ export function PianoRollGrid({
       notes: prev.notes.filter((n) => !(n.pitch === sel.pitch && n.start === sel.start)),
     }))
     select(null)
+  }
+
+  // ⌘/Ctrl-C → copy the note at the selected cell (its shape: pitch/duration/
+  // gain) to the session clipboard (#528). No-op if the selected cell is empty.
+  const copySelected = (): void => {
+    const sel = selectedRef.current
+    if (!model || !sel || sel.kind !== 'roll') return
+    const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start)
+    if (!note) return
+    setNoteClip({ pitch: note.pitch, duration: note.duration, gain: note.gain ?? 1 })
+  }
+
+  // ⌘/Ctrl-V → stamp the clip's duration + velocity at the SELECTED cell
+  // (⌘-clicked target), replacing any note already there. One undo (#528).
+  const pasteClip = (): void => {
+    const clip = getNoteClip()
+    const sel = selectedRef.current
+    if (!model || !clip || !sel || sel.kind !== 'roll') return
+    mutate((prev) => {
+      const cleared = {
+        ...prev,
+        notes: prev.notes.filter((n) => !(n.start === sel.start && n.pitch === sel.pitch)),
+      }
+      return setGroupGain(placeNote(cleared, sel.pitch, sel.start, clip.duration), sel.start, clip.gain)
+    })
+  }
+
+  // Grid resolution (#479): set the grid to an absolute slot count — lossless
+  // ×2/÷2 when the ratio allows (onsets byte-identical), else quantize the notes
+  // onto the new grid. A no-op target returns the same model → mutate skips.
+  const scaleToSlots = (target: number): void => {
+    mutate((prev) => quantizePianoRollTo(prev, target))
   }
 
   if (!model) {
@@ -311,6 +376,16 @@ export function PianoRollGrid({
         if (e.key === 'Delete' || e.key === 'Backspace') {
           e.preventDefault()
           removeSelected()
+          return
+        }
+        if (e.metaKey || e.ctrlKey) {
+          if (e.key === 'c' || e.key === 'C') {
+            e.preventDefault()
+            copySelected()
+          } else if (e.key === 'v' || e.key === 'V') {
+            e.preventDefault()
+            pasteClip()
+          }
         }
       }}
       style={{
@@ -326,7 +401,22 @@ export function PianoRollGrid({
           a header that consumed vertical space would push the lowest rows off the
           bottom (and out of drag reach). The toggle floats over the empty
           top-right (high-pitch) corner instead. */}
-      <div style={{ position: 'absolute', top: 4, right: 16, zIndex: 3 }}>
+      <div
+        style={{
+          position: 'absolute',
+          top: 4,
+          right: 16,
+          zIndex: 3,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+        }}
+      >
+        <ResolutionControl
+          steps={model.steps}
+          slotState={(target) => rollSlotState(model, target)}
+          onScaleTo={scaleToSlots}
+        />
         <NoteColorToggle />
       </div>
       <div style={{ padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' }}>
@@ -416,11 +506,12 @@ export function PianoRollGrid({
                   const on = note !== undefined
                   const isHead = on && note!.start === step
                   const isTail = on && note!.start + note!.duration - 1 === step
+                  // the ⌘-clicked copy/paste cell — highlighted whether or not a
+                  // note sits there, so an empty paste target is visible (#528).
                   const isSel =
-                    on &&
                     selected?.kind === 'roll' &&
-                    note!.pitch === selected.pitch &&
-                    note!.start === selected.start
+                    selected.start === step &&
+                    selected.pitch === tokenForRow(!!model.numeric, midi)
                   return (
                     <button
                       key={step}
@@ -432,7 +523,7 @@ export function PianoRollGrid({
                       data-playing={step === playingStep ? 'true' : undefined}
                       onPointerDown={(e) => {
                         e.preventDefault()
-                        onCellDown(midi, step)
+                        onCellDown(midi, step, e)
                       }}
                       onPointerEnter={() => onCellEnter(midi, step)}
                       style={{
@@ -478,7 +569,7 @@ export function PianoRollGrid({
                             top: 0,
                             bottom: 0,
                             right: 0,
-                            width: 5,
+                            width: RESIZE_ZONE_PX,
                             cursor: 'ew-resize',
                             background: 'var(--foreground, #e6e6ea)',
                             opacity: 0.45,
