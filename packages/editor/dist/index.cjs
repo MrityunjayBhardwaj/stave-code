@@ -5069,6 +5069,10 @@ var _StrudelEngine = class _StrudelEngine {
         if (isSoundfontZoneError(error.message)) {
           const better = soundfontRangeMessage(hap?.value);
           if (better) error.message = better;
+          const instrument = hap?.value?.s;
+          if (typeof instrument === "string") {
+            error.staveLocateSource = instrument;
+          }
         }
         this.runtimeErrorHandler?.(error);
       }
@@ -27827,6 +27831,11 @@ function buildStripModels(chunks) {
   });
 }
 __name(buildStripModels, "buildStripModels");
+function statementOffsetForSource(doc, source) {
+  const strip = buildStripModels(detectAllChunks(doc)).find((s) => s.source === source);
+  return strip ? strip.statementRange[0] : null;
+}
+__name(statementOffsetForSource, "statementOffsetForSource");
 
 // src/visualEdit/mixer/useMixerModel.ts
 var EMPTY_DERIVED = { strips: [], chunks: [] };
@@ -36615,6 +36624,7 @@ exports.silenceArm = silenceArm;
 exports.splitArm = splitArm;
 exports.startHistoryDriver = startHistoryDriver;
 exports.startSampleSound = startSampleSound;
+exports.statementOffsetForSource = statementOffsetForSource;
 exports.stopSampleSound = stopSampleSound;
 exports.subscribeCapture = subscribeCapture;
 exports.subscribeFixed = subscribeFixed;
