@@ -27702,6 +27702,22 @@ function bareLabel(label) {
   return namedLabel(isMuted(label) ? label.slice(1) : label);
 }
 __name(bareLabel, "bareLabel");
+var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
+  "setcps",
+  "setCps",
+  "setcpm",
+  "setCpm",
+  "setbpm",
+  "setBpm",
+  "samples",
+  "hush",
+  "all"
+]);
+function isTrackChunk(chunk) {
+  if (chunk.label !== null) return true;
+  return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn);
+}
+__name(isTrackChunk, "isTrackChunk");
 var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
 function stripKind(chunk) {
   const k = patternKind(chunk);
@@ -27772,15 +27788,18 @@ __name(buildStripModel, "buildStripModel");
 function buildStripModels(chunks) {
   let anonAll = 0;
   let anonLive = 0;
-  return chunks.map((chunk, index) => {
+  const models = [];
+  chunks.forEach((chunk, index) => {
+    if (!isTrackChunk(chunk)) return;
     const bare = bareLabel(chunk.label);
     const id = bare ?? `#${anonAll++}`;
     let captureId;
     if (bare !== null) captureId = bare;
     else if (isMuted(chunk.label)) captureId = `_$${index}`;
     else captureId = `$${anonLive++}`;
-    return buildStripModel(chunk, index, id, captureId);
+    models.push(buildStripModel(chunk, index, id, captureId));
   });
+  return models;
 }
 __name(buildStripModels, "buildStripModels");
 
