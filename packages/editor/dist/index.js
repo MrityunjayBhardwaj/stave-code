@@ -1,6 +1,6 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
-import * as React23 from 'react';
-import React23__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React26 from 'react';
+import React26__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { parse } from 'acorn';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
@@ -107,7 +107,7 @@ var IR = {
   cycle: /* @__PURE__ */ __name((...items) => ({ tag: "Cycle", items }), "cycle"),
   when: /* @__PURE__ */ __name((gate, body, meta) => attachMeta({ tag: "When", gate, body }, meta), "when"),
   fx: /* @__PURE__ */ __name((name, params, body, meta) => attachMeta({ tag: "FX", name, params, body }, meta), "fx"),
-  param: /* @__PURE__ */ __name((key, value, rawArgs, body, meta) => attachMeta({ tag: "Param", key, value, rawArgs, body }, meta), "param"),
+  param: /* @__PURE__ */ __name((key2, value, rawArgs, body, meta) => attachMeta({ tag: "Param", key: key2, value, rawArgs, body }, meta), "param"),
   track: /* @__PURE__ */ __name((trackId, body, meta) => attachMeta({ tag: "Track", trackId, body }, meta), "track"),
   ramp: /* @__PURE__ */ __name((param, from, to, cycles, body, meta) => attachMeta({ tag: "Ramp", param, from, to, cycles, body }, meta), "ramp"),
   fast: /* @__PURE__ */ __name((factor, body, meta) => attachMeta({ tag: "Fast", factor, body }, meta), "fast"),
@@ -707,8 +707,8 @@ function walk(ir, ctx) {
       const armIndex = ctx.armIndex ?? selectedArm;
       const out = [];
       for (const sel of selectorEvents) {
-        const key = sel.note == null ? null : String(sel.note);
-        const entry = key == null ? void 0 : ir.entries.find((e) => e.key === key);
+        const key2 = sel.note == null ? null : String(sel.note);
+        const entry = key2 == null ? void 0 : ir.entries.find((e) => e.key === key2);
         if (!entry) continue;
         const subCtx = {
           ...ctx,
@@ -1148,12 +1148,12 @@ function accumulateLanes(events, horizon) {
   for (const ev of events) {
     const cycle = Math.floor(ev.begin);
     if (!Number.isFinite(cycle) || cycle < 0 || cycle >= horizon) continue;
-    const key = laneKeyOf(ev);
-    let counts = byLane.get(key);
+    const key2 = laneKeyOf(ev);
+    let counts = byLane.get(key2);
     if (!counts) {
       counts = new Array(horizon).fill(0);
-      byLane.set(key, counts);
-      order.push(key);
+      byLane.set(key2, counts);
+      order.push(key2);
     }
     counts[cycle] += 1;
   }
@@ -1191,11 +1191,11 @@ __name(detectPeriod, "detectPeriod");
 function detectDisplayPeriod(events, horizon) {
   const byLane = /* @__PURE__ */ new Map();
   for (const ev of events) {
-    const key = laneKeyOf(ev);
-    let bucket2 = byLane.get(key);
+    const key2 = laneKeyOf(ev);
+    let bucket2 = byLane.get(key2);
     if (!bucket2) {
       bucket2 = [];
-      byLane.set(key, bucket2);
+      byLane.set(key2, bucket2);
     }
     bucket2.push(ev);
   }
@@ -1630,26 +1630,26 @@ function validateNode(raw, path) {
   }
 }
 __name(validateNode, "validateNode");
-function requireField(node, key, types, path) {
-  if (!(key in node)) {
-    throw new Error(`${path}: missing field "${key}"`);
+function requireField(node, key2, types, path) {
+  if (!(key2 in node)) {
+    throw new Error(`${path}: missing field "${key2}"`);
   }
-  if (!types.includes(typeof node[key])) {
+  if (!types.includes(typeof node[key2])) {
     throw new Error(
-      `${path}: field "${key}" must be ${types.join(" or ")}, got ${typeof node[key]}`
+      `${path}: field "${key2}" must be ${types.join(" or ")}, got ${typeof node[key2]}`
     );
   }
 }
 __name(requireField, "requireField");
-function requireArray(node, key, path) {
-  if (!(key in node) || !Array.isArray(node[key])) {
-    throw new Error(`${path}: field "${key}" must be an array`);
+function requireArray(node, key2, path) {
+  if (!(key2 in node) || !Array.isArray(node[key2])) {
+    throw new Error(`${path}: field "${key2}" must be an array`);
   }
 }
 __name(requireArray, "requireArray");
-function requireObject(node, key, path) {
-  if (!(key in node) || typeof node[key] !== "object" || node[key] === null || Array.isArray(node[key])) {
-    throw new Error(`${path}: field "${key}" must be an object`);
+function requireObject(node, key2, path) {
+  if (!(key2 in node) || typeof node[key2] !== "object" || node[key2] === null || Array.isArray(node[key2])) {
+    throw new Error(`${path}: field "${key2}" must be an object`);
   }
 }
 __name(requireObject, "requireObject");
@@ -3124,13 +3124,13 @@ function parseNamedPickEntries(args, baseOffset, bindings) {
     if (colon < 0) return null;
     const rawKey = part.value.slice(0, colon);
     const rawVal = part.value.slice(colon + 1);
-    const key = normalizePickKey(rawKey);
-    if (key == null) return null;
+    const key2 = normalizePickKey(rawKey);
+    if (key2 == null) return null;
     const keyStart = baseOffset + bodyOffsetInArgs + part.offset;
     const keyLoc = { start: keyStart, end: keyStart + rawKey.trim().length };
     const valOffset = baseOffset + bodyOffsetInArgs + part.offset + colon + 1;
     const pattern = parseArrayLiteralElement(rawVal, "note", valOffset, bindings);
-    entries3.push({ key, pattern, keyLoc });
+    entries3.push({ key: key2, pattern, keyLoc });
   }
   return entries3;
 }
@@ -3498,7 +3498,7 @@ function propagate(bag, systems) {
   let current4 = bag;
   for (const system of sorted) {
     const hasAllInputs = system.inputs.every(
-      (key) => current4[key] !== void 0 && current4[key] !== null
+      (key2) => current4[key2] !== void 0 && current4[key2] !== null
     );
     if (!hasAllInputs) continue;
     current4 = system.run(current4);
@@ -3580,8 +3580,8 @@ function extractLoc(hap) {
 __name(extractLoc, "extractLoc");
 function findMatchedEvent(loc, begin, locLookup) {
   if (!locLookup || !loc || loc.length === 0) return void 0;
-  const key = `${loc[0].start}:${loc[0].end}`;
-  const candidates = locLookup.get(key);
+  const key2 = `${loc[0].start}:${loc[0].end}`;
+  const candidates = locLookup.get(key2);
   if (!candidates || candidates.length === 0) return void 0;
   let best = candidates[0];
   let bestDist = Math.abs(best.begin - begin);
@@ -4912,10 +4912,10 @@ var _StrudelEngine = class _StrudelEngine {
         const locLookup = /* @__PURE__ */ new Map();
         for (const e of this.lastIREvents) {
           if (e.loc && e.loc.length > 0) {
-            const key = `${e.loc[0].start}:${e.loc[0].end}`;
-            const arr = locLookup.get(key);
+            const key2 = `${e.loc[0].start}:${e.loc[0].end}`;
+            const arr = locLookup.get(key2);
             if (arr) arr.push(e);
-            else locLookup.set(key, [e]);
+            else locLookup.set(key2, [e]);
           }
         }
         this.lastIRNodeLocLookup = locLookup;
@@ -4987,9 +4987,9 @@ var _StrudelEngine = class _StrudelEngine {
     let anonIndex = 0;
     for (let i = 0; i < lines.length; i++) {
       if (!lines[i].trim().startsWith("$:")) continue;
-      const key = `$${anonIndex}`;
+      const key2 = `$${anonIndex}`;
       anonIndex++;
-      const vizId = requests.get(key);
+      const vizId = requests.get(key2);
       if (!vizId) continue;
       let lastLineIdx = i;
       for (let j = i + 1; j < lines.length; j++) {
@@ -4999,8 +4999,8 @@ var _StrudelEngine = class _StrudelEngine {
       }
       const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
       const contentHash = blockLines.slice(0, 120);
-      const options = this.vizOptions.get(key);
-      result.set(key, { vizId, afterLine: lastLineIdx + 1, contentHash, ...options ? { options } : {} });
+      const options = this.vizOptions.get(key2);
+      result.set(key2, { vizId, afterLine: lastLineIdx + 1, contentHash, ...options ? { options } : {} });
     }
     return result;
   }
@@ -5088,10 +5088,10 @@ var _StrudelEngine = class _StrudelEngine {
     const keys = Object.keys(stems);
     const sampleRate = this.audioCtx?.sampleRate ?? 44100;
     const blobs = await Promise.all(
-      keys.map(async (key, i) => {
-        const blob = await OfflineRenderer.render(stems[key], duration, sampleRate);
-        onProgress?.(key, i + 1, keys.length);
-        return [key, blob];
+      keys.map(async (key2, i) => {
+        const blob = await OfflineRenderer.render(stems[key2], duration, sampleRate);
+        onProgress?.(key2, i + 1, keys.length);
+        return [key2, blob];
       })
     );
     return Object.fromEntries(blobs);
@@ -5548,8 +5548,8 @@ var _SignalBus = class _SignalBus {
     const end = now2 + EPSILON;
     this.activeEvents = this.scheduler ? this.scheduler.query(begin, end) : [];
     this.activeByTrack.clear();
-    for (const [key, sched] of this.trackSchedulers) {
-      this.activeByTrack.set(key, sched.query(begin, end));
+    for (const [key2, sched] of this.trackSchedulers) {
+      this.activeByTrack.set(key2, sched.query(begin, end));
     }
   }
   /** Current scheduler time (mirror `H()`'s `sched.now()`), 0 in demo mode. */
@@ -5583,11 +5583,11 @@ var _SignalBus = class _SignalBus {
   audioFor(soundOrAlias) {
     const resolved = new Set(this.resolveSounds(soundOrAlias));
     let onlyKey = null;
-    for (const [key, events] of this.activeByTrack) {
+    for (const [key2, events] of this.activeByTrack) {
       const hit = events.some((e) => e.s != null && resolved.has(e.s));
       if (!hit) continue;
       if (onlyKey != null) return this.masterAnalyser;
-      onlyKey = key;
+      onlyKey = key2;
     }
     if (onlyKey != null) {
       const isolated = this.trackAnalysers.get(onlyKey);
@@ -5876,8 +5876,8 @@ function buildStaveUniforms(bus, onTick) {
   sig.track = (id) => bus.track(id);
   Object.defineProperty(sig, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
   Object.defineProperty(sig, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
-  const env = /* @__PURE__ */ __name((key) => ({
-    get: /* @__PURE__ */ __name(() => bus.envValue(key), "get"),
+  const env = /* @__PURE__ */ __name((key2) => ({
+    get: /* @__PURE__ */ __name(() => bus.envValue(key2), "get"),
     enumerable: true
   }), "env");
   Object.defineProperty(sig, "kick", env("uKick"));
@@ -5925,30 +5925,30 @@ var VIZ_FLAG_KEYS = {
   maxFps: "stave.viz.maxFps",
   maxDpr: "stave.viz.maxDpr"
 };
-function read(key) {
+function read(key2) {
   try {
     if (typeof localStorage === "undefined") return null;
-    return localStorage.getItem(key);
+    return localStorage.getItem(key2);
   } catch {
     return null;
   }
 }
 __name(read, "read");
-function enabledByDefault(key) {
-  return read(key) !== "0";
+function enabledByDefault(key2) {
+  return read(key2) !== "0";
 }
 __name(enabledByDefault, "enabledByDefault");
-function optIn(key) {
-  return read(key) === "1";
+function optIn(key2) {
+  return read(key2) === "1";
 }
 __name(optIn, "optIn");
-function triState(key) {
-  const v = read(key);
+function triState(key2) {
+  const v = read(key2);
   return v === "1" ? true : v === "0" ? false : null;
 }
 __name(triState, "triState");
-function numFlag(key) {
-  const n = Number(read(key));
+function numFlag(key2) {
+  const n = Number(read(key2));
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 __name(numFlag, "numFlag");
@@ -6992,11 +6992,11 @@ __name(sanitizeAliasValue, "sanitizeAliasValue");
 function sanitizeStoredSignalAliases(raw) {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
   const out = {};
-  for (const [key, value] of Object.entries(raw)) {
-    if (!isNonEmptyString(key)) continue;
+  for (const [key2, value] of Object.entries(raw)) {
+    if (!isNonEmptyString(key2)) continue;
     const legacy = sanitizeAliasValue(value);
     if (legacy != null) {
-      out[key] = { [DEFAULT_VIZ_ENGINE]: legacy };
+      out[key2] = { [DEFAULT_VIZ_ENGINE]: legacy };
       continue;
     }
     if (value != null && typeof value === "object" && !Array.isArray(value)) {
@@ -7006,7 +7006,7 @@ function sanitizeStoredSignalAliases(raw) {
         const sv = sanitizeAliasValue(ev);
         if (sv != null) slot[eng] = sv;
       }
-      if (Object.keys(slot).length > 0) out[key] = slot;
+      if (Object.keys(slot).length > 0) out[key2] = slot;
     }
   }
   return out;
@@ -7500,7 +7500,7 @@ function summariseEvent(e) {
   return { s: e.s, velocity: e.velocity, note: e.note, color: e.color };
 }
 __name(summariseEvent, "summariseEvent");
-function readAnalyserBytes(key, an) {
+function readAnalyserBytes(key2, an) {
   const n = an.frequencyBinCount | 0;
   if (n <= 0) return null;
   perf.inc("viz.sample.analyserReads");
@@ -7511,7 +7511,7 @@ function readAnalyserBytes(key, an) {
   an.getByteFrequencyData(freq);
   an.getByteTimeDomainData(time);
   return {
-    key,
+    key: key2,
     frequencyBinCount: n,
     freq,
     time,
@@ -7567,29 +7567,29 @@ var _MainSignalSampler = class _MainSignalSampler {
    * scheduler/analyser, viewZones.ts:341) don't false-share. Absent (unit tests /
    * pre-pump path) → every read runs locally, byte-identical to before.
    */
-  sample(cache) {
+  sample(cache2) {
     const { scheduler, trackSchedulers, masterAnalyser, trackAnalysers } = this.inputs;
     const seq = ++this.seq;
     const now2 = scheduler ? scheduler.now() : 0;
     const begin = now2;
     const end = now2 + EPSILON2;
-    const queryAt = /* @__PURE__ */ __name((sched, a, b) => cache ? cache.query(sched, a, b, () => sched.query(a, b)) : sched.query(a, b), "queryAt");
+    const queryAt = /* @__PURE__ */ __name((sched, a, b) => cache2 ? cache2.query(sched, a, b, () => sched.query(a, b)) : sched.query(a, b), "queryAt");
     const activeEvents = scheduler ? queryAt(scheduler, begin, end).map(summariseEvent) : [];
     const activeByTrack = [];
     if (trackSchedulers) {
-      for (const [key, sched] of trackSchedulers) {
-        activeByTrack.push([key, queryAt(sched, begin, end).map(summariseEvent)]);
+      for (const [key2, sched] of trackSchedulers) {
+        activeByTrack.push([key2, queryAt(sched, begin, end).map(summariseEvent)]);
       }
     }
-    const readBytes = /* @__PURE__ */ __name((key, an) => cache ? cache.readAnalyser(key, an, (a) => readAnalyserBytes(key, a)) : readAnalyserBytes(key, an), "readBytes");
+    const readBytes = /* @__PURE__ */ __name((key2, an) => cache2 ? cache2.readAnalyser(key2, an, (a) => readAnalyserBytes(key2, a)) : readAnalyserBytes(key2, an), "readBytes");
     const analysers = [];
     if (masterAnalyser) {
       const b = readBytes(MASTER_KEY, masterAnalyser);
       if (b) analysers.push(b);
     }
     if (trackAnalysers) {
-      for (const [key, an] of trackAnalysers) {
-        const b = readBytes(key, an);
+      for (const [key2, an] of trackAnalysers) {
+        const b = readBytes(key2, an);
         if (b) analysers.push(b);
       }
     }
@@ -7710,16 +7710,16 @@ var _FrameSampleCache = class _FrameSampleCache {
    * callers (a shared master, or the same node read under both `'master'` and its
    * track key) get a fresh-buffer slice of the cached bytes — no second FFT.
    */
-  readAnalyser(key, an, read2) {
+  readAnalyser(key2, an, read3) {
     let raw;
     if (this.analyserReads.has(an)) {
       raw = this.analyserReads.get(an) ?? null;
     } else {
-      raw = read2(an);
+      raw = read3(an);
       this.analyserReads.set(an, raw);
     }
     if (raw === null) return null;
-    return { ...raw, key, freq: raw.freq.slice(), time: raw.time.slice() };
+    return { ...raw, key: key2, freq: raw.freq.slice(), time: raw.time.slice() };
   }
   /**
    * Run `scheduler.query(a, b)` at most once this tick per (scheduler, window).
@@ -7759,10 +7759,10 @@ var _VizFramePump = class _VizFramePump {
     this.tick = /* @__PURE__ */ __name((ts) => {
       if (!this.running) return;
       vizGovernor.observeFrame(ts);
-      const cache = this.sharedCache ? new FrameSampleCache() : void 0;
+      const cache2 = this.sharedCache ? new FrameSampleCache() : void 0;
       for (const d of [...this.driven.values()]) {
         try {
-          d.pumpTick(ts, cache);
+          d.pumpTick(ts, cache2);
         } catch {
         }
       }
@@ -8069,7 +8069,7 @@ ${d.stack}` : "");
    * sampler/bumps/seq) → byte-identical reactivity (PV75). Guarded so a throw can't
    * stall the pump's other renderers (PumpDriven contract).
    */
-  pumpTick(ts, cache) {
+  pumpTick(ts, cache2) {
     if (!this.running || !this.writer) return;
     try {
       const rs = vizGovernor.resolutionScale();
@@ -8083,7 +8083,7 @@ ${d.stack}` : "");
         this.lastProduceTs = ts;
         perf.frame(this.perfId);
         perf.begin("viz.worker.sample");
-        const frame = this.sampler.sample(cache);
+        const frame = this.sampler.sample(cache2);
         perf.end("viz.worker.sample");
         perf.begin("viz.worker.write");
         this.writer.writeFrame(frame);
@@ -8310,9 +8310,9 @@ function buildAliasSuffix(missingName, ctx) {
     const seen = /* @__PURE__ */ new Set();
     const lines = [];
     for (const r of ctx.resolutions) {
-      const key = `${r.from}\u2192${r.to}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      const key2 = `${r.from}\u2192${r.to}`;
+      if (seen.has(key2)) continue;
+      seen.add(key2);
       lines.push(`\`${r.from}\` \u2192 \`${r.to}\``);
     }
     parts.push(`tried alias ${lines.join(", ")}`);
@@ -14481,8 +14481,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React23__default.Children.count(children);
-  const childArray = React23__default.Children.toArray(children);
+  const count = React26__default.Children.count(children);
+  const childArray = React26__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -14527,7 +14527,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React23__default.useEffect(() => {
+  React26__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -14543,7 +14543,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React23__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React26__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -14625,8 +14625,8 @@ var LIGHT_THEME_TOKENS = {
 };
 function applyTheme(el, theme) {
   const tokens = theme === "dark" ? DARK_THEME_TOKENS : theme === "light" ? LIGHT_THEME_TOKENS : theme.tokens;
-  for (const [key, value] of Object.entries(tokens)) {
-    el.style.setProperty(key, value);
+  for (const [key2, value] of Object.entries(tokens)) {
+    el.style.setProperty(key2, value);
   }
 }
 __name(applyTheme, "applyTheme");
@@ -14827,17 +14827,17 @@ function ensureUndoManager() {
     if (inner instanceof Y3.Map) um.addToScope(inner);
   }
   const filesObserver = /* @__PURE__ */ __name((event) => {
-    for (const [key, change] of event.changes.keys) {
+    for (const [key2, change] of event.changes.keys) {
       if (change.action === "add" || change.action === "update") {
-        const val = files.get(key);
+        const val = files.get(key2);
         if (val instanceof Y3.Map) um.addToScope(val);
       }
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners10 = /* @__PURE__ */ new Set();
+  const listeners11 = /* @__PURE__ */ new Set();
   const notify5 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners10) l();
+    for (const l of listeners11) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify5(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify5(), "onStackItemPopped");
@@ -14847,7 +14847,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners10,
+    listeners: listeners11,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -14890,10 +14890,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners10 = active.listeners;
-  listeners10.add(cb);
+  const listeners11 = active.listeners;
+  listeners11.add(cb);
   return () => {
-    listeners10.delete(cb);
+    listeners11.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -14976,18 +14976,18 @@ function ensureFilesMapObserver() {
     for (const event of events) {
       if (event.target === filesMap) {
         const mapEvent = event;
-        for (const [key, change] of mapEvent.changes.keys) {
+        for (const [key2, change] of mapEvent.changes.keys) {
           if (change.action === "add" || change.action === "update") {
-            const fileMap = filesMap.get(key);
+            const fileMap = filesMap.get(key2);
             const ytext = fileMap.get("content");
-            rebuildSnapshot(key);
-            wireTextObserver(key, ytext);
-            notify2(key);
+            rebuildSnapshot(key2);
+            wireTextObserver(key2, ytext);
+            notify2(key2);
             anyStructuralChange = true;
           } else if (change.action === "delete") {
-            unwireTextObserver(key);
-            cachedSnapshots.delete(key);
-            notify2(key);
+            unwireTextObserver(key2);
+            cachedSnapshots.delete(key2);
+            notify2(key2);
             anyStructuralChange = true;
           }
         }
@@ -15302,7 +15302,7 @@ function pruneZoneOverrides(fileId, currentViz) {
   }
   if (stale.length === 0) return;
   doc.transact(() => {
-    for (const key of stale) overrides.delete(key);
+    for (const key2 of stale) overrides.delete(key2);
   }, PRUNE_ZONE_OVERRIDES_ORIGIN);
 }
 __name(pruneZoneOverrides, "pruneZoneOverrides");
@@ -15418,12 +15418,12 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe4 = useCallback(
+  const subscribe5 = useCallback(
     (onStoreChange) => subscribe(id, onStoreChange),
     [id]
   );
   const getSnapshot = useCallback(() => getFile(id), [id]);
-  const file = useSyncExternalStore(subscribe4, getSnapshot, getSnapshot);
+  const file = useSyncExternalStore(subscribe5, getSnapshot, getSnapshot);
   const setContent2 = useCallback(
     (content) => setContent(id, content),
     [id]
@@ -20500,12 +20500,12 @@ function ensureWorkspaceLanguages(monaco) {
 }
 __name(ensureWorkspaceLanguages, "ensureWorkspaceLanguages");
 var providersRegistered = {};
-function ensureProviders(key, monaco, register) {
-  if (providersRegistered[key]) return;
+function ensureProviders(key2, monaco, register) {
+  if (providersRegistered[key2]) return;
   if (typeof monaco.languages?.registerCompletionItemProvider !== "function" || typeof monaco.languages?.registerHoverProvider !== "function") {
     return;
   }
-  providersRegistered[key] = true;
+  providersRegistered[key2] = true;
   register(monaco);
 }
 __name(ensureProviders, "ensureProviders");
@@ -20731,10 +20731,10 @@ function enrichWithLookups(snap) {
   for (const e of snap.events) {
     if (e.irNodeId) idLookup.set(e.irNodeId, e);
     if (e.loc && e.loc.length > 0) {
-      const key = `${e.loc[0].start}:${e.loc[0].end}`;
-      const arr = locLookup.get(key);
+      const key2 = `${e.loc[0].start}:${e.loc[0].end}`;
+      const arr = locLookup.get(key2);
       if (arr) arr.push(e);
-      else locLookup.set(key, [e]);
+      else locLookup.set(key2, [e]);
       if (e.irNodeId) {
         const line = countLines(snap.code, e.loc[0].start);
         const ids = lineLookup.get(line);
@@ -21142,9 +21142,9 @@ var _BufferedScheduler = class _BufferedScheduler {
       const cutoff = this.audioCtx.currentTime - this.maxAge;
       while (this.head < this.buffer.length && this.buffer[this.head].end < cutoff) {
         const old = this.buffer[this.head];
-        const key = old.s ?? "_default";
-        if (this.lastByInstrument.get(key) === old) {
-          this.lastByInstrument.delete(key);
+        const key2 = old.s ?? "_default";
+        if (this.lastByInstrument.get(key2) === old) {
+          this.lastByInstrument.delete(key2);
         }
         this.head++;
       }
@@ -22959,7 +22959,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React23__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React26__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -23181,7 +23181,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React23__default.useMemo(() => {
+  const providerNode = React26__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -23447,9 +23447,9 @@ function registerPreviewProvider(provider) {
 }
 __name(registerPreviewProvider, "registerPreviewProvider");
 function getPreviewProviderForExtension(extension) {
-  const key = normalizeExtension(extension);
-  if (!key) return void 0;
-  return byExtension.get(key);
+  const key2 = normalizeExtension(extension);
+  if (!key2) return void 0;
+  return byExtension.get(key2);
 }
 __name(getPreviewProviderForExtension, "getPreviewProviderForExtension");
 function getPreviewProviderForLanguage(language) {
@@ -23474,25 +23474,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React23.useMemo(
+  const changedIds = React26.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
     [commit, pickerFileIds]
   );
-  const [mode, setMode2] = React23.useState(defaultMode);
-  React23.useEffect(() => {
+  const [mode, setMode2] = React26.useState(defaultMode);
+  React26.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React23.useState(
+  const [fileId, setFileId] = React26.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React23.useRef(null);
-  const handleMount = React23.useCallback(
+  const diffEditorRef = React26.useRef(null);
+  const handleMount = React26.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -23502,7 +23502,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -23627,18 +23627,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React23.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React23.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React23.useState(
+  const snapshot = React26.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React26.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React26.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React23.useCallback(
+  const handleMount = React26.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -24466,30 +24466,30 @@ function safeLocalStorage4() {
   }
 }
 __name(safeLocalStorage4, "safeLocalStorage");
-function safeGetItem(key) {
+function safeGetItem(key2) {
   const ls = safeLocalStorage4();
   if (!ls) return null;
   try {
-    return ls.getItem(key);
+    return ls.getItem(key2);
   } catch {
     return null;
   }
 }
 __name(safeGetItem, "safeGetItem");
-function safeSetItem(key, value) {
+function safeSetItem(key2, value) {
   const ls = safeLocalStorage4();
   if (!ls) return;
   try {
-    ls.setItem(key, value);
+    ls.setItem(key2, value);
   } catch {
   }
 }
 __name(safeSetItem, "safeSetItem");
-function safeRemoveItem(key) {
+function safeRemoveItem(key2) {
   const ls = safeLocalStorage4();
   if (!ls) return;
   try {
-    ls.removeItem(key);
+    ls.removeItem(key2);
   } catch {
   }
 }
@@ -24529,7 +24529,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React23.createElement(
+  return React26.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -24547,25 +24547,25 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React23.createElement(EmptyTimelineStub)
+  content: React26.createElement(EmptyTimelineStub)
 });
 function useActiveChunk() {
-  const [editor, setEditor] = React23.useState(() => getActiveEditor());
-  const [chunk, setChunk] = React23.useState(null);
-  const writebackRef = React23.useRef(null);
-  const editorRef = React23.useRef(null);
-  const anchorRef = React23.useRef(null);
+  const [editor, setEditor] = React26.useState(() => getActiveEditor());
+  const [chunk, setChunk] = React26.useState(null);
+  const writebackRef = React26.useRef(null);
+  const editorRef = React26.useRef(null);
+  const anchorRef = React26.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
   }, [editor]);
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -24592,7 +24592,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React23.useCallback(
+  const applyEdit = React26.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -24607,8 +24607,8 @@ function useActiveChunk() {
     },
     []
   );
-  const beginGesture = React23.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React23.useCallback(() => writebackRef.current?.endGesture(), []);
+  const beginGesture = React26.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React26.useCallback(() => writebackRef.current?.endGesture(), []);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -25308,7 +25308,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React23.createElement(
+  return React26.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -25327,12 +25327,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React23.createElement("span", {
+    icon ? React26.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React23.createElement("span", null, hint)
+    React26.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -25393,14 +25393,14 @@ function gainUnchanged(g, cur) {
 __name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React23.useState(null);
-  const modelRef = React23.useRef(null);
-  React23.useEffect(() => {
+  const [model, setModel] = React26.useState(null);
+  const modelRef = React26.useRef(null);
+  React26.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React23.useRef(opts);
+  const optsRef = React26.useRef(opts);
   optsRef.current = opts;
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -25422,7 +25422,7 @@ function useGridModel(opts) {
     modelRef.current = next;
     setModel(next);
   }, [chunk]);
-  const mutate = React23.useCallback(
+  const mutate = React26.useCallback(
     (fn) => {
       const o = optsRef.current;
       const prev = modelRef.current;
@@ -25472,8 +25472,8 @@ function cycleToStep(cycle, steps, bars) {
 }
 __name(cycleToStep, "cycleToStep");
 function usePlayingStep(steps, bars) {
-  const [step, setStep] = React23.useState(null);
-  React23.useEffect(() => {
+  const [step, setStep] = React26.useState(null);
+  React26.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const next = cycleToStep(readCurrentCycle(), steps, bars);
@@ -25716,7 +25716,7 @@ function subscribe3(listener) {
 }
 __name(subscribe3, "subscribe");
 function useNoteColorMode() {
-  const mode = React23.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
+  const mode = React26.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -26072,9 +26072,9 @@ function SequencerGrid() {
   });
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const gestureRef = React23.useRef(null);
+  const gestureRef = React26.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
-  const paintCell = React23.useCallback(
+  const paintCell = React26.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
         const lane = prev.lanes[laneIndex];
@@ -26086,25 +26086,25 @@ function SequencerGrid() {
     },
     [mutate]
   );
-  const addVoice = React23.useCallback(
+  const addVoice = React26.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React23.useCallback(
+  const removeVoice = React26.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
-  const scaleToSlots = React23.useCallback(
+  const scaleToSlots = React26.useCallback(
     (target) => {
       mutate((prev) => quantizeStepGridTo(prev, target));
     },
     [mutate]
   );
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -26171,7 +26171,7 @@ function SequencerGrid() {
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
   if (!model) {
-    return React23.createElement(VisualEditStandby, {
+    return React26.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && isStepChunk(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -26467,22 +26467,22 @@ function PianoRollGrid({
     applyGain: applyRollGain,
     serializeGain: serializeRollGain
   });
-  const dragRef = React23.useRef(null);
-  const velRef = React23.useRef(null);
+  const dragRef = React26.useRef(null);
+  const velRef = React26.useRef(null);
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const [hoveredMidi, setHoveredMidi] = React23.useState(null);
-  const onSelectRef = React23.useRef(onSelect);
+  const [hoveredMidi, setHoveredMidi] = React26.useState(null);
+  const onSelectRef = React26.useRef(onSelect);
   onSelectRef.current = onSelect;
-  const selectedRef = React23.useRef(selected);
+  const selectedRef = React26.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range, setRange] = React23.useState({
+  const [range, setRange] = React26.useState({
     lo: DEFAULT_LO,
     hi: DEFAULT_HI
   });
-  const stmtIdRef = React23.useRef(null);
-  React23.useEffect(() => {
+  const stmtIdRef = React26.useRef(null);
+  React26.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = contentRange(model);
@@ -26497,7 +26497,7 @@ function PianoRollGrid({
       }));
     }
   }, [model, chunk]);
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
@@ -26513,7 +26513,7 @@ function PianoRollGrid({
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
@@ -26637,7 +26637,7 @@ function PianoRollGrid({
     mutate((prev) => quantizePianoRollTo(prev, target));
   }, "scaleToSlots");
   if (!model) {
-    return React23.createElement(VisualEditStandby, {
+    return React26.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && isRollChunk(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -26953,7 +26953,7 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React23.useRef(null);
+  const dragRef = React26.useRef(null);
   const pos = Math.max(0, Math.min(1, toPosition(value, range)));
   const angle = -135 + pos * 270;
   const onPointerDown = /* @__PURE__ */ __name((e) => {
@@ -27270,11 +27270,11 @@ __name(groupSoundCatalog, "groupSoundCatalog");
 function banksFromDrumMachineManifest(manifest) {
   if (!manifest) return [];
   const banks = /* @__PURE__ */ new Set();
-  for (const key of Object.keys(manifest)) {
-    if (key.startsWith("_")) continue;
-    const i = key.lastIndexOf("_");
+  for (const key2 of Object.keys(manifest)) {
+    if (key2.startsWith("_")) continue;
+    const i = key2.lastIndexOf("_");
     if (i <= 0) continue;
-    banks.add(key.slice(0, i));
+    banks.add(key2.slice(0, i));
   }
   return [...banks].sort();
 }
@@ -27340,7 +27340,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached = null;
-  const listeners10 = /* @__PURE__ */ new Set();
+  const listeners11 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached = null;
@@ -27355,19 +27355,19 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners10.forEach((l) => l());
+    listeners11.forEach((l) => l());
   }, "setAccessor");
   const notify5 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners10.forEach((l) => l());
+    listeners11.forEach((l) => l());
   }, "notify");
-  const read2 = /* @__PURE__ */ __name(() => cached, "read");
-  const subscribe4 = /* @__PURE__ */ __name((listener) => {
-    listeners10.add(listener);
-    return () => listeners10.delete(listener);
+  const read3 = /* @__PURE__ */ __name(() => cached, "read");
+  const subscribe5 = /* @__PURE__ */ __name((listener) => {
+    listeners11.add(listener);
+    return () => listeners11.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React23.useSyncExternalStore(subscribe4, read2, () => null), "useCatalog");
-  return { setAccessor, notify: notify5, read: read2, useCatalog };
+  const useCatalog = /* @__PURE__ */ __name(() => React26.useSyncExternalStore(subscribe5, read3, () => null), "useCatalog");
+  return { setAccessor, notify: notify5, read: read3, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
 var instrumentStore = createCatalogStore();
@@ -27380,7 +27380,6 @@ var setDrumKitAccessor = drumKitStore.setAccessor;
 var notifyDrumKitChanged = drumKitStore.notify;
 drumKitStore.read;
 var useDrumKitCatalog = drumKitStore.useCatalog;
-var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function knobsFromChunk(chunk) {
   const knobs = [];
   chunk.chain.forEach((call, chainIndex) => {
@@ -27494,12 +27493,19 @@ function DivisionSelect({
   );
 }
 __name(DivisionSelect, "DivisionSelect");
-function Mixer({ division: division2, onDivisionChange } = {}) {
-  const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
+function MixerBody({
+  chunk,
+  applyEdit,
+  beginGesture,
+  endGesture,
+  division: division2,
+  onDivisionChange,
+  dataTab
+}) {
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
-  const knobs = chunk ? knobsFromChunk(chunk) : [];
-  const writeKnob = React23.useCallback(
+  const knobs = knobsFromChunk(chunk);
+  const writeKnob = React26.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => {
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex];
@@ -27514,7 +27520,7 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
     },
     [applyEdit]
   );
-  const addTransform = React23.useCallback(
+  const addTransform = React26.useCallback(
     (method, value) => {
       applyEdit((fresh, wb) => {
         if (fresh.chain.some((c) => c.name === method)) return;
@@ -27523,7 +27529,7 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
     },
     [applyEdit]
   );
-  const writeChainMethod = React23.useCallback(
+  const writeChainMethod = React26.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -27534,20 +27540,14 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
     },
     [applyEdit]
   );
-  if (!chunk || chunk.chain.length === 0) {
-    return React23.createElement(VisualEditStandby, {
-      panel: MIXER_TAB_ID,
-      hint: MIXER_HINT,
-      icon: "settings"
-    });
-  }
   const present = new Set(chunk.chain.map((c) => c.name));
   const kind = patternKind(chunk);
   const rollSpb = kind === "roll" ? rollStepsPerBar(chunk) : null;
   return /* @__PURE__ */ jsxs(
     "div",
     {
-      "data-bottom-panel-tab": "mixer",
+      "data-bottom-panel-tab": dataTab,
+      "data-mixer-body": true,
       style: {
         display: "flex",
         flexDirection: "column",
@@ -27615,6 +27615,30 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
           `${k.chainIndex}:${k.argIndex}`
         )) }) : /* @__PURE__ */ jsx("span", { style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" }, children: "Add an effect above, or drag a knob once the pattern has one." })
       ]
+    }
+  );
+}
+__name(MixerBody, "MixerBody");
+var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
+function Mixer({ division: division2, onDivisionChange } = {}) {
+  const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
+  if (!chunk || chunk.chain.length === 0) {
+    return React26.createElement(VisualEditStandby, {
+      panel: MIXER_TAB_ID,
+      hint: MIXER_HINT,
+      icon: "settings"
+    });
+  }
+  return /* @__PURE__ */ jsx(
+    MixerBody,
+    {
+      chunk,
+      applyEdit,
+      beginGesture,
+      endGesture,
+      division: division2,
+      onDivisionChange,
+      dataTab: MIXER_TAB_ID
     }
   );
 }
@@ -27719,39 +27743,41 @@ function buildStripModels(chunks) {
 __name(buildStripModels, "buildStripModels");
 
 // src/visualEdit/mixer/useMixerModel.ts
+var EMPTY_DERIVED = { strips: [], chunks: [] };
 function useMixerModel() {
-  const [editor, setEditor] = React23.useState(() => getActiveEditor());
-  const [strips, setStrips] = React23.useState([]);
-  const editorRef = React23.useRef(null);
-  const writebackRef = React23.useRef(null);
-  React23.useEffect(() => {
+  const [editor, setEditor] = React26.useState(() => getActiveEditor());
+  const [derived, setDerived] = React26.useState(EMPTY_DERIVED);
+  const editorRef = React26.useRef(null);
+  const writebackRef = React26.useRef(null);
+  React26.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
   }, [editor]);
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     if (!editor) {
-      setStrips([]);
+      setDerived(EMPTY_DERIVED);
       return;
     }
     const rederive = /* @__PURE__ */ __name(() => {
       const model2 = editor.getModel?.();
       if (!model2) {
-        setStrips([]);
+        setDerived(EMPTY_DERIVED);
         return;
       }
-      setStrips(buildStripModels(detectAllChunks(model2.getValue())));
+      const chunks = detectAllChunks(model2.getValue());
+      setDerived({ strips: buildStripModels(chunks), chunks });
     }, "rederive");
     rederive();
     const model = editor.getModel?.();
     const sub = model?.onDidChangeContent?.(rederive);
     return () => sub?.dispose?.();
   }, [editor]);
-  const applyToStrip = React23.useCallback(
+  const applyToStrip = React26.useCallback(
     (id, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -27765,9 +27791,9 @@ function useMixerModel() {
     },
     []
   );
-  const beginGesture = React23.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React23.useCallback(() => writebackRef.current?.endGesture(), []);
-  return { strips, applyToStrip, beginGesture, endGesture };
+  const beginGesture = React26.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React26.useCallback(() => writebackRef.current?.endGesture(), []);
+  return { strips: derived.strips, chunks: derived.chunks, applyToStrip, beginGesture, endGesture };
 }
 __name(useMixerModel, "useMixerModel");
 
@@ -27859,24 +27885,24 @@ __name(levelColor, "levelColor");
 var MIN_FRAME_MS = 1e3 / 60;
 var QUERY_WINDOW_CYCLES = 0.01;
 function useTrackMeters() {
-  const elsRef = React23.useRef(/* @__PURE__ */ new Map());
-  const stateRef = React23.useRef(/* @__PURE__ */ new Map());
-  const schedulersRef = React23.useRef(null);
-  const rafRef = React23.useRef(null);
-  const lastTsRef = React23.useRef(0);
-  const [fileId, setFileId] = React23.useState(() => getActiveFileId());
-  React23.useEffect(() => {
+  const elsRef = React26.useRef(/* @__PURE__ */ new Map());
+  const stateRef = React26.useRef(/* @__PURE__ */ new Map());
+  const schedulersRef = React26.useRef(null);
+  const rafRef = React26.useRef(null);
+  const lastTsRef = React26.useRef(0);
+  const [fileId, setFileId] = React26.useState(() => getActiveFileId());
+  React26.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React23.useCallback((captureId, els) => {
+  const register = React26.useCallback((captureId, els) => {
     if (els) elsRef.current.set(captureId, els);
     else {
       elsRef.current.delete(captureId);
       stateRef.current.delete(captureId);
     }
   }, []);
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       schedulersRef.current = schedulersOf(payload);
     }) : (() => {
@@ -27957,7 +27983,7 @@ function useTrackMeters() {
       stateRef.current.clear();
     };
   }, [fileId]);
-  return React23.useMemo(() => ({ register }), [register]);
+  return React26.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
 var DRAG_SPAN_PX2 = 160;
@@ -27966,9 +27992,9 @@ function StripMeter({
   captureId,
   controller
 }) {
-  const fillRef = React23.useRef(null);
-  const peakRef = React23.useRef(null);
-  React23.useEffect(() => {
+  const fillRef = React26.useRef(null);
+  const peakRef = React26.useRef(null);
+  React26.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -28055,7 +28081,9 @@ function ChannelStrip({
   onGestureStart,
   onGestureEnd,
   meters,
-  showHeader = true
+  showHeader = true,
+  expanded = false,
+  onToggleExpand
 }) {
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
   const gain = faderGain(strip);
@@ -28063,8 +28091,8 @@ function ChannelStrip({
   const faderEnabled = gain !== null && onGainChange !== void 0;
   const panEnabled = !strip.panForeign && onPanChange !== void 0;
   const panValue = strip.pan ?? 0.5;
-  const faderDrag = React23.useRef(null);
-  const panDrag = React23.useRef(null);
+  const faderDrag = React26.useRef(null);
+  const panDrag = React26.useRef(null);
   const onFaderDown = /* @__PURE__ */ __name((e) => {
     if (!faderEnabled) return;
     e.preventDefault();
@@ -28114,7 +28142,10 @@ function ChannelStrip({
       "data-mixer-strip-kind": strip.kind,
       "data-mixer-strip-muted": strip.muted ? "" : void 0,
       style: {
-        width: 84,
+        // Console strips carry a 4-item header (dot · name · mute · expand);
+        // give them a touch more width so a short name like `d1` isn't squeezed
+        // to `d.`. The headerless local strip keeps the compact width.
+        width: onToggleExpand ? 96 : 84,
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",
@@ -28178,6 +28209,32 @@ function ChannelStrip({
                 opacity: muteEnabled ? 1 : 0.3
               },
               children: "M"
+            }
+          ),
+          onToggleExpand && /* @__PURE__ */ jsx(
+            "button",
+            {
+              type: "button",
+              "data-mixer-strip-expand": true,
+              "aria-label": `${expanded ? "Collapse" : "Expand"} ${strip.name}`,
+              "aria-expanded": expanded,
+              onClick: () => onToggleExpand(),
+              title: expanded ? "Collapse channel" : "Expand channel",
+              style: {
+                flexShrink: 0,
+                width: 16,
+                height: 16,
+                padding: 0,
+                borderRadius: 3,
+                fontSize: 10,
+                fontWeight: 700,
+                lineHeight: "14px",
+                cursor: "pointer",
+                border: "1px solid var(--border, #3a3a42)",
+                background: expanded ? "var(--background-elevated, #26262c)" : "var(--background, #1c1c20)",
+                color: "var(--foreground-muted, #a0a0aa)"
+              },
+              children: expanded ? "\u25C2" : "\u25B8"
             }
           )
         ] }),
@@ -28380,16 +28437,16 @@ var MIXER_WIDTH = 300;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = patternKind(chunk);
-  const [selected, setSelected] = React23.useState(null);
+  const [selected, setSelected] = React26.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React23.useRef(stmtId);
-  React23.useEffect(() => {
+  const stmtRef = React26.useRef(stmtId);
+  React26.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setSelected(null);
     }
   }, [stmtId]);
-  const [division2, setDivision] = React23.useState(DEFAULT_DIVISION);
+  const [division2, setDivision] = React26.useState(DEFAULT_DIVISION);
   const grid = kind === "step" ? /* @__PURE__ */ jsx(SequencerGrid, {}) : kind === "roll" ? /* @__PURE__ */ jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2 }) : /* @__PURE__ */ jsx(
     VisualEditStandby,
     {
@@ -28424,11 +28481,213 @@ function PatternPanel() {
   );
 }
 __name(PatternPanel, "PatternPanel");
+var KEY_PREFIX = "stave:mixer.expanded:";
+var EMPTY = /* @__PURE__ */ new Set();
+function key(fileId) {
+  return KEY_PREFIX + fileId;
+}
+__name(key, "key");
+function safeLocalStorage5() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+__name(safeLocalStorage5, "safeLocalStorage");
+var cache = /* @__PURE__ */ new Map();
+var listeners10 = /* @__PURE__ */ new Set();
+function parseExpanded(raw) {
+  if (!raw) return /* @__PURE__ */ new Set();
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr.filter((x) => typeof x === "string")) : /* @__PURE__ */ new Set();
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+}
+__name(parseExpanded, "parseExpanded");
+function load(fileId) {
+  const ls = safeLocalStorage5();
+  if (!ls) return /* @__PURE__ */ new Set();
+  try {
+    return parseExpanded(ls.getItem(key(fileId)));
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+}
+__name(load, "load");
+function read2(fileId) {
+  if (!fileId) return EMPTY;
+  let set = cache.get(fileId);
+  if (!set) {
+    set = load(fileId);
+    cache.set(fileId, set);
+  }
+  return set;
+}
+__name(read2, "read");
+function persist(fileId, set) {
+  const ls = safeLocalStorage5();
+  if (!ls) return;
+  try {
+    ls.setItem(key(fileId), JSON.stringify([...set]));
+  } catch {
+  }
+}
+__name(persist, "persist");
+function toggleExpanded(fileId, id) {
+  const next = new Set(read2(fileId));
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  cache.set(fileId, next);
+  persist(fileId, next);
+  listeners10.forEach((l) => l());
+}
+__name(toggleExpanded, "toggleExpanded");
+function subscribe4(listener) {
+  listeners10.add(listener);
+  return () => {
+    listeners10.delete(listener);
+  };
+}
+__name(subscribe4, "subscribe");
+function useActiveFileId() {
+  const [id, setId] = React26.useState(() => getActiveFileId());
+  React26.useEffect(() => {
+    setId(getActiveFileId());
+    return onActiveEditorChange(() => setId(getActiveFileId()));
+  }, []);
+  return id;
+}
+__name(useActiveFileId, "useActiveFileId");
+function useExpandedStrips() {
+  const fileId = useActiveFileId();
+  const expanded = React26.useSyncExternalStore(
+    subscribe4,
+    () => read2(fileId),
+    () => EMPTY
+  );
+  const toggle = React26.useCallback(
+    (id) => {
+      if (fileId) toggleExpanded(fileId, id);
+    },
+    [fileId]
+  );
+  return { expanded, toggle };
+}
+__name(useExpandedStrips, "useExpandedStrips");
+function ExpandDrawer({
+  strip,
+  chunk,
+  applyToStrip,
+  beginGesture,
+  endGesture,
+  onCollapse
+}) {
+  const applyEdit = React26.useCallback(
+    (mutate) => applyToStrip(strip.id, mutate),
+    [applyToStrip, strip.id]
+  );
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-mixer-expand-drawer": true,
+      "data-mixer-expand-for": strip.id,
+      style: {
+        flexShrink: 0,
+        width: 264,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        borderLeft: "1px solid var(--border, #3a3a42)",
+        background: "var(--background-elevated, #26262c)",
+        overflow: "hidden"
+      },
+      children: [
+        /* @__PURE__ */ jsxs(
+          "div",
+          {
+            style: {
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 10px",
+              borderBottom: "1px solid var(--border, #3a3a42)",
+              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+            },
+            children: [
+              /* @__PURE__ */ jsx(
+                "span",
+                {
+                  style: { width: 8, height: 8, borderRadius: "50%", background: strip.color, flexShrink: 0 }
+                }
+              ),
+              /* @__PURE__ */ jsx(
+                "span",
+                {
+                  title: strip.name,
+                  style: {
+                    flex: 1,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    color: "var(--foreground, #e6e6ea)"
+                  },
+                  children: strip.name
+                }
+              ),
+              /* @__PURE__ */ jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-mixer-expand-collapse": true,
+                  "aria-label": `Collapse ${strip.name}`,
+                  onClick: onCollapse,
+                  title: "Collapse",
+                  style: {
+                    flexShrink: 0,
+                    width: 18,
+                    height: 18,
+                    padding: 0,
+                    borderRadius: 3,
+                    fontSize: 11,
+                    lineHeight: "16px",
+                    cursor: "pointer",
+                    border: "1px solid var(--border, #3a3a42)",
+                    background: "var(--background, #1c1c20)",
+                    color: "var(--foreground-muted, #a0a0aa)"
+                  },
+                  children: "\u25C2"
+                }
+              )
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsx("div", { style: { flex: "1 1 0", minHeight: 0, overflowY: "auto" }, children: /* @__PURE__ */ jsx(
+          MixerBody,
+          {
+            chunk,
+            applyEdit,
+            beginGesture,
+            endGesture
+          }
+        ) })
+      ]
+    }
+  );
+}
+__name(ExpandDrawer, "ExpandDrawer");
 function MixerStrips({
   emptyFallback
 } = {}) {
-  const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel();
+  const { strips, chunks, applyToStrip, beginGesture, endGesture } = useMixerModel();
   const meters = useTrackMeters();
+  const { expanded, toggle } = useExpandedStrips();
   if (strips.length === 0) return /* @__PURE__ */ jsx(Fragment, { children: emptyFallback ?? null });
   return /* @__PURE__ */ jsx(
     "div",
@@ -28436,35 +28695,70 @@ function MixerStrips({
       "data-mixer-strips": true,
       style: {
         display: "flex",
+        alignItems: "stretch",
         gap: 8,
         padding: 8,
+        // Fill the panel height so an expanded drawer is tall enough to use the
+        // full knob chain (the strips stretch to match — DAW consoles are tall).
+        height: "100%",
+        minHeight: 0,
         overflowX: "auto",
         overflowY: "hidden",
         borderBottom: "1px solid var(--border, #3a3a42)",
         background: "var(--background, #1c1c20)"
       },
-      children: strips.map((strip) => /* @__PURE__ */ jsx(
-        ChannelStrip,
-        {
-          strip,
-          onGainChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
-            const e = gainEdit(fresh, value);
-            if (e) wb.replaceRange(e.range, e.text, "mixer");
-          }),
-          onPanChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
-            const e = panEdit(fresh, value);
-            if (e) wb.replaceRange(e.range, e.text, "mixer");
-          }),
-          onMuteToggle: () => applyToStrip(strip.id, (fresh, wb) => {
-            const e = muteEdit(fresh, !strip.muted);
-            if (e) wb.replaceRange(e.range, e.text, "mixer");
-          }),
-          onGestureStart: beginGesture,
-          onGestureEnd: endGesture,
-          meters
-        },
-        strip.id
-      ))
+      children: strips.map((strip, i) => {
+        const isOpen = expanded.has(strip.id);
+        return (
+          // A strip + (when open) its expand drawer, side-by-side: the drawer
+          // grows to the RIGHT, so later strips push along the horizontal
+          // scroller (design §6.7). The group is the flex item.
+          /* @__PURE__ */ jsxs(
+            "div",
+            {
+              "data-mixer-strip-group": true,
+              style: { display: "flex", alignItems: "flex-start", flexShrink: 0 },
+              children: [
+                /* @__PURE__ */ jsx(
+                  ChannelStrip,
+                  {
+                    strip,
+                    onGainChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
+                      const e = gainEdit(fresh, value);
+                      if (e) wb.replaceRange(e.range, e.text, "mixer");
+                    }),
+                    onPanChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
+                      const e = panEdit(fresh, value);
+                      if (e) wb.replaceRange(e.range, e.text, "mixer");
+                    }),
+                    onMuteToggle: () => applyToStrip(strip.id, (fresh, wb) => {
+                      const e = muteEdit(fresh, !strip.muted);
+                      if (e) wb.replaceRange(e.range, e.text, "mixer");
+                    }),
+                    onGestureStart: beginGesture,
+                    onGestureEnd: endGesture,
+                    meters,
+                    expanded: isOpen,
+                    onToggleExpand: () => toggle(strip.id)
+                  }
+                ),
+                isOpen && chunks[i] && /* @__PURE__ */ jsx(
+                  ExpandDrawer,
+                  {
+                    strip,
+                    chunk: chunks[i],
+                    applyToStrip,
+                    beginGesture,
+                    endGesture,
+                    onCollapse: () => toggle(strip.id)
+                  }
+                )
+              ]
+            },
+            strip.id
+          )
+        );
+      })
     }
   );
 }
@@ -28513,7 +28807,7 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React23.createElement(Panel)
+      content: React26.createElement(Panel)
     });
   }
 }
@@ -28527,24 +28821,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React23.useState(opts.initial);
-  const [dragging, setDragging] = React23.useState(false);
-  const startYRef = React23.useRef(0);
-  const startValueRef = React23.useRef(opts.initial);
-  const pointerIdRef = React23.useRef(null);
-  const draggingRef = React23.useRef(false);
-  const minRef = React23.useRef(opts.min);
-  const maxRef = React23.useRef(opts.max);
-  React23.useEffect(() => {
+  const [value, setValueState] = React26.useState(opts.initial);
+  const [dragging, setDragging] = React26.useState(false);
+  const startYRef = React26.useRef(0);
+  const startValueRef = React26.useRef(opts.initial);
+  const pointerIdRef = React26.useRef(null);
+  const draggingRef = React26.useRef(false);
+  const minRef = React26.useRef(opts.min);
+  const maxRef = React26.useRef(opts.max);
+  React26.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React23.useCallback((v) => {
+  const setValue = React26.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React23.useCallback(
+  const onPointerDown = React26.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -28559,7 +28853,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React23.useCallback(
+  const endDrag = React26.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -28574,7 +28868,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React23.useCallback(
+  const onPointerMove = React26.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -28590,13 +28884,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React23.useCallback(
+  const onPointerUp = React26.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React23.useCallback(
+  const onPointerCancel = React26.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -28624,15 +28918,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React23.useState(
+  const [tabs2, setTabs] = React26.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React23.useState(readPersistedOpen);
-  const [height, setHeight] = React23.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React23.useState(
+  const [open, setOpen] = React26.useState(readPersistedOpen);
+  const [height, setHeight] = React26.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React26.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -28642,10 +28936,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -28657,24 +28951,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React23.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React23.useCallback(
+  const tabButtonRefs = React26.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React26.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React23.useCallback((id) => {
+  const focusTab = React26.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React23.useCallback(
+  const onTabsKeyDown = React26.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -30785,7 +31079,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsx(React23__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsx(React26__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsx(
                 SplitPane,
@@ -30793,7 +31087,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsx(React23__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsx(React26__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -31404,9 +31698,9 @@ function registerRuntimeProvider(provider) {
 }
 __name(registerRuntimeProvider, "registerRuntimeProvider");
 function getRuntimeProviderForExtension(extension) {
-  const key = normalizeExtension2(extension);
-  if (!key) return void 0;
-  return byExtension2.get(key);
+  const key2 = normalizeExtension2(extension);
+  if (!key2) return void 0;
+  return byExtension2.get(key2);
 }
 __name(getRuntimeProviderForExtension, "getRuntimeProviderForExtension");
 function getRuntimeProviderForLanguage(language) {
@@ -31893,14 +32187,14 @@ var DemoEngine = _DemoEngine;
 // src/engine/sonicpi/adapter.ts
 var SONICPI_ENGINE_MODULE = "../../../../../../sonicPiWeb/src/engine/SonicPiEngine";
 async function loadRawSonicPiEngine() {
-  const load = new Function("m", "return import(m)");
-  return (await load(SONICPI_ENGINE_MODULE)).SonicPiEngine;
+  const load2 = new Function("m", "return import(m)");
+  return (await load2(SONICPI_ENGINE_MODULE)).SonicPiEngine;
 }
 __name(loadRawSonicPiEngine, "loadRawSonicPiEngine");
 var SUPERSONIC_CDN = "https://unpkg.com/supersonic-scsynth@latest";
 async function importFromCDN(url) {
-  const load = new Function("url", "return import(url)");
-  return load(url);
+  const load2 = new Function("url", "return import(url)");
+  return load2(url);
 }
 __name(importFromCDN, "importFromCDN");
 function parseVizRequests(code) {
@@ -32173,13 +32467,13 @@ var _WorkerBusFeed = class _WorkerBusFeed {
       if (a.key === MASTER_KEY) master = stub;
       else trackAnalysers.set(a.key, stub);
     }
-    for (const key of [...this.analysers.keys()]) {
-      if (!present.has(key)) this.analysers.delete(key);
+    for (const key2 of [...this.analysers.keys()]) {
+      if (!present.has(key2)) this.analysers.delete(key2);
     }
     const scheduler = makeSchedulerStub(frame.now, frame.activeEvents);
     const trackSchedulers = /* @__PURE__ */ new Map();
-    for (const [key, events] of frame.activeByTrack) {
-      trackSchedulers.set(key, makeSchedulerStub(frame.now, events));
+    for (const [key2, events] of frame.activeByTrack) {
+      trackSchedulers.set(key2, makeSchedulerStub(frame.now, events));
     }
     this.bus.bindScheduler(scheduler, trackSchedulers);
     this.bus.bindAnalysers(master, trackAnalysers);
@@ -32433,10 +32727,10 @@ function VizDropdown({
   const activeLabel = activeDescriptor?.label ?? activeId;
   const groups = /* @__PURE__ */ new Map();
   for (const d of descriptors) {
-    const key = d.renderer ?? "other";
-    const arr = groups.get(key) ?? [];
+    const key2 = d.renderer ?? "other";
+    const arr = groups.get(key2) ?? [];
     arr.push(d);
-    groups.set(key, arr);
+    groups.set(key2, arr);
   }
   const isEnabled = /* @__PURE__ */ __name((d) => {
     if (!availableComponents || !d.requires?.length) return true;
@@ -32911,7 +33205,7 @@ function usePopoutPreview({
 __name(usePopoutPreview, "usePopoutPreview");
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
-  const subscribe4 = useCallback(
+  const subscribe5 = useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -32923,7 +33217,7 @@ function useTrackMeta(fileId, trackId) {
     if (!fileId) return EMPTY_META;
     return getTrackMeta(fileId, trackId);
   }, [fileId, trackId]);
-  const meta = useSyncExternalStore(subscribe4, getSnapshot, getSnapshot);
+  const meta = useSyncExternalStore(subscribe5, getSnapshot, getSnapshot);
   const set = useCallback(
     (partial) => {
       if (!fileId) return;
@@ -33018,9 +33312,9 @@ async function restoreSnapshot(id) {
   const activeOrder = activeDoc2.getMap("fileOrder");
   const activeSubOrder = activeDoc2.getMap("subfolderOrder");
   activeDoc2.transact(() => {
-    for (const key of Array.from(activeFiles.keys())) activeFiles.delete(key);
-    for (const key of Array.from(activeOrder.keys())) activeOrder.delete(key);
-    for (const key of Array.from(activeSubOrder.keys())) activeSubOrder.delete(key);
+    for (const key2 of Array.from(activeFiles.keys())) activeFiles.delete(key2);
+    for (const key2 of Array.from(activeOrder.keys())) activeOrder.delete(key2);
+    for (const key2 of Array.from(activeSubOrder.keys())) activeSubOrder.delete(key2);
     for (const [fid, snapFile] of snapFiles.entries()) {
       const clone = new Y3.Map();
       clone.set("id", snapFile.get("id"));
@@ -33262,10 +33556,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React23.useReducer((x) => x + 1, 0);
-  React23.useEffect(() => subscribeToHistory(force), []);
-  React23.useEffect(() => subscribeToRuntimeView(force), []);
-  React23.useEffect(() => {
+  const [, force] = React26.useReducer((x) => x + 1, 0);
+  React26.useEffect(() => subscribeToHistory(force), []);
+  React26.useEffect(() => subscribeToRuntimeView(force), []);
+  React26.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -33282,17 +33576,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React23.useState(null);
-  const [forkName, setForkName] = React23.useState("");
-  const [committing, setCommitting] = React23.useState(false);
-  const [commitLabel, setCommitLabel] = React23.useState("");
-  const [expanded, setExpanded] = React23.useState(null);
-  const [hovered, setHovered] = React23.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React23.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React23.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React23.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React26.useState(null);
+  const [forkName, setForkName] = React26.useState("");
+  const [committing, setCommitting] = React26.useState(false);
+  const [commitLabel, setCommitLabel] = React26.useState("");
+  const [expanded, setExpanded] = React26.useState(null);
+  const [hovered, setHovered] = React26.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React26.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React26.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React26.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React23.useEffect(() => {
+  React26.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -34724,9 +35018,9 @@ __name(applyEntry, "applyEntry");
 function clearForFix(marker) {
   const prefix = `${marker.runtime}:`;
   if (!marker.source) {
-    for (const key of Array.from(activeMarkers)) {
-      if (!key.startsWith(prefix)) continue;
-      const fileId2 = key.slice(prefix.length);
+    for (const key2 of Array.from(activeMarkers)) {
+      if (!key2.startsWith(prefix)) continue;
+      const fileId2 = key2.slice(prefix.length);
       const resolved2 = getModelForFile(fileId2);
       if (resolved2) {
         clearLineMarkers(
@@ -34735,7 +35029,7 @@ function clearForFix(marker) {
           OWNER
         );
       }
-      activeMarkers.delete(key);
+      activeMarkers.delete(key2);
     }
     return;
   }
@@ -34822,9 +35116,9 @@ __name(isCombinatorCall, "isCombinatorCall");
 function walk2(node, visit) {
   if (!node || typeof node !== "object") return;
   if (typeof node.type === "string" && typeof node.start === "number") visit(node);
-  for (const key of Object.keys(node)) {
-    if (key === "type" || key === "start" || key === "end") continue;
-    const child = node[key];
+  for (const key2 of Object.keys(node)) {
+    if (key2 === "type" || key2 === "start" || key2 === "end") continue;
+    const child = node[key2];
     if (Array.isArray(child)) {
       for (const c of child) walk2(c, visit);
     } else if (child && typeof child === "object") {
@@ -35037,9 +35331,9 @@ __name(isPickCall, "isPickCall");
 function walk3(node, visit) {
   if (!node || typeof node !== "object") return;
   if (typeof node.type === "string" && typeof node.start === "number") visit(node);
-  for (const key of Object.keys(node)) {
-    if (key === "type" || key === "start" || key === "end") continue;
-    const child = node[key];
+  for (const key2 of Object.keys(node)) {
+    if (key2 === "type" || key2 === "start" || key2 === "end") continue;
+    const child = node[key2];
     if (Array.isArray(child)) for (const c of child) walk3(c, visit);
     else if (child && typeof child === "object") walk3(child, visit);
   }
@@ -35269,9 +35563,9 @@ function resizeRoll(model, nextSteps, mode) {
     ...model,
     steps: nextSteps,
     notes: scaled.filter((n) => {
-      const key = `${n.pitch}@${n.start}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
+      const key2 = `${n.pitch}@${n.start}`;
+      if (seen.has(key2)) return false;
+      seen.add(key2);
       return true;
     })
   };

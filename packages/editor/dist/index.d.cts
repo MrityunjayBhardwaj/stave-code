@@ -8321,17 +8321,20 @@ declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProp
 type Division = 'grid' | '1/4' | '1/8' | '1/16' | '1/8T' | '1/16T';
 
 /**
- * Mixer — the first write-back visual editor (#381).
+ * Mixer — the Pattern tab's cursor-bound inspector (#381).
  *
- * Finds the Strudel statement under the cursor (via `useActiveChunk`) and
- * renders a Knob for every numeric argument in its method chain (`.gain(0.6)`
- * → a "gain" knob at 0.6). Dragging a knob writes a surgical text edit of just
- * that literal through the tagged `Writeback` — the mini-notation and the rest
- * of the statement stay byte-identical, and the whole drag is one undo step.
- * Audio updates through the existing live-mode re-eval.
+ * Finds the Strudel statement under the cursor (via `useActiveChunk`) and shows
+ * its full knob chain. Since S4b the body itself lives in `MixerBody` (shared
+ * with the Mixer console's per-strip expand drawer); `Mixer` is the thin wrapper
+ * that supplies the *cursor* binding: it tracks the chunk under the cursor and
+ * shows a standby when there's nothing editable there, then delegates the body
+ * (picker + Snap + transforms + knob grid) to `MixerBody`. Behaviour is
+ * unchanged from the pre-S4b single-file component — same write path, same DOM,
+ * same #381 tests.
  *
- * Shows a standby state when the cursor isn't in a chunk with editable knobs
- * (the conservatism rule).
+ * Standby fires when the cursor isn't in a chunk with an editable chain (the
+ * conservatism rule); `MixerBody` itself never standbys (an empty-chain chunk
+ * still shows the transforms row to ADD effects — wanted in the drawer).
  */
 
 interface MixerProps {
