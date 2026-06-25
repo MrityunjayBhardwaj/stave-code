@@ -29,6 +29,13 @@
  */
 import type * as Monaco from 'monaco-editor'
 import { isChunkFresh, type ChunkInfo } from './chunkDetect'
+import { requestReeval, getFileIdForEditor } from '../workspace/editorRegistry'
+
+/** trailing-debounce window for the live re-eval — coalesces a quick burst of
+ * commits into fewer re-evals (less eval churn) while staying snappy for a
+ * single edit. Correctness under a burst (the final state winning) is guaranteed
+ * by the app handler serialising re-evals per file, NOT by this window. */
+const REEVAL_DEBOUNCE_MS = 120
 
 /**
  * Which panel originated an edit. The host content-change listener switches on
@@ -127,6 +134,11 @@ export class Writeback {
   private writingSource: WriteSource | null = null
   /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
   private inGesture = false
+  /** whether the in-flight gesture has applied any edit — gates the one re-eval
+   * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
+  private gestureDidEdit = false
+  /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
+  private reevalTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
     private readonly editor: Monaco.editor.IStandaloneCodeEditor,
@@ -145,13 +157,20 @@ export class Writeback {
     if (!model) return
     model.pushStackElement() // close any prior (typing) undo group
     this.inGesture = true
+    this.gestureDidEdit = false
   }
 
-  /** Close the gesture, sealing all its edits as one undo step. */
+  /** Close the gesture, sealing all its edits as one undo step — and, if the
+   * gesture changed anything, make it audible immediately (one re-eval on
+   * release, not per drag frame). */
   endGesture(): void {
     if (!this.inGesture) return
     this.inGesture = false
     this.editor.getModel()?.pushStackElement()
+    if (this.gestureDidEdit) {
+      this.gestureDidEdit = false
+      this.requestLiveReeval()
+    }
   }
 
   /**
@@ -230,5 +249,30 @@ export class Writeback {
       this.writingSource = null
     }
     if (!this.inGesture) model.pushStackElement()
+    // Live visual editing: a committed mutation should be audible immediately
+    // while playing. A single (non-gesture) edit re-evals now; a gesture's many
+    // edits coalesce into ONE re-eval on `endGesture`.
+    if (this.inGesture) this.gestureDidEdit = true
+    else this.requestLiveReeval()
+  }
+
+  /**
+   * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
+   * the moment it commits. Centralised here so every visual surface — sequencer,
+   * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
+   * re-evals only a PLAYING file, and only when live mode isn't already doing
+   * it, so this never auto-starts audio nor double-evaluates.
+   *
+   * Trailing-debounced: rapid successive commits (e.g. clearing several
+   * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
+   * which also lets the Monaco→file-store sync settle so the re-eval reads the
+   * final content rather than racing a not-yet-synced edit.
+   */
+  private requestLiveReeval(): void {
+    if (this.reevalTimer) clearTimeout(this.reevalTimer)
+    this.reevalTimer = setTimeout(() => {
+      this.reevalTimer = null
+      requestReeval(getFileIdForEditor(this.editor))
+    }, REEVAL_DEBOUNCE_MS)
   }
 }

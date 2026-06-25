@@ -47,8 +47,12 @@ export interface StripModel {
   panForeign: boolean
   /** aux sends — `.room` / `.delay` scalars, or null */
   sends: { room: number | null; delay: number | null }
-  /** mute state — always false in S0 (the mute idiom lands in S3) */
+  /** mute state — true when the statement carries the `_`-prefix mute marker (S3) */
   muted: boolean
+  /** whether this strip can be muted — only labelled statements (`$:`/`d1:`) can
+   * take the `_` marker; a bare expression statement can't (`_s(...)` would parse
+   * as a call to a different identifier), so its mute control is disabled. */
+  muteable: boolean
   /** indicator colour (the drum-voice palette, or a neutral fallback) */
   color: string
   /** the full method chain → the expand drawer (S4) */
@@ -74,6 +78,23 @@ export interface StripModel {
  */
 function namedLabel(label: string | null): string | null {
   return label && label !== '$' ? label : null
+}
+
+/** the `_`-prefix mute marker (S3, design §6.4): a statement is muted when its
+ * label starts with `_`. Strudel's engine skips `_`-prefixed/-suffixed ids
+ * (`StrudelEngine.ts:735`) → no scheduler → silent + a dark meter, all without
+ * touching `.gain` (orthogonal to the fader — V-mixer-2). Grounded: acorn parses
+ * `_$:`/`_d1:` as labelled statements, so the marker rides on `chunk.label`. */
+function isMuted(label: string | null): boolean {
+  return label != null && label.startsWith('_')
+}
+
+/** the label with the mute marker removed, then resolved to a real name or null
+ * (an anonymous `$`/`_$` → null). This is the strip's STABLE identity across a
+ * mute toggle: `_d1`→`d1`, `_$`→null, so muting a named track keeps its id. */
+function bareLabel(label: string | null): string | null {
+  if (label == null) return null
+  return namedLabel(isMuted(label) ? label.slice(1) : label)
 }
 
 /** the combinator heads whose statement is a group of voices (sub-strips in S6) */
@@ -123,20 +144,17 @@ function stripColor(kind: StripKind, miniString: string | null): string {
   return VOICE_FALLBACK_COLOR
 }
 
-function buildStripModel(chunk: ChunkInfo, index: number, anonIndex: number): StripModel {
+function buildStripModel(chunk: ChunkInfo, index: number, id: string): StripModel {
   const kind = stripKind(chunk)
   const source = readSource(chunk, kind)
-  const named = namedLabel(chunk.label)
-  // id mirrors the captureId numbering (named label, else $<anon>) so the two
-  // can't drift — anon index is unique among anonymous tracks, named labels are
-  // unique, so the id is unique across the document.
-  const id = named ?? `$${anonIndex}`
-  const name = named ?? source ?? chunk.headFn ?? `Track ${index + 1}`
+  // Display name uses the marker-stripped label (`_d1`→`d1`) so a muted strip
+  // reads `d1`, not `_d1`; the muted/muteable flags carry the mute state.
+  const name = bareLabel(chunk.label) ?? source ?? chunk.headFn ?? `Track ${index + 1}`
   return {
     id,
     index,
     kind,
-    label: named,
+    label: bareLabel(chunk.label),
     name,
     headFn: chunk.headFn,
     miniString: chunk.miniString,
@@ -145,24 +163,40 @@ function buildStripModel(chunk: ChunkInfo, index: number, anonIndex: number): St
     pan: readScalar(chunk, 'pan'),
     panForeign: isForeign(chunk, 'pan'),
     sends: { room: readScalar(chunk, 'room'), delay: readScalar(chunk, 'delay') },
-    muted: false,
+    muted: isMuted(chunk.label),
+    muteable: chunk.label != null,
     color: stripColor(kind, chunk.miniString),
     chain: chunk.chain,
     exprRange: chunk.exprRange,
     statementRange: chunk.statementRange,
-    captureId: named ?? `$${anonIndex}`,
+    // captureId === id: a NAMED strip joins on its bare label (`d1`); a muted
+    // track's id never matches a live scheduler key (it's `_$<n>` or a name the
+    // engine skipped while muted) → that strip's meter stays dark, exactly the
+    // muted behaviour (S2). For an all-unmuted doc this is byte-identical to S2.
+    captureId: id,
   }
 }
 
 /**
- * Project every detected chunk into a strip, in source order. Anonymous tracks
- * (`$:` or a bare expression) are numbered separately for the captureId
- * candidate (§5.5, `$0`/`$1`/…) while the strip `index` counts all statements.
+ * Project every detected chunk into a strip, in source order, assigning each a
+ * stable, unique id that doubles as the analyser join key (captureId):
+ *  - a named statement (`d1:`, or muted `_d1:`) → its bare label `d1` (STABLE
+ *    across mute, unique since labels are unique);
+ *  - an UNMUTED anonymous `$:` → `$<k>`, k counting only unmuted anonymous
+ *    tracks — exactly the engine's `anonIndex` numbering, which also skips
+ *    `_`-muted ids (`StrudelEngine.ts:735-739`), so the captureIds of unmuted
+ *    siblings stay aligned regardless of how many tracks are muted;
+ *  - a MUTED anonymous `_$:` → `_$<index>`, unique by statement index and never
+ *    a live scheduler key (the engine skipped it) → a dark meter.
  */
 export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
   let anon = 0
   return chunks.map((chunk, index) => {
-    const isAnon = namedLabel(chunk.label) === null
-    return buildStripModel(chunk, index, isAnon ? anon++ : anon)
+    const bare = bareLabel(chunk.label)
+    let id: string
+    if (bare !== null) id = bare
+    else if (isMuted(chunk.label)) id = `_$${index}`
+    else id = `$${anon++}`
+    return buildStripModel(chunk, index, id)
   })
 }

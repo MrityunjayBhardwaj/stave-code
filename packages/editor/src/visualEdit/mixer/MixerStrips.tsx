@@ -7,13 +7,18 @@
  * one-undo text edit and the strips re-derive from the result (master strip and
  * meters land in later slices). Returns null when the document has no editable
  * statements, so the host can fall back to the param panel's own standby.
+ *
+ * Live while playing: every edit here goes through `Writeback`, which re-evals
+ * the playing file on commit (a single click immediately, a drag once on
+ * release) — so mute / fader / pan are all audible at once, no manual eval. That
+ * lives at the write boundary (shared by every visual surface), not here.
  */
 import * as React from 'react'
 
 import { useMixerModel } from './useMixerModel'
 import { useTrackMeters } from './useTrackMeters'
 import { ChannelStrip } from './ChannelStrip'
-import { gainEdit, panEdit } from './writeStrip'
+import { gainEdit, panEdit, muteEdit } from './writeStrip'
 
 export function MixerStrips(): React.ReactElement | null {
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel()
@@ -47,6 +52,12 @@ export function MixerStrips(): React.ReactElement | null {
           onPanChange={(value) =>
             applyToStrip(strip.id, (fresh, wb) => {
               const e = panEdit(fresh, value)
+              if (e) wb.replaceRange(e.range, e.text, 'mixer')
+            })
+          }
+          onMuteToggle={() =>
+            applyToStrip(strip.id, (fresh, wb) => {
+              const e = muteEdit(fresh, !strip.muted)
               if (e) wb.replaceRange(e.range, e.text, 'mixer')
             })
           }

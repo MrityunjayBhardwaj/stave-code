@@ -215,12 +215,18 @@ test.describe('Mixer strip write-back (#540 / S1)', () => {
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
-/** evaluate/play the current doc (editor must be focused). */
+/** evaluate/play the current doc. Focuses the STRUDEL editor (not just
+ * `getEditors()[0]`, which may be another Monaco instance after the mixer is
+ * open / a control was clicked) so the Cmd+Enter eval keybinding lands. */
 async function play(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ focus: () => void }> } } }).monaco
-    m?.editor?.getEditors?.()?.[0]?.focus()
+    const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string } | null; focus: () => void; setPosition: (p: { lineNumber: number; column: number }) => void }> } } }).monaco
+    const eds = m?.editor?.getEditors?.() ?? []
+    const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+    t?.setPosition({ lineNumber: 1, column: 1 })
+    t?.focus()
   })
+  await page.waitForTimeout(50)
   await page.keyboard.press(`${MOD}+Enter`)
 }
 
@@ -234,6 +240,211 @@ async function meterFill(
     .locator(`[data-mixer-strip-id="${stripId}"] [data-mixer-meter-fill]`)
     .evaluate((e) => parseFloat((e as HTMLElement).style.height) || 0)
 }
+
+/** click a strip's mute button. */
+async function clickMute(
+  page: Page,
+  drawer: ReturnType<Page['locator']>,
+  stripId: string,
+): Promise<void> {
+  await drawer.locator(`[data-mixer-strip-id="${stripId}"] [data-mixer-strip-mute]`).click()
+  await page.waitForTimeout(80)
+}
+
+test.describe('Mixer strip mute (#543 / S3)', () => {
+  test('mute marks the file orthogonally to gain; un-mute round-trips byte-identical', async ({
+    page,
+  }) => {
+    await boot(page)
+    // named tracks → the muted track keeps a stable id (`d1`), so the strip is
+    // easy to address before and after the toggle.
+    const original = 'd1: s("bd").gain(0.5)\n$: s("hh*4")'
+    await setStrudelCode(page, original)
+    const drawer = await openMixer(page)
+
+    // mute d1 → the `_` marker is prefixed; `.gain(0.5)` is UNTOUCHED (orthogonal,
+    // V-mixer-2) and the sibling line is byte-identical.
+    await clickMute(page, drawer, 'd1')
+    const muted = await strudelValue(page)
+    expect(muted.split('\n')[0]).toBe('_d1: s("bd").gain(0.5)')
+    expect(muted.split('\n')[1]).toBe('$: s("hh*4")')
+
+    // the strip reflects the muted state but keeps its name `d1`.
+    const strip = drawer.locator('[data-mixer-strip-id="d1"]')
+    await expect(strip).toHaveAttribute('data-mixer-strip-muted', '')
+    await expect(strip.locator('[data-mixer-strip-mute]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(strip.locator('[data-mixer-strip-name]')).toHaveText('d1')
+
+    // un-mute → the marker is removed; the document is the exact original.
+    await clickMute(page, drawer, 'd1')
+    expect(await strudelValue(page)).toBe(original)
+    await expect(strip.locator('[data-mixer-strip-mute]')).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  test('the mute control is disabled on a bare-expression strip (no label to carry)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, 's("bd*4")')
+    const drawer = await openMixer(page)
+    await expect(drawer.locator('[data-mixer-strip] [data-mixer-strip-mute]')).toBeDisabled()
+  })
+
+  test('a `_`-muted track is silent (dark meter) while a sibling plays (GR3, per-track)', async ({
+    page,
+  }) => {
+    await boot(page)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    // d1 is muted (`_d1`), d2 plays. Named tracks → stable ids d1/d2. The mute
+    // WRITE itself is covered by the round-trip test above; here we observe the
+    // ENGINE effect of the idiom: the engine skips `_d1` entirely (no scheduler),
+    // so d1's meter stays dark while d2 moves — and crucially d2 still plays, so
+    // the `_d1` label neither errors the eval nor shifts d2's captureId (GR3).
+    await setStrudelCode(page, '_d1: s("bd*8").gain(0.9)\nd2: s("hh*8").gain(0.9)')
+
+    let d1Max = 0
+    let d2Max = 0
+    // Re-eval up to 3× (the editor→file sync can race the first eval — S2 note).
+    for (let attempt = 0; attempt < 3 && d2Max < 15; attempt++) {
+      await play(page)
+      await page.waitForTimeout(500)
+      d1Max = 0
+      d2Max = 0
+      for (let i = 0; i < 30; i++) {
+        d1Max = Math.max(d1Max, await meterFill(page, drawer, 'd1'))
+        d2Max = Math.max(d2Max, await meterFill(page, drawer, 'd2'))
+        await page.waitForTimeout(33)
+      }
+    }
+    expect(d2Max, 'sibling d2 plays — `_d1` does not break the eval or shift its captureId').toBeGreaterThan(15)
+    expect(d1Max, 'muted `_d1` is silent — dark meter').toBeLessThan(8)
+  })
+
+  test('LIVE mute: clicking mute while playing silences the track immediately (no manual re-eval)', async ({
+    page,
+  }) => {
+    await boot(page)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    await setStrudelCode(page, 'd1: s("bd*8").gain(0.9)\nd2: s("hh*8").gain(0.9)')
+
+    // start playback; both meters move.
+    let d1Max = 0
+    let d2Max = 0
+    for (let attempt = 0; attempt < 3 && (d1Max < 15 || d2Max < 15); attempt++) {
+      await play(page)
+      await page.waitForTimeout(500)
+      d1Max = 0
+      d2Max = 0
+      for (let i = 0; i < 30; i++) {
+        d1Max = Math.max(d1Max, await meterFill(page, drawer, 'd1'))
+        d2Max = Math.max(d2Max, await meterFill(page, drawer, 'd2'))
+        await page.waitForTimeout(33)
+      }
+    }
+    expect(d1Max, 'd1 plays before muting').toBeGreaterThan(15)
+    expect(d2Max, 'd2 plays before muting').toBeGreaterThan(15)
+
+    // click mute on d1 — and DO NOT re-evaluate. Live mute re-evals the playing
+    // file itself, so d1 goes silent (dark) within a beat while d2 keeps moving.
+    await clickMute(page, drawer, 'd1')
+    expect((await strudelValue(page)).split('\n')[0]).toBe('_d1: s("bd*8").gain(0.9)')
+    await page.waitForTimeout(600)
+    let d1Muted = 0
+    let d2Still = 0
+    for (let i = 0; i < 30; i++) {
+      d1Muted = Math.max(d1Muted, await meterFill(page, drawer, 'd1'))
+      d2Still = Math.max(d2Still, await meterFill(page, drawer, 'd2'))
+      await page.waitForTimeout(33)
+    }
+    expect(d1Muted, 'live mute silences d1 immediately — dark, no manual eval').toBeLessThan(8)
+    expect(d2Still, 'sibling d2 keeps playing').toBeGreaterThan(15)
+  })
+
+  test('LIVE fader: dragging the fader while playing changes the level immediately (no manual re-eval)', async ({
+    page,
+  }) => {
+    await boot(page)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    await setStrudelCode(page, 'd1: s("bd*8").gain(0.9)')
+
+    // start playback; the meter runs high at gain 0.9.
+    let high = 0
+    for (let attempt = 0; attempt < 3 && high < 15; attempt++) {
+      await play(page)
+      await page.waitForTimeout(500)
+      high = 0
+      for (let i = 0; i < 30; i++) {
+        high = Math.max(high, await meterFill(page, drawer, 'd1'))
+        await page.waitForTimeout(33)
+      }
+    }
+    expect(high, 'd1 runs high at gain 0.9').toBeGreaterThan(15)
+
+    // drag the fader DOWN — and DO NOT re-evaluate. The gesture-end live re-eval
+    // applies the lower gain, so the meter drops within a beat on its own.
+    await dragFader(page, drawer, 'd1', -55) // negative = down → quieter
+    expect(await strudelValue(page)).toMatch(/gain\(0?\.\d+\)/) // gain lowered, still scalar
+    await page.waitForTimeout(600)
+    let low = 0
+    for (let i = 0; i < 30; i++) {
+      low = Math.max(low, await meterFill(page, drawer, 'd1'))
+      await page.waitForTimeout(33)
+    }
+    expect(low, 'meter follows the lowered fader live').toBeLessThan(high - 8)
+  })
+
+  test('LIVE sequencer: silencing a track\'s steps while playing goes dark immediately (centralised at the write path)', async ({
+    page,
+  }) => {
+    await boot(page)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    // a single step track — the strip band shows its meter, the param panel below
+    // shows the Sequencer for it. Editing the sequencer is a DIFFERENT surface
+    // than the mixer, so this proves the live re-eval is centralised at Writeback.
+    await setStrudelCode(page, 'd1: s("bd*4")')
+
+    let lit = 0
+    for (let attempt = 0; attempt < 3 && lit < 15; attempt++) {
+      await play(page)
+      await page.waitForTimeout(500)
+      lit = 0
+      for (let i = 0; i < 30; i++) {
+        lit = Math.max(lit, await meterFill(page, drawer, 'd1'))
+        await page.waitForTimeout(33)
+      }
+    }
+    expect(lit, 'd1 pulses at bd*4').toBeGreaterThan(15)
+
+    // turn every step OFF in the sequencer — no manual re-eval. Each toggle is a
+    // Writeback gesture, so it re-evals on release; once the track has no hits its
+    // meter goes dark while it's still "playing".
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    for (let s = 0; s < 4; s++) {
+      const cell = grid.locator(`[data-seq-cell="0:${s}"]`)
+      if ((await cell.count()) && (await cell.getAttribute('aria-pressed')) === 'true') {
+        await cell.click()
+        await page.waitForTimeout(60)
+      }
+    }
+    // Let the live re-eval land AND the already-scheduled haps flush — Strudel
+    // schedules a cycle ahead, so a silenced pattern fades over ~1 cycle rather
+    // than cutting instantly (unlike mute, which removes the scheduler outright).
+    await page.waitForTimeout(3200)
+    // Measure the SUSTAINED level (mean of several reads) — the track is now
+    // silent, so the fill sits at ~0; a max-of-window would catch a flush blip.
+    let sum = 0
+    const N = 12
+    for (let i = 0; i < N; i++) {
+      sum += await meterFill(page, drawer, 'd1')
+      await page.waitForTimeout(40)
+    }
+    expect(sum / N, 'silencing the steps darkens the meter live, no manual eval').toBeLessThan(8)
+  })
+})
 
 test.describe('Mixer live meters (#540 / S2)', () => {
   test('each strip fuses a meter keyed by its captureId; dark before play', async ({ page }) => {

@@ -6321,6 +6321,7 @@ function classifyChunk(info) {
 __name(classifyChunk, "classifyChunk");
 
 // src/visualEdit/writeback.ts
+var REEVAL_DEBOUNCE_MS = 120;
 function formatNumber(v, maxDecimals = 4) {
   if (!Number.isFinite(v)) return "0";
   if (Number.isInteger(v)) return String(v);
@@ -6364,6 +6365,11 @@ var _Writeback = class _Writeback {
     this.writingSource = null;
     /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
     this.inGesture = false;
+    /** whether the in-flight gesture has applied any edit — gates the one re-eval
+     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
+    this.gestureDidEdit = false;
+    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
+    this.reevalTimer = null;
   }
   /**
    * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
@@ -6377,12 +6383,19 @@ var _Writeback = class _Writeback {
     if (!model) return;
     model.pushStackElement();
     this.inGesture = true;
+    this.gestureDidEdit = false;
   }
-  /** Close the gesture, sealing all its edits as one undo step. */
+  /** Close the gesture, sealing all its edits as one undo step — and, if the
+   * gesture changed anything, make it audible immediately (one re-eval on
+   * release, not per drag frame). */
   endGesture() {
     if (!this.inGesture) return;
     this.inGesture = false;
     this.editor.getModel()?.pushStackElement();
+    if (this.gestureDidEdit) {
+      this.gestureDidEdit = false;
+      this.requestLiveReeval();
+    }
   }
   /**
    * The source of the edit currently being applied, or null. The host's
@@ -6451,6 +6464,27 @@ var _Writeback = class _Writeback {
       this.writingSource = null;
     }
     if (!this.inGesture) model.pushStackElement();
+    if (this.inGesture) this.gestureDidEdit = true;
+    else this.requestLiveReeval();
+  }
+  /**
+   * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
+   * the moment it commits. Centralised here so every visual surface — sequencer,
+   * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
+   * re-evals only a PLAYING file, and only when live mode isn't already doing
+   * it, so this never auto-starts audio nor double-evaluates.
+   *
+   * Trailing-debounced: rapid successive commits (e.g. clearing several
+   * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
+   * which also lets the Monaco→file-store sync settle so the re-eval reads the
+   * final content rather than racing a not-yet-synced edit.
+   */
+  requestLiveReeval() {
+    if (this.reevalTimer) clearTimeout(this.reevalTimer);
+    this.reevalTimer = setTimeout(() => {
+      this.reevalTimer = null;
+      requestReeval(getFileIdForEditor(this.editor));
+    }, REEVAL_DEBOUNCE_MS);
   }
 };
 __name(_Writeback, "Writeback");
@@ -6505,6 +6539,13 @@ function getActiveFileId() {
   return null;
 }
 __name(getActiveFileId, "getActiveFileId");
+function getFileIdForEditor(editor) {
+  for (const [fileId, ed] of editors) {
+    if (ed === editor) return fileId;
+  }
+  return null;
+}
+__name(getFileIdForEditor, "getFileIdForEditor");
 function onActiveEditorChange(cb) {
   activeEditorListeners.add(cb);
   return () => {
@@ -6512,6 +6553,18 @@ function onActiveEditorChange(cb) {
   };
 }
 __name(onActiveEditorChange, "onActiveEditorChange");
+var reevalHandler = null;
+function registerReevalHandler(fn) {
+  reevalHandler = fn;
+  return () => {
+    if (reevalHandler === fn) reevalHandler = null;
+  };
+}
+__name(registerReevalHandler, "registerReevalHandler");
+function requestReeval(fileId) {
+  if (fileId) reevalHandler?.(fileId);
+}
+__name(requestReeval, "requestReeval");
 function revealLineInFile(fileId, line) {
   const editor = editors.get(fileId);
   if (!editor) return false;
@@ -27591,6 +27644,15 @@ function namedLabel(label) {
   return label && label !== "$" ? label : null;
 }
 __name(namedLabel, "namedLabel");
+function isMuted(label) {
+  return label != null && label.startsWith("_");
+}
+__name(isMuted, "isMuted");
+function bareLabel(label) {
+  if (label == null) return null;
+  return namedLabel(isMuted(label) ? label.slice(1) : label);
+}
+__name(bareLabel, "bareLabel");
 var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
 function stripKind(chunk) {
   const k = patternKind(chunk);
@@ -27631,17 +27693,15 @@ function stripColor(kind, miniString) {
   return VOICE_FALLBACK_COLOR;
 }
 __name(stripColor, "stripColor");
-function buildStripModel(chunk, index, anonIndex) {
+function buildStripModel(chunk, index, id) {
   const kind = stripKind(chunk);
   const source = readSource(chunk, kind);
-  const named = namedLabel(chunk.label);
-  const id = named ?? `$${anonIndex}`;
-  const name = named ?? source ?? chunk.headFn ?? `Track ${index + 1}`;
+  const name = bareLabel(chunk.label) ?? source ?? chunk.headFn ?? `Track ${index + 1}`;
   return {
     id,
     index,
     kind,
-    label: named,
+    label: bareLabel(chunk.label),
     name,
     headFn: chunk.headFn,
     miniString: chunk.miniString,
@@ -27650,20 +27710,29 @@ function buildStripModel(chunk, index, anonIndex) {
     pan: readScalar(chunk, "pan"),
     panForeign: isForeign(chunk, "pan"),
     sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
-    muted: false,
+    muted: isMuted(chunk.label),
+    muteable: chunk.label != null,
     color: stripColor(kind, chunk.miniString),
     chain: chunk.chain,
     exprRange: chunk.exprRange,
     statementRange: chunk.statementRange,
-    captureId: named ?? `$${anonIndex}`
+    // captureId === id: a NAMED strip joins on its bare label (`d1`); a muted
+    // track's id never matches a live scheduler key (it's `_$<n>` or a name the
+    // engine skipped while muted) → that strip's meter stays dark, exactly the
+    // muted behaviour (S2). For an all-unmuted doc this is byte-identical to S2.
+    captureId: id
   };
 }
 __name(buildStripModel, "buildStripModel");
 function buildStripModels(chunks) {
   let anon = 0;
   return chunks.map((chunk, index) => {
-    const isAnon = namedLabel(chunk.label) === null;
-    return buildStripModel(chunk, index, isAnon ? anon++ : anon);
+    const bare = bareLabel(chunk.label);
+    let id;
+    if (bare !== null) id = bare;
+    else if (isMuted(chunk.label)) id = `_$${index}`;
+    else id = `$${anon++}`;
+    return buildStripModel(chunk, index, id);
   });
 }
 __name(buildStripModels, "buildStripModels");
@@ -28001,10 +28070,12 @@ function ChannelStrip({
   strip,
   onGainChange,
   onPanChange,
+  onMuteToggle,
   onGestureStart,
   onGestureEnd,
   meters
 }) {
+  const muteEnabled = strip.muteable && onMuteToggle !== void 0;
   const gain = faderGain(strip);
   const pos = gain === null ? 0 : gainToFaderPos(gain);
   const faderEnabled = gain !== null && onGainChange !== void 0;
@@ -28060,6 +28131,7 @@ function ChannelStrip({
       "data-mixer-strip": true,
       "data-mixer-strip-id": strip.id,
       "data-mixer-strip-kind": strip.kind,
+      "data-mixer-strip-muted": strip.muted ? "" : void 0,
       style: {
         width: 84,
         flexShrink: 0,
@@ -28088,13 +28160,43 @@ function ChannelStrip({
               "data-mixer-strip-name": true,
               title: strip.name,
               style: {
+                flex: 1,
                 fontSize: 11,
                 fontWeight: 600,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-                whiteSpace: "nowrap"
+                whiteSpace: "nowrap",
+                opacity: strip.muted ? 0.45 : 1
               },
               children: strip.name
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              type: "button",
+              "data-mixer-strip-mute": true,
+              "aria-label": `${strip.muted ? "Unmute" : "Mute"} ${strip.name}`,
+              "aria-pressed": strip.muted,
+              disabled: !muteEnabled,
+              onClick: () => onMuteToggle?.(),
+              title: strip.muteable ? strip.muted ? "Unmute" : "Mute" : "Only named/$: tracks can be muted",
+              style: {
+                flexShrink: 0,
+                width: 16,
+                height: 16,
+                padding: 0,
+                borderRadius: 3,
+                fontSize: 9,
+                fontWeight: 700,
+                lineHeight: "14px",
+                cursor: muteEnabled ? "pointer" : "default",
+                border: "1px solid var(--border, #3a3a42)",
+                background: strip.muted ? "var(--meter-red, #e0564a)" : "var(--background, #1c1c20)",
+                color: strip.muted ? "#fff" : "var(--foreground-muted, #a0a0aa)",
+                opacity: muteEnabled ? 1 : 0.3
+              },
+              children: "M"
             }
           )
         ] }),
@@ -28245,6 +28347,14 @@ function panEdit(fresh, value) {
   return { range: arg.range, text: formatNumber(value) };
 }
 __name(panEdit, "panEdit");
+function muteEdit(fresh, muted3) {
+  if (fresh.label === null) return null;
+  const isMuted2 = fresh.label.startsWith("_");
+  if (muted3 === isMuted2) return null;
+  const pos = fresh.statementRange[0];
+  return muted3 ? { range: [pos, pos], text: "_" } : { range: [pos, pos + 1], text: "" };
+}
+__name(muteEdit, "muteEdit");
 function MixerStrips() {
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel();
   const meters = useTrackMeters();
@@ -28272,6 +28382,10 @@ function MixerStrips() {
           }),
           onPanChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
             const e = panEdit(fresh, value);
+            if (e) wb.replaceRange(e.range, e.text, "mixer");
+          }),
+          onMuteToggle: () => applyToStrip(strip.id, (fresh, wb) => {
+            const e = muteEdit(fresh, !strip.muted);
             if (e) wb.replaceRange(e.range, e.text, "mixer");
           }),
           onGestureStart: beginGesture,
@@ -35641,12 +35755,14 @@ exports.registerBottomPanelTab = registerBottomPanelTab;
 exports.registerNamedViz = registerNamedViz;
 exports.registerPresetAsNamedViz = registerPresetAsNamedViz;
 exports.registerPreviewProvider = registerPreviewProvider;
+exports.registerReevalHandler = registerReevalHandler;
 exports.registerRuntimeProvider = registerRuntimeProvider;
 exports.removeArm = removeArm;
 exports.renameProject = renameProject;
 exports.renameWorkspaceFile = renameWorkspaceFile;
 exports.rendererForLanguage = rendererForLanguage;
 exports.reorderArm = reorderArm;
+exports.requestReeval = requestReeval;
 exports.resetFileStore = resetFileStore;
 exports.resetHistoryState = resetHistoryState;
 exports.resetUndoManager = resetUndoManager;

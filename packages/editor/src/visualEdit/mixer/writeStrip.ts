@@ -57,3 +57,25 @@ export function panEdit(fresh: ChunkInfo, value: number): StripEdit | null {
   if (arg.numeric === null) return null // a signal/patterned pan — disabled
   return { range: arg.range, text: formatNumber(value) }
 }
+
+/**
+ * The edit a mute toggle makes — flip the `_`-prefix marker on the statement's
+ * label (design §6.4, D2). Mute is ORTHOGONAL to gain: it never touches `.gain`
+ * (the P194 dual-representation trap, V-mixer-2), only the one-character marker
+ * at `statementRange[0]` (the label's first char):
+ *  - mute   → insert `_` before the label (`$: …`→`_$: …`, `d1: …`→`_d1: …`);
+ *  - unmute → delete that leading `_`.
+ * Returns null when already in the requested state, or for an unlabelled
+ * statement (a bare expression — `_s(...)` would be a different identifier, so
+ * the marker doesn't apply). Surgical: only the marker changes, so unmute is the
+ * exact inverse of mute and round-trips byte-for-byte.
+ */
+export function muteEdit(fresh: ChunkInfo, muted: boolean): StripEdit | null {
+  if (fresh.label === null) return null // unlabelled — can't carry the marker
+  const isMuted = fresh.label.startsWith('_')
+  if (muted === isMuted) return null // already in the requested state
+  const pos = fresh.statementRange[0]
+  return muted
+    ? { range: [pos, pos], text: '_' } // insert the marker
+    : { range: [pos, pos + 1], text: '' } // delete the leading `_`
+}

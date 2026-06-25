@@ -112,12 +112,43 @@ export function getActiveFileId(): string | null {
   return null
 }
 
+/** The fileId registered for `editor`, or null. The write path uses this to
+ * re-evaluate the file that was actually EDITED (not necessarily the active
+ * one) when a visual mutation commits. */
+export function getFileIdForEditor(editor: MonacoEditor): string | null {
+  for (const [fileId, ed] of editors) {
+    if (ed === editor) return fileId
+  }
+  return null
+}
+
 /** Subscribe to active-editor changes. Returns an unsubscribe fn. */
 export function onActiveEditorChange(cb: () => void): () => void {
   activeEditorListeners.add(cb)
   return () => {
     activeEditorListeners.delete(cb)
   }
+}
+
+// Re-evaluate seam — the app owns the runtime, the editor package doesn't, so a
+// visual-editing control that must take audible effect immediately (the Mixer's
+// live mute) requests a re-eval through here. The app registers a handler that
+// re-evaluates the file ONLY if it is currently playing — so a control edit
+// never auto-STARTS audio that the user hadn't started. No-op when no handler is
+// registered (tests, or before the app mounts).
+let reevalHandler: ((fileId: string) => void) | null = null
+
+/** App-side: register how to re-evaluate a playing file. Returns an unregister fn. */
+export function registerReevalHandler(fn: (fileId: string) => void): () => void {
+  reevalHandler = fn
+  return () => {
+    if (reevalHandler === fn) reevalHandler = null
+  }
+}
+
+/** Editor-side: request an immediate re-eval of `fileId` (no-op if unregistered). */
+export function requestReeval(fileId: string | null): void {
+  if (fileId) reevalHandler?.(fileId)
 }
 
 /**

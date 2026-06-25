@@ -28,6 +28,8 @@ interface ChannelStripProps {
   onGainChange?: (value: number) => void
   /** set this strip's pan (0..1) */
   onPanChange?: (value: number) => void
+  /** toggle this strip's mute (flip the `_`-prefix marker) — absent = read-only */
+  onMuteToggle?: () => void
   /** wrap a drag as one undo step */
   onGestureStart?: () => void
   onGestureEnd?: () => void
@@ -128,10 +130,12 @@ export function ChannelStrip({
   strip,
   onGainChange,
   onPanChange,
+  onMuteToggle,
   onGestureStart,
   onGestureEnd,
   meters,
 }: ChannelStripProps): React.ReactElement {
+  const muteEnabled = strip.muteable && onMuteToggle !== undefined
   const gain = faderGain(strip)
   const pos = gain === null ? 0 : gainToFaderPos(gain)
   const faderEnabled = gain !== null && onGainChange !== undefined
@@ -161,6 +165,7 @@ export function ChannelStrip({
     onGestureEnd?.()
   }
   const resetFader = (): void => {
+    // One non-gesture edit → its own undo step, and Writeback re-evals it live.
     if (faderEnabled) onGainChange?.(1)
   }
 
@@ -194,6 +199,7 @@ export function ChannelStrip({
       data-mixer-strip
       data-mixer-strip-id={strip.id}
       data-mixer-strip-kind={strip.kind}
+      data-mixer-strip-muted={strip.muted ? '' : undefined}
       style={{
         width: 84,
         flexShrink: 0,
@@ -208,7 +214,7 @@ export function ChannelStrip({
         color: 'var(--foreground, #e6e6ea)',
       }}
     >
-      {/* header: colour dot + name */}
+      {/* header: colour dot + name + mute toggle */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
         <span
           data-mixer-strip-dot
@@ -218,15 +224,43 @@ export function ChannelStrip({
           data-mixer-strip-name
           title={strip.name}
           style={{
+            flex: 1,
             fontSize: 11,
             fontWeight: 600,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
+            opacity: strip.muted ? 0.45 : 1,
           }}
         >
           {strip.name}
         </span>
+        <button
+          type="button"
+          data-mixer-strip-mute
+          aria-label={`${strip.muted ? 'Unmute' : 'Mute'} ${strip.name}`}
+          aria-pressed={strip.muted}
+          disabled={!muteEnabled}
+          onClick={() => onMuteToggle?.()}
+          title={strip.muteable ? (strip.muted ? 'Unmute' : 'Mute') : 'Only named/$: tracks can be muted'}
+          style={{
+            flexShrink: 0,
+            width: 16,
+            height: 16,
+            padding: 0,
+            borderRadius: 3,
+            fontSize: 9,
+            fontWeight: 700,
+            lineHeight: '14px',
+            cursor: muteEnabled ? 'pointer' : 'default',
+            border: '1px solid var(--border, #3a3a42)',
+            background: strip.muted ? 'var(--meter-red, #e0564a)' : 'var(--background, #1c1c20)',
+            color: strip.muted ? '#fff' : 'var(--foreground-muted, #a0a0aa)',
+            opacity: muteEnabled ? 1 : 0.3,
+          }}
+        >
+          M
+        </button>
       </div>
 
       {/* source summary */}
