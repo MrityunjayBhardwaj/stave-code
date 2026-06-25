@@ -1282,6 +1282,12 @@ function extractMissingSoundName(rawMessage) {
   return null;
 }
 __name(extractMissingSoundName, "extractMissingSoundName");
+var SOUNDFONT_ZONE_RE = /no soundfont zone found/i;
+function isSoundfontZoneError(message) {
+  return SOUNDFONT_ZONE_RE.test(message);
+}
+__name(isSoundfontZoneError, "isSoundfontZoneError");
+var SOUNDFONT_ZONE_HINT = "A note is outside the chosen instrument's sampled range \u2014 try a lower octave or a fuller-range instrument.";
 function buildAliasSuffix(missingName, ctx) {
   if (!ctx) return "";
   const parts = [];
@@ -1451,6 +1457,14 @@ function formatFriendlyError(err, runtime, options = {}) {
     }
     return {
       message: appendAlias(`\`${identifier}\` is not defined.`),
+      stack,
+      line: loc?.line,
+      column: loc?.column
+    };
+  }
+  if (isSoundfontZoneError(rawMessage)) {
+    return {
+      message: appendAlias(SOUNDFONT_ZONE_HINT),
       stack,
       line: loc?.line,
       column: loc?.column
