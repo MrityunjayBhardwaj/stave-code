@@ -74,6 +74,7 @@ import {
   setVizQuality,
   type VizQualityLevel,
   registerReevalHandler,
+  applyEvalSourceTransform,
 } from "@stave/editor";
 import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 
@@ -769,7 +770,14 @@ export default function StrudelEditorClient({
       engine,
       // #204 time-travel: when a commit is checked out, the runtime evaluates
       // its snapshot content; falls back to live Y.Text when not viewing.
-      () => getViewedContent(fileId) ?? getFile(fileId)?.content ?? "",
+      // S5 solo: the Mixer's eval-source transform (solo overlay) is applied
+      // here — identity unless a strip is soloed, so the file is never touched
+      // (D3) and normal playback is byte-for-byte unchanged.
+      () =>
+        applyEvalSourceTransform(
+          fileId,
+          getViewedContent(fileId) ?? getFile(fileId)?.content ?? "",
+        ),
       (cb) => subscribeToWorkspaceFile(fileId, cb),
     );
 
