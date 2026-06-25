@@ -43,6 +43,8 @@ export interface StripModel {
   gain: GainState
   /** `.pan` scalar (0=L, 0.5=C, 1=R), or null when absent/foreign */
   pan: number | null
+  /** true when `.pan` is present but a signal/pattern — the control hands off */
+  panForeign: boolean
   /** aux sends — `.room` / `.delay` scalars, or null */
   sends: { room: number | null; delay: number | null }
   /** mute state — always false in S0 (the mute idiom lands in S3) */
@@ -98,6 +100,12 @@ function readScalar(chunk: ChunkInfo, name: string): number | null {
   return arg && arg.numeric !== null ? arg.numeric : null
 }
 
+/** true when `name` is present in the chain with a non-numeric (signal) first arg. */
+function isForeign(chunk: ChunkInfo, name: string): boolean {
+  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1)
+  return call !== undefined && call.args[0].numeric === null
+}
+
 /** first mini token, variant-stripped, for the colour lookup (e.g. `bd:3`→`bd`). */
 function firstMiniToken(mini: string | null): string | null {
   if (!mini) return null
@@ -119,7 +127,10 @@ function buildStripModel(chunk: ChunkInfo, index: number, anonIndex: number): St
   const kind = stripKind(chunk)
   const source = readSource(chunk, kind)
   const named = namedLabel(chunk.label)
-  const id = named ?? `$${index}`
+  // id mirrors the captureId numbering (named label, else $<anon>) so the two
+  // can't drift — anon index is unique among anonymous tracks, named labels are
+  // unique, so the id is unique across the document.
+  const id = named ?? `$${anonIndex}`
   const name = named ?? source ?? chunk.headFn ?? `Track ${index + 1}`
   return {
     id,
@@ -132,6 +143,7 @@ function buildStripModel(chunk: ChunkInfo, index: number, anonIndex: number): St
     source,
     gain: readGainState(chunk),
     pan: readScalar(chunk, 'pan'),
+    panForeign: isForeign(chunk, 'pan'),
     sends: { room: readScalar(chunk, 'room'), delay: readScalar(chunk, 'delay') },
     muted: false,
     color: stripColor(kind, chunk.miniString),
