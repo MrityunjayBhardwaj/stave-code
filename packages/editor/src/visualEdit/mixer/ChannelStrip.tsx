@@ -1,8 +1,12 @@
 /**
  * ChannelStrip — one vertical strip.
  *
- * A projection of a `StripModel`: colour dot + name, source summary, a pan
- * readout, and a fader (thumb at the gain's taper position with a dB readout).
+ * A projection of a `StripModel`: colour dot + name (the source line is gone —
+ * a mix console names channels, it doesn't echo their code), a pan readout, and
+ * a fader (thumb at the gain's taper position with a dB readout). `showHeader`
+ * off drops the dot/name/mute row entirely — the Pattern tab's *local* mixer is
+ * a single headerless strip for the cursor's track (you already know which one
+ * it is), where only pan/fader/meter/gain matter.
  *
  * S1 makes the fader and pan WRITE: a vertical drag on the fader sets `.gain`
  * (the taper maps screen travel → linear gain), a horizontal drag on the pan row
@@ -35,6 +39,8 @@ interface ChannelStripProps {
   onGestureEnd?: () => void
   /** live-meter controller — absent in a read-only/test context (no meter then) */
   meters?: MeterController
+  /** show the dot/name/mute header row. Off = the headerless local strip. */
+  showHeader?: boolean
 }
 
 /**
@@ -134,6 +140,7 @@ export function ChannelStrip({
   onGestureStart,
   onGestureEnd,
   meters,
+  showHeader = true,
 }: ChannelStripProps): React.ReactElement {
   const muteEnabled = strip.muteable && onMuteToggle !== undefined
   const gain = faderGain(strip)
@@ -189,11 +196,6 @@ export function ChannelStrip({
     onGestureEnd?.()
   }
 
-  const summary =
-    strip.headFn && strip.miniString !== null
-      ? `${strip.headFn}("${strip.miniString}")`
-      : strip.source ?? strip.headFn ?? ''
-
   return (
     <div
       data-mixer-strip
@@ -214,7 +216,8 @@ export function ChannelStrip({
         color: 'var(--foreground, #e6e6ea)',
       }}
     >
-      {/* header: colour dot + name + mute toggle */}
+      {/* header: colour dot + name + mute toggle (dropped on the local strip) */}
+      {showHeader && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
         <span
           data-mixer-strip-dot
@@ -262,21 +265,7 @@ export function ChannelStrip({
           M
         </button>
       </div>
-
-      {/* source summary */}
-      <span
-        data-mixer-strip-source
-        title={summary}
-        style={{
-          fontSize: 10,
-          color: 'var(--foreground-muted, #a0a0aa)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {summary}
-      </span>
+      )}
 
       {/* pan — horizontal drag sets .pan */}
       <div

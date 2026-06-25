@@ -20,11 +20,18 @@ import { useTrackMeters } from './useTrackMeters'
 import { ChannelStrip } from './ChannelStrip'
 import { gainEdit, panEdit, muteEdit } from './writeStrip'
 
-export function MixerStrips(): React.ReactElement | null {
+export function MixerStrips({
+  emptyFallback,
+}: {
+  /** rendered in place of the band when the document has no editable
+   *  statements — lets the host (the Mixer console) show a standby without a
+   *  second `useMixerModel` subscription just to read the count. */
+  emptyFallback?: React.ReactNode
+} = {}): React.ReactElement | null {
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel()
   // One capped RAF loop + bus subscription for every strip's live meter (S2).
   const meters = useTrackMeters()
-  if (strips.length === 0) return null
+  if (strips.length === 0) return <>{emptyFallback ?? null}</>
 
   return (
     <div
