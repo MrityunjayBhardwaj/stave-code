@@ -585,6 +585,10 @@ export {
   MIXER_TAB_ID,
   PIANO_ROLL_TAB_ID,
 } from './visualEdit'
+// Locate a runtime error (e.g. soundfont out-of-range, #567) back to the owning
+// track's line by its instrument — the app's onError uses this when the error's
+// stack is bundle-only.
+export { statementOffsetForSource } from './visualEdit/mixer/stripModel'
 export type {
   ChunkInfo,
   ChainCall,
