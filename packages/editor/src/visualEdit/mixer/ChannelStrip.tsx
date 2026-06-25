@@ -34,6 +34,12 @@ interface ChannelStripProps {
   onPanChange?: (value: number) => void
   /** toggle this strip's mute (flip the `_`-prefix marker) — absent = read-only */
   onMuteToggle?: () => void
+  /** whether this strip is soloed (console variant) */
+  soloed?: boolean
+  /** toggle this strip's solo — provided only by the Mixer console */
+  onSoloToggle?: () => void
+  /** dim this strip: a solo is active elsewhere and this strip isn't soloed */
+  dimmed?: boolean
   /** wrap a drag as one undo step */
   onGestureStart?: () => void
   onGestureEnd?: () => void
@@ -142,6 +148,9 @@ export function ChannelStrip({
   onGainChange,
   onPanChange,
   onMuteToggle,
+  soloed = false,
+  onSoloToggle,
+  dimmed = false,
   onGestureStart,
   onGestureEnd,
   meters,
@@ -210,10 +219,10 @@ export function ChannelStrip({
       data-mixer-strip-kind={strip.kind}
       data-mixer-strip-muted={strip.muted ? '' : undefined}
       style={{
-        // Console strips carry a 4-item header (dot · name · mute · expand);
-        // give them a touch more width so a short name like `d1` isn't squeezed
-        // to `d.`. The headerless local strip keeps the compact width.
-        width: onToggleExpand ? 96 : 84,
+        // The console header stacks name (row 1) over the mute/solo/expand
+        // buttons (row 2), so a short name like `d1` never truncates and one
+        // compact width serves both the console and the headerless local strip.
+        width: 84,
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
@@ -224,30 +233,37 @@ export function ChannelStrip({
         background: 'var(--background-elevated, #26262c)',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         color: 'var(--foreground, #e6e6ea)',
+        // a solo elsewhere dims the non-soloed strips (design §6.5)
+        opacity: dimmed ? 0.45 : 1,
+        transition: 'opacity 120ms ease',
       }}
     >
-      {/* header: colour dot + name + mute toggle (dropped on the local strip) */}
+      {/* header: name row over a button row (mute/solo/expand) — dropped on the
+          headerless local strip. Stacking keeps short names from truncating. */}
       {showHeader && (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-        <span
-          data-mixer-strip-dot
-          style={{ width: 8, height: 8, borderRadius: '50%', background: strip.color, flexShrink: 0 }}
-        />
-        <span
-          data-mixer-strip-name
-          title={strip.name}
-          style={{
-            flex: 1,
-            fontSize: 11,
-            fontWeight: 600,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            opacity: strip.muted ? 0.45 : 1,
-          }}
-        >
-          {strip.name}
-        </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+          <span
+            data-mixer-strip-dot
+            style={{ width: 8, height: 8, borderRadius: '50%', background: strip.color, flexShrink: 0 }}
+          />
+          <span
+            data-mixer-strip-name
+            title={strip.name}
+            style={{
+              flex: 1,
+              fontSize: 11,
+              fontWeight: 600,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              opacity: strip.muted ? 0.45 : 1,
+            }}
+          >
+            {strip.name}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <button
           type="button"
           data-mixer-strip-mute
@@ -274,6 +290,32 @@ export function ChannelStrip({
         >
           M
         </button>
+        {onSoloToggle && (
+          <button
+            type="button"
+            data-mixer-strip-solo
+            aria-label={`${soloed ? 'Unsolo' : 'Solo'} ${strip.name}`}
+            aria-pressed={soloed}
+            onClick={() => onSoloToggle()}
+            title={soloed ? 'Unsolo' : 'Solo (hear this alone)'}
+            style={{
+              flexShrink: 0,
+              width: 16,
+              height: 16,
+              padding: 0,
+              borderRadius: 3,
+              fontSize: 9,
+              fontWeight: 700,
+              lineHeight: '14px',
+              cursor: 'pointer',
+              border: '1px solid var(--border, #3a3a42)',
+              background: soloed ? 'var(--meter-yellow, #ffcc4d)' : 'var(--background, #1c1c20)',
+              color: soloed ? '#1c1c20' : 'var(--foreground-muted, #a0a0aa)',
+            }}
+          >
+            S
+          </button>
+        )}
         {onToggleExpand && (
           <button
             type="button"
@@ -300,6 +342,7 @@ export function ChannelStrip({
             {expanded ? '◂' : '▸'}
           </button>
         )}
+        </div>
       </div>
       )}
 

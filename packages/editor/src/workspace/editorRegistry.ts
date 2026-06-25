@@ -151,6 +151,38 @@ export function requestReeval(fileId: string | null): void {
   if (fileId) reevalHandler?.(fileId)
 }
 
+// Eval-source transform seam — the Mixer's SOLO is ephemeral monitoring state
+// (design D3): it must never be written to the file, only applied to the STRING
+// sent to the engine. The app wraps its `getFileContent` closure with
+// `applyEvalSourceTransform`, so a registered transform (the solo overlay) can
+// rewrite the source at eval time. The DEFAULT is exact identity (no transform
+// registered → the raw content passes through byte-for-byte), so this can never
+// alter playback unless something is actively soloed. The mixer re-evals via the
+// existing `requestReeval` seam when solo changes.
+let evalSourceTransform: ((fileId: string, raw: string) => string) | null = null
+
+/** Editor-side: register a transform applied to a file's source before eval.
+ *  Returns an unregister fn. Replaces any prior transform (one owner). */
+export function registerEvalSourceTransform(
+  fn: (fileId: string, raw: string) => string,
+): () => void {
+  evalSourceTransform = fn
+  return () => {
+    if (evalSourceTransform === fn) evalSourceTransform = null
+  }
+}
+
+/** App-side: apply the registered eval-source transform (identity if none, and
+ *  identity-on-throw so a transform bug can never break playback). */
+export function applyEvalSourceTransform(fileId: string, raw: string): string {
+  if (!evalSourceTransform) return raw
+  try {
+    return evalSourceTransform(fileId, raw)
+  } catch {
+    return raw
+  }
+}
+
 /**
  * Reveal the given line in the editor for `fileId` and set the cursor
  * at column 1. Returns true if the editor was found. Line numbers are

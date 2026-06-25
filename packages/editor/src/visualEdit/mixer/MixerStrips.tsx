@@ -18,8 +18,10 @@ import * as React from 'react'
 import { useMixerModel } from './useMixerModel'
 import { useTrackMeters } from './useTrackMeters'
 import { useExpandedStrips } from './expandStore'
+import { useSoloStrips } from './soloStore'
 import { ChannelStrip } from './ChannelStrip'
 import { ExpandDrawer } from './ExpandDrawer'
+import { MasterStrip } from './MasterStrip'
 import { gainEdit, panEdit, muteEdit } from './writeStrip'
 
 export function MixerStrips({
@@ -36,6 +38,10 @@ export function MixerStrips({
   // Per-file ephemeral expand state (S4b): which strips show their knob chain.
   // Persisted in localStorage, never the file (V-mixer-1).
   const { expanded, toggle } = useExpandedStrips()
+  // Solo (S5): session-ephemeral, never persisted/written; applies an eval-input
+  // overlay that silences non-soloed tracks in the string sent to the engine.
+  const { soloed, toggle: toggleSolo } = useSoloStrips()
+  const soloActive = soloed.size > 0
   if (strips.length === 0) return <>{emptyFallback ?? null}</>
 
   return (
@@ -90,6 +96,9 @@ export function MixerStrips({
                   if (e) wb.replaceRange(e.range, e.text, 'mixer')
                 })
               }
+              soloed={soloed.has(strip.id)}
+              onSoloToggle={() => toggleSolo(strip.id)}
+              dimmed={soloActive && !soloed.has(strip.id)}
               onGestureStart={beginGesture}
               onGestureEnd={endGesture}
               meters={meters}
@@ -109,6 +118,8 @@ export function MixerStrips({
           </div>
         )
       })}
+      {/* synthetic master — meter-only, pinned to the right of the scroller (S5) */}
+      <MasterStrip />
     </div>
   )
 }

@@ -639,3 +639,101 @@ test.describe('Mixer strip expand drawer (#550 / S4b)', () => {
     expect(await strudelValue(page)).toBe(original)
   })
 })
+
+/** the live fill height (0..100) of the master meter. */
+async function masterFill(page: Page, drawer: ReturnType<Page['locator']>): Promise<number> {
+  return drawer
+    .locator('[data-mixer-master-meter-fill]')
+    .evaluate((e) => parseFloat((e as HTMLElement).style.height) || 0)
+}
+
+/** click a strip's solo button. */
+async function clickSolo(
+  page: Page,
+  drawer: ReturnType<Page['locator']>,
+  stripId: string,
+): Promise<void> {
+  await drawer.locator(`[data-mixer-strip-id="${stripId}"] [data-mixer-strip-solo]`).click()
+  await page.waitForTimeout(60)
+}
+
+/** sustained mean of a sampler over n×40ms (P-MIX-6/8: mean, not max). */
+async function sustainedMean(sample: () => Promise<number>, n: number, page: Page): Promise<number> {
+  let s = 0
+  for (let i = 0; i < n; i++) {
+    s += await sample()
+    await page.waitForTimeout(40)
+  }
+  return s / n
+}
+
+test.describe('Mixer master + solo (#550 / S5)', () => {
+  test('the master strip shows a live meter while playing', async ({ page }) => {
+    await boot(page)
+    // Open the mixer before evaluating (meter subscription live — P-MIX-4).
+    const drawer = await openMixer(page)
+    await setStrudelCode(page, 'd1: s("bd*8").gain(0.9)')
+    await expect(drawer.locator('[data-mixer-master-strip]')).toHaveCount(1)
+
+    // dark before play
+    expect(await masterFill(page, drawer)).toBeLessThan(8)
+
+    let mx = 0
+    for (let attempt = 0; attempt < 2 && mx < 15; attempt++) {
+      await play(page)
+      await page.waitForTimeout(1200) // audio context resume + first hits
+      for (let i = 0; i < 25; i++) {
+        mx = Math.max(mx, await masterFill(page, drawer))
+        await page.waitForTimeout(33)
+      }
+    }
+    // the master output meter moves once audio flows
+    expect(mx).toBeGreaterThan(15)
+  })
+
+  test('solo silences non-soloed tracks via an eval overlay; the file is untouched', async ({
+    page,
+  }) => {
+    await boot(page)
+    // Open the mixer BEFORE evaluating so the meter's bus subscription is live
+    // when the program publishes (the documented ordering — P-MIX-4 harness note).
+    const drawer = await openMixer(page)
+    const original = 'd1: s("bd*8").gain(0.9)\nd2: s("hh*8").gain(0.9)'
+    await setStrudelCode(page, original)
+
+    // Poll until d2 is audibly playing (re-eval once if the first play raced the
+    // editor→file sync), then sample a sustained mean (P-MIX-6/8).
+    let d2pre = 0
+    for (let attempt = 0; attempt < 2 && d2pre < 20; attempt++) {
+      await play(page)
+      await page.waitForTimeout(700)
+      d2pre = await sustainedMean(() => meterFill(page, drawer, 'd2'), 12, page)
+    }
+    expect(d2pre).toBeGreaterThan(20)
+
+    // SOLO d1 → d2 silenced by the overlay, d1 stays, FILE byte-identical (D3)
+    await clickSolo(page, drawer, 'd1')
+    await page.waitForTimeout(2500) // re-eval + a cycle to flush queued haps
+    expect(await sustainedMean(() => meterFill(page, drawer, 'd2'), 20, page)).toBeLessThan(8)
+    expect(await sustainedMean(() => meterFill(page, drawer, 'd1'), 20, page)).toBeGreaterThan(20)
+    expect(await strudelValue(page)).toBe(original) // solo never writes the file
+
+    // UNSOLO → d2 comes back
+    await clickSolo(page, drawer, 'd1')
+    await page.waitForTimeout(2500)
+    expect(await sustainedMean(() => meterFill(page, drawer, 'd2'), 20, page)).toBeGreaterThan(20)
+    expect(await strudelValue(page)).toBe(original)
+  })
+
+  test('a solo dims the non-soloed strips (and not the soloed one)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, 'd1: s("bd*8")\nd2: s("hh*8")')
+    const drawer = await openMixer(page)
+
+    await clickSolo(page, drawer, 'd1')
+    const opacity = (id: string) =>
+      drawer.locator(`[data-mixer-strip-id="${id}"]`).evaluate((e) => (e as HTMLElement).style.opacity)
+    expect(await opacity('d2')).toBe('0.45') // non-soloed → dimmed
+    expect(await opacity('d1')).not.toBe('0.45') // soloed → full
+  })
+})
