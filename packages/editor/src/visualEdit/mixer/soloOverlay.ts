@@ -30,8 +30,8 @@ interface Insert {
 
 /**
  * Apply the solo monitoring overlay to `doc`. `soloIds` are strip ids
- * (`buildStripModels` ids — `d1`, `$0`, …). Returns the transformed source, or
- * `doc` unchanged when no solo is in effect.
+ * (`buildStripModels` ids — `d1`, `#0`, … the STABLE identity, #555). Returns
+ * the transformed source, or `doc` unchanged when no solo is in effect.
  */
 export function applyMonitorOverlay(doc: string, soloIds: ReadonlySet<string>): string {
   if (soloIds.size === 0) return doc

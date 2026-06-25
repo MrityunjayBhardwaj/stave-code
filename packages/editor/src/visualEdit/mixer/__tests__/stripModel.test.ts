@@ -18,9 +18,9 @@ describe('buildStripModels — one strip per top-level statement', () => {
     expect(strips.map((s) => s.kind)).toEqual(['step', 'roll', 'step'])
   })
 
-  it('gives anonymous $: tracks unique positional ids (label "$" is not a name)', () => {
+  it('gives anonymous $: tracks unique anonymous-position ids (label "$" is not a name)', () => {
     const strips = stripsOf(['$: s("bd")', '$: s("hh")'].join('\n'))
-    expect(strips.map((s) => s.id)).toEqual(['$0', '$1'])
+    expect(strips.map((s) => s.id)).toEqual(['#0', '#1'])
     expect(strips.every((s) => s.label === null)).toBe(true)
   })
 
@@ -61,18 +61,60 @@ describe('buildStripModels — mute read-back (S3)', () => {
 
   it('muting a middle anonymous track keeps unmuted siblings\' captureIds aligned with the engine', () => {
     // Engine skips `_`-ids without bumping anonIndex (StrudelEngine.ts:735-739),
-    // so the live scheduler keys are [$0, $1] for a/c. The strips must match.
+    // so the live scheduler keys are [$0, $1] for a/c. The captureIds must match.
     const strips = stripsOf(['$: s("a")', '_$: s("b")', '$: s("c")'].join('\n'))
     expect(strips.map((s) => s.muted)).toEqual([false, true, false])
     expect(strips.map((s) => s.captureId)).toEqual(['$0', '_$1', '$1'])
-    // ids are unique (the muted-anon `_$1` never collides with an unmuted `$n`)
-    expect(new Set(strips.map((s) => s.id)).size).toBe(3)
+    // ids count ALL anonymous tracks (muted included) — unique and independent
+    // of the captureId shift, so they don't move when `b` is muted.
+    expect(strips.map((s) => s.id)).toEqual(['#0', '#1', '#2'])
   })
 
-  it('two muted anonymous tracks get unique ids (no `_$` collision)', () => {
+  it('two muted anonymous tracks get unique ids (no `#`/`_$` collision)', () => {
     const strips = stripsOf(['_$: s("a")', '_$: s("b")'].join('\n'))
     expect(strips.map((s) => s.muted)).toEqual([true, true])
+    expect(strips.map((s) => s.id)).toEqual(['#0', '#1'])
     expect(new Set(strips.map((s) => s.id)).size).toBe(2)
+  })
+})
+
+// #555 — strip identity (`id`) is decoupled from the engine-join key
+// (`captureId`): muting must shift the positional captureId in lockstep with the
+// engine, but must NOT shift the stable id that UI state (expand/solo) hangs on.
+describe('buildStripModels — stable id vs positional captureId (#555)', () => {
+  it('keeps every anonymous track\'s id stable when an EARLIER sibling is muted', () => {
+    const before = stripsOf(['$: s("a")', '$: s("b")', '$: s("c")'].join('\n'))
+    const after = stripsOf(['$: s("a")', '_$: s("b")', '$: s("c")'].join('\n'))
+    // The third track `c` keeps id `#2` across the mute of `b` (its UI state stays
+    // attached) even though its captureId moves $2 → $1 to track the engine.
+    expect(before.map((s) => s.id)).toEqual(after.map((s) => s.id)) // ['#0','#1','#2']
+    expect(before[2].captureId).toBe('$2')
+    expect(after[2].captureId).toBe('$1')
+  })
+
+  it('keeps an anonymous track\'s OWN id stable when it is muted/unmuted', () => {
+    const unmuted = stripsOf(['$: s("a")', '$: s("b")'].join('\n'))[1]
+    const muted = stripsOf(['$: s("a")', '_$: s("b")'].join('\n'))[1]
+    expect(unmuted.id).toBe('#1')
+    expect(muted.id).toBe('#1') // own id survives its own mute toggle
+    expect(unmuted.captureId).toBe('$1')
+    expect(muted.captureId).toBe('_$1') // captureId reflects muted (dark meter)
+  })
+
+  it('numbers anonymous ids by anonymous position, skipping interleaved named tracks', () => {
+    // `$: a / d1: b / $: c` → the 2nd anonymous track is `#1` (not `#2`): the id
+    // counts anonymous tracks, so an interleaved named track does not consume a
+    // `#`. captureId, separately, is positional-over-unmuted ($0 / d1 / $1).
+    const strips = stripsOf(['$: s("a")', 'd1: s("b")', '$: s("c")'].join('\n'))
+    expect(strips.map((s) => s.id)).toEqual(['#0', 'd1', '#1'])
+    expect(strips.map((s) => s.captureId)).toEqual(['$0', 'd1', '$1'])
+  })
+
+  it('a named track keeps both id and captureId stable across mute', () => {
+    const unmuted = stripsOf('d1: s("bd")')[0]
+    const muted = stripsOf('_d1: s("bd")')[0]
+    expect([unmuted.id, unmuted.captureId]).toEqual(['d1', 'd1'])
+    expect([muted.id, muted.captureId]).toEqual(['d1', 'd1'])
   })
 })
 
