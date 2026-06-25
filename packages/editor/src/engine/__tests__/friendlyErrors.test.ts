@@ -7,6 +7,9 @@ import {
   formatFriendlyError,
   parseStackLocation,
   buildAliasSuffix,
+  isSoundfontZoneError,
+  soundfontRangeMessage,
+  SOUNDFONT_ZONE_HINT,
 } from '../friendlyErrors'
 
 const FAKE_INDEX: DocsIndex = {
@@ -493,5 +496,43 @@ describe('formatFriendlyError — alias suffix integration', () => {
     const err = new Error('sound xyz not found')
     const r = formatFriendlyError(err, 'strudel', {})
     expect(r.message).toBe('sound xyz not found')
+  })
+})
+
+// #561 — soundfont "no soundfont zone found" (note out of the instrument's range).
+describe('soundfont out-of-range error', () => {
+  it('detects the soundfont-zone message (and only that)', () => {
+    expect(isSoundfontZoneError('no soundfont zone found for preset ')).toBe(true)
+    expect(isSoundfontZoneError('No soundfont zone found for preset gm_agogo')).toBe(true)
+    expect(isSoundfontZoneError('sound xyz not found! Is it loaded?')).toBe(false)
+    expect(isSoundfontZoneError('Could not load soundfont gm_agogo')).toBe(false)
+  })
+
+  it('builds an actionable message from a hap with note name + instrument', () => {
+    // Grounded: the scheduler catch observed `{note:"c7", s:"gm_agogo", …}`.
+    expect(soundfontRangeMessage({ note: 'c7', s: 'gm_agogo' })).toBe(
+      'Note `c7` is outside the sampled range for soundfont `gm_agogo` — try a lower octave or a fuller-range instrument.',
+    )
+  })
+
+  it('handles a MIDI-number pitch and the `n` field', () => {
+    expect(soundfontRangeMessage({ note: 98, s: 'gm_agogo' })).toContain('Note `98`')
+    expect(soundfontRangeMessage({ n: 'd7', s: 'gm_lead' })).toContain('Note `d7`')
+  })
+
+  it('degrades gracefully: instrument-only, pitch-only, or neither', () => {
+    expect(soundfontRangeMessage({ s: 'gm_agogo' })).toBe(
+      'A note is outside the sampled range for soundfont `gm_agogo` — try a lower octave or a fuller-range instrument.',
+    )
+    expect(soundfontRangeMessage({ note: 'c7' })).toContain('Note `c7` is outside the sampled range —')
+    expect(soundfontRangeMessage({})).toBeNull()
+    expect(soundfontRangeMessage(null)).toBeNull()
+  })
+
+  it('formatFriendlyError falls back to the generic hint for the raw upstream message', () => {
+    // The empty upstream message carries no note/instrument → generic, never empty.
+    const err = new Error('no soundfont zone found for preset ')
+    const r = formatFriendlyError(err, 'strudel', {})
+    expect(r.message).toBe(SOUNDFONT_ZONE_HINT)
   })
 })
