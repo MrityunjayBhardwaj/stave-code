@@ -28175,6 +28175,10 @@ function colorForTrack(key3) {
   return paletteForTrack(trackIndexOf(key3), key3);
 }
 __name(colorForTrack, "colorForTrack");
+function trackIdentity(key3) {
+  return { key: key3, name: key3, color: colorForTrack(key3) };
+}
+__name(trackIdentity, "trackIdentity");
 
 // src/visualEdit/mixer/gain.ts
 var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
@@ -28277,23 +28281,27 @@ function firstMiniToken(mini) {
   return tok.replace(/[[\]<>(),*!@/:].*/, "") || null;
 }
 __name(firstMiniToken, "firstMiniToken");
-function displayKey(label, kind, miniString, source) {
-  const named = bareLabel(label);
-  if (named) return named;
-  if (kind === "step") return firstMiniToken(miniString) ?? source ?? "$default";
-  return source ?? firstMiniToken(miniString) ?? "$default";
+function trackSample(kind, miniString, source) {
+  if (kind === "step") return firstMiniToken(miniString) ?? source;
+  return source;
+}
+__name(trackSample, "trackSample");
+function displayKey(label, kind, miniString, source, headFn, index) {
+  return bareLabel(label) ?? trackSample(kind, miniString, source) ?? headFn ?? `Track ${index + 1}`;
 }
 __name(displayKey, "displayKey");
 function buildStripModel(chunk, index, id, captureId) {
   const kind = stripKind(chunk);
   const source = readSource(chunk, kind);
-  const name = bareLabel(chunk.label) ?? source ?? chunk.headFn ?? `Track ${index + 1}`;
+  const identity = trackIdentity(
+    displayKey(chunk.label, kind, chunk.miniString, source, chunk.headFn, index)
+  );
   return {
     id,
     index,
     kind,
     label: bareLabel(chunk.label),
-    name,
+    name: identity.name,
     headFn: chunk.headFn,
     miniString: chunk.miniString,
     source,
@@ -28303,12 +28311,7 @@ function buildStripModel(chunk, index, id, captureId) {
     sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
     muted: isMuted(chunk.label),
     muteable: chunk.label != null,
-    // Centralized track colour (V-track-1, #579): the shared `colorForTrack` over
-    // the strip's DISPLAY key (label for a named track, primary sample for an
-    // anonymous `$:`) — chosen to equal the Timeline's lane key, so the Mixer dot
-    // and the Timeline lane resolve to ONE colour. Replaces the old drum-voice
-    // palette, which keyed differently per view.
-    color: colorForTrack(displayKey(chunk.label, kind, chunk.miniString, source)),
+    color: identity.color,
     chain: chunk.chain,
     exprRange: chunk.exprRange,
     statementRange: chunk.statementRange,
