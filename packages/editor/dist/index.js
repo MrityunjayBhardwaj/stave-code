@@ -27616,6 +27616,16 @@ function MixerBody({
     },
     [applyEdit]
   );
+  const removeTransform = React29.useCallback(
+    (method) => {
+      applyEdit((fresh, wb) => {
+        const idx = fresh.chain.findIndex((c, i) => i > 0 && c.name === method);
+        if (idx === -1) return;
+        wb.deleteRange(fresh.chain[idx].range, "knob");
+      });
+    },
+    [applyEdit]
+  );
   const writeChainMethod = React29.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
@@ -27666,29 +27676,35 @@ function MixerBody({
             onChange: (v) => writeChainMethod(["bank"], "bank", v)
           }
         ),
-        /* @__PURE__ */ jsx("div", { "data-mixer-transforms": true, style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: QUICK_TRANSFORMS.map((t) => /* @__PURE__ */ jsxs(
-          "button",
-          {
-            type: "button",
-            disabled: present.has(t.method),
-            "data-mixer-transform": t.method,
-            onClick: () => addTransform(t.method, t.value),
-            style: {
-              padding: "3px 10px",
-              fontSize: 11,
-              borderRadius: 4,
-              border: "1px solid var(--border, #3a3a42)",
-              background: present.has(t.method) ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
-              color: present.has(t.method) ? "var(--foreground-muted, #6a6a72)" : "var(--foreground, #e6e6ea)",
-              cursor: present.has(t.method) ? "default" : "pointer"
+        /* @__PURE__ */ jsx("div", { "data-mixer-transforms": true, style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: QUICK_TRANSFORMS.map((t) => {
+          const active2 = present.has(t.method);
+          return /* @__PURE__ */ jsxs(
+            "button",
+            {
+              type: "button",
+              "data-mixer-transform": t.method,
+              "data-mixer-transform-active": active2 ? "true" : void 0,
+              "aria-pressed": active2,
+              title: active2 ? `Remove ${t.label}` : `Add ${t.label}`,
+              onClick: () => active2 ? removeTransform(t.method) : addTransform(t.method, t.value),
+              style: {
+                padding: "3px 10px",
+                fontSize: 11,
+                borderRadius: 4,
+                cursor: "pointer",
+                border: active2 ? "1px solid var(--accent, #6ea8fe)" : "1px solid var(--border, #3a3a42)",
+                background: active2 ? "var(--accent, #6ea8fe)" : "var(--background-elevated, #26262c)",
+                color: active2 ? "#0b0b0e" : "var(--foreground, #e6e6ea)"
+              },
+              children: [
+                active2 ? "\u2713" : "+",
+                " ",
+                t.label
+              ]
             },
-            children: [
-              "+ ",
-              t.label
-            ]
-          },
-          t.method
-        )) }),
+            t.method
+          );
+        }) }),
         knobs.length > 0 ? /* @__PURE__ */ jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }, children: knobs.map((k) => /* @__PURE__ */ jsx(
           Knob,
           {
@@ -28842,100 +28858,40 @@ function ExpandDrawer({
   chunk,
   applyToStrip,
   beginGesture,
-  endGesture,
-  onCollapse
+  endGesture
 }) {
   const applyEdit = React29.useCallback(
     (mutate) => applyToStrip(strip.id, mutate),
     [applyToStrip, strip.id]
   );
-  return /* @__PURE__ */ jsxs(
+  return /* @__PURE__ */ jsx(
     "div",
     {
       "data-mixer-expand-drawer": true,
       "data-mixer-expand-for": strip.id,
       style: {
         flexShrink: 0,
+        // Match the channel-strip height, not the full panel (#550 height
+        // parity): `alignSelf: stretch` sizes us to the strip group, whose
+        // height is set by the strip face. The chain below is absolutely
+        // filled so its own (taller) content adds NO height to the group — it
+        // scrolls inside instead. `position: relative` anchors that fill.
+        alignSelf: "stretch",
+        position: "relative",
         width: 264,
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
         borderLeft: "1px solid var(--border, #3a3a42)",
-        background: "var(--background-elevated, #26262c)",
+        background: "transparent",
         overflow: "hidden"
       },
-      children: [
-        /* @__PURE__ */ jsxs(
-          "div",
-          {
-            style: {
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "6px 10px",
-              borderBottom: "1px solid var(--border, #3a3a42)",
-              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
-            },
-            children: [
-              /* @__PURE__ */ jsx(
-                "span",
-                {
-                  style: { width: 8, height: 8, borderRadius: "50%", background: strip.color, flexShrink: 0 }
-                }
-              ),
-              /* @__PURE__ */ jsx(
-                "span",
-                {
-                  title: strip.name,
-                  style: {
-                    flex: 1,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    color: "var(--foreground, #e6e6ea)"
-                  },
-                  children: strip.name
-                }
-              ),
-              /* @__PURE__ */ jsx(
-                "button",
-                {
-                  type: "button",
-                  "data-mixer-expand-collapse": true,
-                  "aria-label": `Collapse ${strip.name}`,
-                  onClick: onCollapse,
-                  title: "Collapse",
-                  style: {
-                    flexShrink: 0,
-                    width: 18,
-                    height: 18,
-                    padding: 0,
-                    borderRadius: 3,
-                    fontSize: 11,
-                    lineHeight: "16px",
-                    cursor: "pointer",
-                    border: "1px solid var(--border, #3a3a42)",
-                    background: "var(--background, #1c1c20)",
-                    color: "var(--foreground-muted, #a0a0aa)"
-                  },
-                  children: "\u25C2"
-                }
-              )
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsx("div", { style: { flex: "1 1 0", minHeight: 0, overflowY: "auto" }, children: /* @__PURE__ */ jsx(
-          MixerBody,
-          {
-            chunk,
-            applyEdit,
-            beginGesture,
-            endGesture
-          }
-        ) })
-      ]
+      children: /* @__PURE__ */ jsx("div", { style: { position: "absolute", inset: 0, display: "flex", flexDirection: "column" }, children: /* @__PURE__ */ jsx("div", { style: { flex: "1 1 0", minHeight: 0, overflowY: "auto" }, children: /* @__PURE__ */ jsx(
+        MixerBody,
+        {
+          chunk,
+          applyEdit,
+          beginGesture,
+          endGesture
+        }
+      ) }) })
     }
   );
 }
@@ -29160,11 +29116,13 @@ function MixerStrips({
       "data-mixer-strips": true,
       style: {
         display: "flex",
-        alignItems: "stretch",
+        alignItems: "flex-start",
         gap: 8,
         padding: 8,
-        // Fill the panel height so an expanded drawer is tall enough to use the
-        // full knob chain (the strips stretch to match — DAW consoles are tall).
+        // Each strip group is content-tall (its strip face's natural height), so
+        // an expanded drawer matches the strips rather than the whole panel
+        // (#550 height parity). The band still fills the panel: the row pins to
+        // the top with slack below, and tall knob chains scroll inside.
         height: "100%",
         minHeight: 0,
         overflowX: "auto",
@@ -29183,7 +29141,7 @@ function MixerStrips({
               "div",
               {
                 "data-mixer-strip-group": true,
-                style: { display: "flex", alignItems: "flex-start", flexShrink: 0 },
+                style: { display: "flex", alignItems: "stretch", flexShrink: 0 },
                 children: [
                   /* @__PURE__ */ jsx(
                     ChannelStrip,
@@ -29218,8 +29176,7 @@ function MixerStrips({
                       chunk: chunks[i],
                       applyToStrip,
                       beginGesture,
-                      endGesture,
-                      onCollapse: () => toggle(strip.id)
+                      endGesture
                     }
                   )
                 ]
