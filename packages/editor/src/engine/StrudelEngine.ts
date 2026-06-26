@@ -611,6 +611,16 @@ export class StrudelEngine implements LiveCodingEngine {
     // capture so a bare top-level `.scope()` still registers.
     let capturedBackdropViz: string | null = null
     let capturedBackdropVizOptions: Record<string, unknown> | null = null
+    // #571 — fallback for an inline viz request (`.viz()` / `._pianoroll()` …)
+    // that ISN'T the terminal chain call. The request is tagged on the returned
+    // Pattern instance (`_pendingViz`), but Strudel patterns are immutable so any
+    // method AFTER it (`.gain()`, `.sound()`, …) returns a fresh instance that
+    // drops the tag, and the transpiler-appended `.p()` then sees nothing. The
+    // viz wraps also record the LATEST request here (latest-wins, matching "last
+    // viz in the chain wins"); `.p()` snapshots + clears it at every track
+    // boundary so it's recovered for this track and never leaks to the next.
+    let pendingChainViz: string | null = null
+    let pendingChainVizOptions: Record<string, unknown> | null = null
     let anonIndex = 0
     // Auto-orbit counter: each captured $: block with a .viz() request but no
     // explicit .orbit(N) gets its own unique orbit number starting high enough
@@ -697,6 +707,7 @@ export class StrudelEngine implements LiveCodingEngine {
             // Tag the RETURNED pattern with the resolved viz name
             if (resolvedName) {
               result._pendingViz = resolvedName
+              pendingChainViz = resolvedName // #571 — survive non-terminal chains
             }
             // Carry the `.viz(name, {...})` options object so the `.p()` wrapper
             // keys it to this track's captureId → stave.options — the same path
@@ -704,6 +715,7 @@ export class StrudelEngine implements LiveCodingEngine {
             // silently dropped (#215).
             if (opts && typeof opts === 'object') {
               result._pendingVizOptions = opts
+              pendingChainVizOptions = opts as Record<string, unknown> // #571
             }
             return result
           },
@@ -729,9 +741,13 @@ export class StrudelEngine implements LiveCodingEngine {
             writable: true,
             value: function(this: any, opts?: unknown) { // eslint-disable-line @typescript-eslint/no-explicit-any
               this._pendingViz = renderer
+              pendingChainViz = renderer // #571 — survive non-terminal chains
               // Carry the `.pianoroll({...})` argument so the `.p()` wrapper
               // can key it to this track's captureId → stave.options.
-              if (opts && typeof opts === 'object') this._pendingVizOptions = opts
+              if (opts && typeof opts === 'object') {
+                this._pendingVizOptions = opts
+                pendingChainVizOptions = opts as Record<string, unknown> // #571
+              }
               return this
             },
           })
@@ -753,6 +769,14 @@ export class StrudelEngine implements LiveCodingEngine {
           configurable: true,
           writable: true,
           value: function (this: any, id: string) { // eslint-disable-line @typescript-eslint/no-explicit-any
+            // #571 — snapshot + clear the chain-viz fallback at EVERY `.p()`
+            // boundary (incl. `_`-muted tracks whose capture is skipped below),
+            // so a mid-chain `.viz()` on THIS statement is recovered here and
+            // never leaks to the next track.
+            const chainViz = pendingChainViz
+            const chainVizOptions = pendingChainVizOptions
+            pendingChainViz = null
+            pendingChainVizOptions = null
             if (typeof id === 'string' && !(id.startsWith('_') || id.endsWith('_'))) {
               let captureId = id
               if (id.includes('$')) {
@@ -761,16 +785,24 @@ export class StrudelEngine implements LiveCodingEngine {
               }
 
               // Resolve pending .viz() request — .viz() fires BEFORE .p() in chain.
+              // The instance tag is exact for a TERMINAL `.viz()`; the closure
+              // fallback (chainViz) recovers a `.viz()` followed by more chain
+              // methods, which drop the tag on Strudel's immutable patterns (#571).
               let vizName: string = ''
               if (this._pendingViz && typeof this._pendingViz === 'string') {
                 vizName = this._pendingViz
                 capturedVizRequests.set(captureId, vizName)
                 delete this._pendingViz
+              } else if (chainViz) {
+                vizName = chainViz
+                capturedVizRequests.set(captureId, vizName)
               }
               // Resolve pending viz options (`.pianoroll({...})` argument).
               if (this._pendingVizOptions && typeof this._pendingVizOptions === 'object') {
                 capturedVizOptions.set(captureId, this._pendingVizOptions as Record<string, unknown>)
                 delete this._pendingVizOptions
+              } else if (chainVizOptions) {
+                capturedVizOptions.set(captureId, chainVizOptions)
               }
 
               // Per-track audio isolation: strudel's default orbit is 1, so every

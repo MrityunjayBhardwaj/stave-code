@@ -5077,6 +5077,8 @@ var _StrudelEngine = class _StrudelEngine {
     const capturedVizOptions = /* @__PURE__ */ new Map();
     let capturedBackdropViz = null;
     let capturedBackdropVizOptions = null;
+    let pendingChainViz = null;
+    let pendingChainVizOptions = null;
     let anonIndex = 0;
     let autoOrbitNext = 100;
     const transportOffset = this.transportOffset;
@@ -5117,9 +5119,11 @@ var _StrudelEngine = class _StrudelEngine {
             const result = strudelViz ? strudelViz.call(this, vizName) : this;
             if (resolvedName) {
               result._pendingViz = resolvedName;
+              pendingChainViz = resolvedName;
             }
             if (opts && typeof opts === "object") {
               result._pendingVizOptions = opts;
+              pendingChainVizOptions = opts;
             }
             return result;
           }, "value")
@@ -5132,7 +5136,11 @@ var _StrudelEngine = class _StrudelEngine {
             writable: true,
             value: /* @__PURE__ */ __name(function(opts) {
               this._pendingViz = renderer;
-              if (opts && typeof opts === "object") this._pendingVizOptions = opts;
+              pendingChainViz = renderer;
+              if (opts && typeof opts === "object") {
+                this._pendingVizOptions = opts;
+                pendingChainVizOptions = opts;
+              }
               return this;
             }, "value")
           });
@@ -5151,6 +5159,10 @@ var _StrudelEngine = class _StrudelEngine {
           configurable: true,
           writable: true,
           value: /* @__PURE__ */ __name(function(id) {
+            const chainViz = pendingChainViz;
+            const chainVizOptions = pendingChainVizOptions;
+            pendingChainViz = null;
+            pendingChainVizOptions = null;
             if (typeof id === "string" && !(id.startsWith("_") || id.endsWith("_"))) {
               let captureId = id;
               if (id.includes("$")) {
@@ -5162,10 +5174,15 @@ var _StrudelEngine = class _StrudelEngine {
                 vizName = this._pendingViz;
                 capturedVizRequests.set(captureId, vizName);
                 delete this._pendingViz;
+              } else if (chainViz) {
+                vizName = chainViz;
+                capturedVizRequests.set(captureId, vizName);
               }
               if (this._pendingVizOptions && typeof this._pendingVizOptions === "object") {
                 capturedVizOptions.set(captureId, this._pendingVizOptions);
                 delete this._pendingVizOptions;
+              } else if (chainVizOptions) {
+                capturedVizOptions.set(captureId, chainVizOptions);
               }
               let effectivePattern = this;
               if (vizName && typeof this.orbit === "function" && !probeExplicitOrbit(this)) {
