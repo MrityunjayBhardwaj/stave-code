@@ -128,19 +128,29 @@ test.describe('Mixer (#381)', () => {
     expect(await strudelValue(page)).toBe(original)
   })
 
-  test('quick-transform appends an effect and surfaces its knob (#390)', async ({ page }) => {
+  test('quick-transform toggles an effect on, then off, surfacing/removing its knob (#390)', async ({
+    page,
+  }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd")')
     const drawer = await openMixer(page)
+    const room = drawer.locator('[data-mixer-transform="room"]')
     // a bare pattern shows the transform row even with no knobs yet
-    await expect(drawer.locator('[data-mixer-transform="room"]')).toHaveCount(1)
-    await drawer.locator('[data-mixer-transform="room"]').click()
+    await expect(room).toHaveCount(1)
+
+    // click ON: appends the effect, surfaces its knob, marks the toggle pressed
+    await room.click()
     await page.waitForTimeout(80)
     expect(await strudelValue(page)).toBe('$: s("bd").room(0.4)')
-    // the appended effect now has a knob
     await expect(drawer.locator('[data-knob="room"]')).toHaveCount(1)
-    // and its button is now disabled (already present)
-    await expect(drawer.locator('[data-mixer-transform="room"]')).toBeDisabled()
+    await expect(room).toHaveAttribute('aria-pressed', 'true')
+
+    // click OFF (#390 toggle): removes the call AND its knob; doc back to bare
+    await room.click()
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: s("bd")')
+    await expect(drawer.locator('[data-knob="room"]')).toHaveCount(0)
+    await expect(room).toHaveAttribute('aria-pressed', 'false')
   })
 
   test('per-column .gain("…") surfaces a master knob that rescales every column (#478)', async ({

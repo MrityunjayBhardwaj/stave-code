@@ -254,6 +254,21 @@ export function MixerBody({
     [applyEdit],
   )
 
+  // Quick transforms toggle off (#390): clicking an already-present effect
+  // deletes its `.method(…)` call (and its knob with it). A member call's
+  // `range` is [dot, callEnd] (chunkDetect), so deleting it drops the whole
+  // call cleanly. Guard to members (i > 0) so the head pattern is never deleted.
+  const removeTransform = React.useCallback(
+    (method: string): void => {
+      applyEdit((fresh, wb) => {
+        const idx = fresh.chain.findIndex((c, i) => i > 0 && c.name === method)
+        if (idx === -1) return
+        wb.deleteRange(fresh.chain[idx].range, 'knob')
+      })
+    },
+    [applyEdit],
+  )
+
   // Sound assignment (#514 instrument / #515 kit): write a string-valued chain
   // method. Replace an existing `.sound`/`.s`/`.bank` arg in place, else append
   // `.canonical('value')`. Single-quoted literal (PV44 — double quotes reify to
@@ -310,30 +325,36 @@ export function MixerBody({
         />
       )}
       <div data-mixer-transforms style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {QUICK_TRANSFORMS.map((t) => (
-          <button
-            key={t.method}
-            type="button"
-            disabled={present.has(t.method)}
-            data-mixer-transform={t.method}
-            onClick={() => addTransform(t.method, t.value)}
-            style={{
-              padding: '3px 10px',
-              fontSize: 11,
-              borderRadius: 4,
-              border: '1px solid var(--border, #3a3a42)',
-              background: present.has(t.method)
-                ? 'var(--background, #1c1c20)'
-                : 'var(--background-elevated, #26262c)',
-              color: present.has(t.method)
-                ? 'var(--foreground-muted, #6a6a72)'
-                : 'var(--foreground, #e6e6ea)',
-              cursor: present.has(t.method) ? 'default' : 'pointer',
-            }}
-          >
-            + {t.label}
-          </button>
-        ))}
+        {QUICK_TRANSFORMS.map((t) => {
+          // A present effect is an ON toggle: clicking it again removes the call
+          // (#390 toggle). Filled = on; the leading glyph flips +/✓ to telegraph
+          // that a second click takes it off.
+          const active = present.has(t.method)
+          return (
+            <button
+              key={t.method}
+              type="button"
+              data-mixer-transform={t.method}
+              data-mixer-transform-active={active ? 'true' : undefined}
+              aria-pressed={active}
+              title={active ? `Remove ${t.label}` : `Add ${t.label}`}
+              onClick={() => (active ? removeTransform(t.method) : addTransform(t.method, t.value))}
+              style={{
+                padding: '3px 10px',
+                fontSize: 11,
+                borderRadius: 4,
+                cursor: 'pointer',
+                border: active
+                  ? '1px solid var(--accent, #6ea8fe)'
+                  : '1px solid var(--border, #3a3a42)',
+                background: active ? 'var(--accent, #6ea8fe)' : 'var(--background-elevated, #26262c)',
+                color: active ? '#0b0b0e' : 'var(--foreground, #e6e6ea)',
+              }}
+            >
+              {active ? '✓' : '+'} {t.label}
+            </button>
+          )
+        })}
       </div>
       {knobs.length > 0 ? (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
