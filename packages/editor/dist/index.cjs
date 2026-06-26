@@ -21552,7 +21552,7 @@ function findVizCallLineForBlock(code, vizId, targetAfterLine) {
     let blockEnd = i;
     for (let j = i + 1; j < lines.length; j++) {
       const next = lines[j].trim();
-      if (next.startsWith("$:") || next.startsWith("setcps")) break;
+      if (startsTopLevelBlock(next)) break;
       if (next !== "" && !next.startsWith("//")) blockEnd = j;
     }
     if (blockEnd + 1 !== targetAfterLine) continue;
