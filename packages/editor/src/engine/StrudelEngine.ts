@@ -6,6 +6,7 @@ import { OfflineRenderer } from './OfflineRenderer'
 import { normalizeStrudelHap } from './NormalizedHap'
 import type { HapEvent } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
+import { startsTopLevelBlock } from '../visualizers/blockScan'
 import type { LiveCodingEngine, EngineComponents } from './LiveCodingEngine'
 import { propagate, StrudelParseSystem, IREventCollectSystem } from '../ir/propagation'
 import type { PatternIR } from '../ir/PatternIR'
@@ -987,12 +988,14 @@ export class StrudelEngine implements LiveCodingEngine {
 
       // Find last line of this pattern block (continuation lines).
       // Blank lines are allowed within a block — only break on a new block
-      // start ($:, setcps) or end of file. This handles multi-line patterns
-      // with arbitrary whitespace.
+      // start or end of file. This handles multi-line patterns with arbitrary
+      // whitespace. The boundary check (`startsTopLevelBlock`) recognizes the
+      // solo/mute overlay's silenced forms (`_$:`, `/*`-wrapped) so a soloed
+      // track's block doesn't absorb the following silenced lines (#569).
       let lastLineIdx = i
       for (let j = i + 1; j < lines.length; j++) {
         const next = lines[j].trim()
-        if (next.startsWith('$:') || next.startsWith('setcps')) break
+        if (startsTopLevelBlock(next)) break
         if (next !== '' && !next.startsWith('//')) lastLineIdx = j
       }
 

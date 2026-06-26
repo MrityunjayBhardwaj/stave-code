@@ -4252,6 +4252,12 @@ function renderNote(ctx, oscType, freq, gain, release, startTime, endTime) {
 }
 __name(renderNote, "renderNote");
 
+// src/visualizers/blockScan.ts
+function startsTopLevelBlock(trimmed) {
+  return /^_?\$:/.test(trimmed) || trimmed.startsWith("setcps") || trimmed.startsWith("/*");
+}
+__name(startsTopLevelBlock, "startsTopLevelBlock");
+
 // src/engine/tierFlags.ts
 var STORAGE_PREFIX = "stave.strudel.tier.";
 var ALL_TIERS = [
@@ -5307,7 +5313,7 @@ var _StrudelEngine = class _StrudelEngine {
       let lastLineIdx = i;
       for (let j = i + 1; j < lines.length; j++) {
         const next = lines[j].trim();
-        if (next.startsWith("$:") || next.startsWith("setcps")) break;
+        if (startsTopLevelBlock(next)) break;
         if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
       }
       const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
@@ -21520,7 +21526,7 @@ function findVizCallLineForBlock(code, vizId, targetAfterLine) {
     let blockEnd = i;
     for (let j = i + 1; j < lines.length; j++) {
       const next = lines[j].trim();
-      if (next.startsWith("$:") || next.startsWith("setcps")) break;
+      if (startsTopLevelBlock(next)) break;
       if (next !== "" && !next.startsWith("//")) blockEnd = j;
     }
     if (blockEnd + 1 !== targetAfterLine) continue;
@@ -21865,7 +21871,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       let foundViz = false;
       for (let j = blockStart; j < lines.length; j++) {
         const next = lines[j].trim();
-        if (j > blockStart && (next.startsWith("$:") || next.startsWith("setcps"))) break;
+        if (j > blockStart && startsTopLevelBlock(next)) break;
         if (next !== "" && !next.startsWith("//")) blockEnd = j;
         if (/\.viz\s*\(/.test(next)) {
           foundViz = true;
@@ -21877,7 +21883,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         blockEnd = blockStart;
         for (let j = blockStart + 1; j < lines.length; j++) {
           const next = lines[j].trim();
-          if (next.startsWith("$:") || next.startsWith("setcps")) break;
+          if (startsTopLevelBlock(next)) break;
           if (next !== "" && !next.startsWith("//")) blockEnd = j;
         }
       }
