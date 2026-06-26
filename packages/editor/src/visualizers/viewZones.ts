@@ -267,7 +267,9 @@ function findVizCallLineForBlock(
     let blockEnd = i
     for (let j = i + 1; j < lines.length; j++) {
       const next = lines[j].trim()
-      if (next.startsWith('$:') || next.startsWith('setcps')) break
+      // Same boundary predicate as the engine's scan (#569) — must agree, since
+      // we match `blockEnd + 1` against the engine-computed `targetAfterLine`.
+      if (startsTopLevelBlock(next)) break
       if (next !== '' && !next.startsWith('//')) blockEnd = j
     }
     if (blockEnd + 1 !== targetAfterLine) continue
