@@ -6,6 +6,7 @@ import { parse } from 'acorn';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw, { DiffEditor as DiffEditor$1 } from '@monaco-editor/react';
 import * as Y3 from 'yjs';
+import { createPortal } from 'react-dom';
 
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -27324,26 +27325,53 @@ var EFFECT_GROUPS = (() => {
   return order.map((g) => [g, byGroup.get(g)]);
 })();
 var STRIP_OWNED = /* @__PURE__ */ new Set(["gain", "pan"]);
+var MENU_WIDTH = 230;
 function AddEffectMenu({
   present,
   onToggle
 }) {
   const [open, setOpen] = React30.useState(false);
   const [query, setQuery] = React30.useState("");
-  const ref = React30.useRef(null);
+  const [pos, setPos] = React30.useState(null);
+  const btnRef = React30.useRef(null);
+  const menuRef = React30.useRef(null);
+  const place = React30.useCallback(() => {
+    const b = btnRef.current?.getBoundingClientRect();
+    if (!b) return;
+    const margin = 8;
+    const below = window.innerHeight - b.bottom - margin;
+    const above = b.top - margin;
+    const openUp = below < 200 && above > below;
+    const maxHeight = Math.min(300, Math.max(120, openUp ? above : below));
+    setPos({
+      top: openUp ? Math.max(margin, b.top - 4 - maxHeight) : b.bottom + 4,
+      left: Math.max(margin, Math.min(b.left, window.innerWidth - MENU_WIDTH - margin)),
+      maxHeight
+    });
+  }, []);
+  React30.useLayoutEffect(() => {
+    if (open) place();
+  }, [open, place]);
   React30.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+      const t = e.target;
+      if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     }, "onDown");
     const onKey = /* @__PURE__ */ __name((e) => {
       if (e.key === "Escape") setOpen(false);
     }, "onKey");
+    const dismiss = /* @__PURE__ */ __name(() => setOpen(false), "dismiss");
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("scroll", dismiss, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
     };
   }, [open]);
   const q = query.trim().toLowerCase();
@@ -27355,45 +27383,26 @@ function AddEffectMenu({
       ) : effects
     ]
   ).filter(([, effects]) => effects.length > 0);
-  return /* @__PURE__ */ jsxs("div", { ref, style: { position: "relative" }, children: [
-    /* @__PURE__ */ jsx(
-      "button",
-      {
-        type: "button",
-        "data-mixer-add-effect": true,
-        "aria-expanded": open,
-        onClick: () => setOpen((o) => !o),
-        title: "Add effect",
-        style: {
-          padding: "3px 10px",
-          fontSize: 11,
-          borderRadius: 4,
-          cursor: "pointer",
-          border: "1px solid var(--border, #3a3a42)",
-          background: "var(--background-elevated, #26262c)",
-          color: "var(--foreground, #e6e6ea)"
-        },
-        children: "\uFF0B More \u25BE"
-      }
-    ),
-    open && /* @__PURE__ */ jsxs(
+  const menu = open && pos ? createPortal(
+    /* @__PURE__ */ jsxs(
       "div",
       {
+        ref: menuRef,
         "data-mixer-add-effect-menu": true,
         style: {
-          position: "absolute",
-          zIndex: 30,
-          top: "100%",
-          left: 0,
-          marginTop: 4,
-          width: 230,
-          maxHeight: 300,
+          position: "fixed",
+          zIndex: 1e3,
+          top: pos.top,
+          left: pos.left,
+          width: MENU_WIDTH,
+          maxHeight: pos.maxHeight,
           overflowY: "auto",
           padding: 6,
           borderRadius: 6,
           border: "1px solid var(--border, #3a3a42)",
           background: "var(--background-elevated, #26262c)",
-          boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4)"
+          boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4)",
+          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
         },
         children: [
           /* @__PURE__ */ jsx(
@@ -27470,7 +27479,32 @@ function AddEffectMenu({
           ] })
         ]
       }
-    )
+    ),
+    document.body
+  ) : null;
+  return /* @__PURE__ */ jsxs(Fragment, { children: [
+    /* @__PURE__ */ jsx(
+      "button",
+      {
+        ref: btnRef,
+        type: "button",
+        "data-mixer-add-effect": true,
+        "aria-expanded": open,
+        onClick: () => setOpen((o) => !o),
+        title: "Add effect",
+        style: {
+          padding: "3px 10px",
+          fontSize: 11,
+          borderRadius: 4,
+          cursor: "pointer",
+          border: "1px solid var(--border, #3a3a42)",
+          background: "var(--background-elevated, #26262c)",
+          color: "var(--foreground, #e6e6ea)"
+        },
+        children: "\uFF0B More \u25BE"
+      }
+    ),
+    menu
   ] });
 }
 __name(AddEffectMenu, "AddEffectMenu");

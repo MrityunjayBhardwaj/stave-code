@@ -7,6 +7,7 @@ var acorn = require('acorn');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
 var Y3 = require('yjs');
+var reactDom = require('react-dom');
 
 function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 
@@ -27350,26 +27351,53 @@ var EFFECT_GROUPS = (() => {
   return order.map((g) => [g, byGroup.get(g)]);
 })();
 var STRIP_OWNED = /* @__PURE__ */ new Set(["gain", "pan"]);
+var MENU_WIDTH = 230;
 function AddEffectMenu({
   present,
   onToggle
 }) {
   const [open, setOpen] = React30__namespace.useState(false);
   const [query, setQuery] = React30__namespace.useState("");
-  const ref = React30__namespace.useRef(null);
+  const [pos, setPos] = React30__namespace.useState(null);
+  const btnRef = React30__namespace.useRef(null);
+  const menuRef = React30__namespace.useRef(null);
+  const place = React30__namespace.useCallback(() => {
+    const b = btnRef.current?.getBoundingClientRect();
+    if (!b) return;
+    const margin = 8;
+    const below = window.innerHeight - b.bottom - margin;
+    const above = b.top - margin;
+    const openUp = below < 200 && above > below;
+    const maxHeight = Math.min(300, Math.max(120, openUp ? above : below));
+    setPos({
+      top: openUp ? Math.max(margin, b.top - 4 - maxHeight) : b.bottom + 4,
+      left: Math.max(margin, Math.min(b.left, window.innerWidth - MENU_WIDTH - margin)),
+      maxHeight
+    });
+  }, []);
+  React30__namespace.useLayoutEffect(() => {
+    if (open) place();
+  }, [open, place]);
   React30__namespace.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+      const t = e.target;
+      if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     }, "onDown");
     const onKey = /* @__PURE__ */ __name((e) => {
       if (e.key === "Escape") setOpen(false);
     }, "onKey");
+    const dismiss = /* @__PURE__ */ __name(() => setOpen(false), "dismiss");
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("scroll", dismiss, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
     };
   }, [open]);
   const q = query.trim().toLowerCase();
@@ -27381,45 +27409,26 @@ function AddEffectMenu({
       ) : effects
     ]
   ).filter(([, effects]) => effects.length > 0);
-  return /* @__PURE__ */ jsxRuntime.jsxs("div", { ref, style: { position: "relative" }, children: [
-    /* @__PURE__ */ jsxRuntime.jsx(
-      "button",
-      {
-        type: "button",
-        "data-mixer-add-effect": true,
-        "aria-expanded": open,
-        onClick: () => setOpen((o) => !o),
-        title: "Add effect",
-        style: {
-          padding: "3px 10px",
-          fontSize: 11,
-          borderRadius: 4,
-          cursor: "pointer",
-          border: "1px solid var(--border, #3a3a42)",
-          background: "var(--background-elevated, #26262c)",
-          color: "var(--foreground, #e6e6ea)"
-        },
-        children: "\uFF0B More \u25BE"
-      }
-    ),
-    open && /* @__PURE__ */ jsxRuntime.jsxs(
+  const menu = open && pos ? reactDom.createPortal(
+    /* @__PURE__ */ jsxRuntime.jsxs(
       "div",
       {
+        ref: menuRef,
         "data-mixer-add-effect-menu": true,
         style: {
-          position: "absolute",
-          zIndex: 30,
-          top: "100%",
-          left: 0,
-          marginTop: 4,
-          width: 230,
-          maxHeight: 300,
+          position: "fixed",
+          zIndex: 1e3,
+          top: pos.top,
+          left: pos.left,
+          width: MENU_WIDTH,
+          maxHeight: pos.maxHeight,
           overflowY: "auto",
           padding: 6,
           borderRadius: 6,
           border: "1px solid var(--border, #3a3a42)",
           background: "var(--background-elevated, #26262c)",
-          boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4)"
+          boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4)",
+          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
         },
         children: [
           /* @__PURE__ */ jsxRuntime.jsx(
@@ -27496,7 +27505,32 @@ function AddEffectMenu({
           ] })
         ]
       }
-    )
+    ),
+    document.body
+  ) : null;
+  return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntime.jsx(
+      "button",
+      {
+        ref: btnRef,
+        type: "button",
+        "data-mixer-add-effect": true,
+        "aria-expanded": open,
+        onClick: () => setOpen((o) => !o),
+        title: "Add effect",
+        style: {
+          padding: "3px 10px",
+          fontSize: 11,
+          borderRadius: 4,
+          cursor: "pointer",
+          border: "1px solid var(--border, #3a3a42)",
+          background: "var(--background-elevated, #26262c)",
+          color: "var(--foreground, #e6e6ea)"
+        },
+        children: "\uFF0B More \u25BE"
+      }
+    ),
+    menu
   ] });
 }
 __name(AddEffectMenu, "AddEffectMenu");
