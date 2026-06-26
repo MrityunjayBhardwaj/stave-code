@@ -2,6 +2,7 @@ import type * as Monaco from 'monaco-editor'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
 import type { VizRenderer, VizDescriptor } from './types'
 import { resolveDescriptor } from './resolveDescriptor'
+import { startsTopLevelBlock } from './blockScan'
 import { attachVizLifecycle } from './attachVizLifecycle'
 import { BufferedScheduler } from '../engine/BufferedScheduler'
 import { VizPresetStore, type CropRegion, type VizPreset } from './vizPreset'
@@ -753,7 +754,7 @@ export function addInlineViewZones(
       let foundViz = false
       for (let j = blockStart; j < lines.length; j++) {
         const next = lines[j].trim()
-        if (j > blockStart && (next.startsWith('$:') || next.startsWith('setcps'))) break
+        if (j > blockStart && startsTopLevelBlock(next)) break
         if (next !== '' && !next.startsWith('//')) blockEnd = j
         if (/\.viz\s*\(/.test(next)) { foundViz = true; blockEnd = j; break }
       }
@@ -762,7 +763,7 @@ export function addInlineViewZones(
         blockEnd = blockStart
         for (let j = blockStart + 1; j < lines.length; j++) {
           const next = lines[j].trim()
-          if (next.startsWith('$:') || next.startsWith('setcps')) break
+          if (startsTopLevelBlock(next)) break
           if (next !== '' && !next.startsWith('//')) blockEnd = j
         }
       }
