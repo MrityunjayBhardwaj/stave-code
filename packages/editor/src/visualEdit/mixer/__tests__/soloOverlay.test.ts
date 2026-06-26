@@ -25,10 +25,10 @@ describe('applyMonitorOverlay', () => {
 
   it('mutes non-soloed labelled tracks with the `_` prefix; soloed stays intact', () => {
     const doc = '$: s("bd")\nd1: s("hh")'
-    // solo the named track → the anonymous `$:` ($0) is silenced
+    // solo the named track → the anonymous `$:` (id #0) is silenced
     expect(applyMonitorOverlay(doc, new Set(['d1']))).toBe('_$: s("bd")\nd1: s("hh")')
-    // solo the anonymous track → d1 is silenced
-    expect(applyMonitorOverlay(doc, new Set(['$0']))).toBe('$: s("bd")\n_d1: s("hh")')
+    // solo the anonymous track (stable id #0) → d1 is silenced
+    expect(applyMonitorOverlay(doc, new Set(['#0']))).toBe('$: s("bd")\n_d1: s("hh")')
   })
 
   it('keeps multiple soloed tracks audible and mutes the rest', () => {
@@ -56,6 +56,6 @@ describe('applyMonitorOverlay', () => {
     // three anonymous tracks, solo the middle → first and third both silenced,
     // and the splices must not corrupt each other
     const doc = '$: s("a")\n$: s("b")\n$: s("c")'
-    expect(applyMonitorOverlay(doc, new Set(['$1']))).toBe('_$: s("a")\n$: s("b")\n_$: s("c")')
+    expect(applyMonitorOverlay(doc, new Set(['#1']))).toBe('_$: s("a")\n$: s("b")\n_$: s("c")')
   })
 })

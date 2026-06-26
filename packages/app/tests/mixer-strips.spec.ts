@@ -164,8 +164,8 @@ test.describe('Mixer strip write-back (#540 / S1)', () => {
     const drawer = await openMixer(page)
     await enlargeDrawer(page)
 
-    // drag the SECOND anonymous strip ($1 = the hh*4 line) up → louder
-    await dragFader(page, drawer, '$1', 40)
+    // drag the SECOND anonymous strip (#1 = the hh*4 line) up → louder
+    await dragFader(page, drawer, '#1', 40)
     const after = await strudelValue(page)
     const lines = after.split('\n')
     // only the third line changed; lines 0 and 1 are byte-identical
@@ -185,7 +185,7 @@ test.describe('Mixer strip write-back (#540 / S1)', () => {
     await setStrudelCode(page, '$: s("bd")')
     const drawer = await openMixer(page)
     await enlargeDrawer(page)
-    await dragFader(page, drawer, '$0', 30)
+    await dragFader(page, drawer, '#0', 30)
     expect(await strudelValue(page)).toMatch(/^\$: s\("bd"\)\.gain\(\d*\.?\d+\)$/)
   })
 
@@ -194,7 +194,7 @@ test.describe('Mixer strip write-back (#540 / S1)', () => {
     await setStrudelCode(page, '$: s("bd sn").gain("0.5 1")')
     const drawer = await openMixer(page)
     await enlargeDrawer(page)
-    await dragFader(page, drawer, '$0', -30) // drag DOWN → quieter
+    await dragFader(page, drawer, '#0', -30) // drag DOWN → quieter
     const after = await strudelValue(page)
     const m = after.match(/gain\("([\d.]+) ([\d.]+)"\)/)
     expect(m, `unexpected: ${after}`).not.toBeNull()
@@ -208,7 +208,7 @@ test.describe('Mixer strip write-back (#540 / S1)', () => {
     await setStrudelCode(page, '$: s("bd")')
     const drawer = await openMixer(page)
     await enlargeDrawer(page)
-    const pan = drawer.locator('[data-mixer-strip-id="$0"] [data-mixer-strip-pan-control]')
+    const pan = drawer.locator('[data-mixer-strip-id="#0"] [data-mixer-strip-pan-control]')
     const box = await pan.boundingBox()
     if (!box) throw new Error('no pan box')
     const cy = box.y + box.height / 2
@@ -226,7 +226,7 @@ test.describe('Mixer strip write-back (#540 / S1)', () => {
     await setStrudelCode(page, original)
     const drawer = await openMixer(page)
     await enlargeDrawer(page)
-    await dragFader(page, drawer, '$0', 40)
+    await dragFader(page, drawer, '#0', 40)
     expect(await strudelValue(page)).toBe(original)
   })
 })
@@ -476,14 +476,14 @@ test.describe('Mixer live meters (#540 / S2)', () => {
     // one meter per strip, keyed by the strip's captureId (the analyser join).
     await expect(drawer.locator('[data-mixer-strip-meter]')).toHaveCount(2)
     await expect(
-      drawer.locator('[data-mixer-strip-id="$0"] [data-mixer-meter-capture="$0"]'),
+      drawer.locator('[data-mixer-strip-id="#0"] [data-mixer-meter-capture="$0"]'),
     ).toBeVisible()
     await expect(
       drawer.locator('[data-mixer-strip-id="d1"] [data-mixer-meter-capture="d1"]'),
     ).toBeVisible()
 
     // nothing playing yet → both bars dark.
-    expect(await meterFill(page, drawer, '$0')).toBeLessThan(2)
+    expect(await meterFill(page, drawer, '#0')).toBeLessThan(2)
     expect(await meterFill(page, drawer, 'd1')).toBeLessThan(2)
   })
 
@@ -507,8 +507,8 @@ test.describe('Mixer live meters (#540 / S2)', () => {
       loudMax = 0
       quietMax = 0
       for (let i = 0; i < 30; i++) {
-        loudMax = Math.max(loudMax, await meterFill(page, drawer, '$0'))
-        quietMax = Math.max(quietMax, await meterFill(page, drawer, '$1'))
+        loudMax = Math.max(loudMax, await meterFill(page, drawer, '#0'))
+        quietMax = Math.max(quietMax, await meterFill(page, drawer, '#1'))
         await page.waitForTimeout(33)
       }
     }
@@ -552,7 +552,7 @@ test.describe('Mixer strip expand drawer (#550 / S4b)', () => {
 
   test('the drawer binds to THAT strip\'s chain, not the cursor\'s track', async ({ page }) => {
     await boot(page)
-    // cursor lands on line 1 ($0, a gain track); d1 carries an lpf instead.
+    // cursor lands on line 1 (#0, a gain track); d1 carries an lpf instead.
     await setStrudelCode(page, '$: s("bd").gain(0.2)\nd1: note("c e").lpf(800)')
     const drawer = await openMixer(page)
 
@@ -604,10 +604,10 @@ test.describe('Mixer strip expand drawer (#550 / S4b)', () => {
     await setStrudelCode(page, '$: s("bd").gain(0.5)\nd1: note("c e").lpf(800)')
     const drawer = await openMixer(page)
 
-    await toggleExpand(page, drawer, '$0')
+    await toggleExpand(page, drawer, '#0')
     await toggleExpand(page, drawer, 'd1')
     await expect(drawer.locator('[data-mixer-expand-drawer]')).toHaveCount(2)
-    await expect(drawer.locator('[data-mixer-expand-for="$0"]')).toHaveCount(1)
+    await expect(drawer.locator('[data-mixer-expand-for="#0"]')).toHaveCount(1)
     await expect(drawer.locator('[data-mixer-expand-for="d1"]')).toHaveCount(1)
   })
 
@@ -637,6 +637,29 @@ test.describe('Mixer strip expand drawer (#550 / S4b)', () => {
     await setStrudelCode(page, original)
     await expect(drawer.locator('[data-mixer-expand-for="d1"]')).toHaveCount(1)
     expect(await strudelValue(page)).toBe(original)
+  })
+
+  test('an expanded anonymous strip stays open when an EARLIER track is muted (#555)', async ({
+    page,
+  }) => {
+    await boot(page)
+    // two anonymous tracks (#0, #1) around a named one; #1 = the cp line.
+    await setStrudelCode(page, '$: s("bd")\nd1: s("hh")\n$: s("cp")')
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+
+    // expand the SECOND anonymous strip (#1).
+    await toggleExpand(page, drawer, '#1')
+    await expect(drawer.locator('[data-mixer-expand-for="#1"]')).toHaveCount(1)
+
+    // mute the FIRST anonymous track (#0). Its engine captureId leaves the count
+    // ($1→$0 for #1), but #1's STABLE id does not shift — so its drawer must stay
+    // open and bound to #1 (under the old positional id it would have collapsed).
+    await clickMute(page, drawer, '#0')
+    await expect(drawer.locator('[data-mixer-strip-id="#0"][data-mixer-strip-muted]')).toHaveCount(
+      1,
+    )
+    await expect(drawer.locator('[data-mixer-expand-for="#1"]')).toHaveCount(1)
   })
 })
 

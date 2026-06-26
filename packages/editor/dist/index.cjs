@@ -27811,7 +27811,7 @@ function stripColor(kind, miniString) {
   return VOICE_FALLBACK_COLOR;
 }
 __name(stripColor, "stripColor");
-function buildStripModel(chunk, index, id) {
+function buildStripModel(chunk, index, id, captureId) {
   const kind = stripKind(chunk);
   const source = readSource(chunk, kind);
   const name = bareLabel(chunk.label) ?? source ?? chunk.headFn ?? `Track ${index + 1}`;
@@ -27834,23 +27834,21 @@ function buildStripModel(chunk, index, id) {
     chain: chunk.chain,
     exprRange: chunk.exprRange,
     statementRange: chunk.statementRange,
-    // captureId === id: a NAMED strip joins on its bare label (`d1`); a muted
-    // track's id never matches a live scheduler key (it's `_$<n>` or a name the
-    // engine skipped while muted) → that strip's meter stays dark, exactly the
-    // muted behaviour (S2). For an all-unmuted doc this is byte-identical to S2.
-    captureId: id
+    captureId
   };
 }
 __name(buildStripModel, "buildStripModel");
 function buildStripModels(chunks) {
-  let anon = 0;
+  let anonAll = 0;
+  let anonLive = 0;
   return chunks.map((chunk, index) => {
     const bare = bareLabel(chunk.label);
-    let id;
-    if (bare !== null) id = bare;
-    else if (isMuted(chunk.label)) id = `_$${index}`;
-    else id = `$${anon++}`;
-    return buildStripModel(chunk, index, id);
+    const id = bare ?? `#${anonAll++}`;
+    let captureId;
+    if (bare !== null) captureId = bare;
+    else if (isMuted(chunk.label)) captureId = `_$${index}`;
+    else captureId = `$${anonLive++}`;
+    return buildStripModel(chunk, index, id, captureId);
   });
 }
 __name(buildStripModels, "buildStripModels");

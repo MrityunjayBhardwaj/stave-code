@@ -24,7 +24,17 @@ import { type GainState, readGainState } from './gain'
 export type StripKind = 'step' | 'roll' | 'group' | 'unknown'
 
 export interface StripModel {
-  /** stable id across edits: the `$:`/`d1` label, or `$<index>` when anonymous */
+  /**
+   * STABLE identity across edits: the `$:`/`d1` label, or `#<k>` (position among
+   * ALL anonymous tracks, muted included) when anonymous. Unlike `captureId`,
+   * this does NOT shift when another track is muted — muting only prefixes a `_`,
+   * it never reorders, adds or removes a statement, so the index is invariant.
+   * This is the
+   * key all non-document UI state hangs on (expand/solo sets, the write-path
+   * lookup, the React key, `data-mixer-strip-id`) so that state stays attached to
+   * the right strip across a mute toggle (#555). DISTINCT from `captureId`: the
+   * engine join must be positional-over-unmuted, this must be stable.
+   */
   id: string
   /** position among top-level statements (source order) */
   index: number
@@ -62,9 +72,14 @@ export interface StripModel {
   /** the whole statement span — the freshness/write anchor */
   statementRange: [number, number]
   /**
-   * CANDIDATE join key to the per-track analyser (`StrudelEngine` captureIds:
-   * `"d1"` for a named statement, `"$<n>"` for the nth anonymous `$:`). Verified
-   * against `getTrackSchedulers()` in S2 (GR1) before any meter reads it.
+   * Join key to the per-track analyser (`StrudelEngine` captureIds: `"d1"` for a
+   * named statement, `"$<n>"` for the nth UNMUTED anonymous `$:`). POSITIONAL by
+   * design — it counts only unmuted anonymous tracks, exactly mirroring the
+   * engine's `anonIndex` (which skips `_`-muted ids), so it shifts in lockstep
+   * with the engine when a sibling is muted and the meter join stays correct.
+   * This is why it is DISTINCT from `id` (#555): the engine join must move with
+   * the engine; the strip's UI identity must not. Verified against
+   * `getTrackSchedulers()` in S2 (GR1).
    */
   captureId: string
 }
@@ -144,7 +159,12 @@ function stripColor(kind: StripKind, miniString: string | null): string {
   return VOICE_FALLBACK_COLOR
 }
 
-function buildStripModel(chunk: ChunkInfo, index: number, id: string): StripModel {
+function buildStripModel(
+  chunk: ChunkInfo,
+  index: number,
+  id: string,
+  captureId: string,
+): StripModel {
   const kind = stripKind(chunk)
   const source = readSource(chunk, kind)
   // Display name uses the marker-stripped label (`_d1`→`d1`) so a muted strip
@@ -169,35 +189,49 @@ function buildStripModel(chunk: ChunkInfo, index: number, id: string): StripMode
     chain: chunk.chain,
     exprRange: chunk.exprRange,
     statementRange: chunk.statementRange,
-    // captureId === id: a NAMED strip joins on its bare label (`d1`); a muted
-    // track's id never matches a live scheduler key (it's `_$<n>` or a name the
-    // engine skipped while muted) → that strip's meter stays dark, exactly the
-    // muted behaviour (S2). For an all-unmuted doc this is byte-identical to S2.
-    captureId: id,
+    captureId,
   }
 }
 
 /**
- * Project every detected chunk into a strip, in source order, assigning each a
- * stable, unique id that doubles as the analyser join key (captureId):
- *  - a named statement (`d1:`, or muted `_d1:`) → its bare label `d1` (STABLE
- *    across mute, unique since labels are unique);
- *  - an UNMUTED anonymous `$:` → `$<k>`, k counting only unmuted anonymous
- *    tracks — exactly the engine's `anonIndex` numbering, which also skips
- *    `_`-muted ids (`StrudelEngine.ts:735-739`), so the captureIds of unmuted
- *    siblings stay aligned regardless of how many tracks are muted;
- *  - a MUTED anonymous `_$:` → `_$<index>`, unique by statement index and never
- *    a live scheduler key (the engine skipped it) → a dark meter.
+ * Project every detected chunk into a strip, in source order, assigning each TWO
+ * distinct keys — a stable UI identity (`id`) and a positional engine-join key
+ * (`captureId`) — because the two have opposite requirements under a mute (#555):
+ *
+ *  - **`id` (stable identity):** a named statement → its bare label `d1`; an
+ *    anonymous `$:` (muted or not) → `#<index>`, the ABSOLUTE statement position.
+ *    Invariant across any mute toggle — muting only prefixes a `_`, it never
+ *    reorders/adds/removes a statement — so UI state keyed by `id` (expand/solo
+ *    sets, the write lookup, the React key) stays attached to the same strip.
+ *
+ *  - **`captureId` (engine join):** a named statement → its bare label `d1`; an
+ *    UNMUTED anonymous `$:` → `$<k>`, k counting only unmuted anonymous tracks —
+ *    exactly the engine's `anonIndex` numbering, which also skips `_`-muted ids
+ *    (`StrudelEngine.ts:735-739`); a MUTED anonymous `_$:` → `_$<index>`, never a
+ *    live scheduler key (the engine skipped it) → a dark meter. POSITIONAL on
+ *    purpose: it shifts in lockstep with the engine so the meter join stays
+ *    correct when a sibling is muted.
+ *
+ * Both are unique: labels are unique; `#<index>` is unique by position and never
+ * collides with a name (JS labels can't start with `#`) nor a captureId (`$`/`_$`).
  */
 export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
-  let anon = 0
+  let anonAll = 0 // ALL anonymous tracks (muted + unmuted) → the stable id index
+  let anonLive = 0 // UNMUTED anonymous only → the engine captureId index
   return chunks.map((chunk, index) => {
     const bare = bareLabel(chunk.label)
-    let id: string
-    if (bare !== null) id = bare
-    else if (isMuted(chunk.label)) id = `_$${index}`
-    else id = `$${anon++}`
-    return buildStripModel(chunk, index, id)
+    // Stable identity: name, else position among ALL anonymous tracks (muted
+    // included). Invariant across a mute toggle — muting prefixes a `_` but never
+    // adds/removes an anonymous statement, so this index never shifts on mute.
+    const id = bare ?? `#${anonAll++}`
+    // Positional engine-join key: counts only UNMUTED anonymous tracks, mirroring
+    // the engine's anonIndex (which skips `_`-muted ids); a muted anonymous track
+    // gets `_$<index>` (never a live scheduler key → dark meter).
+    let captureId: string
+    if (bare !== null) captureId = bare
+    else if (isMuted(chunk.label)) captureId = `_$${index}`
+    else captureId = `$${anonLive++}`
+    return buildStripModel(chunk, index, id, captureId)
   })
 }
 
