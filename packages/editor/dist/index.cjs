@@ -28270,6 +28270,20 @@ function isForeign(chunk, name) {
   return call !== void 0 && call.args[0].numeric === null;
 }
 __name(isForeign, "isForeign");
+function firstMiniToken(mini) {
+  if (!mini) return null;
+  const tok = mini.trim().split(/\s+/)[0];
+  if (!tok || tok === "~" || tok === "-") return null;
+  return tok.replace(/[[\]<>(),*!@/:].*/, "") || null;
+}
+__name(firstMiniToken, "firstMiniToken");
+function displayKey(label, kind, miniString, source) {
+  const named = bareLabel(label);
+  if (named) return named;
+  if (kind === "step") return firstMiniToken(miniString) ?? source ?? "$default";
+  return source ?? firstMiniToken(miniString) ?? "$default";
+}
+__name(displayKey, "displayKey");
 function buildStripModel(chunk, index, id, captureId) {
   const kind = stripKind(chunk);
   const source = readSource(chunk, kind);
@@ -28289,13 +28303,12 @@ function buildStripModel(chunk, index, id, captureId) {
     sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
     muted: isMuted(chunk.label),
     muteable: chunk.label != null,
-    // Centralized track colour (V-track-1, #579): keyed on the strip's STABLE
-    // canonical id (the label `d1`, or `#k` for an anonymous `$:`) via the shared
-    // `colorForTrack`. The Timeline colours a lane by the SAME algorithm over its
-    // `laneKey`, and for a named track that laneKey IS the label — so the Mixer
-    // dot and the Timeline lane resolve to one colour. Replaces the old
-    // drum-voice palette, which keyed on the sample and so diverged per view.
-    color: colorForTrack(id),
+    // Centralized track colour (V-track-1, #579): the shared `colorForTrack` over
+    // the strip's DISPLAY key (label for a named track, primary sample for an
+    // anonymous `$:`) — chosen to equal the Timeline's lane key, so the Mixer dot
+    // and the Timeline lane resolve to ONE colour. Replaces the old drum-voice
+    // palette, which keyed differently per view.
+    color: colorForTrack(displayKey(chunk.label, kind, chunk.miniString, source)),
     chain: chunk.chain,
     exprRange: chunk.exprRange,
     statementRange: chunk.statementRange,
