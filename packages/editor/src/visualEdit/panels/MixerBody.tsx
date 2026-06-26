@@ -21,12 +21,12 @@ import { type ChunkInfo } from '../chunkDetect'
 import { type Writeback, formatNumber } from '../writeback'
 import { Knob } from './Knob'
 import { knobRangeFor } from './knobRanges'
-import { QUICK_TRANSFORMS } from './quickTransforms'
+import { FAVORITES, isEffectActive, effectNames, STRIP_OWNED, type Effect } from './effectCatalog'
+import { AddEffectMenu } from './AddEffectMenu'
 import { patternKind, isRollChunk } from './patternKind'
 import { parsePianoRoll } from '../notation/parse'
 import { type Division, DIVISIONS, isRepresentable, stepsPerBar } from './division'
 import { readChainMethod } from './chainMethod'
-import { type ManagedGain, parseManagedGain, scaleManagedGain } from '../mixer/gain'
 import { INSTRUMENTS, DRUM_KITS, type SoundGroup } from './soundCatalog'
 import { useSoundCatalog, useDrumKitCatalog } from '../../workspace/soundRegistry'
 
@@ -37,14 +37,18 @@ interface KnobEntry {
   method: string
   label: string
   value: number
-  /** present when the knob is a master fader over a per-column gain string */
-  gain?: ManagedGain
 }
 
-/** flatten a chunk's chain into the numeric-arg knobs it exposes */
+/**
+ * Flatten a chunk's chain into the numeric-arg knobs it exposes. `gain`/`pan`
+ * are skipped — the strip fader and pan row own them (#575 division of labor),
+ * so the drawer is purely effects. The strip fader also handles per-column
+ * managed gain (proportional rescale), so no master-gain knob is needed here.
+ */
 function knobsFromChunk(chunk: ChunkInfo): KnobEntry[] {
   const knobs: KnobEntry[] = []
   chunk.chain.forEach((call, chainIndex) => {
+    if (STRIP_OWNED.has(call.name)) return // gain/pan live on the strip, not the drawer
     const numericArgs = call.args
       .map((a, argIndex) => ({ a, argIndex }))
       .filter((x) => x.a.numeric !== null)
@@ -58,15 +62,6 @@ function knobsFromChunk(chunk: ChunkInfo): KnobEntry[] {
         value: a.numeric as number,
       })
     })
-    // A per-column `.gain("…")` velocity has no numeric arg, so it surfaced no
-    // knob and `+ gain` is disabled (gain is present) — a dead state. Surface a
-    // master gain knob at the ceiling; dragging it rescales all columns.
-    if (call.name === 'gain' && call.args.length === 1 && call.args[0].numeric === null) {
-      const mg = parseManagedGain(call.args[0].raw)
-      if (mg) {
-        knobs.push({ chainIndex, argIndex: 0, method: 'gain', label: 'gain', value: mg.ceiling, gain: mg })
-      }
-    }
   })
   return knobs
 }
@@ -229,41 +224,36 @@ export function MixerBody({
       applyEdit((fresh, wb) => {
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex]
         if (!arg) return
-        if (entry.gain) {
-          // re-read the fresh arg so the scale reflects the current columns; the
-          // whole `.gain("…")` arg is rewritten as one surgical edit (one undo).
-          const mg = parseManagedGain(arg.raw) ?? entry.gain
-          wb.replaceRange(arg.range, scaleManagedGain(mg, value), 'knob')
-          return
-        }
         wb.replaceRange(arg.range, formatNumber(value), 'knob')
       })
     },
     [applyEdit],
   )
 
-  // Quick transforms (#390): append `.method(default)` to the expression when
-  // that method isn't already in the chain — surfaces a new knob.
-  const addTransform = React.useCallback(
-    (method: string, value: number): void => {
+  // Add/remove an effect (#575). Favorites and the ＋More menu both call this.
+  // Alias-aware: if the chain already has the effect under any spelling
+  // (`.cutoff` for Low-pass, …) we remove THAT call; otherwise append
+  // `.method(default)`. A member call's `range` is [dot, callEnd] (chunkDetect),
+  // so deleting it drops the whole call (and its knob). Guard to members (i > 0)
+  // so the head pattern is never deleted.
+  const toggleEffect = React.useCallback(
+    (e: Effect): void => {
       applyEdit((fresh, wb) => {
-        if (fresh.chain.some((c) => c.name === method)) return // already present
-        wb.insertAt(fresh.exprRange[1], `.${method}(${formatNumber(value)})`, 'knob')
+        const names = effectNames(e)
+        const idx = fresh.chain.findIndex((c, i) => i > 0 && names.includes(c.name))
+        if (idx >= 0) wb.deleteRange(fresh.chain[idx].range, 'knob')
+        else wb.insertAt(fresh.exprRange[1], `.${e.method}(${formatNumber(e.def)})`, 'knob')
       })
     },
     [applyEdit],
   )
 
-  // Quick transforms toggle off (#390): clicking an already-present effect
-  // deletes its `.method(…)` call (and its knob with it). A member call's
-  // `range` is [dot, callEnd] (chunkDetect), so deleting it drops the whole
-  // call cleanly. Guard to members (i > 0) so the head pattern is never deleted.
-  const removeTransform = React.useCallback(
+  // Remove one method by its exact name — the knob's `×` affordance (#575).
+  const removeMethod = React.useCallback(
     (method: string): void => {
       applyEdit((fresh, wb) => {
         const idx = fresh.chain.findIndex((c, i) => i > 0 && c.name === method)
-        if (idx === -1) return
-        wb.deleteRange(fresh.chain[idx].range, 'knob')
+        if (idx >= 0) wb.deleteRange(fresh.chain[idx].range, 'knob')
       })
     },
     [applyEdit],
@@ -324,21 +314,24 @@ export function MixerBody({
           onChange={(v) => writeChainMethod(['bank'], 'bank', v)}
         />
       )}
-      <div data-mixer-transforms style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {QUICK_TRANSFORMS.map((t) => {
-          // A present effect is an ON toggle: clicking it again removes the call
-          // (#390 toggle). Filled = on; the leading glyph flips +/✓ to telegraph
-          // that a second click takes it off.
-          const active = present.has(t.method)
+      <div
+        data-mixer-transforms
+        style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}
+      >
+        {FAVORITES.map((e) => {
+          // A present effect is an ON toggle: clicking it again removes the call.
+          // Filled = on; the leading glyph flips +/✓ to telegraph the second
+          // click takes it off. The long tail lives in the ＋More menu.
+          const active = isEffectActive(present, e)
           return (
             <button
-              key={t.method}
+              key={e.method}
               type="button"
-              data-mixer-transform={t.method}
+              data-mixer-transform={e.method}
               data-mixer-transform-active={active ? 'true' : undefined}
               aria-pressed={active}
-              title={active ? `Remove ${t.label}` : `Add ${t.label}`}
-              onClick={() => (active ? removeTransform(t.method) : addTransform(t.method, t.value))}
+              title={active ? `Remove ${e.label}` : `Add ${e.label}`}
+              onClick={() => toggleEffect(e)}
               style={{
                 padding: '3px 10px',
                 fontSize: 11,
@@ -351,10 +344,11 @@ export function MixerBody({
                 color: active ? '#0b0b0e' : 'var(--foreground, #e6e6ea)',
               }}
             >
-              {active ? '✓' : '+'} {t.label}
+              {active ? '✓' : '+'} {e.label}
             </button>
           )
         })}
+        <AddEffectMenu present={present} onToggle={toggleEffect} />
       </div>
       {knobs.length > 0 ? (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
@@ -365,6 +359,7 @@ export function MixerBody({
               value={k.value}
               range={knobRangeFor(k.method, k.value)}
               onChange={(v) => writeKnob(k, v)}
+              onRemove={() => removeMethod(k.method)}
               onGestureStart={beginGesture}
               onGestureEnd={endGesture}
             />
