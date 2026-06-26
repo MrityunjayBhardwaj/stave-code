@@ -30,8 +30,6 @@ interface ExpandDrawerProps {
   applyToStrip: (id: string, mutate: (fresh: ChunkInfo, wb: Writeback) => void) => void
   beginGesture: () => void
   endGesture: () => void
-  /** collapse this drawer (the strip's ▸/◂ toggle calls the same store action) */
-  onCollapse: () => void
 }
 
 export function ExpandDrawer({
@@ -40,7 +38,6 @@ export function ExpandDrawer({
   applyToStrip,
   beginGesture,
   endGesture,
-  onCollapse,
 }: ExpandDrawerProps): React.ReactElement {
   // Bind the shared body to THIS strip — identical shape to `useActiveChunk`'s
   // `applyEdit`, so MixerBody can't tell whether it's cursor- or strip-bound.
@@ -55,73 +52,28 @@ export function ExpandDrawer({
       data-mixer-expand-for={strip.id}
       style={{
         flexShrink: 0,
+        // Match the channel-strip height, not the full panel (#550 height
+        // parity): `alignSelf: stretch` sizes us to the strip group, whose
+        // height is set by the strip face. The chain below is absolutely
+        // filled so its own (taller) content adds NO height to the group — it
+        // scrolls inside instead. `position: relative` anchors that fill.
+        alignSelf: 'stretch',
+        position: 'relative',
         width: 264,
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
         borderLeft: '1px solid var(--border, #3a3a42)',
-        background: 'var(--background-elevated, #26262c)',
+        background: 'transparent',
         overflow: 'hidden',
       }}
     >
-      {/* header: which strip's chain this is + a collapse affordance */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 10px',
-          borderBottom: '1px solid var(--border, #3a3a42)',
-          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-        }}
-      >
-        <span
-          style={{ width: 8, height: 8, borderRadius: '50%', background: strip.color, flexShrink: 0 }}
-        />
-        <span
-          title={strip.name}
-          style={{
-            flex: 1,
-            fontSize: 11,
-            fontWeight: 600,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            color: 'var(--foreground, #e6e6ea)',
-          }}
-        >
-          {strip.name}
-        </span>
-        <button
-          type="button"
-          data-mixer-expand-collapse
-          aria-label={`Collapse ${strip.name}`}
-          onClick={onCollapse}
-          title="Collapse"
-          style={{
-            flexShrink: 0,
-            width: 18,
-            height: 18,
-            padding: 0,
-            borderRadius: 3,
-            fontSize: 11,
-            lineHeight: '16px',
-            cursor: 'pointer',
-            border: '1px solid var(--border, #3a3a42)',
-            background: 'var(--background, #1c1c20)',
-            color: 'var(--foreground-muted, #a0a0aa)',
-          }}
-        >
-          ◂
-        </button>
-      </div>
-      <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto' }}>
-        <MixerBody
-          chunk={chunk}
-          applyEdit={applyEdit}
-          beginGesture={beginGesture}
-          endGesture={endGesture}
-        />
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto' }}>
+          <MixerBody
+            chunk={chunk}
+            applyEdit={applyEdit}
+            beginGesture={beginGesture}
+            endGesture={endGesture}
+          />
+        </div>
       </div>
     </div>
   )

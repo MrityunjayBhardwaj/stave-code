@@ -49,11 +49,13 @@ export function MixerStrips({
       data-mixer-strips
       style={{
         display: 'flex',
-        alignItems: 'stretch',
+        alignItems: 'flex-start',
         gap: 8,
         padding: 8,
-        // Fill the panel height so an expanded drawer is tall enough to use the
-        // full knob chain (the strips stretch to match — DAW consoles are tall).
+        // Each strip group is content-tall (its strip face's natural height), so
+        // an expanded drawer matches the strips rather than the whole panel
+        // (#550 height parity). The band still fills the panel: the row pins to
+        // the top with slack below, and tall knob chains scroll inside.
         height: '100%',
         minHeight: 0,
         overflowX: 'auto',
@@ -71,10 +73,11 @@ export function MixerStrips({
           <div
             key={strip.id}
             data-mixer-strip-group
-            // The group fills the band height (band alignItems:stretch). Inside,
-            // the strip face stays compact at the top (flex-start) while the
-            // drawer's height:100% stretches it to the full panel height.
-            style={{ display: 'flex', alignItems: 'flex-start', flexShrink: 0 }}
+            // Strip face + (when open) its drawer, side-by-side and SAME height:
+            // the strip face is the group's only in-flow height, so the group is
+            // strip-tall, and `alignItems: stretch` sizes the drawer to match
+            // (its knob chain is absolutely filled, so it adds no height).
+            style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0 }}
           >
             <ChannelStrip
               strip={strip}
@@ -112,7 +115,6 @@ export function MixerStrips({
                 applyToStrip={applyToStrip}
                 beginGesture={beginGesture}
                 endGesture={endGesture}
-                onCollapse={() => toggle(strip.id)}
               />
             )}
           </div>
