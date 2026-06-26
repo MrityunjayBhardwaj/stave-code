@@ -28677,7 +28677,10 @@ function ChannelStrip({
         flexDirection: "column",
         gap: 6,
         padding: 8,
-        borderRadius: 6,
+        // When the expand drawer is open (console), flatten the RIGHT corners so
+        // the strip face and its drawer read as one connected unit — the drawer
+        // rounds the right edge. Standalone / closed → fully rounded.
+        borderRadius: expanded ? "6px 0 0 6px" : 6,
         border: "1px solid var(--border, #3a3a42)",
         background: "var(--background-elevated, #26262c)",
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
@@ -29269,7 +29272,11 @@ function ExpandDrawer({
         display: "flex",
         minWidth: 264,
         borderLeft: "1px solid var(--border, #3a3a42)",
-        background: "transparent",
+        // Semi-transparent fill + a rounded RIGHT edge; the LEFT stays flat where
+        // it meets the strip face (whose right corners are flattened), so the
+        // strip + drawer read as one connected unit that belongs together.
+        background: "#26262c69",
+        borderRadius: "0 6px 6px 0",
         overflow: "hidden"
       },
       children: /* @__PURE__ */ jsxRuntime.jsx(
