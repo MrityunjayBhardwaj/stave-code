@@ -43,6 +43,7 @@ import {
   emitLog,
   emitFixed,
   formatFriendlyError,
+  statementOffsetForSource,
   resolveAlias,
   collectCycles,
   runPasses,
@@ -832,6 +833,27 @@ export default function StrudelEditorClient({
       // here doesn't distinguish, and dropping the line for Sonic Pi
       // is the conservative default until we wire a Ruby-aware
       // line extractor.
+      //
+      // #567 — per-hap runtime errors (soundfont out-of-range) have a
+      // bundle-only stack, so `parts.line` is absent anyway. The engine tags
+      // them with the offending INSTRUMENT; locate the owning track's statement
+      // (`statementOffsetForSource`) and convert its char offset → 1-based
+      // line/column by counting newlines in the file content. This location is
+      // RELIABLE (a real source offset), so unlike the dropped transpiler-wrapper
+      // line it's safe to feed the marker bridge → squiggle on the right line.
+      let locatedLine: number | undefined;
+      let locatedColumn: number | undefined;
+      const locateSource = (err as Error & { staveLocateSource?: string })
+        .staveLocateSource;
+      const src = fileNow?.content;
+      if (typeof locateSource === "string" && typeof src === "string") {
+        const offset = statementOffsetForSource(src, locateSource);
+        if (offset != null) {
+          const before = src.slice(0, offset);
+          locatedLine = before.split("\n").length; // 1-based
+          locatedColumn = offset - before.lastIndexOf("\n"); // 1-based
+        }
+      }
       emitLog({
         level: "error",
         runtime: runtimeId,
@@ -839,7 +861,8 @@ export default function StrudelEditorClient({
         message: parts.message,
         suggestion: parts.suggestion,
         stack: parts.stack,
-        column: parts.column,
+        line: locatedLine,
+        column: locatedLine != null ? locatedColumn : parts.column,
       });
     });
     // Live-mode re-eval has no user-driven play() to clear the error state,

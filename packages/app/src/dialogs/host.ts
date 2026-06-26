@@ -42,6 +42,14 @@ export interface ToastState {
 
 type Listener = () => void;
 
+/**
+ * Most toasts visible at once. A burst of DISTINCT errors (the dedupe below
+ * only collapses identical ones) would otherwise stack without bound and cover
+ * the screen; cap the display and drop the oldest. Persistent surfaces (Console
+ * panel + status-bar LED) still keep every entry — this cap is display-only.
+ */
+const MAX_VISIBLE_TOASTS = 3;
+
 let dialog: DialogState | null = null;
 let toasts: ToastState[] = [];
 const listeners = new Set<Listener>();
@@ -151,7 +159,10 @@ export function showToast(message: string, level: "info" | "error" = "info", ttl
     expiresAt: Date.now() + ttlMs,
     count: 1,
   };
-  toasts = [...toasts, t];
+  // Append, then keep only the newest MAX_VISIBLE_TOASTS — a burst of distinct
+  // errors drops the oldest rather than covering the screen. Dropped toasts are
+  // simply forgotten; their pending cleanup no-ops (id no longer found).
+  toasts = [...toasts, t].slice(-MAX_VISIBLE_TOASTS);
   notify();
   scheduleToastCleanup(t.id);
 }

@@ -4252,6 +4252,12 @@ function renderNote(ctx, oscType, freq, gain, release, startTime, endTime) {
 }
 __name(renderNote, "renderNote");
 
+// src/visualizers/blockScan.ts
+function startsTopLevelBlock(trimmed) {
+  return /^_?\$:/.test(trimmed) || trimmed.startsWith("setcps") || trimmed.startsWith("/*");
+}
+__name(startsTopLevelBlock, "startsTopLevelBlock");
+
 // src/engine/tierFlags.ts
 var STORAGE_PREFIX = "stave.strudel.tier.";
 var ALL_TIERS = [
@@ -4351,6 +4357,311 @@ function resolveAlias(rawS) {
   return SOUND_ALIASES[rawS.toLowerCase()];
 }
 __name(resolveAlias, "resolveAlias");
+
+// src/engine/friendlyErrors.ts
+function parseStackLocation(err) {
+  const stack = typeof err === "object" && err !== null && "stack" in err ? String(err.stack ?? "") : "";
+  if (!stack) return null;
+  const v8Eval = stack.match(/at eval[^(]*\(<anonymous>:(\d+):(\d+)\)/);
+  if (v8Eval)
+    return { line: parseInt(v8Eval[1], 10), column: parseInt(v8Eval[2], 10) };
+  const v8EvalWrap = stack.match(/eval at .+?<anonymous>:(\d+):(\d+)/);
+  if (v8EvalWrap)
+    return { line: parseInt(v8EvalWrap[1], 10), column: parseInt(v8EvalWrap[2], 10) };
+  const v8Named = stack.match(/at\s+\S+\s+\(<anonymous>:(\d+):(\d+)\)/);
+  if (v8Named)
+    return { line: parseInt(v8Named[1], 10), column: parseInt(v8Named[2], 10) };
+  const v8Anon = stack.match(/^\s*at\s+<anonymous>:(\d+):(\d+)/m);
+  if (v8Anon)
+    return { line: parseInt(v8Anon[1], 10), column: parseInt(v8Anon[2], 10) };
+  const ff = stack.match(
+    /@(?:<anonymous>|debugger eval|eval):(\d+):(\d+)/
+  );
+  if (ff) return { line: parseInt(ff[1], 10), column: parseInt(ff[2], 10) };
+  return null;
+}
+__name(parseStackLocation, "parseStackLocation");
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  const la = a.length;
+  const lb = b.length;
+  if (la === 0) return lb;
+  if (lb === 0) return la;
+  let prev = new Array(lb + 1);
+  let curr = new Array(lb + 1);
+  for (let j = 0; j <= lb; j++) prev[j] = j;
+  for (let i = 1; i <= la; i++) {
+    curr[0] = i;
+    const ac = a.charCodeAt(i - 1);
+    for (let j = 1; j <= lb; j++) {
+      const cost = ac === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(
+        curr[j - 1] + 1,
+        // insert
+        prev[j] + 1,
+        // delete
+        prev[j - 1] + cost
+        // substitute
+      );
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[lb];
+}
+__name(levenshtein, "levenshtein");
+function fuzzyMatch(word, corpus, options = {}) {
+  if (!word) return [];
+  const lower = word.toLowerCase();
+  const threshold = options.maxDistance ?? Math.max(2, Math.ceil(word.length / 3));
+  const limit = options.limit ?? 5;
+  const hits = [];
+  for (const candidate of corpus) {
+    const d = levenshtein(lower, candidate.toLowerCase());
+    if (d <= threshold) hits.push({ name: candidate, distance: d });
+  }
+  hits.sort(
+    (a, b) => a.distance - b.distance || // Prefer case-matching names on ties (e.g. PI over Pi).
+    (a.name === word ? -1 : b.name === word ? 1 : 0) || a.name.localeCompare(b.name)
+  );
+  return hits.slice(0, limit);
+}
+__name(fuzzyMatch, "fuzzyMatch");
+var REFERENCE_ERROR_PATTERNS = [
+  // Chrome / Edge / Node: "foo is not defined"
+  /^(\w+) is not defined$/,
+  // Firefox: "foo is not defined"
+  /^ReferenceError: (\w+) is not defined$/,
+  // Safari: "Can't find variable: foo"
+  /^Can't find variable: (\w+)$/
+];
+function extractReferenceIdentifier(err) {
+  const message = typeof err === "object" && err !== null && "message" in err ? String(err.message) : String(err);
+  if (!message) return null;
+  const trimmed = message.replace(/^Uncaught\s+/, "").trim();
+  for (const re of REFERENCE_ERROR_PATTERNS) {
+    const m = re.exec(trimmed);
+    if (m && m[1]) return m[1];
+  }
+  return null;
+}
+__name(extractReferenceIdentifier, "extractReferenceIdentifier");
+var SOUND_NOT_FOUND_PATTERNS = [
+  /sound\s+["']?([\w.-]+)["']?\s+not\s+found/i
+];
+function extractMissingSoundName(rawMessage) {
+  for (const re of SOUND_NOT_FOUND_PATTERNS) {
+    const m = re.exec(rawMessage);
+    if (m && m[1]) return m[1];
+  }
+  return null;
+}
+__name(extractMissingSoundName, "extractMissingSoundName");
+var SOUNDFONT_ZONE_RE = /no soundfont zone found/i;
+function isSoundfontZoneError(message) {
+  return SOUNDFONT_ZONE_RE.test(message);
+}
+__name(isSoundfontZoneError, "isSoundfontZoneError");
+var SOUNDFONT_ZONE_HINT = "A note is outside the chosen instrument's sampled range \u2014 try a lower octave or a fuller-range instrument.";
+function soundfontRangeMessage(hapValue) {
+  const instrument = typeof hapValue?.s === "string" && hapValue.s ? hapValue.s : null;
+  const pitchRaw = hapValue?.note ?? hapValue?.n;
+  const pitch = typeof pitchRaw === "string" || typeof pitchRaw === "number" ? String(pitchRaw) : null;
+  if (instrument === null && pitch === null) return null;
+  const who = pitch !== null ? `Note \`${pitch}\`` : "A note";
+  const where = instrument !== null ? ` for soundfont \`${instrument}\`` : "";
+  return `${who} is outside the sampled range${where} \u2014 try a lower octave or a fuller-range instrument.`;
+}
+__name(soundfontRangeMessage, "soundfontRangeMessage");
+function buildAliasSuffix(missingName, ctx) {
+  if (!ctx) return "";
+  const parts = [];
+  if (ctx.resolutions && ctx.resolutions.length > 0) {
+    const seen = /* @__PURE__ */ new Set();
+    const lines = [];
+    for (const r of ctx.resolutions) {
+      const key2 = `${r.from}\u2192${r.to}`;
+      if (seen.has(key2)) continue;
+      seen.add(key2);
+      lines.push(`\`${r.from}\` \u2192 \`${r.to}\``);
+    }
+    parts.push(`tried alias ${lines.join(", ")}`);
+  }
+  if (missingName && ctx.lookupAlias) {
+    const target = ctx.lookupAlias(missingName);
+    if (target) {
+      parts.push(`alias map: \`${missingName}\` \u2192 \`${target}\` (but \`${target}\` is not loaded)`);
+    } else {
+      parts.push(`alias map: no entry for \`${missingName}\``);
+    }
+  }
+  return parts.length > 0 ? ` (${parts.join("; ")})` : "";
+}
+__name(buildAliasSuffix, "buildAliasSuffix");
+function asRegExp(match) {
+  return match instanceof RegExp ? match : new RegExp(match, "i");
+}
+__name(asRegExp, "asRegExp");
+function evalMistake(mistake, ctx) {
+  const { detect } = mistake;
+  if (detect.kind === "message") {
+    return asRegExp(detect.match).test(ctx.rawMessage);
+  }
+  if (detect.kind === "code") {
+    if (!ctx.codeContext) return false;
+    return asRegExp(detect.match).test(ctx.codeContext);
+  }
+  return ctx.identifier !== null && ctx.identifier === detect.alias;
+}
+__name(evalMistake, "evalMistake");
+var SPECIFICITY = {
+  message: 3,
+  code: 2,
+  identifier: 1
+};
+function rankHits(hits) {
+  if (hits.length === 0) return null;
+  hits.sort((a, b) => {
+    const wa = a.mistake.weight ?? 1;
+    const wb = b.mistake.weight ?? 1;
+    if (wa !== wb) return wb - wa;
+    if (a.specificity !== b.specificity) return b.specificity - a.specificity;
+    return a.order - b.order;
+  });
+  return hits[0];
+}
+__name(rankHits, "rankHits");
+function collectMistakes(index, ctx) {
+  const hits = [];
+  let order = 0;
+  if (ctx.identifier && index.docs[ctx.identifier]) {
+    const doc = index.docs[ctx.identifier];
+    for (const m of doc.commonMistakes ?? []) {
+      if (evalMistake(m, ctx)) {
+        hits.push({
+          mistake: m,
+          specificity: SPECIFICITY[m.detect.kind],
+          order: order++,
+          symbol: { name: ctx.identifier, doc }
+        });
+      }
+    }
+  }
+  for (const [name, doc] of Object.entries(index.docs)) {
+    if (name === ctx.identifier) continue;
+    for (const m of doc.commonMistakes ?? []) {
+      if (evalMistake(m, ctx)) {
+        hits.push({
+          mistake: m,
+          specificity: SPECIFICITY[m.detect.kind],
+          order: order++,
+          symbol: { name, doc }
+        });
+      }
+    }
+  }
+  for (const m of index.globalMistakes ?? []) {
+    if (evalMistake(m, ctx)) {
+      hits.push({
+        mistake: m,
+        specificity: SPECIFICITY[m.detect.kind],
+        order: order++
+      });
+    }
+  }
+  return rankHits(hits);
+}
+__name(collectMistakes, "collectMistakes");
+function defaultDocsUrl(runtime, name) {
+  return `/docs/reference/${runtime}/#${name.toLowerCase()}`;
+}
+__name(defaultDocsUrl, "defaultDocsUrl");
+function formatFriendlyError(err, runtime, options = {}) {
+  const rawMessage = typeof err === "object" && err !== null && "message" in err ? String(err.message) : String(err);
+  const stack = typeof err === "object" && err !== null && "stack" in err && typeof err.stack === "string" ? err.stack : void 0;
+  const loc = parseStackLocation(err);
+  const identifier = extractReferenceIdentifier(err);
+  const missingName = extractMissingSoundName(rawMessage);
+  const aliasSuffix = buildAliasSuffix(missingName, options.aliasContext);
+  const appendAlias = /* @__PURE__ */ __name((msg) => aliasSuffix ? `${msg}${aliasSuffix}` : msg, "appendAlias");
+  if (options.index) {
+    const hit = collectMistakes(options.index, {
+      rawMessage,
+      identifier,
+      codeContext: options.codeContext
+    });
+    if (hit) {
+      const suggestion = hit.symbol ? {
+        name: hit.symbol.name,
+        docsUrl: (options.docsUrlFor ?? defaultDocsUrl)(
+          runtime,
+          hit.symbol.name
+        ),
+        example: hit.mistake.example ?? hit.symbol.doc.example,
+        description: hit.symbol.doc.description
+      } : hit.mistake.example ? {
+        // Global mistake without a symbol — synthesise a minimal
+        // suggestion so downstream UI still surfaces the example.
+        name: "",
+        docsUrl: "",
+        example: hit.mistake.example
+      } : void 0;
+      return {
+        message: appendAlias(hit.mistake.hint),
+        suggestion,
+        stack,
+        line: loc?.line,
+        column: loc?.column
+      };
+    }
+  }
+  if (identifier && options.index) {
+    const matches = fuzzyMatch(
+      identifier,
+      Object.keys(options.index.docs)
+    );
+    if (matches.length > 0) {
+      const hit = options.index.docs[matches[0].name];
+      const docsUrl = (options.docsUrlFor ?? defaultDocsUrl)(
+        runtime,
+        matches[0].name
+      );
+      const suggestion = {
+        name: matches[0].name,
+        docsUrl,
+        example: hit?.example,
+        description: hit?.description
+      };
+      return {
+        message: appendAlias(`\`${identifier}\` is not defined. Did you mean \`${matches[0].name}\`?`),
+        suggestion,
+        stack,
+        line: loc?.line,
+        column: loc?.column
+      };
+    }
+    return {
+      message: appendAlias(`\`${identifier}\` is not defined.`),
+      stack,
+      line: loc?.line,
+      column: loc?.column
+    };
+  }
+  if (isSoundfontZoneError(rawMessage)) {
+    return {
+      message: appendAlias(SOUNDFONT_ZONE_HINT),
+      stack,
+      line: loc?.line,
+      column: loc?.column
+    };
+  }
+  return {
+    message: appendAlias(rawMessage || "Unknown error"),
+    stack,
+    line: loc?.line,
+    column: loc?.column
+  };
+}
+__name(formatFriendlyError, "formatFriendlyError");
 
 // src/engine/StrudelEngine.ts
 function extractVizName(rawArg) {
@@ -4735,6 +5046,14 @@ var _StrudelEngine = class _StrudelEngine {
         return await webaudioOutput(hap, deadline, duration, cps, t);
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
+        if (isSoundfontZoneError(error.message)) {
+          const better = soundfontRangeMessage(hap?.value);
+          if (better) error.message = better;
+          const instrument = hap?.value?.s;
+          if (typeof instrument === "string") {
+            error.staveLocateSource = instrument;
+          }
+        }
         this.runtimeErrorHandler?.(error);
       }
     }, "wrappedOutput");
@@ -4758,6 +5077,8 @@ var _StrudelEngine = class _StrudelEngine {
     const capturedVizOptions = /* @__PURE__ */ new Map();
     let capturedBackdropViz = null;
     let capturedBackdropVizOptions = null;
+    let pendingChainViz = null;
+    let pendingChainVizOptions = null;
     let anonIndex = 0;
     let autoOrbitNext = 100;
     const transportOffset = this.transportOffset;
@@ -4798,9 +5119,11 @@ var _StrudelEngine = class _StrudelEngine {
             const result = strudelViz ? strudelViz.call(this, vizName) : this;
             if (resolvedName) {
               result._pendingViz = resolvedName;
+              pendingChainViz = resolvedName;
             }
             if (opts && typeof opts === "object") {
               result._pendingVizOptions = opts;
+              pendingChainVizOptions = opts;
             }
             return result;
           }, "value")
@@ -4813,7 +5136,11 @@ var _StrudelEngine = class _StrudelEngine {
             writable: true,
             value: /* @__PURE__ */ __name(function(opts) {
               this._pendingViz = renderer;
-              if (opts && typeof opts === "object") this._pendingVizOptions = opts;
+              pendingChainViz = renderer;
+              if (opts && typeof opts === "object") {
+                this._pendingVizOptions = opts;
+                pendingChainVizOptions = opts;
+              }
               return this;
             }, "value")
           });
@@ -4832,6 +5159,10 @@ var _StrudelEngine = class _StrudelEngine {
           configurable: true,
           writable: true,
           value: /* @__PURE__ */ __name(function(id) {
+            const chainViz = pendingChainViz;
+            const chainVizOptions = pendingChainVizOptions;
+            pendingChainViz = null;
+            pendingChainVizOptions = null;
             if (typeof id === "string" && !(id.startsWith("_") || id.endsWith("_"))) {
               let captureId = id;
               if (id.includes("$")) {
@@ -4843,10 +5174,15 @@ var _StrudelEngine = class _StrudelEngine {
                 vizName = this._pendingViz;
                 capturedVizRequests.set(captureId, vizName);
                 delete this._pendingViz;
+              } else if (chainViz) {
+                vizName = chainViz;
+                capturedVizRequests.set(captureId, vizName);
               }
               if (this._pendingVizOptions && typeof this._pendingVizOptions === "object") {
                 capturedVizOptions.set(captureId, this._pendingVizOptions);
                 delete this._pendingVizOptions;
+              } else if (chainVizOptions) {
+                capturedVizOptions.set(captureId, chainVizOptions);
               }
               let effectivePattern = this;
               if (vizName && typeof this.orbit === "function" && !probeExplicitOrbit(this)) {
@@ -4994,7 +5330,7 @@ var _StrudelEngine = class _StrudelEngine {
       let lastLineIdx = i;
       for (let j = i + 1; j < lines.length; j++) {
         const next = lines[j].trim();
-        if (next.startsWith("$:") || next.startsWith("setcps")) break;
+        if (startsTopLevelBlock(next)) break;
         if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
       }
       const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
@@ -5263,6 +5599,7 @@ var StrudelEngine = _StrudelEngine;
 // src/engine/engineLog.ts
 var MAX_HISTORY = 500;
 var history = [];
+var dedupeIndex = /* @__PURE__ */ new Map();
 var listeners = /* @__PURE__ */ new Set();
 var fixedMarkers = /* @__PURE__ */ new Map();
 var fixedListeners = /* @__PURE__ */ new Set();
@@ -5276,28 +5613,40 @@ function makeId() {
   return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
 }
 __name(makeId, "makeId");
+function dedupeKey(p) {
+  return [p.level, p.runtime, p.source ?? "", p.line ?? "", p.message].join("\0");
+}
+__name(dedupeKey, "dedupeKey");
 function emitLog(partial) {
-  const last = history.length > 0 ? history[history.length - 1] : void 0;
-  if (last && last.level === partial.level && last.runtime === partial.runtime && last.source === partial.source && last.line === partial.line && last.message === partial.message) {
-    last.ts = Date.now();
+  const key2 = dedupeKey(partial);
+  const existing = dedupeIndex.get(key2);
+  if (existing) {
+    existing.ts = Date.now();
+    existing.count = (existing.count ?? 1) + 1;
     queueMicrotask(() => {
       for (const fn of listeners) {
         try {
-          fn(last, history);
+          fn(existing, history);
         } catch {
         }
       }
     });
-    return last;
+    return existing;
   }
   const entry = {
     id: makeId(),
     ts: Date.now(),
+    count: 1,
     ...partial
   };
   history.push(entry);
+  dedupeIndex.set(key2, entry);
   if (history.length > MAX_HISTORY) {
-    history.splice(0, history.length - MAX_HISTORY);
+    const removed = history.splice(0, history.length - MAX_HISTORY);
+    for (const r of removed) {
+      const rk = dedupeKey(r);
+      if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
+    }
   }
   queueMicrotask(() => {
     for (const fn of listeners) {
@@ -5323,6 +5672,7 @@ function getLogHistory() {
 __name(getLogHistory, "getLogHistory");
 function clearLog() {
   history.length = 0;
+  dedupeIndex.clear();
   fixedMarkers.clear();
   for (const fn of listeners) {
     try {
@@ -8221,287 +8571,6 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
 };
 __name(_FallbackVizRenderer, "FallbackVizRenderer");
 var FallbackVizRenderer = _FallbackVizRenderer;
-
-// src/engine/friendlyErrors.ts
-function parseStackLocation(err) {
-  const stack = typeof err === "object" && err !== null && "stack" in err ? String(err.stack ?? "") : "";
-  if (!stack) return null;
-  const v8Eval = stack.match(/at eval[^(]*\(<anonymous>:(\d+):(\d+)\)/);
-  if (v8Eval)
-    return { line: parseInt(v8Eval[1], 10), column: parseInt(v8Eval[2], 10) };
-  const v8EvalWrap = stack.match(/eval at .+?<anonymous>:(\d+):(\d+)/);
-  if (v8EvalWrap)
-    return { line: parseInt(v8EvalWrap[1], 10), column: parseInt(v8EvalWrap[2], 10) };
-  const v8Named = stack.match(/at\s+\S+\s+\(<anonymous>:(\d+):(\d+)\)/);
-  if (v8Named)
-    return { line: parseInt(v8Named[1], 10), column: parseInt(v8Named[2], 10) };
-  const v8Anon = stack.match(/^\s*at\s+<anonymous>:(\d+):(\d+)/m);
-  if (v8Anon)
-    return { line: parseInt(v8Anon[1], 10), column: parseInt(v8Anon[2], 10) };
-  const ff = stack.match(
-    /@(?:<anonymous>|debugger eval|eval):(\d+):(\d+)/
-  );
-  if (ff) return { line: parseInt(ff[1], 10), column: parseInt(ff[2], 10) };
-  return null;
-}
-__name(parseStackLocation, "parseStackLocation");
-function levenshtein(a, b) {
-  if (a === b) return 0;
-  const la = a.length;
-  const lb = b.length;
-  if (la === 0) return lb;
-  if (lb === 0) return la;
-  let prev = new Array(lb + 1);
-  let curr = new Array(lb + 1);
-  for (let j = 0; j <= lb; j++) prev[j] = j;
-  for (let i = 1; i <= la; i++) {
-    curr[0] = i;
-    const ac = a.charCodeAt(i - 1);
-    for (let j = 1; j <= lb; j++) {
-      const cost = ac === b.charCodeAt(j - 1) ? 0 : 1;
-      curr[j] = Math.min(
-        curr[j - 1] + 1,
-        // insert
-        prev[j] + 1,
-        // delete
-        prev[j - 1] + cost
-        // substitute
-      );
-    }
-    [prev, curr] = [curr, prev];
-  }
-  return prev[lb];
-}
-__name(levenshtein, "levenshtein");
-function fuzzyMatch(word, corpus, options = {}) {
-  if (!word) return [];
-  const lower = word.toLowerCase();
-  const threshold = options.maxDistance ?? Math.max(2, Math.ceil(word.length / 3));
-  const limit = options.limit ?? 5;
-  const hits = [];
-  for (const candidate of corpus) {
-    const d = levenshtein(lower, candidate.toLowerCase());
-    if (d <= threshold) hits.push({ name: candidate, distance: d });
-  }
-  hits.sort(
-    (a, b) => a.distance - b.distance || // Prefer case-matching names on ties (e.g. PI over Pi).
-    (a.name === word ? -1 : b.name === word ? 1 : 0) || a.name.localeCompare(b.name)
-  );
-  return hits.slice(0, limit);
-}
-__name(fuzzyMatch, "fuzzyMatch");
-var REFERENCE_ERROR_PATTERNS = [
-  // Chrome / Edge / Node: "foo is not defined"
-  /^(\w+) is not defined$/,
-  // Firefox: "foo is not defined"
-  /^ReferenceError: (\w+) is not defined$/,
-  // Safari: "Can't find variable: foo"
-  /^Can't find variable: (\w+)$/
-];
-function extractReferenceIdentifier(err) {
-  const message = typeof err === "object" && err !== null && "message" in err ? String(err.message) : String(err);
-  if (!message) return null;
-  const trimmed = message.replace(/^Uncaught\s+/, "").trim();
-  for (const re of REFERENCE_ERROR_PATTERNS) {
-    const m = re.exec(trimmed);
-    if (m && m[1]) return m[1];
-  }
-  return null;
-}
-__name(extractReferenceIdentifier, "extractReferenceIdentifier");
-var SOUND_NOT_FOUND_PATTERNS = [
-  /sound\s+["']?([\w.-]+)["']?\s+not\s+found/i
-];
-function extractMissingSoundName(rawMessage) {
-  for (const re of SOUND_NOT_FOUND_PATTERNS) {
-    const m = re.exec(rawMessage);
-    if (m && m[1]) return m[1];
-  }
-  return null;
-}
-__name(extractMissingSoundName, "extractMissingSoundName");
-function buildAliasSuffix(missingName, ctx) {
-  if (!ctx) return "";
-  const parts = [];
-  if (ctx.resolutions && ctx.resolutions.length > 0) {
-    const seen = /* @__PURE__ */ new Set();
-    const lines = [];
-    for (const r of ctx.resolutions) {
-      const key2 = `${r.from}\u2192${r.to}`;
-      if (seen.has(key2)) continue;
-      seen.add(key2);
-      lines.push(`\`${r.from}\` \u2192 \`${r.to}\``);
-    }
-    parts.push(`tried alias ${lines.join(", ")}`);
-  }
-  if (missingName && ctx.lookupAlias) {
-    const target = ctx.lookupAlias(missingName);
-    if (target) {
-      parts.push(`alias map: \`${missingName}\` \u2192 \`${target}\` (but \`${target}\` is not loaded)`);
-    } else {
-      parts.push(`alias map: no entry for \`${missingName}\``);
-    }
-  }
-  return parts.length > 0 ? ` (${parts.join("; ")})` : "";
-}
-__name(buildAliasSuffix, "buildAliasSuffix");
-function asRegExp(match) {
-  return match instanceof RegExp ? match : new RegExp(match, "i");
-}
-__name(asRegExp, "asRegExp");
-function evalMistake(mistake, ctx) {
-  const { detect } = mistake;
-  if (detect.kind === "message") {
-    return asRegExp(detect.match).test(ctx.rawMessage);
-  }
-  if (detect.kind === "code") {
-    if (!ctx.codeContext) return false;
-    return asRegExp(detect.match).test(ctx.codeContext);
-  }
-  return ctx.identifier !== null && ctx.identifier === detect.alias;
-}
-__name(evalMistake, "evalMistake");
-var SPECIFICITY = {
-  message: 3,
-  code: 2,
-  identifier: 1
-};
-function rankHits(hits) {
-  if (hits.length === 0) return null;
-  hits.sort((a, b) => {
-    const wa = a.mistake.weight ?? 1;
-    const wb = b.mistake.weight ?? 1;
-    if (wa !== wb) return wb - wa;
-    if (a.specificity !== b.specificity) return b.specificity - a.specificity;
-    return a.order - b.order;
-  });
-  return hits[0];
-}
-__name(rankHits, "rankHits");
-function collectMistakes(index, ctx) {
-  const hits = [];
-  let order = 0;
-  if (ctx.identifier && index.docs[ctx.identifier]) {
-    const doc = index.docs[ctx.identifier];
-    for (const m of doc.commonMistakes ?? []) {
-      if (evalMistake(m, ctx)) {
-        hits.push({
-          mistake: m,
-          specificity: SPECIFICITY[m.detect.kind],
-          order: order++,
-          symbol: { name: ctx.identifier, doc }
-        });
-      }
-    }
-  }
-  for (const [name, doc] of Object.entries(index.docs)) {
-    if (name === ctx.identifier) continue;
-    for (const m of doc.commonMistakes ?? []) {
-      if (evalMistake(m, ctx)) {
-        hits.push({
-          mistake: m,
-          specificity: SPECIFICITY[m.detect.kind],
-          order: order++,
-          symbol: { name, doc }
-        });
-      }
-    }
-  }
-  for (const m of index.globalMistakes ?? []) {
-    if (evalMistake(m, ctx)) {
-      hits.push({
-        mistake: m,
-        specificity: SPECIFICITY[m.detect.kind],
-        order: order++
-      });
-    }
-  }
-  return rankHits(hits);
-}
-__name(collectMistakes, "collectMistakes");
-function defaultDocsUrl(runtime, name) {
-  return `/docs/reference/${runtime}/#${name.toLowerCase()}`;
-}
-__name(defaultDocsUrl, "defaultDocsUrl");
-function formatFriendlyError(err, runtime, options = {}) {
-  const rawMessage = typeof err === "object" && err !== null && "message" in err ? String(err.message) : String(err);
-  const stack = typeof err === "object" && err !== null && "stack" in err && typeof err.stack === "string" ? err.stack : void 0;
-  const loc = parseStackLocation(err);
-  const identifier = extractReferenceIdentifier(err);
-  const missingName = extractMissingSoundName(rawMessage);
-  const aliasSuffix = buildAliasSuffix(missingName, options.aliasContext);
-  const appendAlias = /* @__PURE__ */ __name((msg) => aliasSuffix ? `${msg}${aliasSuffix}` : msg, "appendAlias");
-  if (options.index) {
-    const hit = collectMistakes(options.index, {
-      rawMessage,
-      identifier,
-      codeContext: options.codeContext
-    });
-    if (hit) {
-      const suggestion = hit.symbol ? {
-        name: hit.symbol.name,
-        docsUrl: (options.docsUrlFor ?? defaultDocsUrl)(
-          runtime,
-          hit.symbol.name
-        ),
-        example: hit.mistake.example ?? hit.symbol.doc.example,
-        description: hit.symbol.doc.description
-      } : hit.mistake.example ? {
-        // Global mistake without a symbol — synthesise a minimal
-        // suggestion so downstream UI still surfaces the example.
-        name: "",
-        docsUrl: "",
-        example: hit.mistake.example
-      } : void 0;
-      return {
-        message: appendAlias(hit.mistake.hint),
-        suggestion,
-        stack,
-        line: loc?.line,
-        column: loc?.column
-      };
-    }
-  }
-  if (identifier && options.index) {
-    const matches = fuzzyMatch(
-      identifier,
-      Object.keys(options.index.docs)
-    );
-    if (matches.length > 0) {
-      const hit = options.index.docs[matches[0].name];
-      const docsUrl = (options.docsUrlFor ?? defaultDocsUrl)(
-        runtime,
-        matches[0].name
-      );
-      const suggestion = {
-        name: matches[0].name,
-        docsUrl,
-        example: hit?.example,
-        description: hit?.description
-      };
-      return {
-        message: appendAlias(`\`${identifier}\` is not defined. Did you mean \`${matches[0].name}\`?`),
-        suggestion,
-        stack,
-        line: loc?.line,
-        column: loc?.column
-      };
-    }
-    return {
-      message: appendAlias(`\`${identifier}\` is not defined.`),
-      stack,
-      line: loc?.line,
-      column: loc?.column
-    };
-  }
-  return {
-    message: appendAlias(rawMessage || "Unknown error"),
-    stack,
-    line: loc?.line,
-    column: loc?.column
-  };
-}
-__name(formatFriendlyError, "formatFriendlyError");
 
 // src/monaco/docs/types.ts
 function resolveDoc(index, word) {
@@ -21474,7 +21543,7 @@ function findVizCallLineForBlock(code, vizId, targetAfterLine) {
     let blockEnd = i;
     for (let j = i + 1; j < lines.length; j++) {
       const next = lines[j].trim();
-      if (next.startsWith("$:") || next.startsWith("setcps")) break;
+      if (startsTopLevelBlock(next)) break;
       if (next !== "" && !next.startsWith("//")) blockEnd = j;
     }
     if (blockEnd + 1 !== targetAfterLine) continue;
@@ -21819,7 +21888,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       let foundViz = false;
       for (let j = blockStart; j < lines.length; j++) {
         const next = lines[j].trim();
-        if (j > blockStart && (next.startsWith("$:") || next.startsWith("setcps"))) break;
+        if (j > blockStart && startsTopLevelBlock(next)) break;
         if (next !== "" && !next.startsWith("//")) blockEnd = j;
         if (/\.viz\s*\(/.test(next)) {
           foundViz = true;
@@ -21831,7 +21900,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         blockEnd = blockStart;
         for (let j = blockStart + 1; j < lines.length; j++) {
           const next = lines[j].trim();
-          if (next.startsWith("$:") || next.startsWith("setcps")) break;
+          if (startsTopLevelBlock(next)) break;
           if (next !== "" && !next.startsWith("//")) blockEnd = j;
         }
       }
@@ -27757,6 +27826,11 @@ function buildStripModels(chunks) {
   });
 }
 __name(buildStripModels, "buildStripModels");
+function statementOffsetForSource(doc, source) {
+  const strip = buildStripModels(detectAllChunks(doc)).find((s) => s.source === source);
+  return strip ? strip.statementRange[0] : null;
+}
+__name(statementOffsetForSource, "statementOffsetForSource");
 
 // src/visualEdit/mixer/useMixerModel.ts
 var EMPTY_DERIVED = { strips: [], chunks: [] };
@@ -36150,6 +36224,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

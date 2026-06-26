@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
 import { detectAllChunks } from '../../chunkDetect'
-import { buildStripModels } from '../stripModel'
+import { buildStripModels, statementOffsetForSource } from '../stripModel'
 
 /** strips for a whole document, the read path the Mixer actually uses */
 function stripsOf(src: string) {
@@ -159,5 +159,31 @@ describe('buildStripModels — per-strip read model', () => {
     expect(buildStripModels(detectAllChunks(src))).toEqual(
       buildStripModels(detectAllChunks(src)),
     )
+  })
+})
+
+// #567 — locate a runtime error back to its track by instrument.
+describe('statementOffsetForSource', () => {
+  it('returns the char offset of the statement assigning that instrument', () => {
+    const doc = ['$: s("bd")', "$: note(\"c e g\").sound('gm_agogo')"].join('\n')
+    const offset = statementOffsetForSource(doc, 'gm_agogo')
+    // points at the start of the 2nd statement (just after the first line + \n)
+    expect(offset).toBe(doc.indexOf('$: note'))
+  })
+
+  it('matches .s the same as .sound, and .bank for drums', () => {
+    expect(statementOffsetForSource('$: note("c").s("sawtooth")', 'sawtooth')).toBe(0)
+    expect(statementOffsetForSource('$: s("bd").bank("RolandTR909")', 'RolandTR909')).toBe(0)
+  })
+
+  it('returns null when no statement uses that instrument', () => {
+    expect(statementOffsetForSource('$: s("bd")', 'gm_agogo')).toBeNull()
+  })
+
+  it('offset → 1-based line by newline count (the app conversion)', () => {
+    const doc = ['setcps(0.5)', '$: s("bd")', "$: note(\"c7\").sound('gm_agogo')"].join('\n')
+    const offset = statementOffsetForSource(doc, 'gm_agogo')!
+    const line = doc.slice(0, offset).split('\n').length
+    expect(line).toBe(3)
   })
 })
