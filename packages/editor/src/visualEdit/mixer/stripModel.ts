@@ -171,6 +171,47 @@ function isForeign(chunk: ChunkInfo, name: string): boolean {
   return call !== undefined && call.args[0].numeric === null
 }
 
+/**
+ * First mini token reduced to its bare sample name — the same value the Timeline
+ * sees as a hap's `s`. Strips structural chars (brackets/angles/parens/comma),
+ * the `:variant` suffix (`bd:3`→`bd`), AND the mini modifiers `* ! @ /`
+ * (`hh*8`→`hh`, `bd!2`→`bd`) which are timing, not part of the sample name.
+ * Null for a rest/empty token.
+ */
+function firstMiniToken(mini: string | null): string | null {
+  if (!mini) return null
+  const tok = mini.trim().split(/\s+/)[0]
+  if (!tok || tok === '~' || tok === '-') return null
+  return tok.replace(/[[\]<>(),*!@/:].*/, '') || null
+}
+
+/**
+ * The colour/display key (V-track-1, #579) — chosen to equal the Song Timeline's
+ * lane key for the SAME track, so the Mixer dot and the Timeline lane resolve to
+ * one colour via `colorForTrack`. The Timeline keys a lane on `trackId ?? s`:
+ *
+ *  - **Named track** → its label (the inner `.p()` name == the label, e.g. `d1`).
+ *  - **Anonymous `$:`** → its primary instrument `s`, the same value the Timeline
+ *    lanes a single-voice anon track by: the first mini token for an `s("…")`
+ *    step pattern (the sample), else the `.sound`/`.s` instrument (`source`).
+ *
+ * NOTE this is the DISPLAY key, distinct from the strip's stable UI `id` (`#k`
+ * for anon, mute-safe per #555): colour follows the Timeline, identity must not
+ * churn on mute. An anon STACK / multi-sample track fans out to several Timeline
+ * lanes (S6 stack sub-strips) — it can't 1:1 match and takes its first sample.
+ */
+function displayKey(
+  label: string | null,
+  kind: StripKind,
+  miniString: string | null,
+  source: string | null,
+): string {
+  const named = bareLabel(label)
+  if (named) return named
+  if (kind === 'step') return firstMiniToken(miniString) ?? source ?? '$default'
+  return source ?? firstMiniToken(miniString) ?? '$default'
+}
+
 function buildStripModel(
   chunk: ChunkInfo,
   index: number,
@@ -197,13 +238,12 @@ function buildStripModel(
     sends: { room: readScalar(chunk, 'room'), delay: readScalar(chunk, 'delay') },
     muted: isMuted(chunk.label),
     muteable: chunk.label != null,
-    // Centralized track colour (V-track-1, #579): keyed on the strip's STABLE
-    // canonical id (the label `d1`, or `#k` for an anonymous `$:`) via the shared
-    // `colorForTrack`. The Timeline colours a lane by the SAME algorithm over its
-    // `laneKey`, and for a named track that laneKey IS the label — so the Mixer
-    // dot and the Timeline lane resolve to one colour. Replaces the old
-    // drum-voice palette, which keyed on the sample and so diverged per view.
-    color: colorForTrack(id),
+    // Centralized track colour (V-track-1, #579): the shared `colorForTrack` over
+    // the strip's DISPLAY key (label for a named track, primary sample for an
+    // anonymous `$:`) — chosen to equal the Timeline's lane key, so the Mixer dot
+    // and the Timeline lane resolve to ONE colour. Replaces the old drum-voice
+    // palette, which keyed differently per view.
+    color: colorForTrack(displayKey(chunk.label, kind, chunk.miniString, source)),
     chain: chunk.chain,
     exprRange: chunk.exprRange,
     statementRange: chunk.statementRange,

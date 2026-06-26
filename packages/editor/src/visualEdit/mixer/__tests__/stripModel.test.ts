@@ -181,18 +181,25 @@ describe('buildStripModels — per-strip read model', () => {
     expect(stripsOf('$: s("bd")')[0].gain.kind).toBe('absent')
   })
 
-  it('colours a strip via the shared colorForTrack, keyed on its canonical id', () => {
+  it('colours a strip via the shared colorForTrack, keyed to match the Timeline lane', () => {
     // V-track-1 (#579): the dot colour is the shared track-colour algorithm over
-    // the strip's stable id — NOT the old drum-voice palette — so it matches the
-    // Song Timeline lane for the same track. A named track keys on its label; an
-    // anonymous `$:` keys on its positional `#k` id.
+    // the strip's DISPLAY key — NOT the old drum-voice palette — chosen to equal
+    // the Song Timeline's lane key so the two views resolve to one colour.
+    // A named track keys on its label.
     const named = stripsOf('d1: note("c e g")')[0]
     expect(named.id).toBe('d1')
     expect(named.color).toBe(colorForTrack('d1'))
 
-    const anon = stripsOf('$: s("bd sn")')[0]
-    expect(anon.id).toBe('#0')
-    expect(anon.color).toBe(colorForTrack('#0'))
+    // An anonymous step `s("…")` track keys on its first sample (the Timeline
+    // lanes a single-voice anon track by its `s`), NOT its positional `#k` id.
+    const anonStep = stripsOf('$: s("hh*8")')[0]
+    expect(anonStep.id).toBe('#0')
+    expect(anonStep.color).toBe(colorForTrack('hh'))
+
+    // An anonymous melodic track keys on its `.sound`/`.s` instrument.
+    const anonRoll = stripsOf('$: note("c e g").sound("piano")')[0]
+    expect(anonRoll.id).toBe('#0')
+    expect(anonRoll.color).toBe(colorForTrack('piano'))
   })
 
   it('classifies a stack(...) statement as a group', () => {
