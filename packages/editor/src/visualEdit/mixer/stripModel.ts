@@ -112,6 +112,34 @@ function bareLabel(label: string | null): string | null {
   return namedLabel(isMuted(label) ? label.slice(1) : label)
 }
 
+/**
+ * Top-level heads that configure global transport / load resources rather than
+ * play a track. They return no pattern and never register a scheduler — the
+ * engine numbers anonymous `$:` patterns ONLY inside the wrapped `.p()` method
+ * (`StrudelEngine.ts:735-739`), which these calls never reach. So they must NOT
+ * become strips (#559): a phantom strip would (1) show a dead meter, (2) consume
+ * a `$<n>` slot and shift every real track's positional `captureId` by one (an
+ * off-by-one meter join), and (3) be wrapped in a JS block comment by the solo
+ * overlay (`soloOverlay.ts`), silencing the global tempo on any solo.
+ */
+const NON_TRACK_HEADS = new Set([
+  'setcps', 'setCps', 'setcpm', 'setCpm', 'setbpm', 'setBpm',
+  'samples', 'hush', 'all',
+])
+
+/**
+ * Whether a detected chunk is a playable track (→ gets a strip) or a global
+ * transport/config statement (→ filtered out, #559). A labelled statement
+ * (`$:`, `_$:`, `d1:`) is ALWAYS a track — the user explicitly declared one. An
+ * unlabelled bare expression is a track unless its head is a known config call;
+ * the denylist is conservative on purpose, so an unknown head still shows a strip
+ * (today's behaviour) rather than risk hiding a real track.
+ */
+export function isTrackChunk(chunk: ChunkInfo): boolean {
+  if (chunk.label !== null) return true
+  return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn)
+}
+
 /** the combinator heads whose statement is a group of voices (sub-strips in S6) */
 const GROUP_HEADS = new Set(['stack', 'cat', 'layer', 'arrange'])
 
@@ -218,7 +246,13 @@ function buildStripModel(
 export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
   let anonAll = 0 // ALL anonymous tracks (muted + unmuted) → the stable id index
   let anonLive = 0 // UNMUTED anonymous only → the engine captureId index
-  return chunks.map((chunk, index) => {
+  const models: StripModel[] = []
+  chunks.forEach((chunk, index) => {
+    // Transport/config statements (`setcps`, `samples`, …) are not tracks — skip
+    // them BEFORE numbering so the remaining anonymous tracks get `$0…$n` that
+    // line up with the engine's anonIndex (#559). `index` stays the true
+    // source-order position (preserving its documented meaning).
+    if (!isTrackChunk(chunk)) return
     const bare = bareLabel(chunk.label)
     // Stable identity: name, else position among ALL anonymous tracks (muted
     // included). Invariant across a mute toggle — muting prefixes a `_` but never
@@ -231,8 +265,9 @@ export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
     if (bare !== null) captureId = bare
     else if (isMuted(chunk.label)) captureId = `_$${index}`
     else captureId = `$${anonLive++}`
-    return buildStripModel(chunk, index, id, captureId)
+    models.push(buildStripModel(chunk, index, id, captureId))
   })
+  return models
 }
 
 /**

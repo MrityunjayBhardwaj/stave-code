@@ -52,6 +52,16 @@ describe('applyMonitorOverlay', () => {
     expect(out).not.toBe(doc)
   })
 
+  it('never silences a transport/config statement when soloing (#559)', () => {
+    // setcps sets the global tempo — it is not a track, so solo must leave it
+    // running. Before #559 it was a bare-expression "strip" and got block-commented.
+    const doc = 'setcps(0.5)\n$: s("bd")\nd1: s("hh")'
+    const out = applyMonitorOverlay(doc, new Set(['d1']))
+    expect(out).toContain('setcps(0.5)') // untouched, tempo holds
+    expect(out).not.toContain('/* setcps')
+    expect(out).toBe('setcps(0.5)\n_$: s("bd")\nd1: s("hh")')
+  })
+
   it('applies edits right-to-left so later offsets stay valid', () => {
     // three anonymous tracks, solo the middle → first and third both silenced,
     // and the splices must not corrupt each other
