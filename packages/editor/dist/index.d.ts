@@ -8526,10 +8526,12 @@ interface KnobProps {
     value: number;
     range: KnobRange;
     onChange: (value: number) => void;
+    /** when set, a small `×` removes this effect's call (#575) */
+    onRemove?: () => void;
     onGestureStart?: () => void;
     onGestureEnd?: () => void;
 }
-declare function Knob({ label, value, range, onChange, onGestureStart, onGestureEnd, }: KnobProps): React.ReactElement;
+declare function Knob({ label, value, range, onChange, onRemove, onGestureStart, onGestureEnd, }: KnobProps): React.ReactElement;
 
 /**
  * Single source of truth for the visual-editing bottom-panel tab.

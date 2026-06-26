@@ -1,7 +1,7 @@
 'use strict';
 
 var core = require('@strudel/core');
-var React29 = require('react');
+var React30 = require('react');
 var p5 = require('p5');
 var acorn = require('acorn');
 var jsxRuntime = require('react/jsx-runtime');
@@ -28,7 +28,7 @@ function _interopNamespace(e) {
   return Object.freeze(n);
 }
 
-var React29__namespace = /*#__PURE__*/_interopNamespace(React29);
+var React30__namespace = /*#__PURE__*/_interopNamespace(React30);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
 var Y3__namespace = /*#__PURE__*/_interopNamespace(Y3);
@@ -14593,14 +14593,14 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React29__namespace.default.Children.count(children);
-  const childArray = React29__namespace.default.Children.toArray(children);
+  const count = React30__namespace.default.Children.count(children);
+  const childArray = React30__namespace.default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
-  const [sizes, setSizes] = React29.useState(defaultSizes);
-  const containerRef = React29.useRef(null);
-  const draggingRef = React29.useRef(null);
+  const [sizes, setSizes] = React30.useState(defaultSizes);
+  const containerRef = React30.useRef(null);
+  const draggingRef = React30.useRef(null);
   const isHorizontal = direction === "horizontal";
-  const handleMouseDown = React29.useCallback((dividerIndex, e) => {
+  const handleMouseDown = React30.useCallback((dividerIndex, e) => {
     e.preventDefault();
     draggingRef.current = dividerIndex;
     const startPos = isHorizontal ? e.clientX : e.clientY;
@@ -14639,7 +14639,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React29__namespace.default.useEffect(() => {
+  React30__namespace.default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -14655,7 +14655,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React29__namespace.default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React30__namespace.default.Fragment, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
@@ -15530,13 +15530,13 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe6 = React29.useCallback(
+  const subscribe6 = React30.useCallback(
     (onStoreChange) => subscribe(id, onStoreChange),
     [id]
   );
-  const getSnapshot = React29.useCallback(() => getFile(id), [id]);
-  const file = React29.useSyncExternalStore(subscribe6, getSnapshot, getSnapshot);
-  const setContent2 = React29.useCallback(
+  const getSnapshot = React30.useCallback(() => getFile(id), [id]);
+  const file = React30.useSyncExternalStore(subscribe6, getSnapshot, getSnapshot);
+  const setContent2 = React30.useCallback(
     (content) => setContent(id, content),
     [id]
   );
@@ -20727,13 +20727,13 @@ function teardown(timeoutIds, collections) {
 }
 __name(teardown, "teardown");
 function useHighlighting(editor, hapStream) {
-  const timeoutIdsRef = React29.useRef([]);
-  const hapCollectionsRef = React29.useRef(/* @__PURE__ */ new Map());
-  const hapCounterRef = React29.useRef(0);
-  const clearAll = React29.useCallback(() => {
+  const timeoutIdsRef = React30.useRef([]);
+  const hapCollectionsRef = React30.useRef(/* @__PURE__ */ new Map());
+  const hapCounterRef = React30.useRef(0);
+  const clearAll = React30.useCallback(() => {
     teardown(timeoutIdsRef.current, hapCollectionsRef.current);
   }, []);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!editor || !hapStream) return;
     ensureBaseHighlightStyle();
     const handler = /* @__PURE__ */ __name((event) => {
@@ -20942,12 +20942,12 @@ function ensureBaseBreakpointStyle() {
 }
 __name(ensureBaseBreakpointStyle, "ensureBaseBreakpointStyle");
 function useBreakpoints(editor, store, onResume) {
-  const collectionRef = React29.useRef(null);
-  const clearAll = React29.useCallback(() => {
+  const collectionRef = React30.useRef(null);
+  const clearAll = React30.useCallback(() => {
     collectionRef.current?.clear();
     collectionRef.current = null;
   }, []);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!editor || !onResume) return;
     const action = editor.addAction({
       id: "stave.debugger.resume",
@@ -20962,7 +20962,7 @@ function useBreakpoints(editor, store, onResume) {
       action.dispose();
     };
   }, [editor, onResume]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!editor || !store) return;
     ensureBaseBreakpointStyle();
     let currentSnapshot = getIRSnapshot();
@@ -22798,30 +22798,30 @@ function EditorView({
   onCropViz
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
-  const containerRef = React29.useRef(null);
-  const [, forceViewTick] = React29.useState(0);
-  React29.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
+  const containerRef = React30.useRef(null);
+  const [, forceViewTick] = React30.useState(0);
+  React30.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
   const viewedContent = getViewedContent(fileId);
   const viewing = viewedContent !== null;
   const viewedCommit = getViewedCommit();
-  const editorRef = React29.useRef(null);
-  const monacoRef = React29.useRef(null);
-  const viewZoneHandleRef = React29.useRef(null);
-  const lastPayloadRef = React29.useRef(null);
-  const [hapStream, setHapStream] = React29.useState(null);
-  const [breakpointStore, setBreakpointStore] = React29.useState(null);
-  const [onResume, setOnResume] = React29.useState(null);
-  const [editorReady, setEditorReady] = React29.useState(false);
-  React29.useEffect(() => {
+  const editorRef = React30.useRef(null);
+  const monacoRef = React30.useRef(null);
+  const viewZoneHandleRef = React30.useRef(null);
+  const lastPayloadRef = React30.useRef(null);
+  const [hapStream, setHapStream] = React30.useState(null);
+  const [breakpointStore, setBreakpointStore] = React30.useState(null);
+  const [onResume, setOnResume] = React30.useState(null);
+  const [editorReady, setEditorReady] = React30.useState(false);
+  React30.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     const monaco = monacoRef.current;
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
       { kind: "file", fileId },
@@ -22852,7 +22852,7 @@ function EditorView({
       viewZoneHandleRef.current = null;
     };
   }, [fileId, editorReady]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!fileId) return;
     const remount = /* @__PURE__ */ __name(() => {
       const payload = lastPayloadRef.current;
@@ -22876,12 +22876,12 @@ function EditorView({
   }, [fileId]);
   useHighlighting(editorRef.current, hapStream);
   useBreakpoints(editorRef.current, breakpointStore, onResume ?? void 0);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     return () => {
       if (editorRef.current) unregisterEditor(fileId, editorRef.current);
     };
   }, [fileId]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     if (!editor || !monaco) return;
@@ -22893,9 +22893,9 @@ function EditorView({
       clearEvalErrors(monaco, model);
     }
   }, [error]);
-  const onPlayRef = React29.useRef(onPlay);
+  const onPlayRef = React30.useRef(onPlay);
   onPlayRef.current = onPlay;
-  const onStopRef = React29.useRef(onStop);
+  const onStopRef = React30.useRef(onStop);
   onStopRef.current = onStop;
   const handleMonacoMount = /* @__PURE__ */ __name((editor, monaco) => {
     editorRef.current = editor;
@@ -23072,7 +23072,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React29__namespace.default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React30__namespace.default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -23219,34 +23219,34 @@ function PreviewView({
   paused = false
 }) {
   const { file } = useWorkspaceFile(fileId);
-  const containerRef = React29.useRef(null);
-  const [audioPayload, setAudioPayload] = React29.useState(null);
-  const [reloadTick, setReloadTick] = React29.useState(0);
-  const [, forceSourcesRerender] = React29.useState(0);
-  const catchUpNeededRef = React29.useRef(false);
-  const [liveOn, setLiveOn] = React29.useState(() => getVizLive(fileId));
-  React29.useEffect(() => {
+  const containerRef = React30.useRef(null);
+  const [audioPayload, setAudioPayload] = React30.useState(null);
+  const [reloadTick, setReloadTick] = React30.useState(0);
+  const [, forceSourcesRerender] = React30.useState(0);
+  const catchUpNeededRef = React30.useRef(false);
+  const [liveOn, setLiveOn] = React30.useState(() => getVizLive(fileId));
+  React30.useEffect(() => {
     setLiveOn(getVizLive(fileId));
     return onVizLiveChange(fileId, setLiveOn);
   }, [fileId]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     const unsubscribe = workspaceAudioBus.subscribe(sourceRef, (payload) => {
       setAudioPayload(payload);
     });
     return unsubscribe;
   }, [sourceRef]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     const unsubscribe = workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
     return unsubscribe;
   }, []);
   const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!file) return;
     if (provider.reload === "manual") return;
     if (!liveOn) {
@@ -23276,8 +23276,8 @@ function PreviewView({
     liveOn,
     file
   ]);
-  const prevEffectivelyHiddenRef = React29.useRef(effectivelyHidden);
-  React29.useEffect(() => {
+  const prevEffectivelyHiddenRef = React30.useRef(effectivelyHidden);
+  React30.useEffect(() => {
     const wasHidden = prevEffectivelyHiddenRef.current;
     prevEffectivelyHiddenRef.current = effectivelyHidden;
     if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
@@ -23285,8 +23285,8 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
-  const prevLiveOnRef = React29.useRef(liveOn);
-  React29.useEffect(() => {
+  const prevLiveOnRef = React30.useRef(liveOn);
+  React30.useEffect(() => {
     const wasOff = !prevLiveOnRef.current;
     prevLiveOnRef.current = liveOn;
     if (wasOff && liveOn && catchUpNeededRef.current) {
@@ -23294,7 +23294,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React29__namespace.default.useMemo(() => {
+  const providerNode = React30__namespace.default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -23473,9 +23473,9 @@ var CHORD_MAP = {
   w: "workspace.openPreviewInWindow"
 };
 function useKeyboardCommands(opts) {
-  const optsRef = React29.useRef(opts);
+  const optsRef = React30.useRef(opts);
   optsRef.current = opts;
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     let chordPending = false;
     let chordTimer = null;
     function clearChord() {
@@ -23587,25 +23587,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React29__namespace.useMemo(
+  const changedIds = React30__namespace.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
     [commit, pickerFileIds]
   );
-  const [mode, setMode2] = React29__namespace.useState(defaultMode);
-  React29__namespace.useEffect(() => {
+  const [mode, setMode2] = React30__namespace.useState(defaultMode);
+  React30__namespace.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React29__namespace.useState(
+  const [fileId, setFileId] = React30__namespace.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React29__namespace.useRef(null);
-  const handleMount = React29__namespace.useCallback(
+  const diffEditorRef = React30__namespace.useRef(null);
+  const handleMount = React30__namespace.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -23615,7 +23615,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -23740,18 +23740,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React29__namespace.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React29__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React29__namespace.useState(
+  const snapshot = React30__namespace.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React30__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React30__namespace.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React29__namespace.useCallback(
+  const handleMount = React30__namespace.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -24642,7 +24642,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React29__namespace.createElement(
+  return React30__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -24660,25 +24660,25 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React29__namespace.createElement(EmptyTimelineStub)
+  content: React30__namespace.createElement(EmptyTimelineStub)
 });
 function useActiveChunk() {
-  const [editor, setEditor] = React29__namespace.useState(() => getActiveEditor());
-  const [chunk, setChunk] = React29__namespace.useState(null);
-  const writebackRef = React29__namespace.useRef(null);
-  const editorRef = React29__namespace.useRef(null);
-  const anchorRef = React29__namespace.useRef(null);
+  const [editor, setEditor] = React30__namespace.useState(() => getActiveEditor());
+  const [chunk, setChunk] = React30__namespace.useState(null);
+  const writebackRef = React30__namespace.useRef(null);
+  const editorRef = React30__namespace.useRef(null);
+  const anchorRef = React30__namespace.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
   }, [editor]);
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -24705,7 +24705,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React29__namespace.useCallback(
+  const applyEdit = React30__namespace.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -24720,8 +24720,8 @@ function useActiveChunk() {
     },
     []
   );
-  const beginGesture = React29__namespace.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React29__namespace.useCallback(() => writebackRef.current?.endGesture(), []);
+  const beginGesture = React30__namespace.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React30__namespace.useCallback(() => writebackRef.current?.endGesture(), []);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -25421,7 +25421,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React29__namespace.createElement(
+  return React30__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -25440,12 +25440,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React29__namespace.createElement("span", {
+    icon ? React30__namespace.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React29__namespace.createElement("span", null, hint)
+    React30__namespace.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -25506,14 +25506,14 @@ function gainUnchanged(g, cur) {
 __name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React29__namespace.useState(null);
-  const modelRef = React29__namespace.useRef(null);
-  React29__namespace.useEffect(() => {
+  const [model, setModel] = React30__namespace.useState(null);
+  const modelRef = React30__namespace.useRef(null);
+  React30__namespace.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React29__namespace.useRef(opts);
+  const optsRef = React30__namespace.useRef(opts);
   optsRef.current = opts;
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -25535,7 +25535,7 @@ function useGridModel(opts) {
     modelRef.current = next;
     setModel(next);
   }, [chunk]);
-  const mutate = React29__namespace.useCallback(
+  const mutate = React30__namespace.useCallback(
     (fn) => {
       const o = optsRef.current;
       const prev = modelRef.current;
@@ -25585,8 +25585,8 @@ function cycleToStep(cycle, steps, bars) {
 }
 __name(cycleToStep, "cycleToStep");
 function usePlayingStep(steps, bars) {
-  const [step, setStep] = React29__namespace.useState(null);
-  React29__namespace.useEffect(() => {
+  const [step, setStep] = React30__namespace.useState(null);
+  React30__namespace.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const next = cycleToStep(readCurrentCycle(), steps, bars);
@@ -25829,7 +25829,7 @@ function subscribe3(listener) {
 }
 __name(subscribe3, "subscribe");
 function useNoteColorMode() {
-  const mode = React29__namespace.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
+  const mode = React30__namespace.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -26185,9 +26185,9 @@ function SequencerGrid() {
   });
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const gestureRef = React29__namespace.useRef(null);
+  const gestureRef = React30__namespace.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
-  const paintCell = React29__namespace.useCallback(
+  const paintCell = React30__namespace.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
         const lane = prev.lanes[laneIndex];
@@ -26199,25 +26199,25 @@ function SequencerGrid() {
     },
     [mutate]
   );
-  const addVoice = React29__namespace.useCallback(
+  const addVoice = React30__namespace.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React29__namespace.useCallback(
+  const removeVoice = React30__namespace.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
-  const scaleToSlots = React29__namespace.useCallback(
+  const scaleToSlots = React30__namespace.useCallback(
     (target) => {
       mutate((prev) => quantizeStepGridTo(prev, target));
     },
     [mutate]
   );
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -26284,7 +26284,7 @@ function SequencerGrid() {
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
   if (!model) {
-    return React29__namespace.createElement(VisualEditStandby, {
+    return React30__namespace.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && isStepChunk(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -26580,22 +26580,22 @@ function PianoRollGrid({
     applyGain: applyRollGain,
     serializeGain: serializeRollGain
   });
-  const dragRef = React29__namespace.useRef(null);
-  const velRef = React29__namespace.useRef(null);
+  const dragRef = React30__namespace.useRef(null);
+  const velRef = React30__namespace.useRef(null);
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const [hoveredMidi, setHoveredMidi] = React29__namespace.useState(null);
-  const onSelectRef = React29__namespace.useRef(onSelect);
+  const [hoveredMidi, setHoveredMidi] = React30__namespace.useState(null);
+  const onSelectRef = React30__namespace.useRef(onSelect);
   onSelectRef.current = onSelect;
-  const selectedRef = React29__namespace.useRef(selected);
+  const selectedRef = React30__namespace.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range, setRange] = React29__namespace.useState({
+  const [range, setRange] = React30__namespace.useState({
     lo: DEFAULT_LO,
     hi: DEFAULT_HI
   });
-  const stmtIdRef = React29__namespace.useRef(null);
-  React29__namespace.useEffect(() => {
+  const stmtIdRef = React30__namespace.useRef(null);
+  React30__namespace.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = contentRange(model);
@@ -26610,7 +26610,7 @@ function PianoRollGrid({
       }));
     }
   }, [model, chunk]);
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
@@ -26626,7 +26626,7 @@ function PianoRollGrid({
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
@@ -26750,7 +26750,7 @@ function PianoRollGrid({
     mutate((prev) => quantizePianoRollTo(prev, target));
   }, "scaleToSlots");
   if (!model) {
-    return React29__namespace.createElement(VisualEditStandby, {
+    return React30__namespace.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && isRollChunk(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -27063,10 +27063,11 @@ function Knob({
   value,
   range,
   onChange,
+  onRemove,
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React29__namespace.useRef(null);
+  const dragRef = React30__namespace.useRef(null);
   const pos = Math.max(0, Math.min(1, toPosition(value, range)));
   const angle = -135 + pos * 270;
   const onPointerDown = /* @__PURE__ */ __name((e) => {
@@ -27114,9 +27115,36 @@ function Knob({
         alignItems: "center",
         gap: 4,
         width: 64,
-        userSelect: "none"
+        userSelect: "none",
+        position: "relative"
       },
       children: [
+        onRemove && /* @__PURE__ */ jsxRuntime.jsx(
+          "button",
+          {
+            type: "button",
+            "data-knob-remove": label,
+            "aria-label": `Remove ${label}`,
+            title: `Remove ${label}`,
+            onClick: onRemove,
+            style: {
+              position: "absolute",
+              top: -2,
+              right: 2,
+              width: 14,
+              height: 14,
+              padding: 0,
+              lineHeight: "12px",
+              fontSize: 11,
+              borderRadius: 3,
+              cursor: "pointer",
+              border: "1px solid var(--border, #3a3a42)",
+              background: "var(--background, #1c1c20)",
+              color: "var(--foreground-muted, #a0a0aa)"
+            },
+            children: "\xD7"
+          }
+        ),
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
@@ -27267,15 +27295,211 @@ function knobRangeFor(method, value) {
 }
 __name(knobRangeFor, "knobRangeFor");
 
-// src/visualEdit/panels/quickTransforms.ts
-var QUICK_TRANSFORMS = [
-  { label: "Reverb", method: "room", value: 0.4 },
-  { label: "Filter", method: "lpf", value: 800 },
-  { label: "Distortion", method: "distort", value: 0.3 },
-  { label: "Delay", method: "delay", value: 0.4 },
-  { label: "Speed", method: "speed", value: 1.5 },
-  { label: "Gain", method: "gain", value: 0.8 }
+// src/visualEdit/panels/effectCatalog.ts
+var EFFECTS = [
+  // Reverb
+  { method: "room", label: "Reverb", group: "Reverb", def: 0.4, favorite: true },
+  { method: "size", label: "Room size", group: "Reverb", def: 0.5, aliases: ["roomsize"] },
+  // Delay
+  { method: "delay", label: "Delay", group: "Delay", def: 0.4, favorite: true },
+  { method: "delaytime", label: "Delay time", group: "Delay", def: 0.25 },
+  { method: "delayfeedback", label: "Delay feedback", group: "Delay", def: 0.5 },
+  // Filters
+  { method: "lpf", label: "Low-pass", group: "Filters", def: 800, aliases: ["cutoff"], favorite: true },
+  { method: "hpf", label: "High-pass", group: "Filters", def: 2e3, aliases: ["hcutoff"] },
+  { method: "bandf", label: "Band-pass", group: "Filters", def: 1e3 },
+  { method: "resonance", label: "Resonance", group: "Filters", def: 10, aliases: ["lpq"] },
+  // Tone / drive
+  { method: "distort", label: "Distortion", group: "Tone", def: 0.3 },
+  { method: "shape", label: "Waveshape", group: "Tone", def: 0.3 },
+  { method: "crush", label: "Bitcrush", group: "Tone", def: 8 },
+  { method: "coarse", label: "Coarse", group: "Tone", def: 4 },
+  // Envelope
+  { method: "attack", label: "Attack", group: "Envelope", def: 0.1 },
+  { method: "decay", label: "Decay", group: "Envelope", def: 0.2 },
+  { method: "sustain", label: "Sustain", group: "Envelope", def: 0.6 },
+  { method: "release", label: "Release", group: "Envelope", def: 0.5 },
+  // Playback
+  { method: "speed", label: "Speed", group: "Playback", def: 1.5 },
+  { method: "accelerate", label: "Accelerate", group: "Playback", def: 0.5 },
+  // Time
+  { method: "slow", label: "Slow", group: "Time", def: 2 },
+  { method: "fast", label: "Fast", group: "Time", def: 2 },
+  // Random
+  { method: "degradeBy", label: "Degrade", group: "Random", def: 0.3 }
 ];
+var FAVORITES = EFFECTS.filter((e) => e.favorite);
+function effectNames(e) {
+  return [e.method, ...e.aliases ?? []];
+}
+__name(effectNames, "effectNames");
+function isEffectActive(present, e) {
+  return effectNames(e).some((n) => present.has(n));
+}
+__name(isEffectActive, "isEffectActive");
+var EFFECT_GROUPS = (() => {
+  const order = [];
+  const byGroup = /* @__PURE__ */ new Map();
+  for (const e of EFFECTS) {
+    if (!byGroup.has(e.group)) {
+      byGroup.set(e.group, []);
+      order.push(e.group);
+    }
+    byGroup.get(e.group).push(e);
+  }
+  return order.map((g) => [g, byGroup.get(g)]);
+})();
+var STRIP_OWNED = /* @__PURE__ */ new Set(["gain", "pan"]);
+function AddEffectMenu({
+  present,
+  onToggle
+}) {
+  const [open, setOpen] = React30__namespace.useState(false);
+  const [query, setQuery] = React30__namespace.useState("");
+  const ref = React30__namespace.useRef(null);
+  React30__namespace.useEffect(() => {
+    if (!open) return;
+    const onDown = /* @__PURE__ */ __name((e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }, "onDown");
+    const onKey = /* @__PURE__ */ __name((e) => {
+      if (e.key === "Escape") setOpen(false);
+    }, "onKey");
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const q = query.trim().toLowerCase();
+  const groups = EFFECT_GROUPS.map(
+    ([group, effects]) => [
+      group,
+      q ? effects.filter(
+        (e) => e.label.toLowerCase().includes(q) || e.method.toLowerCase().includes(q)
+      ) : effects
+    ]
+  ).filter(([, effects]) => effects.length > 0);
+  return /* @__PURE__ */ jsxRuntime.jsxs("div", { ref, style: { position: "relative" }, children: [
+    /* @__PURE__ */ jsxRuntime.jsx(
+      "button",
+      {
+        type: "button",
+        "data-mixer-add-effect": true,
+        "aria-expanded": open,
+        onClick: () => setOpen((o) => !o),
+        title: "Add effect",
+        style: {
+          padding: "3px 10px",
+          fontSize: 11,
+          borderRadius: 4,
+          cursor: "pointer",
+          border: "1px solid var(--border, #3a3a42)",
+          background: "var(--background-elevated, #26262c)",
+          color: "var(--foreground, #e6e6ea)"
+        },
+        children: "\uFF0B More \u25BE"
+      }
+    ),
+    open && /* @__PURE__ */ jsxRuntime.jsxs(
+      "div",
+      {
+        "data-mixer-add-effect-menu": true,
+        style: {
+          position: "absolute",
+          zIndex: 30,
+          top: "100%",
+          left: 0,
+          marginTop: 4,
+          width: 230,
+          maxHeight: 300,
+          overflowY: "auto",
+          padding: 6,
+          borderRadius: 6,
+          border: "1px solid var(--border, #3a3a42)",
+          background: "var(--background-elevated, #26262c)",
+          boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4)"
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "input",
+            {
+              autoFocus: true,
+              "data-mixer-add-effect-search": true,
+              value: query,
+              onChange: (e) => setQuery(e.target.value),
+              placeholder: "Search effects\u2026",
+              style: {
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "4px 8px",
+                marginBottom: 4,
+                fontSize: 12,
+                borderRadius: 4,
+                border: "1px solid var(--border, #3a3a42)",
+                background: "var(--background, #1c1c20)",
+                color: "var(--foreground, #e6e6ea)"
+              }
+            }
+          ),
+          groups.map(([group, effects]) => /* @__PURE__ */ jsxRuntime.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntime.jsx(
+              "div",
+              {
+                style: {
+                  fontSize: 9,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  color: "var(--foreground-muted, #6a6a72)",
+                  margin: "6px 4px 2px"
+                },
+                children: group
+              }
+            ),
+            effects.map((e) => {
+              const active2 = isEffectActive(present, e);
+              return /* @__PURE__ */ jsxRuntime.jsxs(
+                "button",
+                {
+                  type: "button",
+                  "data-mixer-add-effect-item": e.method,
+                  "aria-pressed": active2,
+                  onClick: () => onToggle(e),
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "4px 6px",
+                    fontSize: 12,
+                    borderRadius: 4,
+                    border: "none",
+                    cursor: "pointer",
+                    background: active2 ? "var(--background, #1c1c20)" : "transparent",
+                    color: "var(--foreground, #e6e6ea)"
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntime.jsx("span", { style: { width: 12, color: "var(--accent, #6ea8fe)" }, children: active2 ? "\u2713" : "" }),
+                    e.label
+                  ]
+                },
+                e.method
+              );
+            })
+          ] }, group)),
+          groups.length === 0 && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { padding: 8, fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" }, children: [
+            "No effects match \u201C",
+            query,
+            "\u201D."
+          ] })
+        ]
+      }
+    )
+  ] });
+}
+__name(AddEffectMenu, "AddEffectMenu");
 
 // src/visualEdit/panels/chainMethod.ts
 function readChainMethod(chunk, names) {
@@ -27289,45 +27513,6 @@ function readChainMethod(chunk, names) {
   return null;
 }
 __name(readChainMethod, "readChainMethod");
-
-// src/visualEdit/mixer/gain.ts
-var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
-function parseManagedGain(raw) {
-  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
-  if (!quote || raw[raw.length - 1] !== quote) return null;
-  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== "");
-  if (tokens.length < 2) return null;
-  let ceiling = 0;
-  for (const t of tokens) {
-    if (t === "~") continue;
-    const m = GAIN_TOKEN2.exec(t);
-    if (!m) return null;
-    ceiling = Math.max(ceiling, parseFloat(m[1]));
-  }
-  return { tokens, ceiling, quote };
-}
-__name(parseManagedGain, "parseManagedGain");
-function scaleManagedGain(mg, value) {
-  const factor = mg.ceiling > 0 ? value / mg.ceiling : null;
-  const out = mg.tokens.map((t) => {
-    if (t === "~") return "~";
-    const m = GAIN_TOKEN2.exec(t);
-    const nv = factor === null ? value : parseFloat(m[1]) * factor;
-    return formatNumber(Math.max(0, nv)) + (m[2] ?? "");
-  });
-  return mg.quote + out.join(" ") + mg.quote;
-}
-__name(scaleManagedGain, "scaleManagedGain");
-function readGainState(chunk) {
-  const call = chunk.chain.find((c) => c.name === "gain" && c.args.length >= 1);
-  const arg = call?.args[0];
-  if (!call || !arg) return { kind: "absent" };
-  if (arg.numeric !== null) return { kind: "scalar", value: arg.numeric, range: arg.range };
-  const mg = parseManagedGain(arg.raw);
-  if (mg) return { kind: "managed", ceiling: mg.ceiling, mg, range: arg.range };
-  return { kind: "foreign" };
-}
-__name(readGainState, "readGainState");
 function soundfontLabel(name) {
   return name.replace(/^gm_/, "").split("_").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
@@ -27479,7 +27664,7 @@ function createCatalogStore() {
     listeners12.add(listener);
     return () => listeners12.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React29__namespace.useSyncExternalStore(subscribe6, read4, () => null), "useCatalog");
+  const useCatalog = /* @__PURE__ */ __name(() => React30__namespace.useSyncExternalStore(subscribe6, read4, () => null), "useCatalog");
   return { setAccessor, notify: notify5, read: read4, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
@@ -27496,6 +27681,7 @@ var useDrumKitCatalog = drumKitStore.useCatalog;
 function knobsFromChunk(chunk) {
   const knobs = [];
   chunk.chain.forEach((call, chainIndex) => {
+    if (STRIP_OWNED.has(call.name)) return;
     const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);
     numericArgs.forEach(({ a, argIndex }) => {
       knobs.push({
@@ -27507,12 +27693,6 @@ function knobsFromChunk(chunk) {
         value: a.numeric
       });
     });
-    if (call.name === "gain" && call.args.length === 1 && call.args[0].numeric === null) {
-      const mg = parseManagedGain(call.args[0].raw);
-      if (mg) {
-        knobs.push({ chainIndex, argIndex: 0, method: "gain", label: "gain", value: mg.ceiling, gain: mg });
-      }
-    }
   });
   return knobs;
 }
@@ -27618,41 +27798,37 @@ function MixerBody({
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
   const knobs = knobsFromChunk(chunk);
-  const writeKnob = React29__namespace.useCallback(
+  const writeKnob = React30__namespace.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => {
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex];
         if (!arg) return;
-        if (entry.gain) {
-          const mg = parseManagedGain(arg.raw) ?? entry.gain;
-          wb.replaceRange(arg.range, scaleManagedGain(mg, value), "knob");
-          return;
-        }
         wb.replaceRange(arg.range, formatNumber(value), "knob");
       });
     },
     [applyEdit]
   );
-  const addTransform = React29__namespace.useCallback(
-    (method, value) => {
+  const toggleEffect = React30__namespace.useCallback(
+    (e) => {
       applyEdit((fresh, wb) => {
-        if (fresh.chain.some((c) => c.name === method)) return;
-        wb.insertAt(fresh.exprRange[1], `.${method}(${formatNumber(value)})`, "knob");
+        const names = effectNames(e);
+        const idx = fresh.chain.findIndex((c, i) => i > 0 && names.includes(c.name));
+        if (idx >= 0) wb.deleteRange(fresh.chain[idx].range, "knob");
+        else wb.insertAt(fresh.exprRange[1], `.${e.method}(${formatNumber(e.def)})`, "knob");
       });
     },
     [applyEdit]
   );
-  const removeTransform = React29__namespace.useCallback(
+  const removeMethod = React30__namespace.useCallback(
     (method) => {
       applyEdit((fresh, wb) => {
         const idx = fresh.chain.findIndex((c, i) => i > 0 && c.name === method);
-        if (idx === -1) return;
-        wb.deleteRange(fresh.chain[idx].range, "knob");
+        if (idx >= 0) wb.deleteRange(fresh.chain[idx].range, "knob");
       });
     },
     [applyEdit]
   );
-  const writeChainMethod = React29__namespace.useCallback(
+  const writeChainMethod = React30__namespace.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -27702,35 +27878,45 @@ function MixerBody({
             onChange: (v) => writeChainMethod(["bank"], "bank", v)
           }
         ),
-        /* @__PURE__ */ jsxRuntime.jsx("div", { "data-mixer-transforms": true, style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: QUICK_TRANSFORMS.map((t) => {
-          const active2 = present.has(t.method);
-          return /* @__PURE__ */ jsxRuntime.jsxs(
-            "button",
-            {
-              type: "button",
-              "data-mixer-transform": t.method,
-              "data-mixer-transform-active": active2 ? "true" : void 0,
-              "aria-pressed": active2,
-              title: active2 ? `Remove ${t.label}` : `Add ${t.label}`,
-              onClick: () => active2 ? removeTransform(t.method) : addTransform(t.method, t.value),
-              style: {
-                padding: "3px 10px",
-                fontSize: 11,
-                borderRadius: 4,
-                cursor: "pointer",
-                border: active2 ? "1px solid var(--accent, #6ea8fe)" : "1px solid var(--border, #3a3a42)",
-                background: active2 ? "var(--accent, #6ea8fe)" : "var(--background-elevated, #26262c)",
-                color: active2 ? "#0b0b0e" : "var(--foreground, #e6e6ea)"
-              },
-              children: [
-                active2 ? "\u2713" : "+",
-                " ",
-                t.label
-              ]
-            },
-            t.method
-          );
-        }) }),
+        /* @__PURE__ */ jsxRuntime.jsxs(
+          "div",
+          {
+            "data-mixer-transforms": true,
+            style: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" },
+            children: [
+              FAVORITES.map((e) => {
+                const active2 = isEffectActive(present, e);
+                return /* @__PURE__ */ jsxRuntime.jsxs(
+                  "button",
+                  {
+                    type: "button",
+                    "data-mixer-transform": e.method,
+                    "data-mixer-transform-active": active2 ? "true" : void 0,
+                    "aria-pressed": active2,
+                    title: active2 ? `Remove ${e.label}` : `Add ${e.label}`,
+                    onClick: () => toggleEffect(e),
+                    style: {
+                      padding: "3px 10px",
+                      fontSize: 11,
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      border: active2 ? "1px solid var(--accent, #6ea8fe)" : "1px solid var(--border, #3a3a42)",
+                      background: active2 ? "var(--accent, #6ea8fe)" : "var(--background-elevated, #26262c)",
+                      color: active2 ? "#0b0b0e" : "var(--foreground, #e6e6ea)"
+                    },
+                    children: [
+                      active2 ? "\u2713" : "+",
+                      " ",
+                      e.label
+                    ]
+                  },
+                  e.method
+                );
+              }),
+              /* @__PURE__ */ jsxRuntime.jsx(AddEffectMenu, { present, onToggle: toggleEffect })
+            ]
+          }
+        ),
         knobs.length > 0 ? /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }, children: knobs.map((k) => /* @__PURE__ */ jsxRuntime.jsx(
           Knob,
           {
@@ -27738,6 +27924,7 @@ function MixerBody({
             value: k.value,
             range: knobRangeFor(k.method, k.value),
             onChange: (v) => writeKnob(k, v),
+            onRemove: () => removeMethod(k.method),
             onGestureStart: beginGesture,
             onGestureEnd: endGesture
           },
@@ -27752,7 +27939,7 @@ var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function Mixer({ division: division2, onDivisionChange } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   if (!chunk || chunk.chain.length === 0) {
-    return React29__namespace.createElement(VisualEditStandby, {
+    return React30__namespace.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -27772,6 +27959,45 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
   );
 }
 __name(Mixer, "Mixer");
+
+// src/visualEdit/mixer/gain.ts
+var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
+function parseManagedGain(raw) {
+  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
+  if (!quote || raw[raw.length - 1] !== quote) return null;
+  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== "");
+  if (tokens.length < 2) return null;
+  let ceiling = 0;
+  for (const t of tokens) {
+    if (t === "~") continue;
+    const m = GAIN_TOKEN2.exec(t);
+    if (!m) return null;
+    ceiling = Math.max(ceiling, parseFloat(m[1]));
+  }
+  return { tokens, ceiling, quote };
+}
+__name(parseManagedGain, "parseManagedGain");
+function scaleManagedGain(mg, value) {
+  const factor = mg.ceiling > 0 ? value / mg.ceiling : null;
+  const out = mg.tokens.map((t) => {
+    if (t === "~") return "~";
+    const m = GAIN_TOKEN2.exec(t);
+    const nv = factor === null ? value : parseFloat(m[1]) * factor;
+    return formatNumber(Math.max(0, nv)) + (m[2] ?? "");
+  });
+  return mg.quote + out.join(" ") + mg.quote;
+}
+__name(scaleManagedGain, "scaleManagedGain");
+function readGainState(chunk) {
+  const call = chunk.chain.find((c) => c.name === "gain" && c.args.length >= 1);
+  const arg = call?.args[0];
+  if (!call || !arg) return { kind: "absent" };
+  if (arg.numeric !== null) return { kind: "scalar", value: arg.numeric, range: arg.range };
+  const mg = parseManagedGain(arg.raw);
+  if (mg) return { kind: "managed", ceiling: mg.ceiling, mg, range: arg.range };
+  return { kind: "foreign" };
+}
+__name(readGainState, "readGainState");
 
 // src/visualEdit/mixer/stripModel.ts
 function namedLabel(label) {
@@ -27896,20 +28122,20 @@ __name(statementOffsetForSource, "statementOffsetForSource");
 // src/visualEdit/mixer/useMixerModel.ts
 var EMPTY_DERIVED = { strips: [], chunks: [] };
 function useMixerModel() {
-  const [editor, setEditor] = React29__namespace.useState(() => getActiveEditor());
-  const [derived, setDerived] = React29__namespace.useState(EMPTY_DERIVED);
-  const editorRef = React29__namespace.useRef(null);
-  const writebackRef = React29__namespace.useRef(null);
-  React29__namespace.useEffect(() => {
+  const [editor, setEditor] = React30__namespace.useState(() => getActiveEditor());
+  const [derived, setDerived] = React30__namespace.useState(EMPTY_DERIVED);
+  const editorRef = React30__namespace.useRef(null);
+  const writebackRef = React30__namespace.useRef(null);
+  React30__namespace.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
   }, [editor]);
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     if (!editor) {
       setDerived(EMPTY_DERIVED);
       return;
@@ -27928,7 +28154,7 @@ function useMixerModel() {
     const sub = model?.onDidChangeContent?.(rederive);
     return () => sub?.dispose?.();
   }, [editor]);
-  const applyToStrip = React29__namespace.useCallback(
+  const applyToStrip = React30__namespace.useCallback(
     (id, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -27942,8 +28168,8 @@ function useMixerModel() {
     },
     []
   );
-  const beginGesture = React29__namespace.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React29__namespace.useCallback(() => writebackRef.current?.endGesture(), []);
+  const beginGesture = React30__namespace.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React30__namespace.useCallback(() => writebackRef.current?.endGesture(), []);
   return { strips: derived.strips, chunks: derived.chunks, applyToStrip, beginGesture, endGesture };
 }
 __name(useMixerModel, "useMixerModel");
@@ -28047,24 +28273,24 @@ __name(levelColor, "levelColor");
 var MIN_FRAME_MS = 1e3 / 60;
 var QUERY_WINDOW_CYCLES = 0.01;
 function useTrackMeters() {
-  const elsRef = React29__namespace.useRef(/* @__PURE__ */ new Map());
-  const stateRef = React29__namespace.useRef(/* @__PURE__ */ new Map());
-  const schedulersRef = React29__namespace.useRef(null);
-  const rafRef = React29__namespace.useRef(null);
-  const lastTsRef = React29__namespace.useRef(0);
-  const [fileId, setFileId] = React29__namespace.useState(() => getActiveFileId());
-  React29__namespace.useEffect(() => {
+  const elsRef = React30__namespace.useRef(/* @__PURE__ */ new Map());
+  const stateRef = React30__namespace.useRef(/* @__PURE__ */ new Map());
+  const schedulersRef = React30__namespace.useRef(null);
+  const rafRef = React30__namespace.useRef(null);
+  const lastTsRef = React30__namespace.useRef(0);
+  const [fileId, setFileId] = React30__namespace.useState(() => getActiveFileId());
+  React30__namespace.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React29__namespace.useCallback((captureId, els) => {
+  const register = React30__namespace.useCallback((captureId, els) => {
     if (els) elsRef.current.set(captureId, els);
     else {
       elsRef.current.delete(captureId);
       stateRef.current.delete(captureId);
     }
   }, []);
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       schedulersRef.current = schedulersOf(payload);
     }) : (() => {
@@ -28145,7 +28371,7 @@ function useTrackMeters() {
       stateRef.current.clear();
     };
   }, [fileId]);
-  return React29__namespace.useMemo(() => ({ register }), [register]);
+  return React30__namespace.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
 var DRAG_SPAN_PX2 = 160;
@@ -28154,9 +28380,9 @@ function StripMeter({
   captureId,
   controller
 }) {
-  const fillRef = React29__namespace.useRef(null);
-  const peakRef = React29__namespace.useRef(null);
-  React29__namespace.useEffect(() => {
+  const fillRef = React30__namespace.useRef(null);
+  const peakRef = React30__namespace.useRef(null);
+  React30__namespace.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -28256,8 +28482,8 @@ function ChannelStrip({
   const faderEnabled = gain !== null && onGainChange !== void 0;
   const panEnabled = !strip.panForeign && onPanChange !== void 0;
   const panValue = strip.pan ?? 0.5;
-  const faderDrag = React29__namespace.useRef(null);
-  const panDrag = React29__namespace.useRef(null);
+  const faderDrag = React30__namespace.useRef(null);
+  const panDrag = React30__namespace.useRef(null);
   const onFaderDown = /* @__PURE__ */ __name((e) => {
     if (!faderEnabled) return;
     e.preventDefault();
@@ -28635,16 +28861,16 @@ var MIXER_WIDTH = 300;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = patternKind(chunk);
-  const [selected, setSelected] = React29__namespace.useState(null);
+  const [selected, setSelected] = React30__namespace.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React29__namespace.useRef(stmtId);
-  React29__namespace.useEffect(() => {
+  const stmtRef = React30__namespace.useRef(stmtId);
+  React30__namespace.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setSelected(null);
     }
   }, [stmtId]);
-  const [division2, setDivision] = React29__namespace.useState(DEFAULT_DIVISION);
+  const [division2, setDivision] = React30__namespace.useState(DEFAULT_DIVISION);
   const grid = kind === "step" ? /* @__PURE__ */ jsxRuntime.jsx(SequencerGrid, {}) : kind === "roll" ? /* @__PURE__ */ jsxRuntime.jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2 }) : /* @__PURE__ */ jsxRuntime.jsx(
     VisualEditStandby,
     {
@@ -28753,8 +28979,8 @@ function subscribe4(listener) {
 }
 __name(subscribe4, "subscribe");
 function useActiveFileId() {
-  const [id, setId] = React29__namespace.useState(() => getActiveFileId());
-  React29__namespace.useEffect(() => {
+  const [id, setId] = React30__namespace.useState(() => getActiveFileId());
+  React30__namespace.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -28763,12 +28989,12 @@ function useActiveFileId() {
 __name(useActiveFileId, "useActiveFileId");
 function useExpandedStrips() {
   const fileId = useActiveFileId();
-  const expanded = React29__namespace.useSyncExternalStore(
+  const expanded = React30__namespace.useSyncExternalStore(
     subscribe4,
     () => read2(fileId),
     () => EMPTY
   );
-  const toggle = React29__namespace.useCallback(
+  const toggle = React30__namespace.useCallback(
     (id) => {
       if (fileId) toggleExpanded(fileId, id);
     },
@@ -28851,8 +29077,8 @@ function releaseTransform() {
 }
 __name(releaseTransform, "releaseTransform");
 function useActiveFileId2() {
-  const [id, setId] = React29__namespace.useState(() => getActiveFileId());
-  React29__namespace.useEffect(() => {
+  const [id, setId] = React30__namespace.useState(() => getActiveFileId());
+  React30__namespace.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -28861,16 +29087,16 @@ function useActiveFileId2() {
 __name(useActiveFileId2, "useActiveFileId");
 function useSoloStrips() {
   const fileId = useActiveFileId2();
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     acquireTransform();
     return releaseTransform;
   }, []);
-  const soloed = React29__namespace.useSyncExternalStore(
+  const soloed = React30__namespace.useSyncExternalStore(
     subscribe5,
     () => read3(fileId),
     () => EMPTY2
   );
-  const toggle = React29__namespace.useCallback(
+  const toggle = React30__namespace.useCallback(
     (id) => {
       if (fileId) toggleSolo(fileId, id);
     },
@@ -28886,7 +29112,7 @@ function ExpandDrawer({
   beginGesture,
   endGesture
 }) {
-  const applyEdit = React29__namespace.useCallback(
+  const applyEdit = React30__namespace.useCallback(
     (mutate) => applyToStrip(strip.id, mutate),
     [applyToStrip, strip.id]
   );
@@ -28934,22 +29160,22 @@ function levelColor2(frac) {
 }
 __name(levelColor2, "levelColor");
 function useMasterMeter() {
-  const elsRef = React29__namespace.useRef(null);
-  const stateRef = React29__namespace.useRef(ZERO_METER);
-  const analyserRef = React29__namespace.useRef(null);
-  const bufRef = React29__namespace.useRef(null);
-  const rafRef = React29__namespace.useRef(null);
-  const lastTsRef = React29__namespace.useRef(0);
-  const [fileId, setFileId] = React29__namespace.useState(() => getActiveFileId());
-  React29__namespace.useEffect(() => {
+  const elsRef = React30__namespace.useRef(null);
+  const stateRef = React30__namespace.useRef(ZERO_METER);
+  const analyserRef = React30__namespace.useRef(null);
+  const bufRef = React30__namespace.useRef(null);
+  const rafRef = React30__namespace.useRef(null);
+  const lastTsRef = React30__namespace.useRef(0);
+  const [fileId, setFileId] = React30__namespace.useState(() => getActiveFileId());
+  React30__namespace.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React29__namespace.useCallback((els) => {
+  const register = React30__namespace.useCallback((els) => {
     elsRef.current = els;
     if (!els) stateRef.current = ZERO_METER;
   }, []);
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       analyserRef.current = analyserOf(payload);
     }) : (() => {
@@ -29023,15 +29249,15 @@ function useMasterMeter() {
       stateRef.current = ZERO_METER;
     };
   }, [fileId]);
-  return React29__namespace.useMemo(() => ({ register }), [register]);
+  return React30__namespace.useMemo(() => ({ register }), [register]);
 }
 __name(useMasterMeter, "useMasterMeter");
 var FADER_HEIGHT2 = 80;
 function MasterStrip() {
   const meter = useMasterMeter();
-  const fillRef = React29__namespace.useRef(null);
-  const peakRef = React29__namespace.useRef(null);
-  React29__namespace.useEffect(() => {
+  const fillRef = React30__namespace.useRef(null);
+  const peakRef = React30__namespace.useRef(null);
+  React30__namespace.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -29261,7 +29487,7 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React29__namespace.createElement(Panel)
+      content: React30__namespace.createElement(Panel)
     });
   }
 }
@@ -29275,24 +29501,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React29__namespace.useState(opts.initial);
-  const [dragging, setDragging] = React29__namespace.useState(false);
-  const startYRef = React29__namespace.useRef(0);
-  const startValueRef = React29__namespace.useRef(opts.initial);
-  const pointerIdRef = React29__namespace.useRef(null);
-  const draggingRef = React29__namespace.useRef(false);
-  const minRef = React29__namespace.useRef(opts.min);
-  const maxRef = React29__namespace.useRef(opts.max);
-  React29__namespace.useEffect(() => {
+  const [value, setValueState] = React30__namespace.useState(opts.initial);
+  const [dragging, setDragging] = React30__namespace.useState(false);
+  const startYRef = React30__namespace.useRef(0);
+  const startValueRef = React30__namespace.useRef(opts.initial);
+  const pointerIdRef = React30__namespace.useRef(null);
+  const draggingRef = React30__namespace.useRef(false);
+  const minRef = React30__namespace.useRef(opts.min);
+  const maxRef = React30__namespace.useRef(opts.max);
+  React30__namespace.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React29__namespace.useCallback((v) => {
+  const setValue = React30__namespace.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React29__namespace.useCallback(
+  const onPointerDown = React30__namespace.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -29307,7 +29533,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React29__namespace.useCallback(
+  const endDrag = React30__namespace.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -29322,7 +29548,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React29__namespace.useCallback(
+  const onPointerMove = React30__namespace.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -29338,13 +29564,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React29__namespace.useCallback(
+  const onPointerUp = React30__namespace.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React29__namespace.useCallback(
+  const onPointerCancel = React30__namespace.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -29372,15 +29598,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React29__namespace.useState(
+  const [tabs2, setTabs] = React30__namespace.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React29__namespace.useState(readPersistedOpen);
-  const [height, setHeight] = React29__namespace.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React29__namespace.useState(
+  const [open, setOpen] = React30__namespace.useState(readPersistedOpen);
+  const [height, setHeight] = React30__namespace.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React30__namespace.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -29390,10 +29616,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -29405,24 +29631,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React29__namespace.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React29__namespace.useCallback(
+  const tabButtonRefs = React30__namespace.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React30__namespace.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React29__namespace.useCallback((id) => {
+  const focusTab = React30__namespace.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React29__namespace.useCallback(
+  const onTabsKeyDown = React30__namespace.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -29668,16 +29894,16 @@ function GroupTabBar({
   onSplitDown,
   onCloseGroup
 }) {
-  const scrollRef = React29.useRef(null);
-  const activeTabElRef = React29.useRef(null);
-  const menuBtnRef = React29.useRef(null);
-  const menuRef = React29.useRef(null);
-  const [overflow, setOverflow] = React29.useState({
+  const scrollRef = React30.useRef(null);
+  const activeTabElRef = React30.useRef(null);
+  const menuBtnRef = React30.useRef(null);
+  const menuRef = React30.useRef(null);
+  const [overflow, setOverflow] = React30.useState({
     left: false,
     right: false
   });
-  const [menuOpen, setMenuOpen] = React29.useState(false);
-  React29.useEffect(() => {
+  const [menuOpen, setMenuOpen] = React30.useState(false);
+  React30.useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const update = /* @__PURE__ */ __name(() => {
@@ -29696,12 +29922,12 @@ function GroupTabBar({
       ro?.disconnect();
     };
   }, [group.tabs.length]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     const el = activeTabElRef.current;
     if (!el || typeof el.scrollIntoView !== "function") return;
     el.scrollIntoView({ inline: "nearest", block: "nearest" });
   }, [group.activeTabId]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!menuOpen) return;
     const onDoc = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -30013,7 +30239,7 @@ function GroupTabBar({
   );
 }
 __name(GroupTabBar, "GroupTabBar");
-var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
+var WorkspaceShell = React30.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
   initialTabs = [],
   initialGroups,
   initialLayout,
@@ -30035,28 +30261,28 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
   onEditViz,
   onCropViz
 }, forwardedRef) {
-  const shellRootRef = React29.useRef(null);
-  const initialState = React29.useRef(
+  const shellRootRef = React30.useRef(null);
+  const initialState = React30.useRef(
     initialGroups !== void 0 && initialLayout !== void 0 && initialLayout.length > 0 && initialActiveGroupId !== void 0 ? {
       groups: new Map(initialGroups),
       layout: initialLayout,
       activeGroupId: initialActiveGroupId
     } : createInitialGroupState(initialTabs)
   );
-  const [groups, setGroups] = React29.useState(
+  const [groups, setGroups] = React30.useState(
     () => initialState.current.groups
   );
-  const [layout, setLayout] = React29.useState(
+  const [layout, setLayout] = React30.useState(
     () => initialState.current.layout
   );
-  const [activeGroupId, setActiveGroupId] = React29.useState(
+  const [activeGroupId, setActiveGroupId] = React30.useState(
     () => initialState.current.activeGroupId
   );
-  const [bgOverrides, setBgOverrides] = React29.useState(
+  const [bgOverrides, setBgOverrides] = React30.useState(
     () => /* @__PURE__ */ new Map()
   );
-  const lastActiveBackdropRef = React29.useRef(null);
-  React29.useEffect(() => {
+  const lastActiveBackdropRef = React30.useRef(null);
+  React30.useEffect(() => {
     const g = groups.get(activeGroupId);
     const resolved = resolveBackdropFileId(g?.backgroundFileId, bgOverrides.get(activeGroupId)) ?? null;
     if (resolved !== lastActiveBackdropRef.current) {
@@ -30064,56 +30290,56 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
       onActiveBackdropChange?.(resolved);
     }
   }, [groups, bgOverrides, activeGroupId, onActiveBackdropChange]);
-  const didMountRef = React29.useRef(false);
-  React29.useEffect(() => {
+  const didMountRef = React30.useRef(false);
+  React30.useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
       return;
     }
     onGroupsChange?.({ groups, layout, activeGroupId });
   }, [groups, layout, activeGroupId, onGroupsChange]);
-  const [dragOverTarget, setDragOverTarget] = React29.useState(null);
-  const [dragOverEdge, setDragOverEdge] = React29.useState(
+  const [dragOverTarget, setDragOverTarget] = React30.useState(null);
+  const [dragOverEdge, setDragOverEdge] = React30.useState(
     null
   );
-  const [tabDragInProgress, setTabDragInProgress] = React29.useState(false);
-  const [pausedPreviews, setPausedPreviews] = React29.useState(
+  const [tabDragInProgress, setTabDragInProgress] = React30.useState(false);
+  const [pausedPreviews, setPausedPreviews] = React30.useState(
     () => /* @__PURE__ */ new Set()
   );
-  const [backdropQuality, setBackdropQualityState] = React29.useState(
+  const [backdropQuality, setBackdropQualityState] = React30.useState(
     () => getBackdropQuality()
   );
-  React29.useEffect(
+  React30.useEffect(
     () => onBackdropQualityChange(setBackdropQualityState),
     []
   );
-  const [backdropOpacity, setBackdropOpacityState] = React29.useState(
+  const [backdropOpacity, setBackdropOpacityState] = React30.useState(
     () => getBackdropOpacity()
   );
-  React29.useEffect(
+  React30.useEffect(
     () => onBackdropOpacityChange(setBackdropOpacityState),
     []
   );
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
   }, [theme]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     ensureTabbarScrollStyle();
   }, []);
-  const activeTab = React29.useMemo(() => {
+  const activeTab = React30.useMemo(() => {
     const group = groups.get(activeGroupId);
     if (!group || group.activeTabId === null) return null;
     return group.tabs.find((t) => t.id === group.activeTabId) ?? null;
   }, [groups, activeGroupId]);
-  const prevActiveTabRef = React29.useRef(void 0);
-  React29.useEffect(() => {
+  const prevActiveTabRef = React30.useRef(void 0);
+  React30.useEffect(() => {
     if (prevActiveTabRef.current !== activeTab) {
       prevActiveTabRef.current = activeTab;
       onActiveTabChange?.(activeTab);
     }
   }, [activeTab, onActiveTabChange]);
-  const updateGroup = React29.useCallback(
+  const updateGroup = React30.useCallback(
     (groupId, patch) => {
       setGroups((prev) => {
         const existing = prev.get(groupId);
@@ -30125,14 +30351,14 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleTabClick = React29.useCallback(
+  const handleTabClick = React30.useCallback(
     (groupId, tabId) => {
       updateGroup(groupId, (g) => ({ ...g, activeTabId: tabId }));
       setActiveGroupId(groupId);
     },
     [updateGroup]
   );
-  const handleTabClose = React29.useCallback(
+  const handleTabClose = React30.useCallback(
     (groupId, tabId) => {
       let closedTab = null;
       const existing = groups.get(groupId);
@@ -30197,7 +30423,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout, onTabClose]
   );
-  const handleSplit = React29.useCallback(
+  const handleSplit = React30.useCallback(
     (groupId, direction = "east") => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -30209,7 +30435,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const findNeighborGroupId = React29.useCallback(
+  const findNeighborGroupId = React30.useCallback(
     (closingId) => {
       for (const id of allGroupIds(layout)) {
         if (id !== closingId) return id;
@@ -30218,7 +30444,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [layout]
   );
-  const handleCloseGroup = React29.useCallback(
+  const handleCloseGroup = React30.useCallback(
     (groupId) => {
       const neighborId = findNeighborGroupId(groupId);
       if (!neighborId) return;
@@ -30245,7 +30471,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [findNeighborGroupId, activeGroupId]
   );
-  const splitGroupWithTab = React29.useCallback(
+  const splitGroupWithTab = React30.useCallback(
     (originGroupId, _direction, newTab) => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -30261,7 +30487,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const moveTabToNewQuadrant = React29.useCallback(
+  const moveTabToNewQuadrant = React30.useCallback(
     (sourceGroupId, tabId, targetGroupId, direction) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -30301,7 +30527,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout]
   );
-  const moveTabToNewEdgeGroup = React29.useCallback(
+  const moveTabToNewEdgeGroup = React30.useCallback(
     (sourceGroupId, tabId, position) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -30336,7 +30562,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups]
   );
-  const updateGroupBackground = React29.useCallback(
+  const updateGroupBackground = React30.useCallback(
     (groupId, backgroundFileId) => {
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
@@ -30348,7 +30574,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup, onBackgroundFileChange]
   );
-  const updateGroupOverride = React29.useCallback(
+  const updateGroupOverride = React30.useCallback(
     (groupId, overrideFileId) => {
       setBgOverrides((prev) => {
         const cur = prev.get(groupId) ?? null;
@@ -30361,7 +30587,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const updateGroupBackdropOpacity = React29.useCallback(
+  const updateGroupBackdropOpacity = React30.useCallback(
     (groupId, opacity) => {
       const prev = groups.get(groupId)?.backdropOpacity;
       const nextVal = opacity == null ? void 0 : Math.min(1, Math.max(0, opacity));
@@ -30370,7 +30596,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup]
   );
-  const updateGroupBackdropQuality = React29.useCallback(
+  const updateGroupBackdropQuality = React30.useCallback(
     (groupId, quality) => {
       const prev = groups.get(groupId)?.backdropQuality;
       const nextVal = quality ?? void 0;
@@ -30379,7 +30605,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup]
   );
-  const closeTabById = React29.useCallback(
+  const closeTabById = React30.useCallback(
     (tabId) => {
       let ownerGroupId = null;
       for (const [gid, g] of groups.entries()) {
@@ -30412,7 +30638,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout, handleTabClose]
   );
-  const findTabByFileId = React29.useCallback(
+  const findTabByFileId = React30.useCallback(
     (fileId, kind) => {
       for (const [gid, g] of groups.entries()) {
         for (const t of g.tabs) {
@@ -30425,14 +30651,14 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups]
   );
-  const findGroupWithAnyPreview = React29.useCallback(() => {
+  const findGroupWithAnyPreview = React30.useCallback(() => {
     for (const [gid, g] of groups.entries()) {
       if (g.tabs.some((t) => t.kind === "preview")) return gid;
     }
     return null;
   }, [groups]);
-  const shellActionsRef = React29.useRef(null);
-  const shellActions = React29.useMemo(
+  const shellActionsRef = React30.useRef(null);
+  const shellActions = React30.useMemo(
     () => ({
       addTab: /* @__PURE__ */ __name((groupId, tab) => {
         updateGroup(groupId, (g) => ({
@@ -30453,12 +30679,12 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId, onOpenPopoutPreview]
   );
   shellActionsRef.current = shellActions;
-  const getActiveTab = React29.useCallback(() => activeTab, [activeTab]);
-  const getActiveGroupId = React29.useCallback(() => activeGroupId, [activeGroupId]);
-  const getActiveGroup = React29.useCallback(() => {
+  const getActiveTab = React30.useCallback(() => activeTab, [activeTab]);
+  const getActiveGroupId = React30.useCallback(() => activeGroupId, [activeGroupId]);
+  const getActiveGroup = React30.useCallback(() => {
     return groups.get(activeGroupId) ?? null;
   }, [groups, activeGroupId]);
-  const getPreviewProviderForCommand = React29.useCallback(
+  const getPreviewProviderForCommand = React30.useCallback(
     (language) => {
       const fromRegistry = getPreviewProviderForLanguage(language);
       if (fromRegistry) return fromRegistry;
@@ -30483,7 +30709,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     shellActions,
     getPreviewProvider: getPreviewProviderForCommand
   });
-  const handleEdgeDrop = React29.useCallback(
+  const handleEdgeDrop = React30.useCallback(
     (e, position) => {
       e.preventDefault();
       e.stopPropagation();
@@ -30500,7 +30726,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [moveTabToNewEdgeGroup]
   );
-  const handleEdgeDragOver = React29.useCallback(
+  const handleEdgeDragOver = React30.useCallback(
     (e, position) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -30509,12 +30735,12 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [dragOverEdge]
   );
-  const handleEdgeDragLeave = React29.useCallback(() => {
+  const handleEdgeDragLeave = React30.useCallback(() => {
     setDragOverEdge(null);
   }, []);
-  const onSaveFileRef = React29.useRef(onSaveFile);
+  const onSaveFileRef = React30.useRef(onSaveFile);
   onSaveFileRef.current = onSaveFile;
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
@@ -30528,7 +30754,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab]);
-  const handleTabDragStart = React29.useCallback(
+  const handleTabDragStart = React30.useCallback(
     (e, groupId, tab) => {
       const payload = { sourceGroupId: groupId, tabId: tab.id };
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
@@ -30537,7 +30763,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     const onDragEnd = /* @__PURE__ */ __name(() => {
       setTabDragInProgress(false);
       setDragOverEdge(null);
@@ -30550,7 +30776,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
       window.removeEventListener("drop", onDragEnd);
     };
   }, []);
-  const computeQuadrant = React29.useCallback(
+  const computeQuadrant = React30.useCallback(
     (e, el) => {
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return "center";
@@ -30575,7 +30801,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleTabBarDrop = React29.useCallback(
+  const handleTabBarDrop = React30.useCallback(
     (e, targetGroupId) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -30647,7 +30873,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleDropOnGroup = React29.useCallback(
+  const handleDropOnGroup = React30.useCallback(
     (e, targetGroupId) => {
       e.preventDefault();
       e.stopPropagation();
@@ -30716,7 +30942,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [computeQuadrant, groups, moveTabToNewQuadrant]
   );
-  const renderTabContent = React29.useCallback(
+  const renderTabContent = React30.useCallback(
     (tab, groupId, isActive) => {
       switch (tab.kind) {
         case "editor": {
@@ -30963,7 +31189,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
       closeTabById
     ]
   );
-  const renderGroup = React29.useCallback(
+  const renderGroup = React30.useCallback(
     (group) => {
       const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
       const isShellActiveGroup = activeGroupId === group.id;
@@ -31183,11 +31409,11 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
       theme
     ]
   );
-  const totalGroupCount = React29.useMemo(
+  const totalGroupCount = React30.useMemo(
     () => allGroupIds(layout).length,
     [layout]
   );
-  const previewTabIds = React29.useMemo(() => {
+  const previewTabIds = React30.useMemo(() => {
     const out = [];
     for (const g of groups.values()) {
       for (const t of g.tabs) {
@@ -31198,7 +31424,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
     }
     return out;
   }, [groups]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     const unsubs = previewTabIds.map(
       ({ tabId, fileId }) => subscribe(fileId, () => {
         setGroups((prev) => {
@@ -31221,7 +31447,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
       for (const u of unsubs) u();
     };
   }, [previewTabIds]);
-  React29.useImperativeHandle(
+  React30.useImperativeHandle(
     forwardedRef,
     () => ({
       openOrFocusFile: /* @__PURE__ */ __name((fileId, options) => {
@@ -31533,7 +31759,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
             })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsxRuntime.jsx(React29__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsxRuntime.jsx(React30__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsxRuntime.jsx(
                 SplitPane,
@@ -31541,7 +31767,7 @@ var WorkspaceShell = React29.forwardRef(/* @__PURE__ */ __name(function Workspac
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsxRuntime.jsx(React29__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsxRuntime.jsx(React30__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -32193,14 +32419,14 @@ function LiveCodingEditor({
 }) {
   const isControlled = controlledCode !== void 0;
   const initialCode = controlledCode ?? defaultCode ?? DEFAULT_CODE;
-  const runtimeRef = React29.useRef(null);
-  const [isPlaying, setIsPlaying] = React29.useState(false);
-  const [error, setError] = React29.useState(null);
-  const [bpm, setBpm] = React29.useState(bpmProp);
-  const [autoRefresh, setAutoRefresh] = React29.useState(false);
-  const fileIdRef = React29.useRef(FILE_ID);
-  const [seeded, setSeeded] = React29.useState(false);
-  React29.useEffect(() => {
+  const runtimeRef = React30.useRef(null);
+  const [isPlaying, setIsPlaying] = React30.useState(false);
+  const [error, setError] = React30.useState(null);
+  const [bpm, setBpm] = React30.useState(bpmProp);
+  const [autoRefresh, setAutoRefresh] = React30.useState(false);
+  const fileIdRef = React30.useRef(FILE_ID);
+  const [seeded, setSeeded] = React30.useState(false);
+  React30.useEffect(() => {
     seedWorkspaceFile(
       fileIdRef.current,
       "pattern.strudel",
@@ -32209,7 +32435,7 @@ function LiveCodingEditor({
     );
     setSeeded(true);
   }, []);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!seeded) return;
     const rt = new LiveCodingRuntime(
       fileIdRef.current,
@@ -32245,41 +32471,41 @@ function LiveCodingEditor({
       runtimeRef.current = null;
     };
   }, [seeded, engine]);
-  const autoPlayedRef = React29.useRef(false);
-  React29.useEffect(() => {
+  const autoPlayedRef = React30.useRef(false);
+  React30.useEffect(() => {
     if (!autoPlay || !runtimeRef.current || autoPlayedRef.current) return;
     autoPlayedRef.current = true;
     runtimeRef.current.play();
   }, [autoPlay, seeded]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!isControlled || !seeded) return;
     const file = getFile(fileIdRef.current);
     if (file && controlledCode !== file.content) {
       setContent(fileIdRef.current, controlledCode);
     }
   }, [controlledCode, isControlled, seeded]);
-  const onChangeRef = React29.useRef(onChange);
+  const onChangeRef = React30.useRef(onChange);
   onChangeRef.current = onChange;
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!seeded) return;
     return subscribe(fileIdRef.current, () => {
       const file = getFile(fileIdRef.current);
       if (file) onChangeRef.current?.(file.content);
     });
   }, [seeded]);
-  const handlePlay = React29.useCallback(() => {
+  const handlePlay = React30.useCallback(() => {
     setError(null);
     runtimeRef.current?.play();
   }, []);
-  const handleStop = React29.useCallback(() => {
+  const handleStop = React30.useCallback(() => {
     runtimeRef.current?.stop();
   }, []);
-  const handleToggleAutoRefresh = React29.useCallback(() => {
+  const handleToggleAutoRefresh = React30.useCallback(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
     rt.setAutoRefresh(!rt.isAutoRefreshEnabled());
   }, []);
-  const chromeForTab = React29.useCallback(
+  const chromeForTab = React30.useCallback(
     (tab) => {
       if (tab.kind !== "editor") return void 0;
       const rt = runtimeRef.current;
@@ -32302,7 +32528,7 @@ function LiveCodingEditor({
     },
     [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra, autoRefresh, handleToggleAutoRefresh]
   );
-  const editorExtrasForTab = React29.useCallback(
+  const editorExtrasForTab = React30.useCallback(
     () => ({
       onPlay: handlePlay,
       onStop: handleStop,
@@ -32350,10 +32576,10 @@ function StrudelEditor({
   onExport,
   engineRef: engineRefProp
 }) {
-  const engineRef = React29.useRef(null);
-  const [bpm, setBpm] = React29.useState(120);
-  const [soundNames, setSoundNames] = React29.useState([]);
-  const [isExporting, setIsExporting] = React29.useState(false);
+  const engineRef = React30.useRef(null);
+  const [bpm, setBpm] = React30.useState(120);
+  const [soundNames, setSoundNames] = React30.useState([]);
+  const [isExporting, setIsExporting] = React30.useState(false);
   function getEngine() {
     if (!engineRef.current) {
       engineRef.current = new StrudelEngine();
@@ -32362,19 +32588,19 @@ function StrudelEditor({
     return engineRef.current;
   }
   __name(getEngine, "getEngine");
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (engineRefProp) {
       engineRefProp.current = engineRef.current;
     }
   });
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     return () => {
       engineRef.current?.dispose();
     };
   }, []);
-  const codeRef = React29.useRef(controlledCode ?? defaultCode);
+  const codeRef = React30.useRef(controlledCode ?? defaultCode);
   codeRef.current = controlledCode ?? defaultCode;
-  const handlePostEvaluate = React29.useCallback((engine2) => {
+  const handlePostEvaluate = React30.useCallback((engine2) => {
     const code = codeRef.current;
     const cpsMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/);
     if (cpsMatch) {
@@ -32387,7 +32613,7 @@ function StrudelEditor({
       setSoundNames(strudelEngine.getSoundNames());
     }
   }, [soundNames]);
-  const handleExport = React29.useCallback(async () => {
+  const handleExport = React30.useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
     try {
@@ -32970,7 +33196,7 @@ __name(mountVizRenderer, "mountVizRenderer");
 
 // src/visualizers/useVizRenderer.ts
 function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
-  const rendererRef = React29.useRef(null);
+  const rendererRef = React30.useRef(null);
   const components = {};
   if (hapStream) {
     components.streaming = { hapStream };
@@ -32984,7 +33210,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
   if (rendererRef.current) {
     rendererRef.current.update(components);
   }
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!containerRef.current) return;
     const size = {
       w: containerRef.current.clientWidth || 400,
@@ -33007,7 +33233,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
 }
 __name(useVizRenderer, "useVizRenderer");
 function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
-  const containerRef = React29.useRef(null);
+  const containerRef = React30.useRef(null);
   useVizRenderer(containerRef, source, hapStream, analyser, scheduler);
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
@@ -33165,9 +33391,9 @@ function VizDropdown({
   onNewViz,
   availableComponents
 }) {
-  const [open, setOpen] = React29.useState(false);
-  const ref = React29.useRef(null);
-  React29.useEffect(() => {
+  const [open, setOpen] = React30.useState(false);
+  const ref = React30.useRef(null);
+  React30.useEffect(() => {
     if (!open) return;
     const handler = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) {
@@ -33438,12 +33664,12 @@ function VizEditor({
   previewHeight: _previewHeight = 200,
   theme = "dark"
 }) {
-  const containerRef = React29.useRef(null);
-  const [initialTabs, setInitialTabs] = React29.useState(null);
-  React29.useEffect(() => {
+  const containerRef = React30.useRef(null);
+  const [initialTabs, setInitialTabs] = React30.useState(null);
+  React30.useEffect(() => {
     if (containerRef.current) applyTheme(containerRef.current, theme);
   }, [theme]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     VizPresetStore.getAll().then((presets) => {
       const tabs2 = [];
       for (const preset of presets) {
@@ -33463,7 +33689,7 @@ function VizEditor({
       setInitialTabs(tabs2.length > 0 ? tabs2 : []);
     });
   }, []);
-  const handleSaveFile = React29.useCallback(
+  const handleSaveFile = React30.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return;
@@ -33477,7 +33703,7 @@ function VizEditor({
     },
     [onPresetSaved]
   );
-  const previewProviderFor = React29.useCallback(
+  const previewProviderFor = React30.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return void 0;
@@ -33572,10 +33798,10 @@ function usePopoutPreview({
   onClose,
   theme = "dark"
 }) {
-  const windowRef = React29.useRef(null);
-  const rendererRef = React29.useRef(null);
-  const rafRef = React29.useRef(null);
-  const cleanup = React29.useCallback(() => {
+  const windowRef = React30.useRef(null);
+  const rendererRef = React30.useRef(null);
+  const rafRef = React30.useRef(null);
+  const cleanup = React30.useCallback(() => {
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -33587,7 +33813,7 @@ function usePopoutPreview({
     }
     windowRef.current = null;
   }, []);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!descriptor) {
       cleanup();
       return;
@@ -33646,7 +33872,7 @@ function usePopoutPreview({
       cleanup();
     };
   }, [descriptor?.id]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!rendererRef.current) return;
     const components = {};
     if (hapStream) components.streaming = { hapStream };
@@ -33659,7 +33885,7 @@ function usePopoutPreview({
 __name(usePopoutPreview, "usePopoutPreview");
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
-  const subscribe6 = React29.useCallback(
+  const subscribe6 = React30.useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -33667,12 +33893,12 @@ function useTrackMeta(fileId, trackId) {
     },
     [fileId]
   );
-  const getSnapshot = React29.useCallback(() => {
+  const getSnapshot = React30.useCallback(() => {
     if (!fileId) return EMPTY_META;
     return getTrackMeta(fileId, trackId);
   }, [fileId, trackId]);
-  const meta = React29.useSyncExternalStore(subscribe6, getSnapshot, getSnapshot);
-  const set = React29.useCallback(
+  const meta = React30.useSyncExternalStore(subscribe6, getSnapshot, getSnapshot);
+  const set = React30.useCallback(
     (partial) => {
       if (!fileId) return;
       setTrackMeta(fileId, trackId, partial);
@@ -34010,10 +34236,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React29__namespace.useReducer((x) => x + 1, 0);
-  React29__namespace.useEffect(() => subscribeToHistory(force), []);
-  React29__namespace.useEffect(() => subscribeToRuntimeView(force), []);
-  React29__namespace.useEffect(() => {
+  const [, force] = React30__namespace.useReducer((x) => x + 1, 0);
+  React30__namespace.useEffect(() => subscribeToHistory(force), []);
+  React30__namespace.useEffect(() => subscribeToRuntimeView(force), []);
+  React30__namespace.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -34030,17 +34256,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React29__namespace.useState(null);
-  const [forkName, setForkName] = React29__namespace.useState("");
-  const [committing, setCommitting] = React29__namespace.useState(false);
-  const [commitLabel, setCommitLabel] = React29__namespace.useState("");
-  const [expanded, setExpanded] = React29__namespace.useState(null);
-  const [hovered, setHovered] = React29__namespace.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React29__namespace.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React29__namespace.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React29__namespace.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React30__namespace.useState(null);
+  const [forkName, setForkName] = React30__namespace.useState("");
+  const [committing, setCommitting] = React30__namespace.useState(false);
+  const [commitLabel, setCommitLabel] = React30__namespace.useState("");
+  const [expanded, setExpanded] = React30__namespace.useState(null);
+  const [hovered, setHovered] = React30__namespace.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React30__namespace.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React30__namespace.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React30__namespace.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React29__namespace.useEffect(() => {
+  React30__namespace.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -34750,17 +34976,17 @@ function barString(v, cells = 8) {
 }
 __name(barString, "barString");
 function StaveInputsPanel({ kind }) {
-  const [open, setOpen] = React29.useState(false);
-  const [liveEnabled, setLiveEnabled] = React29.useState(true);
-  React29.useEffect(() => vizSignalProbe.acquire(), []);
-  React29.useEffect(() => {
+  const [open, setOpen] = React30.useState(false);
+  const [liveEnabled, setLiveEnabled] = React30.useState(true);
+  React30.useEffect(() => vizSignalProbe.acquire(), []);
+  React30.useEffect(() => {
     setLiveEnabled(getVizInputsLiveValuesEnabled());
     return onVizInputsLiveValuesChange(setLiveEnabled);
   }, []);
-  const rows = React29.useMemo(() => buildVizInputRows(kind), [kind]);
-  const liveRows = React29.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
-  const valueRefs = React29.useRef([]);
-  React29.useEffect(() => {
+  const rows = React30.useMemo(() => buildVizInputRows(kind), [kind]);
+  const liveRows = React30.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
+  const valueRefs = React30.useRef([]);
+  React30.useEffect(() => {
     if (!open || !liveEnabled) return;
     if (typeof requestAnimationFrame !== "function") return;
     let raf = 0;
@@ -34978,21 +35204,21 @@ function VizEditorChrome({
   onToggleBackground,
   isBackground
 }) {
-  const [liveOn, setLiveOn] = React29.useState(() => getVizLive(file.id));
-  React29.useEffect(() => {
+  const [liveOn, setLiveOn] = React30.useState(() => getVizLive(file.id));
+  React30.useEffect(() => {
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = React29.useState({
+  const [selectedSource, setSelectedSource] = React30.useState({
     kind: "default"
   });
-  const [, forceSourcesRerender] = React29.useState(0);
-  React29.useEffect(() => {
+  const [, forceSourcesRerender] = React30.useState(0);
+  React30.useEffect(() => {
     return workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
   }, []);
-  const handleSourceChange = React29.useCallback(
+  const handleSourceChange = React30.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
@@ -35010,7 +35236,7 @@ function VizEditorChrome({
     },
     [previewOpen, previewPaused, onChangePreviewSource, selectedSource]
   );
-  const handlePrimaryButtonClick = React29.useCallback(() => {
+  const handlePrimaryButtonClick = React30.useCallback(() => {
     if (previewOpen && onTogglePausePreview) {
       onTogglePausePreview();
       return;
@@ -35180,7 +35406,7 @@ function createCompiledVizProvider(opts) {
 __name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
   const { file, rendererType, audioSource, hidden, paused, fileId } = props;
-  const { descriptor, compileError } = React29.useMemo(() => {
+  const { descriptor, compileError } = React30.useMemo(() => {
     try {
       const preset = {
         id: file.id,
@@ -35216,9 +35442,9 @@ function CompiledVizMount(props) {
       return { descriptor: null, compileError: message };
     }
   }, [file.id, file.content, file.language, rendererType, file.path]);
-  const containerRef = React29.useRef(null);
-  const rendererRef = React29.useRef(null);
-  const components = React29.useMemo(() => {
+  const containerRef = React30.useRef(null);
+  const rendererRef = React30.useRef(null);
+  const components = React30.useMemo(() => {
     const bag = {};
     if (audioSource?.hapStream) {
       bag.streaming = { hapStream: audioSource.hapStream };
@@ -35250,7 +35476,7 @@ function CompiledVizMount(props) {
     }
     return bag;
   }, [audioSource]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;
     if (!el) return;
@@ -35310,7 +35536,7 @@ function CompiledVizMount(props) {
       }
     };
   }, [descriptor]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r || !r.update) return;
     try {
@@ -35318,7 +35544,7 @@ function CompiledVizMount(props) {
     } catch {
     }
   }, [components]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (hidden) {
@@ -35333,7 +35559,7 @@ function CompiledVizMount(props) {
       }
     }
   }, [hidden]);
-  React29.useEffect(() => {
+  React30.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (paused) {
