@@ -125,4 +125,9 @@ export interface LiveCodingEngine {
 
   /** Register a handler for runtime errors (fires during scheduling, not evaluation). */
   setRuntimeErrorHandler(handler: (err: Error) => void): void
+
+  /** Set the engine's master OUTPUT gain (linear, 1 = unity). Optional: an
+   *  engine without a single post-mix output node may omit it. The gain is
+   *  re-asserted on `play()`, so the runtime can seed it per file before play. */
+  setMasterGain?(value: number): void
 }

@@ -198,7 +198,26 @@ export interface MixerBodyProps {
    *  (`"mixer"`), the drawer leaves it off so it doesn't pollute the console
    *  tab's scoping (P-MIX-7: one body marker per tab). */
   dataTab?: string
+  /** how the knob grid flows when it overflows:
+   *  - `'rows'` (default, Pattern inspector): wrap into new ROWS, body scrolls
+   *    vertically — the body has no fixed height to wrap a column against.
+   *  - `'columns'` (Mixer console drawer): the drawer height is fixed (= strip
+   *    face), so knobs fill a COLUMN top-to-bottom and wrap into a new column,
+   *    and the body grows WIDER instead of scrolling. The header (picker +
+   *    transforms) keeps a base width so the drawer only widens once the knob
+   *    columns exceed it. */
+  knobFlow?: 'rows' | 'columns'
+  /** show the sound-source picker (Instrument for a roll / Kit for a step).
+   *  Default `true` (Pattern inspector — the natural home for picking a track's
+   *  sound). The Mixer console drawer sets it `false`: the console is for mixing
+   *  (levels / pan / effects), not choosing the instrument, which is a
+   *  pattern-authoring decision made on the Pattern tab. */
+  showSoundPicker?: boolean
 }
+
+/** Base content width of the drawer header (picker + transforms) in column flow,
+ *  so the drawer stays ~264px until the knob columns grow past it. */
+const COLUMN_HEADER_W = 232
 
 export function MixerBody({
   chunk,
@@ -208,7 +227,10 @@ export function MixerBody({
   division,
   onDivisionChange,
   dataTab,
+  knobFlow = 'rows',
+  showSoundPicker = true,
 }: MixerBodyProps): React.ReactElement {
+  const columnFlow = knobFlow === 'columns'
   // Live instrument registry (#514 / PV141 #6) — prefer the engine's real
   // soundMap (synths/soundfonts/samples) over the curated shortlist; fall back
   // to INSTRUMENTS until the live list is available.
@@ -288,12 +310,27 @@ export function MixerBody({
         flexDirection: 'column',
         gap: 14,
         padding: 16,
-        height: '100%',
-        overflowY: 'auto',
+        // Column flow sizes to its content (header + two knob rows) and grows
+        // WIDER as knobs are added — a constant height, no scroll. Row flow
+        // (inspector) fills the panel and scrolls vertically as before.
+        height: columnFlow ? undefined : '100%',
+        overflowY: columnFlow ? 'visible' : 'auto',
+        width: columnFlow ? 'max-content' : undefined,
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
       }}
     >
-      {kind === 'roll' && (
+      {/* header (picker + transforms). In column flow it holds a base width so
+          the drawer only widens once the knob COLUMNS exceed it. */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+          flexShrink: 0,
+          width: columnFlow ? COLUMN_HEADER_W : undefined,
+        }}
+      >
+      {showSoundPicker && kind === 'roll' && (
         <SoundSelect
           label="Instrument"
           groups={liveInstruments ?? INSTRUMENTS}
@@ -305,7 +342,7 @@ export function MixerBody({
       {kind === 'roll' && division !== undefined && onDivisionChange && (
         <DivisionSelect division={division} spb={rollSpb} onChange={onDivisionChange} />
       )}
-      {kind === 'step' && (
+      {showSoundPicker && kind === 'step' && (
         <SoundSelect
           label="Kit"
           groups={liveKits ?? DRUM_KITS}
@@ -350,8 +387,30 @@ export function MixerBody({
         })}
         <AddEffectMenu present={present} onToggle={toggleEffect} />
       </div>
+      </div>
       {knobs.length > 0 ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+        <div
+          data-mixer-knobs
+          style={
+            columnFlow
+              ? // Always two rows: a knob fills row 1 then row 2 of a column,
+                // then flows into a new column to the right — so adding knobs
+                // grows the drawer WIDER (grid track widths are intrinsic, so it
+                // grows) at a constant height, never taller and never scrolling.
+                // The two rows are always reserved (minmax floor), so the layout
+                // starts with room for ~3 knobs/row and stays two rows tall.
+                {
+                  display: 'grid',
+                  gridAutoFlow: 'column',
+                  gridTemplateRows: 'repeat(2, minmax(78px, max-content))',
+                  gridAutoColumns: 'max-content',
+                  gap: 16,
+                  alignContent: 'flex-start',
+                  justifyContent: 'flex-start',
+                }
+              : { display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }
+          }
+        >
           {knobs.map((k) => (
             <Knob
               key={`${k.chainIndex}:${k.argIndex}`}

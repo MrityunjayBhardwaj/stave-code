@@ -327,7 +327,10 @@ export {
   requestReeval,
   registerEvalSourceTransform,
   applyEvalSourceTransform,
+  registerMasterGainHandler,
+  applyMasterGain,
 } from './workspace/editorRegistry'
+export { getMasterGain, setMasterGain, useMasterGain } from './visualEdit/mixer/masterStore'
 export type { EditorTheme, ResolvedTheme, SignalAliasMap } from './workspace/editorRegistry'
 export {
   saveSnapshot,
