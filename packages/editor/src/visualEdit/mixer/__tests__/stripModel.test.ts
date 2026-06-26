@@ -128,7 +128,9 @@ describe('buildStripModels — transport/config statements are not tracks (#559)
       ['setcps(0.5)', '$: s("bd")', '$: note("c e g")'].join('\n'),
     )
     expect(strips).toHaveLength(2)
-    expect(strips.map((s) => s.name)).toEqual(['s', 'note'])
+    // names = the display key (V-track-1): `s("bd")` → its sample `bd`; the
+    // sound-less `note(...)` has no sample/instrument → head fallback `note`.
+    expect(strips.map((s) => s.name)).toEqual(['bd', 'note'])
   })
 
   it('renumbers anonymous captureIds to $0.. after dropping setcps (no off-by-one)', () => {
@@ -206,9 +208,12 @@ describe('buildStripModels — per-strip read model', () => {
     expect(stripsOf('$: stack(s("bd"), note("c e"))')[0].kind).toBe('group')
   })
 
-  it('falls back to source/head for an unnamed strip name', () => {
-    expect(stripsOf('$: note("c e g").sound("piano")')[0].name).toBe('piano')
-    expect(stripsOf('$: s("bd sn")')[0].name).toBe('s') // no bank → head fallback
+  it('names an unnamed strip by its instrument — the same key the Timeline lanes by', () => {
+    // V-track-1 (#579): an anon strip's name is its display key (the instrument
+    // `s`), matching the Timeline lane header — NOT the head fn.
+    expect(stripsOf('$: note("c e g").sound("piano")')[0].name).toBe('piano') // .sound value
+    expect(stripsOf('$: s("bd sn")')[0].name).toBe('bd') // step → first sample token
+    expect(stripsOf('$: note("c e g")')[0].name).toBe('note') // no instrument → head fallback
   })
 
   it('is a pure function of the document (re-derive → identical)', () => {

@@ -24,6 +24,7 @@ import {
   trackIndexOf as editorTrackIndexOf,
   paletteForTrack as editorPaletteForTrack,
   colorForTrack as editorColorForTrack,
+  trackIdentity as editorTrackIdentity,
 } from '../../../../../editor/src/visualEdit/trackColor'
 
 // A spread of keys exercising every branch: `d{N}` sequential + wrap, stem-family
@@ -62,6 +63,19 @@ describe('track colour: editor canonical === app mirror (V-track-1 drift guard, 
     // that equality is what makes one track read one colour in both views.
     for (const k of KEYS) {
       expect(editorColorForTrack(k)).toBe(paletteForTrack(trackIndexOf(k), k))
+    }
+  })
+
+  it('trackIdentity(key) matches the Timeline lane: name === laneKey, colour === lane colour', () => {
+    // Phase B: the Mixer resolves a strip via trackIdentity(displayKey). The
+    // Timeline header shows `laneKey` and colours by paletteForTrack(...). For one
+    // track displayKey === laneKey, so the resolver and the Timeline lane MUST
+    // agree on BOTH name and colour.
+    for (const k of KEYS) {
+      const id = editorTrackIdentity(k)
+      expect(id.key).toBe(k)
+      expect(id.name).toBe(k) // Timeline header === laneKey
+      expect(id.color).toBe(paletteForTrack(trackIndexOf(k), k)) // Timeline lane colour
     }
   })
 })

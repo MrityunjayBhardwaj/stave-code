@@ -119,3 +119,32 @@ export function paletteForTrack(trackIndex: number, sampleHint?: string): string
 export function colorForTrack(key: string): string {
   return paletteForTrack(trackIndexOf(key), key)
 }
+
+/** A track's resolved visual identity — name + colour from one canonical key. */
+export interface TrackIdentity {
+  /** the canonical key both name and colour derive from */
+  readonly key: string
+  /** the display name (the key itself: a label, or a sample for an anon track) */
+  readonly name: string
+  /** the dot/lane colour = colorForTrack(key) */
+  readonly color: string
+}
+
+/**
+ * THE track-identity resolver (V-track-1, #579, Phase B): a track's name AND
+ * colour from ONE canonical key, so no view derives either independently. The
+ * name IS the key (a label like `d1`, or a sample like `hh` for an anonymous
+ * track — whichever the caller resolved as the track's display key); the colour
+ * is `colorForTrack(key)`.
+ *
+ * Both views feed this with their own key, resolved from their own substrate:
+ * the Mixer from the detected chunk (label → sample → head), the Song Timeline
+ * from the evaluated hap's laneKey (`trackId ?? s`). For one track those keys are
+ * equal, so both views resolve to one {name, colour}. The Timeline produces this
+ * shape by construction (its header shows `laneKey` and colours by
+ * `paletteForTrack(trackIndexOf(laneKey), laneKey)` === `colorForTrack(laneKey)`),
+ * mirror-guarded by `trackColor.drift.test.ts`; the Mixer calls this directly.
+ */
+export function trackIdentity(key: string): TrackIdentity {
+  return { key, name: key, color: colorForTrack(key) }
+}
