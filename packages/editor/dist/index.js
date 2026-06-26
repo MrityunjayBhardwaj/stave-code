@@ -28064,6 +28064,92 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
 }
 __name(Mixer, "Mixer");
 
+// src/visualEdit/trackColor.ts
+var TRACK_PALETTE_32 = [
+  // Drums (orange family) — 8 lightness steps
+  "#fed7aa",
+  "#fdba74",
+  "#fb923c",
+  "#f97316",
+  "#ea580c",
+  "#c2410c",
+  "#9a3412",
+  "#7c2d12",
+  // Bass (cyan family) — 8 lightness steps
+  "#a5f3fc",
+  "#67e8f9",
+  "#22d3ee",
+  "#06b6d4",
+  "#0891b2",
+  "#0e7490",
+  "#155e75",
+  "#164e63",
+  // Pad (green family) — 8 lightness steps
+  "#a7f3d0",
+  "#6ee7b7",
+  "#34d399",
+  "#10b981",
+  "#059669",
+  "#047857",
+  "#065f46",
+  "#064e3b",
+  // Melody (purple family) — 8 lightness steps
+  "#ddd6fe",
+  "#c4b5fd",
+  "#a78bfa",
+  "#8b5cf6",
+  "#7c3aed",
+  "#6d28d9",
+  "#5b21b6",
+  "#4c1d95"
+];
+var STEM_PATTERNS = [
+  // Drums → family 0
+  [/^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i, 0],
+  // Bass → family 1
+  [/^(?:bass|sub|808)/i, 1],
+  // Pads → family 2
+  [/^(?:pad|pads)/i, 2],
+  // Melody / lead / synth / piano / keys / guitar → family 3
+  [/^(?:lead|melody|synth|piano|keys|guitar)/i, 3]
+];
+function fnv1a32(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h = (h ^ str.charCodeAt(i)) >>> 0;
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+__name(fnv1a32, "fnv1a32");
+function stemHueGroup(sample) {
+  if (!sample) return 3;
+  for (let i = 0; i < STEM_PATTERNS.length; i++) {
+    if (STEM_PATTERNS[i][0].test(sample)) return STEM_PATTERNS[i][1];
+  }
+  return 3;
+}
+__name(stemHueGroup, "stemHueGroup");
+function trackIndexOf(trackId) {
+  const m = trackId.match(/^d(\d+)$/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n >= 1) return ((n - 1) % 32 + 32) % 32;
+  }
+  return fnv1a32(trackId) % 32;
+}
+__name(trackIndexOf, "trackIndexOf");
+function paletteForTrack(trackIndex, sampleHint) {
+  const hueGroup = stemHueGroup(sampleHint);
+  const slot = ((trackIndex * 4 + hueGroup) % 32 + 32) % 32;
+  return TRACK_PALETTE_32[slot];
+}
+__name(paletteForTrack, "paletteForTrack");
+function colorForTrack(key3) {
+  return paletteForTrack(trackIndexOf(key3), key3);
+}
+__name(colorForTrack, "colorForTrack");
+
 // src/visualEdit/mixer/gain.ts
 var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
 function parseManagedGain(raw) {
@@ -28158,21 +28244,6 @@ function isForeign(chunk, name) {
   return call !== void 0 && call.args[0].numeric === null;
 }
 __name(isForeign, "isForeign");
-function firstMiniToken(mini) {
-  if (!mini) return null;
-  const tok = mini.trim().split(/\s+/)[0];
-  if (!tok || tok === "~" || tok === "-") return null;
-  return tok.replace(/[[\]<>(),].*/, "").split(":", 1)[0] || null;
-}
-__name(firstMiniToken, "firstMiniToken");
-function stripColor(kind, miniString) {
-  if (kind === "step") {
-    const tok = firstMiniToken(miniString);
-    if (tok) return sampleVoice(tok).color;
-  }
-  return VOICE_FALLBACK_COLOR;
-}
-__name(stripColor, "stripColor");
 function buildStripModel(chunk, index, id, captureId) {
   const kind = stripKind(chunk);
   const source = readSource(chunk, kind);
@@ -28192,7 +28263,13 @@ function buildStripModel(chunk, index, id, captureId) {
     sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
     muted: isMuted(chunk.label),
     muteable: chunk.label != null,
-    color: stripColor(kind, chunk.miniString),
+    // Centralized track colour (V-track-1, #579): keyed on the strip's STABLE
+    // canonical id (the label `d1`, or `#k` for an anonymous `$:`) via the shared
+    // `colorForTrack`. The Timeline colours a lane by the SAME algorithm over its
+    // `laneKey`, and for a named track that laneKey IS the label — so the Mixer
+    // dot and the Timeline lane resolve to one colour. Replaces the old
+    // drum-voice palette, which keyed on the sample and so diverged per view.
+    color: colorForTrack(id),
     chain: chunk.chain,
     exprRange: chunk.exprRange,
     statementRange: chunk.statementRange,
