@@ -412,6 +412,13 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     return this.isPlayingState
   }
 
+  /** Set this file's master OUTPUT gain (per-file; no-op on engines without it).
+   *  The app seeds it from the persisted per-file value on play, and applies it
+   *  live when the Master fader moves while this file is the one playing. */
+  setMasterGain(value: number): void {
+    this.engine.setMasterGain?.(value)
+  }
+
   stop(): void {
     if (this.isDisposed) return
     // Stopping is idempotent — calling twice should be a no-op, not throw.

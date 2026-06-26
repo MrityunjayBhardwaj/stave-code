@@ -52,6 +52,12 @@ interface ChannelStripProps {
   expanded?: boolean
   /** toggle this strip's expand drawer — provided only by the Mixer console */
   onToggleExpand?: () => void
+  /** CSS `zoom` for the strip FACE only (console renders at 1.5×). Aspect-exact
+   *  and leaves the delta-based fader/pan drags untouched (they read pointer
+   *  deltas, not bounding boxes). The expand drawer is a non-zoomed sibling that
+   *  stretches to this scaled face height — so the drawer is taller (its knob
+   *  chain stops scrolling) while its content stays 1×. */
+  zoom?: number
 }
 
 /**
@@ -157,6 +163,7 @@ export function ChannelStrip({
   showHeader = true,
   expanded = false,
   onToggleExpand,
+  zoom = 1,
 }: ChannelStripProps): React.ReactElement {
   const muteEnabled = strip.muteable && onMuteToggle !== undefined
   const gain = faderGain(strip)
@@ -223,12 +230,18 @@ export function ChannelStrip({
         // buttons (row 2), so a short name like `d1` never truncates and one
         // compact width serves both the console and the headerless local strip.
         width: 84,
+        // Scale the strip face (console = 1.5×). The drawer matches this height
+        // but keeps 1× content — see the `zoom` prop doc.
+        zoom,
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
         padding: 8,
-        borderRadius: 6,
+        // When the expand drawer is open (console), flatten the RIGHT corners so
+        // the strip face and its drawer read as one connected unit — the drawer
+        // rounds the right edge. Standalone / closed → fully rounded.
+        borderRadius: expanded ? '6px 0 0 6px' : 6,
         border: '1px solid var(--border, #3a3a42)',
         background: 'var(--background-elevated, #26262c)',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',

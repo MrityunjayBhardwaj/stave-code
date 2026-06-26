@@ -24,6 +24,19 @@ import { ExpandDrawer } from './ExpandDrawer'
 import { MasterStrip } from './MasterStrip'
 import { gainEdit, panEdit, muteEdit } from './writeStrip'
 
+/**
+ * Console strips render their FACE at 1.5× via CSS `zoom` (aspect-exact, and —
+ * unlike `transform: scale` — it leaves the delta-based fader/pan drags
+ * untouched: they read pointer deltas ÷ DRAG_SPAN_PX, never a bounding box). The
+ * zoom is applied to the strip face only, NOT the expand drawer: the drawer is a
+ * non-zoomed sibling that stretches to the scaled face height (V-mixer-10
+ * parity), so it grows TALLER (its knob chain stops scrolling) while its content
+ * stays 1×. The master face is zoomed in lockstep (it sits outside the groups).
+ * Console only: the Pattern-tab local strip and inspector mount `ChannelStrip`
+ * directly, not through here, so they stay 1×.
+ */
+const CONSOLE_ZOOM = 1.5
+
 export function MixerStrips({
   emptyFallback,
 }: {
@@ -49,11 +62,13 @@ export function MixerStrips({
       data-mixer-strips
       style={{
         display: 'flex',
-        alignItems: 'stretch',
+        alignItems: 'flex-start',
         gap: 8,
         padding: 8,
-        // Fill the panel height so an expanded drawer is tall enough to use the
-        // full knob chain (the strips stretch to match — DAW consoles are tall).
+        // Each strip group is content-tall (its strip face's natural height), so
+        // an expanded drawer matches the strips rather than the whole panel
+        // (#550 height parity). The band still fills the panel: the row pins to
+        // the top with slack below, and tall knob chains scroll inside.
         height: '100%',
         minHeight: 0,
         overflowX: 'auto',
@@ -71,13 +86,17 @@ export function MixerStrips({
           <div
             key={strip.id}
             data-mixer-strip-group
-            // The group fills the band height (band alignItems:stretch). Inside,
-            // the strip face stays compact at the top (flex-start) while the
-            // drawer's height:100% stretches it to the full panel height.
-            style={{ display: 'flex', alignItems: 'flex-start', flexShrink: 0 }}
+            // Strip face + (when open) its drawer, side-by-side and SAME height:
+            // the zoomed strip face is the group's only in-flow height, so the
+            // group is (scaled-)strip-tall, and `alignItems: stretch` sizes the
+            // drawer to match (its knob chain is absolutely filled, so it adds no
+            // height). The drawer itself is NOT zoomed — it just grows taller to
+            // the scaled face, so its 1× content stops scrolling (V-mixer-10).
+            style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0 }}
           >
             <ChannelStrip
               strip={strip}
+              zoom={CONSOLE_ZOOM}
               onGainChange={(value) =>
                 applyToStrip(strip.id, (fresh, wb) => {
                   const e = gainEdit(fresh, value)
@@ -112,14 +131,15 @@ export function MixerStrips({
                 applyToStrip={applyToStrip}
                 beginGesture={beginGesture}
                 endGesture={endGesture}
-                onCollapse={() => toggle(strip.id)}
               />
             )}
           </div>
         )
       })}
-      {/* synthetic master — meter-only, pinned to the right of the scroller (S5) */}
-      <MasterStrip />
+      {/* synthetic master — meter-only, pinned to the right of the scroller (S5).
+          Zoomed in lockstep with the channel groups so it reads at the same
+          scale (it sits outside the groups, so it takes the zoom directly). */}
+      <MasterStrip zoom={CONSOLE_ZOOM} />
     </div>
   )
 }

@@ -2,18 +2,20 @@
  * ExpandDrawer — a strip's full knob chain, inline to the right (#550 / S4b).
  *
  * The Mixer console strip is the SUMMARY (dot/name/mute, pan/fader/meter/gain);
- * this drawer is the FULL CHAIN (instrument/kit picker, quick-transforms, and a
- * Knob per numeric arg — lpf, attack, crush, send levels, …). It mounts the
- * shared `MixerBody`, the very same body the Pattern-tab inspector uses, bound to
- * THIS strip instead of the cursor: `applyEdit = (m) => applyToStrip(strip.id, m)`
- * routes every knob edit through the proven by-id write path, so each edit is a
- * surgical, tagged, one-undo text change that goes live while playing for free
- * (centralised Writeback re-eval). The drawer holds no document state itself —
- * which strips are open is the console's ephemeral, persisted UI state
- * (`expandStore`), never the file (V-mixer-1).
+ * this drawer is the EFFECTS chain (quick-transforms + a Knob per numeric arg —
+ * lpf, attack, crush, send levels, …). It mounts the shared `MixerBody`, the
+ * very same body the Pattern-tab inspector uses, bound to THIS strip instead of
+ * the cursor: `applyEdit = (m) => applyToStrip(strip.id, m)` routes every knob
+ * edit through the proven by-id write path, so each edit is a surgical, tagged,
+ * one-undo text change that goes live while playing for free (centralised
+ * Writeback re-eval). The drawer holds no document state itself — which strips
+ * are open is the console's ephemeral, persisted UI state (`expandStore`), never
+ * the file (V-mixer-1).
  *
- * `division`/`onDivisionChange` are left undefined here: Snap is a Pattern/grid
- * concern (the S4 redesign), so the console drawer omits the Snap picker.
+ * Two pieces of `MixerBody` are omitted because they're pattern-authoring
+ * concerns, not mixing: the Snap picker (`division` left undefined) and the
+ * sound-source picker (`showSoundPicker={false}`) — instrument/kit selection
+ * lives on the Pattern tab inspector, its natural home.
  */
 import * as React from 'react'
 
@@ -30,8 +32,6 @@ interface ExpandDrawerProps {
   applyToStrip: (id: string, mutate: (fresh: ChunkInfo, wb: Writeback) => void) => void
   beginGesture: () => void
   endGesture: () => void
-  /** collapse this drawer (the strip's ▸/◂ toggle calls the same store action) */
-  onCollapse: () => void
 }
 
 export function ExpandDrawer({
@@ -40,7 +40,6 @@ export function ExpandDrawer({
   applyToStrip,
   beginGesture,
   endGesture,
-  onCollapse,
 }: ExpandDrawerProps): React.ReactElement {
   // Bind the shared body to THIS strip — identical shape to `useActiveChunk`'s
   // `applyEdit`, so MixerBody can't tell whether it's cursor- or strip-bound.
@@ -55,74 +54,36 @@ export function ExpandDrawer({
       data-mixer-expand-for={strip.id}
       style={{
         flexShrink: 0,
-        width: 264,
-        height: '100%',
+        // The body uses column flow: it sizes to a constant height (the header
+        // plus two knob rows) and grows WIDER as knobs are added (the band
+        // scrolls horizontally), never taller and never scrolling. So we top-
+        // align to the strip face rather than stretch to it — the drawer is a
+        // bit taller than the (1.5×) face to fit two knob rows. `minWidth` keeps
+        // a panel-like base (room for ~3 knobs/row); the body's `max-content`
+        // width drives the rest.
+        alignSelf: 'flex-start',
         display: 'flex',
-        flexDirection: 'column',
+        minWidth: 264,
         borderLeft: '1px solid var(--border, #3a3a42)',
-        background: 'var(--background-elevated, #26262c)',
+        // Semi-transparent fill + a rounded RIGHT edge; the LEFT stays flat where
+        // it meets the strip face (whose right corners are flattened), so the
+        // strip + drawer read as one connected unit that belongs together.
+        background: '#26262c69',
+        borderRadius: '0 6px 6px 0',
         overflow: 'hidden',
       }}
     >
-      {/* header: which strip's chain this is + a collapse affordance */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 10px',
-          borderBottom: '1px solid var(--border, #3a3a42)',
-          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-        }}
-      >
-        <span
-          style={{ width: 8, height: 8, borderRadius: '50%', background: strip.color, flexShrink: 0 }}
-        />
-        <span
-          title={strip.name}
-          style={{
-            flex: 1,
-            fontSize: 11,
-            fontWeight: 600,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            color: 'var(--foreground, #e6e6ea)',
-          }}
-        >
-          {strip.name}
-        </span>
-        <button
-          type="button"
-          data-mixer-expand-collapse
-          aria-label={`Collapse ${strip.name}`}
-          onClick={onCollapse}
-          title="Collapse"
-          style={{
-            flexShrink: 0,
-            width: 18,
-            height: 18,
-            padding: 0,
-            borderRadius: 3,
-            fontSize: 11,
-            lineHeight: '16px',
-            cursor: 'pointer',
-            border: '1px solid var(--border, #3a3a42)',
-            background: 'var(--background, #1c1c20)',
-            color: 'var(--foreground-muted, #a0a0aa)',
-          }}
-        >
-          ◂
-        </button>
-      </div>
-      <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto' }}>
-        <MixerBody
-          chunk={chunk}
-          applyEdit={applyEdit}
-          beginGesture={beginGesture}
-          endGesture={endGesture}
-        />
-      </div>
+      <MixerBody
+        chunk={chunk}
+        applyEdit={applyEdit}
+        beginGesture={beginGesture}
+        endGesture={endGesture}
+        knobFlow="columns"
+        // The console is for mixing (levels / pan / effects). Picking a track's
+        // instrument is a pattern-authoring decision — its home is the Pattern
+        // tab inspector, so the drawer omits the sound-source picker.
+        showSoundPicker={false}
+      />
     </div>
   )
 }

@@ -18,6 +18,8 @@ export interface KnobProps {
   value: number
   range: KnobRange
   onChange: (value: number) => void
+  /** when set, a small `×` removes this effect's call (#575) */
+  onRemove?: () => void
   onGestureStart?: () => void
   onGestureEnd?: () => void
 }
@@ -53,6 +55,7 @@ export function Knob({
   value,
   range,
   onChange,
+  onRemove,
   onGestureStart,
   onGestureEnd,
 }: KnobProps): React.ReactElement {
@@ -111,8 +114,35 @@ export function Knob({
         gap: 4,
         width: 64,
         userSelect: 'none',
+        position: 'relative',
       }}
     >
+      {onRemove && (
+        <button
+          type="button"
+          data-knob-remove={label}
+          aria-label={`Remove ${label}`}
+          title={`Remove ${label}`}
+          onClick={onRemove}
+          style={{
+            position: 'absolute',
+            top: -2,
+            right: 2,
+            width: 14,
+            height: 14,
+            padding: 0,
+            lineHeight: '12px',
+            fontSize: 11,
+            borderRadius: 3,
+            cursor: 'pointer',
+            border: '1px solid var(--border, #3a3a42)',
+            background: 'var(--background, #1c1c20)',
+            color: 'var(--foreground-muted, #a0a0aa)',
+          }}
+        >
+          ×
+        </button>
+      )}
       <div
         role="slider"
         tabIndex={0}

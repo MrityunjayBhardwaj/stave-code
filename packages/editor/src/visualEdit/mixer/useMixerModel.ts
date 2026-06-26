@@ -25,12 +25,14 @@ export interface MixerModel {
   /** one strip per top-level statement, in source order (re-derived on edits) */
   strips: StripModel[]
   /**
-   * The detected chunks behind `strips`, SAME index — `chunks[i]` is the chunk
-   * `strips[i]` projects from. The expand drawer (S4b) binds a strip's full knob
-   * chain to its render-time chunk by id (`chunks[strips.findIndex(...)]`).
-   * Stored alongside `strips` in one state so the two never drift. (The write
-   * path still re-derives a FRESH chunk at write time — `chunks` is for RENDER,
-   * `applyToStrip` for freshness.)
+   * The detected chunks behind `strips`, aligned 1:1 — `chunks[i]` is the chunk
+   * `strips[i]` projects from. Alignment is by each strip's ABSOLUTE source index
+   * (`strips[i].index`), NOT the strip-array position: `buildStripModels` drops
+   * config/transport statements (`setcps`, `samples` — #559), so the k-th strip
+   * is NOT the k-th detected chunk. The expand drawer (S4b) binds a strip's full
+   * knob chain to `chunks[i]`. Stored alongside `strips` in one state so the two
+   * never drift. (The write path still re-derives a FRESH chunk at write time —
+   * `chunks` is for RENDER, `applyToStrip` for freshness.)
    */
   chunks: ChunkInfo[]
   /**
@@ -86,8 +88,15 @@ export function useMixerModel(): MixerModel {
         setDerived(EMPTY_DERIVED)
         return
       }
-      const chunks = detectAllChunks(model.getValue())
-      setDerived({ strips: buildStripModels(chunks), chunks })
+      const allChunks = detectAllChunks(model.getValue())
+      const strips = buildStripModels(allChunks)
+      // Expose the chunks aligned 1:1 with strips by each strip's ABSOLUTE source
+      // index. buildStripModels filters out config/transport statements (setcps,
+      // samples — #559), so `strips[i]` is NOT `allChunks[i]`; `strips[i].index`
+      // is the chunk's true position. Without this, a leading config line shifts
+      // every strip's chunk by one and the expand drawer would write to the
+      // PREVIOUS track (or onto setcps for the first strip).
+      setDerived({ strips, chunks: strips.map((s) => allChunks[s.index]) })
     }
     rederive()
     const model = editor.getModel?.()
@@ -103,9 +112,15 @@ export function useMixerModel(): MixerModel {
       const model = ed.getModel?.()
       if (!model) return
       const chunks = detectAllChunks(model.getValue())
-      const idx = buildStripModels(chunks).findIndex((s) => s.id === id)
-      if (idx < 0) return
-      mutate(chunks[idx], wb)
+      // Write to the strip's chunk by its ABSOLUTE source index, NOT the strip
+      // array position: buildStripModels drops config/transport lines (#559), so
+      // the filtered strip index is off-by-one per preceding config line. Using
+      // `chunks[idx]` wrote the fader/knob edit onto the PREVIOUS statement —
+      // onto `setcps` for the first strip. `strip.index` is the chunk's real
+      // position, so this ties every write to the strip's own track.
+      const strip = buildStripModels(chunks).find((s) => s.id === id)
+      if (!strip) return
+      mutate(chunks[strip.index], wb)
     },
     [],
   )

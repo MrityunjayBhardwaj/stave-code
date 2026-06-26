@@ -21,12 +21,12 @@ import { type ChunkInfo } from '../chunkDetect'
 import { type Writeback, formatNumber } from '../writeback'
 import { Knob } from './Knob'
 import { knobRangeFor } from './knobRanges'
-import { QUICK_TRANSFORMS } from './quickTransforms'
+import { FAVORITES, isEffectActive, effectNames, STRIP_OWNED, type Effect } from './effectCatalog'
+import { AddEffectMenu } from './AddEffectMenu'
 import { patternKind, isRollChunk } from './patternKind'
 import { parsePianoRoll } from '../notation/parse'
 import { type Division, DIVISIONS, isRepresentable, stepsPerBar } from './division'
 import { readChainMethod } from './chainMethod'
-import { type ManagedGain, parseManagedGain, scaleManagedGain } from '../mixer/gain'
 import { INSTRUMENTS, DRUM_KITS, type SoundGroup } from './soundCatalog'
 import { useSoundCatalog, useDrumKitCatalog } from '../../workspace/soundRegistry'
 
@@ -37,14 +37,18 @@ interface KnobEntry {
   method: string
   label: string
   value: number
-  /** present when the knob is a master fader over a per-column gain string */
-  gain?: ManagedGain
 }
 
-/** flatten a chunk's chain into the numeric-arg knobs it exposes */
+/**
+ * Flatten a chunk's chain into the numeric-arg knobs it exposes. `gain`/`pan`
+ * are skipped — the strip fader and pan row own them (#575 division of labor),
+ * so the drawer is purely effects. The strip fader also handles per-column
+ * managed gain (proportional rescale), so no master-gain knob is needed here.
+ */
 function knobsFromChunk(chunk: ChunkInfo): KnobEntry[] {
   const knobs: KnobEntry[] = []
   chunk.chain.forEach((call, chainIndex) => {
+    if (STRIP_OWNED.has(call.name)) return // gain/pan live on the strip, not the drawer
     const numericArgs = call.args
       .map((a, argIndex) => ({ a, argIndex }))
       .filter((x) => x.a.numeric !== null)
@@ -58,15 +62,6 @@ function knobsFromChunk(chunk: ChunkInfo): KnobEntry[] {
         value: a.numeric as number,
       })
     })
-    // A per-column `.gain("…")` velocity has no numeric arg, so it surfaced no
-    // knob and `+ gain` is disabled (gain is present) — a dead state. Surface a
-    // master gain knob at the ceiling; dragging it rescales all columns.
-    if (call.name === 'gain' && call.args.length === 1 && call.args[0].numeric === null) {
-      const mg = parseManagedGain(call.args[0].raw)
-      if (mg) {
-        knobs.push({ chainIndex, argIndex: 0, method: 'gain', label: 'gain', value: mg.ceiling, gain: mg })
-      }
-    }
   })
   return knobs
 }
@@ -203,7 +198,26 @@ export interface MixerBodyProps {
    *  (`"mixer"`), the drawer leaves it off so it doesn't pollute the console
    *  tab's scoping (P-MIX-7: one body marker per tab). */
   dataTab?: string
+  /** how the knob grid flows when it overflows:
+   *  - `'rows'` (default, Pattern inspector): wrap into new ROWS, body scrolls
+   *    vertically — the body has no fixed height to wrap a column against.
+   *  - `'columns'` (Mixer console drawer): the drawer height is fixed (= strip
+   *    face), so knobs fill a COLUMN top-to-bottom and wrap into a new column,
+   *    and the body grows WIDER instead of scrolling. The header (picker +
+   *    transforms) keeps a base width so the drawer only widens once the knob
+   *    columns exceed it. */
+  knobFlow?: 'rows' | 'columns'
+  /** show the sound-source picker (Instrument for a roll / Kit for a step).
+   *  Default `true` (Pattern inspector — the natural home for picking a track's
+   *  sound). The Mixer console drawer sets it `false`: the console is for mixing
+   *  (levels / pan / effects), not choosing the instrument, which is a
+   *  pattern-authoring decision made on the Pattern tab. */
+  showSoundPicker?: boolean
 }
+
+/** Base content width of the drawer header (picker + transforms) in column flow,
+ *  so the drawer stays ~264px until the knob columns grow past it. */
+const COLUMN_HEADER_W = 232
 
 export function MixerBody({
   chunk,
@@ -213,7 +227,10 @@ export function MixerBody({
   division,
   onDivisionChange,
   dataTab,
+  knobFlow = 'rows',
+  showSoundPicker = true,
 }: MixerBodyProps): React.ReactElement {
+  const columnFlow = knobFlow === 'columns'
   // Live instrument registry (#514 / PV141 #6) — prefer the engine's real
   // soundMap (synths/soundfonts/samples) over the curated shortlist; fall back
   // to INSTRUMENTS until the live list is available.
@@ -229,26 +246,36 @@ export function MixerBody({
       applyEdit((fresh, wb) => {
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex]
         if (!arg) return
-        if (entry.gain) {
-          // re-read the fresh arg so the scale reflects the current columns; the
-          // whole `.gain("…")` arg is rewritten as one surgical edit (one undo).
-          const mg = parseManagedGain(arg.raw) ?? entry.gain
-          wb.replaceRange(arg.range, scaleManagedGain(mg, value), 'knob')
-          return
-        }
         wb.replaceRange(arg.range, formatNumber(value), 'knob')
       })
     },
     [applyEdit],
   )
 
-  // Quick transforms (#390): append `.method(default)` to the expression when
-  // that method isn't already in the chain — surfaces a new knob.
-  const addTransform = React.useCallback(
-    (method: string, value: number): void => {
+  // Add/remove an effect (#575). Favorites and the ＋More menu both call this.
+  // Alias-aware: if the chain already has the effect under any spelling
+  // (`.cutoff` for Low-pass, …) we remove THAT call; otherwise append
+  // `.method(default)`. A member call's `range` is [dot, callEnd] (chunkDetect),
+  // so deleting it drops the whole call (and its knob). Guard to members (i > 0)
+  // so the head pattern is never deleted.
+  const toggleEffect = React.useCallback(
+    (e: Effect): void => {
       applyEdit((fresh, wb) => {
-        if (fresh.chain.some((c) => c.name === method)) return // already present
-        wb.insertAt(fresh.exprRange[1], `.${method}(${formatNumber(value)})`, 'knob')
+        const names = effectNames(e)
+        const idx = fresh.chain.findIndex((c, i) => i > 0 && names.includes(c.name))
+        if (idx >= 0) wb.deleteRange(fresh.chain[idx].range, 'knob')
+        else wb.insertAt(fresh.exprRange[1], `.${e.method}(${formatNumber(e.def)})`, 'knob')
+      })
+    },
+    [applyEdit],
+  )
+
+  // Remove one method by its exact name — the knob's `×` affordance (#575).
+  const removeMethod = React.useCallback(
+    (method: string): void => {
+      applyEdit((fresh, wb) => {
+        const idx = fresh.chain.findIndex((c, i) => i > 0 && c.name === method)
+        if (idx >= 0) wb.deleteRange(fresh.chain[idx].range, 'knob')
       })
     },
     [applyEdit],
@@ -283,12 +310,27 @@ export function MixerBody({
         flexDirection: 'column',
         gap: 14,
         padding: 16,
-        height: '100%',
-        overflowY: 'auto',
+        // Column flow sizes to its content (header + two knob rows) and grows
+        // WIDER as knobs are added — a constant height, no scroll. Row flow
+        // (inspector) fills the panel and scrolls vertically as before.
+        height: columnFlow ? undefined : '100%',
+        overflowY: columnFlow ? 'visible' : 'auto',
+        width: columnFlow ? 'max-content' : undefined,
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
       }}
     >
-      {kind === 'roll' && (
+      {/* header (picker + transforms). In column flow it holds a base width so
+          the drawer only widens once the knob COLUMNS exceed it. */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+          flexShrink: 0,
+          width: columnFlow ? COLUMN_HEADER_W : undefined,
+        }}
+      >
+      {showSoundPicker && kind === 'roll' && (
         <SoundSelect
           label="Instrument"
           groups={liveInstruments ?? INSTRUMENTS}
@@ -300,7 +342,7 @@ export function MixerBody({
       {kind === 'roll' && division !== undefined && onDivisionChange && (
         <DivisionSelect division={division} spb={rollSpb} onChange={onDivisionChange} />
       )}
-      {kind === 'step' && (
+      {showSoundPicker && kind === 'step' && (
         <SoundSelect
           label="Kit"
           groups={liveKits ?? DRUM_KITS}
@@ -309,34 +351,66 @@ export function MixerBody({
           onChange={(v) => writeChainMethod(['bank'], 'bank', v)}
         />
       )}
-      <div data-mixer-transforms style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {QUICK_TRANSFORMS.map((t) => (
-          <button
-            key={t.method}
-            type="button"
-            disabled={present.has(t.method)}
-            data-mixer-transform={t.method}
-            onClick={() => addTransform(t.method, t.value)}
-            style={{
-              padding: '3px 10px',
-              fontSize: 11,
-              borderRadius: 4,
-              border: '1px solid var(--border, #3a3a42)',
-              background: present.has(t.method)
-                ? 'var(--background, #1c1c20)'
-                : 'var(--background-elevated, #26262c)',
-              color: present.has(t.method)
-                ? 'var(--foreground-muted, #6a6a72)'
-                : 'var(--foreground, #e6e6ea)',
-              cursor: present.has(t.method) ? 'default' : 'pointer',
-            }}
-          >
-            + {t.label}
-          </button>
-        ))}
+      <div
+        data-mixer-transforms
+        style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}
+      >
+        {FAVORITES.map((e) => {
+          // A present effect is an ON toggle: clicking it again removes the call.
+          // Filled = on; the leading glyph flips +/✓ to telegraph the second
+          // click takes it off. The long tail lives in the ＋More menu.
+          const active = isEffectActive(present, e)
+          return (
+            <button
+              key={e.method}
+              type="button"
+              data-mixer-transform={e.method}
+              data-mixer-transform-active={active ? 'true' : undefined}
+              aria-pressed={active}
+              title={active ? `Remove ${e.label}` : `Add ${e.label}`}
+              onClick={() => toggleEffect(e)}
+              style={{
+                padding: '3px 10px',
+                fontSize: 11,
+                borderRadius: 4,
+                cursor: 'pointer',
+                border: active
+                  ? '1px solid var(--accent, #6ea8fe)'
+                  : '1px solid var(--border, #3a3a42)',
+                background: active ? 'var(--accent, #6ea8fe)' : 'var(--background-elevated, #26262c)',
+                color: active ? '#0b0b0e' : 'var(--foreground, #e6e6ea)',
+              }}
+            >
+              {active ? '✓' : '+'} {e.label}
+            </button>
+          )
+        })}
+        <AddEffectMenu present={present} onToggle={toggleEffect} />
+      </div>
       </div>
       {knobs.length > 0 ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+        <div
+          data-mixer-knobs
+          style={
+            columnFlow
+              ? // Always two rows: a knob fills row 1 then row 2 of a column,
+                // then flows into a new column to the right — so adding knobs
+                // grows the drawer WIDER (grid track widths are intrinsic, so it
+                // grows) at a constant height, never taller and never scrolling.
+                // The two rows are always reserved (minmax floor), so the layout
+                // starts with room for ~3 knobs/row and stays two rows tall.
+                {
+                  display: 'grid',
+                  gridAutoFlow: 'column',
+                  gridTemplateRows: 'repeat(2, minmax(78px, max-content))',
+                  gridAutoColumns: 'max-content',
+                  gap: 16,
+                  alignContent: 'flex-start',
+                  justifyContent: 'flex-start',
+                }
+              : { display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }
+          }
+        >
           {knobs.map((k) => (
             <Knob
               key={`${k.chainIndex}:${k.argIndex}`}
@@ -344,6 +418,7 @@ export function MixerBody({
               value={k.value}
               range={knobRangeFor(k.method, k.value)}
               onChange={(v) => writeKnob(k, v)}
+              onRemove={() => removeMethod(k.method)}
               onGestureStart={beginGesture}
               onGestureEnd={endGesture}
             />

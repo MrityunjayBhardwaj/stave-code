@@ -476,6 +476,18 @@ export class StrudelEngine implements LiveCodingEngine {
     const audioController = (webaudioMod as any).getSuperdoughAudioController()
     this.audioController = audioController
     audioController.output.destinationGain.connect(this.analyserNode)
+    // Track which destinationGain the analyser taps, so the master-fader path
+    // (applyMasterGain) can DETACH this connection if the node is ever replaced
+    // and re-tap the live one — otherwise the analyser sums a stale (unattenuated)
+    // node and the master meter won't follow the fader.
+    this.taggedDestinationGain = audioController.output.destinationGain
+    // Keep the controller GETTER (not just the cached controller): superdough has
+    // one GLOBAL controller (setSuperdoughAudioController). In dev, React Strict
+    // Mode mounts two engines → two cached controllers, but only the global one
+    // is live. The master fader must always hit (and meter must always tap) the
+    // GLOBAL destinationGain, so we resolve it fresh on every apply.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.superdoughControllerFn = (webaudioMod as any).getSuperdoughAudioController ?? null
 
     // Wrap the native output trigger so we can fan events to HapStream subscribers
     const hapStream = this.hapStream
@@ -1045,6 +1057,70 @@ export class StrudelEngine implements LiveCodingEngine {
 
   play(): void {
     this.repl?.scheduler?.start()
+    // Re-assert this engine's master gain on superdough's shared output node.
+    // Playback is exclusive (the playback coordinator stops other sources), so
+    // the file that just started owns the output — re-applying here makes the
+    // master PER FILE: whatever the previously-playing file set is overwritten
+    // with this file's gain, and a superdough reset during evaluate is undone.
+    this.applyMasterGain()
+  }
+
+  /** Master OUTPUT gain (linear), applied to superdough's shared destinationGain.
+   *  Per-file: each file owns its own StrudelEngine instance, so this field holds
+   *  THIS file's master; the runtime seeds it from the persisted per-file value. */
+  private masterGain = 1
+
+  setMasterGain(value: number): void {
+    this.masterGain = value < 0 ? 0 : value
+    this.applyMasterGain()
+  }
+
+  /** the destinationGain node our master analyser is currently tapping. */
+  private taggedDestinationGain: AudioNode | null = null
+  /** resolves superdough's GLOBAL audio controller (the live one). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private superdoughControllerFn: (() => any) | null = null
+
+  private applyMasterGain(): void {
+    // Resolve the GLOBAL controller fresh (not the per-engine cached one) so the
+    // gain hits the live output and the analyser taps it, even when a dev double-
+    // mount created a second engine with a stale cached controller.
+    const ctrl = this.superdoughControllerFn?.() ?? this.audioController
+    const dg = ctrl?.output?.destinationGain as
+      | (AudioNode & { gain?: AudioParam })
+      | undefined
+    const gainParam = dg?.gain
+    if (!dg || !gainParam) return // audio not initialized yet — play() re-asserts later
+    try {
+      // superdough RECREATES `destinationGain` on reset (resetGlobalEffects →
+      // SuperdoughOutput.reset(), superdoughoutput.mjs:151-159) — every evaluate
+      // swaps it for a fresh GainNode (gain 1). Our master analyser was connected
+      // once at init (init() / line 478), so after a swap it taps a dead node
+      // while the live mix flows through the NEW one — the meter stops tracking
+      // the level. Follow the current node: when it swaps, reconnect the analyser
+      // so the meter reads post-master-fader again, then assert this file's gain.
+      if (this.taggedDestinationGain !== dg) {
+        if (this.analyserNode) {
+          // Detach the analyser from the previous (now-stale) node first, else it
+          // sums taps from several destinationGains across swaps and over-reads
+          // the level (meter doesn't track the fader). Then tap the current node.
+          try {
+            this.taggedDestinationGain?.disconnect(this.analyserNode)
+          } catch {
+            /* already disconnected */
+          }
+          try {
+            dg.connect(this.analyserNode)
+          } catch {
+            /* already connected */
+          }
+        }
+        this.taggedDestinationGain = dg
+      }
+      gainParam.value = this.masterGain
+    } catch {
+      /* node detached / closed context — ignore */
+    }
   }
 
   stop(): void {

@@ -151,6 +151,31 @@ export function requestReeval(fileId: string | null): void {
   if (fileId) reevalHandler?.(fileId)
 }
 
+// Master-gain seam — the Mixer's MASTER fader sets a PER-FILE output gain on the
+// engine (superdough's shared `destinationGain`). Like the re-eval seam, the app
+// owns the runtime, so the editor requests the change through here. The app
+// applies it to the file's engine ONLY when that file is currently playing —
+// playback is exclusive (one source at a time), so the shared output node
+// belongs to whoever is playing, and adjusting a non-playing file's master never
+// touches another file's sound. The per-file VALUE is persisted in `masterStore`;
+// this seam is just the live apply (and is re-asserted on every play).
+let masterGainHandler: ((fileId: string, value: number) => void) | null = null
+
+/** App-side: register how to apply a file's master gain to its engine. */
+export function registerMasterGainHandler(
+  fn: (fileId: string, value: number) => void,
+): () => void {
+  masterGainHandler = fn
+  return () => {
+    if (masterGainHandler === fn) masterGainHandler = null
+  }
+}
+
+/** Editor-side: apply `fileId`'s master gain live (no-op if unregistered). */
+export function applyMasterGain(fileId: string | null, value: number): void {
+  if (fileId) masterGainHandler?.(fileId, value)
+}
+
 // Eval-source transform seam — the Mixer's SOLO is ephemeral monitoring state
 // (design D3): it must never be written to the file, only applied to the STRING
 // sent to the engine. The app wraps its `getFileContent` closure with

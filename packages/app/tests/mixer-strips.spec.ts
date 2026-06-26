@@ -231,6 +231,61 @@ test.describe('Mixer strip write-back (#540 / S1)', () => {
   })
 })
 
+// A config/transport line (`setcps`, `samples`) is filtered out of the strips
+// (#559), so the strip-array index is off-by-one from the detected-chunk index
+// for every track after it. The write path must address a strip's chunk by its
+// ABSOLUTE source index (`strip.index`), not the strip position — otherwise the
+// fader/knob edit lands on the PREVIOUS statement (onto `setcps` for the first
+// strip). This is the "the mixer set the modifier onto setcps" bug.
+test.describe('Mixer write-back with a leading config line (#559 off-by-one)', () => {
+  test('the face fader edits the first TRACK, never the setcps line above it', async ({ page }) => {
+    await boot(page)
+    const original = 'setcps(0.5)\n$: s("bd").gain(0.5)\nd1: s("hh*4").gain(0.8)'
+    await setStrudelCode(page, original)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    // #0 is the FIRST TRACK (setcps has no strip). Dragging it down must edit
+    // that track's gain, not write a modifier onto the setcps line.
+    await dragFader(page, drawer, '#0', -30)
+    const lines = (await strudelValue(page)).split('\n')
+    expect(lines[0]).toBe('setcps(0.5)') // config line BYTE-IDENTICAL
+    const m = lines[1].match(/^\$: s\("bd"\)\.gain\((\d*\.?\d+)\)$/)
+    expect(m, `unexpected track line: ${lines[1]}`).not.toBeNull()
+    expect(Number(m![1])).toBeLessThan(0.5) // the first TRACK got quieter
+    expect(lines[2]).toBe('d1: s("hh*4").gain(0.8)') // sibling byte-identical
+  })
+
+  test('the expand drawer binds + writes to the right track past a config line', async ({ page }) => {
+    await boot(page)
+    const original = 'setcps(0.5)\n$: s("bd").gain(0.5)\nd1: note("c e").lpf(800)'
+    await setStrudelCode(page, original)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+
+    await toggleExpand(page, drawer, 'd1')
+    // The drawer must READ d1's chain (an lpf knob), not the previous track's.
+    const d1Drawer = drawer.locator('[data-mixer-expand-for="d1"]')
+    await expect(d1Drawer.locator('[data-knob="lpf"]')).toHaveCount(1)
+
+    const slider = d1Drawer.locator('[data-knob="lpf"] [role="slider"]')
+    await slider.scrollIntoViewIfNeeded()
+    const box = await slider.boundingBox()
+    if (!box) throw new Error('no lpf knob box')
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - 40, { steps: 8 })
+    await page.mouse.up()
+    await page.waitForTimeout(80)
+
+    const lines = (await strudelValue(page)).split('\n')
+    expect(lines[0]).toBe('setcps(0.5)') // config line untouched
+    expect(lines[1]).toBe('$: s("bd").gain(0.5)') // previous track untouched
+    const m = lines[2].match(/^d1: note\("c e"\)\.lpf\((\d*\.?\d+)\)$/)
+    expect(m, `unexpected d1 line: ${lines[2]}`).not.toBeNull()
+    expect(Number(m![1])).toBeGreaterThan(800) // d1's OWN lpf changed
+  })
+})
+
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 /** evaluate/play the current doc. Focuses the STRUDEL editor (not just
