@@ -17,7 +17,7 @@
 import { detectAllChunks, type ChunkInfo, type ChainCall } from '../chunkDetect'
 import { patternKind } from '../panels/patternKind'
 import { readChainMethod } from '../panels/chainMethod'
-import { sampleVoice, VOICE_FALLBACK_COLOR } from '../panels/drumVoices'
+import { colorForTrack } from '../trackColor'
 import { type GainState, readGainState } from './gain'
 
 /** which surface a strip's pattern belongs to (mirrors `ChunkType` + groups). */
@@ -63,7 +63,8 @@ export interface StripModel {
    * take the `_` marker; a bare expression statement can't (`_s(...)` would parse
    * as a call to a different identifier), so its mute control is disabled. */
   muteable: boolean
-  /** indicator colour (the drum-voice palette, or a neutral fallback) */
+  /** indicator colour — the shared `colorForTrack(id)` (V-track-1, #579), so the
+   * strip dot matches the Song Timeline lane for the same track. */
   color: string
   /** the full method chain → the expand drawer (S4) */
   chain: ChainCall[]
@@ -170,23 +171,6 @@ function isForeign(chunk: ChunkInfo, name: string): boolean {
   return call !== undefined && call.args[0].numeric === null
 }
 
-/** first mini token, variant-stripped, for the colour lookup (e.g. `bd:3`→`bd`). */
-function firstMiniToken(mini: string | null): string | null {
-  if (!mini) return null
-  const tok = mini.trim().split(/\s+/)[0]
-  if (!tok || tok === '~' || tok === '-') return null
-  return tok.replace(/[[\]<>(),].*/, '').split(':', 1)[0] || null
-}
-
-/** indicator colour: the drum-voice palette for step patterns, neutral else. */
-function stripColor(kind: StripKind, miniString: string | null): string {
-  if (kind === 'step') {
-    const tok = firstMiniToken(miniString)
-    if (tok) return sampleVoice(tok).color
-  }
-  return VOICE_FALLBACK_COLOR
-}
-
 function buildStripModel(
   chunk: ChunkInfo,
   index: number,
@@ -213,7 +197,13 @@ function buildStripModel(
     sends: { room: readScalar(chunk, 'room'), delay: readScalar(chunk, 'delay') },
     muted: isMuted(chunk.label),
     muteable: chunk.label != null,
-    color: stripColor(kind, chunk.miniString),
+    // Centralized track colour (V-track-1, #579): keyed on the strip's STABLE
+    // canonical id (the label `d1`, or `#k` for an anonymous `$:`) via the shared
+    // `colorForTrack`. The Timeline colours a lane by the SAME algorithm over its
+    // `laneKey`, and for a named track that laneKey IS the label — so the Mixer
+    // dot and the Timeline lane resolve to one colour. Replaces the old
+    // drum-voice palette, which keyed on the sample and so diverged per view.
+    color: colorForTrack(id),
     chain: chunk.chain,
     exprRange: chunk.exprRange,
     statementRange: chunk.statementRange,

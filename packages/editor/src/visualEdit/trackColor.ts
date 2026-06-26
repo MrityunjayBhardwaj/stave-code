@@ -1,0 +1,121 @@
+/**
+ * trackColor — the SINGLE deterministic track-color algorithm, shared by the
+ * Mixer console strips and the Song/musical Timeline (V-track-1, issue #579).
+ *
+ * Before this module each view coloured tracks its own way: the Timeline used
+ * `paletteForTrack(trackIndexOf(laneKey), laneKey)` over a 32-cell palette
+ * (`app/.../musicalTimeline/colors.ts`), while the Mixer used the drum-voice
+ * palette (`stripModel.stripColor` → `sampleVoice`). Same track, two colours.
+ *
+ * The palette lived in the APP package, which the EDITOR cannot import
+ * (`panels/noteColor.ts:13-15` — the editor barrel can't reach app code), which
+ * is exactly why the two diverged. So the canonical algorithm lives HERE, in the
+ * editor, where the Mixer can import it directly. The app's `colors.ts` keeps an
+ * identical copy (it can't import the editor barrel either — that drags
+ * `@strudel/draw → gifenc` into app unit tests and crashes them, P172), and a
+ * drift-guard test deep-imports THIS module and asserts the two never diverge —
+ * the same mirror-with-guard pattern as `laneKeyOf`/`resolveLaneKey`. One
+ * algorithm, two provably-equal copies, neither importing the other at runtime.
+ *
+ * This file is PURE: no React, no audio, no IR, no heavy deps — so the Mixer can
+ * import it freely and the drift-guard can deep-import it barrel-free.
+ *
+ * Keep this byte-for-byte equivalent (in OUTPUT) to `colors.ts` — the
+ * drift-guard test (`musicalTimeline/__tests__/trackColor.drift.test.ts`) fails
+ * loudly if they diverge.
+ */
+
+/**
+ * TRACK_PALETTE_32 — 4 stem hues × 8 lightness steps = 32 cells.
+ * Allocation: index `i` → stem-family `i % 4`, shade `Math.floor(i / 4)`.
+ * `paletteForTrack` composes with `stemHueGroup` to bias a track's slot toward
+ * its sample-derived hue family. Mirror of `colors.ts:TRACK_PALETTE_32`.
+ */
+export const TRACK_PALETTE_32: readonly string[] = [
+  // Drums (orange family) — 8 lightness steps
+  '#fed7aa', '#fdba74', '#fb923c', '#f97316', '#ea580c', '#c2410c', '#9a3412', '#7c2d12',
+  // Bass (cyan family) — 8 lightness steps
+  '#a5f3fc', '#67e8f9', '#22d3ee', '#06b6d4', '#0891b2', '#0e7490', '#155e75', '#164e63',
+  // Pad (green family) — 8 lightness steps
+  '#a7f3d0', '#6ee7b7', '#34d399', '#10b981', '#059669', '#047857', '#065f46', '#064e3b',
+  // Melody (purple family) — 8 lightness steps
+  '#ddd6fe', '#c4b5fd', '#a78bfa', '#8b5cf6', '#7c3aed', '#6d28d9', '#5b21b6', '#4c1d95',
+] as const
+
+/**
+ * Stem regex precedence (DV-11). Order matters — first match wins. Each pattern
+ * is anchored with `^` so prefixes match without hitting embedded substrings.
+ * Mirror of `colors.ts:STEM_PATTERNS` (the palette-relevant subset).
+ */
+const STEM_PATTERNS: ReadonlyArray<readonly [RegExp, number]> = [
+  // Drums → family 0
+  [/^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i, 0],
+  // Bass → family 1
+  [/^(?:bass|sub|808)/i, 1],
+  // Pads → family 2
+  [/^(?:pad|pads)/i, 2],
+  // Melody / lead / synth / piano / keys / guitar → family 3
+  [/^(?:lead|melody|synth|piano|keys|guitar)/i, 3],
+] as const
+
+// FNV-1a 32-bit. Locally scoped (mirrors `colors.ts:fnv1a32`).
+function fnv1a32(str: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < str.length; i++) {
+    h = (h ^ str.charCodeAt(i)) >>> 0
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h >>> 0
+}
+
+// Stem-family classifier — returns an index 0..3 (drums|bass|pad|melody).
+// Unknown → 3 (melody), matching `colors.ts:stemHueGroup`.
+function stemHueGroup(sample?: string): number {
+  if (!sample) return 3
+  for (let i = 0; i < STEM_PATTERNS.length; i++) {
+    if (STEM_PATTERNS[i][0].test(sample)) return STEM_PATTERNS[i][1]
+  }
+  return 3
+}
+
+/**
+ * Map a track to a stable 0..31 palette index. Auto-name shape (`d1`..`d{N}`):
+ * parse the digit, return N-1 mod 32 — so `d1`,`d2`,… get sequential cells.
+ * Any other name: FNV-1a 32-bit hash mod 32. Mirror of `colors.ts:trackIndexOf`.
+ */
+export function trackIndexOf(trackId: string): number {
+  const m = trackId.match(/^d(\d+)$/)
+  if (m) {
+    const n = parseInt(m[1], 10)
+    if (n >= 1) return ((n - 1) % 32 + 32) % 32
+  }
+  return fnv1a32(trackId) % 32
+}
+
+/**
+ * Map a (trackIndex, sampleHint) to a palette slot:
+ * `(trackIndex * 4 + stemHueGroup(sampleHint)) % 32`. Mirror of
+ * `colors.ts:paletteForTrack`.
+ */
+export function paletteForTrack(trackIndex: number, sampleHint?: string): string {
+  const hueGroup = stemHueGroup(sampleHint)
+  const slot = (((trackIndex * 4 + hueGroup) % 32) + 32) % 32 // safe mod for negative
+  return TRACK_PALETTE_32[slot]
+}
+
+/**
+ * THE canonical entry point: a track's colour from its canonical key. Composes
+ * the two steps the Timeline already applies at its call site
+ * (`FullSongTimeline.tsx`: `paletteForTrack(trackIndexOf(laneKey), laneKey)`),
+ * so passing the SAME key in any view yields the SAME colour. The key is its own
+ * stem hint — a `d1`/`bass` key biases its own hue family, exactly as the
+ * Timeline does today.
+ *
+ * Pass the track's canonical key: the statement label (`d1`, `bass`) for a named
+ * track, the positional id (`#0`…) for an anonymous `$:`. For a named track this
+ * equals the Timeline's `laneKey` (the inner `.p()` name == the label), so the
+ * Mixer dot and the Timeline lane resolve to one colour.
+ */
+export function colorForTrack(key: string): string {
+  return paletteForTrack(trackIndexOf(key), key)
+}

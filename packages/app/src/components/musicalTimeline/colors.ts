@@ -77,6 +77,14 @@ export function trackColorFromStem(
 }
 
 /**
+ * MIRROR (V-track-1, #579): the palette path below — `TRACK_PALETTE_32`,
+ * `trackIndexOf`, `paletteForTrack` (and `stemHueGroup`) — is duplicated in the
+ * editor-canonical `packages/editor/src/visualEdit/trackColor.ts` so the Mixer
+ * can colour strips by the SAME algorithm (the editor can't import this app
+ * file, and this app file can't import the editor barrel — P172). Keep the two
+ * in sync: `trackColor.drift.test.ts` fails loudly if they diverge. The editor's
+ * `colorForTrack(key)` === the Timeline's `paletteForTrack(trackIndexOf(key), key)`.
+ *
  * Phase 20-11 D-03 — TRACK_PALETTE_32. Placeholder palette.
  * 4 stem hues × 8 lightness/saturation steps each — 32 cells total.
  * Exact swatches finalised in 20-12 design-system pass; this v1 keeps the

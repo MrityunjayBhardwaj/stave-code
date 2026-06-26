@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 import { detectAllChunks } from '../../chunkDetect'
 import { buildStripModels, statementOffsetForSource } from '../stripModel'
+import { colorForTrack } from '../../trackColor'
 
 /** strips for a whole document, the read path the Mixer actually uses */
 function stripsOf(src: string) {
@@ -180,9 +181,18 @@ describe('buildStripModels — per-strip read model', () => {
     expect(stripsOf('$: s("bd")')[0].gain.kind).toBe('absent')
   })
 
-  it('colours a step strip from its first drum voice', () => {
-    // bd → kick magenta (the same palette the Sequencer uses)
-    expect(stripsOf('$: s("bd sn")')[0].color).toBe('#e0407f')
+  it('colours a strip via the shared colorForTrack, keyed on its canonical id', () => {
+    // V-track-1 (#579): the dot colour is the shared track-colour algorithm over
+    // the strip's stable id — NOT the old drum-voice palette — so it matches the
+    // Song Timeline lane for the same track. A named track keys on its label; an
+    // anonymous `$:` keys on its positional `#k` id.
+    const named = stripsOf('d1: note("c e g")')[0]
+    expect(named.id).toBe('d1')
+    expect(named.color).toBe(colorForTrack('d1'))
+
+    const anon = stripsOf('$: s("bd sn")')[0]
+    expect(anon.id).toBe('#0')
+    expect(anon.color).toBe(colorForTrack('#0'))
   })
 
   it('classifies a stack(...) statement as a group', () => {
