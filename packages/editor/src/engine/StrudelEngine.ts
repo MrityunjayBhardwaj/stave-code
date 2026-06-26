@@ -6,12 +6,14 @@ import { OfflineRenderer } from './OfflineRenderer'
 import { normalizeStrudelHap } from './NormalizedHap'
 import type { HapEvent } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
+import { startsTopLevelBlock } from '../visualizers/blockScan'
 import type { LiveCodingEngine, EngineComponents } from './LiveCodingEngine'
 import { propagate, StrudelParseSystem, IREventCollectSystem } from '../ir/propagation'
 import type { PatternIR } from '../ir/PatternIR'
 import type { IREvent } from '../ir/IREvent'
 import { getTierFlags, type TierFlags } from './tierFlags'
 import { resolveAlias } from './aliases'
+import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
 
 type HapHandler = (event: HapEvent) => void
 
@@ -546,6 +548,25 @@ export class StrudelEngine implements LiveCodingEngine {
         // Route scheduler-time errors (e.g. "sound X not found", "cannot parse as numeral")
         // through the registered handler so they surface in the editor UI, not just the console.
         const error = err instanceof Error ? err : new Error(String(err))
+        // A "no soundfont zone found" throw means this note's pitch fell outside the
+        // loaded instrument's sampled key-range. Upstream drops the preset + pitch
+        // from the message (`new Error(msg, name, ...)` ignores extra args —
+        // @strudel/soundfonts/fontloader.mjs:87), so the raw message is empty and
+        // useless. We still hold the offending `hap` here, so recover the note +
+        // instrument from it and rewrite the message into something actionable (#561).
+        if (isSoundfontZoneError(error.message)) {
+          const better = soundfontRangeMessage(hap?.value)
+          if (better) error.message = better
+          // The hap's own `loc` is unreliable for these (chord members collapse
+          // to a degenerate offset — observed all → offset 1, #567). Instead tag
+          // the error with the offending INSTRUMENT so the app can locate the
+          // owning track's line via `statementOffsetForSource` (the stack itself
+          // is bundle-only). Read in StrudelEditorClient's onError.
+          const instrument = hap?.value?.s
+          if (typeof instrument === 'string') {
+            ;(error as Error & { staveLocateSource?: string }).staveLocateSource = instrument
+          }
+        }
         this.runtimeErrorHandler?.(error)
       }
     }
@@ -590,6 +611,16 @@ export class StrudelEngine implements LiveCodingEngine {
     // capture so a bare top-level `.scope()` still registers.
     let capturedBackdropViz: string | null = null
     let capturedBackdropVizOptions: Record<string, unknown> | null = null
+    // #571 — fallback for an inline viz request (`.viz()` / `._pianoroll()` …)
+    // that ISN'T the terminal chain call. The request is tagged on the returned
+    // Pattern instance (`_pendingViz`), but Strudel patterns are immutable so any
+    // method AFTER it (`.gain()`, `.sound()`, …) returns a fresh instance that
+    // drops the tag, and the transpiler-appended `.p()` then sees nothing. The
+    // viz wraps also record the LATEST request here (latest-wins, matching "last
+    // viz in the chain wins"); `.p()` snapshots + clears it at every track
+    // boundary so it's recovered for this track and never leaks to the next.
+    let pendingChainViz: string | null = null
+    let pendingChainVizOptions: Record<string, unknown> | null = null
     let anonIndex = 0
     // Auto-orbit counter: each captured $: block with a .viz() request but no
     // explicit .orbit(N) gets its own unique orbit number starting high enough
@@ -676,6 +707,7 @@ export class StrudelEngine implements LiveCodingEngine {
             // Tag the RETURNED pattern with the resolved viz name
             if (resolvedName) {
               result._pendingViz = resolvedName
+              pendingChainViz = resolvedName // #571 — survive non-terminal chains
             }
             // Carry the `.viz(name, {...})` options object so the `.p()` wrapper
             // keys it to this track's captureId → stave.options — the same path
@@ -683,6 +715,7 @@ export class StrudelEngine implements LiveCodingEngine {
             // silently dropped (#215).
             if (opts && typeof opts === 'object') {
               result._pendingVizOptions = opts
+              pendingChainVizOptions = opts as Record<string, unknown> // #571
             }
             return result
           },
@@ -708,9 +741,13 @@ export class StrudelEngine implements LiveCodingEngine {
             writable: true,
             value: function(this: any, opts?: unknown) { // eslint-disable-line @typescript-eslint/no-explicit-any
               this._pendingViz = renderer
+              pendingChainViz = renderer // #571 — survive non-terminal chains
               // Carry the `.pianoroll({...})` argument so the `.p()` wrapper
               // can key it to this track's captureId → stave.options.
-              if (opts && typeof opts === 'object') this._pendingVizOptions = opts
+              if (opts && typeof opts === 'object') {
+                this._pendingVizOptions = opts
+                pendingChainVizOptions = opts as Record<string, unknown> // #571
+              }
               return this
             },
           })
@@ -732,6 +769,14 @@ export class StrudelEngine implements LiveCodingEngine {
           configurable: true,
           writable: true,
           value: function (this: any, id: string) { // eslint-disable-line @typescript-eslint/no-explicit-any
+            // #571 — snapshot + clear the chain-viz fallback at EVERY `.p()`
+            // boundary (incl. `_`-muted tracks whose capture is skipped below),
+            // so a mid-chain `.viz()` on THIS statement is recovered here and
+            // never leaks to the next track.
+            const chainViz = pendingChainViz
+            const chainVizOptions = pendingChainVizOptions
+            pendingChainViz = null
+            pendingChainVizOptions = null
             if (typeof id === 'string' && !(id.startsWith('_') || id.endsWith('_'))) {
               let captureId = id
               if (id.includes('$')) {
@@ -740,16 +785,24 @@ export class StrudelEngine implements LiveCodingEngine {
               }
 
               // Resolve pending .viz() request — .viz() fires BEFORE .p() in chain.
+              // The instance tag is exact for a TERMINAL `.viz()`; the closure
+              // fallback (chainViz) recovers a `.viz()` followed by more chain
+              // methods, which drop the tag on Strudel's immutable patterns (#571).
               let vizName: string = ''
               if (this._pendingViz && typeof this._pendingViz === 'string') {
                 vizName = this._pendingViz
                 capturedVizRequests.set(captureId, vizName)
                 delete this._pendingViz
+              } else if (chainViz) {
+                vizName = chainViz
+                capturedVizRequests.set(captureId, vizName)
               }
               // Resolve pending viz options (`.pianoroll({...})` argument).
               if (this._pendingVizOptions && typeof this._pendingVizOptions === 'object') {
                 capturedVizOptions.set(captureId, this._pendingVizOptions as Record<string, unknown>)
                 delete this._pendingVizOptions
+              } else if (chainVizOptions) {
+                capturedVizOptions.set(captureId, chainVizOptions)
               }
 
               // Per-track audio isolation: strudel's default orbit is 1, so every
@@ -967,12 +1020,14 @@ export class StrudelEngine implements LiveCodingEngine {
 
       // Find last line of this pattern block (continuation lines).
       // Blank lines are allowed within a block — only break on a new block
-      // start ($:, setcps) or end of file. This handles multi-line patterns
-      // with arbitrary whitespace.
+      // start or end of file. This handles multi-line patterns with arbitrary
+      // whitespace. The boundary check (`startsTopLevelBlock`) recognizes the
+      // solo/mute overlay's silenced forms (`_$:`, `/*`-wrapped) so a soloed
+      // track's block doesn't absorb the following silenced lines (#569).
       let lastLineIdx = i
       for (let j = i + 1; j < lines.length; j++) {
         const next = lines[j].trim()
-        if (next.startsWith('$:') || next.startsWith('setcps')) break
+        if (startsTopLevelBlock(next)) break
         if (next !== '' && !next.startsWith('//')) lastLineIdx = j
       }
 

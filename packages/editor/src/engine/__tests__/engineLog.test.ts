@@ -63,13 +63,15 @@ describe('emitLog', () => {
       line: 4,
       message: 'fill() expects 3 args',
     }
-    emitLog(shape)
+    const first = emitLog(shape)
     emitLog(shape)
     emitLog(shape)
     const h = getLogHistory()
     expect(h).toHaveLength(1)
     // Same id — consumers can treat the emit as a repeat.
+    expect(h[0].id).toBe(first.id)
     expect(h[0].message).toBe('fill() expects 3 args')
+    expect(h[0].count).toBe(3)
   })
 
   it('treats a different line as a distinct entry', () => {
@@ -82,6 +84,36 @@ describe('emitLog', () => {
     emitLog({ ...base, line: 4 })
     emitLog({ ...base, line: 7 })
     expect(getLogHistory()).toHaveLength(2)
+  })
+
+  // #563 — a repeating GROUP of distinct messages (soundfont flood cycling
+  // c7,d7,e7,… each beat) defeats a compare-to-last dedup. Coalesce by key so
+  // identical-but-NON-consecutive entries collapse into one counted row.
+  it('coalesces identical NON-consecutive entries, keeping position + bumping count', () => {
+    const a = { level: 'error' as const, runtime: 'strudel' as const, message: 'A' }
+    const b = { level: 'error' as const, runtime: 'strudel' as const, message: 'B' }
+    emitLog(a)
+    emitLog(b)
+    emitLog(a) // not consecutive with the first A — still merges
+    const h = getLogHistory()
+    expect(h.map((e) => e.message)).toEqual(['A', 'B']) // 2 rows, A keeps its slot
+    expect(h[0].count).toBe(2)
+    expect(h[1].count).toBe(1)
+  })
+
+  it('fresh entry starts at count 1', () => {
+    expect(emitLog({ level: 'info', runtime: 'p5', message: 'hello' }).count).toBe(1)
+  })
+
+  it('clearLog resets the coalescing index (a repeat after clear is a fresh row)', () => {
+    const shape = { level: 'error' as const, runtime: 'strudel' as const, message: 'boom' }
+    emitLog(shape)
+    emitLog(shape)
+    expect(getLogHistory()[0].count).toBe(2)
+    clearLog()
+    const fresh = emitLog(shape)
+    expect(fresh.count).toBe(1)
+    expect(getLogHistory()).toHaveLength(1)
   })
 })
 

@@ -1135,6 +1135,7 @@ __name(buildHydraStaveBag, "buildHydraStaveBag");
 // src/engine/engineLog.ts
 var MAX_HISTORY = 500;
 var history = [];
+var dedupeIndex = /* @__PURE__ */ new Map();
 var listeners = /* @__PURE__ */ new Set();
 var idSeq = 0;
 function makeId() {
@@ -1142,28 +1143,40 @@ function makeId() {
   return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
 }
 __name(makeId, "makeId");
+function dedupeKey(p) {
+  return [p.level, p.runtime, p.source ?? "", p.line ?? "", p.message].join("\0");
+}
+__name(dedupeKey, "dedupeKey");
 function emitLog(partial) {
-  const last = history.length > 0 ? history[history.length - 1] : void 0;
-  if (last && last.level === partial.level && last.runtime === partial.runtime && last.source === partial.source && last.line === partial.line && last.message === partial.message) {
-    last.ts = Date.now();
+  const key = dedupeKey(partial);
+  const existing = dedupeIndex.get(key);
+  if (existing) {
+    existing.ts = Date.now();
+    existing.count = (existing.count ?? 1) + 1;
     queueMicrotask(() => {
       for (const fn of listeners) {
         try {
-          fn(last, history);
+          fn(existing, history);
         } catch {
         }
       }
     });
-    return last;
+    return existing;
   }
   const entry = {
     id: makeId(),
     ts: Date.now(),
+    count: 1,
     ...partial
   };
   history.push(entry);
+  dedupeIndex.set(key, entry);
   if (history.length > MAX_HISTORY) {
-    history.splice(0, history.length - MAX_HISTORY);
+    const removed = history.splice(0, history.length - MAX_HISTORY);
+    for (const r of removed) {
+      const rk = dedupeKey(r);
+      if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
+    }
   }
   queueMicrotask(() => {
     for (const fn of listeners) {
@@ -1282,6 +1295,12 @@ function extractMissingSoundName(rawMessage) {
   return null;
 }
 __name(extractMissingSoundName, "extractMissingSoundName");
+var SOUNDFONT_ZONE_RE = /no soundfont zone found/i;
+function isSoundfontZoneError(message) {
+  return SOUNDFONT_ZONE_RE.test(message);
+}
+__name(isSoundfontZoneError, "isSoundfontZoneError");
+var SOUNDFONT_ZONE_HINT = "A note is outside the chosen instrument's sampled range \u2014 try a lower octave or a fuller-range instrument.";
 function buildAliasSuffix(missingName, ctx) {
   if (!ctx) return "";
   const parts = [];
@@ -1451,6 +1470,14 @@ function formatFriendlyError(err, runtime, options = {}) {
     }
     return {
       message: appendAlias(`\`${identifier}\` is not defined.`),
+      stack,
+      line: loc?.line,
+      column: loc?.column
+    };
+  }
+  if (isSoundfontZoneError(rawMessage)) {
+    return {
+      message: appendAlias(SOUNDFONT_ZONE_HINT),
       stack,
       line: loc?.line,
       column: loc?.column

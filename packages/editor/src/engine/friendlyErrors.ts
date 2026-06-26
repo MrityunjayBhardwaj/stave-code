@@ -249,6 +249,47 @@ function extractMissingSoundName(rawMessage: string): string | null {
   return null
 }
 
+// #561 — soundfont "no soundfont zone found for preset" (note out of range).
+// Fired when a note's pitch falls outside the LOADED instrument's sampled
+// key-range (@strudel/soundfonts/fontloader.mjs:87) — distinct from superdough's
+// "sound X not found" (instrument not loaded at all). The upstream throw is
+// `new Error('no soundfont zone found for preset ', name, 'pitch', pitch)` —
+// Error() ignores every arg after the message, so the preset name AND pitch are
+// dropped: the raw message is a useless empty `preset `. We can't recover them
+// from the message; the engine's scheduler catch recovers them from the hap.
+const SOUNDFONT_ZONE_RE = /no soundfont zone found/i
+
+/** True when a thrown message is the soundfont out-of-range error. */
+export function isSoundfontZoneError(message: string): boolean {
+  return SOUNDFONT_ZONE_RE.test(message)
+}
+
+/** Generic, hap-less actionable hint — the fallback when the offending note /
+ *  instrument can't be recovered (the raw message carries neither). */
+export const SOUNDFONT_ZONE_HINT =
+  "A note is outside the chosen instrument's sampled range — try a lower octave or a fuller-range instrument."
+
+/**
+ * Build the ACTIONABLE soundfont-range message from the offending hap's value
+ * (`{ note | n, s }` — grounded by observing the scheduler catch on the Nightcall
+ * doc: `{note:"c7", s:"gm_agogo", …}`). `note`/`n` may be a name string (`"c7"`)
+ * or a MIDI number; both render as-is. Returns null when the shape carries
+ * neither a pitch nor an instrument, so the caller falls back to
+ * `SOUNDFONT_ZONE_HINT`. Pure — unit-tested directly.
+ */
+export function soundfontRangeMessage(
+  hapValue: { note?: unknown; n?: unknown; s?: unknown } | null | undefined,
+): string | null {
+  const instrument = typeof hapValue?.s === 'string' && hapValue.s ? hapValue.s : null
+  const pitchRaw = hapValue?.note ?? hapValue?.n
+  const pitch =
+    typeof pitchRaw === 'string' || typeof pitchRaw === 'number' ? String(pitchRaw) : null
+  if (instrument === null && pitch === null) return null
+  const who = pitch !== null ? `Note \`${pitch}\`` : 'A note'
+  const where = instrument !== null ? ` for soundfont \`${instrument}\`` : ''
+  return `${who} is outside the sampled range${where} — try a lower octave or a fuller-range instrument.`
+}
+
 /**
  * Build the alias-resolution suffix appended to "sound not found" friendly
  * errors. Returns an empty string when there's nothing to say. Exported
@@ -511,7 +552,21 @@ export function formatFriendlyError(
     }
   }
 
-  // 3. Non-reference, no curated hint — raw message.
+  // 3. Soundfont out-of-range backstop (#561). The engine's scheduler catch
+  //    normally rewrites this into a note+instrument-specific message (it holds
+  //    the hap); this generic hint covers any path that reaches here with the raw
+  //    upstream message (which carries neither preset nor pitch — see
+  //    SOUNDFONT_ZONE_RE) so the user never sees the empty `preset ` string.
+  if (isSoundfontZoneError(rawMessage)) {
+    return {
+      message: appendAlias(SOUNDFONT_ZONE_HINT),
+      stack,
+      line: loc?.line,
+      column: loc?.column,
+    }
+  }
+
+  // 4. Non-reference, no curated hint — raw message.
   return {
     message: appendAlias(rawMessage || 'Unknown error'),
     stack,
