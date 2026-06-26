@@ -65,7 +65,11 @@ export function ExpandDrawer({
         display: 'flex',
         minWidth: 264,
         borderLeft: '1px solid var(--border, #3a3a42)',
-        background: 'transparent',
+        // Semi-transparent fill + a rounded RIGHT edge; the LEFT stays flat where
+        // it meets the strip face (whose right corners are flattened), so the
+        // strip + drawer read as one connected unit that belongs together.
+        background: '#26262c69',
+        borderRadius: '0 6px 6px 0',
         overflow: 'hidden',
       }}
     >

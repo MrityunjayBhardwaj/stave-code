@@ -238,7 +238,10 @@ export function ChannelStrip({
         flexDirection: 'column',
         gap: 6,
         padding: 8,
-        borderRadius: 6,
+        // When the expand drawer is open (console), flatten the RIGHT corners so
+        // the strip face and its drawer read as one connected unit — the drawer
+        // rounds the right edge. Standalone / closed → fully rounded.
+        borderRadius: expanded ? '6px 0 0 6px' : 6,
         border: '1px solid var(--border, #3a3a42)',
         background: 'var(--background-elevated, #26262c)',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
