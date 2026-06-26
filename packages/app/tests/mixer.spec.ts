@@ -174,7 +174,8 @@ test.describe('Mixer (#381)', () => {
     await setStrudelCode(page, '$: s("bd")')
     const drawer = await openMixer(page)
     await drawer.locator('[data-mixer-add-effect]').click()
-    const menu = drawer.locator('[data-mixer-add-effect-menu]')
+    // the popover is portaled to <body> (escapes the drawer's overflow clip)
+    const menu = page.locator('[data-mixer-add-effect-menu]')
     await expect(menu).toBeVisible()
     // search narrows to the bitcrush entry; reverb (room) drops out
     await menu.locator('[data-mixer-add-effect-search]').fill('crush')
@@ -192,7 +193,7 @@ test.describe('Mixer (#381)', () => {
     const drawer = await openMixer(page)
     await drawer.locator('[data-mixer-add-effect]').click()
     await expect(
-      drawer.locator('[data-mixer-add-effect-menu] [data-mixer-add-effect-item="lpf"]'),
+      page.locator('[data-mixer-add-effect-menu] [data-mixer-add-effect-item="lpf"]'),
     ).toHaveAttribute('aria-pressed', 'true')
   })
 

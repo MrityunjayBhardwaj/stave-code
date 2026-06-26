@@ -5,10 +5,19 @@
  * effect in `effectCatalog`; each row is a toggle (✓ when present), so the menu
  * is the unified add *and* remove surface for the long tail. No document state —
  * `present` (the chain's method names) drives the ✓, `onToggle` does the write.
+ *
+ * The popover is rendered through a portal to `document.body` and positioned by
+ * the button's viewport rect — the Mixer-console expand drawer is strip-height
+ * with `overflow: hidden`, so an in-flow `absolute` menu would be clipped. It
+ * flips above the button when there's more room there, and closes on scroll/
+ * resize (the fixed position would otherwise drift).
  */
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 
 import { EFFECT_GROUPS, isEffectActive, type Effect } from './effectCatalog'
+
+const MENU_WIDTH = 230
 
 export function AddEffectMenu({
   present,
@@ -21,23 +30,51 @@ export function AddEffectMenu({
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
-  const ref = React.useRef<HTMLDivElement>(null)
+  const [pos, setPos] = React.useState<{ top: number; left: number; maxHeight: number } | null>(null)
+  const btnRef = React.useRef<HTMLButtonElement>(null)
+  const menuRef = React.useRef<HTMLDivElement>(null)
 
-  // Close on outside click or Escape (a standard popover; no portal needed —
-  // the drawer clips, so the menu is positioned to open below the button).
+  // Position the portal off the button's viewport rect; flip up if cramped.
+  const place = React.useCallback((): void => {
+    const b = btnRef.current?.getBoundingClientRect()
+    if (!b) return
+    const margin = 8
+    const below = window.innerHeight - b.bottom - margin
+    const above = b.top - margin
+    const openUp = below < 200 && above > below
+    const maxHeight = Math.min(300, Math.max(120, openUp ? above : below))
+    setPos({
+      top: openUp ? Math.max(margin, b.top - 4 - maxHeight) : b.bottom + 4,
+      left: Math.max(margin, Math.min(b.left, window.innerWidth - MENU_WIDTH - margin)),
+      maxHeight,
+    })
+  }, [])
+
+  React.useLayoutEffect(() => {
+    if (open) place()
+  }, [open, place])
+
   React.useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent): void => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const t = e.target as Node
+      if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return
+      setOpen(false)
     }
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setOpen(false)
     }
+    const dismiss = (): void => setOpen(false)
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', dismiss)
+    // capture so a scroll in any ancestor (the drawer body) dismisses too
+    window.addEventListener('scroll', dismiss, true)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', dismiss)
+      window.removeEventListener('scroll', dismiss, true)
     }
   }, [open])
 
@@ -54,9 +91,106 @@ export function AddEffectMenu({
       ] as const,
   ).filter(([, effects]) => effects.length > 0)
 
+  const menu =
+    open && pos
+      ? createPortal(
+          <div
+            ref={menuRef}
+            data-mixer-add-effect-menu
+            style={{
+              position: 'fixed',
+              zIndex: 1000,
+              top: pos.top,
+              left: pos.left,
+              width: MENU_WIDTH,
+              maxHeight: pos.maxHeight,
+              overflowY: 'auto',
+              padding: 6,
+              borderRadius: 6,
+              border: '1px solid var(--border, #3a3a42)',
+              background: 'var(--background-elevated, #26262c)',
+              boxShadow: '0 6px 20px rgba(0, 0, 0, 0.4)',
+              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+            }}
+          >
+            <input
+              autoFocus
+              data-mixer-add-effect-search
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search effects…"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                padding: '4px 8px',
+                marginBottom: 4,
+                fontSize: 12,
+                borderRadius: 4,
+                border: '1px solid var(--border, #3a3a42)',
+                background: 'var(--background, #1c1c20)',
+                color: 'var(--foreground, #e6e6ea)',
+              }}
+            />
+            {groups.map(([group, effects]) => (
+              <div key={group}>
+                <div
+                  style={{
+                    fontSize: 9,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                    color: 'var(--foreground-muted, #6a6a72)',
+                    margin: '6px 4px 2px',
+                  }}
+                >
+                  {group}
+                </div>
+                {effects.map((e) => {
+                  const active = isEffectActive(present, e)
+                  return (
+                    <button
+                      key={e.method}
+                      type="button"
+                      data-mixer-add-effect-item={e.method}
+                      aria-pressed={active}
+                      onClick={() => onToggle(e)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '4px 6px',
+                        fontSize: 12,
+                        borderRadius: 4,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: active ? 'var(--background, #1c1c20)' : 'transparent',
+                        color: 'var(--foreground, #e6e6ea)',
+                      }}
+                    >
+                      <span style={{ width: 12, color: 'var(--accent, #6ea8fe)' }}>
+                        {active ? '✓' : ''}
+                      </span>
+                      {e.label}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+            {groups.length === 0 && (
+              <div style={{ padding: 8, fontSize: 11, color: 'var(--foreground-muted, #a0a0aa)' }}>
+                No effects match “{query}”.
+              </div>
+            )}
+          </div>,
+          document.body,
+        )
+      : null
+
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <>
       <button
+        ref={btnRef}
         type="button"
         data-mixer-add-effect
         aria-expanded={open}
@@ -74,96 +208,7 @@ export function AddEffectMenu({
       >
         ＋ More ▾
       </button>
-      {open && (
-        <div
-          data-mixer-add-effect-menu
-          style={{
-            position: 'absolute',
-            zIndex: 30,
-            top: '100%',
-            left: 0,
-            marginTop: 4,
-            width: 230,
-            maxHeight: 300,
-            overflowY: 'auto',
-            padding: 6,
-            borderRadius: 6,
-            border: '1px solid var(--border, #3a3a42)',
-            background: 'var(--background-elevated, #26262c)',
-            boxShadow: '0 6px 20px rgba(0, 0, 0, 0.4)',
-          }}
-        >
-          <input
-            autoFocus
-            data-mixer-add-effect-search
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search effects…"
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              padding: '4px 8px',
-              marginBottom: 4,
-              fontSize: 12,
-              borderRadius: 4,
-              border: '1px solid var(--border, #3a3a42)',
-              background: 'var(--background, #1c1c20)',
-              color: 'var(--foreground, #e6e6ea)',
-            }}
-          />
-          {groups.map(([group, effects]) => (
-            <div key={group}>
-              <div
-                style={{
-                  fontSize: 9,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                  color: 'var(--foreground-muted, #6a6a72)',
-                  margin: '6px 4px 2px',
-                }}
-              >
-                {group}
-              </div>
-              {effects.map((e) => {
-                const active = isEffectActive(present, e)
-                return (
-                  <button
-                    key={e.method}
-                    type="button"
-                    data-mixer-add-effect-item={e.method}
-                    aria-pressed={active}
-                    onClick={() => onToggle(e)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '4px 6px',
-                      fontSize: 12,
-                      borderRadius: 4,
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: active ? 'var(--background, #1c1c20)' : 'transparent',
-                      color: 'var(--foreground, #e6e6ea)',
-                    }}
-                  >
-                    <span style={{ width: 12, color: 'var(--accent, #6ea8fe)' }}>
-                      {active ? '✓' : ''}
-                    </span>
-                    {e.label}
-                  </button>
-                )
-              })}
-            </div>
-          ))}
-          {groups.length === 0 && (
-            <div style={{ padding: 8, fontSize: 11, color: 'var(--foreground-muted, #a0a0aa)' }}>
-              No effects match “{query}”.
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+      {menu}
+    </>
   )
 }
