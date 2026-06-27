@@ -29101,7 +29101,16 @@ var RESERVED_LABELS = /* @__PURE__ */ new Set([
   "with",
   "yield",
   "await",
-  "let"
+  "let",
+  // strict-mode reserved — Strudel transpiles as a module, so these are syntax
+  // errors AS labels too; reject them rather than write a name that breaks eval.
+  "implements",
+  "interface",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "static"
 ]);
 function isValidTrackLabel(name) {
   return /^[A-Za-z_$][\w$]*$/.test(name) && !RESERVED_LABELS.has(name);

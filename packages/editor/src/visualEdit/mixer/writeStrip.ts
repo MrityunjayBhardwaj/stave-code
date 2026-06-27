@@ -90,6 +90,9 @@ const RESERVED_LABELS = new Set([
   'function', 'if', 'import', 'in', 'instanceof', 'new', 'null', 'return', 'super',
   'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while',
   'with', 'yield', 'await', 'let',
+  // strict-mode reserved — Strudel transpiles as a module, so these are syntax
+  // errors AS labels too; reject them rather than write a name that breaks eval.
+  'implements', 'interface', 'package', 'private', 'protected', 'public', 'static',
 ])
 
 /** A valid track label: a JS identifier (incl. `$`/`_`) that is not a reserved

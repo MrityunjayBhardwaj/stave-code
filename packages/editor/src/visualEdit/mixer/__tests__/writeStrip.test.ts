@@ -133,7 +133,7 @@ describe('isValidTrackLabel', () => {
     }
   })
   it('rejects non-identifiers and reserved words', () => {
-    for (const bad of ['2drums', 'my track', 'a-b', '', 'return', 'class', 'for']) {
+    for (const bad of ['2drums', 'my track', 'a-b', '', 'return', 'class', 'for', 'interface', 'static']) {
       expect(isValidTrackLabel(bad), bad).toBe(false)
     }
   })
