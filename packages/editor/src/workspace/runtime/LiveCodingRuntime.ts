@@ -206,7 +206,7 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
 
   private readonly errorListeners = new Set<(err: Error) => void>()
   private readonly playingChangedListeners = new Set<(playing: boolean) => void>()
-  private readonly evaluateSuccessListeners = new Set<() => void>()
+  private readonly evaluateSuccessListeners = new Set<(code: string) => void>()
 
   /**
    * Unregister callback from the playback coordinator. Called in
@@ -402,7 +402,7 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     // state from a previous failed attempt — especially during live-mode
     // re-evals where the client otherwise has no signal that the syntax
     // error is gone.
-    this.fireEvaluateSuccess()
+    this.fireEvaluateSuccess(code)
 
     return { error: null }
   }
@@ -628,7 +628,10 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     }
   }
 
-  onEvaluateSuccess(cb: () => void): () => void {
+  /** Fires after each clean evaluate. The callback receives the EXACT source
+   *  string that was evaluated (post eval-source transform), captured at eval
+   *  time — so consumers don't have to re-read a lagging file snapshot (#583). */
+  onEvaluateSuccess(cb: (code: string) => void): () => void {
     this.evaluateSuccessListeners.add(cb)
     let unsubscribed = false
     return () => {
@@ -814,12 +817,12 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     }
   }
 
-  private fireEvaluateSuccess(): void {
+  private fireEvaluateSuccess(code: string): void {
     if (this.evaluateSuccessListeners.size === 0) return
     const snapshot = Array.from(this.evaluateSuccessListeners)
     for (const cb of snapshot) {
       try {
-        cb()
+        cb(code)
       } catch {
         // Listener exceptions never break the dispatch loop.
       }

@@ -197,3 +197,64 @@ test('renaming a coloured track carries the colour forward (override migrates)',
     .poll(() => laneDot.evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(chosenRgb)
 })
+
+test('deleting a coloured track prunes its override — re-adding it does NOT resurrect the colour (#583)', async ({ page }) => {
+  await bootShell(page, 'musical-timeline')
+  await typeSongAndEval(page, SONG)
+
+  const laneDot = page.locator('[data-full-song-lane-dot="d1"]')
+  await laneDot.waitFor({ timeout: 10_000 })
+  const defaultRgb = await laneDot.evaluate((el) => getComputedStyle(el).backgroundColor)
+
+  // Colour the `bass` track a colour distinct from BOTH its label default AND the
+  // positional `colors[0]` (which the lane shows when a re-added track hasn't
+  // re-resolved its label) — so a coincidental match can't mask a resurrection.
+  await laneDot.click()
+  const popover = page.locator('[data-testid="track-swatch-popover"]')
+  await popover.waitFor({ timeout: 5000 })
+  const colors = await popover
+    .locator('[data-musical-timeline="swatch-cell"]')
+    .evaluateAll((els) => els.map((e) => (e as HTMLElement).getAttribute('data-color') ?? ''))
+  const positionalRgb = hexToRgb(colors[0]) // colorForTrack('d1') fallback
+  const chosenHex = colors.find(
+    (c) => hexToRgb(c) !== defaultRgb && hexToRgb(c) !== positionalRgb,
+  )!
+  const chosenRgb = hexToRgb(chosenHex)
+  await popover.locator(`[data-color="${chosenHex}"]`).click()
+  await expect
+    .poll(() => laneDot.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(chosenRgb)
+
+  // Delete `bass` from the code (persisted to the per-file Yjs doc). We don't
+  // rely on a live re-eval here — a rapid edit can be coalesced before the
+  // deleted state is ever evaluated. Instead we force a deterministic COLD eval
+  // of the deleted program via a reload (same path as the persist test).
+  await typeSongAndEval(page, '$: s("hh*8")')
+
+  // Reload → cold-load `$: s("hh*8")` from IndexedDB → eval it. That clean eval
+  // fires onEvaluateSuccess with the deleted program, so the per-eval prune
+  // (#583) drops the now-orphaned `bass` override.
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 20_000 })
+  await page.waitForFunction(
+    () => ((window as unknown as { monaco?: { editor?: { getEditors?: () => unknown[] } } }).monaco?.editor?.getEditors?.()?.length ?? 0) > 0,
+    { timeout: 20_000 },
+  )
+  await page.locator('.monaco-editor').first().click()
+  await page.keyboard.press(`${MOD}+Enter`)
+  await expect(page.locator('[data-full-song-lane-dot="d1"]')).toHaveCount(1, { timeout: 10_000 })
+  // Only one lane now (the `$` track) — the deleted program is live.
+  await expect(page.locator('[data-full-song-lane-dot="d2"]')).toHaveCount(0, { timeout: 10_000 })
+
+  // Re-add `bass`. If the override had leaked, the re-added lane would RESURRECT
+  // the chosen colour; pruned, it resolves through the deterministic palette and
+  // can NEVER be the chosen colour. We assert exactly that (not the specific
+  // default — label resolution on a re-add can briefly show the positional
+  // `d{N}` colour, which is orthogonal to the prune this test proves).
+  await typeSongAndEval(page, SONG)
+  const laneDotAgain = page.locator('[data-full-song-lane-dot="d1"]')
+  await laneDotAgain.waitFor({ timeout: 10_000 })
+  await page.waitForTimeout(800) // settle the re-eval
+  const afterRgb = await laneDotAgain.evaluate((el) => getComputedStyle(el).backgroundColor)
+  expect(afterRgb).not.toBe(chosenRgb) // the orphaned override did not resurrect
+})

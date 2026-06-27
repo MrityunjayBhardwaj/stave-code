@@ -15488,6 +15488,7 @@ __name(subscribeToZoneOverrides, "subscribeToZoneOverrides");
 var EMPTY_TRACK_META = Object.freeze({});
 var trackMetaSubscribers = /* @__PURE__ */ new Map();
 var wiredTrackMetaObservers = /* @__PURE__ */ new Set();
+var PRUNE_TRACK_META_ORIGIN = /* @__PURE__ */ Symbol("prune-track-meta");
 var trackMetaSnapshotCache = /* @__PURE__ */ new Map();
 var EMPTY_TRACK_META_MAP = /* @__PURE__ */ new Map();
 function getTrackMetaMap(fileId) {
@@ -15564,6 +15565,22 @@ function setTrackMeta(fileId, trackId, partial) {
   }, STRUCT_ORIGIN);
 }
 __name(setTrackMeta, "setTrackMeta");
+function pruneTrackMeta(fileId, currentTrackIds) {
+  ensureDoc();
+  const meta = getTrackMetaMap(fileId);
+  if (!meta) return;
+  const keep = currentTrackIds instanceof Set ? currentTrackIds : new Set(currentTrackIds);
+  const stale = [];
+  for (const trackId of meta.keys()) {
+    if (!keep.has(trackId)) stale.push(trackId);
+  }
+  if (stale.length === 0) return;
+  const doc = ensureDoc();
+  doc.transact(() => {
+    for (const key3 of stale) meta.delete(key3);
+  }, PRUNE_TRACK_META_ORIGIN);
+}
+__name(pruneTrackMeta, "pruneTrackMeta");
 function subscribeToTrackMeta(fileId, cb) {
   ensureDoc();
   getTrackMetaMap(fileId);
@@ -32812,7 +32829,7 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     this.firePlayingChanged(true);
     notifyPlaybackStarted(this.fileId);
     this.reconcileAutoRefresh();
-    this.fireEvaluateSuccess();
+    this.fireEvaluateSuccess(code);
     return { error: null };
   }
   /** Whether this runtime is currently playing (for the time-travel re-eval, #204). */
@@ -32986,6 +33003,9 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
       this.playingChangedListeners.delete(cb);
     };
   }
+  /** Fires after each clean evaluate. The callback receives the EXACT source
+   *  string that was evaluated (post eval-source transform), captured at eval
+   *  time — so consumers don't have to re-read a lagging file snapshot (#583). */
   onEvaluateSuccess(cb) {
     this.evaluateSuccessListeners.add(cb);
     let unsubscribed = false;
@@ -33139,12 +33159,12 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
       }
     }
   }
-  fireEvaluateSuccess() {
+  fireEvaluateSuccess(code) {
     if (this.evaluateSuccessListeners.size === 0) return;
     const snapshot = Array.from(this.evaluateSuccessListeners);
     for (const cb of snapshot) {
       try {
-        cb();
+        cb(code);
       } catch {
       }
     }
@@ -37025,6 +37045,17 @@ function padCells(cells, steps) {
 }
 __name(padCells, "padCells");
 
+// src/visualEdit/mixer/trackMetaPrune.ts
+function pruneTrackMetaForCode(fileId, code) {
+  const names = /* @__PURE__ */ new Set();
+  for (const s of buildStripModels(detectAllChunks(code))) {
+    if (s.name) names.add(s.name);
+  }
+  if (names.size === 0) return;
+  pruneTrackMeta(fileId, names);
+}
+__name(pruneTrackMetaForCode, "pruneTrackMetaForCode");
+
 // src/workspace/tabPersistence.ts
 function validBackdropOpacity(v) {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1 ? v : void 0;
@@ -37532,6 +37563,7 @@ exports.pitchToMidi = pitchToMidi;
 exports.placeNote = placeNote;
 exports.previewProviderRegistry = previewProviderRegistry;
 exports.propagate = propagate;
+exports.pruneTrackMetaForCode = pruneTrackMetaForCode;
 exports.pruneZoneOverrides = pruneZoneOverrides;
 exports.publishIRSnapshot = publishIRSnapshot;
 exports.readCurrentCycle = readCurrentCycle;

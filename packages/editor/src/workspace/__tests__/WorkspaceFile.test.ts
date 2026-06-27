@@ -28,6 +28,7 @@ import {
   setTrackMeta,
   subscribeToTrackMeta,
   getTrackMetaMapSnapshot,
+  pruneTrackMeta,
 } from '../WorkspaceFile'
 
 describe('WorkspaceFile store', () => {
@@ -320,5 +321,57 @@ describe('20-12 α-2 — trackMeta', () => {
     const b = getTrackMetaMapSnapshot('also-nope')
     expect(a.size).toBe(0)
     expect(a).toBe(b) // shared ref-stable empty map
+  })
+
+  // #583 — pruneTrackMeta: per-eval cleanup of orphaned colour/collapse records.
+  // Keyed by display name; drops entries whose track no longer exists so a
+  // deleted track's override can't leak in the Y.Map or resurrect onto a
+  // shifted positional d{N}.
+  it('pruneTrackMeta drops records whose trackId is not in the current set', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'bass', { color: '#ff0000' })
+    setTrackMeta('f1', 'd2', { color: '#00ff00' }) // anon track, later removed
+    pruneTrackMeta('f1', new Set(['bass']))
+    expect(getTrackMeta('f1', 'bass')).toEqual({ color: '#ff0000' }) // kept
+    expect(getTrackMeta('f1', 'd2')).toEqual({}) // orphan pruned
+  })
+
+  it('pruneTrackMeta keeps every record when all tracks still exist', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'bass', { color: '#ff0000' })
+    setTrackMeta('f1', 'lead', { collapsed: true })
+    pruneTrackMeta('f1', ['bass', 'lead', 'drums'])
+    expect(getTrackMeta('f1', 'bass')).toEqual({ color: '#ff0000' })
+    expect(getTrackMeta('f1', 'lead')).toEqual({ collapsed: true })
+  })
+
+  it('pruneTrackMeta accepts an iterable (not only a Set)', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'bass', { color: '#ff0000' })
+    setTrackMeta('f1', 'gone', { color: '#0000ff' })
+    pruneTrackMeta('f1', ['bass'])
+    expect(getTrackMeta('f1', 'gone')).toEqual({})
+    expect(getTrackMeta('f1', 'bass')).toEqual({ color: '#ff0000' })
+  })
+
+  it('pruneTrackMeta is a no-op for a file with no trackMeta map (never creates it)', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    expect(() => pruneTrackMeta('f1', new Set(['bass']))).not.toThrow()
+    expect(getTrackMetaMapSnapshot('f1').size).toBe(0)
+  })
+
+  it('pruneTrackMeta notifies subscribers only when something was actually pruned', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'bass', { color: '#ff0000' })
+    setTrackMeta('f1', 'gone', { color: '#0000ff' })
+    const cb = vi.fn()
+    const unsub = subscribeToTrackMeta('f1', cb)
+    // Nothing stale → no transaction → no notify.
+    pruneTrackMeta('f1', new Set(['bass', 'gone']))
+    expect(cb).not.toHaveBeenCalled()
+    // One stale key → one cleanup transaction → notify.
+    pruneTrackMeta('f1', new Set(['bass']))
+    expect(cb).toHaveBeenCalled()
+    unsub()
   })
 })

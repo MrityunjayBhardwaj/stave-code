@@ -744,6 +744,12 @@ const EMPTY_TRACK_META: TrackMeta = Object.freeze({})
 const trackMetaSubscribers = new Map<string, Set<Subscriber>>()
 const wiredTrackMetaObservers = new Set<string>()
 
+/** Origin for `pruneTrackMeta`'s cleanup transaction. A dedicated symbol (NOT
+ *  `STRUCT_ORIGIN`) so the per-eval prune is invisible to the undo manager —
+ *  it only tracks `STRUCT_ORIGIN` (undoManager.ts) — and never lands a delete in
+ *  the code undo history. Mirrors `PRUNE_ZONE_OVERRIDES_ORIGIN`. */
+const PRUNE_TRACK_META_ORIGIN = Symbol('prune-track-meta')
+
 /**
  * Ref-stable snapshot cache for `getTrackMetaMapSnapshot` (Phase D, #581). A
  * `useSyncExternalStore` getSnapshot MUST return the SAME reference until the
@@ -880,6 +886,40 @@ export function setTrackMeta(
       meta.set(trackId, merged)
     }
   }, STRUCT_ORIGIN)
+}
+
+/**
+ * Prune stale per-track metadata (#581 / #583). Called on every successful
+ * evaluate — removes records whose trackId (the track's DISPLAY NAME) is no
+ * longer in the evaluated track set, so a deleted track's custom colour can't
+ * leak in the per-file Y.Map forever or resurrect onto a shifted positional
+ * `d{N}`. Mirrors `pruneZoneOverrides`.
+ *
+ * `currentTrackIds` is the set of display names the live code currently produces
+ * (`buildStripModels(...).map(s => s.name)` — the SAME key `setTrackMeta` writes).
+ * The caller must never pass an empty set for a transient/failed eval (that would
+ * wipe every override); `pruneTrackMetaForCode` guards this. Reads via the
+ * read-only accessor (never creates the map) and commits under the dedicated,
+ * non-undo-tracked `PRUNE_TRACK_META_ORIGIN`.
+ */
+export function pruneTrackMeta(
+  fileId: string,
+  currentTrackIds: Iterable<string>,
+): void {
+  ensureDoc()
+  const meta = getTrackMetaMap(fileId)
+  if (!meta) return
+  const keep =
+    currentTrackIds instanceof Set ? currentTrackIds : new Set(currentTrackIds)
+  const stale: string[] = []
+  for (const trackId of meta.keys()) {
+    if (!keep.has(trackId)) stale.push(trackId)
+  }
+  if (stale.length === 0) return
+  const doc = ensureDoc()
+  doc.transact(() => {
+    for (const key of stale) meta.delete(key)
+  }, PRUNE_TRACK_META_ORIGIN)
 }
 
 /**
