@@ -35,6 +35,7 @@ import { sampleVoice } from './drumVoices'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
 import { ResolutionControl } from './ResolutionControl'
+import { PatternTrackChip } from './PatternTrackChip'
 import { stepSlotState, quantizeStepGridTo } from '../notation/resolution'
 import { setColumnGain } from './inspector'
 
@@ -241,18 +242,26 @@ export function SequencerGrid(): React.ReactElement {
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-          <ResolutionControl
-            steps={model.steps}
-            slotState={(target) => stepSlotState(model, target)}
-            onScaleTo={scaleToSlots}
-          />
-          <NoteColorToggle />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+          {/* Track identity (#589) — the bound track's colour dot + name; click
+              the dot to recolour, double-click the name to rename. */}
+          <PatternTrackChip />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <ResolutionControl
+              steps={model.steps}
+              slotState={(target) => stepSlotState(model, target)}
+              onScaleTo={scaleToSlots}
+            />
+            <NoteColorToggle />
+          </div>
         </div>
         {model.lanes.map((lane, laneIndex) => {
           const voice = sampleVoice(lane.sound)
           return (
           <div key={`${lane.sound}:${lane.part ?? 0}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Per-voice label only — the colour dot was removed (#589); the track's
+                identity colour lives in the PatternTrackChip up top, so a separate
+                drumVoices palette here would read as a second, conflicting colour code. */}
             <span
               data-seq-voice={lane.sound}
               style={{
@@ -260,7 +269,6 @@ export function SequencerGrid(): React.ReactElement {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'flex-end',
-                gap: 5,
                 fontSize: 11,
                 color: 'var(--foreground, #e6e6ea)',
                 overflow: 'hidden',
@@ -268,17 +276,6 @@ export function SequencerGrid(): React.ReactElement {
               }}
               title={lane.sound}
             >
-              <span
-                data-seq-voice-dot
-                aria-hidden="true"
-                style={{
-                  width: 8,
-                  height: 8,
-                  flex: '0 0 auto',
-                  borderRadius: '50%',
-                  background: voice.color,
-                }}
-              />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{voice.label}</span>
             </span>
             <button

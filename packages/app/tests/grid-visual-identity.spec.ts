@@ -2,8 +2,10 @@
  * Grid visual identity — Logic-parity chrome (#430 / #471 / #428).
  *
  * Real-browser proof of the visual-identity look-cut:
- *  - Sequencer shows named, colour-coded drum-voice rows (Kick/Snare/Hi-Hat)
- *    instead of raw `bd`/`sd`/`hh` (#471).
+ *  - Sequencer shows named drum-voice rows (Kick/Snare/Hi-Hat) instead of raw
+ *    `bd`/`sd`/`hh` (#471). The per-voice colour dots were removed in #589 —
+ *    the track's single identity colour now lives in the PatternTrackChip, so a
+ *    separate per-voice palette would read as a second, conflicting colour code.
  *  - Piano Roll shows a graphical keyboard gutter with C-labels (#430).
  *  - View ▸ Note Color = Velocity recolours notes/cells by gain on BOTH grids,
  *    observed via computed background colour, not inferred (#428).
@@ -49,7 +51,7 @@ async function openPattern(page: Page) {
 }
 
 test.describe('Grid visual identity (#430/#471/#428)', () => {
-  test('Sequencer shows named, colour-coded drum-voice rows (#471)', async ({ page }) => {
+  test('Sequencer shows named drum-voice rows; per-voice dots removed (#471/#589)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, 's("bd ~ sd ~, hh*8")')
     await openPattern(page)
@@ -59,13 +61,8 @@ test.describe('Grid visual identity (#430/#471/#428)', () => {
     await expect(page.locator('[data-seq-voice="sd"]')).toContainText('Snare')
     await expect(page.locator('[data-seq-voice="hh"]')).toContainText('Hi-Hat')
 
-    // A per-voice colour dot per lane, each a distinct colour.
-    const dots = page.locator('[data-seq-voice-dot]')
-    await expect(dots).toHaveCount(3)
-    const colors = await dots.evaluateAll((els) =>
-      els.map((e) => getComputedStyle(e as HTMLElement).backgroundColor),
-    )
-    expect(new Set(colors).size).toBe(3) // three distinct voice colours
+    // The per-voice colour dots were removed (#589) — track identity is the chip.
+    await expect(page.locator('[data-seq-voice-dot]')).toHaveCount(0)
 
     await page.screenshot({ path: 'test-results/grid-identity-sequencer.png' })
   })
