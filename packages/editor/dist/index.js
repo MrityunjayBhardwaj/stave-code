@@ -26252,14 +26252,14 @@ var TRACK_PALETTE_32 = [
   "#4c1d95"
 ];
 var STEM_PATTERNS = [
-  // Drums → family 0
-  [/^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i, 0],
-  // Bass → family 1
-  [/^(?:bass|sub|808)/i, 1],
-  // Pads → family 2
-  [/^(?:pad|pads)/i, 2],
-  // Melody / lead / synth / piano / keys / guitar → family 3
-  [/^(?:lead|melody|synth|piano|keys|guitar)/i, 3]
+  // Family 0 — drums
+  /^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i,
+  // Family 1 — bass
+  /^(?:bass|sub|808)/i,
+  // Family 2 — pads
+  /^(?:pad|pads)/i,
+  // Family 3 — melody / lead / synth / piano / keys / guitar
+  /^(?:lead|melody|synth|piano|keys|guitar)/i
 ];
 function fnv1a32(str) {
   let h = 2166136261;
@@ -26273,7 +26273,7 @@ __name(fnv1a32, "fnv1a32");
 function stemHueGroup(sample) {
   if (!sample) return 3;
   for (let i = 0; i < STEM_PATTERNS.length; i++) {
-    if (STEM_PATTERNS[i][0].test(sample)) return STEM_PATTERNS[i][1];
+    if (STEM_PATTERNS[i].test(sample)) return i;
   }
   return 3;
 }

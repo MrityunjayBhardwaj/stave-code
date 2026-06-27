@@ -44,6 +44,47 @@ const KEYS = [
   'drums', 'vocals', 'arp', 'chord-1', 'whatever', '$default', '',
 ]
 
+// EVERY stem prefix in both modules' STEM_PATTERNS — each must classify
+// identically (#586: a fixed KEY list missed prefixes, so a stem pattern added
+// to only one copy could pass the guard). Includes prefixes the OLD list omitted
+// (`cp`, `hat`, `kick`, `perc`, `ride`, `crash`, `tom`).
+const STEM_PREFIXES = [
+  'bd', 'hh', 'sd', 'cp', 'hat', 'kick', 'snare', 'drum', 'perc', 'ride', 'crash', 'tom',
+  'bass', 'sub', '808',
+  'pad', 'pads',
+  'lead', 'melody', 'synth', 'piano', 'keys', 'guitar',
+]
+
+// Names that DON'T match any stem today but would if a divergent pattern were
+// added to one copy (the exact gap #586 flags) — plus prefix+suffix variants that
+// exercise the `^`-anchored precedence.
+const DIVERGENCE_BAIT = [
+  'vox', 'choir', 'kick2', 'drumloop', 'vocal', 'clap', 'cy', 'rim',
+  'bd2', 'bassline', 'padthai', 'leadguitar', 'synthwave', 'subwoofer',
+]
+
+// Deterministic fuzz — a seeded LCG (no Math.random, so the run is reproducible)
+// generating 256 [a-z0-9] names of varying length. Catches any stem-classifier
+// divergence on inputs nobody thought to list.
+function fuzzNames(count: number): string[] {
+  let s = 0x2545f491 // fixed seed
+  const next = (): number => {
+    s = (Math.imul(s, 1103515245) + 12345) >>> 0
+    return s
+  }
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  const out: string[] = []
+  for (let i = 0; i < count; i++) {
+    const len = 1 + (next() % 8)
+    let name = ''
+    for (let j = 0; j < len; j++) name += chars[next() % chars.length]
+    out.push(name)
+  }
+  return out
+}
+
+const STEM_SAMPLES = [...STEM_PREFIXES, ...DIVERGENCE_BAIT, ...fuzzNames(256)]
+
 describe('track colour: editor canonical === app mirror (V-track-1 drift guard, #579)', () => {
   it('shares the exact 32-cell palette', () => {
     expect(EDITOR_PALETTE_32).toEqual(TRACK_PALETTE_32)
@@ -60,6 +101,22 @@ describe('track colour: editor canonical === app mirror (V-track-1 drift guard, 
       expect(editorPaletteForTrack(editorTrackIndexOf(k), k)).toBe(
         paletteForTrack(trackIndexOf(k), k),
       )
+    }
+  })
+
+  it('agrees on the stem-family classifier for every prefix + fuzz (#586)', () => {
+    // `paletteForTrack(0, sample)` = TRACK_PALETTE_32[(0*4 + stemHueGroup) % 32]
+    // = TRACK_PALETTE_32[stemHueGroup] — and palette[0..3] are distinct families,
+    // so this ISOLATES stemHueGroup. Driving it from the union of stem prefixes +
+    // divergence-bait + a deterministic fuzz catches a mechanism mismatch (the
+    // editor returning a stored index vs the app a loop position) or a stem
+    // pattern added to only one copy — neither of which the fixed KEY list saw.
+    for (const s of STEM_SAMPLES) {
+      expect(editorPaletteForTrack(0, s)).toBe(paletteForTrack(0, s))
+      // And the composed colour over a non-zero index, to exercise the full
+      // `(trackIndex*4 + hueGroup) % 32` slot maths with the hue from `s`.
+      expect(editorColorForTrack(s)).toBe(colorForTrack(s))
+      expect(editorPaletteForTrack(7, s)).toBe(paletteForTrack(7, s))
     }
   })
 
