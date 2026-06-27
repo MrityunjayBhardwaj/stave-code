@@ -28678,6 +28678,7 @@ function ChannelStrip({
   onGainChange,
   onPanChange,
   onMuteToggle,
+  onRename,
   soloed = false,
   onSoloToggle,
   dimmed = false,
@@ -28690,6 +28691,15 @@ function ChannelStrip({
   zoom = 1
 }) {
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
+  const [renaming, setRenaming] = React31__namespace.useState(false);
+  const bareLabel2 = strip.label?.replace(/^_/, "") ?? "";
+  const renameSeed = bareLabel2 !== "" && bareLabel2 !== "$" ? bareLabel2 : "";
+  const renameEnabled = onRename !== void 0;
+  const commitRename = /* @__PURE__ */ __name((raw) => {
+    setRenaming(false);
+    const v = raw.trim();
+    if (v) onRename?.(v);
+  }, "commitRename");
   const gain = faderGain(strip);
   const pos = gain === null ? 0 : gainToFaderPos(gain);
   const faderEnabled = gain !== null && onGainChange !== void 0;
@@ -28780,11 +28790,41 @@ function ChannelStrip({
                 style: { width: 8, height: 8, borderRadius: "50%", background: strip.color, flexShrink: 0 }
               }
             ),
-            /* @__PURE__ */ jsxRuntime.jsx(
+            renaming ? /* @__PURE__ */ jsxRuntime.jsx(
+              "input",
+              {
+                "data-mixer-strip-rename": true,
+                autoFocus: true,
+                defaultValue: renameSeed,
+                placeholder: "name this track",
+                spellCheck: false,
+                onFocus: (e) => e.currentTarget.select(),
+                onKeyDown: (e) => {
+                  if (e.key === "Enter") commitRename(e.currentTarget.value);
+                  else if (e.key === "Escape") setRenaming(false);
+                  e.stopPropagation();
+                },
+                onBlur: (e) => commitRename(e.currentTarget.value),
+                style: {
+                  flex: 1,
+                  minWidth: 0,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  fontFamily: "inherit",
+                  color: "inherit",
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.25)",
+                  borderRadius: 3,
+                  padding: "0 2px",
+                  outline: "none"
+                }
+              }
+            ) : /* @__PURE__ */ jsxRuntime.jsx(
               "span",
               {
                 "data-mixer-strip-name": true,
-                title: strip.name,
+                title: renameEnabled ? `${strip.name} \u2014 double-click to rename` : strip.name,
+                onDoubleClick: renameEnabled ? () => setRenaming(true) : void 0,
                 style: {
                   flex: 1,
                   fontSize: 11,
@@ -28792,7 +28832,8 @@ function ChannelStrip({
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
-                  opacity: strip.muted ? 0.45 : 1
+                  opacity: strip.muted ? 0.45 : 1,
+                  cursor: renameEnabled ? "text" : "default"
                 },
                 children: strip.name
               }
@@ -29021,6 +29062,62 @@ function muteEdit(fresh, muted3) {
   return muted3 ? { range: [pos, pos], text: "_" } : { range: [pos, pos + 1], text: "" };
 }
 __name(muteEdit, "muteEdit");
+var RESERVED_LABELS = /* @__PURE__ */ new Set([
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+  "await",
+  "let"
+]);
+function isValidTrackLabel(name) {
+  return /^[A-Za-z_$][\w$]*$/.test(name) && !RESERVED_LABELS.has(name);
+}
+__name(isValidTrackLabel, "isValidTrackLabel");
+function renameEdit(fresh, newLabel) {
+  if (fresh.label === null) return null;
+  if (!isValidTrackLabel(newLabel)) return null;
+  const muted3 = fresh.label.startsWith("_");
+  const bareLabel2 = muted3 ? fresh.label.slice(1) : fresh.label;
+  if (newLabel === bareLabel2) return null;
+  const start = fresh.statementRange[0] + (muted3 ? 1 : 0);
+  const end = fresh.statementRange[0] + fresh.label.length;
+  return { range: [start, end], text: newLabel };
+}
+__name(renameEdit, "renameEdit");
 function LocalMixerStrip() {
   const { chunk } = useActiveChunk();
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel();
@@ -29828,6 +29925,10 @@ function MixerStrips({
                       }),
                       onMuteToggle: () => applyToStrip(strip.id, (fresh, wb) => {
                         const e = muteEdit(fresh, !strip.muted);
+                        if (e) wb.replaceRange(e.range, e.text, "mixer");
+                      }),
+                      onRename: (newLabel) => applyToStrip(strip.id, (fresh, wb) => {
+                        const e = renameEdit(fresh, newLabel);
                         if (e) wb.replaceRange(e.range, e.text, "mixer");
                       }),
                       soloed: soloed.has(strip.id),
@@ -37123,6 +37224,7 @@ exports.isP5DirectCanvasEnabled = isP5DirectCanvasEnabled;
 exports.isRollChunk = isRollChunk;
 exports.isSampleSoundPlaying = isSampleSoundPlaying;
 exports.isStepChunk = isStepChunk;
+exports.isValidTrackLabel = isValidTrackLabel;
 exports.isViewing = isViewing;
 exports.isVizGovernorEnabled = isVizGovernorEnabled;
 exports.isVizLanguage = isVizLanguage;
@@ -37203,6 +37305,7 @@ exports.registerPreviewProvider = registerPreviewProvider;
 exports.registerReevalHandler = registerReevalHandler;
 exports.registerRuntimeProvider = registerRuntimeProvider;
 exports.removeArm = removeArm;
+exports.renameEdit = renameEdit;
 exports.renameProject = renameProject;
 exports.renameWorkspaceFile = renameWorkspaceFile;
 exports.rendererForLanguage = rendererForLanguage;
