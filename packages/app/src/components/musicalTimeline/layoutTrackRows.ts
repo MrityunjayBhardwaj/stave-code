@@ -89,7 +89,7 @@ export interface LayoutTrackRowsResult {
 
 /**
  * Compute per-track Y bands. Collapsed/expanded state read via the
- * `collapsedFor` callback (chrome wires it to `useTrackMeta`).
+ * `collapsedFor` callback (chrome wires it to `useTrackMetaMap`).
  *
  * Phase 20-12 wave-δ — `subRowHeight` is an optional per-call override
  * (default = SUB_ROW_HEIGHT constant). Wired to the editor setting

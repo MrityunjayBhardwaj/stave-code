@@ -1,92 +1,31 @@
 /**
- * useTrackMeta — Phase 20-12 α-3.
+ * useTrackMetaMap — Phase D (#581).
  *
- * React hook surfacing per-track UI metadata (custom palette swatch + chevron
- * collapsed state) from the per-file PM Yjs doc. Mirrors useWorkspaceFile's
- * useSyncExternalStore pattern (useWorkspaceFile.ts:39-64).
+ * React hook surfacing ALL of a file's per-track UI metadata (custom palette
+ * swatch + chevron collapsed state) from the per-file PM Yjs doc, as a ref-stable
+ * map. Mirrors useWorkspaceFile's useSyncExternalStore pattern.
  *
- * Backed by `subscribeToTrackMeta` + `getTrackMeta` + `setTrackMeta` (added
- * in α-2). The hook is the React-side surface β chrome will mount against.
- *
- * @remarks
- * - `fileId` source: chrome derives this from `IRSnapshot.source` (the
- *   workspace file path). When undefined (no snapshot yet, or snapshot from
- *   a non-file source) the hook returns the empty default and the setter
- *   no-ops — RESEARCH §A.6.
- *
- * - The store's `getTrackMeta` already returns a shared frozen sentinel for
- *   absent records (WorkspaceFile.ts EMPTY_TRACK_META) AND the exact stored
- *   reference when present, so `getSnapshot` is ref-stable without further
- *   handling here. Allocating `{}` per call would trip StrictMode tearing.
- *
- * - `set` is `useCallback`-memoised on `(fileId, trackId)` so dependents
- *   (e.g. effects, child memo blockers) get a stable reference across renders
- *   while fileId/trackId remain unchanged. feedback_useeffect_per_render_dep.md.
+ * (#588: the original per-track `useTrackMeta` hook — α-3 — was removed; it had no
+ * call sites. Every view that paints overrides reads the whole map at once via
+ * this hook, so the single-track surface was dead.)
  */
 
 import { useCallback, useSyncExternalStore } from 'react'
 import {
-  getTrackMeta,
   getTrackMetaMapSnapshot,
-  setTrackMeta as storeSetTrackMeta,
   subscribeToTrackMeta,
   type TrackMeta,
 } from './WorkspaceFile'
 
-/** Frozen sentinel for the fileId-undefined branch — distinct from the
- *  store's internal EMPTY_TRACK_META by encapsulation only; both are
- *  ref-stable empty TrackMetas. */
-const EMPTY_META: TrackMeta = Object.freeze({})
-
 /** Ref-stable empty map for the fileId-undefined branch (Phase D, #581). */
 const EMPTY_META_MAP: ReadonlyMap<string, TrackMeta> = new Map()
 
-export interface UseTrackMetaResult {
-  meta: TrackMeta
-  set: (partial: Partial<TrackMeta>) => void
-}
-
-export function useTrackMeta(
-  fileId: string | undefined,
-  trackId: string,
-): UseTrackMetaResult {
-  const subscribe = useCallback(
-    (onStoreChange: () => void) => {
-      if (!fileId) return () => {}
-      return subscribeToTrackMeta(fileId, onStoreChange)
-    },
-    [fileId],
-  )
-
-  // getSnapshot must be ref-stable for the same store state. The store
-  // returns the SAME object reference for an unchanged record (Y.Map.get
-  // returns the stored value identity); the frozen sentinel handles the
-  // fileId-undefined branch.
-  const getSnapshot = useCallback((): TrackMeta => {
-    if (!fileId) return EMPTY_META
-    return getTrackMeta(fileId, trackId)
-  }, [fileId, trackId])
-
-  const meta = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
-
-  const set = useCallback(
-    (partial: Partial<TrackMeta>) => {
-      if (!fileId) return
-      storeSetTrackMeta(fileId, trackId, partial)
-    },
-    [fileId, trackId],
-  )
-
-  return { meta, set }
-}
-
 /**
- * useTrackMetaMap — Phase D (#581). ALL of a file's per-track metadata as a
- * ref-stable map keyed by trackId (the track's DISPLAY NAME, the key both the
- * Mixer and the Song Timeline resolve to). Where `useTrackMeta` surfaces ONE
- * track for a focused control, this surfaces the whole map so a view that paints
- * many tracks at once (the Mixer strip row, the Timeline scene) reads every
- * custom-colour override in a single reactive subscription rather than N hooks.
+ * useTrackMetaMap — ALL of a file's per-track metadata as a ref-stable map keyed
+ * by trackId (the track's DISPLAY NAME, the key both the Mixer and the Song
+ * Timeline resolve to). A view that paints many tracks at once (the Mixer strip
+ * row, the Timeline scene) reads every custom-colour override in a single
+ * reactive subscription rather than N hooks.
  *
  * Backed by `getTrackMetaMapSnapshot` (cached, ref-stable) + `subscribeToTrackMeta`,
  * so the returned map identity changes ONLY when an override is set/cleared — which

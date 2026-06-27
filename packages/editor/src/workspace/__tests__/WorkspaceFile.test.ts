@@ -17,6 +17,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   createWorkspaceFile,
+  deleteWorkspaceFile,
   getFile,
   setContent,
   subscribe,
@@ -357,6 +358,17 @@ describe('20-12 α-2 — trackMeta', () => {
   it('pruneTrackMeta is a no-op for a file with no trackMeta map (never creates it)', () => {
     createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
     expect(() => pruneTrackMeta('f1', new Set(['bass']))).not.toThrow()
+    expect(getTrackMetaMapSnapshot('f1').size).toBe(0)
+  })
+
+  it('deleteWorkspaceFile clears the trackMeta snapshot cache — no stale override lingers (#588 L7)', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'bass', { color: '#ff0000' })
+    // Populate the ref-stable snapshot cache for the file.
+    expect(getTrackMetaMapSnapshot('f1').get('bass')?.color).toBe('#ff0000')
+    deleteWorkspaceFile('f1')
+    // Without the cache cleanup the stale snapshot (bass→#ff0000) would persist;
+    // with it the entry is dropped and the file reads empty.
     expect(getTrackMetaMapSnapshot('f1').size).toBe(0)
   })
 

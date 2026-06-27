@@ -365,7 +365,11 @@ export function deleteWorkspaceFile(id: string): void {
   doc.transact(() => {
     filesMap.delete(id)
   }, STRUCT_ORIGIN)
-  // Y.Map observer fires → 'delete' action → clears cache + notifies subscribers
+  // Y.Map observer fires → 'delete' action → clears cache + notifies subscribers.
+  // The trackMeta caches are wired lazily (not through that observer), so drop
+  // this file's entries explicitly (#588 L7) — mirrors the per-delete Y.Text
+  // observer cleanup; otherwise they linger until a global resetFileStore.
+  clearTrackMetaCachesFor(id)
   notifyFileList()
 }
 
@@ -761,6 +765,17 @@ const PRUNE_TRACK_META_ORIGIN = Symbol('prune-track-meta')
 const trackMetaSnapshotCache = new Map<string, ReadonlyMap<string, TrackMeta>>()
 /** Shared frozen-empty map for the no-record / no-fileId branches — ref-stable. */
 const EMPTY_TRACK_META_MAP: ReadonlyMap<string, TrackMeta> = new Map()
+
+/** Drop the per-file trackMeta caches for `id` (#588 L7) — called on file delete
+ *  so a removed file's snapshot/observer/subscriber entries don't linger until a
+ *  global `resetFileStore`. The lazily-wired Y.Map observer has no stored handler
+ *  to `unobserve`, but the Y.Map is detached with the file (it can't fire again),
+ *  and clearing `wiredTrackMetaObservers` lets a fresh id re-wire cleanly. */
+function clearTrackMetaCachesFor(id: string): void {
+  trackMetaSnapshotCache.delete(id)
+  wiredTrackMetaObservers.delete(id)
+  trackMetaSubscribers.delete(id)
+}
 
 /**
  * Read-only lookup. Returns the existing trackMeta Y.Map for `fileId` or
