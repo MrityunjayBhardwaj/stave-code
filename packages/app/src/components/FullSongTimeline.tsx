@@ -108,6 +108,11 @@ export interface FullSongTimelineProps {
    *  cursor, which re-detects the active chunk and rebinds the Sequencer/Piano
    *  Roll. Optional — the view degrades to display-only when unset. */
   readonly onBindLane?: (sourceOffset: number | null) => void
+  /** Rename a lane's track (#580, Phase C). Receives the lane's STATEMENT offset
+   *  (`labelOffset` = `dollarPos`) and the new label; the parent detects the
+   *  chunk there and writes the `name:` label into the code. Optional — the lane
+   *  name is read-only when unset, or when a lane has no `labelOffset`. */
+  readonly onRenameLane?: (labelOffset: number, newLabel: string) => void
   /** Trim a clip by dragging its right edge (Phase 5b, #437). Receives the
    *  clip's lane source anchor (an offset inside the combinator call), its arm
    *  index, and the new whole-cycle weight. The parent parses the arrangement at
@@ -549,6 +554,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     () => new Map(scene.lanes.map((l) => [l.laneKey, l])),
     [scene],
   )
+  // Which lane's header is being inline-renamed (#580, Phase C), by laneKey.
+  const { onRenameLane } = props
+  const [renamingLane, setRenamingLane] = useState<string | null>(null)
   const layoutRef = useRef<LaneLayout>(layout)
   layoutRef.current = layout
 
@@ -1240,6 +1248,14 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               const displayName = lane?.displayName ?? box.laneKey
               const dotColor = lane?.color ?? paletteForTrack(trackIndexOf(box.laneKey), box.laneKey)
               const headerName = subRows ? `${displayName} · ${subRows[0].label}` : displayName
+              // Inline rename (#580, Phase C): renameable when a write handler is
+              // wired AND the lane has a statement anchor. The seed is the current
+              // label for a named track, EMPTY for an anonymous `d{N}` (its
+              // display isn't real code) — a name comes from an explicit edit.
+              const renameAnchor = lane?.labelOffset ?? null
+              const renameEnabled = onRenameLane !== undefined && renameAnchor != null
+              const renameSeed = displayName === box.laneKey ? '' : displayName
+              const isRenaming = renamingLane === box.laneKey
               return (
                 <div
                   key={box.laneKey}
@@ -1266,7 +1282,38 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                         background: dotColor,
                       }}
                     />
-                    <span style={styles.laneName}>{headerName}</span>
+                    {isRenaming && renameAnchor != null ? (
+                      <input
+                        data-full-song-lane-rename={box.laneKey}
+                        autoFocus
+                        defaultValue={renameSeed}
+                        placeholder="name this track"
+                        spellCheck={false}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const v = e.currentTarget.value.trim()
+                            setRenamingLane(null)
+                            if (v) onRenameLane?.(renameAnchor, v)
+                          } else if (e.key === 'Escape') setRenamingLane(null)
+                          e.stopPropagation() // keep the grid's key handlers out
+                        }}
+                        onBlur={(e) => {
+                          const v = e.currentTarget.value.trim()
+                          setRenamingLane(null)
+                          if (v) onRenameLane?.(renameAnchor, v)
+                        }}
+                        style={styles.laneRenameInput}
+                      />
+                    ) : (
+                      <span
+                        style={{ ...styles.laneName, cursor: renameEnabled ? 'text' : 'default' }}
+                        title={renameEnabled ? `${displayName} — double-click to rename` : undefined}
+                        onDoubleClick={renameEnabled ? () => setRenamingLane(box.laneKey) : undefined}
+                      >
+                        {headerName}
+                      </span>
+                    )}
                   </div>
                   {subRows?.slice(1).map((sr) => (
                     <div
@@ -1595,6 +1642,18 @@ const styles = {
     overflow: 'hidden',
     textOverflow: 'ellipsis' as const,
     whiteSpace: 'nowrap' as const,
+  },
+  laneRenameInput: {
+    minWidth: 0,
+    flex: '1 1 auto' as const,
+    color: 'var(--text-body, #e2e8f0)',
+    fontSize: 10,
+    fontFamily: 'inherit',
+    background: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.25)',
+    borderRadius: 3,
+    padding: '0 2px',
+    outline: 'none',
   },
   emptyLabel: {
     padding: 8,

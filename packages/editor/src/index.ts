@@ -592,6 +592,10 @@ export {
 // track's line by its instrument — the app's onError uses this when the error's
 // stack is bundle-only.
 export { statementOffsetForSource } from './visualEdit/mixer/stripModel'
+// Track rename (#580, Phase C) — the pure label-rewrite primitive + its
+// validator, so the app's Song Timeline can rename a lane (the Mixer uses them
+// internally). `StripEdit` is the surgical {range,text} the caller applies.
+export { renameEdit, isValidTrackLabel, type StripEdit } from './visualEdit/mixer/writeStrip'
 export type {
   ChunkInfo,
   ChainCall,

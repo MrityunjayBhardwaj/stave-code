@@ -22,7 +22,7 @@ import { useSoloStrips } from './soloStore'
 import { ChannelStrip } from './ChannelStrip'
 import { ExpandDrawer } from './ExpandDrawer'
 import { MasterStrip } from './MasterStrip'
-import { gainEdit, panEdit, muteEdit } from './writeStrip'
+import { gainEdit, panEdit, muteEdit, renameEdit } from './writeStrip'
 
 /**
  * Console strips render their FACE at 1.5× via CSS `zoom` (aspect-exact, and —
@@ -112,6 +112,12 @@ export function MixerStrips({
               onMuteToggle={() =>
                 applyToStrip(strip.id, (fresh, wb) => {
                   const e = muteEdit(fresh, !strip.muted)
+                  if (e) wb.replaceRange(e.range, e.text, 'mixer')
+                })
+              }
+              onRename={(newLabel) =>
+                applyToStrip(strip.id, (fresh, wb) => {
+                  const e = renameEdit(fresh, newLabel)
                   if (e) wb.replaceRange(e.range, e.text, 'mixer')
                 })
               }

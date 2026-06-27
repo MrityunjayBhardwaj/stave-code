@@ -79,3 +79,48 @@ export function muteEdit(fresh: ChunkInfo, muted: boolean): StripEdit | null {
     ? { range: [pos, pos], text: '_' } // insert the marker
     : { range: [pos, pos + 1], text: '' } // delete the leading `_`
 }
+
+/** A JS reserved word can't be a LabeledStatement label (`return: …` is a syntax
+ *  error), so a rename to one is rejected. Config heads (`setcps`, `hush`, …) are
+ *  NOT here — they're plain identifiers and rename them as a LABEL is valid
+ *  (`setcps: s("bd")` parses; the label never invokes the function). */
+const RESERVED_LABELS = new Set([
+  'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default',
+  'delete', 'do', 'else', 'enum', 'export', 'extends', 'false', 'finally', 'for',
+  'function', 'if', 'import', 'in', 'instanceof', 'new', 'null', 'return', 'super',
+  'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while',
+  'with', 'yield', 'await', 'let',
+])
+
+/** A valid track label: a JS identifier (incl. `$`/`_`) that is not a reserved
+ *  word. Mirrors what a `name:` LabeledStatement accepts. Exported so the rename
+ *  UIs can gate/validate keystrokes without re-deriving the rule. */
+export function isValidTrackLabel(name: string): boolean {
+  return /^[A-Za-z_$][\w$]*$/.test(name) && !RESERVED_LABELS.has(name)
+}
+
+/**
+ * The edit an inline rename makes — write the user's chosen `name:` label into
+ * the code (#580, Phase C). Renaming is the ONLY way a descriptive name reaches
+ * the file: the display never auto-names (the `d{N}` friction prompts THIS edit).
+ *
+ *  - named   (`bass:`)  → replace the label with `newLabel` (`lead: …`);
+ *  - anon    (`$:`, label `'$'`) → replace the `$` → INSERT a name (`drums: …`);
+ *  - the `_` mute marker is PRESERVED (only the bare label is rewritten), so a
+ *    muted track stays muted across a rename and the edit round-trips cleanly.
+ *
+ * Returns null when the statement is unlabelled (a bare expression has no label
+ * slot), when `newLabel` is not a valid track label (invalid → no write, the UI
+ * reverts), or when it equals the current bare label (no-op). Surgical: only the
+ * label characters change; the pattern expression is byte-identical.
+ */
+export function renameEdit(fresh: ChunkInfo, newLabel: string): StripEdit | null {
+  if (fresh.label === null) return null // a bare expression has no label slot
+  if (!isValidTrackLabel(newLabel)) return null // invalid → caller reverts
+  const muted = fresh.label.startsWith('_')
+  const bareLabel = muted ? fresh.label.slice(1) : fresh.label
+  if (newLabel === bareLabel) return null // no-op
+  const start = fresh.statementRange[0] + (muted ? 1 : 0) // keep the `_` marker
+  const end = fresh.statementRange[0] + fresh.label.length
+  return { range: [start, end], text: newLabel }
+}

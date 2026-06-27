@@ -34,6 +34,9 @@ interface ChannelStripProps {
   onPanChange?: (value: number) => void
   /** toggle this strip's mute (flip the `_`-prefix marker) — absent = read-only */
   onMuteToggle?: () => void
+  /** rename this track — write a `name:` label into the code (#580, Phase C).
+   *  Double-clicking the strip name opens an inline editor; absent = read-only. */
+  onRename?: (newLabel: string) => void
   /** whether this strip is soloed (console variant) */
   soloed?: boolean
   /** toggle this strip's solo — provided only by the Mixer console */
@@ -154,6 +157,7 @@ export function ChannelStrip({
   onGainChange,
   onPanChange,
   onMuteToggle,
+  onRename,
   soloed = false,
   onSoloToggle,
   dimmed = false,
@@ -166,6 +170,18 @@ export function ChannelStrip({
   zoom = 1,
 }: ChannelStripProps): React.ReactElement {
   const muteEnabled = strip.muteable && onMuteToggle !== undefined
+  // Inline rename (#580, Phase C). The seed is the track's BARE label (mute
+  // marker stripped); an anonymous `$:` track seeds EMPTY (its `d{N}` display
+  // isn't real code) so the field invites a fresh name rather than echoing it.
+  const [renaming, setRenaming] = React.useState(false)
+  const bareLabel = strip.label?.replace(/^_/, '') ?? ''
+  const renameSeed = bareLabel !== '' && bareLabel !== '$' ? bareLabel : ''
+  const renameEnabled = onRename !== undefined
+  const commitRename = (raw: string): void => {
+    setRenaming(false)
+    const v = raw.trim()
+    if (v) onRename?.(v) // renameEdit validates + no-ops; invalid → silent revert
+  }
   const gain = faderGain(strip)
   const pos = gain === null ? 0 : gainToFaderPos(gain)
   const faderEnabled = gain !== null && onGainChange !== undefined
@@ -260,21 +276,53 @@ export function ChannelStrip({
             data-mixer-strip-dot
             style={{ width: 8, height: 8, borderRadius: '50%', background: strip.color, flexShrink: 0 }}
           />
-          <span
-            data-mixer-strip-name
-            title={strip.name}
-            style={{
-              flex: 1,
-              fontSize: 11,
-              fontWeight: 600,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              opacity: strip.muted ? 0.45 : 1,
-            }}
-          >
-            {strip.name}
-          </span>
+          {renaming ? (
+            <input
+              data-mixer-strip-rename
+              autoFocus
+              defaultValue={renameSeed}
+              placeholder="name this track"
+              spellCheck={false}
+              onFocus={(e) => e.currentTarget.select()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename(e.currentTarget.value)
+                else if (e.key === 'Escape') setRenaming(false)
+                e.stopPropagation() // don't let the editor swallow the keystrokes
+              }}
+              onBlur={(e) => commitRename(e.currentTarget.value)}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                fontSize: 11,
+                fontWeight: 600,
+                fontFamily: 'inherit',
+                color: 'inherit',
+                background: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.25)',
+                borderRadius: 3,
+                padding: '0 2px',
+                outline: 'none',
+              }}
+            />
+          ) : (
+            <span
+              data-mixer-strip-name
+              title={renameEnabled ? `${strip.name} — double-click to rename` : strip.name}
+              onDoubleClick={renameEnabled ? () => setRenaming(true) : undefined}
+              style={{
+                flex: 1,
+                fontSize: 11,
+                fontWeight: 600,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                opacity: strip.muted ? 0.45 : 1,
+                cursor: renameEnabled ? 'text' : 'default',
+              }}
+            >
+              {strip.name}
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <button

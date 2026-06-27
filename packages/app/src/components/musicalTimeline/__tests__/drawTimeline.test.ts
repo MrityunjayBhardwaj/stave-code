@@ -53,6 +53,7 @@ const scene: TimelineScene = {
       clips: [],
       sourceOffset: null,
       arrangeOffset: null,
+      labelOffset: null,
     },
   ],
 }
@@ -191,6 +192,7 @@ describe('drawTimeline', () => {
           clips: [],
           sourceOffset: null,
           arrangeOffset: null,
+      labelOffset: null,
         },
       ],
     }

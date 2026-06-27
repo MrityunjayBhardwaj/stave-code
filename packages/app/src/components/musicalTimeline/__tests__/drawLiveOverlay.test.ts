@@ -55,6 +55,7 @@ function sceneFixture(): TimelineScene {
         clips: [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }],
         sourceOffset: null,
         arrangeOffset: null,
+        labelOffset: null,
       },
     ],
     sections: [],

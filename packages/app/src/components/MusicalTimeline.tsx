@@ -42,6 +42,8 @@ import {
   subscribeIRSnapshot,
   revealOffsetInFile,
   applyOffsetEditsToFile,
+  detectAllChunks,
+  renameEdit,
   detectArrangeAt,
   detectBarePattern,
   setWeight,
@@ -356,6 +358,27 @@ export function MusicalTimeline(
     [snapshot],
   )
 
+  // Rename a track from the Song Timeline (#580, Phase C). The lane hands up its
+  // STATEMENT offset (`labelOffset` = `dollarPos`); we detect the chunk anchored
+  // there in the SAME snapshot text, write the `name:` label via `renameEdit`
+  // (which validates + no-ops + preserves a `_` mute marker), and apply it
+  // surgically. The debounced re-eval republishes the IR and BOTH views
+  // re-resolve the new label (Timeline via the Step 2 dollarPos resolver, Mixer
+  // via `bareLabel`) — so the rename shows everywhere.
+  const handleRenameLane = React.useCallback(
+    (labelOffset: number, newLabel: string) => {
+      if (!snapshot?.source) return
+      const chunk = detectAllChunks(snapshot.code).find(
+        (c) => c.statementRange[0] === labelOffset,
+      )
+      if (!chunk) return
+      const edit = renameEdit(chunk, newLabel)
+      if (!edit) return // invalid name / no-op → no write
+      applyOffsetEditsToFile(snapshot.source, [edit], 'rename', snapshot.code)
+    },
+    [snapshot],
+  )
+
   // Delete a clip on the Song canvas (Phase 5c, #386): the timeline hands up the
   // selected clip's lane source anchor + arm index. We parse the arrangement at
   // that anchor against the SAME snapshot text the offsets came from, build a
@@ -526,6 +549,7 @@ export function MusicalTimeline(
           onDuplicateClip={handleDuplicateClip}
           onSplitClip={handleSplitClip}
           onBindLane={handleBindLane}
+          onRenameLane={handleRenameLane}
         />
     </div>
   )
