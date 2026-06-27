@@ -1316,6 +1316,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                     {colorPickerEnabled ? (
                       <button
                         type="button"
+                        data-full-song-lane-dot={box.laneKey}
                         data-full-song-lane-swatch={box.laneKey}
                         aria-label={`Change colour of ${displayName}`}
                         title={`${displayName} — click to change colour`}
@@ -1336,6 +1337,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                       />
                     ) : (
                       <span
+                        data-full-song-lane-dot={box.laneKey}
                         style={{
                           ...styles.laneDot,
                           background: dotColor,

@@ -70,7 +70,9 @@ test('Song Timeline shows track labels and matches the Mixer (named + anon)', as
       key: e.getAttribute('data-full-song-lane'),
       name: (e.querySelector('span:last-child') as HTMLElement | null)?.textContent ?? '',
       dot: ((): string => {
-        const d = e.querySelector('span:nth-child(2)') as HTMLElement | null // caret, dot, name → dot is 2nd
+        // The lane dot carries a stable attr (it's a `<span>` indicator, or a
+        // `<button>` swatch when the colour picker is wired — #581).
+        const d = e.querySelector('[data-full-song-lane-dot]') as HTMLElement | null
         return d ? getComputedStyle(d).backgroundColor : ''
       })(),
     })),
