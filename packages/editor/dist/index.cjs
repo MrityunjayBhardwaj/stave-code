@@ -26552,12 +26552,17 @@ function StripColorPopover({
     const onKey = /* @__PURE__ */ __name((e) => {
       if (e.key === "Escape") onClose();
     }, "onKey");
+    const onReflow = /* @__PURE__ */ __name(() => onClose(), "onReflow");
     const t = setTimeout(() => document.addEventListener("mousedown", onDown), 0);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onReflow, true);
+    window.addEventListener("resize", onReflow);
     return () => {
       clearTimeout(t);
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onReflow, true);
+      window.removeEventListener("resize", onReflow);
     };
   }, [onClose]);
   const POPOVER_WIDTH = 8 * 16 + 7 * 4 + 12;

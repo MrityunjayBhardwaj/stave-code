@@ -62,15 +62,25 @@ export function TrackSwatchPopover({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
+    // The popover is positioned from the anchor rect captured on open (#581); it
+    // does not track the anchor afterwards, so any scroll/resize/zoom would leave
+    // it floating away from its dot. Close it instead (#587). `scroll` uses
+    // capture so a scroll on ANY ancestor (the timeline body, the strip row) is
+    // caught, not just window; `resize` also covers browser zoom.
+    const onReflow = () => onClose()
     const t = setTimeout(
       () => document.addEventListener('mousedown', onDown),
       0,
     )
     document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onReflow, true)
+    window.addEventListener('resize', onReflow)
     return () => {
       clearTimeout(t)
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onReflow, true)
+      window.removeEventListener('resize', onReflow)
     }
   }, [onClose])
 

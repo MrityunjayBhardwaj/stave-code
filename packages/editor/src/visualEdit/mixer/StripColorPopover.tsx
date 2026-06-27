@@ -62,12 +62,21 @@ export function StripColorPopover({
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
     }
+    // Positioned from the anchor rect captured on open (#581) — it doesn't track
+    // the dot afterwards, so a scroll/resize/zoom would leave it floating away
+    // (#587). Close on reflow. `scroll` uses capture so a scroll on ANY ancestor
+    // (the console strip row) is caught, not just window; `resize` covers zoom.
+    const onReflow = (): void => onClose()
     const t = setTimeout(() => document.addEventListener('mousedown', onDown), 0)
     document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onReflow, true)
+    window.addEventListener('resize', onReflow)
     return () => {
       clearTimeout(t)
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onReflow, true)
+      window.removeEventListener('resize', onReflow)
     }
   }, [onClose])
 
