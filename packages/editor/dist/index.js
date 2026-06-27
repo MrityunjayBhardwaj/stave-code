@@ -27392,7 +27392,7 @@ function PianoRollGrid({
         hi: Math.max(prev.hi, content.hi)
       }));
     }
-  }, [model, chunk]);
+  }, [model]);
   React34.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
@@ -32793,14 +32793,14 @@ function extractBpmFromCode(code) {
     const numerator = parseFloat(fractionMatch[1]);
     const denominator = parseFloat(fractionMatch[2]);
     if (denominator > 0 && Number.isFinite(numerator)) {
-      return Math.round(numerator / denominator * 60);
+      return Math.round(numerator / denominator * 60 * 4);
     }
   }
   const scalarMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\)/);
   if (scalarMatch) {
     const cps = parseFloat(scalarMatch[1]);
     if (Number.isFinite(cps)) {
-      return Math.round(cps * 60);
+      return Math.round(cps * 60 * 4);
     }
   }
   return void 0;
