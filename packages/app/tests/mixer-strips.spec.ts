@@ -111,6 +111,16 @@ async function dragFader(page: Page, drawer: ReturnType<Page['locator']>, stripI
   await page.waitForTimeout(80)
 }
 
+/** the strudel editor's current caret line (1-based), or -1 if no editor */
+async function cursorLine(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string } | null; getPosition: () => { lineNumber: number } | null }> } } }).monaco
+    const eds = m?.editor?.getEditors?.() ?? []
+    const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+    return t?.getPosition?.()?.lineNumber ?? -1
+  })
+}
+
 test.describe('Mixer strip row (#540 / S0)', () => {
   test('renders one strip per top-level statement, in source order', async ({ page }) => {
     await boot(page)
@@ -813,5 +823,36 @@ test.describe('Mixer master + solo (#550 / S5)', () => {
       drawer.locator(`[data-mixer-strip-id="${id}"]`).evaluate((e) => (e as HTMLElement).style.opacity)
     expect(await opacity('d2')).toBe('0.45') // non-soloed → dimmed
     expect(await opacity('d1')).not.toBe('0.45') // soloed → full
+  })
+})
+
+// When a strip setting changes, the editor caret follows to that track's
+// statement so the user sees which line their fader/knob/rename landed on
+// (#595). Every code-writing strip interaction routes through the ONE write
+// path (applyToStrip), so the jump is verified through the face fader here.
+test.describe('Mixer cursor-follows-strip (#595)', () => {
+  test('a fader drag jumps the caret to that track, past a config line', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, 'setcps(0.5)\n$: s("bd").gain(0.5)\nd1: s("hh*4").gain(0.8)')
+    expect(await cursorLine(page)).toBe(1) // caret starts on the setcps line
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    // drag the named track's fader (d1, on line 3) — the caret must land there,
+    // NOT on the setcps line (the #559 off-by-one applies to the jump too).
+    await dragFader(page, drawer, 'd1', 30)
+    expect(await cursorLine(page)).toBe(3)
+  })
+
+  test('dragging a different strip moves the caret to the new track', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd").gain(0.5)\nd1: note("c e").gain(0.8)\n$: s("hh*4").gain(0.5)')
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    await dragFader(page, drawer, '#0', 20) // first anon track → line 1
+    expect(await cursorLine(page)).toBe(1)
+    await dragFader(page, drawer, 'd1', 20) // named track → line 2
+    expect(await cursorLine(page)).toBe(2)
+    await dragFader(page, drawer, '#1', 20) // second anon track → line 3
+    expect(await cursorLine(page)).toBe(3)
   })
 })
