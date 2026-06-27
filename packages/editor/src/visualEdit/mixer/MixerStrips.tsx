@@ -134,7 +134,12 @@ export function MixerStrips({
               }
               onRename={(newLabel) =>
                 applyToStrip(strip.id, (fresh, wb) => {
-                  const e = renameEdit(fresh, newLabel)
+                  // Reject a rename that would duplicate another track's display
+                  // name (#585) — `takenNames` is every OTHER strip's name.
+                  const taken = new Set(
+                    strips.filter((s) => s.id !== strip.id).map((s) => s.name),
+                  )
+                  const e = renameEdit(fresh, newLabel, taken)
                   if (!e) return
                   wb.replaceRange(e.range, e.text, 'mixer')
                   // Migrate a custom-colour override from the OLD display name to

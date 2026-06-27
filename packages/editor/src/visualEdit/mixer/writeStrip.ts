@@ -114,15 +114,31 @@ export function isValidTrackLabel(name: string): boolean {
  *
  * Returns null when the statement is unlabelled (a bare expression has no label
  * slot), when `newLabel` is not a valid track label (invalid → no write, the UI
- * reverts), or when it equals the current bare label (no-op). Surgical: only the
- * label characters change; the pattern expression is byte-identical.
+ * reverts), when it equals the current bare label (no-op), or when it would
+ * COLLIDE with another track's display name (#585 — see `takenNames`). Surgical:
+ * only the label characters change; the pattern expression is byte-identical.
+ *
+ * `takenNames` = the display names of all OTHER tracks (the caller excludes the
+ * track being renamed). A rename whose new label equals one of them is rejected
+ * rather than written: a duplicate label collides on the engine's capture/meter
+ * join AND on the per-track colour-override key (which is keyed by display name,
+ * #581), so two tracks would share one meter and one colour. Consistent with the
+ * friction principle (#579) — the UI reverts, exactly like an invalid label, and
+ * the user picks a name that's free. Two tracks the user DELIBERATELY labels the
+ * same are valid JS and stay shared identity by design (Phase D); this guard only
+ * prevents a rename from silently CREATING a new duplicate.
  */
-export function renameEdit(fresh: ChunkInfo, newLabel: string): StripEdit | null {
+export function renameEdit(
+  fresh: ChunkInfo,
+  newLabel: string,
+  takenNames: ReadonlySet<string>,
+): StripEdit | null {
   if (fresh.label === null) return null // a bare expression has no label slot
   if (!isValidTrackLabel(newLabel)) return null // invalid → caller reverts
   const muted = fresh.label.startsWith('_')
   const bareLabel = muted ? fresh.label.slice(1) : fresh.label
   if (newLabel === bareLabel) return null // no-op
+  if (takenNames.has(newLabel)) return null // #585: would duplicate another track
   const start = fresh.statementRange[0] + (muted ? 1 : 0) // keep the `_` marker
   const end = fresh.statementRange[0] + fresh.label.length
   return { range: [start, end], text: newLabel }

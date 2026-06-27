@@ -116,3 +116,43 @@ test('an invalid name is rejected — the code is unchanged', async ({ page }) =
   const src = await strudelSource(page)
   expect(src).toBe('$: s("bd*4")') // no write — still anonymous
 })
+
+test('Mixer: renaming to a name another track already uses is rejected (#585)', async ({ page }) => {
+  await bootShell(page, 'mixer-console')
+  await typeSongAndEval(page, 'bass: s("bd*4")\nlead: s("hh*8")')
+
+  const mixer = page.locator('[data-bottom-panel-tab="mixer-console"]')
+  const firstName = mixer.locator('[data-mixer-strip-name]').first()
+  await expect(firstName).toHaveText('bass')
+
+  await firstName.dblclick()
+  const input = mixer.locator('[data-mixer-strip-rename]')
+  await input.waitFor({ timeout: 5000 })
+  await input.fill('lead') // collides with the existing lead: track
+  await input.press('Enter')
+  await page.waitForTimeout(1000)
+
+  // No write — the duplicate is rejected, the code keeps both distinct labels …
+  expect(await strudelSource(page)).toBe('bass: s("bd*4")\nlead: s("hh*8")')
+  // … and the strip still reads its original name.
+  await expect(mixer.locator('[data-mixer-strip-name]').first()).toHaveText('bass')
+})
+
+test('Timeline: renaming a lane to a sibling lane’s name is rejected (#585)', async ({ page }) => {
+  await bootShell(page, 'musical-timeline')
+  await typeSongAndEval(page, 'bass: s("bd*4")\nlead: s("hh*8")')
+
+  const lane = page.locator('[data-full-song-lane="d1"]')
+  await lane.waitFor({ timeout: 10_000 })
+  await expect(lane.locator('span').last()).toHaveText('bass')
+
+  await lane.locator('span').last().dblclick()
+  const input = page.locator('[data-full-song-lane-rename="d1"]')
+  await input.waitFor({ timeout: 5000 })
+  await input.fill('lead') // collides with the existing lead: lane
+  await input.press('Enter')
+  await page.waitForTimeout(1500)
+
+  expect(await strudelSource(page)).toBe('bass: s("bd*4")\nlead: s("hh*8")') // unchanged
+  await expect(page.locator('[data-full-song-lane="d1"] span').last()).toHaveText('bass')
+})
