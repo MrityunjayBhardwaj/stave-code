@@ -539,8 +539,12 @@ describe('LiveCodingRuntime', () => {
 
   describe('BPM extraction (U8)', () => {
     it('extractBpmFromCode parses setcps(num/denom) correctly', () => {
-      expect(extractBpmFromCode('setcps(120/240)\n$: note("c3")')).toBe(30)
-      expect(extractBpmFromCode('setcps(140/60)')).toBe(140)
+      // BPM = cps × 60 × 4 beats/cycle = cps × 240 (#599). For the canonical
+      // `/240` preset the numerator reads straight back as the BPM.
+      expect(extractBpmFromCode('setcps(120/240)\n$: note("c3")')).toBe(120)
+      expect(extractBpmFromCode('setcps(92/240)')).toBe(92) // the reported "23" case
+      expect(extractBpmFromCode('setcps(140/60)')).toBe(560) // 2.333 cps × 240
+      expect(extractBpmFromCode('setcps(0.5)')).toBe(120) // scalar cps × 240
       expect(extractBpmFromCode('// no setcps here')).toBeUndefined()
     })
 
@@ -557,7 +561,7 @@ describe('LiveCodingRuntime', () => {
       )
       expect(runtime.getBpm()).toBeUndefined()
       await runtime.play()
-      expect(runtime.getBpm()).toBe(140)
+      expect(runtime.getBpm()).toBe(560) // setcps(140/60) = 2.333 cps × 240
     })
   })
 

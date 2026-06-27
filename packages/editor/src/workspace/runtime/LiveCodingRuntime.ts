@@ -141,12 +141,15 @@ export type SubscribeToRuntimeFile = (cb: () => void) => () => void
  * `setcps` line is present or the expression is unparseable.
  *
  * Strudel's `setcps` takes cycles-per-second; the conventional Strudel
- * preset uses `setcps(120/240)` to mean "120 BPM at 4 beats per cycle"
- * (240 = 60 seconds × 4). The conversion BPM = cps × 60 / beatsPerCycle
- * collapses to BPM = (numerator / denominator) × 60 for the standard
- * 4-beat cycle, which is what the legacy `StrudelEditor.tsx:111-115`
- * extraction does. The runtime mirrors that exact logic so the BPM
- * display in the new chrome matches the old one byte-for-byte.
+ * preset uses `setcps(BPM/240)` to mean "BPM at 4 beats per cycle"
+ * (240 = 60 seconds × 4 beats). The recovery is therefore
+ * BPM = cps × 60 × beatsPerCycle = cps × 240, so for the canonical
+ * `setcps(num/denom)` form BPM = (numerator / denominator) × 240 — which,
+ * for the standard `/240` preset, reads the numerator straight back as the
+ * BPM (`setcps(92/240)` → 92). The earlier code multiplied by 60 only,
+ * dropping the ×4 beats-per-cycle factor, so every tempo displayed at ¼ of
+ * its true value (92 → 23). This matches the canonical `cpsToBpm`
+ * (`app/.../musicalTimeline/timeAxis.ts`: `round(cps * 60 * 4)`) (#599).
  *
  * Lives at module scope (not as a method) so the function is pure +
  * trivially testable + has zero `this`-binding gotchas.
@@ -161,15 +164,15 @@ export function extractBpmFromCode(code: string): number | undefined {
     const numerator = parseFloat(fractionMatch[1])
     const denominator = parseFloat(fractionMatch[2])
     if (denominator > 0 && Number.isFinite(numerator)) {
-      return Math.round((numerator / denominator) * 60)
+      return Math.round((numerator / denominator) * 60 * 4) // cps × 60 × beats/cycle
     }
   }
-  // Fall back to setcps(N) — interpret as cps × 60.
+  // Fall back to setcps(N) — interpret as cps × 60 × 4 beats/cycle.
   const scalarMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\)/)
   if (scalarMatch) {
     const cps = parseFloat(scalarMatch[1])
     if (Number.isFinite(cps)) {
-      return Math.round(cps * 60)
+      return Math.round(cps * 60 * 4)
     }
   }
   return undefined

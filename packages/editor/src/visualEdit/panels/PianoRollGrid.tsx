@@ -169,7 +169,17 @@ export function PianoRollGrid({
         hi: Math.max(prev.hi, content.hi),
       }))
     }
-  }, [model, chunk])
+    // Key on `model` ONLY, not `[model, chunk]` (#597). `chunk` (the cursor's
+    // statement) updates one render BEFORE `model` (useGridModel sets it in an
+    // effect keyed on chunk). Firing on `chunk` ran the statement-change reset
+    // on the STALE render — reseeding from the PREVIOUS track's model — so the
+    // correct model always arrived in the expand-only union branch and the row
+    // extent grew monotonically across track switches (never shrank, stuck at
+    // the widest track). Firing on `model` only skips that stale render: the
+    // reset runs once `model` matches the new `chunk`, replacing the extent.
+    // Within-track edits still change `model` → id matches → sticky union (#391).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model])
 
   React.useEffect(() => {
     const onUp = (): void => {
