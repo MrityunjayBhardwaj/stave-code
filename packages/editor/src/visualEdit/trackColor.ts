@@ -126,7 +126,7 @@ export interface TrackIdentity {
   readonly key: string
   /** the display name (the key itself: a label, or a sample for an anon track) */
   readonly name: string
-  /** the dot/lane colour = colorForTrack(key) */
+  /** the dot/lane colour = `customColor ?? colorForTrack(key)` (V-track-2, #581) */
   readonly color: string
 }
 
@@ -144,7 +144,17 @@ export interface TrackIdentity {
  * shape by construction (its header shows `laneKey` and colours by
  * `paletteForTrack(trackIndexOf(laneKey), laneKey)` === `colorForTrack(laneKey)`),
  * mirror-guarded by `trackColor.drift.test.ts`; the Mixer calls this directly.
+ *
+ * Phase D (V-track-2, #581): an optional `customColor` LAYERS a per-track user
+ * override on top of the deterministic palette — `customColor ?? colorForTrack(key)`.
+ * The override is persisted per-file in the `TrackMeta` Yjs store keyed by the
+ * track's DISPLAY NAME (the same `key` both views resolve to), NEVER written into
+ * the source code. Passing it HERE — not at each view's call site — keeps the
+ * layering single-source so the Mixer dot and the Timeline lane can't disagree on
+ * an overridden colour (the same reason the deterministic palette is centralised).
+ * `colorForTrack` stays pure/deterministic (recompute-safe); only this resolver
+ * knows about the override.
  */
-export function trackIdentity(key: string): TrackIdentity {
-  return { key, name: key, color: colorForTrack(key) }
+export function trackIdentity(key: string, customColor?: string): TrackIdentity {
+  return { key, name: key, color: customColor ?? colorForTrack(key) }
 }

@@ -16,7 +16,13 @@
 import { describe, it, expect } from 'vitest'
 
 // App-side copy (the Timeline's algorithm, used at FullSongTimeline.tsx).
-import { TRACK_PALETTE_32, trackIndexOf, paletteForTrack } from '../colors'
+import {
+  TRACK_PALETTE_32,
+  trackIndexOf,
+  paletteForTrack,
+  colorForTrack,
+  trackIdentity,
+} from '../colors'
 // Editor-canonical copy (the Mixer's algorithm), deep-imported to dodge the
 // @stave/editor barrel (gifenc CJS crash under vite-node, P172).
 import {
@@ -76,6 +82,44 @@ describe('track colour: editor canonical === app mirror (V-track-1 drift guard, 
       expect(id.key).toBe(k)
       expect(id.name).toBe(k) // Timeline header === laneKey
       expect(id.color).toBe(paletteForTrack(trackIndexOf(k), k)) // Timeline lane colour
+    }
+  })
+
+  it('app colorForTrack === editor colorForTrack (V-track-1)', () => {
+    for (const k of KEYS) {
+      expect(colorForTrack(k)).toBe(editorColorForTrack(k))
+    }
+  })
+
+  it('app trackIdentity === editor trackIdentity for the DEFAULT (no override)', () => {
+    // The app Timeline now resolves lane colour through its OWN trackIdentity
+    // mirror; it must equal the editor copy the Mixer uses (V-track-1).
+    for (const k of KEYS) {
+      const a = trackIdentity(k)
+      const e = editorTrackIdentity(k)
+      expect(a.key).toBe(e.key)
+      expect(a.name).toBe(e.name)
+      expect(a.color).toBe(e.color)
+    }
+  })
+
+  it('app trackIdentity === editor trackIdentity for the OVERRIDE path (V-track-2, #581)', () => {
+    // Phase D: a per-track custom colour layers on the palette —
+    // `customColor ?? colorForTrack(key)`. Both copies must layer it identically,
+    // and an override must win over the deterministic colour for every key.
+    const custom = '#abcdef'
+    for (const k of KEYS) {
+      const a = trackIdentity(k, custom)
+      const e = editorTrackIdentity(k, custom)
+      expect(a.color).toBe(custom)
+      expect(e.color).toBe(custom)
+      expect(a.color).toBe(e.color)
+    }
+    // An explicit `undefined` override falls back to the deterministic colour
+    // (the clear-to-default path).
+    for (const k of KEYS) {
+      expect(trackIdentity(k, undefined).color).toBe(colorForTrack(k))
+      expect(editorTrackIdentity(k, undefined).color).toBe(editorColorForTrack(k))
     }
   })
 })
