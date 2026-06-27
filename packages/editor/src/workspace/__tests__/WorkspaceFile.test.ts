@@ -27,6 +27,7 @@ import {
   getTrackMeta,
   setTrackMeta,
   subscribeToTrackMeta,
+  getTrackMetaMapSnapshot,
 } from '../WorkspaceFile'
 
 describe('WorkspaceFile store', () => {
@@ -285,5 +286,39 @@ describe('20-12 α-2 — trackMeta', () => {
     // The new project starts fresh — old color is gone.
     expect(getTrackMeta('a', 'd1')).toEqual({ color: '#00ff00' })
     unsub2()
+  })
+
+  // Phase D (#581) — getTrackMetaMapSnapshot: the whole-file map both colour
+  // consumers read. Ref-stability across reads is the useSyncExternalStore
+  // contract; it MUST change only after a committed mutation.
+  it('getTrackMetaMapSnapshot returns every track keyed by trackId', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'bass', { color: '#ff0000' })
+    setTrackMeta('f1', 'd2', { color: '#00ff00' })
+    const map = getTrackMetaMapSnapshot('f1')
+    expect(map.get('bass')).toEqual({ color: '#ff0000' })
+    expect(map.get('d2')).toEqual({ color: '#00ff00' })
+    expect(map.size).toBe(2)
+  })
+
+  it('getTrackMetaMapSnapshot is ref-stable until a mutation, then a NEW ref', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'd1', { color: '#ff0000' })
+    const first = getTrackMetaMapSnapshot('f1')
+    // Repeated reads with no mutation → SAME reference (no tearing in StrictMode).
+    expect(getTrackMetaMapSnapshot('f1')).toBe(first)
+    // A mutation invalidates the cache → next read is a DIFFERENT reference that
+    // reflects the change.
+    setTrackMeta('f1', 'd1', { color: '#0000ff' })
+    const second = getTrackMetaMapSnapshot('f1')
+    expect(second).not.toBe(first)
+    expect(second.get('d1')).toEqual({ color: '#0000ff' })
+  })
+
+  it('getTrackMetaMapSnapshot returns the shared empty map for an unknown file', () => {
+    const a = getTrackMetaMapSnapshot('nope')
+    const b = getTrackMetaMapSnapshot('also-nope')
+    expect(a.size).toBe(0)
+    expect(a).toBe(b) // shared ref-stable empty map
   })
 })
