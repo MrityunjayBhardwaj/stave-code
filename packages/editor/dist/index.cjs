@@ -28365,6 +28365,10 @@ function statementOffsetForSource(doc, source) {
   return strip ? strip.statementRange[0] : null;
 }
 __name(statementOffsetForSource, "statementOffsetForSource");
+function otherTrackNames(doc, selfStatementStart) {
+  return buildStripModels(detectAllChunks(doc)).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
+}
+__name(otherTrackNames, "otherTrackNames");
 
 // src/visualEdit/mixer/useMixerModel.ts
 var EMPTY_DERIVED = { strips: [], chunks: [] };
@@ -29332,12 +29336,13 @@ function isValidTrackLabel(name) {
   return /^[A-Za-z_$][\w$]*$/.test(name) && !RESERVED_LABELS.has(name);
 }
 __name(isValidTrackLabel, "isValidTrackLabel");
-function renameEdit(fresh, newLabel) {
+function renameEdit(fresh, newLabel, takenNames) {
   if (fresh.label === null) return null;
   if (!isValidTrackLabel(newLabel)) return null;
   const muted3 = fresh.label.startsWith("_");
   const bareLabel2 = muted3 ? fresh.label.slice(1) : fresh.label;
   if (newLabel === bareLabel2) return null;
+  if (takenNames.has(newLabel)) return null;
   const start = fresh.statementRange[0] + (muted3 ? 1 : 0);
   const end = fresh.statementRange[0] + fresh.label.length;
   return { range: [start, end], text: newLabel };
@@ -30200,7 +30205,10 @@ function MixerStrips({
                         if (e) wb.replaceRange(e.range, e.text, "mixer");
                       }),
                       onRename: (newLabel) => applyToStrip(strip.id, (fresh, wb) => {
-                        const e = renameEdit(fresh, newLabel);
+                        const taken = new Set(
+                          strips.filter((s) => s.id !== strip.id).map((s) => s.name)
+                        );
+                        const e = renameEdit(fresh, newLabel, taken);
                         if (!e) return;
                         wb.replaceRange(e.range, e.text, "mixer");
                         if (fileId) {
@@ -37543,6 +37551,7 @@ exports.onThemeChange = onThemeChange;
 exports.onUiIconSizeChange = onUiIconSizeChange;
 exports.onVizInputsLiveValuesChange = onVizInputsLiveValuesChange;
 exports.onVizQualityChange = onVizQualityChange;
+exports.otherTrackNames = otherTrackNames;
 exports.parseMini = parseMini;
 exports.parsePianoRoll = parsePianoRoll;
 exports.parseStackLocation = parseStackLocation;
