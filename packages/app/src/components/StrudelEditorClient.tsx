@@ -884,8 +884,14 @@ export default function StrudelEditorClient({
       setRuntimeStates(prev => {
         const next = new Map(prev);
         const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
-        if (cur.error === null) return prev;
-        next.set(fileId, { ...cur, error: null });
+        // Refresh BPM on every successful eval (#599): the chrome's tempo was
+        // only set on play/stop transitions (onPlayingChanged), so a live
+        // `setcps` edit never updated the readout until stop+play. getBpm()
+        // reflects the just-evaluated code. Keep the no-op fast path when
+        // nothing the chrome renders (error / bpm) actually changed.
+        const nextBpm = runtime.getBpm();
+        if (cur.error === null && cur.bpm === nextBpm) return prev;
+        next.set(fileId, { ...cur, error: null, bpm: nextBpm });
         return next;
       });
       // Record a fix marker so the Console panel's Live mode can hide
