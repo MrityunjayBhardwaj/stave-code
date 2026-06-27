@@ -27799,7 +27799,18 @@ function PianoRollGrid({
                 "div",
                 {
                   "data-roll-velocity-lane": true,
-                  style: { display: "flex", alignItems: "flex-end", gap: 6, marginTop: 8 },
+                  style: {
+                    position: "sticky",
+                    bottom: 0,
+                    zIndex: 4,
+                    display: "flex",
+                    alignItems: "flex-end",
+                    gap: 6,
+                    marginTop: 8,
+                    paddingTop: 8,
+                    background: "var(--surface, #14142a)",
+                    borderTop: "1px solid var(--border, #2a2a4a)"
+                  },
                   children: [
                     /* @__PURE__ */ jsxRuntime.jsx(
                       "span",
