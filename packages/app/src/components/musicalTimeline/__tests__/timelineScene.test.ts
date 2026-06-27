@@ -127,6 +127,53 @@ describe('buildTimelineScene', () => {
     expect(d2.color).toBe(paletteForTrack(trackIndexOf('d2'), 'd2'))
   })
 
+  it('layers a custom-colour override over the palette, keyed by display name (#581)', async () => {
+    const { paletteForTrack, trackIndexOf } = await import('../colors')
+    const code = 'bass: s("bd")\n$: s("hh")'
+    const analysis = {
+      periodCycles: 1,
+      horizonCycles: 1,
+      lanes: [
+        { laneKey: 'd1', onsetsByCycle: [1] },
+        { laneKey: 'd2', onsetsByCycle: [1] },
+      ],
+      sections: [],
+      reachedCap: false,
+    }
+    // Override keyed by the lane's DISPLAY NAME: `bass` (the named track's label)
+    // and `d2` (the anon track's positional name).
+    const overrides = new Map([
+      ['bass', '#123456'],
+      ['d2', '#abcdef'],
+    ])
+    const scene = buildTimelineScene(
+      analysis,
+      marks({}, false, {}, {}, {}, { d1: 0, d2: 14 }),
+      undefined,
+      code,
+      overrides,
+    )
+    const d1 = scene.lanes.find((l) => l.laneKey === 'd1')!
+    const d2 = scene.lanes.find((l) => l.laneKey === 'd2')!
+    // The override WINS over the deterministic palette for both.
+    expect(d1.color).toBe('#123456')
+    expect(d2.color).toBe('#abcdef')
+    // Display names are unchanged — only colour is overridden.
+    expect(d1.displayName).toBe('bass')
+    expect(d2.displayName).toBe('d2')
+    // A lane with NO override keeps the palette colour (clear-to-default path).
+    const noOverride = buildTimelineScene(
+      analysis,
+      marks({}, false, {}, {}, {}, { d1: 0, d2: 14 }),
+      undefined,
+      code,
+      new Map(),
+    )
+    expect(noOverride.lanes.find((l) => l.laneKey === 'd1')!.color).toBe(
+      paletteForTrack(trackIndexOf('bass'), 'bass'),
+    )
+  })
+
   it('keeps positional d{N} names when no source is supplied', () => {
     const analysis = {
       periodCycles: 1,

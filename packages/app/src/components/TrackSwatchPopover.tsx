@@ -35,6 +35,9 @@ export interface TrackSwatchPopoverProps {
   /** Fires on swatch click. Caller writes through to setTrackMeta and
    *  closes the popover separately via onClose. */
   readonly onPick: (color: string) => void
+  /** Clear the override → fall back to the deterministic palette colour
+   *  (Phase D, #581). Optional; when absent the "Default" affordance is hidden. */
+  readonly onReset?: () => void
   /** Fires on outside-click, Escape key, or after a pick. */
   readonly onClose: () => void
 }
@@ -43,6 +46,7 @@ export function TrackSwatchPopover({
   anchorRect,
   currentColor,
   onPick,
+  onReset,
   onClose,
 }: TrackSwatchPopoverProps): React.ReactElement {
   const ref = useRef<HTMLDivElement>(null)
@@ -165,6 +169,29 @@ export function TrackSwatchPopover({
         >
           Custom
         </label>
+        {onReset && (
+          <button
+            type="button"
+            data-musical-timeline="swatch-reset"
+            aria-label="Reset to default colour"
+            title="Reset to the default palette colour"
+            onClick={() => {
+              onReset()
+              onClose()
+            }}
+            style={{
+              padding: '1px 6px',
+              fontSize: 10,
+              border: '1px solid var(--border-strong, rgba(255,255,255,0.18))',
+              borderRadius: 3,
+              background: 'transparent',
+              color: 'inherit',
+              cursor: 'pointer',
+            }}
+          >
+            Default
+          </button>
+        )}
         <input
           id="track-swatch-custom"
           type="color"

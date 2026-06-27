@@ -33,6 +33,7 @@ import {
 import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
 import { buildTimelineScene, clipAtCycle } from './musicalTimeline/timelineScene'
+import { TrackSwatchPopover } from './TrackSwatchPopover'
 import {
   applyStableVoiceOrder,
   EMPTY_VOICE_ORDER,
@@ -109,10 +110,29 @@ export interface FullSongTimelineProps {
    *  Roll. Optional — the view degrades to display-only when unset. */
   readonly onBindLane?: (sourceOffset: number | null) => void
   /** Rename a lane's track (#580, Phase C). Receives the lane's STATEMENT offset
-   *  (`labelOffset` = `dollarPos`) and the new label; the parent detects the
-   *  chunk there and writes the `name:` label into the code. Optional — the lane
-   *  name is read-only when unset, or when a lane has no `labelOffset`. */
-  readonly onRenameLane?: (labelOffset: number, newLabel: string) => void
+   *  (`labelOffset` = `dollarPos`), the new label, and the lane's OLD display name
+   *  (Phase D, #581 — so the parent can MIGRATE a custom-colour override keyed by
+   *  the old name to the new one). The parent detects the chunk at the offset and
+   *  writes the `name:` label into the code. Optional — the lane name is read-only
+   *  when unset, or when a lane has no `labelOffset`. */
+  readonly onRenameLane?: (
+    labelOffset: number,
+    newLabel: string,
+    oldDisplayName: string,
+  ) => void
+  /** Per-track custom colour overrides (Phase D, #581), keyed by lane DISPLAY
+   *  NAME. Resolved through the shared `trackIdentity` into `lane.color`, so it
+   *  drives the lane dot AND the canvas density bars. Absent → deterministic
+   *  palette. */
+  readonly customColorByName?: ReadonlyMap<string, string>
+  /** Set a track's custom colour (Phase D, #581). Receives the lane's DISPLAY
+   *  NAME (the override key) + the chosen hex. The parent writes it to the
+   *  per-file `TrackMeta` store. Optional — without it the lane dot is not a
+   *  colour-picker trigger (display-only). */
+  readonly onSetTrackColor?: (displayName: string, color: string) => void
+  /** Clear a track's custom colour → fall back to the palette (Phase D, #581).
+   *  Receives the lane's DISPLAY NAME. */
+  readonly onResetTrackColor?: (displayName: string) => void
   /** Trim a clip by dragging its right edge (Phase 5b, #437). Receives the
    *  clip's lane source anchor (an offset inside the combinator call), its arm
    *  index, and the new whole-cycle weight. The parent parses the arrangement at
@@ -512,12 +532,17 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // clip geometry and the bare-split materialize agree on where each clip ends.
   const voiceOrderRef = useRef<VoiceOrderByLane>(EMPTY_VOICE_ORDER)
   const source = props.source ?? null
+  // Per-track custom-colour overrides (Phase D, #581). The map identity is
+  // ref-stable (from `useTrackMetaMap`), changing only when an override is
+  // set/cleared — so adding it to the scene deps recolours lanes (dot + canvas)
+  // exactly when the user picks, not on every render.
+  const { customColorByName } = props
   const scene = useMemo(() => {
-    const raw = buildTimelineScene(analysis, marks, displayCycles, source)
+    const raw = buildTimelineScene(analysis, marks, displayCycles, source, customColorByName)
     const { scene: ordered, order } = applyStableVoiceOrder(raw, voiceOrderRef.current)
     voiceOrderRef.current = order
     return ordered
-  }, [analysis, marks, displayCycles, source])
+  }, [analysis, marks, displayCycles, source, customColorByName])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind
@@ -557,6 +582,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // Which lane's header is being inline-renamed (#580, Phase C), by laneKey.
   const { onRenameLane } = props
   const [renamingLane, setRenamingLane] = useState<string | null>(null)
+  // Which lane's colour swatch is open (Phase D, #581), by laneKey + the anchor
+  // rect of its dot. Picking writes to the per-file TrackMeta store via the
+  // parent; the lane recolours through the ref-stable `customColorByName` map.
+  const { onSetTrackColor, onResetTrackColor } = props
+  const [colorPickerLane, setColorPickerLane] = useState<
+    { laneKey: string; name: string; rect: DOMRect } | null
+  >(null)
   const layoutRef = useRef<LaneLayout>(layout)
   layoutRef.current = layout
 
@@ -1256,6 +1288,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               const renameEnabled = onRenameLane !== undefined && renameAnchor != null
               const renameSeed = displayName === box.laneKey ? '' : displayName
               const isRenaming = renamingLane === box.laneKey
+              // Colour picker (Phase D, #581): the dot opens a swatch popover when
+              // a write handler is wired. The override is keyed by the lane's
+              // DISPLAY NAME (the same key the Mixer uses), so a colour set here
+              // shows on the matching strip too.
+              const colorPickerEnabled = onSetTrackColor !== undefined
               return (
                 <div
                   key={box.laneKey}
@@ -1276,12 +1313,35 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                     >
                       {box.expanded ? '▾' : '▸'}
                     </button>
-                    <span
-                      style={{
-                        ...styles.laneDot,
-                        background: dotColor,
-                      }}
-                    />
+                    {colorPickerEnabled ? (
+                      <button
+                        type="button"
+                        data-full-song-lane-swatch={box.laneKey}
+                        aria-label={`Change colour of ${displayName}`}
+                        title={`${displayName} — click to change colour`}
+                        onClick={(e) =>
+                          setColorPickerLane({
+                            laneKey: box.laneKey,
+                            name: displayName,
+                            rect: e.currentTarget.getBoundingClientRect(),
+                          })
+                        }
+                        style={{
+                          ...styles.laneDot,
+                          background: dotColor,
+                          padding: 0,
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                      />
+                    ) : (
+                      <span
+                        style={{
+                          ...styles.laneDot,
+                          background: dotColor,
+                        }}
+                      />
+                    )}
                     {isRenaming && renameAnchor != null ? (
                       <input
                         data-full-song-lane-rename={box.laneKey}
@@ -1294,14 +1354,14 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                           if (e.key === 'Enter') {
                             const v = e.currentTarget.value.trim()
                             setRenamingLane(null)
-                            if (v) onRenameLane?.(renameAnchor, v)
+                            if (v) onRenameLane?.(renameAnchor, v, displayName)
                           } else if (e.key === 'Escape') setRenamingLane(null)
                           e.stopPropagation() // keep the grid's key handlers out
                         }}
                         onBlur={(e) => {
                           const v = e.currentTarget.value.trim()
                           setRenamingLane(null)
-                          if (v) onRenameLane?.(renameAnchor, v)
+                          if (v) onRenameLane?.(renameAnchor, v, displayName)
                         }}
                         style={styles.laneRenameInput}
                       />
@@ -1330,6 +1390,19 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             })
           )}
         </div>
+        {colorPickerLane && onSetTrackColor && (
+          <TrackSwatchPopover
+            anchorRect={colorPickerLane.rect}
+            currentColor={laneByKey.get(colorPickerLane.laneKey)?.color}
+            onPick={(color) => onSetTrackColor(colorPickerLane.name, color)}
+            onReset={
+              onResetTrackColor
+                ? () => onResetTrackColor(colorPickerLane.name)
+                : undefined
+            }
+            onClose={() => setColorPickerLane(null)}
+          />
+        )}
         <div
           data-full-song="grid"
           ref={areaRef}
