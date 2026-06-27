@@ -128,6 +128,27 @@ describe('20-12 β-6 — TrackSwatchPopover', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  // #587 — the popover is positioned from the anchor rect captured on open and
+  // doesn't track the dot afterwards, so it must close on scroll/resize rather
+  // than float away.
+  it('a scroll (on any ancestor — capture) closes the popover (#587)', () => {
+    const onClose = vi.fn()
+    render(
+      <TrackSwatchPopover anchorRect={fakeRect()} onPick={vi.fn()} onClose={onClose} />,
+    )
+    fireEvent.scroll(window, {})
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('a window resize (covers browser zoom) closes the popover (#587)', () => {
+    const onClose = vi.fn()
+    render(
+      <TrackSwatchPopover anchorRect={fakeRect()} onPick={vi.fn()} onClose={onClose} />,
+    )
+    fireEvent(window, new Event('resize'))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('aria-current="true" is set on the matching currentColor swatch', () => {
     const target = TRACK_PALETTE_32[10]
     const { container } = render(
