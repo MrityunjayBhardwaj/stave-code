@@ -26465,11 +26465,27 @@ __name(otherTrackNames, "otherTrackNames");
 
 // src/visualEdit/mixer/useMixerModel.ts
 var EMPTY_DERIVED = { strips: [], chunks: [] };
+function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
+  try {
+    const pos = model.getPositionAt?.(trackOffset);
+    if (!pos) return;
+    const changed = lastJumpRef.current !== trackOffset;
+    if (changed || !editor.hasTextFocus?.()) {
+      editor.setPosition?.(pos);
+      editor.revealLineInCenter?.(pos.lineNumber);
+      editor.focus?.();
+    }
+    lastJumpRef.current = trackOffset;
+  } catch {
+  }
+}
+__name(jumpCursorToTrack, "jumpCursorToTrack");
 function useMixerModel() {
   const [editor, setEditor] = React34.useState(() => getActiveEditor());
   const [derived, setDerived] = React34.useState(EMPTY_DERIVED);
   const editorRef = React34.useRef(null);
   const writebackRef = React34.useRef(null);
+  const lastJumpRef = React34.useRef(null);
   React34.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
@@ -26478,6 +26494,7 @@ function useMixerModel() {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
+    lastJumpRef.current = null;
   }, [editor]);
   React34.useEffect(() => {
     if (!editor) {
@@ -26509,7 +26526,10 @@ function useMixerModel() {
       const chunks = detectAllChunks(model.getValue());
       const strip = buildStripModels(chunks).find((s) => s.id === id);
       if (!strip) return;
-      mutate(chunks[strip.index], wb);
+      const fresh = chunks[strip.index];
+      const trackOffset = fresh.statementRange[0];
+      mutate(fresh, wb);
+      jumpCursorToTrack(ed, model, trackOffset, lastJumpRef);
     },
     []
   );

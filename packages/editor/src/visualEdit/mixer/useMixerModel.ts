@@ -53,12 +53,53 @@ interface Derived {
 }
 const EMPTY_DERIVED: Derived = { strips: [], chunks: [] }
 
+/**
+ * Follow a strip edit in the code view (#595): move the editor caret to the
+ * track's statement so the user sees which line their fader/knob/rename landed
+ * on. Writeback applies edits with a null cursor-computer (`pushEditOperations`
+ * with `() => null`), so the write never moves the caret itself — this is the
+ * only thing that does, and a pin survives the next tick untouched.
+ *
+ * `reveal + focus` runs only when the target statement changed since the last
+ * jump OR the editor isn't focused; a continuous drag (many ticks on ONE strip)
+ * then re-centres + re-focuses once and leaves the caret pinned, rather than
+ * thrashing the scroll/focus every frame. Monaco hides the caret while blurred,
+ * so `focus()` is what makes the jump visible. Cursor placement is a courtesy —
+ * any failure is swallowed so it can never break the write.
+ */
+export function jumpCursorToTrack(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  editor: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  model: any,
+  trackOffset: number,
+  lastJumpRef: React.MutableRefObject<number | null>,
+): void {
+  try {
+    const pos = model.getPositionAt?.(trackOffset)
+    if (!pos) return
+    const changed = lastJumpRef.current !== trackOffset
+    if (changed || !editor.hasTextFocus?.()) {
+      editor.setPosition?.(pos)
+      editor.revealLineInCenter?.(pos.lineNumber)
+      editor.focus?.()
+    }
+    lastJumpRef.current = trackOffset
+  } catch {
+    /* cursor following is a courtesy; never let it break the write */
+  }
+}
+
 export function useMixerModel(): MixerModel {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editor, setEditor] = React.useState<any>(() => getActiveEditor())
   const [derived, setDerived] = React.useState<Derived>(EMPTY_DERIVED)
   const editorRef = React.useRef<any>(null) // eslint-disable-line @typescript-eslint/no-explicit-any
   const writebackRef = React.useRef<Writeback | null>(null)
+  // The statement offset the cursor was last jumped to (#595). Lets a continuous
+  // fader/knob drag (many `applyToStrip` ticks on ONE strip) reveal+focus once,
+  // then leave the caret pinned, instead of re-centring + re-focusing per frame.
+  const lastJumpRef = React.useRef<number | null>(null)
 
   // Track the active editor (same source as useActiveChunk).
   React.useEffect(() => {
@@ -71,6 +112,7 @@ export function useMixerModel(): MixerModel {
     editorRef.current = editor
     const monaco = getMonacoNamespace()
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null
+    lastJumpRef.current = null // a fresh editor → next strip edit re-jumps
   }, [editor])
 
   // Re-derive the strip array from the document — on mount and on every content
@@ -120,7 +162,13 @@ export function useMixerModel(): MixerModel {
       // position, so this ties every write to the strip's own track.
       const strip = buildStripModels(chunks).find((s) => s.id === id)
       if (!strip) return
-      mutate(chunks[strip.index], wb)
+      const fresh = chunks[strip.index]
+      // The track's statement start — where the cursor follows to (#595). Read
+      // BEFORE the mutate: the edit (gain/pan/knob, or the label on a rename) is
+      // at or after this offset, so the offset stays valid afterwards.
+      const trackOffset = fresh.statementRange[0]
+      mutate(fresh, wb)
+      jumpCursorToTrack(ed, model, trackOffset, lastJumpRef)
     },
     [],
   )
