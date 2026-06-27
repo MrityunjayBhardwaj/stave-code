@@ -1247,14 +1247,14 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   data-expanded={box.expanded ? 'true' : 'false'}
                   data-full-song-voices={subRows ? subRows.length : undefined}
                   style={{ ...styles.laneRow, height: box.height }}
-                  title={box.laneKey}
+                  title={displayName}
                 >
                   <div style={{ ...styles.laneHeader, height: headerHeight }}>
                     <button
                       type="button"
                       data-full-song-lane-expand={box.laneKey}
                       aria-pressed={box.expanded}
-                      aria-label={box.expanded ? `Collapse ${box.laneKey}` : `Expand ${box.laneKey} to view its notes`}
+                      aria-label={box.expanded ? `Collapse ${displayName}` : `Expand ${displayName} to view its notes`}
                       onClick={() => activateLane(box.laneKey)}
                       style={styles.laneCaret}
                     >
