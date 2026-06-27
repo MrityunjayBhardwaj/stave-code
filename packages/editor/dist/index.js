@@ -28248,28 +28248,14 @@ function isForeign(chunk, name) {
   return call !== void 0 && call.args[0].numeric === null;
 }
 __name(isForeign, "isForeign");
-function firstMiniToken(mini) {
-  if (!mini) return null;
-  const tok = mini.trim().split(/\s+/)[0];
-  if (!tok || tok === "~" || tok === "-") return null;
-  return tok.replace(/[[\]<>(),*!@/:].*/, "") || null;
-}
-__name(firstMiniToken, "firstMiniToken");
-function trackSample(kind, miniString, source) {
-  if (kind === "step") return firstMiniToken(miniString) ?? source;
-  return source;
-}
-__name(trackSample, "trackSample");
-function displayKey(label, kind, miniString, source, headFn, index) {
-  return bareLabel(label) ?? trackSample(kind, miniString, source) ?? headFn ?? `Track ${index + 1}`;
+function displayKey(label, ordinal) {
+  return bareLabel(label) ?? `d${ordinal}`;
 }
 __name(displayKey, "displayKey");
-function buildStripModel(chunk, index, id, captureId) {
+function buildStripModel(chunk, index, ordinal, id, captureId) {
   const kind = stripKind(chunk);
   const source = readSource(chunk, kind);
-  const identity = trackIdentity(
-    displayKey(chunk.label, kind, chunk.miniString, source, chunk.headFn, index)
-  );
+  const identity = trackIdentity(displayKey(chunk.label, ordinal));
   return {
     id,
     index,
@@ -28296,16 +28282,18 @@ __name(buildStripModel, "buildStripModel");
 function buildStripModels(chunks) {
   let anonAll = 0;
   let anonLive = 0;
+  let ordinal = 0;
   const models = [];
   chunks.forEach((chunk, index) => {
     if (!isTrackChunk(chunk)) return;
+    ordinal++;
     const bare = bareLabel(chunk.label);
     const id = bare ?? `#${anonAll++}`;
     let captureId;
     if (bare !== null) captureId = bare;
     else if (isMuted(chunk.label)) captureId = `_$${index}`;
     else captureId = `$${anonLive++}`;
-    models.push(buildStripModel(chunk, index, id, captureId));
+    models.push(buildStripModel(chunk, index, ordinal, id, captureId));
   });
   return models;
 }
