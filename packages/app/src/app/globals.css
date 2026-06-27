@@ -167,10 +167,15 @@ body {
    (`.monaco-editor`, `.monaco-editor-background`, `.margin`,
    `.minimap`, `.view-overlays`, `.monaco-scrollable-element`,
    etc.). Enumerating them all is fragile — we blanket every
-   descendant bg to transparent when backdrop is active, EXCEPT
-   selection / highlight decorations which paint via background-color. */
+   descendant bg to transparent when backdrop is active, EXCEPT:
+   - selection / highlight decorations which paint via background-color;
+   - the text CARET (`.cursor`) — Monaco renders the caret bar AS its
+     background-color, so blanking it makes the cursor invisible (#598);
+   - the floating popup widgets (suggest / hover / signature help) — their
+     readable opaque theme surface must survive over the viz, else the
+     IntelliSense docs box goes transparent and unreadable (#598). */
 [data-stave-code-panel][data-stave-backdrop="on"] .monaco-editor,
-[data-stave-code-panel][data-stave-backdrop="on"] .monaco-editor *:not(.selected-text):not(.selectionHighlight):not(.current-line-margin):not(.current-line):not(.minimap-slider-horizontal) {
+[data-stave-code-panel][data-stave-backdrop="on"] .monaco-editor *:not(.selected-text):not(.selectionHighlight):not(.current-line-margin):not(.current-line):not(.minimap-slider-horizontal):not(.cursor):not(.suggest-widget):not(.suggest-widget *):not(.monaco-hover):not(.monaco-hover *):not(.parameter-hints-widget):not(.parameter-hints-widget *) {
   background-color: transparent !important;
 }
 
