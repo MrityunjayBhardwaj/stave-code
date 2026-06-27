@@ -28606,118 +28606,122 @@ function StripColorPopover({
   const left = typeof window !== "undefined" ? Math.max(8, Math.min(window.innerWidth - 8 - POPOVER_WIDTH, anchorRect.left)) : anchorRect.left;
   const top = anchorRect.bottom + 4;
   const customColor = currentColor && !TRACK_PALETTE_32.includes(currentColor) ? currentColor : "#888888";
-  return /* @__PURE__ */ jsxs(
-    "div",
-    {
-      ref,
-      "data-mixer-strip-color-popover": true,
-      role: "dialog",
-      "aria-label": "Pick track color",
-      style: {
-        position: "fixed",
-        top,
-        left,
-        zIndex: 1e3,
-        background: "var(--background-elevated, #1a1a1a)",
-        border: "1px solid var(--border, #333)",
-        padding: 6,
-        borderRadius: 4,
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)"
-      },
-      children: [
-        /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(8, 16px)", gridGap: 4 }, children: TRACK_PALETTE_32.map((color) => {
-          const isCurrent = color === currentColor;
-          return /* @__PURE__ */ jsx(
-            "button",
-            {
-              type: "button",
-              "data-mixer-strip-swatch": true,
-              "data-color": color,
-              "aria-label": `Color ${color}`,
-              "aria-current": isCurrent ? "true" : void 0,
-              onClick: () => {
-                onPick(color);
-                onClose();
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    /* @__PURE__ */ jsxs(
+      "div",
+      {
+        ref,
+        "data-mixer-strip-color-popover": true,
+        role: "dialog",
+        "aria-label": "Pick track color",
+        style: {
+          position: "fixed",
+          top,
+          left,
+          zIndex: 1e3,
+          background: "var(--background-elevated, #1a1a1a)",
+          border: "1px solid var(--border, #333)",
+          padding: 6,
+          borderRadius: 4,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)"
+        },
+        children: [
+          /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(8, 16px)", gridGap: 4 }, children: TRACK_PALETTE_32.map((color) => {
+            const isCurrent = color === currentColor;
+            return /* @__PURE__ */ jsx(
+              "button",
+              {
+                type: "button",
+                "data-mixer-strip-swatch": true,
+                "data-color": color,
+                "aria-label": `Color ${color}`,
+                "aria-current": isCurrent ? "true" : void 0,
+                onClick: () => {
+                  onPick(color);
+                  onClose();
+                },
+                style: {
+                  width: 16,
+                  height: 16,
+                  padding: 0,
+                  border: isCurrent ? "2px solid white" : "1px solid rgba(255,255,255,0.18)",
+                  background: color,
+                  cursor: "pointer",
+                  borderRadius: 3,
+                  boxSizing: "border-box"
+                }
               },
+              color
+            );
+          }) }),
+          /* @__PURE__ */ jsxs(
+            "div",
+            {
               style: {
-                width: 16,
-                height: 16,
-                padding: 0,
-                border: isCurrent ? "2px solid white" : "1px solid rgba(255,255,255,0.18)",
-                background: color,
-                cursor: "pointer",
-                borderRadius: 3,
-                boxSizing: "border-box"
-              }
-            },
-            color
-          );
-        }) }),
-        /* @__PURE__ */ jsxs(
-          "div",
-          {
-            style: {
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              paddingTop: 4,
-              borderTop: "1px solid var(--border, rgba(255,255,255,0.12))",
-              fontSize: 11,
-              color: "var(--foreground-muted, rgba(255,255,255,0.55))"
-            },
-            children: [
-              /* @__PURE__ */ jsx("label", { htmlFor: "mixer-strip-custom-color", style: { flex: 1, cursor: "pointer" }, children: "Custom" }),
-              onReset && /* @__PURE__ */ jsx(
-                "button",
-                {
-                  type: "button",
-                  "data-mixer-strip-color-reset": true,
-                  "aria-label": "Reset to default colour",
-                  title: "Reset to the default palette colour",
-                  onClick: () => {
-                    onReset();
-                    onClose();
-                  },
-                  style: {
-                    padding: "1px 6px",
-                    fontSize: 10,
-                    border: "1px solid var(--border, rgba(255,255,255,0.18))",
-                    borderRadius: 3,
-                    background: "transparent",
-                    color: "inherit",
-                    cursor: "pointer"
-                  },
-                  children: "Default"
-                }
-              ),
-              /* @__PURE__ */ jsx(
-                "input",
-                {
-                  id: "mixer-strip-custom-color",
-                  type: "color",
-                  "data-mixer-strip-custom-color": true,
-                  "aria-label": "Custom track color",
-                  defaultValue: customColor,
-                  onChange: (e) => onPick(e.currentTarget.value),
-                  style: {
-                    width: 28,
-                    height: 18,
-                    padding: 0,
-                    border: "1px solid var(--border, rgba(255,255,255,0.18))",
-                    borderRadius: 3,
-                    background: "transparent",
-                    cursor: "pointer"
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                paddingTop: 4,
+                borderTop: "1px solid var(--border, rgba(255,255,255,0.12))",
+                fontSize: 11,
+                color: "var(--foreground-muted, rgba(255,255,255,0.55))"
+              },
+              children: [
+                /* @__PURE__ */ jsx("label", { htmlFor: "mixer-strip-custom-color", style: { flex: 1, cursor: "pointer" }, children: "Custom" }),
+                onReset && /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "data-mixer-strip-color-reset": true,
+                    "aria-label": "Reset to default colour",
+                    title: "Reset to the default palette colour",
+                    onClick: () => {
+                      onReset();
+                      onClose();
+                    },
+                    style: {
+                      padding: "1px 6px",
+                      fontSize: 10,
+                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
+                      borderRadius: 3,
+                      background: "transparent",
+                      color: "inherit",
+                      cursor: "pointer"
+                    },
+                    children: "Default"
                   }
-                }
-              )
-            ]
-          }
-        )
-      ]
-    }
+                ),
+                /* @__PURE__ */ jsx(
+                  "input",
+                  {
+                    id: "mixer-strip-custom-color",
+                    type: "color",
+                    "data-mixer-strip-custom-color": true,
+                    "aria-label": "Custom track color",
+                    defaultValue: customColor,
+                    onChange: (e) => onPick(e.currentTarget.value),
+                    style: {
+                      width: 28,
+                      height: 18,
+                      padding: 0,
+                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
+                      borderRadius: 3,
+                      background: "transparent",
+                      cursor: "pointer"
+                    }
+                  }
+                )
+              ]
+            }
+          )
+        ]
+      }
+    ),
+    document.body
   );
 }
 __name(StripColorPopover, "StripColorPopover");

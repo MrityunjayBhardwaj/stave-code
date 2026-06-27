@@ -16,9 +16,18 @@
  * dot live-previews); the caller writes through to `setTrackMeta` and closes via
  * `onClose`. Outside-click (deferred one tick so the opening click doesn't close
  * it) and Escape close.
+ *
+ * PORTALED to `document.body` (like `AddEffectMenu`, P-MIX-18): the console strip
+ * FACE renders at `zoom: 1.5` (CONSOLE_ZOOM), and a `position: fixed` element
+ * inside a CSS-`zoom` subtree has its coordinates SCALED by that zoom — so a
+ * popover anchored by `getBoundingClientRect()` (real viewport px) would land
+ * ~1.5× off the dot. The portal mounts it OUTSIDE the zoomed strip, where fixed
+ * coordinates map 1:1 to the viewport (the Timeline's identical popover aligns
+ * because the Timeline isn't zoomed).
  */
 
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import { TRACK_PALETTE_32 } from '../trackColor'
 
 export interface StripColorPopoverProps {
@@ -41,7 +50,7 @@ export function StripColorPopover({
   onPick,
   onReset,
   onClose,
-}: StripColorPopoverProps): React.ReactElement {
+}: StripColorPopoverProps): React.ReactPortal | null {
   const ref = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
@@ -72,7 +81,9 @@ export function StripColorPopover({
   const customColor =
     currentColor && !TRACK_PALETTE_32.includes(currentColor) ? currentColor : '#888888'
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <div
       ref={ref}
       data-mixer-strip-color-popover
@@ -180,6 +191,7 @@ export function StripColorPopover({
           }}
         />
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
