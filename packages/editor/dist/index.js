@@ -1,6 +1,6 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
-import * as React33 from 'react';
-import React33__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React34 from 'react';
+import React34__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { parse } from 'acorn';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
@@ -14619,8 +14619,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React33__default.Children.count(children);
-  const childArray = React33__default.Children.toArray(children);
+  const count = React34__default.Children.count(children);
+  const childArray = React34__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -14665,7 +14665,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React33__default.useEffect(() => {
+  React34__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -14681,7 +14681,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React33__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React34__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -23134,7 +23134,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React33__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React34__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -23356,7 +23356,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React33__default.useMemo(() => {
+  const providerNode = React34__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -23649,25 +23649,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React33.useMemo(
+  const changedIds = React34.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
     [commit, pickerFileIds]
   );
-  const [mode, setMode2] = React33.useState(defaultMode);
-  React33.useEffect(() => {
+  const [mode, setMode2] = React34.useState(defaultMode);
+  React34.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React33.useState(
+  const [fileId, setFileId] = React34.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React33.useRef(null);
-  const handleMount = React33.useCallback(
+  const diffEditorRef = React34.useRef(null);
+  const handleMount = React34.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -23677,7 +23677,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -23802,18 +23802,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React33.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React33.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React33.useState(
+  const snapshot = React34.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React34.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React34.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React33.useCallback(
+  const handleMount = React34.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -24704,7 +24704,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React33.createElement(
+  return React34.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -24722,25 +24722,25 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React33.createElement(EmptyTimelineStub)
+  content: React34.createElement(EmptyTimelineStub)
 });
 function useActiveChunk() {
-  const [editor, setEditor] = React33.useState(() => getActiveEditor());
-  const [chunk, setChunk] = React33.useState(null);
-  const writebackRef = React33.useRef(null);
-  const editorRef = React33.useRef(null);
-  const anchorRef = React33.useRef(null);
+  const [editor, setEditor] = React34.useState(() => getActiveEditor());
+  const [chunk, setChunk] = React34.useState(null);
+  const writebackRef = React34.useRef(null);
+  const editorRef = React34.useRef(null);
+  const anchorRef = React34.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
   }, [editor]);
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -24767,7 +24767,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React33.useCallback(
+  const applyEdit = React34.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -24782,8 +24782,8 @@ function useActiveChunk() {
     },
     []
   );
-  const beginGesture = React33.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React33.useCallback(() => writebackRef.current?.endGesture(), []);
+  const beginGesture = React34.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React34.useCallback(() => writebackRef.current?.endGesture(), []);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -25483,7 +25483,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React33.createElement(
+  return React34.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -25502,12 +25502,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React33.createElement("span", {
+    icon ? React34.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React33.createElement("span", null, hint)
+    React34.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -25568,14 +25568,14 @@ function gainUnchanged(g, cur) {
 __name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React33.useState(null);
-  const modelRef = React33.useRef(null);
-  React33.useEffect(() => {
+  const [model, setModel] = React34.useState(null);
+  const modelRef = React34.useRef(null);
+  React34.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React33.useRef(opts);
+  const optsRef = React34.useRef(opts);
   optsRef.current = opts;
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -25597,7 +25597,7 @@ function useGridModel(opts) {
     modelRef.current = next;
     setModel(next);
   }, [chunk]);
-  const mutate = React33.useCallback(
+  const mutate = React34.useCallback(
     (fn) => {
       const o = optsRef.current;
       const prev = modelRef.current;
@@ -25647,8 +25647,8 @@ function cycleToStep(cycle, steps, bars) {
 }
 __name(cycleToStep, "cycleToStep");
 function usePlayingStep(steps, bars) {
-  const [step, setStep] = React33.useState(null);
-  React33.useEffect(() => {
+  const [step, setStep] = React34.useState(null);
+  React34.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const next = cycleToStep(readCurrentCycle(), steps, bars);
@@ -25891,7 +25891,7 @@ function subscribe3(listener) {
 }
 __name(subscribe3, "subscribe");
 function useNoteColorMode() {
-  const mode = React33.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
+  const mode = React34.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -26199,6 +26199,741 @@ function ResolutionControl({
 }
 __name(ResolutionControl, "ResolutionControl");
 
+// src/visualEdit/panels/chainMethod.ts
+function readChainMethod(chunk, names) {
+  const call = chunk.chain.find((c) => names.includes(c.name) && c.args.length >= 1);
+  const arg = call?.args[0];
+  if (!call || !arg) return null;
+  const q = arg.raw[0];
+  if ((q === '"' || q === "'" || q === "`") && arg.raw[arg.raw.length - 1] === q) {
+    return { name: call.name, value: arg.raw.slice(1, -1), range: arg.range };
+  }
+  return null;
+}
+__name(readChainMethod, "readChainMethod");
+
+// src/visualEdit/trackColor.ts
+var TRACK_PALETTE_32 = [
+  // Drums (orange family) — 8 lightness steps
+  "#fed7aa",
+  "#fdba74",
+  "#fb923c",
+  "#f97316",
+  "#ea580c",
+  "#c2410c",
+  "#9a3412",
+  "#7c2d12",
+  // Bass (cyan family) — 8 lightness steps
+  "#a5f3fc",
+  "#67e8f9",
+  "#22d3ee",
+  "#06b6d4",
+  "#0891b2",
+  "#0e7490",
+  "#155e75",
+  "#164e63",
+  // Pad (green family) — 8 lightness steps
+  "#a7f3d0",
+  "#6ee7b7",
+  "#34d399",
+  "#10b981",
+  "#059669",
+  "#047857",
+  "#065f46",
+  "#064e3b",
+  // Melody (purple family) — 8 lightness steps
+  "#ddd6fe",
+  "#c4b5fd",
+  "#a78bfa",
+  "#8b5cf6",
+  "#7c3aed",
+  "#6d28d9",
+  "#5b21b6",
+  "#4c1d95"
+];
+var STEM_PATTERNS = [
+  // Drums → family 0
+  [/^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i, 0],
+  // Bass → family 1
+  [/^(?:bass|sub|808)/i, 1],
+  // Pads → family 2
+  [/^(?:pad|pads)/i, 2],
+  // Melody / lead / synth / piano / keys / guitar → family 3
+  [/^(?:lead|melody|synth|piano|keys|guitar)/i, 3]
+];
+function fnv1a32(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h = (h ^ str.charCodeAt(i)) >>> 0;
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+__name(fnv1a32, "fnv1a32");
+function stemHueGroup(sample) {
+  if (!sample) return 3;
+  for (let i = 0; i < STEM_PATTERNS.length; i++) {
+    if (STEM_PATTERNS[i][0].test(sample)) return STEM_PATTERNS[i][1];
+  }
+  return 3;
+}
+__name(stemHueGroup, "stemHueGroup");
+function trackIndexOf(trackId) {
+  const m = trackId.match(/^d(\d+)$/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n >= 1) return ((n - 1) % 32 + 32) % 32;
+  }
+  return fnv1a32(trackId) % 32;
+}
+__name(trackIndexOf, "trackIndexOf");
+function paletteForTrack(trackIndex, sampleHint) {
+  const hueGroup = stemHueGroup(sampleHint);
+  const slot = ((trackIndex * 4 + hueGroup) % 32 + 32) % 32;
+  return TRACK_PALETTE_32[slot];
+}
+__name(paletteForTrack, "paletteForTrack");
+function colorForTrack(key3) {
+  return paletteForTrack(trackIndexOf(key3), key3);
+}
+__name(colorForTrack, "colorForTrack");
+function trackIdentity(key3, customColor) {
+  return { key: key3, name: key3, color: customColor ?? colorForTrack(key3) };
+}
+__name(trackIdentity, "trackIdentity");
+
+// src/visualEdit/mixer/gain.ts
+var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
+function parseManagedGain(raw) {
+  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
+  if (!quote || raw[raw.length - 1] !== quote) return null;
+  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== "");
+  if (tokens.length < 2) return null;
+  let ceiling = 0;
+  for (const t of tokens) {
+    if (t === "~") continue;
+    const m = GAIN_TOKEN2.exec(t);
+    if (!m) return null;
+    ceiling = Math.max(ceiling, parseFloat(m[1]));
+  }
+  return { tokens, ceiling, quote };
+}
+__name(parseManagedGain, "parseManagedGain");
+function scaleManagedGain(mg, value) {
+  const factor = mg.ceiling > 0 ? value / mg.ceiling : null;
+  const out = mg.tokens.map((t) => {
+    if (t === "~") return "~";
+    const m = GAIN_TOKEN2.exec(t);
+    const nv = factor === null ? value : parseFloat(m[1]) * factor;
+    return formatNumber(Math.max(0, nv)) + (m[2] ?? "");
+  });
+  return mg.quote + out.join(" ") + mg.quote;
+}
+__name(scaleManagedGain, "scaleManagedGain");
+function readGainState(chunk) {
+  const call = chunk.chain.find((c) => c.name === "gain" && c.args.length >= 1);
+  const arg = call?.args[0];
+  if (!call || !arg) return { kind: "absent" };
+  if (arg.numeric !== null) return { kind: "scalar", value: arg.numeric, range: arg.range };
+  const mg = parseManagedGain(arg.raw);
+  if (mg) return { kind: "managed", ceiling: mg.ceiling, mg, range: arg.range };
+  return { kind: "foreign" };
+}
+__name(readGainState, "readGainState");
+
+// src/visualEdit/mixer/stripModel.ts
+function namedLabel(label) {
+  return label && label !== "$" ? label : null;
+}
+__name(namedLabel, "namedLabel");
+function isMuted(label) {
+  return label != null && label.startsWith("_");
+}
+__name(isMuted, "isMuted");
+function bareLabel(label) {
+  if (label == null) return null;
+  return namedLabel(isMuted(label) ? label.slice(1) : label);
+}
+__name(bareLabel, "bareLabel");
+var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
+  "setcps",
+  "setCps",
+  "setcpm",
+  "setCpm",
+  "setbpm",
+  "setBpm",
+  "samples",
+  "hush",
+  "all"
+]);
+function isTrackChunk(chunk) {
+  if (chunk.label !== null) return true;
+  return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn);
+}
+__name(isTrackChunk, "isTrackChunk");
+var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
+function stripKind(chunk) {
+  const k = patternKind(chunk);
+  if (k) return k;
+  if (chunk.headFn && GROUP_HEADS.has(chunk.headFn)) return "group";
+  return "unknown";
+}
+__name(stripKind, "stripKind");
+function readSource(chunk, kind) {
+  if (kind === "step") return readChainMethod(chunk, ["bank"])?.value ?? null;
+  if (kind === "roll") return readChainMethod(chunk, ["sound", "s"])?.value ?? null;
+  return readChainMethod(chunk, ["sound", "s", "bank"])?.value ?? null;
+}
+__name(readSource, "readSource");
+function readScalar(chunk, name) {
+  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
+  const arg = call?.args[0];
+  return arg && arg.numeric !== null ? arg.numeric : null;
+}
+__name(readScalar, "readScalar");
+function isForeign(chunk, name) {
+  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
+  return call !== void 0 && call.args[0].numeric === null;
+}
+__name(isForeign, "isForeign");
+function displayKey(label, ordinal) {
+  return bareLabel(label) ?? `d${ordinal}`;
+}
+__name(displayKey, "displayKey");
+function buildStripModel(chunk, index, ordinal, id, captureId) {
+  const kind = stripKind(chunk);
+  const source = readSource(chunk, kind);
+  const identity = trackIdentity(displayKey(chunk.label, ordinal));
+  return {
+    id,
+    index,
+    kind,
+    label: bareLabel(chunk.label),
+    name: identity.name,
+    headFn: chunk.headFn,
+    miniString: chunk.miniString,
+    source,
+    gain: readGainState(chunk),
+    pan: readScalar(chunk, "pan"),
+    panForeign: isForeign(chunk, "pan"),
+    sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
+    muted: isMuted(chunk.label),
+    muteable: chunk.label != null,
+    color: identity.color,
+    chain: chunk.chain,
+    exprRange: chunk.exprRange,
+    statementRange: chunk.statementRange,
+    captureId
+  };
+}
+__name(buildStripModel, "buildStripModel");
+function buildStripModels(chunks) {
+  let anonAll = 0;
+  let anonLive = 0;
+  let ordinal = 0;
+  const models = [];
+  chunks.forEach((chunk, index) => {
+    if (!isTrackChunk(chunk)) return;
+    ordinal++;
+    const bare = bareLabel(chunk.label);
+    const id = bare ?? `#${anonAll++}`;
+    let captureId;
+    if (bare !== null) captureId = bare;
+    else if (isMuted(chunk.label)) captureId = `_$${index}`;
+    else captureId = `$${anonLive++}`;
+    models.push(buildStripModel(chunk, index, ordinal, id, captureId));
+  });
+  return models;
+}
+__name(buildStripModels, "buildStripModels");
+function statementOffsetForSource(doc, source) {
+  const strip = buildStripModels(detectAllChunks(doc)).find((s) => s.source === source);
+  return strip ? strip.statementRange[0] : null;
+}
+__name(statementOffsetForSource, "statementOffsetForSource");
+function otherTrackNames(doc, selfStatementStart) {
+  return buildStripModels(detectAllChunks(doc)).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
+}
+__name(otherTrackNames, "otherTrackNames");
+
+// src/visualEdit/mixer/useMixerModel.ts
+var EMPTY_DERIVED = { strips: [], chunks: [] };
+function useMixerModel() {
+  const [editor, setEditor] = React34.useState(() => getActiveEditor());
+  const [derived, setDerived] = React34.useState(EMPTY_DERIVED);
+  const editorRef = React34.useRef(null);
+  const writebackRef = React34.useRef(null);
+  React34.useEffect(() => {
+    setEditor(getActiveEditor());
+    return onActiveEditorChange(() => setEditor(getActiveEditor()));
+  }, []);
+  React34.useEffect(() => {
+    editorRef.current = editor;
+    const monaco = getMonacoNamespace();
+    writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
+  }, [editor]);
+  React34.useEffect(() => {
+    if (!editor) {
+      setDerived(EMPTY_DERIVED);
+      return;
+    }
+    const rederive = /* @__PURE__ */ __name(() => {
+      const model2 = editor.getModel?.();
+      if (!model2) {
+        setDerived(EMPTY_DERIVED);
+        return;
+      }
+      const allChunks = detectAllChunks(model2.getValue());
+      const strips = buildStripModels(allChunks);
+      setDerived({ strips, chunks: strips.map((s) => allChunks[s.index]) });
+    }, "rederive");
+    rederive();
+    const model = editor.getModel?.();
+    const sub = model?.onDidChangeContent?.(rederive);
+    return () => sub?.dispose?.();
+  }, [editor]);
+  const applyToStrip = React34.useCallback(
+    (id, mutate) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      if (!ed || !wb) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      const chunks = detectAllChunks(model.getValue());
+      const strip = buildStripModels(chunks).find((s) => s.id === id);
+      if (!strip) return;
+      mutate(chunks[strip.index], wb);
+    },
+    []
+  );
+  const beginGesture = React34.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React34.useCallback(() => writebackRef.current?.endGesture(), []);
+  return { strips: derived.strips, chunks: derived.chunks, applyToStrip, beginGesture, endGesture };
+}
+__name(useMixerModel, "useMixerModel");
+function StripColorPopover({
+  anchorRect,
+  currentColor,
+  onPick,
+  onReset,
+  onClose
+}) {
+  const ref = React34.useRef(null);
+  React34.useEffect(() => {
+    const onDown = /* @__PURE__ */ __name((e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    }, "onDown");
+    const onKey = /* @__PURE__ */ __name((e) => {
+      if (e.key === "Escape") onClose();
+    }, "onKey");
+    const t = setTimeout(() => document.addEventListener("mousedown", onDown), 0);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  const POPOVER_WIDTH = 8 * 16 + 7 * 4 + 12;
+  const left = typeof window !== "undefined" ? Math.max(8, Math.min(window.innerWidth - 8 - POPOVER_WIDTH, anchorRect.left)) : anchorRect.left;
+  const top = anchorRect.bottom + 4;
+  const customColor = currentColor && !TRACK_PALETTE_32.includes(currentColor) ? currentColor : "#888888";
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    /* @__PURE__ */ jsxs(
+      "div",
+      {
+        ref,
+        "data-mixer-strip-color-popover": true,
+        role: "dialog",
+        "aria-label": "Pick track color",
+        style: {
+          position: "fixed",
+          top,
+          left,
+          zIndex: 1e3,
+          background: "var(--background-elevated, #1a1a1a)",
+          border: "1px solid var(--border, #333)",
+          padding: 6,
+          borderRadius: 4,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)"
+        },
+        children: [
+          /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(8, 16px)", gridGap: 4 }, children: TRACK_PALETTE_32.map((color) => {
+            const isCurrent = color === currentColor;
+            return /* @__PURE__ */ jsx(
+              "button",
+              {
+                type: "button",
+                "data-mixer-strip-swatch": true,
+                "data-color": color,
+                "aria-label": `Color ${color}`,
+                "aria-current": isCurrent ? "true" : void 0,
+                onClick: () => {
+                  onPick(color);
+                  onClose();
+                },
+                style: {
+                  width: 16,
+                  height: 16,
+                  padding: 0,
+                  border: isCurrent ? "2px solid white" : "1px solid rgba(255,255,255,0.18)",
+                  background: color,
+                  cursor: "pointer",
+                  borderRadius: 3,
+                  boxSizing: "border-box"
+                }
+              },
+              color
+            );
+          }) }),
+          /* @__PURE__ */ jsxs(
+            "div",
+            {
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                paddingTop: 4,
+                borderTop: "1px solid var(--border, rgba(255,255,255,0.12))",
+                fontSize: 11,
+                color: "var(--foreground-muted, rgba(255,255,255,0.55))"
+              },
+              children: [
+                /* @__PURE__ */ jsx("label", { htmlFor: "mixer-strip-custom-color", style: { flex: 1, cursor: "pointer" }, children: "Custom" }),
+                onReset && /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "data-mixer-strip-color-reset": true,
+                    "aria-label": "Reset to default colour",
+                    title: "Reset to the default palette colour",
+                    onClick: () => {
+                      onReset();
+                      onClose();
+                    },
+                    style: {
+                      padding: "1px 6px",
+                      fontSize: 10,
+                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
+                      borderRadius: 3,
+                      background: "transparent",
+                      color: "inherit",
+                      cursor: "pointer"
+                    },
+                    children: "Default"
+                  }
+                ),
+                /* @__PURE__ */ jsx(
+                  "input",
+                  {
+                    id: "mixer-strip-custom-color",
+                    type: "color",
+                    "data-mixer-strip-custom-color": true,
+                    "aria-label": "Custom track color",
+                    defaultValue: customColor,
+                    onChange: (e) => onPick(e.currentTarget.value),
+                    style: {
+                      width: 28,
+                      height: 18,
+                      padding: 0,
+                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
+                      borderRadius: 3,
+                      background: "transparent",
+                      cursor: "pointer"
+                    }
+                  }
+                )
+              ]
+            }
+          )
+        ]
+      }
+    ),
+    document.body
+  );
+}
+__name(StripColorPopover, "StripColorPopover");
+
+// src/visualEdit/mixer/writeStrip.ts
+function gainEdit(fresh, value) {
+  const g = readGainState(fresh);
+  switch (g.kind) {
+    case "scalar":
+      return { range: g.range, text: formatNumber(value) };
+    case "managed":
+      return { range: g.range, text: scaleManagedGain(g.mg, value) };
+    case "absent":
+      return { range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${formatNumber(value)})` };
+    case "foreign":
+      return null;
+  }
+}
+__name(gainEdit, "gainEdit");
+function panEdit(fresh, value) {
+  const call = fresh.chain.find((c) => c.name === "pan" && c.args.length >= 1);
+  if (!call) {
+    return { range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.pan(${formatNumber(value)})` };
+  }
+  const arg = call.args[0];
+  if (arg.numeric === null) return null;
+  return { range: arg.range, text: formatNumber(value) };
+}
+__name(panEdit, "panEdit");
+function muteEdit(fresh, muted3) {
+  if (fresh.label === null) return null;
+  const isMuted2 = fresh.label.startsWith("_");
+  if (muted3 === isMuted2) return null;
+  const pos = fresh.statementRange[0];
+  return muted3 ? { range: [pos, pos], text: "_" } : { range: [pos, pos + 1], text: "" };
+}
+__name(muteEdit, "muteEdit");
+var RESERVED_LABELS = /* @__PURE__ */ new Set([
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+  "await",
+  "let",
+  // strict-mode reserved — Strudel transpiles as a module, so these are syntax
+  // errors AS labels too; reject them rather than write a name that breaks eval.
+  "implements",
+  "interface",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "static"
+]);
+function isValidTrackLabel(name) {
+  return /^[A-Za-z_$][\w$]*$/.test(name) && !RESERVED_LABELS.has(name);
+}
+__name(isValidTrackLabel, "isValidTrackLabel");
+function renameEdit(fresh, newLabel, takenNames) {
+  if (fresh.label === null) return null;
+  if (!isValidTrackLabel(newLabel)) return null;
+  const muted3 = fresh.label.startsWith("_");
+  const bareLabel2 = muted3 ? fresh.label.slice(1) : fresh.label;
+  if (newLabel === bareLabel2) return null;
+  if (takenNames.has(newLabel)) return null;
+  const start = fresh.statementRange[0] + (muted3 ? 1 : 0);
+  const end = fresh.statementRange[0] + fresh.label.length;
+  return { range: [start, end], text: newLabel };
+}
+__name(renameEdit, "renameEdit");
+var EMPTY_META = Object.freeze({});
+var EMPTY_META_MAP = /* @__PURE__ */ new Map();
+function useTrackMeta(fileId, trackId) {
+  const subscribe7 = useCallback(
+    (onStoreChange) => {
+      if (!fileId) return () => {
+      };
+      return subscribeToTrackMeta(fileId, onStoreChange);
+    },
+    [fileId]
+  );
+  const getSnapshot = useCallback(() => {
+    if (!fileId) return EMPTY_META;
+    return getTrackMeta(fileId, trackId);
+  }, [fileId, trackId]);
+  const meta = useSyncExternalStore(subscribe7, getSnapshot, getSnapshot);
+  const set = useCallback(
+    (partial) => {
+      if (!fileId) return;
+      setTrackMeta(fileId, trackId, partial);
+    },
+    [fileId, trackId]
+  );
+  return { meta, set };
+}
+__name(useTrackMeta, "useTrackMeta");
+function useTrackMetaMap(fileId) {
+  const subscribe7 = useCallback(
+    (onStoreChange) => {
+      if (!fileId) return () => {
+      };
+      return subscribeToTrackMeta(fileId, onStoreChange);
+    },
+    [fileId]
+  );
+  const getSnapshot = useCallback(() => {
+    if (!fileId) return EMPTY_META_MAP;
+    return getTrackMetaMapSnapshot(fileId);
+  }, [fileId]);
+  return useSyncExternalStore(subscribe7, getSnapshot, getSnapshot);
+}
+__name(useTrackMetaMap, "useTrackMetaMap");
+function PatternTrackChip() {
+  const { chunk } = useActiveChunk();
+  const { strips, applyToStrip } = useMixerModel();
+  const [fileId, setFileId] = React34.useState(() => getActiveFileId());
+  React34.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const trackMeta = useTrackMetaMap(fileId ?? void 0);
+  const [colorAnchor, setColorAnchor] = React34.useState(null);
+  const [renaming, setRenaming] = React34.useState(false);
+  const anchor = chunk ? chunk.statementRange[0] : null;
+  const strip = anchor != null ? strips.find((s) => s.statementRange[0] === anchor) : void 0;
+  if (!strip) return null;
+  const customColor = trackMeta.get(strip.name)?.color;
+  const dotColor = trackIdentity(strip.name, customColor).color;
+  const bareLabel2 = strip.label?.replace(/^_/, "") ?? "";
+  const renameSeed = bareLabel2 !== "" && bareLabel2 !== "$" ? bareLabel2 : "";
+  const commitRename = /* @__PURE__ */ __name((raw) => {
+    setRenaming(false);
+    const v = raw.trim();
+    if (!v) return;
+    applyToStrip(strip.id, (fresh, wb) => {
+      const taken = new Set(strips.filter((s) => s.id !== strip.id).map((s) => s.name));
+      const e = renameEdit(fresh, v, taken);
+      if (!e) return;
+      wb.replaceRange(e.range, e.text, "rename");
+      if (fileId) {
+        const prevColor = getTrackMeta(fileId, strip.name).color;
+        if (prevColor && strip.name !== v) {
+          setTrackMeta(fileId, v, { color: prevColor });
+          setTrackMeta(fileId, strip.name, { color: void 0 });
+        }
+      }
+    });
+  }, "commitRename");
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-pattern-track-chip": true,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        minWidth: 0,
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      },
+      children: [
+        fileId ? /* @__PURE__ */ jsx(
+          "button",
+          {
+            type: "button",
+            "data-pattern-track-dot": true,
+            "aria-label": `Change colour of ${strip.name}`,
+            title: `${strip.name} \u2014 click to change colour`,
+            onClick: (e) => setColorAnchor(e.currentTarget.getBoundingClientRect()),
+            style: {
+              width: 9,
+              height: 9,
+              padding: 0,
+              border: "none",
+              borderRadius: "50%",
+              background: dotColor,
+              flexShrink: 0,
+              cursor: "pointer"
+            }
+          }
+        ) : /* @__PURE__ */ jsx(
+          "span",
+          {
+            "data-pattern-track-dot": true,
+            style: { width: 9, height: 9, borderRadius: "50%", background: dotColor, flexShrink: 0 }
+          }
+        ),
+        colorAnchor && fileId && /* @__PURE__ */ jsx(
+          StripColorPopover,
+          {
+            anchorRect: colorAnchor,
+            currentColor: dotColor,
+            onPick: (color) => setTrackMeta(fileId, strip.name, { color }),
+            onReset: () => setTrackMeta(fileId, strip.name, { color: void 0 }),
+            onClose: () => setColorAnchor(null)
+          }
+        ),
+        renaming ? /* @__PURE__ */ jsx(
+          "input",
+          {
+            "data-pattern-track-rename": true,
+            autoFocus: true,
+            defaultValue: renameSeed,
+            placeholder: "name this track",
+            spellCheck: false,
+            onFocus: (e) => e.currentTarget.select(),
+            onKeyDown: (e) => {
+              if (e.key === "Enter") commitRename(e.currentTarget.value);
+              else if (e.key === "Escape") setRenaming(false);
+              e.stopPropagation();
+            },
+            onBlur: (e) => commitRename(e.currentTarget.value),
+            style: {
+              minWidth: 0,
+              width: 96,
+              fontSize: 11,
+              fontWeight: 600,
+              fontFamily: "inherit",
+              color: "var(--foreground, #e6e6ea)",
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.25)",
+              borderRadius: 3,
+              padding: "0 3px",
+              outline: "none"
+            }
+          }
+        ) : /* @__PURE__ */ jsx(
+          "span",
+          {
+            "data-pattern-track-name": true,
+            title: `${strip.name} \u2014 double-click to rename`,
+            onDoubleClick: () => setRenaming(true),
+            style: {
+              fontSize: 11,
+              fontWeight: 600,
+              color: "var(--foreground, #e6e6ea)",
+              maxWidth: 160,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              cursor: "text"
+            },
+            children: strip.name
+          }
+        )
+      ]
+    }
+  );
+}
+__name(PatternTrackChip, "PatternTrackChip");
+
 // src/visualEdit/panels/inspector.ts
 function gainAtStart(model, start) {
   return model.notes.find((n) => n.start === start)?.gain ?? 1;
@@ -26247,9 +26982,9 @@ function SequencerGrid() {
   });
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const gestureRef = React33.useRef(null);
+  const gestureRef = React34.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
-  const paintCell = React33.useCallback(
+  const paintCell = React34.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
         const lane = prev.lanes[laneIndex];
@@ -26261,25 +26996,25 @@ function SequencerGrid() {
     },
     [mutate]
   );
-  const addVoice = React33.useCallback(
+  const addVoice = React34.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React33.useCallback(
+  const removeVoice = React34.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
-  const scaleToSlots = React33.useCallback(
+  const scaleToSlots = React34.useCallback(
     (target) => {
       mutate((prev) => quantizeStepGridTo(prev, target));
     },
     [mutate]
   );
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -26346,7 +27081,7 @@ function SequencerGrid() {
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
   if (!model) {
-    return React33.createElement(VisualEditStandby, {
+    return React34.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && isStepChunk(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -26366,21 +27101,24 @@ function SequencerGrid() {
         touchAction: "none"
       },
       children: /* @__PURE__ */ jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: "100%" }, children: [
-        /* @__PURE__ */ jsxs("div", { style: { display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, marginBottom: 4 }, children: [
-          /* @__PURE__ */ jsx(
-            ResolutionControl,
-            {
-              steps: model.steps,
-              slotState: (target) => stepSlotState(model, target),
-              onScaleTo: scaleToSlots
-            }
-          ),
-          /* @__PURE__ */ jsx(NoteColorToggle, {})
+        /* @__PURE__ */ jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 4 }, children: [
+          /* @__PURE__ */ jsx(PatternTrackChip, {}),
+          /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 12 }, children: [
+            /* @__PURE__ */ jsx(
+              ResolutionControl,
+              {
+                steps: model.steps,
+                slotState: (target) => stepSlotState(model, target),
+                onScaleTo: scaleToSlots
+              }
+            ),
+            /* @__PURE__ */ jsx(NoteColorToggle, {})
+          ] })
         ] }),
         model.lanes.map((lane, laneIndex) => {
           const voice = sampleVoice(lane.sound);
           return /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
-            /* @__PURE__ */ jsxs(
+            /* @__PURE__ */ jsx(
               "span",
               {
                 "data-seq-voice": lane.sound,
@@ -26389,30 +27127,13 @@ function SequencerGrid() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "flex-end",
-                  gap: 5,
                   fontSize: 11,
                   color: "var(--foreground, #e6e6ea)",
                   overflow: "hidden",
                   whiteSpace: "nowrap"
                 },
                 title: lane.sound,
-                children: [
-                  /* @__PURE__ */ jsx(
-                    "span",
-                    {
-                      "data-seq-voice-dot": true,
-                      "aria-hidden": "true",
-                      style: {
-                        width: 8,
-                        height: 8,
-                        flex: "0 0 auto",
-                        borderRadius: "50%",
-                        background: voice.color
-                      }
-                    }
-                  ),
-                  /* @__PURE__ */ jsx("span", { style: { overflow: "hidden", textOverflow: "ellipsis" }, children: voice.label })
-                ]
+                children: /* @__PURE__ */ jsx("span", { style: { overflow: "hidden", textOverflow: "ellipsis" }, children: voice.label })
               }
             ),
             /* @__PURE__ */ jsx(
@@ -26642,22 +27363,22 @@ function PianoRollGrid({
     applyGain: applyRollGain,
     serializeGain: serializeRollGain
   });
-  const dragRef = React33.useRef(null);
-  const velRef = React33.useRef(null);
+  const dragRef = React34.useRef(null);
+  const velRef = React34.useRef(null);
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const [hoveredMidi, setHoveredMidi] = React33.useState(null);
-  const onSelectRef = React33.useRef(onSelect);
+  const [hoveredMidi, setHoveredMidi] = React34.useState(null);
+  const onSelectRef = React34.useRef(onSelect);
   onSelectRef.current = onSelect;
-  const selectedRef = React33.useRef(selected);
+  const selectedRef = React34.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range, setRange] = React33.useState({
+  const [range, setRange] = React34.useState({
     lo: DEFAULT_LO,
     hi: DEFAULT_HI
   });
-  const stmtIdRef = React33.useRef(null);
-  React33.useEffect(() => {
+  const stmtIdRef = React34.useRef(null);
+  React34.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = contentRange(model);
@@ -26672,7 +27393,7 @@ function PianoRollGrid({
       }));
     }
   }, [model, chunk]);
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
@@ -26688,7 +27409,7 @@ function PianoRollGrid({
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
@@ -26812,7 +27533,7 @@ function PianoRollGrid({
     mutate((prev) => quantizePianoRollTo(prev, target));
   }, "scaleToSlots");
   if (!model) {
-    return React33.createElement(VisualEditStandby, {
+    return React34.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && isRollChunk(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -26851,6 +27572,20 @@ function PianoRollGrid({
         touchAction: "none"
       },
       children: [
+        /* @__PURE__ */ jsx(
+          "div",
+          {
+            style: {
+              position: "absolute",
+              top: 6,
+              left: 16,
+              zIndex: 3,
+              display: "flex",
+              alignItems: "center"
+            },
+            children: /* @__PURE__ */ jsx(PatternTrackChip, {})
+          }
+        ),
         /* @__PURE__ */ jsxs(
           "div",
           {
@@ -27129,7 +27864,7 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React33.useRef(null);
+  const dragRef = React34.useRef(null);
   const pos = Math.max(0, Math.min(1, toPosition(value, range)));
   const angle = -135 + pos * 270;
   const onPointerDown = /* @__PURE__ */ __name((e) => {
@@ -27417,12 +28152,12 @@ function AddEffectMenu({
   present,
   onToggle
 }) {
-  const [open, setOpen] = React33.useState(false);
-  const [query, setQuery] = React33.useState("");
-  const [pos, setPos] = React33.useState(null);
-  const btnRef = React33.useRef(null);
-  const menuRef = React33.useRef(null);
-  const place = React33.useCallback(() => {
+  const [open, setOpen] = React34.useState(false);
+  const [query, setQuery] = React34.useState("");
+  const [pos, setPos] = React34.useState(null);
+  const btnRef = React34.useRef(null);
+  const menuRef = React34.useRef(null);
+  const place = React34.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -27436,10 +28171,10 @@ function AddEffectMenu({
       maxHeight
     });
   }, []);
-  React33.useLayoutEffect(() => {
+  React34.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -27595,19 +28330,6 @@ function AddEffectMenu({
   ] });
 }
 __name(AddEffectMenu, "AddEffectMenu");
-
-// src/visualEdit/panels/chainMethod.ts
-function readChainMethod(chunk, names) {
-  const call = chunk.chain.find((c) => names.includes(c.name) && c.args.length >= 1);
-  const arg = call?.args[0];
-  if (!call || !arg) return null;
-  const q = arg.raw[0];
-  if ((q === '"' || q === "'" || q === "`") && arg.raw[arg.raw.length - 1] === q) {
-    return { name: call.name, value: arg.raw.slice(1, -1), range: arg.range };
-  }
-  return null;
-}
-__name(readChainMethod, "readChainMethod");
 function soundfontLabel(name) {
   return name.replace(/^gm_/, "").split("_").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
@@ -27759,7 +28481,7 @@ function createCatalogStore() {
     listeners13.add(listener);
     return () => listeners13.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React33.useSyncExternalStore(subscribe7, read4, () => null), "useCatalog");
+  const useCatalog = /* @__PURE__ */ __name(() => React34.useSyncExternalStore(subscribe7, read4, () => null), "useCatalog");
   return { setAccessor, notify: notify5, read: read4, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
@@ -27897,7 +28619,7 @@ function MixerBody({
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
   const knobs = knobsFromChunk(chunk);
-  const writeKnob = React33.useCallback(
+  const writeKnob = React34.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => {
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex];
@@ -27907,7 +28629,7 @@ function MixerBody({
     },
     [applyEdit]
   );
-  const toggleEffect = React33.useCallback(
+  const toggleEffect = React34.useCallback(
     (e) => {
       applyEdit((fresh, wb) => {
         const names = effectNames(e);
@@ -27918,7 +28640,7 @@ function MixerBody({
     },
     [applyEdit]
   );
-  const removeMethod = React33.useCallback(
+  const removeMethod = React34.useCallback(
     (method) => {
       applyEdit((fresh, wb) => {
         const idx = fresh.chain.findIndex((c, i) => i > 0 && c.name === method);
@@ -27927,7 +28649,7 @@ function MixerBody({
     },
     [applyEdit]
   );
-  const writeChainMethod = React33.useCallback(
+  const writeChainMethod = React34.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -28079,7 +28801,7 @@ var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function Mixer({ division: division2, onDivisionChange } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   if (!chunk || chunk.chain.length === 0) {
-    return React33.createElement(VisualEditStandby, {
+    return React34.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -28099,306 +28821,6 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
   );
 }
 __name(Mixer, "Mixer");
-
-// src/visualEdit/trackColor.ts
-var TRACK_PALETTE_32 = [
-  // Drums (orange family) — 8 lightness steps
-  "#fed7aa",
-  "#fdba74",
-  "#fb923c",
-  "#f97316",
-  "#ea580c",
-  "#c2410c",
-  "#9a3412",
-  "#7c2d12",
-  // Bass (cyan family) — 8 lightness steps
-  "#a5f3fc",
-  "#67e8f9",
-  "#22d3ee",
-  "#06b6d4",
-  "#0891b2",
-  "#0e7490",
-  "#155e75",
-  "#164e63",
-  // Pad (green family) — 8 lightness steps
-  "#a7f3d0",
-  "#6ee7b7",
-  "#34d399",
-  "#10b981",
-  "#059669",
-  "#047857",
-  "#065f46",
-  "#064e3b",
-  // Melody (purple family) — 8 lightness steps
-  "#ddd6fe",
-  "#c4b5fd",
-  "#a78bfa",
-  "#8b5cf6",
-  "#7c3aed",
-  "#6d28d9",
-  "#5b21b6",
-  "#4c1d95"
-];
-var STEM_PATTERNS = [
-  // Drums → family 0
-  [/^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i, 0],
-  // Bass → family 1
-  [/^(?:bass|sub|808)/i, 1],
-  // Pads → family 2
-  [/^(?:pad|pads)/i, 2],
-  // Melody / lead / synth / piano / keys / guitar → family 3
-  [/^(?:lead|melody|synth|piano|keys|guitar)/i, 3]
-];
-function fnv1a32(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h = (h ^ str.charCodeAt(i)) >>> 0;
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h >>> 0;
-}
-__name(fnv1a32, "fnv1a32");
-function stemHueGroup(sample) {
-  if (!sample) return 3;
-  for (let i = 0; i < STEM_PATTERNS.length; i++) {
-    if (STEM_PATTERNS[i][0].test(sample)) return STEM_PATTERNS[i][1];
-  }
-  return 3;
-}
-__name(stemHueGroup, "stemHueGroup");
-function trackIndexOf(trackId) {
-  const m = trackId.match(/^d(\d+)$/);
-  if (m) {
-    const n = parseInt(m[1], 10);
-    if (n >= 1) return ((n - 1) % 32 + 32) % 32;
-  }
-  return fnv1a32(trackId) % 32;
-}
-__name(trackIndexOf, "trackIndexOf");
-function paletteForTrack(trackIndex, sampleHint) {
-  const hueGroup = stemHueGroup(sampleHint);
-  const slot = ((trackIndex * 4 + hueGroup) % 32 + 32) % 32;
-  return TRACK_PALETTE_32[slot];
-}
-__name(paletteForTrack, "paletteForTrack");
-function colorForTrack(key3) {
-  return paletteForTrack(trackIndexOf(key3), key3);
-}
-__name(colorForTrack, "colorForTrack");
-function trackIdentity(key3, customColor) {
-  return { key: key3, name: key3, color: customColor ?? colorForTrack(key3) };
-}
-__name(trackIdentity, "trackIdentity");
-
-// src/visualEdit/mixer/gain.ts
-var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
-function parseManagedGain(raw) {
-  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
-  if (!quote || raw[raw.length - 1] !== quote) return null;
-  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== "");
-  if (tokens.length < 2) return null;
-  let ceiling = 0;
-  for (const t of tokens) {
-    if (t === "~") continue;
-    const m = GAIN_TOKEN2.exec(t);
-    if (!m) return null;
-    ceiling = Math.max(ceiling, parseFloat(m[1]));
-  }
-  return { tokens, ceiling, quote };
-}
-__name(parseManagedGain, "parseManagedGain");
-function scaleManagedGain(mg, value) {
-  const factor = mg.ceiling > 0 ? value / mg.ceiling : null;
-  const out = mg.tokens.map((t) => {
-    if (t === "~") return "~";
-    const m = GAIN_TOKEN2.exec(t);
-    const nv = factor === null ? value : parseFloat(m[1]) * factor;
-    return formatNumber(Math.max(0, nv)) + (m[2] ?? "");
-  });
-  return mg.quote + out.join(" ") + mg.quote;
-}
-__name(scaleManagedGain, "scaleManagedGain");
-function readGainState(chunk) {
-  const call = chunk.chain.find((c) => c.name === "gain" && c.args.length >= 1);
-  const arg = call?.args[0];
-  if (!call || !arg) return { kind: "absent" };
-  if (arg.numeric !== null) return { kind: "scalar", value: arg.numeric, range: arg.range };
-  const mg = parseManagedGain(arg.raw);
-  if (mg) return { kind: "managed", ceiling: mg.ceiling, mg, range: arg.range };
-  return { kind: "foreign" };
-}
-__name(readGainState, "readGainState");
-
-// src/visualEdit/mixer/stripModel.ts
-function namedLabel(label) {
-  return label && label !== "$" ? label : null;
-}
-__name(namedLabel, "namedLabel");
-function isMuted(label) {
-  return label != null && label.startsWith("_");
-}
-__name(isMuted, "isMuted");
-function bareLabel(label) {
-  if (label == null) return null;
-  return namedLabel(isMuted(label) ? label.slice(1) : label);
-}
-__name(bareLabel, "bareLabel");
-var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
-  "setcps",
-  "setCps",
-  "setcpm",
-  "setCpm",
-  "setbpm",
-  "setBpm",
-  "samples",
-  "hush",
-  "all"
-]);
-function isTrackChunk(chunk) {
-  if (chunk.label !== null) return true;
-  return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn);
-}
-__name(isTrackChunk, "isTrackChunk");
-var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
-function stripKind(chunk) {
-  const k = patternKind(chunk);
-  if (k) return k;
-  if (chunk.headFn && GROUP_HEADS.has(chunk.headFn)) return "group";
-  return "unknown";
-}
-__name(stripKind, "stripKind");
-function readSource(chunk, kind) {
-  if (kind === "step") return readChainMethod(chunk, ["bank"])?.value ?? null;
-  if (kind === "roll") return readChainMethod(chunk, ["sound", "s"])?.value ?? null;
-  return readChainMethod(chunk, ["sound", "s", "bank"])?.value ?? null;
-}
-__name(readSource, "readSource");
-function readScalar(chunk, name) {
-  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
-  const arg = call?.args[0];
-  return arg && arg.numeric !== null ? arg.numeric : null;
-}
-__name(readScalar, "readScalar");
-function isForeign(chunk, name) {
-  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
-  return call !== void 0 && call.args[0].numeric === null;
-}
-__name(isForeign, "isForeign");
-function displayKey(label, ordinal) {
-  return bareLabel(label) ?? `d${ordinal}`;
-}
-__name(displayKey, "displayKey");
-function buildStripModel(chunk, index, ordinal, id, captureId) {
-  const kind = stripKind(chunk);
-  const source = readSource(chunk, kind);
-  const identity = trackIdentity(displayKey(chunk.label, ordinal));
-  return {
-    id,
-    index,
-    kind,
-    label: bareLabel(chunk.label),
-    name: identity.name,
-    headFn: chunk.headFn,
-    miniString: chunk.miniString,
-    source,
-    gain: readGainState(chunk),
-    pan: readScalar(chunk, "pan"),
-    panForeign: isForeign(chunk, "pan"),
-    sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
-    muted: isMuted(chunk.label),
-    muteable: chunk.label != null,
-    color: identity.color,
-    chain: chunk.chain,
-    exprRange: chunk.exprRange,
-    statementRange: chunk.statementRange,
-    captureId
-  };
-}
-__name(buildStripModel, "buildStripModel");
-function buildStripModels(chunks) {
-  let anonAll = 0;
-  let anonLive = 0;
-  let ordinal = 0;
-  const models = [];
-  chunks.forEach((chunk, index) => {
-    if (!isTrackChunk(chunk)) return;
-    ordinal++;
-    const bare = bareLabel(chunk.label);
-    const id = bare ?? `#${anonAll++}`;
-    let captureId;
-    if (bare !== null) captureId = bare;
-    else if (isMuted(chunk.label)) captureId = `_$${index}`;
-    else captureId = `$${anonLive++}`;
-    models.push(buildStripModel(chunk, index, ordinal, id, captureId));
-  });
-  return models;
-}
-__name(buildStripModels, "buildStripModels");
-function statementOffsetForSource(doc, source) {
-  const strip = buildStripModels(detectAllChunks(doc)).find((s) => s.source === source);
-  return strip ? strip.statementRange[0] : null;
-}
-__name(statementOffsetForSource, "statementOffsetForSource");
-function otherTrackNames(doc, selfStatementStart) {
-  return buildStripModels(detectAllChunks(doc)).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
-}
-__name(otherTrackNames, "otherTrackNames");
-
-// src/visualEdit/mixer/useMixerModel.ts
-var EMPTY_DERIVED = { strips: [], chunks: [] };
-function useMixerModel() {
-  const [editor, setEditor] = React33.useState(() => getActiveEditor());
-  const [derived, setDerived] = React33.useState(EMPTY_DERIVED);
-  const editorRef = React33.useRef(null);
-  const writebackRef = React33.useRef(null);
-  React33.useEffect(() => {
-    setEditor(getActiveEditor());
-    return onActiveEditorChange(() => setEditor(getActiveEditor()));
-  }, []);
-  React33.useEffect(() => {
-    editorRef.current = editor;
-    const monaco = getMonacoNamespace();
-    writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
-  }, [editor]);
-  React33.useEffect(() => {
-    if (!editor) {
-      setDerived(EMPTY_DERIVED);
-      return;
-    }
-    const rederive = /* @__PURE__ */ __name(() => {
-      const model2 = editor.getModel?.();
-      if (!model2) {
-        setDerived(EMPTY_DERIVED);
-        return;
-      }
-      const allChunks = detectAllChunks(model2.getValue());
-      const strips = buildStripModels(allChunks);
-      setDerived({ strips, chunks: strips.map((s) => allChunks[s.index]) });
-    }, "rederive");
-    rederive();
-    const model = editor.getModel?.();
-    const sub = model?.onDidChangeContent?.(rederive);
-    return () => sub?.dispose?.();
-  }, [editor]);
-  const applyToStrip = React33.useCallback(
-    (id, mutate) => {
-      const ed = editorRef.current;
-      const wb = writebackRef.current;
-      if (!ed || !wb) return;
-      const model = ed.getModel?.();
-      if (!model) return;
-      const chunks = detectAllChunks(model.getValue());
-      const strip = buildStripModels(chunks).find((s) => s.id === id);
-      if (!strip) return;
-      mutate(chunks[strip.index], wb);
-    },
-    []
-  );
-  const beginGesture = React33.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React33.useCallback(() => writebackRef.current?.endGesture(), []);
-  return { strips: derived.strips, chunks: derived.chunks, applyToStrip, beginGesture, endGesture };
-}
-__name(useMixerModel, "useMixerModel");
 
 // src/visualEdit/mixer/faderTaper.ts
 var MAX_FADER_GAIN = 10 ** (6 / 20);
@@ -28499,24 +28921,24 @@ __name(levelColor, "levelColor");
 var MIN_FRAME_MS = 1e3 / 60;
 var QUERY_WINDOW_CYCLES = 0.01;
 function useTrackMeters() {
-  const elsRef = React33.useRef(/* @__PURE__ */ new Map());
-  const stateRef = React33.useRef(/* @__PURE__ */ new Map());
-  const schedulersRef = React33.useRef(null);
-  const rafRef = React33.useRef(null);
-  const lastTsRef = React33.useRef(0);
-  const [fileId, setFileId] = React33.useState(() => getActiveFileId());
-  React33.useEffect(() => {
+  const elsRef = React34.useRef(/* @__PURE__ */ new Map());
+  const stateRef = React34.useRef(/* @__PURE__ */ new Map());
+  const schedulersRef = React34.useRef(null);
+  const rafRef = React34.useRef(null);
+  const lastTsRef = React34.useRef(0);
+  const [fileId, setFileId] = React34.useState(() => getActiveFileId());
+  React34.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React33.useCallback((captureId, els) => {
+  const register = React34.useCallback((captureId, els) => {
     if (els) elsRef.current.set(captureId, els);
     else {
       elsRef.current.delete(captureId);
       stateRef.current.delete(captureId);
     }
   }, []);
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       schedulersRef.current = schedulersOf(payload);
     }) : (() => {
@@ -28597,164 +29019,18 @@ function useTrackMeters() {
       stateRef.current.clear();
     };
   }, [fileId]);
-  return React33.useMemo(() => ({ register }), [register]);
+  return React34.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
-function StripColorPopover({
-  anchorRect,
-  currentColor,
-  onPick,
-  onReset,
-  onClose
-}) {
-  const ref = React33.useRef(null);
-  React33.useEffect(() => {
-    const onDown = /* @__PURE__ */ __name((e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
-    }, "onDown");
-    const onKey = /* @__PURE__ */ __name((e) => {
-      if (e.key === "Escape") onClose();
-    }, "onKey");
-    const t = setTimeout(() => document.addEventListener("mousedown", onDown), 0);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-  const POPOVER_WIDTH = 8 * 16 + 7 * 4 + 12;
-  const left = typeof window !== "undefined" ? Math.max(8, Math.min(window.innerWidth - 8 - POPOVER_WIDTH, anchorRect.left)) : anchorRect.left;
-  const top = anchorRect.bottom + 4;
-  const customColor = currentColor && !TRACK_PALETTE_32.includes(currentColor) ? currentColor : "#888888";
-  if (typeof document === "undefined") return null;
-  return createPortal(
-    /* @__PURE__ */ jsxs(
-      "div",
-      {
-        ref,
-        "data-mixer-strip-color-popover": true,
-        role: "dialog",
-        "aria-label": "Pick track color",
-        style: {
-          position: "fixed",
-          top,
-          left,
-          zIndex: 1e3,
-          background: "var(--background-elevated, #1a1a1a)",
-          border: "1px solid var(--border, #333)",
-          padding: 6,
-          borderRadius: 4,
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)"
-        },
-        children: [
-          /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(8, 16px)", gridGap: 4 }, children: TRACK_PALETTE_32.map((color) => {
-            const isCurrent = color === currentColor;
-            return /* @__PURE__ */ jsx(
-              "button",
-              {
-                type: "button",
-                "data-mixer-strip-swatch": true,
-                "data-color": color,
-                "aria-label": `Color ${color}`,
-                "aria-current": isCurrent ? "true" : void 0,
-                onClick: () => {
-                  onPick(color);
-                  onClose();
-                },
-                style: {
-                  width: 16,
-                  height: 16,
-                  padding: 0,
-                  border: isCurrent ? "2px solid white" : "1px solid rgba(255,255,255,0.18)",
-                  background: color,
-                  cursor: "pointer",
-                  borderRadius: 3,
-                  boxSizing: "border-box"
-                }
-              },
-              color
-            );
-          }) }),
-          /* @__PURE__ */ jsxs(
-            "div",
-            {
-              style: {
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                paddingTop: 4,
-                borderTop: "1px solid var(--border, rgba(255,255,255,0.12))",
-                fontSize: 11,
-                color: "var(--foreground-muted, rgba(255,255,255,0.55))"
-              },
-              children: [
-                /* @__PURE__ */ jsx("label", { htmlFor: "mixer-strip-custom-color", style: { flex: 1, cursor: "pointer" }, children: "Custom" }),
-                onReset && /* @__PURE__ */ jsx(
-                  "button",
-                  {
-                    type: "button",
-                    "data-mixer-strip-color-reset": true,
-                    "aria-label": "Reset to default colour",
-                    title: "Reset to the default palette colour",
-                    onClick: () => {
-                      onReset();
-                      onClose();
-                    },
-                    style: {
-                      padding: "1px 6px",
-                      fontSize: 10,
-                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
-                      borderRadius: 3,
-                      background: "transparent",
-                      color: "inherit",
-                      cursor: "pointer"
-                    },
-                    children: "Default"
-                  }
-                ),
-                /* @__PURE__ */ jsx(
-                  "input",
-                  {
-                    id: "mixer-strip-custom-color",
-                    type: "color",
-                    "data-mixer-strip-custom-color": true,
-                    "aria-label": "Custom track color",
-                    defaultValue: customColor,
-                    onChange: (e) => onPick(e.currentTarget.value),
-                    style: {
-                      width: 28,
-                      height: 18,
-                      padding: 0,
-                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
-                      borderRadius: 3,
-                      background: "transparent",
-                      cursor: "pointer"
-                    }
-                  }
-                )
-              ]
-            }
-          )
-        ]
-      }
-    ),
-    document.body
-  );
-}
-__name(StripColorPopover, "StripColorPopover");
 var DRAG_SPAN_PX2 = 160;
 var FADER_HEIGHT = 80;
 function StripMeter({
   captureId,
   controller
 }) {
-  const fillRef = React33.useRef(null);
-  const peakRef = React33.useRef(null);
-  React33.useEffect(() => {
+  const fillRef = React34.useRef(null);
+  const peakRef = React34.useRef(null);
+  React34.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -28853,10 +29129,10 @@ function ChannelStrip({
   onToggleExpand,
   zoom = 1
 }) {
-  const [colorAnchor, setColorAnchor] = React33.useState(null);
+  const [colorAnchor, setColorAnchor] = React34.useState(null);
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
-  const [renaming, setRenaming] = React33.useState(false);
+  const [renaming, setRenaming] = React34.useState(false);
   const bareLabel2 = strip.label?.replace(/^_/, "") ?? "";
   const renameSeed = bareLabel2 !== "" && bareLabel2 !== "$" ? bareLabel2 : "";
   const renameEnabled = onRename !== void 0;
@@ -28870,8 +29146,8 @@ function ChannelStrip({
   const faderEnabled = gain !== null && onGainChange !== void 0;
   const panEnabled = !strip.panForeign && onPanChange !== void 0;
   const panValue = strip.pan ?? 0.5;
-  const faderDrag = React33.useRef(null);
-  const panDrag = React33.useRef(null);
+  const faderDrag = React34.useRef(null);
+  const panDrag = React34.useRef(null);
   const onFaderDown = /* @__PURE__ */ __name((e) => {
     if (!faderEnabled) return;
     e.preventDefault();
@@ -29222,106 +29498,6 @@ function formatNum(v) {
   return (Math.round(v * 100) / 100).toString();
 }
 __name(formatNum, "formatNum");
-
-// src/visualEdit/mixer/writeStrip.ts
-function gainEdit(fresh, value) {
-  const g = readGainState(fresh);
-  switch (g.kind) {
-    case "scalar":
-      return { range: g.range, text: formatNumber(value) };
-    case "managed":
-      return { range: g.range, text: scaleManagedGain(g.mg, value) };
-    case "absent":
-      return { range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${formatNumber(value)})` };
-    case "foreign":
-      return null;
-  }
-}
-__name(gainEdit, "gainEdit");
-function panEdit(fresh, value) {
-  const call = fresh.chain.find((c) => c.name === "pan" && c.args.length >= 1);
-  if (!call) {
-    return { range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.pan(${formatNumber(value)})` };
-  }
-  const arg = call.args[0];
-  if (arg.numeric === null) return null;
-  return { range: arg.range, text: formatNumber(value) };
-}
-__name(panEdit, "panEdit");
-function muteEdit(fresh, muted3) {
-  if (fresh.label === null) return null;
-  const isMuted2 = fresh.label.startsWith("_");
-  if (muted3 === isMuted2) return null;
-  const pos = fresh.statementRange[0];
-  return muted3 ? { range: [pos, pos], text: "_" } : { range: [pos, pos + 1], text: "" };
-}
-__name(muteEdit, "muteEdit");
-var RESERVED_LABELS = /* @__PURE__ */ new Set([
-  "break",
-  "case",
-  "catch",
-  "class",
-  "const",
-  "continue",
-  "debugger",
-  "default",
-  "delete",
-  "do",
-  "else",
-  "enum",
-  "export",
-  "extends",
-  "false",
-  "finally",
-  "for",
-  "function",
-  "if",
-  "import",
-  "in",
-  "instanceof",
-  "new",
-  "null",
-  "return",
-  "super",
-  "switch",
-  "this",
-  "throw",
-  "true",
-  "try",
-  "typeof",
-  "var",
-  "void",
-  "while",
-  "with",
-  "yield",
-  "await",
-  "let",
-  // strict-mode reserved — Strudel transpiles as a module, so these are syntax
-  // errors AS labels too; reject them rather than write a name that breaks eval.
-  "implements",
-  "interface",
-  "package",
-  "private",
-  "protected",
-  "public",
-  "static"
-]);
-function isValidTrackLabel(name) {
-  return /^[A-Za-z_$][\w$]*$/.test(name) && !RESERVED_LABELS.has(name);
-}
-__name(isValidTrackLabel, "isValidTrackLabel");
-function renameEdit(fresh, newLabel, takenNames) {
-  if (fresh.label === null) return null;
-  if (!isValidTrackLabel(newLabel)) return null;
-  const muted3 = fresh.label.startsWith("_");
-  const bareLabel2 = muted3 ? fresh.label.slice(1) : fresh.label;
-  if (newLabel === bareLabel2) return null;
-  if (takenNames.has(newLabel)) return null;
-  const start = fresh.statementRange[0] + (muted3 ? 1 : 0);
-  const end = fresh.statementRange[0] + fresh.label.length;
-  return { range: [start, end], text: newLabel };
-}
-__name(renameEdit, "renameEdit");
 function LocalMixerStrip() {
   const { chunk } = useActiveChunk();
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel();
@@ -29381,16 +29557,16 @@ var MIXER_WIDTH = 300;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = patternKind(chunk);
-  const [selected, setSelected] = React33.useState(null);
+  const [selected, setSelected] = React34.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React33.useRef(stmtId);
-  React33.useEffect(() => {
+  const stmtRef = React34.useRef(stmtId);
+  React34.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setSelected(null);
     }
   }, [stmtId]);
-  const [division2, setDivision] = React33.useState(DEFAULT_DIVISION);
+  const [division2, setDivision] = React34.useState(DEFAULT_DIVISION);
   const grid = kind === "step" ? /* @__PURE__ */ jsx(SequencerGrid, {}) : kind === "roll" ? /* @__PURE__ */ jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2 }) : /* @__PURE__ */ jsx(
     VisualEditStandby,
     {
@@ -29499,8 +29675,8 @@ function subscribe4(listener) {
 }
 __name(subscribe4, "subscribe");
 function useActiveFileId() {
-  const [id, setId] = React33.useState(() => getActiveFileId());
-  React33.useEffect(() => {
+  const [id, setId] = React34.useState(() => getActiveFileId());
+  React34.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -29509,12 +29685,12 @@ function useActiveFileId() {
 __name(useActiveFileId, "useActiveFileId");
 function useExpandedStrips() {
   const fileId = useActiveFileId();
-  const expanded = React33.useSyncExternalStore(
+  const expanded = React34.useSyncExternalStore(
     subscribe4,
     () => read2(fileId),
     () => EMPTY
   );
-  const toggle = React33.useCallback(
+  const toggle = React34.useCallback(
     (id) => {
       if (fileId) toggleExpanded(fileId, id);
     },
@@ -29597,8 +29773,8 @@ function releaseTransform() {
 }
 __name(releaseTransform, "releaseTransform");
 function useActiveFileId2() {
-  const [id, setId] = React33.useState(() => getActiveFileId());
-  React33.useEffect(() => {
+  const [id, setId] = React34.useState(() => getActiveFileId());
+  React34.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -29607,16 +29783,16 @@ function useActiveFileId2() {
 __name(useActiveFileId2, "useActiveFileId");
 function useSoloStrips() {
   const fileId = useActiveFileId2();
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     acquireTransform();
     return releaseTransform;
   }, []);
-  const soloed = React33.useSyncExternalStore(
+  const soloed = React34.useSyncExternalStore(
     subscribe5,
     () => read3(fileId),
     () => EMPTY2
   );
-  const toggle = React33.useCallback(
+  const toggle = React34.useCallback(
     (id) => {
       if (fileId) toggleSolo(fileId, id);
     },
@@ -29632,7 +29808,7 @@ function ExpandDrawer({
   beginGesture,
   endGesture
 }) {
-  const applyEdit = React33.useCallback(
+  const applyEdit = React34.useCallback(
     (mutate) => applyToStrip(strip.id, mutate),
     [applyToStrip, strip.id]
   );
@@ -29688,22 +29864,22 @@ function levelColor2(frac) {
 }
 __name(levelColor2, "levelColor");
 function useMasterMeter() {
-  const elsRef = React33.useRef(null);
-  const stateRef = React33.useRef(ZERO_METER);
-  const analyserRef = React33.useRef(null);
-  const bufRef = React33.useRef(null);
-  const rafRef = React33.useRef(null);
-  const lastTsRef = React33.useRef(0);
-  const [fileId, setFileId] = React33.useState(() => getActiveFileId());
-  React33.useEffect(() => {
+  const elsRef = React34.useRef(null);
+  const stateRef = React34.useRef(ZERO_METER);
+  const analyserRef = React34.useRef(null);
+  const bufRef = React34.useRef(null);
+  const rafRef = React34.useRef(null);
+  const lastTsRef = React34.useRef(0);
+  const [fileId, setFileId] = React34.useState(() => getActiveFileId());
+  React34.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React33.useCallback((els) => {
+  const register = React34.useCallback((els) => {
     elsRef.current = els;
     if (!els) stateRef.current = ZERO_METER;
   }, []);
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       analyserRef.current = analyserOf(payload);
     }) : (() => {
@@ -29777,7 +29953,7 @@ function useMasterMeter() {
       stateRef.current = ZERO_METER;
     };
   }, [fileId]);
-  return React33.useMemo(() => ({ register }), [register]);
+  return React34.useMemo(() => ({ register }), [register]);
 }
 __name(useMasterMeter, "useMasterMeter");
 var KEY_PREFIX2 = "stave:mixer.master:";
@@ -29850,8 +30026,8 @@ function subscribe6(listener) {
 }
 __name(subscribe6, "subscribe");
 function useActiveFileId3() {
-  const [id, setId] = React33.useState(() => getActiveFileId());
-  React33.useEffect(() => {
+  const [id, setId] = React34.useState(() => getActiveFileId());
+  React34.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -29860,12 +30036,12 @@ function useActiveFileId3() {
 __name(useActiveFileId3, "useActiveFileId");
 function useMasterGain() {
   const fileId = useActiveFileId3();
-  const gain = React33.useSyncExternalStore(
+  const gain = React34.useSyncExternalStore(
     subscribe6,
     () => getMasterGain(fileId),
     () => DEFAULT_MASTER_GAIN
   );
-  const setGain = React33.useCallback(
+  const setGain = React34.useCallback(
     (value) => {
       if (fileId) setMasterGain(fileId, value);
     },
@@ -29880,9 +30056,9 @@ var clamp016 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01
 function MasterStrip({ zoom = 1 } = {}) {
   const meter = useMasterMeter();
   const { gain, setGain } = useMasterGain();
-  const fillRef = React33.useRef(null);
-  const peakRef = React33.useRef(null);
-  React33.useEffect(() => {
+  const fillRef = React34.useRef(null);
+  const peakRef = React34.useRef(null);
+  React34.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -29890,7 +30066,7 @@ function MasterStrip({ zoom = 1 } = {}) {
     return () => meter.register(null);
   }, [meter]);
   const pos = gainToFaderPos(gain);
-  const drag = React33.useRef(null);
+  const drag = React34.useRef(null);
   const onDown = /* @__PURE__ */ __name((e) => {
     e.preventDefault();
     e.target.setPointerCapture?.(e.pointerId);
@@ -30071,56 +30247,14 @@ function MasterStrip({ zoom = 1 } = {}) {
   );
 }
 __name(MasterStrip, "MasterStrip");
-var EMPTY_META = Object.freeze({});
-var EMPTY_META_MAP = /* @__PURE__ */ new Map();
-function useTrackMeta(fileId, trackId) {
-  const subscribe7 = useCallback(
-    (onStoreChange) => {
-      if (!fileId) return () => {
-      };
-      return subscribeToTrackMeta(fileId, onStoreChange);
-    },
-    [fileId]
-  );
-  const getSnapshot = useCallback(() => {
-    if (!fileId) return EMPTY_META;
-    return getTrackMeta(fileId, trackId);
-  }, [fileId, trackId]);
-  const meta = useSyncExternalStore(subscribe7, getSnapshot, getSnapshot);
-  const set = useCallback(
-    (partial) => {
-      if (!fileId) return;
-      setTrackMeta(fileId, trackId, partial);
-    },
-    [fileId, trackId]
-  );
-  return { meta, set };
-}
-__name(useTrackMeta, "useTrackMeta");
-function useTrackMetaMap(fileId) {
-  const subscribe7 = useCallback(
-    (onStoreChange) => {
-      if (!fileId) return () => {
-      };
-      return subscribeToTrackMeta(fileId, onStoreChange);
-    },
-    [fileId]
-  );
-  const getSnapshot = useCallback(() => {
-    if (!fileId) return EMPTY_META_MAP;
-    return getTrackMetaMapSnapshot(fileId);
-  }, [fileId]);
-  return useSyncExternalStore(subscribe7, getSnapshot, getSnapshot);
-}
-__name(useTrackMetaMap, "useTrackMetaMap");
 var CONSOLE_ZOOM = 1.5;
 function MixerStrips({
   emptyFallback
 } = {}) {
   const { strips, chunks, applyToStrip, beginGesture, endGesture } = useMixerModel();
   const meters = useTrackMeters();
-  const [fileId, setFileId] = React33.useState(() => getActiveFileId());
-  React33.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React34.useState(() => getActiveFileId());
+  React34.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
   const { expanded, toggle } = useExpandedStrips();
   const { soloed, toggle: toggleSolo2 } = useSoloStrips();
@@ -30272,7 +30406,7 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React33.createElement(Panel)
+      content: React34.createElement(Panel)
     });
   }
 }
@@ -30286,24 +30420,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React33.useState(opts.initial);
-  const [dragging, setDragging] = React33.useState(false);
-  const startYRef = React33.useRef(0);
-  const startValueRef = React33.useRef(opts.initial);
-  const pointerIdRef = React33.useRef(null);
-  const draggingRef = React33.useRef(false);
-  const minRef = React33.useRef(opts.min);
-  const maxRef = React33.useRef(opts.max);
-  React33.useEffect(() => {
+  const [value, setValueState] = React34.useState(opts.initial);
+  const [dragging, setDragging] = React34.useState(false);
+  const startYRef = React34.useRef(0);
+  const startValueRef = React34.useRef(opts.initial);
+  const pointerIdRef = React34.useRef(null);
+  const draggingRef = React34.useRef(false);
+  const minRef = React34.useRef(opts.min);
+  const maxRef = React34.useRef(opts.max);
+  React34.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React33.useCallback((v) => {
+  const setValue = React34.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React33.useCallback(
+  const onPointerDown = React34.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -30318,7 +30452,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React33.useCallback(
+  const endDrag = React34.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -30333,7 +30467,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React33.useCallback(
+  const onPointerMove = React34.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -30349,13 +30483,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React33.useCallback(
+  const onPointerUp = React34.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React33.useCallback(
+  const onPointerCancel = React34.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -30383,15 +30517,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React33.useState(
+  const [tabs2, setTabs] = React34.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React33.useState(readPersistedOpen);
-  const [height, setHeight] = React33.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React33.useState(
+  const [open, setOpen] = React34.useState(readPersistedOpen);
+  const [height, setHeight] = React34.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React34.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -30401,10 +30535,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -30416,24 +30550,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React33.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React33.useCallback(
+  const tabButtonRefs = React34.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React34.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React33.useCallback((id) => {
+  const focusTab = React34.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React33.useCallback(
+  const onTabsKeyDown = React34.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -32544,7 +32678,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsx(React33__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsx(React34__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsx(
                 SplitPane,
@@ -32552,7 +32686,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsx(React33__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsx(React34__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -35005,10 +35139,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React33.useReducer((x) => x + 1, 0);
-  React33.useEffect(() => subscribeToHistory(force), []);
-  React33.useEffect(() => subscribeToRuntimeView(force), []);
-  React33.useEffect(() => {
+  const [, force] = React34.useReducer((x) => x + 1, 0);
+  React34.useEffect(() => subscribeToHistory(force), []);
+  React34.useEffect(() => subscribeToRuntimeView(force), []);
+  React34.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -35025,17 +35159,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React33.useState(null);
-  const [forkName, setForkName] = React33.useState("");
-  const [committing, setCommitting] = React33.useState(false);
-  const [commitLabel, setCommitLabel] = React33.useState("");
-  const [expanded, setExpanded] = React33.useState(null);
-  const [hovered, setHovered] = React33.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React33.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React33.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React33.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React34.useState(null);
+  const [forkName, setForkName] = React34.useState("");
+  const [committing, setCommitting] = React34.useState(false);
+  const [commitLabel, setCommitLabel] = React34.useState("");
+  const [expanded, setExpanded] = React34.useState(null);
+  const [hovered, setHovered] = React34.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React34.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React34.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React34.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React33.useEffect(() => {
+  React34.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
