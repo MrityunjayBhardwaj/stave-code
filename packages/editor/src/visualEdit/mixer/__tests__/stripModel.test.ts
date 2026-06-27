@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
 import { detectAllChunks } from '../../chunkDetect'
-import { buildStripModels, statementOffsetForSource } from '../stripModel'
+import { buildStripModels, statementOffsetForSource, otherTrackNames } from '../stripModel'
 import { colorForTrack } from '../../trackColor'
 
 /** strips for a whole document, the read path the Mixer actually uses */
@@ -241,5 +241,30 @@ describe('statementOffsetForSource', () => {
     const offset = statementOffsetForSource(doc, 'gm_agogo')!
     const line = doc.slice(0, offset).split('\n').length
     expect(line).toBe(3)
+  })
+})
+
+describe('otherTrackNames — the rename collision set (#585)', () => {
+  it('returns every track display name except the one at the given offset', () => {
+    const doc = ['bass: s("bd")', '$: s("hh")', 'lead: note("c4")'].join('\n')
+    // exclude the first statement (offset 0) → the OTHER names
+    expect(otherTrackNames(doc, 0)).toEqual(['d2', 'lead'])
+  })
+
+  it('uses display names — anon tracks contribute their positional d{N}', () => {
+    const doc = ['$: s("bd")', '$: s("hh")'].join('\n')
+    // exclude the 2nd anon (d2) → the remaining display name is d1
+    expect(otherTrackNames(doc, doc.indexOf('$: s("hh")'))).toEqual(['d1'])
+  })
+
+  it('drops config lines (not tracks) from the set, like the Mixer does', () => {
+    const doc = ['setcps(0.5)', 'bass: s("bd")', 'lead: s("hh")'].join('\n')
+    // excluding bass → only lead remains (setcps is not a track, #559)
+    expect(otherTrackNames(doc, doc.indexOf('bass:'))).toEqual(['lead'])
+  })
+
+  it('an unmatched offset excludes nothing → all names', () => {
+    const doc = ['bass: s("bd")', 'lead: s("hh")'].join('\n')
+    expect(otherTrackNames(doc, 9999)).toEqual(['bass', 'lead'])
   })
 })

@@ -55,8 +55,10 @@ export function PatternTrackChip(): React.ReactElement | null {
     const v = raw.trim()
     if (!v) return
     applyToStrip(strip.id, (fresh, wb) => {
-      const e = renameEdit(fresh, v)
-      if (!e) return // renameEdit validates + no-ops; invalid → silent revert
+      // Reject a rename that would duplicate another track's display name (#585).
+      const taken = new Set(strips.filter((s) => s.id !== strip.id).map((s) => s.name))
+      const e = renameEdit(fresh, v, taken)
+      if (!e) return // renameEdit validates + no-ops + dup-rejects; → silent revert
       wb.replaceRange(e.range, e.text, 'rename')
       // Migrate a custom-colour override from the OLD display name to the new
       // label so the rename doesn't orphan it (#581).

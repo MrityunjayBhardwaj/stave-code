@@ -83,46 +83,85 @@ describe('muteEdit', () => {
 })
 
 describe('renameEdit (#580 Phase C)', () => {
+  // No sibling tracks → no name can collide. The #585 collision cases below pass
+  // a populated set.
+  const NO_SIBLINGS = new Set<string>()
+
   it('renames a named track in place', () => {
-    expect(applied('bass: s("bd")', renameEdit(chunkAt('bass: s("bd")'), 'lead'))).toBe('lead: s("bd")')
+    expect(applied('bass: s("bd")', renameEdit(chunkAt('bass: s("bd")'), 'lead', NO_SIBLINGS))).toBe('lead: s("bd")')
   })
 
   it('names an anonymous $: track — inserts a label by replacing the `$`', () => {
-    expect(applied('$: s("bd*4")', renameEdit(chunkAt('$: s("bd*4")'), 'drums'))).toBe('drums: s("bd*4")')
+    expect(applied('$: s("bd*4")', renameEdit(chunkAt('$: s("bd*4")'), 'drums', NO_SIBLINGS))).toBe('drums: s("bd*4")')
   })
 
   it('preserves the `_` mute marker — a muted track stays muted across rename', () => {
-    expect(applied('_$: s("bd")', renameEdit(chunkAt('_$: s("bd")'), 'drums'))).toBe('_drums: s("bd")')
-    expect(applied('_bass: s("bd")', renameEdit(chunkAt('_bass: s("bd")'), 'lead'))).toBe('_lead: s("bd")')
+    expect(applied('_$: s("bd")', renameEdit(chunkAt('_$: s("bd")'), 'drums', NO_SIBLINGS))).toBe('_drums: s("bd")')
+    expect(applied('_bass: s("bd")', renameEdit(chunkAt('_bass: s("bd")'), 'lead', NO_SIBLINGS))).toBe('_lead: s("bd")')
   })
 
   it('leaves the pattern expression byte-identical (only the label changes)', () => {
     const src = 'bass: note("c2 e2").s("sawtooth").gain(0.5).pan(0.3)'
-    expect(applied(src, renameEdit(chunkAt(src), 'sub'))).toBe(
+    expect(applied(src, renameEdit(chunkAt(src), 'sub', NO_SIBLINGS))).toBe(
       'sub: note("c2 e2").s("sawtooth").gain(0.5).pan(0.3)',
     )
   })
 
   it('keeps sibling statements untouched when renaming one', () => {
     const src = '$: s("bd*4")\nlead: note("c4")\n$: s("hh*8")'
-    const out = applyEdits(src, [renameEdit(chunkAt(src, 0), 'drums') as StripEdit])
+    const out = applyEdits(src, [renameEdit(chunkAt(src, 0), 'drums', NO_SIBLINGS) as StripEdit])
     expect(out).toBe('drums: s("bd*4")\nlead: note("c4")\n$: s("hh*8")')
   })
 
   it('no-ops when the new name equals the current (bare) label', () => {
-    expect(renameEdit(chunkAt('bass: s("bd")'), 'bass')).toBeNull()
-    expect(renameEdit(chunkAt('_bass: s("bd")'), 'bass')).toBeNull() // marker-stripped compare
+    expect(renameEdit(chunkAt('bass: s("bd")'), 'bass', NO_SIBLINGS)).toBeNull()
+    expect(renameEdit(chunkAt('_bass: s("bd")'), 'bass', NO_SIBLINGS)).toBeNull() // marker-stripped compare
   })
 
   it('rejects an invalid label (no write — the UI reverts)', () => {
-    expect(renameEdit(chunkAt('$: s("bd")'), '2drums')).toBeNull() // not an identifier
-    expect(renameEdit(chunkAt('$: s("bd")'), 'my track')).toBeNull() // space
-    expect(renameEdit(chunkAt('$: s("bd")'), 'return')).toBeNull() // reserved word
-    expect(renameEdit(chunkAt('$: s("bd")'), '')).toBeNull() // empty
+    expect(renameEdit(chunkAt('$: s("bd")'), '2drums', NO_SIBLINGS)).toBeNull() // not an identifier
+    expect(renameEdit(chunkAt('$: s("bd")'), 'my track', NO_SIBLINGS)).toBeNull() // space
+    expect(renameEdit(chunkAt('$: s("bd")'), 'return', NO_SIBLINGS)).toBeNull() // reserved word
+    expect(renameEdit(chunkAt('$: s("bd")'), '', NO_SIBLINGS)).toBeNull() // empty
   })
 
   it('hands off an unlabelled bare expression (no label slot)', () => {
-    expect(renameEdit(chunkAt('s("bd")'), 'drums')).toBeNull()
+    expect(renameEdit(chunkAt('s("bd")'), 'drums', NO_SIBLINGS)).toBeNull()
+  })
+})
+
+describe('renameEdit — duplicate-name collision guard (#585)', () => {
+  it('rejects a rename to a name another track already uses', () => {
+    // bass → lead, but a `lead:` track already exists → reject (no duplicate).
+    const taken = new Set(['lead', 'd3'])
+    expect(renameEdit(chunkAt('bass: s("bd")'), 'lead', taken)).toBeNull()
+  })
+
+  it('rejects naming an anon track a name a sibling already uses', () => {
+    expect(renameEdit(chunkAt('$: s("bd")'), 'drums', new Set(['drums']))).toBeNull()
+  })
+
+  it('rejects a rename onto a sibling anon track’s positional d{N} name', () => {
+    // Renaming a named track to `d2` would collide with an anon track displayed
+    // as `d2` (both then key the same colour-override). The caller passes the
+    // anon display names in `takenNames`.
+    expect(renameEdit(chunkAt('bass: s("bd")'), 'd2', new Set(['d2']))).toBeNull()
+  })
+
+  it('allows a rename to a free name even when other names are taken', () => {
+    const taken = new Set(['lead', 'd3'])
+    expect(applied('bass: s("bd")', renameEdit(chunkAt('bass: s("bd")'), 'sub', taken))).toBe(
+      'sub: s("bd")',
+    )
+  })
+
+  it('does not treat the track’s own current name as a collision', () => {
+    // The caller excludes the renamed track; even if its own name leaks into the
+    // set, the no-op check fires first for a named track, and an anon rename to a
+    // free name still succeeds.
+    expect(applied('$: s("bd*4")', renameEdit(chunkAt('$: s("bd*4")'), 'drums', new Set(['lead'])))).toBe(
+      'drums: s("bd*4")',
+    )
   })
 })
 

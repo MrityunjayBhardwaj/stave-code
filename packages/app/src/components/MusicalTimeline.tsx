@@ -44,6 +44,7 @@ import {
   applyOffsetEditsToFile,
   detectAllChunks,
   renameEdit,
+  otherTrackNames,
   getTrackMeta,
   setTrackMeta,
   useTrackMetaMap,
@@ -407,8 +408,11 @@ export function MusicalTimeline(
         (c) => c.statementRange[0] === labelOffset,
       )
       if (!chunk) return
-      const edit = renameEdit(chunk, newLabel)
-      if (!edit) return // invalid name / no-op → no write
+      // Reject a rename that would duplicate another track's display name (#585) —
+      // `otherTrackNames` is every track EXCEPT the one being renamed.
+      const taken = new Set(otherTrackNames(snapshot.code, labelOffset))
+      const edit = renameEdit(chunk, newLabel, taken)
+      if (!edit) return // invalid name / no-op / duplicate → no write
       applyOffsetEditsToFile(snapshot.source, [edit], 'rename', snapshot.code)
       // Migrate a custom-colour override from the OLD display name to the new
       // label (#581) — else the rename orphans the colour (the override is keyed

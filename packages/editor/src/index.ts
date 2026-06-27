@@ -598,6 +598,12 @@ export { statementOffsetForSource } from './visualEdit/mixer/stripModel'
 // validator, so the app's Song Timeline can rename a lane (the Mixer uses them
 // internally). `StripEdit` is the surgical {range,text} the caller applies.
 export { renameEdit, isValidTrackLabel, type StripEdit } from './visualEdit/mixer/writeStrip'
+// The display names of the OTHER tracks in a doc (#585) — the set the Song
+// Timeline's rename handler passes to `renameEdit` as `takenNames` so a rename
+// can't silently create a duplicate track name (which would collide on the
+// meter join + the colour-override key). The Mixer/Pattern chip derive this from
+// their already-loaded `strips`; the Timeline has only the code, so it calls this.
+export { otherTrackNames } from './visualEdit/mixer/stripModel'
 // Per-eval trackMeta cleanup (#583) — the app calls this on each successful
 // evaluate to drop colour overrides for tracks that no longer exist (keys the
 // current track set from the same `buildStripModels` projection the Mixer uses).

@@ -305,3 +305,20 @@ export function statementOffsetForSource(doc: string, source: string): number | 
   const strip = buildStripModels(detectAllChunks(doc)).find((s) => s.source === source)
   return strip ? strip.statementRange[0] : null
 }
+
+/**
+ * The display names of every track in `doc` EXCEPT the statement starting at
+ * `selfStatementStart` — the set a rename checks against to reject a duplicate
+ * (#585). Keys off the SAME `buildStripModels` projection the Mixer renders, so
+ * the names match exactly what `renameEdit`'s `takenNames` must compare against
+ * (and what the colour-override store is keyed by). Used by the Song Timeline
+ * rename handler, which has only the code text (the Mixer/Pattern chip pass their
+ * already-derived `strips` instead). Excludes the renamed track by its statement
+ * offset so renaming an anon `d{N}` to its own positional name isn't a self-
+ * collision.
+ */
+export function otherTrackNames(doc: string, selfStatementStart: number): string[] {
+  return buildStripModels(detectAllChunks(doc))
+    .filter((s) => s.statementRange[0] !== selfStatementStart)
+    .map((s) => s.name)
+}
