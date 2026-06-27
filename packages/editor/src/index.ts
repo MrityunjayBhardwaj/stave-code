@@ -245,8 +245,7 @@ export {
 } from './workspace/WorkspaceFile'
 export type { TrackMeta } from './workspace/WorkspaceFile'
 // Phase 20-12 α-3 — React hook for trackMeta; Phase D (#581) adds the map hook
-export { useTrackMeta, useTrackMetaMap } from './workspace/useTrackMeta'
-export type { UseTrackMetaResult } from './workspace/useTrackMeta'
+export { useTrackMetaMap } from './workspace/useTrackMeta'
 export { initProjectDoc, initProjectDocSync, switchProject, getActiveProjectId, isDocReady, subscribeToDocUpdate } from './workspace/projectDoc'
 export {
   undo,

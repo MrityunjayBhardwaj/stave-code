@@ -110,8 +110,6 @@ export {
 } from './projectRegistry'
 export { useWorkspaceFile } from './useWorkspaceFile'
 export type { UseWorkspaceFileResult } from './useWorkspaceFile'
-export { useTrackMeta } from './useTrackMeta'
-export type { UseTrackMetaResult } from './useTrackMeta'
 // Phase 20-12 α-2/α-3 — track-chrome persistence (D-01/D-02). Re-exported so
 // app-side chrome can read/write per-file track UI state without reaching
 // into the editor internals.
