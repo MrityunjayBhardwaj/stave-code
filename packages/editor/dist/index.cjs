@@ -15281,6 +15281,7 @@ function deleteWorkspaceFile(id) {
   doc.transact(() => {
     filesMap.delete(id);
   }, STRUCT_ORIGIN);
+  clearTrackMetaCachesFor(id);
   notifyFileList();
 }
 __name(deleteWorkspaceFile, "deleteWorkspaceFile");
@@ -15491,6 +15492,12 @@ var wiredTrackMetaObservers = /* @__PURE__ */ new Set();
 var PRUNE_TRACK_META_ORIGIN = /* @__PURE__ */ Symbol("prune-track-meta");
 var trackMetaSnapshotCache = /* @__PURE__ */ new Map();
 var EMPTY_TRACK_META_MAP = /* @__PURE__ */ new Map();
+function clearTrackMetaCachesFor(id) {
+  trackMetaSnapshotCache.delete(id);
+  wiredTrackMetaObservers.delete(id);
+  trackMetaSubscribers.delete(id);
+}
+__name(clearTrackMetaCachesFor, "clearTrackMetaCachesFor");
 function getTrackMetaMap(fileId) {
   const filesMap = getFilesMap();
   const fileMap = filesMap.get(fileId);
@@ -26783,32 +26790,7 @@ function renameEdit(fresh, newLabel, takenNames) {
   return { range: [start, end], text: newLabel };
 }
 __name(renameEdit, "renameEdit");
-var EMPTY_META = Object.freeze({});
 var EMPTY_META_MAP = /* @__PURE__ */ new Map();
-function useTrackMeta(fileId, trackId) {
-  const subscribe7 = React34.useCallback(
-    (onStoreChange) => {
-      if (!fileId) return () => {
-      };
-      return subscribeToTrackMeta(fileId, onStoreChange);
-    },
-    [fileId]
-  );
-  const getSnapshot = React34.useCallback(() => {
-    if (!fileId) return EMPTY_META;
-    return getTrackMeta(fileId, trackId);
-  }, [fileId, trackId]);
-  const meta = React34.useSyncExternalStore(subscribe7, getSnapshot, getSnapshot);
-  const set = React34.useCallback(
-    (partial) => {
-      if (!fileId) return;
-      setTrackMeta(fileId, trackId, partial);
-    },
-    [fileId, trackId]
-  );
-  return { meta, set };
-}
-__name(useTrackMeta, "useTrackMeta");
 function useTrackMetaMap(fileId) {
   const subscribe7 = React34.useCallback(
     (onStoreChange) => {
@@ -37827,7 +37809,6 @@ exports.unregisterNamedViz = unregisterNamedViz;
 exports.updateVizConfig = updateVizConfig;
 exports.useMasterGain = useMasterGain;
 exports.usePopoutPreview = usePopoutPreview;
-exports.useTrackMeta = useTrackMeta;
 exports.useTrackMetaMap = useTrackMetaMap;
 exports.useWorkspaceFile = useWorkspaceFile;
 exports.validatePersistedState = validatePersistedState;
