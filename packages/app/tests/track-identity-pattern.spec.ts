@@ -161,6 +161,23 @@ test('renaming from the chip writes the name: label into the code', async ({ pag
   await expect(chip(page).locator('[data-pattern-track-name]')).toHaveText('kick')
 })
 
+test('renaming from the chip works in the pianoroll too (grid focus-capture must not blur the input)', async ({ page }) => {
+  await bootPattern(page)
+  await setStrudelCode(page, SONG)
+  await placeCursorOn(page, 'lead')
+  await expect(page.locator('[data-bottom-panel-tab="piano-roll"]')).toBeVisible()
+
+  await chip(page).locator('[data-pattern-track-name]').dblclick()
+  const input = chip(page).locator('[data-pattern-track-rename]')
+  await input.waitFor({ timeout: 5000 })
+  await input.fill('melody')
+  await input.press('Enter')
+  await page.waitForTimeout(400)
+
+  expect(await strudelValue(page)).toContain('melody:')
+  await expect(chip(page).locator('[data-pattern-track-name]')).toHaveText('melody')
+})
+
 test('the sequencer no longer renders per-voice colour dots', async ({ page }) => {
   await bootPattern(page)
   await setStrudelCode(page, SONG)
