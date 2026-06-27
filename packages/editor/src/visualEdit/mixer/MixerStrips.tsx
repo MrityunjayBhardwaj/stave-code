@@ -23,6 +23,10 @@ import { ChannelStrip } from './ChannelStrip'
 import { ExpandDrawer } from './ExpandDrawer'
 import { MasterStrip } from './MasterStrip'
 import { gainEdit, panEdit, muteEdit, renameEdit } from './writeStrip'
+import { trackIdentity } from '../trackColor'
+import { getActiveFileId, onActiveEditorChange } from '../../workspace/editorRegistry'
+import { getTrackMeta, setTrackMeta } from '../../workspace/WorkspaceFile'
+import { useTrackMetaMap } from '../../workspace/useTrackMeta'
 
 /**
  * Console strips render their FACE at 1.5× via CSS `zoom` (aspect-exact, and —
@@ -48,6 +52,14 @@ export function MixerStrips({
   const { strips, chunks, applyToStrip, beginGesture, endGesture } = useMixerModel()
   // One capped RAF loop + bus subscription for every strip's live meter (S2).
   const meters = useTrackMeters()
+  // Per-track custom colour (Phase D, #581). Track the active file (same source
+  // as the meters' bus pin) and read its whole-file overrides as one ref-stable
+  // map keyed by the strip's DISPLAY NAME (`strip.name`) — the same key the Song
+  // Timeline uses, so a colour set in either view shows in both. Resolved through
+  // the shared `trackIdentity` so the dot can't diverge from the Timeline lane.
+  const [fileId, setFileId] = React.useState<string | null>(() => getActiveFileId())
+  React.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), [])
+  const trackMeta = useTrackMetaMap(fileId ?? undefined)
   // Per-file ephemeral expand state (S4b): which strips show their knob chain.
   // Persisted in localStorage, never the file (V-mixer-1).
   const { expanded, toggle } = useExpandedStrips()
@@ -79,6 +91,11 @@ export function MixerStrips({
     >
       {strips.map((strip, i) => {
         const isOpen = expanded.has(strip.id)
+        // Resolve the dot colour through the shared `trackIdentity`: the custom
+        // override (keyed by the strip's display name) or the deterministic
+        // palette (#581). Same function the Timeline lane uses → they can't diverge.
+        const customColor = trackMeta.get(strip.name)?.color
+        const dotColor = trackIdentity(strip.name, customColor).color
         return (
           // A strip + (when open) its expand drawer, side-by-side: the drawer
           // grows to the RIGHT, so later strips push along the horizontal
@@ -118,8 +135,29 @@ export function MixerStrips({
               onRename={(newLabel) =>
                 applyToStrip(strip.id, (fresh, wb) => {
                   const e = renameEdit(fresh, newLabel)
-                  if (e) wb.replaceRange(e.range, e.text, 'mixer')
+                  if (!e) return
+                  wb.replaceRange(e.range, e.text, 'mixer')
+                  // Migrate a custom-colour override from the OLD display name to
+                  // the new label so the rename doesn't orphan it (#581).
+                  if (fileId) {
+                    const prevColor = getTrackMeta(fileId, strip.name).color
+                    if (prevColor && strip.name !== newLabel) {
+                      setTrackMeta(fileId, newLabel, { color: prevColor })
+                      setTrackMeta(fileId, strip.name, { color: undefined })
+                    }
+                  }
                 })
+              }
+              dotColor={dotColor}
+              onPickColor={
+                fileId
+                  ? (color) => setTrackMeta(fileId, strip.name, { color })
+                  : undefined
+              }
+              onResetColor={
+                fileId
+                  ? () => setTrackMeta(fileId, strip.name, { color: undefined })
+                  : undefined
               }
               soloed={soloed.has(strip.id)}
               onSoloToggle={() => toggleSolo(strip.id)}

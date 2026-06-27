@@ -21,6 +21,7 @@ import * as React from 'react'
 import type { StripModel } from './stripModel'
 import { gainToFaderPos, faderPosToGain, formatDb } from './faderTaper'
 import type { MeterController } from './useTrackMeters'
+import { StripColorPopover } from './StripColorPopover'
 
 /** pixels of drag for the fader's full 0..1 travel (matches the Knob). */
 const DRAG_SPAN_PX = 160
@@ -50,6 +51,14 @@ interface ChannelStripProps {
   meters?: MeterController
   /** show the dot/name/mute header row. Off = the headerless local strip. */
   showHeader?: boolean
+  /** the resolved dot colour `customColor ?? strip.color` (Phase D, #581). When
+   *  absent, the dot uses `strip.color` (the deterministic palette). */
+  dotColor?: string
+  /** set this strip's custom colour (console only) — makes the dot a swatch
+   *  trigger that opens a colour popover. Absent = the dot is a plain indicator. */
+  onPickColor?: (color: string) => void
+  /** clear this strip's custom colour → fall back to the deterministic palette. */
+  onResetColor?: () => void
   /** whether this strip's expand drawer is open (console variant). When
    *  `onToggleExpand` is set, the header shows a ▸/◂ disclosure toggle. */
   expanded?: boolean
@@ -165,10 +174,16 @@ export function ChannelStrip({
   onGestureEnd,
   meters,
   showHeader = true,
+  dotColor,
+  onPickColor,
+  onResetColor,
   expanded = false,
   onToggleExpand,
   zoom = 1,
 }: ChannelStripProps): React.ReactElement {
+  // Colour swatch popover (Phase D, #581) — console only (when onPickColor is set).
+  const [colorAnchor, setColorAnchor] = React.useState<DOMRect | null>(null)
+  const colorPickEnabled = onPickColor !== undefined
   const muteEnabled = strip.muteable && onMuteToggle !== undefined
   // Inline rename (#580, Phase C). The seed is the track's BARE label (mute
   // marker stripped); an anonymous `$:` track seeds EMPTY (its `d{N}` display
@@ -272,10 +287,39 @@ export function ChannelStrip({
       {showHeader && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-          <span
-            data-mixer-strip-dot
-            style={{ width: 8, height: 8, borderRadius: '50%', background: strip.color, flexShrink: 0 }}
-          />
+          {colorPickEnabled ? (
+            <button
+              type="button"
+              data-mixer-strip-dot
+              aria-label={`Change colour of ${strip.name}`}
+              title={`${strip.name} — click to change colour`}
+              onClick={(e) => setColorAnchor(e.currentTarget.getBoundingClientRect())}
+              style={{
+                width: 8,
+                height: 8,
+                padding: 0,
+                border: 'none',
+                borderRadius: '50%',
+                background: dotColor ?? strip.color,
+                flexShrink: 0,
+                cursor: 'pointer',
+              }}
+            />
+          ) : (
+            <span
+              data-mixer-strip-dot
+              style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor ?? strip.color, flexShrink: 0 }}
+            />
+          )}
+          {colorAnchor && onPickColor && (
+            <StripColorPopover
+              anchorRect={colorAnchor}
+              currentColor={dotColor ?? strip.color}
+              onPick={(color) => onPickColor(color)}
+              onReset={onResetColor ? () => onResetColor() : undefined}
+              onClose={() => setColorAnchor(null)}
+            />
+          )}
           {renaming ? (
             <input
               data-mixer-strip-rename
