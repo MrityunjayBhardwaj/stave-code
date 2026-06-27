@@ -855,4 +855,27 @@ test.describe('Mixer cursor-follows-strip (#595)', () => {
     await dragFader(page, drawer, '#1', 20) // second anon track → line 3
     expect(await cursorLine(page)).toBe(3)
   })
+
+  test('a drawer knob drag also jumps the caret to that track', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd").gain(0.5)\nd1: note("c e").lpf(800)')
+    expect(await cursorLine(page)).toBe(1)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    // expand d1 (line 2) and drag its lpf knob — the drawer routes through the
+    // same applyToStrip path as the face, so the caret follows here too.
+    await toggleExpand(page, drawer, 'd1')
+    const slider = drawer.locator('[data-mixer-expand-for="d1"] [data-knob="lpf"] [role="slider"]')
+    await slider.scrollIntoViewIfNeeded()
+    const box = await slider.boundingBox()
+    if (!box) throw new Error('no lpf knob box')
+    const cx = box.x + box.width / 2
+    const cy = box.y + box.height / 2
+    await page.mouse.move(cx, cy)
+    await page.mouse.down()
+    await page.mouse.move(cx, cy - 40, { steps: 8 })
+    await page.mouse.up()
+    await page.waitForTimeout(80)
+    expect(await cursorLine(page)).toBe(2)
+  })
 })
