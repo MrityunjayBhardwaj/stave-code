@@ -43,19 +43,26 @@ export const TRACK_PALETTE_32: readonly string[] = [
 ] as const
 
 /**
- * Stem regex precedence (DV-11). Order matters — first match wins. Each pattern
- * is anchored with `^` so prefixes match without hitting embedded substrings.
- * Mirror of `colors.ts:STEM_PATTERNS` (the palette-relevant subset).
+ * Stem regex precedence (DV-11). Order matters — first match wins, and the
+ * family index IS the array position (drums=0, bass=1, pad=2, melody=3). Each
+ * pattern is anchored with `^` so prefixes match without hitting embedded
+ * substrings. Mirror of `colors.ts:STEM_PATTERNS` (the palette-relevant subset):
+ * both classify by POSITION, so the two arrays MUST keep the same regexes in the
+ * same ORDER — `trackColor.drift.test.ts` fuzzes `stemHueGroup` to catch a
+ * divergence. (#586: a previous version stored an explicit index here while the
+ * app returned the loop position — equal only because the stored values happened
+ * to be 0,1,2,3 in order; that redundant index was the latent reorder hazard, so
+ * it's dropped and both now classify identically by position.)
  */
-const STEM_PATTERNS: ReadonlyArray<readonly [RegExp, number]> = [
-  // Drums → family 0
-  [/^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i, 0],
-  // Bass → family 1
-  [/^(?:bass|sub|808)/i, 1],
-  // Pads → family 2
-  [/^(?:pad|pads)/i, 2],
-  // Melody / lead / synth / piano / keys / guitar → family 3
-  [/^(?:lead|melody|synth|piano|keys|guitar)/i, 3],
+const STEM_PATTERNS: ReadonlyArray<RegExp> = [
+  // Family 0 — drums
+  /^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i,
+  // Family 1 — bass
+  /^(?:bass|sub|808)/i,
+  // Family 2 — pads
+  /^(?:pad|pads)/i,
+  // Family 3 — melody / lead / synth / piano / keys / guitar
+  /^(?:lead|melody|synth|piano|keys|guitar)/i,
 ] as const
 
 // FNV-1a 32-bit. Locally scoped (mirrors `colors.ts:fnv1a32`).
@@ -68,12 +75,13 @@ function fnv1a32(str: string): number {
   return h >>> 0
 }
 
-// Stem-family classifier — returns an index 0..3 (drums|bass|pad|melody).
-// Unknown → 3 (melody), matching `colors.ts:stemHueGroup`.
+// Stem-family classifier — returns the array POSITION of the first matching
+// pattern, an index 0..3 (drums|bass|pad|melody). Unknown → 3 (melody). Position-
+// based, byte-identical to `colors.ts:stemHueGroup` (#586).
 function stemHueGroup(sample?: string): number {
   if (!sample) return 3
   for (let i = 0; i < STEM_PATTERNS.length; i++) {
-    if (STEM_PATTERNS[i][0].test(sample)) return STEM_PATTERNS[i][1]
+    if (STEM_PATTERNS[i].test(sample)) return i
   }
   return 3
 }
