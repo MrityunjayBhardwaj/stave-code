@@ -514,6 +514,7 @@ export function MusicalTimeline(
         <FullSongTimeline
           analysis={analysis}
           ir={snapshot?.ir ?? null}
+          source={snapshot?.code ?? null}
           getHapStream={props.getHapStream}
           getSongPosition={props.getSongPosition ?? (() => null)}
           onSeek={props.onSeek ?? (() => {})}

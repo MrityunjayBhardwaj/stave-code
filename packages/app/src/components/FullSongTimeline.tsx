@@ -86,6 +86,10 @@ export interface FullSongTimelineProps {
   /** The evaluated IR snapshot — source of the mini-note marks the canvas draws
    *  (collected app-side over the display span). Null before the first eval. */
   readonly ir?: PatternIR | null
+  /** The raw user source (`snapshot.code`) — read at each lane's `dollarPos` to
+   *  resolve a NAMED track's display LABEL (#579 STEP 2). Null/absent → every
+   *  lane keeps its positional `d{N}` name (pre-STEP-2 behaviour). */
+  readonly source?: string | null
   /** Live hap stream accessor — drives the per-note LIVE overlay (#500/U3): the
    *  hap stream lights scene marks under the following playhead. Optional — the
    *  overlay simply never lights when unset (the static scene still renders). */
@@ -502,12 +506,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // re-eval. The scene is built over the (possibly grown) `displayCycles` span so
   // clip geometry and the bare-split materialize agree on where each clip ends.
   const voiceOrderRef = useRef<VoiceOrderByLane>(EMPTY_VOICE_ORDER)
+  const source = props.source ?? null
   const scene = useMemo(() => {
-    const raw = buildTimelineScene(analysis, marks, displayCycles)
+    const raw = buildTimelineScene(analysis, marks, displayCycles, source)
     const { scene: ordered, order } = applyStableVoiceOrder(raw, voiceOrderRef.current)
     voiceOrderRef.current = order
     return ordered
-  }, [analysis, marks, displayCycles])
+  }, [analysis, marks, displayCycles, source])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind
@@ -537,6 +542,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // closures (mirrors the scrollLeftRef/zoomRef pattern above).
   const sceneRef = useRef(scene)
   sceneRef.current = scene
+  // laneKey → lane, for the DOM lane labels to read the resolved display NAME +
+  // colour (#579 STEP 2). The `box`es (from `computeLaneLayout`) carry only the
+  // identity `laneKey`; the display fields live on the scene lane.
+  const laneByKey = useMemo(
+    () => new Map(scene.lanes.map((l) => [l.laneKey, l])),
+    [scene],
+  )
   const layoutRef = useRef<LaneLayout>(layout)
   layoutRef.current = layout
 
@@ -1221,7 +1233,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               // collapsed / single-voice lane renders the plain header.
               const subRows = box.subRows
               const headerHeight = subRows ? subRows[0].height : box.height
-              const headerName = subRows ? `${box.laneKey} · ${subRows[0].label}` : box.laneKey
+              // Display NAME + dot colour resolve to the track LABEL for a named
+              // track (#579 STEP 2); fall back to the positional `laneKey` when
+              // the lane has no scene entry (defensive — should always match).
+              const lane = laneByKey.get(box.laneKey)
+              const displayName = lane?.displayName ?? box.laneKey
+              const dotColor = lane?.color ?? paletteForTrack(trackIndexOf(box.laneKey), box.laneKey)
+              const headerName = subRows ? `${displayName} · ${subRows[0].label}` : displayName
               return (
                 <div
                   key={box.laneKey}
@@ -1245,7 +1263,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                     <span
                       style={{
                         ...styles.laneDot,
-                        background: paletteForTrack(trackIndexOf(box.laneKey), box.laneKey),
+                        background: dotColor,
                       }}
                     />
                     <span style={styles.laneName}>{headerName}</span>

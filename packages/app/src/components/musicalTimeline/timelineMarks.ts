@@ -63,6 +63,13 @@ export function collectNoteMarks(
   // combinator start always exceeds `dollarPos`, so this never drops a real
   // combinator and is a no-op when `dollarPos` is absent (hand-built IR).
   const arrangeByLane = new Map<string, number>()
+  // Per-lane statement (label) offset for the display NAME (#579 STEP 2). The
+  // live engine drops the JS label and keys the track positionally as `d{N}`
+  // (`ev.trackId`); `ev.dollarPos` is the `$:`/`bass:` STATEMENT offset, so the
+  // label is recoverable from the source there. First-event-wins (one Track =
+  // one dollarPos; a stack's voices share it). The pure scene builder reads the
+  // source at this offset to resolve a named track's label (`resolveLaneName`).
+  const labelOffsetByLane = new Map<string, number>()
   // Clip derivation (#386): per lane, the active arrange-arm index for each
   // integer cycle (events of one arm share a cycle; arms span whole cycles —
   // grounded). Run-length-encoded into clips below. Only lanes whose events
@@ -82,6 +89,9 @@ export function collectNoteMarks(
     if (!sourceByLane.has(key)) {
       const offset = ev.loc?.[0]?.start
       if (typeof offset === 'number' && Number.isFinite(offset)) sourceByLane.set(key, offset)
+    }
+    if (!labelOffsetByLane.has(key) && typeof ev.dollarPos === 'number' && Number.isFinite(ev.dollarPos)) {
+      labelOffsetByLane.set(key, ev.dollarPos)
     }
     if (!arrangeByLane.has(key) && ev.loc && ev.loc.length > 0) {
       let outer: number | undefined
@@ -168,5 +178,5 @@ export function collectNoteMarks(
     flush(nCycles)
     if (clips.length > 0) clipsByLane.set(key, clips)
   }
-  return { marksByLane, sourceByLane, arrangeByLane, clipsByLane, capped }
+  return { marksByLane, sourceByLane, arrangeByLane, labelOffsetByLane, clipsByLane, capped }
 }

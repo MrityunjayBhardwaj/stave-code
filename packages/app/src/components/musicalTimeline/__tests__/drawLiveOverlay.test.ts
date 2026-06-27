@@ -45,6 +45,7 @@ function sceneFixture(): TimelineScene {
     lanes: [
       {
         laneKey: 'a',
+        displayName: 'a',
         color: '#f00',
         density: [0, 1, 1, 0],
         notes,

@@ -24,11 +24,14 @@ function marks(
   // Outer-combinator anchors (#451); default = `sources` (equal for a
   // non-nested lane, where loc[0] === loc[last]).
   arranges: Record<string, number> = sources,
+  // Per-lane statement (label) offsets — `dollarPos` per lane (#579 STEP 2).
+  labels: Record<string, number> = {},
 ): CollectedMarks {
   return {
     marksByLane: new Map(Object.entries(entries)),
     sourceByLane: new Map(Object.entries(sources)),
     arrangeByLane: new Map(Object.entries(arranges)),
+    labelOffsetByLane: new Map(Object.entries(labels)),
     clipsByLane: new Map(Object.entries(clips)),
     capped,
   }
@@ -94,6 +97,46 @@ describe('buildTimelineScene', () => {
   it('propagates the capped flag', () => {
     const scene = buildTimelineScene(analysisFixture, marks({ bd: [] }, true))
     expect(scene.notesCapped).toBe(true)
+  })
+
+  it('resolves the display NAME + colour from the source label (#579 STEP 2)', async () => {
+    const { paletteForTrack, trackIndexOf } = await import('../colors')
+    // Two lanes keyed positionally (`d1`,`d2`) as the live engine does. `d1` is a
+    // NAMED `bass:` track; `d2` is anonymous `$:`. Source + per-lane dollarPos:
+    //   `bass: s("bd")`  → offset 0
+    //   `$: s("hh")`     → offset 14
+    const code = 'bass: s("bd")\n$: s("hh")'
+    const analysis = {
+      periodCycles: 1,
+      horizonCycles: 1,
+      lanes: [
+        { laneKey: 'd1', onsetsByCycle: [1] },
+        { laneKey: 'd2', onsetsByCycle: [1] },
+      ],
+      sections: [],
+      reachedCap: false,
+    }
+    const scene = buildTimelineScene(analysis, marks({}, false, {}, {}, {}, { d1: 0, d2: 14 }), undefined, code)
+    const d1 = scene.lanes.find((l) => l.laneKey === 'd1')!
+    const d2 = scene.lanes.find((l) => l.laneKey === 'd2')!
+    // Named track: name + colour resolve to the LABEL, not `d1`.
+    expect(d1.displayName).toBe('bass')
+    expect(d1.color).toBe(paletteForTrack(trackIndexOf('bass'), 'bass'))
+    // Anonymous track: name + colour stay positional `d2`.
+    expect(d2.displayName).toBe('d2')
+    expect(d2.color).toBe(paletteForTrack(trackIndexOf('d2'), 'd2'))
+  })
+
+  it('keeps positional d{N} names when no source is supplied', () => {
+    const analysis = {
+      periodCycles: 1,
+      horizonCycles: 1,
+      lanes: [{ laneKey: 'd1', onsetsByCycle: [1] }],
+      sections: [],
+      reachedCap: false,
+    }
+    const scene = buildTimelineScene(analysis, marks({}, false, {}, {}, { d1: 0 }))
+    expect(scene.lanes[0].displayName).toBe('d1')
   })
 
   it('merges the per-lane source offset for binding (null when absent)', () => {
