@@ -31,6 +31,7 @@ import { placeNote, resizeNote } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
 import { ResolutionControl } from './ResolutionControl'
+import { PatternTrackChip } from './PatternTrackChip'
 import { rollSlotState, quantizePianoRollTo } from '../notation/resolution'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
@@ -396,6 +397,21 @@ export function PianoRollGrid({
         touchAction: 'none',
       }}
     >
+      {/* Track identity (#589) — the bound track's colour dot + name, pinned
+          top-LEFT as an overlay (same no-vertical-cost reasoning as the controls
+          below). Click the dot to recolour, double-click the name to rename. */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 6,
+          left: 16,
+          zIndex: 3,
+          display: 'flex',
+          alignItems: 'center',
+        }}
+      >
+        <PatternTrackChip />
+      </div>
       {/* View ▸ Note Color (#428) — pinned top-right as an overlay, NOT in the
           row flow: the piano roll is pitch-dense and the rows fill the panel, so
           a header that consumed vertical space would push the lowest rows off the
