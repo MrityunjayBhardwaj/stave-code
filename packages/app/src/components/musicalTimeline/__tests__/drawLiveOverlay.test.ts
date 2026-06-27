@@ -45,6 +45,7 @@ function sceneFixture(): TimelineScene {
     lanes: [
       {
         laneKey: 'a',
+        displayName: 'a',
         color: '#f00',
         density: [0, 1, 1, 0],
         notes,
@@ -54,6 +55,7 @@ function sceneFixture(): TimelineScene {
         clips: [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }],
         sourceOffset: null,
         arrangeOffset: null,
+        labelOffset: null,
       },
     ],
     sections: [],

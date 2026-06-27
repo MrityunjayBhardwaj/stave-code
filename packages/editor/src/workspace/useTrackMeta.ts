@@ -27,6 +27,7 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import {
   getTrackMeta,
+  getTrackMetaMapSnapshot,
   setTrackMeta as storeSetTrackMeta,
   subscribeToTrackMeta,
   type TrackMeta,
@@ -36,6 +37,9 @@ import {
  *  store's internal EMPTY_TRACK_META by encapsulation only; both are
  *  ref-stable empty TrackMetas. */
 const EMPTY_META: TrackMeta = Object.freeze({})
+
+/** Ref-stable empty map for the fileId-undefined branch (Phase D, #581). */
+const EMPTY_META_MAP: ReadonlyMap<string, TrackMeta> = new Map()
 
 export interface UseTrackMetaResult {
   meta: TrackMeta
@@ -74,4 +78,35 @@ export function useTrackMeta(
   )
 
   return { meta, set }
+}
+
+/**
+ * useTrackMetaMap — Phase D (#581). ALL of a file's per-track metadata as a
+ * ref-stable map keyed by trackId (the track's DISPLAY NAME, the key both the
+ * Mixer and the Song Timeline resolve to). Where `useTrackMeta` surfaces ONE
+ * track for a focused control, this surfaces the whole map so a view that paints
+ * many tracks at once (the Mixer strip row, the Timeline scene) reads every
+ * custom-colour override in a single reactive subscription rather than N hooks.
+ *
+ * Backed by `getTrackMetaMapSnapshot` (cached, ref-stable) + `subscribeToTrackMeta`,
+ * so the returned map identity changes ONLY when an override is set/cleared — which
+ * is exactly the signal a `useMemo`/scene rebuild wants. Returns the shared empty
+ * map when `fileId` is undefined (no snapshot yet) — the setter on the per-track
+ * hook still no-ops there.
+ */
+export function useTrackMetaMap(
+  fileId: string | undefined,
+): ReadonlyMap<string, TrackMeta> {
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!fileId) return () => {}
+      return subscribeToTrackMeta(fileId, onStoreChange)
+    },
+    [fileId],
+  )
+  const getSnapshot = useCallback((): ReadonlyMap<string, TrackMeta> => {
+    if (!fileId) return EMPTY_META_MAP
+    return getTrackMetaMapSnapshot(fileId)
+  }, [fileId])
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }

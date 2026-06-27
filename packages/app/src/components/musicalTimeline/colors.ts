@@ -77,6 +77,14 @@ export function trackColorFromStem(
 }
 
 /**
+ * MIRROR (V-track-1, #579): the palette path below — `TRACK_PALETTE_32`,
+ * `trackIndexOf`, `paletteForTrack` (and `stemHueGroup`) — is duplicated in the
+ * editor-canonical `packages/editor/src/visualEdit/trackColor.ts` so the Mixer
+ * can colour strips by the SAME algorithm (the editor can't import this app
+ * file, and this app file can't import the editor barrel — P172). Keep the two
+ * in sync: `trackColor.drift.test.ts` fails loudly if they diverge. The editor's
+ * `colorForTrack(key)` === the Timeline's `paletteForTrack(trackIndexOf(key), key)`.
+ *
  * Phase 20-11 D-03 — TRACK_PALETTE_32. Placeholder palette.
  * 4 stem hues × 8 lightness/saturation steps each — 32 cells total.
  * Exact swatches finalised in 20-12 design-system pass; this v1 keeps the
@@ -148,4 +156,36 @@ export function trackIndexOf(trackId: string): number {
     if (n >= 1) return ((n - 1) % 32 + 32) % 32
   }
   return fnv1a32(trackId) % 32
+}
+
+/**
+ * THE canonical track colour from its key — the composed call the Timeline made
+ * inline (`paletteForTrack(trackIndexOf(key), key)`). MIRROR of the editor's
+ * `trackColor.colorForTrack` (V-track-1); `trackColor.drift.test.ts` guards them.
+ */
+export function colorForTrack(key: string): string {
+  return paletteForTrack(trackIndexOf(key), key)
+}
+
+/** A track's resolved visual identity — name + colour from one canonical key.
+ *  MIRROR of the editor's `trackColor.TrackIdentity` (V-track-1). */
+export interface TrackIdentity {
+  readonly key: string
+  readonly name: string
+  /** `customColor ?? colorForTrack(key)` (V-track-2, #581). */
+  readonly color: string
+}
+
+/**
+ * THE track-identity resolver — MIRROR of the editor's `trackColor.trackIdentity`
+ * (V-track-1, #579). Both views (Mixer strip + Song Timeline lane) resolve colour
+ * through this ONE function so they can't diverge. Phase D (V-track-2, #581): the
+ * optional `customColor` layers a per-track user override on the deterministic
+ * palette — `customColor ?? colorForTrack(key)`. The override is persisted per
+ * file in the `TrackMeta` Yjs store keyed by the display name (this `key`), never
+ * written to the source. `trackColor.drift.test.ts` asserts this mirror matches
+ * the editor copy for both the default and the override path.
+ */
+export function trackIdentity(key: string, customColor?: string): TrackIdentity {
+  return { key, name: key, color: customColor ?? colorForTrack(key) }
 }

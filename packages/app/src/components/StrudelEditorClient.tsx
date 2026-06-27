@@ -20,6 +20,7 @@ import {
   commitWorkspace,
   getViewedContent,
   isViewing,
+  pruneTrackMetaForCode,
   subscribeToRuntimeView,
   subscribeToFileList,
   registerRuntimeProvider,
@@ -879,7 +880,7 @@ export default function StrudelEditorClient({
     // so a transient syntax error stays visible until stop+play. Clearing on
     // every successful evaluate gives the "fix-and-continue" flow its natural
     // feedback: marker appears while broken, disappears the moment it parses.
-    runtime.onEvaluateSuccess(() => {
+    runtime.onEvaluateSuccess((evaluatedCode: string) => {
       setRuntimeStates(prev => {
         const next = new Map(prev);
         const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
@@ -920,6 +921,19 @@ export default function StrudelEditorClient({
         // Phase 19-08: cycleCount lands on the timeline capture entry (not on
         // IRSnapshot) so PV27's per-snapshot alias contract stays untouched.
         captureAndPublishSnapshot(fileId, runtime.getCurrentCycle());
+
+        // Prune orphaned per-track colour overrides (#583): drop TrackMeta
+        // records whose track no longer exists in the evaluated code, so a
+        // deleted track's custom colour can't leak in the per-file Y.Map or
+        // resurrect onto a shifted positional d{N}. Uses the EXACT code the
+        // runtime just evaluated (passed to the callback) — NOT a fresh
+        // getFile() read, which lags the live Y.Text and races the next eval.
+        // Skipped while time-travelling — the viewed historical code has a
+        // different track set (mirrors the commit guard above); the helper also
+        // no-ops on an empty track set so a transient eval can never wipe colours.
+        if (!isViewing()) {
+          pruneTrackMetaForCode(fileId, evaluatedCode);
+        }
 
         // Code-driven backdrop — a non-underscore viz method (`.scope()`,
         // `.pianoroll()`, …) maps to Stave's backdrop; its absence clears it.

@@ -42,6 +42,11 @@ import {
   subscribeIRSnapshot,
   revealOffsetInFile,
   applyOffsetEditsToFile,
+  detectAllChunks,
+  renameEdit,
+  getTrackMeta,
+  setTrackMeta,
+  useTrackMetaMap,
   detectArrangeAt,
   detectBarePattern,
   setWeight,
@@ -309,6 +314,38 @@ export function MusicalTimeline(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ── Per-track custom colour (Phase D, #581) ──────────────────────────────
+  // Overrides live in the per-file TrackMeta Yjs store, keyed by the track's
+  // DISPLAY NAME — the same key the Mixer uses, so a colour set in either view
+  // shows in both. `useTrackMetaMap` returns a ref-stable map (changes only when
+  // an override is set/cleared), so threading it into the scene recolours lanes
+  // (dot + canvas density) exactly when the user picks, not every render.
+  const fileId = snapshot?.source ?? undefined
+  const trackMeta = useTrackMetaMap(fileId)
+  const customColorByName = React.useMemo(() => {
+    const m = new Map<string, string>()
+    for (const [name, meta] of trackMeta) {
+      if (meta.color) m.set(name, meta.color)
+    }
+    return m
+  }, [trackMeta])
+  const handleSetTrackColor = React.useCallback(
+    (displayName: string, color: string) => {
+      if (!fileId) return
+      setTrackMeta(fileId, displayName, { color })
+    },
+    [fileId],
+  )
+  const handleResetTrackColor = React.useCallback(
+    (displayName: string) => {
+      if (!fileId) return
+      // Clearing both fields deletes the record (store cleanup) → the lane falls
+      // back to the deterministic palette colour.
+      setTrackMeta(fileId, displayName, { color: undefined })
+    },
+    [fileId],
+  )
+
   // Expand-to-bind for the Song view (#422, design §3.1): the canvas timeline
   // hands up a lane's representative source offset; the SAME cursor-move seam as
   // handleNoteClick reveals it, which re-detects the active chunk and rebinds the
@@ -352,6 +389,35 @@ export function MusicalTimeline(
       const edits = pickSetWeight(snapshot.code, ctl, req.armIndex, req.weight)
       if (edits.length === 0) return
       applyOffsetEditsToFile(snapshot.source, edits, 'arrange.weights', snapshot.code)
+    },
+    [snapshot],
+  )
+
+  // Rename a track from the Song Timeline (#580, Phase C). The lane hands up its
+  // STATEMENT offset (`labelOffset` = `dollarPos`); we detect the chunk anchored
+  // there in the SAME snapshot text, write the `name:` label via `renameEdit`
+  // (which validates + no-ops + preserves a `_` mute marker), and apply it
+  // surgically. The debounced re-eval republishes the IR and BOTH views
+  // re-resolve the new label (Timeline via the Step 2 dollarPos resolver, Mixer
+  // via `bareLabel`) — so the rename shows everywhere.
+  const handleRenameLane = React.useCallback(
+    (labelOffset: number, newLabel: string, oldDisplayName: string) => {
+      if (!snapshot?.source) return
+      const chunk = detectAllChunks(snapshot.code).find(
+        (c) => c.statementRange[0] === labelOffset,
+      )
+      if (!chunk) return
+      const edit = renameEdit(chunk, newLabel)
+      if (!edit) return // invalid name / no-op → no write
+      applyOffsetEditsToFile(snapshot.source, [edit], 'rename', snapshot.code)
+      // Migrate a custom-colour override from the OLD display name to the new
+      // label (#581) — else the rename orphans the colour (the override is keyed
+      // by display name, which the rename changes). snapshot.source === fileId.
+      const prevColor = getTrackMeta(snapshot.source, oldDisplayName).color
+      if (prevColor && oldDisplayName !== newLabel) {
+        setTrackMeta(snapshot.source, newLabel, { color: prevColor })
+        setTrackMeta(snapshot.source, oldDisplayName, { color: undefined })
+      }
     },
     [snapshot],
   )
@@ -514,6 +580,7 @@ export function MusicalTimeline(
         <FullSongTimeline
           analysis={analysis}
           ir={snapshot?.ir ?? null}
+          source={snapshot?.code ?? null}
           getHapStream={props.getHapStream}
           getSongPosition={props.getSongPosition ?? (() => null)}
           onSeek={props.onSeek ?? (() => {})}
@@ -525,6 +592,10 @@ export function MusicalTimeline(
           onDuplicateClip={handleDuplicateClip}
           onSplitClip={handleSplitClip}
           onBindLane={handleBindLane}
+          onRenameLane={handleRenameLane}
+          customColorByName={customColorByName}
+          onSetTrackColor={handleSetTrackColor}
+          onResetTrackColor={handleResetTrackColor}
         />
     </div>
   )

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 import { detectAllChunks } from '../../chunkDetect'
 import { applyEdits } from '../../writeback'
-import { gainEdit, panEdit, muteEdit, type StripEdit } from '../writeStrip'
+import { gainEdit, panEdit, muteEdit, renameEdit, isValidTrackLabel, type StripEdit } from '../writeStrip'
 
 /** the nth detected chunk of a doc */
 function chunkAt(src: string, i = 0) {
@@ -79,6 +79,63 @@ describe('muteEdit', () => {
 
   it('hands off an unlabelled statement (no marker to carry)', () => {
     expect(muteEdit(chunkAt('s("bd")'), true)).toBeNull()
+  })
+})
+
+describe('renameEdit (#580 Phase C)', () => {
+  it('renames a named track in place', () => {
+    expect(applied('bass: s("bd")', renameEdit(chunkAt('bass: s("bd")'), 'lead'))).toBe('lead: s("bd")')
+  })
+
+  it('names an anonymous $: track — inserts a label by replacing the `$`', () => {
+    expect(applied('$: s("bd*4")', renameEdit(chunkAt('$: s("bd*4")'), 'drums'))).toBe('drums: s("bd*4")')
+  })
+
+  it('preserves the `_` mute marker — a muted track stays muted across rename', () => {
+    expect(applied('_$: s("bd")', renameEdit(chunkAt('_$: s("bd")'), 'drums'))).toBe('_drums: s("bd")')
+    expect(applied('_bass: s("bd")', renameEdit(chunkAt('_bass: s("bd")'), 'lead'))).toBe('_lead: s("bd")')
+  })
+
+  it('leaves the pattern expression byte-identical (only the label changes)', () => {
+    const src = 'bass: note("c2 e2").s("sawtooth").gain(0.5).pan(0.3)'
+    expect(applied(src, renameEdit(chunkAt(src), 'sub'))).toBe(
+      'sub: note("c2 e2").s("sawtooth").gain(0.5).pan(0.3)',
+    )
+  })
+
+  it('keeps sibling statements untouched when renaming one', () => {
+    const src = '$: s("bd*4")\nlead: note("c4")\n$: s("hh*8")'
+    const out = applyEdits(src, [renameEdit(chunkAt(src, 0), 'drums') as StripEdit])
+    expect(out).toBe('drums: s("bd*4")\nlead: note("c4")\n$: s("hh*8")')
+  })
+
+  it('no-ops when the new name equals the current (bare) label', () => {
+    expect(renameEdit(chunkAt('bass: s("bd")'), 'bass')).toBeNull()
+    expect(renameEdit(chunkAt('_bass: s("bd")'), 'bass')).toBeNull() // marker-stripped compare
+  })
+
+  it('rejects an invalid label (no write — the UI reverts)', () => {
+    expect(renameEdit(chunkAt('$: s("bd")'), '2drums')).toBeNull() // not an identifier
+    expect(renameEdit(chunkAt('$: s("bd")'), 'my track')).toBeNull() // space
+    expect(renameEdit(chunkAt('$: s("bd")'), 'return')).toBeNull() // reserved word
+    expect(renameEdit(chunkAt('$: s("bd")'), '')).toBeNull() // empty
+  })
+
+  it('hands off an unlabelled bare expression (no label slot)', () => {
+    expect(renameEdit(chunkAt('s("bd")'), 'drums')).toBeNull()
+  })
+})
+
+describe('isValidTrackLabel', () => {
+  it('accepts identifiers (incl. config-head words — valid AS labels)', () => {
+    for (const ok of ['drums', 'bass2', '_kick', '$lead', 'setcps', 'hush']) {
+      expect(isValidTrackLabel(ok), ok).toBe(true)
+    }
+  })
+  it('rejects non-identifiers and reserved words', () => {
+    for (const bad of ['2drums', 'my track', 'a-b', '', 'return', 'class', 'for', 'interface', 'static']) {
+      expect(isValidTrackLabel(bad), bad).toBe(false)
+    }
   })
 })
 

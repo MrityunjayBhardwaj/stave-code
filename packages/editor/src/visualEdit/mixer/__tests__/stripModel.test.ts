@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 import { detectAllChunks } from '../../chunkDetect'
 import { buildStripModels, statementOffsetForSource } from '../stripModel'
+import { colorForTrack } from '../../trackColor'
 
 /** strips for a whole document, the read path the Mixer actually uses */
 function stripsOf(src: string) {
@@ -127,7 +128,9 @@ describe('buildStripModels — transport/config statements are not tracks (#559)
       ['setcps(0.5)', '$: s("bd")', '$: note("c e g")'].join('\n'),
     )
     expect(strips).toHaveLength(2)
-    expect(strips.map((s) => s.name)).toEqual(['s', 'note'])
+    // names = the display key (V-track-1): both anon → positional d{ordinal},
+    // counting from 1 after the dropped config line (d1, d2 — never d2, d3).
+    expect(strips.map((s) => s.name)).toEqual(['d1', 'd2'])
   })
 
   it('renumbers anonymous captureIds to $0.. after dropping setcps (no off-by-one)', () => {
@@ -180,18 +183,31 @@ describe('buildStripModels — per-strip read model', () => {
     expect(stripsOf('$: s("bd")')[0].gain.kind).toBe('absent')
   })
 
-  it('colours a step strip from its first drum voice', () => {
-    // bd → kick magenta (the same palette the Sequencer uses)
-    expect(stripsOf('$: s("bd sn")')[0].color).toBe('#e0407f')
+  it('names + colours each strip by its display key — label, else positional d{N} (V-track-1, #579)', () => {
+    // The display key matches what the Song Timeline shows: a NAMED track keys on
+    // its label; an ANONYMOUS `$:` keys on `d{ordinal}` (its 1-based position) —
+    // the same positional hap id the Timeline lanes by. Name AND colour derive
+    // from that ONE key via the shared resolver, so they can't diverge.
+    const strips = stripsOf(['bass: note("c2 e2")', '$: s("hh*8")', '$: note("c").sound("piano")'].join('\n'))
+    expect(strips.map((s) => s.name)).toEqual(['bass', 'd2', 'd3'])
+    expect(strips[0].color).toBe(colorForTrack('bass'))
+    expect(strips[1].color).toBe(colorForTrack('d2'))
+    expect(strips[2].color).toBe(colorForTrack('d3'))
+    // anon names/colours follow position, NOT the instrument — so the strip never
+    // auto-adopts a sample name (renaming stays the user's explicit edit).
+    expect(strips[1].id).toBe('#0') // stable UI id is still positional `#k`
+  })
+
+  it('keeps same-sample anon tracks distinct in name AND colour (no collision)', () => {
+    // Two identical `s("bd")` tracks → d1 / d2, distinct colours. This is why the
+    // display key is positional, not the sample (which would collide).
+    const dup = stripsOf(['$: s("bd*4")', '$: s("bd*4")'].join('\n'))
+    expect(dup.map((s) => s.name)).toEqual(['d1', 'd2'])
+    expect(dup[0].color).not.toBe(dup[1].color)
   })
 
   it('classifies a stack(...) statement as a group', () => {
     expect(stripsOf('$: stack(s("bd"), note("c e"))')[0].kind).toBe('group')
-  })
-
-  it('falls back to source/head for an unnamed strip name', () => {
-    expect(stripsOf('$: note("c e g").sound("piano")')[0].name).toBe('piano')
-    expect(stripsOf('$: s("bd sn")')[0].name).toBe('s') // no bank → head fallback
   })
 
   it('is a pure function of the document (re-derive → identical)', () => {

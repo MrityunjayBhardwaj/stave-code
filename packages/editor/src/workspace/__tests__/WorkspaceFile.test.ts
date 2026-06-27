@@ -27,6 +27,8 @@ import {
   getTrackMeta,
   setTrackMeta,
   subscribeToTrackMeta,
+  getTrackMetaMapSnapshot,
+  pruneTrackMeta,
 } from '../WorkspaceFile'
 
 describe('WorkspaceFile store', () => {
@@ -285,5 +287,91 @@ describe('20-12 α-2 — trackMeta', () => {
     // The new project starts fresh — old color is gone.
     expect(getTrackMeta('a', 'd1')).toEqual({ color: '#00ff00' })
     unsub2()
+  })
+
+  // Phase D (#581) — getTrackMetaMapSnapshot: the whole-file map both colour
+  // consumers read. Ref-stability across reads is the useSyncExternalStore
+  // contract; it MUST change only after a committed mutation.
+  it('getTrackMetaMapSnapshot returns every track keyed by trackId', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'bass', { color: '#ff0000' })
+    setTrackMeta('f1', 'd2', { color: '#00ff00' })
+    const map = getTrackMetaMapSnapshot('f1')
+    expect(map.get('bass')).toEqual({ color: '#ff0000' })
+    expect(map.get('d2')).toEqual({ color: '#00ff00' })
+    expect(map.size).toBe(2)
+  })
+
+  it('getTrackMetaMapSnapshot is ref-stable until a mutation, then a NEW ref', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'd1', { color: '#ff0000' })
+    const first = getTrackMetaMapSnapshot('f1')
+    // Repeated reads with no mutation → SAME reference (no tearing in StrictMode).
+    expect(getTrackMetaMapSnapshot('f1')).toBe(first)
+    // A mutation invalidates the cache → next read is a DIFFERENT reference that
+    // reflects the change.
+    setTrackMeta('f1', 'd1', { color: '#0000ff' })
+    const second = getTrackMetaMapSnapshot('f1')
+    expect(second).not.toBe(first)
+    expect(second.get('d1')).toEqual({ color: '#0000ff' })
+  })
+
+  it('getTrackMetaMapSnapshot returns the shared empty map for an unknown file', () => {
+    const a = getTrackMetaMapSnapshot('nope')
+    const b = getTrackMetaMapSnapshot('also-nope')
+    expect(a.size).toBe(0)
+    expect(a).toBe(b) // shared ref-stable empty map
+  })
+
+  // #583 — pruneTrackMeta: per-eval cleanup of orphaned colour/collapse records.
+  // Keyed by display name; drops entries whose track no longer exists so a
+  // deleted track's override can't leak in the Y.Map or resurrect onto a
+  // shifted positional d{N}.
+  it('pruneTrackMeta drops records whose trackId is not in the current set', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'bass', { color: '#ff0000' })
+    setTrackMeta('f1', 'd2', { color: '#00ff00' }) // anon track, later removed
+    pruneTrackMeta('f1', new Set(['bass']))
+    expect(getTrackMeta('f1', 'bass')).toEqual({ color: '#ff0000' }) // kept
+    expect(getTrackMeta('f1', 'd2')).toEqual({}) // orphan pruned
+  })
+
+  it('pruneTrackMeta keeps every record when all tracks still exist', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'bass', { color: '#ff0000' })
+    setTrackMeta('f1', 'lead', { collapsed: true })
+    pruneTrackMeta('f1', ['bass', 'lead', 'drums'])
+    expect(getTrackMeta('f1', 'bass')).toEqual({ color: '#ff0000' })
+    expect(getTrackMeta('f1', 'lead')).toEqual({ collapsed: true })
+  })
+
+  it('pruneTrackMeta accepts an iterable (not only a Set)', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'bass', { color: '#ff0000' })
+    setTrackMeta('f1', 'gone', { color: '#0000ff' })
+    pruneTrackMeta('f1', ['bass'])
+    expect(getTrackMeta('f1', 'gone')).toEqual({})
+    expect(getTrackMeta('f1', 'bass')).toEqual({ color: '#ff0000' })
+  })
+
+  it('pruneTrackMeta is a no-op for a file with no trackMeta map (never creates it)', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    expect(() => pruneTrackMeta('f1', new Set(['bass']))).not.toThrow()
+    expect(getTrackMetaMapSnapshot('f1').size).toBe(0)
+  })
+
+  it('pruneTrackMeta notifies subscribers only when something was actually pruned', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'bass', { color: '#ff0000' })
+    setTrackMeta('f1', 'gone', { color: '#0000ff' })
+    const cb = vi.fn()
+    const unsub = subscribeToTrackMeta('f1', cb)
+    // Nothing stale → no transaction → no notify.
+    pruneTrackMeta('f1', new Set(['bass', 'gone']))
+    expect(cb).not.toHaveBeenCalled()
+    // One stale key → one cleanup transaction → notify.
+    pruneTrackMeta('f1', new Set(['bass']))
+    expect(cb).toHaveBeenCalled()
+    unsub()
   })
 })

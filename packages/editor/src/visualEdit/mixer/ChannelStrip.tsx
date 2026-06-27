@@ -21,6 +21,7 @@ import * as React from 'react'
 import type { StripModel } from './stripModel'
 import { gainToFaderPos, faderPosToGain, formatDb } from './faderTaper'
 import type { MeterController } from './useTrackMeters'
+import { StripColorPopover } from './StripColorPopover'
 
 /** pixels of drag for the fader's full 0..1 travel (matches the Knob). */
 const DRAG_SPAN_PX = 160
@@ -34,6 +35,9 @@ interface ChannelStripProps {
   onPanChange?: (value: number) => void
   /** toggle this strip's mute (flip the `_`-prefix marker) — absent = read-only */
   onMuteToggle?: () => void
+  /** rename this track — write a `name:` label into the code (#580, Phase C).
+   *  Double-clicking the strip name opens an inline editor; absent = read-only. */
+  onRename?: (newLabel: string) => void
   /** whether this strip is soloed (console variant) */
   soloed?: boolean
   /** toggle this strip's solo — provided only by the Mixer console */
@@ -47,6 +51,14 @@ interface ChannelStripProps {
   meters?: MeterController
   /** show the dot/name/mute header row. Off = the headerless local strip. */
   showHeader?: boolean
+  /** the resolved dot colour `customColor ?? strip.color` (Phase D, #581). When
+   *  absent, the dot uses `strip.color` (the deterministic palette). */
+  dotColor?: string
+  /** set this strip's custom colour (console only) — makes the dot a swatch
+   *  trigger that opens a colour popover. Absent = the dot is a plain indicator. */
+  onPickColor?: (color: string) => void
+  /** clear this strip's custom colour → fall back to the deterministic palette. */
+  onResetColor?: () => void
   /** whether this strip's expand drawer is open (console variant). When
    *  `onToggleExpand` is set, the header shows a ▸/◂ disclosure toggle. */
   expanded?: boolean
@@ -154,6 +166,7 @@ export function ChannelStrip({
   onGainChange,
   onPanChange,
   onMuteToggle,
+  onRename,
   soloed = false,
   onSoloToggle,
   dimmed = false,
@@ -161,11 +174,29 @@ export function ChannelStrip({
   onGestureEnd,
   meters,
   showHeader = true,
+  dotColor,
+  onPickColor,
+  onResetColor,
   expanded = false,
   onToggleExpand,
   zoom = 1,
 }: ChannelStripProps): React.ReactElement {
+  // Colour swatch popover (Phase D, #581) — console only (when onPickColor is set).
+  const [colorAnchor, setColorAnchor] = React.useState<DOMRect | null>(null)
+  const colorPickEnabled = onPickColor !== undefined
   const muteEnabled = strip.muteable && onMuteToggle !== undefined
+  // Inline rename (#580, Phase C). The seed is the track's BARE label (mute
+  // marker stripped); an anonymous `$:` track seeds EMPTY (its `d{N}` display
+  // isn't real code) so the field invites a fresh name rather than echoing it.
+  const [renaming, setRenaming] = React.useState(false)
+  const bareLabel = strip.label?.replace(/^_/, '') ?? ''
+  const renameSeed = bareLabel !== '' && bareLabel !== '$' ? bareLabel : ''
+  const renameEnabled = onRename !== undefined
+  const commitRename = (raw: string): void => {
+    setRenaming(false)
+    const v = raw.trim()
+    if (v) onRename?.(v) // renameEdit validates + no-ops; invalid → silent revert
+  }
   const gain = faderGain(strip)
   const pos = gain === null ? 0 : gainToFaderPos(gain)
   const faderEnabled = gain !== null && onGainChange !== undefined
@@ -256,25 +287,86 @@ export function ChannelStrip({
       {showHeader && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-          <span
-            data-mixer-strip-dot
-            style={{ width: 8, height: 8, borderRadius: '50%', background: strip.color, flexShrink: 0 }}
-          />
-          <span
-            data-mixer-strip-name
-            title={strip.name}
-            style={{
-              flex: 1,
-              fontSize: 11,
-              fontWeight: 600,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              opacity: strip.muted ? 0.45 : 1,
-            }}
-          >
-            {strip.name}
-          </span>
+          {colorPickEnabled ? (
+            <button
+              type="button"
+              data-mixer-strip-dot
+              aria-label={`Change colour of ${strip.name}`}
+              title={`${strip.name} — click to change colour`}
+              onClick={(e) => setColorAnchor(e.currentTarget.getBoundingClientRect())}
+              style={{
+                width: 8,
+                height: 8,
+                padding: 0,
+                border: 'none',
+                borderRadius: '50%',
+                background: dotColor ?? strip.color,
+                flexShrink: 0,
+                cursor: 'pointer',
+              }}
+            />
+          ) : (
+            <span
+              data-mixer-strip-dot
+              style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor ?? strip.color, flexShrink: 0 }}
+            />
+          )}
+          {colorAnchor && onPickColor && (
+            <StripColorPopover
+              anchorRect={colorAnchor}
+              currentColor={dotColor ?? strip.color}
+              onPick={(color) => onPickColor(color)}
+              onReset={onResetColor ? () => onResetColor() : undefined}
+              onClose={() => setColorAnchor(null)}
+            />
+          )}
+          {renaming ? (
+            <input
+              data-mixer-strip-rename
+              autoFocus
+              defaultValue={renameSeed}
+              placeholder="name this track"
+              spellCheck={false}
+              onFocus={(e) => e.currentTarget.select()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename(e.currentTarget.value)
+                else if (e.key === 'Escape') setRenaming(false)
+                e.stopPropagation() // don't let the editor swallow the keystrokes
+              }}
+              onBlur={(e) => commitRename(e.currentTarget.value)}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                fontSize: 11,
+                fontWeight: 600,
+                fontFamily: 'inherit',
+                color: 'inherit',
+                background: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.25)',
+                borderRadius: 3,
+                padding: '0 2px',
+                outline: 'none',
+              }}
+            />
+          ) : (
+            <span
+              data-mixer-strip-name
+              title={renameEnabled ? `${strip.name} — double-click to rename` : strip.name}
+              onDoubleClick={renameEnabled ? () => setRenaming(true) : undefined}
+              style={{
+                flex: 1,
+                fontSize: 11,
+                fontWeight: 600,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                opacity: strip.muted ? 0.45 : 1,
+                cursor: renameEnabled ? 'text' : 'default',
+              }}
+            >
+              {strip.name}
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <button

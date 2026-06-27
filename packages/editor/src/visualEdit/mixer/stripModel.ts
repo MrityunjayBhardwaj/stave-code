@@ -17,7 +17,7 @@
 import { detectAllChunks, type ChunkInfo, type ChainCall } from '../chunkDetect'
 import { patternKind } from '../panels/patternKind'
 import { readChainMethod } from '../panels/chainMethod'
-import { sampleVoice, VOICE_FALLBACK_COLOR } from '../panels/drumVoices'
+import { trackIdentity } from '../trackColor'
 import { type GainState, readGainState } from './gain'
 
 /** which surface a strip's pattern belongs to (mirrors `ChunkType` + groups). */
@@ -41,7 +41,9 @@ export interface StripModel {
   kind: StripKind
   /** the `$:`/`d1` label, or null for an anonymous `$:` */
   label: string | null
-  /** display name: label, else the source/head summary */
+  /** display name = the strip's canonical display key (V-track-1, #579): the
+   * label (`d1`), else the instrument sample (`hh`) the Song Timeline lanes by,
+   * else the head fn / `Track N`. Matches the Timeline lane header for the track. */
   name: string
   /** head function (`s`, `note`, `stack`, …) — drives the source summary line */
   headFn: string | null
@@ -63,7 +65,8 @@ export interface StripModel {
    * take the `_` marker; a bare expression statement can't (`_s(...)` would parse
    * as a call to a different identifier), so its mute control is disabled. */
   muteable: boolean
-  /** indicator colour (the drum-voice palette, or a neutral fallback) */
+  /** indicator colour — the shared `colorForTrack(id)` (V-track-1, #579), so the
+   * strip dot matches the Song Timeline lane for the same track. */
   color: string
   /** the full method chain → the expand drawer (S4) */
   chain: ChainCall[]
@@ -170,40 +173,56 @@ function isForeign(chunk: ChunkInfo, name: string): boolean {
   return call !== undefined && call.args[0].numeric === null
 }
 
-/** first mini token, variant-stripped, for the colour lookup (e.g. `bd:3`→`bd`). */
-function firstMiniToken(mini: string | null): string | null {
-  if (!mini) return null
-  const tok = mini.trim().split(/\s+/)[0]
-  if (!tok || tok === '~' || tok === '-') return null
-  return tok.replace(/[[\]<>(),].*/, '').split(':', 1)[0] || null
-}
-
-/** indicator colour: the drum-voice palette for step patterns, neutral else. */
-function stripColor(kind: StripKind, miniString: string | null): string {
-  if (kind === 'step') {
-    const tok = firstMiniToken(miniString)
-    if (tok) return sampleVoice(tok).color
-  }
-  return VOICE_FALLBACK_COLOR
+/**
+ * The strip's DISPLAY key (V-track-1, #579) — the ONE canonical key both the
+ * strip NAME and the strip COLOUR derive from, chosen to equal what the Song
+ * Timeline shows for the same track so the two views never diverge:
+ *
+ *  - **Named track** (`bass:`, `lead:`) → its label. The user explicitly named
+ *    it; honour that. (The Timeline resolves its positional key back to this
+ *    label too, so both read `bass`.)
+ *  - **Anonymous `$:`** → `d{ordinal}`, its 1-based position among tracks — the
+ *    SAME positional id the engine gives the hap (`trackId`) that the Timeline
+ *    lanes by. So an unnamed track reads `d1`/`d2`/… identically in both views.
+ *
+ * `d{ordinal}` is deliberately NOT descriptive — it is the friction that nudges
+ * the user to rename the track (write a `name:` label) when they want a
+ * meaningful name. The display never mutates the code; renaming is the user's
+ * own explicit edit (a later slice). Two same-sample tracks therefore stay
+ * distinct (`d1`/`d2`), name AND colour, with no auto-naming.
+ *
+ * DISTINCT from the strip's stable UI `id` (`#k` for anon, mute-safe per #555)
+ * and from the engine-join `captureId` (`$k`): those serve identity/metering;
+ * this serves DISPLAY and matches the Timeline.
+ */
+function displayKey(label: string | null, ordinal: number): string {
+  return bareLabel(label) ?? `d${ordinal}`
 }
 
 function buildStripModel(
   chunk: ChunkInfo,
   index: number,
+  ordinal: number,
   id: string,
   captureId: string,
 ): StripModel {
   const kind = stripKind(chunk)
   const source = readSource(chunk, kind)
-  // Display name uses the marker-stripped label (`_d1`→`d1`) so a muted strip
-  // reads `d1`, not `_d1`; the muted/muteable flags carry the mute state.
-  const name = bareLabel(chunk.label) ?? source ?? chunk.headFn ?? `Track ${index + 1}`
+  // Centralized track identity (V-track-1, #579): the strip's NAME and COLOUR
+  // both derive from ONE display key via the shared `trackIdentity` resolver, so
+  // they can't diverge from each other or from the Song Timeline. A named track
+  // keys on its label (`bass`); an anonymous `$:` keys on `d{ordinal}` — the same
+  // positional id the engine gives the hap the Timeline lanes by — so an unnamed
+  // track reads `d1`/`d2` identically in both views (and stays distinct from a
+  // same-sample sibling). The marker-stripped label is still kept for the
+  // `label`/muted/muteable fields.
+  const identity = trackIdentity(displayKey(chunk.label, ordinal))
   return {
     id,
     index,
     kind,
     label: bareLabel(chunk.label),
-    name,
+    name: identity.name,
     headFn: chunk.headFn,
     miniString: chunk.miniString,
     source,
@@ -213,7 +232,7 @@ function buildStripModel(
     sends: { room: readScalar(chunk, 'room'), delay: readScalar(chunk, 'delay') },
     muted: isMuted(chunk.label),
     muteable: chunk.label != null,
-    color: stripColor(kind, chunk.miniString),
+    color: identity.color,
     chain: chunk.chain,
     exprRange: chunk.exprRange,
     statementRange: chunk.statementRange,
@@ -246,6 +265,7 @@ function buildStripModel(
 export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
   let anonAll = 0 // ALL anonymous tracks (muted + unmuted) → the stable id index
   let anonLive = 0 // UNMUTED anonymous only → the engine captureId index
+  let ordinal = 0 // 1-based position among tracks → the `d{N}` display key
   const models: StripModel[] = []
   chunks.forEach((chunk, index) => {
     // Transport/config statements (`setcps`, `samples`, …) are not tracks — skip
@@ -253,6 +273,8 @@ export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
     // line up with the engine's anonIndex (#559). `index` stays the true
     // source-order position (preserving its documented meaning).
     if (!isTrackChunk(chunk)) return
+    ordinal++ // 1-based, counts every track in source order (config already skipped),
+    // matching the engine's `d{N}` hap numbering the Timeline displays.
     const bare = bareLabel(chunk.label)
     // Stable identity: name, else position among ALL anonymous tracks (muted
     // included). Invariant across a mute toggle — muting prefixes a `_` but never
@@ -265,7 +287,7 @@ export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
     if (bare !== null) captureId = bare
     else if (isMuted(chunk.label)) captureId = `_$${index}`
     else captureId = `$${anonLive++}`
-    models.push(buildStripModel(chunk, index, id, captureId))
+    models.push(buildStripModel(chunk, index, ordinal, id, captureId))
   })
   return models
 }

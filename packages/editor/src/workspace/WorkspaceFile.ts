@@ -744,6 +744,24 @@ const EMPTY_TRACK_META: TrackMeta = Object.freeze({})
 const trackMetaSubscribers = new Map<string, Set<Subscriber>>()
 const wiredTrackMetaObservers = new Set<string>()
 
+/** Origin for `pruneTrackMeta`'s cleanup transaction. A dedicated symbol (NOT
+ *  `STRUCT_ORIGIN`) so the per-eval prune is invisible to the undo manager —
+ *  it only tracks `STRUCT_ORIGIN` (undoManager.ts) — and never lands a delete in
+ *  the code undo history. Mirrors `PRUNE_ZONE_OVERRIDES_ORIGIN`. */
+const PRUNE_TRACK_META_ORIGIN = Symbol('prune-track-meta')
+
+/**
+ * Ref-stable snapshot cache for `getTrackMetaMapSnapshot` (Phase D, #581). A
+ * `useSyncExternalStore` getSnapshot MUST return the SAME reference until the
+ * data changes, so we cache one plain `Map<trackId, TrackMeta>` per file and
+ * rebuild it only after a committed mutation. Invalidated (entry deleted) inside
+ * the trackMeta observer — the same callback that fans out to subscribers — so a
+ * fresh map is built on the next read and React sees a new reference exactly when
+ * something changed. */
+const trackMetaSnapshotCache = new Map<string, ReadonlyMap<string, TrackMeta>>()
+/** Shared frozen-empty map for the no-record / no-fileId branches — ref-stable. */
+const EMPTY_TRACK_META_MAP: ReadonlyMap<string, TrackMeta> = new Map()
+
 /**
  * Read-only lookup. Returns the existing trackMeta Y.Map for `fileId` or
  * null. Wires the observer once per file (idempotent / no-doc-mutation).
@@ -763,6 +781,8 @@ function getTrackMetaMap(fileId: string): Y.Map<unknown> | null {
   // creation path firing during a render.)
   if (!wiredTrackMetaObservers.has(fileId)) {
     meta.observeDeep(() => {
+      // Drop the ref-stable snapshot so the next read rebuilds it (#581).
+      trackMetaSnapshotCache.delete(fileId)
       const subs = trackMetaSubscribers.get(fileId)
       if (subs) for (const cb of subs) cb()
     })
@@ -788,6 +808,8 @@ function ensureTrackMetaMap(fileId: string): Y.Map<unknown> | null {
   }
   if (!wiredTrackMetaObservers.has(fileId)) {
     meta.observeDeep(() => {
+      // Drop the ref-stable snapshot so the next read rebuilds it (#581).
+      trackMetaSnapshotCache.delete(fileId)
       const subs = trackMetaSubscribers.get(fileId)
       if (subs) for (const cb of subs) cb()
     })
@@ -809,6 +831,35 @@ export function getTrackMeta(fileId: string, trackId: string): TrackMeta {
   // tearing-detection in StrictMode (feedback_useeffect_per_render_dep.md
   // analogue at the snapshot-identity level).
   return (meta.get(trackId) as TrackMeta | undefined) ?? EMPTY_TRACK_META
+}
+
+/**
+ * Read ALL of a file's per-track metadata as a ref-stable plain Map (Phase D,
+ * #581). Both Phase-D consumers need every override at once: the Mixer colours N
+ * strips per render and the Song Timeline builds its whole scene in one pass, so a
+ * per-track `getTrackMeta` lookup per row is the wrong shape — they want one map
+ * keyed by the track's DISPLAY NAME (the same key both views resolve to).
+ *
+ * The returned Map is CACHED and only rebuilt after a committed mutation (the
+ * observer drops the cache entry), so repeated reads return the SAME reference —
+ * `useTrackMetaMap`'s `useSyncExternalStore` contract. Read-only path: never
+ * mutates the doc (safe during render). Absent map / map-less file → the shared
+ * frozen-empty map.
+ */
+export function getTrackMetaMapSnapshot(
+  fileId: string,
+): ReadonlyMap<string, TrackMeta> {
+  ensureDoc()
+  const cached = trackMetaSnapshotCache.get(fileId)
+  if (cached) return cached
+  const meta = getTrackMetaMap(fileId)
+  if (!meta) return EMPTY_TRACK_META_MAP
+  const out = new Map<string, TrackMeta>()
+  for (const [trackId, value] of meta.entries()) {
+    out.set(trackId, value as TrackMeta)
+  }
+  trackMetaSnapshotCache.set(fileId, out)
+  return out
 }
 
 /**
@@ -835,6 +886,40 @@ export function setTrackMeta(
       meta.set(trackId, merged)
     }
   }, STRUCT_ORIGIN)
+}
+
+/**
+ * Prune stale per-track metadata (#581 / #583). Called on every successful
+ * evaluate — removes records whose trackId (the track's DISPLAY NAME) is no
+ * longer in the evaluated track set, so a deleted track's custom colour can't
+ * leak in the per-file Y.Map forever or resurrect onto a shifted positional
+ * `d{N}`. Mirrors `pruneZoneOverrides`.
+ *
+ * `currentTrackIds` is the set of display names the live code currently produces
+ * (`buildStripModels(...).map(s => s.name)` — the SAME key `setTrackMeta` writes).
+ * The caller must never pass an empty set for a transient/failed eval (that would
+ * wipe every override); `pruneTrackMetaForCode` guards this. Reads via the
+ * read-only accessor (never creates the map) and commits under the dedicated,
+ * non-undo-tracked `PRUNE_TRACK_META_ORIGIN`.
+ */
+export function pruneTrackMeta(
+  fileId: string,
+  currentTrackIds: Iterable<string>,
+): void {
+  ensureDoc()
+  const meta = getTrackMetaMap(fileId)
+  if (!meta) return
+  const keep =
+    currentTrackIds instanceof Set ? currentTrackIds : new Set(currentTrackIds)
+  const stale: string[] = []
+  for (const trackId of meta.keys()) {
+    if (!keep.has(trackId)) stale.push(trackId)
+  }
+  if (stale.length === 0) return
+  const doc = ensureDoc()
+  doc.transact(() => {
+    for (const key of stale) meta.delete(key)
+  }, PRUNE_TRACK_META_ORIGIN)
 }
 
 /**
@@ -880,6 +965,7 @@ export function resetFileStore(): void {
   // would silently no-op (feedback_observer_wire_race.md).
   trackMetaSubscribers.clear()
   wiredTrackMetaObservers.clear()
+  trackMetaSnapshotCache.clear()
   // Undo manager was bound to the previous Y.Doc — drop it so the next
   // access rebuilds against the new doc.
   resetUndoManager()
@@ -908,6 +994,7 @@ export function __resetWorkspaceFilesForTests(): void {
   wiredZoneObservers.clear()
   trackMetaSubscribers.clear()
   wiredTrackMetaObservers.clear()
+  trackMetaSnapshotCache.clear()
   wiredFilesMap = null
   folderOrderObserverWired = false
   destroyProjectDoc()

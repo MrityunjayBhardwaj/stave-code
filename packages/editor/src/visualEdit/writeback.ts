@@ -50,6 +50,7 @@ export type WriteSource =
   | 'arrange.structure'
   | 'transport'
   | 'mixer'
+  | 'rename'
 
 /** A single replacement, addressed by absolute pre-edit doc offsets. */
 export interface OffsetEdit {

@@ -240,10 +240,12 @@ export {
   getTrackMeta,
   setTrackMeta,
   subscribeToTrackMeta,
+  // Phase D (#581) — whole-file trackMeta map for the colour-override consumers
+  getTrackMetaMapSnapshot,
 } from './workspace/WorkspaceFile'
 export type { TrackMeta } from './workspace/WorkspaceFile'
-// Phase 20-12 α-3 — React hook for trackMeta
-export { useTrackMeta } from './workspace/useTrackMeta'
+// Phase 20-12 α-3 — React hook for trackMeta; Phase D (#581) adds the map hook
+export { useTrackMeta, useTrackMetaMap } from './workspace/useTrackMeta'
 export type { UseTrackMetaResult } from './workspace/useTrackMeta'
 export { initProjectDoc, initProjectDocSync, switchProject, getActiveProjectId, isDocReady, subscribeToDocUpdate } from './workspace/projectDoc'
 export {
@@ -592,6 +594,14 @@ export {
 // track's line by its instrument — the app's onError uses this when the error's
 // stack is bundle-only.
 export { statementOffsetForSource } from './visualEdit/mixer/stripModel'
+// Track rename (#580, Phase C) — the pure label-rewrite primitive + its
+// validator, so the app's Song Timeline can rename a lane (the Mixer uses them
+// internally). `StripEdit` is the surgical {range,text} the caller applies.
+export { renameEdit, isValidTrackLabel, type StripEdit } from './visualEdit/mixer/writeStrip'
+// Per-eval trackMeta cleanup (#583) — the app calls this on each successful
+// evaluate to drop colour overrides for tracks that no longer exist (keys the
+// current track set from the same `buildStripModels` projection the Mixer uses).
+export { pruneTrackMetaForCode } from './visualEdit/mixer/trackMetaPrune'
 export type {
   ChunkInfo,
   ChainCall,

@@ -21,6 +21,7 @@ function marks(drums: SceneNote[]): CollectedMarks {
     marksByLane: new Map([['drums', drums]]),
     sourceByLane: new Map(),
     arrangeByLane: new Map(),
+    labelOffsetByLane: new Map(),
     clipsByLane: new Map(),
     capped: false,
   }

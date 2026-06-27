@@ -39,6 +39,7 @@ const scene: TimelineScene = {
   lanes: [
     {
       laneKey: 'lead',
+      displayName: 'lead',
       color: '#0af',
       density: [1, 0, 2, 0], // onsets at integer cycles 0 and 2
       notes: [
@@ -52,6 +53,7 @@ const scene: TimelineScene = {
       clips: [],
       sourceOffset: null,
       arrangeOffset: null,
+      labelOffset: null,
     },
   ],
 }
@@ -174,6 +176,7 @@ describe('drawTimeline', () => {
       lanes: [
         {
           laneKey: 'drums',
+          displayName: 'drums',
           color: '#fa0',
           density: [2, 0, 0, 0],
           notes: [
@@ -189,6 +192,7 @@ describe('drawTimeline', () => {
           clips: [],
           sourceOffset: null,
           arrangeOffset: null,
+      labelOffset: null,
         },
       ],
     }
