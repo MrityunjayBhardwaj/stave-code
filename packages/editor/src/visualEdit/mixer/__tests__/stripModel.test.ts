@@ -128,9 +128,9 @@ describe('buildStripModels — transport/config statements are not tracks (#559)
       ['setcps(0.5)', '$: s("bd")', '$: note("c e g")'].join('\n'),
     )
     expect(strips).toHaveLength(2)
-    // names = the display key (V-track-1): `s("bd")` → its sample `bd`; the
-    // sound-less `note(...)` has no sample/instrument → head fallback `note`.
-    expect(strips.map((s) => s.name)).toEqual(['bd', 'note'])
+    // names = the display key (V-track-1): both anon → positional d{ordinal},
+    // counting from 1 after the dropped config line (d1, d2 — never d2, d3).
+    expect(strips.map((s) => s.name)).toEqual(['d1', 'd2'])
   })
 
   it('renumbers anonymous captureIds to $0.. after dropping setcps (no off-by-one)', () => {
@@ -183,37 +183,31 @@ describe('buildStripModels — per-strip read model', () => {
     expect(stripsOf('$: s("bd")')[0].gain.kind).toBe('absent')
   })
 
-  it('colours a strip via the shared colorForTrack, keyed to match the Timeline lane', () => {
-    // V-track-1 (#579): the dot colour is the shared track-colour algorithm over
-    // the strip's DISPLAY key — NOT the old drum-voice palette — chosen to equal
-    // the Song Timeline's lane key so the two views resolve to one colour.
-    // A named track keys on its label.
-    const named = stripsOf('d1: note("c e g")')[0]
-    expect(named.id).toBe('d1')
-    expect(named.color).toBe(colorForTrack('d1'))
+  it('names + colours each strip by its display key — label, else positional d{N} (V-track-1, #579)', () => {
+    // The display key matches what the Song Timeline shows: a NAMED track keys on
+    // its label; an ANONYMOUS `$:` keys on `d{ordinal}` (its 1-based position) —
+    // the same positional hap id the Timeline lanes by. Name AND colour derive
+    // from that ONE key via the shared resolver, so they can't diverge.
+    const strips = stripsOf(['bass: note("c2 e2")', '$: s("hh*8")', '$: note("c").sound("piano")'].join('\n'))
+    expect(strips.map((s) => s.name)).toEqual(['bass', 'd2', 'd3'])
+    expect(strips[0].color).toBe(colorForTrack('bass'))
+    expect(strips[1].color).toBe(colorForTrack('d2'))
+    expect(strips[2].color).toBe(colorForTrack('d3'))
+    // anon names/colours follow position, NOT the instrument — so the strip never
+    // auto-adopts a sample name (renaming stays the user's explicit edit).
+    expect(strips[1].id).toBe('#0') // stable UI id is still positional `#k`
+  })
 
-    // An anonymous step `s("…")` track keys on its first sample (the Timeline
-    // lanes a single-voice anon track by its `s`), NOT its positional `#k` id.
-    const anonStep = stripsOf('$: s("hh*8")')[0]
-    expect(anonStep.id).toBe('#0')
-    expect(anonStep.color).toBe(colorForTrack('hh'))
-
-    // An anonymous melodic track keys on its `.sound`/`.s` instrument.
-    const anonRoll = stripsOf('$: note("c e g").sound("piano")')[0]
-    expect(anonRoll.id).toBe('#0')
-    expect(anonRoll.color).toBe(colorForTrack('piano'))
+  it('keeps same-sample anon tracks distinct in name AND colour (no collision)', () => {
+    // Two identical `s("bd")` tracks → d1 / d2, distinct colours. This is why the
+    // display key is positional, not the sample (which would collide).
+    const dup = stripsOf(['$: s("bd*4")', '$: s("bd*4")'].join('\n'))
+    expect(dup.map((s) => s.name)).toEqual(['d1', 'd2'])
+    expect(dup[0].color).not.toBe(dup[1].color)
   })
 
   it('classifies a stack(...) statement as a group', () => {
     expect(stripsOf('$: stack(s("bd"), note("c e"))')[0].kind).toBe('group')
-  })
-
-  it('names an unnamed strip by its instrument — the same key the Timeline lanes by', () => {
-    // V-track-1 (#579): an anon strip's name is its display key (the instrument
-    // `s`), matching the Timeline lane header — NOT the head fn.
-    expect(stripsOf('$: note("c e g").sound("piano")')[0].name).toBe('piano') // .sound value
-    expect(stripsOf('$: s("bd sn")')[0].name).toBe('bd') // step → first sample token
-    expect(stripsOf('$: note("c e g")')[0].name).toBe('note') // no instrument → head fallback
   })
 
   it('is a pure function of the document (re-derive → identical)', () => {
