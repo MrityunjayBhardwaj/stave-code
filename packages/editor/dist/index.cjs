@@ -28980,8 +28980,13 @@ function useTrackMeters() {
       };
     })();
     const paintDark = /* @__PURE__ */ __name((els) => {
-      els.fill.style.height = "0%";
-      els.peak.style.bottom = "0%";
+      if (els.horizontal) {
+        els.fill.style.width = "0%";
+        els.peak.style.left = "0%";
+      } else {
+        els.fill.style.height = "0%";
+        els.peak.style.bottom = "0%";
+      }
       els.peak.style.opacity = "0";
     }, "paintDark");
     const instantLevel = /* @__PURE__ */ __name((sched) => {
@@ -29020,9 +29025,14 @@ function useTrackMeters() {
         stateRef.current.set(captureId, next);
         const lvl = gainToFaderPos(next.rms);
         const pk = gainToFaderPos(next.peak);
-        els.fill.style.height = `${lvl * 100}%`;
+        if (els.horizontal) {
+          els.fill.style.width = `${lvl * 100}%`;
+          els.peak.style.left = `${pk * 100}%`;
+        } else {
+          els.fill.style.height = `${lvl * 100}%`;
+          els.peak.style.bottom = `${pk * 100}%`;
+        }
         els.fill.style.background = levelColor(lvl);
-        els.peak.style.bottom = `${pk * 100}%`;
         els.peak.style.opacity = next.peak > 5e-4 ? "1" : "0";
       }
     }, "frame");
@@ -29059,7 +29069,8 @@ var DRAG_SPAN_PX2 = 160;
 var FADER_HEIGHT = 80;
 function StripMeter({
   captureId,
-  controller
+  controller,
+  horizontal = false
 }) {
   const fillRef = React34__namespace.useRef(null);
   const peakRef = React34__namespace.useRef(null);
@@ -29067,9 +29078,9 @@ function StripMeter({
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
-    controller.register(captureId, { fill, peak });
+    controller.register(captureId, { fill, peak, horizontal });
     return () => controller.register(captureId, null);
-  }, [captureId, controller]);
+  }, [captureId, controller, horizontal]);
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -29077,8 +29088,8 @@ function StripMeter({
       "data-mixer-meter-capture": captureId,
       style: {
         position: "relative",
-        width: 6,
-        height: "100%",
+        width: horizontal ? "100%" : 6,
+        height: horizontal ? 6 : "100%",
         borderRadius: 2,
         background: "var(--background, #1c1c20)",
         border: "1px solid var(--border, #3a3a42)",
@@ -29091,14 +29102,7 @@ function StripMeter({
           {
             ref: fillRef,
             "data-mixer-meter-fill": true,
-            style: {
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: "0%",
-              background: "var(--meter-green, #44d07b)"
-            }
+            style: horizontal ? { position: "absolute", top: 0, bottom: 0, left: 0, width: "0%", background: "var(--meter-green, #44d07b)" } : { position: "absolute", left: 0, right: 0, bottom: 0, height: "0%", background: "var(--meter-green, #44d07b)" }
           }
         ),
         /* @__PURE__ */ jsxRuntime.jsx(
@@ -29106,15 +29110,7 @@ function StripMeter({
           {
             ref: peakRef,
             "data-mixer-meter-peak": true,
-            style: {
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: "0%",
-              height: 2,
-              background: "var(--foreground, #e6e6ea)",
-              opacity: 0
-            }
+            style: horizontal ? { position: "absolute", top: 0, bottom: 0, left: "0%", width: 2, background: "var(--foreground, #e6e6ea)", opacity: 0 } : { position: "absolute", left: 0, right: 0, bottom: "0%", height: 2, background: "var(--foreground, #e6e6ea)", opacity: 0 }
           }
         )
       ]
@@ -29160,8 +29156,10 @@ function ChannelStrip({
   onResetColor,
   expanded = false,
   onToggleExpand,
-  zoom = 1
+  zoom = 1,
+  orientation = "vertical"
 }) {
+  const horizontal = orientation === "horizontal";
   const [colorAnchor, setColorAnchor] = React34__namespace.useState(null);
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
@@ -29185,13 +29183,14 @@ function ChannelStrip({
     if (!faderEnabled) return;
     e.preventDefault();
     e.target.setPointerCapture?.(e.pointerId);
-    faderDrag.current = { startY: e.clientY, startPos: pos };
+    faderDrag.current = { start: horizontal ? e.clientX : e.clientY, startPos: pos };
     onGestureStart?.();
   }, "onFaderDown");
   const onFaderMove = /* @__PURE__ */ __name((e) => {
     const d = faderDrag.current;
     if (!d) return;
-    const next = faderPosToGain(clamp015(d.startPos + (d.startY - e.clientY) / DRAG_SPAN_PX2));
+    const delta = horizontal ? e.clientX - d.start : d.start - e.clientY;
+    const next = faderPosToGain(clamp015(d.startPos + delta / DRAG_SPAN_PX2));
     onGainChange?.(Math.round(next * 1e3) / 1e3);
   }, "onFaderMove");
   const endFader = /* @__PURE__ */ __name((e) => {
@@ -29222,6 +29221,119 @@ function ChannelStrip({
     e.target.releasePointerCapture?.(e.pointerId);
     onGestureEnd?.();
   }, "endPan");
+  if (horizontal) {
+    return /* @__PURE__ */ jsxRuntime.jsxs(
+      "div",
+      {
+        "data-mixer-strip": true,
+        "data-mixer-strip-id": strip.id,
+        "data-mixer-strip-kind": strip.kind,
+        "data-mixer-strip-muted": strip.muted ? "" : void 0,
+        "data-mixer-strip-orientation": "horizontal",
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          gap: 7,
+          width: "100%",
+          minWidth: 0,
+          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+          color: "var(--foreground, #e6e6ea)"
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntime.jsxs(
+            "div",
+            {
+              "data-mixer-strip-pan-control": true,
+              onPointerDown: onPanDown,
+              onPointerMove: onPanMove,
+              onPointerUp: endPan,
+              onPointerCancel: endPan,
+              style: {
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                fontSize: 10,
+                cursor: panEnabled ? "ew-resize" : "default",
+                opacity: strip.panForeign ? 0.4 : 1,
+                touchAction: "none",
+                userSelect: "none"
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: "pan" }),
+                /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-strip-pan": true, children: strip.panForeign ? "sig" : panLabel(strip.pan) })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+            /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: 10, color: "var(--foreground-muted, #a0a0aa)" }, children: "vol" }),
+            /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }, children: [
+              /* @__PURE__ */ jsxRuntime.jsxs(
+                "div",
+                {
+                  "data-mixer-strip-fader": true,
+                  onPointerDown: onFaderDown,
+                  onPointerMove: onFaderMove,
+                  onPointerUp: endFader,
+                  onPointerCancel: endFader,
+                  onDoubleClick: resetFader,
+                  style: {
+                    position: "relative",
+                    height: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    opacity: gain === null ? 0.4 : 1,
+                    cursor: faderEnabled ? "ew-resize" : "default",
+                    touchAction: "none",
+                    userSelect: "none"
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntime.jsx(
+                      "div",
+                      {
+                        style: {
+                          position: "absolute",
+                          left: 0,
+                          right: 0,
+                          height: 4,
+                          borderRadius: 2,
+                          background: "var(--background, #1c1c20)",
+                          border: "1px solid var(--border, #3a3a42)",
+                          pointerEvents: "none"
+                        }
+                      }
+                    ),
+                    gain !== null && /* @__PURE__ */ jsxRuntime.jsx(
+                      "div",
+                      {
+                        "data-mixer-strip-thumb": true,
+                        style: {
+                          position: "absolute",
+                          left: `${pos * 100}%`,
+                          transform: "translateX(-50%)",
+                          width: 6,
+                          height: 14,
+                          borderRadius: 2,
+                          background: "var(--foreground, #e6e6ea)",
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.4)",
+                          pointerEvents: "none"
+                        }
+                      }
+                    )
+                  ]
+                }
+              ),
+              meters && /* @__PURE__ */ jsxRuntime.jsx(StripMeter, { captureId: strip.captureId, controller: meters, horizontal: true })
+            ] }),
+            gain === null ? /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-strip-gain": true, title: "gain is a signal \u2014 edit in code", style: { fontSize: 10 }, children: "sig" }) : /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { display: "flex", gap: 5, fontSize: 10, flexShrink: 0 }, children: [
+              /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-strip-gain": true, children: formatNum(gain) }),
+              /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-strip-db": true, style: { color: "var(--foreground-muted, #a0a0aa)" }, children: formatDb(gain) })
+            ] })
+          ] })
+        ]
+      }
+    );
+  }
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -29545,8 +29657,8 @@ function LocalMixerStrip() {
       style: {
         flexShrink: 0,
         display: "flex",
-        padding: 8,
-        borderLeft: "1px solid var(--border, #3a3a42)",
+        padding: "10px 12px",
+        borderBottom: "1px solid var(--border, #3a3a42)",
         background: "var(--background, #1c1c20)",
         overflow: "hidden"
       },
@@ -29555,6 +29667,7 @@ function LocalMixerStrip() {
         {
           strip,
           showHeader: false,
+          orientation: "horizontal",
           onGainChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
             const e = gainEdit(fresh, value);
             if (e) wb.replaceRange(e.range, e.text, "mixer");
@@ -29577,16 +29690,16 @@ function MixerPanel({ division: division2, onDivisionChange } = {}) {
     "div",
     {
       "data-mixer-panel": true,
-      style: { display: "flex", flexDirection: "row", height: "100%", minHeight: 0, minWidth: 0 },
+      style: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 },
       children: [
-        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: "1 1 0", minWidth: 0, height: "100%", overflow: "hidden" }, children: /* @__PURE__ */ jsxRuntime.jsx(Mixer, { division: division2, onDivisionChange }) }),
-        /* @__PURE__ */ jsxRuntime.jsx(LocalMixerStrip, {})
+        /* @__PURE__ */ jsxRuntime.jsx(LocalMixerStrip, {}),
+        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: "1 1 0", minHeight: 0, minWidth: 0, overflow: "hidden" }, children: /* @__PURE__ */ jsxRuntime.jsx(Mixer, { division: division2, onDivisionChange }) })
       ]
     }
   );
 }
 __name(MixerPanel, "MixerPanel");
-var MIXER_WIDTH = 300;
+var MIXER_WIDTH = 220;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = patternKind(chunk);
