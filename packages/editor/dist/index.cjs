@@ -27576,6 +27576,13 @@ function PianoRollGrid({
       style: {
         position: "relative",
         height: "100%",
+        // Column layout so the velocity lane is a flush FOOTER below the scroll
+        // area (#624): rows scroll ABOVE it, the lane never overlays the lowest
+        // rows (the sticky-overlay version buried them in a short drawer) and
+        // there's no gap under it.
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
         outline: "none",
         // focusable for the Delete key (#432); scroll is on the inner div (#518)
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
@@ -27596,235 +27603,242 @@ function PianoRollGrid({
             children: /* @__PURE__ */ jsxRuntime.jsx(PatternTrackChip, {})
           }
         ),
-        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { padding: 16, height: "100%", overflow: "auto", boxSizing: "border-box" }, children: /* @__PURE__ */ jsxRuntime.jsxs(
+        /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
-            style: { display: "flex", flexDirection: "column", gap: 1, width: "100%" },
-            onPointerLeave: () => setHoveredMidi(null),
-            children: [
-              rows.map((midi) => {
-                const black = !model.numeric && isBlackKey(midi);
-                const hovered = midi === hoveredMidi;
-                const keyC = cLabel(midi);
-                return /* @__PURE__ */ jsxRuntime.jsxs(
-                  "div",
-                  {
-                    style: { display: "flex", alignItems: "center", gap: 6 },
-                    onPointerEnter: () => {
-                      if (!dragRef.current && !velRef.current) setHoveredMidi(midi);
-                    },
-                    children: [
-                      model.numeric ? (
-                        // Numeric rows are raw values/degrees, not piano keys — keep the
-                        // value label (no keyboard graphic).
-                        /* @__PURE__ */ jsxRuntime.jsx(
-                          "span",
-                          {
-                            style: {
-                              width: 36,
-                              fontSize: 9,
-                              textAlign: "right",
-                              color: "var(--foreground, #e6e6ea)"
-                            },
-                            children: tokenForRow(true, midi)
-                          }
-                        )
-                      ) : (
-                        // Graphical piano key (#430). Fixed-width key bed so the note
-                        // cells stay column-aligned across every row (PV120 single
-                        // vertical axis — same `rows` midi list). White keys fill the
-                        // bed light; a black key is a shorter dark bar overlaid on the
-                        // BACK (left) of the bed, leaving the white front edge visible —
-                        // the keyboard look. C rows are labelled (C is always white).
-                        /* @__PURE__ */ jsxRuntime.jsxs(
-                          "span",
-                          {
-                            "data-roll-key": midi,
-                            "data-roll-key-black": black ? "true" : void 0,
-                            "aria-hidden": "true",
-                            style: {
-                              position: "relative",
-                              width: 40,
-                              height: 16,
-                              flex: "0 0 auto",
-                              boxSizing: "border-box",
-                              borderRadius: "2px 3px 3px 2px",
-                              border: "1px solid var(--border, #3a3a42)",
-                              background: hovered ? "#cdd3ff" : "#e8e8ec",
-                              color: "#3a3a42",
-                              fontSize: 8,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "flex-end",
-                              paddingRight: 3,
-                              overflow: "hidden"
-                            },
-                            children: [
-                              black && /* @__PURE__ */ jsxRuntime.jsx(
-                                "span",
-                                {
-                                  "aria-hidden": "true",
-                                  style: {
-                                    position: "absolute",
-                                    left: 0,
-                                    top: 0,
-                                    bottom: 0,
-                                    width: "62%",
-                                    background: hovered ? "#3a3a44" : "#1b1b20",
-                                    borderRadius: "1px 2px 2px 1px"
-                                  }
-                                }
-                              ),
-                              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { position: "relative" }, children: keyC ?? "" })
-                            ]
-                          }
-                        )
-                      ),
-                      /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: model.steps }, (_, step) => {
-                        const note = noteAt(model, midi, step);
-                        const on = note !== void 0;
-                        const isHead = on && note.start === step;
-                        const isTail = on && note.start + note.duration - 1 === step;
-                        const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
-                        return /* @__PURE__ */ jsxRuntime.jsx(
-                          "button",
-                          {
-                            type: "button",
-                            "aria-pressed": on,
-                            "aria-label": `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
-                            "data-roll-cell": `${midi}:${step}`,
-                            "data-roll-selected": isSel ? "true" : void 0,
-                            "data-playing": step === playingStep ? "true" : void 0,
-                            onPointerDown: (e) => {
-                              e.preventDefault();
-                              onCellDown(midi, step, e);
-                            },
-                            onPointerEnter: () => onCellEnter(midi, step),
-                            style: {
-                              position: "relative",
-                              flex: "1 1 0",
-                              minWidth: 12,
-                              maxWidth: 44,
-                              height: 16,
-                              padding: 0,
-                              border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
-                              borderRadius: 2,
-                              background: on ? colorMode === "velocity" ? velocityColor(note.gain ?? 1) : "var(--accent, #6ea8fe)" : step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
-                              opacity: on && !isHead ? 0.7 : 1,
-                              cursor: "pointer",
-                              // selection ring (#432) — distinct from the playhead border
-                              boxShadow: isSel ? "inset 0 0 0 2px var(--foreground, #e6e6ea)" : void 0
-                            },
-                            children: isTail && /* @__PURE__ */ jsxRuntime.jsx(
-                              "span",
-                              {
-                                "data-roll-resize": `${midi}:${note.start}`,
-                                "aria-label": `resize ${tokenForRow(!!model.numeric, midi)}`,
-                                onPointerDown: (e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  onResizeDown(note);
-                                },
-                                style: {
-                                  position: "absolute",
-                                  top: 0,
-                                  bottom: 0,
-                                  right: 0,
-                                  width: RESIZE_ZONE_PX,
-                                  cursor: "ew-resize",
-                                  background: "var(--foreground, #e6e6ea)",
-                                  opacity: 0.45,
-                                  borderRadius: "0 2px 2px 0"
-                                }
-                              }
-                            )
-                          },
-                          step
-                        );
-                      }) })
-                    ]
-                  },
-                  midi
-                );
-              }),
-              gainInScope2(model) && /* @__PURE__ */ jsxRuntime.jsxs(
-                "div",
-                {
-                  "data-roll-velocity-lane": true,
-                  style: {
-                    position: "sticky",
-                    bottom: 0,
-                    zIndex: 4,
-                    display: "flex",
-                    alignItems: "flex-end",
-                    gap: 6,
-                    marginTop: 8,
-                    paddingTop: 8,
-                    background: "var(--surface, #14142a)",
-                    borderTop: "1px solid var(--border, #2a2a4a)"
-                  },
-                  children: [
-                    /* @__PURE__ */ jsxRuntime.jsx(
-                      "span",
-                      {
-                        style: {
-                          width: 36,
-                          fontSize: 9,
-                          textAlign: "right",
-                          color: "var(--foreground-muted, #a0a0aa)"
-                        },
-                        children: "vel"
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }, children: Array.from({ length: model.steps }, (_, col) => {
-                      const isStart = model.notes.some((n) => n.start === col);
-                      const g = gainAtStart(model, col);
-                      return /* @__PURE__ */ jsxRuntime.jsx(
-                        "div",
-                        {
-                          "data-vel-col": col,
-                          onPointerDown: isStart ? (e) => {
-                            e.preventDefault();
-                            onBarDown(col, e);
-                          } : void 0,
-                          style: {
-                            position: "relative",
-                            flex: "1 1 0",
-                            minWidth: 12,
-                            maxWidth: 44,
-                            height: "100%",
-                            borderRadius: 2,
-                            background: "var(--background-elevated, #26262c)",
-                            cursor: isStart ? "ns-resize" : "default"
-                          },
-                          children: isStart && // bottom-anchored bar = the note group's velocity (full = neutral)
+            style: {
+              flex: 1,
+              minHeight: 0,
+              padding: 16,
+              overflow: "auto",
+              boxSizing: "border-box"
+            },
+            children: /* @__PURE__ */ jsxRuntime.jsx(
+              "div",
+              {
+                style: { display: "flex", flexDirection: "column", gap: 1, width: "100%" },
+                onPointerLeave: () => setHoveredMidi(null),
+                children: rows.map((midi) => {
+                  const black = !model.numeric && isBlackKey(midi);
+                  const hovered = midi === hoveredMidi;
+                  const keyC = cLabel(midi);
+                  return /* @__PURE__ */ jsxRuntime.jsxs(
+                    "div",
+                    {
+                      style: { display: "flex", alignItems: "center", gap: 6 },
+                      onPointerEnter: () => {
+                        if (!dragRef.current && !velRef.current) setHoveredMidi(midi);
+                      },
+                      children: [
+                        model.numeric ? (
+                          // Numeric rows are raw values/degrees, not piano keys — keep the
+                          // value label (no keyboard graphic).
                           /* @__PURE__ */ jsxRuntime.jsx(
                             "span",
                             {
-                              "data-vel-bar": col,
-                              "data-gain": g,
                               style: {
-                                position: "absolute",
-                                left: 1,
-                                right: 1,
-                                bottom: 0,
-                                height: `${clamp013(g) * 100}%`,
-                                background: colorMode === "velocity" ? velocityColor(g) : "var(--accent, #6ea8fe)",
-                                borderRadius: 2,
-                                pointerEvents: "none"
-                              }
+                                width: 36,
+                                fontSize: 9,
+                                textAlign: "right",
+                                color: "var(--foreground, #e6e6ea)"
+                              },
+                              children: tokenForRow(true, midi)
                             }
                           )
-                        },
-                        col
-                      );
-                    }) })
-                  ]
+                        ) : (
+                          // Graphical piano key (#430). Fixed-width key bed so the note
+                          // cells stay column-aligned across every row (PV120 single
+                          // vertical axis — same `rows` midi list). White keys fill the
+                          // bed light; a black key is a shorter dark bar overlaid on the
+                          // BACK (left) of the bed, leaving the white front edge visible —
+                          // the keyboard look. C rows are labelled (C is always white).
+                          /* @__PURE__ */ jsxRuntime.jsxs(
+                            "span",
+                            {
+                              "data-roll-key": midi,
+                              "data-roll-key-black": black ? "true" : void 0,
+                              "aria-hidden": "true",
+                              style: {
+                                position: "relative",
+                                width: 40,
+                                height: 16,
+                                flex: "0 0 auto",
+                                boxSizing: "border-box",
+                                borderRadius: "2px 3px 3px 2px",
+                                border: "1px solid var(--border, #3a3a42)",
+                                background: hovered ? "#cdd3ff" : "#e8e8ec",
+                                color: "#3a3a42",
+                                fontSize: 8,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "flex-end",
+                                paddingRight: 3,
+                                overflow: "hidden"
+                              },
+                              children: [
+                                black && /* @__PURE__ */ jsxRuntime.jsx(
+                                  "span",
+                                  {
+                                    "aria-hidden": "true",
+                                    style: {
+                                      position: "absolute",
+                                      left: 0,
+                                      top: 0,
+                                      bottom: 0,
+                                      width: "62%",
+                                      background: hovered ? "#3a3a44" : "#1b1b20",
+                                      borderRadius: "1px 2px 2px 1px"
+                                    }
+                                  }
+                                ),
+                                /* @__PURE__ */ jsxRuntime.jsx("span", { style: { position: "relative" }, children: keyC ?? "" })
+                              ]
+                            }
+                          )
+                        ),
+                        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: model.steps }, (_, step) => {
+                          const note = noteAt(model, midi, step);
+                          const on = note !== void 0;
+                          const isHead = on && note.start === step;
+                          const isTail = on && note.start + note.duration - 1 === step;
+                          const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
+                          return /* @__PURE__ */ jsxRuntime.jsx(
+                            "button",
+                            {
+                              type: "button",
+                              "aria-pressed": on,
+                              "aria-label": `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
+                              "data-roll-cell": `${midi}:${step}`,
+                              "data-roll-selected": isSel ? "true" : void 0,
+                              "data-playing": step === playingStep ? "true" : void 0,
+                              onPointerDown: (e) => {
+                                e.preventDefault();
+                                onCellDown(midi, step, e);
+                              },
+                              onPointerEnter: () => onCellEnter(midi, step),
+                              style: {
+                                position: "relative",
+                                flex: "1 1 0",
+                                minWidth: 12,
+                                maxWidth: 44,
+                                height: 16,
+                                padding: 0,
+                                border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                                borderRadius: 2,
+                                background: on ? colorMode === "velocity" ? velocityColor(note.gain ?? 1) : "var(--accent, #6ea8fe)" : step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
+                                opacity: on && !isHead ? 0.7 : 1,
+                                cursor: "pointer",
+                                // selection ring (#432) — distinct from the playhead border
+                                boxShadow: isSel ? "inset 0 0 0 2px var(--foreground, #e6e6ea)" : void 0
+                              },
+                              children: isTail && /* @__PURE__ */ jsxRuntime.jsx(
+                                "span",
+                                {
+                                  "data-roll-resize": `${midi}:${note.start}`,
+                                  "aria-label": `resize ${tokenForRow(!!model.numeric, midi)}`,
+                                  onPointerDown: (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onResizeDown(note);
+                                  },
+                                  style: {
+                                    position: "absolute",
+                                    top: 0,
+                                    bottom: 0,
+                                    right: 0,
+                                    width: RESIZE_ZONE_PX,
+                                    cursor: "ew-resize",
+                                    background: "var(--foreground, #e6e6ea)",
+                                    opacity: 0.45,
+                                    borderRadius: "0 2px 2px 0"
+                                  }
+                                }
+                              )
+                            },
+                            step
+                          );
+                        }) })
+                      ]
+                    },
+                    midi
+                  );
+                })
+              }
+            )
+          }
+        ),
+        gainInScope2(model) && /* @__PURE__ */ jsxRuntime.jsxs(
+          "div",
+          {
+            "data-roll-velocity-lane": true,
+            style: {
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "flex-end",
+              gap: 6,
+              padding: "8px 16px",
+              background: "var(--surface, #14142a)",
+              borderTop: "1px solid var(--border, #2a2a4a)"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "span",
+                {
+                  style: {
+                    width: 36,
+                    fontSize: 9,
+                    textAlign: "right",
+                    color: "var(--foreground-muted, #a0a0aa)"
+                  },
+                  children: "vel"
                 }
-              )
+              ),
+              /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }, children: Array.from({ length: model.steps }, (_, col) => {
+                const isStart = model.notes.some((n) => n.start === col);
+                const g = gainAtStart(model, col);
+                return /* @__PURE__ */ jsxRuntime.jsx(
+                  "div",
+                  {
+                    "data-vel-col": col,
+                    onPointerDown: isStart ? (e) => {
+                      e.preventDefault();
+                      onBarDown(col, e);
+                    } : void 0,
+                    style: {
+                      position: "relative",
+                      flex: "1 1 0",
+                      minWidth: 12,
+                      maxWidth: 44,
+                      height: "100%",
+                      borderRadius: 2,
+                      background: "var(--background-elevated, #26262c)",
+                      cursor: isStart ? "ns-resize" : "default"
+                    },
+                    children: isStart && // bottom-anchored bar = the note group's velocity (full = neutral)
+                    /* @__PURE__ */ jsxRuntime.jsx(
+                      "span",
+                      {
+                        "data-vel-bar": col,
+                        "data-gain": g,
+                        style: {
+                          position: "absolute",
+                          left: 1,
+                          right: 1,
+                          bottom: 0,
+                          height: `${clamp013(g) * 100}%`,
+                          background: colorMode === "velocity" ? velocityColor(g) : "var(--accent, #6ea8fe)",
+                          borderRadius: 2,
+                          pointerEvents: "none"
+                        }
+                      }
+                    )
+                  },
+                  col
+                );
+              }) })
             ]
           }
-        ) })
+        )
       ]
     }
   );
