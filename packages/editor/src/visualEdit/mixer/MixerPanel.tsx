@@ -18,13 +18,20 @@ import * as React from 'react'
 import { Mixer } from '../panels/Mixer'
 import { LocalMixerStrip } from './LocalMixerStrip'
 import type { Division } from '../panels/division'
+import type { ResolutionControlProps } from '../panels/ResolutionControl'
 
 interface MixerPanelProps {
   division?: Division
   onDivisionChange?: (d: Division) => void
+  /** grid-resolution ("Slots") control lifted from the active grid (#601) */
+  resolution?: ResolutionControlProps | null
 }
 
-export function MixerPanel({ division, onDivisionChange }: MixerPanelProps = {}): React.ReactElement {
+export function MixerPanel({
+  division,
+  onDivisionChange,
+  resolution,
+}: MixerPanelProps = {}): React.ReactElement {
   return (
     <div
       data-mixer-panel
@@ -36,7 +43,7 @@ export function MixerPanel({ division, onDivisionChange }: MixerPanelProps = {})
       <LocalMixerStrip />
       {/* inspector — today's param panel, cursor-bound, unchanged (#381) */}
       <div style={{ flex: '1 1 0', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <Mixer division={division} onDivisionChange={onDivisionChange} />
+        <Mixer division={division} onDivisionChange={onDivisionChange} resolution={resolution} />
       </div>
     </div>
   )

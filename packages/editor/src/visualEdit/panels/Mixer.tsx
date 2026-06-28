@@ -21,6 +21,7 @@ import { MIXER_TAB_ID } from './tabs'
 import { useActiveChunk } from './useActiveChunk'
 import { MixerBody } from './MixerBody'
 import { type Division } from './division'
+import type { ResolutionControlProps } from './ResolutionControl'
 
 const MIXER_HINT = 'Click a pattern to adjust its sound with knobs.'
 
@@ -28,9 +29,11 @@ export interface MixerProps {
   /** Piano-Roll snap/quantize division (#432 Slice 2), owned by PatternPanel */
   division?: Division
   onDivisionChange?: (d: Division) => void
+  /** grid-resolution ("Slots") control lifted from the active grid (#601) */
+  resolution?: ResolutionControlProps | null
 }
 
-export function Mixer({ division, onDivisionChange }: MixerProps = {}): React.ReactElement {
+export function Mixer({ division, onDivisionChange, resolution }: MixerProps = {}): React.ReactElement {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk()
 
   // Standby only when there's no editable pattern under the cursor. A pattern
@@ -52,6 +55,7 @@ export function Mixer({ division, onDivisionChange }: MixerProps = {}): React.Re
       endGesture={endGesture}
       division={division}
       onDivisionChange={onDivisionChange}
+      resolution={resolution}
       dataTab={MIXER_TAB_ID}
       // A nested stack voice (#395) isn't a top-level track, so the channel-strip
       // fader (which mixes the track) doesn't reach its gain — surface a per-voice

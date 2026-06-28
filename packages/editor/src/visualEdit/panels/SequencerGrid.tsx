@@ -34,7 +34,7 @@ import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice } from './drumVoices'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
-import { ResolutionControl } from './ResolutionControl'
+import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
 import { stepSlotState, quantizeStepGridTo } from '../notation/resolution'
 import { setColumnGain } from './inspector'
@@ -71,7 +71,12 @@ function gainInScope(model: StepGridModel): boolean {
   return new Set(model.lanes.map((l) => l.part ?? 0)).size === 1
 }
 
-export function SequencerGrid(): React.ReactElement {
+export interface SequencerGridProps {
+  /** lift the grid-resolution ("Slots") control to the Pattern inspector (#601) */
+  onResolution?: (r: ResolutionControlProps | null) => void
+}
+
+export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.ReactElement {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<StepGridModel>({
     source: 'seq',
     eligible: isStepChunk,
@@ -137,6 +142,15 @@ export function SequencerGrid(): React.ReactElement {
       mutate((prev) => quantizeStepGridTo(prev, target))
     },
     [mutate],
+  )
+
+  // The "Slots" control now lives in the Pattern inspector (#601) — lift this
+  // grid's resolution state to it instead of rendering it in the grid header.
+  useLiftResolution(
+    model?.steps ?? null,
+    (t) => (model ? stepSlotState(model, t) : 'disabled'),
+    scaleToSlots,
+    onResolution,
   )
 
   React.useEffect(() => {
@@ -247,11 +261,7 @@ export function SequencerGrid(): React.ReactElement {
               the dot to recolour, double-click the name to rename. */}
           <PatternTrackChip />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <ResolutionControl
-              steps={model.steps}
-              slotState={(target) => stepSlotState(model, target)}
-              onScaleTo={scaleToSlots}
-            />
+            {/* "Slots" moved to the Pattern inspector (#601) — lifted via useLiftResolution above. */}
             <NoteColorToggle />
           </div>
         </div>

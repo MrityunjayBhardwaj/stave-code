@@ -17,6 +17,47 @@ import * as React from 'react'
 
 import { RESOLUTION_PRESETS, type SlotState } from '../notation/resolution'
 
+/**
+ * Lift a grid's resolution control up to the Pattern inspector (#601). The grid
+ * owns the model and the write-back; the inspector only RENDERS the buttons — so
+ * each grid reports its `ResolutionControlProps` upward and `PatternPanel` pushes
+ * them down to `MixerBody` (the same path `division`/Snap already takes).
+ *
+ * It re-lifts only when the slot COUNT changes — that's both the headline state
+ * and the active highlight. `slotState`/`onScaleTo` are ref-backed so they always
+ * read the latest model/mutate WITHOUT re-firing the lift, which keeps it
+ * loop-free no matter whether the grid's model object is referentially stable
+ * (PianoRollGrid's `scaleToSlots` is a fresh closure each render). `null` steps
+ * (no grid-editable pattern) lifts `null`, and unmount clears it — so the
+ * inspector shows Slots exactly when a grid is editable.
+ */
+export function useLiftResolution(
+  steps: number | null,
+  slotState: (target: number) => SlotState,
+  onScaleTo: (target: number) => void,
+  onResolution?: (r: ResolutionControlProps | null) => void,
+): void {
+  const slotStateRef = React.useRef(slotState)
+  slotStateRef.current = slotState
+  const onScaleToRef = React.useRef(onScaleTo)
+  onScaleToRef.current = onScaleTo
+  const stableSlotState = React.useCallback((t: number) => slotStateRef.current(t), [])
+  const stableScaleTo = React.useCallback((t: number) => onScaleToRef.current(t), [])
+
+  React.useEffect(() => {
+    if (!onResolution) return
+    onResolution(
+      steps == null ? null : { steps, slotState: stableSlotState, onScaleTo: stableScaleTo },
+    )
+  }, [steps, onResolution, stableSlotState, stableScaleTo])
+
+  // Clear on unmount only (e.g. cursor leaves a grid pattern → grid unmounts) so
+  // a steps change re-lifts in place without a null flicker.
+  React.useEffect(() => {
+    return () => onResolution?.(null)
+  }, [onResolution])
+}
+
 export interface ResolutionControlProps {
   /** current column count — the active preset */
   steps: number
