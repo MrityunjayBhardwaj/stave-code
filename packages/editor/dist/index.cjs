@@ -29065,6 +29065,108 @@ function useTrackMeters() {
   return React34__namespace.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
+
+// src/visualEdit/mixer/soloOverlay.ts
+function applyMonitorOverlay(doc, soloIds) {
+  if (soloIds.size === 0) return doc;
+  const strips = buildStripModels(detectAllChunks(doc));
+  const anySoloPresent = strips.some((s) => soloIds.has(s.id));
+  if (!anySoloPresent) return doc;
+  const inserts = [];
+  for (const strip of strips) {
+    if (soloIds.has(strip.id)) continue;
+    if (strip.muted) continue;
+    const [start, end] = strip.statementRange;
+    if (strip.muteable) {
+      inserts.push({ pos: start, text: "_" });
+    } else {
+      inserts.push({ pos: start, text: "/* " });
+      inserts.push({ pos: end, text: " */" });
+    }
+  }
+  if (inserts.length === 0) return doc;
+  inserts.sort((a, b) => b.pos - a.pos);
+  let out = doc;
+  for (const ins of inserts) {
+    out = out.slice(0, ins.pos) + ins.text + out.slice(ins.pos);
+  }
+  return out;
+}
+__name(applyMonitorOverlay, "applyMonitorOverlay");
+
+// src/visualEdit/mixer/soloStore.ts
+var EMPTY = /* @__PURE__ */ new Set();
+var cache = /* @__PURE__ */ new Map();
+var listeners10 = /* @__PURE__ */ new Set();
+function read2(fileId) {
+  if (!fileId) return EMPTY;
+  return cache.get(fileId) ?? EMPTY;
+}
+__name(read2, "read");
+function toggleSolo(fileId, id) {
+  const next = new Set(read2(fileId));
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  if (next.size === 0) cache.delete(fileId);
+  else cache.set(fileId, next);
+  listeners10.forEach((l) => l());
+  requestReeval(fileId);
+}
+__name(toggleSolo, "toggleSolo");
+function subscribe4(listener) {
+  listeners10.add(listener);
+  return () => {
+    listeners10.delete(listener);
+  };
+}
+__name(subscribe4, "subscribe");
+var refs = 0;
+var unregister = null;
+function acquireTransform() {
+  if (refs++ === 0) {
+    unregister = registerEvalSourceTransform(
+      (fileId, raw) => applyMonitorOverlay(raw, read2(fileId))
+    );
+  }
+}
+__name(acquireTransform, "acquireTransform");
+function releaseTransform() {
+  if (--refs <= 0) {
+    refs = 0;
+    unregister?.();
+    unregister = null;
+  }
+}
+__name(releaseTransform, "releaseTransform");
+function useActiveFileId() {
+  const [id, setId] = React34__namespace.useState(() => getActiveFileId());
+  React34__namespace.useEffect(() => {
+    setId(getActiveFileId());
+    return onActiveEditorChange(() => setId(getActiveFileId()));
+  }, []);
+  return id;
+}
+__name(useActiveFileId, "useActiveFileId");
+function useSoloStrips() {
+  const fileId = useActiveFileId();
+  React34__namespace.useEffect(() => {
+    acquireTransform();
+    return releaseTransform;
+  }, []);
+  const soloed = React34__namespace.useSyncExternalStore(
+    subscribe4,
+    () => read2(fileId),
+    () => EMPTY
+  );
+  const toggle = React34__namespace.useCallback(
+    (id) => {
+      if (fileId) toggleSolo(fileId, id);
+    },
+    [fileId]
+  );
+  return { soloed, toggle };
+}
+__name(useSoloStrips, "useSoloStrips");
 var DRAG_SPAN_PX2 = 160;
 var FADER_HEIGHT = 80;
 function StripMeter({
@@ -29138,6 +29240,24 @@ function panLabel(pan) {
 }
 __name(panLabel, "panLabel");
 var clamp015 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
+function compactBtn(bg3, color, enabled) {
+  return {
+    flexShrink: 0,
+    width: 16,
+    height: 16,
+    padding: 0,
+    borderRadius: 3,
+    fontSize: 9,
+    fontWeight: 700,
+    lineHeight: "14px",
+    cursor: enabled ? "pointer" : "default",
+    border: "1px solid var(--border, #3a3a42)",
+    background: bg3 ?? "var(--background, #1c1c20)",
+    color: color ?? "var(--foreground-muted, #a0a0aa)",
+    opacity: enabled ? 1 : 0.3
+  };
+}
+__name(compactBtn, "compactBtn");
 function ChannelStrip({
   strip,
   onGainChange,
@@ -29237,34 +29357,70 @@ function ChannelStrip({
           width: "100%",
           minWidth: 0,
           fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-          color: "var(--foreground, #e6e6ea)"
+          color: "var(--foreground, #e6e6ea)",
+          // a solo elsewhere dims the non-soloed track (matches the console)
+          opacity: dimmed ? 0.45 : 1,
+          transition: "opacity 120ms ease"
         },
         children: [
-          /* @__PURE__ */ jsxRuntime.jsxs(
-            "div",
-            {
-              "data-mixer-strip-pan-control": true,
-              onPointerDown: onPanDown,
-              onPointerMove: onPanMove,
-              onPointerUp: endPan,
-              onPointerCancel: endPan,
-              style: {
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                fontSize: 10,
-                cursor: panEnabled ? "ew-resize" : "default",
-                opacity: strip.panForeign ? 0.4 : 1,
-                touchAction: "none",
-                userSelect: "none"
-              },
-              children: [
-                /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: "pan" }),
-                /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-strip-pan": true, children: strip.panForeign ? "sig" : panLabel(strip.pan) })
-              ]
-            }
-          ),
+          /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+            (onMuteToggle || onSoloToggle) && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }, children: [
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-mixer-strip-mute": true,
+                  "aria-label": `${strip.muted ? "Unmute" : "Mute"} track`,
+                  "aria-pressed": strip.muted,
+                  disabled: !muteEnabled,
+                  onClick: () => onMuteToggle?.(),
+                  title: strip.muteable ? strip.muted ? "Unmute" : "Mute" : "Only named/$: tracks can be muted",
+                  style: compactBtn(strip.muted ? "var(--meter-red, #e0564a)" : void 0, strip.muted ? "#fff" : void 0, muteEnabled),
+                  children: "M"
+                }
+              ),
+              onSoloToggle && /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-mixer-strip-solo": true,
+                  "aria-label": `${soloed ? "Unsolo" : "Solo"} track`,
+                  "aria-pressed": soloed,
+                  onClick: () => onSoloToggle(),
+                  title: soloed ? "Unsolo" : "Solo (hear this alone)",
+                  style: compactBtn(soloed ? "var(--meter-yellow, #ffcc4d)" : void 0, soloed ? "#1c1c20" : void 0, true),
+                  children: "S"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntime.jsxs(
+              "div",
+              {
+                "data-mixer-strip-pan-control": true,
+                onPointerDown: onPanDown,
+                onPointerMove: onPanMove,
+                onPointerUp: endPan,
+                onPointerCancel: endPan,
+                style: {
+                  flex: 1,
+                  minWidth: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  fontSize: 10,
+                  cursor: panEnabled ? "ew-resize" : "default",
+                  opacity: strip.panForeign ? 0.4 : 1,
+                  touchAction: "none",
+                  userSelect: "none"
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: "pan" }),
+                  /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-strip-pan": true, children: strip.panForeign ? "sig" : panLabel(strip.pan) })
+                ]
+              }
+            )
+          ] }),
           /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
             /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: 10, color: "var(--foreground-muted, #a0a0aa)" }, children: "vol" }),
             /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }, children: [
@@ -29644,16 +29800,14 @@ function formatNum(v) {
 }
 __name(formatNum, "formatNum");
 function LocalMixerStrip() {
-  const { chunk, applyEdit, beginGesture: beginCursor, endGesture: endCursor } = useActiveChunk();
+  const { chunk } = useActiveChunk();
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel();
   const meters = useTrackMeters();
-  const anchor = chunk ? chunk.statementRange[0] : null;
-  const topStrip = anchor != null ? strips.find((s) => s.statementRange[0] === anchor) : void 0;
-  const nestedStrip = !topStrip && chunk ? buildStripModels([chunk])[0] ?? null : null;
-  const strip = topStrip ?? nestedStrip;
+  const { soloed, toggle: toggleSolo2 } = useSoloStrips();
+  const r = chunk ? chunk.statementRange : null;
+  const strip = r ? strips.find((s) => s.statementRange[0] <= r[0] && r[1] <= s.statementRange[1]) : void 0;
   if (!strip) return null;
-  const nested = topStrip === void 0;
-  const run = /* @__PURE__ */ __name((mutate) => nested ? applyEdit(mutate) : applyToStrip(strip.id, mutate), "run");
+  const soloActive = soloed.size > 0;
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
     {
@@ -29672,17 +29826,24 @@ function LocalMixerStrip() {
           strip,
           showHeader: false,
           orientation: "horizontal",
-          onGainChange: (value) => run((fresh, wb) => {
+          onGainChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
             const e = gainEdit(fresh, value);
             if (e) wb.replaceRange(e.range, e.text, "mixer");
           }),
-          onPanChange: (value) => run((fresh, wb) => {
+          onPanChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
             const e = panEdit(fresh, value);
             if (e) wb.replaceRange(e.range, e.text, "mixer");
           }),
-          onGestureStart: nested ? beginCursor : beginGesture,
-          onGestureEnd: nested ? endCursor : endGesture,
-          meters: nested ? void 0 : meters
+          onMuteToggle: () => applyToStrip(strip.id, (fresh, wb) => {
+            const e = muteEdit(fresh, !strip.muted);
+            if (e) wb.replaceRange(e.range, e.text, "mixer");
+          }),
+          soloed: soloed.has(strip.id),
+          onSoloToggle: () => toggleSolo2(strip.id),
+          dimmed: soloActive && !soloed.has(strip.id),
+          onGestureStart: beginGesture,
+          onGestureEnd: endGesture,
+          meters
         }
       )
     }
@@ -29752,7 +29913,7 @@ function PatternPanel() {
 }
 __name(PatternPanel, "PatternPanel");
 var KEY_PREFIX = "stave:mixer.expanded:";
-var EMPTY = /* @__PURE__ */ new Set();
+var EMPTY2 = /* @__PURE__ */ new Set();
 function key(fileId) {
   return KEY_PREFIX + fileId;
 }
@@ -29767,8 +29928,8 @@ function safeLocalStorage5() {
   }
 }
 __name(safeLocalStorage5, "safeLocalStorage");
-var cache = /* @__PURE__ */ new Map();
-var listeners10 = /* @__PURE__ */ new Set();
+var cache2 = /* @__PURE__ */ new Map();
+var listeners11 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -29789,16 +29950,16 @@ function load(fileId) {
   }
 }
 __name(load, "load");
-function read2(fileId) {
-  if (!fileId) return EMPTY;
-  let set = cache.get(fileId);
+function read3(fileId) {
+  if (!fileId) return EMPTY2;
+  let set = cache2.get(fileId);
   if (!set) {
     set = load(fileId);
-    cache.set(fileId, set);
+    cache2.set(fileId, set);
   }
   return set;
 }
-__name(read2, "read");
+__name(read3, "read");
 function persist(fileId, set) {
   const ls = safeLocalStorage5();
   if (!ls) return;
@@ -29809,22 +29970,22 @@ function persist(fileId, set) {
 }
 __name(persist, "persist");
 function toggleExpanded(fileId, id) {
-  const next = new Set(read2(fileId));
+  const next = new Set(read3(fileId));
   if (next.has(id)) next.delete(id);
   else next.add(id);
-  cache.set(fileId, next);
+  cache2.set(fileId, next);
   persist(fileId, next);
-  listeners10.forEach((l) => l());
+  listeners11.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
-function subscribe4(listener) {
-  listeners10.add(listener);
+function subscribe5(listener) {
+  listeners11.add(listener);
   return () => {
-    listeners10.delete(listener);
+    listeners11.delete(listener);
   };
 }
-__name(subscribe4, "subscribe");
-function useActiveFileId() {
+__name(subscribe5, "subscribe");
+function useActiveFileId2() {
   const [id, setId] = React34__namespace.useState(() => getActiveFileId());
   React34__namespace.useEffect(() => {
     setId(getActiveFileId());
@@ -29832,13 +29993,13 @@ function useActiveFileId() {
   }, []);
   return id;
 }
-__name(useActiveFileId, "useActiveFileId");
+__name(useActiveFileId2, "useActiveFileId");
 function useExpandedStrips() {
-  const fileId = useActiveFileId();
+  const fileId = useActiveFileId2();
   const expanded = React34__namespace.useSyncExternalStore(
-    subscribe4,
-    () => read2(fileId),
-    () => EMPTY
+    subscribe5,
+    () => read3(fileId),
+    () => EMPTY2
   );
   const toggle = React34__namespace.useCallback(
     (id) => {
@@ -29849,108 +30010,6 @@ function useExpandedStrips() {
   return { expanded, toggle };
 }
 __name(useExpandedStrips, "useExpandedStrips");
-
-// src/visualEdit/mixer/soloOverlay.ts
-function applyMonitorOverlay(doc, soloIds) {
-  if (soloIds.size === 0) return doc;
-  const strips = buildStripModels(detectAllChunks(doc));
-  const anySoloPresent = strips.some((s) => soloIds.has(s.id));
-  if (!anySoloPresent) return doc;
-  const inserts = [];
-  for (const strip of strips) {
-    if (soloIds.has(strip.id)) continue;
-    if (strip.muted) continue;
-    const [start, end] = strip.statementRange;
-    if (strip.muteable) {
-      inserts.push({ pos: start, text: "_" });
-    } else {
-      inserts.push({ pos: start, text: "/* " });
-      inserts.push({ pos: end, text: " */" });
-    }
-  }
-  if (inserts.length === 0) return doc;
-  inserts.sort((a, b) => b.pos - a.pos);
-  let out = doc;
-  for (const ins of inserts) {
-    out = out.slice(0, ins.pos) + ins.text + out.slice(ins.pos);
-  }
-  return out;
-}
-__name(applyMonitorOverlay, "applyMonitorOverlay");
-
-// src/visualEdit/mixer/soloStore.ts
-var EMPTY2 = /* @__PURE__ */ new Set();
-var cache2 = /* @__PURE__ */ new Map();
-var listeners11 = /* @__PURE__ */ new Set();
-function read3(fileId) {
-  if (!fileId) return EMPTY2;
-  return cache2.get(fileId) ?? EMPTY2;
-}
-__name(read3, "read");
-function toggleSolo(fileId, id) {
-  const next = new Set(read3(fileId));
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  if (next.size === 0) cache2.delete(fileId);
-  else cache2.set(fileId, next);
-  listeners11.forEach((l) => l());
-  requestReeval(fileId);
-}
-__name(toggleSolo, "toggleSolo");
-function subscribe5(listener) {
-  listeners11.add(listener);
-  return () => {
-    listeners11.delete(listener);
-  };
-}
-__name(subscribe5, "subscribe");
-var refs = 0;
-var unregister = null;
-function acquireTransform() {
-  if (refs++ === 0) {
-    unregister = registerEvalSourceTransform(
-      (fileId, raw) => applyMonitorOverlay(raw, read3(fileId))
-    );
-  }
-}
-__name(acquireTransform, "acquireTransform");
-function releaseTransform() {
-  if (--refs <= 0) {
-    refs = 0;
-    unregister?.();
-    unregister = null;
-  }
-}
-__name(releaseTransform, "releaseTransform");
-function useActiveFileId2() {
-  const [id, setId] = React34__namespace.useState(() => getActiveFileId());
-  React34__namespace.useEffect(() => {
-    setId(getActiveFileId());
-    return onActiveEditorChange(() => setId(getActiveFileId()));
-  }, []);
-  return id;
-}
-__name(useActiveFileId2, "useActiveFileId");
-function useSoloStrips() {
-  const fileId = useActiveFileId2();
-  React34__namespace.useEffect(() => {
-    acquireTransform();
-    return releaseTransform;
-  }, []);
-  const soloed = React34__namespace.useSyncExternalStore(
-    subscribe5,
-    () => read3(fileId),
-    () => EMPTY2
-  );
-  const toggle = React34__namespace.useCallback(
-    (id) => {
-      if (fileId) toggleSolo(fileId, id);
-    },
-    [fileId]
-  );
-  return { soloed, toggle };
-}
-__name(useSoloStrips, "useSoloStrips");
 function ExpandDrawer({
   strip,
   chunk,
