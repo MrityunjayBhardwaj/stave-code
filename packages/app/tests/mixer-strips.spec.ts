@@ -321,7 +321,9 @@ async function meterFill(
 ): Promise<number> {
   return drawer
     .locator(`[data-mixer-strip-id="${stripId}"] [data-mixer-meter-fill]`)
-    .evaluate((e) => parseFloat((e as HTMLElement).style.height) || 0)
+    // vertical (console) strips paint the fill HEIGHT; the Pattern-tab horizontal
+    // strip (#600) paints its WIDTH — read whichever this strip set.
+    .evaluate((e) => parseFloat((e as HTMLElement).style.height) || parseFloat((e as HTMLElement).style.width) || 0)
 }
 
 /** click a strip's mute button. */
