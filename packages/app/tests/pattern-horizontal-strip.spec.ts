@@ -189,6 +189,45 @@ test('inside a stack voice the strip binds the containing TRACK with the full co
   expect(after).toContain(`.s("sine").gain(0.95)`)
 })
 
+test('the inspector offers a per-voice gain fader inside a stack, not at top level (#620)', async ({ page }) => {
+  await boot(page)
+  await setStrudelCode(page, STACK)
+  const pattern = await openPattern(page)
+  await enlargeDrawer(page)
+  const gainKnob = pattern.locator('[data-mixer-body] [data-knob="gain"]')
+  const gainToggle = pattern.locator('[data-mixer-body] [data-mixer-transform="gain"]')
+
+  // TOP-LEVEL track (master `.gain` line): gain is the strip fader's — the
+  // inspector shows neither a gain knob nor a Gain toggle (no redundancy).
+  await cursorAt(page, 4, 5)
+  await expect(gainKnob).toHaveCount(0)
+  await expect(gainToggle).toHaveCount(0)
+
+  // INSIDE the sine voice: the strip faders the TRACK, so the voice's gain is
+  // surfaced here — a Gain toggle + a knob the drag lowers (per-voice fader).
+  await cursorAt(page, 3, 12)
+  await expect(gainToggle).toHaveCount(1)
+  const slider = gainKnob.locator('[role="slider"]')
+  await expect(slider).toHaveCount(1)
+  const sb = await slider.boundingBox()
+  expect(sb).not.toBeNull()
+  if (!sb) return
+  const cx = sb.x + sb.width / 2
+  const cy = sb.y + sb.height / 2
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  await page.mouse.move(cx, cy + 40, { steps: 8 }) // drag DOWN → quieter
+  await page.mouse.up()
+  await page.waitForTimeout(200)
+
+  const after = await strudelValue(page)
+  const sine = after.match(/sine"\)\.gain\(([0-9.]+)\)/)
+  expect(sine, `sine voice gain after knob drag: ${after}`).not.toBeNull()
+  if (sine) expect(Number(sine[1])).toBeLessThan(0.95)
+  expect(after).toContain(`.s('gm_choir_aahs').gain(0.5)`) // sibling intact
+  expect(after).toContain(`.viz("prism").gain(0.274)`) // master intact
+})
+
 test('mute from the local strip toggles the track _-prefix (#620)', async ({ page }) => {
   await boot(page)
   await setStrudelCode(page, `d1: s("bd*4")`)

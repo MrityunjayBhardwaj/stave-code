@@ -230,6 +230,7 @@ describe('chunkDetect — classification', () => {
     miniString: null,
     chain: [],
     type: 'unknown',
+    nested: false,
     ...over,
   })
 
