@@ -77,6 +77,19 @@ test.describe('Piano Roll (#383)', () => {
     await expect(grid.locator('[data-roll-cell="48:1"]')).toHaveAttribute('aria-pressed', 'false')
   })
 
+  test('shows the note name inside each note bar (#605)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 ~ e3 g3")')
+    const drawer = await openRoll(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    // the head cell of each note carries its name (uppercase letter)
+    await expect(grid.locator('[data-roll-cell="48:0"] [data-roll-note-name]')).toHaveText('C3')
+    await expect(grid.locator('[data-roll-cell="52:2"] [data-roll-note-name]')).toHaveText('E3')
+    await expect(grid.locator('[data-roll-cell="55:3"] [data-roll-note-name]')).toHaveText('G3')
+    // an empty cell has no name label
+    await expect(grid.locator('[data-roll-cell="48:1"] [data-roll-note-name]')).toHaveCount(0)
+  })
+
   test('placing a note round-trips the mini-notation', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c3 ~ ~ ~")')
