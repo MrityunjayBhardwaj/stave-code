@@ -189,6 +189,10 @@ test.describe('Mixer (#381)', () => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd")')
     const drawer = await openMixer(page)
+    // The inspector grew a "Slots" row (#601), so in the short default drawer the
+    // transforms row (with ＋More) sits at the fold; enlarge first so the button is
+    // on-screen and the portaled menu isn't dismissed by an auto-scroll-into-view.
+    await enlargeDrawer(page)
     await drawer.locator('[data-mixer-add-effect]').click()
     // the popover is portaled to <body> (escapes the drawer's overflow clip)
     const menu = page.locator('[data-mixer-add-effect-menu]')

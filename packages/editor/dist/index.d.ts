@@ -8396,6 +8396,62 @@ declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProp
 type Division = 'grid' | '1/4' | '1/8' | '1/16' | '1/8T' | '1/16T';
 
 /**
+ * resolution.ts — pure ×2 / ÷2 grid-resolution transforms (#479).
+ *
+ * A flat Strudel sequence conflates LENGTH and RESOLUTION: the token count IS
+ * the number of equal cycle subdivisions, so `s("bd ~ sn ~ bd")` is exactly 5
+ * slots and appending a token re-times every event (grounded with real haps in
+ * #479). The only RATIO-PRESERVING way to change the slot count — the standard
+ * step-sequencer "Rate / resolution" control (Logic, Elektron) decoupled from
+ * length — is an integer resolution change:
+ *
+ *   ×2  each slot splits into two; every hit keeps its position, the new
+ *       in-between slots are empty (editable). `bd ~ sn` → `bd ~ ~ ~ sn ~`.
+ *   ÷2  the inverse, and LOSSLESS only when every odd column is empty (a step
+ *       grid) / every note starts and lasts an even number of columns (a roll).
+ *       Otherwise it would drop or shorten notes, so it's disabled (the `canHalve*`
+ *       predicates) — an honest control, never a silent corruption.
+ *
+ * Verified against real `@strudel` haps (#479): the doubled model serializes to
+ * onsets byte-identical to the source — `bd ~ sn ~ bd` and its ×2 both query to
+ * `[0, 0.4, 0.8]`; `note("c3 e3 g3")` and `note("c3@2 e3@2 g3@2")` both to
+ * `[0, ⅓, ⅔]`. Roll notes scale duration too (a held `@n` keeps its time span).
+ *
+ * Pure (no React, no DOM), in the `notation/` model-op family alongside
+ * `lane.ts` / `place.ts` / `resize.ts`: a transform returns the SAME model
+ * reference when it can't apply, so `useGridModel.mutate` skips the write and
+ * the document is left untouched.
+ */
+
+/** how setting the grid to `target` slots behaves, for the control's label/state */
+type SlotState = 'active' | 'lossless' | 'quantize' | 'disabled';
+
+/**
+ * ResolutionControl — the "Slots" grid-resolution control shared by both grids
+ * (#479). Absolute slot-count targets (4 / 8 / 16 / 32 / 64): clicking one SETS
+ * the grid to that column count.
+ *
+ * A target's `SlotState` says how it behaves and how it's drawn:
+ *   - `active`   — the current count (highlighted, not clickable);
+ *   - `lossless` — a power-of-2 ratio: pure ×2/÷2, hits keep their position
+ *      (haps byte-identical) — drawn normal;
+ *   - `quantize` — any other ratio: notes snap to the nearest new slot and
+ *      collisions merge, so it works on ANY pattern (a 64-step choir → 16) but
+ *      changes timing — drawn dimmer with a "~" cue and an honest tooltip;
+ *   - `disabled` — not offered (only multi-bar grids, which can't quantize off
+ *      the bar grid yet).
+ */
+
+interface ResolutionControlProps {
+    /** current column count — the active preset */
+    steps: number;
+    /** how setting the grid to `target` behaves (active / lossless / quantize / disabled) */
+    slotState: (target: number) => SlotState;
+    /** scale the grid to `target` columns */
+    onScaleTo: (target: number) => void;
+}
+
+/**
  * Mixer — the Pattern tab's cursor-bound inspector (#381).
  *
  * Finds the Strudel statement under the cursor (via `useActiveChunk`) and shows
@@ -8416,8 +8472,10 @@ interface MixerProps {
     /** Piano-Roll snap/quantize division (#432 Slice 2), owned by PatternPanel */
     division?: Division;
     onDivisionChange?: (d: Division) => void;
+    /** grid-resolution ("Slots") control lifted from the active grid (#601) */
+    resolution?: ResolutionControlProps | null;
 }
-declare function Mixer({ division, onDivisionChange }?: MixerProps): React.ReactElement;
+declare function Mixer({ division, onDivisionChange, resolution }?: MixerProps): React.ReactElement;
 
 /**
  * Sequencer — drum/step grid (#382, per-column velocity #409).
@@ -8441,7 +8499,11 @@ declare function Mixer({ division, onDivisionChange }?: MixerProps): React.React
  * on EXTERNAL edits — see `useGridModel`.
  */
 
-declare function SequencerGrid(): React.ReactElement;
+interface SequencerGridProps {
+    /** lift the grid-resolution ("Slots") control to the Pattern inspector (#601) */
+    onResolution?: (r: ResolutionControlProps | null) => void;
+}
+declare function SequencerGrid({ onResolution }?: SequencerGridProps): React.ReactElement;
 
 /**
  * inspector — the Pattern grids' selection key + the shared `.gain` (velocity)
@@ -8499,8 +8561,10 @@ interface PianoRollGridProps {
     onSelect?: (sel: SelectedNote | null) => void;
     /** snap/quantize division for move + resize (#432 Slice 2), owned by PatternPanel */
     division?: Division;
+    /** lift the grid-resolution ("Slots") control to the Pattern inspector (#601) */
+    onResolution?: (r: ResolutionControlProps | null) => void;
 }
-declare function PianoRollGrid({ selected, onSelect, division, }?: PianoRollGridProps): React.ReactElement;
+declare function PianoRollGrid({ selected, onSelect, division, onResolution, }?: PianoRollGridProps): React.ReactElement;
 
 /**
  * Pattern — the single adaptive visual-editing panel (#398).

@@ -27,6 +27,7 @@ import { VisualEditStandby } from './VisualEditStandby'
 import { PATTERN_TAB_ID } from './tabs'
 import type { SelectedNote } from './inspector'
 import { type Division, DEFAULT_DIVISION } from './division'
+import type { ResolutionControlProps } from './ResolutionControl'
 
 /** width of the pinned Mixer column. The channel strip moved to a horizontal
  *  bar atop the inspector (#600), so the param panel no longer shares the column
@@ -57,11 +58,18 @@ export function PatternPanel(): React.ReactElement {
   // (renders the picker) share one source.
   const [division, setDivision] = React.useState<Division>(DEFAULT_DIVISION)
 
+  // The grid's resolution ("Slots") control, lifted from whichever grid is
+  // mounted so the inspector can render it (#601). The grid owns the model +
+  // write-back; this only carries the rendered control across the sibling
+  // boundary. Cleared to null when the active grid unmounts (cursor leaves a
+  // grid-editable pattern), so Slots shows exactly when a grid does.
+  const [resolution, setResolution] = React.useState<ResolutionControlProps | null>(null)
+
   const grid =
     kind === 'step' ? (
-      <SequencerGrid />
+      <SequencerGrid onResolution={setResolution} />
     ) : kind === 'roll' ? (
-      <PianoRollGrid selected={selected} onSelect={setSelected} division={division} />
+      <PianoRollGrid selected={selected} onSelect={setSelected} division={division} onResolution={setResolution} />
     ) : (
       <VisualEditStandby
         panel={PATTERN_TAB_ID}
@@ -90,7 +98,7 @@ export function PatternPanel(): React.ReactElement {
           borderLeft: '1px solid var(--border, #3a3a42)',
         }}
       >
-        <MixerPanel division={division} onDivisionChange={setDivision} />
+        <MixerPanel division={division} onDivisionChange={setDivision} resolution={resolution} />
       </div>
     </div>
   )

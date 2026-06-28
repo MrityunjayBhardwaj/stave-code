@@ -30,7 +30,7 @@ import { usePlayingStep } from './usePlayingStep'
 import { placeNote, resizeNote } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { NoteColorToggle } from './NoteColorToggle'
-import { ResolutionControl } from './ResolutionControl'
+import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
 import { rollSlotState, quantizePianoRollTo } from '../notation/resolution'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
@@ -113,12 +113,15 @@ export interface PianoRollGridProps {
   onSelect?: (sel: SelectedNote | null) => void
   /** snap/quantize division for move + resize (#432 Slice 2), owned by PatternPanel */
   division?: Division
+  /** lift the grid-resolution ("Slots") control to the Pattern inspector (#601) */
+  onResolution?: (r: ResolutionControlProps | null) => void
 }
 
 export function PianoRollGrid({
   selected,
   onSelect,
   division = DEFAULT_DIVISION,
+  onResolution,
 }: PianoRollGridProps = {}): React.ReactElement {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<PianoRollModel>({
     source: 'roll',
@@ -362,6 +365,17 @@ export function PianoRollGrid({
     mutate((prev) => quantizePianoRollTo(prev, target))
   }
 
+  // The "Slots" control now lives in the Pattern inspector (#601) — lift this
+  // grid's resolution state to it instead of rendering it in the overlay header.
+  // (`scaleToSlots` is a fresh closure each render; useLiftResolution keeps it
+  // ref-backed so the lift stays loop-free.)
+  useLiftResolution(
+    model?.steps ?? null,
+    (t) => (model ? rollSlotState(model, t) : 'disabled'),
+    scaleToSlots,
+    onResolution,
+  )
+
   if (!model) {
     return React.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
@@ -438,11 +452,7 @@ export function PianoRollGrid({
           gap: 12,
         }}
       >
-        <ResolutionControl
-          steps={model.steps}
-          slotState={(target) => rollSlotState(model, target)}
-          onScaleTo={scaleToSlots}
-        />
+        {/* "Slots" moved to the Pattern inspector (#601) — lifted via useLiftResolution above. */}
         <NoteColorToggle />
       </div>
       <div style={{ padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' }}>

@@ -23,6 +23,7 @@ import { Knob } from './Knob'
 import { knobRangeFor } from './knobRanges'
 import { FAVORITES, isEffectActive, effectNames, type Effect } from './effectCatalog'
 import { AddEffectMenu } from './AddEffectMenu'
+import { ResolutionControl, type ResolutionControlProps } from './ResolutionControl'
 import { patternKind, isRollChunk } from './patternKind'
 import { parsePianoRoll } from '../notation/parse'
 import { type Division, DIVISIONS, isRepresentable, stepsPerBar } from './division'
@@ -196,6 +197,12 @@ export interface MixerBodyProps {
    *  Mixer console drawer leaves it undefined and the Snap picker is omitted. */
   division?: Division
   onDivisionChange?: (d: Division) => void
+  /** the grid-resolution ("Slots") control, lifted from the active grid (#601).
+   *  Owned by the grid (model + write-back); the inspector only renders it. The
+   *  Mixer console drawer leaves it undefined (the console mixes a track, it
+   *  doesn't restructure the grid), so the Slots row is omitted there. `null`
+   *  when the cursor isn't in a grid-editable pattern. */
+  resolution?: ResolutionControlProps | null
   /** optional `data-bottom-panel-tab` marker — the Pattern inspector sets it
    *  (`"mixer"`), the drawer leaves it off so it doesn't pollute the console
    *  tab's scoping (P-MIX-7: one body marker per tab). */
@@ -237,6 +244,7 @@ export function MixerBody({
   endGesture,
   division,
   onDivisionChange,
+  resolution,
   dataTab,
   knobFlow = 'rows',
   showSoundPicker = true,
@@ -342,6 +350,10 @@ export function MixerBody({
           width: columnFlow ? COLUMN_HEADER_W : undefined,
         }}
       >
+      {/* Grid resolution ("Slots") — moved here from the grid header (#601). Lifted
+          from the active grid (it owns the model + write-back); shown only when a
+          grid-editable pattern is under the cursor. */}
+      {resolution && <ResolutionControl {...resolution} />}
       {showSoundPicker && kind === 'roll' && (
         <SoundSelect
           label="Instrument"
