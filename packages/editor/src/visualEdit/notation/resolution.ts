@@ -240,24 +240,34 @@ export function quantizeStepGridTo(model: StepGridModel, target: number): StepGr
 }
 
 /**
- * Set a piano roll to exactly `target` columns by quantizing: each note's start
- * (and duration) snaps to the new grid, notes that collide on a column merge
- * (same pitch → one; different pitches → a chord sharing the column's duration),
- * and durations are clamped so nothing overlaps or runs past the grid — so the
- * result always serializes (no silent drop). Lossless when `target` is a
- * power-of-2 ratio; a quantize otherwise. Single-bar only (multi-bar keeps the
- * lossless path). Returns the model unchanged for current/invalid/multi-bar.
+ * Set a piano roll to exactly `target` columns by quantizing. Each note's START
+ * snaps proportionally onto the new grid (`bucket`), so the timing stays
+ * relatively justified in both directions. The DURATION is CONSERVATIVE when
+ * ADDING slots (#607): a note keeps its slot-count instead of stretching to fill
+ * the finer grid, so a 1-slot note stays 1 slot and a held `@n` stays `@n` — the
+ * onset is preserved, the note simply no longer spans the widened gap. When
+ * REDUCING slots the duration scales DOWN proportionally so a coarser grid can't
+ * push a note out of range. Notes that collide on a column merge (same pitch →
+ * one; different pitches → a chord sharing the column's duration), and durations
+ * are clamped so nothing overlaps or runs past the grid — the result always
+ * serializes (no silent drop). Single-bar only (multi-bar keeps the lossless ×2
+ * path). Returns the model unchanged for current/invalid/multi-bar.
  */
 export function quantizePianoRollTo(model: PianoRollModel, target: number): PianoRollModel {
   if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model
   if ((model.bars ?? 1) > 1) return scalePianoRollTo(model, target)
   const from = model.steps
-  // 1. quantize each note's start + duration onto the target grid
+  const addingSlots = target > from
+  // 1. map each note onto the target grid: the START snaps proportionally; the
+  //    DURATION keeps its slot-count when ADDING slots (conservative, #607 — no
+  //    stretch) and scales down proportionally when REDUCING (stays in range).
   const q = model.notes
     .map((n) => ({
       pitch: n.pitch,
       start: bucket(n.start, from, target),
-      duration: Math.max(1, Math.round((n.duration * target) / from)),
+      duration: addingSlots
+        ? Math.max(1, n.duration)
+        : Math.max(1, Math.round((n.duration * target) / from)),
       gain: n.gain ?? 1,
     }))
     .sort((a, b) => a.start - b.start)
