@@ -70,6 +70,12 @@ async function enlargeDrawer(page: Page): Promise<void> {
 
 const MELODY = `note("c3 e3 g3 a3 g3 e3").s("sawtooth").gain(0.5)`
 
+// A stack with a per-voice scalar gain, plus a master gain on the whole `$:`.
+const STACK = `$: stack(
+  note("c4 e4 g4").s('gm_choir_aahs').gain(0.5),
+  note("e3 g3 b3 e4").s("sine").gain(0.95).release(0.3)
+).viz("prism").gain(0.274)`
+
 test('the Pattern-tab strip is a headerless horizontal bar atop the inspector', async ({ page }) => {
   await boot(page)
   await setStrudelCode(page, MELODY)
@@ -119,4 +125,57 @@ test('dragging the horizontal fader along X writes .gain', async ({ page }) => {
   const m = after.match(/\.gain\(([0-9.]+)\)/)
   expect(m).not.toBeNull()
   if (m) expect(Number(m[1])).toBeLessThan(0.5)
+})
+
+// Put the cursor on a given 1-based line/column in the Strudel editor.
+async function cursorAt(page: Page, line: number, column: number): Promise<void> {
+  await page.evaluate(
+    ({ line, column }) => {
+      const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string } | null; setPosition: (p: { lineNumber: number; column: number }) => void; focus: () => void }> } } }).monaco
+      const eds = m?.editor?.getEditors?.() ?? []
+      const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+      t?.setPosition({ lineNumber: line, column })
+      t?.focus()
+    },
+    { line, column },
+  )
+  await page.waitForTimeout(250)
+}
+
+test('the strip stays put inside a stack voice and its fader edits THAT voice (#395 — was vanishing)', async ({ page }) => {
+  await boot(page)
+  await setStrudelCode(page, STACK)
+  const pattern = await openPattern(page)
+  await enlargeDrawer(page)
+  const strip = pattern.locator('[data-mixer-local-strip] [data-mixer-strip]')
+
+  // OUTSIDE the stack (the master `.gain(0.274)` line) → the master strip, metered.
+  await cursorAt(page, 4, 5)
+  await expect(strip).toHaveCount(1)
+  await expect(pattern.locator('[data-mixer-local-strip] [data-mixer-strip-meter]')).toHaveCount(1)
+
+  // INSIDE the sine voice (line 3) → the strip must NOT vanish; no per-voice
+  // meter (the stack is one engine track), and its fader edits the voice's gain.
+  await cursorAt(page, 3, 12)
+  await expect(strip).toHaveCount(1)
+  await expect(pattern.locator('[data-mixer-local-strip] [data-mixer-strip-meter]')).toHaveCount(0)
+
+  const fader = pattern.locator('[data-mixer-local-strip] [data-mixer-strip-fader]')
+  const fb = await fader.boundingBox()
+  expect(fb).not.toBeNull()
+  if (!fb) return
+  const cy = fb.y + fb.height / 2
+  await page.mouse.move(fb.x + fb.width / 2, cy)
+  await page.mouse.down()
+  await page.mouse.move(fb.x + fb.width * 0.15, cy, { steps: 8 })
+  await page.mouse.up()
+  await page.waitForTimeout(200)
+
+  // only the SINE voice's gain moved; the choir (0.5) and master (0.274) are intact.
+  const after = await strudelValue(page)
+  const sine = after.match(/sine"\)\.gain\(([0-9.]+)\)/)
+  expect(sine, `sine voice gain after drag: ${after}`).not.toBeNull()
+  if (sine) expect(Number(sine[1])).toBeLessThan(0.95)
+  expect(after).toContain(`.s('gm_choir_aahs').gain(0.5)`)
+  expect(after).toContain(`.viz("prism").gain(0.274)`)
 })
