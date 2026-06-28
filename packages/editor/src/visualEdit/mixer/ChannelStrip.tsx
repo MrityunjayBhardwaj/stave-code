@@ -163,6 +163,26 @@ function panLabel(pan: number | null): string {
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v)
 
+/** the 16×16 mute/solo button style for the horizontal strip (#600). `bg`/`color`
+ *  default to the neutral idle look; pass the active colour when pressed. */
+function compactBtn(bg: string | undefined, color: string | undefined, enabled: boolean): React.CSSProperties {
+  return {
+    flexShrink: 0,
+    width: 16,
+    height: 16,
+    padding: 0,
+    borderRadius: 3,
+    fontSize: 9,
+    fontWeight: 700,
+    lineHeight: '14px',
+    cursor: enabled ? 'pointer' : 'default',
+    border: '1px solid var(--border, #3a3a42)',
+    background: bg ?? 'var(--background, #1c1c20)',
+    color: color ?? 'var(--foreground-muted, #a0a0aa)',
+    opacity: enabled ? 1 : 0.3,
+  }
+}
+
 export function ChannelStrip({
   strip,
   onGainChange,
@@ -280,29 +300,65 @@ export function ChannelStrip({
           minWidth: 0,
           fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
           color: 'var(--foreground, #e6e6ea)',
+          // a solo elsewhere dims the non-soloed track (matches the console)
+          opacity: dimmed ? 0.45 : 1,
+          transition: 'opacity 120ms ease',
         }}
       >
-        {/* pan — horizontal drag sets .pan */}
-        <div
-          data-mixer-strip-pan-control
-          onPointerDown={onPanDown}
-          onPointerMove={onPanMove}
-          onPointerUp={endPan}
-          onPointerCancel={endPan}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
-            fontSize: 10,
-            cursor: panEnabled ? 'ew-resize' : 'default',
-            opacity: strip.panForeign ? 0.4 : 1,
-            touchAction: 'none',
-            userSelect: 'none',
-          }}
-        >
-          <span style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>pan</span>
-          <span data-mixer-strip-pan>{strip.panForeign ? 'sig' : panLabel(strip.pan)}</span>
+        {/* mute + solo on the left, pan (horizontal drag sets .pan) on the right */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {(onMuteToggle || onSoloToggle) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              <button
+                type="button"
+                data-mixer-strip-mute
+                aria-label={`${strip.muted ? 'Unmute' : 'Mute'} track`}
+                aria-pressed={strip.muted}
+                disabled={!muteEnabled}
+                onClick={() => onMuteToggle?.()}
+                title={strip.muteable ? (strip.muted ? 'Unmute' : 'Mute') : 'Only named/$: tracks can be muted'}
+                style={compactBtn(strip.muted ? 'var(--meter-red, #e0564a)' : undefined, strip.muted ? '#fff' : undefined, muteEnabled)}
+              >
+                M
+              </button>
+              {onSoloToggle && (
+                <button
+                  type="button"
+                  data-mixer-strip-solo
+                  aria-label={`${soloed ? 'Unsolo' : 'Solo'} track`}
+                  aria-pressed={soloed}
+                  onClick={() => onSoloToggle()}
+                  title={soloed ? 'Unsolo' : 'Solo (hear this alone)'}
+                  style={compactBtn(soloed ? 'var(--meter-yellow, #ffcc4d)' : undefined, soloed ? '#1c1c20' : undefined, true)}
+                >
+                  S
+                </button>
+              )}
+            </div>
+          )}
+          <div
+            data-mixer-strip-pan-control
+            onPointerDown={onPanDown}
+            onPointerMove={onPanMove}
+            onPointerUp={endPan}
+            onPointerCancel={endPan}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              fontSize: 10,
+              cursor: panEnabled ? 'ew-resize' : 'default',
+              opacity: strip.panForeign ? 0.4 : 1,
+              touchAction: 'none',
+              userSelect: 'none',
+            }}
+          >
+            <span style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>pan</span>
+            <span data-mixer-strip-pan>{strip.panForeign ? 'sig' : panLabel(strip.pan)}</span>
+          </div>
         </div>
 
         {/* vol — a wide fader (horizontal drag sets .gain) with its meter fused
