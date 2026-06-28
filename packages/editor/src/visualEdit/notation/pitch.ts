@@ -41,6 +41,17 @@ export function midiToPitch(midi: number): string {
   return `${SHARP_NAMES[((midi % 12) + 12) % 12]}${octave}`
 }
 
+/**
+ * Display form of a MIDI pitch for the note bars (#605): the canonical token
+ * with an uppercase letter — `C4`, `C#4`, `D3`. Distinct from `midiToPitch`,
+ * whose lowercase token (`c4`) is what the serializer writes back to code; this
+ * is for the eye only (matching the uppercase `cLabel` keyboard anchors).
+ */
+export function noteDisplayName(midi: number): string {
+  const token = midiToPitch(midi)
+  return token.charAt(0).toUpperCase() + token.slice(1)
+}
+
 /** Is this MIDI pitch a black key (for striping the roll's pitch rows)? */
 export function isBlackKey(midi: number): boolean {
   return SHARP_NAMES[((midi % 12) + 12) % 12].includes('#')
