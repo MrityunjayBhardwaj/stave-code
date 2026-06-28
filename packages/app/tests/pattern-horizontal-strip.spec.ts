@@ -76,7 +76,7 @@ const STACK = `$: stack(
   note("e3 g3 b3 e4").s("sine").gain(0.95).release(0.3)
 ).viz("prism").gain(0.274)`
 
-test('the Pattern-tab strip is a headerless horizontal bar atop the inspector', async ({ page }) => {
+test('the Pattern-tab strip is a horizontal bar with the full control set, no name/dot', async ({ page }) => {
   await boot(page)
   await setStrudelCode(page, MELODY)
   const pattern = await openPattern(page)
@@ -84,12 +84,15 @@ test('the Pattern-tab strip is a headerless horizontal bar atop the inspector', 
 
   const strip = pattern.locator('[data-mixer-local-strip] [data-mixer-strip][data-mixer-strip-orientation="horizontal"]')
   await expect(strip).toBeVisible()
-  // headerless: no dot/name/mute in the local strip
+  // no name/dot — identity lives in the Pattern top-bar chip (#589)
   await expect(strip.locator('[data-mixer-strip-name]')).toHaveCount(0)
-  await expect(strip.locator('[data-mixer-strip-mute]')).toHaveCount(0)
-  // the mixing controls ARE there
+  await expect(strip.locator('[data-mixer-strip-dot]')).toHaveCount(0)
+  // the full mixing control set IS there: mute, solo, pan, fader, meter, gain
+  await expect(strip.locator('[data-mixer-strip-mute]')).toBeVisible()
+  await expect(strip.locator('[data-mixer-strip-solo]')).toBeVisible()
   await expect(strip.locator('[data-mixer-strip-pan]')).toBeVisible()
   await expect(strip.locator('[data-mixer-strip-fader]')).toBeVisible()
+  await expect(strip.locator('[data-mixer-strip-meter]')).toBeVisible()
   await expect(strip.locator('[data-mixer-strip-gain]')).toBeVisible()
 
   // the strip is WIDER than it is tall — it's a horizontal bar, not a column
@@ -142,24 +145,31 @@ async function cursorAt(page: Page, line: number, column: number): Promise<void>
   await page.waitForTimeout(250)
 }
 
-test('the strip stays put inside a stack voice and its fader edits THAT voice (#395 — was vanishing)', async ({ page }) => {
+test('inside a stack voice the strip binds the containing TRACK with the full control set (#620)', async ({ page }) => {
   await boot(page)
   await setStrudelCode(page, STACK)
   const pattern = await openPattern(page)
   await enlargeDrawer(page)
   const strip = pattern.locator('[data-mixer-local-strip] [data-mixer-strip]')
 
-  // OUTSIDE the stack (the master `.gain(0.274)` line) → the master strip, metered.
-  await cursorAt(page, 4, 5)
-  await expect(strip).toHaveCount(1)
-  await expect(pattern.locator('[data-mixer-local-strip] [data-mixer-strip-meter]')).toHaveCount(1)
+  // The strip is present and complete BOTH outside the stack (line 4, the master
+  // `.gain(0.274)` line) and INSIDE a voice (line 3) — it never vanishes, and
+  // both times it binds the SAME top-level track, so it carries the full set:
+  // mute, solo, pan, fader and a (track-level) meter.
+  for (const [line, col, where] of [[4, 5, 'outside'], [3, 12, 'inside']] as const) {
+    await cursorAt(page, line, col)
+    await expect(strip, where).toHaveCount(1)
+    await expect(pattern.locator('[data-mixer-local-strip] [data-mixer-strip-mute]'), where).toHaveCount(1)
+    await expect(pattern.locator('[data-mixer-local-strip] [data-mixer-strip-solo]'), where).toHaveCount(1)
+    await expect(pattern.locator('[data-mixer-local-strip] [data-mixer-strip-pan]'), where).toHaveCount(1)
+    await expect(pattern.locator('[data-mixer-local-strip] [data-mixer-strip-fader]'), where).toHaveCount(1)
+    await expect(pattern.locator('[data-mixer-local-strip] [data-mixer-strip-meter]'), where).toHaveCount(1)
+  }
 
-  // INSIDE the sine voice (line 3) → the strip must NOT vanish; no per-voice
-  // meter (the stack is one engine track), and its fader edits the voice's gain.
+  // INSIDE the sine voice, the fader edits the TRACK's master gain (0.274) — the
+  // channel strip mixes the track; the grid edits the voice's notes. The voice
+  // gains stay intact.
   await cursorAt(page, 3, 12)
-  await expect(strip).toHaveCount(1)
-  await expect(pattern.locator('[data-mixer-local-strip] [data-mixer-strip-meter]')).toHaveCount(0)
-
   const fader = pattern.locator('[data-mixer-local-strip] [data-mixer-strip-fader]')
   const fb = await fader.boundingBox()
   expect(fb).not.toBeNull()
@@ -171,11 +181,20 @@ test('the strip stays put inside a stack voice and its fader edits THAT voice (#
   await page.mouse.up()
   await page.waitForTimeout(200)
 
-  // only the SINE voice's gain moved; the choir (0.5) and master (0.274) are intact.
   const after = await strudelValue(page)
-  const sine = after.match(/sine"\)\.gain\(([0-9.]+)\)/)
-  expect(sine, `sine voice gain after drag: ${after}`).not.toBeNull()
-  if (sine) expect(Number(sine[1])).toBeLessThan(0.95)
+  const master = after.match(/\.viz\("prism"\)\.gain\(([0-9.]+)\)/)
+  expect(master, `master gain after drag: ${after}`).not.toBeNull()
+  if (master) expect(Number(master[1])).toBeLessThan(0.274)
   expect(after).toContain(`.s('gm_choir_aahs').gain(0.5)`)
-  expect(after).toContain(`.viz("prism").gain(0.274)`)
+  expect(after).toContain(`.s("sine").gain(0.95)`)
+})
+
+test('mute from the local strip toggles the track _-prefix (#620)', async ({ page }) => {
+  await boot(page)
+  await setStrudelCode(page, `d1: s("bd*4")`)
+  const pattern = await openPattern(page)
+  await enlargeDrawer(page)
+  await pattern.locator('[data-mixer-local-strip] [data-mixer-strip-mute]').click()
+  await page.waitForTimeout(150)
+  expect(await strudelValue(page)).toBe(`_d1: s("bd*4")`)
 })
