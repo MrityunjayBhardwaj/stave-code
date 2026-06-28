@@ -78,3 +78,28 @@ export function useNoteColorMode(): [NoteColorMode, (mode: NoteColorMode) => voi
   const mode = React.useSyncExternalStore(subscribe, () => current, () => DEFAULT_MODE)
   return [mode, setMode]
 }
+
+// ── editor↔app seam (#602) ─────────────────────────────────────────────────
+// The note-colour toggle moved from the grid headers into the app's Editor
+// Settings modal. The modal lives in a DIFFERENT package but the SAME document,
+// so a `storage` event won't fire (those only cross documents) — instead the app
+// calls `setNoteColorMode`, which notifies this in-process listener set, so the
+// live Pattern grids (`useNoteColorMode`) recolour immediately. Single shared
+// store, two surfaces; no duplicate state.
+
+/** Current note-colour mode — for the Settings modal to seed its control on open. */
+export function getNoteColorMode(): NoteColorMode {
+  return current
+}
+
+/** Set the mode from outside the grids (the Settings modal). Persists + notifies
+ *  every `useNoteColorMode` subscriber → the live grids recolour same-document. */
+export function setNoteColorMode(mode: NoteColorMode): void {
+  setMode(mode)
+}
+
+/** Subscribe to mode changes so the Settings modal reflects an external change
+ *  while it's open. Returns an unsubscribe. */
+export function subscribeNoteColorMode(listener: () => void): () => void {
+  return subscribe(listener)
+}

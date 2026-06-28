@@ -33,7 +33,6 @@ import { addLane, removeLane } from '../notation/lane'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice } from './drumVoices'
 import { useNoteColorMode, velocityColor } from './noteColor'
-import { NoteColorToggle } from './NoteColorToggle'
 import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
 import { stepSlotState, quantizeStepGridTo } from '../notation/resolution'
@@ -259,11 +258,10 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 4 }}>
           {/* Track identity (#589) — the bound track's colour dot + name; click
               the dot to recolour, double-click the name to rename. */}
+          {/* "Slots" moved to the Pattern inspector (#601); the Note Color toggle
+              moved to the editor Settings tab (#602). Both are lifted/owned
+              elsewhere now — the header just carries the track identity chip. */}
           <PatternTrackChip />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {/* "Slots" moved to the Pattern inspector (#601) — lifted via useLiftResolution above. */}
-            <NoteColorToggle />
-          </div>
         </div>
         {model.lanes.map((lane, laneIndex) => {
           const voice = sampleVoice(lane.sound)

@@ -25929,60 +25929,18 @@ function useNoteColorMode() {
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
-var SEGMENTS = [
-  { mode: "off", label: "Off" },
-  { mode: "velocity", label: "Velocity" }
-];
-function NoteColorToggle() {
-  const [mode, setMode2] = useNoteColorMode();
-  return /* @__PURE__ */ jsxRuntime.jsxs(
-    "div",
-    {
-      "data-note-color-toggle": true,
-      style: { display: "flex", alignItems: "center", gap: 6, fontSize: 11 },
-      children: [
-        /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: "Note Color" }),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "div",
-          {
-            role: "group",
-            "aria-label": "note color mode",
-            style: {
-              display: "inline-flex",
-              border: "1px solid var(--border, #3a3a42)",
-              borderRadius: 4,
-              overflow: "hidden"
-            },
-            children: SEGMENTS.map(({ mode: m, label }) => {
-              const active2 = mode === m;
-              return /* @__PURE__ */ jsxRuntime.jsx(
-                "button",
-                {
-                  type: "button",
-                  "aria-pressed": active2,
-                  "data-note-color-mode": m,
-                  onClick: () => setMode2(m),
-                  style: {
-                    padding: "2px 8px",
-                    fontSize: 11,
-                    border: "none",
-                    borderRight: m === "off" ? "1px solid var(--border, #3a3a42)" : "none",
-                    background: active2 ? "var(--accent, #6ea8fe)" : "transparent",
-                    color: active2 ? "#fff" : "var(--foreground-muted, #a0a0aa)",
-                    cursor: "pointer"
-                  },
-                  children: label
-                },
-                m
-              );
-            })
-          }
-        )
-      ]
-    }
-  );
+function getNoteColorMode() {
+  return current3;
 }
-__name(NoteColorToggle, "NoteColorToggle");
+__name(getNoteColorMode, "getNoteColorMode");
+function setNoteColorMode(mode) {
+  setMode(mode);
+}
+__name(setNoteColorMode, "setNoteColorMode");
+function subscribeNoteColorMode(listener) {
+  return subscribe3(listener);
+}
+__name(subscribeNoteColorMode, "subscribeNoteColorMode");
 
 // src/visualEdit/notation/resolution.ts
 var MAX_RESOLUTION_STEPS = 256;
@@ -27159,10 +27117,7 @@ function SequencerGrid({ onResolution } = {}) {
         touchAction: "none"
       },
       children: /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: "100%" }, children: [
-        /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 4 }, children: [
-          /* @__PURE__ */ jsxRuntime.jsx(PatternTrackChip, {}),
-          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", alignItems: "center", gap: 12 }, children: /* @__PURE__ */ jsxRuntime.jsx(NoteColorToggle, {}) })
-        ] }),
+        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 4 }, children: /* @__PURE__ */ jsxRuntime.jsx(PatternTrackChip, {}) }),
         model.lanes.map((lane, laneIndex) => {
           const voice = sampleVoice(lane.sound);
           return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
@@ -27639,21 +27594,6 @@ function PianoRollGrid({
               alignItems: "center"
             },
             children: /* @__PURE__ */ jsxRuntime.jsx(PatternTrackChip, {})
-          }
-        ),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "div",
-          {
-            style: {
-              position: "absolute",
-              top: 4,
-              right: 16,
-              zIndex: 3,
-              display: "flex",
-              alignItems: "center",
-              gap: 12
-            },
-            children: /* @__PURE__ */ jsxRuntime.jsx(NoteColorToggle, {})
           }
         ),
         /* @__PURE__ */ jsxRuntime.jsx("div", { style: { padding: 16, height: "100%", overflow: "auto", boxSizing: "border-box" }, children: /* @__PURE__ */ jsxRuntime.jsxs(
@@ -37834,6 +37774,7 @@ exports.getMasterGain = getMasterGain;
 exports.getModifiedFileIdsSinceHead = getModifiedFileIdsSinceHead;
 exports.getMusicalTimelineSubRowHeight = getMusicalTimelineSubRowHeight;
 exports.getNamedViz = getNamedViz;
+exports.getNoteColorMode = getNoteColorMode;
 exports.getPerfEnabled = getPerfEnabled;
 exports.getPresetIdForFile = getPresetIdForFile;
 exports.getPreviewProviderForExtension = getPreviewProviderForExtension;
@@ -38021,6 +37962,7 @@ exports.setInlineVizResolution = setInlineVizResolution;
 exports.setInlineVizTeardownEnabled = setInlineVizTeardownEnabled;
 exports.setMasterGain = setMasterGain;
 exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
+exports.setNoteColorMode = setNoteColorMode;
 exports.setPerfEnabled = setPerfEnabled;
 exports.setProjectBackgroundCrop = setProjectBackgroundCrop;
 exports.setSignalAliases = setSignalAliases;
@@ -38046,6 +37988,7 @@ exports.subscribeCapture = subscribeCapture;
 exports.subscribeFixed = subscribeFixed;
 exports.subscribeIRSnapshot = subscribeIRSnapshot;
 exports.subscribeLog = subscribeLog;
+exports.subscribeNoteColorMode = subscribeNoteColorMode;
 exports.subscribeToBottomPanelTabs = subscribeToBottomPanelTabs;
 exports.subscribeToDocUpdate = subscribeToDocUpdate;
 exports.subscribeToFileList = subscribeToFileList;
@@ -38070,6 +38013,7 @@ exports.unregisterBottomPanelTab = unregisterBottomPanelTab;
 exports.unregisterNamedViz = unregisterNamedViz;
 exports.updateVizConfig = updateVizConfig;
 exports.useMasterGain = useMasterGain;
+exports.useNoteColorMode = useNoteColorMode;
 exports.usePopoutPreview = usePopoutPreview;
 exports.useTrackMetaMap = useTrackMetaMap;
 exports.useWorkspaceFile = useWorkspaceFile;

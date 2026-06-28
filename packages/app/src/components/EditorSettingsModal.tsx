@@ -23,6 +23,9 @@ import {
   setMusicalTimelineSubRowHeight,
   getEditorTheme,
   setEditorTheme,
+  getNoteColorMode,
+  setNoteColorMode,
+  type NoteColorMode,
   getTierFlags,
   setTierFlag,
   listTiers,
@@ -47,6 +50,11 @@ interface Props {
   open: boolean;
   onClose: () => void;
 }
+
+const NOTE_COLOR_OPTIONS: { value: NoteColorMode; label: string }[] = [
+  { value: "off", label: "Off (track colour)" },
+  { value: "velocity", label: "By velocity" },
+];
 
 const THEME_OPTIONS: { value: EditorTheme; label: string }[] = [
   { value: "dark", label: "Dark" },
@@ -190,6 +198,9 @@ export function EditorSettingsModal({ open, onClose }: Props) {
   const [vizInputsLive, setVizInputsLive] = useState(true);
   const [subRowHeight, setSubRowHeight] = useState(18);
   const [theme, setTheme] = useState<EditorTheme>("dark");
+  // Pattern-grid note colouring (#602). Moved here from the grid headers; a
+  // global editor pref. Writing it notifies the live grids in the same document.
+  const [noteColorMode, setNoteColorModeState] = useState<NoteColorMode>("off");
   const [perfEnabled, setPerfEnabledState] = useState(false);
   // Adaptive performance = the viz GPU-budget governor (P122/PV91). ON by default.
   const [adaptivePerf, setAdaptivePerfState] = useState(true);
@@ -230,6 +241,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
     setVizInputsLive(getVizInputsLiveValuesEnabled());
     setSubRowHeight(getMusicalTimelineSubRowHeight());
     setTheme(getEditorTheme());
+    setNoteColorModeState(getNoteColorMode());
     setPerfEnabledState(getPerfEnabled());
     setAdaptivePerfState(getAdaptivePerfEnabled());
     setTierFlagsState(getTierFlags());
@@ -454,6 +466,24 @@ export function EditorSettingsModal({ open, onClose }: Props) {
               }}
             >
               {THEME_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </Row>
+          {/* Pattern-grid note colouring (#602) — moved out of the grid headers.
+              Setting it here recolours the live Pattern grids in the same doc. */}
+          <Row label="Note color">
+            <select
+              style={s.select}
+              data-setting-note-color
+              value={noteColorMode}
+              onChange={(e) => {
+                const v = e.target.value as NoteColorMode;
+                setNoteColorModeState(v);
+                setNoteColorMode(v);
+              }}
+            >
+              {NOTE_COLOR_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>

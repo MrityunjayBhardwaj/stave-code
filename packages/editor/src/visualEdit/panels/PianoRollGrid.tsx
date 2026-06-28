@@ -29,7 +29,6 @@ import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import { placeNote, resizeNote } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
-import { NoteColorToggle } from './NoteColorToggle'
 import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
 import { rollSlotState, quantizePianoRollTo } from '../notation/resolution'
@@ -436,25 +435,9 @@ export function PianoRollGrid({
       >
         <PatternTrackChip />
       </div>
-      {/* View ▸ Note Color (#428) — pinned top-right as an overlay, NOT in the
-          row flow: the piano roll is pitch-dense and the rows fill the panel, so
-          a header that consumed vertical space would push the lowest rows off the
-          bottom (and out of drag reach). The toggle floats over the empty
-          top-right (high-pitch) corner instead. */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 4,
-          right: 16,
-          zIndex: 3,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-        }}
-      >
-        {/* "Slots" moved to the Pattern inspector (#601) — lifted via useLiftResolution above. */}
-        <NoteColorToggle />
-      </div>
+      {/* "Slots" moved to the Pattern inspector (#601) and the Note Color toggle
+          to the editor Settings tab (#602) — the old top-right overlay is gone,
+          so the piano roll keeps its full height for pitch rows. */}
       <div style={{ padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' }}>
         <div
           style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}
