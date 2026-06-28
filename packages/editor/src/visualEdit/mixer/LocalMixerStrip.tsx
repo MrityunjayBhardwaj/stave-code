@@ -40,8 +40,8 @@ export function LocalMixerStrip(): React.ReactElement | null {
       style={{
         flexShrink: 0,
         display: 'flex',
-        padding: 8,
-        borderLeft: '1px solid var(--border, #3a3a42)',
+        padding: '10px 12px',
+        borderBottom: '1px solid var(--border, #3a3a42)',
         background: 'var(--background, #1c1c20)',
         overflow: 'hidden',
       }}
@@ -49,6 +49,7 @@ export function LocalMixerStrip(): React.ReactElement | null {
       <ChannelStrip
         strip={strip}
         showHeader={false}
+        orientation="horizontal"
         onGainChange={(value) =>
           applyToStrip(strip.id, (fresh, wb) => {
             const e = gainEdit(fresh, value)

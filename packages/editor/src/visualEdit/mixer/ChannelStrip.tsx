@@ -51,6 +51,12 @@ interface ChannelStripProps {
   meters?: MeterController
   /** show the dot/name/mute header row. Off = the headerless local strip. */
   showHeader?: boolean
+  /** strip orientation. `'vertical'` (default) = the console strip: a tall
+   *  fader, meter beside it, controls stacked. `'horizontal'` = the Pattern-tab
+   *  inspector strip: a wide fader, meter under it, pan/vol on short rows, so it
+   *  sits as a compact bar atop the inspector and frees the grid's width (#600).
+   *  Horizontal is always headerless (identity lives in the Pattern top bar). */
+  orientation?: 'vertical' | 'horizontal'
   /** the resolved dot colour `customColor ?? strip.color` (Phase D, #581). When
    *  absent, the dot uses `strip.color` (the deterministic palette). */
   dotColor?: string
@@ -81,9 +87,12 @@ interface ChannelStripProps {
 function StripMeter({
   captureId,
   controller,
+  horizontal = false,
 }: {
   captureId: string
   controller: MeterController
+  /** lay the bar out horizontally (fill grows left→right) — Pattern-tab strip. */
+  horizontal?: boolean
 }): React.ReactElement {
   const fillRef = React.useRef<HTMLDivElement>(null)
   const peakRef = React.useRef<HTMLDivElement>(null)
@@ -91,17 +100,17 @@ function StripMeter({
     const fill = fillRef.current
     const peak = peakRef.current
     if (!fill || !peak) return
-    controller.register(captureId, { fill, peak })
+    controller.register(captureId, { fill, peak, horizontal })
     return () => controller.register(captureId, null)
-  }, [captureId, controller])
+  }, [captureId, controller, horizontal])
   return (
     <div
       data-mixer-strip-meter
       data-mixer-meter-capture={captureId}
       style={{
         position: 'relative',
-        width: 6,
-        height: '100%',
+        width: horizontal ? '100%' : 6,
+        height: horizontal ? 6 : '100%',
         borderRadius: 2,
         background: 'var(--background, #1c1c20)',
         border: '1px solid var(--border, #3a3a42)',
@@ -112,27 +121,20 @@ function StripMeter({
       <div
         ref={fillRef}
         data-mixer-meter-fill
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: '0%',
-          background: 'var(--meter-green, #44d07b)',
-        }}
+        style={
+          horizontal
+            ? { position: 'absolute', top: 0, bottom: 0, left: 0, width: '0%', background: 'var(--meter-green, #44d07b)' }
+            : { position: 'absolute', left: 0, right: 0, bottom: 0, height: '0%', background: 'var(--meter-green, #44d07b)' }
+        }
       />
       <div
         ref={peakRef}
         data-mixer-meter-peak
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: '0%',
-          height: 2,
-          background: 'var(--foreground, #e6e6ea)',
-          opacity: 0,
-        }}
+        style={
+          horizontal
+            ? { position: 'absolute', top: 0, bottom: 0, left: '0%', width: 2, background: 'var(--foreground, #e6e6ea)', opacity: 0 }
+            : { position: 'absolute', left: 0, right: 0, bottom: '0%', height: 2, background: 'var(--foreground, #e6e6ea)', opacity: 0 }
+        }
       />
     </div>
   )
@@ -180,7 +182,9 @@ export function ChannelStrip({
   expanded = false,
   onToggleExpand,
   zoom = 1,
+  orientation = 'vertical',
 }: ChannelStripProps): React.ReactElement {
+  const horizontal = orientation === 'horizontal'
   // Colour swatch popover (Phase D, #581) — console only (when onPickColor is set).
   const [colorAnchor, setColorAnchor] = React.useState<DOMRect | null>(null)
   const colorPickEnabled = onPickColor !== undefined
@@ -203,20 +207,25 @@ export function ChannelStrip({
   const panEnabled = !strip.panForeign && onPanChange !== undefined
   const panValue = strip.pan ?? 0.5
 
-  const faderDrag = React.useRef<{ startY: number; startPos: number } | null>(null)
+  // The fader stores the axis coordinate it samples: a vertical fader reads
+  // UP-is-louder (start − clientY), a horizontal one RIGHT-is-louder
+  // (clientX − start). Both still read pointer DELTAS ÷ DRAG_SPAN_PX (never a
+  // bounding box), so the gesture is unaffected by zoom or layout (#596).
+  const faderDrag = React.useRef<{ start: number; startPos: number } | null>(null)
   const panDrag = React.useRef<{ startX: number; startPan: number } | null>(null)
 
   const onFaderDown = (e: React.PointerEvent<HTMLDivElement>): void => {
     if (!faderEnabled) return
     e.preventDefault()
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
-    faderDrag.current = { startY: e.clientY, startPos: pos }
+    faderDrag.current = { start: horizontal ? e.clientX : e.clientY, startPos: pos }
     onGestureStart?.()
   }
   const onFaderMove = (e: React.PointerEvent<HTMLDivElement>): void => {
     const d = faderDrag.current
     if (!d) return
-    const next = faderPosToGain(clamp01(d.startPos + (d.startY - e.clientY) / DRAG_SPAN_PX))
+    const delta = horizontal ? e.clientX - d.start : d.start - e.clientY
+    const next = faderPosToGain(clamp01(d.startPos + delta / DRAG_SPAN_PX))
     onGainChange?.(Math.round(next * 1000) / 1000)
   }
   const endFader = (e: React.PointerEvent<HTMLDivElement>): void => {
@@ -248,6 +257,127 @@ export function ChannelStrip({
     panDrag.current = null
     ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
     onGestureEnd?.()
+  }
+
+  // ── Horizontal (Pattern-tab inspector) layout (#600) ──────────────────────
+  // A compact, headerless bar: a pan row over a wide fader with its meter fused
+  // underneath and the gain·dB readout beside it. Sits atop the inspector so the
+  // grid reclaims the width the old vertical strip's side column took. Shares
+  // every drag handler and value above — only the arrangement differs.
+  if (horizontal) {
+    return (
+      <div
+        data-mixer-strip
+        data-mixer-strip-id={strip.id}
+        data-mixer-strip-kind={strip.kind}
+        data-mixer-strip-muted={strip.muted ? '' : undefined}
+        data-mixer-strip-orientation="horizontal"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 7,
+          width: '100%',
+          minWidth: 0,
+          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+          color: 'var(--foreground, #e6e6ea)',
+        }}
+      >
+        {/* pan — horizontal drag sets .pan */}
+        <div
+          data-mixer-strip-pan-control
+          onPointerDown={onPanDown}
+          onPointerMove={onPanMove}
+          onPointerUp={endPan}
+          onPointerCancel={endPan}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+            fontSize: 10,
+            cursor: panEnabled ? 'ew-resize' : 'default',
+            opacity: strip.panForeign ? 0.4 : 1,
+            touchAction: 'none',
+            userSelect: 'none',
+          }}
+        >
+          <span style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>pan</span>
+          <span data-mixer-strip-pan>{strip.panForeign ? 'sig' : panLabel(strip.pan)}</span>
+        </div>
+
+        {/* vol — a wide fader (horizontal drag sets .gain) with its meter fused
+            directly beneath, sharing one dB taper, plus the gain·dB readout */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, color: 'var(--foreground-muted, #a0a0aa)' }}>vol</span>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <div
+              data-mixer-strip-fader
+              onPointerDown={onFaderDown}
+              onPointerMove={onFaderMove}
+              onPointerUp={endFader}
+              onPointerCancel={endFader}
+              onDoubleClick={resetFader}
+              style={{
+                position: 'relative',
+                height: 14,
+                display: 'flex',
+                alignItems: 'center',
+                opacity: gain === null ? 0.4 : 1,
+                cursor: faderEnabled ? 'ew-resize' : 'default',
+                touchAction: 'none',
+                userSelect: 'none',
+              }}
+            >
+              {/* groove */}
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  height: 4,
+                  borderRadius: 2,
+                  background: 'var(--background, #1c1c20)',
+                  border: '1px solid var(--border, #3a3a42)',
+                  pointerEvents: 'none',
+                }}
+              />
+              {/* thumb at the taper position (hidden for foreign gain) */}
+              {gain !== null && (
+                <div
+                  data-mixer-strip-thumb
+                  style={{
+                    position: 'absolute',
+                    left: `${pos * 100}%`,
+                    transform: 'translateX(-50%)',
+                    width: 6,
+                    height: 14,
+                    borderRadius: 2,
+                    background: 'var(--foreground, #e6e6ea)',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                    pointerEvents: 'none',
+                  }}
+                />
+              )}
+            </div>
+            {/* fused meter — runs under the fader, aligned to its travel */}
+            {meters && <StripMeter captureId={strip.captureId} controller={meters} horizontal />}
+          </div>
+          {/* gain readout: linear + dB (or "sig" for a foreign gain) */}
+          {gain === null ? (
+            <span data-mixer-strip-gain title="gain is a signal — edit in code" style={{ fontSize: 10 }}>
+              sig
+            </span>
+          ) : (
+            <span style={{ display: 'flex', gap: 5, fontSize: 10, flexShrink: 0 }}>
+              <span data-mixer-strip-gain>{formatNum(gain)}</span>
+              <span data-mixer-strip-db style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>
+                {formatDb(gain)}
+              </span>
+            </span>
+          )}
+        </div>
+      </div>
+    )
   }
 
   return (
