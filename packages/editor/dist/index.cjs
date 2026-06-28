@@ -29644,12 +29644,16 @@ function formatNum(v) {
 }
 __name(formatNum, "formatNum");
 function LocalMixerStrip() {
-  const { chunk } = useActiveChunk();
+  const { chunk, applyEdit, beginGesture: beginCursor, endGesture: endCursor } = useActiveChunk();
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel();
   const meters = useTrackMeters();
   const anchor = chunk ? chunk.statementRange[0] : null;
-  const strip = anchor != null ? strips.find((s) => s.statementRange[0] === anchor) : void 0;
+  const topStrip = anchor != null ? strips.find((s) => s.statementRange[0] === anchor) : void 0;
+  const nestedStrip = !topStrip && chunk ? buildStripModels([chunk])[0] ?? null : null;
+  const strip = topStrip ?? nestedStrip;
   if (!strip) return null;
+  const nested = topStrip === void 0;
+  const run = /* @__PURE__ */ __name((mutate) => nested ? applyEdit(mutate) : applyToStrip(strip.id, mutate), "run");
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
     {
@@ -29668,17 +29672,17 @@ function LocalMixerStrip() {
           strip,
           showHeader: false,
           orientation: "horizontal",
-          onGainChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
+          onGainChange: (value) => run((fresh, wb) => {
             const e = gainEdit(fresh, value);
             if (e) wb.replaceRange(e.range, e.text, "mixer");
           }),
-          onPanChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
+          onPanChange: (value) => run((fresh, wb) => {
             const e = panEdit(fresh, value);
             if (e) wb.replaceRange(e.range, e.text, "mixer");
           }),
-          onGestureStart: beginGesture,
-          onGestureEnd: endGesture,
-          meters
+          onGestureStart: nested ? beginCursor : beginGesture,
+          onGestureEnd: nested ? endCursor : endGesture,
+          meters: nested ? void 0 : meters
         }
       )
     }
