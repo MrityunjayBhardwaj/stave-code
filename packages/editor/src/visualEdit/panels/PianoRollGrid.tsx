@@ -613,7 +613,23 @@ export function PianoRollGrid({
         {gainInScope(model) && (
           <div
             data-roll-velocity-lane
-            style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginTop: 8 }}
+            // Pinned to the bottom of the scroll viewport (#604): a tall pitch
+            // range used to push the velocity lane below the fold, so editing a
+            // step's velocity meant scrolling to find it. `sticky` keeps it in
+            // view; the opaque surface bg hides the pitch rows scrolling behind
+            // it and the top border separates it from the grid.
+            style={{
+              position: 'sticky',
+              bottom: 0,
+              zIndex: 4,
+              display: 'flex',
+              alignItems: 'flex-end',
+              gap: 6,
+              marginTop: 8,
+              paddingTop: 8,
+              background: 'var(--surface, #14142a)',
+              borderTop: '1px solid var(--border, #2a2a4a)',
+            }}
           >
             <span
               style={{

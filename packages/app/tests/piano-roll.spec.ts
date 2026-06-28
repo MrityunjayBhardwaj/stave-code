@@ -204,4 +204,15 @@ test.describe('Piano Roll (#383)', () => {
     await expect(drawer.locator('[data-bottom-panel-tab="piano-roll"]')).toHaveCount(1)
     await expect(drawer.locator('[data-bottom-panel-tab="sequencer"]')).toHaveCount(0)
   })
+
+  test('the velocity lane stays pinned (sticky) under a tall pitch range (#604)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c1 c6")') // ~5 octaves → rows overflow the panel
+    const drawer = await openRoll(page)
+    const lane = drawer.locator('[data-bottom-panel-tab="piano-roll"] [data-roll-velocity-lane]')
+    await expect(lane).toHaveCount(1)
+    // pinned so a tall grid can't bury it below the scroll fold
+    await expect(lane).toHaveCSS('position', 'sticky')
+    await expect(lane).toBeInViewport()
+  })
 })
