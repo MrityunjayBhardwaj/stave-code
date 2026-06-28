@@ -415,6 +415,13 @@ export function PianoRollGrid({
       style={{
         position: 'relative',
         height: '100%',
+        // Column layout so the velocity lane is a flush FOOTER below the scroll
+        // area (#624): rows scroll ABOVE it, the lane never overlays the lowest
+        // rows (the sticky-overlay version buried them in a short drawer) and
+        // there's no gap under it.
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
         outline: 'none', // focusable for the Delete key (#432); scroll is on the inner div (#518)
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: 'none',
@@ -438,7 +445,15 @@ export function PianoRollGrid({
       {/* "Slots" moved to the Pattern inspector (#601) and the Note Color toggle
           to the editor Settings tab (#602) — the old top-right overlay is gone,
           so the piano roll keeps its full height for pitch rows. */}
-      <div style={{ padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          padding: 16,
+          overflow: 'auto',
+          boxSizing: 'border-box',
+        }}
+      >
         <div
           style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}
           onPointerLeave={() => setHoveredMidi(null)}
@@ -603,28 +618,29 @@ export function PianoRollGrid({
             </div>
           )
         })}
-        {gainInScope(model) && (
-          <div
-            data-roll-velocity-lane
-            // Pinned to the bottom of the scroll viewport (#604): a tall pitch
-            // range used to push the velocity lane below the fold, so editing a
-            // step's velocity meant scrolling to find it. `sticky` keeps it in
-            // view; the opaque surface bg hides the pitch rows scrolling behind
-            // it and the top border separates it from the grid.
-            style={{
-              position: 'sticky',
-              bottom: 0,
-              zIndex: 4,
-              display: 'flex',
-              alignItems: 'flex-end',
-              gap: 6,
-              marginTop: 8,
-              paddingTop: 8,
-              background: 'var(--surface, #14142a)',
-              borderTop: '1px solid var(--border, #2a2a4a)',
-            }}
-          >
-            <span
+        </div>
+      </div>
+      {gainInScope(model) && (
+        <div
+          data-roll-velocity-lane
+          // The velocity lane is a flush FOOTER below the scroll area (#604/#624):
+          // rows scroll above it so a tall pitch range can't bury it AND it never
+          // overlays the lowest rows (the old sticky overlay sat on top of them in
+          // a short drawer). flexShrink:0 keeps its full height; L/R padding (16)
+          // matches the grid's so the bars line up under the columns; the surface
+          // bg reaches the panel's bottom edge (no gap) while paddingBottom keeps
+          // the bars off the very edge.
+          style={{
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: 6,
+            padding: '8px 16px',
+            background: 'var(--surface, #14142a)',
+            borderTop: '1px solid var(--border, #2a2a4a)',
+          }}
+        >
+          <span
               style={{
                 width: 36,
                 fontSize: 9,
@@ -683,9 +699,7 @@ export function PianoRollGrid({
               })}
             </div>
           </div>
-          )}
-        </div>
-      </div>
+        )}
     </div>
   )
 }
