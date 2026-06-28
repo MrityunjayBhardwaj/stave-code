@@ -28,14 +28,16 @@ export function MixerPanel({ division, onDivisionChange }: MixerPanelProps = {})
   return (
     <div
       data-mixer-panel
-      style={{ display: 'flex', flexDirection: 'row', height: '100%', minHeight: 0, minWidth: 0 }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, minWidth: 0 }}
     >
+      {/* the cursor track's channel strip — a horizontal bar atop the inspector
+          (#600). Moving it off the side frees the param panel to use the full
+          column width, so the Pattern grid reclaims what the old side strip took. */}
+      <LocalMixerStrip />
       {/* inspector — today's param panel, cursor-bound, unchanged (#381) */}
-      <div style={{ flex: '1 1 0', minWidth: 0, height: '100%', overflow: 'hidden' }}>
+      <div style={{ flex: '1 1 0', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
         <Mixer division={division} onDivisionChange={onDivisionChange} />
       </div>
-      {/* the cursor track's channel strip — pan/fader/meter, headerless */}
-      <LocalMixerStrip />
     </div>
   )
 }

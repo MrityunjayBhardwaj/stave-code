@@ -6581,7 +6581,7 @@ function detectChunk(doc, pos) {
       if (body.type !== "ExpressionStatement") return null;
       const topExpr = body.expression;
       const target = innermostChainUnder(doc, topExpr, pos);
-      return target === topExpr ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end]) : buildChunkFromExpr(doc, target, null, [target.start, target.end]);
+      return target === topExpr ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end]) : buildChunkFromExpr(doc, target, null, [target.start, target.end], true);
     }
   }
   return null;
@@ -6604,7 +6604,7 @@ function buildChunk(doc, node) {
   return buildChunkFromExpr(doc, body.expression, label, [node.start, node.end]);
 }
 __name(buildChunk, "buildChunk");
-function buildChunkFromExpr(doc, expr, label, stmtRange) {
+function buildChunkFromExpr(doc, expr, label, stmtRange, nested = false) {
   const headNode = { ref: null };
   const chain = collectChain(doc, expr, headNode);
   const headFn = chain.length > 0 ? chain[0].name : null;
@@ -6628,7 +6628,8 @@ function buildChunkFromExpr(doc, expr, label, stmtRange) {
     miniRange,
     miniString,
     chain,
-    type: "unknown"
+    type: "unknown",
+    nested
   };
   info.type = classifyChunk(info);
   return info;
@@ -28190,7 +28191,6 @@ var EFFECT_GROUPS = (() => {
   }
   return order.map((g) => [g, byGroup.get(g)]);
 })();
-var STRIP_OWNED = /* @__PURE__ */ new Set(["gain", "pan"]);
 var MENU_WIDTH = 230;
 function AddEffectMenu({
   present,
@@ -28539,10 +28539,11 @@ var setDrumKitAccessor = drumKitStore.setAccessor;
 var notifyDrumKitChanged = drumKitStore.notify;
 drumKitStore.read;
 var useDrumKitCatalog = drumKitStore.useCatalog;
-function knobsFromChunk(chunk) {
+function knobsFromChunk(chunk, includeGain = false) {
   const knobs = [];
   chunk.chain.forEach((call, chainIndex) => {
-    if (STRIP_OWNED.has(call.name)) return;
+    if (call.name === "pan") return;
+    if (call.name === "gain" && !includeGain) return;
     const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);
     numericArgs.forEach(({ a, argIndex }) => {
       knobs.push({
@@ -28647,6 +28648,7 @@ function DivisionSelect({
   );
 }
 __name(DivisionSelect, "DivisionSelect");
+var GAIN_EFFECT = { method: "gain", label: "Gain", group: "Level", def: 1 };
 var COLUMN_HEADER_W = 232;
 function MixerBody({
   chunk,
@@ -28657,12 +28659,13 @@ function MixerBody({
   onDivisionChange,
   dataTab,
   knobFlow = "rows",
-  showSoundPicker = true
+  showSoundPicker = true,
+  showGain = false
 }) {
   const columnFlow = knobFlow === "columns";
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
-  const knobs = knobsFromChunk(chunk);
+  const knobs = knobsFromChunk(chunk, showGain);
   const writeKnob = React34__namespace.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => {
@@ -28764,6 +28767,33 @@ function MixerBody({
                   "data-mixer-transforms": true,
                   style: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" },
                   children: [
+                    showGain && (() => {
+                      const active2 = isEffectActive(present, GAIN_EFFECT);
+                      return /* @__PURE__ */ jsxRuntime.jsxs(
+                        "button",
+                        {
+                          type: "button",
+                          "data-mixer-transform": "gain",
+                          "data-mixer-transform-active": active2 ? "true" : void 0,
+                          "aria-pressed": active2,
+                          title: active2 ? "Remove Gain" : "Add a per-voice Gain fader",
+                          onClick: () => toggleEffect(GAIN_EFFECT),
+                          style: {
+                            padding: "3px 10px",
+                            fontSize: 11,
+                            borderRadius: 4,
+                            cursor: "pointer",
+                            border: active2 ? "1px solid var(--accent, #6ea8fe)" : "1px solid var(--border, #3a3a42)",
+                            background: active2 ? "var(--accent, #6ea8fe)" : "var(--background-elevated, #26262c)",
+                            color: active2 ? "#0b0b0e" : "var(--foreground, #e6e6ea)"
+                          },
+                          children: [
+                            active2 ? "\u2713" : "+",
+                            " Gain"
+                          ]
+                        }
+                      );
+                    })(),
                     FAVORITES.map((e) => {
                       const active2 = isEffectActive(present, e);
                       return /* @__PURE__ */ jsxRuntime.jsxs(
@@ -28860,7 +28890,8 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
       endGesture,
       division: division2,
       onDivisionChange,
-      dataTab: MIXER_TAB_ID
+      dataTab: MIXER_TAB_ID,
+      showGain: chunk.nested
     }
   );
 }
@@ -28991,8 +29022,13 @@ function useTrackMeters() {
       };
     })();
     const paintDark = /* @__PURE__ */ __name((els) => {
-      els.fill.style.height = "0%";
-      els.peak.style.bottom = "0%";
+      if (els.horizontal) {
+        els.fill.style.width = "0%";
+        els.peak.style.left = "0%";
+      } else {
+        els.fill.style.height = "0%";
+        els.peak.style.bottom = "0%";
+      }
       els.peak.style.opacity = "0";
     }, "paintDark");
     const instantLevel = /* @__PURE__ */ __name((sched) => {
@@ -29031,9 +29067,14 @@ function useTrackMeters() {
         stateRef.current.set(captureId, next);
         const lvl = gainToFaderPos(next.rms);
         const pk = gainToFaderPos(next.peak);
-        els.fill.style.height = `${lvl * 100}%`;
+        if (els.horizontal) {
+          els.fill.style.width = `${lvl * 100}%`;
+          els.peak.style.left = `${pk * 100}%`;
+        } else {
+          els.fill.style.height = `${lvl * 100}%`;
+          els.peak.style.bottom = `${pk * 100}%`;
+        }
         els.fill.style.background = levelColor(lvl);
-        els.peak.style.bottom = `${pk * 100}%`;
         els.peak.style.opacity = next.peak > 5e-4 ? "1" : "0";
       }
     }, "frame");
@@ -29066,11 +29107,114 @@ function useTrackMeters() {
   return React34__namespace.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
+
+// src/visualEdit/mixer/soloOverlay.ts
+function applyMonitorOverlay(doc, soloIds) {
+  if (soloIds.size === 0) return doc;
+  const strips = buildStripModels(detectAllChunks(doc));
+  const anySoloPresent = strips.some((s) => soloIds.has(s.id));
+  if (!anySoloPresent) return doc;
+  const inserts = [];
+  for (const strip of strips) {
+    if (soloIds.has(strip.id)) continue;
+    if (strip.muted) continue;
+    const [start, end] = strip.statementRange;
+    if (strip.muteable) {
+      inserts.push({ pos: start, text: "_" });
+    } else {
+      inserts.push({ pos: start, text: "/* " });
+      inserts.push({ pos: end, text: " */" });
+    }
+  }
+  if (inserts.length === 0) return doc;
+  inserts.sort((a, b) => b.pos - a.pos);
+  let out = doc;
+  for (const ins of inserts) {
+    out = out.slice(0, ins.pos) + ins.text + out.slice(ins.pos);
+  }
+  return out;
+}
+__name(applyMonitorOverlay, "applyMonitorOverlay");
+
+// src/visualEdit/mixer/soloStore.ts
+var EMPTY = /* @__PURE__ */ new Set();
+var cache = /* @__PURE__ */ new Map();
+var listeners10 = /* @__PURE__ */ new Set();
+function read2(fileId) {
+  if (!fileId) return EMPTY;
+  return cache.get(fileId) ?? EMPTY;
+}
+__name(read2, "read");
+function toggleSolo(fileId, id) {
+  const next = new Set(read2(fileId));
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  if (next.size === 0) cache.delete(fileId);
+  else cache.set(fileId, next);
+  listeners10.forEach((l) => l());
+  requestReeval(fileId);
+}
+__name(toggleSolo, "toggleSolo");
+function subscribe4(listener) {
+  listeners10.add(listener);
+  return () => {
+    listeners10.delete(listener);
+  };
+}
+__name(subscribe4, "subscribe");
+var refs = 0;
+var unregister = null;
+function acquireTransform() {
+  if (refs++ === 0) {
+    unregister = registerEvalSourceTransform(
+      (fileId, raw) => applyMonitorOverlay(raw, read2(fileId))
+    );
+  }
+}
+__name(acquireTransform, "acquireTransform");
+function releaseTransform() {
+  if (--refs <= 0) {
+    refs = 0;
+    unregister?.();
+    unregister = null;
+  }
+}
+__name(releaseTransform, "releaseTransform");
+function useActiveFileId() {
+  const [id, setId] = React34__namespace.useState(() => getActiveFileId());
+  React34__namespace.useEffect(() => {
+    setId(getActiveFileId());
+    return onActiveEditorChange(() => setId(getActiveFileId()));
+  }, []);
+  return id;
+}
+__name(useActiveFileId, "useActiveFileId");
+function useSoloStrips() {
+  const fileId = useActiveFileId();
+  React34__namespace.useEffect(() => {
+    acquireTransform();
+    return releaseTransform;
+  }, []);
+  const soloed = React34__namespace.useSyncExternalStore(
+    subscribe4,
+    () => read2(fileId),
+    () => EMPTY
+  );
+  const toggle = React34__namespace.useCallback(
+    (id) => {
+      if (fileId) toggleSolo(fileId, id);
+    },
+    [fileId]
+  );
+  return { soloed, toggle };
+}
+__name(useSoloStrips, "useSoloStrips");
 var DRAG_SPAN_PX2 = 160;
 var FADER_HEIGHT = 80;
 function StripMeter({
   captureId,
-  controller
+  controller,
+  horizontal = false
 }) {
   const fillRef = React34__namespace.useRef(null);
   const peakRef = React34__namespace.useRef(null);
@@ -29078,9 +29222,9 @@ function StripMeter({
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
-    controller.register(captureId, { fill, peak });
+    controller.register(captureId, { fill, peak, horizontal });
     return () => controller.register(captureId, null);
-  }, [captureId, controller]);
+  }, [captureId, controller, horizontal]);
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -29088,8 +29232,8 @@ function StripMeter({
       "data-mixer-meter-capture": captureId,
       style: {
         position: "relative",
-        width: 6,
-        height: "100%",
+        width: horizontal ? "100%" : 6,
+        height: horizontal ? 6 : "100%",
         borderRadius: 2,
         background: "var(--background, #1c1c20)",
         border: "1px solid var(--border, #3a3a42)",
@@ -29102,14 +29246,7 @@ function StripMeter({
           {
             ref: fillRef,
             "data-mixer-meter-fill": true,
-            style: {
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: "0%",
-              background: "var(--meter-green, #44d07b)"
-            }
+            style: horizontal ? { position: "absolute", top: 0, bottom: 0, left: 0, width: "0%", background: "var(--meter-green, #44d07b)" } : { position: "absolute", left: 0, right: 0, bottom: 0, height: "0%", background: "var(--meter-green, #44d07b)" }
           }
         ),
         /* @__PURE__ */ jsxRuntime.jsx(
@@ -29117,15 +29254,7 @@ function StripMeter({
           {
             ref: peakRef,
             "data-mixer-meter-peak": true,
-            style: {
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: "0%",
-              height: 2,
-              background: "var(--foreground, #e6e6ea)",
-              opacity: 0
-            }
+            style: horizontal ? { position: "absolute", top: 0, bottom: 0, left: "0%", width: 2, background: "var(--foreground, #e6e6ea)", opacity: 0 } : { position: "absolute", left: 0, right: 0, bottom: "0%", height: 2, background: "var(--foreground, #e6e6ea)", opacity: 0 }
           }
         )
       ]
@@ -29153,6 +29282,24 @@ function panLabel(pan) {
 }
 __name(panLabel, "panLabel");
 var clamp015 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
+function compactBtn(bg3, color, enabled) {
+  return {
+    flexShrink: 0,
+    width: 16,
+    height: 16,
+    padding: 0,
+    borderRadius: 3,
+    fontSize: 9,
+    fontWeight: 700,
+    lineHeight: "14px",
+    cursor: enabled ? "pointer" : "default",
+    border: "1px solid var(--border, #3a3a42)",
+    background: bg3 ?? "var(--background, #1c1c20)",
+    color: color ?? "var(--foreground-muted, #a0a0aa)",
+    opacity: enabled ? 1 : 0.3
+  };
+}
+__name(compactBtn, "compactBtn");
 function ChannelStrip({
   strip,
   onGainChange,
@@ -29171,8 +29318,10 @@ function ChannelStrip({
   onResetColor,
   expanded = false,
   onToggleExpand,
-  zoom = 1
+  zoom = 1,
+  orientation = "vertical"
 }) {
+  const horizontal = orientation === "horizontal";
   const [colorAnchor, setColorAnchor] = React34__namespace.useState(null);
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
@@ -29196,13 +29345,14 @@ function ChannelStrip({
     if (!faderEnabled) return;
     e.preventDefault();
     e.target.setPointerCapture?.(e.pointerId);
-    faderDrag.current = { startY: e.clientY, startPos: pos };
+    faderDrag.current = { start: horizontal ? e.clientX : e.clientY, startPos: pos };
     onGestureStart?.();
   }, "onFaderDown");
   const onFaderMove = /* @__PURE__ */ __name((e) => {
     const d = faderDrag.current;
     if (!d) return;
-    const next = faderPosToGain(clamp015(d.startPos + (d.startY - e.clientY) / DRAG_SPAN_PX2));
+    const delta = horizontal ? e.clientX - d.start : d.start - e.clientY;
+    const next = faderPosToGain(clamp015(d.startPos + delta / DRAG_SPAN_PX2));
     onGainChange?.(Math.round(next * 1e3) / 1e3);
   }, "onFaderMove");
   const endFader = /* @__PURE__ */ __name((e) => {
@@ -29233,6 +29383,155 @@ function ChannelStrip({
     e.target.releasePointerCapture?.(e.pointerId);
     onGestureEnd?.();
   }, "endPan");
+  if (horizontal) {
+    return /* @__PURE__ */ jsxRuntime.jsxs(
+      "div",
+      {
+        "data-mixer-strip": true,
+        "data-mixer-strip-id": strip.id,
+        "data-mixer-strip-kind": strip.kind,
+        "data-mixer-strip-muted": strip.muted ? "" : void 0,
+        "data-mixer-strip-orientation": "horizontal",
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          gap: 7,
+          width: "100%",
+          minWidth: 0,
+          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+          color: "var(--foreground, #e6e6ea)",
+          // a solo elsewhere dims the non-soloed track (matches the console)
+          opacity: dimmed ? 0.45 : 1,
+          transition: "opacity 120ms ease"
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+            (onMuteToggle || onSoloToggle) && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }, children: [
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-mixer-strip-mute": true,
+                  "aria-label": `${strip.muted ? "Unmute" : "Mute"} track`,
+                  "aria-pressed": strip.muted,
+                  disabled: !muteEnabled,
+                  onClick: () => onMuteToggle?.(),
+                  title: strip.muteable ? strip.muted ? "Unmute" : "Mute" : "Only named/$: tracks can be muted",
+                  style: compactBtn(strip.muted ? "var(--meter-red, #e0564a)" : void 0, strip.muted ? "#fff" : void 0, muteEnabled),
+                  children: "M"
+                }
+              ),
+              onSoloToggle && /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-mixer-strip-solo": true,
+                  "aria-label": `${soloed ? "Unsolo" : "Solo"} track`,
+                  "aria-pressed": soloed,
+                  onClick: () => onSoloToggle(),
+                  title: soloed ? "Unsolo" : "Solo (hear this alone)",
+                  style: compactBtn(soloed ? "var(--meter-yellow, #ffcc4d)" : void 0, soloed ? "#1c1c20" : void 0, true),
+                  children: "S"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntime.jsxs(
+              "div",
+              {
+                "data-mixer-strip-pan-control": true,
+                onPointerDown: onPanDown,
+                onPointerMove: onPanMove,
+                onPointerUp: endPan,
+                onPointerCancel: endPan,
+                style: {
+                  flex: 1,
+                  minWidth: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  fontSize: 10,
+                  cursor: panEnabled ? "ew-resize" : "default",
+                  opacity: strip.panForeign ? 0.4 : 1,
+                  touchAction: "none",
+                  userSelect: "none"
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: "pan" }),
+                  /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-strip-pan": true, children: strip.panForeign ? "sig" : panLabel(strip.pan) })
+                ]
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+            /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: 10, color: "var(--foreground-muted, #a0a0aa)" }, children: "vol" }),
+            /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }, children: [
+              /* @__PURE__ */ jsxRuntime.jsxs(
+                "div",
+                {
+                  "data-mixer-strip-fader": true,
+                  onPointerDown: onFaderDown,
+                  onPointerMove: onFaderMove,
+                  onPointerUp: endFader,
+                  onPointerCancel: endFader,
+                  onDoubleClick: resetFader,
+                  style: {
+                    position: "relative",
+                    height: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    opacity: gain === null ? 0.4 : 1,
+                    cursor: faderEnabled ? "ew-resize" : "default",
+                    touchAction: "none",
+                    userSelect: "none"
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntime.jsx(
+                      "div",
+                      {
+                        style: {
+                          position: "absolute",
+                          left: 0,
+                          right: 0,
+                          height: 4,
+                          borderRadius: 2,
+                          background: "var(--background, #1c1c20)",
+                          border: "1px solid var(--border, #3a3a42)",
+                          pointerEvents: "none"
+                        }
+                      }
+                    ),
+                    gain !== null && /* @__PURE__ */ jsxRuntime.jsx(
+                      "div",
+                      {
+                        "data-mixer-strip-thumb": true,
+                        style: {
+                          position: "absolute",
+                          left: `${pos * 100}%`,
+                          transform: "translateX(-50%)",
+                          width: 6,
+                          height: 14,
+                          borderRadius: 2,
+                          background: "var(--foreground, #e6e6ea)",
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.4)",
+                          pointerEvents: "none"
+                        }
+                      }
+                    )
+                  ]
+                }
+              ),
+              meters && /* @__PURE__ */ jsxRuntime.jsx(StripMeter, { captureId: strip.captureId, controller: meters, horizontal: true })
+            ] }),
+            gain === null ? /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-strip-gain": true, title: "gain is a signal \u2014 edit in code", style: { fontSize: 10 }, children: "sig" }) : /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { display: "flex", gap: 5, fontSize: 10, flexShrink: 0 }, children: [
+              /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-strip-gain": true, children: formatNum(gain) }),
+              /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-strip-db": true, style: { color: "var(--foreground-muted, #a0a0aa)" }, children: formatDb(gain) })
+            ] })
+          ] })
+        ]
+      }
+    );
+  }
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -29546,9 +29845,11 @@ function LocalMixerStrip() {
   const { chunk } = useActiveChunk();
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel();
   const meters = useTrackMeters();
-  const anchor = chunk ? chunk.statementRange[0] : null;
-  const strip = anchor != null ? strips.find((s) => s.statementRange[0] === anchor) : void 0;
+  const { soloed, toggle: toggleSolo2 } = useSoloStrips();
+  const r = chunk ? chunk.statementRange : null;
+  const strip = r ? strips.find((s) => s.statementRange[0] <= r[0] && r[1] <= s.statementRange[1]) : void 0;
   if (!strip) return null;
+  const soloActive = soloed.size > 0;
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
     {
@@ -29556,8 +29857,8 @@ function LocalMixerStrip() {
       style: {
         flexShrink: 0,
         display: "flex",
-        padding: 8,
-        borderLeft: "1px solid var(--border, #3a3a42)",
+        padding: "10px 12px",
+        borderBottom: "1px solid var(--border, #3a3a42)",
         background: "var(--background, #1c1c20)",
         overflow: "hidden"
       },
@@ -29566,6 +29867,7 @@ function LocalMixerStrip() {
         {
           strip,
           showHeader: false,
+          orientation: "horizontal",
           onGainChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
             const e = gainEdit(fresh, value);
             if (e) wb.replaceRange(e.range, e.text, "mixer");
@@ -29574,6 +29876,13 @@ function LocalMixerStrip() {
             const e = panEdit(fresh, value);
             if (e) wb.replaceRange(e.range, e.text, "mixer");
           }),
+          onMuteToggle: () => applyToStrip(strip.id, (fresh, wb) => {
+            const e = muteEdit(fresh, !strip.muted);
+            if (e) wb.replaceRange(e.range, e.text, "mixer");
+          }),
+          soloed: soloed.has(strip.id),
+          onSoloToggle: () => toggleSolo2(strip.id),
+          dimmed: soloActive && !soloed.has(strip.id),
           onGestureStart: beginGesture,
           onGestureEnd: endGesture,
           meters
@@ -29588,16 +29897,16 @@ function MixerPanel({ division: division2, onDivisionChange } = {}) {
     "div",
     {
       "data-mixer-panel": true,
-      style: { display: "flex", flexDirection: "row", height: "100%", minHeight: 0, minWidth: 0 },
+      style: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 },
       children: [
-        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: "1 1 0", minWidth: 0, height: "100%", overflow: "hidden" }, children: /* @__PURE__ */ jsxRuntime.jsx(Mixer, { division: division2, onDivisionChange }) }),
-        /* @__PURE__ */ jsxRuntime.jsx(LocalMixerStrip, {})
+        /* @__PURE__ */ jsxRuntime.jsx(LocalMixerStrip, {}),
+        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: "1 1 0", minHeight: 0, minWidth: 0, overflow: "hidden" }, children: /* @__PURE__ */ jsxRuntime.jsx(Mixer, { division: division2, onDivisionChange }) })
       ]
     }
   );
 }
 __name(MixerPanel, "MixerPanel");
-var MIXER_WIDTH = 300;
+var MIXER_WIDTH = 220;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = patternKind(chunk);
@@ -29646,7 +29955,7 @@ function PatternPanel() {
 }
 __name(PatternPanel, "PatternPanel");
 var KEY_PREFIX = "stave:mixer.expanded:";
-var EMPTY = /* @__PURE__ */ new Set();
+var EMPTY2 = /* @__PURE__ */ new Set();
 function key(fileId) {
   return KEY_PREFIX + fileId;
 }
@@ -29661,8 +29970,8 @@ function safeLocalStorage5() {
   }
 }
 __name(safeLocalStorage5, "safeLocalStorage");
-var cache = /* @__PURE__ */ new Map();
-var listeners10 = /* @__PURE__ */ new Set();
+var cache2 = /* @__PURE__ */ new Map();
+var listeners11 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -29683,16 +29992,16 @@ function load(fileId) {
   }
 }
 __name(load, "load");
-function read2(fileId) {
-  if (!fileId) return EMPTY;
-  let set = cache.get(fileId);
+function read3(fileId) {
+  if (!fileId) return EMPTY2;
+  let set = cache2.get(fileId);
   if (!set) {
     set = load(fileId);
-    cache.set(fileId, set);
+    cache2.set(fileId, set);
   }
   return set;
 }
-__name(read2, "read");
+__name(read3, "read");
 function persist(fileId, set) {
   const ls = safeLocalStorage5();
   if (!ls) return;
@@ -29703,22 +30012,22 @@ function persist(fileId, set) {
 }
 __name(persist, "persist");
 function toggleExpanded(fileId, id) {
-  const next = new Set(read2(fileId));
+  const next = new Set(read3(fileId));
   if (next.has(id)) next.delete(id);
   else next.add(id);
-  cache.set(fileId, next);
+  cache2.set(fileId, next);
   persist(fileId, next);
-  listeners10.forEach((l) => l());
+  listeners11.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
-function subscribe4(listener) {
-  listeners10.add(listener);
+function subscribe5(listener) {
+  listeners11.add(listener);
   return () => {
-    listeners10.delete(listener);
+    listeners11.delete(listener);
   };
 }
-__name(subscribe4, "subscribe");
-function useActiveFileId() {
+__name(subscribe5, "subscribe");
+function useActiveFileId2() {
   const [id, setId] = React34__namespace.useState(() => getActiveFileId());
   React34__namespace.useEffect(() => {
     setId(getActiveFileId());
@@ -29726,13 +30035,13 @@ function useActiveFileId() {
   }, []);
   return id;
 }
-__name(useActiveFileId, "useActiveFileId");
+__name(useActiveFileId2, "useActiveFileId");
 function useExpandedStrips() {
-  const fileId = useActiveFileId();
+  const fileId = useActiveFileId2();
   const expanded = React34__namespace.useSyncExternalStore(
-    subscribe4,
-    () => read2(fileId),
-    () => EMPTY
+    subscribe5,
+    () => read3(fileId),
+    () => EMPTY2
   );
   const toggle = React34__namespace.useCallback(
     (id) => {
@@ -29743,108 +30052,6 @@ function useExpandedStrips() {
   return { expanded, toggle };
 }
 __name(useExpandedStrips, "useExpandedStrips");
-
-// src/visualEdit/mixer/soloOverlay.ts
-function applyMonitorOverlay(doc, soloIds) {
-  if (soloIds.size === 0) return doc;
-  const strips = buildStripModels(detectAllChunks(doc));
-  const anySoloPresent = strips.some((s) => soloIds.has(s.id));
-  if (!anySoloPresent) return doc;
-  const inserts = [];
-  for (const strip of strips) {
-    if (soloIds.has(strip.id)) continue;
-    if (strip.muted) continue;
-    const [start, end] = strip.statementRange;
-    if (strip.muteable) {
-      inserts.push({ pos: start, text: "_" });
-    } else {
-      inserts.push({ pos: start, text: "/* " });
-      inserts.push({ pos: end, text: " */" });
-    }
-  }
-  if (inserts.length === 0) return doc;
-  inserts.sort((a, b) => b.pos - a.pos);
-  let out = doc;
-  for (const ins of inserts) {
-    out = out.slice(0, ins.pos) + ins.text + out.slice(ins.pos);
-  }
-  return out;
-}
-__name(applyMonitorOverlay, "applyMonitorOverlay");
-
-// src/visualEdit/mixer/soloStore.ts
-var EMPTY2 = /* @__PURE__ */ new Set();
-var cache2 = /* @__PURE__ */ new Map();
-var listeners11 = /* @__PURE__ */ new Set();
-function read3(fileId) {
-  if (!fileId) return EMPTY2;
-  return cache2.get(fileId) ?? EMPTY2;
-}
-__name(read3, "read");
-function toggleSolo(fileId, id) {
-  const next = new Set(read3(fileId));
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  if (next.size === 0) cache2.delete(fileId);
-  else cache2.set(fileId, next);
-  listeners11.forEach((l) => l());
-  requestReeval(fileId);
-}
-__name(toggleSolo, "toggleSolo");
-function subscribe5(listener) {
-  listeners11.add(listener);
-  return () => {
-    listeners11.delete(listener);
-  };
-}
-__name(subscribe5, "subscribe");
-var refs = 0;
-var unregister = null;
-function acquireTransform() {
-  if (refs++ === 0) {
-    unregister = registerEvalSourceTransform(
-      (fileId, raw) => applyMonitorOverlay(raw, read3(fileId))
-    );
-  }
-}
-__name(acquireTransform, "acquireTransform");
-function releaseTransform() {
-  if (--refs <= 0) {
-    refs = 0;
-    unregister?.();
-    unregister = null;
-  }
-}
-__name(releaseTransform, "releaseTransform");
-function useActiveFileId2() {
-  const [id, setId] = React34__namespace.useState(() => getActiveFileId());
-  React34__namespace.useEffect(() => {
-    setId(getActiveFileId());
-    return onActiveEditorChange(() => setId(getActiveFileId()));
-  }, []);
-  return id;
-}
-__name(useActiveFileId2, "useActiveFileId");
-function useSoloStrips() {
-  const fileId = useActiveFileId2();
-  React34__namespace.useEffect(() => {
-    acquireTransform();
-    return releaseTransform;
-  }, []);
-  const soloed = React34__namespace.useSyncExternalStore(
-    subscribe5,
-    () => read3(fileId),
-    () => EMPTY2
-  );
-  const toggle = React34__namespace.useCallback(
-    (id) => {
-      if (fileId) toggleSolo(fileId, id);
-    },
-    [fileId]
-  );
-  return { soloed, toggle };
-}
-__name(useSoloStrips, "useSoloStrips");
 function ExpandDrawer({
   strip,
   chunk,

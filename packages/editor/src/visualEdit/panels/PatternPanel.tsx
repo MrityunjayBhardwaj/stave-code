@@ -28,8 +28,11 @@ import { PATTERN_TAB_ID } from './tabs'
 import type { SelectedNote } from './inspector'
 import { type Division, DEFAULT_DIVISION } from './division'
 
-/** width of the pinned Mixer column */
-const MIXER_WIDTH = 300
+/** width of the pinned Mixer column. The channel strip moved to a horizontal
+ *  bar atop the inspector (#600), so the param panel no longer shares the column
+ *  with a side strip — it fits a narrower column, and the grid reclaims the
+ *  difference (was 300 when the strip sat beside the panel). */
+const MIXER_WIDTH = 220
 
 export function PatternPanel(): React.ReactElement {
   const { chunk } = useActiveChunk()

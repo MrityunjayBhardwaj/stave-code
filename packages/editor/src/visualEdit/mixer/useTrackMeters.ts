@@ -47,10 +47,13 @@ import {
 
 /** the two elements a strip's meter paints each frame. */
 export interface MeterEls {
-  /** the level fill, anchored at the bottom — height set 0..100% */
+  /** the level fill — height (vertical) or width (horizontal) set 0..100% */
   fill: HTMLElement
-  /** the peak tick — `bottom` set 0..100% */
+  /** the peak tick — `bottom` (vertical) or `left` (horizontal) set 0..100% */
   peak: HTMLElement
+  /** lay the meter out horizontally (Pattern-tab strip): the fill grows
+   *  left→right and the peak rides `left`. Default (console) is vertical. */
+  horizontal?: boolean
 }
 
 /** what the hook hands the strip row: register a meter's DOM, get live paint. */
@@ -118,8 +121,13 @@ export function useTrackMeters(): MeterController {
         })()
 
     const paintDark = (els: MeterEls): void => {
-      els.fill.style.height = '0%'
-      els.peak.style.bottom = '0%'
+      if (els.horizontal) {
+        els.fill.style.width = '0%'
+        els.peak.style.left = '0%'
+      } else {
+        els.fill.style.height = '0%'
+        els.peak.style.bottom = '0%'
+      }
       els.peak.style.opacity = '0'
     }
 
@@ -164,9 +172,14 @@ export function useTrackMeters(): MeterController {
         // Share the fader's dB taper so the meter and fader read on one scale.
         const lvl = gainToFaderPos(next.rms)
         const pk = gainToFaderPos(next.peak)
-        els.fill.style.height = `${lvl * 100}%`
+        if (els.horizontal) {
+          els.fill.style.width = `${lvl * 100}%`
+          els.peak.style.left = `${pk * 100}%`
+        } else {
+          els.fill.style.height = `${lvl * 100}%`
+          els.peak.style.bottom = `${pk * 100}%`
+        }
         els.fill.style.background = levelColor(lvl)
-        els.peak.style.bottom = `${pk * 100}%`
         els.peak.style.opacity = next.peak > 0.0005 ? '1' : '0'
       }
     }

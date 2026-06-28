@@ -53,6 +53,10 @@ export function Mixer({ division, onDivisionChange }: MixerProps = {}): React.Re
       division={division}
       onDivisionChange={onDivisionChange}
       dataTab={MIXER_TAB_ID}
+      // A nested stack voice (#395) isn't a top-level track, so the channel-strip
+      // fader (which mixes the track) doesn't reach its gain — surface a per-voice
+      // gain control here instead (#620). A top-level track's gain stays on the strip.
+      showGain={chunk.nested}
     />
   )
 }

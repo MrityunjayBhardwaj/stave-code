@@ -81,6 +81,21 @@ async function openMixer(page: Page) {
   return drawer
 }
 
+/** drag the drawer taller so the inspector's knob grid is fully on-screen. Since
+ *  the channel strip moved to a horizontal bar atop the inspector (#600), the
+ *  knob grid sits lower; a raw-mouse knob drag (unlike `.click()`, which
+ *  auto-scrolls) needs the knob in the visible panel. */
+async function enlargeDrawer(page: Page): Promise<void> {
+  const handle = page.locator('[data-bottom-panel="resize-handle"]')
+  const hb = await handle.boundingBox()
+  if (!hb) return
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(hb.x + hb.width / 2, hb.y - 320, { steps: 10 })
+  await page.mouse.up()
+  await page.waitForTimeout(150)
+}
+
 test.describe('Mixer (#381)', () => {
   test('shows a knob per numeric chain arg; gain/pan are strip-owned (#575)', async ({ page }) => {
     await boot(page)
@@ -98,6 +113,7 @@ test.describe('Mixer (#381)', () => {
     const original = '$: s("bd").room(0.4)'
     await setStrudelCode(page, original)
     const drawer = await openMixer(page)
+    await enlargeDrawer(page)
     const slider = drawer.locator('[data-knob="room"] [role="slider"]')
     await expect(slider).toHaveCount(1)
 

@@ -21,7 +21,7 @@ import { type ChunkInfo } from '../chunkDetect'
 import { type Writeback, formatNumber } from '../writeback'
 import { Knob } from './Knob'
 import { knobRangeFor } from './knobRanges'
-import { FAVORITES, isEffectActive, effectNames, STRIP_OWNED, type Effect } from './effectCatalog'
+import { FAVORITES, isEffectActive, effectNames, type Effect } from './effectCatalog'
 import { AddEffectMenu } from './AddEffectMenu'
 import { patternKind, isRollChunk } from './patternKind'
 import { parsePianoRoll } from '../notation/parse'
@@ -40,15 +40,17 @@ interface KnobEntry {
 }
 
 /**
- * Flatten a chunk's chain into the numeric-arg knobs it exposes. `gain`/`pan`
- * are skipped — the strip fader and pan row own them (#575 division of labor),
- * so the drawer is purely effects. The strip fader also handles per-column
- * managed gain (proportional rescale), so no master-gain knob is needed here.
+ * Flatten a chunk's chain into the numeric-arg knobs it exposes. `pan` is always
+ * skipped — the strip pan row owns it. `gain` is skipped too by default (the
+ * strip fader owns it, #575 division of labor), EXCEPT when `includeGain` — a
+ * nested stack voice (#620) whose gain the track-scoped strip fader doesn't
+ * reach, so the inspector surfaces it as a per-voice fader knob.
  */
-function knobsFromChunk(chunk: ChunkInfo): KnobEntry[] {
+function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry[] {
   const knobs: KnobEntry[] = []
   chunk.chain.forEach((call, chainIndex) => {
-    if (STRIP_OWNED.has(call.name)) return // gain/pan live on the strip, not the drawer
+    if (call.name === 'pan') return // pan lives on the strip pan row
+    if (call.name === 'gain' && !includeGain) return // gain lives on the strip fader
     const numericArgs = call.args
       .map((a, argIndex) => ({ a, argIndex }))
       .filter((x) => x.a.numeric !== null)
@@ -213,7 +215,16 @@ export interface MixerBodyProps {
    *  (levels / pan / effects), not choosing the instrument, which is a
    *  pattern-authoring decision made on the Pattern tab. */
   showSoundPicker?: boolean
+  /** surface a per-voice GAIN control — a gain knob (when the chain has a numeric
+   *  `.gain`) plus a "Gain" add/remove toggle. Default `false`: gain is owned by
+   *  the channel-strip fader. The Pattern inspector sets it `true` for a nested
+   *  stack voice (#620), whose gain the track-scoped strip fader can't reach. */
+  showGain?: boolean
 }
+
+/** the per-voice gain control surfaced when `showGain` (#620). Default unity so
+ *  adding it gives a fader to pull DOWN; reuses the effect add/remove plumbing. */
+const GAIN_EFFECT: Effect = { method: 'gain', label: 'Gain', group: 'Level', def: 1 }
 
 /** Base content width of the drawer header (picker + transforms) in column flow,
  *  so the drawer stays ~264px until the knob columns grow past it. */
@@ -229,6 +240,7 @@ export function MixerBody({
   dataTab,
   knobFlow = 'rows',
   showSoundPicker = true,
+  showGain = false,
 }: MixerBodyProps): React.ReactElement {
   const columnFlow = knobFlow === 'columns'
   // Live instrument registry (#514 / PV141 #6) — prefer the engine's real
@@ -239,7 +251,7 @@ export function MixerBody({
   // tidal-drum-machines manifest; fall back to curated DRUM_KITS until ready.
   const liveKits = useDrumKitCatalog()
 
-  const knobs = knobsFromChunk(chunk)
+  const knobs = knobsFromChunk(chunk, showGain)
 
   const writeKnob = React.useCallback(
     (entry: KnobEntry, value: number): void => {
@@ -355,6 +367,36 @@ export function MixerBody({
         data-mixer-transforms
         style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}
       >
+        {showGain &&
+          (() => {
+            // Per-voice gain (#620): add/remove `.gain` for a nested voice the
+            // track strip doesn't fader. Once present (numeric), its knob below
+            // is the per-voice fader. Reuses the effect add/remove plumbing.
+            const active = isEffectActive(present, GAIN_EFFECT)
+            return (
+              <button
+                type="button"
+                data-mixer-transform="gain"
+                data-mixer-transform-active={active ? 'true' : undefined}
+                aria-pressed={active}
+                title={active ? 'Remove Gain' : 'Add a per-voice Gain fader'}
+                onClick={() => toggleEffect(GAIN_EFFECT)}
+                style={{
+                  padding: '3px 10px',
+                  fontSize: 11,
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  border: active
+                    ? '1px solid var(--accent, #6ea8fe)'
+                    : '1px solid var(--border, #3a3a42)',
+                  background: active ? 'var(--accent, #6ea8fe)' : 'var(--background-elevated, #26262c)',
+                  color: active ? '#0b0b0e' : 'var(--foreground, #e6e6ea)',
+                }}
+              >
+                {active ? '✓' : '+'} Gain
+              </button>
+            )
+          })()}
         {FAVORITES.map((e) => {
           // A present effect is an ON toggle: clicking it again removes the call.
           // Filled = on; the leading glyph flips +/✓ to telegraph the second
