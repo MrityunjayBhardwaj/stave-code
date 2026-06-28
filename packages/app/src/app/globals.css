@@ -201,3 +201,35 @@ body {
     box-shadow: 0 0 10px rgba(239, 68, 68, 0.9);
   }
 }
+
+/* Pattern-tab grid scroll areas (W3): an always-visible (non-overlay) scrollbar
+   when the grid is larger than the visible area. macOS/Chromium hide overlay
+   scrollbars between scrolls; styling `::-webkit-scrollbar` opts the element into
+   the classic always-on bar that RESERVES layout space, so it's visible whenever
+   there's something to scroll (`overflow:auto`, set inline on the element).
+
+   NOTE: deliberately NO `scrollbar-width`/`scrollbar-color` here — setting the
+   standard props makes Chromium IGNORE `::-webkit-scrollbar` and fall back to a
+   thin OVERLAY bar (no reserved space, auto-hides), which defeats the goal. So we
+   style only the webkit pseudo-elements for Chromium (the app's engine); Firefox
+   falls back to its own non-overlay scrollbar, which is already always-visible
+   when scrollable. The editor package ships no CSS, so the rule lives here and
+   targets the editor's `data-pattern-scroll` attribute. */
+[data-pattern-scroll]::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+[data-pattern-scroll]::-webkit-scrollbar-track {
+  background: transparent;
+}
+[data-pattern-scroll]::-webkit-scrollbar-thumb {
+  background: var(--border-strong, #3a3a5a);
+  border-radius: 6px;
+  /* a transparent inset border slims the thumb and keeps it off the edges */
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+[data-pattern-scroll]::-webkit-scrollbar-thumb:hover {
+  background: var(--border-stronger, #4a4a6a);
+  background-clip: padding-box;
+}

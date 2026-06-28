@@ -245,6 +245,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   return (
     <div
       data-bottom-panel-tab="sequencer"
+      // always-visible (non-overlay) scrollbar when the grid overflows the panel,
+      // styled in globals.css (the editor ships no CSS) — #pattern-scrollbar.
+      data-pattern-scroll
       style={{
         padding: 16,
         height: '100%',
