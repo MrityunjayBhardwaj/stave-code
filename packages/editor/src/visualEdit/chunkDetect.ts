@@ -60,6 +60,13 @@ export interface ChunkInfo {
   /** calls in source order, head first */
   chain: ChainCall[]
   type: ChunkType
+  /** true when `detectChunk` descended into a combinator argument — i.e. this is
+   *  a NESTED voice inside `stack(...)`/`cat(...)` (#395), not a top-level track.
+   *  The Pattern inspector uses it to offer a per-voice gain knob (#620): a
+   *  top-level track's gain is owned by the channel-strip fader, but a nested
+   *  voice's isn't, so only there does the inspector surface gain. Always false
+   *  for `detectAllChunks` (every chunk there is top-level). */
+  nested: boolean
 }
 
 /** Top-level statement nodes, or null when the doc doesn't parse
@@ -113,7 +120,7 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
       // anchored to its own expression span and carries no label.
       return target === topExpr
         ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end])
-        : buildChunkFromExpr(doc, target, null, [target.start, target.end])
+        : buildChunkFromExpr(doc, target, null, [target.start, target.end], true)
     }
   }
   return null
@@ -149,6 +156,7 @@ function buildChunkFromExpr(
   expr: any,
   label: string | null,
   stmtRange: [number, number],
+  nested = false,
 ): ChunkInfo {
   const headNode = { ref: null as any }
   const chain = collectChain(doc, expr, headNode)
@@ -177,6 +185,7 @@ function buildChunkFromExpr(
     miniString,
     chain,
     type: 'unknown',
+    nested,
   }
   info.type = classifyChunk(info)
   return info
