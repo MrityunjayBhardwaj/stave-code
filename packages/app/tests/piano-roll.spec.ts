@@ -63,6 +63,21 @@ async function openRoll(page: Page) {
   return drawer
 }
 
+/** Drag the drawer taller so the whole roll (rows + the footer velocity lane,
+ *  #624) is on-screen. The velocity lane is a flush footer below the scroll area,
+ *  so in the short default drawer a low note can sit below the fold; a raw-mouse
+ *  drag (unlike `.click()`) doesn't auto-scroll, so enlarge first. */
+async function enlargeDrawer(page: Page): Promise<void> {
+  const handle = page.locator('[data-bottom-panel="resize-handle"]')
+  const hb = await handle.boundingBox()
+  if (!hb) return
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(hb.x + hb.width / 2, hb.y - 320, { steps: 10 })
+  await page.mouse.up()
+  await page.waitForTimeout(200)
+}
+
 // midi: c3=48, e3=52, g3=55
 test.describe('Piano Roll (#383)', () => {
   test('renders notes on the right pitch rows and steps', async ({ page }) => {
@@ -101,6 +116,7 @@ test.describe('Piano Roll (#383)', () => {
     await boot(page)
     await setStrudelCode(page, '$: note("c3 ~ ~ ~")')
     const drawer = await openRoll(page)
+    await enlargeDrawer(page) // the velocity lane is a footer (#624); show the low note above it
     const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
     const from = await grid.locator('[data-roll-cell="48:0"]').boundingBox() // c3 step0
     const to = await grid.locator('[data-roll-cell="52:2"]').boundingBox() // e3 step2
@@ -119,6 +135,7 @@ test.describe('Piano Roll (#383)', () => {
     await boot(page)
     await setStrudelCode(page, '$: note("c3 ~ ~ ~")')
     const drawer = await openRoll(page)
+    await enlargeDrawer(page) // the velocity lane is a footer (#624); show the low note above it
     const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
     // grab c3's right-edge resize handle and drag right to step 2 (→ duration 3)
     const handle = await grid.locator('[data-roll-resize="48:0"]').boundingBox()
@@ -138,6 +155,7 @@ test.describe('Piano Roll (#383)', () => {
     await boot(page)
     await setStrudelCode(page, '$: note("c3 ~ ~ ~")')
     const drawer = await openRoll(page)
+    await enlargeDrawer(page) // the velocity lane is a footer (#624); show the low note above it
     const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
     const cell = await grid.locator('[data-roll-cell="48:0"]').boundingBox()
     const to = await grid.locator('[data-roll-cell="48:2"]').boundingBox()
@@ -205,14 +223,21 @@ test.describe('Piano Roll (#383)', () => {
     await expect(drawer.locator('[data-bottom-panel-tab="sequencer"]')).toHaveCount(0)
   })
 
-  test('the velocity lane stays pinned (sticky) under a tall pitch range (#604)', async ({ page }) => {
+  test('the velocity lane is a flush footer under a tall pitch range (#604/#624)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c1 c6")') // ~5 octaves → rows overflow the panel
     const drawer = await openRoll(page)
-    const lane = drawer.locator('[data-bottom-panel-tab="piano-roll"] [data-roll-velocity-lane]')
+    const panel = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    const lane = panel.locator('[data-roll-velocity-lane]')
     await expect(lane).toHaveCount(1)
-    // pinned so a tall grid can't bury it below the scroll fold
-    await expect(lane).toHaveCSS('position', 'sticky')
+    // It's a footer below the scroll area — rows scroll above it, so a tall grid
+    // can't bury it and it never overlays the lowest rows. Always in view…
     await expect(lane).toBeInViewport()
+    // …and FLUSH with the panel's bottom edge — no gap (#624).
+    const gap = await panel.evaluate((p) => {
+      const el = p.querySelector('[data-roll-velocity-lane]') as HTMLElement
+      return Math.round(p.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom)
+    })
+    expect(gap).toBe(0)
   })
 })
