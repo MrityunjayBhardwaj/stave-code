@@ -426,8 +426,8 @@ export function PianoRollGrid({
       <div
         style={{
           position: 'absolute',
-          top: 6,
-          left: 16,
+          top: 0,
+          left: 0,
           zIndex: 3,
           display: 'flex',
           alignItems: 'center',
