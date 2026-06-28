@@ -3193,6 +3193,13 @@ interface ChunkInfo {
     /** calls in source order, head first */
     chain: ChainCall[];
     type: ChunkType;
+    /** true when `detectChunk` descended into a combinator argument — i.e. this is
+     *  a NESTED voice inside `stack(...)`/`cat(...)` (#395), not a top-level track.
+     *  The Pattern inspector uses it to offer a per-voice gain knob (#620): a
+     *  top-level track's gain is owned by the channel-strip fader, but a nested
+     *  voice's isn't, so only there does the inspector surface gain. Always false
+     *  for `detectAllChunks` (every chunk there is top-level). */
+    nested: boolean;
 }
 /** Top-level statement nodes, or null when the doc doesn't parse
  * (mid-keystroke syntax error — the caller keeps the last good chunk). */
