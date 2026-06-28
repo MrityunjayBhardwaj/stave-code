@@ -332,6 +332,13 @@ export {
   applyMasterGain,
 } from './workspace/editorRegistry'
 export { getMasterGain, setMasterGain, useMasterGain } from './visualEdit/mixer/masterStore'
+export {
+  getNoteColorMode,
+  setNoteColorMode,
+  subscribeNoteColorMode,
+  useNoteColorMode,
+  type NoteColorMode,
+} from './visualEdit/panels/noteColor'
 export type { EditorTheme, ResolvedTheme, SignalAliasMap } from './workspace/editorRegistry'
 export {
   saveSnapshot,
