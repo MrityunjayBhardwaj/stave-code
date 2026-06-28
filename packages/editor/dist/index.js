@@ -6555,7 +6555,7 @@ function detectChunk(doc, pos) {
       if (body.type !== "ExpressionStatement") return null;
       const topExpr = body.expression;
       const target = innermostChainUnder(doc, topExpr, pos);
-      return target === topExpr ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end]) : buildChunkFromExpr(doc, target, null, [target.start, target.end]);
+      return target === topExpr ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end]) : buildChunkFromExpr(doc, target, null, [target.start, target.end], true);
     }
   }
   return null;
@@ -6578,7 +6578,7 @@ function buildChunk(doc, node) {
   return buildChunkFromExpr(doc, body.expression, label, [node.start, node.end]);
 }
 __name(buildChunk, "buildChunk");
-function buildChunkFromExpr(doc, expr, label, stmtRange) {
+function buildChunkFromExpr(doc, expr, label, stmtRange, nested = false) {
   const headNode = { ref: null };
   const chain = collectChain(doc, expr, headNode);
   const headFn = chain.length > 0 ? chain[0].name : null;
@@ -6602,7 +6602,8 @@ function buildChunkFromExpr(doc, expr, label, stmtRange) {
     miniRange,
     miniString,
     chain,
-    type: "unknown"
+    type: "unknown",
+    nested
   };
   info.type = classifyChunk(info);
   return info;
@@ -28153,7 +28154,6 @@ var EFFECT_GROUPS = (() => {
   }
   return order.map((g) => [g, byGroup.get(g)]);
 })();
-var STRIP_OWNED = /* @__PURE__ */ new Set(["gain", "pan"]);
 var MENU_WIDTH = 230;
 function AddEffectMenu({
   present,
@@ -28502,10 +28502,11 @@ var setDrumKitAccessor = drumKitStore.setAccessor;
 var notifyDrumKitChanged = drumKitStore.notify;
 drumKitStore.read;
 var useDrumKitCatalog = drumKitStore.useCatalog;
-function knobsFromChunk(chunk) {
+function knobsFromChunk(chunk, includeGain = false) {
   const knobs = [];
   chunk.chain.forEach((call, chainIndex) => {
-    if (STRIP_OWNED.has(call.name)) return;
+    if (call.name === "pan") return;
+    if (call.name === "gain" && !includeGain) return;
     const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);
     numericArgs.forEach(({ a, argIndex }) => {
       knobs.push({
@@ -28610,6 +28611,7 @@ function DivisionSelect({
   );
 }
 __name(DivisionSelect, "DivisionSelect");
+var GAIN_EFFECT = { method: "gain", label: "Gain", group: "Level", def: 1 };
 var COLUMN_HEADER_W = 232;
 function MixerBody({
   chunk,
@@ -28620,12 +28622,13 @@ function MixerBody({
   onDivisionChange,
   dataTab,
   knobFlow = "rows",
-  showSoundPicker = true
+  showSoundPicker = true,
+  showGain = false
 }) {
   const columnFlow = knobFlow === "columns";
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
-  const knobs = knobsFromChunk(chunk);
+  const knobs = knobsFromChunk(chunk, showGain);
   const writeKnob = React34.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => {
@@ -28727,6 +28730,33 @@ function MixerBody({
                   "data-mixer-transforms": true,
                   style: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" },
                   children: [
+                    showGain && (() => {
+                      const active2 = isEffectActive(present, GAIN_EFFECT);
+                      return /* @__PURE__ */ jsxs(
+                        "button",
+                        {
+                          type: "button",
+                          "data-mixer-transform": "gain",
+                          "data-mixer-transform-active": active2 ? "true" : void 0,
+                          "aria-pressed": active2,
+                          title: active2 ? "Remove Gain" : "Add a per-voice Gain fader",
+                          onClick: () => toggleEffect(GAIN_EFFECT),
+                          style: {
+                            padding: "3px 10px",
+                            fontSize: 11,
+                            borderRadius: 4,
+                            cursor: "pointer",
+                            border: active2 ? "1px solid var(--accent, #6ea8fe)" : "1px solid var(--border, #3a3a42)",
+                            background: active2 ? "var(--accent, #6ea8fe)" : "var(--background-elevated, #26262c)",
+                            color: active2 ? "#0b0b0e" : "var(--foreground, #e6e6ea)"
+                          },
+                          children: [
+                            active2 ? "\u2713" : "+",
+                            " Gain"
+                          ]
+                        }
+                      );
+                    })(),
                     FAVORITES.map((e) => {
                       const active2 = isEffectActive(present, e);
                       return /* @__PURE__ */ jsxs(
@@ -28823,7 +28853,8 @@ function Mixer({ division: division2, onDivisionChange } = {}) {
       endGesture,
       division: division2,
       onDivisionChange,
-      dataTab: MIXER_TAB_ID
+      dataTab: MIXER_TAB_ID,
+      showGain: chunk.nested
     }
   );
 }
