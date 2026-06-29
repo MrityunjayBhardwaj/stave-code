@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
+import { promptAndCreateFile } from "../lib/newFile";
 import { BackdropPopover } from "./BackdropPopover";
 import { PopoutPreviewController } from "./PopoutPreviewController";
 import { registerVizWorker } from "../visualizers/registerVizWorker";
@@ -1345,6 +1346,7 @@ export default function StrudelEditorClient({
       onGroupsChange={handleGroupsChange}
       theme={resolvedTheme}
       height="100%"
+      onNewFile={() => void promptAndCreateFile("")}
       chromeForTab={chromeForTab}
       editorExtrasForTab={editorExtrasForTab}
       previewProviderFor={previewProviderFor}

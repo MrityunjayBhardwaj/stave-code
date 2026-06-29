@@ -61,6 +61,25 @@ test('pinned group actions stay visible when tabs overflow', async ({ page }) =>
   }
 })
 
+// Issue #612 — a "+" action in the tab bar's pinned cluster opens the SAME
+// new-file prompt as the left-panel New File button and creates the file.
+test('the + tab-bar action opens the new-file prompt and creates a file', async ({ page }) => {
+  const newFileBtn = page.locator('[data-testid^="tab-new-file-"]').first()
+  await expect(newFileBtn).toBeVisible()
+  await newFileBtn.click()
+  // Same prompt the left-panel button uses (placeholder "sketch.strudel").
+  const input = page.locator('input[placeholder="sketch.strudel"]')
+  await expect(input).toBeVisible()
+  const name = `plus-tab-${Date.now()}.strudel`
+  await input.fill(name)
+  await page.getByRole('button', { name: 'Create' }).click()
+  // The created file shows up in the file tree — proves the same
+  // create-file flow ran from the tab bar.
+  await expect(
+    page.locator('[data-file-tree-item]', { hasText: name }),
+  ).toBeVisible({ timeout: 4000 })
+})
+
 test('overflow ▾ menu appears, lists all tabs, and click jumps activation', async ({ page }) => {
   await openManyTabs(page, 14)
   const menuBtn = page.locator('[data-testid^="tab-overflow-menu-"]').first()

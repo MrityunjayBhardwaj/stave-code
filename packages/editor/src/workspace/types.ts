@@ -922,6 +922,14 @@ export interface WorkspaceShellProps {
   readonly onActiveTabChange?: (tab: WorkspaceTab | null) => void
 
   /**
+   * Fires when the user clicks the "+" action in a group's tab bar
+   * (issue #612). The host opens its own new-file flow — the shell has
+   * no knowledge of file creation, it only surfaces the affordance. When
+   * omitted, the "+" button is not rendered.
+   */
+  readonly onNewFile?: () => void
+
+  /**
    * Fires when any group's `backgroundFileId` changes — either set
    * (pinned a file) or cleared (null). `groupId` identifies the
    * affected group. Used by the app to mirror backdrop state into
