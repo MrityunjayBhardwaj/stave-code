@@ -26087,7 +26087,15 @@ function quantizeStepGridTo(model, target) {
 __name(quantizeStepGridTo, "quantizeStepGridTo");
 function quantizePianoRollTo(model, target) {
   if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model;
-  if ((model.bars ?? 1) > 1) return scalePianoRollTo(model, target);
+  if ((model.bars ?? 1) > 1) {
+    if (target <= model.steps) return scalePianoRollTo(model, target);
+    if (!isPow2(target / model.steps)) return model;
+    let cur = model;
+    while (cur.steps < target) {
+      cur = { ...cur, steps: cur.steps * 2, notes: cur.notes.map((n) => ({ ...n, start: n.start * 2 })) };
+    }
+    return cur;
+  }
   const from = model.steps;
   const addingSlots = target > from;
   const q = model.notes.map((n) => ({
