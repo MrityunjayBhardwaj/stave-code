@@ -31192,6 +31192,7 @@ function GroupTabBar({
   onTabDragStart,
   onTabContextMenu,
   onTabPromote,
+  onNewFile,
   onSplitRight,
   onSplitDown,
   onCloseGroup
@@ -31412,6 +31413,17 @@ function GroupTabBar({
               position: "relative"
             },
             children: [
+              onNewFile && /* @__PURE__ */ jsx(
+                "button",
+                {
+                  "data-testid": `tab-new-file-${group.id}`,
+                  onClick: onNewFile,
+                  title: "New file",
+                  "aria-label": "New file",
+                  style: actionBtnStyle,
+                  children: "+"
+                }
+              ),
               hasOverflow && /* @__PURE__ */ jsx(
                 "button",
                 {
@@ -31550,6 +31562,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   theme = "dark",
   height = "100%",
   onActiveTabChange,
+  onNewFile,
   onBackgroundFileChange,
   onActiveBackdropChange,
   onOpenPopoutPreview,
@@ -32563,6 +32576,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     return nx;
                   });
                 },
+                onNewFile,
                 onSplitRight: () => handleSplit(group.id, "east"),
                 onSplitDown: () => handleSplit(group.id, "south"),
                 onCloseGroup: () => handleCloseGroup(group.id)
