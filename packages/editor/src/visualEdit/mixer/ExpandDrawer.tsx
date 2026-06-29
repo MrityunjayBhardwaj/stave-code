@@ -64,10 +64,12 @@ export function ExpandDrawer({
         alignSelf: 'flex-start',
         display: 'flex',
         minWidth: 264,
-        borderLeft: '1px solid var(--border, #3a3a42)',
-        // Semi-transparent fill + a rounded RIGHT edge; the LEFT stays flat where
-        // it meets the strip face (whose right corners are flattened), so the
-        // strip + drawer read as one connected unit that belongs together.
+        // Full outline (#609): the strip face drops its RIGHT border when
+        // expanded, so the drawer's LEFT border is the single hairline seam
+        // between them and the top/right/bottom borders close the card — the
+        // strip + drawer read as ONE connected, outlined unit that belongs
+        // together (the strip rounds its left corners, the drawer its right).
+        border: '1px solid var(--border, #3a3a42)',
         background: '#26262c69',
         borderRadius: '0 6px 6px 0',
         overflow: 'hidden',
