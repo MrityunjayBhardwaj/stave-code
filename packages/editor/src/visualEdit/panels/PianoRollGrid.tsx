@@ -297,10 +297,11 @@ export function PianoRollGrid({
     if (d.mode === 'resize') {
       // duration = columns from the note start through the hovered column;
       // snap the END edge to the division line (min one division when snapping).
-      // resizeNote floors at 1 and caps at the next note (no overlap).
+      // resizeNote floors at 1 and caps at the grid end; only the grabbed note
+      // (by pitch) resizes — a note may sustain under a later onset (#628).
       let dur = step - d.origStart + 1
       if (interval) dur = Math.max(interval, snapColumn(d.origStart + dur, interval) - d.origStart)
-      mutate((prev) => resizeNote(prev, d.origStart, dur))
+      mutate((prev) => resizeNote(prev, d.origStart, d.origPitch, dur))
       d.moved = true
       return
     }

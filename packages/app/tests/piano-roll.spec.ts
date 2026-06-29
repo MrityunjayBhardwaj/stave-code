@@ -163,6 +163,53 @@ test.describe('Piano Roll (#383)', () => {
     await expect(grid.locator('[data-roll-cell="48:2"]')).toHaveAttribute('aria-pressed', 'true')
   })
 
+  // drag the right-edge resize handle of the note at midi:start to a target step
+  async function resizeDrag(
+    page: Page,
+    grid: ReturnType<Page['locator']>,
+    midi: number,
+    start: number,
+    toStep: number,
+  ): Promise<void> {
+    const handle = await grid.locator(`[data-roll-resize="${midi}:${start}"]`).boundingBox()
+    const to = await grid.locator(`[data-roll-cell="${midi}:${toStep}"]`).boundingBox()
+    if (!handle || !to) throw new Error('missing handle/cell')
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 })
+    await page.mouse.up()
+    await page.waitForTimeout(90)
+  }
+
+  test('stretching ONE note of a chord resizes only that note (#628)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("[c3,e3] ~ ~ ~")')
+    const drawer = await openRoll(page)
+    await enlargeDrawer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await resizeDrag(page, grid, 48, 0, 2) // grab c3 (not e3), stretch to step 2
+    // c3 grows to @3, e3 stays a single step → independent durations as parallel lanes
+    const code = await strudelValue(page)
+    expect(code).toContain(',') // two lanes
+    expect(code).toContain('c3@3')
+    expect(code).toContain('e3')
+    // c3 now spans step 2; e3 does not (only c3 stretched)
+    await expect(grid.locator('[data-roll-cell="48:2"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-roll-cell="52:2"]')).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  test('stretching a note OVER a following note sustains under it (#628)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 e3 g3 a3")') // adjacent — was a no-op before #628
+    const drawer = await openRoll(page)
+    await enlargeDrawer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await resizeDrag(page, grid, 48, 0, 2) // stretch c3 over e3+g3
+    // c3 sustains 3 steps under the following onsets (no longer capped/no-op)
+    expect(await strudelValue(page)).toBe('$: note("c3@3 a3, ~ e3 g3 ~")')
+    await expect(grid.locator('[data-roll-cell="48:2"]')).toHaveAttribute('aria-pressed', 'true')
+  })
+
   test('a near-miss on the right edge resizes (not deletes) the note (#530)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c3 ~ ~ ~")')

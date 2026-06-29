@@ -608,6 +608,12 @@ export function applyRollGain(model: PianoRollModel, gain: ChunkGain): PianoRoll
 
 export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
   const alt = unwrapAlternation(mini)
+  // A top-level `,`-stack = parallel note lanes (independent durations / overlap,
+  // #628). Only when NOT an alternation — multi-bar `<...>` lanes are out of scope.
+  if (alt === null) {
+    const parts = splitTopLevel(mini)
+    if (parts.length > 1) return parseRollLanes(parts)
+  }
   const tok = tokenize(alt ?? mini, /* allowNumeric */ true)
   if (!tok.ok) return tok
   if (alt !== null && tok.steps.length === 0) return { ok: false, reason: 'empty alternation' }
@@ -654,4 +660,33 @@ export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
       ...(sawNumeric ? { numeric: true } : {}),
     },
   }
+}
+
+/**
+ * Parse a top-level `,`-stack of parallel note lanes into one model (#628). Each
+ * part is an independent single-bar roll; the lanes must share a step grid
+ * (Strudel normalizes each comma-part to its own width, so unequal widths would
+ * misalign the grids) and one numeric/named convention. Notes union across lanes
+ * — cross-lane overlap is the point; each part is itself overlap-free by parse.
+ */
+function parseRollLanes(parts: string[]): ParseResult<PianoRollModel> {
+  const models: PianoRollModel[] = []
+  for (const part of parts) {
+    const r = parsePianoRoll(part.trim())
+    if (!r.ok) return r
+    if (r.model.bars != null) {
+      return { ok: false, reason: 'multi-bar parallel note lanes are beyond the editable subset' }
+    }
+    models.push(r.model)
+  }
+  const steps = models[0].steps
+  if (!models.every((m) => m.steps === steps)) {
+    return { ok: false, reason: 'parallel note lanes must share a step grid' }
+  }
+  const numeric = models.some((m) => m.numeric)
+  if (numeric && models.some((m) => !m.numeric && m.notes.length > 0)) {
+    return { ok: false, reason: 'mixed numeric and note-name lanes are beyond the editable subset' }
+  }
+  const notes = models.flatMap((m) => m.notes)
+  return { ok: true, model: { steps, notes, ...(numeric ? { numeric: true } : {}) } }
 }
