@@ -172,7 +172,9 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     expect(errors).toEqual([])
   })
 
-  test('piano roll: 8 then 4 round-trips to the byte-identical source', async ({ page }) => {
+  test('piano roll: adding slots keeps notes single-slot, and 8→4 round-trips (#607)', async ({
+    page,
+  }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
     await boot(page)
@@ -182,13 +184,32 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     const slots = slotsControl(drawer)
     await expect(grid).toHaveCount(1)
 
+    // 4 → 8 is CONSERVATIVE (#607): each note stays a SINGLE slot, repositioned
+    // proportionally (onsets preserved) — it does NOT stretch to `c3@2 …`.
     await slots.locator('[data-resolution-step="8"]').click()
     await page.waitForTimeout(120)
-    expect(await getStrudelCode(page)).toBe('$: note("c3@2 e3@2 g3@2 a3@2")')
+    expect(await getStrudelCode(page)).toBe('$: note("c3 ~ e3 ~ g3 ~ a3 ~")')
 
+    // 8 → 4 coarsens back to the byte-identical source.
     await slots.locator('[data-resolution-step="4"]').click()
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: note("c3 e3 g3 a3")')
     expect(errors).toEqual([])
+  })
+
+  test('piano roll: adding slots preserves and re-aligns per-note velocities (#607)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 e3 g3 a3").gain("1 0.8 0.6 0.4")')
+    const drawer = await openPattern(page)
+    const slots = slotsControl(drawer)
+    await slots.locator('[data-resolution-step="8"]').click()
+    await page.waitForTimeout(120)
+    // each note's velocity follows it to its new proportional slot; the new empty
+    // slots serialize as `~` placeholders — velocities never scramble or drop.
+    expect(await getStrudelCode(page)).toBe(
+      '$: note("c3 ~ e3 ~ g3 ~ a3 ~").gain("1 ~ 0.8 ~ 0.6 ~ 0.4 ~")',
+    )
   })
 })

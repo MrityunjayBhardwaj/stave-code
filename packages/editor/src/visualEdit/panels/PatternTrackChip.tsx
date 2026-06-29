@@ -75,11 +75,22 @@ export function PatternTrackChip(): React.ReactElement | null {
   return (
     <div
       data-pattern-track-chip
+      // Opaque "box" so the dot + name stay readable: the chip is an overlay
+      // pinned to the grid's TOP-LEFT corner, and without a background the
+      // pitch-row labels / cells scrolling underneath bled through and made it
+      // hard to read (#589). The theme surface bg + border + subtle shadow lift
+      // it off the grid; padding gives the dot/name room. Only the BOTTOM-RIGHT
+      // corner is rounded — the other three sit flush in the panel corner.
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: 5,
         minWidth: 0,
+        padding: '3px 8px',
+        background: 'var(--surface, #14142a)',
+        border: '1px solid var(--border, #2a2a4a)',
+        borderRadius: '0 0 6px 0',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
       }}
     >

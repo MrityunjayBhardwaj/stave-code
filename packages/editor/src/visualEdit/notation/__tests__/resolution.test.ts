@@ -286,6 +286,32 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     expect(out.notes.every((n) => n.start >= 0 && n.start + n.duration <= 16)).toBe(true)
   })
 
+  it('piano roll: ADDING slots keeps each note a single slot — no stretch (#607)', () => {
+    // the old resolution-doubling stretched durations (`c3@2 e3@2 g3@2 a3@2`);
+    // now a 1-slot note stays 1 slot, repositioned proportionally — onsets are
+    // preserved and the freed grid shows as gaps.
+    expect(serializePianoRoll(quantizePianoRollTo(roll('c3 e3 g3 a3'), 8))).toBe(
+      'c3 ~ e3 ~ g3 ~ a3 ~',
+    )
+  })
+
+  it('piano roll: ADDING slots keeps a held note its slot-count, not its proportion (#607)', () => {
+    // c3 holds 2 of 3 slots, e3 the last. 3 → 6: c3 stays @2 (does NOT scale to
+    // @4), e3 stays 1 slot; both onsets map proportionally (0 and 2/3 → 0 and 4/6).
+    const out = quantizePianoRollTo(roll('c3@2 e3'), 6)
+    const c3 = out.notes.find((n) => n.pitch === 'c3')!
+    const e3 = out.notes.find((n) => n.pitch === 'e3')!
+    expect([c3.start, c3.duration]).toEqual([0, 2]) // kept slot-count, onset preserved
+    expect([e3.start, e3.duration]).toEqual([4, 1]) // proportional reposition, 1 slot
+  })
+
+  it('piano roll: REDUCING slots still scales duration down (stays in range, #607)', () => {
+    // the conservative rule is increase-only; a coarsen still shrinks durations
+    // so a held note can't run past the smaller grid.
+    const out = quantizePianoRollTo(roll('c3@4 e3@4'), 4) // 8 → 4
+    expect(out.notes.every((n) => n.start + n.duration <= 4)).toBe(true)
+  })
+
   it('quantize is a no-op for the current count', () => {
     const m = step('bd ~ sn ~')
     expect(quantizeStepGridTo(m, 4)).toBe(m)

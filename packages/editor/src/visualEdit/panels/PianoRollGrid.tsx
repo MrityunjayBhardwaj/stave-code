@@ -426,8 +426,8 @@ export function PianoRollGrid({
       <div
         style={{
           position: 'absolute',
-          top: 6,
-          left: 16,
+          top: 0,
+          left: 0,
           zIndex: 3,
           display: 'flex',
           alignItems: 'center',
@@ -438,7 +438,12 @@ export function PianoRollGrid({
       {/* "Slots" moved to the Pattern inspector (#601) and the Note Color toggle
           to the editor Settings tab (#602) — the old top-right overlay is gone,
           so the piano roll keeps its full height for pitch rows. */}
-      <div style={{ padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' }}>
+      <div
+        // always-visible (non-overlay) scrollbar when the rows overflow the
+        // panel, styled in globals.css (the editor ships no CSS) — #pattern-scrollbar.
+        data-pattern-scroll
+        style={{ padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' }}
+      >
         <div
           style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}
           onPointerLeave={() => setHoveredMidi(null)}
@@ -606,25 +611,14 @@ export function PianoRollGrid({
         {gainInScope(model) && (
           <div
             data-roll-velocity-lane
-            // Pinned to the bottom of the scroll viewport (#604): a tall pitch
-            // range used to push the velocity lane below the fold, so editing a
-            // step's velocity meant scrolling to find it. `sticky` keeps it in
-            // view; the opaque surface bg hides the pitch rows scrolling behind
-            // it and the top border separates it from the grid.
-            style={{
-              position: 'sticky',
-              bottom: 0,
-              zIndex: 4,
-              display: 'flex',
-              alignItems: 'flex-end',
-              gap: 6,
-              marginTop: 8,
-              paddingTop: 8,
-              background: 'var(--surface, #14142a)',
-              borderTop: '1px solid var(--border, #2a2a4a)',
-            }}
+            // The velocity lane is the last child INSIDE the scroll area, so it
+            // scrolls together with the pitch rows (the #604 sticky / #624 footer
+            // pinning is reverted): the always-visible scrollbar lets you scroll
+            // straight down to it, so it no longer needs to be pinned or pulled
+            // out as a footer.
+            style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginTop: 8 }}
           >
-            <span
+          <span
               style={{
                 width: 36,
                 fontSize: 9,
@@ -683,7 +677,7 @@ export function PianoRollGrid({
               })}
             </div>
           </div>
-          )}
+        )}
         </div>
       </div>
     </div>

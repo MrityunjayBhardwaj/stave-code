@@ -224,4 +224,25 @@ test.describe('velocity — Piano Roll (#409)', () => {
     await expect(roll.locator('[data-vel-bar="1"]')).toHaveAttribute('data-gain', '0.5')
     await expect(roll.locator('[data-vel-bar="0"]')).toHaveAttribute('data-gain', '1')
   })
+
+  test('a note placed in a NEW slot (after a slot increase) is velocity-editable (#607)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 e3 g3 a3")')
+    const drawer = await openSequencer(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await drawer.locator('[data-mixer-body] [data-resolution-step="8"]').click()
+    await page.waitForTimeout(120)
+    expect(await strudelValue(page)).toBe('$: note("c3 ~ e3 ~ g3 ~ a3 ~")') // conservative (#607)
+    // place a note in the new (empty) slot 1, then soften its velocity — the lane
+    // bar appears and the drag writes a structure-aligned .gain (rests stay `~`).
+    await roll.locator('[data-roll-cell="48:1"]').click() // c3 at the new slot 1
+    await page.waitForTimeout(100)
+    await expect(roll.locator('[data-vel-bar="1"]')).toHaveCount(1)
+    await dragVertical(page, roll.locator('[data-vel-col="1"]'), 40)
+    expect(await strudelValue(page)).toMatch(
+      /^\$: note\("c3 c3 e3 ~ g3 ~ a3 ~"\)\.gain\("1 [\d.]+ 1 ~ 1 ~ 1 ~"\)$/,
+    )
+  })
 })
