@@ -329,4 +329,49 @@ test.describe('Piano Roll (#383)', () => {
     })
     expect(ruleLoaded).toBe(true)
   })
+
+  // Audition (#633): clicking/dragging a left piano key plays the pitch but must
+  // NOT edit the document or throw. (Audio output itself isn't assertable
+  // headless — that's the tunnel ear-test; here we guard the gesture's safety.)
+  test('clicking a piano key auditions without editing the document (#633)', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(String(e)))
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 e3 g3").s("sawtooth")')
+    const drawer = await openRoll(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll).toHaveCount(1)
+    const before = await strudelValue(page)
+    const keyC3 = roll.locator('[data-roll-key="48"]') // c3
+    await expect(keyC3).toHaveCount(1)
+    await expect(keyC3).toHaveCSS('cursor', 'pointer') // interactive affordance
+    await expect(keyC3).toHaveAttribute('title', /Play/)
+    await keyC3.click()
+    await page.waitForTimeout(100)
+    expect(await strudelValue(page)).toBe(before) // audition never edits
+    expect(errors).toEqual([]) // try/catch swallows an unready audio graph
+  })
+
+  test('dragging across piano keys auditions without editing the document (#633)', async ({
+    page,
+  }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(String(e)))
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 e3 g3").s("sawtooth")')
+    const drawer = await openRoll(page)
+    await enlargeDrawer(page) // keys on-screen; raw-mouse drag doesn't auto-scroll
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    const before = await strudelValue(page)
+    const a = await roll.locator('[data-roll-key="48"]').boundingBox() // c3
+    const b = await roll.locator('[data-roll-key="55"]').boundingBox() // g3
+    if (!a || !b) throw new Error('piano keys not on-screen')
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 }) // glissando
+    await page.mouse.up()
+    await page.waitForTimeout(100)
+    expect(await strudelValue(page)).toBe(before) // a key-drag never edits
+    expect(errors).toEqual([])
+  })
 })

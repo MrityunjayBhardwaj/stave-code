@@ -8,6 +8,7 @@ var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
 var Y3 = require('yjs');
 var reactDom = require('react-dom');
+var webaudio = require('@strudel/webaudio');
 
 function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 
@@ -4894,7 +4895,7 @@ var _StrudelEngine = class _StrudelEngine {
     }
     miniMod.miniAllStrings();
     const { transpiler } = await import('@strudel/transpiler');
-    const { initAudio, getAudioContext, webaudioOutput, webaudioRepl } = webaudioMod;
+    const { initAudio, getAudioContext: getAudioContext2, webaudioOutput, webaudioRepl } = webaudioMod;
     await initAudio();
     webaudioMod.registerSynthSounds();
     webaudioMod.registerZZFXSounds();
@@ -5048,7 +5049,7 @@ var _StrudelEngine = class _StrudelEngine {
     console.log(`[StrudelEngine] aliasBank: soundMap keys ${preAliasCount} \u2192 ${postAliasCount} (\u0394 ${postAliasCount - preAliasCount}; expect non-negative)`);
     const soundMapData = webaudioMod.soundMap?.get() ?? {};
     this.loadedSoundNames = Object.keys(soundMapData).filter((k) => !k.startsWith("_"));
-    this.audioCtx = getAudioContext();
+    this.audioCtx = getAudioContext2();
     const audioCtx = this.audioCtx;
     this.analyserNode = audioCtx.createAnalyser();
     this.analyserNode.fftSize = 2048;
@@ -27444,6 +27445,7 @@ var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
 var RESIZE_ZONE_PX = 8;
+var HOLD_RETRIGGER_MS = 220;
 var LANE_HEIGHT = 48;
 var VELOCITY_FULL_PX2 = 80;
 var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
@@ -27485,6 +27487,8 @@ function PianoRollGrid({
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
   const [hoveredMidi, setHoveredMidi] = React35__namespace.useState(null);
+  const holdMidiRef = React35__namespace.useRef(null);
+  const holdTimerRef = React35__namespace.useRef(null);
   const onSelectRef = React35__namespace.useRef(onSelect);
   onSelectRef.current = onSelect;
   const selectedRef = React35__namespace.useRef(selected);
@@ -27545,6 +27549,55 @@ function PianoRollGrid({
       window.removeEventListener("pointerup", onUp);
     };
   }, [mutate, endGesture]);
+  const playMidi = /* @__PURE__ */ __name((midi) => {
+    try {
+      const ctx = webaudio.getAudioContext();
+      void ctx.resume();
+      const sound = chunk ? readChainMethod(chunk, ["sound", "s"])?.value : null;
+      const value = {
+        note: midiToPitch(midi),
+        gain: 0.9,
+        attack: 0.01,
+        sustain: 1,
+        // hold at full so the note sustains for its slice
+        release: 0.08
+      };
+      if (sound) value.s = sound;
+      void webaudio.superdough(value, ctx.currentTime + 0.02, HOLD_RETRIGGER_MS / 1e3, 0.5, 0)?.catch(() => {
+      });
+    } catch {
+    }
+  }, "playMidi");
+  const startHold = /* @__PURE__ */ __name((midi) => {
+    holdMidiRef.current = midi;
+    playMidi(midi);
+    if (holdTimerRef.current == null) {
+      holdTimerRef.current = setInterval(() => {
+        if (holdMidiRef.current != null) playMidi(holdMidiRef.current);
+      }, HOLD_RETRIGGER_MS);
+    }
+  }, "startHold");
+  const moveHold = /* @__PURE__ */ __name((midi) => {
+    if (holdMidiRef.current == null || holdMidiRef.current === midi) return;
+    holdMidiRef.current = midi;
+    playMidi(midi);
+  }, "moveHold");
+  const stopHold = /* @__PURE__ */ __name(() => {
+    holdMidiRef.current = null;
+    if (holdTimerRef.current != null) {
+      clearInterval(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  }, "stopHold");
+  React35__namespace.useEffect(() => {
+    window.addEventListener("pointerup", stopHold);
+    window.addEventListener("pointercancel", stopHold);
+    return () => {
+      window.removeEventListener("pointerup", stopHold);
+      window.removeEventListener("pointercancel", stopHold);
+      if (holdTimerRef.current != null) clearInterval(holdTimerRef.current);
+    };
+  }, []);
   const onBarDown = /* @__PURE__ */ __name((start, e) => {
     if (!model) return;
     velRef.current = { start, startY: e.clientY, startGain: gainAtStart(model, start) };
@@ -27759,7 +27812,12 @@ function PianoRollGrid({
                               {
                                 "data-roll-key": midi,
                                 "data-roll-key-black": black ? "true" : void 0,
-                                "aria-hidden": "true",
+                                title: `Play ${noteDisplayName(midi)}`,
+                                onPointerDown: (e) => {
+                                  e.preventDefault();
+                                  startHold(midi);
+                                },
+                                onPointerEnter: () => moveHold(midi),
                                 style: {
                                   position: "relative",
                                   width: 40,
@@ -27775,7 +27833,10 @@ function PianoRollGrid({
                                   alignItems: "center",
                                   justifyContent: "flex-end",
                                   paddingRight: 3,
-                                  overflow: "hidden"
+                                  overflow: "hidden",
+                                  cursor: "pointer",
+                                  touchAction: "none"
+                                  // let a touch-drag glissando across keys
                                 },
                                 children: [
                                   black && /* @__PURE__ */ jsxRuntime.jsx(

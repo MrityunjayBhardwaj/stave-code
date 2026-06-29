@@ -35,6 +35,8 @@ import { rollSlotState, quantizePianoRollTo } from '../notation/resolution'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 import { setNoteClip, getNoteClip } from './clipboard'
+import { readChainMethod } from './chainMethod'
+import { superdough, getAudioContext } from '@strudel/webaudio'
 
 const ROLL_HINT = 'Click a melody to edit its notes.'
 
@@ -53,6 +55,15 @@ const MIN_SPAN = 12
  * grid with narrow cells.
  */
 const RESIZE_ZONE_PX = 8
+
+/**
+ * Audition hold (#633): superdough has no live note-off, so a held key is kept
+ * sounding by retriggering an overlapping sustained note on this interval (ms).
+ * Each note's slice = this interval (so notes butt-join), with a short release so
+ * the tail bridges the seam; the loop stops on release, so the note rings out
+ * within one slice of letting go.
+ */
+const HOLD_RETRIGGER_MS = 220
 
 /** velocity lane height (px) and the drag distance that spans the full 0→1 */
 const LANE_HEIGHT = 48
@@ -144,6 +155,11 @@ export function PianoRollGrid({
   const [colorMode] = useNoteColorMode()
   // Pitch row the pointer is over → highlight its key on the keyboard (#430).
   const [hoveredMidi, setHoveredMidi] = React.useState<number | null>(null)
+  // Audition (#633): press-and-hold a key to sustain it (drag to glissando).
+  // `holdMidiRef` = the pitch currently held (null when released); `holdTimerRef`
+  // = the retrigger interval that keeps it sounding while held.
+  const holdMidiRef = React.useRef<number | null>(null)
+  const holdTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Latest selection + setter for use inside window-listener effects without
   // re-subscribing (#432). The grid sets selection; PatternPanel owns it.
@@ -230,6 +246,72 @@ export function PianoRollGrid({
       window.removeEventListener('pointerup', onUp)
     }
   }, [mutate, endGesture])
+
+  // Play one note through the same global audio graph the engine drives (#633).
+  // `superdough` is a module singleton shared with the engine, so it reuses the
+  // loaded samples/output. We pass the bound track's sound (`.s`) and the row's
+  // note name (superdough parses the name itself, so the pitch matches playback),
+  // plus a sustaining envelope so a held key rings out instead of the default
+  // pluck (the synth `sustain` defaults to 0). Synth sounds always render;
+  // sample/soundfont sounds need the engine initialized (a played doc) — else
+  // this silently no-ops. superdough is async: an unready/unknown sound REJECTS,
+  // so .catch it too (the try/catch only guards a synchronous throw).
+  const playMidi = (midi: number): void => {
+    try {
+      const ctx = getAudioContext()
+      void ctx.resume() // the press is the user gesture that unlocks audio
+      const sound = chunk ? readChainMethod(chunk, ['sound', 's'])?.value : null
+      const value: Record<string, unknown> = {
+        note: midiToPitch(midi),
+        gain: 0.9,
+        attack: 0.01,
+        sustain: 1, // hold at full so the note sustains for its slice
+        release: 0.08,
+      }
+      if (sound) value.s = sound
+      void superdough(value, ctx.currentTime + 0.02, HOLD_RETRIGGER_MS / 1000, 0.5, 0)?.catch(() => {})
+    } catch {
+      /* audio graph not ready — never break the UI */
+    }
+  }
+
+  // Press-and-hold sustains the pitch (#633): superdough has no live note-off, so
+  // a tight retrigger of an overlapping sustained note keeps it sounding while
+  // held and lets go shortly after release. Dragging onto another key moves the
+  // held pitch (glissando).
+  const startHold = (midi: number): void => {
+    holdMidiRef.current = midi
+    playMidi(midi)
+    if (holdTimerRef.current == null) {
+      holdTimerRef.current = setInterval(() => {
+        if (holdMidiRef.current != null) playMidi(holdMidiRef.current)
+      }, HOLD_RETRIGGER_MS)
+    }
+  }
+  const moveHold = (midi: number): void => {
+    if (holdMidiRef.current == null || holdMidiRef.current === midi) return
+    holdMidiRef.current = midi
+    playMidi(midi) // immediate response as the drag crosses keys
+  }
+  const stopHold = (): void => {
+    holdMidiRef.current = null
+    if (holdTimerRef.current != null) {
+      clearInterval(holdTimerRef.current)
+      holdTimerRef.current = null
+    }
+  }
+
+  // Release the hold anywhere (the drag may end off a key); stop on unmount too.
+  React.useEffect(() => {
+    window.addEventListener('pointerup', stopHold)
+    window.addEventListener('pointercancel', stopHold)
+    return () => {
+      window.removeEventListener('pointerup', stopHold)
+      window.removeEventListener('pointercancel', stopHold)
+      if (holdTimerRef.current != null) clearInterval(holdTimerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const onBarDown = (start: number, e: React.PointerEvent): void => {
     if (!model) return
@@ -495,7 +577,14 @@ export function PianoRollGrid({
                 <span
                   data-roll-key={midi}
                   data-roll-key-black={black ? 'true' : undefined}
-                  aria-hidden="true"
+                  // Press-and-hold to audition (sustains while held); drag onto
+                  // another key to glissando (#633).
+                  title={`Play ${noteDisplayName(midi)}`}
+                  onPointerDown={(e) => {
+                    e.preventDefault() // don't start a text selection / steal focus
+                    startHold(midi)
+                  }}
+                  onPointerEnter={() => moveHold(midi)}
                   style={{
                     position: 'relative',
                     width: 40,
@@ -512,6 +601,8 @@ export function PianoRollGrid({
                     justifyContent: 'flex-end',
                     paddingRight: 3,
                     overflow: 'hidden',
+                    cursor: 'pointer',
+                    touchAction: 'none', // let a touch-drag glissando across keys
                   }}
                 >
                   {black && (
