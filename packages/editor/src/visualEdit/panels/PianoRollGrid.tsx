@@ -21,7 +21,7 @@ import * as React from 'react'
 import { parsePianoRoll, applyRollGain } from '../notation/parse'
 import { serializePianoRoll, serializeRollGain } from '../notation/serialize'
 import type { PianoRollModel, RollNote } from '../notation/model'
-import { pitchToMidi, midiToPitch, isBlackKey, cLabel } from '../notation/pitch'
+import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../notation/pitch'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID } from './tabs'
 import { isRollChunk } from './patternKind'
@@ -579,6 +579,33 @@ export function PianoRollGrid({
                           : undefined,
                       }}
                     >
+                      {isHead && (
+                        // Note name inside the bar (#605) — rendered on the head
+                        // cell, clipped to it so it never spills onto a neighbour.
+                        // pointer-events:none so it never blocks the cell's
+                        // pointer gestures (paint/drag) or the tail resize handle.
+                        <span
+                          data-roll-note-name
+                          aria-hidden="true"
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            paddingLeft: 3,
+                            fontSize: 8,
+                            lineHeight: 1,
+                            fontWeight: 600,
+                            color: '#fff',
+                            textShadow: '0 1px 1px rgba(0,0,0,0.55)',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            pointerEvents: 'none',
+                          }}
+                        >
+                          {model.numeric ? String(midi) : noteDisplayName(midi)}
+                        </span>
+                      )}
                       {isTail && (
                         <span
                           data-roll-resize={`${midi}:${note!.start}`}

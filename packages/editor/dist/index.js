@@ -24834,6 +24834,11 @@ function midiToPitch(midi) {
   return `${SHARP_NAMES[(midi % 12 + 12) % 12]}${octave}`;
 }
 __name(midiToPitch, "midiToPitch");
+function noteDisplayName(midi) {
+  const token = midiToPitch(midi);
+  return token.charAt(0).toUpperCase() + token.slice(1);
+}
+__name(noteDisplayName, "noteDisplayName");
 function isBlackKey(midi) {
   return SHARP_NAMES[(midi % 12 + 12) % 12].includes("#");
 }
@@ -27672,7 +27677,7 @@ function PianoRollGrid({
                             const isHead = on && note.start === step;
                             const isTail = on && note.start + note.duration - 1 === step;
                             const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
-                            return /* @__PURE__ */ jsx(
+                            return /* @__PURE__ */ jsxs(
                               "button",
                               {
                                 type: "button",
@@ -27701,29 +27706,58 @@ function PianoRollGrid({
                                   // selection ring (#432) — distinct from the playhead border
                                   boxShadow: isSel ? "inset 0 0 0 2px var(--foreground, #e6e6ea)" : void 0
                                 },
-                                children: isTail && /* @__PURE__ */ jsx(
-                                  "span",
-                                  {
-                                    "data-roll-resize": `${midi}:${note.start}`,
-                                    "aria-label": `resize ${tokenForRow(!!model.numeric, midi)}`,
-                                    onPointerDown: (e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      onResizeDown(note);
-                                    },
-                                    style: {
-                                      position: "absolute",
-                                      top: 0,
-                                      bottom: 0,
-                                      right: 0,
-                                      width: RESIZE_ZONE_PX,
-                                      cursor: "ew-resize",
-                                      background: "var(--foreground, #e6e6ea)",
-                                      opacity: 0.45,
-                                      borderRadius: "0 2px 2px 0"
+                                children: [
+                                  isHead && // Note name inside the bar (#605) — rendered on the head
+                                  // cell, clipped to it so it never spills onto a neighbour.
+                                  // pointer-events:none so it never blocks the cell's
+                                  // pointer gestures (paint/drag) or the tail resize handle.
+                                  /* @__PURE__ */ jsx(
+                                    "span",
+                                    {
+                                      "data-roll-note-name": true,
+                                      "aria-hidden": "true",
+                                      style: {
+                                        position: "absolute",
+                                        inset: 0,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        paddingLeft: 3,
+                                        fontSize: 8,
+                                        lineHeight: 1,
+                                        fontWeight: 600,
+                                        color: "#fff",
+                                        textShadow: "0 1px 1px rgba(0,0,0,0.55)",
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        pointerEvents: "none"
+                                      },
+                                      children: model.numeric ? String(midi) : noteDisplayName(midi)
                                     }
-                                  }
-                                )
+                                  ),
+                                  isTail && /* @__PURE__ */ jsx(
+                                    "span",
+                                    {
+                                      "data-roll-resize": `${midi}:${note.start}`,
+                                      "aria-label": `resize ${tokenForRow(!!model.numeric, midi)}`,
+                                      onPointerDown: (e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onResizeDown(note);
+                                      },
+                                      style: {
+                                        position: "absolute",
+                                        top: 0,
+                                        bottom: 0,
+                                        right: 0,
+                                        width: RESIZE_ZONE_PX,
+                                        cursor: "ew-resize",
+                                        background: "var(--foreground, #e6e6ea)",
+                                        opacity: 0.45,
+                                        borderRadius: "0 2px 2px 0"
+                                      }
+                                    }
+                                  )
+                                ]
                               },
                               step
                             );

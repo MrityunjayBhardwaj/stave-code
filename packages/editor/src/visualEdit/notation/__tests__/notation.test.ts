@@ -13,7 +13,7 @@ import {
   serializeStepGain,
   serializeRollGain,
 } from '../serialize'
-import { pitchToMidi, midiToPitch, isBlackKey, cLabel } from '../pitch'
+import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../pitch'
 import { placeNote, resizeNote } from '../place'
 import { resizeGrid, resizeRoll } from '../resize'
 import type { StepGridModel, PianoRollModel } from '../model'
@@ -461,6 +461,13 @@ describe('pitch', () => {
     expect(pitchToMidi('cs3')).toBe(49)
     expect(midiToPitch(48)).toBe('c3')
     expect(midiToPitch(49)).toBe('c#3')
+  })
+  it('noteDisplayName uppercases the letter for the note bars (#605)', () => {
+    expect(noteDisplayName(48)).toBe('C3') // c3 → C3
+    expect(noteDisplayName(49)).toBe('C#3') // c#3 → C#3
+    expect(noteDisplayName(64)).toBe('E4') // e4 → E4
+    // it's display-only — the code token stays lowercase for round-trip fidelity
+    expect(midiToPitch(48)).toBe('c3')
   })
   it('returns null for non-notes', () => {
     expect(pitchToMidi('bd')).toBeNull()
