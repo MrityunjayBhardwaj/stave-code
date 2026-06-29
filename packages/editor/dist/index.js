@@ -25261,6 +25261,10 @@ function applyRollGain(model, gain) {
 __name(applyRollGain, "applyRollGain");
 function parsePianoRoll(mini) {
   const alt = unwrapAlternation(mini);
+  if (alt === null) {
+    const parts = splitTopLevel(mini);
+    if (parts.length > 1) return parseRollLanes(parts);
+  }
   const tok = tokenize2(
     alt ?? mini,
     /* allowNumeric */
@@ -25308,6 +25312,28 @@ function parsePianoRoll(mini) {
   };
 }
 __name(parsePianoRoll, "parsePianoRoll");
+function parseRollLanes(parts) {
+  const models = [];
+  for (const part of parts) {
+    const r = parsePianoRoll(part.trim());
+    if (!r.ok) return r;
+    if (r.model.bars != null) {
+      return { ok: false, reason: "multi-bar parallel note lanes are beyond the editable subset" };
+    }
+    models.push(r.model);
+  }
+  const steps = models[0].steps;
+  if (!models.every((m) => m.steps === steps)) {
+    return { ok: false, reason: "parallel note lanes must share a step grid" };
+  }
+  const numeric = models.some((m) => m.numeric);
+  if (numeric && models.some((m) => !m.numeric && m.notes.length > 0)) {
+    return { ok: false, reason: "mixed numeric and note-name lanes are beyond the editable subset" };
+  }
+  const notes = models.flatMap((m) => m.notes);
+  return { ok: true, model: { steps, notes, ...numeric ? { numeric: true } : {} } };
+}
+__name(parseRollLanes, "parseRollLanes");
 
 // src/visualEdit/notation/serialize.ts
 function fmtGain(v) {
@@ -25387,29 +25413,77 @@ function buildGroups(model) {
 }
 __name(buildGroups, "buildGroups");
 function serializePianoRoll(model) {
-  const groups = buildGroups(model);
-  if (groups === null) return null;
   const bars = model.bars ?? 1;
-  if (bars > 1) return rollBars(groups, model.steps, bars);
+  if (bars > 1) {
+    const groups = buildGroups(model);
+    if (groups === null) return null;
+    return rollBars(groups, model.steps, bars);
+  }
+  return serializeRollLanes(model);
+}
+__name(serializePianoRoll, "serializePianoRoll");
+function placedGroups(model) {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+      return null;
+    }
+    const key3 = `${note.start}:${note.duration}`;
+    const g = byKey.get(key3);
+    if (g) g.pitches.push(note.pitch);
+    else byKey.set(key3, { pitches: [note.pitch], start: note.start, duration: note.duration });
+  }
+  return [...byKey.values()];
+}
+__name(placedGroups, "placedGroups");
+function packLanes(groups) {
+  const sorted = [...groups].sort((a, b) => a.start - b.start || a.duration - b.duration);
+  const lanes = [];
+  for (const g of sorted) {
+    const lane = lanes.find((l) => l.end <= g.start);
+    if (lane) {
+      lane.groups.push(g);
+      lane.end = g.start + g.duration;
+    } else {
+      lanes.push({ end: g.start + g.duration, groups: [g] });
+    }
+  }
+  return lanes.map((l) => l.groups);
+}
+__name(packLanes, "packLanes");
+function laneString(groups, steps) {
   const cols = [];
   let col = 0;
-  for (const start of [...groups.keys()].sort((a, b) => a - b)) {
-    if (start < col) return null;
-    while (col < start) {
+  for (const g of [...groups].sort((a, b) => a.start - b.start)) {
+    if (g.start < col) return null;
+    while (col < g.start) {
       cols.push("~");
       col++;
     }
-    const g = groups.get(start);
-    cols.push(groupToken(g));
+    cols.push(groupToken({ pitches: g.pitches, duration: g.duration }));
     col += g.duration;
   }
-  while (col < model.steps) {
+  while (col < steps) {
     cols.push("~");
     col++;
   }
   return cols.join(" ");
 }
-__name(serializePianoRoll, "serializePianoRoll");
+__name(laneString, "laneString");
+function serializeRollLanes(model) {
+  const groups = placedGroups(model);
+  if (groups === null) return null;
+  const lanes = packLanes(groups);
+  if (lanes.length === 0) return laneString([], model.steps);
+  const strings = [];
+  for (const lane of lanes) {
+    const s = laneString(lane, model.steps);
+    if (s === null) return null;
+    strings.push(s);
+  }
+  return strings.join(", ");
+}
+__name(serializeRollLanes, "serializeRollLanes");
 function rollBars(groups, steps, bars) {
   const perBar2 = steps / bars;
   if (!Number.isInteger(perBar2)) return null;
@@ -25457,6 +25531,8 @@ function rollBars(groups, steps, bars) {
 __name(rollBars, "rollBars");
 function serializeRollGain(model) {
   if (model.gainForeign || (model.bars ?? 1) > 1) return { kind: "skip" };
+  const placed = placedGroups(model);
+  if (placed !== null && packLanes(placed).length > 1) return { kind: "skip" };
   const groups = /* @__PURE__ */ new Map();
   for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
     if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
@@ -27265,15 +27341,24 @@ function placeNote(model, pitch, start, duration) {
   return { ...model, notes };
 }
 __name(placeNote, "placeNote");
-function resizeNote(model, start, duration) {
-  const nextStart = Math.min(
-    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-    model.steps
-  );
-  const capped = Math.max(1, Math.min(duration, nextStart - start));
+function resizeNote(model, start, pitch, duration) {
+  if ((model.bars ?? 1) > 1) {
+    const nextStart = Math.min(
+      ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+      model.steps
+    );
+    const capped2 = Math.max(1, Math.min(duration, nextStart - start));
+    return {
+      ...model,
+      notes: model.notes.map((n) => n.start === start ? { ...n, duration: capped2 } : n)
+    };
+  }
+  const capped = Math.max(1, Math.min(duration, model.steps - start));
   return {
     ...model,
-    notes: model.notes.map((n) => n.start === start ? { ...n, duration: capped } : n)
+    notes: model.notes.map(
+      (n) => n.start === start && n.pitch === pitch ? { ...n, duration: capped } : n
+    )
   };
 }
 __name(resizeNote, "resizeNote");
@@ -27482,7 +27567,7 @@ function PianoRollGrid({
     if (d.mode === "resize") {
       let dur2 = step - d.origStart + 1;
       if (interval) dur2 = Math.max(interval, snapColumn(d.origStart + dur2, interval) - d.origStart);
-      mutate((prev) => resizeNote(prev, d.origStart, dur2));
+      mutate((prev) => resizeNote(prev, d.origStart, d.origPitch, dur2));
       d.moved = true;
       return;
     }
