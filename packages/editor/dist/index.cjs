@@ -27905,15 +27905,17 @@ function PianoRollGrid({
                           }
                         ),
                         /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }, children: Array.from({ length: model.steps }, (_, col) => {
-                          const isStart = model.notes.some((n) => n.start === col);
-                          const g = gainAtStart(model, col);
+                          const covering = model.notes.find(
+                            (n) => n.start <= col && col < n.start + n.duration
+                          );
+                          const g = covering ? gainAtStart(model, covering.start) : 1;
                           return /* @__PURE__ */ jsxRuntime.jsx(
                             "div",
                             {
                               "data-vel-col": col,
-                              onPointerDown: isStart ? (e) => {
+                              onPointerDown: covering ? (e) => {
                                 e.preventDefault();
-                                onBarDown(col, e);
+                                onBarDown(covering.start, e);
                               } : void 0,
                               style: {
                                 position: "relative",
@@ -27923,9 +27925,9 @@ function PianoRollGrid({
                                 height: "100%",
                                 borderRadius: 2,
                                 background: "var(--background-elevated, #26262c)",
-                                cursor: isStart ? "ns-resize" : "default"
+                                cursor: covering ? "ns-resize" : "default"
                               },
-                              children: isStart && // bottom-anchored bar = the note group's velocity (full = neutral)
+                              children: covering && // bottom-anchored bar = the note group's velocity (full = neutral)
                               /* @__PURE__ */ jsxRuntime.jsx(
                                 "span",
                                 {
