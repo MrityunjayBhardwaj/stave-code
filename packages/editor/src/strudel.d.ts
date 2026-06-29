@@ -23,6 +23,19 @@ declare module '@strudel/webaudio' {
   export function getAudioContext(): AudioContext
 
   /**
+   * Play a single hap value once (the engine's audio path bottoms out here).
+   * Signature: (value, when, durationSec, cps, cycle). `value` is a hap value
+   * like `{ s, note, gain }`. Used to audition a pitch from the piano roll (#633).
+   */
+  export function superdough(
+    value: Record<string, unknown>,
+    when: number,
+    durationSec: number,
+    cps?: number,
+    cycle?: number
+  ): Promise<void>
+
+  /**
    * Trigger function — NOT a factory. Signature: (hap, time, cps, endTime, s) => void
    * Pass as `defaultOutput` to webaudioRepl, or wrap it.
    */
