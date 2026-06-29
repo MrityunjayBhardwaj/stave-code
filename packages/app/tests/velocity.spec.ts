@@ -282,4 +282,46 @@ test.describe('velocity — Piano Roll (#409)', () => {
     await expect(roll.locator('[data-vel-bar="0"]')).toHaveAttribute('data-gain', '0.4')
     await expect(roll.locator('[data-vel-bar="1"]')).toHaveAttribute('data-gain', '0.9')
   })
+
+  test('a multi-bar <...> pattern shows the velocity lane and a drag writes <...> (#632)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("<c3 e3 g3 c4>")') // 4 bars, one column each (perBar 1)
+    const drawer = await openSequencer(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll).toHaveCount(1)
+    await expect(roll.locator('[data-roll-velocity-lane]')).toHaveCount(1) // lane shows on multi-bar
+    await dragVertical(page, roll.locator('[data-vel-col="1"]'), 40)
+    // the gain mirrors the note `<...>` structure, bar-for-bar
+    expect(await strudelValue(page)).toMatch(/^\$: note\("<c3 e3 g3 c4>"\)\.gain\("<1 [\d.]+ 1 1>"\)$/)
+  })
+
+  test('reads an existing multi-bar <...> .gain back onto the lane bars (the reported shape, #632)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(
+      page,
+      '$: note("<[f2,ab2,c3] [db2,f2,ab2] [ab1,c2,eb2] [eb2,g2,bb2]>").gain("<0.5 1 0.3 1>")',
+    )
+    const drawer = await openSequencer(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll).toHaveCount(1)
+    await expect(roll.locator('[data-roll-velocity-lane]')).toHaveCount(1)
+    await expect(roll.locator('[data-vel-bar="0"]')).toHaveAttribute('data-gain', '0.5')
+    await expect(roll.locator('[data-vel-bar="2"]')).toHaveAttribute('data-gain', '0.3')
+    // dragging bar 2 down keeps the <...> wrapper and only moves that bar
+    await dragVertical(page, roll.locator('[data-vel-col="2"]'), 40)
+    expect(await strudelValue(page)).toMatch(/\.gain\("<0\.5 1 [\d.]+ 1>"\)/)
+  })
+
+  test('a subdivided multi-bar (perBar>1) keeps the lane hidden (#632)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("<[c3 e3] g3>")') // steps 4, bars 2 → perBar 2
+    const drawer = await openSequencer(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll).toHaveCount(1)
+    await expect(roll.locator('[data-roll-velocity-lane]')).toHaveCount(0)
+  })
 })

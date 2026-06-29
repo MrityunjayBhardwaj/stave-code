@@ -60,9 +60,15 @@ const VELOCITY_FULL_PX = 80
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v))
 
-/** velocity is grid-aligned only for single-bar, non-foreign rolls */
+/**
+ * Velocity is grid-aligned for single-bar rolls and for multi-bar `<...>` rolls
+ * whose bars are a single column each (`perBar === 1`, steps === bars) — one
+ * note/chord per bar, where the gain is a flat sequence wrapped in `<...>`
+ * (#632). Subdivided multi-bar (perBar > 1) and any `.gain` we don't manage
+ * (`gainForeign`) are out of scope.
+ */
 function gainInScope(model: PianoRollModel): boolean {
-  return !model.gainForeign && (model.bars ?? 1) === 1
+  return !model.gainForeign && (model.bars == null || model.bars === model.steps)
 }
 
 /**

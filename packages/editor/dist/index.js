@@ -25232,10 +25232,15 @@ function applyRollGain(model, gain) {
     return gain.numeric === 1 ? model : { ...model, notes: model.notes.map((n) => ({ ...n, gain: gain.numeric })) };
   }
   if (gain.mini === null) return model;
-  if (model.bars != null) return { ...model, gainForeign: true };
+  let mini = gain.mini;
+  if (model.bars != null) {
+    const inner = model.steps === model.bars ? unwrapAlternation(mini) : null;
+    if (inner === null) return { ...model, gainForeign: true };
+    mini = inner;
+  }
   const byStart = /* @__PURE__ */ new Map();
   let col = 0;
-  for (const t of gain.mini.trim().split(/\s+/).filter((s) => s !== "")) {
+  for (const t of mini.trim().split(/\s+/).filter((s) => s !== "")) {
     if (t === "~") {
       col += 1;
       continue;
@@ -25530,7 +25535,9 @@ function rollBars(groups, steps, bars) {
 }
 __name(rollBars, "rollBars");
 function serializeRollGain(model) {
-  if (model.gainForeign || (model.bars ?? 1) > 1) return { kind: "skip" };
+  if (model.gainForeign) return { kind: "skip" };
+  const bars = model.bars ?? 1;
+  if (bars > 1 && model.steps !== bars) return { kind: "skip" };
   const placed = placedGroups(model);
   if (placed !== null && packLanes(placed).length > 1) return { kind: "skip" };
   const groups = /* @__PURE__ */ new Map();
@@ -25564,7 +25571,8 @@ function serializeRollGain(model) {
     cols.push("~");
     col++;
   }
-  return { kind: "write", value: cols.join(" "), quoted: true };
+  const seq = cols.join(" ");
+  return { kind: "write", value: bars > 1 ? `<${seq}>` : seq, quoted: true };
 }
 __name(serializeRollGain, "serializeRollGain");
 function VisualEditStandby({
@@ -27414,7 +27422,7 @@ var LANE_HEIGHT = 48;
 var VELOCITY_FULL_PX2 = 80;
 var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function gainInScope2(model) {
-  return !model.gainForeign && (model.bars ?? 1) === 1;
+  return !model.gainForeign && (model.bars == null || model.bars === model.steps);
 }
 __name(gainInScope2, "gainInScope");
 var tokenForRow = /* @__PURE__ */ __name((numeric, midi) => numeric ? String(midi) : midiToPitch(midi), "tokenForRow");

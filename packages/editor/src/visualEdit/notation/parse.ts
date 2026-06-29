@@ -573,13 +573,23 @@ export function applyRollGain(model: PianoRollModel, gain: ChunkGain): PianoRoll
       : { ...model, notes: model.notes.map((n) => ({ ...n, gain: gain.numeric as number })) }
   }
   if (gain.mini === null) return model
-  if (model.bars != null) return { ...model, gainForeign: true } // multi-bar gain unmanaged
   // The gain mini is a FLAT sequence the roll serializer emits: a number, a
   // `~` rest, or `num@dur` for a held note. (The note tokenizer can't read it —
   // it requires letter-start atoms.) Anything else → foreign, hands off.
+  let mini = gain.mini
+  if (model.bars != null) {
+    // Multi-bar gain is managed only when each bar is a single column
+    // (`perBar === 1`, steps === bars) — there bars ≡ columns, so the gain is a
+    // flat sequence wrapped in `<...>`, mirroring serializeRollGain (#632). The
+    // inner is read exactly like the single-bar flat sequence below. Subdivided
+    // bars (perBar > 1) need a nested gain mini and stay unmanaged → hand off.
+    const inner = model.steps === model.bars ? unwrapAlternation(mini) : null
+    if (inner === null) return { ...model, gainForeign: true }
+    mini = inner
+  }
   const byStart = new Map<number, number>()
   let col = 0
-  for (const t of gain.mini.trim().split(/\s+/).filter((s) => s !== '')) {
+  for (const t of mini.trim().split(/\s+/).filter((s) => s !== '')) {
     if (t === '~') {
       col += 1
       continue

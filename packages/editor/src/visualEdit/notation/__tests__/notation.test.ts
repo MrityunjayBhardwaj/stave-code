@@ -798,9 +798,21 @@ describe('piano roll — velocity (.gain)', () => {
       }
       expect(serializeRollGain(m)).toEqual({ kind: 'skip' })
     })
-    it('skips multi-bar and foreign', () => {
-      const alt = withGains('<c3 e3>', {})
-      expect(serializeRollGain({ ...alt, bars: 2, notes: alt.notes.map((n) => ({ ...n, gain: 0.5 })) })).toEqual({ kind: 'skip' })
+    it('collapses a uniform multi-bar (perBar===1) level to a scalar (#632)', () => {
+      const alt = withGains('<c3 e3>', {}) // steps 2, bars 2 → perBar 1
+      const m = { ...alt, bars: 2, notes: alt.notes.map((n) => ({ ...n, gain: 0.5 })) }
+      expect(serializeRollGain(m)).toEqual({ kind: 'write', value: '0.5', quoted: false })
+    })
+    it('writes a mixed multi-bar (perBar===1) gain wrapped in <...> (#632)', () => {
+      const alt = withGains('<c3 e3>', { 0: 0.5, 1: 1 }) // bar0 0.5, bar1 neutral
+      const m = { ...alt, bars: 2 }
+      expect(serializeRollGain(m)).toEqual({ kind: 'write', value: '<0.5 1>', quoted: true })
+    })
+    it('skips a subdivided multi-bar (perBar>1, steps!==bars) (#632)', () => {
+      const m = withGains('<[c3 e3] g3>', { 0: 0.5 }) // steps 4, bars 2 → perBar 2
+      expect(serializeRollGain(m)).toEqual({ kind: 'skip' })
+    })
+    it('skips foreign', () => {
       expect(serializeRollGain({ ...withGains('c3 e3', { 0: 0.5 }), gainForeign: true })).toEqual({ kind: 'skip' })
     })
   })
@@ -834,6 +846,20 @@ describe('piano roll — velocity (.gain)', () => {
       expect(applyRollGain(r.model, strGain('1 0.5 1')).gainForeign).toBe(true) // 3 tokens vs 2 cols
       expect(applyRollGain(r.model, strGain('loud soft')).gainForeign).toBe(true)
     })
+    it('reads a multi-bar (perBar===1) <...> gain onto the notes by bar (#632)', () => {
+      const r = parsePianoRoll('<c3 e3>') // bars 2, steps 2 → perBar 1
+      if (!r.ok) throw new Error('parse')
+      expect(r.model.bars).toBe(2)
+      const m = applyRollGain(r.model, strGain('<0.5 1>'))
+      expect(m.gainForeign).toBeUndefined()
+      expect(m.notes.find((n) => n.start === 0)!.gain).toBe(0.5)
+      expect(m.notes.find((n) => n.start === 1)!.gain).toBeUndefined() // neutral stays bare
+    })
+    it('flags foreign for a subdivided multi-bar (perBar>1) gain (#632)', () => {
+      const r = parsePianoRoll('<[c3 e3] g3>') // bars 2, steps 4 → perBar 2
+      if (!r.ok) throw new Error('parse')
+      expect(applyRollGain(r.model, strGain('<0.5 1 1 1>')).gainForeign).toBe(true)
+    })
   })
 
   it('round-trips: note gains → .gain mini → parse back ≡ gains', () => {
@@ -849,6 +875,32 @@ describe('piano roll — velocity (.gain)', () => {
     const reread = applyRollGain(fresh.model, strGain(g.value))
     expect(reread.notes.find((n) => n.start === 0)!.gain).toBe(0.8)
     expect(reread.notes.filter((n) => n.start === 2).every((n) => n.gain === 0.4)).toBe(true)
+  })
+
+  it('round-trips multi-bar (perBar===1) chord gains via <...> (#632)', () => {
+    // the reported shape: one chord per bar, each bar a single column
+    const rollMini = '<[f2,ab2,c3] [db2,f2,ab2] [ab1,c2,eb2] [eb2,g2,bb2]>'
+    const fresh = parsePianoRoll(rollMini)
+    expect(fresh.ok).toBe(true)
+    if (!fresh.ok) return
+    expect(fresh.model.bars).toBe(4)
+    expect(fresh.model.steps).toBe(4)
+    // give bars 0 and 2 a non-neutral velocity (chord members share it)
+    const m: PianoRollModel = {
+      ...fresh.model,
+      notes: fresh.model.notes.map((n) =>
+        n.start === 0 ? { ...n, gain: 0.5 } : n.start === 2 ? { ...n, gain: 0.3 } : n,
+      ),
+    }
+    expect(serializePianoRoll(m)).toBe(rollMini) // head mini unchanged by velocity
+    const g = serializeRollGain(m)
+    expect(g).toEqual({ kind: 'write', value: '<0.5 1 0.3 1>', quoted: true })
+    if (g.kind !== 'write') return
+    const reread = applyRollGain(fresh.model, strGain(g.value))
+    expect(reread.gainForeign).toBeUndefined()
+    expect(reread.notes.filter((n) => n.start === 0).every((n) => n.gain === 0.5)).toBe(true)
+    expect(reread.notes.filter((n) => n.start === 2).every((n) => n.gain === 0.3)).toBe(true)
+    expect(reread.notes.filter((n) => n.start === 1).every((n) => n.gain === undefined)).toBe(true)
   })
 })
 

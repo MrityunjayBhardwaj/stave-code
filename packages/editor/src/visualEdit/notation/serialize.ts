@@ -299,7 +299,14 @@ function rollBars(groups: Map<number, Group>, steps: number, bars: number): stri
  *   - `write` — the column-aligned gain mini.
  */
 export function serializeRollGain(model: PianoRollModel): GainWrite {
-  if (model.gainForeign || (model.bars ?? 1) > 1) return { kind: 'skip' }
+  if (model.gainForeign) return { kind: 'skip' }
+  const bars = model.bars ?? 1
+  // Multi-bar velocity is managed only when each bar is a single column
+  // (`perBar === 1`, i.e. steps === bars) — one note/chord per bar (#632). There
+  // bars ≡ columns, so the gain is the flat column sequence wrapped in `<...>`,
+  // aligned bar-for-bar to the notes. Subdivided bars (perBar > 1) need a nested
+  // gain mini and stay deferred → hand off.
+  if (bars > 1 && model.steps !== bars) return { kind: 'skip' }
   // Overlapping notes serialize across parallel comma-lanes (#628); the gain mini
   // is a single column sequence and can't align per-lane, so hand off (v1).
   const placed = placedGroups(model)
@@ -337,7 +344,10 @@ export function serializeRollGain(model: PianoRollModel): GainWrite {
     cols.push('~')
     col++
   }
-  return { kind: 'write', value: cols.join(' '), quoted: true }
+  // perBar === 1 multi-bar: one column per bar, so the flat sequence is wrapped
+  // in `<...>` to align bar-for-bar with the note `<...>` (#632).
+  const seq = cols.join(' ')
+  return { kind: 'write', value: bars > 1 ? `<${seq}>` : seq, quoted: true }
 }
 
 export type { RollNote }
