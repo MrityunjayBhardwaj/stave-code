@@ -27879,9 +27879,7 @@ function PianoRollGrid({
                           }
                         ),
                         /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }, children: Array.from({ length: model.steps }, (_, col) => {
-                          const covering = model.notes.find(
-                            (n) => n.start <= col && col < n.start + n.duration
-                          );
+                          const covering = model.notes.find((n) => n.start === col) ?? model.notes.find((n) => n.start < col && col < n.start + n.duration);
                           const g = covering ? gainAtStart(model, covering.start) : 1;
                           return /* @__PURE__ */ jsx(
                             "div",
