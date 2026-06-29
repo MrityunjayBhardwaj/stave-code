@@ -267,4 +267,19 @@ test.describe('velocity — Piano Roll (#409)', () => {
     expect(v).toBeGreaterThan(0)
     expect(v).toBeLessThan(0.6)
   })
+
+  test('a note under a sustain keeps its own velocity; the sustain only fills empty slots (#628)', async ({
+    page,
+  }) => {
+    await boot(page)
+    // c3 sustains over slots 0–1; e3 starts at slot 1 with its own gain
+    await setStrudelCode(page, '$: note("c3@2 ~ ~, ~ e3 ~ ~").gain("0.4 0.9 ~ ~")')
+    const drawer = await openSequencer(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll).toHaveCount(1)
+    // slot 0: only c3 → its velocity; slot 1: e3 STARTS here → keeps e3's velocity
+    // (not c3's, even though c3 sustains across it)
+    await expect(roll.locator('[data-vel-bar="0"]')).toHaveAttribute('data-gain', '0.4')
+    await expect(roll.locator('[data-vel-bar="1"]')).toHaveAttribute('data-gain', '0.9')
+  })
 })

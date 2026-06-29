@@ -658,13 +658,14 @@ export function PianoRollGrid({
             </span>
             <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }}>
               {Array.from({ length: model.steps }, (_, col) => {
-                // The note covering this column — a held note (`@n`) covers its
-                // tail columns too, so its velocity bar spans the note's full
-                // width and a drag anywhere on the span sets its gain. Extending
-                // a note therefore carries its velocity across the new slots.
-                const covering = model.notes.find(
-                  (n) => n.start <= col && col < n.start + n.duration,
-                )
+                // Prefer the note that STARTS at this column (it keeps its own
+                // velocity); otherwise a held note (`@n`) sustaining over the
+                // column fills the slot with its velocity. So extending a note
+                // copies its velocity onto the empty slots it covers, while a
+                // slot that already has its own note keeps that note's velocity.
+                const covering =
+                  model.notes.find((n) => n.start === col) ??
+                  model.notes.find((n) => n.start < col && col < n.start + n.duration)
                 const g = covering ? gainAtStart(model, covering.start) : 1
                 return (
                   <div
