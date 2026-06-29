@@ -362,6 +362,7 @@ interface GroupTabBarProps {
   onTabDragStart: (e: React.DragEvent<HTMLDivElement>, tab: WorkspaceTab) => void
   onTabContextMenu?: (tab: WorkspaceTab, x: number, y: number) => void
   onTabPromote: (tabId: string) => void
+  onNewFile?: () => void
   onSplitRight: () => void
   onSplitDown: () => void
   onCloseGroup: () => void
@@ -379,6 +380,7 @@ function GroupTabBar({
   onTabDragStart,
   onTabContextMenu,
   onTabPromote,
+  onNewFile,
   onSplitRight,
   onSplitDown,
   onCloseGroup,
@@ -609,6 +611,17 @@ function GroupTabBar({
           position: 'relative',
         }}
       >
+        {onNewFile && (
+          <button
+            data-testid={`tab-new-file-${group.id}`}
+            onClick={onNewFile}
+            title="New file"
+            aria-label="New file"
+            style={actionBtnStyle}
+          >
+            {'+'}
+          </button>
+        )}
         {hasOverflow && (
           <button
             ref={menuBtnRef}
@@ -736,6 +749,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   theme = 'dark',
   height = '100%',
   onActiveTabChange,
+  onNewFile,
   onBackgroundFileChange,
   onActiveBackdropChange,
   onOpenPopoutPreview,
@@ -2333,6 +2347,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 return nx
               })
             }}
+            onNewFile={onNewFile}
             onSplitRight={() => handleSplit(group.id, 'east')}
             onSplitDown={() => handleSplit(group.id, 'south')}
             onCloseGroup={() => handleCloseGroup(group.id)}

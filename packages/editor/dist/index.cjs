@@ -31218,6 +31218,7 @@ function GroupTabBar({
   onTabDragStart,
   onTabContextMenu,
   onTabPromote,
+  onNewFile,
   onSplitRight,
   onSplitDown,
   onCloseGroup
@@ -31438,6 +31439,17 @@ function GroupTabBar({
               position: "relative"
             },
             children: [
+              onNewFile && /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  "data-testid": `tab-new-file-${group.id}`,
+                  onClick: onNewFile,
+                  title: "New file",
+                  "aria-label": "New file",
+                  style: actionBtnStyle,
+                  children: "+"
+                }
+              ),
               hasOverflow && /* @__PURE__ */ jsxRuntime.jsx(
                 "button",
                 {
@@ -31576,6 +31588,7 @@ var WorkspaceShell = React35.forwardRef(/* @__PURE__ */ __name(function Workspac
   theme = "dark",
   height = "100%",
   onActiveTabChange,
+  onNewFile,
   onBackgroundFileChange,
   onActiveBackdropChange,
   onOpenPopoutPreview,
@@ -32589,6 +32602,7 @@ var WorkspaceShell = React35.forwardRef(/* @__PURE__ */ __name(function Workspac
                     return nx;
                   });
                 },
+                onNewFile,
                 onSplitRight: () => handleSplit(group.id, "east"),
                 onSplitDown: () => handleSplit(group.id, "south"),
                 onCloseGroup: () => handleCloseGroup(group.id)

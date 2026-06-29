@@ -22,6 +22,7 @@ import {
   type WorkspaceFile,
 } from "@stave/editor";
 import { showPrompt, showConfirm, showToast } from "../dialogs/host";
+import { extensionToLanguage, promptAndCreateFile } from "../lib/newFile";
 import { Icon } from "./Icon";
 
 interface FileTreeProps {
@@ -594,28 +595,10 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     }
   }, [files]);
 
-  const handleNewFile = useCallback(async (folderPath = "") => {
-    const name = await showPrompt({
-      title: "New file",
-      description: "Include an extension — .strudel, .sonicpi, .hydra, .p5, .glsl, or .md.",
-      placeholder: "sketch.strudel",
-      confirmLabel: "Create",
-    });
-    if (!name || !name.trim()) return;
-    const trimmedName = name.trim();
-    const path = folderPath ? `${folderPath}/${trimmedName}` : trimmedName;
-    const ext = trimmedName.split(".").pop()?.toLowerCase() ?? "";
-    const language = extensionToLanguage(ext);
-    if (!language) {
-      showToast(
-        `Unknown file extension ".${ext}". Supported: .strudel, .sonicpi, .hydra, .p5, .glsl, .md`,
-        "error",
-      );
-      return;
-    }
-    const id = `file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    createWorkspaceFile(id, path, "", language);
-  }, []);
+  const handleNewFile = useCallback(
+    (folderPath = "") => promptAndCreateFile(folderPath),
+    [],
+  );
 
   const handleNewFolder = useCallback(async (parentPath = "") => {
     const name = await showPrompt({
@@ -1550,24 +1533,6 @@ function ContextMenu(props: ContextMenuProps) {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
-
-function extensionToLanguage(ext: string): WorkspaceFile["language"] | null {
-  switch (ext) {
-    case "strudel": return "strudel";
-    case "sonicpi":
-    case "rb": return "sonicpi";
-    case "hydra":
-    case "hy": return "hydra";
-    case "p5":
-    case "p5js":
-    case "js": return "p5js";
-    case "glsl":
-    case "frag":
-    case "shader": return "glsl";
-    case "md": return "markdown";
-    default: return null;
-  }
-}
 
 function fileIconFor(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase();
