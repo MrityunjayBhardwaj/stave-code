@@ -245,4 +245,26 @@ test.describe('velocity — Piano Roll (#409)', () => {
       /^\$: note\("c3 c3 e3 ~ g3 ~ a3 ~"\)\.gain\("1 [\d.]+ 1 ~ 1 ~ 1 ~"\)$/,
     )
   })
+
+  test("a held note's velocity spans all its slots, and any slot drags it (#628)", async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3@3 ~").gain(0.6)') // c3 held over slots 0–2
+    const drawer = await openSequencer(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll).toHaveCount(1)
+    // the velocity bar spans the held note: every covered slot carries 0.6, the
+    // trailing rest has none (extending a note carries its velocity forward)
+    await expect(roll.locator('[data-vel-bar="0"]')).toHaveAttribute('data-gain', '0.6')
+    await expect(roll.locator('[data-vel-bar="1"]')).toHaveAttribute('data-gain', '0.6')
+    await expect(roll.locator('[data-vel-bar="2"]')).toHaveAttribute('data-gain', '0.6')
+    await expect(roll.locator('[data-vel-bar="3"]')).toHaveCount(0) // rest slot
+    // dragging a TAIL slot (col 2) adjusts the whole note's gain
+    await dragVertical(page, roll.locator('[data-vel-col="2"]'), 40)
+    const code = await strudelValue(page)
+    const v = Number(code.match(/\.gain\(([\d.]+)\)/)?.[1] ?? '1')
+    expect(v).toBeGreaterThan(0)
+    expect(v).toBeLessThan(0.6)
+  })
 })

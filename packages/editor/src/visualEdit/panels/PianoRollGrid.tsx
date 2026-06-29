@@ -658,17 +658,23 @@ export function PianoRollGrid({
             </span>
             <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }}>
               {Array.from({ length: model.steps }, (_, col) => {
-                const isStart = model.notes.some((n) => n.start === col)
-                const g = gainAtStart(model, col)
+                // The note covering this column — a held note (`@n`) covers its
+                // tail columns too, so its velocity bar spans the note's full
+                // width and a drag anywhere on the span sets its gain. Extending
+                // a note therefore carries its velocity across the new slots.
+                const covering = model.notes.find(
+                  (n) => n.start <= col && col < n.start + n.duration,
+                )
+                const g = covering ? gainAtStart(model, covering.start) : 1
                 return (
                   <div
                     key={col}
                     data-vel-col={col}
                     onPointerDown={
-                      isStart
+                      covering
                         ? (e) => {
                             e.preventDefault()
-                            onBarDown(col, e)
+                            onBarDown(covering.start, e)
                           }
                         : undefined
                     }
@@ -680,10 +686,10 @@ export function PianoRollGrid({
                       height: '100%',
                       borderRadius: 2,
                       background: 'var(--background-elevated, #26262c)',
-                      cursor: isStart ? 'ns-resize' : 'default',
+                      cursor: covering ? 'ns-resize' : 'default',
                     }}
                   >
-                    {isStart && (
+                    {covering && (
                       // bottom-anchored bar = the note group's velocity (full = neutral)
                       <span
                         data-vel-bar={col}
