@@ -30,24 +30,37 @@ export function placeNote(
 }
 
 /**
- * Resize the note group starting at `start` to `duration` steps. The new
- * duration floors at 1 and caps at the next group's start (or the grid end),
- * so a resize can never overlap the following note — the result is always a
- * tileable sequence the serializer accepts. All notes sharing `start` (a chord)
- * resize together, since the subset requires chord members to share a duration.
+ * Resize the single note identified by (`start`, `pitch`) to `duration` steps.
+ * The new duration floors at 1 and caps only at the grid end. A note may now
+ * sustain UNDER a later onset (overlap is expressible via parallel comma-lanes,
+ * #628), so each note resizes independently — stretching one chord member no
+ * longer drags the others. The serializer packs any resulting overlap into lanes.
  */
 export function resizeNote(
   model: PianoRollModel,
   start: number,
+  pitch: string,
   duration: number,
 ): PianoRollModel {
-  const nextStart = Math.min(
-    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-    model.steps,
-  )
-  const capped = Math.max(1, Math.min(duration, nextStart - start))
+  // Multi-bar `<...>` can't express overlap or a mixed-duration chord (parallel
+  // lanes are single-bar only), so keep the legacy whole-chord resize capped at
+  // the next onset there — otherwise the write would serialize to null and drop.
+  if ((model.bars ?? 1) > 1) {
+    const nextStart = Math.min(
+      ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+      model.steps,
+    )
+    const capped = Math.max(1, Math.min(duration, nextStart - start))
+    return {
+      ...model,
+      notes: model.notes.map((n) => (n.start === start ? { ...n, duration: capped } : n)),
+    }
+  }
+  const capped = Math.max(1, Math.min(duration, model.steps - start))
   return {
     ...model,
-    notes: model.notes.map((n) => (n.start === start ? { ...n, duration: capped } : n)),
+    notes: model.notes.map((n) =>
+      n.start === start && n.pitch === pitch ? { ...n, duration: capped } : n,
+    ),
   }
 }

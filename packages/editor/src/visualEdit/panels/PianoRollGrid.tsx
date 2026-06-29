@@ -297,10 +297,11 @@ export function PianoRollGrid({
     if (d.mode === 'resize') {
       // duration = columns from the note start through the hovered column;
       // snap the END edge to the division line (min one division when snapping).
-      // resizeNote floors at 1 and caps at the next note (no overlap).
+      // resizeNote floors at 1 and caps at the grid end; only the grabbed note
+      // (by pitch) resizes — a note may sustain under a later onset (#628).
       let dur = step - d.origStart + 1
       if (interval) dur = Math.max(interval, snapColumn(d.origStart + dur, interval) - d.origStart)
-      mutate((prev) => resizeNote(prev, d.origStart, dur))
+      mutate((prev) => resizeNote(prev, d.origStart, d.origPitch, dur))
       d.moved = true
       return
     }
@@ -657,17 +658,24 @@ export function PianoRollGrid({
             </span>
             <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }}>
               {Array.from({ length: model.steps }, (_, col) => {
-                const isStart = model.notes.some((n) => n.start === col)
-                const g = gainAtStart(model, col)
+                // Prefer the note that STARTS at this column (it keeps its own
+                // velocity); otherwise a held note (`@n`) sustaining over the
+                // column fills the slot with its velocity. So extending a note
+                // copies its velocity onto the empty slots it covers, while a
+                // slot that already has its own note keeps that note's velocity.
+                const covering =
+                  model.notes.find((n) => n.start === col) ??
+                  model.notes.find((n) => n.start < col && col < n.start + n.duration)
+                const g = covering ? gainAtStart(model, covering.start) : 1
                 return (
                   <div
                     key={col}
                     data-vel-col={col}
                     onPointerDown={
-                      isStart
+                      covering
                         ? (e) => {
                             e.preventDefault()
-                            onBarDown(col, e)
+                            onBarDown(covering.start, e)
                           }
                         : undefined
                     }
@@ -679,10 +687,10 @@ export function PianoRollGrid({
                       height: '100%',
                       borderRadius: 2,
                       background: 'var(--background-elevated, #26262c)',
-                      cursor: isStart ? 'ns-resize' : 'default',
+                      cursor: covering ? 'ns-resize' : 'default',
                     }}
                   >
-                    {isStart && (
+                    {covering && (
                       // bottom-anchored bar = the note group's velocity (full = neutral)
                       <span
                         data-vel-bar={col}

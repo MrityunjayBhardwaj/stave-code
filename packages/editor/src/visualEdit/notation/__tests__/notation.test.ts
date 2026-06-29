@@ -561,13 +561,13 @@ describe('resize', () => {
 describe('resizeNote (single-note `@n` duration)', () => {
   it('grows a note up to the grid end', () => {
     const model: PianoRollModel = { steps: 4, notes: [{ pitch: 'c3', start: 0, duration: 1 }] }
-    const next = resizeNote(model, 0, 3)
+    const next = resizeNote(model, 0, 'c3', 3)
     expect(next.notes[0].duration).toBe(3)
     // serializes as `@n`
     expect(serializePianoRoll(next)).toBe('c3@3 ~')
   })
 
-  it('caps the duration at the next note (no overlap)', () => {
+  it('lets a note sustain UNDER a later onset (overlap → parallel lanes, #628)', () => {
     const model: PianoRollModel = {
       steps: 4,
       notes: [
@@ -575,17 +575,17 @@ describe('resizeNote (single-note `@n` duration)', () => {
         { pitch: 'e3', start: 2, duration: 1 },
       ],
     }
-    const next = resizeNote(model, 0, 4) // would overlap e3@2 → capped to 2
-    expect(next.notes.find((n) => n.start === 0)!.duration).toBe(2)
-    expect(serializePianoRoll(next)).toBe('c3@2 e3 ~')
+    const next = resizeNote(model, 0, 'c3', 4) // overlaps e3@2 → now allowed (caps at grid end)
+    expect(next.notes.find((n) => n.start === 0)!.duration).toBe(4)
+    expect(serializePianoRoll(next)).toBe('c3@4, ~ ~ e3 ~')
   })
 
   it('floors the duration at 1 when shrinking', () => {
     const model: PianoRollModel = { steps: 4, notes: [{ pitch: 'c3', start: 0, duration: 3 }] }
-    expect(resizeNote(model, 0, 0).notes[0].duration).toBe(1)
+    expect(resizeNote(model, 0, 'c3', 0).notes[0].duration).toBe(1)
   })
 
-  it('resizes all chord members sharing a start together', () => {
+  it('resizes ONLY the grabbed chord member, not the whole chord (#628)', () => {
     const model: PianoRollModel = {
       steps: 4,
       notes: [
@@ -593,14 +593,32 @@ describe('resizeNote (single-note `@n` duration)', () => {
         { pitch: 'e3', start: 0, duration: 1 },
       ],
     }
-    const next = resizeNote(model, 0, 3)
-    expect(next.notes.every((n) => n.duration === 3)).toBe(true)
-    expect(serializePianoRoll(next)).toBe('[c3,e3]@3 ~')
+    const next = resizeNote(model, 0, 'c3', 3) // stretch c3 only
+    expect(next.notes.find((n) => n.pitch === 'c3')!.duration).toBe(3)
+    expect(next.notes.find((n) => n.pitch === 'e3')!.duration).toBe(1) // e3 untouched
+    // independent durations → two parallel lanes
+    expect(serializePianoRoll(next)).toContain(',')
+  })
+
+  it('multi-bar keeps the legacy no-overlap cap (lanes are single-bar only)', () => {
+    // `<c3 e3>` = 2 bars, c3 onset 0 dur1, e3 onset 1 dur1; stretching c3 can hold
+    // up to e3's onset (a held bar `<c3@2 ...>`) but never overlap it.
+    const model: PianoRollModel = {
+      steps: 2,
+      bars: 2,
+      notes: [
+        { pitch: 'c3', start: 0, duration: 1 },
+        { pitch: 'e3', start: 1, duration: 1 },
+      ],
+    }
+    const next = resizeNote(model, 0, 'c3', 5) // would overlap → capped at e3's onset (1)
+    expect(next.notes.find((n) => n.pitch === 'c3')!.duration).toBe(1)
+    expect(serializePianoRoll(next)).not.toBeNull() // still expressible (no dropped write)
   })
 
   it('the resized model re-parses to the same model (stable)', () => {
     const model: PianoRollModel = { steps: 4, notes: [{ pitch: 'c3', start: 0, duration: 1 }] }
-    const resized = resizeNote(model, 0, 2)
+    const resized = resizeNote(model, 0, 'c3', 2)
     const text = serializePianoRoll(resized)!
     const reparsed = parsePianoRoll(text)
     expect(reparsed.ok).toBe(true)
@@ -831,5 +849,79 @@ describe('piano roll — velocity (.gain)', () => {
     const reread = applyRollGain(fresh.model, strGain(g.value))
     expect(reread.notes.find((n) => n.start === 0)!.gain).toBe(0.8)
     expect(reread.notes.filter((n) => n.start === 2).every((n) => n.gain === 0.4)).toBe(true)
+  })
+})
+
+// ── #628 parallel-lane piano roll (independent note durations / overlap) ──────
+describe('#628 parallel note lanes', () => {
+  const m = (steps: number, notes: PianoRollModel['notes']): PianoRollModel => ({ steps, notes })
+  const reparse = (mini: string): PianoRollModel => {
+    const r = parsePianoRoll(mini)
+    if (!r.ok) throw new Error(`expected ${mini} to parse: ${r.reason}`)
+    return r.model
+  }
+
+  it('an empty (all-rest) roll serializes the grid, not an empty string', () => {
+    expect(serializePianoRoll(m(4, []))).toBe('~ ~ ~ ~')
+  })
+
+  it('a non-overlapping roll stays single-lane (no comma, unchanged)', () => {
+    expect(serializePianoRoll(m(4, [
+      { pitch: 'c3', start: 0, duration: 1 },
+      { pitch: 'e3', start: 2, duration: 1 },
+    ]))).toBe('c3 ~ e3 ~')
+  })
+
+  it('independent chord-note durations → parallel lanes', () => {
+    // c3 held 2 steps + e3 held 1 step, both onset at 0 → two lanes
+    const s = serializePianoRoll(m(4, [
+      { pitch: 'c3', start: 0, duration: 2 },
+      { pitch: 'e3', start: 0, duration: 1 },
+    ]))
+    expect(s).toContain(',') // two lanes
+    expect(s).toContain('c3@2')
+    // round-trips back to the same note set
+    const back = reparse(s!).notes.map((n) => `${n.pitch}@${n.start}:${n.duration}`).sort()
+    expect(back).toEqual(['c3@0:2', 'e3@0:1'])
+  })
+
+  it('a note sustaining UNDER a later onset (stretch-over) serializes', () => {
+    const s = serializePianoRoll(m(4, [
+      { pitch: 'c3', start: 0, duration: 2 }, // sustains over e3's onset at step 1
+      { pitch: 'e3', start: 1, duration: 1 },
+      { pitch: 'g3', start: 2, duration: 1 },
+      { pitch: 'a3', start: 3, duration: 1 },
+    ]))
+    expect(s).toBe('c3@2 g3 a3, ~ e3 ~ ~')
+    const back = reparse(s!).notes.map((n) => `${n.pitch}@${n.start}:${n.duration}`).sort()
+    expect(back).toEqual(['a3@3:1', 'c3@0:2', 'e3@1:1', 'g3@2:1'])
+  })
+
+  it('round-trips: parse(serialize(m)) ≡ m for an overlapping model', () => {
+    const model = m(8, [
+      { pitch: 'c3', start: 0, duration: 4 },
+      { pitch: 'e3', start: 1, duration: 1 },
+      { pitch: 'g3', start: 4, duration: 4 },
+    ])
+    const s = serializePianoRoll(model)
+    expect(s).not.toBeNull()
+    const back = reparse(s!)
+    expect(back.steps).toBe(8)
+    expect(back.notes.map((n) => `${n.pitch}@${n.start}:${n.duration}`).sort())
+      .toEqual(['c3@0:4', 'e3@1:1', 'g3@4:4'])
+    // stable: serialize(parse(serialize(m))) === serialize(m)
+    expect(serializePianoRoll(back)).toBe(s)
+  })
+
+  it('parses a hand-written aligned comma-stack', () => {
+    const back = reparse('c3@2 ~ ~, e3 ~ ~ ~')
+    expect(back.steps).toBe(4)
+    expect(back.notes.map((n) => `${n.pitch}@${n.start}:${n.duration}`).sort())
+      .toEqual(['c3@0:2', 'e3@0:1'])
+  })
+
+  it('rejects misaligned lanes (different step widths)', () => {
+    const r = parsePianoRoll('c3 ~ ~, e3 ~ ~ ~') // 3 vs 4 columns
+    expect(r.ok).toBe(false)
   })
 })

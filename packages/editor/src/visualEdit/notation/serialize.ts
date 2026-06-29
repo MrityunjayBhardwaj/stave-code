@@ -129,28 +129,110 @@ function buildGroups(model: PianoRollModel): Map<number, Group> | null {
 }
 
 export function serializePianoRoll(model: PianoRollModel): string | null {
-  const groups = buildGroups(model)
-  if (groups === null) return null
   const bars = model.bars ?? 1
-  if (bars > 1) return rollBars(groups, model.steps, bars)
+  if (bars > 1) {
+    // Multi-bar `<...>` keeps the shared-duration chord path (parallel lanes are
+    // single-bar only for now, #628): chord members must share a duration there.
+    const groups = buildGroups(model)
+    if (groups === null) return null
+    return rollBars(groups, model.steps, bars)
+  }
+  return serializeRollLanes(model)
+}
 
+/** A chord group: notes sharing BOTH a start and a duration → one `[..]@d` token. */
+interface PlacedGroup {
+  pitches: string[]
+  start: number
+  duration: number
+}
+
+/**
+ * Bucket notes into chord groups keyed by (start, duration). Unlike `buildGroups`,
+ * same-start notes with DIFFERENT durations become SEPARATE groups (they'll land
+ * in different parallel lanes), so independent note lengths are expressible (#628).
+ * Returns null if any note is out of range (inexpressible).
+ */
+function placedGroups(model: PianoRollModel): PlacedGroup[] | null {
+  const byKey = new Map<string, PlacedGroup>()
+  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+      return null
+    }
+    const key = `${note.start}:${note.duration}`
+    const g = byKey.get(key)
+    if (g) g.pitches.push(note.pitch)
+    else byKey.set(key, { pitches: [note.pitch], start: note.start, duration: note.duration })
+  }
+  return [...byKey.values()]
+}
+
+/**
+ * Greedy interval-partition the chord groups into the minimal set of lanes such
+ * that no two groups in a lane overlap in time (#628). Groups are sorted by start
+ * then duration; each joins the first lane whose last group ends at or before its
+ * start, else a new lane. Deterministic → the round-trip is stable.
+ */
+function packLanes(groups: PlacedGroup[]): PlacedGroup[][] {
+  const sorted = [...groups].sort((a, b) => a.start - b.start || a.duration - b.duration)
+  const lanes: Array<{ end: number; groups: PlacedGroup[] }> = []
+  for (const g of sorted) {
+    const lane = lanes.find((l) => l.end <= g.start)
+    if (lane) {
+      lane.groups.push(g)
+      lane.end = g.start + g.duration
+    } else {
+      lanes.push({ end: g.start + g.duration, groups: [g] })
+    }
+  }
+  return lanes.map((l) => l.groups)
+}
+
+/**
+ * Serialize one lane's (non-overlapping) groups as a FULL-WIDTH column sequence,
+ * padding trailing rests to `steps`. Every lane spans all `steps` columns so the
+ * parallel lanes share one step grid — Strudel normalizes each comma-part to its
+ * own total weight, so unequal widths would misalign the grids (#628 grounding).
+ */
+function laneString(groups: PlacedGroup[], steps: number): string | null {
   const cols: string[] = []
   let col = 0
-  for (const start of [...groups.keys()].sort((a, b) => a - b)) {
-    if (start < col) return null // overlap
-    while (col < start) {
+  for (const g of [...groups].sort((a, b) => a.start - b.start)) {
+    if (g.start < col) return null // overlap within a lane (shouldn't happen post-pack)
+    while (col < g.start) {
       cols.push('~')
       col++
     }
-    const g = groups.get(start)!
-    cols.push(groupToken(g))
+    cols.push(groupToken({ pitches: g.pitches, duration: g.duration }))
     col += g.duration
   }
-  while (col < model.steps) {
+  while (col < steps) {
     cols.push('~')
     col++
   }
   return cols.join(' ')
+}
+
+/**
+ * Single-bar piano roll → mini-notation, with parallel comma-lanes when notes
+ * overlap in time (#628). A non-overlapping pattern packs into ONE lane and
+ * serializes exactly as before (no churn); overlapping notes split across lanes
+ * joined by `, ` (e.g. `c3@2 ~ ~, e3 ~ ~ ~`).
+ */
+function serializeRollLanes(model: PianoRollModel): string | null {
+  const groups = placedGroups(model)
+  if (groups === null) return null
+  const lanes = packLanes(groups)
+  // No notes (or all rests) → a single all-rest lane `~ ~ … ~`, never an empty
+  // string (a deleted note must still serialize the grid).
+  if (lanes.length === 0) return laneString([], model.steps)
+  const strings: string[] = []
+  for (const lane of lanes) {
+    const s = laneString(lane, model.steps)
+    if (s === null) return null
+    strings.push(s)
+  }
+  return strings.join(', ')
 }
 
 /**
@@ -218,6 +300,10 @@ function rollBars(groups: Map<number, Group>, steps: number, bars: number): stri
  */
 export function serializeRollGain(model: PianoRollModel): GainWrite {
   if (model.gainForeign || (model.bars ?? 1) > 1) return { kind: 'skip' }
+  // Overlapping notes serialize across parallel comma-lanes (#628); the gain mini
+  // is a single column sequence and can't align per-lane, so hand off (v1).
+  const placed = placedGroups(model)
+  if (placed !== null && packLanes(placed).length > 1) return { kind: 'skip' }
   const groups = new Map<number, { duration: number; gain: number }>()
   for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
     if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
