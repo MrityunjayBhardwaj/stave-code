@@ -312,6 +312,22 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     expect(out.notes.every((n) => n.start + n.duration <= 4)).toBe(true)
   })
 
+  it('piano roll: ADDING slots on a MULTI-BAR grid is conservative too (#607)', () => {
+    const m = roll('<c3 e3>') // multi-bar alternation
+    expect((m.bars ?? 1) > 1).toBe(true) // guard: this exercises the multi-bar branch
+    const out = quantizePianoRollTo(m, m.steps * 2) // pow-of-2 increase
+    expect(out.steps).toBe(m.steps * 2)
+    expect(out.bars).toBe(m.bars) // bars preserved
+    // every note keeps its slot-count duration (no stretch), starts double, all
+    // stay in range, and it still serializes (no off-bar / overlap drop).
+    out.notes.forEach((n, i) => {
+      expect(n.duration).toBe(m.notes[i].duration)
+      expect(n.start).toBe(m.notes[i].start * 2)
+    })
+    expect(out.notes.every((n) => n.start + n.duration <= out.steps)).toBe(true)
+    expect(serializePianoRoll(out)).not.toBeNull()
+  })
+
   it('quantize is a no-op for the current count', () => {
     const m = step('bd ~ sn ~')
     expect(quantizeStepGridTo(m, 4)).toBe(m)

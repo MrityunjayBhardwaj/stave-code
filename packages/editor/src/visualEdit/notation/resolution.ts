@@ -250,12 +250,27 @@ export function quantizeStepGridTo(model: StepGridModel, target: number): StepGr
  * push a note out of range. Notes that collide on a column merge (same pitch →
  * one; different pitches → a chord sharing the column's duration), and durations
  * are clamped so nothing overlaps or runs past the grid — the result always
- * serializes (no silent drop). Single-bar only (multi-bar keeps the lossless ×2
- * path). Returns the model unchanged for current/invalid/multi-bar.
+ * serializes (no silent drop). A multi-bar `<…>` grid stays power-of-2 only;
+ * ADDING slots there is conservative too (#607 — each start doubles, duration
+ * kept), REDUCING keeps the lossless ×2 halve. Returns the model unchanged for
+ * the current count or an unreachable target.
  */
 export function quantizePianoRollTo(model: PianoRollModel, target: number): PianoRollModel {
   if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model
-  if ((model.bars ?? 1) > 1) return scalePianoRollTo(model, target)
+  if ((model.bars ?? 1) > 1) {
+    // Multi-bar `<…>`: only power-of-2 targets are offered (slotState disables
+    // the rest — an off-bar count can't serialize). ADDING slots is conservative
+    // like the single-bar path (#607): each note's start doubles (keeping the
+    // columns-per-bar integral) but its DURATION is kept, so a 1-slot note stays
+    // 1 slot. REDUCING keeps the lossless ×2 halve.
+    if (target <= model.steps) return scalePianoRollTo(model, target)
+    if (!isPow2(target / model.steps)) return model
+    let cur = model
+    while (cur.steps < target) {
+      cur = { ...cur, steps: cur.steps * 2, notes: cur.notes.map((n) => ({ ...n, start: n.start * 2 })) }
+    }
+    return cur
+  }
   const from = model.steps
   const addingSlots = target > from
   // 1. map each note onto the target grid: the START snaps proportionally; the
