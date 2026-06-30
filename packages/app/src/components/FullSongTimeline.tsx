@@ -127,6 +127,11 @@ export interface FullSongTimelineProps {
    *  toggle expansion or rebind the Pattern panel — it is a pure "go to this track".
    *  Optional — the header is not a jump target when unset. */
   readonly onSelectLane?: (statementOffset: number) => void
+  /** Caret-driven lane selection (#641). The statement head offset of the track
+   *  the editor caret currently sits in (the Mixer's selection bus, V-mixer-18);
+   *  the lane whose `labelOffset` matches is highlighted. `null` → no lane
+   *  selected (caret outside any track, or in another file). */
+  readonly selectedStatementOffset?: number | null
   /** Per-track custom colour overrides (Phase D, #581), keyed by lane DISPLAY
    *  NAME. Resolved through the shared `trackIdentity` into `lane.color`, so it
    *  drives the lane dot AND the canvas density bars. Absent → deterministic
@@ -1333,13 +1338,25 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               // DISPLAY NAME (the same key the Mixer uses), so a colour set here
               // shows on the matching strip too.
               const colorPickerEnabled = onSetTrackColor !== undefined
+              // #641 — the lane the editor caret currently sits in is selected.
+              // Match on the statement head (`labelOffset` = the caret chunk's
+              // `statementRange[0]`), the same anchor #610 jumps to.
+              const isSelected =
+                props.selectedStatementOffset != null &&
+                lane?.labelOffset != null &&
+                lane.labelOffset === props.selectedStatementOffset
               return (
                 <div
                   key={box.laneKey}
                   data-full-song-lane={box.laneKey}
+                  data-full-song-lane-selected={isSelected ? box.laneKey : undefined}
                   data-expanded={box.expanded ? 'true' : 'false'}
                   data-full-song-voices={subRows ? subRows.length : undefined}
-                  style={{ ...styles.laneRow, height: box.height }}
+                  style={{
+                    ...styles.laneRow,
+                    height: box.height,
+                    ...(isSelected ? styles.laneRowSelected : null),
+                  }}
                   title={displayName}
                 >
                   <div
@@ -1728,6 +1745,13 @@ const styles = {
     position: 'relative' as const,
     borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.08))',
     overflow: 'hidden',
+  },
+  // #641 — caret-selected lane: a faint accent fill + a 2px left accent bar
+  // (inset box-shadow → no layout shift), reusing the clip-selection accent
+  // vocabulary so selection reads consistently across the timeline.
+  laneRowSelected: {
+    background: 'var(--accent-faint, rgba(110,168,254,0.12))',
+    boxShadow: 'inset 2px 0 0 var(--accent, #6ea8fe)',
   },
   // The lane identity row (caret + dot + name). Sits on sub-row 0 when the lane
   // is expanded into voices; fills the box otherwise.

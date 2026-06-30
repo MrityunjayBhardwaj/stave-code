@@ -41,6 +41,9 @@ import { describe, it, expect, vi } from 'vitest'
 // minimal surface our test needs (no snapshot/event channels — we call
 // `__test_collectTrackBodies` directly on a hand-built IR).
 vi.mock('@stave/editor', () => ({
+  getActiveEditor: () => null,
+  getActiveFileId: () => null,
+  onActiveEditorChange: () => () => {},
   getIRSnapshot: () => null,
   subscribeIRSnapshot: () => () => {},
   revealLineInFile: () => {},

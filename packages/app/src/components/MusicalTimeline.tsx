@@ -43,6 +43,9 @@ import {
   revealOffsetInFile,
   applyOffsetEditsToFile,
   detectAllChunks,
+  getActiveEditor,
+  getActiveFileId,
+  onActiveEditorChange,
   renameEdit,
   otherTrackNames,
   getTrackMeta,
@@ -330,6 +333,57 @@ export function MusicalTimeline(
     }
     return m
   }, [trackMeta])
+
+  // ── Caret-driven lane selection (#641) ───────────────────────────────────
+  // The editor caret is the single source of truth for "which track is current"
+  // — the same selection bus the Mixer derives its strip from (V-mixer-18). The
+  // Song Timeline highlights the lane whose statement contains the caret: map the
+  // caret offset → the head offset of the chunk it sits in, which equals that
+  // lane's `labelOffset`. Guarded to THIS timeline's file so a caret in another
+  // editor doesn't select a lane here. Re-derives on cursor move and on
+  // active-editor switch — so clicking a lane (#610 moves the caret) and
+  // typing/clicking in the editor both converge on the same highlighted lane.
+  const [selectedStatementOffset, setSelectedStatementOffset] = useState<number | null>(null)
+  useEffect(() => {
+    const recompute = (): void => {
+      try {
+        const ed = getActiveEditor()
+        if (!ed || !fileId || getActiveFileId() !== fileId) {
+          setSelectedStatementOffset(null)
+          return
+        }
+        const model = ed.getModel?.()
+        const pos = ed.getPosition?.()
+        if (!model || !pos) {
+          setSelectedStatementOffset(null)
+          return
+        }
+        const off = model.getOffsetAt(pos)
+        const chunk = detectAllChunks(model.getValue()).find(
+          (c) => off >= c.statementRange[0] && off <= c.statementRange[1],
+        )
+        const next = chunk ? chunk.statementRange[0] : null
+        setSelectedStatementOffset((prev) => (prev === next ? prev : next))
+      } catch {
+        /* selection is a courtesy — never let it throw into render */
+      }
+    }
+    // Bind to the active editor's cursor; rebind on active-editor change (split /
+    // tab switch) so the timeline always follows the editor in view.
+    let cursorSub: { dispose(): void } | null = null
+    const bind = (): void => {
+      cursorSub?.dispose()
+      cursorSub = getActiveEditor()?.onDidChangeCursorPosition?.(recompute) ?? null
+      recompute()
+    }
+    bind()
+    const unsubActive = onActiveEditorChange(bind)
+    return () => {
+      cursorSub?.dispose()
+      unsubActive()
+    }
+  }, [fileId])
+
   const handleSetTrackColor = React.useCallback(
     (displayName: string, color: string) => {
       if (!fileId) return
@@ -612,6 +666,7 @@ export function MusicalTimeline(
           onBindLane={handleBindLane}
           onSelectLane={handleSelectLane}
           onRenameLane={handleRenameLane}
+          selectedStatementOffset={selectedStatementOffset}
           customColorByName={customColorByName}
           onSetTrackColor={handleSetTrackColor}
           onResetTrackColor={handleResetTrackColor}

@@ -260,6 +260,12 @@ export {
   revealLineInFile,
   revealOffsetInFile,
   applyOffsetEditsToFile,
+  // #641 — the app's Song Timeline derives its selected lane from the editor
+  // caret (the same selection bus the Mixer uses, V-mixer-18); it needs to read
+  // the active editor + which file it edits.
+  getActiveEditor,
+  getActiveFileId,
+  onActiveEditorChange,
   getEditorFontSize,
   getEditorMinimap,
   setEditorFontSize,
