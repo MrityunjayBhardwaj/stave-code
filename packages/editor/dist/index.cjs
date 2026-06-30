@@ -29496,6 +29496,8 @@ function ChannelStrip({
   soloed = false,
   onSoloToggle,
   dimmed = false,
+  selected = false,
+  onSelect,
   onGestureStart,
   onGestureEnd,
   meters,
@@ -29726,6 +29728,8 @@ function ChannelStrip({
       "data-mixer-strip-id": strip.id,
       "data-mixer-strip-kind": strip.kind,
       "data-mixer-strip-muted": strip.muted ? "" : void 0,
+      "data-mixer-strip-selected": selected ? "" : void 0,
+      onClick: onSelect,
       style: {
         // The console header stacks name (row 1) over the mute/solo/expand
         // buttons (row 2), so a short name like `d1` never truncates and one
@@ -29743,11 +29747,19 @@ function ChannelStrip({
         // the strip face and its drawer read as one connected unit — the drawer
         // rounds the right edge. Standalone / closed → fully rounded.
         borderRadius: expanded ? "6px 0 0 6px" : 6,
-        border: "1px solid var(--border, #3a3a42)",
+        // #639 — the selected strip swaps its 1px border to the timeline-select
+        // accent (purple, `--accent`), the same token the Song-timeline clip
+        // selection uses, so the current strip reads as selected. All-LONGHAND
+        // border props (not the `border` shorthand): mixing the shorthand with
+        // `borderRight` while the colour updates on select trips React's
+        // "shorthand + non-shorthand" rerender warning.
+        borderWidth: 1,
+        borderStyle: "solid",
+        borderColor: selected ? "var(--accent, #6ea8fe)" : "var(--border, #3a3a42)",
         // When expanded, the drawer abuts this right edge and owns the seam
         // hairline (its left border) — drop ours so the divider is a single
         // 1px line, not a doubled 2px one (#609).
-        borderRight: expanded ? "none" : void 0,
+        borderRightStyle: expanded ? "none" : void 0,
         background: "var(--background-elevated, #26262c)",
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         color: "var(--foreground, #e6e6ea)",
@@ -30704,6 +30716,7 @@ function MixerStrips({
   const meters = useTrackMeters();
   const [fileId, setFileId] = React35__namespace.useState(() => getActiveFileId());
   React35__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [selectedId, setSelectedId] = React35__namespace.useState(null);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
   const { expanded, toggle } = useExpandedStrips();
   const { soloed, toggle: toggleSolo2 } = useSoloStrips();
@@ -30782,6 +30795,8 @@ function MixerStrips({
                       soloed: soloed.has(strip.id),
                       onSoloToggle: () => toggleSolo2(strip.id),
                       dimmed: soloActive && !soloed.has(strip.id),
+                      selected: strip.id === selectedId,
+                      onSelect: () => setSelectedId(strip.id),
                       onGestureStart: beginGesture,
                       onGestureEnd: endGesture,
                       meters,
