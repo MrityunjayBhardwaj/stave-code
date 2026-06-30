@@ -22,6 +22,14 @@
  *  expanded lane keeps the full `expandedHeight` single band instead. */
 export const SUB_ROW_HEIGHT = 22
 
+/** A lone MELODIC voice expands to a pitch band this many sub-rows tall (#647).
+ *  A single melodic lane is a mini pianoroll — it needs vertical room for the
+ *  pitch spread — so it stays taller than a single drum baseline. Expressed in
+ *  sub-rows (not a fixed px) so it SCALES with the sub-row size setting like
+ *  every multi-voice lane, instead of being pinned to a constant that ignored
+ *  the setting. A lone percussive voice gets a single baseline row. */
+export const MELODIC_SINGLE_VOICE_ROWS = 4
+
 /** One voice sub-row inside an expanded multi-voice lane (#424). Absolute `top`
  *  in the SAME content space as `LaneBox.top`, so the draw, the gutter labels,
  *  and (future) hit-tests all read one geometry — no drift (PV120). */
@@ -96,9 +104,7 @@ export function computeLaneLayout(
     const isExpanded = expanded.has(lane.laneKey)
     const voices = lane.voices ?? []
     // An expanded lane with ≥2 voices splits into per-voice sub-rows (#424);
-    // its height grows with the voice count. A single-voice (or no-voice)
-    // expanded lane keeps the single `expandedHeight` band — same display as
-    // before this feature (melodic pitch spread, drums on one baseline).
+    // its height grows with the voice count.
     if (isExpanded && voices.length >= 2 && sub > 0) {
       const subRows: SubRowBox[] = voices.map((v, i) => ({
         voiceKey: v.key,
@@ -112,6 +118,21 @@ export function computeLaneLayout(
       top += height
       return box
     }
+    // A single-voice expanded lane stays ONE band (no per-voice sub-rows) but
+    // its height now SCALES with the sub-row setting too (#647), instead of a
+    // fixed `expandedHeight` constant that ignored it. Melodic → a tall pitch
+    // band (MELODIC_SINGLE_VOICE_ROWS rows, for the pianoroll spread);
+    // percussive → a single baseline row. So every expanded lane — 1 voice or
+    // many — responds to the same density slider.
+    if (isExpanded && voices.length === 1 && sub > 0) {
+      const rows = voices[0].melodic ? MELODIC_SINGLE_VOICE_ROWS : 1
+      const height = rows * sub
+      const box: LaneBox = { laneKey: lane.laneKey, top, height, expanded: true }
+      top += height
+      return box
+    }
+    // Collapsed lanes, and the degenerate no-voice / sub=0 expanded fallback,
+    // use the plain row / `expandedHeight` band.
     const height = isExpanded ? big : base
     const box: LaneBox = { laneKey: lane.laneKey, top, height, expanded: isExpanded }
     top += height

@@ -104,11 +104,21 @@ describe('computeLaneLayout — per-voice sub-rows (#424)', () => {
     expect(sub[1]).toMatchObject({ voiceKey: 'square', label: 'square', melodic: true })
   })
 
-  it('keeps a single-voice expanded lane as ONE band (no sub-rows)', () => {
+  it('keeps a single MELODIC voice as ONE band that SCALES with the sub-row setting (#647)', () => {
     const layout = computeLaneLayout(drums, new Set(['lead']), 22, 96, 20)
-    const lead = layout.boxes[1]
-    expect(lead.height).toBe(96) // expandedHeight single band
+    const lead = layout.boxes[1] // voices: [square (melodic)]
+    expect(lead.height).toBe(80) // 4 melodic rows × 20, NOT the fixed 96 band
     expect(lead.subRows).toBeUndefined()
+    // …and it tracks the slider: a bigger sub-row → a taller band.
+    const taller = computeLaneLayout(drums, new Set(['lead']), 22, 96, 40)
+    expect(taller.boxes[1].height).toBe(160) // 4 × 40
+  })
+
+  it('gives a single PERCUSSIVE voice a single baseline row that scales (#647)', () => {
+    const perc = [{ laneKey: 'kick', voices: [v('bd')] }] // not melodic
+    const layout = computeLaneLayout(perc, new Set(['kick']), 22, 96, 20)
+    expect(layout.boxes[0].height).toBe(20) // 1 × subRowHeight
+    expect(layout.boxes[0].subRows).toBeUndefined()
   })
 
   it('does not split a COLLAPSED multi-voice lane', () => {
