@@ -32,6 +32,9 @@ import { describe, it, expect, vi } from 'vitest'
 // in @strudel/draw → gifenc which crashes vitest's module loader
 // (standalone-node env). Same pattern as MusicalTimeline.literalProjection.test.tsx.
 vi.mock('@stave/editor', () => ({
+  getActiveEditor: () => null,
+  getActiveFileId: () => null,
+  onActiveEditorChange: () => () => {},
   getIRSnapshot: () => null,
   subscribeIRSnapshot: () => () => {},
   revealLineInFile: () => {},
