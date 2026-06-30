@@ -65,7 +65,24 @@ async function caretTo(page: Page, line: number, column: number): Promise<void> 
   )
 }
 
-test('the selected strip shows a thin accent border; selection is exclusive (#639)', async ({ page }) => {
+/** The accent token (`--accent`) resolved to an `rgb(...)` string. */
+async function accent(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.style.color = 'var(--accent, #6ea8fe)'
+    document.body.appendChild(probe)
+    const c = getComputedStyle(probe).color
+    probe.remove()
+    return c
+  })
+}
+
+/** The wrapper group div for a strip id, scoped to the console panel. */
+function groupFor(panel: ReturnType<Page['locator']>, stripId: string) {
+  return panel.locator(`[data-mixer-strip-group]:has([data-mixer-strip-id="${stripId}"])`)
+}
+
+test('the selected strip is highlighted by a single accent ring on its wrapper; exclusive (#639)', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
   page.on('console', (m) => {
@@ -77,37 +94,32 @@ test('the selected strip shows a thin accent border; selection is exclusive (#63
   const strips = panel.locator('[data-mixer-strip-id]')
   await strips.first().waitFor({ timeout: 10_000 })
   expect(await strips.count()).toBeGreaterThanOrEqual(2)
+  const accentRgb = await accent(page)
 
-  // The accent token the timeline-select uses; the selected strip must match it.
-  const accentRgb = await page.evaluate(() => {
-    const probe = document.createElement('div')
-    probe.style.color = 'var(--accent, #6ea8fe)'
-    document.body.appendChild(probe)
-    const c = getComputedStyle(probe).color
-    probe.remove()
-    return c
-  })
+  // Nothing selected on first open — and the strip FACE border is the neutral
+  // one (the highlight is NOT on the face; it's the wrapper's ring).
+  await expect(panel.locator('[data-mixer-strip-group-selected]')).toHaveCount(0)
+  expect(await rgb(page, strips.first())).not.toBe(accentRgb)
 
-  // Nothing selected on first open.
-  await expect(panel.locator('[data-mixer-strip-selected]')).toHaveCount(0)
-  const idleBorder = await rgb(page, strips.first())
-
-  // Click the first strip → it selects and its border becomes the accent.
+  // Click the first strip → its WRAPPER gets the accent ring (box-shadow); the
+  // face border itself stays neutral.
   await strips.first().click()
-  await expect(strips.first()).toHaveAttribute('data-mixer-strip-selected', '')
-  expect(await rgb(page, strips.first())).toBe(accentRgb)
-  expect(await rgb(page, strips.first())).not.toBe(idleBorder)
+  const id0 = (await strips.first().getAttribute('data-mixer-strip-id')) as string
+  await expect(groupFor(panel, id0)).toHaveAttribute('data-mixer-strip-group-selected', '')
+  expect(await groupFor(panel, id0).evaluate((el) => getComputedStyle(el as HTMLElement).boxShadow)).toContain(accentRgb)
+  expect(await rgb(page, strips.first())).not.toBe(accentRgb) // face border still neutral
 
-  // Click the second strip → selection moves (exclusive).
+  // Click the second strip → the ring moves (exactly one wrapper highlighted).
   await strips.nth(1).click()
-  await expect(strips.nth(1)).toHaveAttribute('data-mixer-strip-selected', '')
-  await expect(panel.locator('[data-mixer-strip-selected]')).toHaveCount(1)
-  expect(await rgb(page, strips.nth(1))).toBe(accentRgb)
+  const id1 = (await strips.nth(1).getAttribute('data-mixer-strip-id')) as string
+  await expect(groupFor(panel, id1)).toHaveAttribute('data-mixer-strip-group-selected', '')
+  await expect(panel.locator('[data-mixer-strip-group-selected]')).toHaveCount(1)
+  expect(await groupFor(panel, id1).evaluate((el) => getComputedStyle(el as HTMLElement).boxShadow)).toContain(accentRgb)
 
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })
 
-test("the selected strip's expand drawer also shows the accent border (#639)", async ({ page }) => {
+test('the wrapper ring encapsulates the expanded drawer — one highlight around the whole unit (#639)', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
   page.on('console', (m) => {
@@ -118,39 +130,31 @@ test("the selected strip's expand drawer also shows the accent border (#639)", a
   const panel = await openMixer(page)
   const strips = panel.locator('[data-mixer-strip-id]')
   await strips.first().waitFor({ timeout: 10_000 })
-
-  const accentRgb = await page.evaluate(() => {
-    const probe = document.createElement('div')
-    probe.style.color = 'var(--accent, #6ea8fe)'
-    document.body.appendChild(probe)
-    const c = getComputedStyle(probe).color
-    probe.remove()
-    return c
-  })
+  const accentRgb = await accent(page)
 
   // Select the first strip, then expand it via its ▸ disclosure toggle.
   await strips.first().click()
-  const stripId = await strips.first().getAttribute('data-mixer-strip-id')
+  const stripId = (await strips.first().getAttribute('data-mixer-strip-id')) as string
   await strips.first().locator('[data-mixer-strip-expand]').click()
 
-  // The drawer for THIS strip mounts and adopts the accent border, matching the
-  // face — the selected strip + its drawer read as one purple-outlined unit.
   const drawer = panel.locator(`[data-mixer-expand-for="${stripId}"]`)
   await expect(drawer).toHaveCount(1)
-  await expect(drawer).toHaveAttribute('data-mixer-expand-selected', '')
-  // The OUTER edges (top/right) are accent…
-  expect(await rgb(page, drawer)).toBe(accentRgb)
-  expect(await rgb(page, strips.first())).toBe(accentRgb)
 
-  // …and the internal seam (the drawer's LEFT border) is DROPPED when selected,
-  // so the purple is ONE continuous outline around the whole strip+drawer unit
-  // with no divider down the middle — a single unified highlight, not two boxes.
-  const seamStyle = await drawer.evaluate((el) => getComputedStyle(el as HTMLElement).borderLeftStyle)
-  expect(seamStyle).toBe('none')
+  // The wrapper ring is ONE accent box-shadow that now bounds BOTH the face and
+  // the drawer (the group contains both), so it automatically grew to wrap the
+  // drawer when expanded. The drawer keeps its OWN neutral border + translucent
+  // bg (it is not separately highlighted).
+  const group = groupFor(panel, stripId)
+  expect(await group.evaluate((el) => getComputedStyle(el as HTMLElement).boxShadow)).toContain(accentRgb)
+  const groupBox = await group.boundingBox()
+  const drawerBox = await drawer.boundingBox()
+  // the drawer lies inside the highlighted group's bounds (the ring wraps it)
+  expect(drawerBox!.x + drawerBox!.width).toBeLessThanOrEqual(groupBox!.x + groupBox!.width + 2)
+  // the drawer's own border is NOT accent (highlight isn't on the drawer)
+  expect(await rgb(page, drawer)).not.toBe(accentRgb)
 
   // The (here EMPTY — no effect knobs) drawer is the SAME height as the strip
-  // face: it stretches to the face-tall group, so an empty drawer doesn't sit
-  // ~150px short of the face (#639).
+  // face: it stretches to the face-tall group (#639 height parity).
   await expect(drawer.locator('[data-knob]')).toHaveCount(0)
   const faceH = await strips.first().evaluate((el) => (el as HTMLElement).getBoundingClientRect().height)
   const drawerH = await drawer.evaluate((el) => (el as HTMLElement).getBoundingClientRect().height)

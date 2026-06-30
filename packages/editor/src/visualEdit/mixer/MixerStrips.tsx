@@ -108,13 +108,28 @@ export function MixerStrips({
           <div
             key={strip.id}
             data-mixer-strip-group
+            data-mixer-strip-group-selected={strip.id === selectedId ? '' : undefined}
             // Strip face + (when open) its drawer, side-by-side and SAME height:
             // the zoomed strip face is the group's only in-flow height, so the
             // group is (scaled-)strip-tall, and `alignItems: stretch` sizes the
             // drawer to match (its knob chain is absolutely filled, so it adds no
             // height). The drawer itself is NOT zoomed — it just grows taller to
             // the scaled face, so its 1× content stops scrolling (V-mixer-10).
-            style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0 }}
+            style={{
+              display: 'flex',
+              alignItems: 'stretch',
+              flexShrink: 0,
+              // #639 — the SELECTION highlight is a single accent ring on THIS
+              // wrapper, which encapsulates the strip face AND (when open) its
+              // drawer. The box-shadow follows the group's border-radius and sits
+              // at its outer edge, so one continuous purple outline wraps the whole
+              // unit and AUTOMATICALLY grows to include the drawer when expanded —
+              // the face/drawer keep their own neutral #609 borders; only this div
+              // highlights. box-shadow (not border) → no layout shift on select.
+              borderRadius: 6,
+              boxShadow:
+                strip.id === selectedId ? '0 0 0 1.5px var(--accent, #6ea8fe)' : undefined,
+            }}
           >
             <ChannelStrip
               strip={strip}
@@ -187,7 +202,6 @@ export function MixerStrips({
                 applyToStrip={applyToStrip}
                 beginGesture={beginGesture}
                 endGesture={endGesture}
-                selected={strip.id === selectedId}
               />
             )}
           </div>

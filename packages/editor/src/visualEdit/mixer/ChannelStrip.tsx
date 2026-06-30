@@ -470,19 +470,15 @@ export function ChannelStrip({
         // the strip face and its drawer read as one connected unit — the drawer
         // rounds the right edge. Standalone / closed → fully rounded.
         borderRadius: expanded ? '6px 0 0 6px' : 6,
-        // #639 — the selected strip swaps its 1px border to the timeline-select
-        // accent (purple, `--accent`), the same token the Song-timeline clip
-        // selection uses, so the current strip reads as selected. All-LONGHAND
-        // border props (not the `border` shorthand): mixing the shorthand with
-        // `borderRight` while the colour updates on select trips React's
-        // "shorthand + non-shorthand" rerender warning.
-        borderWidth: 1,
-        borderStyle: 'solid',
-        borderColor: selected ? 'var(--accent, #6ea8fe)' : 'var(--border, #3a3a42)',
+        // The strip face keeps its neutral border; the SELECTION highlight (#639)
+        // lives on the wrapping group div (MixerStrips), which encapsulates the
+        // face AND its drawer so the accent outline wraps the whole unit and
+        // grows with the drawer — not on the face/drawer individually.
+        border: '1px solid var(--border, #3a3a42)',
         // When expanded, the drawer abuts this right edge and owns the seam
         // hairline (its left border) — drop ours so the divider is a single
         // 1px line, not a doubled 2px one (#609).
-        borderRightStyle: expanded ? 'none' : undefined,
+        borderRight: expanded ? 'none' : undefined,
         background: 'var(--background-elevated, #26262c)',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         color: 'var(--foreground, #e6e6ea)',
