@@ -302,11 +302,21 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     return c && Number.isFinite(c.zoom) ? clampRestoreZoom(c.zoom) : MIN_ZOOM
   })
   const [scrollLeft, setScrollLeft] = useState(0)
+  // Vertical camera (#655) — the SAME pattern as scrollLeft, for the other axis.
+  // When the lanes overflow a short drawer, the grid scrolls Y natively
+  // (`overflowY: auto`); `scrollTop` mirrors that offset so the label gutter can
+  // translate in lockstep and the Y hit-tests can map client→content space.
+  const [scrollTop, setScrollTop] = useState(0)
   const [units, setUnits] = useState<RulerUnits>('cycles')
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
   const scrollLeftRef = useRef(scrollLeft)
   scrollLeftRef.current = scrollLeft
+  const scrollTopRef = useRef(scrollTop)
+  scrollTopRef.current = scrollTop
+  // The gutter's inner (translated) row stack — synced imperatively in the scroll
+  // handler so it tracks the grid's native vertical scroll with no React-commit lag.
+  const gutterInnerRef = useRef<HTMLDivElement | null>(null)
   const areaWidthRef = useRef(areaWidth)
   areaWidthRef.current = areaWidth
 
@@ -424,6 +434,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const sl = e.currentTarget.scrollLeft
     scrollLeftRef.current = sl
     setScrollLeft((prev) => (prev === sl ? prev : sl))
+    // Vertical (#655): mirror the grid's native Y-scroll into `scrollTop` so the
+    // Y hit-tests can map client→content, and translate the gutter rows in the
+    // SAME frame (imperative — no React-commit lag against the native scroll).
+    const st = e.currentTarget.scrollTop
+    scrollTopRef.current = st
+    if (gutterInnerRef.current) gutterInnerRef.current.style.transform = `translateY(${-st}px)`
+    setScrollTop((prev) => (prev === st ? prev : st))
     // A scroll we didn't write (> 1px from our last programmatic value) is a
     // user drag/wheel-pan → suspend follow briefly so it doesn't fight them.
     if (Math.abs(sl - programmaticScrollRef.current) > 1) {
@@ -653,9 +670,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     (clientY: number) => {
       const el = areaRef.current
       if (!el) return
-      // The grid is full-height (vertical scroll lives on the parent body, which
-      // moves the grid's rect), so content-Y is just clientY minus the rect top.
-      const contentY = clientY - el.getBoundingClientRect().top
+      // content-Y = client-Y minus the grid's top, PLUS the grid's vertical scroll
+      // (#655) — the exact mirror of the content-X math (`+ scrollLeft`). The grid
+      // scrolls Y in place (it doesn't move its own rect), so the offset is needed.
+      const contentY = clientY - el.getBoundingClientRect().top + scrollTopRef.current
       const laneKey = laneAtY(layoutRef.current, contentY)
       if (laneKey != null) activateLane(laneKey)
     },
@@ -671,7 +689,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (!onSelectLane) return
       const el = areaRef.current
       if (!el) return
-      const laneKey = laneAtY(layoutRef.current, clientY - el.getBoundingClientRect().top)
+      const laneKey = laneAtY(layoutRef.current, clientY - el.getBoundingClientRect().top + scrollTopRef.current)
       if (laneKey == null) return
       const lane = sceneRef.current.lanes.find((l) => l.laneKey === laneKey)
       const offset = lane?.labelOffset ?? lane?.sourceOffset ?? null
@@ -775,7 +793,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const rect = el.getBoundingClientRect()
       const cw = dragAwareContentWidth(rect.width)
       const contentX = clientX - rect.left + scrollLeftRef.current
-      const laneKey = laneAtY(layoutRef.current, clientY - rect.top)
+      const laneKey = laneAtY(layoutRef.current, clientY - rect.top + scrollTopRef.current)
       if (laneKey == null) return null
       const lane = sceneRef.current.lanes.find((l) => l.laneKey === laneKey)
       if (!lane) return null
@@ -812,7 +830,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const rect = el.getBoundingClientRect()
       const cw = dragAwareContentWidth(rect.width)
       const contentX = clientX - rect.left + scrollLeftRef.current
-      const laneKey = laneAtY(layoutRef.current, clientY - rect.top)
+      const laneKey = laneAtY(layoutRef.current, clientY - rect.top + scrollTopRef.current)
       if (laneKey == null) return null
       const lane = sceneRef.current.lanes.find((l) => l.laneKey === laneKey)
       if (!lane) return null
@@ -1340,7 +1358,23 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           {layout.boxes.length === 0 ? (
             <div style={styles.emptyLabel}>No song to map yet — press play.</div>
           ) : (
-            layout.boxes.map((box) => {
+            <div
+              ref={gutterInnerRef}
+              data-full-song="lane-labels-inner"
+              style={{
+                display: 'flex',
+                flexDirection: 'column' as const,
+                // Keep the true total height (don't let the flex gutter squish the
+                // stack to its own height — the #645 squish, one level up).
+                flexShrink: 0,
+                // #655 — the gutter rows ride the grid's native vertical scroll. The
+                // transform is set imperatively in handleGridScroll (lag-free); this
+                // style keeps it correct across unrelated re-renders.
+                transform: `translateY(${-scrollTop}px)`,
+                willChange: 'transform',
+              }}
+            >
+            {layout.boxes.map((box) => {
               // An expanded multi-voice lane (#424) shows its identity on sub-row
               // 0 (`laneKey · voice0`, like the live monitor) and an indented
               // label per remaining voice, positioned from the SAME layout so
@@ -1502,7 +1536,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   ))}
                 </div>
               )
-            })
+            })}
+            </div>
           )}
         </div>
         {colorPickerLane && onSetTrackColor && (
@@ -1908,7 +1943,13 @@ const styles = {
     minWidth: 200,
     position: 'relative' as const,
     overflowX: 'auto' as const,
-    overflowY: 'hidden' as const,
+    // #655 — the grid is the vertical scrollport too (it already is the horizontal
+    // one). Its content is the full-`totalHeight` canvas, so `scrollHeight` already
+    // exceeds the viewport when lanes overflow a short drawer; `auto` surfaces a
+    // native Y-scrollbar that scrolls the canvas + marks. The label gutter is
+    // translated in lockstep from `handleGridScroll` (it keeps `overflow: clip`, so
+    // no #645 focus-drift). Both scrollbars stay pinned at the visible grid edges.
+    overflowY: 'auto' as const,
     background: 'var(--bg-input, #0f0f1a)',
     cursor: 'pointer' as const,
     // #651 — the grid is focusable (`tabIndex=0`) so it can route the clip-op
