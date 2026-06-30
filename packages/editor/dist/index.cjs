@@ -26671,7 +26671,56 @@ function useMixerModel() {
   );
   const beginGesture = React35__namespace.useCallback(() => writebackRef.current?.beginGesture(), []);
   const endGesture = React35__namespace.useCallback(() => writebackRef.current?.endGesture(), []);
-  return { strips: derived.strips, chunks: derived.chunks, applyToStrip, beginGesture, endGesture };
+  const [selectedId, setSelectedId] = React35__namespace.useState(null);
+  const stripsRef = React35__namespace.useRef(EMPTY_DERIVED.strips);
+  stripsRef.current = derived.strips;
+  React35__namespace.useEffect(() => {
+    if (!editor) {
+      setSelectedId(null);
+      return;
+    }
+    const model = editor.getModel?.();
+    if (!model) {
+      setSelectedId(null);
+      return;
+    }
+    const recompute = /* @__PURE__ */ __name(() => {
+      try {
+        const pos = editor.getPosition?.();
+        if (!pos) {
+          setSelectedId(null);
+          return;
+        }
+        const off = model.getOffsetAt(pos);
+        const sel = stripsRef.current.find(
+          (s) => off >= s.statementRange[0] && off <= s.statementRange[1]
+        )?.id ?? null;
+        setSelectedId((prev) => prev === sel ? prev : sel);
+      } catch {
+      }
+    }, "recompute");
+    recompute();
+    const sub = editor.onDidChangeCursorPosition?.(recompute);
+    return () => sub?.dispose?.();
+  }, [editor, derived.strips]);
+  const selectTrack = React35__namespace.useCallback((id) => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const model = ed.getModel?.();
+    if (!model) return;
+    const strip = buildStripModels(detectAllChunks(model.getValue())).find((s) => s.id === id);
+    if (!strip) return;
+    jumpCursorToTrack(ed, model, strip.statementRange[0], lastJumpRef);
+  }, []);
+  return {
+    strips: derived.strips,
+    chunks: derived.chunks,
+    applyToStrip,
+    beginGesture,
+    endGesture,
+    selectedId,
+    selectTrack
+  };
 }
 __name(useMixerModel, "useMixerModel");
 function StripColorPopover({
@@ -29496,6 +29545,8 @@ function ChannelStrip({
   soloed = false,
   onSoloToggle,
   dimmed = false,
+  selected = false,
+  onSelect,
   onGestureStart,
   onGestureEnd,
   meters,
@@ -29726,6 +29777,8 @@ function ChannelStrip({
       "data-mixer-strip-id": strip.id,
       "data-mixer-strip-kind": strip.kind,
       "data-mixer-strip-muted": strip.muted ? "" : void 0,
+      "data-mixer-strip-selected": selected ? "" : void 0,
+      onClick: onSelect,
       style: {
         // The console header stacks name (row 1) over the mute/solo/expand
         // buttons (row 2), so a short name like `d1` never truncates and one
@@ -29743,6 +29796,10 @@ function ChannelStrip({
         // the strip face and its drawer read as one connected unit — the drawer
         // rounds the right edge. Standalone / closed → fully rounded.
         borderRadius: expanded ? "6px 0 0 6px" : 6,
+        // The strip face keeps its neutral border; the SELECTION highlight (#639)
+        // lives on the wrapping group div (MixerStrips), which encapsulates the
+        // face AND its drawer so the accent outline wraps the whole unit and
+        // grows with the drawer — not on the face/drawer individually.
         border: "1px solid var(--border, #3a3a42)",
         // When expanded, the drawer abuts this right edge and owns the seam
         // hairline (its left border) — drop ours so the divider is a single
@@ -30266,21 +30323,25 @@ function ExpandDrawer({
       "data-mixer-expand-for": strip.id,
       style: {
         flexShrink: 0,
-        // The body uses column flow: it sizes to a constant height (the header
-        // plus two knob rows) and grows WIDER as knobs are added (the band
-        // scrolls horizontally), never taller and never scrolling. So we top-
-        // align to the strip face rather than stretch to it — the drawer is a
-        // bit taller than the (1.5×) face to fit two knob rows. `minWidth` keeps
-        // a panel-like base (room for ~3 knobs/row); the body's `max-content`
-        // width drives the rest.
-        alignSelf: "flex-start",
+        // The body grows WIDER as knobs are added (the band scrolls
+        // horizontally), never taller. `minWidth` keeps a panel-like base (room
+        // for ~3 knobs/row); the body's `max-content` width drives the rest.
+        // STRETCH to the group's height so the drawer is ALWAYS the same height
+        // as the (1.5×-zoomed) strip face — including an EMPTY drawer with no
+        // knobs yet (its short content would otherwise leave it ~150px shorter
+        // than the face). The group is face-tall (V-mixer-10), so stretch closes
+        // the gap; the empty space below the effect-add row is the waiting drawer.
+        alignSelf: "stretch",
         display: "flex",
         minWidth: 264,
         // Full outline (#609): the strip face drops its RIGHT border when
         // expanded, so the drawer's LEFT border is the single hairline seam
         // between them and the top/right/bottom borders close the card — the
         // strip + drawer read as ONE connected, outlined unit that belongs
-        // together (the strip rounds its left corners, the drawer its right).
+        // together (the strip rounds its left corners, the drawer its right). The
+        // SELECTION highlight (#639) is NOT here — it lives on the wrapping group
+        // div (MixerStrips), which encapsulates both the face and this drawer, so
+        // the accent outline wraps the whole unit and grows with the drawer.
         border: "1px solid var(--border, #3a3a42)",
         background: "#26262c69",
         borderRadius: "0 6px 6px 0",
@@ -30700,7 +30761,7 @@ var CONSOLE_ZOOM = 1.5;
 function MixerStrips({
   emptyFallback
 } = {}) {
-  const { strips, chunks, applyToStrip, beginGesture, endGesture } = useMixerModel();
+  const { strips, chunks, applyToStrip, beginGesture, endGesture, selectedId, selectTrack } = useMixerModel();
   const meters = useTrackMeters();
   const [fileId, setFileId] = React35__namespace.useState(() => getActiveFileId());
   React35__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
@@ -30742,7 +30803,21 @@ function MixerStrips({
               "div",
               {
                 "data-mixer-strip-group": true,
-                style: { display: "flex", alignItems: "stretch", flexShrink: 0 },
+                "data-mixer-strip-group-selected": strip.id === selectedId ? "" : void 0,
+                style: {
+                  display: "flex",
+                  alignItems: "stretch",
+                  flexShrink: 0,
+                  // #639 — the SELECTION highlight is a single accent ring on THIS
+                  // wrapper, which encapsulates the strip face AND (when open) its
+                  // drawer. The box-shadow follows the group's border-radius and sits
+                  // at its outer edge, so one continuous purple outline wraps the whole
+                  // unit and AUTOMATICALLY grows to include the drawer when expanded —
+                  // the face/drawer keep their own neutral #609 borders; only this div
+                  // highlights. box-shadow (not border) → no layout shift on select.
+                  borderRadius: 6,
+                  boxShadow: strip.id === selectedId ? "0 0 0 1.5px var(--accent, #6ea8fe)" : void 0
+                },
                 children: [
                   /* @__PURE__ */ jsxRuntime.jsx(
                     ChannelStrip,
@@ -30782,6 +30857,8 @@ function MixerStrips({
                       soloed: soloed.has(strip.id),
                       onSoloToggle: () => toggleSolo2(strip.id),
                       dimmed: soloActive && !soloed.has(strip.id),
+                      selected: strip.id === selectedId,
+                      onSelect: () => selectTrack(strip.id),
                       onGestureStart: beginGesture,
                       onGestureEnd: endGesture,
                       meters,

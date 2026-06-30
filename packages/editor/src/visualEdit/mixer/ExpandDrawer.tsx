@@ -54,21 +54,25 @@ export function ExpandDrawer({
       data-mixer-expand-for={strip.id}
       style={{
         flexShrink: 0,
-        // The body uses column flow: it sizes to a constant height (the header
-        // plus two knob rows) and grows WIDER as knobs are added (the band
-        // scrolls horizontally), never taller and never scrolling. So we top-
-        // align to the strip face rather than stretch to it — the drawer is a
-        // bit taller than the (1.5×) face to fit two knob rows. `minWidth` keeps
-        // a panel-like base (room for ~3 knobs/row); the body's `max-content`
-        // width drives the rest.
-        alignSelf: 'flex-start',
+        // The body grows WIDER as knobs are added (the band scrolls
+        // horizontally), never taller. `minWidth` keeps a panel-like base (room
+        // for ~3 knobs/row); the body's `max-content` width drives the rest.
+        // STRETCH to the group's height so the drawer is ALWAYS the same height
+        // as the (1.5×-zoomed) strip face — including an EMPTY drawer with no
+        // knobs yet (its short content would otherwise leave it ~150px shorter
+        // than the face). The group is face-tall (V-mixer-10), so stretch closes
+        // the gap; the empty space below the effect-add row is the waiting drawer.
+        alignSelf: 'stretch',
         display: 'flex',
         minWidth: 264,
         // Full outline (#609): the strip face drops its RIGHT border when
         // expanded, so the drawer's LEFT border is the single hairline seam
         // between them and the top/right/bottom borders close the card — the
         // strip + drawer read as ONE connected, outlined unit that belongs
-        // together (the strip rounds its left corners, the drawer its right).
+        // together (the strip rounds its left corners, the drawer its right). The
+        // SELECTION highlight (#639) is NOT here — it lives on the wrapping group
+        // div (MixerStrips), which encapsulates both the face and this drawer, so
+        // the accent outline wraps the whole unit and grows with the drawer.
         border: '1px solid var(--border, #3a3a42)',
         background: '#26262c69',
         borderRadius: '0 6px 6px 0',

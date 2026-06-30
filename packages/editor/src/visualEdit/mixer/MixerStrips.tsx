@@ -49,7 +49,8 @@ export function MixerStrips({
    *  second `useMixerModel` subscription just to read the count. */
   emptyFallback?: React.ReactNode
 } = {}): React.ReactElement | null {
-  const { strips, chunks, applyToStrip, beginGesture, endGesture } = useMixerModel()
+  const { strips, chunks, applyToStrip, beginGesture, endGesture, selectedId, selectTrack } =
+    useMixerModel()
   // One capped RAF loop + bus subscription for every strip's live meter (S2).
   const meters = useTrackMeters()
   // Per-track custom colour (Phase D, #581). Track the active file (same source
@@ -59,6 +60,10 @@ export function MixerStrips({
   // the shared `trackIdentity` so the dot can't diverge from the Timeline lane.
   const [fileId, setFileId] = React.useState<string | null>(() => getActiveFileId())
   React.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), [])
+  // #639 — `selectedId` comes from `useMixerModel`, DERIVED from the editor caret
+  // (the strip whose statement holds the cursor). Clicking a strip calls
+  // `selectTrack`, which moves the caret there — so the selection is unified with
+  // the editor: caret ⇄ selected strip stay in lockstep both ways.
   const trackMeta = useTrackMetaMap(fileId ?? undefined)
   // Per-file ephemeral expand state (S4b): which strips show their knob chain.
   // Persisted in localStorage, never the file (V-mixer-1).
@@ -103,13 +108,28 @@ export function MixerStrips({
           <div
             key={strip.id}
             data-mixer-strip-group
+            data-mixer-strip-group-selected={strip.id === selectedId ? '' : undefined}
             // Strip face + (when open) its drawer, side-by-side and SAME height:
             // the zoomed strip face is the group's only in-flow height, so the
             // group is (scaled-)strip-tall, and `alignItems: stretch` sizes the
             // drawer to match (its knob chain is absolutely filled, so it adds no
             // height). The drawer itself is NOT zoomed — it just grows taller to
             // the scaled face, so its 1× content stops scrolling (V-mixer-10).
-            style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0 }}
+            style={{
+              display: 'flex',
+              alignItems: 'stretch',
+              flexShrink: 0,
+              // #639 — the SELECTION highlight is a single accent ring on THIS
+              // wrapper, which encapsulates the strip face AND (when open) its
+              // drawer. The box-shadow follows the group's border-radius and sits
+              // at its outer edge, so one continuous purple outline wraps the whole
+              // unit and AUTOMATICALLY grows to include the drawer when expanded —
+              // the face/drawer keep their own neutral #609 borders; only this div
+              // highlights. box-shadow (not border) → no layout shift on select.
+              borderRadius: 6,
+              boxShadow:
+                strip.id === selectedId ? '0 0 0 1.5px var(--accent, #6ea8fe)' : undefined,
+            }}
           >
             <ChannelStrip
               strip={strip}
@@ -167,6 +187,8 @@ export function MixerStrips({
               soloed={soloed.has(strip.id)}
               onSoloToggle={() => toggleSolo(strip.id)}
               dimmed={soloActive && !soloed.has(strip.id)}
+              selected={strip.id === selectedId}
+              onSelect={() => selectTrack(strip.id)}
               onGestureStart={beginGesture}
               onGestureEnd={endGesture}
               meters={meters}

@@ -44,6 +44,10 @@ interface ChannelStripProps {
   onSoloToggle?: () => void
   /** dim this strip: a solo is active elsewhere and this strip isn't soloed */
   dimmed?: boolean
+  /** this strip is the currently-selected one — draw a thin accent border (#639). */
+  selected?: boolean
+  /** select this strip (a press anywhere on its face) — provided by the console. */
+  onSelect?: () => void
   /** wrap a drag as one undo step */
   onGestureStart?: () => void
   onGestureEnd?: () => void
@@ -192,6 +196,8 @@ export function ChannelStrip({
   soloed = false,
   onSoloToggle,
   dimmed = false,
+  selected = false,
+  onSelect,
   onGestureStart,
   onGestureEnd,
   meters,
@@ -442,6 +448,11 @@ export function ChannelStrip({
       data-mixer-strip-id={strip.id}
       data-mixer-strip-kind={strip.kind}
       data-mixer-strip-muted={strip.muted ? '' : undefined}
+      data-mixer-strip-selected={selected ? '' : undefined}
+      // #639 — a press anywhere on the strip face selects it (the accent border
+      // below then marks it). Inner controls still fire their own handlers and
+      // bubble up, so interacting with a strip also selects it.
+      onClick={onSelect}
       style={{
         // The console header stacks name (row 1) over the mute/solo/expand
         // buttons (row 2), so a short name like `d1` never truncates and one
@@ -459,6 +470,10 @@ export function ChannelStrip({
         // the strip face and its drawer read as one connected unit — the drawer
         // rounds the right edge. Standalone / closed → fully rounded.
         borderRadius: expanded ? '6px 0 0 6px' : 6,
+        // The strip face keeps its neutral border; the SELECTION highlight (#639)
+        // lives on the wrapping group div (MixerStrips), which encapsulates the
+        // face AND its drawer so the accent outline wraps the whole unit and
+        // grows with the drawer — not on the face/drawer individually.
         border: '1px solid var(--border, #3a3a42)',
         // When expanded, the drawer abuts this right edge and owns the seam
         // hairline (its left border) — drop ours so the divider is a single
