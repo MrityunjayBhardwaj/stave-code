@@ -1,12 +1,21 @@
 /**
- * Mixer: the currently-selected channel strip shows a thin accent border (#639).
+ * Mixer: the selected channel strip shows a thin accent border (#639), unified
+ * with the editor caret.
  *
- * Clicking a strip selects it; the selected strip swaps its 1px border to the
- * `--accent` token (the same purple the Song-timeline clip-selection uses), and
- * selection is exclusive (clicking another moves it). Playwright observation —
- * the border colour is read from the live computed style, not inferred.
+ * Selection is DERIVED from the cursor: the strip whose statement holds the caret
+ * is selected and gets the `--accent` border (the same purple the Song-timeline
+ * clip-selection uses). Clicking a strip moves the caret to that track, so the
+ * two directions stay in lockstep:
+ *   - click a strip → caret jumps to its code → that strip selected (exclusive);
+ *   - move the caret into a track's code → that track's strip selected.
+ * Playwright observation — the border colour is read from the live computed
+ * style, not inferred.
  */
 import { test, expect, type Page } from '@playwright/test'
+
+const EDFN =
+  `(()=>{const eds=(window.monaco?.editor?.getEditors?.())??[];` +
+  `return eds.find(e=>e.getModel()?.getLanguageId?.()==='strudel')??eds[0]})()`
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
@@ -26,6 +35,35 @@ async function openMixer(page: Page) {
 
 const rgb = (page: Page, el: ReturnType<Page['locator']>) =>
   el.evaluate((n) => getComputedStyle(n as HTMLElement).borderTopColor)
+
+/** Set the strudel source + evaluate it (so a known multi-track doc backs the
+ *  strips, one track per line → the caret line maps 1:1 to a strip). */
+async function setCodeAndEval(page: Page, code: string): Promise<void> {
+  await page.evaluate(
+    ({ c, EDFN }) => {
+      const e = eval(EDFN)
+      e.getModel()?.setValue(c)
+      e.setPosition({ lineNumber: 1, column: 1 })
+      e.focus()
+    },
+    { c: code, EDFN },
+  )
+  await page.waitForTimeout(200)
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter')
+  await page.waitForTimeout(1500)
+}
+
+/** Move the editor caret to a (line, column) and focus the editor. */
+async function caretTo(page: Page, line: number, column: number): Promise<void> {
+  await page.evaluate(
+    ({ line, column, EDFN }) => {
+      const e = eval(EDFN)
+      e.setPosition({ lineNumber: line, column })
+      e.focus()
+    },
+    { line, column, EDFN },
+  )
+}
 
 test('the selected strip shows a thin accent border; selection is exclusive (#639)', async ({ page }) => {
   const errors: string[] = []
@@ -102,6 +140,43 @@ test("the selected strip's expand drawer also shows the accent border (#639)", a
   await expect(drawer).toHaveAttribute('data-mixer-expand-selected', '')
   expect(await rgb(page, drawer)).toBe(accentRgb)
   expect(await rgb(page, strips.first())).toBe(accentRgb)
+
+  expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
+})
+
+test('selection is unified with the editor caret — both directions (#639)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  await boot(page)
+  // One track per line, so a caret line maps 1:1 to a strip.
+  await setCodeAndEval(page, 'bass: s("bd*4")\nlead: note("c e g")\nhh: s("hh*8")')
+  const panel = await openMixer(page)
+  const strips = panel.locator('[data-mixer-strip-id]')
+  await strips.first().waitFor({ timeout: 10_000 })
+  await expect(strips).toHaveCount(3)
+
+  const sel = () => panel.locator('[data-mixer-strip-selected]')
+
+  // Direction 1 — click the `lead` strip → caret jumps to its line (2) AND the
+  // `lead` strip is the (only) selected one.
+  await strips.nth(1).click()
+  await expect(sel()).toHaveCount(1)
+  await expect(sel()).toHaveAttribute('data-mixer-strip-id', 'lead')
+  expect(await page.evaluate((EDFN) => eval(EDFN)?.getPosition()?.lineNumber ?? 0, EDFN)).toBe(2)
+
+  // Direction 2 — move the caret into `bass` (line 1) FROM the editor → the
+  // `bass` strip becomes the selected one (cursor → strip).
+  await caretTo(page, 1, 3)
+  await expect(sel()).toHaveCount(1)
+  await expect(sel()).toHaveAttribute('data-mixer-strip-id', 'bass')
+
+  // …and into `hh` (line 3) → selection follows again.
+  await caretTo(page, 3, 3)
+  await expect(sel()).toHaveAttribute('data-mixer-strip-id', 'hh')
 
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })

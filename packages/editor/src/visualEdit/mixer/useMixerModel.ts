@@ -44,6 +44,20 @@ export interface MixerModel {
   /** open a gesture — edits until `endGesture` coalesce into one undo step */
   beginGesture: () => void
   endGesture: () => void
+  /**
+   * The id of the strip whose statement contains the editor caret, or null when
+   * the caret is outside every track (#639). DERIVED from the cursor — this is
+   * the single source of truth for "selected track": moving the caret (typing,
+   * clicking code, the timeline/strip jump) re-derives it, so the Mixer
+   * selection always matches the editor.
+   */
+  selectedId: string | null
+  /**
+   * Select a strip = move the editor caret to that track's statement (#639/#595).
+   * The caret move re-derives `selectedId` to this strip, so a click on a strip
+   * and a click in its code converge on the same selection.
+   */
+  selectTrack: (id: string) => void
 }
 
 /** the strip array + its source chunks, kept together so they can't drift */
@@ -176,5 +190,71 @@ export function useMixerModel(): MixerModel {
   const beginGesture = React.useCallback(() => writebackRef.current?.beginGesture(), [])
   const endGesture = React.useCallback(() => writebackRef.current?.endGesture(), [])
 
-  return { strips: derived.strips, chunks: derived.chunks, applyToStrip, beginGesture, endGesture }
+  // #639 — the selected strip is DERIVED from the editor caret: the strip whose
+  // statement contains the cursor. This makes the cursor the ONE source of truth
+  // for "selected track" — moving the caret (typing, clicking code, the timeline
+  // or strip jump) re-derives it, so the Mixer selection always matches the
+  // editor (and `selectTrack` below moves the caret, closing the loop both ways).
+  const [selectedId, setSelectedId] = React.useState<string | null>(null)
+  // Read the current strips inside the cursor listener without re-subscribing on
+  // every keystroke (the effect re-subscribes only when the editor or the strip
+  // array changes, not on cursor moves).
+  const stripsRef = React.useRef<StripModel[]>(EMPTY_DERIVED.strips)
+  stripsRef.current = derived.strips
+  React.useEffect(() => {
+    if (!editor) {
+      setSelectedId(null)
+      return
+    }
+    const model = editor.getModel?.()
+    if (!model) {
+      setSelectedId(null)
+      return
+    }
+    const recompute = (): void => {
+      try {
+        const pos = editor.getPosition?.()
+        if (!pos) {
+          setSelectedId(null)
+          return
+        }
+        const off = model.getOffsetAt(pos)
+        const sel =
+          stripsRef.current.find(
+            (s) => off >= s.statementRange[0] && off <= s.statementRange[1],
+          )?.id ?? null
+        // Only re-render the strips when the SELECTED strip changes, not on every
+        // intra-track caret move — selection is per-track, not per-character.
+        setSelectedId((prev) => (prev === sel ? prev : sel))
+      } catch {
+        /* selection is a courtesy — never let it throw into render */
+      }
+    }
+    recompute()
+    const sub = editor.onDidChangeCursorPosition?.(recompute)
+    return () => sub?.dispose?.()
+  }, [editor, derived.strips])
+
+  const selectTrack = React.useCallback((id: string): void => {
+    const ed = editorRef.current
+    if (!ed) return
+    const model = ed.getModel?.()
+    if (!model) return
+    const strip = buildStripModels(detectAllChunks(model.getValue())).find((s) => s.id === id)
+    if (!strip) return
+    // Move the caret to the track's statement; the cursor listener above then
+    // re-derives `selectedId` to this strip. `lastJumpRef` is shared with the
+    // edit-driven follow (#595) so the two never fight to re-centre.
+    jumpCursorToTrack(ed, model, strip.statementRange[0], lastJumpRef)
+  }, [])
+
+  return {
+    strips: derived.strips,
+    chunks: derived.chunks,
+    applyToStrip,
+    beginGesture,
+    endGesture,
+    selectedId,
+    selectTrack,
+  }
 }
