@@ -507,18 +507,22 @@ describe('FullSongTimeline — delete a clip (select body + Delete → remove-ar
     expect(onDeleteClip).not.toHaveBeenCalled()
   })
 
-  it('clicking the bare/implicit clip (hh lane) selects it, but Delete no-ops (#489)', async () => {
+  it('clicking the bare/implicit clip (hh lane) + Delete → gap at the clicked bar (#489)', async () => {
     const onDeleteClip = vi.fn()
     const { grid, container } = renderDeletable(onDeleteClip)
     await settle()
-    // hh row (y≈30) has only the implicit clip (armIndex −1). It IS selectable now
-    // (#489 — select → split), but deleting the WHOLE uniform loop is out of scope
-    // (split first), so Delete is a no-op for a bare clip.
+    // hh row (y≈30) has only the implicit clip (armIndex −1, span [0,4)). Clicking
+    // x≈200 (cycle 1) selects bar 1; Delete carves a GAP there — the parent
+    // materializes arrange([1,pat],[1,silence],[2,pat]) (#489). barIndex = the
+    // clicked whole-cycle, span = the bare clip's floored width.
     fireEvent.pointerDown(grid, { clientX: 200, clientY: 30, pointerId: 1 })
     fireEvent.pointerUp(grid, { clientX: 200, clientY: 30, pointerId: 1 })
     expect(container.querySelector('[data-full-song="clip-selection"]')).not.toBeNull()
     fireEvent.keyDown(grid, { key: 'Delete' })
-    expect(onDeleteClip).not.toHaveBeenCalled()
+    expect(onDeleteClip).toHaveBeenCalledTimes(1)
+    expect(onDeleteClip.mock.calls[0][0]).toMatchObject({ armIndex: -1, barIndex: 1, span: 4 })
+    // Selection clears after the delete fires.
+    expect(container.querySelector('[data-full-song="clip-selection"]')).toBeNull()
   })
 
   it('clicking a clip selects it but no longer seeks (#610 — seek moved to the ruler)', async () => {

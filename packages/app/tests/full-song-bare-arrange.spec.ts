@@ -90,3 +90,36 @@ test('a bare loop is selectable and pressing S materializes the arrange', async 
   await page.screenshot({ path: 'test-results/bare-arrange.png' })
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })
+
+test('deleting a bar of a bare loop carves a GAP (#489) — materialize with silence', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  await bootShell(page)
+  await typeSongAndEval(page, 's("bd*4")')
+
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
+  await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
+  await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
+  await page.waitForTimeout(400)
+
+  // The bare loop spans the floored 4-bar span. Click bar 1 (x ≈ 0.25·width → the
+  // [1,2) cycle) to select THAT bar, then Delete to silence it.
+  const grid = page.locator('[data-full-song="grid"]')
+  const box = await grid.boundingBox()
+  if (!box) throw new Error('no grid box')
+  await page.mouse.click(box.x + box.width * 0.25, box.y + 8)
+  await expect(page.locator('[data-full-song="clip-selection"]')).toBeVisible({ timeout: 5_000 })
+
+  // Delete carves a gap at bar 1: arrange([1,pat], [1, silence], [2,pat]) (#489).
+  await grid.press('Delete')
+  await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toContain(
+    'arrange([1, s("bd*4")], [1, silence], [2, s("bd*4")])',
+  )
+
+  await page.screenshot({ path: 'test-results/bare-arrange-delete.png' })
+  expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
+})

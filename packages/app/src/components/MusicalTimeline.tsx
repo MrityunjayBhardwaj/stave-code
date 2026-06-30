@@ -54,6 +54,7 @@ import {
   reorderArm,
   insertArm,
   splitArm,
+  materializeBareDelete,
   materializeBareSplit,
   detectPickControlAt,
   pickSetWeight,
@@ -436,7 +437,7 @@ export function MusicalTimeline(
   // track) is allowed. The debounced re-eval republishes the IR and the lane
   // re-derives. (`removeArm` stays in @stave/editor for a future ripple-delete.)
   const handleDeleteClip = React.useCallback(
-    (req: { sourceOffset: number | null; armIndex: number }) => {
+    (req: { sourceOffset: number | null; armIndex: number; barIndex?: number; span?: number }) => {
       if (!snapshot?.source || req.sourceOffset == null) return
       const call = detectArrangeAt(snapshot.code, req.sourceOffset)
       if (call) {
@@ -448,8 +449,23 @@ export function MusicalTimeline(
       }
       // #463 Stage 2 — pick* section clip.
       const ctl = detectPickControlAt(snapshot.code, req.sourceOffset)
-      if (!ctl || req.armIndex < 0 || req.armIndex >= ctl.arms.length) return
-      const edits = pickRemoveArm(snapshot.code, ctl, req.armIndex)
+      if (ctl) {
+        if (req.armIndex < 0 || req.armIndex >= ctl.arms.length) return
+        const edits = pickRemoveArm(snapshot.code, ctl, req.armIndex)
+        if (edits.length === 0) return
+        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+        return
+      }
+      // #489 — bare loop: silence the SELECTED bar (gap) by materializing an
+      // arrange. detectBarePattern finds the pattern's range; materializeBareDelete
+      // rewrites `pat` → `arrange([lead, pat], [1, silence], [rest, pat])` at the
+      // clicked `barIndex` over the loop's `span`, keeping the bytes verbatim. The
+      // deliberate counterpart of split (#488 drag-to-wrap removal): silencing the
+      // SOLE bar would empty the track, which the serializer refuses (PV122 #5).
+      if (req.armIndex >= 0 || req.barIndex == null || req.span == null) return
+      const bare = detectBarePattern(snapshot.code, req.sourceOffset)
+      if (!bare) return
+      const edits = materializeBareDelete(snapshot.code, bare.patternRange, req.barIndex, req.span)
       if (edits.length === 0) return
       applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
     },

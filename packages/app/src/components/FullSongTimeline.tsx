@@ -161,10 +161,16 @@ export interface FullSongTimelineProps {
    *  source anchor + arm index; the parent parses the arrangement at the anchor
    *  and writes a surgical remove-arm edit. Optional — without it clips can't be
    *  selected/deleted. A combinator's SOLE remaining arm is not deletable
-   *  (a lane keeps ≥1 clip, PV122 #5); the serializer no-ops that case. */
+   *  (a lane keeps ≥1 clip, PV122 #5); the serializer no-ops that case.
+   *  #489 — for a bare track's implicit clip (`armIndex < 0`) Delete carves a
+   *  GAP at the SELECTED bar: `barIndex` is the clicked whole-cycle and `span`
+   *  the loop's floored display width, so the parent materializes
+   *  `arrange([…, pat], [1, silence], […, pat])`. Real arms ignore both. */
   readonly onDeleteClip?: (req: {
     sourceOffset: number | null
     armIndex: number
+    barIndex?: number
+    span?: number
   }) => void
   /** Move a clip by dragging its body horizontally (Phase 5c, #386). Only a REAL
    *  arrange/cat arm is movable: `reorder` swaps it to a new slot in the
@@ -738,6 +744,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     laneKey: string
     armIndex: number
     sourceOffset: number | null
+    // #489 — for a bare implicit clip (armIndex < 0), the whole-cycle the user
+    // clicked. Drives the 1-bar selection highlight + the Delete gap target.
+    // Undefined for real arms (their armIndex already addresses the clip).
+    barCycle?: number
   } | null>(null)
 
   // #649 — the clip-selection (`selected`) and the caret lane-selection
@@ -1108,7 +1118,21 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         // A click selects the clip — real arm OR a bare track's implicit clip
         // (armIndex < 0), which is then splittable/deletable (#489) — AND jumps
         // the editor to that track's code (#610; seek now lives on the ruler).
-        setSelected({ laneKey: mv.laneKey, armIndex: mv.armIndex, sourceOffset: mv.sourceOffset })
+        // For a bare clip, record WHICH whole-cycle bar was clicked (the Delete
+        // gap target / 1-bar highlight); clamped to the clip's [start, end).
+        let barCycle: number | undefined
+        if (mv.armIndex < 0) {
+          const el = areaRef.current
+          if (el) {
+            const rect = el.getBoundingClientRect()
+            const cw = dragAwareContentWidth(rect.width)
+            const contentX = e.clientX - rect.left + scrollLeftRef.current
+            // Read the LIVE span via the ref (this fires imperatively on pointer-up).
+            const cyc = Math.floor(xToSongCycle(contentX, displayCyclesRef.current, cw))
+            barCycle = Math.max(mv.startCycle, Math.min(cyc, mv.endCycle - 1))
+          }
+        }
+        setSelected({ laneKey: mv.laneKey, armIndex: mv.armIndex, sourceOffset: mv.sourceOffset, barCycle })
         jumpToLaneAtClientY(e.clientY)
         return
       }
@@ -1121,7 +1145,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         setSelected(null)
       }
     },
-    [jumpToLaneAtClientY, onMoveClip],
+    [jumpToLaneAtClientY, onMoveClip, dragAwareContentWidth],
   )
 
   // Unified pointer end: a live trim drag wins; otherwise resolve the body
@@ -1152,9 +1176,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const handleGridKeyDown = React.useCallback(
     (e: React.KeyboardEvent) => {
       if (!selected) return
-      // A bare track's implicit clip (armIndex < 0) supports only SPLIT — that
-      // materializes the combinator (#489). Deleting or duplicating the WHOLE
-      // uniform loop is out of scope (split first, then act on the pieces).
+      // A bare track's implicit clip (armIndex < 0) supports SPLIT and DELETE,
+      // both of which materialize the combinator (#489). DUPLICATE stays out of
+      // scope (cloning a uniform bar into arrange is audibly identical — a
+      // no-op the user can reach by split-then-edit).
       const bareClip = selected.armIndex < 0
       // ⌘/Ctrl-D duplicates the selected clip (insert a clone arm after it).
       if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
@@ -1167,9 +1192,25 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         return
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (!onDeleteClip || bareClip) return
+        if (!onDeleteClip) return
         e.preventDefault()
-        onDeleteClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
+        if (bareClip) {
+          // #489 — silence the SELECTED bar of the bare loop (gap). Needs the
+          // clicked bar index + the loop's whole display span; the parent
+          // materializes arrange([…,pat],[1,silence],[…,pat]). Derive span from
+          // the live scene clip (its floored width, #489 D3).
+          const lane = sceneRef.current.lanes.find((l) => l.laneKey === selected.laneKey)
+          const clip = lane?.clips.find((c) => c.armIndex < 0)
+          if (!clip) return
+          onDeleteClip({
+            sourceOffset: selected.sourceOffset,
+            armIndex: selected.armIndex,
+            barIndex: selected.barCycle ?? clip.startCycle,
+            span: clip.endCycle - clip.startCycle,
+          })
+        } else {
+          onDeleteClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
+        }
         setSelected(null)
         return
       }
@@ -1206,8 +1247,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const clip = lane?.clips.find((c) => c.armIndex === selected.armIndex)
     const box = layout.boxes.find((b) => b.laneKey === selected.laneKey)
     if (!lane || !clip || !box) return null
-    const left = songCycleToX(clip.startCycle, displayCycles, contentWidth)
-    const right = songCycleToX(clip.endCycle, displayCycles, contentWidth)
+    // #489 — a bare clip highlights only the SELECTED 1-cycle bar (what Delete
+    // silences), not the whole tiled loop; real arms highlight their full span.
+    const isBareBar = clip.armIndex < 0 && selected.barCycle != null
+    const startCycle = isBareBar ? (selected.barCycle as number) : clip.startCycle
+    const endCycle = isBareBar ? (selected.barCycle as number) + 1 : clip.endCycle
+    const left = songCycleToX(startCycle, displayCycles, contentWidth)
+    const right = songCycleToX(endCycle, displayCycles, contentWidth)
     return { left, width: Math.max(1, right - left), top: box.top, height: box.height }
   }, [selected, scene, layout, displayCycles, contentWidth])
 
