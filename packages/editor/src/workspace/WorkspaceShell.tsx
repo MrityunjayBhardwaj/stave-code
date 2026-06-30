@@ -564,6 +564,33 @@ function GroupTabBar({
               </div>
             )
           })}
+          {/* #612 — "+" new-file action sits as a small tab immediately after
+              the last tab (browser-style), inside the scrollable strip so it
+              follows the last tab. Rendered only when the host wires it. */}
+          {onNewFile && (
+            <button
+              data-testid={`tab-new-file-${group.id}`}
+              onClick={onNewFile}
+              title="New file"
+              aria-label="New file"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                padding: '0 8px',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--foreground-muted)',
+                cursor: 'pointer',
+                fontSize: 14,
+                lineHeight: 1,
+                flexShrink: 0,
+              }}
+            >
+              {'+'}
+            </button>
+          )}
         </div>
         {/* Fade cues — only render on the side that has hidden tabs */}
         {overflow.left && (
@@ -611,17 +638,6 @@ function GroupTabBar({
           position: 'relative',
         }}
       >
-        {onNewFile && (
-          <button
-            data-testid={`tab-new-file-${group.id}`}
-            onClick={onNewFile}
-            title="New file"
-            aria-label="New file"
-            style={actionBtnStyle}
-          >
-            {'+'}
-          </button>
-        )}
         {hasOverflow && (
           <button
             ref={menuBtnRef}
