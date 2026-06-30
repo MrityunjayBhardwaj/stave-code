@@ -59,14 +59,15 @@ export function ExpandDrawer({
       data-mixer-expand-selected={selected ? '' : undefined}
       style={{
         flexShrink: 0,
-        // The body uses column flow: it sizes to a constant height (the header
-        // plus two knob rows) and grows WIDER as knobs are added (the band
-        // scrolls horizontally), never taller and never scrolling. So we top-
-        // align to the strip face rather than stretch to it — the drawer is a
-        // bit taller than the (1.5×) face to fit two knob rows. `minWidth` keeps
-        // a panel-like base (room for ~3 knobs/row); the body's `max-content`
-        // width drives the rest.
-        alignSelf: 'flex-start',
+        // The body grows WIDER as knobs are added (the band scrolls
+        // horizontally), never taller. `minWidth` keeps a panel-like base (room
+        // for ~3 knobs/row); the body's `max-content` width drives the rest.
+        // STRETCH to the group's height so the drawer is ALWAYS the same height
+        // as the (1.5×-zoomed) strip face — including an EMPTY drawer with no
+        // knobs yet (its short content would otherwise leave it ~150px shorter
+        // than the face). The group is face-tall (V-mixer-10), so stretch closes
+        // the gap; the empty space below the effect-add row is the waiting drawer.
+        alignSelf: 'stretch',
         display: 'flex',
         minWidth: 264,
         // Full outline (#609): the strip face drops its RIGHT border when

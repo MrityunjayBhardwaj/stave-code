@@ -157,6 +157,14 @@ test("the selected strip's expand drawer also shows the accent border (#639)", a
   expect(seam).toBe(neutralRgb)
   expect(seam).not.toBe(accentRgb)
 
+  // The (here EMPTY — no effect knobs) drawer is the SAME height as the strip
+  // face: it stretches to the face-tall group, so an empty drawer doesn't sit
+  // ~150px short of the face (#639).
+  await expect(drawer.locator('[data-knob]')).toHaveCount(0)
+  const faceH = await strips.first().evaluate((el) => (el as HTMLElement).getBoundingClientRect().height)
+  const drawerH = await drawer.evaluate((el) => (el as HTMLElement).getBoundingClientRect().height)
+  expect(Math.abs(faceH - drawerH)).toBeLessThanOrEqual(1)
+
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })
 
