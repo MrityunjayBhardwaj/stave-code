@@ -1911,6 +1911,13 @@ const styles = {
     overflowY: 'hidden' as const,
     background: 'var(--bg-input, #0f0f1a)',
     cursor: 'pointer' as const,
+    // #651 — the grid is focusable (`tabIndex=0`) so it can route the clip-op
+    // keys (S / ⌘D / Delete) to the selected clip, and selecting a row focuses it
+    // programmatically. Suppress the browser's default focus ring: it draws a
+    // border around the WHOLE bars area (a stray "selected box") that competes
+    // with the real lane band. Focus here is mouse-driven, not keyboard
+    // navigation, and the selection band / clip rect already indicate state.
+    outline: 'none' as const,
   },
   // Sticky viewport pin for the interactive marks (#506) — mirrors the base
   // canvas + live overlay (sticky left:0, marginTop:-height set inline). Children
