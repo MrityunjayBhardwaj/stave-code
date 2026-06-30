@@ -26645,7 +26645,56 @@ function useMixerModel() {
   );
   const beginGesture = React35.useCallback(() => writebackRef.current?.beginGesture(), []);
   const endGesture = React35.useCallback(() => writebackRef.current?.endGesture(), []);
-  return { strips: derived.strips, chunks: derived.chunks, applyToStrip, beginGesture, endGesture };
+  const [selectedId, setSelectedId] = React35.useState(null);
+  const stripsRef = React35.useRef(EMPTY_DERIVED.strips);
+  stripsRef.current = derived.strips;
+  React35.useEffect(() => {
+    if (!editor) {
+      setSelectedId(null);
+      return;
+    }
+    const model = editor.getModel?.();
+    if (!model) {
+      setSelectedId(null);
+      return;
+    }
+    const recompute = /* @__PURE__ */ __name(() => {
+      try {
+        const pos = editor.getPosition?.();
+        if (!pos) {
+          setSelectedId(null);
+          return;
+        }
+        const off = model.getOffsetAt(pos);
+        const sel = stripsRef.current.find(
+          (s) => off >= s.statementRange[0] && off <= s.statementRange[1]
+        )?.id ?? null;
+        setSelectedId((prev) => prev === sel ? prev : sel);
+      } catch {
+      }
+    }, "recompute");
+    recompute();
+    const sub = editor.onDidChangeCursorPosition?.(recompute);
+    return () => sub?.dispose?.();
+  }, [editor, derived.strips]);
+  const selectTrack = React35.useCallback((id) => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const model = ed.getModel?.();
+    if (!model) return;
+    const strip = buildStripModels(detectAllChunks(model.getValue())).find((s) => s.id === id);
+    if (!strip) return;
+    jumpCursorToTrack(ed, model, strip.statementRange[0], lastJumpRef);
+  }, []);
+  return {
+    strips: derived.strips,
+    chunks: derived.chunks,
+    applyToStrip,
+    beginGesture,
+    endGesture,
+    selectedId,
+    selectTrack
+  };
 }
 __name(useMixerModel, "useMixerModel");
 function StripColorPopover({
@@ -30690,11 +30739,10 @@ var CONSOLE_ZOOM = 1.5;
 function MixerStrips({
   emptyFallback
 } = {}) {
-  const { strips, chunks, applyToStrip, beginGesture, endGesture } = useMixerModel();
+  const { strips, chunks, applyToStrip, beginGesture, endGesture, selectedId, selectTrack } = useMixerModel();
   const meters = useTrackMeters();
   const [fileId, setFileId] = React35.useState(() => getActiveFileId());
   React35.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
-  const [selectedId, setSelectedId] = React35.useState(null);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
   const { expanded, toggle } = useExpandedStrips();
   const { soloed, toggle: toggleSolo2 } = useSoloStrips();
@@ -30774,7 +30822,7 @@ function MixerStrips({
                       onSoloToggle: () => toggleSolo2(strip.id),
                       dimmed: soloActive && !soloed.has(strip.id),
                       selected: strip.id === selectedId,
-                      onSelect: () => setSelectedId(strip.id),
+                      onSelect: () => selectTrack(strip.id),
                       onGestureStart: beginGesture,
                       onGestureEnd: endGesture,
                       meters,
