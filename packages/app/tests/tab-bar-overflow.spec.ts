@@ -61,11 +61,17 @@ test('pinned group actions stay visible when tabs overflow', async ({ page }) =>
   }
 })
 
-// Issue #612 — a "+" action in the tab bar's pinned cluster opens the SAME
-// new-file prompt as the left-panel New File button and creates the file.
+// Issue #612 — a "+" tab sits immediately after the last tab (browser-style)
+// and opens the SAME new-file prompt as the left-panel New File button.
 test('the + tab-bar action opens the new-file prompt and creates a file', async ({ page }) => {
   const newFileBtn = page.locator('[data-testid^="tab-new-file-"]').first()
   await expect(newFileBtn).toBeVisible()
+  // it sits immediately after the last tab, not in the far-right action cluster.
+  const lastTab = page.locator('[data-workspace-tab]').last()
+  const tb = await lastTab.boundingBox()
+  const pb = await newFileBtn.boundingBox()
+  expect(tb && pb).toBeTruthy()
+  if (tb && pb) expect(Math.abs(pb.x - (tb.x + tb.width))).toBeLessThan(2)
   await newFileBtn.click()
   // Same prompt the left-panel button uses (placeholder "sketch.strudel").
   const input = page.locator('input[placeholder="sketch.strudel"]')

@@ -31306,7 +31306,7 @@ function GroupTabBar({
               height: "100%"
             },
             children: [
-              /* @__PURE__ */ jsxRuntime.jsx(
+              /* @__PURE__ */ jsxRuntime.jsxs(
                 "div",
                 {
                   ref: scrollRef,
@@ -31320,82 +31320,108 @@ function GroupTabBar({
                     scrollbarWidth: "none",
                     msOverflowStyle: "none"
                   },
-                  children: group.tabs.map((tab) => {
-                    const isActive = tab.id === group.activeTabId;
-                    const isPreview = (tab.kind === "editor" || tab.kind === "history") && tab.preview === true;
-                    return /* @__PURE__ */ jsxRuntime.jsxs(
-                      "div",
+                  children: [
+                    group.tabs.map((tab) => {
+                      const isActive = tab.id === group.activeTabId;
+                      const isPreview = (tab.kind === "editor" || tab.kind === "history") && tab.preview === true;
+                      return /* @__PURE__ */ jsxRuntime.jsxs(
+                        "div",
+                        {
+                          ref: isActive ? activeTabElRef : void 0,
+                          "data-workspace-tab": tab.id,
+                          "data-tab-kind": tab.kind,
+                          "data-tab-active": isActive ? "true" : "false",
+                          "data-tab-preview": isPreview ? "true" : "false",
+                          draggable: true,
+                          onDragStart: (e) => onTabDragStart(e, tab),
+                          onClick: () => onTabClick(tab.id),
+                          onContextMenu: (e) => {
+                            if (!onTabContextMenu) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onTabContextMenu(tab, e.clientX, e.clientY);
+                          },
+                          onDoubleClick: () => {
+                            if (isPreview) onTabPromote(tab.id);
+                          },
+                          style: {
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 3,
+                            padding: "0 8px",
+                            height: "100%",
+                            cursor: "grab",
+                            background: isActive ? "var(--background)" : "transparent",
+                            borderRight: "1px solid var(--border)",
+                            color: isActive ? "var(--foreground)" : "var(--foreground-muted)",
+                            fontSize: 11,
+                            fontStyle: isPreview ? "italic" : "normal",
+                            whiteSpace: "nowrap",
+                            userSelect: "none",
+                            flexShrink: 0
+                          },
+                          children: [
+                            /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { display: "inline-flex", alignItems: "center" }, children: [
+                              tab.kind === "history" ? /* @__PURE__ */ jsxRuntime.jsx(
+                                "span",
+                                {
+                                  style: {
+                                    fontSize: 8,
+                                    fontStyle: "normal",
+                                    opacity: 0.65,
+                                    letterSpacing: 0.5,
+                                    marginRight: 4,
+                                    border: "1px solid currentColor",
+                                    borderRadius: 3,
+                                    padding: "0 2px"
+                                  },
+                                  children: tab.mode === "view" ? "VIEW" : "DIFF"
+                                }
+                              ) : tab.kind === "preview" ? "\u{1F3A5} " : null,
+                              tabFileName(tab)
+                            ] }),
+                            /* @__PURE__ */ jsxRuntime.jsx(
+                              "button",
+                              {
+                                "data-testid": `tab-close-${tab.id}`,
+                                onClick: (e) => {
+                                  e.stopPropagation();
+                                  onTabClose(tab.id);
+                                },
+                                style: closeBtnStyle,
+                                children: "\xD7"
+                              }
+                            )
+                          ]
+                        },
+                        tab.id
+                      );
+                    }),
+                    onNewFile && /* @__PURE__ */ jsxRuntime.jsx(
+                      "button",
                       {
-                        ref: isActive ? activeTabElRef : void 0,
-                        "data-workspace-tab": tab.id,
-                        "data-tab-kind": tab.kind,
-                        "data-tab-active": isActive ? "true" : "false",
-                        "data-tab-preview": isPreview ? "true" : "false",
-                        draggable: true,
-                        onDragStart: (e) => onTabDragStart(e, tab),
-                        onClick: () => onTabClick(tab.id),
-                        onContextMenu: (e) => {
-                          if (!onTabContextMenu) return;
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onTabContextMenu(tab, e.clientX, e.clientY);
-                        },
-                        onDoubleClick: () => {
-                          if (isPreview) onTabPromote(tab.id);
-                        },
+                        "data-testid": `tab-new-file-${group.id}`,
+                        onClick: onNewFile,
+                        title: "New file",
+                        "aria-label": "New file",
                         style: {
                           display: "flex",
                           alignItems: "center",
-                          gap: 3,
-                          padding: "0 8px",
+                          justifyContent: "center",
                           height: "100%",
-                          cursor: "grab",
-                          background: isActive ? "var(--background)" : "transparent",
-                          borderRight: "1px solid var(--border)",
-                          color: isActive ? "var(--foreground)" : "var(--foreground-muted)",
-                          fontSize: 11,
-                          fontStyle: isPreview ? "italic" : "normal",
-                          whiteSpace: "nowrap",
-                          userSelect: "none",
+                          padding: "0 8px",
+                          background: "transparent",
+                          border: "none",
+                          color: "var(--foreground-muted)",
+                          cursor: "pointer",
+                          fontSize: 14,
+                          lineHeight: 1,
                           flexShrink: 0
                         },
-                        children: [
-                          /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { display: "inline-flex", alignItems: "center" }, children: [
-                            tab.kind === "history" ? /* @__PURE__ */ jsxRuntime.jsx(
-                              "span",
-                              {
-                                style: {
-                                  fontSize: 8,
-                                  fontStyle: "normal",
-                                  opacity: 0.65,
-                                  letterSpacing: 0.5,
-                                  marginRight: 4,
-                                  border: "1px solid currentColor",
-                                  borderRadius: 3,
-                                  padding: "0 2px"
-                                },
-                                children: tab.mode === "view" ? "VIEW" : "DIFF"
-                              }
-                            ) : tab.kind === "preview" ? "\u{1F3A5} " : null,
-                            tabFileName(tab)
-                          ] }),
-                          /* @__PURE__ */ jsxRuntime.jsx(
-                            "button",
-                            {
-                              "data-testid": `tab-close-${tab.id}`,
-                              onClick: (e) => {
-                                e.stopPropagation();
-                                onTabClose(tab.id);
-                              },
-                              style: closeBtnStyle,
-                              children: "\xD7"
-                            }
-                          )
-                        ]
-                      },
-                      tab.id
-                    );
-                  })
+                        children: "+"
+                      }
+                    )
+                  ]
                 }
               ),
               overflow.left && /* @__PURE__ */ jsxRuntime.jsx(
@@ -31445,17 +31471,6 @@ function GroupTabBar({
               position: "relative"
             },
             children: [
-              onNewFile && /* @__PURE__ */ jsxRuntime.jsx(
-                "button",
-                {
-                  "data-testid": `tab-new-file-${group.id}`,
-                  onClick: onNewFile,
-                  title: "New file",
-                  "aria-label": "New file",
-                  style: actionBtnStyle,
-                  children: "+"
-                }
-              ),
               hasOverflow && /* @__PURE__ */ jsxRuntime.jsx(
                 "button",
                 {
