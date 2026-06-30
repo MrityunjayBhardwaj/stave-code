@@ -591,6 +591,24 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     () => new Map(scene.lanes.map((l) => [l.laneKey, l])),
     [scene],
   )
+  // #642 — the laneKey the caret/selection points at, resolved ONCE from the
+  // scene so the gutter row AND the full-width grid band agree on one lane.
+  // Match the SENDER's vocabulary (`labelOffset ?? sourceOffset`, the exact
+  // anchor the header click and #610 jump emit) so an anonymous lane with no
+  // statement label still resolves — keying off raw `labelOffset` alone left
+  // such lanes unmatchable (the #642 latent mismatch).
+  const selectedLaneKey = useMemo(() => {
+    const sel = props.selectedStatementOffset
+    if (sel == null) return null
+    const hit = scene.lanes.find((l) => (l.labelOffset ?? l.sourceOffset) === sel)
+    return hit?.laneKey ?? null
+  }, [props.selectedStatementOffset, scene])
+  // #642 — the selected lane's layout box (top/height in content space), for the
+  // full-width grid band drawn in the marks overlay.
+  const selectedBox =
+    selectedLaneKey != null
+      ? layout.boxes.find((b) => b.laneKey === selectedLaneKey)
+      : undefined
   // Which lane's header is being inline-renamed (#580, Phase C), by laneKey.
   const { onRenameLane } = props
   // #610 — select a lane → reveal its code in the editor (no expand/bind).
@@ -1338,13 +1356,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               // DISPLAY NAME (the same key the Mixer uses), so a colour set here
               // shows on the matching strip too.
               const colorPickerEnabled = onSetTrackColor !== undefined
-              // #641 — the lane the editor caret currently sits in is selected.
-              // Match on the statement head (`labelOffset` = the caret chunk's
-              // `statementRange[0]`), the same anchor #610 jumps to.
-              const isSelected =
-                props.selectedStatementOffset != null &&
-                lane?.labelOffset != null &&
-                lane.labelOffset === props.selectedStatementOffset
+              // #641/#642 — the lane the editor caret currently sits in is
+              // selected. Keyed off the once-resolved `selectedLaneKey` so the
+              // gutter row and the full-width grid band (below) light the SAME
+              // lane, including anonymous lanes with no statement label.
+              const isSelected = selectedLaneKey != null && box.laneKey === selectedLaneKey
               return (
                 <div
                   key={box.laneKey}
@@ -1548,6 +1564,23 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                 height: layout.totalHeight,
               }}
             >
+              {/* #642 — full-width selected-lane band across the grid, at the
+                  selected lane's box. Pairs with the gutter row highlight so the
+                  selection reads as one continuous band where the user is
+                  actually looking (the marks, not the 88px label gutter).
+                  Painted FIRST → under the playhead and clip-selection. */}
+              {selectedBox && (
+                <div
+                  data-full-song="lane-selection"
+                  data-full-song-lane-selection={selectedLaneKey ?? undefined}
+                  style={{
+                    ...styles.laneSelectionBand,
+                    top: selectedBox.top,
+                    height: selectedBox.height,
+                    width: areaWidth,
+                  }}
+                />
+              )}
               {playheadVisible && (
                 <div data-full-song="playhead" style={{ ...styles.playhead, left: playheadX - scrollLeft }} />
               )}
@@ -1746,12 +1779,27 @@ const styles = {
     borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.08))',
     overflow: 'hidden',
   },
-  // #641 — caret-selected lane: a faint accent fill + a 2px left accent bar
-  // (inset box-shadow → no layout shift), reusing the clip-selection accent
-  // vocabulary so selection reads consistently across the timeline.
+  // #641/#642 — caret-selected lane GUTTER: an accent fill + a 3px left accent
+  // bar (inset box-shadow → no layout shift). Pairs with the full-width grid
+  // band (`laneSelectionBand`) so the gutter label and the marks read as one
+  // continuous selection. Tuned up from the original near-invisible 0.12/2px,
+  // which was perceptible only in the 88px gutter and missed entirely against
+  // the canvas where the user actually looks (#642).
   laneRowSelected: {
-    background: 'var(--accent-faint, rgba(110,168,254,0.12))',
-    boxShadow: 'inset 2px 0 0 var(--accent, #6ea8fe)',
+    background: 'var(--accent-faint, rgba(110,168,254,0.20))',
+    boxShadow: 'inset 3px 0 0 var(--accent, #6ea8fe)',
+  },
+  // #642 — full-width selected-lane band over the grid marks. A translucent
+  // accent fill + a top/bottom hairline + a left accent bar, bright enough to
+  // read over the dark canvas and its coloured density bars without burying
+  // them. pointerEvents:none so clicks fall through to the grid.
+  laneSelectionBand: {
+    position: 'absolute' as const,
+    left: 0,
+    background: 'var(--accent-faint, rgba(110,168,254,0.16))',
+    boxShadow:
+      'inset 3px 0 0 var(--accent, #6ea8fe), inset 0 1px 0 rgba(110,168,254,0.45), inset 0 -1px 0 rgba(110,168,254,0.45)',
+    pointerEvents: 'none' as const,
   },
   // The lane identity row (caret + dot + name). Sits on sub-row 0 when the lane
   // is expanded into voices; fills the box otherwise.
