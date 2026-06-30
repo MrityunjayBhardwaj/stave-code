@@ -29796,19 +29796,15 @@ function ChannelStrip({
         // the strip face and its drawer read as one connected unit — the drawer
         // rounds the right edge. Standalone / closed → fully rounded.
         borderRadius: expanded ? "6px 0 0 6px" : 6,
-        // #639 — the selected strip swaps its 1px border to the timeline-select
-        // accent (purple, `--accent`), the same token the Song-timeline clip
-        // selection uses, so the current strip reads as selected. All-LONGHAND
-        // border props (not the `border` shorthand): mixing the shorthand with
-        // `borderRight` while the colour updates on select trips React's
-        // "shorthand + non-shorthand" rerender warning.
-        borderWidth: 1,
-        borderStyle: "solid",
-        borderColor: selected ? "var(--accent, #6ea8fe)" : "var(--border, #3a3a42)",
+        // The strip face keeps its neutral border; the SELECTION highlight (#639)
+        // lives on the wrapping group div (MixerStrips), which encapsulates the
+        // face AND its drawer so the accent outline wraps the whole unit and
+        // grows with the drawer — not on the face/drawer individually.
+        border: "1px solid var(--border, #3a3a42)",
         // When expanded, the drawer abuts this right edge and owns the seam
         // hairline (its left border) — drop ours so the divider is a single
         // 1px line, not a doubled 2px one (#609).
-        borderRightStyle: expanded ? "none" : void 0,
+        borderRight: expanded ? "none" : void 0,
         background: "var(--background-elevated, #26262c)",
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         color: "var(--foreground, #e6e6ea)",
@@ -30314,8 +30310,7 @@ function ExpandDrawer({
   chunk,
   applyToStrip,
   beginGesture,
-  endGesture,
-  selected = false
+  endGesture
 }) {
   const applyEdit = React35__namespace.useCallback(
     (mutate) => applyToStrip(strip.id, mutate),
@@ -30326,7 +30321,6 @@ function ExpandDrawer({
     {
       "data-mixer-expand-drawer": true,
       "data-mixer-expand-for": strip.id,
-      "data-mixer-expand-selected": selected ? "" : void 0,
       style: {
         flexShrink: 0,
         // The body grows WIDER as knobs are added (the band scrolls
@@ -30344,27 +30338,12 @@ function ExpandDrawer({
         // expanded, so the drawer's LEFT border is the single hairline seam
         // between them and the top/right/bottom borders close the card — the
         // strip + drawer read as ONE connected, outlined unit that belongs
-        // together (the strip rounds its left corners, the drawer its right).
-        // SELECTION (#639): the outer edges (top/right/bottom) take the accent so
-        // the unit is outlined in purple. The internal seam (this LEFT border) is
-        // DROPPED entirely when selected — the strip's right border is already
-        // `none` when expanded, so removing the drawer's left too leaves the
-        // purple as ONE continuous outline around the whole strip+drawer shape,
-        // with no line dividing the middle (the "two boxes joined at a seam" look
-        // becomes one highlighted unit). Unselected, the neutral hairline seam
-        // stays. Longhand props (not the `border` shorthand) so the per-side
-        // colour/style can't trip React's shorthand/longhand rerender warning.
-        borderWidth: 1,
-        borderStyle: "solid",
-        borderColor: selected ? "var(--accent, #6ea8fe)" : "var(--border, #3a3a42)",
-        borderLeftColor: "var(--border, #3a3a42)",
-        borderLeftStyle: selected ? "none" : void 0,
-        // Drawer bg is translucent by default (#573). When SELECTED it matches
-        // the (opaque) strip face so the unit is ONE seamless surface inside the
-        // single purple border — without this, the opaque-face / translucent-
-        // drawer shade step leaves a faint divider down the middle even after the
-        // seam border is dropped.
-        background: selected ? "var(--background-elevated, #26262c)" : "#26262c69",
+        // together (the strip rounds its left corners, the drawer its right). The
+        // SELECTION highlight (#639) is NOT here — it lives on the wrapping group
+        // div (MixerStrips), which encapsulates both the face and this drawer, so
+        // the accent outline wraps the whole unit and grows with the drawer.
+        border: "1px solid var(--border, #3a3a42)",
+        background: "#26262c69",
         borderRadius: "0 6px 6px 0",
         overflow: "hidden"
       },
@@ -30824,7 +30803,21 @@ function MixerStrips({
               "div",
               {
                 "data-mixer-strip-group": true,
-                style: { display: "flex", alignItems: "stretch", flexShrink: 0 },
+                "data-mixer-strip-group-selected": strip.id === selectedId ? "" : void 0,
+                style: {
+                  display: "flex",
+                  alignItems: "stretch",
+                  flexShrink: 0,
+                  // #639 — the SELECTION highlight is a single accent ring on THIS
+                  // wrapper, which encapsulates the strip face AND (when open) its
+                  // drawer. The box-shadow follows the group's border-radius and sits
+                  // at its outer edge, so one continuous purple outline wraps the whole
+                  // unit and AUTOMATICALLY grows to include the drawer when expanded —
+                  // the face/drawer keep their own neutral #609 borders; only this div
+                  // highlights. box-shadow (not border) → no layout shift on select.
+                  borderRadius: 6,
+                  boxShadow: strip.id === selectedId ? "0 0 0 1.5px var(--accent, #6ea8fe)" : void 0
+                },
                 children: [
                   /* @__PURE__ */ jsxRuntime.jsx(
                     ChannelStrip,
@@ -30880,8 +30873,7 @@ function MixerStrips({
                       chunk: chunks[i],
                       applyToStrip,
                       beginGesture,
-                      endGesture,
-                      selected: strip.id === selectedId
+                      endGesture
                     }
                   )
                 ]
