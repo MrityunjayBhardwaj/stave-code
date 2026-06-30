@@ -30265,7 +30265,8 @@ function ExpandDrawer({
   chunk,
   applyToStrip,
   beginGesture,
-  endGesture
+  endGesture,
+  selected = false
 }) {
   const applyEdit = React35__namespace.useCallback(
     (mutate) => applyToStrip(strip.id, mutate),
@@ -30276,6 +30277,7 @@ function ExpandDrawer({
     {
       "data-mixer-expand-drawer": true,
       "data-mixer-expand-for": strip.id,
+      "data-mixer-expand-selected": selected ? "" : void 0,
       style: {
         flexShrink: 0,
         // The body uses column flow: it sizes to a constant height (the header
@@ -30293,7 +30295,9 @@ function ExpandDrawer({
         // between them and the top/right/bottom borders close the card — the
         // strip + drawer read as ONE connected, outlined unit that belongs
         // together (the strip rounds its left corners, the drawer its right).
-        border: "1px solid var(--border, #3a3a42)",
+        // When the parent strip is selected, the drawer adopts the accent border
+        // too (#639) so the whole unit is outlined in purple, not just the face.
+        border: `1px solid ${selected ? "var(--accent, #6ea8fe)" : "var(--border, #3a3a42)"}`,
         background: "#26262c69",
         borderRadius: "0 6px 6px 0",
         overflow: "hidden"
@@ -30811,7 +30815,8 @@ function MixerStrips({
                       chunk: chunks[i],
                       applyToStrip,
                       beginGesture,
-                      endGesture
+                      endGesture,
+                      selected: strip.id === selectedId
                     }
                   )
                 ]
