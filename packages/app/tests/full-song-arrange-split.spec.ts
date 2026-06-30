@@ -84,3 +84,40 @@ test('selecting a 2-cycle clip and pressing S slices it into two 1-cycle halves'
   await page.screenshot({ path: 'test-results/arrange-split.png' })
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })
+
+test('#657 — splitting a BARE clip keeps its .viz() terminal, not copied into the arms', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  await bootShell(page)
+  // A bare clip (no combinator) spanning 4 cycles (`<…>` slowcat), with a terminal
+  // `.viz(...)`. Splitting MATERIALIZES it into an arrange — the .viz must stay on
+  // the whole statement, NOT get copied into each arm (#657).
+  await typeSongAndEval(page, 'note("<c2 g2 f2 eb2>").s("square").viz("pitchwheel")')
+
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
+  await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
+  await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
+  await page.waitForTimeout(400)
+
+  // Select the whole bare clip (click mid-row), then press S to split at midpoint.
+  const grid = page.locator('[data-full-song="grid"]')
+  const box = await grid.boundingBox()
+  if (!box) throw new Error('no grid box')
+  await page.mouse.click(box.x + box.width * 0.5, box.y + 8)
+  await expect(page.locator('[data-full-song="clip-selection"]')).toBeVisible({ timeout: 5_000 })
+  await grid.press('s')
+
+  // The bare loop becomes two arms WITHOUT .viz; .viz("pitchwheel") stays terminal.
+  await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toContain(
+    'arrange([2, note("<c2 g2 f2 eb2>").s("square")], [2, note("<c2 g2 f2 eb2>").s("square")]).viz("pitchwheel")',
+  )
+  // And it did NOT copy .viz into an arm.
+  const src = await strudelSource(page)
+  expect(src).not.toContain('square").viz("pitchwheel")], [')
+
+  expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
+})

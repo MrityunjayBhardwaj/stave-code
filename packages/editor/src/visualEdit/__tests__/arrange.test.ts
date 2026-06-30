@@ -113,6 +113,28 @@ describe('arrange parser — detectBarePattern (§2.1 wrap target)', () => {
     expect(slice(doc, bare!.patternRange)).toBe('note("c3 e3")')
   })
 
+  // #657 — a trailing `.viz(...)` is a DISPLAY annotation on the whole statement,
+  // not part of the sound pattern, so it must be EXCLUDED from the wrap target.
+  it('excludes a trailing `.viz(...)` from the pattern range (#657)', () => {
+    const doc = '$: s("bd*4").viz("pianoroll")'
+    const bare = detectBarePattern(doc, doc.indexOf('bd'))
+    expect(slice(doc, bare!.patternRange)).toBe('s("bd*4")')
+  })
+
+  it('excludes only the trailing `.viz(...)`, keeping sound methods like `.gain()` (#657)', () => {
+    const doc = '$: s("bd*4").gain(0.5).viz("pianoroll")'
+    const bare = detectBarePattern(doc, doc.indexOf('bd'))
+    expect(slice(doc, bare!.patternRange)).toBe('s("bd*4").gain(0.5)')
+  })
+
+  it('split MATERIALIZE keeps `.viz()` terminal on the statement, not in the arms (#657)', () => {
+    const doc = '$: s("bd*4").viz("pianoroll")'
+    const bare = detectBarePattern(doc, doc.indexOf('bd'))!
+    expect(applyEdits(doc, materializeBareSplit(doc, bare.patternRange, 1, 2))).toBe(
+      '$: arrange([1, s("bd*4")], [1, s("bd*4")]).viz("pianoroll")',
+    )
+  })
+
   it('returns null inside a combinator track (detectArrangeAt owns it)', () => {
     const doc = 'arrange([2, s("bd")], [1, s("hh")])'
     expect(detectBarePattern(doc, doc.indexOf('bd'))).toBeNull()
