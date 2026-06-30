@@ -120,6 +120,13 @@ export interface FullSongTimelineProps {
     newLabel: string,
     oldDisplayName: string,
   ) => void
+  /** Select a lane → jump the editor to that track's code (#610, twin of the
+   *  Mixer's strip cursor-follow #595/#596). Receives the lane's STATEMENT offset
+   *  (`labelOffset` = the `$:`/`name:` head, the same anchor the Mixer reveals to);
+   *  the parent maps it to a line and reveals it. Unlike `onBindLane` this does NOT
+   *  toggle expansion or rebind the Pattern panel — it is a pure "go to this track".
+   *  Optional — the header is not a jump target when unset. */
+  readonly onSelectLane?: (statementOffset: number) => void
   /** Per-track custom colour overrides (Phase D, #581), keyed by lane DISPLAY
    *  NAME. Resolved through the shared `trackIdentity` into `lane.color`, so it
    *  drives the lane dot AND the canvas density bars. Absent → deterministic
@@ -581,6 +588,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   )
   // Which lane's header is being inline-renamed (#580, Phase C), by laneKey.
   const { onRenameLane } = props
+  // #610 — select a lane → reveal its code in the editor (no expand/bind).
+  const { onSelectLane } = props
   const [renamingLane, setRenamingLane] = useState<string | null>(null)
   // Which lane's colour swatch is open (Phase D, #581), by laneKey + the anchor
   // rect of its dot. Picking writes to the per-file TrackMeta store via the
@@ -1286,6 +1295,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               // display isn't real code) — a name comes from an explicit edit.
               const renameAnchor = lane?.labelOffset ?? null
               const renameEnabled = onRenameLane !== undefined && renameAnchor != null
+              // #610 — clicking anywhere on the header reveals the track's code.
+              // Prefer the STATEMENT head (`labelOffset`, the Mixer's anchor); fall
+              // back to the innermost atom (`sourceOffset`) for a lane with no
+              // statement label, so the jump still lands inside the track.
+              const selectOffset = lane?.labelOffset ?? lane?.sourceOffset ?? null
+              const selectEnabled = onSelectLane !== undefined && selectOffset != null
               const renameSeed = displayName === box.laneKey ? '' : displayName
               const isRenaming = renamingLane === box.laneKey
               // Colour picker (Phase D, #581): the dot opens a swatch popover when
@@ -1302,13 +1317,29 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   style={{ ...styles.laneRow, height: box.height }}
                   title={displayName}
                 >
-                  <div style={{ ...styles.laneHeader, height: headerHeight }}>
+                  <div
+                    data-full-song-lane-select={selectEnabled ? box.laneKey : undefined}
+                    style={{
+                      ...styles.laneHeader,
+                      height: headerHeight,
+                      cursor: selectEnabled ? 'pointer' : undefined,
+                    }}
+                    title={selectEnabled ? `${displayName} — click to jump to its code` : undefined}
+                    onClick={
+                      selectEnabled ? () => onSelectLane!(selectOffset!) : undefined
+                    }
+                  >
                     <button
                       type="button"
                       data-full-song-lane-expand={box.laneKey}
                       aria-pressed={box.expanded}
                       aria-label={box.expanded ? `Collapse ${displayName}` : `Expand ${displayName} to view its notes`}
-                      onClick={() => activateLane(box.laneKey)}
+                      onClick={(e) => {
+                        // Caret keeps its own meaning (expand + bind); don't also
+                        // fire the header's jump (#610).
+                        e.stopPropagation()
+                        activateLane(box.laneKey)
+                      }}
                       style={styles.laneCaret}
                     >
                       {box.expanded ? '▾' : '▸'}
@@ -1320,13 +1351,15 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                         data-full-song-lane-swatch={box.laneKey}
                         aria-label={`Change colour of ${displayName}`}
                         title={`${displayName} — click to change colour`}
-                        onClick={(e) =>
+                        onClick={(e) => {
+                          // Dot opens the colour picker only — not the #610 jump.
+                          e.stopPropagation()
                           setColorPickerLane({
                             laneKey: box.laneKey,
                             name: displayName,
                             rect: e.currentTarget.getBoundingClientRect(),
                           })
-                        }
+                        }}
                         style={{
                           ...styles.laneDot,
                           background: dotColor,
@@ -1352,6 +1385,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                         placeholder="name this track"
                         spellCheck={false}
                         onFocus={(e) => e.currentTarget.select()}
+                        // A click inside the rename input must NOT bubble to the
+                        // header's #610 jump — that would reveal+focus the editor,
+                        // blurring the input and committing the half-typed name.
+                        onClick={(e) => e.stopPropagation()}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             const v = e.currentTarget.value.trim()

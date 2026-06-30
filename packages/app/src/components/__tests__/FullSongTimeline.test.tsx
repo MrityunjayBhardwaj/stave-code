@@ -212,6 +212,47 @@ describe('FullSongTimeline', () => {
     expect(row().getAttribute('data-expanded')).toBe('false') // collapses again
   })
 
+  it('jumps to the track code when the lane header is clicked, without expanding (#610)', async () => {
+    const onSelectLane = vi.fn()
+    // A `bare` ir gives the lane source provenance (loc[0].start = 0) so the
+    // header becomes a jump target; no `dollarPos` here, so the offset resolves
+    // through the sourceOffset fallback (the labelOffset path is covered e2e).
+    const { container } = renderFull({ ir: { bare: true } as never, onSelectLane })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const header = container.querySelector('[data-full-song-lane-select="bd"]') as HTMLElement
+    expect(header).not.toBeNull()
+    await act(async () => {
+      header.click()
+    })
+    expect(onSelectLane).toHaveBeenCalledTimes(1)
+    expect(onSelectLane).toHaveBeenLastCalledWith(0)
+    // It is a pure "go to code" — the lane must NOT have expanded.
+    expect(
+      (container.querySelector('[data-full-song-lane="bd"]') as HTMLElement).getAttribute('data-expanded'),
+    ).toBe('false')
+  })
+
+  it('does not jump when the disclosure caret is clicked (caret stops propagation) (#610)', async () => {
+    const onSelectLane = vi.fn()
+    const onBindLane = vi.fn()
+    const { container } = renderFull({ ir: { bare: true } as never, onSelectLane, onBindLane })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const caret = container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement
+    await act(async () => {
+      caret.click()
+    })
+    // Caret expands + binds, but the header's jump must NOT also fire.
+    expect(onBindLane).toHaveBeenCalledTimes(1)
+    expect(onSelectLane).not.toHaveBeenCalled()
+    expect(
+      (container.querySelector('[data-full-song-lane="bd"]') as HTMLElement).getAttribute('data-expanded'),
+    ).toBe('true')
+  })
+
   it('supports multi-expand (two lanes expanded for cross-track alignment)', async () => {
     const { container } = renderFull()
     await act(async () => {
