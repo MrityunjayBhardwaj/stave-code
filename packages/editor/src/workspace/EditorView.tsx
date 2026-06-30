@@ -39,6 +39,7 @@ import { ensureWorkspaceLanguages, toMonacoLanguage } from './languages'
 import { workspaceAudioBus } from './WorkspaceAudioBus'
 import { useHighlighting } from '../monaco/useHighlighting'
 import { useBreakpoints } from '../monaco/useBreakpoints'
+import { useTrackColourBars } from '../monaco/useTrackColourBars'
 import { registerEditor, unregisterEditor, applyPersistedEditorOptions, registerMonacoNamespace, setActiveEditor } from './editorRegistry'
 import {
   setEvalError,
@@ -281,6 +282,12 @@ export function EditorView({
   // changes; gutter-click toggles via snap.irNodeIdsByLine; "Debugger:
   // Resume" command registered when onResume is non-null.
   useBreakpoints(editorRef.current, breakpointStore, onResume ?? undefined)
+
+  // #608 — per-track colour stripe in the glyph margin (before line numbers).
+  // Reads the SAME identity source as the Mixer/Timeline/Pattern (buildStripModels
+  // + the per-file override store) so the bar colour can't drift from the other
+  // views. Scoped to THIS view's fileId — split-safe.
+  useTrackColourBars(editorRef.current, fileId)
 
   // Unregister from the cross-file editor registry on unmount so
   // revealLineInFile doesn't reference a dead editor instance.
