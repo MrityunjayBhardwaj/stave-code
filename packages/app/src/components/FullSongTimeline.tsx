@@ -722,6 +722,24 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     sourceOffset: number | null
   } | null>(null)
 
+  // #649 — the clip-selection (`selected`) and the caret lane-selection
+  // (`selectedLaneKey`) are independent highlights. A selected clip persists when
+  // the caret moves to ANOTHER lane via the editor, leaving TWO rows lit (the
+  // lane band + the clip rect, which for a full-cycle clip spans the whole row).
+  // When the selected lane genuinely CHANGES to a lane other than the clip's, the
+  // clip-selection is stale → clear it, so only one row ever reads as selected.
+  // Keyed on `selectedLaneKey` ONLY (the clip is read via a ref), so it fires on
+  // a real lane change — a fresh clip click, which moves the caret TO the clip's
+  // own lane, is never falsely cleared by the async caret round-trip.
+  const selectedClipRef = useRef(selected)
+  selectedClipRef.current = selected
+  useEffect(() => {
+    const clip = selectedClipRef.current
+    if (clip && selectedLaneKey != null && clip.laneKey !== selectedLaneKey) {
+      setSelected(null)
+    }
+  }, [selectedLaneKey])
+
   // ── Move a clip: drag its body horizontally (Phase 5c, #386) ──────────────
   // A body press starts a PENDING gesture: if the pointer travels past the
   // threshold it becomes a MOVE drag (reorder a real arm, or wrap a bare track,
