@@ -741,6 +741,21 @@ export default function StrudelEditorClient({
     const fid = watchedFileId;
     if (!fid) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // #611 — publish a SOURCE snapshot the moment a Strudel file becomes active,
+    // so the Song timeline renders from the source even before the first eval.
+    // The subscription below only fires on a CHANGE; eval (onEvaluateSuccess) and
+    // song-view entry (#394) are the only other triggers — so a freshly-opened,
+    // never-evaluated file showed "press play" (the on-mount #394 request races
+    // the active-file/file-store hydration and no-ops). Capture is pure on the
+    // source string, so it's safe off the eval lifecycle; the same eval-owns-it
+    // guard skips it while live-coding (the runtime's re-eval owns the snapshot).
+    const st0 = runtimeStatesRef.current.get(fid);
+    if (!(st0?.isPlaying && st0.autoRefresh)) {
+      captureAndPublishSnapshot(
+        fid,
+        runtimesRef.current.get(fid)?.getCurrentCycle?.() ?? null,
+      );
+    }
     const unsub = subscribeToWorkspaceFile(fid, () => {
       const st = runtimeStatesRef.current.get(fid);
       if (st?.isPlaying && st.autoRefresh) return; // eval-path owns it
