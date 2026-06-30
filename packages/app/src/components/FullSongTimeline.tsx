@@ -286,8 +286,6 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const c = loadTimelineCamera()
     return c && typeof c.bareSpan === 'number' && Number.isFinite(c.bareSpan) ? c.bareSpan : null
   })
-  const bareSpanOverrideRef = useRef<number | null>(bareSpanOverride)
-  bareSpanOverrideRef.current = bareSpanOverride
   // The TRUE content length — the rest span; also the playhead loop-wrap, the
   // note-mark collection window, and the bare-track implicit clip's end. The bare
   // floor (#489) and the user's resize override (#662) are folded in HERE so the
