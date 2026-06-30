@@ -146,3 +146,38 @@ test('#610 — clicking a lane header jumps the editor to its code (no expand); 
 
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })
+
+test('#610 — clicking a track ROW in the grid also jumps to its code, and the grid keeps focus', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  await preOpenDrawer(page)
+  await bootShell(page)
+  await evalStrudel(page)
+  await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
+
+  const sentinel = await parkCursorAtEnd(page)
+  // Click the note-area (grid), top band = first lane — NOT the header.
+  const grid = page.locator('[data-full-song="grid"]')
+  const box = await grid.boundingBox()
+  if (!box) throw new Error('no grid box')
+  await page.mouse.click(box.x + box.width * 0.5, box.y + 10)
+  await page.waitForTimeout(150)
+
+  // The whole lane row jumps to code: the cursor moved off the sentinel.
+  const afterJump = await cursorLine(page)
+  expect(afterJump).toBeGreaterThan(0)
+  if (sentinel > 1) expect(afterJump).not.toBe(sentinel)
+
+  // …but the GRID keeps keyboard focus (so the clip-op shortcuts still work,
+  // #488) — the reveal positions the editor cursor without stealing focus.
+  const activeInGrid = await page.evaluate(
+    () => !!document.activeElement?.closest('[data-full-song="grid"]'),
+  )
+  expect(activeInGrid).toBe(true)
+
+  expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
+})

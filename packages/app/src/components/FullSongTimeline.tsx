@@ -639,6 +639,29 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     [activateLane],
   )
 
+  // #610 — a single click anywhere on a lane's grid ROW jumps the editor to that
+  // track's code (the same "select the track" gesture as the header). Hit-test
+  // the lane by Y, then reveal its STATEMENT head (`labelOffset`, the Mixer's
+  // anchor), falling back to the innermost atom. Seek lives on the ruler only.
+  const jumpToLaneAtClientY = React.useCallback(
+    (clientY: number) => {
+      if (!onSelectLane) return
+      const el = areaRef.current
+      if (!el) return
+      const laneKey = laneAtY(layoutRef.current, clientY - el.getBoundingClientRect().top)
+      if (laneKey == null) return
+      const lane = sceneRef.current.lanes.find((l) => l.laneKey === laneKey)
+      const offset = lane?.labelOffset ?? lane?.sourceOffset ?? null
+      if (offset == null) return
+      onSelectLane(offset)
+      // revealOffsetInFile focuses the editor; take focus BACK to the grid so the
+      // clip-op shortcuts (S split / ⌘D / Delete, #488) still fire after a click-
+      // select. The reveal's scroll + cursor position persist — only focus moves.
+      el.focus({ preventScroll: true })
+    },
+    [onSelectLane],
+  )
+
   // ── Trim a clip: drag its right edge → set the arm's cycle weight (#437) ───
   // The first arrangement EDIT gesture. A clip is one arm of an arrange/cat
   // combinator, so trimming changes the arm's whole-cycle span (the weight `n`).
@@ -877,7 +900,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           return
         }
         setSelected(null)
-        handleSeekAtClientX(e.clientX)
+        // #610 — a press on a lane row jumps to its code (seek moved to the
+        // ruler). A press in truly empty space (no lane at this Y) is a no-op.
+        jumpToLaneAtClientY(e.clientY)
         return
       }
       // Begin a trim drag: capture the pointer so the whole gesture is ours and
@@ -903,7 +928,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const cw = dragAwareContentWidth(areaRef.current!.getBoundingClientRect().width)
       setTrimEdgeX(songCycleToX(hit.clip.endCycle, displayCycles, cw))
     },
-    [clipEdgeAt, clipBodyAt, handleSeekAtClientX, displayCycles, dragAwareContentWidth, onDeleteClip, onMoveClip],
+    [clipEdgeAt, clipBodyAt, jumpToLaneAtClientY, displayCycles, dragAwareContentWidth, onDeleteClip, onMoveClip],
   )
 
   const handleGridPointerMove = React.useCallback(
@@ -1022,10 +1047,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       }
       if (!mv.dragging) {
         // A click selects the clip — real arm OR a bare track's implicit clip
-        // (armIndex < 0), which is then splittable/deletable (#489). Seek-anywhere
-        // is preserved.
+        // (armIndex < 0), which is then splittable/deletable (#489) — AND jumps
+        // the editor to that track's code (#610; seek now lives on the ruler).
         setSelected({ laneKey: mv.laneKey, armIndex: mv.armIndex, sourceOffset: mv.sourceOffset })
-        handleSeekAtClientX(e.clientX)
+        jumpToLaneAtClientY(e.clientY)
         return
       }
       if (!commit) return
@@ -1037,7 +1062,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         setSelected(null)
       }
     },
-    [handleSeekAtClientX, onMoveClip],
+    [jumpToLaneAtClientY, onMoveClip],
   )
 
   // Unified pointer end: a live trim drag wins; otherwise resolve the body
