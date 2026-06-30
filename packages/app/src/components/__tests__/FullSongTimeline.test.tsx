@@ -174,19 +174,28 @@ describe('FullSongTimeline', () => {
     expect(container.textContent).toContain('No song to map yet')
   })
 
-  it('calls onSeek when the grid is clicked (DV-10 relaxation)', async () => {
+  it('seeks from the RULER, not the grid (#610 — the grid row now jumps to code)', async () => {
     const { container, onSeek } = renderFull()
     await act(async () => {
       await Promise.resolve()
     })
+    // A grid press no longer seeks — it selects/jumps to the track under it
+    // (#610). With no onSelectLane wired here it is a no-op, but crucially it
+    // does NOT call onSeek.
     const grid = container.querySelector('[data-full-song="grid"]') as HTMLElement
     await act(async () => {
       grid.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 50 }))
     })
+    expect(onSeek).not.toHaveBeenCalled()
+    // The ruler time-axis is now the seek surface (seek moved off the grid).
+    const ruler = container.querySelector('[data-full-song="ruler-area"]') as HTMLElement
+    await act(async () => {
+      ruler.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 50 }))
+    })
     expect(onSeek).toHaveBeenCalledTimes(1)
-    // jsdom getBoundingClientRect is zero-width → seek resolves to cycle 0,
-    // but the call itself proves the wiring (x→cycle math is unit-tested
-    // separately in songAxis.test.ts).
+    // jsdom getBoundingClientRect is zero-width → seek resolves to cycle 0, but
+    // the call itself proves the wiring (x→cycle math is unit-tested in
+    // songAxis.test.ts).
     expect(typeof onSeek.mock.calls[0][0]).toBe('number')
   })
 
@@ -210,6 +219,47 @@ describe('FullSongTimeline', () => {
       ;(container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement).click()
     })
     expect(row().getAttribute('data-expanded')).toBe('false') // collapses again
+  })
+
+  it('jumps to the track code when the lane header is clicked, without expanding (#610)', async () => {
+    const onSelectLane = vi.fn()
+    // A `bare` ir gives the lane source provenance (loc[0].start = 0) so the
+    // header becomes a jump target; no `dollarPos` here, so the offset resolves
+    // through the sourceOffset fallback (the labelOffset path is covered e2e).
+    const { container } = renderFull({ ir: { bare: true } as never, onSelectLane })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const header = container.querySelector('[data-full-song-lane-select="bd"]') as HTMLElement
+    expect(header).not.toBeNull()
+    await act(async () => {
+      header.click()
+    })
+    expect(onSelectLane).toHaveBeenCalledTimes(1)
+    expect(onSelectLane).toHaveBeenLastCalledWith(0)
+    // It is a pure "go to code" — the lane must NOT have expanded.
+    expect(
+      (container.querySelector('[data-full-song-lane="bd"]') as HTMLElement).getAttribute('data-expanded'),
+    ).toBe('false')
+  })
+
+  it('does not jump when the disclosure caret is clicked (caret stops propagation) (#610)', async () => {
+    const onSelectLane = vi.fn()
+    const onBindLane = vi.fn()
+    const { container } = renderFull({ ir: { bare: true } as never, onSelectLane, onBindLane })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const caret = container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement
+    await act(async () => {
+      caret.click()
+    })
+    // Caret expands + binds, but the header's jump must NOT also fire.
+    expect(onBindLane).toHaveBeenCalledTimes(1)
+    expect(onSelectLane).not.toHaveBeenCalled()
+    expect(
+      (container.querySelector('[data-full-song-lane="bd"]') as HTMLElement).getAttribute('data-expanded'),
+    ).toBe('true')
   })
 
   it('supports multi-expand (two lanes expanded for cross-track alignment)', async () => {
@@ -379,17 +429,19 @@ describe('FullSongTimeline — trim a clip (drag right edge → set-weight, #437
     expect(container.querySelectorAll('[data-full-song-tick="major"]').length).toBe(4)
   })
 
-  it('a click that lands NOT on a clip edge seeks instead of trimming', async () => {
+  it('a click that lands NOT on a clip edge does not trim (and no longer seeks — #610)', async () => {
     const onTrimClip = vi.fn()
     const { grid, onSeek } = renderTrimmable(onTrimClip)
     await act(async () => {
       await Promise.resolve()
     })
-    // Mid-clip (x=100 ≈ cycle 0.5), nowhere near an edge → seek, no trim.
+    // Mid-clip (x=100 ≈ cycle 0.5), nowhere near an edge → no trim. The grid no
+    // longer seeks either (#610 moved seek to the ruler); with no onSelectLane
+    // wired here the click is a no-op.
     fireEvent.pointerDown(grid, { clientX: 100, clientY: 10, pointerId: 1 })
     fireEvent.pointerUp(grid, { clientX: 100, clientY: 10, pointerId: 1 })
     expect(onTrimClip).not.toHaveBeenCalled()
-    expect(onSeek).toHaveBeenCalledTimes(1)
+    expect(onSeek).not.toHaveBeenCalled()
   })
 
   it('a drag that does not change the weight does not fire onTrimClip', async () => {
@@ -469,13 +521,15 @@ describe('FullSongTimeline — delete a clip (select body + Delete → remove-ar
     expect(onDeleteClip).not.toHaveBeenCalled()
   })
 
-  it('clicking a clip still seeks (seek-anywhere preserved alongside select)', async () => {
+  it('clicking a clip selects it but no longer seeks (#610 — seek moved to the ruler)', async () => {
     const onDeleteClip = vi.fn()
-    const { grid, onSeek } = renderDeletable(onDeleteClip)
+    const { grid, container, onSeek } = renderDeletable(onDeleteClip)
     await settle()
     fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
     fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
-    expect(onSeek).toHaveBeenCalledTimes(1)
+    // Selection (for clip ops) is preserved; the grid click no longer seeks.
+    expect(container.querySelector('[data-full-song="clip-selection"]')).not.toBeNull()
+    expect(onSeek).not.toHaveBeenCalled()
   })
 })
 

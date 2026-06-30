@@ -365,6 +365,20 @@ export function MusicalTimeline(
     [snapshot],
   )
 
+  // #610 — select a track on the timeline → jump the editor to its code. The
+  // twin of the Mixer's strip cursor-follow (#595/#596): the timeline hands up
+  // the lane's STATEMENT offset (the `$:`/`name:` head, == the Mixer's
+  // `statementRange[0]`) and the SAME `revealOffsetInFile` seam reveals it.
+  // Unlike handleBindLane this does not expand the lane or rebind the Pattern
+  // panel — it is a pure "go to this track in the editor".
+  const handleSelectLane = React.useCallback(
+    (statementOffset: number) => {
+      if (!snapshot?.source) return
+      revealOffsetInFile(snapshot.source, statementOffset)
+    },
+    [snapshot],
+  )
+
   // Trim a clip on the Song canvas (Phase 5b, #437): the timeline hands up the
   // dragged clip's source anchor (a lane offset inside the combinator call), its
   // arm index, and the new whole-cycle weight. We parse the arrangement at that
@@ -596,6 +610,7 @@ export function MusicalTimeline(
           onDuplicateClip={handleDuplicateClip}
           onSplitClip={handleSplitClip}
           onBindLane={handleBindLane}
+          onSelectLane={handleSelectLane}
           onRenameLane={handleRenameLane}
           customColorByName={customColorByName}
           onSetTrackColor={handleSetTrackColor}
