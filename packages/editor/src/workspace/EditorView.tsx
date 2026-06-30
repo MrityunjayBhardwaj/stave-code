@@ -390,6 +390,16 @@ export function EditorView({
     setContent(value)
   }
 
+  // #613 — open Monaco's native find+replace widget from a visible affordance
+  // (the project rule: every file type gets a visible action, not just a hidden
+  // Cmd+F). `startFindReplaceAction` reveals the widget with the replace row
+  // expanded; it's a built-in editor action present for every language.
+  const openFindReplace = (): void => {
+    const ed = editorRef.current
+    ed?.focus?.()
+    ed?.getAction?.('editor.action.startFindReplaceAction')?.run?.()
+  }
+
   return (
     <div
       ref={containerRef}
@@ -414,6 +424,35 @@ export function EditorView({
       ) : null}
 
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        {/* #613 — visible Find/Replace affordance. Sits top-right where Monaco's
+            find widget appears; the widget (higher z-index) covers it when open. */}
+        <button
+          data-editor-find
+          title="Find / Replace (Ctrl/Cmd+F)"
+          aria-label="Find and replace"
+          onClick={openFindReplace}
+          style={{
+            position: 'absolute',
+            top: 6,
+            right: 16,
+            zIndex: 4,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 24,
+            height: 22,
+            padding: 0,
+            borderRadius: 4,
+            border: '1px solid var(--border)',
+            background: 'color-mix(in srgb, var(--surface) 80%, transparent)',
+            color: 'var(--foreground-muted)',
+            cursor: 'pointer',
+            fontSize: 13,
+            lineHeight: 1,
+          }}
+        >
+          {'⌕'}
+        </button>
         {viewing && (
           <div
             data-editor-timetravel-banner
