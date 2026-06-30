@@ -428,7 +428,14 @@ export function MusicalTimeline(
   const handleSelectLane = React.useCallback(
     (statementOffset: number) => {
       if (!snapshot?.source) return
-      revealOffsetInFile(snapshot.source, statementOffset)
+      // Move the caret (the selection bus) so the editor + Mixer follow, AND
+      // mirror the selection here eagerly so the lane highlights the instant the
+      // header is clicked — never waiting on (or risking a missed)
+      // cursor-change event. Gated on the reveal succeeding so the timeline can't
+      // diverge from a caret that didn't actually move (e.g. editor unmounted);
+      // on success the caret lands at the SAME offset, so all three views agree.
+      const moved = revealOffsetInFile(snapshot.source, statementOffset)
+      if (moved) setSelectedStatementOffset(statementOffset)
     },
     [snapshot],
   )

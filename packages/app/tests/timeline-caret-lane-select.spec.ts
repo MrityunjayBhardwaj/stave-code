@@ -102,9 +102,14 @@ test('clicking a timeline lane moves the caret, which selects that lane (bidirec
   await caretToLine(page, 1)
   expect(await selectedLaneKey(page)).toBe('d1')
 
-  // Click the d3 lane header → #610 reveals its code (moves the caret) → the
-  // caret-driven selection lands on d3.
-  await page.locator('[data-full-song-lane-select="d3"]').click()
-  await page.waitForTimeout(200)
-  expect(await selectedLaneKey(page)).toBe('d3')
+  // Selecting a DIFFERENT track's header must MOVE the selection (not leave the
+  // original stuck): each header click reveals its code (moves the caret) and the
+  // header click also sets the selection directly. Exactly one lane stays
+  // selected, and it's the clicked one.
+  for (const key of ['d2', 'd3', 'd1', 'd2']) {
+    await page.locator(`[data-full-song-lane-select="${key}"]`).click()
+    await page.waitForTimeout(150)
+    expect(await page.locator('[data-full-song-lane-selected]').count()).toBe(1)
+    expect(await selectedLaneKey(page)).toBe(key)
+  }
 })
