@@ -2643,6 +2643,12 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
     const innerOffset = baseOffset + leadingWs + btIdx + 1;
     return backtickInnerToIR(noteBtMatch[1], false, innerOffset);
   }
+  const noteSqMatch = trimmed.match(/^(?:note|n)\s*\(\s*'([^']*)'\s*\)/);
+  if (noteSqMatch) {
+    const quoteIdx = noteSqMatch[0].indexOf("'");
+    const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
+    return parseMini(noteSqMatch[1], false, innerOffset);
+  }
   const sMatch = trimmed.match(/^(?:s|sound)\s*\(\s*"([^"]*)"\s*\)/);
   if (sMatch) {
     const quoteIdx = sMatch[0].indexOf('"');
@@ -2655,6 +2661,12 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
     const innerOffset = baseOffset + leadingWs + btIdx + 1;
     return backtickInnerToIR(sBtMatch[1], true, innerOffset);
   }
+  const sSqMatch = trimmed.match(/^(?:s|sound)\s*\(\s*'([^']*)'\s*\)/);
+  if (sSqMatch) {
+    const quoteIdx = sSqMatch[0].indexOf("'");
+    const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
+    return parseMini(sSqMatch[1], true, innerOffset);
+  }
   const miniMatch = trimmed.match(/^mini\s*\(\s*"([^"]*)"\s*\)/);
   if (miniMatch) {
     const quoteIdx = miniMatch[0].indexOf('"');
@@ -2666,6 +2678,12 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
     const btIdx = miniBtMatch[0].indexOf("`");
     const innerOffset = baseOffset + leadingWs + btIdx + 1;
     return backtickInnerToIR(miniBtMatch[1], false, innerOffset);
+  }
+  const miniSqMatch = trimmed.match(/^mini\s*\(\s*'([^']*)'\s*\)/);
+  if (miniSqMatch) {
+    const quoteIdx = miniSqMatch[0].indexOf("'");
+    const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
+    return parseMini(miniSqMatch[1], false, innerOffset);
   }
   const looseMatch = trimmed.match(/^(note|n|s|sound|mini)\s*\(/);
   if (looseMatch) {
@@ -2725,12 +2743,17 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
     const innerOffset = baseOffset + leadingWs + 1;
     return parseMini(bareStringMatch[1], isSampleKey ?? false, innerOffset);
   }
+  const bareStringSqMatch = trimmed.match(/^'([^']*)'$/);
+  if (bareStringSqMatch) {
+    const innerOffset = baseOffset + leadingWs + 1;
+    return parseMini(bareStringSqMatch[1], isSampleKey ?? false, innerOffset);
+  }
   const bareBtMatch = trimmed.match(/^`([^`]*)`$/);
   if (bareBtMatch) {
     const innerOffset = baseOffset + leadingWs + 1;
     return backtickInnerToIR(bareBtMatch[1], isSampleKey ?? false, innerOffset);
   }
-  const parenStrMatch = trimmed.match(/^\(\s*("[^"]*"|`[^`]*`)\s*\)$/);
+  const parenStrMatch = trimmed.match(/^\(\s*("[^"]*"|'[^']*'|`[^`]*`)\s*\)$/);
   if (parenStrMatch) {
     const litRaw = parenStrMatch[1];
     const isBacktick = litRaw[0] === "`";
@@ -3076,12 +3099,13 @@ function parseParamArg(args, isSampleKey, argsOffsetAbs) {
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
     return { value: parseFloat(trimmed) };
   }
-  const strMatch = trimmed.match(/^"([a-zA-Z0-9#_:-]*?)"$/);
+  const strMatch = trimmed.match(/^"([a-zA-Z0-9#_:-]*?)"$/) ?? trimmed.match(/^'([a-zA-Z0-9#_:-]*?)'$/);
   if (strMatch) return { value: strMatch[1] };
-  const miniMatch = trimmed.match(/^"([^"]*)"$/);
+  const miniMatch = trimmed.match(/^"([^"]*)"$/) ?? trimmed.match(/^'([^']*)'$/);
   if (miniMatch) {
     const innerStr = miniMatch[1];
-    const quoteIdx = args.indexOf('"');
+    const quoteChar = trimmed[0];
+    const quoteIdx = args.indexOf(quoteChar);
     const innerOffsetAbs = quoteIdx >= 0 ? argsOffsetAbs + quoteIdx + 1 : argsOffsetAbs;
     return { value: parseMini(innerStr, isSampleKey, innerOffsetAbs) };
   }
@@ -3175,6 +3199,16 @@ function splitRootAndChain(expr) {
   if (expr[0] === '"') {
     i = 1;
     while (i < expr.length && expr[i] !== '"') {
+      if (expr[i] === "\\" && i + 1 < expr.length) {
+        i += 2;
+        continue;
+      }
+      i++;
+    }
+    if (i < expr.length) i++;
+  } else if (expr[0] === "'") {
+    i = 1;
+    while (i < expr.length && expr[i] !== "'") {
       if (expr[i] === "\\" && i + 1 < expr.length) {
         i += 2;
         continue;

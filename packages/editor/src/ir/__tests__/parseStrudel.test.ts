@@ -431,3 +431,77 @@ describe('20-14 parser-gap fix — multi-line chain walker (cluster B)', () => {
     expect(tags).toContain('Slow')
   })
 })
+
+describe("#659 — single-quoted string args ('x')", () => {
+  // The Song-timeline uses the STATIC parser (parseStrudel — no audio eval,
+  // #611). Its string-arg arms recognised only "…" and `` `…` ``; a single-
+  // quoted arg fell through to bare Code, so the timeline silently lost those
+  // notes/sounds even though the live audio engine plays them fine. These
+  // assert single quotes parse identically to double quotes across every
+  // string-literal-arg site (root note/s/sound/mini, bare-string root,
+  // parenthesized-string root, and the chain-method `.s()` Param arm).
+
+  it('s(\'bd\') root → Play with params.s, identical to s("bd")', () => {
+    const sq = parseStrudel("s('bd')")
+    const playSq = findNode(sq, (n) => n.tag === 'Play')
+    expect(playSq).toBeDefined()
+    expect((playSq as { params?: { s?: string } } | undefined)?.params?.s).toBe('bd')
+  })
+
+  it("note('c4 e4') root → Play nodes, identical to double quotes", () => {
+    const sq = parseStrudel("note('c4 e4')")
+    const playSq = findNode(sq, (n) => n.tag === 'Play')
+    expect(playSq).toBeDefined()
+  })
+
+  it("mini('0 1 2') root → Play nodes", () => {
+    const sq = parseStrudel("mini('0 1 2')")
+    const playSq = findNode(sq, (n) => n.tag === 'Play')
+    expect(playSq).toBeDefined()
+  })
+
+  it("chain note(\"c4\").s('square') → Param key 's' = 'square' (was dropped)", () => {
+    const ir = parseStrudel('note("c4").s(\'square\')')
+    const sParam = findNode(ir, (n) => n.tag === 'Param' && (n as { key: string }).key === 's')
+    expect(sParam).toBeDefined()
+    expect((sParam as { value?: unknown } | undefined)?.value).toBe('square')
+  })
+
+  it("chain note(\"c4\").s('<bd cp>') → pattern arg parses to a Param (mini)", () => {
+    const ir = parseStrudel('note("c4").s(\'<bd cp>\')')
+    const sParam = findNode(ir, (n) => n.tag === 'Param' && (n as { key: string }).key === 's')
+    expect(sParam).toBeDefined()
+  })
+
+  it("bare single-quoted root '0 1 2' → mini Play nodes", () => {
+    const sq = parseStrudel("'0 1 2'")
+    const playSq = findNode(sq, (n) => n.tag === 'Play')
+    expect(playSq).toBeDefined()
+  })
+
+  it("parenthesized single-quoted root ('1 2 3') → mini Play nodes", () => {
+    const sq = parseStrudel("('1 2 3')")
+    const playSq = findNode(sq, (n) => n.tag === 'Play')
+    expect(playSq).toBeDefined()
+  })
+
+  it("preserves inner byte offset — Play.loc points at the single-quoted atom", () => {
+    // Source `s('bd')`: the 'b' is at index 3 (s=0 (=1 '=2 b=3). The inner
+    // offset must be computed from the actual quote char, not a hardcoded
+    // indexOf('"') — range discipline for the visual editor.
+    const sq = parseStrudel("s('bd')")
+    const playSq = findNode(sq, (n) => n.tag === 'Play') as
+      | { loc?: { start: number }[] }
+      | undefined
+    expect(playSq?.loc?.[0]?.start).toBe(3)
+  })
+
+  it("single ↔ double byte offsets match for the same atom", () => {
+    const findStart = (code: string) =>
+      (findNode(parseStrudel(code), (n) => n.tag === 'Play') as
+        | { loc?: { start: number }[] }
+        | undefined)?.loc?.[0]?.start
+    // `note('c4 e4')` vs `note("c4 e4")` — same atom position either way.
+    expect(findStart("note('c4 e4')")).toBe(findStart('note("c4 e4")'))
+  })
+})

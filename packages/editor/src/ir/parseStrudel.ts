@@ -1533,6 +1533,17 @@ export function parseRoot(
     const innerOffset = baseOffset + leadingWs + btIdx + 1
     return backtickInnerToIR(noteBtMatch[1], false, innerOffset)
   }
+  // #659 — single-quoted arg `note('…')`. A single-quoted JS string is
+  // semantically identical to a double-quoted one for mini-notation (only
+  // backticks differ, by spanning newlines), so it routes to parseMini like
+  // the `"…"` arm. innerOffset is computed from the ACTUAL opening-quote
+  // position (range discipline — never a hardcoded indexOf('"')).
+  const noteSqMatch = trimmed.match(/^(?:note|n)\s*\(\s*'([^']*)'\s*\)/)
+  if (noteSqMatch) {
+    const quoteIdx = noteSqMatch[0].indexOf("'")
+    const innerOffset = baseOffset + leadingWs + quoteIdx + 1
+    return parseMini(noteSqMatch[1], false, innerOffset)
+  }
 
   // s("...") / sound("...") — sample pattern — plus G3 backtick.
   // `sound` is Strudel's documented alias of `s` (upstream controls.mjs
@@ -1553,6 +1564,14 @@ export function parseRoot(
     const innerOffset = baseOffset + leadingWs + btIdx + 1
     return backtickInnerToIR(sBtMatch[1], true, innerOffset)
   }
+  // #659 — single-quoted arg `s('…')` / `sound('…')` (sample key). Mirrors
+  // the `"…"` arm (isSampleKey=true); offset from the actual quote position.
+  const sSqMatch = trimmed.match(/^(?:s|sound)\s*\(\s*'([^']*)'\s*\)/)
+  if (sSqMatch) {
+    const quoteIdx = sSqMatch[0].indexOf("'")
+    const innerOffset = baseOffset + leadingWs + quoteIdx + 1
+    return parseMini(sSqMatch[1], true, innerOffset)
+  }
 
   // mini("...") — raw mini-notation pattern producing values (not notes/samples).
   // Added for Phase 19-04 T-02 (Pick) — the only Strudel form that produces a
@@ -1571,6 +1590,13 @@ export function parseRoot(
     const btIdx = miniBtMatch[0].indexOf('`')
     const innerOffset = baseOffset + leadingWs + btIdx + 1
     return backtickInnerToIR(miniBtMatch[1], false, innerOffset)
+  }
+  // #659 — single-quoted arg `mini('…')`. Mirrors the `"…"` arm.
+  const miniSqMatch = trimmed.match(/^mini\s*\(\s*'([^']*)'\s*\)/)
+  if (miniSqMatch) {
+    const quoteIdx = miniSqMatch[0].indexOf("'")
+    const innerOffset = baseOffset + leadingWs + quoteIdx + 1
+    return parseMini(miniSqMatch[1], false, innerOffset)
   }
 
   // #132 (β-2) — LOOSE recursive arm for note/n/s/mini args that carry
@@ -1712,6 +1738,16 @@ export function parseRoot(
     // default of `false` (snapshot-preserving for the 15 tunes).
     return parseMini(bareStringMatch[1], isSampleKey ?? false, innerOffset)
   }
+  // #659 — bare single-quoted string root `'…'`. The loose recursive arm
+  // (note/n/s/sound/mini with a chained inner, e.g. `s('bd'.fast(2))`) splits
+  // the inner to root=`'bd'` + chain; without this arm that single-quoted
+  // root falls to bare Code and the sample/note is dropped. Quote-agnostic
+  // mini semantics — same parseMini as the `"…"` arm above.
+  const bareStringSqMatch = trimmed.match(/^'([^']*)'$/)
+  if (bareStringSqMatch) {
+    const innerOffset = baseOffset + leadingWs + 1
+    return parseMini(bareStringSqMatch[1], isSampleKey ?? false, innerOffset)
+  }
   // 20-15 G3 (#136) — bare backtick `` `…` `` template-literal root.
   // `[^`]*` spans newlines (multi-line mini-notation, e.g.
   // `` `<bd hh>\n<sn ~>`.cpm(2) ``). `${}` → graceful Code (D-04).
@@ -1740,7 +1776,9 @@ export function parseRoot(
   // parenthesized content falls through to the existing IR.code
   // fallback UNCHANGED (pre-mortem mitigation: never mis-parse a
   // non-string-literal root as a mini string).
-  const parenStrMatch = trimmed.match(/^\(\s*("[^"]*"|`[^`]*`)\s*\)$/)
+  // #659 — single-quoted `'…'` accepted alongside `"…"` / `` `…` `` (the
+  // else-branch routes both quote styles through parseMini identically).
+  const parenStrMatch = trimmed.match(/^\(\s*("[^"]*"|'[^']*'|`[^`]*`)\s*\)$/)
   if (parenStrMatch) {
     const litRaw = parenStrMatch[1]
     const isBacktick = litRaw[0] === '`'
@@ -2630,14 +2668,20 @@ function parseParamArg(
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
     return { value: parseFloat(trimmed) }
   }
-  // 2. literal-string (identifier-only — no spaces, no mini-syntax)
-  const strMatch = trimmed.match(/^"([a-zA-Z0-9#_:-]*?)"$/)
+  // 2. literal-string (identifier-only — no spaces, no mini-syntax).
+  //     #659 — single quotes accepted alongside double (`.s('square')`).
+  const strMatch =
+    trimmed.match(/^"([a-zA-Z0-9#_:-]*?)"$/) ?? trimmed.match(/^'([a-zA-Z0-9#_:-]*?)'$/)
   if (strMatch) return { value: strMatch[1] }
-  // 3. mini-pattern (anything else inside quotes)
-  const miniMatch = trimmed.match(/^"([^"]*)"$/)
+  // 3. mini-pattern (anything else inside quotes) — #659: `'…'` too. The
+  //    inner offset is located from the ACTUAL opening-quote char (the
+  //    anchored regex guarantees trimmed[0] is that quote), never a
+  //    hardcoded indexOf('"') (range discipline for the visual editor).
+  const miniMatch = trimmed.match(/^"([^"]*)"$/) ?? trimmed.match(/^'([^']*)'$/)
   if (miniMatch) {
     const innerStr = miniMatch[1]
-    const quoteIdx = args.indexOf('"')
+    const quoteChar = trimmed[0]
+    const quoteIdx = args.indexOf(quoteChar)
     const innerOffsetAbs = quoteIdx >= 0 ? argsOffsetAbs + quoteIdx + 1 : argsOffsetAbs
     return { value: parseMini(innerStr, isSampleKey, innerOffsetAbs) }
   }
@@ -2818,6 +2862,21 @@ export function splitRootAndChain(expr: string): { root: string; chain: string }
     // single-line: mini-strings never span newlines in the corpus).
     i = 1
     while (i < expr.length && expr[i] !== '"') {
+      if (expr[i] === '\\' && i + 1 < expr.length) {
+        i += 2
+        continue
+      }
+      i++
+    }
+    if (i < expr.length) i++ // consume closing quote
+  } else if (expr[0] === "'") {
+    // #659 — single-quoted bare-string root. Without this arm a leading `'`
+    // fell to the identifier branch (no `[a-zA-Z…]` to consume) → root='',
+    // so parseRoot never saw the string and the chain (`'bd'.fast(2)`) /
+    // bare root (`'0 1 2'`) bareCoded. Mirrors the `"` scan exactly
+    // (escape-aware, single-line — mini-strings never span newlines).
+    i = 1
+    while (i < expr.length && expr[i] !== "'") {
       if (expr[i] === '\\' && i + 1 < expr.length) {
         i += 2
         continue
