@@ -201,7 +201,23 @@ export function detectBarePattern(
       if (isCombinatorCall(n)) hasCombinator = true
     })
     if (hasCombinator) return null
-    return { patternRange: [expr.start, expr.end] }
+    // A trailing `.viz(...)` is a DISPLAY annotation on the WHOLE statement, not
+    // part of the sound pattern. Exclude it from the range so materializing into
+    // an `arrange` wraps only the sound — `s("bd").viz("x")` →
+    // `arrange([1, s("bd")], [1, s("bd")]).viz("x")` — instead of copying `.viz()`
+    // into every arm (#657), which both duplicates it and strips it of the
+    // terminal position the inline-viz reader requires (#571).
+    let pat = expr
+    while (
+      pat?.type === 'CallExpression' &&
+      pat.callee?.type === 'MemberExpression' &&
+      !pat.callee.computed &&
+      pat.callee.property?.name === 'viz'
+    ) {
+      pat = pat.callee.object
+    }
+    if (!pat) return null
+    return { patternRange: [pat.start, pat.end] }
   }
   return null
 }
