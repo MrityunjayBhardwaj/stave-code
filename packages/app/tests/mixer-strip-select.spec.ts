@@ -138,8 +138,24 @@ test("the selected strip's expand drawer also shows the accent border (#639)", a
   const drawer = panel.locator(`[data-mixer-expand-for="${stripId}"]`)
   await expect(drawer).toHaveCount(1)
   await expect(drawer).toHaveAttribute('data-mixer-expand-selected', '')
+  // The OUTER edges (top/right) are accent…
   expect(await rgb(page, drawer)).toBe(accentRgb)
   expect(await rgb(page, strips.first())).toBe(accentRgb)
+
+  // …but the drawer's LEFT border — the internal seam between the face and the
+  // drawer — stays the neutral hairline, so there's no purple line down the
+  // MIDDLE of the unit (only its outer edge is accented).
+  const neutralRgb = await page.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.style.color = 'var(--border, #3a3a42)'
+    document.body.appendChild(probe)
+    const c = getComputedStyle(probe).color
+    probe.remove()
+    return c
+  })
+  const seam = await drawer.evaluate((el) => getComputedStyle(el as HTMLElement).borderLeftColor)
+  expect(seam).toBe(neutralRgb)
+  expect(seam).not.toBe(accentRgb)
 
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })
