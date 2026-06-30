@@ -186,6 +186,7 @@ export function MixerStrips({
                 applyToStrip={applyToStrip}
                 beginGesture={beginGesture}
                 endGesture={endGesture}
+                selected={strip.id === selectedId}
               />
             )}
           </div>

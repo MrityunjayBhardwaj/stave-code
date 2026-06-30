@@ -32,6 +32,9 @@ interface ExpandDrawerProps {
   applyToStrip: (id: string, mutate: (fresh: ChunkInfo, wb: Writeback) => void) => void
   beginGesture: () => void
   endGesture: () => void
+  /** the parent strip is selected — outline the drawer in the accent too (#639),
+   *  so the selected strip + its drawer read as ONE purple-bordered unit. */
+  selected?: boolean
 }
 
 export function ExpandDrawer({
@@ -40,6 +43,7 @@ export function ExpandDrawer({
   applyToStrip,
   beginGesture,
   endGesture,
+  selected = false,
 }: ExpandDrawerProps): React.ReactElement {
   // Bind the shared body to THIS strip — identical shape to `useActiveChunk`'s
   // `applyEdit`, so MixerBody can't tell whether it's cursor- or strip-bound.
@@ -52,6 +56,7 @@ export function ExpandDrawer({
     <div
       data-mixer-expand-drawer
       data-mixer-expand-for={strip.id}
+      data-mixer-expand-selected={selected ? '' : undefined}
       style={{
         flexShrink: 0,
         // The body uses column flow: it sizes to a constant height (the header
@@ -69,7 +74,9 @@ export function ExpandDrawer({
         // between them and the top/right/bottom borders close the card — the
         // strip + drawer read as ONE connected, outlined unit that belongs
         // together (the strip rounds its left corners, the drawer its right).
-        border: '1px solid var(--border, #3a3a42)',
+        // When the parent strip is selected, the drawer adopts the accent border
+        // too (#639) so the whole unit is outlined in purple, not just the face.
+        border: `1px solid ${selected ? 'var(--accent, #6ea8fe)' : 'var(--border, #3a3a42)'}`,
         background: '#26262c69',
         borderRadius: '0 6px 6px 0',
         overflow: 'hidden',

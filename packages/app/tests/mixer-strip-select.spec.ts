@@ -68,3 +68,40 @@ test('the selected strip shows a thin accent border; selection is exclusive (#63
 
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })
+
+test("the selected strip's expand drawer also shows the accent border (#639)", async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  await boot(page)
+  const panel = await openMixer(page)
+  const strips = panel.locator('[data-mixer-strip-id]')
+  await strips.first().waitFor({ timeout: 10_000 })
+
+  const accentRgb = await page.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.style.color = 'var(--accent, #6ea8fe)'
+    document.body.appendChild(probe)
+    const c = getComputedStyle(probe).color
+    probe.remove()
+    return c
+  })
+
+  // Select the first strip, then expand it via its ▸ disclosure toggle.
+  await strips.first().click()
+  const stripId = await strips.first().getAttribute('data-mixer-strip-id')
+  await strips.first().locator('[data-mixer-strip-expand]').click()
+
+  // The drawer for THIS strip mounts and adopts the accent border, matching the
+  // face — the selected strip + its drawer read as one purple-outlined unit.
+  const drawer = panel.locator(`[data-mixer-expand-for="${stripId}"]`)
+  await expect(drawer).toHaveCount(1)
+  await expect(drawer).toHaveAttribute('data-mixer-expand-selected', '')
+  expect(await rgb(page, drawer)).toBe(accentRgb)
+  expect(await rgb(page, strips.first())).toBe(accentRgb)
+
+  expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
+})
