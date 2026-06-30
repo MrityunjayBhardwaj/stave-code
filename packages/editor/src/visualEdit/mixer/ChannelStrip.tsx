@@ -44,6 +44,10 @@ interface ChannelStripProps {
   onSoloToggle?: () => void
   /** dim this strip: a solo is active elsewhere and this strip isn't soloed */
   dimmed?: boolean
+  /** this strip is the currently-selected one — draw a thin accent border (#639). */
+  selected?: boolean
+  /** select this strip (a press anywhere on its face) — provided by the console. */
+  onSelect?: () => void
   /** wrap a drag as one undo step */
   onGestureStart?: () => void
   onGestureEnd?: () => void
@@ -192,6 +196,8 @@ export function ChannelStrip({
   soloed = false,
   onSoloToggle,
   dimmed = false,
+  selected = false,
+  onSelect,
   onGestureStart,
   onGestureEnd,
   meters,
@@ -442,6 +448,11 @@ export function ChannelStrip({
       data-mixer-strip-id={strip.id}
       data-mixer-strip-kind={strip.kind}
       data-mixer-strip-muted={strip.muted ? '' : undefined}
+      data-mixer-strip-selected={selected ? '' : undefined}
+      // #639 — a press anywhere on the strip face selects it (the accent border
+      // below then marks it). Inner controls still fire their own handlers and
+      // bubble up, so interacting with a strip also selects it.
+      onClick={onSelect}
       style={{
         // The console header stacks name (row 1) over the mute/solo/expand
         // buttons (row 2), so a short name like `d1` never truncates and one
@@ -459,11 +470,19 @@ export function ChannelStrip({
         // the strip face and its drawer read as one connected unit — the drawer
         // rounds the right edge. Standalone / closed → fully rounded.
         borderRadius: expanded ? '6px 0 0 6px' : 6,
-        border: '1px solid var(--border, #3a3a42)',
+        // #639 — the selected strip swaps its 1px border to the timeline-select
+        // accent (purple, `--accent`), the same token the Song-timeline clip
+        // selection uses, so the current strip reads as selected. All-LONGHAND
+        // border props (not the `border` shorthand): mixing the shorthand with
+        // `borderRight` while the colour updates on select trips React's
+        // "shorthand + non-shorthand" rerender warning.
+        borderWidth: 1,
+        borderStyle: 'solid',
+        borderColor: selected ? 'var(--accent, #6ea8fe)' : 'var(--border, #3a3a42)',
         // When expanded, the drawer abuts this right edge and owns the seam
         // hairline (its left border) — drop ours so the divider is a single
         // 1px line, not a doubled 2px one (#609).
-        borderRight: expanded ? 'none' : undefined,
+        borderRightStyle: expanded ? 'none' : undefined,
         background: 'var(--background-elevated, #26262c)',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         color: 'var(--foreground, #e6e6ea)',

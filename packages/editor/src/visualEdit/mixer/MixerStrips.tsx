@@ -59,6 +59,10 @@ export function MixerStrips({
   // the shared `trackIdentity` so the dot can't diverge from the Timeline lane.
   const [fileId, setFileId] = React.useState<string | null>(() => getActiveFileId())
   React.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), [])
+  // #639 — the currently-selected strip (a press on its face), marked with a
+  // thin accent border. A stale id (its strip removed on re-eval) simply matches
+  // nothing → no border.
+  const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const trackMeta = useTrackMetaMap(fileId ?? undefined)
   // Per-file ephemeral expand state (S4b): which strips show their knob chain.
   // Persisted in localStorage, never the file (V-mixer-1).
@@ -167,6 +171,8 @@ export function MixerStrips({
               soloed={soloed.has(strip.id)}
               onSoloToggle={() => toggleSolo(strip.id)}
               dimmed={soloActive && !soloed.has(strip.id)}
+              selected={strip.id === selectedId}
+              onSelect={() => setSelectedId(strip.id)}
               onGestureStart={beginGesture}
               onGestureEnd={endGesture}
               meters={meters}
