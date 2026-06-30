@@ -1771,6 +1771,14 @@ const styles = {
     borderRight: '1px solid var(--border-subtle, rgba(255,255,255,0.08))',
     display: 'flex',
     flexDirection: 'column' as const,
+    // #645 — clip the stacked label rows at the column box so they collapse
+    // exactly like the track rows on the right (which keep true heights and clip
+    // via the grid's `overflowY: hidden`). Use `clip`, NOT `hidden`: `hidden` is
+    // still a scroll CONTAINER, so focusing an expand button inside the gutter
+    // let the browser scroll it independently of the grid (gutter drifted ~111px
+    // out of alignment). `clip` is not a scrollport — the gutter can never gain
+    // its own scroll offset, so it stays pinned to the canvas rows.
+    overflow: 'clip' as const,
   },
   // Outer lane label box (relative so the per-voice sub-labels can absolutely
   // position against the lane top, lining up with the canvas sub-rows — #424).
@@ -1778,6 +1786,12 @@ const styles = {
     position: 'relative' as const,
     borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.08))',
     overflow: 'hidden',
+    // #645 — keep each row at its `box.height`. As a flex-column child the row
+    // would otherwise SHRINK to fit a short gutter (default flex-shrink:1),
+    // squishing every lane while the grid clips — the mismatched collapse. With
+    // shrink off, the gutter honors the SAME lane heights the canvas draws, so
+    // both sides collapse and reveal identically.
+    flexShrink: 0,
   },
   // #641/#642 — caret-selected lane GUTTER: an accent fill + a 3px left accent
   // bar (inset box-shadow → no layout shift). Pairs with the full-width grid
