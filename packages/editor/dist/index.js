@@ -37387,7 +37387,12 @@ function detectBarePattern(doc, pos) {
       if (isCombinatorCall(n)) hasCombinator = true;
     });
     if (hasCombinator) return null;
-    return { patternRange: [expr.start, expr.end] };
+    let pat = expr;
+    while (pat?.type === "CallExpression" && pat.callee?.type === "MemberExpression" && !pat.callee.computed && pat.callee.property?.name === "viz") {
+      pat = pat.callee.object;
+    }
+    if (!pat) return null;
+    return { patternRange: [pat.start, pat.end] };
   }
   return null;
 }
