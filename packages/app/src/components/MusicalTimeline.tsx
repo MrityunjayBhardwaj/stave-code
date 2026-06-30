@@ -14,13 +14,9 @@
  * Data flow:
  *   subscribeIRSnapshot ──▶ snapshot ──▶ analyzeSong (budgeted, abortable)
  *                                         ──▶ analysis ──▶ FullSongTimeline
- *   getCps (rAF tick, gated) ──▶ cpsToBpm ──▶ status line ("SONG · …")
  *
  * Lifecycle gates (DB-02 + Trap NEW-1):
  *   - Snapshot subscription is ALWAYS on (cheap fan-out; PK9).
- *   - The rAF loop samples cps (for the BPM/stopped status) and is gated
- *     on (drawerOpen && tabActive); a 250ms poll re-kicks it so it never
- *     burns CPU on a drawer that's display:none for hours.
  *   - #394: on mount with no snapshot yet, request one so a cold eval's
  *     ~2.5s publish lag doesn't leave the view empty.
  *
@@ -33,7 +29,7 @@
 'use client'
 
 import * as React from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   type IRSnapshot,
   type HapStream,
@@ -68,7 +64,6 @@ import {
   analyzeSong,
   type SongAnalysis,
 } from '@stave/editor'
-import { cpsToBpm } from './musicalTimeline/timeAxis'
 import { FullSongTimeline } from './FullSongTimeline'
 
 export interface MusicalTimelineProps {
@@ -77,8 +72,8 @@ export interface MusicalTimelineProps {
    *  through a closure so the active runtime can change without
    *  re-registering the tab content. */
   readonly getCycle: () => number | null
-  /** Current cycles-per-second from the active runtime, or null. Used
-   *  for the BPM segment of the status line. */
+  /** Current cycles-per-second from the active runtime, or null. Reserved:
+   *  the BPM segment of the status line that read it was removed (#653). */
   readonly getCps: () => number | null
   /**
    * Phase 20-06 (PV38, PK13 step 7+8) — closure-bound accessor onto the
@@ -87,10 +82,11 @@ export interface MusicalTimelineProps {
    * this stream to drive activeKeys (D-01: real-hap REPLACES cycle-derived).
    */
   readonly getHapStream: () => HapStream | null
-  /** Drawer open state — gates the rAF loop (Trap NEW-1). */
+  /** Drawer open state — forwarded to FullSongTimeline to gate its playhead
+   *  rAF loop (Trap NEW-1). */
   readonly getDrawerOpen: () => boolean
-  /** Active tab id — must equal `'musical-timeline'` for the rAF loop
-   *  to run. Same gating purpose as `getDrawerOpen`. */
+  /** Active tab id — forwarded to FullSongTimeline; its playhead loop runs
+   *  only while this equals the timeline tab. Same gating as `getDrawerOpen`. */
   readonly getActiveTabId: () => string | null
   /**
    * #384/#385 — transport-offset-aware song position (cycles), or null when
@@ -114,9 +110,6 @@ export interface MusicalTimelineProps {
    */
   readonly onRequestSnapshot?: () => void
 }
-
-const TAB_ID = 'musical-timeline'
-const STATUS_HEIGHT = 24
 
 /**
  * Phase 20-17 D-1c — see also `__test_collectTrackBodies` at the bottom
@@ -198,7 +191,9 @@ export function MusicalTimeline(
   const [snapshot, setSnapshot] = useState<IRSnapshot | null>(getIRSnapshot)
   useEffect(() => {
     const unsub = subscribeIRSnapshot(setSnapshot)
-    // Re-sync in case publishIRSnapshot raced our mount.
+    // Re-sync in case publishIRSnapshot raced our mount — an intentional
+    // external-store sync, not a render-driven cascade.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSnapshot(getIRSnapshot())
     return unsub
   }, [])
@@ -208,7 +203,6 @@ export function MusicalTimeline(
   // live overlay (#500). The Live/Song `viewMode` fork and its DOM Live
   // renderer were retired in U5.
   const [analysis, setAnalysis] = useState<SongAnalysis | null>(null)
-  const [analyzing, setAnalyzing] = useState(false)
 
   // Analyze the whole song from the IR snapshot on every new snapshot
   // (re-eval). The previous run is aborted via a per-run signal so a fast edit
@@ -216,11 +210,12 @@ export function MusicalTimeline(
   useEffect(() => {
     const ir = snapshot?.ir ?? null
     if (!ir) {
+      // Reset derived analysis when the snapshot has no IR (intentional).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAnalysis(null)
       return
     }
     const signal = { aborted: false }
-    setAnalyzing(true)
     analyzeSong(ir, { signal })
       .then((result) => {
         if (!signal.aborted) setAnalysis(result)
@@ -228,95 +223,24 @@ export function MusicalTimeline(
       .catch(() => {
         /* analysis is best-effort; leave the prior result in place */
       })
-      .finally(() => {
-        if (!signal.aborted) setAnalyzing(false)
-      })
     return () => {
       signal.aborted = true
     }
   }, [snapshot])
 
-  // ── rAF cps-sampling loop with gating (DB-02 + Trap NEW-1) ──────────────
-  // Stash the latest accessor refs so the rAF callback closure doesn't
-  // need to re-capture on every render (or worse, fire stale refs).
-  const accessorsRef = useRef(props)
-  accessorsRef.current = props
-
   // #394 — on mount the timeline may render before its IR snapshot has been
   // published (a cold eval lags ~2.5s behind the keypress); proactively ask the
   // editor to capture one now. The publish flows back through
   // subscribeIRSnapshot → setSnapshot → the analyze effect above, so the view
-  // populates at once instead of sitting empty. Once a snapshot exists this is a
-  // no-op, so there is no request loop.
+  // populates at once instead of sitting empty. Gated on `!snapshot`, so once a
+  // snapshot exists this is a no-op — no request loop even if the callback
+  // identity changes per render.
+  const { onRequestSnapshot } = props
   useEffect(() => {
     if (!snapshot) {
-      accessorsRef.current.onRequestSnapshot?.()
+      onRequestSnapshot?.()
     }
-  }, [snapshot])
-
-  const [currentCps, setCurrentCps] = useState<number | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    let rafHandle: number | null = null
-
-    const tick = (): void => {
-      if (cancelled) return
-      const a = accessorsRef.current
-      if (!a.getDrawerOpen() || a.getActiveTabId() !== TAB_ID) {
-        // Gate flipped off — stop the loop. Poke interval will re-kick.
-        rafHandle = null
-        return
-      }
-      const cps = a.getCps()
-      // setState bails on referential equality, so this only re-renders when
-      // the cps actually changes (rare) — keeps the BPM status line live.
-      setCurrentCps((prev) => (prev === cps ? prev : cps))
-      rafHandle = requestAnimationFrame(tick)
-    }
-
-    // Initial kick — only if conditions allow. Otherwise the poke
-    // interval below catches the next open transition.
-    if (
-      props.getDrawerOpen() &&
-      props.getActiveTabId() === TAB_ID
-    ) {
-      rafHandle = requestAnimationFrame(tick)
-    }
-
-    // Re-kick if the user opens the drawer / switches the tab while
-    // we're suspended. 250ms is a balance: quick enough that opening
-    // the drawer feels instant; cheap enough that the steady-state
-    // suspended cost is ~0.
-    const pokeInterval = setInterval(() => {
-      if (cancelled) return
-      if (
-        rafHandle == null &&
-        accessorsRef.current.getDrawerOpen() &&
-        accessorsRef.current.getActiveTabId() === TAB_ID
-      ) {
-        rafHandle = requestAnimationFrame(tick)
-      }
-      // While suspended, sample cps so a transport stop still propagates to
-      // the status within ≤250ms. Cheap: one accessor call per 250ms.
-      const sampled = accessorsRef.current.getCps()
-      setCurrentCps((prev) => (prev === sampled ? prev : sampled))
-    }, 250)
-
-    return () => {
-      cancelled = true
-      clearInterval(pokeInterval)
-      if (rafHandle != null) {
-        cancelAnimationFrame(rafHandle)
-        rafHandle = null
-      }
-      // Reset on unmount so a remount starts stopped, not stale.
-      setCurrentCps(null)
-    }
-    // The accessors are read through the ref; depending on them in
-    // the deps would re-create the rAF loop on every parent render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [snapshot, onRequestSnapshot])
 
   // ── Per-track custom colour (Phase D, #581) ──────────────────────────────
   // Overrides live in the per-file TrackMeta Yjs store, keyed by the track's
@@ -627,22 +551,6 @@ export function MusicalTimeline(
     [snapshot],
   )
 
-  const bpm = cpsToBpm(currentCps)
-
-  // Status line — the song shape (#385): detected loop length, analyzed
-  // horizon, or an analyzing/press-play hint. Musician vocabulary only (PV32).
-  let songText: string
-  if (analyzing && !analysis) songText = 'SONG · analyzing…'
-  // #394 — playing (bpm present) but the snapshot hasn't arrived yet = mid-
-  // capture, not idle: say "analyzing…", not the misleading "press play".
-  else if (!analysis) songText = bpm != null ? 'SONG · analyzing…' : 'SONG · press play'
-  else if (analysis.periodCycles != null)
-    songText = `SONG · loop ${analysis.periodCycles} cycles`
-  else songText = `SONG · ${analysis.horizonCycles}${analysis.reachedCap ? '+' : ''} cycles`
-  const statusContent = (
-    <span data-musical-timeline="status-text">{songText}</span>
-  )
-
   return (
     <div
       data-bottom-panel-tab="musical-timeline"
@@ -650,12 +558,6 @@ export function MusicalTimeline(
       aria-label="Timeline"
       style={styles.root}
     >
-      <div
-        data-musical-timeline="status"
-        style={{ ...styles.status, justifyContent: 'space-between' }}
-      >
-        {statusContent}
-      </div>
         <FullSongTimeline
           analysis={analysis}
           ir={snapshot?.ir ?? null}
@@ -702,17 +604,5 @@ const styles = {
     fontSize: 11, // mockup body font-size: 11px (DV-02)
     color: 'var(--text-body, #e2e8f0)',
     background: 'var(--bg-app, #090912)',
-  },
-  status: {
-    height: STATUS_HEIGHT,
-    minHeight: STATUS_HEIGHT,
-    display: 'flex',
-    alignItems: 'center',
-    padding: '0 12px',
-    borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.08))',
-    color: 'var(--text-tertiary, rgba(255,255,255,0.4))',
-    background: 'var(--bg-panel, #14141f)',
-    fontVariantNumeric: 'tabular-nums' as const,
-    fontSize: 11,
   },
 } satisfies Record<string, React.CSSProperties>
