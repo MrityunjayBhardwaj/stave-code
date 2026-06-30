@@ -30318,9 +30318,17 @@ function ExpandDrawer({
         // between them and the top/right/bottom borders close the card — the
         // strip + drawer read as ONE connected, outlined unit that belongs
         // together (the strip rounds its left corners, the drawer its right).
-        // When the parent strip is selected, the drawer adopts the accent border
-        // too (#639) so the whole unit is outlined in purple, not just the face.
-        border: `1px solid ${selected ? "var(--accent, #6ea8fe)" : "var(--border, #3a3a42)"}`,
+        // When the parent strip is selected, the OUTER edges (top/right/bottom)
+        // adopt the accent so the whole unit is outlined in purple (#639) — but
+        // the LEFT border stays the neutral hairline: it's the internal seam
+        // between the face and the drawer, not an outer edge, so accenting it
+        // would draw a purple line down the MIDDLE of the unit. Longhand props
+        // (not the `border` shorthand) so the per-side colour can't trip React's
+        // shorthand/longhand rerender warning.
+        borderWidth: 1,
+        borderStyle: "solid",
+        borderColor: selected ? "var(--accent, #6ea8fe)" : "var(--border, #3a3a42)",
+        borderLeftColor: "var(--border, #3a3a42)",
         background: "#26262c69",
         borderRadius: "0 6px 6px 0",
         overflow: "hidden"
