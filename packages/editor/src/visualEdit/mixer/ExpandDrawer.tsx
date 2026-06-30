@@ -75,18 +75,26 @@ export function ExpandDrawer({
         // between them and the top/right/bottom borders close the card — the
         // strip + drawer read as ONE connected, outlined unit that belongs
         // together (the strip rounds its left corners, the drawer its right).
-        // When the parent strip is selected, the OUTER edges (top/right/bottom)
-        // adopt the accent so the whole unit is outlined in purple (#639) — but
-        // the LEFT border stays the neutral hairline: it's the internal seam
-        // between the face and the drawer, not an outer edge, so accenting it
-        // would draw a purple line down the MIDDLE of the unit. Longhand props
-        // (not the `border` shorthand) so the per-side colour can't trip React's
-        // shorthand/longhand rerender warning.
+        // SELECTION (#639): the outer edges (top/right/bottom) take the accent so
+        // the unit is outlined in purple. The internal seam (this LEFT border) is
+        // DROPPED entirely when selected — the strip's right border is already
+        // `none` when expanded, so removing the drawer's left too leaves the
+        // purple as ONE continuous outline around the whole strip+drawer shape,
+        // with no line dividing the middle (the "two boxes joined at a seam" look
+        // becomes one highlighted unit). Unselected, the neutral hairline seam
+        // stays. Longhand props (not the `border` shorthand) so the per-side
+        // colour/style can't trip React's shorthand/longhand rerender warning.
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: selected ? 'var(--accent, #6ea8fe)' : 'var(--border, #3a3a42)',
         borderLeftColor: 'var(--border, #3a3a42)',
-        background: '#26262c69',
+        borderLeftStyle: selected ? 'none' : undefined,
+        // Drawer bg is translucent by default (#573). When SELECTED it matches
+        // the (opaque) strip face so the unit is ONE seamless surface inside the
+        // single purple border — without this, the opaque-face / translucent-
+        // drawer shade step leaves a faint divider down the middle even after the
+        // seam border is dropped.
+        background: selected ? 'var(--background-elevated, #26262c)' : '#26262c69',
         borderRadius: '0 6px 6px 0',
         overflow: 'hidden',
       }}
