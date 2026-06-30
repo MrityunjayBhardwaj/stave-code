@@ -460,6 +460,10 @@ export function ChannelStrip({
         // rounds the right edge. Standalone / closed → fully rounded.
         borderRadius: expanded ? '6px 0 0 6px' : 6,
         border: '1px solid var(--border, #3a3a42)',
+        // When expanded, the drawer abuts this right edge and owns the seam
+        // hairline (its left border) — drop ours so the divider is a single
+        // 1px line, not a doubled 2px one (#609).
+        borderRight: expanded ? 'none' : undefined,
         background: 'var(--background-elevated, #26262c)',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         color: 'var(--foreground, #e6e6ea)',
