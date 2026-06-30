@@ -214,6 +214,12 @@ export interface FullSongTimelineProps {
  *  extensible later via #487. A real arrangement already defines its own span. */
 const MIN_BARE_SPAN = 4
 
+/** The smallest span a user may SHRINK a bare loop to by dragging its edge
+ *  (#662). Two cycles keeps Split possible (a split needs ≥ 2 to yield two
+ *  non-empty arms). Once the user has resized, this clamp — not `MIN_BARE_SPAN`
+ *  — is the floor, so a tight 2-bar working area is reachable. */
+const MIN_BARE_SPLIT_SPAN = 2
+
 /** The natural display span: one loop period, or the analyzed horizon. ≥ 1. */
 function naturalSpan(analysis: SongAnalysis | null): number {
   if (!analysis) return 1
@@ -223,10 +229,24 @@ function naturalSpan(analysis: SongAnalysis | null): number {
 /** Display span in cycles. The natural span, but a pure bare loop is floored to
  *  `MIN_BARE_SPAN` so its single implicit clip is splittable (#489 D3). A real
  *  arrangement keeps its own length — flooring a period-2 arrange to 4 would paint
- *  empty bars past the last arm. ≥ 1. */
-function displaySpan(analysis: SongAnalysis | null, bareSong: boolean): number {
+ *  empty bars past the last arm. ≥ 1.
+ *
+ *  `bareSpanOverride` is the user's resized span (#662, option B): a view-only
+ *  preference that grows/shrinks the displayed bars with NO code write-back. When
+ *  set it REPLACES the `MIN_BARE_SPAN` floor with the shrinkable `MIN_BARE_SPLIT_SPAN`
+ *  clamp (so a 2-bar working area is reachable), but never drops below the true
+ *  content period (`natural`) — you can't show fewer bars than one full loop. */
+function displaySpan(
+  analysis: SongAnalysis | null,
+  bareSong: boolean,
+  bareSpanOverride?: number | null,
+): number {
   const natural = naturalSpan(analysis)
-  return bareSong ? Math.max(MIN_BARE_SPAN, natural) : natural
+  if (!bareSong) return natural
+  if (bareSpanOverride != null) {
+    return Math.max(MIN_BARE_SPLIT_SPAN, natural, Math.round(bareSpanOverride))
+  }
+  return Math.max(MIN_BARE_SPAN, natural)
 }
 
 /** Cycles of empty timeline kept PAST the dragged edge while EXTENDING the last
@@ -256,11 +276,24 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     }>
     return !evs.some((e) => typeof e.armIndex === 'number')
   }, [props.ir, natCycles])
+  // The user's resized display span for a pure bare loop (#662, option B). A
+  // VIEW-ONLY preference — dragging the bare clip's right edge grows/shrinks the
+  // bars shown with NO code write-back (the source `s("bd*4")` stays byte-identical;
+  // only Split/Delete write code). Seeded from the persisted camera so a reload
+  // restores it; persisted on change below. `null` = use the default floor. Ignored
+  // for a non-bare song (displaySpan gates on `bareSong`).
+  const [bareSpanOverride, setBareSpanOverride] = useState<number | null>(() => {
+    const c = loadTimelineCamera()
+    return c && typeof c.bareSpan === 'number' && Number.isFinite(c.bareSpan) ? c.bareSpan : null
+  })
+  const bareSpanOverrideRef = useRef<number | null>(bareSpanOverride)
+  bareSpanOverrideRef.current = bareSpanOverride
   // The TRUE content length — the rest span; also the playhead loop-wrap, the
   // note-mark collection window, and the bare-track implicit clip's end. The bare
-  // floor (#489) is folded in HERE so the clip extents use the floored span while
-  // the extend-drag (#487) layers a transient viewport span on top.
-  const loopCycles = displaySpan(analysis, bareSong)
+  // floor (#489) and the user's resize override (#662) are folded in HERE so the
+  // clip extents use the chosen span while the extend-drag (#487) layers a
+  // transient viewport span on top.
+  const loopCycles = displaySpan(analysis, bareSong, bareSpanOverride)
   // While EXTENDING the last clip, the visual span temporarily grows past the
   // content so there's empty timeline to drag into (#487). null at rest →
   // displayCycles == loopCycles (no permanent blank). `contentWidth` scales with
@@ -651,8 +684,14 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // (#501/U4). Global, best-effort; fires on each change — these are user
   // gestures (zoom button/wheel, expand toggle), not per-frame churn.
   useEffect(() => {
-    saveTimelineCamera({ zoom, expanded: [...expanded] })
-  }, [zoom, expanded])
+    saveTimelineCamera({
+      zoom,
+      expanded: [...expanded],
+      // #662 — the bare-loop resize is camera state too: omit when unset (null)
+      // so a never-resized song keeps its default floor on reload.
+      ...(bareSpanOverride != null ? { bareSpan: bareSpanOverride } : {}),
+    })
+  }, [zoom, expanded, bareSpanOverride])
 
   // Toggle a lane's expansion and bind it into the Pattern panel. Binding fires
   // on every activation (expand OR collapse) — clicking a lane selects it.
@@ -847,7 +886,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       let best: NonNullable<ReturnType<typeof clipAtCycle>> | null = null
       let bestDist = CLIP_EDGE_GRIP_PX
       for (const clip of lane.clips) {
-        if (clip.armIndex < 0) continue // implicit/bare clip: not trimmable
+        // The implicit/bare clip's edge is grabbable ONLY in a pure bare song
+        // (#662 resize = set display span). A bare LANE inside a multitrack song
+        // (bareSong === false) has its span pinned by the other tracks — that
+        // harder case is deferred, so its edge stays inert.
+        if (clip.armIndex < 0 && !bareSong) continue
         const dist = Math.abs(contentX - songCycleToX(clip.endCycle, displayCycles, cw))
         if (dist <= bestDist) {
           best = clip
@@ -856,7 +899,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       }
       return best ? { lane, clip: best } : null
     },
-    [onTrimClip, displayCycles, dragAwareContentWidth],
+    [onTrimClip, bareSong, displayCycles, dragAwareContentWidth],
   )
 
   // Apply an extend at a given clientX: map the cursor to a whole-cycle weight at
@@ -873,7 +916,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const ppc = restPxPerCycle(rect.width)
       if (ppc <= 0) return
       const contentX = clientX - rect.left + scrollLeftRef.current
-      const newEnd = Math.max(drag.startCycle + 1, Math.round(contentX / ppc))
+      // A bare resize (#662, armIndex < 0) clamps to MIN_BARE_SPLIT_SPAN so the
+      // loop never shrinks below a splittable 2 bars; a real arm keeps its ≥ 1
+      // cycle weight (startCycle + 1). Bare startCycle is 0, so newEnd === span.
+      const floor = drag.armIndex < 0 ? MIN_BARE_SPLIT_SPAN : drag.startCycle + 1
+      const newEnd = Math.max(floor, Math.round(contentX / ppc))
       drag.weight = newEnd - drag.startCycle
       const needed = Math.max(loopCyclesRef.current, newEnd + EXTEND_MARGIN_CYCLES)
       if (dragSpanRef.current == null || needed > dragSpanRef.current) {
@@ -1087,11 +1134,20 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         /* best-effort */
       }
       if (commit && drag.weight !== drag.origWeight) {
-        onTrimClip?.({
-          sourceOffset: drag.sourceOffset,
-          armIndex: drag.armIndex,
-          weight: drag.weight,
-        })
+        if (drag.armIndex < 0) {
+          // #662 — a bare resize sets the DISPLAY span only (option B): persist
+          // the chosen bar count, write NO code. `drag.weight` is the new span
+          // (bare startCycle is 0). The override flows into `displaySpan`, and
+          // thence into the bare clip's `endCycle` — so a later Split/Delete
+          // operates at this granularity for free (they read the clip width).
+          setBareSpanOverride(drag.weight)
+        } else {
+          onTrimClip?.({
+            sourceOffset: drag.sourceOffset,
+            armIndex: drag.armIndex,
+            weight: drag.weight,
+          })
+        }
       }
     },
     [onTrimClip, stopExtendAutoScroll],

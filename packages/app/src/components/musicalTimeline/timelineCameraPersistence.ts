@@ -23,10 +23,13 @@
 const STORAGE_KEY = 'stave:timelineCamera'
 
 /** The persisted shape. `zoom` is the raw multiplier (the caller clamps it to
- *  the live MIN/MAX range on read); `expanded` is the lane-key list. */
+ *  the live MIN/MAX range on read); `expanded` is the lane-key list; `bareSpan`
+ *  is the user's resized display span for a pure bare loop (#662 — how many bars
+ *  its single implicit clip shows), absent until the user drags the edge. */
 export interface TimelineCamera {
   readonly zoom: number
   readonly expanded: readonly string[]
+  readonly bareSpan?: number
 }
 
 /**
@@ -47,7 +50,13 @@ export function loadTimelineCamera(): TimelineCamera | null {
     const expanded = Array.isArray(parsed.expanded)
       ? parsed.expanded.filter((k): k is string => typeof k === 'string')
       : []
-    return { zoom, expanded }
+    // A finite, positive bare span survives; anything else is omitted (the
+    // caller re-applies its own floor/clamp on read, #662).
+    const bareSpan =
+      typeof parsed.bareSpan === 'number' && Number.isFinite(parsed.bareSpan) && parsed.bareSpan > 0
+        ? parsed.bareSpan
+        : undefined
+    return bareSpan != null ? { zoom, expanded, bareSpan } : { zoom, expanded }
   } catch {
     return null
   }
@@ -62,7 +71,13 @@ export function saveTimelineCamera(camera: TimelineCamera): void {
   try {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ zoom: camera.zoom, expanded: [...camera.expanded] }),
+      JSON.stringify({
+        zoom: camera.zoom,
+        expanded: [...camera.expanded],
+        // Persist the bare-loop span only when set (#662) — omit the key
+        // otherwise so a song that was never resized stays at its default floor.
+        ...(camera.bareSpan != null ? { bareSpan: camera.bareSpan } : {}),
+      }),
     )
   } catch {
     /* best-effort persistence */
