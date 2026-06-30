@@ -23043,6 +23043,11 @@ function EditorView({
     if (viewing) return;
     setContent2(value);
   }, "handleChange");
+  const openFindReplace = /* @__PURE__ */ __name(() => {
+    const ed = editorRef.current;
+    ed?.focus?.();
+    ed?.getAction?.("editor.action.startFindReplaceAction")?.run?.();
+  }, "openFindReplace");
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -23067,6 +23072,35 @@ function EditorView({
           }
         ) : null,
         /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { flex: 1, minHeight: 0, position: "relative" }, children: [
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              "data-editor-find": true,
+              title: "Find / Replace (Ctrl/Cmd+F)",
+              "aria-label": "Find and replace",
+              onClick: openFindReplace,
+              style: {
+                position: "absolute",
+                top: 6,
+                right: 16,
+                zIndex: 4,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 24,
+                height: 22,
+                padding: 0,
+                borderRadius: 4,
+                border: "1px solid var(--border)",
+                background: "color-mix(in srgb, var(--surface) 80%, transparent)",
+                color: "var(--foreground-muted)",
+                cursor: "pointer",
+                fontSize: 13,
+                lineHeight: 1
+              },
+              children: "\u2315"
+            }
+          ),
           viewing && /* @__PURE__ */ jsxRuntime.jsxs(
             "div",
             {
