@@ -6556,6 +6556,7 @@ var _VizGovernor = class _VizGovernor {
 __name(_VizGovernor, "VizGovernor");
 var VizGovernor = _VizGovernor;
 var vizGovernor = new VizGovernor();
+var PICK_METHODS = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
 function parseTopLevel(doc) {
   try {
     const program = parse(doc, {
@@ -6645,6 +6646,8 @@ function buildChunkFromExpr(doc, expr, label, stmtRange, nested = false) {
 }
 __name(buildChunkFromExpr, "buildChunkFromExpr");
 function innermostChainUnder(doc, expr, pos) {
+  const pickSection = pickSectionUnder(expr, pos);
+  if (pickSection) return innermostChainUnder(doc, pickSection, pos);
   const headOut = { ref: null };
   collectChain(doc, expr, headOut);
   const head = headOut.ref;
@@ -6656,6 +6659,26 @@ function innermostChainUnder(doc, expr, pos) {
   return expr;
 }
 __name(innermostChainUnder, "innermostChainUnder");
+function pickSectionUnder(expr, pos) {
+  let node = expr;
+  while (node && node.type === "CallExpression") {
+    const callee = node.callee;
+    if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && PICK_METHODS.has(callee.property.name)) {
+      const obj = node.arguments.find((a) => a && a.type === "ObjectExpression");
+      if (obj) {
+        for (const prop of obj.properties) {
+          const val = prop && prop.type === "Property" ? prop.value : null;
+          if (val && val.type === "CallExpression" && typeof val.start === "number" && pos >= val.start && pos <= val.end) {
+            return val;
+          }
+        }
+      }
+    }
+    node = callee.type === "MemberExpression" ? callee.object : null;
+  }
+  return null;
+}
+__name(pickSectionUnder, "pickSectionUnder");
 function chainArgUnder(arg, pos) {
   if (!arg || typeof arg.start !== "number" || pos < arg.start || pos > arg.end) return null;
   if (arg.type === "CallExpression") return arg;
@@ -21299,10 +21322,26 @@ function scaleManagedGain(mg, value) {
   return mg.quote + out.join(" ") + mg.quote;
 }
 __name(scaleManagedGain, "scaleManagedGain");
+var CHILD_GAIN_HEADS = /* @__PURE__ */ new Set([
+  "pick",
+  "pickRestart",
+  "pickReset",
+  "stack",
+  "cat",
+  "layer",
+  "arrange"
+]);
+function hasChildGain(chunk) {
+  const call = chunk.chain.find((c) => CHILD_GAIN_HEADS.has(c.name));
+  return call ? call.args.some((a) => /\.gain\s*\(/.test(a.raw)) : false;
+}
+__name(hasChildGain, "hasChildGain");
 function readGainState(chunk) {
   const call = chunk.chain.find((c) => c.name === "gain" && c.args.length >= 1);
   const arg = call?.args[0];
-  if (!call || !arg) return { kind: "absent" };
+  if (!call || !arg) {
+    return hasChildGain(chunk) ? { kind: "foreign" } : { kind: "absent" };
+  }
   if (arg.numeric !== null) return { kind: "scalar", value: arg.numeric, range: arg.range };
   const mg = parseManagedGain(arg.raw);
   if (mg) return { kind: "managed", ceiling: mg.ceiling, mg, range: arg.range };
@@ -37539,7 +37578,7 @@ function splitArm(doc, call, i, firstWeight) {
   return [{ range: arm.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
 }
 __name(splitArm, "splitArm");
-var PICK_METHODS = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
+var PICK_METHODS2 = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
 function parseProgram2(doc) {
   try {
     return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
@@ -37549,7 +37588,7 @@ function parseProgram2(doc) {
 }
 __name(parseProgram2, "parseProgram");
 function isPickCall(node) {
-  return node && node.type === "CallExpression" && node.callee?.type === "MemberExpression" && node.callee.property?.type === "Identifier" && PICK_METHODS.has(node.callee.property.name) && node.callee.object?.type === "Literal" && typeof node.callee.object.value === "string";
+  return node && node.type === "CallExpression" && node.callee?.type === "MemberExpression" && node.callee.property?.type === "Identifier" && PICK_METHODS2.has(node.callee.property.name) && node.callee.object?.type === "Literal" && typeof node.callee.object.value === "string";
 }
 __name(isPickCall, "isPickCall");
 function walk3(node, visit) {

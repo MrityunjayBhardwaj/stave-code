@@ -151,6 +151,63 @@ describe('chunkDetect — arrange [w, pat] arms (#472)', () => {
   })
 })
 
+describe('chunkDetect — pick* section patterns (#667)', () => {
+  const pickDoc =
+    'drums: "<~@4 verse@8 chorus@8>".pickRestart({\n' +
+    '  verse: s("[bd,sd] ~ sd ~").bank("RolandTR909").lpf(800),\n' +
+    '  chorus: s("bd ~ [bd,sd] ~").bank("RolandTR909"),\n' +
+    '})'
+
+  it('binds the drum section under the cursor → step-shaped', () => {
+    const c = detectChunk(pickDoc, pickDoc.indexOf('[bd,sd] ~ sd'))!
+    expect(c.headFn).toBe('s')
+    expect(c.miniString).toBe('[bd,sd] ~ sd ~')
+    expect(c.label).toBeNull() // nested target carries no `drums:` label
+    expect(c.nested).toBe(true)
+    expect(classifyChunk(c)).toBe('step')
+    expect(doc(c, pickDoc)).toBe('s("[bd,sd] ~ sd ~").bank("RolandTR909").lpf(800)')
+  })
+
+  it('binds the second section independently', () => {
+    const c = detectChunk(pickDoc, pickDoc.indexOf('bd ~ [bd,sd]'))!
+    expect(c.miniString).toBe('bd ~ [bd,sd] ~')
+    expect(doc(c, pickDoc)).toBe('s("bd ~ [bd,sd] ~").bank("RolandTR909")')
+  })
+
+  it("a section's miniRange is the surgical write-back target + fresh", () => {
+    const c = detectChunk(pickDoc, pickDoc.indexOf('[bd,sd] ~ sd'))!
+    expect(pickDoc.slice(c.miniRange![0], c.miniRange![1])).toBe('[bd,sd] ~ sd ~')
+    expect(isChunkFresh(pickDoc, c)).toBe(true)
+    // the write-back range is confined to the one section, not the whole pick
+    expect(c.statementRange[0]).toBeGreaterThan(pickDoc.indexOf('pickRestart'))
+  })
+
+  it('a cursor on the control string keeps the whole pick statement', () => {
+    const c = detectChunk(pickDoc, pickDoc.indexOf('verse@8'))!
+    expect(c.nested).toBe(false)
+    expect(doc(c, pickDoc)).toBe(pickDoc)
+  })
+
+  it('binds a note() section → roll-shaped', () => {
+    const d = 'bass: "<a@4 b@4>".pick({\n  a: note("c3 e3").s("sax"),\n  b: note("g3").s("sax"),\n})'
+    const c = detectChunk(d, d.indexOf('c3 e3'))!
+    expect(c.headFn).toBe('note')
+    expect(classifyChunk(c)).toBe('roll')
+    expect(doc(c, d)).toBe('note("c3 e3").s("sax")')
+  })
+
+  it('descends through a trailing method after pickRestart (._pianoroll())', () => {
+    const d = '"<a@4 b@4>".pickRestart({\n  a: s("bd ~ sd ~"),\n  b: s("bd bd"),\n})._pianoroll()'
+    const c = detectChunk(d, d.indexOf('bd ~ sd'))!
+    expect(c.headFn).toBe('s')
+    expect(doc(c, d)).toBe('s("bd ~ sd ~")')
+  })
+
+  it('detectAllChunks stays one strip per statement (descent is cursor-only)', () => {
+    expect(detectAllChunks(pickDoc)).toHaveLength(1)
+  })
+})
+
 /** slice a chunk's statementRange out of the doc */
 function doc(c: ChunkInfo, source: string): string {
   return source.slice(c.statementRange[0], c.statementRange[1])
