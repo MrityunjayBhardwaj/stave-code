@@ -63,4 +63,31 @@ describe('readGainState', () => {
   it('classifies a missing gain as absent', () => {
     expect(readGainState(chunkOf('$: s("bd")')).kind).toBe('absent')
   })
+
+  // #668 — a pick*/combinator group carries its levels on its CHILDREN, so the
+  // outer strip can't show one scalar. When a child has `.gain`, report `foreign`
+  // (honest read-only) rather than `absent` (a false unity 1 / 0.0 dB fader).
+  it('a pickRestart with per-section gains reads foreign, not a false unity', () => {
+    const src =
+      'hats: "<a@4 b@4>".pickRestart({ a: s("hh").gain(1.36), b: s("oh").gain(0.5) })'
+    expect(readGainState(chunkOf(src)).kind).toBe('foreign')
+  })
+
+  it('a pick group with NO child gain stays absent (outer .gain() still insertable)', () => {
+    const src = 'hats: "<a@4 b@4>".pickRestart({ a: s("hh"), b: s("oh") })'
+    expect(readGainState(chunkOf(src)).kind).toBe('absent')
+  })
+
+  it('a stack whose voices carry gains reads foreign', () => {
+    expect(readGainState(chunkOf('$: stack(s("bd").gain(0.5), s("hh").gain(0.3))')).kind).toBe(
+      'foreign',
+    )
+  })
+
+  it('an outer .gain still wins over child gains (explicit outer level)', () => {
+    const src = 'hats: "<a@4 b@4>".pickRestart({ a: s("hh").gain(1.36) }).gain(0.8)'
+    const g = readGainState(chunkOf(src))
+    expect(g.kind).toBe('scalar')
+    if (g.kind === 'scalar') expect(g.value).toBe(0.8)
+  })
 })
