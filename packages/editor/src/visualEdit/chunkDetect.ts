@@ -20,6 +20,11 @@ import { parse } from 'acorn'
 // acorn's node types are intentionally loose; we walk untyped nodes here.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+/** The `pick`/`pickRestart`/`pickReset` family: a `"<…>".pickRestart({…})` call
+ * whose object argument's property VALUES are the section patterns (#463/#667).
+ * A cursor inside one of those values binds THAT section's inner chain. */
+const PICK_METHODS: ReadonlySet<string> = new Set(['pick', 'pickRestart', 'pickReset'])
+
 /** Coarse hint for which editor a chunk can open. Panels still read the
  * structured fields below to decide what they can actually edit. */
 export type ChunkType = 'step' | 'roll' | 'knobs' | 'unknown'
@@ -201,6 +206,11 @@ function buildChunkFromExpr(
  * enclosing chain.
  */
 function innermostChainUnder(doc: string, expr: any, pos: number): any {
+  // A `pick*({…})` section value is a chain the panels can bind, but the pick
+  // receiver is a string literal (not an identifier head), so the combinator-arg
+  // path below never reaches it — check the pick object first (#667).
+  const pickSection = pickSectionUnder(expr, pos)
+  if (pickSection) return innermostChainUnder(doc, pickSection, pos)
   const headOut = { ref: null as any }
   collectChain(doc, expr, headOut)
   const head = headOut.ref
@@ -210,6 +220,51 @@ function innermostChainUnder(doc: string, expr: any, pos: number): any {
     if (inner) return innermostChainUnder(doc, inner, pos)
   }
   return expr
+}
+
+/**
+ * The section pattern under `pos` inside a `pick*({…})` object argument, or null.
+ * A `pick`/`pickRestart`/`pickReset` call takes an object whose property VALUES
+ * are the section patterns (`{verse: s("…"), chorus: s("…")}`); a cursor inside
+ * one of those values binds THAT section's inner chain — the same descent
+ * `chainArgUnder` does for a `stack`/`arrange` arm (#667). The `<…>` control
+ * string and the property KEYS are not sections: a cursor there returns null so
+ * the outer statement stays selected (the control is a Timeline concern, #463).
+ *
+ * Walks the callee spine (like `collectChain`) rather than recursing the whole
+ * tree, so a `pick*` NESTED inside another combinator is found only when it lies
+ * on the chain under `pos` (the enclosing `innermostChainUnder` recursion has
+ * already narrowed to that arm).
+ */
+function pickSectionUnder(expr: any, pos: number): any {
+  let node = expr
+  while (node && node.type === 'CallExpression') {
+    const callee = node.callee
+    if (
+      callee.type === 'MemberExpression' &&
+      !callee.computed &&
+      callee.property.type === 'Identifier' &&
+      PICK_METHODS.has(callee.property.name)
+    ) {
+      const obj = node.arguments.find((a: any) => a && a.type === 'ObjectExpression')
+      if (obj) {
+        for (const prop of obj.properties) {
+          const val = prop && prop.type === 'Property' ? prop.value : null
+          if (
+            val &&
+            val.type === 'CallExpression' &&
+            typeof val.start === 'number' &&
+            pos >= val.start &&
+            pos <= val.end
+          ) {
+            return val
+          }
+        }
+      }
+    }
+    node = callee.type === 'MemberExpression' ? callee.object : null
+  }
+  return null
 }
 
 /**
