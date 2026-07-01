@@ -273,8 +273,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".note()",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".scale('G0 minor')",
+  },
+  {
+    "tag": "Seq",
+    "text": "G0 minor",
+  },
+  {
+    "tag": "Play",
+    "text": "G0",
+  },
+  {
+    "tag": "Play",
+    "text": "minor",
   },
   {
     "tag": "Code",
@@ -325,7 +337,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf(1000)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
@@ -420,7 +432,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   )",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('piano')",
   },
   {
@@ -1169,7 +1181,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".attack(0.03)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('blue')",
   },
   {
@@ -1222,7 +1234,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".attack(0.03)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('blue')",
   },
   {
@@ -1275,7 +1287,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".attack(0.03)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('blue')",
   },
   {
@@ -1328,7 +1340,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".attack(0.03)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('blue')",
   },
   {
@@ -1381,7 +1393,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".attack(0.03)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('blue')",
   },
   {
@@ -1434,7 +1446,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".attack(0.03)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('blue')",
   },
   {
@@ -1487,7 +1499,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".attack(0.03)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('blue')",
   },
   {
@@ -1540,7 +1552,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".attack(0.03)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('blue')",
   },
   {
@@ -1593,7 +1605,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".attack(0.03)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('blue')",
   },
   {
@@ -1646,7 +1658,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".attack(0.03)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('blue')",
   },
   {
@@ -1699,7 +1711,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".attack(0.03)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('blue')",
   },
   {
@@ -2109,7 +2121,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".attack(0.03)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('blue')",
   },
   {
@@ -2130,7 +2142,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > barryHarris — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('#00B8D4')",
   },
   {
@@ -2150,8 +2162,24 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".transpose("<0 1 2 1>/8")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".scale('C bebop major')",
+  },
+  {
+    "tag": "Seq",
+    "text": "C bebop major",
+  },
+  {
+    "tag": "Play",
+    "text": "C",
+  },
+  {
+    "tag": "Play",
+    "text": "bebop",
+  },
+  {
+    "tag": "Play",
+    "text": "major",
   },
   {
     "tag": "Code",
@@ -2219,8 +2247,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".s("flbass")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".scale('A1 minor')",
+  },
+  {
+    "tag": "Seq",
+    "text": "A1 minor",
+  },
+  {
+    "tag": "Play",
+    "text": "A1",
+  },
+  {
+    "tag": "Play",
+    "text": "minor",
   },
   {
     "tag": "Code",
@@ -2418,7 +2458,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".cutoff(200)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
@@ -2426,8 +2466,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".superimpose(x=>x.add(.02))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".scale('g1 dorian')",
+  },
+  {
+    "tag": "Seq",
+    "text": "g1 dorian",
+  },
+  {
+    "tag": "Play",
+    "text": "g1",
+  },
+  {
+    "tag": "Play",
+    "text": "dorian",
   },
   {
     "tag": "Seq",
@@ -2662,7 +2714,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".gain(.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
@@ -2722,12 +2774,24 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".cutoff(2000)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('square')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".scale('g4 dorian')",
+  },
+  {
+    "tag": "Seq",
+    "text": "g4 dorian",
+  },
+  {
+    "tag": "Play",
+    "text": "g4",
+  },
+  {
+    "tag": "Play",
+    "text": "dorian",
   },
   {
     "tag": "Stack",
@@ -2806,12 +2870,28 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".begin(.05)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('bell')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".scale('g2 minor pentatonic')",
+  },
+  {
+    "tag": "Seq",
+    "text": "g2 minor pentatonic",
+  },
+  {
+    "tag": "Play",
+    "text": "g2",
+  },
+  {
+    "tag": "Play",
+    "text": "minor",
+  },
+  {
+    "tag": "Play",
+    "text": "pentatonic",
   },
   {
     "tag": "Struct",
@@ -2974,6 +3054,18 @@ note("<b4 eb4>").s('dino').delay(.8).slow(8).room(.5)
 )",
   },
   {
+    "tag": "Code",
+    "text": ".clip(1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".loopAt(8)",
+  },
+  {
+    "tag": "Play",
+    "text": "bass",
+  },
+  {
     "tag": "Seq",
     "text": "bd*2, ~ sd,hh*4",
   },
@@ -3050,7 +3142,7 @@ note("<b4 eb4>").s('dino').delay(.8).slow(8).room(.5)
     "text": ".cutoff(sine.range(400,2000).slow(16))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
@@ -3070,8 +3162,24 @@ note("<b4 eb4>").s('dino').delay(.8).slow(8).room(.5)
     "text": ".superimpose(x=>x.add(.1))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".scale('ab4 minor pentatonic')",
+  },
+  {
+    "tag": "Seq",
+    "text": "ab4 minor pentatonic",
+  },
+  {
+    "tag": "Play",
+    "text": "ab4",
+  },
+  {
+    "tag": "Play",
+    "text": "minor",
+  },
+  {
+    "tag": "Play",
+    "text": "pentatonic",
   },
   {
     "tag": "Seq",
@@ -3098,8 +3206,24 @@ note("<b4 eb4>").s('dino').delay(.8).slow(8).room(.5)
     "text": ".superimpose(x=>x.add(.1))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".scale('ab4 minor pentatonic')",
+  },
+  {
+    "tag": "Seq",
+    "text": "ab4 minor pentatonic",
+  },
+  {
+    "tag": "Play",
+    "text": "ab4",
+  },
+  {
+    "tag": "Play",
+    "text": "minor",
+  },
+  {
+    "tag": "Play",
+    "text": "pentatonic",
   },
   {
     "tag": "Seq",
@@ -3134,7 +3258,7 @@ note("<b4 eb4>").s('dino').delay(.8).slow(8).room(.5)
     "text": ".delay(.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('dino')",
   },
   {
@@ -3171,8 +3295,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".echo(4, 1/8, .5)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".scale('D minor')",
+  },
+  {
+    "tag": "Seq",
+    "text": "D minor",
+  },
+  {
+    "tag": "Play",
+    "text": "D",
+  },
+  {
+    "tag": "Play",
+    "text": "minor",
   },
   {
     "tag": "Stack",
@@ -3183,7 +3319,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".off(1/4, x=>x.add(n(2)).color('green'))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('salmon')",
   },
   {
@@ -3231,7 +3367,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "3",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('green')",
   },
   {
@@ -3243,7 +3379,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "1/4",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('salmon')",
   },
   {
@@ -3291,7 +3427,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "3",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('steelblue')",
   },
   {
@@ -3307,7 +3443,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".off(1/4, x=>x.add(n(2)).color('green'))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('salmon')",
   },
   {
@@ -3355,7 +3491,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "3",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('green')",
   },
   {
@@ -3367,7 +3503,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "1/4",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('salmon')",
   },
   {
@@ -3444,7 +3580,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 )",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".bank('RolandTR909')",
   },
   {
@@ -3516,7 +3652,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(.5)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".bank('RolandTR909')",
   },
   {
@@ -3572,7 +3708,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".decay(.1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
@@ -3580,8 +3716,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".struct("x(5,8,-1)")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".scale('G1 minor')",
+  },
+  {
+    "tag": "Seq",
+    "text": "G1 minor",
+  },
+  {
+    "tag": "Play",
+    "text": "G1",
+  },
+  {
+    "tag": "Play",
+    "text": "minor",
   },
   {
     "tag": "Cycle",
@@ -3640,7 +3788,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".clip(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('square')",
   },
   {
@@ -3704,8 +3852,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".note()",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".scale('G4 minor')",
+  },
+  {
+    "tag": "Seq",
+    "text": "G4 minor",
+  },
+  {
+    "tag": "Play",
+    "text": "G4",
+  },
+  {
+    "tag": "Play",
+    "text": "minor",
   },
   {
     "tag": "Stack",
@@ -3857,7 +4017,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".clip(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('ocarina_vib')",
   },
   {
@@ -3969,7 +4129,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".jux(x=>x.rev().color('green').s('sawtooth'))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
@@ -3997,11 +4157,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "bb3",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('green')",
   },
   {
@@ -4009,7 +4169,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".rev()",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
@@ -4037,7 +4197,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "bb3",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('triangle')",
   },
   {
@@ -4061,7 +4221,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".jux(x=>x.rev().color('green').s('sawtooth'))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
@@ -4089,11 +4249,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "bb3",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('green')",
   },
   {
@@ -4101,7 +4261,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".rev()",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
@@ -4255,7 +4415,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".gain(.4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
@@ -4379,7 +4539,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".gain(.16)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('sawtooth')",
   },
   {
@@ -4411,7 +4571,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".degradeBy(perlin.range(0,.5))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('triangle')",
   },
   {
@@ -4659,7 +4819,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".gain(.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('bell')",
   },
   {
@@ -4695,7 +4855,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".clip(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".s('bass')",
   },
   {
@@ -4744,7 +4904,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 )",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('#F5A623')",
   },
   {
@@ -4776,7 +4936,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "bd",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('#673AB7')",
   },
   {
@@ -4788,7 +4948,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "hh",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".color('#4CAF50')",
   },
   {
