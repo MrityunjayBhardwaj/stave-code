@@ -775,3 +775,130 @@ describe('FullSongTimeline — NESTED combinator arm binds the OUTER arrange (#4
     expect(onTrimClip).toHaveBeenCalledWith({ sourceOffset: 0, armIndex: 0, weight: 1 })
   })
 })
+
+describe('FullSongTimeline — resize a bare loop (#662, set display span; option B = no write-back)', () => {
+  const settle = () => act(async () => { await Promise.resolve() })
+
+  // A PURE bare song mirroring `$: s("bd*4")`: one lane, content period 1 cycle
+  // (the pattern tiles every cycle). So the natural floor is 1 and the user can
+  // shrink the DISPLAY span down to the MIN_BARE_SPLIT_SPAN clamp (2). The fixture
+  // analysis used by the trim tests has period 4 — too coarse to exercise shrink.
+  const bareAnalysis: SongAnalysis = {
+    periodCycles: 1,
+    horizonCycles: 1,
+    reachedCap: false,
+    lanes: [{ laneKey: 'bd', onsetsByCycle: [4] }],
+    sections: [{ startCycle: 0, endCycle: 1, laneKeys: ['bd'] }],
+  }
+
+  // This test env ships a `window.localStorage` whose methods are non-functional,
+  // so install a real Map-backed Storage (mirrors timelineCameraPersistence.test)
+  // — the bare span override round-trips through it. Fresh per test → isolation.
+  let originalStorage: PropertyDescriptor | undefined
+  beforeEach(() => {
+    originalStorage = Object.getOwnPropertyDescriptor(window, 'localStorage')
+    const map = new Map<string, string>()
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      writable: true,
+      value: {
+        get length() { return map.size },
+        clear: () => map.clear(),
+        getItem: (k: string) => (map.has(k) ? map.get(k)! : null),
+        key: (i: number) => Array.from(map.keys())[i] ?? null,
+        removeItem: (k: string) => map.delete(k),
+        setItem: (k: string, v: string) => { map.set(k, String(v)) },
+      } as Storage,
+    })
+  })
+  afterEach(() => {
+    if (originalStorage) Object.defineProperty(window, 'localStorage', originalStorage)
+  })
+
+  // BARE_EVENTS (no armIndex) → one implicit clip per lane spanning [0, displaySpan).
+  // `onTrimClip` is wired so the edge hit-test runs — but a bare resize must NEVER
+  // call it (option B writes no code). `onSplitClip` lets the split-at-span test
+  // observe the chosen granularity flowing through.
+  function renderBareResizable() {
+    const onTrimClip = vi.fn()
+    const onSplitClip = vi.fn()
+    const utils = renderFull({ analysis: bareAnalysis, ir: { bare: true } as never, onTrimClip, onSplitClip })
+    const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
+    grid.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 800, height: 48, right: 800, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    return { ...utils, grid, onTrimClip, onSplitClip }
+  }
+
+  const majors = (c: HTMLElement) => c.querySelectorAll('[data-full-song-tick="major"]').length
+
+  it('drags the bare clip’s right edge to EXTEND the span — grows bars, writes NO code', async () => {
+    const { grid, container, onTrimClip } = renderBareResizable()
+    await settle()
+    // At rest the bare loop is floored to MIN_BARE_SPAN (4) → 4 major ticks; its
+    // single implicit clip’s right edge sits at the song end (cycle 4 → x=800).
+    expect(majors(container as unknown as HTMLElement)).toBe(4)
+    // Grab the bare edge (x=798, 2px inside) in the bd row (y≈10) and drag RIGHT to
+    // a content-x mapping to cycle 6 (1200px at the constant 200px/cycle).
+    fireEvent.pointerDown(grid, { clientX: 798, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(grid, { clientX: 1200, clientY: 10, pointerId: 1 })
+    // Mid-drag the transient extend room is real timeline: max(4, 6 + MARGIN 2) = 8.
+    expect(majors(container as unknown as HTMLElement)).toBe(8)
+    fireEvent.pointerUp(grid, { clientX: 1200, clientY: 10, pointerId: 1 })
+    // On release the OVERRIDE persists (unlike #487 real-trim, which collapses the
+    // room): displaySpan = max(2, natural 1, override 6) = 6 → 6 majors that STAY.
+    expect(majors(container as unknown as HTMLElement)).toBe(6)
+    // Option B observation gate: NO code write-back — the set-weight handler is
+    // never called. Only Split/Delete (separate gestures) write code.
+    expect(onTrimClip).not.toHaveBeenCalled()
+  })
+
+  it('drags the edge LEFT to shrink — clamped at MIN_BARE_SPLIT_SPAN (2) so Split stays possible', async () => {
+    const { grid, container, onTrimClip } = renderBareResizable()
+    await settle()
+    expect(majors(container as unknown as HTMLElement)).toBe(4)
+    // Grab the edge (cycle 4 → x=798) and drag hard LEFT past cycle 0 (x=0). The
+    // bare clamp floors the span at 2 — never below a splittable 2 bars.
+    fireEvent.pointerDown(grid, { clientX: 798, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(grid, { clientX: 0, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: 0, clientY: 10, pointerId: 1 })
+    // displaySpan = max(2, natural 1, override 2) = 2 → 2 majors.
+    expect(majors(container as unknown as HTMLElement)).toBe(2)
+    expect(onTrimClip).not.toHaveBeenCalled()
+  })
+
+  it('persists the resized span to the camera and restores it on a fresh mount (reload)', async () => {
+    const first = renderBareResizable()
+    await settle()
+    fireEvent.pointerDown(first.grid, { clientX: 798, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(first.grid, { clientX: 1200, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(first.grid, { clientX: 1200, clientY: 10, pointerId: 1 })
+    expect(majors(first.container as unknown as HTMLElement)).toBe(6)
+    // The override landed in the persisted camera under `bareSpan`.
+    const cam = JSON.parse(window.localStorage.getItem('stave:timelineCamera') ?? '{}')
+    expect(cam.bareSpan).toBe(6)
+    cleanup()
+    // A fresh mount (a reload) seeds the override from the camera → 6 bars with NO
+    // drag. This is the "persists across reload" guarantee at the unit level.
+    const second = renderBareResizable()
+    await settle()
+    expect(majors(second.container as unknown as HTMLElement)).toBe(6)
+  })
+
+  it('after extending to 6, selecting the bare clip + S splits at the CHOSEN span (6), not the floor (4)', async () => {
+    const { grid, onSplitClip } = renderBareResizable()
+    await settle()
+    // Extend to 6 bars.
+    fireEvent.pointerDown(grid, { clientX: 798, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(grid, { clientX: 1200, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: 1200, clientY: 10, pointerId: 1 })
+    // Select the bare clip (a click that does NOT travel) in the bd row.
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    // `S` materializes the combinator at the bare clip’s width — now 6, the chosen
+    // span — so split → arrange([3, pat], [3, pat]). The span flows through the
+    // clip’s endCycle (= displaySpan) for free, no serializer change (#662).
+    fireEvent.keyDown(grid, { key: 's' })
+    expect(onSplitClip).toHaveBeenCalledTimes(1)
+    expect(onSplitClip.mock.calls[0][0]).toMatchObject({ armIndex: -1, firstWeight: 3, span: 6 })
+  })
+})
