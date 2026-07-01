@@ -100,7 +100,16 @@ export function runRawStage(input: PatternIR): PatternIR {
       code: t.expr,
       lang: 'strudel' as const,
       loc: [{ start: t.offset, end: t.offset + t.expr.length }],
-    }
+      // #671 — a lone `name: …` / `$:` track threads its label AND its
+      // `$:`-line range so CHAIN-APPLIED's single-track wrap mirrors
+      // parseStrudel.ts:857 exactly: `trackId = label` (not synthetic `d1`)
+      // AND `loc = [{ dollarStart, end }]`. A lone `$:` carries label === '$'
+      // → d1 (unchanged); a bare pattern (tracks.length === 0) never reaches
+      // here so it stays loc-free, matching parseStrudel's no-`$:` branch.
+      trackLabel: t.label,
+      dollarStart: t.dollarStart,
+      dollarEnd: t.end,
+    } as PatternIR
   }
   const trackCodes: PatternIR[] = tracks.map((t) => ({
     tag: 'Code' as const,
@@ -117,6 +126,12 @@ export function runRawStage(input: PatternIR): PatternIR {
     // the test-helper stripStageMeta the regression sentinel uses.
     dollarStart: t.dollarStart,
     dollarEnd: t.end,
+    // #671 — thread the `name:` label so CHAIN-APPLIED builds the Track
+    // wrapper with `trackId = label` (parseStrudel.ts:876), not a `d{N}`
+    // ordinal. Without this the full-song timeline (which consumes THIS
+    // staged pipeline, not monolithic parseStrudel) dropped labelled-track
+    // names → `d1/d2/d3`. `$:` carries label === '$' → d{N} unchanged.
+    trackLabel: t.label,
   } as PatternIR))
   return {
     tag: 'Stack' as const,
@@ -144,7 +159,20 @@ export function runMiniExpandedStage(input: PatternIR): PatternIR {
     // 0-track or 1-track from RAW. Empty Code (empty source from RAW)
     // → IR.pure() to mirror parseStrudel's empty-source behavior.
     if (!input.code.trim()) return IR.pure()
-    return parseRootWithChainMeta(input.code, input.loc?.[0]?.start ?? 0)
+    const parsed = parseRootWithChainMeta(input.code, input.loc?.[0]?.start ?? 0)
+    // #671 — carry a lone track's `name:`/`$:` label AND `$:`-line range
+    // through to CHAIN-APPLIED (mirrors the multi-track threading below).
+    const cMeta = input as unknown as { trackLabel?: string; dollarStart?: number; dollarEnd?: number }
+    if (cMeta.trackLabel !== undefined) {
+      return {
+        ...(parsed as object),
+        trackLabel: cMeta.trackLabel,
+        ...(cMeta.dollarStart !== undefined && cMeta.dollarEnd !== undefined
+          ? { dollarStart: cMeta.dollarStart, dollarEnd: cMeta.dollarEnd }
+          : {}),
+      } as unknown as PatternIR
+    }
+    return parsed
   }
   if (input.tag === 'Stack' && input.userMethod === undefined) {
     // Multi-track from RAW — apply parseRootWithChainMeta to each Code.
@@ -154,12 +182,14 @@ export function runMiniExpandedStage(input: PatternIR): PatternIR {
     const tracks = input.tracks.map((t) => {
       if (t.tag !== 'Code') return t // defensive
       const parsed = parseRootWithChainMeta(t.code, t.loc?.[0]?.start ?? 0)
-      const tMeta = t as unknown as { dollarStart?: number; dollarEnd?: number }
+      const tMeta = t as unknown as { dollarStart?: number; dollarEnd?: number; trackLabel?: string }
       if (tMeta.dollarStart !== undefined && tMeta.dollarEnd !== undefined) {
         return {
           ...(parsed as object),
           dollarStart: tMeta.dollarStart,
           dollarEnd: tMeta.dollarEnd,
+          // #671 — thread the label alongside the loc stage-meta.
+          ...(tMeta.trackLabel !== undefined ? { trackLabel: tMeta.trackLabel } : {}),
         } as unknown as PatternIR
       }
       return parsed
@@ -244,13 +274,18 @@ export function runChainAppliedStage(input: PatternIR): PatternIR {
     // strip in applyOnTrack so the inner Track body is metadata-clean.
     return IR.stack(
       ...input.tracks.map((t, i) => {
-        const tMeta = t as unknown as { dollarStart?: number; dollarEnd?: number }
+        const tMeta = t as unknown as { dollarStart?: number; dollarEnd?: number; trackLabel?: string }
         const applied = applyOnTrack(t)
         const meta =
           tMeta.dollarStart !== undefined && tMeta.dollarEnd !== undefined
             ? { loc: [{ start: tMeta.dollarStart, end: tMeta.dollarEnd }] }
             : undefined
-        return IR.track(`d${i + 1}`, applied, meta)
+        // #671 — a real `name:` label becomes the trackId (mirrors
+        // parseStrudel.ts:876); `$:` (label === '$') keeps the synthetic
+        // `d{i+1}` so existing multi-`$:` tunes stay byte-identical.
+        const trackId =
+          tMeta.trackLabel && tMeta.trackLabel !== '$' ? tMeta.trackLabel : `d${i + 1}`
+        return IR.track(trackId, applied, meta)
       }),
     )
   }
@@ -260,7 +295,18 @@ export function runChainAppliedStage(input: PatternIR): PatternIR {
   // β-2 Track arm strips the wrap on round-trip when userMethod undefined
   // so byte identity holds. The test migration uses the unwrapD1 helper
   // (`__tests__/helpers/unwrapD1.ts`) to drill through this wrap.
-  return IR.track('d1', applyOnTrack(input))
+  // #671 — a lone `name:` track carries its label → trackId AND its `$:`-line
+  // loc (mirrors parseStrudel.ts:857); a lone `$:` (label === '$') keeps the
+  // synthetic `d1` but still gets the loc; a bare pattern (no meta) stays
+  // `d1` with NO loc, matching parseStrudel's no-`$:` branch.
+  const sMeta = input as unknown as { trackLabel?: string; dollarStart?: number; dollarEnd?: number }
+  const singleTrackId =
+    sMeta.trackLabel && sMeta.trackLabel !== '$' ? sMeta.trackLabel : 'd1'
+  const singleMeta =
+    sMeta.dollarStart !== undefined && sMeta.dollarEnd !== undefined
+      ? { loc: [{ start: sMeta.dollarStart, end: sMeta.dollarEnd }] }
+      : undefined
+  return IR.track(singleTrackId, applyOnTrack(input), singleMeta)
 }
 
 /**
@@ -298,7 +344,8 @@ function stripStageMeta(node: PatternIR): PatternIR {
     !('unresolvedChain' in n) &&
     !('chainOffset' in n) &&
     !('dollarStart' in n) &&
-    !('dollarEnd' in n)
+    !('dollarEnd' in n) &&
+    !('trackLabel' in n)
   ) {
     return node
   }
@@ -307,12 +354,16 @@ function stripStageMeta(node: PatternIR): PatternIR {
     chainOffset: _o,
     dollarStart: _ds,
     dollarEnd: _de,
+    // #671 — the label is CONSUMED as trackId in CHAIN-APPLIED; strip the
+    // meta so it never leaks onto a FINAL node body (keeps byte-equality).
+    trackLabel: _tl,
     ...clean
   } = n
   void _u
   void _o
   void _ds
   void _de
+  void _tl
   return clean as PatternIR
 }
 

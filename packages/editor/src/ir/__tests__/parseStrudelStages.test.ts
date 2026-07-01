@@ -83,6 +83,11 @@ export function assertNoStageMeta(node: PatternIR): void {
       Object.prototype.hasOwnProperty.call(rec, 'dollarEnd'),
       `node tag=${n.tag} has orphan dollarEnd`,
     ).toBe(false)
+    // #671 — label threading metadata; consumed as trackId in CHAIN-APPLIED.
+    expect(
+      Object.prototype.hasOwnProperty.call(rec, 'trackLabel'),
+      `node tag=${n.tag} has orphan trackLabel`,
+    ).toBe(false)
     // Recurse into children based on tag shape.
     switch (n.tag) {
       case 'Seq':
@@ -163,7 +168,8 @@ function stripStageMeta(node: PatternIR): PatternIR {
       k === 'unresolvedChain' ||
       k === 'chainOffset' ||
       k === 'dollarStart' ||
-      k === 'dollarEnd'
+      k === 'dollarEnd' ||
+      k === 'trackLabel' // #671
     ) {
       continue
     }
@@ -367,6 +373,13 @@ const REGRESSION_FIXTURES: readonly string[] = [
   'setcps(120/240)\ns("bd hh sd")',
   'setcps(120/240)\nsound("bd hh sd")',
   '// my tune\ns("bd hh sd")',
+  // #671 — `name:` labelled tracks must pin parity with parseStrudel, which
+  // sets trackId = label (parseStrudel.ts:857/876). Before the fix the staged
+  // pipeline emitted `d{N}` ordinals here → the full-song timeline (which
+  // consumes this pipeline) dropped the labels. These fixtures FAILED pre-fix.
+  'drums: s("bd hh")', // single labelled track → Track('drums')
+  'drums: s("bd")\nhats: s("hh")', // multi labelled → Track('drums'), Track('hats')
+  'drums: s("bd")\n$: s("hh")', // mixed: label='drums' → drums, `$:` → d2
 ]
 
 describe('parseStrudel stages — regression sentinel (T-05.c, D-06)', () => {
@@ -389,6 +402,18 @@ describe('parseStrudel stages — regression sentinel (T-05.c, D-06)', () => {
       assertNoStageMeta(passes[3].ir)
     })
   }
+
+  // #671 — direct trackId assertion (documents the fix intent explicitly, not
+  // just via byte-equality). The staged pipeline is the one the full-song
+  // timeline consumes; it MUST carry `name:` labels as trackIds.
+  it('threads `name:` track labels into trackId (not `d{N}` ordinals)', () => {
+    const ir = pipeline('drums: s("bd")\nhats: s("hh")\n$: s("cp")') as {
+      tag: string
+      tracks?: Array<{ trackId?: string }>
+    }
+    expect(ir.tag).toBe('Stack')
+    expect(ir.tracks?.map((t) => t.trackId)).toEqual(['drums', 'hats', 'd3'])
+  })
 })
 
 // ---------------------------------------------------------------------------

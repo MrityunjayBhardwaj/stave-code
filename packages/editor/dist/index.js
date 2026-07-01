@@ -3395,7 +3395,16 @@ function runRawStage(input) {
       tag: "Code",
       code: t.expr,
       lang: "strudel",
-      loc: [{ start: t.offset, end: t.offset + t.expr.length }]
+      loc: [{ start: t.offset, end: t.offset + t.expr.length }],
+      // #671 — a lone `name: …` / `$:` track threads its label AND its
+      // `$:`-line range so CHAIN-APPLIED's single-track wrap mirrors
+      // parseStrudel.ts:857 exactly: `trackId = label` (not synthetic `d1`)
+      // AND `loc = [{ dollarStart, end }]`. A lone `$:` carries label === '$'
+      // → d1 (unchanged); a bare pattern (tracks.length === 0) never reaches
+      // here so it stays loc-free, matching parseStrudel's no-`$:` branch.
+      trackLabel: t.label,
+      dollarStart: t.dollarStart,
+      dollarEnd: t.end
     };
   }
   const trackCodes = tracks.map((t) => ({
@@ -3412,7 +3421,13 @@ function runRawStage(input) {
     // — the strip happens in applyOnTrack via stripStageMeta below + in
     // the test-helper stripStageMeta the regression sentinel uses.
     dollarStart: t.dollarStart,
-    dollarEnd: t.end
+    dollarEnd: t.end,
+    // #671 — thread the `name:` label so CHAIN-APPLIED builds the Track
+    // wrapper with `trackId = label` (parseStrudel.ts:876), not a `d{N}`
+    // ordinal. Without this the full-song timeline (which consumes THIS
+    // staged pipeline, not monolithic parseStrudel) dropped labelled-track
+    // names → `d1/d2/d3`. `$:` carries label === '$' → d{N} unchanged.
+    trackLabel: t.label
   }));
   return {
     tag: "Stack",
@@ -3426,7 +3441,16 @@ __name(runRawStage, "runRawStage");
 function runMiniExpandedStage(input) {
   if (input.tag === "Code") {
     if (!input.code.trim()) return IR.pure();
-    return parseRootWithChainMeta(input.code, input.loc?.[0]?.start ?? 0);
+    const parsed = parseRootWithChainMeta(input.code, input.loc?.[0]?.start ?? 0);
+    const cMeta = input;
+    if (cMeta.trackLabel !== void 0) {
+      return {
+        ...parsed,
+        trackLabel: cMeta.trackLabel,
+        ...cMeta.dollarStart !== void 0 && cMeta.dollarEnd !== void 0 ? { dollarStart: cMeta.dollarStart, dollarEnd: cMeta.dollarEnd } : {}
+      };
+    }
+    return parsed;
   }
   if (input.tag === "Stack" && input.userMethod === void 0) {
     const tracks = input.tracks.map((t) => {
@@ -3437,7 +3461,9 @@ function runMiniExpandedStage(input) {
         return {
           ...parsed,
           dollarStart: tMeta.dollarStart,
-          dollarEnd: tMeta.dollarEnd
+          dollarEnd: tMeta.dollarEnd,
+          // #671 — thread the label alongside the loc stage-meta.
+          ...tMeta.trackLabel !== void 0 ? { trackLabel: tMeta.trackLabel } : {}
         };
       }
       return parsed;
@@ -3475,11 +3501,15 @@ function runChainAppliedStage(input) {
         const tMeta = t;
         const applied = applyOnTrack(t);
         const meta = tMeta.dollarStart !== void 0 && tMeta.dollarEnd !== void 0 ? { loc: [{ start: tMeta.dollarStart, end: tMeta.dollarEnd }] } : void 0;
-        return IR.track(`d${i + 1}`, applied, meta);
+        const trackId = tMeta.trackLabel && tMeta.trackLabel !== "$" ? tMeta.trackLabel : `d${i + 1}`;
+        return IR.track(trackId, applied, meta);
       })
     );
   }
-  return IR.track("d1", applyOnTrack(input));
+  const sMeta = input;
+  const singleTrackId = sMeta.trackLabel && sMeta.trackLabel !== "$" ? sMeta.trackLabel : "d1";
+  const singleMeta = sMeta.dollarStart !== void 0 && sMeta.dollarEnd !== void 0 ? { loc: [{ start: sMeta.dollarStart, end: sMeta.dollarEnd }] } : void 0;
+  return IR.track(singleTrackId, applyOnTrack(input), singleMeta);
 }
 __name(runChainAppliedStage, "runChainAppliedStage");
 function applyOnTrack(node) {
@@ -3498,7 +3528,7 @@ function applyOnTrack(node) {
 __name(applyOnTrack, "applyOnTrack");
 function stripStageMeta(node) {
   const n = node;
-  if (!("unresolvedChain" in n) && !("chainOffset" in n) && !("dollarStart" in n) && !("dollarEnd" in n)) {
+  if (!("unresolvedChain" in n) && !("chainOffset" in n) && !("dollarStart" in n) && !("dollarEnd" in n) && !("trackLabel" in n)) {
     return node;
   }
   const {
@@ -3506,6 +3536,9 @@ function stripStageMeta(node) {
     chainOffset: _o,
     dollarStart: _ds,
     dollarEnd: _de,
+    // #671 — the label is CONSUMED as trackId in CHAIN-APPLIED; strip the
+    // meta so it never leaks onto a FINAL node body (keeps byte-equality).
+    trackLabel: _tl,
     ...clean
   } = n;
   return clean;
