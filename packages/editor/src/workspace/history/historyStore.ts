@@ -17,6 +17,8 @@
  */
 
 import type { ProjectHistory } from './historyGraph'
+import { openIdbWithTimeout } from '../../idb'
+import { isEphemeralProjectId } from '../projectRegistry'
 
 export const DB_NAME = 'stave-snapshots'
 export const DB_VERSION = 2
@@ -35,12 +37,7 @@ export function upgradeHistoryDb(db: IDBDatabase): void {
 }
 
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => upgradeHistoryDb(req.result)
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
+  return openIdbWithTimeout(DB_NAME, DB_VERSION, (db) => upgradeHistoryDb(db))
 }
 
 function wrap<T>(req: IDBRequest<T>): Promise<T> {
@@ -76,4 +73,28 @@ export async function deleteHistory(projectId: string): Promise<void> {
     db.transaction(HISTORY_STORE, 'readwrite').objectStore(HISTORY_STORE).delete(projectId),
   )
   db.close()
+}
+
+/**
+ * Delete history rows for ephemeral sessions (#688). History is keyed by
+ * projectId, so ephemeral rows are those whose key carries the prefix.
+ */
+export async function pruneEphemeralHistory(): Promise<void> {
+  const db = await openDb()
+  try {
+    const keys = await wrap<IDBValidKey[]>(
+      db.transaction(HISTORY_STORE, 'readonly').objectStore(HISTORY_STORE).getAllKeys(),
+    )
+    const ephemeral = keys.filter(
+      (k): k is string => typeof k === 'string' && isEphemeralProjectId(k),
+    )
+    if (ephemeral.length) {
+      const store = db
+        .transaction(HISTORY_STORE, 'readwrite')
+        .objectStore(HISTORY_STORE)
+      await Promise.all(ephemeral.map((k) => wrap(store.delete(k))))
+    }
+  } finally {
+    db.close()
+  }
 }

@@ -21894,21 +21894,62 @@ var _BufferedScheduler = class _BufferedScheduler {
 __name(_BufferedScheduler, "BufferedScheduler");
 var BufferedScheduler = _BufferedScheduler;
 
+// src/idb.ts
+var IDB_OPEN_TIMEOUT_MS = 8e3;
+function openIdbWithTimeout(name, version, upgrade, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? IDB_OPEN_TIMEOUT_MS;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const req = indexedDB.open(name, version);
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      req.onsuccess = () => {
+        try {
+          req.result.close();
+        } catch {
+        }
+      };
+      reject(new Error(`idb-open-timeout:${name}`));
+    }, timeoutMs);
+    req.onupgradeneeded = () => upgrade(req.result);
+    req.onsuccess = () => {
+      if (settled) {
+        try {
+          req.result.close();
+        } catch {
+        }
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(req.result);
+    };
+    req.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(req.error ?? new Error(`idb-open-error:${name}`));
+    };
+    req.onblocked = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error(`idb-open-blocked:${name}`));
+    };
+  });
+}
+__name(openIdbWithTimeout, "openIdbWithTimeout");
+
 // src/visualizers/vizPreset.ts
 var DB_NAME = "stave-viz-presets";
 var DB_VERSION = 1;
 var STORE_NAME = "presets";
 function openDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+  return openIdbWithTimeout(DB_NAME, DB_VERSION, (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME)) {
+      db.createObjectStore(STORE_NAME, { keyPath: "id" });
+    }
   });
 }
 __name(openDb, "openDb");
@@ -23061,9 +23102,136 @@ function applySnapshot(files, fileMeta, order) {
 }
 __name(applySnapshot, "applySnapshot");
 
+// src/workspace/projectRegistry.ts
+var DB_NAME2 = "stave-projects";
+var DB_VERSION2 = 1;
+var STORE_NAME2 = "projects";
+function openDb2() {
+  return openIdbWithTimeout(DB_NAME2, DB_VERSION2, (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME2)) {
+      db.createObjectStore(STORE_NAME2, { keyPath: "id" });
+    }
+  });
+}
+__name(openDb2, "openDb");
+function tx2(db, mode) {
+  return db.transaction(STORE_NAME2, mode).objectStore(STORE_NAME2);
+}
+__name(tx2, "tx");
+function wrap2(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+__name(wrap2, "wrap");
+async function listProjects() {
+  const db = await openDb2();
+  const all = await wrap2(tx2(db, "readonly").getAll());
+  db.close();
+  return all.sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
+}
+__name(listProjects, "listProjects");
+async function getProject(id) {
+  const db = await openDb2();
+  const result = await wrap2(tx2(db, "readonly").get(id));
+  db.close();
+  return result;
+}
+__name(getProject, "getProject");
+async function getLastOpenedProject() {
+  const list = await listProjects();
+  return list[0];
+}
+__name(getLastOpenedProject, "getLastOpenedProject");
+async function createProject(name) {
+  const meta = {
+    id: crypto.randomUUID(),
+    name,
+    createdAt: Date.now(),
+    lastOpenedAt: Date.now()
+  };
+  const db = await openDb2();
+  await wrap2(tx2(db, "readwrite").put(meta));
+  db.close();
+  return meta;
+}
+__name(createProject, "createProject");
+async function touchProject(id) {
+  const db = await openDb2();
+  const store = tx2(db, "readwrite");
+  const existing = await wrap2(store.get(id));
+  if (existing) {
+    await wrap2(store.put({ ...existing, lastOpenedAt: Date.now() }));
+  }
+  db.close();
+}
+__name(touchProject, "touchProject");
+async function setProjectBackgroundCrop(id, crop) {
+  const db = await openDb2();
+  const store = tx2(db, "readwrite");
+  const existing = await wrap2(store.get(id));
+  if (existing) {
+    const { backgroundCrop: _unused, ...rest } = existing;
+    const next = crop == null ? rest : { ...rest, backgroundCrop: crop };
+    await wrap2(store.put(next));
+  }
+  db.close();
+}
+__name(setProjectBackgroundCrop, "setProjectBackgroundCrop");
+async function renameProject(id, name) {
+  const db = await openDb2();
+  const store = tx2(db, "readwrite");
+  const existing = await wrap2(store.get(id));
+  if (existing) {
+    await wrap2(store.put({ ...existing, name }));
+  }
+  db.close();
+}
+__name(renameProject, "renameProject");
+async function deleteProject(id) {
+  const db = await openDb2();
+  await wrap2(tx2(db, "readwrite").delete(id));
+  db.close();
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(`stave-${id}`);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => resolve();
+  });
+}
+__name(deleteProject, "deleteProject");
+async function duplicateProject(id) {
+  const source = await getProject(id);
+  if (!source) return void 0;
+  return createProject(`${source.name} (copy)`);
+}
+__name(duplicateProject, "duplicateProject");
+var EPHEMERAL_ID_PREFIX = "ephemeral-";
+function isEphemeralProjectId(id) {
+  return id.startsWith(EPHEMERAL_ID_PREFIX);
+}
+__name(isEphemeralProjectId, "isEphemeralProjectId");
+async function pruneEphemeralProjects() {
+  const db = await openDb2();
+  try {
+    const keys = await wrap2(tx2(db, "readonly").getAllKeys());
+    const ephemeral = keys.filter(
+      (k) => typeof k === "string" && isEphemeralProjectId(k)
+    );
+    if (ephemeral.length) {
+      const store = tx2(db, "readwrite");
+      await Promise.all(ephemeral.map((k) => wrap2(store.delete(k))));
+    }
+  } finally {
+    db.close();
+  }
+}
+__name(pruneEphemeralProjects, "pruneEphemeralProjects");
+
 // src/workspace/history/historyStore.ts
-var DB_NAME2 = "stave-snapshots";
-var DB_VERSION2 = 2;
+var DB_NAME3 = "stave-snapshots";
+var DB_VERSION3 = 2;
 var HISTORY_STORE = "history";
 var LEGACY_STORE = "snapshots";
 function upgradeHistoryDb(db) {
@@ -23076,25 +23244,20 @@ function upgradeHistoryDb(db) {
   }
 }
 __name(upgradeHistoryDb, "upgradeHistoryDb");
-function openDb2() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME2, DB_VERSION2);
-    req.onupgradeneeded = () => upgradeHistoryDb(req.result);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+function openDb3() {
+  return openIdbWithTimeout(DB_NAME3, DB_VERSION3, (db) => upgradeHistoryDb(db));
 }
-__name(openDb2, "openDb");
-function wrap2(req) {
+__name(openDb3, "openDb");
+function wrap3(req) {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
-__name(wrap2, "wrap");
+__name(wrap3, "wrap");
 async function loadHistory(projectId) {
-  const db = await openDb2();
-  const row = await wrap2(
+  const db = await openDb3();
+  const row = await wrap3(
     db.transaction(HISTORY_STORE, "readonly").objectStore(HISTORY_STORE).get(projectId)
   );
   db.close();
@@ -23102,13 +23265,31 @@ async function loadHistory(projectId) {
 }
 __name(loadHistory, "loadHistory");
 async function saveHistory(h) {
-  const db = await openDb2();
-  await wrap2(
+  const db = await openDb3();
+  await wrap3(
     db.transaction(HISTORY_STORE, "readwrite").objectStore(HISTORY_STORE).put(h)
   );
   db.close();
 }
 __name(saveHistory, "saveHistory");
+async function pruneEphemeralHistory() {
+  const db = await openDb3();
+  try {
+    const keys = await wrap3(
+      db.transaction(HISTORY_STORE, "readonly").objectStore(HISTORY_STORE).getAllKeys()
+    );
+    const ephemeral = keys.filter(
+      (k) => typeof k === "string" && isEphemeralProjectId(k)
+    );
+    if (ephemeral.length) {
+      const store = db.transaction(HISTORY_STORE, "readwrite").objectStore(HISTORY_STORE);
+      await Promise.all(ephemeral.map((k) => wrap3(store.delete(k))));
+    }
+  } finally {
+    db.close();
+  }
+}
+__name(pruneEphemeralHistory, "pruneEphemeralHistory");
 
 // src/workspace/history/historyService.ts
 var current2 = null;
@@ -35555,25 +35736,20 @@ function warmMonaco() {
   return warmed;
 }
 __name(warmMonaco, "warmMonaco");
-var DB_NAME3 = "stave-snapshots";
-var STORE_NAME2 = "snapshots";
+var DB_NAME4 = "stave-snapshots";
+var STORE_NAME3 = "snapshots";
 var AUTO_SNAPSHOT_PREFIX = "Auto \u2014 ";
-function openDb3() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME3, DB_VERSION2);
-    req.onupgradeneeded = () => upgradeHistoryDb(req.result);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+function openDb4() {
+  return openIdbWithTimeout(DB_NAME4, DB_VERSION3, (db) => upgradeHistoryDb(db));
 }
-__name(openDb3, "openDb");
-function wrap3(req) {
+__name(openDb4, "openDb");
+function wrap4(req) {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
-__name(wrap3, "wrap");
+__name(wrap4, "wrap");
 var MAX_AUTO_SNAPSHOTS = 10;
 async function saveSnapshot(projectId, label, kind = "manual") {
   const doc = getActiveDoc();
@@ -35586,20 +35762,20 @@ async function saveSnapshot(projectId, label, kind = "manual") {
     kind
   };
   const record = { ...meta, bytes };
-  const db = await openDb3();
-  await wrap3(
-    db.transaction(STORE_NAME2, "readwrite").objectStore(STORE_NAME2).put(record)
+  const db = await openDb4();
+  await wrap4(
+    db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).put(record)
   );
   if (kind === "auto") {
-    const index = db.transaction(STORE_NAME2, "readonly").objectStore(STORE_NAME2).index("byProject");
-    const all = await wrap3(index.getAll(projectId));
+    const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
+    const all = await wrap4(index.getAll(projectId));
     const autos = all.filter(
       (r) => r.kind === "auto" || r.label.startsWith(AUTO_SNAPSHOT_PREFIX)
     ).sort((a, b) => b.createdAt - a.createdAt);
     const toDelete = autos.slice(MAX_AUTO_SNAPSHOTS);
     if (toDelete.length > 0) {
-      const wstore = db.transaction(STORE_NAME2, "readwrite").objectStore(STORE_NAME2);
-      for (const r of toDelete) await wrap3(wstore.delete(r.id));
+      const wstore = db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3);
+      for (const r of toDelete) await wrap4(wstore.delete(r.id));
     }
   }
   db.close();
@@ -35607,25 +35783,41 @@ async function saveSnapshot(projectId, label, kind = "manual") {
 }
 __name(saveSnapshot, "saveSnapshot");
 async function listSnapshots(projectId) {
-  const db = await openDb3();
-  const index = db.transaction(STORE_NAME2, "readonly").objectStore(STORE_NAME2).index("byProject");
-  const all = await wrap3(index.getAll(projectId));
+  const db = await openDb4();
+  const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
+  const all = await wrap4(index.getAll(projectId));
   db.close();
   return all.map(({ bytes: _bytes, ...meta }) => meta).sort((a, b) => b.createdAt - a.createdAt);
 }
 __name(listSnapshots, "listSnapshots");
 async function deleteSnapshot(id) {
-  const db = await openDb3();
-  await wrap3(
-    db.transaction(STORE_NAME2, "readwrite").objectStore(STORE_NAME2).delete(id)
+  const db = await openDb4();
+  await wrap4(
+    db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).delete(id)
   );
   db.close();
 }
 __name(deleteSnapshot, "deleteSnapshot");
+async function pruneEphemeralSnapshots() {
+  const db = await openDb4();
+  try {
+    const all = await wrap4(
+      db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).getAll()
+    );
+    const ids = all.filter((r) => isEphemeralProjectId(r.projectId)).map((r) => r.id);
+    if (ids.length) {
+      const store = db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3);
+      await Promise.all(ids.map((id) => wrap4(store.delete(id))));
+    }
+  } finally {
+    db.close();
+  }
+}
+__name(pruneEphemeralSnapshots, "pruneEphemeralSnapshots");
 async function restoreSnapshot(id) {
-  const db = await openDb3();
-  const stored = await wrap3(
-    db.transaction(STORE_NAME2, "readonly").objectStore(STORE_NAME2).get(id)
+  const db = await openDb4();
+  const stored = await wrap4(
+    db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).get(id)
   );
   db.close();
   if (!stored) throw new Error(`snapshot ${id} not found`);
@@ -36241,117 +36433,15 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
 }
 __name(HistoryPanel, "HistoryPanel");
 
-// src/workspace/projectRegistry.ts
-var DB_NAME4 = "stave-projects";
-var DB_VERSION3 = 1;
-var STORE_NAME3 = "projects";
-function openDb4() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME4, DB_VERSION3);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME3)) {
-        db.createObjectStore(STORE_NAME3, { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+// src/workspace/ephemeralPrune.ts
+async function pruneEphemeralArtifacts() {
+  await Promise.allSettled([
+    pruneEphemeralProjects(),
+    pruneEphemeralSnapshots(),
+    pruneEphemeralHistory()
+  ]);
 }
-__name(openDb4, "openDb");
-function tx2(db, mode) {
-  return db.transaction(STORE_NAME3, mode).objectStore(STORE_NAME3);
-}
-__name(tx2, "tx");
-function wrap4(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-__name(wrap4, "wrap");
-async function listProjects() {
-  const db = await openDb4();
-  const all = await wrap4(tx2(db, "readonly").getAll());
-  db.close();
-  return all.sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
-}
-__name(listProjects, "listProjects");
-async function getProject(id) {
-  const db = await openDb4();
-  const result = await wrap4(tx2(db, "readonly").get(id));
-  db.close();
-  return result;
-}
-__name(getProject, "getProject");
-async function getLastOpenedProject() {
-  const list = await listProjects();
-  return list[0];
-}
-__name(getLastOpenedProject, "getLastOpenedProject");
-async function createProject(name) {
-  const meta = {
-    id: crypto.randomUUID(),
-    name,
-    createdAt: Date.now(),
-    lastOpenedAt: Date.now()
-  };
-  const db = await openDb4();
-  await wrap4(tx2(db, "readwrite").put(meta));
-  db.close();
-  return meta;
-}
-__name(createProject, "createProject");
-async function touchProject(id) {
-  const db = await openDb4();
-  const store = tx2(db, "readwrite");
-  const existing = await wrap4(store.get(id));
-  if (existing) {
-    await wrap4(store.put({ ...existing, lastOpenedAt: Date.now() }));
-  }
-  db.close();
-}
-__name(touchProject, "touchProject");
-async function setProjectBackgroundCrop(id, crop) {
-  const db = await openDb4();
-  const store = tx2(db, "readwrite");
-  const existing = await wrap4(store.get(id));
-  if (existing) {
-    const { backgroundCrop: _unused, ...rest } = existing;
-    const next = crop == null ? rest : { ...rest, backgroundCrop: crop };
-    await wrap4(store.put(next));
-  }
-  db.close();
-}
-__name(setProjectBackgroundCrop, "setProjectBackgroundCrop");
-async function renameProject(id, name) {
-  const db = await openDb4();
-  const store = tx2(db, "readwrite");
-  const existing = await wrap4(store.get(id));
-  if (existing) {
-    await wrap4(store.put({ ...existing, name }));
-  }
-  db.close();
-}
-__name(renameProject, "renameProject");
-async function deleteProject(id) {
-  const db = await openDb4();
-  await wrap4(tx2(db, "readwrite").delete(id));
-  db.close();
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.deleteDatabase(`stave-${id}`);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-    req.onblocked = () => resolve();
-  });
-}
-__name(deleteProject, "deleteProject");
-async function duplicateProject(id) {
-  const source = await getProject(id);
-  if (!source) return void 0;
-  return createProject(`${source.name} (copy)`);
-}
-__name(duplicateProject, "duplicateProject");
+__name(pruneEphemeralArtifacts, "pruneEphemeralArtifacts");
 function LiveModeToggle({
   autoRefresh,
   onToggle
@@ -38135,6 +38225,7 @@ exports.DEFAULT_VIZ_DESCRIPTORS = DEFAULT_VIZ_DESCRIPTORS;
 exports.DEFAULT_VIZ_ENGINE = DEFAULT_VIZ_ENGINE;
 exports.DEFAULT_VIZ_QUALITY = DEFAULT_VIZ_QUALITY;
 exports.DemoEngine = DemoEngine;
+exports.EPHEMERAL_ID_PREFIX = EPHEMERAL_ID_PREFIX;
 exports.EditorView = EditorView;
 exports.ErrorBoundary = ErrorBoundary;
 exports.FSCOPE_P5_CODE = FSCOPE_P5_CODE;
@@ -38361,6 +38452,7 @@ exports.isBlackKey = isBlackKey;
 exports.isBundledPresetId = isBundledPresetId;
 exports.isChunkFresh = isChunkFresh;
 exports.isDocReady = isDocReady;
+exports.isEphemeralProjectId = isEphemeralProjectId;
 exports.isFileModifiedSinceHead = isFileModifiedSinceHead;
 exports.isP5DirectCanvasEnabled = isP5DirectCanvasEnabled;
 exports.isRollChunk = isRollChunk;
@@ -38434,6 +38526,7 @@ exports.pitchToMidi = pitchToMidi;
 exports.placeNote = placeNote;
 exports.previewProviderRegistry = previewProviderRegistry;
 exports.propagate = propagate;
+exports.pruneEphemeralArtifacts = pruneEphemeralArtifacts;
 exports.pruneTrackMetaForCode = pruneTrackMetaForCode;
 exports.pruneZoneOverrides = pruneZoneOverrides;
 exports.publishIRSnapshot = publishIRSnapshot;

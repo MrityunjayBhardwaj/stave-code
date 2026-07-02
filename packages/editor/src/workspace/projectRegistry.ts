@@ -36,21 +36,17 @@ export interface ProjectMeta {
 
 // ── IDB helpers ──────────────────────────────────────────────────────
 
+import { openIdbWithTimeout } from '../idb'
+
 const DB_NAME = 'stave-projects'
 const DB_VERSION = 1
 const STORE_NAME = 'projects'
 
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => {
-      const db = req.result
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' })
-      }
+  return openIdbWithTimeout(DB_NAME, DB_VERSION, (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME)) {
+      db.createObjectStore(STORE_NAME, { keyPath: 'id' })
     }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
   })
 }
 
@@ -183,4 +179,41 @@ export async function duplicateProject(id: string): Promise<ProjectMeta | undefi
   const source = await getProject(id)
   if (!source) return undefined
   return createProject(`${source.name} (copy)`)
+}
+
+// ── Ephemeral sessions (#688) ────────────────────────────────────────
+
+/**
+ * Id prefix for the in-memory ephemeral fallback session (boot dropped to
+ * "Continue without saving"). Such a session has no registry entry and must
+ * never persist one. The prefix is the tag that lets a later boot recognise
+ * and prune any rows a background write left behind.
+ */
+export const EPHEMERAL_ID_PREFIX = 'ephemeral-'
+
+export function isEphemeralProjectId(id: string): boolean {
+  return id.startsWith(EPHEMERAL_ID_PREFIX)
+}
+
+/**
+ * Delete any registry rows belonging to an ephemeral session. Used by the
+ * boot-time prune (#688) to clear phantoms an ephemeral session may have left
+ * if IDB recovered mid-session.
+ */
+export async function pruneEphemeralProjects(): Promise<void> {
+  const db = await openDb()
+  try {
+    const keys = await wrap<IDBValidKey[]>(tx(db, 'readonly').getAllKeys())
+    const ephemeral = keys.filter(
+      (k): k is string => typeof k === 'string' && isEphemeralProjectId(k),
+    )
+    if (ephemeral.length) {
+      // Issue every delete synchronously into one readwrite txn (before the
+      // await) so the transaction stays active until they're all queued.
+      const store = tx(db, 'readwrite')
+      await Promise.all(ephemeral.map((k) => wrap(store.delete(k))))
+    }
+  } finally {
+    db.close()
+  }
 }

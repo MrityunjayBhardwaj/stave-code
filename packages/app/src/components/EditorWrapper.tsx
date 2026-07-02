@@ -247,7 +247,7 @@ function makeBootstrapOrchestrator(
   editor: typeof import("@stave/editor"),
   templates: typeof import("../templates"),
 ) {
-  const { getLastOpenedProject, createProject, initProjectDoc, initProjectDocSync, touchProject } = editor;
+  const { getLastOpenedProject, createProject, initProjectDoc, initProjectDocSync, touchProject, pruneEphemeralArtifacts, EPHEMERAL_ID_PREFIX } = editor;
   const { StaveApp } = staveAppMod;
   const { seedProjectFromTemplate, seedMissingPresetFiles } = templates;
 
@@ -311,7 +311,7 @@ function makeBootstrapOrchestrator(
       genRef.current++; // supersede any pending boot attempt
       initProjectDocSync();
       const project: ProjectMeta = {
-        id: `ephemeral-${crypto.randomUUID()}`,
+        id: `${EPHEMERAL_ID_PREFIX}${crypto.randomUUID()}`,
         name: "Untitled",
         createdAt: Date.now(),
         lastOpenedAt: Date.now(),
@@ -333,6 +333,13 @@ function makeBootstrapOrchestrator(
         }
         if (cancelled) return;
         setPhase(result ? { kind: "ready", ...result } : { kind: "blocked" });
+        if (result) {
+          // #688: the persistent registry is reachable, so reconcile any
+          // phantom rows a prior ephemeral session left behind (IDB recovered
+          // mid-session). Fire-and-forget; each store prune is IDB-bounded so
+          // it can't hang the boot it runs after.
+          void pruneEphemeralArtifacts().catch(() => {});
+        }
       })();
       return () => {
         cancelled = true;
