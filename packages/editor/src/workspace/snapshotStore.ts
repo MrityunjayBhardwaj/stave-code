@@ -13,7 +13,7 @@
 import * as Y from 'yjs'
 import { openIdbWithTimeout } from '../idb'
 import { getActiveDoc } from './projectDoc'
-import { isEphemeralProjectId } from './projectRegistry'
+import { EPHEMERAL_ID_PREFIX } from './projectRegistry'
 import { DB_VERSION, upgradeHistoryDb } from './history/historyStore'
 
 const DB_NAME = 'stave-snapshots'
@@ -137,12 +137,19 @@ export async function deleteSnapshot(id: string): Promise<void> {
 export async function pruneEphemeralSnapshots(): Promise<void> {
   const db = await openDb()
   try {
-    const all = await wrap<StoredSnapshot[]>(
-      db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).getAll(),
+    // Query the byProject index by key range so we get just the primary keys
+    // of ephemeral rows — never deserializing snapshot bytes to find them.
+    const range = IDBKeyRange.bound(
+      EPHEMERAL_ID_PREFIX,
+      EPHEMERAL_ID_PREFIX + String.fromCharCode(0xffff),
     )
-    const ids = all
-      .filter((r) => isEphemeralProjectId(r.projectId))
-      .map((r) => r.id)
+    const ids = await wrap<IDBValidKey[]>(
+      db
+        .transaction(STORE_NAME, 'readonly')
+        .objectStore(STORE_NAME)
+        .index('byProject')
+        .getAllKeys(range),
+    )
     if (ids.length) {
       const store = db
         .transaction(STORE_NAME, 'readwrite')

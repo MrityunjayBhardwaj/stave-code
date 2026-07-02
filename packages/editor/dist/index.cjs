@@ -35801,10 +35801,13 @@ __name(deleteSnapshot, "deleteSnapshot");
 async function pruneEphemeralSnapshots() {
   const db = await openDb4();
   try {
-    const all = await wrap4(
-      db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).getAll()
+    const range = IDBKeyRange.bound(
+      EPHEMERAL_ID_PREFIX,
+      EPHEMERAL_ID_PREFIX + String.fromCharCode(65535)
     );
-    const ids = all.filter((r) => isEphemeralProjectId(r.projectId)).map((r) => r.id);
+    const ids = await wrap4(
+      db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject").getAllKeys(range)
+    );
     if (ids.length) {
       const store = db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3);
       await Promise.all(ids.map((id) => wrap4(store.delete(id))));
