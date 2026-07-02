@@ -14989,7 +14989,9 @@ var activeDoc = null;
 var activeProvider = null;
 var activeProjectId = null;
 var docReady = false;
-async function initProjectDoc(projectId) {
+var IDB_SYNC_TIMEOUT_MS = 8e3;
+async function initProjectDoc(projectId, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? IDB_SYNC_TIMEOUT_MS;
   if (activeProvider) {
     activeProvider.destroy();
     activeProvider = null;
@@ -14999,11 +15001,43 @@ async function initProjectDoc(projectId) {
   }
   activeDoc = new Y3__namespace.Doc();
   docReady = false;
-  const { IndexeddbPersistence } = await import('y-indexeddb');
-  activeProvider = new IndexeddbPersistence(`stave-${projectId}`, activeDoc);
-  await activeProvider.whenSynced;
+  const degradeToMemory = /* @__PURE__ */ __name((reason) => {
+    if (activeProvider) {
+      try {
+        activeProvider.destroy();
+      } catch {
+      }
+      activeProvider = null;
+    }
+    activeProjectId = projectId;
+    docReady = true;
+    return { persisted: false, reason };
+  }, "degradeToMemory");
+  try {
+    const { IndexeddbPersistence } = await import('y-indexeddb');
+    activeProvider = new IndexeddbPersistence(`stave-${projectId}`, activeDoc);
+  } catch {
+    return degradeToMemory("error");
+  }
+  const provider = activeProvider;
+  let timer;
+  try {
+    await Promise.race([
+      provider.whenSynced,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("idb-timeout")), timeoutMs);
+      })
+    ]);
+  } catch (err) {
+    return degradeToMemory(
+      err instanceof Error && err.message === "idb-timeout" ? "timeout" : "error"
+    );
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   activeProjectId = projectId;
   docReady = true;
+  return { persisted: true };
 }
 __name(initProjectDoc, "initProjectDoc");
 function initProjectDocSync() {
@@ -15042,7 +15076,7 @@ function getActiveProjectId() {
 }
 __name(getActiveProjectId, "getActiveProjectId");
 async function switchProject(projectId) {
-  await initProjectDoc(projectId);
+  return initProjectDoc(projectId);
 }
 __name(switchProject, "switchProject");
 function subscribeToDocUpdate(cb, options) {
@@ -38100,6 +38134,7 @@ exports.HYDRA_VIZ = HYDRA_VIZ;
 exports.HapStream = HapStream;
 exports.HistoryPanel = HistoryPanel;
 exports.HydraVizRenderer = HydraVizRenderer;
+exports.IDB_SYNC_TIMEOUT_MS = IDB_SYNC_TIMEOUT_MS;
 exports.INLINE_VIZ_ACTION_SIZE_VAR = INLINE_VIZ_ACTION_SIZE_VAR;
 exports.IR = IR;
 exports.IREventCollectSystem = IREventCollectSystem;
