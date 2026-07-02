@@ -1,16 +1,21 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('Stave — Page Structure', () => {
-  test('renders main heading and subtitle', async ({ page }) => {
+  test('renders the app — page title + workspace shell', async ({ page }) => {
     await page.goto('/')
-    await expect(page.locator('h1')).toHaveText('Stave')
-    await expect(page.locator('header p')).toContainText('One workspace')
+    // The app chrome no longer has a heading/subtitle <header>; the brand lives
+    // in the document title (and the transient boot preloader).
+    await expect(page).toHaveTitle(/Stave/)
+    await expect(page.locator('[data-workspace-shell="root"]')).toBeVisible({ timeout: 15000 })
   })
 
-  test('footer shows keyboard shortcuts', async ({ page }) => {
+  test('play control exposes the Ctrl+Enter shortcut', async ({ page }) => {
     await page.goto('/')
-    await expect(page.locator('footer')).toContainText('Ctrl+Enter')
-    await expect(page.locator('footer')).toContainText('Ctrl+.')
+    await page.locator('[data-workspace-shell="root"]').waitFor({ timeout: 15000 })
+    // Shortcuts moved from a page footer onto the toolbar play/stop control's
+    // title. At rest the control reads "Play (Ctrl+Enter)"; it toggles to
+    // "Stop (Ctrl+.)" only while playing, so only Ctrl+Enter is asserted here.
+    await expect(page.locator('[title*="Ctrl+Enter"]').first()).toBeVisible()
   })
 
   test('no 3-tab top bar switcher — old standalone buttons are gone', async ({ page }) => {
@@ -32,12 +37,13 @@ test.describe('Stave — WorkspaceShell', () => {
     await expect(shell).toBeVisible({ timeout: 10000 })
   })
 
-  test('shell has 4 tabs visible', async ({ page }) => {
+  test('fresh load opens a single Strudel tab (#175)', async ({ page }) => {
     await page.goto('/')
-    await page.locator('[data-workspace-shell="root"]').waitFor({ timeout: 10000 })
-    // Each tab is rendered with data-workspace-tab attribute
+    await page.locator('[data-workspace-shell="root"]').waitFor({ timeout: 15000 })
+    // #175 — the default workspace opens one Strudel tab, not the old tab wall.
     const tabs = page.locator('[data-workspace-tab]')
-    await expect(tabs).toHaveCount(4)
+    await expect(tabs).toHaveCount(1)
+    await expect(tabs.first()).toHaveAttribute('data-workspace-tab', 'tab-pattern.strudel')
   })
 
   test('Monaco editor loads in the first tab', async ({ page }) => {
@@ -55,32 +61,31 @@ test.describe('Stave — WorkspaceShell', () => {
 })
 
 test.describe('Stave — Tab Switching', () => {
-  test('clicking sonicpi tab switches to Sonic Pi code', async ({ page }) => {
+  // The old default workspace shipped multiple language tabs (strudel + sonicpi)
+  // to switch between; #175 collapsed that to a single Strudel tab. Exercise
+  // switching by opening a second (viz) tab from the file tree, then switching
+  // back — verifying each tab keeps its own code.
+  test('switching between tabs preserves each editor\'s code', async ({ page }) => {
     await page.goto('/')
-    await page.locator('.monaco-editor').waitFor({ timeout: 10000 })
+    await page.locator('.monaco-editor .view-lines').waitFor({ timeout: 15000 })
+    await expect(page.locator('.monaco-editor .view-lines')).toContainText('setcps')
 
-    // Click the tab whose fileId text contains "sonicpi"
-    const sonicpiTab = page.locator('[data-workspace-tab]', { hasText: 'pattern.sonicpi' })
-    await sonicpiTab.click()
-    await page.waitForTimeout(500)
-    const editorContent = page.locator('.monaco-editor .view-lines')
-    await expect(editorContent).toContainText('live_loop')
-  })
+    // Open a viz preset as a second tab (double-click pins it).
+    await page
+      .locator('[data-file-tree-item*="hydra"], [data-file-tree-item*="p5"]')
+      .first()
+      .dblclick()
+    await page.waitForTimeout(300)
 
-  test('switching back to strudel tab preserves original code', async ({ page }) => {
-    await page.goto('/')
-    await page.locator('.monaco-editor').waitFor({ timeout: 10000 })
+    // Switch to the viz tab.
+    const vizTab = page.locator('[data-workspace-tab]').filter({ hasText: /p5|hydra/i }).first()
+    await vizTab.click()
+    await page.waitForTimeout(300)
 
-    // Switch to sonicpi
-    await page.locator('[data-workspace-tab]', { hasText: 'pattern.sonicpi' }).click()
-    await page.waitForTimeout(500)
-
-    // Switch back to strudel
+    // Switch back to the Strudel tab — its code must be intact.
     await page.locator('[data-workspace-tab]', { hasText: 'pattern.strudel' }).click()
-    await page.waitForTimeout(500)
-
-    const editorContent = page.locator('.monaco-editor .view-lines')
-    await expect(editorContent).toContainText('setcps')
+    await page.waitForTimeout(300)
+    await expect(page.locator('.monaco-editor .view-lines')).toContainText('setcps')
   })
 })
 
