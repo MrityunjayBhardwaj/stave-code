@@ -171,7 +171,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "4px 0", fontSize: 12, color: "var(--text-chrome)",
   },
   rowTitle: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  rowKey: { fontFamily: '"JetBrains Mono", monospace', color: "var(--text-secondary)", letterSpacing: 0.5 },
+  rowKey: { fontFamily: 'var(--font-mono), ui-monospace, monospace', color: "var(--text-secondary)", letterSpacing: 0.5 },
   rowKeyBtn: {
     background: "var(--bg-input)", border: "1px solid var(--border-subtle)", borderRadius: 3,
     padding: "2px 8px", cursor: "pointer", fontSize: 11,

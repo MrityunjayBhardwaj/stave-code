@@ -561,7 +561,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   time: {
     color: "var(--text-tertiary)",
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
     fontSize: 10,
   },
   badge: {
@@ -586,7 +586,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     fontSize: 9,
     fontWeight: 700 as const,
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
     background: "var(--surface-3, rgba(255,255,255,0.08))",
     color: "var(--text-secondary)",
     flexShrink: 0,
@@ -595,7 +595,7 @@ const styles: Record<string, React.CSSProperties> = {
   source: {
     color: "var(--text-tertiary)",
     fontSize: 10,
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
@@ -603,7 +603,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   message: {
     color: "var(--text-primary)",
-    fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
     whiteSpace: "pre-wrap" as const,
     lineHeight: 1.4,
     wordBreak: "break-word" as const,
@@ -625,7 +625,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--accent)",
   },
   suggestionName: {
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
     color: "var(--accent-hover, #c4b5fd)",
     fontSize: 11,
     fontWeight: 500,
@@ -636,7 +636,7 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.4,
   },
   suggestionExample: {
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
     color: "var(--text-tertiary)",
     fontSize: 10,
   },
@@ -655,7 +655,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--bg-app)",
     border: "1px solid var(--border-subtle)",
     borderRadius: 3,
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
     fontSize: 10,
     color: "var(--text-tertiary)",
     whiteSpace: "pre-wrap" as const,

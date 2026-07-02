@@ -89,7 +89,7 @@ const MonacoEditor = MonacoEditorRaw as any
 const MONACO_OPTIONS = {
   fontSize: 13,
   lineHeight: 22,
-  fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+  fontFamily: 'var(--font-mono), ui-monospace, monospace',
   fontLigatures: true,
   minimap: { enabled: false },
   scrollBeyondLastLine: false,

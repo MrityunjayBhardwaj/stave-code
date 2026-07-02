@@ -160,7 +160,7 @@ const styles = {
     display: 'flex',
     alignItems: 'stretch',
     fontFamily:
-      '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+      'var(--font-mono), ui-monospace, monospace',
     fontSize: 10,
     color: 'var(--text-tertiary, rgba(255,255,255,0.4))',
   },

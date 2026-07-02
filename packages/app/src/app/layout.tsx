@@ -1,5 +1,19 @@
 import type { Metadata } from "next";
+import localFont from "next/font/local";
 import "./globals.css";
+
+// Self-hosted brand font. next/font/local emits the @font-face + a
+// `<link rel="preload">` at SSR (before any JS), so the static preloader
+// below renders in the real glyphs — no build-time or runtime CDN request.
+// Vendored latin variable woff2 (weights 100–800). Source: fonts/OFL.txt.
+const jetbrainsMono = localFont({
+  src: "./fonts/JetBrainsMono-latin-var.woff2",
+  weight: "100 800",
+  style: "normal",
+  display: "swap",
+  variable: "--font-mono",
+  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+});
 
 export const metadata: Metadata = {
   title: "Stave — Engine-agnostic live coding editor",
@@ -13,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" style={{ height: "100%" }} suppressHydrationWarning>
+    <html lang="en" className={jetbrainsMono.variable} style={{ height: "100%" }} suppressHydrationWarning>
       <head>
         {/* Set data-stave-theme before first paint so CSS vars resolve
             immediately — prevents a dark flash when the user chose light. */}
@@ -42,7 +56,7 @@ export default function RootLayout({
                 background: var(--bg-app);
                 display: flex; flex-direction: column;
                 align-items: center; justify-content: center;
-                font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+                font-family: var(--font-mono), ui-monospace, monospace;
                 transition: opacity 0.3s ease-out;
               }
               #stave-preloader.hidden { opacity: 0; pointer-events: none; }

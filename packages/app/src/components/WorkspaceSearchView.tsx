@@ -202,7 +202,7 @@ const styles: Record<string, React.CSSProperties> = {
   rowSnippet: {
     fontSize: 11,
     color: "var(--text-chrome)",
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",

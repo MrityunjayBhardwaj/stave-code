@@ -68,7 +68,7 @@ function IdbBlockedScreen({
         gap: 8,
         padding: 24,
         textAlign: "center",
-        fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+        fontFamily: 'var(--font-mono), ui-monospace, monospace',
       }}
     >
       <h1
@@ -174,7 +174,7 @@ function DegradedPersistenceNotice() {
         background: "var(--bg-elevated, #2a2a2a)",
         border: "1px solid var(--border-strong, #444)",
         color: "var(--text-primary, #eee)",
-        fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+        fontFamily: 'var(--font-mono), ui-monospace, monospace',
         fontSize: 12,
         boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
       }}
