@@ -35725,6 +35725,8 @@ function usePopoutPreview({
   return { cleanup };
 }
 __name(usePopoutPreview, "usePopoutPreview");
+var MONACO_VS_PATH = "/monaco/vs";
+MonacoEditorRaw.loader.config({ paths: { vs: MONACO_VS_PATH } });
 var warmed = null;
 function warmMonaco() {
   if (!warmed) {
