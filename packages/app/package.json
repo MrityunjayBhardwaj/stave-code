@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "pnpm --filter @stave/docs build && next build",
+    "dev": "node scripts/copy-monaco.mjs && next dev",
+    "build": "node scripts/copy-monaco.mjs && pnpm --filter @stave/docs build && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
@@ -29,6 +29,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "jsdom": "^24.0.0",
+    "monaco-editor": "^0.50.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^1.6.0"

@@ -29,7 +29,9 @@ test.describe('Monaco warm (#689)', () => {
     const monacoReqs: number[] = []
     const t0 = Date.now()
     page.on('request', (r) => {
-      if (/monaco-editor/.test(r.url())) monacoReqs.push(Date.now() - t0)
+      // Monaco is self-hosted at /monaco/vs (#690), so its loader/core fetches
+      // are same-origin — not the old jsdelivr `…/monaco-editor/…` CDN URL.
+      if (/\/monaco\/vs\//.test(r.url())) monacoReqs.push(Date.now() - t0)
     })
 
     await page.addInitScript(HANG_IDB)

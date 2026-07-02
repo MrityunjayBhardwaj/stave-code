@@ -6078,13 +6078,12 @@ declare function subscribeToDocUpdate(cb: () => void, options?: {
 /**
  * Kick off loading the Monaco editor core ahead of the first <Editor> mount.
  *
- * `@monaco-editor/react` lazily fetches Monaco through its loader (the jsdelivr
- * CDN by default — the repo sets no `loader.config`, and every `monaco-editor`
- * import is `import type`) only when the first <Editor> renders. That render
- * happens inside the app shell, AFTER the boot preloader clears, so the editor
- * pops in a beat late (CDN round-trip + parse). Calling this during the
- * preloader window warms Monaco in parallel with the rest of boot, so the core
- * is usually already loaded by the time the editor mounts (#689).
+ * `@monaco-editor/react` lazily loads Monaco through its loader only when the
+ * first <Editor> renders. That render happens inside the app shell, AFTER the
+ * boot preloader clears, so the editor pops in a beat late. Calling this during
+ * the preloader window warms Monaco in parallel with the rest of boot, so the
+ * core is usually already loaded by the time the editor mounts (#689). Combined
+ * with the self-hosted `loader.config` above, the fetch is same-origin (#690).
  *
  * Idempotent + best-effort: the loader is a singleton (repeat `init()` returns
  * the same instance), the result is cached here, and a failed prefetch is
