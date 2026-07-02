@@ -26,14 +26,41 @@ let activeProvider: IndexeddbPersistenceType | null = null
 let activeProjectId: string | null = null
 let docReady = false
 
+/** Default budget for the IndexedDB initial sync before we degrade to memory. */
+export const IDB_SYNC_TIMEOUT_MS = 8000
+
+/**
+ * Outcome of {@link initProjectDoc}. `persisted` is true when the Y.Doc was
+ * hydrated from IndexedDB; false when we fell back to an in-memory doc because
+ * the IDB open timed out or failed. The app uses this to decide whether to
+ * warn the user that their edits won't persist this session.
+ */
+export interface ProjectDocInitResult {
+  persisted: boolean
+  reason?: 'timeout' | 'error'
+}
+
 /**
  * Async init with IndexedDB persistence. Resolves after IDB sync
  * completes — all persisted files are in the Y.Doc when this returns.
  *
  * Must be called BEFORE any createWorkspaceFile / seedWorkspaceFile
  * calls to avoid the seed-vs-persisted race condition.
+ *
+ * Bounded by `timeoutMs`: y-indexeddb's `whenSynced` only resolves on a
+ * SUCCESSFUL open and never settles when `indexedDB.open` is blocked (another
+ * tab holding an older DB version), rejected (private-browsing), or corrupted
+ * — there is no `.catch` on the open inside y-indexeddb. Without a guard that
+ * stuck open hangs the entire app boot forever (the "keeps on loading" bug).
+ * On timeout/failure we abandon the dead provider and keep the fresh in-memory
+ * Y.Doc so the app boots degraded (no persistence) instead of never at all.
  */
-export async function initProjectDoc(projectId: string): Promise<void> {
+export async function initProjectDoc(
+  projectId: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<ProjectDocInitResult> {
+  const timeoutMs = opts.timeoutMs ?? IDB_SYNC_TIMEOUT_MS
+
   // Clean up previous doc if switching projects
   if (activeProvider) {
     activeProvider.destroy()
@@ -46,13 +73,52 @@ export async function initProjectDoc(projectId: string): Promise<void> {
   activeDoc = new Y.Doc()
   docReady = false
 
-  // Dynamic import — avoids jsdom crash in tests
-  const { IndexeddbPersistence } = await import('y-indexeddb')
-  activeProvider = new IndexeddbPersistence(`stave-${projectId}`, activeDoc)
+  // Abandon the (possibly mid-open) provider and keep the empty in-memory
+  // doc. destroy() sets the provider's `_destroyed` flag, so even if its
+  // open resolves later it won't mutate our doc — no late race.
+  const degradeToMemory = (reason: 'timeout' | 'error'): ProjectDocInitResult => {
+    if (activeProvider) {
+      try {
+        activeProvider.destroy()
+      } catch {
+        /* provider may be mid-open; ignore */
+      }
+      activeProvider = null
+    }
+    activeProjectId = projectId
+    docReady = true
+    return { persisted: false, reason }
+  }
 
-  await activeProvider.whenSynced
+  try {
+    // Dynamic import — avoids jsdom crash in tests
+    const { IndexeddbPersistence } = await import('y-indexeddb')
+    activeProvider = new IndexeddbPersistence(`stave-${projectId}`, activeDoc)
+  } catch {
+    // No IndexedDB at all (import failed or constructor threw).
+    return degradeToMemory('error')
+  }
+
+  const provider = activeProvider
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      provider.whenSynced,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('idb-timeout')), timeoutMs)
+      }),
+    ])
+  } catch (err) {
+    return degradeToMemory(
+      err instanceof Error && err.message === 'idb-timeout' ? 'timeout' : 'error',
+    )
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+
   activeProjectId = projectId
   docReady = true
+  return { persisted: true }
 }
 
 /**
@@ -113,8 +179,8 @@ export function getActiveProjectId(): string | null {
  * initProjectDoc already handles the doc-level cleanup; this function
  * is a convenience alias that also updates the active project id.
  */
-export async function switchProject(projectId: string): Promise<void> {
-  await initProjectDoc(projectId)
+export async function switchProject(projectId: string): Promise<ProjectDocInitResult> {
+  return initProjectDoc(projectId)
 }
 
 /**

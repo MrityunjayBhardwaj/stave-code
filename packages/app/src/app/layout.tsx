@@ -37,11 +37,6 @@ export default function RootLayout({
             __html: `
               @keyframes spin { to { transform: rotate(360deg) } }
               @keyframes pulse { 0%,100% { opacity: 0.4 } 50% { opacity: 1 } }
-              @keyframes step-reveal {
-                0% { opacity: 0.35; }
-                20% { opacity: 1; color: var(--text-secondary); }
-                100% { opacity: 0.6; color: var(--text-tertiary); }
-              }
               #stave-preloader {
                 position: fixed; inset: 0; z-index: 9999;
                 background: var(--bg-app);
@@ -65,34 +60,20 @@ export default function RootLayout({
                 border-top-color: var(--accent-strong); border-radius: 50%;
                 animation: spin 0.8s linear infinite;
               }
-              #stave-preloader .steps {
-                margin-top: 32px; display: flex; flex-direction: column;
-                gap: 6px; color: var(--text-muted); font-size: 11px;
-              }
-              #stave-preloader .steps .step {
-                opacity: 0.35;
-                animation: step-reveal 6s ease-out forwards;
-              }
-              #stave-preloader .steps .step:nth-child(1) { animation-delay: 0s; }
-              #stave-preloader .steps .step:nth-child(2) { animation-delay: 1.5s; }
-              #stave-preloader .steps .step:nth-child(3) { animation-delay: 3s; }
-              #stave-preloader .steps .step:nth-child(4) { animation-delay: 4.5s; }
             `,
           }}
         />
         {/* SuperSonic loaded dynamically in SonicPiEngine — no script tag needed */}
       </head>
       <body style={{ minHeight: "100%", display: "flex", flexDirection: "column", margin: 0, background: "var(--bg-app)" }}>
+        {/* Static shell shown before any JS runs. The `.status` line is
+            updated live by the bootstrap (EditorWrapper) to reflect the real
+            phase — loading the workspace, opening the project, preparing the
+            editor — instead of fake timed step labels. */}
         <div id="stave-preloader">
           <h1>Stave</h1>
-          <div className="status">Warming up the editor…</div>
+          <div className="status" id="stave-preloader-status">Starting up…</div>
           <div className="spinner" />
-          <div className="steps">
-            <div className="step">Connecting to dev server</div>
-            <div className="step">Compiling modules</div>
-            <div className="step">Loading Monaco editor</div>
-            <div className="step">Initializing audio engine</div>
-          </div>
         </div>
         {children}
       </body>
