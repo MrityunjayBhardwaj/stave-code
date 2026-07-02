@@ -14857,8 +14857,7 @@ var DARK_THEME_TOKENS = {
   "--code-string": "#fcd34d",
   "--code-number": "#fb923c",
   "--code-comment": "rgba(255,255,255,0.25)",
-  "--code-active-hap": "rgba(124,124,255,0.3)",
-  "--font-mono": '"JetBrains Mono", "Fira Code", "Cascadia Code", "Menlo", monospace'
+  "--code-active-hap": "rgba(124,124,255,0.3)"
 };
 var LIGHT_THEME_TOKENS = {
   "--accent-rgb": "85, 85, 184",
@@ -14876,8 +14875,7 @@ var LIGHT_THEME_TOKENS = {
   "--code-string": "#92400e",
   "--code-number": "#c2410c",
   "--code-comment": "rgba(0,0,0,0.3)",
-  "--code-active-hap": "rgba(74,74,224,0.25)",
-  "--font-mono": '"JetBrains Mono", "Fira Code", "Cascadia Code", "Menlo", monospace'
+  "--code-active-hap": "rgba(74,74,224,0.25)"
 };
 function applyTheme(el, theme) {
   const tokens = theme === "dark" ? DARK_THEME_TOKENS : theme === "light" ? LIGHT_THEME_TOKENS : theme.tokens;
@@ -23368,7 +23366,7 @@ var MonacoEditor = MonacoEditorRaw__default.default;
 var MONACO_OPTIONS = {
   fontSize: 13,
   lineHeight: 22,
-  fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+  fontFamily: "var(--font-mono), ui-monospace, monospace",
   fontLigatures: true,
   minimap: { enabled: false },
   scrollBeyondLastLine: false,

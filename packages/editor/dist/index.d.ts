@@ -1567,7 +1567,13 @@ declare class StrudelEngine implements LiveCodingEngine {
  * Surface / text / border / accent tokens are NOT included here — they
  * come from globals.css's [data-stave-theme="dark|light"] selectors so
  * the editor chrome and the app chrome share one palette. Only
- * code-specific tokens (syntax colours, stem colours, font) live here.
+ * code-specific tokens (syntax colours, stem colours) live here.
+ *
+ * `--font-mono` is deliberately NOT set here. The host owns the mono font:
+ * the app loads the real face via next/font and defines `--font-mono` on
+ * `<html>`, and the editor inherits it. Setting it inline on the shell root
+ * would win the cascade and pin the editor UI to an unbacked literal
+ * (system-mono fallback) — the #691 bug. Leave it to the host.
  */
 declare const DARK_THEME_TOKENS: Record<string, string>;
 declare const LIGHT_THEME_TOKENS: Record<string, string>;

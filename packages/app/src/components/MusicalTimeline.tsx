@@ -607,7 +607,7 @@ export function MusicalTimeline(
 // (the original Phase 20-02 DV-08 values) so the chrome remains legible if
 // loaded outside the global theme (storybook, isolated tests).
 
-const FONT_MONO = '"JetBrains Mono", "Fira Code", ui-monospace, monospace'
+const FONT_MONO = 'var(--font-mono), ui-monospace, monospace'
 
 const styles = {
   root: {

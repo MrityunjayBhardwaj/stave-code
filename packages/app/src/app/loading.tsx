@@ -8,7 +8,7 @@ export default function Loading() {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+        fontFamily: 'var(--font-mono), ui-monospace, monospace',
       }}
     >
       <h1

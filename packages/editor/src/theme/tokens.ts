@@ -4,7 +4,13 @@
  * Surface / text / border / accent tokens are NOT included here — they
  * come from globals.css's [data-stave-theme="dark|light"] selectors so
  * the editor chrome and the app chrome share one palette. Only
- * code-specific tokens (syntax colours, stem colours, font) live here.
+ * code-specific tokens (syntax colours, stem colours) live here.
+ *
+ * `--font-mono` is deliberately NOT set here. The host owns the mono font:
+ * the app loads the real face via next/font and defines `--font-mono` on
+ * `<html>`, and the editor inherits it. Setting it inline on the shell root
+ * would win the cascade and pin the editor UI to an unbacked literal
+ * (system-mono fallback) — the #691 bug. Leave it to the host.
  */
 
 export const DARK_THEME_TOKENS: Record<string, string> = {
@@ -24,7 +30,6 @@ export const DARK_THEME_TOKENS: Record<string, string> = {
   '--code-number':         '#fb923c',
   '--code-comment':        'rgba(255,255,255,0.25)',
   '--code-active-hap':     'rgba(124,124,255,0.3)',
-  '--font-mono':           '"JetBrains Mono", "Fira Code", "Cascadia Code", "Menlo", monospace',
 }
 
 export const LIGHT_THEME_TOKENS: Record<string, string> = {
@@ -44,7 +49,6 @@ export const LIGHT_THEME_TOKENS: Record<string, string> = {
   '--code-number':         '#c2410c',
   '--code-comment':        'rgba(0,0,0,0.3)',
   '--code-active-hap':     'rgba(74,74,224,0.25)',
-  '--font-mono':           '"JetBrains Mono", "Fira Code", "Cascadia Code", "Menlo", monospace',
 }
 
 export interface StrudelTheme {

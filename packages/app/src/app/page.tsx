@@ -9,7 +9,7 @@ export default function Home() {
         background: "var(--bg-app)",
         display: "flex",
         flexDirection: "column",
-        fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+        fontFamily: 'var(--font-mono), ui-monospace, monospace',
         overflow: "hidden",
       }}
     >

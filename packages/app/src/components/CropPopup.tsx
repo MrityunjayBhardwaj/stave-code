@@ -653,7 +653,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   info: {
     display: "flex", gap: 16, fontSize: 11, color: "var(--text-tertiary)",
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
   },
   footer: {
     display: "flex", justifyContent: "flex-end", gap: 8,

@@ -256,8 +256,7 @@ export function StrudelMonaco({
       options={{
         fontSize: 13,
         lineHeight: 22,
-        fontFamily:
-          '"JetBrains Mono", "Fira Code", "Cascadia Code", "Menlo", monospace',
+        fontFamily: 'var(--font-mono), ui-monospace, monospace',
         fontLigatures: true,
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
