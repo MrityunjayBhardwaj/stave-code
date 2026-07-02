@@ -23474,6 +23474,9 @@ function EditorView({
   onPlayRef.current = onPlay;
   const onStopRef = useRef(onStop);
   onStopRef.current = onStop;
+  const handleMonacoBeforeMount = /* @__PURE__ */ __name((monaco) => {
+    if (monaco.editor?.defineTheme) defineStrudelMonacoTheme(monaco);
+  }, "handleMonacoBeforeMount");
   const handleMonacoMount = /* @__PURE__ */ __name((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
@@ -23484,10 +23487,6 @@ function EditorView({
     editor.onDidFocusEditorText?.(() => setActiveEditor(editor));
     applyPersistedEditorOptions(editor);
     ensureWorkspaceLanguages(monaco);
-    if (monaco.editor?.defineTheme && monaco.editor?.setTheme) {
-      defineStrudelMonacoTheme(monaco);
-      monaco.editor.setTheme(monacoThemeNameFor(theme));
-    }
     if (monaco.KeyMod && monaco.KeyCode && editor.addAction) {
       editor.addAction({
         id: "stave.play",
@@ -23622,8 +23621,10 @@ function EditorView({
             {
               height: "100%",
               language: toMonacoLanguage(file.language),
+              theme: monacoThemeNameFor(theme),
               value: viewing ? viewedContent : file.content,
               onChange: handleChange,
+              beforeMount: handleMonacoBeforeMount,
               onMount: handleMonacoMount,
               options: viewing ? { ...MONACO_OPTIONS, readOnly: true } : MONACO_OPTIONS
             },
