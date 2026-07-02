@@ -68,7 +68,7 @@ function IdbBlockedScreen({
         gap: 8,
         padding: 24,
         textAlign: "center",
-        fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+        fontFamily: 'var(--font-mono), ui-monospace, monospace',
       }}
     >
       <h1
@@ -174,7 +174,7 @@ function DegradedPersistenceNotice() {
         background: "var(--bg-elevated, #2a2a2a)",
         border: "1px solid var(--border-strong, #444)",
         color: "var(--text-primary, #eee)",
-        fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+        fontFamily: 'var(--font-mono), ui-monospace, monospace',
         fontSize: 12,
         boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
       }}
@@ -247,7 +247,7 @@ function makeBootstrapOrchestrator(
   editor: typeof import("@stave/editor"),
   templates: typeof import("../templates"),
 ) {
-  const { getLastOpenedProject, createProject, initProjectDoc, initProjectDocSync, touchProject } = editor;
+  const { getLastOpenedProject, createProject, initProjectDoc, initProjectDocSync, touchProject, pruneEphemeralArtifacts, EPHEMERAL_ID_PREFIX } = editor;
   const { StaveApp } = staveAppMod;
   const { seedProjectFromTemplate, seedMissingPresetFiles } = templates;
 
@@ -311,7 +311,7 @@ function makeBootstrapOrchestrator(
       genRef.current++; // supersede any pending boot attempt
       initProjectDocSync();
       const project: ProjectMeta = {
-        id: `ephemeral-${crypto.randomUUID()}`,
+        id: `${EPHEMERAL_ID_PREFIX}${crypto.randomUUID()}`,
         name: "Untitled",
         createdAt: Date.now(),
         lastOpenedAt: Date.now(),
@@ -333,6 +333,13 @@ function makeBootstrapOrchestrator(
         }
         if (cancelled) return;
         setPhase(result ? { kind: "ready", ...result } : { kind: "blocked" });
+        if (result) {
+          // #688: the persistent registry is reachable, so reconcile any
+          // phantom rows a prior ephemeral session left behind (IDB recovered
+          // mid-session). Fire-and-forget; each store prune is IDB-bounded so
+          // it can't hang the boot it runs after.
+          void pruneEphemeralArtifacts().catch(() => {});
+        }
       })();
       return () => {
         cancelled = true;

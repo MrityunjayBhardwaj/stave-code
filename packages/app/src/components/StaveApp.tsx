@@ -735,7 +735,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   }, []);
 
   const refreshProjects = useCallback(async () => {
-    setProjects(await listProjects());
+    try {
+      setProjects(await listProjects());
+    } catch (err) {
+      // The registry open is bounded now (#687) and can reject when IDB is
+      // blocked/unavailable. Keep the current list rather than clobbering it —
+      // the sidebar degrades to whatever we last had instead of hanging.
+      console.warn("[stave] project list refresh failed:", err);
+    }
   }, []);
 
   useEffect(() => { refreshProjects(); }, [refreshProjects]);
@@ -755,6 +762,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         setActiveProject(selected);
         setProjects(list);
       }
+    } catch (err) {
+      // switchProject / touchProject / listProjects each open IDB, now bounded
+      // (#687). A blocked store rejects instead of hanging the switch — surface
+      // it and leave the user on the current project rather than a stuck UI.
+      console.warn("[stave] project switch failed:", err);
+      showToast("Couldn't switch project — storage is unavailable", "error");
     } finally {
       setSwitching(false);
     }

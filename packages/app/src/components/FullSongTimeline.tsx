@@ -75,7 +75,7 @@ const CLIP_EDGE_GRIP_PX = 6
 /** Pointer travel (px) before a clip-body press becomes a MOVE drag rather than a
  *  click (select/seek). Below this it stays a click so seek-anywhere is intact. */
 const CLIP_MOVE_THRESHOLD_PX = 4
-const FONT_MONO = '"JetBrains Mono", "Fira Code", ui-monospace, monospace'
+const FONT_MONO = 'var(--font-mono), ui-monospace, monospace'
 
 /** Ruler units (#412). CYCLES = Strudel's native numbering; BARS = DAW
  *  convention (one cycle ≈ one bar) with quarter-cycle beat ticks. */

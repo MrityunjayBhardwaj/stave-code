@@ -1430,7 +1430,7 @@ function Kbd({ children }: { children: React.ReactNode }) {
         borderRadius: 3,
         padding: "1px 5px",
         fontSize: 10,
-        fontFamily: '"JetBrains Mono", monospace',
+        fontFamily: 'var(--font-mono), ui-monospace, monospace',
         color: "var(--text-secondary)",
       }}
     >

@@ -1,4 +1,5 @@
 import type { EngineComponents } from '../engine/LiveCodingEngine'
+import { openIdbWithTimeout } from '../idb'
 
 /**
  * A user-authored visualization saved to IndexedDB.
@@ -43,16 +44,10 @@ const DB_VERSION = 1
 const STORE_NAME = 'presets'
 
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => {
-      const db = req.result
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' })
-      }
+  return openIdbWithTimeout(DB_NAME, DB_VERSION, (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME)) {
+      db.createObjectStore(STORE_NAME, { keyPath: 'id' })
     }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
   })
 }
 

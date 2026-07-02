@@ -14831,8 +14831,7 @@ var DARK_THEME_TOKENS = {
   "--code-string": "#fcd34d",
   "--code-number": "#fb923c",
   "--code-comment": "rgba(255,255,255,0.25)",
-  "--code-active-hap": "rgba(124,124,255,0.3)",
-  "--font-mono": '"JetBrains Mono", "Fira Code", "Cascadia Code", "Menlo", monospace'
+  "--code-active-hap": "rgba(124,124,255,0.3)"
 };
 var LIGHT_THEME_TOKENS = {
   "--accent-rgb": "85, 85, 184",
@@ -14850,8 +14849,7 @@ var LIGHT_THEME_TOKENS = {
   "--code-string": "#92400e",
   "--code-number": "#c2410c",
   "--code-comment": "rgba(0,0,0,0.3)",
-  "--code-active-hap": "rgba(74,74,224,0.25)",
-  "--font-mono": '"JetBrains Mono", "Fira Code", "Cascadia Code", "Menlo", monospace'
+  "--code-active-hap": "rgba(74,74,224,0.25)"
 };
 function applyTheme(el, theme) {
   const tokens = theme === "dark" ? DARK_THEME_TOKENS : theme === "light" ? LIGHT_THEME_TOKENS : theme.tokens;
@@ -21870,21 +21868,62 @@ var _BufferedScheduler = class _BufferedScheduler {
 __name(_BufferedScheduler, "BufferedScheduler");
 var BufferedScheduler = _BufferedScheduler;
 
+// src/idb.ts
+var IDB_OPEN_TIMEOUT_MS = 8e3;
+function openIdbWithTimeout(name, version, upgrade, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? IDB_OPEN_TIMEOUT_MS;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const req = indexedDB.open(name, version);
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      req.onsuccess = () => {
+        try {
+          req.result.close();
+        } catch {
+        }
+      };
+      reject(new Error(`idb-open-timeout:${name}`));
+    }, timeoutMs);
+    req.onupgradeneeded = () => upgrade(req.result);
+    req.onsuccess = () => {
+      if (settled) {
+        try {
+          req.result.close();
+        } catch {
+        }
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(req.result);
+    };
+    req.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(req.error ?? new Error(`idb-open-error:${name}`));
+    };
+    req.onblocked = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error(`idb-open-blocked:${name}`));
+    };
+  });
+}
+__name(openIdbWithTimeout, "openIdbWithTimeout");
+
 // src/visualizers/vizPreset.ts
 var DB_NAME = "stave-viz-presets";
 var DB_VERSION = 1;
 var STORE_NAME = "presets";
 function openDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+  return openIdbWithTimeout(DB_NAME, DB_VERSION, (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME)) {
+      db.createObjectStore(STORE_NAME, { keyPath: "id" });
+    }
   });
 }
 __name(openDb, "openDb");
@@ -23037,9 +23076,136 @@ function applySnapshot(files, fileMeta, order) {
 }
 __name(applySnapshot, "applySnapshot");
 
+// src/workspace/projectRegistry.ts
+var DB_NAME2 = "stave-projects";
+var DB_VERSION2 = 1;
+var STORE_NAME2 = "projects";
+function openDb2() {
+  return openIdbWithTimeout(DB_NAME2, DB_VERSION2, (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME2)) {
+      db.createObjectStore(STORE_NAME2, { keyPath: "id" });
+    }
+  });
+}
+__name(openDb2, "openDb");
+function tx2(db, mode) {
+  return db.transaction(STORE_NAME2, mode).objectStore(STORE_NAME2);
+}
+__name(tx2, "tx");
+function wrap2(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+__name(wrap2, "wrap");
+async function listProjects() {
+  const db = await openDb2();
+  const all = await wrap2(tx2(db, "readonly").getAll());
+  db.close();
+  return all.sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
+}
+__name(listProjects, "listProjects");
+async function getProject(id) {
+  const db = await openDb2();
+  const result = await wrap2(tx2(db, "readonly").get(id));
+  db.close();
+  return result;
+}
+__name(getProject, "getProject");
+async function getLastOpenedProject() {
+  const list = await listProjects();
+  return list[0];
+}
+__name(getLastOpenedProject, "getLastOpenedProject");
+async function createProject(name) {
+  const meta = {
+    id: crypto.randomUUID(),
+    name,
+    createdAt: Date.now(),
+    lastOpenedAt: Date.now()
+  };
+  const db = await openDb2();
+  await wrap2(tx2(db, "readwrite").put(meta));
+  db.close();
+  return meta;
+}
+__name(createProject, "createProject");
+async function touchProject(id) {
+  const db = await openDb2();
+  const store = tx2(db, "readwrite");
+  const existing = await wrap2(store.get(id));
+  if (existing) {
+    await wrap2(store.put({ ...existing, lastOpenedAt: Date.now() }));
+  }
+  db.close();
+}
+__name(touchProject, "touchProject");
+async function setProjectBackgroundCrop(id, crop) {
+  const db = await openDb2();
+  const store = tx2(db, "readwrite");
+  const existing = await wrap2(store.get(id));
+  if (existing) {
+    const { backgroundCrop: _unused, ...rest } = existing;
+    const next = crop == null ? rest : { ...rest, backgroundCrop: crop };
+    await wrap2(store.put(next));
+  }
+  db.close();
+}
+__name(setProjectBackgroundCrop, "setProjectBackgroundCrop");
+async function renameProject(id, name) {
+  const db = await openDb2();
+  const store = tx2(db, "readwrite");
+  const existing = await wrap2(store.get(id));
+  if (existing) {
+    await wrap2(store.put({ ...existing, name }));
+  }
+  db.close();
+}
+__name(renameProject, "renameProject");
+async function deleteProject(id) {
+  const db = await openDb2();
+  await wrap2(tx2(db, "readwrite").delete(id));
+  db.close();
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(`stave-${id}`);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => resolve();
+  });
+}
+__name(deleteProject, "deleteProject");
+async function duplicateProject(id) {
+  const source = await getProject(id);
+  if (!source) return void 0;
+  return createProject(`${source.name} (copy)`);
+}
+__name(duplicateProject, "duplicateProject");
+var EPHEMERAL_ID_PREFIX = "ephemeral-";
+function isEphemeralProjectId(id) {
+  return id.startsWith(EPHEMERAL_ID_PREFIX);
+}
+__name(isEphemeralProjectId, "isEphemeralProjectId");
+async function pruneEphemeralProjects() {
+  const db = await openDb2();
+  try {
+    const keys = await wrap2(tx2(db, "readonly").getAllKeys());
+    const ephemeral = keys.filter(
+      (k) => typeof k === "string" && isEphemeralProjectId(k)
+    );
+    if (ephemeral.length) {
+      const store = tx2(db, "readwrite");
+      await Promise.all(ephemeral.map((k) => wrap2(store.delete(k))));
+    }
+  } finally {
+    db.close();
+  }
+}
+__name(pruneEphemeralProjects, "pruneEphemeralProjects");
+
 // src/workspace/history/historyStore.ts
-var DB_NAME2 = "stave-snapshots";
-var DB_VERSION2 = 2;
+var DB_NAME3 = "stave-snapshots";
+var DB_VERSION3 = 2;
 var HISTORY_STORE = "history";
 var LEGACY_STORE = "snapshots";
 function upgradeHistoryDb(db) {
@@ -23052,25 +23218,20 @@ function upgradeHistoryDb(db) {
   }
 }
 __name(upgradeHistoryDb, "upgradeHistoryDb");
-function openDb2() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME2, DB_VERSION2);
-    req.onupgradeneeded = () => upgradeHistoryDb(req.result);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+function openDb3() {
+  return openIdbWithTimeout(DB_NAME3, DB_VERSION3, (db) => upgradeHistoryDb(db));
 }
-__name(openDb2, "openDb");
-function wrap2(req) {
+__name(openDb3, "openDb");
+function wrap3(req) {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
-__name(wrap2, "wrap");
+__name(wrap3, "wrap");
 async function loadHistory(projectId) {
-  const db = await openDb2();
-  const row = await wrap2(
+  const db = await openDb3();
+  const row = await wrap3(
     db.transaction(HISTORY_STORE, "readonly").objectStore(HISTORY_STORE).get(projectId)
   );
   db.close();
@@ -23078,13 +23239,31 @@ async function loadHistory(projectId) {
 }
 __name(loadHistory, "loadHistory");
 async function saveHistory(h) {
-  const db = await openDb2();
-  await wrap2(
+  const db = await openDb3();
+  await wrap3(
     db.transaction(HISTORY_STORE, "readwrite").objectStore(HISTORY_STORE).put(h)
   );
   db.close();
 }
 __name(saveHistory, "saveHistory");
+async function pruneEphemeralHistory() {
+  const db = await openDb3();
+  try {
+    const keys = await wrap3(
+      db.transaction(HISTORY_STORE, "readonly").objectStore(HISTORY_STORE).getAllKeys()
+    );
+    const ephemeral = keys.filter(
+      (k) => typeof k === "string" && isEphemeralProjectId(k)
+    );
+    if (ephemeral.length) {
+      const store = db.transaction(HISTORY_STORE, "readwrite").objectStore(HISTORY_STORE);
+      await Promise.all(ephemeral.map((k) => wrap3(store.delete(k))));
+    }
+  } finally {
+    db.close();
+  }
+}
+__name(pruneEphemeralHistory, "pruneEphemeralHistory");
 
 // src/workspace/history/historyService.ts
 var current2 = null;
@@ -23342,7 +23521,7 @@ var MonacoEditor = MonacoEditorRaw;
 var MONACO_OPTIONS = {
   fontSize: 13,
   lineHeight: 22,
-  fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+  fontFamily: "var(--font-mono), ui-monospace, monospace",
   fontLigatures: true,
   minimap: { enabled: false },
   scrollBeyondLastLine: false,
@@ -35533,25 +35712,20 @@ function warmMonaco() {
   return warmed;
 }
 __name(warmMonaco, "warmMonaco");
-var DB_NAME3 = "stave-snapshots";
-var STORE_NAME2 = "snapshots";
+var DB_NAME4 = "stave-snapshots";
+var STORE_NAME3 = "snapshots";
 var AUTO_SNAPSHOT_PREFIX = "Auto \u2014 ";
-function openDb3() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME3, DB_VERSION2);
-    req.onupgradeneeded = () => upgradeHistoryDb(req.result);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+function openDb4() {
+  return openIdbWithTimeout(DB_NAME4, DB_VERSION3, (db) => upgradeHistoryDb(db));
 }
-__name(openDb3, "openDb");
-function wrap3(req) {
+__name(openDb4, "openDb");
+function wrap4(req) {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
-__name(wrap3, "wrap");
+__name(wrap4, "wrap");
 var MAX_AUTO_SNAPSHOTS = 10;
 async function saveSnapshot(projectId, label, kind = "manual") {
   const doc = getActiveDoc();
@@ -35564,20 +35738,20 @@ async function saveSnapshot(projectId, label, kind = "manual") {
     kind
   };
   const record = { ...meta, bytes };
-  const db = await openDb3();
-  await wrap3(
-    db.transaction(STORE_NAME2, "readwrite").objectStore(STORE_NAME2).put(record)
+  const db = await openDb4();
+  await wrap4(
+    db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).put(record)
   );
   if (kind === "auto") {
-    const index = db.transaction(STORE_NAME2, "readonly").objectStore(STORE_NAME2).index("byProject");
-    const all = await wrap3(index.getAll(projectId));
+    const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
+    const all = await wrap4(index.getAll(projectId));
     const autos = all.filter(
       (r) => r.kind === "auto" || r.label.startsWith(AUTO_SNAPSHOT_PREFIX)
     ).sort((a, b) => b.createdAt - a.createdAt);
     const toDelete = autos.slice(MAX_AUTO_SNAPSHOTS);
     if (toDelete.length > 0) {
-      const wstore = db.transaction(STORE_NAME2, "readwrite").objectStore(STORE_NAME2);
-      for (const r of toDelete) await wrap3(wstore.delete(r.id));
+      const wstore = db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3);
+      for (const r of toDelete) await wrap4(wstore.delete(r.id));
     }
   }
   db.close();
@@ -35585,25 +35759,44 @@ async function saveSnapshot(projectId, label, kind = "manual") {
 }
 __name(saveSnapshot, "saveSnapshot");
 async function listSnapshots(projectId) {
-  const db = await openDb3();
-  const index = db.transaction(STORE_NAME2, "readonly").objectStore(STORE_NAME2).index("byProject");
-  const all = await wrap3(index.getAll(projectId));
+  const db = await openDb4();
+  const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
+  const all = await wrap4(index.getAll(projectId));
   db.close();
   return all.map(({ bytes: _bytes, ...meta }) => meta).sort((a, b) => b.createdAt - a.createdAt);
 }
 __name(listSnapshots, "listSnapshots");
 async function deleteSnapshot(id) {
-  const db = await openDb3();
-  await wrap3(
-    db.transaction(STORE_NAME2, "readwrite").objectStore(STORE_NAME2).delete(id)
+  const db = await openDb4();
+  await wrap4(
+    db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).delete(id)
   );
   db.close();
 }
 __name(deleteSnapshot, "deleteSnapshot");
+async function pruneEphemeralSnapshots() {
+  const db = await openDb4();
+  try {
+    const range = IDBKeyRange.bound(
+      EPHEMERAL_ID_PREFIX,
+      EPHEMERAL_ID_PREFIX + String.fromCharCode(65535)
+    );
+    const ids = await wrap4(
+      db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject").getAllKeys(range)
+    );
+    if (ids.length) {
+      const store = db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3);
+      await Promise.all(ids.map((id) => wrap4(store.delete(id))));
+    }
+  } finally {
+    db.close();
+  }
+}
+__name(pruneEphemeralSnapshots, "pruneEphemeralSnapshots");
 async function restoreSnapshot(id) {
-  const db = await openDb3();
-  const stored = await wrap3(
-    db.transaction(STORE_NAME2, "readonly").objectStore(STORE_NAME2).get(id)
+  const db = await openDb4();
+  const stored = await wrap4(
+    db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).get(id)
   );
   db.close();
   if (!stored) throw new Error(`snapshot ${id} not found`);
@@ -36219,117 +36412,15 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
 }
 __name(HistoryPanel, "HistoryPanel");
 
-// src/workspace/projectRegistry.ts
-var DB_NAME4 = "stave-projects";
-var DB_VERSION3 = 1;
-var STORE_NAME3 = "projects";
-function openDb4() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME4, DB_VERSION3);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME3)) {
-        db.createObjectStore(STORE_NAME3, { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+// src/workspace/ephemeralPrune.ts
+async function pruneEphemeralArtifacts() {
+  await Promise.allSettled([
+    pruneEphemeralProjects(),
+    pruneEphemeralSnapshots(),
+    pruneEphemeralHistory()
+  ]);
 }
-__name(openDb4, "openDb");
-function tx2(db, mode) {
-  return db.transaction(STORE_NAME3, mode).objectStore(STORE_NAME3);
-}
-__name(tx2, "tx");
-function wrap4(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-__name(wrap4, "wrap");
-async function listProjects() {
-  const db = await openDb4();
-  const all = await wrap4(tx2(db, "readonly").getAll());
-  db.close();
-  return all.sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
-}
-__name(listProjects, "listProjects");
-async function getProject(id) {
-  const db = await openDb4();
-  const result = await wrap4(tx2(db, "readonly").get(id));
-  db.close();
-  return result;
-}
-__name(getProject, "getProject");
-async function getLastOpenedProject() {
-  const list = await listProjects();
-  return list[0];
-}
-__name(getLastOpenedProject, "getLastOpenedProject");
-async function createProject(name) {
-  const meta = {
-    id: crypto.randomUUID(),
-    name,
-    createdAt: Date.now(),
-    lastOpenedAt: Date.now()
-  };
-  const db = await openDb4();
-  await wrap4(tx2(db, "readwrite").put(meta));
-  db.close();
-  return meta;
-}
-__name(createProject, "createProject");
-async function touchProject(id) {
-  const db = await openDb4();
-  const store = tx2(db, "readwrite");
-  const existing = await wrap4(store.get(id));
-  if (existing) {
-    await wrap4(store.put({ ...existing, lastOpenedAt: Date.now() }));
-  }
-  db.close();
-}
-__name(touchProject, "touchProject");
-async function setProjectBackgroundCrop(id, crop) {
-  const db = await openDb4();
-  const store = tx2(db, "readwrite");
-  const existing = await wrap4(store.get(id));
-  if (existing) {
-    const { backgroundCrop: _unused, ...rest } = existing;
-    const next = crop == null ? rest : { ...rest, backgroundCrop: crop };
-    await wrap4(store.put(next));
-  }
-  db.close();
-}
-__name(setProjectBackgroundCrop, "setProjectBackgroundCrop");
-async function renameProject(id, name) {
-  const db = await openDb4();
-  const store = tx2(db, "readwrite");
-  const existing = await wrap4(store.get(id));
-  if (existing) {
-    await wrap4(store.put({ ...existing, name }));
-  }
-  db.close();
-}
-__name(renameProject, "renameProject");
-async function deleteProject(id) {
-  const db = await openDb4();
-  await wrap4(tx2(db, "readwrite").delete(id));
-  db.close();
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.deleteDatabase(`stave-${id}`);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-    req.onblocked = () => resolve();
-  });
-}
-__name(deleteProject, "deleteProject");
-async function duplicateProject(id) {
-  const source = await getProject(id);
-  if (!source) return void 0;
-  return createProject(`${source.name} (copy)`);
-}
-__name(duplicateProject, "duplicateProject");
+__name(pruneEphemeralArtifacts, "pruneEphemeralArtifacts");
 function LiveModeToggle({
   autoRefresh,
   onToggle
@@ -38093,6 +38184,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyMasterGain, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getMasterGain, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerMasterGainHandler, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMasterGain, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useMasterGain, useNoteColorMode, usePopoutPreview, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyMasterGain, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getMasterGain, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerMasterGainHandler, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMasterGain, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useMasterGain, useNoteColorMode, usePopoutPreview, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

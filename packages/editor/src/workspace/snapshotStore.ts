@@ -11,7 +11,9 @@
  */
 
 import * as Y from 'yjs'
+import { openIdbWithTimeout } from '../idb'
 import { getActiveDoc } from './projectDoc'
+import { EPHEMERAL_ID_PREFIX } from './projectRegistry'
 import { DB_VERSION, upgradeHistoryDb } from './history/historyStore'
 
 const DB_NAME = 'stave-snapshots'
@@ -37,14 +39,9 @@ export interface StoredSnapshot extends SnapshotMeta {
 }
 
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    // Shared DB with the project commit store (history/historyStore). Use the
-    // shared upgrade so whichever store opens first leaves both schemas intact.
-    req.onupgradeneeded = () => upgradeHistoryDb(req.result)
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
+  // Shared DB with the project commit store (history/historyStore). Use the
+  // shared upgrade so whichever store opens first leaves both schemas intact.
+  return openIdbWithTimeout(DB_NAME, DB_VERSION, (db) => upgradeHistoryDb(db))
 }
 
 function wrap<T>(req: IDBRequest<T>): Promise<T> {
@@ -130,6 +127,38 @@ export async function deleteSnapshot(id: string): Promise<void> {
     db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).delete(id),
   )
   db.close()
+}
+
+/**
+ * Delete every snapshot whose project is an ephemeral session (#688). Used by
+ * the boot-time prune to clear phantoms a recovered-mid-session ephemeral run
+ * may have written.
+ */
+export async function pruneEphemeralSnapshots(): Promise<void> {
+  const db = await openDb()
+  try {
+    // Query the byProject index by key range so we get just the primary keys
+    // of ephemeral rows — never deserializing snapshot bytes to find them.
+    const range = IDBKeyRange.bound(
+      EPHEMERAL_ID_PREFIX,
+      EPHEMERAL_ID_PREFIX + String.fromCharCode(0xffff),
+    )
+    const ids = await wrap<IDBValidKey[]>(
+      db
+        .transaction(STORE_NAME, 'readonly')
+        .objectStore(STORE_NAME)
+        .index('byProject')
+        .getAllKeys(range),
+    )
+    if (ids.length) {
+      const store = db
+        .transaction(STORE_NAME, 'readwrite')
+        .objectStore(STORE_NAME)
+      await Promise.all(ids.map((id) => wrap(store.delete(id))))
+    }
+  } finally {
+    db.close()
+  }
 }
 
 /**

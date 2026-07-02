@@ -409,8 +409,13 @@ export {
   deleteProject,
   duplicateProject,
   setProjectBackgroundCrop,
+  EPHEMERAL_ID_PREFIX,
+  isEphemeralProjectId,
   type ProjectMeta,
 } from './workspace/projectRegistry'
+
+// Ephemeral-session cleanup (#688)
+export { pruneEphemeralArtifacts } from './workspace/ephemeralPrune'
 
 // Sample sound (test audio source for viz development)
 export {

@@ -293,7 +293,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     color: "var(--text-tertiary)",
     whiteSpace: "nowrap",
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
     letterSpacing: 0.5,
   },
 };

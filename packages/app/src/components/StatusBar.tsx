@@ -141,7 +141,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 14,
     fontSize: 11,
     color: "var(--text-tertiary)",
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
     userSelect: "none",
   },
   section: {
@@ -212,11 +212,11 @@ const styles: Record<string, React.CSSProperties> = {
     background: "rgba(239, 68, 68, 0.08)",
   },
   chipIcon: {
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
     fontWeight: 600,
   },
   chipCount: {
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
     fontWeight: 600,
     padding: "0 3px",
     borderRadius: 2,
