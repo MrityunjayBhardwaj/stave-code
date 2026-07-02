@@ -35545,6 +35545,17 @@ function usePopoutPreview({
   return { cleanup };
 }
 __name(usePopoutPreview, "usePopoutPreview");
+var warmed = null;
+function warmMonaco() {
+  if (!warmed) {
+    warmed = MonacoEditorRaw.loader.init().catch(() => {
+      warmed = null;
+      return null;
+    });
+  }
+  return warmed;
+}
+__name(warmMonaco, "warmMonaco");
 var DB_NAME3 = "stave-snapshots";
 var STORE_NAME2 = "snapshots";
 var AUTO_SNAPSHOT_PREFIX = "Auto \u2014 ";
@@ -38551,6 +38562,7 @@ exports.usePopoutPreview = usePopoutPreview;
 exports.useTrackMetaMap = useTrackMetaMap;
 exports.useWorkspaceFile = useWorkspaceFile;
 exports.validatePersistedState = validatePersistedState;
+exports.warmMonaco = warmMonaco;
 exports.withStructBatch = withStructBatch;
 exports.workspaceAudioBus = workspaceAudioBus;
 exports.workspaceFileIdForPreset = workspaceFileIdForPreset;

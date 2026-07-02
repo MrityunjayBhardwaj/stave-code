@@ -248,6 +248,7 @@ export type { TrackMeta } from './workspace/WorkspaceFile'
 export { useTrackMetaMap } from './workspace/useTrackMeta'
 export { initProjectDoc, initProjectDocSync, switchProject, getActiveProjectId, isDocReady, subscribeToDocUpdate, IDB_SYNC_TIMEOUT_MS } from './workspace/projectDoc'
 export type { ProjectDocInitResult } from './workspace/projectDoc'
+export { warmMonaco } from './workspace/warmMonaco'
 export {
   undo,
   redo,
