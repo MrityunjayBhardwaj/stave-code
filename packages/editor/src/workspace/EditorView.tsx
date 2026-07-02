@@ -168,11 +168,12 @@ export function EditorView({
   //      Applied via `monaco.editor.setTheme('stave-dark' | 'stave-light')`.
   //
   // Missing #2 is why the editor surface renders white on a dark shell —
-  // @monaco-editor/react defaults to the built-in `vs` theme when no
-  // `theme` prop is passed to <MonacoEditor>. We don't pass it as a prop
-  // because the mount handler registers the custom `stave-dark` /
-  // `stave-light` theme and setTheme-switches between them, which
-  // includes the custom syntax rules for Strudel + Sonic Pi tokens.
+  // @monaco-editor/react defaults to the built-in `vs` theme when the named
+  // `theme` isn't defined yet. We register the custom `stave-dark` /
+  // `stave-light` themes in `handleMonacoBeforeMount` (before creation) and
+  // pass `theme={monacoThemeNameFor(theme)}` to <MonacoEditor>, so the editor
+  // mounts already-themed — no white flash on the per-tab remount (#683). This
+  // effect only handles subsequent dark/light flips on an already-mounted editor.
   useEffect(() => {
     if (!containerRef.current) return
     applyTheme(containerRef.current, theme)
@@ -323,6 +324,17 @@ export function EditorView({
   onStopRef.current = onStop
 
   // Monaco mount handler. Registers workspace languages the first time
+  // Runs BEFORE the editor is created (ahead of the first paint). Registers
+  // the Stave themes so the `theme` prop below resolves to a real theme at
+  // creation — otherwise Monaco mounts with its built-in default `vs` (white)
+  // theme for a frame, which showed as a white flash on every per-tab remount
+  // (#683). Defining here + applying via the prop means frame 1 is already
+  // themed; the theme-change effect above handles later dark/light flips.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleMonacoBeforeMount = (monaco: any): void => {
+    if (monaco.editor?.defineTheme) defineStrudelMonacoTheme(monaco)
+  }
+
   // any EditorView mounts inside a given Monaco instance, then captures
   // refs for bus wiring, registers keyboard shortcuts, and forwards to
   // the caller's mount callback.
@@ -341,15 +353,10 @@ export function EditorView({
     applyPersistedEditorOptions(editor)
     ensureWorkspaceLanguages(monaco)
 
-    // Register the Stave Monaco theme (syntax rules + editor colors)
-    // and activate the correct variant. Must happen BEFORE any model
-    // renders so the first paint uses the right colors — `setTheme` is
-    // applied globally to Monaco so any future editors pick it up too.
-    // The theme-change effect above handles subsequent prop flips.
-    if (monaco.editor?.defineTheme && monaco.editor?.setTheme) {
-      defineStrudelMonacoTheme(monaco)
-      monaco.editor.setTheme(monacoThemeNameFor(theme))
-    }
+    // Theme is registered in `handleMonacoBeforeMount` (before creation) and
+    // applied via the `theme` prop, so the first paint already uses the right
+    // colors with no white `vs`-default flash on remount (#683). The
+    // theme-change effect above handles subsequent dark/light flips.
 
     // Register Ctrl+Enter (play) and Ctrl+. (stop) — mirrors the legacy
     // LiveCodingEditor.tsx:266-281 keybindings. Uses refs so the actions
@@ -476,8 +483,10 @@ export function EditorView({
             key={viewing ? `view:${viewedCommit ?? ''}` : 'live'}
             height="100%"
             language={toMonacoLanguage(file.language)}
+            theme={monacoThemeNameFor(theme)}
             value={viewing ? (viewedContent as string) : file.content}
             onChange={handleChange}
+            beforeMount={handleMonacoBeforeMount}
             onMount={handleMonacoMount}
             options={viewing ? { ...MONACO_OPTIONS, readOnly: true } : MONACO_OPTIONS}
           />
