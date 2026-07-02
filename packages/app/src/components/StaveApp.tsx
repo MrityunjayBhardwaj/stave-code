@@ -1031,7 +1031,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       render: () => null,
     }));
     // IR debugger (IR Inspector) — hidden from the left activity bar until the
-    // full breakpoint-driven music debugger flow lands (#678). The panel, its
+    // full breakpoint-driven music debugger flow lands (re-enable: #680). The panel, its
     // render block below (`activePanelId === "ir-inspector"`), the engine
     // capture, and the breakpoint wiring are all intentionally KEPT intact;
     // only this tab registration is disabled so nothing surfaces in the UI.
