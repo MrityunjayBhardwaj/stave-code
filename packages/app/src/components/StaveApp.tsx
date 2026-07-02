@@ -1030,13 +1030,21 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       order: 50,
       render: () => null,
     }));
-    unregs.push(registerPanel({
-      id: "ir-inspector",
-      title: "IR Inspector",
-      icon: "inspect",
-      order: 60,
-      render: () => null,
-    }));
+    // IR debugger (IR Inspector) — hidden from the left activity bar until the
+    // full breakpoint-driven music debugger flow lands (#678). The panel, its
+    // render block below (`activePanelId === "ir-inspector"`), the engine
+    // capture, and the breakpoint wiring are all intentionally KEPT intact;
+    // only this tab registration is disabled so nothing surfaces in the UI.
+    // `activePanelId` is not persisted and can only reach "ir-inspector" via
+    // this (now-absent) tab button, so the render block is safely dormant.
+    // To restore: un-comment the registerPanel call below.
+    // unregs.push(registerPanel({
+    //   id: "ir-inspector",
+    //   title: "IR Inspector",
+    //   icon: "inspect",
+    //   order: 60,
+    //   render: () => null,
+    // }));
     return () => { for (const u of unregs) u(); };
   }, [activeProject, handleRenameActiveProject, openSnapshotPanel, handleShareProject]);
 
