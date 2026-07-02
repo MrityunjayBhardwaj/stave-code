@@ -99,6 +99,7 @@ export {
   IDB_SYNC_TIMEOUT_MS,
 } from './projectDoc'
 export type { ProjectDocInitResult } from './projectDoc'
+export { warmMonaco } from './warmMonaco'
 export {
   listProjects,
   getProject,

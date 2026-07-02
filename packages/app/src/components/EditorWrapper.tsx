@@ -383,9 +383,14 @@ export const StrudelEditorDynamic = dynamic(
       import("./StaveApp"),
       import("@stave/editor"),
       import("../templates"),
-    ]).then(([staveAppMod, editor, templates]) =>
-      makeBootstrapOrchestrator(staveAppMod, editor, templates),
-    ),
+    ]).then(([staveAppMod, editor, templates]) => {
+      // Warm the Monaco core NOW, while the preloader is still up, so it loads
+      // in parallel with the IndexedDB boot instead of on first <Editor> mount
+      // (which lands after the shell renders). Fire-and-forget — must never
+      // block the boot or the preloader clear (#689).
+      void editor.warmMonaco();
+      return makeBootstrapOrchestrator(staveAppMod, editor, templates);
+    }),
   {
     ssr: false,
     loading: () => null, // preloader in layout handles this
