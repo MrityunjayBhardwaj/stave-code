@@ -615,6 +615,39 @@ export function onInlineVizTeardownChange(cb: (on: boolean) => void): () => void
   return () => { inlineVizTeardownListeners.delete(cb) }
 }
 
+// ── Left-edge track colour bar (#608) ───────────────────────────────
+// The per-track colour stripe down the editor's left edge (useTrackColourBars).
+// Default ON (current behaviour). OFF removes the overlay for a plainer gutter.
+const DEFAULT_TRACK_COLOUR_BARS_ENABLED = true
+const TRACK_COLOUR_BARS_STORAGE = 'stave:trackColourBars'
+const trackColourBarsListeners = new Set<(on: boolean) => void>()
+
+function readTrackColourBarsEnabled(): boolean {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_TRACK_COLOUR_BARS_ENABLED
+  const saved = ls.getItem(TRACK_COLOUR_BARS_STORAGE)
+  if (saved === null) return DEFAULT_TRACK_COLOUR_BARS_ENABLED
+  return saved === '1'
+}
+
+/** Whether the left-edge per-track colour bar is painted in the code view.
+ *  Default ON. */
+export function getTrackColourBarsEnabled(): boolean {
+  return readTrackColourBarsEnabled()
+}
+
+/** Show/hide the left-edge track colour bar. Notifies listeners so open
+ *  editors add/remove the overlay live. */
+export function setTrackColourBarsEnabled(on: boolean): void {
+  safeLocalStorage()?.setItem(TRACK_COLOUR_BARS_STORAGE, on ? '1' : '0')
+  for (const cb of Array.from(trackColourBarsListeners)) cb(on)
+}
+
+export function onTrackColourBarsChange(cb: (on: boolean) => void): () => void {
+  trackColourBarsListeners.add(cb)
+  return () => { trackColourBarsListeners.delete(cb) }
+}
+
 /** Effective teardown delay in ms for a newly-mounted inline zone: the threshold
  *  when enabled, 0 (= never tear down) when disabled. Read at mount. An optional
  *  `stave:inlineVizTeardownMs` localStorage override tunes the delay (advanced /

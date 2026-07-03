@@ -7373,6 +7373,33 @@ function onInlineVizTeardownChange(cb) {
   };
 }
 __name(onInlineVizTeardownChange, "onInlineVizTeardownChange");
+var DEFAULT_TRACK_COLOUR_BARS_ENABLED = true;
+var TRACK_COLOUR_BARS_STORAGE = "stave:trackColourBars";
+var trackColourBarsListeners = /* @__PURE__ */ new Set();
+function readTrackColourBarsEnabled() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_TRACK_COLOUR_BARS_ENABLED;
+  const saved = ls.getItem(TRACK_COLOUR_BARS_STORAGE);
+  if (saved === null) return DEFAULT_TRACK_COLOUR_BARS_ENABLED;
+  return saved === "1";
+}
+__name(readTrackColourBarsEnabled, "readTrackColourBarsEnabled");
+function getTrackColourBarsEnabled() {
+  return readTrackColourBarsEnabled();
+}
+__name(getTrackColourBarsEnabled, "getTrackColourBarsEnabled");
+function setTrackColourBarsEnabled(on) {
+  safeLocalStorage2()?.setItem(TRACK_COLOUR_BARS_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(trackColourBarsListeners)) cb(on);
+}
+__name(setTrackColourBarsEnabled, "setTrackColourBarsEnabled");
+function onTrackColourBarsChange(cb) {
+  trackColourBarsListeners.add(cb);
+  return () => {
+    trackColourBarsListeners.delete(cb);
+  };
+}
+__name(onTrackColourBarsChange, "onTrackColourBarsChange");
 function getInlineVizTeardownMs() {
   if (!readInlineVizTeardownEnabled()) return 0;
   try {
@@ -21592,8 +21619,10 @@ function useTrackColourBars(editor, fileId) {
   const trackMeta = useTrackMetaMap(fileId);
   const trackMetaRef = React35.useRef(trackMeta);
   trackMetaRef.current = trackMeta;
+  const [enabled, setEnabled] = React35.useState(getTrackColourBarsEnabled);
+  React35.useEffect(() => onTrackColourBarsChange(setEnabled), []);
   React35.useEffect(() => {
-    if (!editor) return;
+    if (!editor || !enabled) return;
     const host = editor.getDomNode?.();
     if (!host) return;
     const overlay = document.createElement("div");
@@ -21642,7 +21671,7 @@ function useTrackColourBars(editor, fileId) {
       for (const s of subs) s.dispose();
       overlay.remove();
     };
-  }, [editor, trackMeta]);
+  }, [editor, trackMeta, enabled]);
 }
 __name(useTrackColourBars, "useTrackColourBars");
 
@@ -38428,6 +38457,7 @@ exports.getSignalAliases = getSignalAliases;
 exports.getStoredSignalAliases = getStoredSignalAliases;
 exports.getSubfolderOrder = getSubfolderOrder;
 exports.getTierFlags = getTierFlags;
+exports.getTrackColourBarsEnabled = getTrackColourBarsEnabled;
 exports.getTrackMeta = getTrackMeta;
 exports.getTrackMetaMapSnapshot = getTrackMetaMapSnapshot;
 exports.getViewedCommit = getViewedCommit;
@@ -38510,6 +38540,7 @@ exports.onNamedVizChanged = onNamedVizChanged;
 exports.onPerfEnabledChange = onPerfEnabledChange;
 exports.onSignalAliasesChange = onSignalAliasesChange;
 exports.onThemeChange = onThemeChange;
+exports.onTrackColourBarsChange = onTrackColourBarsChange;
 exports.onUiIconSizeChange = onUiIconSizeChange;
 exports.onVizInputsLiveValuesChange = onVizInputsLiveValuesChange;
 exports.onVizQualityChange = onVizQualityChange;
@@ -38613,6 +38644,7 @@ exports.setSignalAliases = setSignalAliases;
 exports.setSoundCatalogAccessor = setSoundCatalogAccessor;
 exports.setSubfolderOrder = setSubfolderOrder;
 exports.setTierFlag = setTierFlag;
+exports.setTrackColourBarsEnabled = setTrackColourBarsEnabled;
 exports.setTrackMeta = setTrackMeta;
 exports.setVizConfig = setVizConfig;
 exports.setVizInputsLiveValuesEnabled = setVizInputsLiveValuesEnabled;
