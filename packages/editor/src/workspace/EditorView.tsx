@@ -103,7 +103,9 @@ const MONACO_OPTIONS = {
   },
   lineNumbersMinChars: 3,
   glyphMargin: true,  // Phase 20-07 — gutter glyphs render breakpoint markers via useBreakpoints
-  folding: false,
+  // #708 — fold whole track statements. The strudel folding-range provider
+  // (registered in ensureWorkspaceLanguages) yields one fold per track block.
+  folding: true,
   renderLineHighlight: 'line' as const,
   cursorBlinking: 'smooth' as const,
   cursorSmoothCaretAnimation: 'on' as const,

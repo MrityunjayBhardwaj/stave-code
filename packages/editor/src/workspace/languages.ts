@@ -52,6 +52,7 @@ import {
 } from '../monaco/strudelCompletions'
 import { registerStrudelHover } from '../monaco/strudelDocs'
 import { ensureStrudelLintCodeActionProvider } from '../monaco/diagnostics'
+import { registerStrudelFoldingProvider } from '../monaco/strudelFolding'
 import { registerP5Providers, P5_DOCS_INDEX } from '../monaco/docs/p5'
 import { registerHydraProviders, HYDRA_DOCS_INDEX } from '../monaco/docs/hydra'
 import { registerSignalBusProviders } from '../monaco/docs/signals'
@@ -445,6 +446,8 @@ export function ensureWorkspaceLanguages(monaco: typeof Monaco): void {
     if (typeof m.languages?.registerCodeActionProvider === 'function') {
       ensureStrudelLintCodeActionProvider(m, 'strudel')
     }
+    // #708 — fold whole track statements (one fold per track block).
+    registerStrudelFoldingProvider(m)
   })
   ensureProviders('p5js', monaco, (m) => {
     registerP5Providers(m)

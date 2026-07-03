@@ -18993,6 +18993,413 @@ function ensureStrudelLintCodeActionProvider(monaco, languageId) {
 }
 __name(ensureStrudelLintCodeActionProvider, "ensureStrudelLintCodeActionProvider");
 
+// src/visualEdit/panels/patternKind.ts
+function isStepChunk(chunk) {
+  return chunk.miniString !== null && (chunk.headFn === "s" || chunk.headFn === "sound");
+}
+__name(isStepChunk, "isStepChunk");
+function isRollChunk(chunk) {
+  return chunk.miniString !== null && (chunk.headFn === "note" || chunk.headFn === "n");
+}
+__name(isRollChunk, "isRollChunk");
+function patternKind(chunk) {
+  if (!chunk) return null;
+  if (isStepChunk(chunk)) return "step";
+  if (isRollChunk(chunk)) return "roll";
+  return null;
+}
+__name(patternKind, "patternKind");
+
+// src/visualEdit/panels/chainMethod.ts
+function readChainMethod(chunk, names) {
+  const call = chunk.chain.find((c) => names.includes(c.name) && c.args.length >= 1);
+  const arg = call?.args[0];
+  if (!call || !arg) return null;
+  const q = arg.raw[0];
+  if ((q === '"' || q === "'" || q === "`") && arg.raw[arg.raw.length - 1] === q) {
+    return { name: call.name, value: arg.raw.slice(1, -1), range: arg.range };
+  }
+  return null;
+}
+__name(readChainMethod, "readChainMethod");
+
+// src/visualEdit/trackColor.ts
+var TRACK_PALETTE_32 = [
+  // Drums (orange family) — 8 lightness steps
+  "#fed7aa",
+  "#fdba74",
+  "#fb923c",
+  "#f97316",
+  "#ea580c",
+  "#c2410c",
+  "#9a3412",
+  "#7c2d12",
+  // Bass (cyan family) — 8 lightness steps
+  "#a5f3fc",
+  "#67e8f9",
+  "#22d3ee",
+  "#06b6d4",
+  "#0891b2",
+  "#0e7490",
+  "#155e75",
+  "#164e63",
+  // Pad (green family) — 8 lightness steps
+  "#a7f3d0",
+  "#6ee7b7",
+  "#34d399",
+  "#10b981",
+  "#059669",
+  "#047857",
+  "#065f46",
+  "#064e3b",
+  // Melody (purple family) — 8 lightness steps
+  "#ddd6fe",
+  "#c4b5fd",
+  "#a78bfa",
+  "#8b5cf6",
+  "#7c3aed",
+  "#6d28d9",
+  "#5b21b6",
+  "#4c1d95"
+];
+var STEM_PATTERNS = [
+  // Family 0 — drums
+  /^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i,
+  // Family 1 — bass
+  /^(?:bass|sub|808)/i,
+  // Family 2 — pads
+  /^(?:pad|pads)/i,
+  // Family 3 — melody / lead / synth / piano / keys / guitar
+  /^(?:lead|melody|synth|piano|keys|guitar)/i
+];
+function fnv1a32(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h = (h ^ str.charCodeAt(i)) >>> 0;
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+__name(fnv1a32, "fnv1a32");
+function stemHueGroup(sample) {
+  if (!sample) return 3;
+  for (let i = 0; i < STEM_PATTERNS.length; i++) {
+    if (STEM_PATTERNS[i].test(sample)) return i;
+  }
+  return 3;
+}
+__name(stemHueGroup, "stemHueGroup");
+function trackIndexOf(trackId) {
+  const m = trackId.match(/^d(\d+)$/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n >= 1) return ((n - 1) % 32 + 32) % 32;
+  }
+  return fnv1a32(trackId) % 32;
+}
+__name(trackIndexOf, "trackIndexOf");
+function paletteForTrack(trackIndex, sampleHint) {
+  const hueGroup = stemHueGroup(sampleHint);
+  const slot = ((trackIndex * 4 + hueGroup) % 32 + 32) % 32;
+  return TRACK_PALETTE_32[slot];
+}
+__name(paletteForTrack, "paletteForTrack");
+function colorForTrack(key3) {
+  return paletteForTrack(trackIndexOf(key3), key3);
+}
+__name(colorForTrack, "colorForTrack");
+function trackIdentity(key3, customColor) {
+  return { key: key3, name: key3, color: customColor ?? colorForTrack(key3) };
+}
+__name(trackIdentity, "trackIdentity");
+
+// src/visualEdit/mixer/gain.ts
+var GAIN_TOKEN = /^(\d+(?:\.\d+)?)(@\d+)?$/;
+function parseManagedGain(raw) {
+  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
+  if (!quote || raw[raw.length - 1] !== quote) return null;
+  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== "");
+  if (tokens.length < 2) return null;
+  let ceiling = 0;
+  for (const t of tokens) {
+    if (t === "~") continue;
+    const m = GAIN_TOKEN.exec(t);
+    if (!m) return null;
+    ceiling = Math.max(ceiling, parseFloat(m[1]));
+  }
+  return { tokens, ceiling, quote };
+}
+__name(parseManagedGain, "parseManagedGain");
+function scaleManagedGain(mg, value) {
+  const factor = mg.ceiling > 0 ? value / mg.ceiling : null;
+  const out = mg.tokens.map((t) => {
+    if (t === "~") return "~";
+    const m = GAIN_TOKEN.exec(t);
+    const nv = factor === null ? value : parseFloat(m[1]) * factor;
+    return formatNumber(Math.max(0, nv)) + (m[2] ?? "");
+  });
+  return mg.quote + out.join(" ") + mg.quote;
+}
+__name(scaleManagedGain, "scaleManagedGain");
+var CHILD_GAIN_HEADS = /* @__PURE__ */ new Set([
+  "pick",
+  "pickRestart",
+  "pickReset",
+  "stack",
+  "cat",
+  "layer",
+  "arrange"
+]);
+function hasChildGain(chunk) {
+  const call = chunk.chain.find((c) => CHILD_GAIN_HEADS.has(c.name));
+  return call ? call.args.some((a) => /\.gain\s*\(/.test(a.raw)) : false;
+}
+__name(hasChildGain, "hasChildGain");
+function readGainState(chunk) {
+  const call = chunk.chain.find((c) => c.name === "gain" && c.args.length >= 1);
+  const arg = call?.args[0];
+  if (!call || !arg) {
+    return hasChildGain(chunk) ? { kind: "foreign" } : { kind: "absent" };
+  }
+  if (arg.numeric !== null) return { kind: "scalar", value: arg.numeric, range: arg.range };
+  const mg = parseManagedGain(arg.raw);
+  if (mg) return { kind: "managed", ceiling: mg.ceiling, mg, range: arg.range };
+  return { kind: "foreign" };
+}
+__name(readGainState, "readGainState");
+
+// src/visualEdit/mixer/stripModel.ts
+function namedLabel(label) {
+  return label && label !== "$" ? label : null;
+}
+__name(namedLabel, "namedLabel");
+function isMuted(label) {
+  return label != null && label.startsWith("_");
+}
+__name(isMuted, "isMuted");
+function bareLabel(label) {
+  if (label == null) return null;
+  return namedLabel(isMuted(label) ? label.slice(1) : label);
+}
+__name(bareLabel, "bareLabel");
+var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
+  "setcps",
+  "setCps",
+  "setcpm",
+  "setCpm",
+  "setbpm",
+  "setBpm",
+  "samples",
+  "hush",
+  "all"
+]);
+function isTrackChunk(chunk) {
+  if (chunk.label !== null) return true;
+  return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn);
+}
+__name(isTrackChunk, "isTrackChunk");
+var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
+function stripKind(chunk) {
+  const k = patternKind(chunk);
+  if (k) return k;
+  if (chunk.headFn && GROUP_HEADS.has(chunk.headFn)) return "group";
+  return "unknown";
+}
+__name(stripKind, "stripKind");
+function readSource(chunk, kind) {
+  if (kind === "step") return readChainMethod(chunk, ["bank"])?.value ?? null;
+  if (kind === "roll") return readChainMethod(chunk, ["sound", "s"])?.value ?? null;
+  return readChainMethod(chunk, ["sound", "s", "bank"])?.value ?? null;
+}
+__name(readSource, "readSource");
+function readScalar(chunk, name) {
+  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
+  const arg = call?.args[0];
+  return arg && arg.numeric !== null ? arg.numeric : null;
+}
+__name(readScalar, "readScalar");
+function isForeign(chunk, name) {
+  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
+  return call !== void 0 && call.args[0].numeric === null;
+}
+__name(isForeign, "isForeign");
+function displayKey(label, ordinal) {
+  return bareLabel(label) ?? `d${ordinal}`;
+}
+__name(displayKey, "displayKey");
+function buildStripModel(chunk, index, ordinal, id, captureId) {
+  const kind = stripKind(chunk);
+  const source = readSource(chunk, kind);
+  const identity = trackIdentity(displayKey(chunk.label, ordinal));
+  return {
+    id,
+    index,
+    kind,
+    label: bareLabel(chunk.label),
+    name: identity.name,
+    headFn: chunk.headFn,
+    miniString: chunk.miniString,
+    source,
+    gain: readGainState(chunk),
+    pan: readScalar(chunk, "pan"),
+    panForeign: isForeign(chunk, "pan"),
+    sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
+    muted: isMuted(chunk.label),
+    muteable: chunk.label != null,
+    color: identity.color,
+    chain: chunk.chain,
+    exprRange: chunk.exprRange,
+    statementRange: chunk.statementRange,
+    captureId
+  };
+}
+__name(buildStripModel, "buildStripModel");
+function buildStripModels(chunks) {
+  let anonAll = 0;
+  let anonLive = 0;
+  let ordinal = 0;
+  const models = [];
+  chunks.forEach((chunk, index) => {
+    if (!isTrackChunk(chunk)) return;
+    ordinal++;
+    const bare = bareLabel(chunk.label);
+    const id = bare ?? `#${anonAll++}`;
+    let captureId;
+    if (bare !== null) captureId = bare;
+    else if (isMuted(chunk.label)) captureId = `_$${index}`;
+    else captureId = `$${anonLive++}`;
+    models.push(buildStripModel(chunk, index, ordinal, id, captureId));
+  });
+  return models;
+}
+__name(buildStripModels, "buildStripModels");
+function statementOffsetForSource(doc, source) {
+  const strip = buildStripModels(detectAllChunks(doc)).find((s) => s.source === source);
+  return strip ? strip.statementRange[0] : null;
+}
+__name(statementOffsetForSource, "statementOffsetForSource");
+function otherTrackNames(doc, selfStatementStart) {
+  return buildStripModels(detectAllChunks(doc)).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
+}
+__name(otherTrackNames, "otherTrackNames");
+var EMPTY_META_MAP = /* @__PURE__ */ new Map();
+function useTrackMetaMap(fileId) {
+  const subscribe7 = useCallback(
+    (onStoreChange) => {
+      if (!fileId) return () => {
+      };
+      return subscribeToTrackMeta(fileId, onStoreChange);
+    },
+    [fileId]
+  );
+  const getSnapshot = useCallback(() => {
+    if (!fileId) return EMPTY_META_MAP;
+    return getTrackMetaMapSnapshot(fileId);
+  }, [fileId]);
+  return useSyncExternalStore(subscribe7, getSnapshot, getSnapshot);
+}
+__name(useTrackMetaMap, "useTrackMetaMap");
+
+// src/monaco/useTrackColourBars.ts
+function trackBarSegments(strips, model, trackMeta) {
+  const out = [];
+  for (const strip of strips) {
+    const color = trackMeta.get(strip.name)?.color ?? strip.color;
+    const [start, end] = strip.statementRange;
+    const startLine = model.getPositionAt(start).lineNumber;
+    const endPos = model.getPositionAt(end);
+    let endLine = endPos.lineNumber;
+    if (endPos.column === 1 && endLine > startLine) endLine -= 1;
+    out.push({ startLine, endLine, color });
+  }
+  return out;
+}
+__name(trackBarSegments, "trackBarSegments");
+var BAR_WIDTH_PX = 3;
+function useTrackColourBars(editor, fileId) {
+  const trackMeta = useTrackMetaMap(fileId);
+  const trackMetaRef = useRef(trackMeta);
+  trackMetaRef.current = trackMeta;
+  useEffect(() => {
+    if (!editor) return;
+    const host = editor.getDomNode?.();
+    if (!host) return;
+    const overlay = document.createElement("div");
+    overlay.setAttribute("data-track-colour-bars", "");
+    overlay.style.cssText = `position:absolute;left:0;top:0;width:${BAR_WIDTH_PX}px;height:100%;overflow:hidden;pointer-events:none;z-index:5;`;
+    const inner = document.createElement("div");
+    inner.style.cssText = "position:absolute;left:0;top:0;width:100%;will-change:transform;";
+    overlay.appendChild(inner);
+    host.appendChild(overlay);
+    const applyScroll = /* @__PURE__ */ __name(() => {
+      inner.style.transform = `translateY(${-editor.getScrollTop()}px)`;
+    }, "applyScroll");
+    const rebuild = /* @__PURE__ */ __name(() => {
+      const model = editor.getModel();
+      if (!model) {
+        inner.replaceChildren();
+        return;
+      }
+      const segments = trackBarSegments(
+        buildStripModels(detectAllChunks(model.getValue())),
+        model,
+        trackMetaRef.current
+      );
+      const frag = document.createDocumentFragment();
+      for (const seg of segments) {
+        const top = editor.getTopForLineNumber(seg.startLine);
+        const bottom = editor.getBottomForLineNumber(seg.endLine);
+        const div = document.createElement("div");
+        div.setAttribute("data-track-colour-bar", "");
+        div.style.cssText = `position:absolute;left:0;width:${BAR_WIDTH_PX}px;top:${top}px;height:${Math.max(0, bottom - top)}px;background:${seg.color};`;
+        frag.appendChild(div);
+      }
+      inner.replaceChildren(frag);
+      applyScroll();
+    }, "rebuild");
+    rebuild();
+    const subs = [
+      editor.onDidScrollChange(applyScroll),
+      editor.onDidChangeModelContent(rebuild),
+      editor.onDidLayoutChange(rebuild),
+      // width change → re-wrap → new line tops
+      editor.onDidContentSizeChange(rebuild),
+      editor.onDidChangeModel(rebuild)
+    ];
+    return () => {
+      for (const s of subs) s.dispose();
+      overlay.remove();
+    };
+  }, [editor, trackMeta]);
+}
+__name(useTrackColourBars, "useTrackColourBars");
+
+// src/monaco/strudelFolding.ts
+function trackFoldingRanges(model) {
+  const segments = trackBarSegments(
+    buildStripModels(detectAllChunks(model.getValue())),
+    model,
+    /* @__PURE__ */ new Map()
+  );
+  const ranges = [];
+  for (const seg of segments) {
+    if (seg.endLine > seg.startLine) {
+      ranges.push({ start: seg.startLine, end: seg.endLine });
+    }
+  }
+  return ranges;
+}
+__name(trackFoldingRanges, "trackFoldingRanges");
+function registerStrudelFoldingProvider(monaco) {
+  if (typeof monaco.languages?.registerFoldingRangeProvider !== "function") return;
+  monaco.languages.registerFoldingRangeProvider("strudel", {
+    provideFoldingRanges(model) {
+      return trackFoldingRanges(model).map((r) => ({ start: r.start, end: r.end }));
+    }
+  });
+}
+__name(registerStrudelFoldingProvider, "registerStrudelFoldingProvider");
+
 // src/monaco/docs/data/hydra.json
 var hydra_default = {
   runtime: "hydra",
@@ -20790,6 +21197,7 @@ function ensureWorkspaceLanguages(monaco) {
     if (typeof m.languages?.registerCodeActionProvider === "function") {
       ensureStrudelLintCodeActionProvider(m, "strudel");
     }
+    registerStrudelFoldingProvider(m);
   });
   ensureProviders("p5js", monaco, (m) => {
     registerP5Providers(m);
@@ -21238,387 +21646,6 @@ function useBreakpoints(editor, store, onResume) {
   return { clearAll };
 }
 __name(useBreakpoints, "useBreakpoints");
-
-// src/visualEdit/panels/patternKind.ts
-function isStepChunk(chunk) {
-  return chunk.miniString !== null && (chunk.headFn === "s" || chunk.headFn === "sound");
-}
-__name(isStepChunk, "isStepChunk");
-function isRollChunk(chunk) {
-  return chunk.miniString !== null && (chunk.headFn === "note" || chunk.headFn === "n");
-}
-__name(isRollChunk, "isRollChunk");
-function patternKind(chunk) {
-  if (!chunk) return null;
-  if (isStepChunk(chunk)) return "step";
-  if (isRollChunk(chunk)) return "roll";
-  return null;
-}
-__name(patternKind, "patternKind");
-
-// src/visualEdit/panels/chainMethod.ts
-function readChainMethod(chunk, names) {
-  const call = chunk.chain.find((c) => names.includes(c.name) && c.args.length >= 1);
-  const arg = call?.args[0];
-  if (!call || !arg) return null;
-  const q = arg.raw[0];
-  if ((q === '"' || q === "'" || q === "`") && arg.raw[arg.raw.length - 1] === q) {
-    return { name: call.name, value: arg.raw.slice(1, -1), range: arg.range };
-  }
-  return null;
-}
-__name(readChainMethod, "readChainMethod");
-
-// src/visualEdit/trackColor.ts
-var TRACK_PALETTE_32 = [
-  // Drums (orange family) — 8 lightness steps
-  "#fed7aa",
-  "#fdba74",
-  "#fb923c",
-  "#f97316",
-  "#ea580c",
-  "#c2410c",
-  "#9a3412",
-  "#7c2d12",
-  // Bass (cyan family) — 8 lightness steps
-  "#a5f3fc",
-  "#67e8f9",
-  "#22d3ee",
-  "#06b6d4",
-  "#0891b2",
-  "#0e7490",
-  "#155e75",
-  "#164e63",
-  // Pad (green family) — 8 lightness steps
-  "#a7f3d0",
-  "#6ee7b7",
-  "#34d399",
-  "#10b981",
-  "#059669",
-  "#047857",
-  "#065f46",
-  "#064e3b",
-  // Melody (purple family) — 8 lightness steps
-  "#ddd6fe",
-  "#c4b5fd",
-  "#a78bfa",
-  "#8b5cf6",
-  "#7c3aed",
-  "#6d28d9",
-  "#5b21b6",
-  "#4c1d95"
-];
-var STEM_PATTERNS = [
-  // Family 0 — drums
-  /^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i,
-  // Family 1 — bass
-  /^(?:bass|sub|808)/i,
-  // Family 2 — pads
-  /^(?:pad|pads)/i,
-  // Family 3 — melody / lead / synth / piano / keys / guitar
-  /^(?:lead|melody|synth|piano|keys|guitar)/i
-];
-function fnv1a32(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h = (h ^ str.charCodeAt(i)) >>> 0;
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h >>> 0;
-}
-__name(fnv1a32, "fnv1a32");
-function stemHueGroup(sample) {
-  if (!sample) return 3;
-  for (let i = 0; i < STEM_PATTERNS.length; i++) {
-    if (STEM_PATTERNS[i].test(sample)) return i;
-  }
-  return 3;
-}
-__name(stemHueGroup, "stemHueGroup");
-function trackIndexOf(trackId) {
-  const m = trackId.match(/^d(\d+)$/);
-  if (m) {
-    const n = parseInt(m[1], 10);
-    if (n >= 1) return ((n - 1) % 32 + 32) % 32;
-  }
-  return fnv1a32(trackId) % 32;
-}
-__name(trackIndexOf, "trackIndexOf");
-function paletteForTrack(trackIndex, sampleHint) {
-  const hueGroup = stemHueGroup(sampleHint);
-  const slot = ((trackIndex * 4 + hueGroup) % 32 + 32) % 32;
-  return TRACK_PALETTE_32[slot];
-}
-__name(paletteForTrack, "paletteForTrack");
-function colorForTrack(key3) {
-  return paletteForTrack(trackIndexOf(key3), key3);
-}
-__name(colorForTrack, "colorForTrack");
-function trackIdentity(key3, customColor) {
-  return { key: key3, name: key3, color: customColor ?? colorForTrack(key3) };
-}
-__name(trackIdentity, "trackIdentity");
-
-// src/visualEdit/mixer/gain.ts
-var GAIN_TOKEN = /^(\d+(?:\.\d+)?)(@\d+)?$/;
-function parseManagedGain(raw) {
-  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
-  if (!quote || raw[raw.length - 1] !== quote) return null;
-  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== "");
-  if (tokens.length < 2) return null;
-  let ceiling = 0;
-  for (const t of tokens) {
-    if (t === "~") continue;
-    const m = GAIN_TOKEN.exec(t);
-    if (!m) return null;
-    ceiling = Math.max(ceiling, parseFloat(m[1]));
-  }
-  return { tokens, ceiling, quote };
-}
-__name(parseManagedGain, "parseManagedGain");
-function scaleManagedGain(mg, value) {
-  const factor = mg.ceiling > 0 ? value / mg.ceiling : null;
-  const out = mg.tokens.map((t) => {
-    if (t === "~") return "~";
-    const m = GAIN_TOKEN.exec(t);
-    const nv = factor === null ? value : parseFloat(m[1]) * factor;
-    return formatNumber(Math.max(0, nv)) + (m[2] ?? "");
-  });
-  return mg.quote + out.join(" ") + mg.quote;
-}
-__name(scaleManagedGain, "scaleManagedGain");
-var CHILD_GAIN_HEADS = /* @__PURE__ */ new Set([
-  "pick",
-  "pickRestart",
-  "pickReset",
-  "stack",
-  "cat",
-  "layer",
-  "arrange"
-]);
-function hasChildGain(chunk) {
-  const call = chunk.chain.find((c) => CHILD_GAIN_HEADS.has(c.name));
-  return call ? call.args.some((a) => /\.gain\s*\(/.test(a.raw)) : false;
-}
-__name(hasChildGain, "hasChildGain");
-function readGainState(chunk) {
-  const call = chunk.chain.find((c) => c.name === "gain" && c.args.length >= 1);
-  const arg = call?.args[0];
-  if (!call || !arg) {
-    return hasChildGain(chunk) ? { kind: "foreign" } : { kind: "absent" };
-  }
-  if (arg.numeric !== null) return { kind: "scalar", value: arg.numeric, range: arg.range };
-  const mg = parseManagedGain(arg.raw);
-  if (mg) return { kind: "managed", ceiling: mg.ceiling, mg, range: arg.range };
-  return { kind: "foreign" };
-}
-__name(readGainState, "readGainState");
-
-// src/visualEdit/mixer/stripModel.ts
-function namedLabel(label) {
-  return label && label !== "$" ? label : null;
-}
-__name(namedLabel, "namedLabel");
-function isMuted(label) {
-  return label != null && label.startsWith("_");
-}
-__name(isMuted, "isMuted");
-function bareLabel(label) {
-  if (label == null) return null;
-  return namedLabel(isMuted(label) ? label.slice(1) : label);
-}
-__name(bareLabel, "bareLabel");
-var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
-  "setcps",
-  "setCps",
-  "setcpm",
-  "setCpm",
-  "setbpm",
-  "setBpm",
-  "samples",
-  "hush",
-  "all"
-]);
-function isTrackChunk(chunk) {
-  if (chunk.label !== null) return true;
-  return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn);
-}
-__name(isTrackChunk, "isTrackChunk");
-var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
-function stripKind(chunk) {
-  const k = patternKind(chunk);
-  if (k) return k;
-  if (chunk.headFn && GROUP_HEADS.has(chunk.headFn)) return "group";
-  return "unknown";
-}
-__name(stripKind, "stripKind");
-function readSource(chunk, kind) {
-  if (kind === "step") return readChainMethod(chunk, ["bank"])?.value ?? null;
-  if (kind === "roll") return readChainMethod(chunk, ["sound", "s"])?.value ?? null;
-  return readChainMethod(chunk, ["sound", "s", "bank"])?.value ?? null;
-}
-__name(readSource, "readSource");
-function readScalar(chunk, name) {
-  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
-  const arg = call?.args[0];
-  return arg && arg.numeric !== null ? arg.numeric : null;
-}
-__name(readScalar, "readScalar");
-function isForeign(chunk, name) {
-  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
-  return call !== void 0 && call.args[0].numeric === null;
-}
-__name(isForeign, "isForeign");
-function displayKey(label, ordinal) {
-  return bareLabel(label) ?? `d${ordinal}`;
-}
-__name(displayKey, "displayKey");
-function buildStripModel(chunk, index, ordinal, id, captureId) {
-  const kind = stripKind(chunk);
-  const source = readSource(chunk, kind);
-  const identity = trackIdentity(displayKey(chunk.label, ordinal));
-  return {
-    id,
-    index,
-    kind,
-    label: bareLabel(chunk.label),
-    name: identity.name,
-    headFn: chunk.headFn,
-    miniString: chunk.miniString,
-    source,
-    gain: readGainState(chunk),
-    pan: readScalar(chunk, "pan"),
-    panForeign: isForeign(chunk, "pan"),
-    sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
-    muted: isMuted(chunk.label),
-    muteable: chunk.label != null,
-    color: identity.color,
-    chain: chunk.chain,
-    exprRange: chunk.exprRange,
-    statementRange: chunk.statementRange,
-    captureId
-  };
-}
-__name(buildStripModel, "buildStripModel");
-function buildStripModels(chunks) {
-  let anonAll = 0;
-  let anonLive = 0;
-  let ordinal = 0;
-  const models = [];
-  chunks.forEach((chunk, index) => {
-    if (!isTrackChunk(chunk)) return;
-    ordinal++;
-    const bare = bareLabel(chunk.label);
-    const id = bare ?? `#${anonAll++}`;
-    let captureId;
-    if (bare !== null) captureId = bare;
-    else if (isMuted(chunk.label)) captureId = `_$${index}`;
-    else captureId = `$${anonLive++}`;
-    models.push(buildStripModel(chunk, index, ordinal, id, captureId));
-  });
-  return models;
-}
-__name(buildStripModels, "buildStripModels");
-function statementOffsetForSource(doc, source) {
-  const strip = buildStripModels(detectAllChunks(doc)).find((s) => s.source === source);
-  return strip ? strip.statementRange[0] : null;
-}
-__name(statementOffsetForSource, "statementOffsetForSource");
-function otherTrackNames(doc, selfStatementStart) {
-  return buildStripModels(detectAllChunks(doc)).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
-}
-__name(otherTrackNames, "otherTrackNames");
-var EMPTY_META_MAP = /* @__PURE__ */ new Map();
-function useTrackMetaMap(fileId) {
-  const subscribe7 = useCallback(
-    (onStoreChange) => {
-      if (!fileId) return () => {
-      };
-      return subscribeToTrackMeta(fileId, onStoreChange);
-    },
-    [fileId]
-  );
-  const getSnapshot = useCallback(() => {
-    if (!fileId) return EMPTY_META_MAP;
-    return getTrackMetaMapSnapshot(fileId);
-  }, [fileId]);
-  return useSyncExternalStore(subscribe7, getSnapshot, getSnapshot);
-}
-__name(useTrackMetaMap, "useTrackMetaMap");
-
-// src/monaco/useTrackColourBars.ts
-function trackBarSegments(strips, model, trackMeta) {
-  const out = [];
-  for (const strip of strips) {
-    const color = trackMeta.get(strip.name)?.color ?? strip.color;
-    const [start, end] = strip.statementRange;
-    const startLine = model.getPositionAt(start).lineNumber;
-    const endPos = model.getPositionAt(end);
-    let endLine = endPos.lineNumber;
-    if (endPos.column === 1 && endLine > startLine) endLine -= 1;
-    out.push({ startLine, endLine, color });
-  }
-  return out;
-}
-__name(trackBarSegments, "trackBarSegments");
-var BAR_WIDTH_PX = 3;
-function useTrackColourBars(editor, fileId) {
-  const trackMeta = useTrackMetaMap(fileId);
-  const trackMetaRef = useRef(trackMeta);
-  trackMetaRef.current = trackMeta;
-  useEffect(() => {
-    if (!editor) return;
-    const host = editor.getDomNode?.();
-    if (!host) return;
-    const overlay = document.createElement("div");
-    overlay.setAttribute("data-track-colour-bars", "");
-    overlay.style.cssText = `position:absolute;left:0;top:0;width:${BAR_WIDTH_PX}px;height:100%;overflow:hidden;pointer-events:none;z-index:5;`;
-    const inner = document.createElement("div");
-    inner.style.cssText = "position:absolute;left:0;top:0;width:100%;will-change:transform;";
-    overlay.appendChild(inner);
-    host.appendChild(overlay);
-    const applyScroll = /* @__PURE__ */ __name(() => {
-      inner.style.transform = `translateY(${-editor.getScrollTop()}px)`;
-    }, "applyScroll");
-    const rebuild = /* @__PURE__ */ __name(() => {
-      const model = editor.getModel();
-      if (!model) {
-        inner.replaceChildren();
-        return;
-      }
-      const segments = trackBarSegments(
-        buildStripModels(detectAllChunks(model.getValue())),
-        model,
-        trackMetaRef.current
-      );
-      const frag = document.createDocumentFragment();
-      for (const seg of segments) {
-        const top = editor.getTopForLineNumber(seg.startLine);
-        const bottom = editor.getBottomForLineNumber(seg.endLine);
-        const div = document.createElement("div");
-        div.setAttribute("data-track-colour-bar", "");
-        div.style.cssText = `position:absolute;left:0;width:${BAR_WIDTH_PX}px;top:${top}px;height:${Math.max(0, bottom - top)}px;background:${seg.color};`;
-        frag.appendChild(div);
-      }
-      inner.replaceChildren(frag);
-      applyScroll();
-    }, "rebuild");
-    rebuild();
-    const subs = [
-      editor.onDidScrollChange(applyScroll),
-      editor.onDidChangeModelContent(rebuild),
-      editor.onDidLayoutChange(rebuild),
-      // width change → re-wrap → new line tops
-      editor.onDidContentSizeChange(rebuild),
-      editor.onDidChangeModel(rebuild)
-    ];
-    return () => {
-      for (const s of subs) s.dispose();
-      overlay.remove();
-    };
-  }, [editor, trackMeta]);
-}
-__name(useTrackColourBars, "useTrackColourBars");
 
 // src/visualizers/namedVizRegistry.ts
 var registry = /* @__PURE__ */ new Map();
@@ -23536,7 +23563,9 @@ var MONACO_OPTIONS = {
   lineNumbersMinChars: 3,
   glyphMargin: true,
   // Phase 20-07 — gutter glyphs render breakpoint markers via useBreakpoints
-  folding: false,
+  // #708 — fold whole track statements. The strudel folding-range provider
+  // (registered in ensureWorkspaceLanguages) yields one fold per track block.
+  folding: true,
   renderLineHighlight: "line",
   cursorBlinking: "smooth",
   cursorSmoothCaretAnimation: "on"
