@@ -12,7 +12,13 @@
 import type { PatternIR } from '@stave/editor'
 import { collectCycles, laneKeyOf } from '@stave/editor'
 import { extractPitch } from './pitch'
-import { EMPTY_MARKS, type CollectedMarks, type SceneClip, type SceneNote } from './timelineScene'
+import {
+  downsampleMarksToCap,
+  EMPTY_MARKS,
+  type CollectedMarks,
+  type SceneClip,
+  type SceneNote,
+} from './timelineScene'
 
 /** Per-lane mini-note-mark cap, so a long/dense song can't retain unbounded
  *  marks. Density (per-cycle counts) always covers the full span regardless. */
@@ -128,10 +134,9 @@ export function collectNoteMarks(
       arr = []
       marksByLane.set(key, arr)
     }
-    if (arr.length >= capPerLane) {
-      capped = true
-      continue
-    }
+    // Collect ALL marks here; the per-lane cap is applied AFTER the walk as a
+    // span-preserving downsample (see below). Capping in cycle order here would
+    // drop the tail and truncate a dense lane's clip mid-song (#714).
     const end = Number.isFinite(ev.end) && ev.end > cycle ? ev.end : cycle
     // `voice` = the sample name (`ev.s`), the per-voice partition key (#424). A
     // `$:` drum stack shares one lane key (`trackId`) but distinct `s` per voice,
@@ -145,6 +150,18 @@ export function collectNoteMarks(
       gain: clamp01(ev.gain ?? 1),
       voice: ev.s ?? null,
     })
+  }
+  // Bound each lane to `capPerLane` marks by downsampling ACROSS its span (keep
+  // every Nth), not by dropping the tail. A dense lane (e.g. a drum stack at
+  // ~35 onsets/cycle) keeps its full clip extent with uniformly thinner ticks
+  // instead of being cut off at cycle ~57 (#714). Sparse lanes (≤ cap) are
+  // untouched (same array reference).
+  for (const [key, arr] of marksByLane) {
+    const ds = downsampleMarksToCap(arr, capPerLane)
+    if (ds.capped) {
+      marksByLane.set(key, ds.marks)
+      capped = true
+    }
   }
   // Run-length-encode each lane's per-cycle arm index into contiguous clips.
   // A change in arm index (or a silent cycle) closes the current clip; this
