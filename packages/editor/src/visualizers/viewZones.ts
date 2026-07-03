@@ -172,7 +172,7 @@ function createFloatingActionBar(editorDom: HTMLElement): HTMLElement {
   bar.setAttribute('data-viz-actions', '')
   bar.style.cssText = `
     position:absolute;z-index:100;
-    display:flex;gap:4px;
+    display:flex;gap:4px;justify-content:space-between;
     opacity:0;transition:opacity 0.15s;
     pointer-events:none;
   `
@@ -830,8 +830,14 @@ export function addInlineViewZones(
       if (found) {
         const rect = found.container.getBoundingClientRect()
         const guardRect = (editorDom.querySelector('.overflow-guard') || editorDom).getBoundingClientRect()
+        // Span the full zone width (minus a small inset) so the action icons
+        // spread ALONG the canvas via justify-content:space-between — edit near
+        // the left edge, crop near the right — instead of clustering in the
+        // top-right corner (#701).
+        const BAR_INSET = 6
         floatingBar.style.top = `${rect.top - guardRect.top + 4}px`
-        floatingBar.style.left = `${rect.right - guardRect.left - 68}px`
+        floatingBar.style.left = `${rect.left - guardRect.left + BAR_INSET}px`
+        floatingBar.style.width = `${Math.max(0, rect.width - BAR_INSET * 2)}px`
         floatingBar.style.opacity = '1'
         floatingBar.style.pointerEvents = 'auto'
         floatingBar.setAttribute('data-viz-id', found.vizId)
