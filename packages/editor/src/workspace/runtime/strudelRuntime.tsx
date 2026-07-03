@@ -168,6 +168,25 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
         </span>
       )}
 
+      {/* Transport controls (live mode, set-bg extras) group on the LEFT next
+          to Play — before the flex spacer — instead of drifting to the right
+          edge (#615). The error message stays right-aligned after the spacer. */}
+      {onToggleAutoRefresh && (
+        <LiveModeToggle
+          autoRefresh={autoRefresh ?? false}
+          onToggle={onToggleAutoRefresh}
+        />
+      )}
+
+      {chromeExtras && (
+        <div
+          data-testid="strudel-chrome-extras"
+          style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          {chromeExtras}
+        </div>
+      )}
+
       <div style={{ flex: 1 }} />
 
       {error && (
@@ -189,22 +208,6 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
         >
           {error.message}
         </span>
-      )}
-
-      {onToggleAutoRefresh && (
-        <LiveModeToggle
-          autoRefresh={autoRefresh ?? false}
-          onToggle={onToggleAutoRefresh}
-        />
-      )}
-
-      {chromeExtras && (
-        <div
-          data-testid="strudel-chrome-extras"
-          style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-        >
-          {chromeExtras}
-        </div>
       )}
     </div>
   )

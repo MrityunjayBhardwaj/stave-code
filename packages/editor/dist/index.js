@@ -36523,6 +36523,21 @@ function StrudelChrome(ctx) {
             ]
           }
         ),
+        onToggleAutoRefresh && /* @__PURE__ */ jsx(
+          LiveModeToggle,
+          {
+            autoRefresh: autoRefresh ?? false,
+            onToggle: onToggleAutoRefresh
+          }
+        ),
+        chromeExtras && /* @__PURE__ */ jsx(
+          "div",
+          {
+            "data-testid": "strudel-chrome-extras",
+            style: { display: "flex", alignItems: "center", gap: 4 },
+            children: chromeExtras
+          }
+        ),
         /* @__PURE__ */ jsx("div", { style: { flex: 1 } }),
         error && /* @__PURE__ */ jsx(
           "span",
@@ -36542,21 +36557,6 @@ function StrudelChrome(ctx) {
               border: "1px solid rgba(248,113,113,0.3)"
             },
             children: error.message
-          }
-        ),
-        onToggleAutoRefresh && /* @__PURE__ */ jsx(
-          LiveModeToggle,
-          {
-            autoRefresh: autoRefresh ?? false,
-            onToggle: onToggleAutoRefresh
-          }
-        ),
-        chromeExtras && /* @__PURE__ */ jsx(
-          "div",
-          {
-            "data-testid": "strudel-chrome-extras",
-            style: { display: "flex", alignItems: "center", gap: 4 },
-            children: chromeExtras
           }
         )
       ]
