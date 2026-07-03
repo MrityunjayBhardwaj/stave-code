@@ -338,6 +338,11 @@ export function BottomPanel(): React.ReactElement | null {
           aria-label="Resize bottom panel"
           tabIndex={-1}
           {...drag.handleProps}
+          // Double-click the resize handle to collapse the drawer — same
+          // one-gesture collapse affordance as the left panel (#616). Reopen
+          // via the toggle button in the header. A plain click starts/ends a
+          // zero-delta drag (no-op), so this doesn't fight the resize.
+          onDoubleClick={() => setOpen(false)}
           style={{
             height: RESIZE_HANDLE_HEIGHT,
             cursor: 'ns-resize',
