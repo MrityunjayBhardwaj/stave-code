@@ -47,6 +47,35 @@ export interface SceneNote {
   readonly voice?: string | null
 }
 
+/**
+ * Bound a lane's note-mark array to `cap` entries WITHOUT truncating its time
+ * extent. When a lane has more marks than `cap` (a dense track over a long
+ * span), keep every Nth mark (`stride = ceil(len / cap)`) so the survivors are
+ * spread evenly across the WHOLE span — the first mark and a mark within one
+ * stride of the last both survive, so the drawn clip still covers the track's
+ * true extent, just with uniformly thinner ticks. Output length is always
+ * `≤ cap`, so the retained-marks / per-frame-draw budget is unchanged.
+ *
+ * Replaces the earlier TAIL-DROP (keep the first `cap` in cycle order, discard
+ * the rest), which cut a dense lane's clip off partway through the song (#714):
+ * a ~35-onset/cycle drum stack hit the 2000 cap at cycle ~57, so its expanded
+ * voice bars stopped there while sparser tracks spanned the full timeline.
+ *
+ * `marks` is assumed in collection (≈ cycle-ascending) order — the order
+ * `collectNoteMarks` pushes them. Returns the SAME array reference (no copy)
+ * when already within `cap`. `capped` is true iff a downsample happened.
+ */
+export function downsampleMarksToCap(
+  marks: SceneNote[],
+  cap: number,
+): { marks: SceneNote[]; capped: boolean } {
+  if (cap <= 0 || marks.length <= cap) return { marks, capped: false }
+  const stride = Math.ceil(marks.length / cap)
+  const out: SceneNote[] = []
+  for (let i = 0; i < marks.length; i += stride) out.push(marks[i])
+  return { marks: out, capped: true }
+}
+
 /** One voice (distinct sample/instrument) within a lane — the sub-row model an
  *  EXPANDED lane splits into (#424). Mirrors the live view's leaf voices
  *  (`layoutTrackRows` `LeafLayout`), but partitioned by `s` rather than the
