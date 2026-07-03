@@ -264,6 +264,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
           <button style={s.closeBtn} onClick={onClose} aria-label="Close">×</button>
         </div>
         <div style={s.body}>
+          <div style={s.sectionTitle}>Editor</div>
           <Row label="Font size">
             <input
               type="range"
@@ -278,30 +279,6 @@ export function EditorSettingsModal({ open, onClose }: Props) {
               style={s.range}
             />
             <span style={s.value}>{fontSize}px</span>
-          </Row>
-          <Row label="Minimap">
-            <label style={s.switchLabel}>
-              <input
-                type="checkbox"
-                checked={minimap}
-                onChange={() => { toggleEditorMinimap(); setMinimap((v) => !v); }}
-              />
-              <span>{minimap ? "Enabled" : "Disabled"}</span>
-            </label>
-          </Row>
-          <Row label="Performance overlay">
-            <label style={s.switchLabel}>
-              <input
-                type="checkbox"
-                checked={perfEnabled}
-                onChange={() => {
-                  const next = !perfEnabled;
-                  setPerfEnabled(next);
-                  setPerfEnabledState(next);
-                }}
-              />
-              <span>{perfEnabled ? "On (Alt+P)" : "Off (Alt+P)"}</span>
-            </label>
           </Row>
           <Row label="Icon size">
             <input
@@ -318,6 +295,71 @@ export function EditorSettingsModal({ open, onClose }: Props) {
             />
             <span style={s.value}>{iconSize}px</span>
           </Row>
+          <Row label="Minimap">
+            <label style={s.switchLabel}>
+              <input
+                type="checkbox"
+                checked={minimap}
+                onChange={() => { toggleEditorMinimap(); setMinimap((v) => !v); }}
+              />
+              <span>{minimap ? "Enabled" : "Disabled"}</span>
+            </label>
+          </Row>
+          {/* Backdrop blur / opacity / quality moved to the
+              backdrop popover (click the bg indicator in the
+              menubar). Settings stays for editor-level prefs only. */}
+          <Row label="Theme">
+            <select
+              style={s.select}
+              value={theme}
+              onChange={(e) => {
+                const v = e.target.value as EditorTheme;
+                setTheme(v);
+                setEditorTheme(v);
+              }}
+            >
+              {THEME_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </Row>
+          <div style={s.sectionDivider} />
+          <div style={s.sectionTitle}>Pattern & Timeline</div>
+          {/* Pattern-grid note colouring (#602) — moved out of the grid headers.
+              Setting it here recolours the live Pattern grids in the same doc. */}
+          <Row label="Note color">
+            <select
+              style={s.select}
+              data-setting-note-color
+              value={noteColorMode}
+              onChange={(e) => {
+                const v = e.target.value as NoteColorMode;
+                setNoteColorModeState(v);
+                setNoteColorMode(v);
+              }}
+            >
+              {NOTE_COLOR_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </Row>
+          <Row label="Timeline sub-row">
+            <input
+              type="range"
+              min={12}
+              max={48}
+              value={subRowHeight}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setSubRowHeight(v);
+                setMusicalTimelineSubRowHeight(v);
+              }}
+              style={s.range}
+            />
+            <span style={s.value}>{subRowHeight}px</span>
+          </Row>
+          <div style={s.sectionDivider} />
+          <div style={s.sectionTitle}>Visualization</div>
           <Row label="Inline viz buttons">
             <input
               type="range"
@@ -332,21 +374,6 @@ export function EditorSettingsModal({ open, onClose }: Props) {
               style={s.range}
             />
             <span style={s.value}>{vizActionSize}px</span>
-          </Row>
-          <Row label="Adaptive performance">
-            <label style={s.switchLabel}>
-              <input
-                type="checkbox"
-                checked={adaptivePerf}
-                aria-label="Adaptive performance (viz GPU governor)"
-                onChange={() => {
-                  const next = !adaptivePerf;
-                  setAdaptivePerfEnabled(next);
-                  setAdaptivePerfState(next);
-                }}
-              />
-              <span>{adaptivePerf ? "On" : "Off"}</span>
-            </label>
           </Row>
           <Row label="Viz quality">
             <select
@@ -423,6 +450,37 @@ export function EditorSettingsModal({ open, onClose }: Props) {
               <span>{vizInputsLive ? "On (live master values in the drawer)" : "Off (static reference)"}</span>
             </label>
           </Row>
+          <div style={s.sectionDivider} />
+          <div style={s.sectionTitle}>Performance</div>
+          <Row label="Performance overlay">
+            <label style={s.switchLabel}>
+              <input
+                type="checkbox"
+                checked={perfEnabled}
+                onChange={() => {
+                  const next = !perfEnabled;
+                  setPerfEnabled(next);
+                  setPerfEnabledState(next);
+                }}
+              />
+              <span>{perfEnabled ? "On (Alt+P)" : "Off (Alt+P)"}</span>
+            </label>
+          </Row>
+          <Row label="Adaptive performance">
+            <label style={s.switchLabel}>
+              <input
+                type="checkbox"
+                checked={adaptivePerf}
+                aria-label="Adaptive performance (viz GPU governor)"
+                onChange={() => {
+                  const next = !adaptivePerf;
+                  setAdaptivePerfEnabled(next);
+                  setAdaptivePerfState(next);
+                }}
+              />
+              <span>{adaptivePerf ? "On" : "Off"}</span>
+            </label>
+          </Row>
           <Row label="Off-screen viz teardown">
             <label style={s.switchLabel}>
               <input
@@ -436,57 +494,6 @@ export function EditorSettingsModal({ open, onClose }: Props) {
               />
               <span>{vizTeardown ? "On (frees memory + GPU contexts after 60s off-screen)" : "Off (stay resident)"}</span>
             </label>
-          </Row>
-          <Row label="Timeline sub-row">
-            <input
-              type="range"
-              min={12}
-              max={48}
-              value={subRowHeight}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setSubRowHeight(v);
-                setMusicalTimelineSubRowHeight(v);
-              }}
-              style={s.range}
-            />
-            <span style={s.value}>{subRowHeight}px</span>
-          </Row>
-          {/* Backdrop blur / opacity / quality moved to the
-              backdrop popover (click the bg indicator in the
-              menubar). Settings stays for editor-level prefs only. */}
-          <Row label="Theme">
-            <select
-              style={s.select}
-              value={theme}
-              onChange={(e) => {
-                const v = e.target.value as EditorTheme;
-                setTheme(v);
-                setEditorTheme(v);
-              }}
-            >
-              {THEME_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </Row>
-          {/* Pattern-grid note colouring (#602) — moved out of the grid headers.
-              Setting it here recolours the live Pattern grids in the same doc. */}
-          <Row label="Note color">
-            <select
-              style={s.select}
-              data-setting-note-color
-              value={noteColorMode}
-              onChange={(e) => {
-                const v = e.target.value as NoteColorMode;
-                setNoteColorModeState(v);
-                setNoteColorMode(v);
-              }}
-            >
-              {NOTE_COLOR_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
           </Row>
           {/* Phase 20-14 β-3 — Strudel modules tier UI. MIDI is the only
               wired row in β-3; the other 7 are disabled scaffolds, one
