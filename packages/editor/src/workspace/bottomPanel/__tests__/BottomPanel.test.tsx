@@ -151,6 +151,28 @@ describe('BottomPanel — seeded render', () => {
     expect(root.style.flexBasis).toBe('29px')
     expect(container.querySelector('[data-bottom-panel="resize-handle"]')).toBeNull()
   })
+
+  it('double-clicking a tab collapses the open drawer (#712)', () => {
+    const { container } = render(<BottomPanel />)
+    const root = container.querySelector('[data-bottom-panel="root"]') as HTMLElement
+    fireEvent.click(screen.getByRole('button', { name: /show panel/i })) // open
+    expect(root.style.flexBasis).toBe('240px')
+    const tab = screen.getByRole('tab', { name: 'Alpha' })
+    // A double-click arrives as two click events; the 2nd carries detail>=2.
+    fireEvent.click(tab, { detail: 1 })
+    fireEvent.click(tab, { detail: 2 })
+    expect(root.style.flexBasis).toBe('29px') // collapsed
+  })
+
+  it('double-clicking a collapsed tab opens it (no flash-closed) (#712)', () => {
+    const { container } = render(<BottomPanel />)
+    const root = container.querySelector('[data-bottom-panel="root"]') as HTMLElement
+    expect(root.style.flexBasis).toBe('29px') // default closed
+    const tab = screen.getByRole('tab', { name: 'Alpha' })
+    fireEvent.click(tab, { detail: 1 }) // opens
+    fireEvent.click(tab, { detail: 2 }) // must NOT collapse — was closed at press
+    expect(root.style.flexBasis).toBe('240px') // stays open
+  })
 })
 
 describe('BottomPanel — keyboard tab navigation', () => {
