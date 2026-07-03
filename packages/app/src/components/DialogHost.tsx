@@ -219,7 +219,9 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--bg-elevated)",
     border: "1px solid var(--border-strong)",
     borderLeft: "3px solid var(--accent)",
-    borderRadius: 4,
+    // Square off the left corners so the accent stripe runs as a straight
+    // vertical edge; keep the right corners rounded (#699).
+    borderRadius: "0 4px 4px 0",
     padding: "10px 14px",
     color: "var(--text-primary)",
     fontSize: 12,
