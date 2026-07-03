@@ -31510,6 +31510,7 @@ function BottomPanel() {
             "aria-label": "Resize bottom panel",
             tabIndex: -1,
             ...drag.handleProps,
+            onDoubleClick: () => setOpen(false),
             style: {
               height: RESIZE_HANDLE_HEIGHT,
               cursor: "ns-resize",

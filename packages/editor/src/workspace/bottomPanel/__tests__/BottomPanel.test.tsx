@@ -137,6 +137,20 @@ describe('BottomPanel — seeded render', () => {
     expect(screen.getByRole('tabpanel')).toBeTruthy()
     expect(beta.getAttribute('aria-selected')).toBe('true')
   })
+
+  it('double-clicking the resize handle collapses the drawer (#616)', () => {
+    const { container } = render(<BottomPanel />)
+    const root = container.querySelector('[data-bottom-panel="root"]') as HTMLElement
+    // open first
+    fireEvent.click(screen.getByRole('button', { name: /show panel/i }))
+    expect(root.style.flexBasis).toBe('240px')
+    const handle = container.querySelector('[data-bottom-panel="resize-handle"]') as HTMLElement
+    expect(handle).toBeTruthy()
+    fireEvent.doubleClick(handle)
+    // collapsed back to the closed budget; handle unmounts with the open body
+    expect(root.style.flexBasis).toBe('29px')
+    expect(container.querySelector('[data-bottom-panel="resize-handle"]')).toBeNull()
+  })
 })
 
 describe('BottomPanel — keyboard tab navigation', () => {
