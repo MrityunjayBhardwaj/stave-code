@@ -31416,6 +31416,7 @@ function BottomPanel() {
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
+  const wasOpenOnTabPressRef = React35.useRef(open);
   const tabButtonRefs = React35.useRef(/* @__PURE__ */ new Map());
   const setTabButtonRef = React35.useCallback(
     (id) => (el) => {
@@ -31534,7 +31535,12 @@ function BottomPanel() {
                         "aria-selected": selected,
                         tabIndex: selected ? 0 : -1,
                         "data-tab-id": tab.id,
-                        onClick: () => {
+                        onClick: (e) => {
+                          if (e.detail >= 2) {
+                            if (wasOpenOnTabPressRef.current) setOpen(false);
+                            return;
+                          }
+                          wasOpenOnTabPressRef.current = open;
                           if (!open) setOpen(true);
                           setActiveTabId(tab.id);
                         },

@@ -262,6 +262,12 @@ export function BottomPanel(): React.ReactElement | null {
     return () => window.removeEventListener('pagehide', flush)
   }, [height])
 
+  // Captures the drawer's open state at the FIRST click of a potential
+  // double-click on a tab, so double-clicking a tab collapses it only when it
+  // was already open — double-clicking a collapsed tab opens it (via the first
+  // click) instead of flashing open-then-closed (#712).
+  const wasOpenOnTabPressRef = React.useRef(open)
+
   // Refs for tab buttons so keyboard navigation can move focus.
   const tabButtonRefs = React.useRef<Map<string, HTMLButtonElement>>(new Map())
   const setTabButtonRef = React.useCallback(
@@ -391,7 +397,18 @@ export function BottomPanel(): React.ReactElement | null {
                 aria-selected={selected}
                 tabIndex={selected ? 0 : -1}
                 data-tab-id={tab.id}
-                onClick={() => {
+                onClick={(e) => {
+                  // Double-click a tab to collapse the drawer (#712). `e.detail`
+                  // is the click count: the 2nd click of a double-click arrives
+                  // as detail>=2. Collapse only if the drawer was open when the
+                  // sequence began (wasOpenOnTabPressRef) so a double-click on a
+                  // collapsed tab just opens it, and keyboard activation
+                  // (detail===0) never collapses.
+                  if (e.detail >= 2) {
+                    if (wasOpenOnTabPressRef.current) setOpen(false)
+                    return
+                  }
+                  wasOpenOnTabPressRef.current = open
                   // Clicking a closed-drawer tab opens the drawer in
                   // addition to selecting; matches VSCode's terminal
                   // header behavior.
