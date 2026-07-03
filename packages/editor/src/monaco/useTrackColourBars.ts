@@ -24,12 +24,16 @@
  * is unit-tested without a live Monaco model; the pixel positioning is covered
  * by the e2e observation.
  */
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type * as Monaco from 'monaco-editor'
 import { detectAllChunks } from '../visualEdit/chunkDetect'
 import { buildStripModels, type StripModel } from '../visualEdit/mixer/stripModel'
 import { useTrackMetaMap } from '../workspace/useTrackMeta'
 import type { TrackMeta } from '../workspace/WorkspaceFile'
+import {
+  getTrackColourBarsEnabled,
+  onTrackColourBarsChange,
+} from '../workspace/editorRegistry'
 
 /** The slice of a Monaco text model `trackBarSegments` needs (testable). */
 export interface PositionModel {
@@ -88,8 +92,14 @@ export function useTrackColourBars(
   const trackMetaRef = useRef(trackMeta)
   trackMetaRef.current = trackMeta
 
+  // Show/hide is a user setting (#608). Subscribe so toggling in Editor
+  // Settings adds/removes the overlay live — `enabled` is an effect dep, so a
+  // change re-runs the effect (its cleanup removes the overlay when turning off).
+  const [enabled, setEnabled] = useState<boolean>(getTrackColourBarsEnabled)
+  useEffect(() => onTrackColourBarsChange(setEnabled), [])
+
   useEffect(() => {
-    if (!editor) return
+    if (!editor || !enabled) return
     const host = editor.getDomNode?.()
     if (!host) return
 
@@ -149,5 +159,5 @@ export function useTrackColourBars(
       for (const s of subs) s.dispose()
       overlay.remove()
     }
-  }, [editor, trackMeta])
+  }, [editor, trackMeta, enabled])
 }

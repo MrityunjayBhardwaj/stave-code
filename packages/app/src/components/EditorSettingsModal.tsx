@@ -35,6 +35,8 @@ import {
   setPerfEnabled,
   getAdaptivePerfEnabled,
   setAdaptivePerfEnabled,
+  getTrackColourBarsEnabled,
+  setTrackColourBarsEnabled,
   type EditorTheme,
   type TierFlags,
   type TierName,
@@ -185,6 +187,7 @@ function assertTierSchemaCoverage(): void {
 export function EditorSettingsModal({ open, onClose }: Props) {
   const [fontSize, setFontSize] = useState(14);
   const [minimap, setMinimap] = useState(false);
+  const [trackColourBar, setTrackColourBar] = useState(true);
   const [iconSize, setIconSize] = useState(25);
   const [vizActionSize, setVizActionSize] = useState(11);
   // Inline-viz render resolution (#261). `vizResCustom` sticks the row in
@@ -231,6 +234,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
     if (!open) return;
     setFontSize(getEditorFontSize());
     setMinimap(getEditorMinimap());
+    setTrackColourBar(getTrackColourBarsEnabled());
     setIconSize(getEditorUiIconSize());
     setVizActionSize(getInlineVizActionSize());
     const res = getInlineVizResolution();
@@ -303,6 +307,21 @@ export function EditorSettingsModal({ open, onClose }: Props) {
                 onChange={() => { toggleEditorMinimap(); setMinimap((v) => !v); }}
               />
               <span>{minimap ? "Enabled" : "Disabled"}</span>
+            </label>
+          </Row>
+          <Row label="Track colour bar">
+            <label style={s.switchLabel}>
+              <input
+                type="checkbox"
+                checked={trackColourBar}
+                aria-label="Left-edge per-track colour bar"
+                onChange={() => {
+                  const next = !trackColourBar;
+                  setTrackColourBarsEnabled(next);
+                  setTrackColourBar(next);
+                }}
+              />
+              <span>{trackColourBar ? "On (left-edge track colours)" : "Off"}</span>
             </label>
           </Row>
           {/* Backdrop blur / opacity / quality moved to the
