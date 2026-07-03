@@ -22121,7 +22121,7 @@ function createFloatingActionBar(editorDom) {
   bar2.setAttribute("data-viz-actions", "");
   bar2.style.cssText = `
     position:absolute;z-index:100;
-    display:flex;gap:4px;justify-content:space-between;
+    display:flex;gap:4px;
     opacity:0;transition:opacity 0.15s;
     pointer-events:none;
   `;
@@ -22599,7 +22599,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         const BAR_INSET = 6;
         floatingBar.style.top = `${rect.top - guardRect.top + 4}px`;
         floatingBar.style.left = `${rect.left - guardRect.left + BAR_INSET}px`;
-        floatingBar.style.width = `${Math.max(0, rect.width - BAR_INSET * 2)}px`;
+        floatingBar.style.width = "auto";
         floatingBar.style.opacity = "1";
         floatingBar.style.pointerEvents = "auto";
         floatingBar.setAttribute("data-viz-id", found.vizId);
