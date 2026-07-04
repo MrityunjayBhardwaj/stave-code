@@ -40,6 +40,8 @@ export function PerfOverlay() {
   );
 
   const [snap, setSnap] = useState<PerfSnapshot | null>(null);
+  // Brief "copied" affordance on the copy button; auto-clears after a beat.
+  const [copied, setCopied] = useState(false);
 
   // Poll the snapshot only while enabled. setState lives in the timer callback
   // (not the effect body), so it doesn't trigger cascading renders. The first
@@ -49,6 +51,23 @@ export function PerfOverlay() {
     const id = setInterval(() => setSnap(perf.snapshot()), REFRESH_MS);
     return () => clearInterval(id);
   }, [enabled]);
+
+  // Copy the live snapshot as formatted JSON for pasting into a bug report.
+  // Reads the freshest snapshot at click time (not the 5Hz-lagging `snap`) so
+  // the copied numbers match the instant the user clicked. Clipboard can reject
+  // (permissions / insecure context) — swallow and skip the "copied" flash.
+  const copySnapshot = (): void => {
+    const json = JSON.stringify(perf.snapshot(), null, 2);
+    void navigator.clipboard
+      ?.writeText(json)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      })
+      .catch(() => {
+        /* clipboard unavailable — no-op */
+      });
+  };
 
   // When disabled we render nothing regardless of any stale snapshot.
   if (!enabled || !snap) return null;
@@ -65,15 +84,26 @@ export function PerfOverlay() {
     <div style={styles.panel} role="status" aria-label="Performance overlay">
       <div style={styles.header}>
         <span>⚡ perf</span>
-        <button
-          type="button"
-          onClick={() => setPerfEnabled(false)}
-          style={styles.close}
-          aria-label="Close performance overlay"
-          title="Close (Alt+P)"
-        >
-          ×
-        </button>
+        <div style={styles.actions}>
+          <button
+            type="button"
+            onClick={copySnapshot}
+            style={styles.action}
+            aria-label="Copy performance snapshot as JSON"
+            title={copied ? "Copied!" : "Copy snapshot (JSON)"}
+          >
+            {copied ? "✓" : "⧉"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPerfEnabled(false)}
+            style={styles.action}
+            aria-label="Close performance overlay"
+            title="Close (Alt+P)"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       <div style={styles.row}>
@@ -157,7 +187,8 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 4,
     color: "#ffd479",
   },
-  close: {
+  actions: { display: "flex", alignItems: "center", gap: 2 },
+  action: {
     background: "none",
     border: "none",
     color: "#9aa5b1",

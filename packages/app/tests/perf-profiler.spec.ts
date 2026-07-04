@@ -115,4 +115,31 @@ test.describe('Phase perf — profiler produces real per-frame data (#228)', () 
     expect(snap.longtasks).toHaveProperty('count')
     expect(snap.longtasks).toHaveProperty('maxMs')
   })
+
+  test('the header copy button copies the live snapshot as JSON to the clipboard (#729)', async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+
+    // Drive a little so the snapshot has real content, then let a frame land.
+    await setCode(page, '$: s("bd*4").bank("RolandTR909")._pianoroll()')
+    await runCode(page)
+
+    // The overlay auto-renders when perf is enabled. Copy button sits beside close.
+    const copyBtn = page.locator('[aria-label="Copy performance snapshot as JSON"]')
+    await expect(copyBtn).toBeVisible({ timeout: 6000 })
+    await copyBtn.click()
+
+    // Read the clipboard back — the REAL artifact, not the button's icon flip.
+    const text = await page.evaluate(() => navigator.clipboard.readText())
+    const parsed = JSON.parse(text) as Record<string, unknown>
+    // Shape of a PerfSnapshot — proves it's the snapshot, not some other payload.
+    expect(parsed).toHaveProperty('frames')
+    expect(parsed).toHaveProperty('sections')
+    expect(parsed).toHaveProperty('enabled', true)
+
+    // The button flips to a ✓ acknowledgement.
+    await expect(copyBtn).toHaveText('✓')
+  })
 })
