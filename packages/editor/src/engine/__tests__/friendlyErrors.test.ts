@@ -6,6 +6,7 @@ import {
   extractReferenceIdentifier,
   formatFriendlyError,
   parseStackLocation,
+  parseMessageLocation,
   buildAliasSuffix,
   isSoundfontZoneError,
   soundfontRangeMessage,
@@ -277,6 +278,38 @@ describe('parseStackLocation', () => {
   it('does NOT match generic V8 frame file:line:col pairs', () => {
     const stack = `Error\n    at Object.fn (/app/src/foo.ts:42:10)`
     expect(parseStackLocation({ stack })).toBeNull()
+  })
+})
+
+describe('parseMessageLocation', () => {
+  it('extracts the trailing (line:col) from an acorn syntax-error message', () => {
+    expect(parseMessageLocation('Unexpected token (3:11)')).toEqual({
+      line: 3,
+      column: 11,
+    })
+    expect(parseMessageLocation('Unexpected token (5:11)')).toEqual({
+      line: 5,
+      column: 11,
+    })
+  })
+
+  it('returns null when there is no trailing (line:col) pair', () => {
+    expect(parseMessageLocation('`foo` is not defined.')).toBeNull()
+    expect(parseMessageLocation('sound not found (2 variants)')).toBeNull()
+    expect(parseMessageLocation('boom (2)')).toBeNull() // needs BOTH numbers
+    expect(parseMessageLocation('')).toBeNull()
+    expect(parseMessageLocation(undefined)).toBeNull()
+    expect(parseMessageLocation(42)).toBeNull()
+  })
+
+  it('anchors to the END so a mid-message paren cannot false-positive', () => {
+    // The (1:2) here is not the trailing token — no match.
+    expect(parseMessageLocation('at (1:2) something happened')).toBeNull()
+    // A real trailing pair after other text still matches.
+    expect(parseMessageLocation('Unexpected token, expected ; (7:4)')).toEqual({
+      line: 7,
+      column: 4,
+    })
   })
 })
 

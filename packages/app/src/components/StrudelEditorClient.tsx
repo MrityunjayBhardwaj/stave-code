@@ -45,6 +45,7 @@ import {
   emitLog,
   emitFixed,
   formatFriendlyError,
+  parseMessageLocation,
   statementOffsetForSource,
   resolveAlias,
   collectCycles,
@@ -879,6 +880,19 @@ export default function StrudelEditorClient({
           const before = src.slice(0, offset);
           locatedLine = before.split("\n").length; // 1-based
           locatedColumn = offset - before.lastIndexOf("\n"); // 1-based
+        }
+      }
+      // Parser SYNTAX errors embed an offset-free "(line:col)" in the message
+      // (acorn reports the USER's original coordinates — verified line-accurate,
+      // e.g. line 5 → "(5:11)"). This is safe to feed the marker bridge + toast,
+      // unlike the transpiler-wrapper stack line dropped above. Range-check
+      // against the file so a stray trailing "(n:n)" in some other message can't
+      // point at a nonexistent line.
+      if (locatedLine == null && typeof src === "string") {
+        const msgLoc = parseMessageLocation(parts.message);
+        if (msgLoc && msgLoc.line >= 1 && msgLoc.line <= src.split("\n").length) {
+          locatedLine = msgLoc.line;
+          locatedColumn = msgLoc.column;
         }
       }
       emitLog({
