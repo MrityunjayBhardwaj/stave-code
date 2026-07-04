@@ -188,3 +188,26 @@ test('the sequencer no longer renders per-voice colour dots', async ({ page }) =
   // … but the per-voice colour dots are gone (#589).
   await expect(page.locator('[data-seq-voice-dot]')).toHaveCount(0)
 })
+
+test('the chip shows the owning track name when editing a pickRestart section (#727)', async ({ page }) => {
+  await bootPattern(page)
+  // A "player" (pickRestart) track: editing a section makes the active chunk
+  // NESTED. Pre-fix the chip resolved its strip by exact statement-start, so it
+  // found nothing and rendered no name; containment resolves the section back to
+  // the owning `drums` strip.
+  await setStrudelCode(page, [
+    'drums: "<~@4 verse@8 chorus@8>".pickRestart({',
+    '  verse: s("bd ~ sd ~ bd bd sd ~").bank("RolandTR909"),',
+    '  chorus: s("bd ~ [bd,sd] ~ bd ~ [bd,sd] ~").bank("RolandTR909"),',
+    '})',
+  ].join('\n'))
+
+  // Cursor INSIDE the verse section (a nested chunk) → chip must still name the track.
+  await placeCursorOn(page, 'bd ~ sd')
+  await expect(chip(page)).toBeVisible({ timeout: 6000 })
+  await expect(chip(page).locator('[data-pattern-track-name]')).toHaveText('drums')
+
+  // The other section (chorus) also resolves to the same owning track.
+  await placeCursorOn(page, '[bd,sd]')
+  await expect(chip(page).locator('[data-pattern-track-name]')).toHaveText('drums')
+})

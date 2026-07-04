@@ -18,6 +18,7 @@ import * as React from 'react'
 
 import { useActiveChunk } from './useActiveChunk'
 import { useMixerModel } from '../mixer/useMixerModel'
+import { stripContainingOffset } from '../mixer/stripModel'
 import { StripColorPopover } from '../mixer/StripColorPopover'
 import { renameEdit } from '../mixer/writeStrip'
 import { trackIdentity } from '../trackColor'
@@ -36,10 +37,14 @@ export function PatternTrackChip(): React.ReactElement | null {
   const [colorAnchor, setColorAnchor] = React.useState<DOMRect | null>(null)
   const [renaming, setRenaming] = React.useState(false)
 
-  // Match the cursor's statement to its strip by the statement-start anchor —
-  // the whole-document strip set, so the d{N} numbering matches the Mixer (P-MIX-5).
+  // Match the cursor's chunk to its OWNING strip — the top-level statement whose
+  // range contains the chunk anchor — so the d{N} numbering matches the Mixer
+  // (P-MIX-5). Containment (not exact start) is what keeps the chip showing when
+  // the cursor sits inside a NESTED chunk: a `pickRestart` section, a `stack`
+  // arm, or an `arrange` arm carry the nested span as their statementRange, which
+  // never equals a top-level strip's start (#727).
   const anchor = chunk ? chunk.statementRange[0] : null
-  const strip = anchor != null ? strips.find((s) => s.statementRange[0] === anchor) : undefined
+  const strip = anchor != null ? stripContainingOffset(strips, anchor) : undefined
   if (!strip) return null
 
   const customColor = trackMeta.get(strip.name)?.color

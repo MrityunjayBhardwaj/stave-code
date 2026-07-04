@@ -19363,6 +19363,12 @@ function otherTrackNames(doc, selfStatementStart) {
   return buildStripModels(detectAllChunks(doc)).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
 }
 __name(otherTrackNames, "otherTrackNames");
+function stripContainingOffset(strips, offset) {
+  return strips.find(
+    (s) => s.statementRange[0] <= offset && offset < s.statementRange[1]
+  );
+}
+__name(stripContainingOffset, "stripContainingOffset");
 var EMPTY_META_MAP = /* @__PURE__ */ new Map();
 function useTrackMetaMap(fileId) {
   const subscribe7 = React35.useCallback(
@@ -27447,7 +27453,7 @@ function PatternTrackChip() {
   const [colorAnchor, setColorAnchor] = React35__namespace.useState(null);
   const [renaming, setRenaming] = React35__namespace.useState(false);
   const anchor = chunk ? chunk.statementRange[0] : null;
-  const strip = anchor != null ? strips.find((s) => s.statementRange[0] === anchor) : void 0;
+  const strip = anchor != null ? stripContainingOffset(strips, anchor) : void 0;
   if (!strip) return null;
   const customColor = trackMeta.get(strip.name)?.color;
   const dotColor = trackIdentity(strip.name, customColor).color;
