@@ -274,8 +274,6 @@ export function VizEditorChrome({
         <option value="none">none (demo mode)</option>
       </select>
 
-      <div style={{ flex: 1 }} />
-
       {/*
        * Set-as-Background toggle. Pins / unpins this viz file as the
        * active group's backdrop. Mirrors the Cmd+K B keybind but is
@@ -349,6 +347,8 @@ export function VizEditorChrome({
       >
         {liveOn ? '\u27F3 live' : '\u27F3'}
       </button>
+
+      <div style={{ flex: 1 }} />
     </div>
     {vizKind && <StaveInputsPanel kind={vizKind} />}
     </>

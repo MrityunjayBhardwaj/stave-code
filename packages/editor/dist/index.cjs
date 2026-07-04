@@ -37135,7 +37135,6 @@ function VizEditorChrome({
               ]
             }
           ),
-          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1 } }),
           /* @__PURE__ */ jsxRuntime.jsx(
             "button",
             {
@@ -37183,7 +37182,8 @@ function VizEditorChrome({
               },
               children: liveOn ? "\u27F3 live" : "\u27F3"
             }
-          )
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1 } })
         ]
       }
     ),
