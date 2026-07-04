@@ -4476,6 +4476,13 @@ function parseStackLocation(err) {
   return null;
 }
 __name(parseStackLocation, "parseStackLocation");
+function parseMessageLocation(message) {
+  if (typeof message !== "string") return null;
+  const m = message.match(/\((\d+):(\d+)\)\s*$/);
+  if (!m) return null;
+  return { line: parseInt(m[1], 10), column: parseInt(m[2], 10) };
+}
+__name(parseMessageLocation, "parseMessageLocation");
 function levenshtein(a, b) {
   if (a === b) return 0;
   const la = a.length;
@@ -38580,6 +38587,7 @@ exports.onUiIconSizeChange = onUiIconSizeChange;
 exports.onVizInputsLiveValuesChange = onVizInputsLiveValuesChange;
 exports.onVizQualityChange = onVizQualityChange;
 exports.otherTrackNames = otherTrackNames;
+exports.parseMessageLocation = parseMessageLocation;
 exports.parseMini = parseMini;
 exports.parsePianoRoll = parsePianoRoll;
 exports.parseStackLocation = parseStackLocation;

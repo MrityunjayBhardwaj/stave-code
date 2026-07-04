@@ -103,10 +103,34 @@ function ToastStack({ toasts }: { toasts: ToastState[] }) {
             ...styles.toast,
             ...(t.level === "error" ? styles.toastError : {}),
             position: "relative",
+            // Only the actionable (error) toasts advertise clickability;
+            // plain info toasts keep the default arrow cursor.
+            cursor: t.onActivate ? "pointer" : "default",
           }}
-          onClick={() => dismissToast(t.id)}
+          // Body click: run the toast's action (open Console + jump to the
+          // error line) when it has one, then clear it. Info toasts with no
+          // action just dismiss on body click, as before. The close (×)
+          // button below dismisses WITHOUT firing the action.
+          onClick={() => {
+            t.onActivate?.();
+            dismissToast(t.id);
+          }}
         >
-          <span style={{ paddingRight: t.count > 1 ? 28 : 0, display: "block" }}>
+          <button
+            type="button"
+            aria-label="Dismiss notification"
+            title="Dismiss"
+            style={styles.toastClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              dismissToast(t.id);
+            }}
+          >
+            ×
+          </button>
+          {/* Reserve right-edge space: ~20px clears the top-right × on every
+              toast; the bottom-right ×N count badge needs a touch more. */}
+          <span style={{ paddingRight: t.count > 1 ? 28 : 20, display: "block" }}>
             {t.message}
           </span>
           {t.count > 1 && (
@@ -232,6 +256,26 @@ const styles: Record<string, React.CSSProperties> = {
   },
   toastError: {
     borderLeftColor: "var(--danger-fg)",
+  },
+  toastClose: {
+    position: "absolute",
+    top: 2,
+    right: 4,
+    width: 18,
+    height: 18,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "none",
+    border: "none",
+    borderRadius: 3,
+    color: "var(--text-secondary)",
+    fontSize: 15,
+    lineHeight: 1,
+    cursor: "pointer",
+    padding: 0,
+    fontFamily: "inherit",
+    pointerEvents: "auto",
   },
   toastCount: {
     position: "absolute",

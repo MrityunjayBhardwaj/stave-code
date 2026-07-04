@@ -102,6 +102,29 @@ export function parseStackLocation(
 }
 
 /**
+ * Extract a source location from a parser error MESSAGE — the trailing
+ * `(line:col)` that acorn/estree parsers append (e.g. Strudel's
+ * "Unexpected token (3:11)"). Unlike `parseStackLocation`, which reads the
+ * post-transpile eval stack (whose line is offset by Strudel's async-IIFE
+ * wrapper and therefore dropped by callers), this location is reported in
+ * the USER's original source coordinates — verified line-accurate across
+ * positions — so it is safe to feed the marker bridge and the toast jump.
+ *
+ * Anchored to the END of the message and requires BOTH numbers so a stray
+ * "(2)" or a parenthetical elsewhere in the text can't false-positive.
+ * Returns `null` when the message carries no such trailing pair. Callers
+ * should still range-check the line against the target file.
+ */
+export function parseMessageLocation(
+  message: unknown,
+): { line: number; column: number } | null {
+  if (typeof message !== 'string') return null
+  const m = message.match(/\((\d+):(\d+)\)\s*$/)
+  if (!m) return null
+  return { line: parseInt(m[1], 10), column: parseInt(m[2], 10) }
+}
+
+/**
  * Levenshtein edit distance. Small implementation — fine for runs of up
  * to a few thousand words, which is the order of magnitude of the
  * combined DocsIndex keys (~935).

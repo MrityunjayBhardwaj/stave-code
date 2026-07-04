@@ -719,6 +719,7 @@ export {
   extractReferenceIdentifier,
   formatFriendlyError,
   parseStackLocation,
+  parseMessageLocation,
   buildAliasSuffix,
 } from './engine/friendlyErrors'
 

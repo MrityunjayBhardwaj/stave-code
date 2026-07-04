@@ -38,6 +38,14 @@ export interface ToastState {
    * rather than covering the screen.
    */
   count: number;
+  /**
+   * Optional click action. When present, clicking the toast BODY runs
+   * this (e.g. open the Console panel + jump the editor to the error
+   * line) instead of merely dismissing. The close (×) button always
+   * dismisses regardless. Error toasts wire this to their source
+   * location; plain info toasts leave it undefined.
+   */
+  onActivate?: () => void;
 }
 
 type Listener = () => void;
@@ -135,7 +143,12 @@ export function resolveConfirm(value: boolean): void {
   d.resolve(value);
 }
 
-export function showToast(message: string, level: "info" | "error" = "info", ttlMs = 4000): void {
+export function showToast(
+  message: string,
+  level: "info" | "error" = "info",
+  ttlMs = 4000,
+  onActivate?: () => void,
+): void {
   // Dedupe: if the most recent visible toast carries the same message +
   // level, bump its count and extend its expiry instead of stacking a
   // new one. The scheduled cleanup below re-reads `expiresAt` so the
@@ -147,6 +160,9 @@ export function showToast(message: string, level: "info" | "error" = "info", ttl
   if (existing) {
     existing.count += 1;
     existing.expiresAt = Date.now() + ttlMs;
+    // Repoint the click action at the LATEST emit — a re-fired error
+    // may carry a fresh source line even when the message text matches.
+    existing.onActivate = onActivate;
     toasts = [...toasts];
     notify();
     scheduleToastCleanup(existing.id);
@@ -158,6 +174,7 @@ export function showToast(message: string, level: "info" | "error" = "info", ttl
     level,
     expiresAt: Date.now() + ttlMs,
     count: 1,
+    onActivate,
   };
   // Append, then keep only the newest MAX_VISIBLE_TOASTS — a burst of distinct
   // errors drops the oldest rather than covering the screen. Dropped toasts are

@@ -68,6 +68,7 @@ import {
   installGlobalErrorCatch,
   seedWorkspaceFile,
   setContent,
+  revealLineInFile,
 } from "@stave/editor";
 import StrudelEditorClient from "./StrudelEditorClient";
 import { MusicalTimeline } from "./MusicalTimeline";
@@ -181,7 +182,35 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       const text = entry.suggestion
         ? `${entry.message} → try \`${entry.suggestion.name}\``
         : entry.message;
-      showToast(text, "error");
+      // Clicking the toast body opens the Console panel; when the entry
+      // carries a source location it also opens that file and jumps the
+      // editor to the offending line. `entry.line` is the single source of
+      // truth — the engine attaches it only when it's RELIABLE (a real
+      // source offset, or a parser syntax error's offset-free "(line:col)"),
+      // and deliberately leaves it absent for transpiler-wrapper stack
+      // lines, so those errors just open the Console without a mis-jump.
+      // `source` is a workspace path OR a bare fileId (StrudelEditorClient
+      // uses `path ?? fileId`), so resolve both. The editor may need a tick
+      // to mount if the file wasn't already open — retry a few times.
+      const { source, line } = entry;
+      const onActivate = () => {
+        setActivePanelId("console");
+        if (!source || line == null) return;
+        const files = listWorkspaceFiles();
+        const file =
+          files.find((f) => f.path === source) ??
+          files.find((f) => f.id === source);
+        if (!file) return;
+        // Open/focus the tab (no-op focus if already active), then reveal.
+        shellRef.current?.openOrFocusFile(file.id);
+        let tries = 0;
+        const reveal = () => {
+          if (revealLineInFile(file.id, line) || tries++ >= 8) return;
+          setTimeout(reveal, 60);
+        };
+        reveal();
+      };
+      showToast(text, "error", 4000, onActivate);
     });
   }, []);
 
