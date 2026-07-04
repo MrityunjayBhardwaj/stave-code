@@ -37070,46 +37070,6 @@ function VizEditorChrome({
             }
           ),
           /* @__PURE__ */ jsx(
-            "label",
-            {
-              htmlFor: `viz-chrome-source-${file.id}`,
-              style: { color: "var(--foreground-muted)", fontSize: 10 },
-              children: "source:"
-            }
-          ),
-          /* @__PURE__ */ jsxs(
-            "select",
-            {
-              id: `viz-chrome-source-${file.id}`,
-              "data-testid": "viz-chrome-source",
-              value: refToString(selectedSource),
-              onChange: handleSourceChange,
-              style: {
-                background: "var(--surface-elevated)",
-                color: "var(--foreground)",
-                border: "1px solid var(--border)",
-                borderRadius: 3,
-                padding: "2px 6px",
-                fontSize: 10,
-                fontFamily: "inherit",
-                cursor: "pointer"
-              },
-              children: [
-                /* @__PURE__ */ jsx("option", { value: "default", children: "default (follow most recent)" }),
-                /* @__PURE__ */ jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
-                (() => {
-                  const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
-                  if (patternSources.length === 0) return null;
-                  return /* @__PURE__ */ jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxs("option", { value: `file:${source.sourceId}`, children: [
-                    source.playing ? "\u25CF " : "\u25CB ",
-                    source.label
-                  ] }, source.sourceId)) });
-                })(),
-                /* @__PURE__ */ jsx("option", { value: "none", children: "none (demo mode)" })
-              ]
-            }
-          ),
-          /* @__PURE__ */ jsx(
             "button",
             {
               "data-testid": "viz-chrome-bg-toggle",
@@ -37155,6 +37115,46 @@ function VizEditorChrome({
                 border: `1px solid ${liveOn ? "var(--accent-dim)" : "var(--border)"}`
               },
               children: liveOn ? "\u27F3 live" : "\u27F3"
+            }
+          ),
+          /* @__PURE__ */ jsx(
+            "label",
+            {
+              htmlFor: `viz-chrome-source-${file.id}`,
+              style: { color: "var(--foreground-muted)", fontSize: 10 },
+              children: "source:"
+            }
+          ),
+          /* @__PURE__ */ jsxs(
+            "select",
+            {
+              id: `viz-chrome-source-${file.id}`,
+              "data-testid": "viz-chrome-source",
+              value: refToString(selectedSource),
+              onChange: handleSourceChange,
+              style: {
+                background: "var(--surface-elevated)",
+                color: "var(--foreground)",
+                border: "1px solid var(--border)",
+                borderRadius: 3,
+                padding: "2px 6px",
+                fontSize: 10,
+                fontFamily: "inherit",
+                cursor: "pointer"
+              },
+              children: [
+                /* @__PURE__ */ jsx("option", { value: "default", children: "default (follow most recent)" }),
+                /* @__PURE__ */ jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
+                (() => {
+                  const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
+                  if (patternSources.length === 0) return null;
+                  return /* @__PURE__ */ jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxs("option", { value: `file:${source.sourceId}`, children: [
+                    source.playing ? "\u25CF " : "\u25CB ",
+                    source.label
+                  ] }, source.sourceId)) });
+                })(),
+                /* @__PURE__ */ jsx("option", { value: "none", children: "none (demo mode)" })
+              ]
             }
           ),
           /* @__PURE__ */ jsx("div", { style: { flex: 1 } })
