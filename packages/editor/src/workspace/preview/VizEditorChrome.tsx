@@ -225,57 +225,6 @@ export function VizEditorChrome({
         {buttonLabel}
       </button>
 
-      <label
-        htmlFor={`viz-chrome-source-${file.id}`}
-        style={{ color: 'var(--foreground-muted)', fontSize: 10 }}
-      >
-        source:
-      </label>
-      <select
-        id={`viz-chrome-source-${file.id}`}
-        data-testid="viz-chrome-source"
-        value={refToString(selectedSource)}
-        onChange={handleSourceChange}
-        style={{
-          background: 'var(--surface-elevated)',
-          color: 'var(--foreground)',
-          border: '1px solid var(--border)',
-          borderRadius: 3,
-          padding: '2px 6px',
-          fontSize: 10,
-          fontFamily: 'inherit',
-          cursor: 'pointer',
-        }}
-      >
-        <option value="default">default (follow most recent)</option>
-        <optgroup label="built-in examples">
-          {BUILTIN_EXAMPLE_SOURCES.map((src) => (
-            <option key={src.sourceId} value={`file:${src.sourceId}`}>
-              {src.label}
-            </option>
-          ))}
-        </optgroup>
-        {(() => {
-          const patternSources = workspaceAudioBus
-            .listSources()
-            .filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId))
-          if (patternSources.length === 0) return null
-          return (
-            <optgroup label="playing patterns">
-              {patternSources.map((source) => (
-                <option key={source.sourceId} value={`file:${source.sourceId}`}>
-                  {source.playing ? '\u25CF ' : '\u25CB '}
-                  {source.label}
-                </option>
-              ))}
-            </optgroup>
-          )
-        })()}
-        <option value="none">none (demo mode)</option>
-      </select>
-
-      <div style={{ flex: 1 }} />
-
       {/*
        * Set-as-Background toggle. Pins / unpins this viz file as the
        * active group's backdrop. Mirrors the Cmd+K B keybind but is
@@ -349,6 +298,57 @@ export function VizEditorChrome({
       >
         {liveOn ? '\u27F3 live' : '\u27F3'}
       </button>
+
+      <label
+        htmlFor={`viz-chrome-source-${file.id}`}
+        style={{ color: 'var(--foreground-muted)', fontSize: 10 }}
+      >
+        source:
+      </label>
+      <select
+        id={`viz-chrome-source-${file.id}`}
+        data-testid="viz-chrome-source"
+        value={refToString(selectedSource)}
+        onChange={handleSourceChange}
+        style={{
+          background: 'var(--surface-elevated)',
+          color: 'var(--foreground)',
+          border: '1px solid var(--border)',
+          borderRadius: 3,
+          padding: '2px 6px',
+          fontSize: 10,
+          fontFamily: 'inherit',
+          cursor: 'pointer',
+        }}
+      >
+        <option value="default">default (follow most recent)</option>
+        <optgroup label="built-in examples">
+          {BUILTIN_EXAMPLE_SOURCES.map((src) => (
+            <option key={src.sourceId} value={`file:${src.sourceId}`}>
+              {src.label}
+            </option>
+          ))}
+        </optgroup>
+        {(() => {
+          const patternSources = workspaceAudioBus
+            .listSources()
+            .filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId))
+          if (patternSources.length === 0) return null
+          return (
+            <optgroup label="playing patterns">
+              {patternSources.map((source) => (
+                <option key={source.sourceId} value={`file:${source.sourceId}`}>
+                  {source.playing ? '\u25CF ' : '\u25CB '}
+                  {source.label}
+                </option>
+              ))}
+            </optgroup>
+          )
+        })()}
+        <option value="none">none (demo mode)</option>
+      </select>
+
+      <div style={{ flex: 1 }} />
     </div>
     {vizKind && <StaveInputsPanel kind={vizKind} />}
     </>
