@@ -34,3 +34,35 @@
 export function startsTopLevelBlock(trimmed: string): boolean {
   return /^_?\$:/.test(trimmed) || trimmed.startsWith('setcps') || trimmed.startsWith('/*')
 }
+
+/**
+ * True when a RAW (untrimmed) line begins a NAMED top-level track — a column-0
+ * labeled statement `ident:`. Strudel's transpiler rewrites `x: y` to `y.p('x')`
+ * (transpiler.mjs:468), so a top-level `drums: …` is a real named track exactly
+ * as `$:` is an anonymous one.
+ *
+ * Column-0 is the discriminator: the regex is `^`-anchored to an identifier
+ * character, so an INDENTED object-literal property inside a block (`verse:` /
+ * `chorus:` in a `pickRestart({ … })`) does NOT match and is never mistaken for
+ * a new track. `$:` / `_$:` also satisfy this regex; a caller that must
+ * DISTINGUISH the anonymous form (positional `$N` key) from a named one (name
+ * key) tests `$:` first — this predicate is for boundary detection only.
+ *
+ * KNOWN LIMIT (narrow-patch, #725): a multi-line object arg written at column 0
+ * (un-indented `verse:`) would be misread as a track boundary. The robust fix
+ * reuses the transpiler's AST-based `widgets` offsets (adapter doc §9.1, P5).
+ */
+export function startsNamedTrack(rawLine: string): boolean {
+  return /^[A-Za-z_$][\w$]*\s*:/.test(rawLine)
+}
+
+/**
+ * Boundary predicate over a RAW line: true when the line starts a NEW top-level
+ * block — the anonymous / `setcps` / soloed forms (over the trimmed line) OR a
+ * named track (over the raw line). The single source of truth for "where does
+ * one top-level block end?" once named tracks are in scope; keeps the engine's
+ * `scanVizRequestLines` and the editor's re-anchor in agreement (#569).
+ */
+export function startsTopLevelBlockRaw(rawLine: string): boolean {
+  return startsTopLevelBlock(rawLine.trim()) || startsNamedTrack(rawLine)
+}

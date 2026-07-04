@@ -1029,3 +1029,27 @@ function draw() {
     expect(range).toBeGreaterThan(5000)
   })
 })
+
+test('inline ._pianoroll() renders under a NAMED track (drums:), not only $: (#725)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', e => errors.push(String(e)))
+
+  // The reported pattern verbatim: a NAMED label (`drums:`) + pickRestart +
+  // inline pianoroll. Pre-fix the zone never mounted because the engine's
+  // line-scan (buildVizRequestsWithLines) filtered on `$:` and keyed `$N`,
+  // while a named label is captured/keyed by its name.
+  await setCode(page, [
+    'drums: "<~@4 verse@8 chorus@8 verse@8 chorus@8 ~@4>".pickRestart({',
+    '  verse: s("bd ~ sd ~ bd bd sd ~").bank("ajkpercusyn").gain(0.136).room(0.754).lpf(1790),',
+    '  chorus: s("bd ~ [bd,sd] ~ bd ~ [bd,sd] ~").bank("RolandTR909"),',
+    '})._pianoroll()',
+  ].join('\n'))
+  await runCode(page)
+
+  const zone = page.locator('[data-viz-zone-track]').first()
+  await expect(zone).toBeVisible({ timeout: 6000 })
+  await expect(page.locator('[data-viz-zone-track] canvas').first()).toBeVisible({ timeout: 6000 })
+  // underscore form is inline only — a named track must NOT pin the backdrop either
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
+  expect(errors, errors.join(' | ')).toEqual([])
+})

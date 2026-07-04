@@ -2,7 +2,7 @@ import type * as Monaco from 'monaco-editor'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
 import type { VizRenderer, VizDescriptor } from './types'
 import { resolveDescriptor } from './resolveDescriptor'
-import { startsTopLevelBlock } from './blockScan'
+import { startsNamedTrack, startsTopLevelBlockRaw } from './blockScan'
 import { attachVizLifecycle } from './attachVizLifecycle'
 import { BufferedScheduler } from '../engine/BufferedScheduler'
 import { VizPresetStore, type CropRegion, type VizPreset } from './vizPreset'
@@ -263,13 +263,15 @@ function findVizCallLineForBlock(
     `\\.viz\\s*\\(\\s*["\`']${escapeRegex(vizId)}["\`']\\s*\\)`,
   )
   for (let i = 0; i < lines.length; i++) {
-    if (!lines[i].trim().startsWith('$:')) continue
+    // Anonymous `$:` OR a named top-level track (`drums:`) — both are blocks the
+    // engine's scan emits zones for (#725).
+    if (!lines[i].trim().startsWith('$:') && !startsNamedTrack(lines[i])) continue
     let blockEnd = i
     for (let j = i + 1; j < lines.length; j++) {
       const next = lines[j].trim()
       // Same boundary predicate as the engine's scan (#569) — must agree, since
       // we match `blockEnd + 1` against the engine-computed `targetAfterLine`.
-      if (startsTopLevelBlock(next)) break
+      if (startsTopLevelBlockRaw(lines[j])) break
       if (next !== '' && !next.startsWith('//')) blockEnd = j
     }
     if (blockEnd + 1 !== targetAfterLine) continue
@@ -741,12 +743,16 @@ export function addInlineViewZones(
       const vizLineIdx = ranges[0].startLineNumber - 1 // back to 0-indexed
       if (vizLineIdx < 0 || vizLineIdx >= lines.length) continue
 
-      // Walk backward to the $: that opens this block.
+      // Walk backward to the $: / named label that opens this block (#725).
       let blockStart = vizLineIdx
-      while (blockStart >= 0 && !lines[blockStart].trim().startsWith('$:')) {
+      while (
+        blockStart >= 0 &&
+        !lines[blockStart].trim().startsWith('$:') &&
+        !startsNamedTrack(lines[blockStart])
+      ) {
         blockStart--
       }
-      if (blockStart < 0) continue // decoration sits above any $:, bail
+      if (blockStart < 0) continue // decoration sits above any block start, bail
 
       // Scan forward for the block's last non-empty, non-comment line.
       // Stop at the .viz() call — anything typed after it is new content,
@@ -756,7 +762,7 @@ export function addInlineViewZones(
       let foundViz = false
       for (let j = blockStart; j < lines.length; j++) {
         const next = lines[j].trim()
-        if (j > blockStart && startsTopLevelBlock(next)) break
+        if (j > blockStart && startsTopLevelBlockRaw(lines[j])) break
         if (next !== '' && !next.startsWith('//')) blockEnd = j
         if (/\.viz\s*\(/.test(next)) { foundViz = true; blockEnd = j; break }
       }
@@ -765,7 +771,7 @@ export function addInlineViewZones(
         blockEnd = blockStart
         for (let j = blockStart + 1; j < lines.length; j++) {
           const next = lines[j].trim()
-          if (startsTopLevelBlock(next)) break
+          if (startsTopLevelBlockRaw(lines[j])) break
           if (next !== '' && !next.startsWith('//')) blockEnd = j
         }
       }

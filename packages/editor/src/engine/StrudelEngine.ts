@@ -6,7 +6,7 @@ import { OfflineRenderer } from './OfflineRenderer'
 import { normalizeStrudelHap } from './NormalizedHap'
 import type { HapEvent } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
-import { startsTopLevelBlock } from '../visualizers/blockScan'
+import { scanVizRequestLines } from './vizLineScan'
 import type { LiveCodingEngine, EngineComponents } from './LiveCodingEngine'
 import { propagate, StrudelParseSystem, IREventCollectSystem } from '../ir/propagation'
 import type { PatternIR } from '../ir/PatternIR'
@@ -1017,42 +1017,11 @@ export class StrudelEngine implements LiveCodingEngine {
     requests: Map<string, string>,
     code: string,
   ): Map<string, { vizId: string; afterLine: number; contentHash: string; options?: Record<string, unknown> }> {
-    const result = new Map<string, { vizId: string; afterLine: number; contentHash: string; options?: Record<string, unknown> }>()
-    const lines = code.split('\n')
-    let anonIndex = 0
-
-    for (let i = 0; i < lines.length; i++) {
-      if (!lines[i].trim().startsWith('$:')) continue
-
-      const key = `$${anonIndex}`
-      anonIndex++
-
-      const vizId = requests.get(key)
-      if (!vizId) continue
-
-      // Find last line of this pattern block (continuation lines).
-      // Blank lines are allowed within a block — only break on a new block
-      // start or end of file. This handles multi-line patterns with arbitrary
-      // whitespace. The boundary check (`startsTopLevelBlock`) recognizes the
-      // solo/mute overlay's silenced forms (`_$:`, `/*`-wrapped) so a soloed
-      // track's block doesn't absorb the following silenced lines (#569).
-      let lastLineIdx = i
-      for (let j = i + 1; j < lines.length; j++) {
-        const next = lines[j].trim()
-        if (startsTopLevelBlock(next)) break
-        if (next !== '' && !next.startsWith('//')) lastLineIdx = j
-      }
-
-      // Content hash — first 120 chars of the block, whitespace-normalized.
-      // Used by pruneZoneOverrides to detect block reordering.
-      const blockLines = lines.slice(i, lastLineIdx + 1).join(' ').replace(/\s+/g, ' ').trim()
-      const contentHash = blockLines.slice(0, 120)
-
-      const options = this.vizOptions.get(key)
-      result.set(key, { vizId, afterLine: lastLineIdx + 1, contentHash, ...(options ? { options } : {}) })
-    }
-
-    return result
+    // Delegates to the pure `scanVizRequestLines` — extracted so the `$:` /
+    // named-label ($:-vs-`drums:`) line-scan is unit-testable without a browser
+    // (#725). Handles the anonymous `$:` form (positional `$N` keys) AND named
+    // labels keyed by name — both agreeing with the `.p()` capture side above.
+    return scanVizRequestLines(requests, code, this.vizOptions)
   }
 
   play(): void {
