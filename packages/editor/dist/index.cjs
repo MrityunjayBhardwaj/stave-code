@@ -29851,17 +29851,22 @@ function useActiveFileId() {
   return id;
 }
 __name(useActiveFileId, "useActiveFileId");
+function useSoloedIds() {
+  const fileId = useActiveFileId();
+  return React35__namespace.useSyncExternalStore(
+    subscribe4,
+    () => read2(fileId),
+    () => EMPTY
+  );
+}
+__name(useSoloedIds, "useSoloedIds");
 function useSoloStrips() {
   const fileId = useActiveFileId();
   React35__namespace.useEffect(() => {
     acquireTransform();
     return releaseTransform;
   }, []);
-  const soloed = React35__namespace.useSyncExternalStore(
-    subscribe4,
-    () => read2(fileId),
-    () => EMPTY
-  );
+  const soloed = useSoloedIds();
   const toggle = React35__namespace.useCallback(
     (id) => {
       if (fileId) toggleSolo(fileId, id);
@@ -38089,6 +38094,50 @@ function pruneTrackMetaForCode(fileId, code) {
   pruneTrackMeta(fileId, names);
 }
 __name(pruneTrackMetaForCode, "pruneTrackMetaForCode");
+function silencedNamesFrom(strips, soloed) {
+  const soloActive = soloed.size > 0;
+  const out = /* @__PURE__ */ new Set();
+  for (const s of strips) {
+    if (s.muted || soloActive && !soloed.has(s.id)) out.add(s.name);
+  }
+  return out;
+}
+__name(silencedNamesFrom, "silencedNamesFrom");
+function useSilencedTrackNames() {
+  const soloed = useSoloedIds();
+  const [editor, setEditor] = React35__namespace.useState(() => getActiveEditor());
+  const [strips, setStrips] = React35__namespace.useState([]);
+  React35__namespace.useEffect(() => {
+    setEditor(getActiveEditor());
+    return onActiveEditorChange(() => setEditor(getActiveEditor()));
+  }, []);
+  React35__namespace.useEffect(() => {
+    if (!editor) {
+      setStrips([]);
+      return;
+    }
+    const rederive = /* @__PURE__ */ __name(() => {
+      const model2 = editor.getModel?.();
+      if (!model2) {
+        setStrips([]);
+        return;
+      }
+      setStrips(
+        buildStripModels(detectAllChunks(model2.getValue())).map((s) => ({
+          id: s.id,
+          name: s.name,
+          muted: s.muted
+        }))
+      );
+    }, "rederive");
+    rederive();
+    const model = editor.getModel?.();
+    const sub = model?.onDidChangeContent?.(rederive);
+    return () => sub?.dispose?.();
+  }, [editor]);
+  return React35__namespace.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
+}
+__name(useSilencedTrackNames, "useSilencedTrackNames");
 
 // src/workspace/tabPersistence.ts
 function validBackdropOpacity(v) {
@@ -38734,6 +38783,7 @@ exports.updateVizConfig = updateVizConfig;
 exports.useMasterGain = useMasterGain;
 exports.useNoteColorMode = useNoteColorMode;
 exports.usePopoutPreview = usePopoutPreview;
+exports.useSilencedTrackNames = useSilencedTrackNames;
 exports.useTrackMetaMap = useTrackMetaMap;
 exports.useWorkspaceFile = useWorkspaceFile;
 exports.validatePersistedState = validatePersistedState;

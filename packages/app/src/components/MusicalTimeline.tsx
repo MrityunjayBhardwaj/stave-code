@@ -63,6 +63,7 @@ import {
   pickDuplicateArm,
   pickSplitArm,
   analyzeSong,
+  useSilencedTrackNames,
   type SongAnalysis,
 } from '@stave/editor'
 import { FullSongTimeline } from './FullSongTimeline'
@@ -258,6 +259,12 @@ export function MusicalTimeline(
     }
     return m
   }, [trackMeta])
+
+  // #731 — the display names of tracks that read as silenced (muted, or dimmed by
+  // a solo elsewhere), from the Mixer's own solo/mute state. The Timeline fades the
+  // matching lanes so a solo/mute shows identically in both views (PV155). Read-
+  // only: observing solo here never keeps the audio overlay alive (soloStore).
+  const silencedNames = useSilencedTrackNames()
 
   // ── Caret-driven lane selection (#641) ───────────────────────────────────
   // The editor caret is the single source of truth for "which track is current"
@@ -595,6 +602,7 @@ export function MusicalTimeline(
           customColorByName={customColorByName}
           onSetTrackColor={handleSetTrackColor}
           onResetTrackColor={handleResetTrackColor}
+          silencedNames={silencedNames}
         />
     </div>
   )

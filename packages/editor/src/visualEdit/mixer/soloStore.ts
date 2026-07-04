@@ -94,6 +94,24 @@ function useActiveFileId(): string | null {
 }
 
 /**
+ * The soloed-strip set for the active file — READ-ONLY. Unlike `useSoloStrips`,
+ * this does NOT acquire the eval-source overlay (no ref-count, no toggle): it
+ * OBSERVES solo for a view that reflects it VISUALLY — the Song Timeline lane
+ * fade (PV155) — without keeping the audio silencing alive. Subscribing here can
+ * never, on its own, mute a track; only the Mixer's solo buttons (which DO
+ * acquire the transform) can. Backed by the same external store, so it lights the
+ * instant a solo is toggled anywhere.
+ */
+export function useSoloedIds(): ReadonlySet<string> {
+  const fileId = useActiveFileId()
+  return React.useSyncExternalStore(
+    subscribe,
+    () => read(fileId),
+    () => EMPTY,
+  )
+}
+
+/**
  * The soloed-strip set for the active file + a toggle. Mounting registers the
  * eval-source overlay (ref-counted); unmounting removes it (full playback). A
  * change re-renders the console and re-evals the playing file (live).
@@ -107,11 +125,9 @@ export function useSoloStrips(): {
     acquireTransform()
     return releaseTransform
   }, [])
-  const soloed = React.useSyncExternalStore(
-    subscribe,
-    () => read(fileId),
-    () => EMPTY,
-  )
+  // Read through the shared read-only observer so the two hooks can't drift on
+  // how they snapshot the store; this one adds the eval-source overlay + toggle.
+  const soloed = useSoloedIds()
   const toggle = React.useCallback(
     (id: string) => {
       if (fileId) toggleSolo(fileId, id)
