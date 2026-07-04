@@ -77,12 +77,14 @@ export function BackdropPopover(props: Props) {
   );
   const pinned = props.backgroundFileId != null;
 
-  // Position below the indicator, right-aligned to its right edge.
+  // Position below the indicator, LEFT-aligned to its left edge (#724) — opens
+  // down-and-right like a conventional dropdown. Clamp to the viewport so a
+  // button near the right edge doesn't push the popover off-screen.
   const left = Math.max(
     8,
     Math.min(
       window.innerWidth - 8 - 320,
-      props.anchorRect.right - 320,
+      props.anchorRect.left,
     ),
   );
   const top = props.anchorRect.bottom + 6;

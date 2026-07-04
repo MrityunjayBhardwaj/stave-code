@@ -81,3 +81,45 @@ test('backdrop is PER-TAB — switching tabs swaps/clears it, switching back res
   await expect(page.locator('[data-workspace-background]')).toHaveCount(1)
   await expect(btn).toHaveAttribute('data-pinned', 'true')
 })
+
+test('no blue focus outline frames the editor when a backdrop is active (#723)', async ({ page }) => {
+  const btn = page.locator('[data-testid="strudel-chrome-bg-toggle"]')
+
+  // Focus the editor first — the outline only computes while `.monaco-editor`
+  // is focused. Without a backdrop it's the usual 1px focus border.
+  await page.locator('.monaco-editor .view-lines').click()
+  const editorOutline = () =>
+    page.evaluate(() => {
+      const ed = document.querySelector('[data-stave-code-panel] .monaco-editor')
+      return getComputedStyle(ed as Element).outlineStyle
+    })
+  expect(await editorOutline()).not.toBe('none') // focus border present normally
+
+  // Pin a backdrop (real flow).
+  await btn.click()
+  const picker = page.locator('[data-testid="backdrop-popover-picker"]')
+  await picker.selectOption((await picker.locator('option').nth(1).getAttribute('value'))!)
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(1)
+  await page.keyboard.press('Escape')
+  await page.locator('.monaco-editor .view-lines').click()
+
+  // Over the (now transparent) editor surface the focus outline would read as a
+  // blue frame — it must be suppressed in backdrop mode.
+  expect(await editorOutline()).toBe('none')
+})
+
+test('the set-bg popover left-aligns to the button, opening down-and-right (#724)', async ({ page }) => {
+  const btn = page.locator('[data-testid="strudel-chrome-bg-toggle"]')
+  await btn.click()
+  await page.locator('[data-testid="backdrop-popover"]').waitFor()
+
+  const { buttonLeft, popoverLeft, popoverRight, buttonRight } = await page.evaluate(() => {
+    const b = document.querySelector('[data-testid="strudel-chrome-bg-toggle"]')!.getBoundingClientRect()
+    const p = document.querySelector('[data-testid="backdrop-popover"]')!.getBoundingClientRect()
+    return { buttonLeft: b.left, buttonRight: b.right, popoverLeft: p.left, popoverRight: p.right }
+  })
+  // Left edges aligned (allow a sub-pixel rounding slack), and the popover
+  // extends to the RIGHT of the button's left edge (down-and-right), not left.
+  expect(Math.abs(popoverLeft - buttonLeft)).toBeLessThanOrEqual(1)
+  expect(popoverRight).toBeGreaterThan(buttonRight)
+})
