@@ -145,6 +145,11 @@ export interface FullSongTimelineProps {
   /** Clear a track's custom colour → fall back to the palette (Phase D, #581).
    *  Receives the lane's DISPLAY NAME. */
   readonly onResetTrackColor?: (displayName: string) => void
+  /** Display names of tracks that read as silenced — muted, or dimmed by a solo
+   *  elsewhere (#731). Their lane (gutter row + canvas band) draws FADED, keyed by
+   *  the same display name the Mixer dims by, so a solo/mute shows identically in
+   *  both views (PV155). Absent → nothing faded. */
+  readonly silencedNames?: ReadonlySet<string>
   /** Trim a clip by dragging its right edge (Phase 5b, #437). Receives the
    *  clip's lane source anchor (an offset inside the combinator call), its arm
    *  index, and the new whole-cycle weight. The parent parses the arrangement at
@@ -1513,17 +1518,24 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               // gutter row and the full-width grid band (below) light the SAME
               // lane, including anonymous lanes with no statement label.
               const isSelected = selectedLaneKey != null && box.laneKey === selectedLaneKey
+              // #731 — a silenced track (muted / soloed-out) fades its whole gutter
+              // row, mirroring the canvas band and the Mixer's dimmed strip. Keyed
+              // by DISPLAY NAME (the Mixer's dim key), so the same track fades in
+              // both views (PV155).
+              const isSilenced = props.silencedNames?.has(displayName) ?? false
               return (
                 <div
                   key={box.laneKey}
                   data-full-song-lane={box.laneKey}
                   data-full-song-lane-selected={isSelected ? box.laneKey : undefined}
+                  data-full-song-lane-silenced={isSilenced ? displayName : undefined}
                   data-expanded={box.expanded ? 'true' : 'false'}
                   data-full-song-voices={subRows ? subRows.length : undefined}
                   style={{
                     ...styles.laneRow,
                     height: box.height,
                     ...(isSelected ? styles.laneRowSelected : null),
+                    ...(isSilenced ? styles.laneRowSilenced : null),
                   }}
                   title={displayName}
                 >
@@ -1682,6 +1694,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                 contentWidth={contentWidth}
                 viewportWidth={areaWidth}
                 layout={layout}
+                silencedNames={props.silencedNames}
               />
             )}
             {/* Live overlay (#500/U3): lights the scene marks that are sounding
@@ -1955,6 +1968,14 @@ const styles = {
   laneRowSelected: {
     background: 'var(--accent-faint, rgba(110,168,254,0.20))',
     boxShadow: 'inset 3px 0 0 var(--accent, #6ea8fe)',
+  },
+  // #731 — a silenced track (muted / soloed-out) fades its gutter row to the
+  // SAME `opacity: 0.45` (+ 120ms ease) the Mixer dims a strip by (ChannelStrip
+  // §6.5), so the label, dot and caret read "inactive" identically in both views
+  // (PV155). The canvas band is faded in parallel by `drawTimeline`'s scrim.
+  laneRowSilenced: {
+    opacity: 0.45,
+    transition: 'opacity 120ms ease',
   },
   // #642 — full-width selected-lane band over the grid marks. A translucent
   // accent fill + a top/bottom hairline + a left accent bar, bright enough to

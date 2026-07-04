@@ -56,6 +56,15 @@ export interface DrawTheme {
  *  the lane falls back to coarse density blocks (design §4.2 readability). */
 export const COARSEN_PX = 28
 
+/** A silenced lane (muted, or dimmed by a solo elsewhere — #731) is washed toward
+ *  the canvas background by painting a background-coloured scrim at this opacity
+ *  over its band, AFTER its content. The lane's marks then read at ~`1 - this`
+ *  effective visibility, matching the Mixer's dimmed strip (`opacity: 0.45`) so
+ *  the two views show the same "inactive" tracks (PV155). A scrim (not a real
+ *  per-mark alpha) keeps the fade a single self-contained draw — the mark/density
+ *  helpers stay untouched. */
+export const SILENCED_LANE_SCRIM = 0.55
+
 /** Minimum mark width (px) so a zero/near-zero-duration trigger still shows and
  *  stays clickable — mirrors the live view's `MIN_BLOCK_PX` (timeAxis.ts). */
 export const MIN_MARK_W = 2
@@ -92,13 +101,16 @@ export function laneRenderMode(
   return pxPerCycle >= COARSEN_PX ? 'marks' : 'density'
 }
 
-/** Draw the whole scene into `ctx` (already DPR-scaled, in CSS px). */
+/** Draw the whole scene into `ctx` (already DPR-scaled, in CSS px). `silenced`
+ *  (by lane DISPLAY NAME — #731) fades those lanes to mirror the Mixer's dimmed
+ *  strips (PV155); absent/empty → nothing faded. */
 export function drawTimeline(
   ctx: CanvasRenderingContext2D,
   scene: TimelineScene,
   transform: DrawTransform,
   theme: DrawTheme,
   layout: LaneLayout,
+  silenced?: ReadonlySet<string>,
 ): void {
   const { scrollLeft, contentWidth, viewportWidth } = transform
   const height = layout.totalHeight
@@ -172,6 +184,19 @@ export function drawTimeline(
           ctx.fillRect(r.x, r.y, r.w, r.h)
         }
       }
+      ctx.globalAlpha = 1
+    }
+    // Silenced (muted / soloed-out) lane fade (#731): wash the whole band toward
+    // the background so it reads ~55% dimmer — the Mixer's dimmed-strip look —
+    // keyed by the SAME display name the Mixer dims by (PV155). Painted last so it
+    // dims this lane's marks/density/clips AND the section/gridline showing through
+    // its band, confined to [top, top+rowHeight] so siblings are untouched. The
+    // live overlay naturally lights nothing here (a silenced track schedules no
+    // haps), so the fade is never re-lit from above.
+    if (silenced?.has(lane.displayName)) {
+      ctx.globalAlpha = SILENCED_LANE_SCRIM
+      ctx.fillStyle = theme.background
+      ctx.fillRect(0, top, viewportWidth, rowHeight)
       ctx.globalAlpha = 1
     }
   })

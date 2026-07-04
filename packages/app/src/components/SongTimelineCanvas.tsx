@@ -36,6 +36,9 @@ export interface SongTimelineCanvasProps {
   /** Per-lane vertical layout (top/height, total) — the single source the draw,
    *  the host height, the DOM labels and the hit-test all share (#422). */
   readonly layout: LaneLayout
+  /** Display names of silenced tracks (muted / soloed-out — #731); their lanes
+   *  draw faded to mirror the Mixer's dimmed strips (PV155). Absent → none. */
+  readonly silencedNames?: ReadonlySet<string>
 }
 
 /** Literal dark-theme colors (canvas can't read CSS custom properties); these
@@ -55,7 +58,7 @@ const DEFAULT_THEME: DrawTheme = {
 const MAX_DPR = 2
 
 export function SongTimelineCanvas(props: SongTimelineCanvasProps): React.ReactElement {
-  const { scene, scrollLeft, contentWidth, viewportWidth, layout } = props
+  const { scene, scrollLeft, contentWidth, viewportWidth, layout, silencedNames } = props
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const height = layout.totalHeight
 
@@ -74,10 +77,10 @@ export function SongTimelineCanvas(props: SongTimelineCanvasProps): React.ReactE
       const ctx = canvas.getContext('2d')
       if (!ctx) return
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0) // draw in CSS px
-      drawTimeline(ctx, scene, { scrollLeft, contentWidth, viewportWidth: cssW }, DEFAULT_THEME, layout)
+      drawTimeline(ctx, scene, { scrollLeft, contentWidth, viewportWidth: cssW }, DEFAULT_THEME, layout, silencedNames)
     })
     return () => cancelAnimationFrame(raf)
-  }, [scene, scrollLeft, contentWidth, viewportWidth, layout, height])
+  }, [scene, scrollLeft, contentWidth, viewportWidth, layout, height, silencedNames])
 
   return (
     <canvas

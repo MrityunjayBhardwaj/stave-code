@@ -630,6 +630,11 @@ export { otherTrackNames } from './visualEdit/mixer/stripModel'
 // evaluate to drop colour overrides for tracks that no longer exist (keys the
 // current track set from the same `buildStripModels` projection the Mixer uses).
 export { pruneTrackMetaForCode } from './visualEdit/mixer/trackMetaPrune'
+// The DISPLAY NAMES of tracks that read as silenced — muted, or dimmed by a solo
+// elsewhere (#731) — so the Song Timeline fades the same lanes the Mixer dims
+// (PV155). Read-only: it observes solo without acquiring the eval-source overlay,
+// so a Timeline reflecting solo can't keep the audio silencing alive.
+export { useSilencedTrackNames } from './visualEdit/mixer/silencedTracks'
 export type {
   ChunkInfo,
   ChainCall,

@@ -1,6 +1,6 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
-import * as React36 from 'react';
-import React36__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React35 from 'react';
+import React35__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { parse } from 'acorn';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
@@ -2021,13 +2021,6 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
 }
 __name(parseTokens, "parseTokens");
 
-// src/ir/trackId.ts
-function trackIdFromLabel(label, index) {
-  const bare = label && label.startsWith("_") ? label.slice(1) : label;
-  return bare && bare !== "$" ? bare : `d${index + 1}`;
-}
-__name(trackIdFromLabel, "trackIdFromLabel");
-
 // src/ir/parseStrudel.ts
 function tagMeta(method, callSiteRange) {
   const [start, end] = callSiteRange;
@@ -2320,7 +2313,7 @@ function parseStrudel(code, _opts) {
     if (tracks.length === 1) {
       const t = tracks[0];
       const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, void 0, opts);
-      const trackId0 = trackIdFromLabel(t.label, 0);
+      const trackId0 = t.label && t.label !== "$" ? t.label : "d1";
       return IR.track(trackId0, body, {
         loc: [{ start: t.dollarStart, end: t.end }]
       });
@@ -2328,7 +2321,7 @@ function parseStrudel(code, _opts) {
     return IR.stack(
       ...tracks.map((t, i) => {
         const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, void 0, opts);
-        const trackId = trackIdFromLabel(t.label, i);
+        const trackId = t.label && t.label !== "$" ? t.label : `d${i + 1}`;
         return IR.track(trackId, body, {
           loc: [{ start: t.dollarStart, end: t.end }]
         });
@@ -3508,13 +3501,13 @@ function runChainAppliedStage(input) {
         const tMeta = t;
         const applied = applyOnTrack(t);
         const meta = tMeta.dollarStart !== void 0 && tMeta.dollarEnd !== void 0 ? { loc: [{ start: tMeta.dollarStart, end: tMeta.dollarEnd }] } : void 0;
-        const trackId = trackIdFromLabel(tMeta.trackLabel, i);
+        const trackId = tMeta.trackLabel && tMeta.trackLabel !== "$" ? tMeta.trackLabel : `d${i + 1}`;
         return IR.track(trackId, applied, meta);
       })
     );
   }
   const sMeta = input;
-  const singleTrackId = trackIdFromLabel(sMeta.trackLabel, 0);
+  const singleTrackId = sMeta.trackLabel && sMeta.trackLabel !== "$" ? sMeta.trackLabel : "d1";
   const singleMeta = sMeta.dollarStart !== void 0 && sMeta.dollarEnd !== void 0 ? { loc: [{ start: sMeta.dollarStart, end: sMeta.dollarEnd }] } : void 0;
   return IR.track(singleTrackId, applyOnTrack(input), singleMeta);
 }
@@ -4333,47 +4326,6 @@ function startsTopLevelBlock(trimmed) {
   return /^_?\$:/.test(trimmed) || trimmed.startsWith("setcps") || trimmed.startsWith("/*");
 }
 __name(startsTopLevelBlock, "startsTopLevelBlock");
-function startsNamedTrack(rawLine) {
-  return /^[A-Za-z_$][\w$]*\s*:/.test(rawLine);
-}
-__name(startsNamedTrack, "startsNamedTrack");
-function startsTopLevelBlockRaw(rawLine) {
-  return startsTopLevelBlock(rawLine.trim()) || startsNamedTrack(rawLine);
-}
-__name(startsTopLevelBlockRaw, "startsTopLevelBlockRaw");
-
-// src/engine/vizLineScan.ts
-function scanVizRequestLines(requests, code, vizOptions) {
-  const result = /* @__PURE__ */ new Map();
-  const lines = code.split("\n");
-  let anonIndex = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    const isAnon = raw.trim().startsWith("$:");
-    const namedMatch = isAnon ? null : /^([A-Za-z_$][\w$]*)\s*:/.exec(raw);
-    if (!isAnon && !namedMatch) continue;
-    const key3 = isAnon ? `$${anonIndex++}` : namedMatch[1];
-    const vizId = requests.get(key3);
-    if (!vizId) continue;
-    let lastLineIdx = i;
-    for (let j = i + 1; j < lines.length; j++) {
-      if (startsTopLevelBlockRaw(lines[j])) break;
-      const next = lines[j].trim();
-      if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
-    }
-    const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
-    const contentHash = blockLines.slice(0, 120);
-    const options = vizOptions?.get(key3);
-    result.set(key3, {
-      vizId,
-      afterLine: lastLineIdx + 1,
-      contentHash,
-      ...options ? { options } : {}
-    });
-  }
-  return result;
-}
-__name(scanVizRequestLines, "scanVizRequestLines");
 
 // src/engine/tierFlags.ts
 var STORAGE_PREFIX = "stave.strudel.tier.";
@@ -5453,7 +5405,27 @@ var _StrudelEngine = class _StrudelEngine {
    * viewZones.ts but returns structured data instead of creating DOM zones.
    */
   buildVizRequestsWithLines(requests, code) {
-    return scanVizRequestLines(requests, code, this.vizOptions);
+    const result = /* @__PURE__ */ new Map();
+    const lines = code.split("\n");
+    let anonIndex = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (!lines[i].trim().startsWith("$:")) continue;
+      const key3 = `$${anonIndex}`;
+      anonIndex++;
+      const vizId = requests.get(key3);
+      if (!vizId) continue;
+      let lastLineIdx = i;
+      for (let j = i + 1; j < lines.length; j++) {
+        const next = lines[j].trim();
+        if (startsTopLevelBlock(next)) break;
+        if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
+      }
+      const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
+      const contentHash = blockLines.slice(0, 120);
+      const options = this.vizOptions.get(key3);
+      result.set(key3, { vizId, afterLine: lastLineIdx + 1, contentHash, ...options ? { options } : {} });
+    }
+    return result;
   }
   play() {
     this.repl?.scheduler?.start();
@@ -14773,8 +14745,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React36__default.Children.count(children);
-  const childArray = React36__default.Children.toArray(children);
+  const count = React35__default.Children.count(children);
+  const childArray = React35__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -14819,7 +14791,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React36__default.useEffect(() => {
+  React35__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -14835,7 +14807,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React36__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React35__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -19344,12 +19316,6 @@ function otherTrackNames(doc, selfStatementStart) {
   return buildStripModels(detectAllChunks(doc)).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
 }
 __name(otherTrackNames, "otherTrackNames");
-function stripContainingOffset(strips, offset) {
-  return strips.find(
-    (s) => s.statementRange[0] <= offset && offset < s.statementRange[1]
-  );
-}
-__name(stripContainingOffset, "stripContainingOffset");
 var EMPTY_META_MAP = /* @__PURE__ */ new Map();
 function useTrackMetaMap(fileId) {
   const subscribe7 = useCallback(
@@ -22277,11 +22243,11 @@ function findVizCallLineForBlock(code, vizId, targetAfterLine) {
     `\\.viz\\s*\\(\\s*["\`']${escapeRegex(vizId)}["\`']\\s*\\)`
   );
   for (let i = 0; i < lines.length; i++) {
-    if (!lines[i].trim().startsWith("$:") && !startsNamedTrack(lines[i])) continue;
+    if (!lines[i].trim().startsWith("$:")) continue;
     let blockEnd = i;
     for (let j = i + 1; j < lines.length; j++) {
       const next = lines[j].trim();
-      if (startsTopLevelBlockRaw(lines[j])) break;
+      if (startsTopLevelBlock(next)) break;
       if (next !== "" && !next.startsWith("//")) blockEnd = j;
     }
     if (blockEnd + 1 !== targetAfterLine) continue;
@@ -22618,7 +22584,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const vizLineIdx = ranges[0].startLineNumber - 1;
       if (vizLineIdx < 0 || vizLineIdx >= lines.length) continue;
       let blockStart = vizLineIdx;
-      while (blockStart >= 0 && !lines[blockStart].trim().startsWith("$:") && !startsNamedTrack(lines[blockStart])) {
+      while (blockStart >= 0 && !lines[blockStart].trim().startsWith("$:")) {
         blockStart--;
       }
       if (blockStart < 0) continue;
@@ -22626,7 +22592,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       let foundViz = false;
       for (let j = blockStart; j < lines.length; j++) {
         const next = lines[j].trim();
-        if (j > blockStart && startsTopLevelBlockRaw(lines[j])) break;
+        if (j > blockStart && startsTopLevelBlock(next)) break;
         if (next !== "" && !next.startsWith("//")) blockEnd = j;
         if (/\.viz\s*\(/.test(next)) {
           foundViz = true;
@@ -22638,7 +22604,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         blockEnd = blockStart;
         for (let j = blockStart + 1; j < lines.length; j++) {
           const next = lines[j].trim();
-          if (startsTopLevelBlockRaw(lines[j])) break;
+          if (startsTopLevelBlock(next)) break;
           if (next !== "" && !next.startsWith("//")) blockEnd = j;
         }
       }
@@ -23930,7 +23896,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React36__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React35__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -24152,7 +24118,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React36__default.useMemo(() => {
+  const providerNode = React35__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -24445,25 +24411,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React36.useMemo(
+  const changedIds = React35.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
     [commit, pickerFileIds]
   );
-  const [mode, setMode2] = React36.useState(defaultMode);
-  React36.useEffect(() => {
+  const [mode, setMode2] = React35.useState(defaultMode);
+  React35.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React36.useState(
+  const [fileId, setFileId] = React35.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React36.useRef(null);
-  const handleMount = React36.useCallback(
+  const diffEditorRef = React35.useRef(null);
+  const handleMount = React35.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -24473,7 +24439,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -24598,18 +24564,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React36.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React36.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React36.useState(
+  const snapshot = React35.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React35.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React35.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React36.useCallback(
+  const handleMount = React35.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -25500,7 +25466,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React36.createElement(
+  return React35.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -25518,25 +25484,25 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React36.createElement(EmptyTimelineStub)
+  content: React35.createElement(EmptyTimelineStub)
 });
 function useActiveChunk() {
-  const [editor, setEditor] = React36.useState(() => getActiveEditor());
-  const [chunk, setChunk] = React36.useState(null);
-  const writebackRef = React36.useRef(null);
-  const editorRef = React36.useRef(null);
-  const anchorRef = React36.useRef(null);
+  const [editor, setEditor] = React35.useState(() => getActiveEditor());
+  const [chunk, setChunk] = React35.useState(null);
+  const writebackRef = React35.useRef(null);
+  const editorRef = React35.useRef(null);
+  const anchorRef = React35.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
   }, [editor]);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -25563,7 +25529,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React36.useCallback(
+  const applyEdit = React35.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -25578,8 +25544,8 @@ function useActiveChunk() {
     },
     []
   );
-  const beginGesture = React36.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React36.useCallback(() => writebackRef.current?.endGesture(), []);
+  const beginGesture = React35.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React35.useCallback(() => writebackRef.current?.endGesture(), []);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -26351,7 +26317,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React36.createElement(
+  return React35.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -26370,12 +26336,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React36.createElement("span", {
+    icon ? React35.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React36.createElement("span", null, hint)
+    React35.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -26436,14 +26402,14 @@ function gainUnchanged(g, cur) {
 __name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React36.useState(null);
-  const modelRef = React36.useRef(null);
-  React36.useEffect(() => {
+  const [model, setModel] = React35.useState(null);
+  const modelRef = React35.useRef(null);
+  React35.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React36.useRef(opts);
+  const optsRef = React35.useRef(opts);
   optsRef.current = opts;
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -26465,7 +26431,7 @@ function useGridModel(opts) {
     modelRef.current = next;
     setModel(next);
   }, [chunk]);
-  const mutate = React36.useCallback(
+  const mutate = React35.useCallback(
     (fn) => {
       const o = optsRef.current;
       const prev = modelRef.current;
@@ -26515,8 +26481,8 @@ function cycleToStep(cycle, steps, bars) {
 }
 __name(cycleToStep, "cycleToStep");
 function usePlayingStep(steps, bars) {
-  const [step, setStep] = React36.useState(null);
-  React36.useEffect(() => {
+  const [step, setStep] = React35.useState(null);
+  React35.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const next = cycleToStep(readCurrentCycle(), steps, bars);
@@ -26759,7 +26725,7 @@ function subscribe3(listener) {
 }
 __name(subscribe3, "subscribe");
 function useNoteColorMode() {
-  const mode = React36.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
+  const mode = React35.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -26968,19 +26934,19 @@ function rollSlotState(model, target) {
 }
 __name(rollSlotState, "rollSlotState");
 function useLiftResolution(steps, slotState2, onScaleTo, onResolution) {
-  const slotStateRef = React36.useRef(slotState2);
+  const slotStateRef = React35.useRef(slotState2);
   slotStateRef.current = slotState2;
-  const onScaleToRef = React36.useRef(onScaleTo);
+  const onScaleToRef = React35.useRef(onScaleTo);
   onScaleToRef.current = onScaleTo;
-  const stableSlotState = React36.useCallback((t) => slotStateRef.current(t), []);
-  const stableScaleTo = React36.useCallback((t) => onScaleToRef.current(t), []);
-  React36.useEffect(() => {
+  const stableSlotState = React35.useCallback((t) => slotStateRef.current(t), []);
+  const stableScaleTo = React35.useCallback((t) => onScaleToRef.current(t), []);
+  React35.useEffect(() => {
     if (!onResolution) return;
     onResolution(
       steps == null ? null : { steps, slotState: stableSlotState, onScaleTo: stableScaleTo }
     );
   }, [steps, onResolution, stableSlotState, stableScaleTo]);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     return () => onResolution?.(null);
   }, [onResolution]);
 }
@@ -27068,22 +27034,22 @@ function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
 }
 __name(jumpCursorToTrack, "jumpCursorToTrack");
 function useMixerModel() {
-  const [editor, setEditor] = React36.useState(() => getActiveEditor());
-  const [derived, setDerived] = React36.useState(EMPTY_DERIVED);
-  const editorRef = React36.useRef(null);
-  const writebackRef = React36.useRef(null);
-  const lastJumpRef = React36.useRef(null);
-  React36.useEffect(() => {
+  const [editor, setEditor] = React35.useState(() => getActiveEditor());
+  const [derived, setDerived] = React35.useState(EMPTY_DERIVED);
+  const editorRef = React35.useRef(null);
+  const writebackRef = React35.useRef(null);
+  const lastJumpRef = React35.useRef(null);
+  React35.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
     lastJumpRef.current = null;
   }, [editor]);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     if (!editor) {
       setDerived(EMPTY_DERIVED);
       return;
@@ -27103,7 +27069,7 @@ function useMixerModel() {
     const sub = model?.onDidChangeContent?.(rederive);
     return () => sub?.dispose?.();
   }, [editor]);
-  const applyToStrip = React36.useCallback(
+  const applyToStrip = React35.useCallback(
     (id, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -27120,12 +27086,12 @@ function useMixerModel() {
     },
     []
   );
-  const beginGesture = React36.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React36.useCallback(() => writebackRef.current?.endGesture(), []);
-  const [selectedId, setSelectedId] = React36.useState(null);
-  const stripsRef = React36.useRef(EMPTY_DERIVED.strips);
+  const beginGesture = React35.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React35.useCallback(() => writebackRef.current?.endGesture(), []);
+  const [selectedId, setSelectedId] = React35.useState(null);
+  const stripsRef = React35.useRef(EMPTY_DERIVED.strips);
   stripsRef.current = derived.strips;
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     if (!editor) {
       setSelectedId(null);
       return;
@@ -27154,7 +27120,7 @@ function useMixerModel() {
     const sub = editor.onDidChangeCursorPosition?.(recompute);
     return () => sub?.dispose?.();
   }, [editor, derived.strips]);
-  const selectTrack = React36.useCallback((id) => {
+  const selectTrack = React35.useCallback((id) => {
     const ed = editorRef.current;
     if (!ed) return;
     const model = ed.getModel?.();
@@ -27181,8 +27147,8 @@ function StripColorPopover({
   onReset,
   onClose
 }) {
-  const ref = React36.useRef(null);
-  React36.useEffect(() => {
+  const ref = React35.useRef(null);
+  React35.useEffect(() => {
     const onDown = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) onClose();
     }, "onDown");
@@ -27428,13 +27394,13 @@ __name(renameEdit, "renameEdit");
 function PatternTrackChip() {
   const { chunk } = useActiveChunk();
   const { strips, applyToStrip } = useMixerModel();
-  const [fileId, setFileId] = React36.useState(() => getActiveFileId());
-  React36.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React35.useState(() => getActiveFileId());
+  React35.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
-  const [colorAnchor, setColorAnchor] = React36.useState(null);
-  const [renaming, setRenaming] = React36.useState(false);
+  const [colorAnchor, setColorAnchor] = React35.useState(null);
+  const [renaming, setRenaming] = React35.useState(false);
   const anchor = chunk ? chunk.statementRange[0] : null;
-  const strip = anchor != null ? stripContainingOffset(strips, anchor) : void 0;
+  const strip = anchor != null ? strips.find((s) => s.statementRange[0] === anchor) : void 0;
   if (!strip) return null;
   const customColor = trackMeta.get(strip.name)?.color;
   const dotColor = trackIdentity(strip.name, customColor).color;
@@ -27613,9 +27579,9 @@ function SequencerGrid({ onResolution } = {}) {
   });
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const gestureRef = React36.useRef(null);
+  const gestureRef = React35.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
-  const paintCell = React36.useCallback(
+  const paintCell = React35.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
         const lane = prev.lanes[laneIndex];
@@ -27627,19 +27593,19 @@ function SequencerGrid({ onResolution } = {}) {
     },
     [mutate]
   );
-  const addVoice = React36.useCallback(
+  const addVoice = React35.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React36.useCallback(
+  const removeVoice = React35.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
-  const scaleToSlots = React36.useCallback(
+  const scaleToSlots = React35.useCallback(
     (target) => {
       mutate((prev) => quantizeStepGridTo(prev, target));
     },
@@ -27651,7 +27617,7 @@ function SequencerGrid({ onResolution } = {}) {
     scaleToSlots,
     onResolution
   );
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -27718,7 +27684,7 @@ function SequencerGrid({ onResolution } = {}) {
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
   if (!model) {
-    return React36.createElement(VisualEditStandby, {
+    return React35.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && isStepChunk(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -27999,24 +27965,24 @@ function PianoRollGrid({
     applyGain: applyRollGain,
     serializeGain: serializeRollGain
   });
-  const dragRef = React36.useRef(null);
-  const velRef = React36.useRef(null);
+  const dragRef = React35.useRef(null);
+  const velRef = React35.useRef(null);
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [colorMode] = useNoteColorMode();
-  const [hoveredMidi, setHoveredMidi] = React36.useState(null);
-  const holdMidiRef = React36.useRef(null);
-  const holdTimerRef = React36.useRef(null);
-  const onSelectRef = React36.useRef(onSelect);
+  const [hoveredMidi, setHoveredMidi] = React35.useState(null);
+  const holdMidiRef = React35.useRef(null);
+  const holdTimerRef = React35.useRef(null);
+  const onSelectRef = React35.useRef(onSelect);
   onSelectRef.current = onSelect;
-  const selectedRef = React36.useRef(selected);
+  const selectedRef = React35.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range, setRange] = React36.useState({
+  const [range, setRange] = React35.useState({
     lo: DEFAULT_LO,
     hi: DEFAULT_HI
   });
-  const stmtIdRef = React36.useRef(null);
-  React36.useEffect(() => {
+  const stmtIdRef = React35.useRef(null);
+  React35.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = contentRange(model);
@@ -28031,7 +27997,7 @@ function PianoRollGrid({
       }));
     }
   }, [model]);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
@@ -28047,7 +28013,7 @@ function PianoRollGrid({
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
@@ -28106,7 +28072,7 @@ function PianoRollGrid({
       holdTimerRef.current = null;
     }
   }, "stopHold");
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     window.addEventListener("pointerup", stopHold);
     window.addEventListener("pointercancel", stopHold);
     return () => {
@@ -28226,7 +28192,7 @@ function PianoRollGrid({
     onResolution
   );
   if (!model) {
-    return React36.createElement(VisualEditStandby, {
+    return React35.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && isRollChunk(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -28576,7 +28542,7 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React36.useRef(null);
+  const dragRef = React35.useRef(null);
   const pos = Math.max(0, Math.min(1, toPosition(value, range)));
   const angle = -135 + pos * 270;
   const onPointerDown = /* @__PURE__ */ __name((e) => {
@@ -28863,12 +28829,12 @@ function AddEffectMenu({
   present,
   onToggle
 }) {
-  const [open, setOpen] = React36.useState(false);
-  const [query, setQuery] = React36.useState("");
-  const [pos, setPos] = React36.useState(null);
-  const btnRef = React36.useRef(null);
-  const menuRef = React36.useRef(null);
-  const place = React36.useCallback(() => {
+  const [open, setOpen] = React35.useState(false);
+  const [query, setQuery] = React35.useState("");
+  const [pos, setPos] = React35.useState(null);
+  const btnRef = React35.useRef(null);
+  const menuRef = React35.useRef(null);
+  const place = React35.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -28882,10 +28848,10 @@ function AddEffectMenu({
       maxHeight
     });
   }, []);
-  React36.useLayoutEffect(() => {
+  React35.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -29192,7 +29158,7 @@ function createCatalogStore() {
     listeners13.add(listener);
     return () => listeners13.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React36.useSyncExternalStore(subscribe7, read4, () => null), "useCatalog");
+  const useCatalog = /* @__PURE__ */ __name(() => React35.useSyncExternalStore(subscribe7, read4, () => null), "useCatalog");
   return { setAccessor, notify: notify5, read: read4, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
@@ -29334,7 +29300,7 @@ function MixerBody({
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
   const knobs = knobsFromChunk(chunk, showGain);
-  const writeKnob = React36.useCallback(
+  const writeKnob = React35.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => {
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex];
@@ -29344,7 +29310,7 @@ function MixerBody({
     },
     [applyEdit]
   );
-  const toggleEffect = React36.useCallback(
+  const toggleEffect = React35.useCallback(
     (e) => {
       applyEdit((fresh, wb) => {
         const names = effectNames(e);
@@ -29355,7 +29321,7 @@ function MixerBody({
     },
     [applyEdit]
   );
-  const removeMethod = React36.useCallback(
+  const removeMethod = React35.useCallback(
     (method) => {
       applyEdit((fresh, wb) => {
         const idx = fresh.chain.findIndex((c, i) => i > 0 && c.name === method);
@@ -29364,7 +29330,7 @@ function MixerBody({
     },
     [applyEdit]
   );
-  const writeChainMethod = React36.useCallback(
+  const writeChainMethod = React35.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -29544,7 +29510,7 @@ var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function Mixer({ division: division2, onDivisionChange, resolution } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   if (!chunk || chunk.chain.length === 0) {
-    return React36.createElement(VisualEditStandby, {
+    return React35.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -29666,24 +29632,24 @@ __name(levelColor, "levelColor");
 var MIN_FRAME_MS = 1e3 / 60;
 var QUERY_WINDOW_CYCLES = 0.01;
 function useTrackMeters() {
-  const elsRef = React36.useRef(/* @__PURE__ */ new Map());
-  const stateRef = React36.useRef(/* @__PURE__ */ new Map());
-  const schedulersRef = React36.useRef(null);
-  const rafRef = React36.useRef(null);
-  const lastTsRef = React36.useRef(0);
-  const [fileId, setFileId] = React36.useState(() => getActiveFileId());
-  React36.useEffect(() => {
+  const elsRef = React35.useRef(/* @__PURE__ */ new Map());
+  const stateRef = React35.useRef(/* @__PURE__ */ new Map());
+  const schedulersRef = React35.useRef(null);
+  const rafRef = React35.useRef(null);
+  const lastTsRef = React35.useRef(0);
+  const [fileId, setFileId] = React35.useState(() => getActiveFileId());
+  React35.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React36.useCallback((captureId, els) => {
+  const register = React35.useCallback((captureId, els) => {
     if (els) elsRef.current.set(captureId, els);
     else {
       elsRef.current.delete(captureId);
       stateRef.current.delete(captureId);
     }
   }, []);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       schedulersRef.current = schedulersOf(payload);
     }) : (() => {
@@ -29774,12 +29740,41 @@ function useTrackMeters() {
       stateRef.current.clear();
     };
   }, [fileId]);
-  return React36.useMemo(() => ({ register }), [register]);
+  return React35.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
+
+// src/visualEdit/mixer/soloOverlay.ts
+function applyMonitorOverlay(doc, soloIds) {
+  if (soloIds.size === 0) return doc;
+  const strips = buildStripModels(detectAllChunks(doc));
+  const anySoloPresent = strips.some((s) => soloIds.has(s.id));
+  if (!anySoloPresent) return doc;
+  const inserts = [];
+  for (const strip of strips) {
+    if (soloIds.has(strip.id)) continue;
+    if (strip.muted) continue;
+    const [start, end] = strip.statementRange;
+    if (strip.muteable) {
+      inserts.push({ pos: start, text: "_" });
+    } else {
+      inserts.push({ pos: start, text: "/* " });
+      inserts.push({ pos: end, text: " */" });
+    }
+  }
+  if (inserts.length === 0) return doc;
+  inserts.sort((a, b) => b.pos - a.pos);
+  let out = doc;
+  for (const ins of inserts) {
+    out = out.slice(0, ins.pos) + ins.text + out.slice(ins.pos);
+  }
+  return out;
+}
+__name(applyMonitorOverlay, "applyMonitorOverlay");
+
+// src/visualEdit/mixer/soloStore.ts
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
-var snapshots = /* @__PURE__ */ new Map();
 var listeners10 = /* @__PURE__ */ new Set();
 function read2(fileId) {
   if (!fileId) return EMPTY;
@@ -29793,19 +29788,9 @@ function toggleSolo(fileId, id) {
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
   listeners10.forEach((l) => l());
+  requestReeval(fileId);
 }
 __name(toggleSolo, "toggleSolo");
-function getPreSoloMutes(fileId) {
-  if (!fileId) return null;
-  return snapshots.get(fileId) ?? null;
-}
-__name(getPreSoloMutes, "getPreSoloMutes");
-function setPreSoloMutes(fileId, snapshot) {
-  if (!fileId) return;
-  if (snapshot === null) snapshots.delete(fileId);
-  else snapshots.set(fileId, snapshot);
-}
-__name(setPreSoloMutes, "setPreSoloMutes");
 function subscribe4(listener) {
   listeners10.add(listener);
   return () => {
@@ -29813,23 +29798,50 @@ function subscribe4(listener) {
   };
 }
 __name(subscribe4, "subscribe");
+var refs = 0;
+var unregister = null;
+function acquireTransform() {
+  if (refs++ === 0) {
+    unregister = registerEvalSourceTransform(
+      (fileId, raw) => applyMonitorOverlay(raw, read2(fileId))
+    );
+  }
+}
+__name(acquireTransform, "acquireTransform");
+function releaseTransform() {
+  if (--refs <= 0) {
+    refs = 0;
+    unregister?.();
+    unregister = null;
+  }
+}
+__name(releaseTransform, "releaseTransform");
 function useActiveFileId() {
-  const [id, setId] = React36.useState(() => getActiveFileId());
-  React36.useEffect(() => {
+  const [id, setId] = React35.useState(() => getActiveFileId());
+  React35.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
   return id;
 }
 __name(useActiveFileId, "useActiveFileId");
-function useSoloStrips() {
+function useSoloedIds() {
   const fileId = useActiveFileId();
-  const soloed = React36.useSyncExternalStore(
+  return React35.useSyncExternalStore(
     subscribe4,
     () => read2(fileId),
     () => EMPTY
   );
-  const toggle = React36.useCallback(
+}
+__name(useSoloedIds, "useSoloedIds");
+function useSoloStrips() {
+  const fileId = useActiveFileId();
+  React35.useEffect(() => {
+    acquireTransform();
+    return releaseTransform;
+  }, []);
+  const soloed = useSoloedIds();
+  const toggle = React35.useCallback(
     (id) => {
       if (fileId) toggleSolo(fileId, id);
     },
@@ -29838,58 +29850,6 @@ function useSoloStrips() {
   return { soloed, toggle };
 }
 __name(useSoloStrips, "useSoloStrips");
-
-// src/visualEdit/mixer/soloMuteSync.ts
-function reconcileSoloMutes(strips, newSolo, prevSnapshot) {
-  if (newSolo.size > 0) {
-    const snapshot = prevSnapshot ?? new Set(strips.filter((s) => s.muted).map((s) => s.id));
-    const targetMuted = new Set(
-      strips.filter((s) => s.muteable && !newSolo.has(s.id)).map((s) => s.id)
-    );
-    return { targetMuted, nextSnapshot: snapshot };
-  }
-  return { targetMuted: new Set(prevSnapshot ?? []), nextSnapshot: null };
-}
-__name(reconcileSoloMutes, "reconcileSoloMutes");
-function useSoloMuteSync() {
-  const { soloed, toggle: toggleSet } = useSoloStrips();
-  const toggle = React36.useCallback(
-    (id) => {
-      const fileId = getActiveFileId();
-      const editor = getActiveEditor();
-      const model = editor?.getModel?.();
-      const monaco = getMonacoNamespace();
-      const newSolo = new Set(soloed);
-      if (newSolo.has(id)) newSolo.delete(id);
-      else newSolo.add(id);
-      if (editor && model && monaco) {
-        const chunks = detectAllChunks(model.getValue());
-        const strips = buildStripModels(chunks);
-        const { targetMuted, nextSnapshot } = reconcileSoloMutes(
-          strips.map((s) => ({ id: s.id, muted: s.muted, muteable: s.muteable })),
-          newSolo,
-          getPreSoloMutes(fileId)
-        );
-        const edits = [];
-        strips.forEach((s) => {
-          if (!s.muteable) return;
-          const want = targetMuted.has(s.id);
-          if (want === s.muted) return;
-          const e = muteEdit(chunks[s.index], want);
-          if (e) edits.push({ range: e.range, text: e.text });
-        });
-        if (edits.length > 0) {
-          new Writeback(editor, monaco).replaceRanges(edits, "mixer");
-        }
-        setPreSoloMutes(fileId, nextSnapshot);
-      }
-      toggleSet(id);
-    },
-    [soloed, toggleSet]
-  );
-  return { soloed, toggle };
-}
-__name(useSoloMuteSync, "useSoloMuteSync");
 var DRAG_SPAN_PX2 = 160;
 var FADER_HEIGHT = 80;
 function StripMeter({
@@ -29897,9 +29857,9 @@ function StripMeter({
   controller,
   horizontal = false
 }) {
-  const fillRef = React36.useRef(null);
-  const peakRef = React36.useRef(null);
-  React36.useEffect(() => {
+  const fillRef = React35.useRef(null);
+  const peakRef = React35.useRef(null);
+  React35.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -30005,10 +29965,10 @@ function ChannelStrip({
   orientation = "vertical"
 }) {
   const horizontal = orientation === "horizontal";
-  const [colorAnchor, setColorAnchor] = React36.useState(null);
+  const [colorAnchor, setColorAnchor] = React35.useState(null);
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
-  const [renaming, setRenaming] = React36.useState(false);
+  const [renaming, setRenaming] = React35.useState(false);
   const bareLabel2 = strip.label?.replace(/^_/, "") ?? "";
   const renameSeed = bareLabel2 !== "" && bareLabel2 !== "$" ? bareLabel2 : "";
   const renameEnabled = onRename !== void 0;
@@ -30022,8 +29982,8 @@ function ChannelStrip({
   const faderEnabled = gain !== null && onGainChange !== void 0;
   const panEnabled = !strip.panForeign && onPanChange !== void 0;
   const panValue = strip.pan ?? 0.5;
-  const faderDrag = React36.useRef(null);
-  const panDrag = React36.useRef(null);
+  const faderDrag = React35.useRef(null);
+  const panDrag = React35.useRef(null);
   const onFaderDown = /* @__PURE__ */ __name((e) => {
     if (!faderEnabled) return;
     e.preventDefault();
@@ -30538,7 +30498,7 @@ function LocalMixerStrip() {
   const { chunk } = useActiveChunk();
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel();
   const meters = useTrackMeters();
-  const { soloed, toggle: toggleSolo2 } = useSoloMuteSync();
+  const { soloed, toggle: toggleSolo2 } = useSoloStrips();
   const r = chunk ? chunk.statementRange : null;
   const strip = r ? strips.find((s) => s.statementRange[0] <= r[0] && r[1] <= s.statementRange[1]) : void 0;
   if (!strip) return null;
@@ -30607,17 +30567,17 @@ var MIXER_WIDTH = 220;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = patternKind(chunk);
-  const [selected, setSelected] = React36.useState(null);
+  const [selected, setSelected] = React35.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React36.useRef(stmtId);
-  React36.useEffect(() => {
+  const stmtRef = React35.useRef(stmtId);
+  React35.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setSelected(null);
     }
   }, [stmtId]);
-  const [division2, setDivision] = React36.useState(DEFAULT_DIVISION);
-  const [resolution, setResolution] = React36.useState(null);
+  const [division2, setDivision] = React35.useState(DEFAULT_DIVISION);
+  const [resolution, setResolution] = React35.useState(null);
   const grid = kind === "step" ? /* @__PURE__ */ jsx(SequencerGrid, { onResolution: setResolution }) : kind === "roll" ? /* @__PURE__ */ jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2, onResolution: setResolution }) : /* @__PURE__ */ jsx(
     VisualEditStandby,
     {
@@ -30726,8 +30686,8 @@ function subscribe5(listener) {
 }
 __name(subscribe5, "subscribe");
 function useActiveFileId2() {
-  const [id, setId] = React36.useState(() => getActiveFileId());
-  React36.useEffect(() => {
+  const [id, setId] = React35.useState(() => getActiveFileId());
+  React35.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -30736,12 +30696,12 @@ function useActiveFileId2() {
 __name(useActiveFileId2, "useActiveFileId");
 function useExpandedStrips() {
   const fileId = useActiveFileId2();
-  const expanded = React36.useSyncExternalStore(
+  const expanded = React35.useSyncExternalStore(
     subscribe5,
     () => read3(fileId),
     () => EMPTY2
   );
-  const toggle = React36.useCallback(
+  const toggle = React35.useCallback(
     (id) => {
       if (fileId) toggleExpanded(fileId, id);
     },
@@ -30757,7 +30717,7 @@ function ExpandDrawer({
   beginGesture,
   endGesture
 }) {
-  const applyEdit = React36.useCallback(
+  const applyEdit = React35.useCallback(
     (mutate) => applyToStrip(strip.id, mutate),
     [applyToStrip, strip.id]
   );
@@ -30819,22 +30779,22 @@ function levelColor2(frac) {
 }
 __name(levelColor2, "levelColor");
 function useMasterMeter() {
-  const elsRef = React36.useRef(null);
-  const stateRef = React36.useRef(ZERO_METER);
-  const analyserRef = React36.useRef(null);
-  const bufRef = React36.useRef(null);
-  const rafRef = React36.useRef(null);
-  const lastTsRef = React36.useRef(0);
-  const [fileId, setFileId] = React36.useState(() => getActiveFileId());
-  React36.useEffect(() => {
+  const elsRef = React35.useRef(null);
+  const stateRef = React35.useRef(ZERO_METER);
+  const analyserRef = React35.useRef(null);
+  const bufRef = React35.useRef(null);
+  const rafRef = React35.useRef(null);
+  const lastTsRef = React35.useRef(0);
+  const [fileId, setFileId] = React35.useState(() => getActiveFileId());
+  React35.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React36.useCallback((els) => {
+  const register = React35.useCallback((els) => {
     elsRef.current = els;
     if (!els) stateRef.current = ZERO_METER;
   }, []);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       analyserRef.current = analyserOf(payload);
     }) : (() => {
@@ -30908,7 +30868,7 @@ function useMasterMeter() {
       stateRef.current = ZERO_METER;
     };
   }, [fileId]);
-  return React36.useMemo(() => ({ register }), [register]);
+  return React35.useMemo(() => ({ register }), [register]);
 }
 __name(useMasterMeter, "useMasterMeter");
 var KEY_PREFIX2 = "stave:mixer.master:";
@@ -30981,8 +30941,8 @@ function subscribe6(listener) {
 }
 __name(subscribe6, "subscribe");
 function useActiveFileId3() {
-  const [id, setId] = React36.useState(() => getActiveFileId());
-  React36.useEffect(() => {
+  const [id, setId] = React35.useState(() => getActiveFileId());
+  React35.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -30991,12 +30951,12 @@ function useActiveFileId3() {
 __name(useActiveFileId3, "useActiveFileId");
 function useMasterGain() {
   const fileId = useActiveFileId3();
-  const gain = React36.useSyncExternalStore(
+  const gain = React35.useSyncExternalStore(
     subscribe6,
     () => getMasterGain(fileId),
     () => DEFAULT_MASTER_GAIN
   );
-  const setGain = React36.useCallback(
+  const setGain = React35.useCallback(
     (value) => {
       if (fileId) setMasterGain(fileId, value);
     },
@@ -31011,9 +30971,9 @@ var clamp016 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01
 function MasterStrip({ zoom = 1 } = {}) {
   const meter = useMasterMeter();
   const { gain, setGain } = useMasterGain();
-  const fillRef = React36.useRef(null);
-  const peakRef = React36.useRef(null);
-  React36.useEffect(() => {
+  const fillRef = React35.useRef(null);
+  const peakRef = React35.useRef(null);
+  React35.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -31021,7 +30981,7 @@ function MasterStrip({ zoom = 1 } = {}) {
     return () => meter.register(null);
   }, [meter]);
   const pos = gainToFaderPos(gain);
-  const drag = React36.useRef(null);
+  const drag = React35.useRef(null);
   const onDown = /* @__PURE__ */ __name((e) => {
     e.preventDefault();
     e.target.setPointerCapture?.(e.pointerId);
@@ -31208,11 +31168,11 @@ function MixerStrips({
 } = {}) {
   const { strips, chunks, applyToStrip, beginGesture, endGesture, selectedId, selectTrack } = useMixerModel();
   const meters = useTrackMeters();
-  const [fileId, setFileId] = React36.useState(() => getActiveFileId());
-  React36.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React35.useState(() => getActiveFileId());
+  React35.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
   const { expanded, toggle } = useExpandedStrips();
-  const { soloed, toggle: toggleSolo2 } = useSoloMuteSync();
+  const { soloed, toggle: toggleSolo2 } = useSoloStrips();
   const soloActive = soloed.size > 0;
   if (strips.length === 0) return /* @__PURE__ */ jsx(Fragment, { children: emptyFallback ?? null });
   return /* @__PURE__ */ jsxs(
@@ -31377,7 +31337,7 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React36.createElement(Panel)
+      content: React35.createElement(Panel)
     });
   }
 }
@@ -31391,24 +31351,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React36.useState(opts.initial);
-  const [dragging, setDragging] = React36.useState(false);
-  const startYRef = React36.useRef(0);
-  const startValueRef = React36.useRef(opts.initial);
-  const pointerIdRef = React36.useRef(null);
-  const draggingRef = React36.useRef(false);
-  const minRef = React36.useRef(opts.min);
-  const maxRef = React36.useRef(opts.max);
-  React36.useEffect(() => {
+  const [value, setValueState] = React35.useState(opts.initial);
+  const [dragging, setDragging] = React35.useState(false);
+  const startYRef = React35.useRef(0);
+  const startValueRef = React35.useRef(opts.initial);
+  const pointerIdRef = React35.useRef(null);
+  const draggingRef = React35.useRef(false);
+  const minRef = React35.useRef(opts.min);
+  const maxRef = React35.useRef(opts.max);
+  React35.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React36.useCallback((v) => {
+  const setValue = React35.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React36.useCallback(
+  const onPointerDown = React35.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -31423,7 +31383,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React36.useCallback(
+  const endDrag = React35.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -31438,7 +31398,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React36.useCallback(
+  const onPointerMove = React35.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -31454,13 +31414,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React36.useCallback(
+  const onPointerUp = React35.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React36.useCallback(
+  const onPointerCancel = React35.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -31488,15 +31448,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React36.useState(
+  const [tabs2, setTabs] = React35.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React36.useState(readPersistedOpen);
-  const [height, setHeight] = React36.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React36.useState(
+  const [open, setOpen] = React35.useState(readPersistedOpen);
+  const [height, setHeight] = React35.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React35.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -31506,10 +31466,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -31521,25 +31481,25 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const wasOpenOnTabPressRef = React36.useRef(open);
-  const tabButtonRefs = React36.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React36.useCallback(
+  const wasOpenOnTabPressRef = React35.useRef(open);
+  const tabButtonRefs = React35.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React35.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React36.useCallback((id) => {
+  const focusTab = React35.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React36.useCallback(
+  const onTabsKeyDown = React35.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -33685,7 +33645,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsx(React36__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsx(React35__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsx(
                 SplitPane,
@@ -33693,7 +33653,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsx(React36__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsx(React35__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -36173,10 +36133,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React36.useReducer((x) => x + 1, 0);
-  React36.useEffect(() => subscribeToHistory(force), []);
-  React36.useEffect(() => subscribeToRuntimeView(force), []);
-  React36.useEffect(() => {
+  const [, force] = React35.useReducer((x) => x + 1, 0);
+  React35.useEffect(() => subscribeToHistory(force), []);
+  React35.useEffect(() => subscribeToRuntimeView(force), []);
+  React35.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -36193,17 +36153,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React36.useState(null);
-  const [forkName, setForkName] = React36.useState("");
-  const [committing, setCommitting] = React36.useState(false);
-  const [commitLabel, setCommitLabel] = React36.useState("");
-  const [expanded, setExpanded] = React36.useState(null);
-  const [hovered, setHovered] = React36.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React36.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React36.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React36.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React35.useState(null);
+  const [forkName, setForkName] = React35.useState("");
+  const [committing, setCommitting] = React35.useState(false);
+  const [commitLabel, setCommitLabel] = React35.useState("");
+  const [expanded, setExpanded] = React35.useState(null);
+  const [hovered, setHovered] = React35.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React35.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React35.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React35.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React36.useEffect(() => {
+  React35.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -36830,8 +36790,8 @@ function StaveInputsPanel({ kind }) {
     let playStartT = 0;
     let idlePainted = false;
     const paintIdle = /* @__PURE__ */ __name(() => {
-      for (const refs of valueRefs.current) {
-        if (refs?.text) refs.text.textContent = "\u2014";
+      for (const refs2 of valueRefs.current) {
+        if (refs2?.text) refs2.text.textContent = "\u2014";
       }
     }, "paintIdle");
     const loop = /* @__PURE__ */ __name((t) => {
@@ -37115,6 +37075,47 @@ function VizEditorChrome({
             }
           ),
           /* @__PURE__ */ jsx(
+            "label",
+            {
+              htmlFor: `viz-chrome-source-${file.id}`,
+              style: { color: "var(--foreground-muted)", fontSize: 10 },
+              children: "source:"
+            }
+          ),
+          /* @__PURE__ */ jsxs(
+            "select",
+            {
+              id: `viz-chrome-source-${file.id}`,
+              "data-testid": "viz-chrome-source",
+              value: refToString(selectedSource),
+              onChange: handleSourceChange,
+              style: {
+                background: "var(--surface-elevated)",
+                color: "var(--foreground)",
+                border: "1px solid var(--border)",
+                borderRadius: 3,
+                padding: "2px 6px",
+                fontSize: 10,
+                fontFamily: "inherit",
+                cursor: "pointer"
+              },
+              children: [
+                /* @__PURE__ */ jsx("option", { value: "default", children: "default (follow most recent)" }),
+                /* @__PURE__ */ jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
+                (() => {
+                  const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
+                  if (patternSources.length === 0) return null;
+                  return /* @__PURE__ */ jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxs("option", { value: `file:${source.sourceId}`, children: [
+                    source.playing ? "\u25CF " : "\u25CB ",
+                    source.label
+                  ] }, source.sourceId)) });
+                })(),
+                /* @__PURE__ */ jsx("option", { value: "none", children: "none (demo mode)" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsx("div", { style: { flex: 1 } }),
+          /* @__PURE__ */ jsx(
             "button",
             {
               "data-testid": "viz-chrome-bg-toggle",
@@ -37161,48 +37162,7 @@ function VizEditorChrome({
               },
               children: liveOn ? "\u27F3 live" : "\u27F3"
             }
-          ),
-          /* @__PURE__ */ jsx(
-            "label",
-            {
-              htmlFor: `viz-chrome-source-${file.id}`,
-              style: { color: "var(--foreground-muted)", fontSize: 10 },
-              children: "source:"
-            }
-          ),
-          /* @__PURE__ */ jsxs(
-            "select",
-            {
-              id: `viz-chrome-source-${file.id}`,
-              "data-testid": "viz-chrome-source",
-              value: refToString(selectedSource),
-              onChange: handleSourceChange,
-              style: {
-                background: "var(--surface-elevated)",
-                color: "var(--foreground)",
-                border: "1px solid var(--border)",
-                borderRadius: 3,
-                padding: "2px 6px",
-                fontSize: 10,
-                fontFamily: "inherit",
-                cursor: "pointer"
-              },
-              children: [
-                /* @__PURE__ */ jsx("option", { value: "default", children: "default (follow most recent)" }),
-                /* @__PURE__ */ jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
-                (() => {
-                  const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
-                  if (patternSources.length === 0) return null;
-                  return /* @__PURE__ */ jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxs("option", { value: `file:${source.sourceId}`, children: [
-                    source.playing ? "\u25CF " : "\u25CB ",
-                    source.label
-                  ] }, source.sourceId)) });
-                })(),
-                /* @__PURE__ */ jsx("option", { value: "none", children: "none (demo mode)" })
-              ]
-            }
-          ),
-          /* @__PURE__ */ jsx("div", { style: { flex: 1 } })
+          )
         ]
       }
     ),
@@ -38108,6 +38068,50 @@ function pruneTrackMetaForCode(fileId, code) {
   pruneTrackMeta(fileId, names);
 }
 __name(pruneTrackMetaForCode, "pruneTrackMetaForCode");
+function silencedNamesFrom(strips, soloed) {
+  const soloActive = soloed.size > 0;
+  const out = /* @__PURE__ */ new Set();
+  for (const s of strips) {
+    if (s.muted || soloActive && !soloed.has(s.id)) out.add(s.name);
+  }
+  return out;
+}
+__name(silencedNamesFrom, "silencedNamesFrom");
+function useSilencedTrackNames() {
+  const soloed = useSoloedIds();
+  const [editor, setEditor] = React35.useState(() => getActiveEditor());
+  const [strips, setStrips] = React35.useState([]);
+  React35.useEffect(() => {
+    setEditor(getActiveEditor());
+    return onActiveEditorChange(() => setEditor(getActiveEditor()));
+  }, []);
+  React35.useEffect(() => {
+    if (!editor) {
+      setStrips([]);
+      return;
+    }
+    const rederive = /* @__PURE__ */ __name(() => {
+      const model2 = editor.getModel?.();
+      if (!model2) {
+        setStrips([]);
+        return;
+      }
+      setStrips(
+        buildStripModels(detectAllChunks(model2.getValue())).map((s) => ({
+          id: s.id,
+          name: s.name,
+          muted: s.muted
+        }))
+      );
+    }, "rederive");
+    rederive();
+    const model = editor.getModel?.();
+    const sub = model?.onDidChangeContent?.(rederive);
+    return () => sub?.dispose?.();
+  }, [editor]);
+  return React35.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
+}
+__name(useSilencedTrackNames, "useSilencedTrackNames");
 
 // src/workspace/tabPersistence.ts
 function validBackdropOpacity(v) {
@@ -38303,6 +38307,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyMasterGain, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getMasterGain, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerMasterGainHandler, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMasterGain, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useMasterGain, useNoteColorMode, usePopoutPreview, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyMasterGain, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getMasterGain, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerMasterGainHandler, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMasterGain, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useMasterGain, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

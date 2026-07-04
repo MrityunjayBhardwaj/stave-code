@@ -84,6 +84,24 @@ function useActiveFileId(): string | null {
 }
 
 /**
+ * The soloed-strip set for the active file — READ-ONLY (no toggle). The Song
+ * Timeline lane fade (PV155) OBSERVES solo through this to reflect it VISUALLY.
+ * Reading this set can never, on its own, change what's audible: solo's `_` mute
+ * writes are done only by the Mixer's solo buttons (via `soloMuteSync`), never by
+ * a view that merely observes solo. Backed by the same external store as
+ * `useSoloStrips` (which reads through this), so it lights the instant a solo is
+ * toggled anywhere.
+ */
+export function useSoloedIds(): ReadonlySet<string> {
+  const fileId = useActiveFileId()
+  return React.useSyncExternalStore(
+    subscribe,
+    () => read(fileId),
+    () => EMPTY,
+  )
+}
+
+/**
  * The soloed-strip set for the active file + a toggle of the in-memory highlight
  * set. The audible/visible effect (the `_` markers) is written by `soloMuteSync`,
  * which wraps this; the Mixer reads `soloed` here to light the solo button.
@@ -93,11 +111,9 @@ export function useSoloStrips(): {
   toggle: (id: string) => void
 } {
   const fileId = useActiveFileId()
-  const soloed = React.useSyncExternalStore(
-    subscribe,
-    () => read(fileId),
-    () => EMPTY,
-  )
+  // Read through the shared read-only observer so the two hooks can't drift on
+  // how they snapshot the store; this one adds the toggle.
+  const soloed = useSoloedIds()
   const toggle = React.useCallback(
     (id: string) => {
       if (fileId) toggleSolo(fileId, id)
