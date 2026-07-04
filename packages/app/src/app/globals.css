@@ -174,9 +174,12 @@ body {
    - the floating popup widgets (suggest / hover / signature help /
      find-replace) — their readable opaque theme surface must survive over
      the viz, else the widget (IntelliSense docs box, or the Cmd+F find
-     widget) goes transparent and unreadable (#598, #681). */
+     widget) goes transparent and unreadable (#598, #681);
+   - the per-track colour-bar segments (`[data-track-colour-bar]`, #608) —
+     the stripe IS its background colour, and showing the track's identity
+     over the viz is the whole point, so blanking it defeats the bar (#721). */
 [data-stave-code-panel][data-stave-backdrop="on"] .monaco-editor,
-[data-stave-code-panel][data-stave-backdrop="on"] .monaco-editor *:not(.selected-text):not(.selectionHighlight):not(.current-line-margin):not(.current-line):not(.minimap-slider-horizontal):not(.cursor):not(.suggest-widget):not(.suggest-widget *):not(.monaco-hover):not(.monaco-hover *):not(.parameter-hints-widget):not(.parameter-hints-widget *):not(.find-widget):not(.find-widget *) {
+[data-stave-code-panel][data-stave-backdrop="on"] .monaco-editor *:not(.selected-text):not(.selectionHighlight):not(.current-line-margin):not(.current-line):not(.minimap-slider-horizontal):not(.cursor):not(.suggest-widget):not(.suggest-widget *):not(.monaco-hover):not(.monaco-hover *):not(.parameter-hints-widget):not(.parameter-hints-widget *):not(.find-widget):not(.find-widget *):not([data-track-colour-bar]) {
   background-color: transparent !important;
 }
 

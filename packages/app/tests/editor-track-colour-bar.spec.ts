@@ -139,3 +139,30 @@ test('the colour bar stays continuous across a word-wrapped track', async ({ pag
   // The segment covers the whole wrapped block height (allow a few px slack).
   expect(Math.abs(probe.segHeight - probe.contentSpanPx)).toBeLessThanOrEqual(4)
 })
+
+test('the colour bar keeps its colour when a background viz is active (#721)', async ({ page }) => {
+  await boot(page)
+  await setCode(page, `bass: s("bd*4")\nlead: note("c e g")\n$: s("hh*8")`)
+
+  // Sanity: opaque colours before any backdrop.
+  const before = await readSegments(page)
+  expect(before.length).toBe(3)
+  for (const s of before) expect(s.bg).not.toBe('rgba(0, 0, 0, 0)')
+
+  // Turn the backdrop on (same attribute the "set as background" flow flips).
+  // The backdrop-transparency blanket in globals.css neutralises Monaco's
+  // opaque layers so the viz shows through; the colour-bar segments must be
+  // exempt (allowlist) or the stripe vanishes over the viz.
+  await page.evaluate(() => {
+    document
+      .querySelectorAll('[data-stave-code-panel]')
+      .forEach((p) => p.setAttribute('data-stave-backdrop', 'on'))
+  })
+  await page.waitForTimeout(200)
+
+  const after = await readSegments(page)
+  expect(after.length).toBe(3)
+  for (const s of after) expect(s.bg).not.toBe('rgba(0, 0, 0, 0)')
+  // Colours are unchanged by the backdrop — byte-identical to before.
+  expect(after.map((s) => s.bg)).toEqual(before.map((s) => s.bg))
+})
