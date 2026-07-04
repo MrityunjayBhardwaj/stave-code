@@ -68,6 +68,7 @@ import {
   installGlobalErrorCatch,
   seedWorkspaceFile,
   setContent,
+  revealLineInFile,
 } from "@stave/editor";
 import StrudelEditorClient from "./StrudelEditorClient";
 import { MusicalTimeline } from "./MusicalTimeline";
@@ -181,7 +182,42 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       const text = entry.suggestion
         ? `${entry.message} → try \`${entry.suggestion.name}\``
         : entry.message;
-      showToast(text, "error");
+      // Clicking the toast body opens the Console panel; when the entry
+      // carries a source location it also opens that file and jumps the
+      // editor to the offending line. `source` is a workspace path OR a
+      // bare fileId (StrudelEditorClient uses `path ?? fileId`), so try
+      // both. The editor may need a tick to mount if the file wasn't
+      // already open — retry the reveal a few times before giving up.
+      const { source } = entry;
+      // Prefer the engine-attached line (from the error stack). When that's
+      // absent — the common case for parser SYNTAX errors, whose stack the
+      // engine can't map — fall back to the "(line:col)" location Strudel/
+      // acorn embeds at the END of the message (e.g. "Unexpected token
+      // (2:11)"). Runtime errors that carry neither simply open the Console
+      // without a jump.
+      let line = entry.line;
+      if (line == null) {
+        const m = /\((\d+):\d+\)\s*$/.exec(entry.message);
+        if (m) line = parseInt(m[1], 10);
+      }
+      const onActivate = () => {
+        setActivePanelId("console");
+        if (!source || line == null) return;
+        const files = listWorkspaceFiles();
+        const file =
+          files.find((f) => f.path === source) ??
+          files.find((f) => f.id === source);
+        if (!file) return;
+        // Open/focus the tab (no-op focus if already active), then reveal.
+        shellRef.current?.openOrFocusFile(file.id);
+        let tries = 0;
+        const reveal = () => {
+          if (revealLineInFile(file.id, line!) || tries++ >= 8) return;
+          setTimeout(reveal, 60);
+        };
+        reveal();
+      };
+      showToast(text, "error", 4000, onActivate);
     });
   }, []);
 

@@ -46,3 +46,29 @@ describe("showToast — visible cap (#565)", () => {
     expect(getToasts().map((t) => t.message)).toEqual(["two"]);
   });
 });
+
+describe("showToast — onActivate click action (#718)", () => {
+  it("carries the onActivate callback onto the toast", () => {
+    const fn = () => {};
+    showToast("boom", "error", 4000, fn);
+    expect(getToasts()[0].onActivate).toBe(fn);
+  });
+
+  it("leaves onActivate undefined for a plain toast", () => {
+    showToast("info");
+    expect(getToasts()[0].onActivate).toBeUndefined();
+  });
+
+  it("repoints onActivate to the latest emit when a message dedupes", () => {
+    const first = () => {};
+    const second = () => {};
+    showToast("same", "error", 4000, first);
+    showToast("same", "error", 4000, second);
+    const visible = getToasts();
+    expect(visible).toHaveLength(1);
+    expect(visible[0].count).toBe(2);
+    // A re-fired error may carry a fresh source line — the action must
+    // point at the newest, not the first.
+    expect(visible[0].onActivate).toBe(second);
+  });
+});
