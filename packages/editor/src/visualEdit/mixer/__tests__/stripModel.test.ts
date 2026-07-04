@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest'
 
-import { detectAllChunks } from '../../chunkDetect'
-import { buildStripModels, statementOffsetForSource, otherTrackNames } from '../stripModel'
+import { detectAllChunks, detectChunk } from '../../chunkDetect'
+import {
+  buildStripModels,
+  statementOffsetForSource,
+  otherTrackNames,
+  stripContainingOffset,
+} from '../stripModel'
 import { colorForTrack } from '../../trackColor'
 
 /** strips for a whole document, the read path the Mixer actually uses */
@@ -266,5 +271,45 @@ describe('otherTrackNames — the rename collision set (#585)', () => {
   it('an unmatched offset excludes nothing → all names', () => {
     const doc = ['bass: s("bd")', 'lead: s("hh")'].join('\n')
     expect(otherTrackNames(doc, 9999)).toEqual(['bass', 'lead'])
+  })
+})
+
+describe('stripContainingOffset — owning strip for a nested chunk (#727)', () => {
+  // A pickRestart "player" track: editing a section makes the active chunk NESTED
+  // (its statementRange is the section span, not the owning statement).
+  const PLAYER = `drums: "<~@4 verse@8 chorus@8>".pickRestart({
+  verse: s("bd ~ sd ~ bd bd sd ~").bank("ajkpercusyn").gain(0.136),
+  chorus: s("bd ~ [bd,sd] ~ bd ~ [bd,sd] ~").bank("RolandTR909"),
+})._pianoroll()`
+
+  it('resolves a pickRestart SECTION chunk back to its owning drums strip', () => {
+    const strips = stripsOf(PLAYER)
+    // cursor inside the `verse` section → nested chunk, label null
+    const chunk = detectChunk(PLAYER, PLAYER.indexOf('bd ~ sd'))
+    expect(chunk).not.toBeNull()
+    expect(chunk!.label).toBeNull() // nested chunk carries no track label
+    // pre-fix exact-start match found nothing → chip returned null (no name)
+    expect(strips.some((s) => s.statementRange[0] === chunk!.statementRange[0])).toBe(false)
+    // containment resolves it to the drums strip → the chip shows "drums"
+    const owner = stripContainingOffset(strips, chunk!.statementRange[0])
+    expect(owner?.name).toBe('drums')
+  })
+
+  it('still resolves a top-level chunk to its own strip', () => {
+    const strips = stripsOf(PLAYER)
+    const chunk = detectChunk(PLAYER, PLAYER.indexOf('verse@8')) // on the control string
+    expect(stripContainingOffset(strips, chunk!.statementRange[0])?.name).toBe('drums')
+  })
+
+  it('resolves a stack(...) arm chunk to its owning strip', () => {
+    const doc = 'lead: stack(\n  s("bd*4"),\n  note("c e g")\n)'
+    const strips = stripsOf(doc)
+    const chunk = detectChunk(doc, doc.indexOf('c e g'))
+    expect(chunk!.label).toBeNull()
+    expect(stripContainingOffset(strips, chunk!.statementRange[0])?.name).toBe('lead')
+  })
+
+  it('returns undefined for an offset in no statement', () => {
+    expect(stripContainingOffset(stripsOf(PLAYER), 99999)).toBeUndefined()
   })
 })

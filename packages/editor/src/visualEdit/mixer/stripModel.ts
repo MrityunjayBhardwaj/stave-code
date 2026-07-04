@@ -322,3 +322,22 @@ export function otherTrackNames(doc: string, selfStatementStart: number): string
     .filter((s) => s.statementRange[0] !== selfStatementStart)
     .map((s) => s.name)
 }
+
+/**
+ * The strip that OWNS a given source offset — the top-level statement whose
+ * `statementRange` contains `offset`. Strips are one-per-top-level-statement, so
+ * this resolves BOTH a top-level active chunk (anchor == the strip's own start)
+ * AND a NESTED chunk (a `pickRestart` section / `stack` arm / `arrange` arm,
+ * whose `statementRange` is the nested span, `chunkDetect.ts:122-128`) back to
+ * its owning track (#727). An exact-start match only handled the top-level case,
+ * so the Pattern-tab chip lost the name whenever the cursor sat inside a nested
+ * pattern. Statements don't overlap → at most one strip contains any offset.
+ */
+export function stripContainingOffset(
+  strips: StripModel[],
+  offset: number,
+): StripModel | undefined {
+  return strips.find(
+    (s) => s.statementRange[0] <= offset && offset < s.statementRange[1],
+  )
+}
