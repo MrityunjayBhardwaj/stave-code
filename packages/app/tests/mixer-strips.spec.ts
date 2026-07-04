@@ -781,7 +781,7 @@ test.describe('Mixer master + solo (#550 / S5)', () => {
     expect(mx).toBeGreaterThan(15)
   })
 
-  test('solo silences non-soloed tracks via an eval overlay; the file is untouched', async ({
+  test('solo writes `_` on non-soloed tracks (silenced + in the file); un-solo restores (#735)', async ({
     page,
   }) => {
     await boot(page)
@@ -801,14 +801,18 @@ test.describe('Mixer master + solo (#550 / S5)', () => {
     }
     expect(d2pre).toBeGreaterThan(20)
 
-    // SOLO d1 → d2 silenced by the overlay, d1 stays, FILE byte-identical (D3)
+    // SOLO d1 → d2 is MUTED IN THE FILE (`_d2`) and silenced; d1 stays audible.
+    // (Solo is now a code operation — #735 — so the mute marker, and thus the
+    // silence, comes off the file exactly like a hand mute.)
     await clickSolo(page, drawer, 'd1')
     await page.waitForTimeout(2500) // re-eval + a cycle to flush queued haps
     expect(await sustainedMean(() => meterFill(page, drawer, 'd2'), 20, page)).toBeLessThan(8)
     expect(await sustainedMean(() => meterFill(page, drawer, 'd1'), 20, page)).toBeGreaterThan(20)
-    expect(await strudelValue(page)).toBe(original) // solo never writes the file
+    expect(await strudelValue(page)).toBe(
+      'd1: s("bd*8").gain(0.9)\n_d2: s("hh*8").gain(0.9)',
+    ) // solo wrote `_d2`; d1 (soloed) is untouched
 
-    // UNSOLO → d2 comes back
+    // UNSOLO → the marker is removed, d2 comes back, file back to the original.
     await clickSolo(page, drawer, 'd1')
     await page.waitForTimeout(2500)
     expect(await sustainedMean(() => meterFill(page, drawer, 'd2'), 20, page)).toBeGreaterThan(20)

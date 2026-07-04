@@ -1,32 +1,24 @@
 /**
- * soloStore — which Mixer strips are soloed (#550-S5, design §6.5 / D3).
+ * soloStore — which Mixer strips are soloed, PLUS the pre-solo mute snapshot.
  *
- * Solo is the most ephemeral mixer state: a transient "let me hear these alone."
- * It is NEVER written to the file (D3) AND — unlike expand — never persisted to
- * localStorage either; it lives only in memory for the session. Per file (strip
- * ids are document-scoped), like the meters and expand state.
+ * Solo now WRITES the `_` mute markers into the code (#735): soloing a track
+ * mutes every other track in the SOURCE (visible + bidirectional, like mute), and
+ * the engine silences them off the file's markers — there is no longer an
+ * eval-time overlay. What the code can't carry lives here, per file, in memory:
  *
- * The store does two things beyond holding the set:
- *  1. It registers ONE eval-source transform (`registerEvalSourceTransform`) the
- *     first time a solo UI mounts, so the app's `getFileContent` runs the source
- *     through `applyMonitorOverlay` at eval time — silencing non-soloed tracks in
- *     the STRING sent to the engine, never the file. Ref-counted: when the last
- *     consumer unmounts, the transform is removed (full playback restored).
- *  2. On every toggle it calls `requestReeval(fileId)` so solo takes audible
- *     effect immediately while playing (the S3 live seam), exactly like mute.
+ *   1. `soloed` — which track(s) the user soloed, so the Mixer can HIGHLIGHT the
+ *      solo button as distinct from a plain mute. Session-only, never persisted.
+ *   2. `preSoloMutes` — a snapshot of the hand-set mutes taken when solo BEGAN
+ *      (empty→non-empty), so CLEARING solo restores exactly those instead of
+ *      wiping every `_`. This is the seam that keeps a mute you set by hand alive
+ *      across a solo→un-solo round-trip.
  *
- * Backed by a tiny external store (`useSyncExternalStore`); a per-file cache
- * keeps the snapshot referentially stable.
+ * The actual `_` writes live in `soloMuteSync` (they need the editor); this file
+ * is pure in-memory state + a `useSyncExternalStore` subscription.
  */
 import * as React from 'react'
 
-import {
-  getActiveFileId,
-  onActiveEditorChange,
-  registerEvalSourceTransform,
-  requestReeval,
-} from '../../workspace/editorRegistry'
-import { applyMonitorOverlay } from './soloOverlay'
+import { getActiveFileId, onActiveEditorChange } from '../../workspace/editorRegistry'
 
 const EMPTY: ReadonlySet<string> = new Set<string>()
 
@@ -34,6 +26,9 @@ const EMPTY: ReadonlySet<string> = new Set<string>()
 // ephemeral). The cached Set is returned by reference until a toggle replaces
 // it, so `getSnapshot` stays stable.
 const cache = new Map<string, Set<string>>()
+// Per-file snapshot of the mutes present when solo BEGAN (absent = no solo
+// active). Restored verbatim when solo clears, so hand-set mutes survive.
+const snapshots = new Map<string, ReadonlySet<string>>()
 const listeners = new Set<() => void>()
 
 function read(fileId: string | null): ReadonlySet<string> {
@@ -41,45 +36,40 @@ function read(fileId: string | null): ReadonlySet<string> {
   return cache.get(fileId) ?? EMPTY
 }
 
-/** flip a strip's solo for a file, then re-eval so it's audible immediately. */
+/**
+ * Flip a strip's solo membership for a file (the in-memory HIGHLIGHT set only —
+ * the `_` mute writes are done by the caller in `soloMuteSync`, which owns the
+ * editor). New Set ref → snapshot changes → the Mixer re-renders the button.
+ */
 export function toggleSolo(fileId: string, id: string): void {
-  const next = new Set(read(fileId)) // new ref → snapshot changes → re-render
+  const next = new Set(read(fileId))
   if (next.has(id)) next.delete(id)
   else next.add(id)
   if (next.size === 0) cache.delete(fileId)
   else cache.set(fileId, next)
   listeners.forEach((l) => l())
-  // Live: re-eval the playing file so the overlay (or its removal) is heard now.
-  requestReeval(fileId)
+}
+
+/** The pre-solo mute snapshot for a file, or null when no solo is active. */
+export function getPreSoloMutes(fileId: string | null): ReadonlySet<string> | null {
+  if (!fileId) return null
+  return snapshots.get(fileId) ?? null
+}
+
+/** Record the pre-solo mute snapshot for a file (null clears it). */
+export function setPreSoloMutes(
+  fileId: string | null,
+  snapshot: ReadonlySet<string> | null,
+): void {
+  if (!fileId) return
+  if (snapshot === null) snapshots.delete(fileId)
+  else snapshots.set(fileId, snapshot)
 }
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener)
   return () => {
     listeners.delete(listener)
-  }
-}
-
-// ── the single eval-source transform, ref-counted to the mounted solo UIs ──
-let refs = 0
-let unregister: (() => void) | null = null
-
-function acquireTransform(): void {
-  if (refs++ === 0) {
-    // Reads the CURRENT solo set for whichever file is being evaluated, so it
-    // stays correct across edits and file switches. Identity when nothing is
-    // soloed (applyMonitorOverlay short-circuits).
-    unregister = registerEvalSourceTransform((fileId, raw) =>
-      applyMonitorOverlay(raw, read(fileId)),
-    )
-  }
-}
-
-function releaseTransform(): void {
-  if (--refs <= 0) {
-    refs = 0
-    unregister?.()
-    unregister = null
   }
 }
 
@@ -94,19 +84,15 @@ function useActiveFileId(): string | null {
 }
 
 /**
- * The soloed-strip set for the active file + a toggle. Mounting registers the
- * eval-source overlay (ref-counted); unmounting removes it (full playback). A
- * change re-renders the console and re-evals the playing file (live).
+ * The soloed-strip set for the active file + a toggle of the in-memory highlight
+ * set. The audible/visible effect (the `_` markers) is written by `soloMuteSync`,
+ * which wraps this; the Mixer reads `soloed` here to light the solo button.
  */
 export function useSoloStrips(): {
   soloed: ReadonlySet<string>
   toggle: (id: string) => void
 } {
   const fileId = useActiveFileId()
-  React.useEffect(() => {
-    acquireTransform()
-    return releaseTransform
-  }, [])
   const soloed = React.useSyncExternalStore(
     subscribe,
     () => read(fileId),

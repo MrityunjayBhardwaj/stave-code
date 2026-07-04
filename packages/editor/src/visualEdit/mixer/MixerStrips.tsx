@@ -18,7 +18,7 @@ import * as React from 'react'
 import { useMixerModel } from './useMixerModel'
 import { useTrackMeters } from './useTrackMeters'
 import { useExpandedStrips } from './expandStore'
-import { useSoloStrips } from './soloStore'
+import { useSoloMuteSync } from './soloMuteSync'
 import { ChannelStrip } from './ChannelStrip'
 import { ExpandDrawer } from './ExpandDrawer'
 import { MasterStrip } from './MasterStrip'
@@ -70,7 +70,7 @@ export function MixerStrips({
   const { expanded, toggle } = useExpandedStrips()
   // Solo (S5): session-ephemeral, never persisted/written; applies an eval-input
   // overlay that silences non-soloed tracks in the string sent to the engine.
-  const { soloed, toggle: toggleSolo } = useSoloStrips()
+  const { soloed, toggle: toggleSolo } = useSoloMuteSync()
   const soloActive = soloed.size > 0
   if (strips.length === 0) return <>{emptyFallback ?? null}</>
 

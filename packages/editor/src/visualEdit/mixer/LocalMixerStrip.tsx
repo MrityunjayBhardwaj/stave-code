@@ -24,7 +24,7 @@ import * as React from 'react'
 import { useActiveChunk } from '../panels/useActiveChunk'
 import { useMixerModel } from './useMixerModel'
 import { useTrackMeters } from './useTrackMeters'
-import { useSoloStrips } from './soloStore'
+import { useSoloMuteSync } from './soloMuteSync'
 import { ChannelStrip } from './ChannelStrip'
 import { gainEdit, panEdit, muteEdit } from './writeStrip'
 
@@ -32,7 +32,7 @@ export function LocalMixerStrip(): React.ReactElement | null {
   const { chunk } = useActiveChunk()
   const { strips, applyToStrip, beginGesture, endGesture } = useMixerModel()
   const meters = useTrackMeters()
-  const { soloed, toggle: toggleSolo } = useSoloStrips()
+  const { soloed, toggle: toggleSolo } = useSoloMuteSync()
 
   // The cursor's top-level track: the strip whose statement contains the cursor
   // chunk's range. Exact match at top level; the containing parent for a nested
