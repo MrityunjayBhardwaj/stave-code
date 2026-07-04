@@ -149,19 +149,25 @@ test('the colour bar keeps its colour when a background viz is active (#721)', a
   expect(before.length).toBe(3)
   for (const s of before) expect(s.bg).not.toBe('rgba(0, 0, 0, 0)')
 
-  // Turn the backdrop on (same attribute the "set as background" flow flips).
-  // The backdrop-transparency blanket in globals.css neutralises Monaco's
-  // opaque layers so the viz shows through; the colour-bar segments must be
-  // exempt (allowlist) or the stripe vanishes over the viz.
-  await page.evaluate(() => {
-    document
-      .querySelectorAll('[data-stave-code-panel]')
-      .forEach((p) => p.setAttribute('data-stave-backdrop', 'on'))
-  })
-  await page.waitForTimeout(200)
+  // Drive the REAL "set bg" flow (not a forced attribute): open the pattern
+  // chrome's bg dropdown and pick a viz, exactly as a user would. This mounts
+  // `[data-workspace-background]` and flips the panel to backdrop mode, engaging
+  // the transparency blanket in globals.css that neutralises Monaco's opaque
+  // layers. The colour-bar segments must be exempt (allowlist) or the stripe
+  // goes transparent (rgba(0,0,0,0)) and vanishes over the viz.
+  await page.locator('[data-testid="strudel-chrome-bg-toggle"]').click()
+  await page.locator('[data-testid="backdrop-popover"]').waitFor({ timeout: 5000 })
+  const picker = page.locator('[data-testid="backdrop-popover-picker"]')
+  const vizValue = await picker.locator('option').nth(1).getAttribute('value')
+  expect(vizValue).toBeTruthy()
+  await picker.selectOption(vizValue!)
+  await page.locator('[data-workspace-background]').waitFor({ timeout: 5000 })
+  await page.keyboard.press('Escape').catch(() => {})
+  await page.waitForTimeout(300)
 
   const after = await readSegments(page)
   expect(after.length).toBe(3)
+  // The regression: without the allowlist exemption these are all rgba(0,0,0,0).
   for (const s of after) expect(s.bg).not.toBe('rgba(0, 0, 0, 0)')
   // Colours are unchanged by the backdrop — byte-identical to before.
   expect(after.map((s) => s.bg)).toEqual(before.map((s) => s.bg))
