@@ -4352,6 +4352,47 @@ function startsTopLevelBlock(trimmed) {
   return /^_?\$:/.test(trimmed) || trimmed.startsWith("setcps") || trimmed.startsWith("/*");
 }
 __name(startsTopLevelBlock, "startsTopLevelBlock");
+function startsNamedTrack(rawLine) {
+  return /^[A-Za-z_$][\w$]*\s*:/.test(rawLine);
+}
+__name(startsNamedTrack, "startsNamedTrack");
+function startsTopLevelBlockRaw(rawLine) {
+  return startsTopLevelBlock(rawLine.trim()) || startsNamedTrack(rawLine);
+}
+__name(startsTopLevelBlockRaw, "startsTopLevelBlockRaw");
+
+// src/engine/vizLineScan.ts
+function scanVizRequestLines(requests, code, vizOptions) {
+  const result = /* @__PURE__ */ new Map();
+  const lines = code.split("\n");
+  let anonIndex = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const isAnon = raw.trim().startsWith("$:");
+    const namedMatch = isAnon ? null : /^([A-Za-z_$][\w$]*)\s*:/.exec(raw);
+    if (!isAnon && !namedMatch) continue;
+    const key3 = isAnon ? `$${anonIndex++}` : namedMatch[1];
+    const vizId = requests.get(key3);
+    if (!vizId) continue;
+    let lastLineIdx = i;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (startsTopLevelBlockRaw(lines[j])) break;
+      const next = lines[j].trim();
+      if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
+    }
+    const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
+    const contentHash = blockLines.slice(0, 120);
+    const options = vizOptions?.get(key3);
+    result.set(key3, {
+      vizId,
+      afterLine: lastLineIdx + 1,
+      contentHash,
+      ...options ? { options } : {}
+    });
+  }
+  return result;
+}
+__name(scanVizRequestLines, "scanVizRequestLines");
 
 // src/engine/tierFlags.ts
 var STORAGE_PREFIX = "stave.strudel.tier.";
@@ -5431,27 +5472,7 @@ var _StrudelEngine = class _StrudelEngine {
    * viewZones.ts but returns structured data instead of creating DOM zones.
    */
   buildVizRequestsWithLines(requests, code) {
-    const result = /* @__PURE__ */ new Map();
-    const lines = code.split("\n");
-    let anonIndex = 0;
-    for (let i = 0; i < lines.length; i++) {
-      if (!lines[i].trim().startsWith("$:")) continue;
-      const key3 = `$${anonIndex}`;
-      anonIndex++;
-      const vizId = requests.get(key3);
-      if (!vizId) continue;
-      let lastLineIdx = i;
-      for (let j = i + 1; j < lines.length; j++) {
-        const next = lines[j].trim();
-        if (startsTopLevelBlock(next)) break;
-        if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
-      }
-      const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
-      const contentHash = blockLines.slice(0, 120);
-      const options = this.vizOptions.get(key3);
-      result.set(key3, { vizId, afterLine: lastLineIdx + 1, contentHash, ...options ? { options } : {} });
-    }
-    return result;
+    return scanVizRequestLines(requests, code, this.vizOptions);
   }
   play() {
     this.repl?.scheduler?.start();
@@ -22269,11 +22290,11 @@ function findVizCallLineForBlock(code, vizId, targetAfterLine) {
     `\\.viz\\s*\\(\\s*["\`']${escapeRegex(vizId)}["\`']\\s*\\)`
   );
   for (let i = 0; i < lines.length; i++) {
-    if (!lines[i].trim().startsWith("$:")) continue;
+    if (!lines[i].trim().startsWith("$:") && !startsNamedTrack(lines[i])) continue;
     let blockEnd = i;
     for (let j = i + 1; j < lines.length; j++) {
       const next = lines[j].trim();
-      if (startsTopLevelBlock(next)) break;
+      if (startsTopLevelBlockRaw(lines[j])) break;
       if (next !== "" && !next.startsWith("//")) blockEnd = j;
     }
     if (blockEnd + 1 !== targetAfterLine) continue;
@@ -22610,7 +22631,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const vizLineIdx = ranges[0].startLineNumber - 1;
       if (vizLineIdx < 0 || vizLineIdx >= lines.length) continue;
       let blockStart = vizLineIdx;
-      while (blockStart >= 0 && !lines[blockStart].trim().startsWith("$:")) {
+      while (blockStart >= 0 && !lines[blockStart].trim().startsWith("$:") && !startsNamedTrack(lines[blockStart])) {
         blockStart--;
       }
       if (blockStart < 0) continue;
@@ -22618,7 +22639,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       let foundViz = false;
       for (let j = blockStart; j < lines.length; j++) {
         const next = lines[j].trim();
-        if (j > blockStart && startsTopLevelBlock(next)) break;
+        if (j > blockStart && startsTopLevelBlockRaw(lines[j])) break;
         if (next !== "" && !next.startsWith("//")) blockEnd = j;
         if (/\.viz\s*\(/.test(next)) {
           foundViz = true;
@@ -22630,7 +22651,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         blockEnd = blockStart;
         for (let j = blockStart + 1; j < lines.length; j++) {
           const next = lines[j].trim();
-          if (startsTopLevelBlock(next)) break;
+          if (startsTopLevelBlockRaw(lines[j])) break;
           if (next !== "" && !next.startsWith("//")) blockEnd = j;
         }
       }
