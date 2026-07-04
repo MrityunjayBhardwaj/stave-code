@@ -107,3 +107,19 @@ test('no blue focus outline frames the editor when a backdrop is active (#723)',
   // blue frame — it must be suppressed in backdrop mode.
   expect(await editorOutline()).toBe('none')
 })
+
+test('the set-bg popover left-aligns to the button, opening down-and-right (#724)', async ({ page }) => {
+  const btn = page.locator('[data-testid="strudel-chrome-bg-toggle"]')
+  await btn.click()
+  await page.locator('[data-testid="backdrop-popover"]').waitFor()
+
+  const { buttonLeft, popoverLeft, popoverRight, buttonRight } = await page.evaluate(() => {
+    const b = document.querySelector('[data-testid="strudel-chrome-bg-toggle"]')!.getBoundingClientRect()
+    const p = document.querySelector('[data-testid="backdrop-popover"]')!.getBoundingClientRect()
+    return { buttonLeft: b.left, buttonRight: b.right, popoverLeft: p.left, popoverRight: p.right }
+  })
+  // Left edges aligned (allow a sub-pixel rounding slack), and the popover
+  // extends to the RIGHT of the button's left edge (down-and-right), not left.
+  expect(Math.abs(popoverLeft - buttonLeft)).toBeLessThanOrEqual(1)
+  expect(popoverRight).toBeGreaterThan(buttonRight)
+})
