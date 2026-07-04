@@ -17,6 +17,7 @@
 import { IR, type PatternIR, type ArrangeArm } from './PatternIR'
 import type { SourceLocation } from './IREvent'
 import { parseMini } from './parseMini'
+import { trackIdFromLabel } from './trackId'
 
 /**
  * Build the optional `meta` payload for a non-Play smart constructor or
@@ -854,7 +855,7 @@ export function parseStrudel(
       // OUTER-WINS dollarPos → MusicalTimeline `$${pos}` source-anchored
       // slot (PV47 / #119 substrate). Same mechanism `$:` uses, NOT a
       // parallel path.
-      const trackId0 = t.label && t.label !== '$' ? t.label : 'd1'
+      const trackId0 = trackIdFromLabel(t.label, 0)
       return IR.track(trackId0, body, {
         loc: [{ start: t.dollarStart, end: t.end }],
       })
@@ -873,7 +874,7 @@ export function parseStrudel(
         // source-anchored slot identity for BOTH forms — mixed `$:` +
         // `name:` interleave correctly because the unified regex matches
         // both in one scan and dollarStart is always line-start.
-        const trackId = t.label && t.label !== '$' ? t.label : `d${i + 1}`
+        const trackId = trackIdFromLabel(t.label, i)
         return IR.track(trackId, body, {
           loc: [{ start: t.dollarStart, end: t.end }],
         })

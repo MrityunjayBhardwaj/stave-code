@@ -19,6 +19,7 @@
  */
 
 import { IR, type PatternIR } from './PatternIR'
+import { trackIdFromLabel } from './trackId'
 import {
   extractTracks,
   parseRoot,
@@ -280,11 +281,11 @@ export function runChainAppliedStage(input: PatternIR): PatternIR {
           tMeta.dollarStart !== undefined && tMeta.dollarEnd !== undefined
             ? { loc: [{ start: tMeta.dollarStart, end: tMeta.dollarEnd }] }
             : undefined
-        // #671 — a real `name:` label becomes the trackId (mirrors
-        // parseStrudel.ts:876); `$:` (label === '$') keeps the synthetic
-        // `d{i+1}` so existing multi-`$:` tunes stay byte-identical.
-        const trackId =
-          tMeta.trackLabel && tMeta.trackLabel !== '$' ? tMeta.trackLabel : `d${i + 1}`
+        // #671/#737 — a real `name:` label becomes the trackId (mirrors
+        // parseStrudel.ts:876); `$:` (bare label '$', incl. a muted `_$:`)
+        // keeps the synthetic `d{i+1}`. The `_` mute marker is stripped so
+        // identity is mute-invariant (see `trackIdFromLabel`).
+        const trackId = trackIdFromLabel(tMeta.trackLabel, i)
         return IR.track(trackId, applied, meta)
       }),
     )
@@ -300,8 +301,7 @@ export function runChainAppliedStage(input: PatternIR): PatternIR {
   // synthetic `d1` but still gets the loc; a bare pattern (no meta) stays
   // `d1` with NO loc, matching parseStrudel's no-`$:` branch.
   const sMeta = input as unknown as { trackLabel?: string; dollarStart?: number; dollarEnd?: number }
-  const singleTrackId =
-    sMeta.trackLabel && sMeta.trackLabel !== '$' ? sMeta.trackLabel : 'd1'
+  const singleTrackId = trackIdFromLabel(sMeta.trackLabel, 0)
   const singleMeta =
     sMeta.dollarStart !== undefined && sMeta.dollarEnd !== undefined
       ? { loc: [{ start: sMeta.dollarStart, end: sMeta.dollarEnd }] }

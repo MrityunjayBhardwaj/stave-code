@@ -2021,6 +2021,13 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
 }
 __name(parseTokens, "parseTokens");
 
+// src/ir/trackId.ts
+function trackIdFromLabel(label, index) {
+  const bare = label && label.startsWith("_") ? label.slice(1) : label;
+  return bare && bare !== "$" ? bare : `d${index + 1}`;
+}
+__name(trackIdFromLabel, "trackIdFromLabel");
+
 // src/ir/parseStrudel.ts
 function tagMeta(method, callSiteRange) {
   const [start, end] = callSiteRange;
@@ -2313,7 +2320,7 @@ function parseStrudel(code, _opts) {
     if (tracks.length === 1) {
       const t = tracks[0];
       const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, void 0, opts);
-      const trackId0 = t.label && t.label !== "$" ? t.label : "d1";
+      const trackId0 = trackIdFromLabel(t.label, 0);
       return IR.track(trackId0, body, {
         loc: [{ start: t.dollarStart, end: t.end }]
       });
@@ -2321,7 +2328,7 @@ function parseStrudel(code, _opts) {
     return IR.stack(
       ...tracks.map((t, i) => {
         const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, void 0, opts);
-        const trackId = t.label && t.label !== "$" ? t.label : `d${i + 1}`;
+        const trackId = trackIdFromLabel(t.label, i);
         return IR.track(trackId, body, {
           loc: [{ start: t.dollarStart, end: t.end }]
         });
@@ -3501,13 +3508,13 @@ function runChainAppliedStage(input) {
         const tMeta = t;
         const applied = applyOnTrack(t);
         const meta = tMeta.dollarStart !== void 0 && tMeta.dollarEnd !== void 0 ? { loc: [{ start: tMeta.dollarStart, end: tMeta.dollarEnd }] } : void 0;
-        const trackId = tMeta.trackLabel && tMeta.trackLabel !== "$" ? tMeta.trackLabel : `d${i + 1}`;
+        const trackId = trackIdFromLabel(tMeta.trackLabel, i);
         return IR.track(trackId, applied, meta);
       })
     );
   }
   const sMeta = input;
-  const singleTrackId = sMeta.trackLabel && sMeta.trackLabel !== "$" ? sMeta.trackLabel : "d1";
+  const singleTrackId = trackIdFromLabel(sMeta.trackLabel, 0);
   const singleMeta = sMeta.dollarStart !== void 0 && sMeta.dollarEnd !== void 0 ? { loc: [{ start: sMeta.dollarStart, end: sMeta.dollarEnd }] } : void 0;
   return IR.track(singleTrackId, applyOnTrack(input), singleMeta);
 }
