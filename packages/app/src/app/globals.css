@@ -183,6 +183,16 @@ body {
   background-color: transparent !important;
 }
 
+/* Monaco paints a 1px focus outline (`--vscode-focusBorder`, ~#007fd4) on
+   `.monaco-editor` while focused. It's invisible against the opaque editor
+   surface, but with a backdrop on that surface goes transparent and the
+   outline reads as a blue frame around the whole code view (#723). Drop it
+   in backdrop mode; the caret still signals focus, and normal (non-backdrop)
+   focus indication is untouched. */
+[data-stave-code-panel][data-stave-backdrop="on"] .monaco-editor {
+  outline: none !important;
+}
+
 
 /* Viz chrome, runtime chrome, and tab bar sit inside the code
    panel. Make them semi-opaque so buttons stay legible while
