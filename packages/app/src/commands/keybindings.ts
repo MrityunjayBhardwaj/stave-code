@@ -6,23 +6,112 @@
  * two-chord). The dispatcher below matches a KeyboardEvent against
  * those strings.
  *
- * User customization (future): overrides live in a Map keyed by
- * command id → chord string. For now we only consume the command's
- * own declared binding, but the override indirection is already here.
+ * User customization (#743): overrides live in a Map keyed by command id →
+ * chord string, PERSISTED to localStorage (`stave:keybindings`) so a rebind
+ * survives reload. Writes are write-through + notify subscribers. Persistence
+ * lives here in the app package — the editor package must NOT depend on app
+ * commands (layering).
  */
 
-import { executeCommand, listCommands, type Command } from "./registry";
+import { executeCommand, listCommands, getCommand, type Command } from "./registry";
 
-/** Map of command id → override chord. Empty today, future settings UI. */
+const STORAGE_KEY = "stave:keybindings";
+
+/** Map of command id → override chord (user customisation). */
 const overrides = new Map<string, string>();
+
+type KeybindingListener = () => void;
+const keybindingListeners = new Set<KeybindingListener>();
+
+function notifyKeybindings(): void {
+  for (const l of keybindingListeners) l();
+}
+
+/** Subscribe to override changes (set / reset). Returns an unsubscribe. */
+export function subscribeKeybindings(cb: KeybindingListener): () => void {
+  keybindingListeners.add(cb);
+  return () => { keybindingListeners.delete(cb); };
+}
+
+/** SSR-guarded: read persisted overrides once at module load. */
+function loadOverrides(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    for (const [id, chord] of Object.entries(parsed)) {
+      if (typeof chord === "string" && chord) overrides.set(id, chord);
+    }
+  } catch (err) {
+    console.warn("[stave] failed to load persisted keybindings:", err);
+  }
+}
+
+/** SSR-guarded: write the current overrides map through to localStorage. */
+function persistOverrides(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const obj: Record<string, string> = {};
+    for (const [id, chord] of overrides) obj[id] = chord;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+  } catch (err) {
+    console.warn("[stave] failed to persist keybindings:", err);
+  }
+}
+
+loadOverrides();
 
 export function setKeybindingOverride(commandId: string, chord: string | null): void {
   if (chord === null) overrides.delete(commandId);
   else overrides.set(commandId, chord);
+  persistOverrides();
+  notifyKeybindings();
+}
+
+/** True when a command's binding has been user-overridden (differs from default). */
+export function isKeybindingOverridden(commandId: string): boolean {
+  return overrides.has(commandId);
+}
+
+/** Clear every user override — all commands fall back to their declared default. */
+export function resetAllKeybindings(): void {
+  if (overrides.size === 0) return;
+  overrides.clear();
+  persistOverrides();
+  notifyKeybindings();
+}
+
+export function hasAnyKeybindingOverride(): boolean {
+  return overrides.size > 0;
 }
 
 export function getKeybindingFor(cmd: Command): string | undefined {
   return overrides.get(cmd.id) ?? cmd.keybinding;
+}
+
+/**
+ * Commands whose EFFECTIVE binding matches `chord`, excluding `excludeId`.
+ * Pure — used to flag conflicts when a user assigns a chord already in use.
+ * Chord comparison is modifier-order-insensitive (see chordMatches).
+ */
+export function findConflicts(chord: string, excludeId: string): Command[] {
+  if (!chord) return [];
+  const hits: Command[] = [];
+  for (const cmd of listCommands()) {
+    if (cmd.id === excludeId) continue;
+    const binding = getKeybindingFor(cmd);
+    if (binding && chordMatches(chord, binding)) hits.push(cmd);
+  }
+  return hits;
+}
+
+/** Conflicts for a command's own current binding (excludes itself). */
+export function conflictsForCommand(commandId: string): Command[] {
+  const cmd = getCommand(commandId);
+  const binding = cmd && getKeybindingFor(cmd);
+  if (!binding) return [];
+  return findConflicts(binding, commandId);
 }
 
 /** Display one chord part ('mod', 'shift', 'z') as a symbol / label. */
