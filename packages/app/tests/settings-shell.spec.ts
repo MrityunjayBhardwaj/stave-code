@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
 // #739 — the unified settings shell. Both File-menu items open ONE window on
 // the right tab; the Settings surface has a section nav + search; a toggle
@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
   await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
 })
 
-async function openViaFile(page, item: string) {
+async function openViaFile(page: Page, item: string) {
   await page.getByRole('button', { name: 'File', exact: true }).click()
   await page.getByText(item).click()
   await expect(page.getByTestId('settings-shell')).toBeVisible({ timeout: 4000 })
