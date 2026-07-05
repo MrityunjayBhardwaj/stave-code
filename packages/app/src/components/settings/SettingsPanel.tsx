@@ -121,7 +121,7 @@ interface TierRow {
 }
 
 const TIER_ROWS: TierRow[] = [
-  { name: "midi", label: "MIDI", description: "Send notes to external MIDI devices.", issueNumber: null, interactive: true },
+  { name: "midi", label: "MIDI", description: "Web MIDI output — reference a device by name in .midi(). Prompts for browser permission on the next reload.", issueNumber: null, interactive: true },
   { name: "csound", label: "Csound", description: "Csound synthesis · loads ~6 MB", issueNumber: 124, interactive: false },
   { name: "tidal", label: "TidalCycles", description: "Haskell-via-WASM interop · loads ~6 MB", issueNumber: 125, interactive: false },
   { name: "osc", label: "OSC", description: "Send OSC (needs a SuperCollider backend)", issueNumber: 126, interactive: false },
