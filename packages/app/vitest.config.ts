@@ -23,7 +23,10 @@ export default defineConfig({
     // vite-node — mirror the editor's stub + inline pattern.
     server: {
       deps: {
-        inline: [/@strudel\//],
+        // `gifenc` is a CJS module the editor barrel pulls in (GIF export /
+        // trackColor); inlining lets Vite fix its named-export interop so
+        // tests importing editor runtime (e.g. the settings adapters) load.
+        inline: [/@strudel\//, "gifenc"],
       },
     },
   },

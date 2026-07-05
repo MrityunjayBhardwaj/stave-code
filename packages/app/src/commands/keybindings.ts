@@ -25,6 +25,21 @@ export function getKeybindingFor(cmd: Command): string | undefined {
   return overrides.get(cmd.id) ?? cmd.keybinding;
 }
 
+/** Display one chord part ('mod', 'shift', 'z') as a symbol / label. */
+function formatPart(part: string, isMac: boolean): string {
+  const p = part.toLowerCase();
+  if (p === "mod") return isMac ? "⌘" : "Ctrl";
+  if (p === "cmd" || p === "meta") return "⌘";
+  if (p === "ctrl") return isMac ? "⌃" : "Ctrl";
+  if (p === "shift") return isMac ? "⇧" : "Shift";
+  if (p === "alt" || p === "option") return isMac ? "⌥" : "Alt";
+  if (p === "enter") return "⏎";
+  if (p === "escape") return "Esc";
+  if (p === "tab") return "Tab";
+  if (p.length === 1) return p.toUpperCase();
+  return part[0].toUpperCase() + part.slice(1);
+}
+
 /** Format a chord for display: 'mod+shift+z' → '⌘⇧Z' on mac, 'Ctrl+Shift+Z' otherwise. */
 export function formatKeybinding(chord: string): string {
   const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
@@ -33,19 +48,23 @@ export function formatKeybinding(chord: string): string {
     .map((single) =>
       single
         .split("+")
-        .map((part) => {
-          const p = part.toLowerCase();
-          if (p === "mod") return isMac ? "⌘" : "Ctrl";
-          if (p === "cmd" || p === "meta") return "⌘";
-          if (p === "ctrl") return isMac ? "⌃" : "Ctrl";
-          if (p === "shift") return isMac ? "⇧" : "Shift";
-          if (p === "alt" || p === "option") return isMac ? "⌥" : "Alt";
-          if (p.length === 1) return p.toUpperCase();
-          return part[0].toUpperCase() + part.slice(1);
-        })
+        .map((part) => formatPart(part, isMac))
         .join(isMac ? "" : "+"),
     )
     .join(" ");
+}
+
+/**
+ * Split a chord into individual display tokens for per-key `<kbd>`
+ * rendering. 'mod+shift+z' → ['⌘','⇧','Z']; a two-chord 'mod+k v' →
+ * ['⌘','K','V']. Modifier-symbol runs are kept as separate tokens so the
+ * settings shell can box each key like VS Code.
+ */
+export function keybindingTokens(chord: string): string[] {
+  const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+  return chord
+    .split(" ")
+    .flatMap((single) => single.split("+").map((part) => formatPart(part, isMac)));
 }
 
 /** Parse a KeyboardEvent into a chord string like 'mod+shift+z'. */
