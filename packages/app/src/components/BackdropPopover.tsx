@@ -47,15 +47,6 @@ interface Props {
    */
   vizSpan: BackdropVizSpan;
   onSetVizSpan: (span: BackdropVizSpan) => void;
-  /**
-   * Fixed-file mode (viz-file chrome, #771). When set, the target viz is
-   * already known (the viz file whose tab opened the popover), so the header
-   * viz **picker** is replaced by a static `backdrop: {name}` label — there
-   * is nothing to choose. The popover always renders its pinned controls
-   * (opacity / quality / crop / reveal / clear / viz-span) in this mode.
-   * Unset → the classic picker flow used by the pattern-file chrome.
-   */
-  fixedFile?: BackdropPopoverVizFile;
 }
 
 export function BackdropPopover(props: Props) {
@@ -92,9 +83,7 @@ export function BackdropPopover(props: Props) {
     () => props.initialQuality,
   );
   const [vizSpan, setVizSpan] = useState<BackdropVizSpan>(() => props.vizSpan);
-  // Fixed-file mode is inherently pinned — the popover only opens from a viz
-  // file that is already the backdrop (#771).
-  const pinned = props.fixedFile != null || props.backgroundFileId != null;
+  const pinned = props.backgroundFileId != null;
 
   // Position below the indicator, LEFT-aligned to its left edge (#724) — opens
   // down-and-right like a conventional dropdown. Clamp to the viewport so a
@@ -128,45 +117,27 @@ export function BackdropPopover(props: Props) {
         padding: 0,
       }}
     >
-      {/* Header — fixed-file mode (#771) shows a static backdrop name (the viz
-          file already IS the target — no picker). Otherwise: swap picker
-          (pinned) or "Set backdrop" chooser (unpinned). */}
+      {/* Header — swap picker (pinned) or "Set backdrop" (unpinned). */}
       <div style={headerStyle}>
         <span style={{ color: "var(--text-secondary)" }}>
           {pinned ? "backdrop:" : "set backdrop"}
         </span>
-        {props.fixedFile ? (
-          <span
-            data-testid="backdrop-popover-fixed-name"
-            style={{
-              flex: 1,
-              color: "var(--foreground)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-            title={props.fixedFile.name}
-          >
-            {props.fixedFile.name}
-          </span>
-        ) : (
-          <select
-            data-testid="backdrop-popover-picker"
-            value={props.backgroundFileId ?? ""}
-            onChange={(e) => {
-              const v = e.target.value;
-              props.onSetBackdrop(v === "" ? null : v);
-            }}
-            style={selectStyle}
-          >
-            {!pinned && <option value="">— choose a viz file —</option>}
-            {props.vizFiles.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-        )}
+        <select
+          data-testid="backdrop-popover-picker"
+          value={props.backgroundFileId ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            props.onSetBackdrop(v === "" ? null : v);
+          }}
+          style={selectStyle}
+        >
+          {!pinned && <option value="">— choose a viz file —</option>}
+          {props.vizFiles.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {pinned && (

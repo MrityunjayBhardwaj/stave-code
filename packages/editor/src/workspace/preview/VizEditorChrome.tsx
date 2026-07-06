@@ -20,12 +20,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import type { PreviewEditorChromeContext } from '../PreviewProvider'
 import type { AudioSourceRef } from '../types'
-import { workspaceAudioBus } from '../WorkspaceAudioBus'
-import {
-  BUILTIN_EXAMPLE_SOURCES,
-  BUILTIN_SOURCE_IDS,
-  findBuiltinExampleSource,
-} from '../builtinExampleSources'
+import { findBuiltinExampleSource } from '../builtinExampleSources'
 import {
   getVizLive,
   onVizLiveChange,
@@ -33,6 +28,7 @@ import {
 } from './vizLiveToggle'
 import { rendererForLanguage } from '../vizLanguages'
 import { StaveInputsPanel } from './StaveInputsPanel'
+import { VizSettingsPopover, type VizPreviewMode } from './VizSettingsPopover'
 
 function refToString(ref: AudioSourceRef): string {
   if (ref.kind === 'default') return 'default'
@@ -75,30 +71,22 @@ export function VizEditorChrome({
   previewPaused,
   onTogglePausePreview,
   onChangePreviewSource,
+  onClosePreview,
   onToggleBackground,
-  onOpenBackdropControls,
   isBackground,
+  backdropOpacity,
+  backdropQuality,
+  backdropVizSpan,
+  onSetBackdropOpacity,
+  onSetBackdropQuality,
+  onSetBackdropVizSpan,
+  onCropBackdrop,
+  onRevealBackdrop,
 }: PreviewEditorChromeContext): React.ReactElement {
-  // Basename without extension — drives the pinned label "bg: {name}",
-  // mirroring the pattern-file backdrop button (StrudelEditorClient's
-  // SetBackdropButton) so the two surfaces read identically.
-  const bgFileName = file.path.split('/').pop()?.replace(/\.[^.]+$/, '') ?? file.path
+  // ⚙ viz-settings popover anchor (#773). Non-null while open; carries the
+  // gear's bounding rect so the popover positions under it.
+  const [settingsAnchor, setSettingsAnchor] = useState<DOMRect | null>(null)
 
-  // Two-state click. The pattern-file button and this one now behave
-  // the same, minus the picker: because a viz file already IS the viz,
-  // pinning is a single click (no "choose a viz" step). Once pinned,
-  // clicking opens the shared settings popover instead of toggling off
-  // — the popover's "× clear" is the deliberate un-pin path.
-  const handleBackgroundClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      if (isBackground && onOpenBackdropControls) {
-        onOpenBackdropControls(e.currentTarget.getBoundingClientRect())
-      } else {
-        onToggleBackground()
-      }
-    },
-    [isBackground, onOpenBackdropControls, onToggleBackground],
-  )
   // Subscribe to the per-file hot-reload toggle so other surfaces
   // (command palette, future settings) stay in sync with the button.
   const [liveOn, setLiveOn] = useState<boolean>(() => getVizLive(file.id))
@@ -114,16 +102,6 @@ export function VizEditorChrome({
   const [selectedSource, setSelectedSource] = useState<AudioSourceRef>({
     kind: 'default',
   })
-
-  // The bus's source set changes when patterns start/stop. Re-render
-  // the dropdown options when that happens so newly-running patterns
-  // appear without waiting for an unrelated trigger.
-  const [, forceSourcesRerender] = useState(0)
-  useEffect(() => {
-    return workspaceAudioBus.onSourcesChanged(() => {
-      forceSourcesRerender((n) => n + 1)
-    })
-  }, [])
 
   const handleSourceChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -150,60 +128,50 @@ export function VizEditorChrome({
     [previewOpen, previewPaused, onChangePreviewSource, selectedSource],
   )
 
-  // Primary-button click handler. Three states drive the behavior:
-  //
-  //   (1) Preview closed         → open it (idempotent).
-  //   (2) Preview open & playing → pause renderer (Stop click).
-  //                                ALSO stop the audio source if
-  //                                it's a built-in example. Pattern
-  //                                runtimes keep playing — they're
-  //                                owned by their own pattern tab.
-  //   (3) Preview open & paused  → resume renderer (Play click).
-  //                                ALSO restart the audio source if
-  //                                it's a built-in example that we
-  //                                stopped on the previous Stop click,
-  //                                so Play actually returns the user
-  //                                to "what they had before Stop."
-  //
-  // In state (1) we also lazy-start whichever built-in example
-  // source the dropdown selection points to (sample sound, drum
-  // pattern, chord progression), inside this click handler so the
-  // browser's autoplay policy accepts the AudioContext creation.
-  // In states (2)/(3) we delegate to `onTogglePausePreview` which
-  // the shell wires to its `pausedPreviews` state, then handle the
-  // built-in audio start/stop side effect locally — the chrome is
-  // the only place that knows the dropdown selection, so it has
-  // to own the audio side effect.
-  const handlePrimaryButtonClick = useCallback(() => {
-    if (previewOpen && onTogglePausePreview) {
-      onTogglePausePreview()
-      return
-    }
+  // Open the side-preview tab. Lazy-starts whichever built-in example source
+  // the dropdown points to inside the click handler so the browser's autoplay
+  // policy accepts the AudioContext creation. Idempotent — the shell's
+  // onOpenPreview no-ops if a preview tab already exists.
+  const openSidePreview = useCallback(() => {
     if (selectedSource.kind === 'file') {
       const builtin = findBuiltinExampleSource(selectedSource.fileId)
       if (builtin) builtin.startIfIdle()
     }
     onOpenPreview(selectedSource)
-  }, [onOpenPreview, onTogglePausePreview, previewOpen, selectedSource])
+  }, [onOpenPreview, selectedSource])
 
-  // Derive the button's visual state from the two flags. The
-  // three label/title combinations map 1:1 to the three states
-  // above — keeping the derivation in one place avoids drift
-  // between the label, the title, and the click handler.
-  const buttonState: 'closed' | 'paused' | 'running' =
-    !previewOpen ? 'closed' : previewPaused ? 'paused' : 'running'
-  const buttonLabel =
-    buttonState === 'closed'
-      ? '\u25B6 Preview'
-      : buttonState === 'paused'
-        ? '\u25B6 Play'
-        : '\u25A0 Stop'
+  // Current preview placement (#773). Derived from the two shell flags so the
+  // segmented control always mirrors reality: backdrop wins over a side preview
+  // (a viz can't be both), then side, else off.
+  const previewMode: VizPreviewMode = isBackground
+    ? 'backdrop'
+    : previewOpen
+      ? 'side'
+      : 'off'
+
+  // Switch placement. Each transition tears down the old placement then sets up
+  // the new one. onToggleBackground FLIPS based on current backdrop state, so
+  // calling it when leaving 'backdrop' clears and when entering 'backdrop' sets.
+  const handleSetPreviewMode = useCallback(
+    (next: VizPreviewMode) => {
+      if (next === previewMode) return
+      if (previewMode === 'side') onClosePreview?.()
+      if (previewMode === 'backdrop') onToggleBackground()
+      if (next === 'side') openSidePreview()
+      if (next === 'backdrop') onToggleBackground()
+    },
+    [previewMode, onClosePreview, onToggleBackground, openSidePreview],
+  )
+
+  // Primary button transport — rendered ONLY while a side preview is open
+  // (#773). Pause/resume delegates to onTogglePausePreview; the shell owns the
+  // built-in audio start/stop side effect that pairs with it.
+  const buttonState: 'paused' | 'running' = previewPaused ? 'paused' : 'running'
+  const buttonLabel = buttonState === 'paused' ? '\u25B6 Play' : '\u25A0 Stop'
   const buttonTitle =
-    buttonState === 'closed'
-      ? 'Open preview to side (Cmd+K V)'
-      : buttonState === 'paused'
-        ? 'Resume preview rendering'
-        : 'Pause preview rendering (tab stays open)'
+    buttonState === 'paused'
+      ? 'Resume preview rendering'
+      : 'Pause preview rendering (tab stays open)'
 
   // The renderer kind drives the "Stave Inputs" reference panel (#309). Non-null
   // for every viz file; guard anyway so a non-viz tab never renders the panel.
@@ -226,85 +194,66 @@ export function VizEditorChrome({
       }}
     >
       {/*
-       * Primary action — three states:
-       *   - closed  → "▶ Preview" opens a new preview tab
-       *   - running → "■ Stop"    pauses the render loop
-       *   - paused  → "▶ Play"    resumes the render loop
-       *
-       * The preview tab is ONLY closed by its own ✕ button — Stop
-       * does not destroy the tab, it only freezes the canvas.
-       * A viz file is a persistent editing surface, not a
-       * transport.
+       * Primary transport — visible ONLY while a side preview is open (#773).
+       * Opening a preview now happens through the ⚙ popover's preview=side
+       * mode, so this button lost its "closed → open" role; it just pauses /
+       * resumes the render loop. Stop freezes the canvas; the tab is closed by
+       * its own ✕ button or the popover's preview=off.
        */}
-      <button
-        data-testid="viz-chrome-open-preview"
-        data-button-state={buttonState}
-        onClick={handlePrimaryButtonClick}
-        title={buttonTitle}
-        style={primaryBtnStyle}
-      >
-        {buttonLabel}
-      </button>
+      {previewOpen && (
+        <button
+          data-testid="viz-chrome-open-preview"
+          data-button-state={buttonState}
+          onClick={() => onTogglePausePreview?.()}
+          title={buttonTitle}
+          style={primaryBtnStyle}
+        >
+          {buttonLabel}
+        </button>
+      )}
 
       {/*
-       * Set-as-Background pill. Mirrors the pattern-file backdrop button
-       * (StrudelEditorClient's SetBackdropButton) so viz tabs and pattern
-       * tabs share one visual language: a dot indicator + label + caret.
-       *
-       *   - unpinned → "● set bg": one click pins THIS file as the group
-       *     backdrop (no picker step — a viz file already IS the viz).
-       *   - pinned   → "● bg: {name} ▾": click opens the shared backdrop
-       *     controls popover (opacity / quality / crop / reveal / clear /
-       *     viz-span). Un-pin happens via the popover's "× clear".
-       *
-       * handleBackgroundClick falls back to a plain toggle when the host
-       * doesn't wire onOpenBackdropControls, so the chrome still works
-       * when PreviewView is embedded outside the shell.
+       * ⚙ viz settings (#773). One entry point for everything about this viz:
+       * preview placement (off | side | backdrop), the backdrop controls when
+       * it's the backdrop, and the audio source. Accent-filled while the
+       * popover is open OR the viz is placed somewhere (side / backdrop).
        */}
       <button
-        data-testid="viz-chrome-bg-toggle"
-        data-bg-mode={isBackground ? 'on' : 'off'}
-        onClick={handleBackgroundClick}
-        title={
-          isBackground
-            ? `Backdrop: ${bgFileName} — click for controls (Cmd+K B)`
-            : 'Set as background for this group (Cmd+K B)'
-        }
+        data-testid="viz-chrome-settings"
+        data-settings-open={settingsAnchor ? 'true' : 'false'}
+        data-preview-mode={previewMode}
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect()
+          setSettingsAnchor((prev) => (prev ? null : rect))
+        }}
+        title="Viz settings — preview placement, backdrop, source"
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 5,
-          padding: '3px 8px',
+          justifyContent: 'center',
+          width: 26,
+          height: 22,
           borderRadius: 3,
-          fontSize: 10,
+          fontSize: 13,
           fontFamily: 'inherit',
           cursor: 'pointer',
           userSelect: 'none',
-          background: isBackground ? 'var(--accent-dim)' : 'none',
-          color: isBackground
-            ? 'var(--accent-strong, var(--accent))'
-            : 'var(--foreground-muted)',
+          background:
+            settingsAnchor || previewMode !== 'off'
+              ? 'var(--accent-dim)'
+              : 'none',
+          color:
+            settingsAnchor || previewMode !== 'off'
+              ? 'var(--accent-strong, var(--accent))'
+              : 'var(--foreground-muted)',
           border: `1px solid ${
-            isBackground ? 'var(--accent-dim)' : 'var(--border)'
+            settingsAnchor || previewMode !== 'off'
+              ? 'var(--accent-dim)'
+              : 'var(--border)'
           }`,
         }}
       >
-        <span
-          aria-hidden="true"
-          style={{
-            width: 7,
-            height: 7,
-            borderRadius: '50%',
-            background: isBackground
-              ? 'var(--accent-strong, var(--accent))'
-              : 'var(--foreground-muted)',
-            flexShrink: 0,
-          }}
-        />
-        <span>{isBackground ? 'viz bg' : 'set bg'}</span>
-        {isBackground && (
-          <span style={{ fontSize: 9, opacity: 0.8 }}>{'\u25BE'}</span>
-        )}
+        {'\u2699'}
       </button>
 
       {/*
@@ -343,57 +292,30 @@ export function VizEditorChrome({
         {liveOn ? '\u27F3 live' : '\u27F3'}
       </button>
 
-      <label
-        htmlFor={`viz-chrome-source-${file.id}`}
-        style={{ color: 'var(--foreground-muted)', fontSize: 10 }}
-      >
-        source:
-      </label>
-      <select
-        id={`viz-chrome-source-${file.id}`}
-        data-testid="viz-chrome-source"
-        value={refToString(selectedSource)}
-        onChange={handleSourceChange}
-        style={{
-          background: 'var(--surface-elevated)',
-          color: 'var(--foreground)',
-          border: '1px solid var(--border)',
-          borderRadius: 3,
-          padding: '2px 6px',
-          fontSize: 10,
-          fontFamily: 'inherit',
-          cursor: 'pointer',
-        }}
-      >
-        <option value="default">default (follow most recent)</option>
-        <optgroup label="built-in examples">
-          {BUILTIN_EXAMPLE_SOURCES.map((src) => (
-            <option key={src.sourceId} value={`file:${src.sourceId}`}>
-              {src.label}
-            </option>
-          ))}
-        </optgroup>
-        {(() => {
-          const patternSources = workspaceAudioBus
-            .listSources()
-            .filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId))
-          if (patternSources.length === 0) return null
-          return (
-            <optgroup label="playing patterns">
-              {patternSources.map((source) => (
-                <option key={source.sourceId} value={`file:${source.sourceId}`}>
-                  {source.playing ? '\u25CF ' : '\u25CB '}
-                  {source.label}
-                </option>
-              ))}
-            </optgroup>
-          )
-        })()}
-        <option value="none">none (demo mode)</option>
-      </select>
-
       <div style={{ flex: 1 }} />
     </div>
+
+    {/* \u2699 viz settings popover (#773) \u2014 mounted while open. Owns the preview
+        placement segment, backdrop controls, and the source dropdown that
+        used to live inline on the chrome bar. */}
+    {settingsAnchor && (
+      <VizSettingsPopover
+        anchorRect={settingsAnchor}
+        onClose={() => setSettingsAnchor(null)}
+        mode={previewMode}
+        onSetMode={handleSetPreviewMode}
+        backdropOpacity={backdropOpacity}
+        backdropQuality={backdropQuality}
+        backdropVizSpan={backdropVizSpan}
+        onSetBackdropOpacity={onSetBackdropOpacity}
+        onSetBackdropQuality={onSetBackdropQuality}
+        onSetBackdropVizSpan={onSetBackdropVizSpan}
+        onCropBackdrop={onCropBackdrop}
+        onRevealBackdrop={onRevealBackdrop}
+        sourceValue={refToString(selectedSource)}
+        onSourceChange={handleSourceChange}
+      />
+    )}
     {vizKind && <StaveInputsPanel kind={vizKind} />}
     </>
   )

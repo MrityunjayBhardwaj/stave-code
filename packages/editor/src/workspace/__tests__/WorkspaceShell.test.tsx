@@ -423,17 +423,20 @@ describe('WorkspaceShell', () => {
         />,
       )
 
-      // Sanity: the chrome renders and the button is in 'closed'
-      // state.
-      const button = getByTestId('viz-chrome-open-preview')
-      expect(button.getAttribute('data-button-state')).toBe('closed')
+      // Sanity: the chrome renders with the ⚙ gear in 'off' mode, and no
+      // standalone transport button until a preview exists (#773).
+      const gear = getByTestId('viz-chrome-settings')
+      expect(gear.getAttribute('data-preview-mode')).toBe('off')
 
-      // Click Preview → shell splits off a preview group and
-      // mounts a CompiledVizMount. Wait for the mount effect to
-      // complete (the data-compiled-viz-mount attribute appears
-      // once mountVizRenderer has been called).
+      // Open the ⚙ popover and pick preview=side → shell splits off a preview
+      // group and mounts a CompiledVizMount. Wait for the mount effect to
+      // complete (the data-compiled-viz-mount attribute appears once
+      // mountVizRenderer has been called).
       await act(async () => {
-        fireEvent.click(button)
+        fireEvent.click(gear)
+      })
+      await act(async () => {
+        fireEvent.click(getByTestId('viz-preview-mode-side'))
       })
       await findByTestId('compiled-viz-mount-f-hydra')
       expect(mountVizRendererSpy).toHaveBeenCalled()

@@ -304,10 +304,10 @@ describe('HYDRA_VIZ render path', () => {
     expect(lastCall[0].audio?.analyser).toBe(fakeAnalyser)
   })
 
-  it('chrome primary button: closed → Preview → calls onOpenPreview', () => {
-    // Three-state button: closed → "▶ Preview" → click opens the
-    // preview tab. No previewOpen / previewPaused in the ctx means
-    // the button is in the 'closed' state.
+  it('settings popover: preview=side → calls onOpenPreview (#773)', () => {
+    // Opening a side preview moved from a standalone "▶ Preview" button to the
+    // ⚙ viz-settings popover. With no preview open there's no transport button;
+    // the gear opens the popover (mode 'off'), and the 'side' segment opens it.
     const onOpenPreview = vi.fn()
     const onTogglePausePreview = vi.fn()
     const file = makeFile('f-preview-closed', 's.osc().out()')
@@ -318,14 +318,17 @@ describe('HYDRA_VIZ render path', () => {
       onToggleBackground: vi.fn(),
       onSave: vi.fn(),
     })
-    const { getByTestId } = render(chrome as React.ReactElement)
-    const btn = getByTestId('viz-chrome-open-preview')
-    expect(btn.getAttribute('data-button-state')).toBe('closed')
-    expect(btn.textContent).toContain('Preview')
-    fireEvent.click(btn)
+    const { getByTestId, queryByTestId } = render(
+      chrome as React.ReactElement,
+    )
+    // No transport button while no side preview exists.
+    expect(queryByTestId('viz-chrome-open-preview')).toBeNull()
+    fireEvent.click(getByTestId('viz-chrome-settings'))
+    const popover = getByTestId('viz-settings-popover')
+    expect(popover.getAttribute('data-mode')).toBe('off')
+    fireEvent.click(getByTestId('viz-preview-mode-side'))
     expect(onOpenPreview).toHaveBeenCalledTimes(1)
     expect(onOpenPreview.mock.calls[0][0]).toEqual({ kind: 'default' })
-    // Stop toggle must NOT fire on a closed-state click.
     expect(onTogglePausePreview).not.toHaveBeenCalled()
   })
 
@@ -381,71 +384,109 @@ describe('HYDRA_VIZ render path', () => {
     expect(onOpenPreview).not.toHaveBeenCalled()
   })
 
-  it('bg pill: unpinned → "set bg" label, click pins via onToggleBackground', () => {
-    // #771 — no isBackground means the file is NOT the group backdrop.
-    // The pill reads "set bg" and a click pins it directly (single-click,
-    // no picker) via onToggleBackground — NOT the controls popover.
+  it('settings gear: present, off mode by default (#773)', () => {
+    const file = makeFile('rings', 'osc().out()')
+    const chrome = HYDRA_VIZ.renderEditorChrome!({
+      file,
+      onOpenPreview: vi.fn(),
+      onToggleBackground: vi.fn(),
+      onSave: vi.fn(),
+    })
+    const { getByTestId, queryByTestId } = render(chrome as React.ReactElement)
+    const gear = getByTestId('viz-chrome-settings')
+    expect(gear.getAttribute('data-preview-mode')).toBe('off')
+    // Popover is closed until the gear is clicked.
+    expect(queryByTestId('viz-settings-popover')).toBeNull()
+    fireEvent.click(gear)
+    expect(getByTestId('viz-settings-popover').getAttribute('data-mode')).toBe(
+      'off',
+    )
+    // 'off' segment is the active one.
+    expect(
+      getByTestId('viz-preview-mode-off').getAttribute('data-active'),
+    ).toBe('true')
+  })
+
+  it('settings popover: preview=backdrop → calls onToggleBackground (#773)', () => {
+    // From 'off', selecting 'backdrop' enters backdrop mode via onToggleBackground
+    // (which sets, since the file isn't currently the backdrop).
     const onToggleBackground = vi.fn()
-    const onOpenBackdropControls = vi.fn()
     const file = makeFile('rings', 'osc().out()')
     const chrome = HYDRA_VIZ.renderEditorChrome!({
       file,
       onOpenPreview: vi.fn(),
       onToggleBackground,
-      onOpenBackdropControls,
       onSave: vi.fn(),
     })
     const { getByTestId } = render(chrome as React.ReactElement)
-    const btn = getByTestId('viz-chrome-bg-toggle')
-    expect(btn.getAttribute('data-bg-mode')).toBe('off')
-    expect(btn.textContent).toContain('set bg')
-    fireEvent.click(btn)
+    fireEvent.click(getByTestId('viz-chrome-settings'))
+    fireEvent.click(getByTestId('viz-preview-mode-backdrop'))
     expect(onToggleBackground).toHaveBeenCalledTimes(1)
-    expect(onOpenBackdropControls).not.toHaveBeenCalled()
   })
 
-  it('bg pill: pinned → "viz bg" label, click opens controls popover', () => {
-    // #771 — isBackground true means this file already IS the group backdrop.
-    // The pill reads "viz bg" and a click opens the shared controls popover
-    // (onOpenBackdropControls) instead of toggling off — un-pin is the popover's
-    // "× clear". The handler receives the button's bounding rect for anchoring.
+  it('settings popover: backdrop mode shows backdrop controls + routes quality (#773)', () => {
+    // isBackground → gear reads 'backdrop', popover exposes the backdrop controls
+    // (opacity / quality / viz-span); changing quality routes to the setter.
+    const onSetBackdropQuality = vi.fn()
+    const file = makeFile('rings', 'osc().out()')
+    const chrome = HYDRA_VIZ.renderEditorChrome!({
+      file,
+      onOpenPreview: vi.fn(),
+      onToggleBackground: vi.fn(),
+      isBackground: true,
+      backdropOpacity: 0.8,
+      backdropQuality: 'half',
+      backdropVizSpan: 'file',
+      onSetBackdropOpacity: vi.fn(),
+      onSetBackdropQuality,
+      onSetBackdropVizSpan: vi.fn(),
+      onSave: vi.fn(),
+    })
+    const { getByTestId } = render(chrome as React.ReactElement)
+    expect(
+      getByTestId('viz-chrome-settings').getAttribute('data-preview-mode'),
+    ).toBe('backdrop')
+    fireEvent.click(getByTestId('viz-chrome-settings'))
+    expect(getByTestId('viz-settings-opacity')).toBeTruthy()
+    expect(getByTestId('viz-settings-vizspan')).toBeTruthy()
+    fireEvent.change(getByTestId('viz-settings-quality'), {
+      target: { value: 'full' },
+    })
+    expect(onSetBackdropQuality).toHaveBeenCalledWith('full')
+  })
+
+  it('settings popover: from backdrop, preview=off clears via onToggleBackground (#773)', () => {
+    // Leaving 'backdrop' for 'off' calls onToggleBackground (clears, since the
+    // file IS currently the backdrop).
     const onToggleBackground = vi.fn()
-    const onOpenBackdropControls = vi.fn()
     const file = makeFile('rings', 'osc().out()')
     const chrome = HYDRA_VIZ.renderEditorChrome!({
       file,
       onOpenPreview: vi.fn(),
       onToggleBackground,
-      onOpenBackdropControls,
       isBackground: true,
       onSave: vi.fn(),
     })
     const { getByTestId } = render(chrome as React.ReactElement)
-    const btn = getByTestId('viz-chrome-bg-toggle')
-    expect(btn.getAttribute('data-bg-mode')).toBe('on')
-    expect(btn.textContent).toContain('viz bg')
-    fireEvent.click(btn)
-    expect(onOpenBackdropControls).toHaveBeenCalledTimes(1)
-    expect(onOpenBackdropControls.mock.calls[0][0]).toBeTruthy()
-    expect(onToggleBackground).not.toHaveBeenCalled()
+    fireEvent.click(getByTestId('viz-chrome-settings'))
+    fireEvent.click(getByTestId('viz-preview-mode-off'))
+    expect(onToggleBackground).toHaveBeenCalledTimes(1)
   })
 
-  it('bg pill: pinned but no popover handler → falls back to toggle', () => {
-    // #771 — when the host omits onOpenBackdropControls (e.g. PreviewView
-    // embedded outside the shell), a pinned click can't open a popover, so
-    // it falls back to onToggleBackground (which clears the backdrop).
-    const onToggleBackground = vi.fn()
+  it('settings popover: hosts the source dropdown (moved off the bar) (#773)', () => {
     const file = makeFile('rings', 'osc().out()')
     const chrome = HYDRA_VIZ.renderEditorChrome!({
       file,
       onOpenPreview: vi.fn(),
-      onToggleBackground,
-      isBackground: true,
+      onToggleBackground: vi.fn(),
       onSave: vi.fn(),
     })
-    const { getByTestId } = render(chrome as React.ReactElement)
-    fireEvent.click(getByTestId('viz-chrome-bg-toggle'))
-    expect(onToggleBackground).toHaveBeenCalledTimes(1)
+    const { getByTestId, queryByTestId } = render(chrome as React.ReactElement)
+    // Not on the chrome bar anymore.
+    expect(queryByTestId('viz-chrome-source')).toBeNull()
+    fireEvent.click(getByTestId('viz-chrome-settings'))
+    // Lives in the popover now.
+    expect(getByTestId('viz-chrome-source')).toBeTruthy()
   })
 
   it('renders an error panel when compilePreset throws (invalid code)', () => {

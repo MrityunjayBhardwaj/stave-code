@@ -65,6 +65,7 @@
 
 import type { ReactNode } from 'react'
 import type { AudioPayload, WorkspaceFile } from './types'
+import type { BackdropQuality, BackdropVizSpan } from './editorRegistry'
 
 /**
  * Reload policy per CONTEXT D-07. Encoded as a string literal rather than
@@ -268,18 +269,36 @@ export interface PreviewEditorChromeContext {
     ref: import('./types').AudioSourceRef,
   ) => void
 
-  /** Toggle the background decoration (viz behind the editor). */
-  readonly onToggleBackground: () => void
   /**
-   * Open the backdrop-controls popover for this file, anchored to the
-   * clicked button's rect. The VizEditorChrome calls this INSTEAD of
-   * onToggleBackground when the file is ALREADY the group backdrop
-   * (`isBackground`) — the host then opens the shared BackdropPopover
-   * (opacity / quality / crop / reveal / clear / viz-span) scoped to
-   * this file. Optional: when the host omits it, the chrome falls back
-   * to onToggleBackground for both states (bare toggle, no popover).
+   * Toggle the background decoration (viz behind the editor). Used by the
+   * viz-settings popover's preview control to enter / leave 'backdrop' mode.
    */
-  readonly onOpenBackdropControls?: (rect: DOMRect) => void
+  readonly onToggleBackground: () => void
+
+  /**
+   * Close the open side-preview tab for this file (#773). The viz-settings
+   * popover calls this when the user picks 'off' or 'backdrop' while a side
+   * preview is open. Optional: hosts that don't track preview tabs omit it.
+   */
+  readonly onClosePreview?: () => void
+
+  /**
+   * #773 — backdrop controls surfaced inside the viz-settings popover when
+   * this file is the group backdrop. The values are the ACTIVE group's
+   * RESOLVED settings (per-group override, else the global default); the
+   * setters route to the group's override. All optional — when a host omits
+   * them the popover hides the corresponding control.
+   */
+  readonly backdropOpacity?: number
+  readonly backdropQuality?: BackdropQuality
+  readonly backdropVizSpan?: BackdropVizSpan
+  readonly onSetBackdropOpacity?: (opacity: number) => void
+  readonly onSetBackdropQuality?: (quality: BackdropQuality) => void
+  readonly onSetBackdropVizSpan?: (span: BackdropVizSpan) => void
+  /** Open the backdrop crop popup for this group's backdrop (#347/#350). */
+  readonly onCropBackdrop?: () => void
+  /** Reveal the backdrop's source viz file in the editor. */
+  readonly onRevealBackdrop?: () => void
   /**
    * Whether this chrome's file is the active group's pinned backdrop.
    * The VizEditorChrome uses it to render the Set/Clear BG button as

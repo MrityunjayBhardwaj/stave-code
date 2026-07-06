@@ -1,17 +1,15 @@
 /**
- * Backdrop via viz-chrome toggle button (#37 reshaped).
+ * Backdrop via the ⚙ viz-settings popover (#773, reshaped from #37/#771).
  *
- * The Set-as-Background control lives in VizEditorChrome, between
- * the source dropdown and the live toggle — only visible when a viz
- * file tab is active. Pattern files get no such button.
+ * The viz chrome's backdrop control is now the ⚙ gear → viz-settings popover,
+ * whose `preview: [off | side | backdrop]` segment places this viz. Only viz
+ * file tabs show the gear; pattern files get none.
  *
  * Covers:
- *   - Button absent on pattern tabs.
- *   - Button starts 'off' on viz tabs, labelled "set bg".
- *   - Click → backdrop layer mounts with the right fileId;
- *     button flips to 'on' and reads "viz bg" (#771).
- *   - Pinned click opens the shared controls popover (no picker); its
- *     "× clear" removes the backdrop → attribute back to 'off' (#771).
+ *   - Gear absent on pattern tabs, present + 'off' on viz tabs.
+ *   - preview=backdrop mounts the backdrop layer with the right fileId; the
+ *     gear reports data-preview-mode="backdrop"; backdrop controls appear;
+ *     preview=off clears it.
  *   - Backdrop survives tab switches (file-pinned model).
  *   - Selection persists across page reload (#38 unchanged).
  */
@@ -52,80 +50,65 @@ async function clickHydraTab(page: import('@playwright/test').Page) {
   await page.waitForTimeout(500)
 }
 
-test.describe('Backdrop viz-chrome toggle', () => {
-  test('button is absent on pattern tabs', async ({ page }) => {
+// #773 — set THIS viz file as the group backdrop via the ⚙ viz-settings
+// popover: open the gear, pick preview=backdrop.
+async function setBackdrop(page: import('@playwright/test').Page) {
+  await page.locator('[data-testid="viz-chrome-settings"]').first().click()
+  await page.locator('[data-testid="viz-settings-popover"]').waitFor({
+    timeout: 2000,
+  })
+  await page.locator('[data-testid="viz-preview-mode-backdrop"]').first().click()
+}
+
+test.describe('Backdrop via viz-settings popover (#773)', () => {
+  test('settings gear absent on pattern tabs, present on viz tabs', async ({ page }) => {
     await gotoApp(page)
     await page
       .locator('[data-workspace-tab]', { hasText: 'pattern.strudel' })
       .click()
     await expect(
-      page.locator('[data-testid="viz-chrome-bg-toggle"]'),
+      page.locator('[data-testid="viz-chrome-settings"]'),
     ).toHaveCount(0)
-  })
 
-  test('button appears on viz tabs and starts in off state, labelled "set bg"', async ({ page }) => {
-    await gotoApp(page)
     await clickHydraTab(page)
-    const btn = page.locator('[data-testid="viz-chrome-bg-toggle"]').first()
-    await expect(btn).toBeVisible()
-    await expect(btn).toHaveAttribute('data-bg-mode', 'off')
-    // #771 — matches the pattern-file pill: dot + "set bg" (no caret unpinned).
-    await expect(btn).toContainText('set bg')
+    const gear = page.locator('[data-testid="viz-chrome-settings"]').first()
+    await expect(gear).toBeVisible()
+    await expect(gear).toHaveAttribute('data-preview-mode', 'off')
   })
 
-  test('click pins (on, "bg:" label); pinned click opens controls popover; clear turns it off (#771)', async ({ page }) => {
+  test('preview=backdrop mounts the backdrop; controls appear; preview=off clears it', async ({ page }) => {
     await gotoApp(page)
     await clickHydraTab(page)
 
-    await expect(
-      page.locator('[data-workspace-background]'),
-    ).toHaveCount(0)
+    await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
 
-    const btn = page.locator('[data-testid="viz-chrome-bg-toggle"]').first()
-    // First click pins THIS file as the group backdrop (single-click, no picker).
-    await btn.click()
+    await setBackdrop(page)
 
     const backdrop = page.locator('[data-workspace-background]').first()
     await expect(backdrop).toBeVisible({ timeout: 5000 })
-    await expect(btn).toHaveAttribute('data-bg-mode', 'on')
-    // #771 — pinned pill reads "viz bg".
-    await expect(btn).toContainText('viz bg')
+    const gear = page.locator('[data-testid="viz-chrome-settings"]').first()
+    await expect(gear).toHaveAttribute('data-preview-mode', 'backdrop')
     const bgFileId = await backdrop.getAttribute('data-background-file-id')
     expect(bgFileId).toBeTruthy()
 
-    // Pinned click no longer toggles off — it opens the shared controls popover,
-    // in fixed-file mode (a static backdrop name, NO viz picker).
-    await btn.click()
-    const popover = page.locator('[data-testid="backdrop-popover"]')
-    await expect(popover).toBeVisible({ timeout: 2000 })
-    await expect(
-      popover.locator('[data-testid="backdrop-popover-fixed-name"]'),
-    ).toBeVisible()
-    await expect(
-      popover.locator('[data-testid="backdrop-popover-picker"]'),
-    ).toHaveCount(0)
-    // The backdrop is still up while the popover is open.
-    await expect(page.locator('[data-workspace-background]')).toHaveCount(1)
+    // Backdrop controls surface in the popover while in backdrop mode.
+    const popover = page.locator('[data-testid="viz-settings-popover"]')
+    await expect(popover.locator('[data-testid="viz-settings-quality"]')).toBeVisible()
+    await expect(popover.locator('[data-testid="viz-settings-vizspan"]')).toBeVisible()
 
-    // "× clear" is the deliberate un-pin path.
-    await popover.locator('[data-testid="backdrop-chrome-clear"]').click()
-    await expect(
-      page.locator('[data-workspace-background]'),
-    ).toHaveCount(0)
-    await expect(btn).toHaveAttribute('data-bg-mode', 'off')
+    // preview=off clears the backdrop.
+    await popover.locator('[data-testid="viz-preview-mode-off"]').click()
+    await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
+    await expect(gear).toHaveAttribute('data-preview-mode', 'off')
   })
 
   test('backdrop is PER-TAB (#347) — clears on switch to a tab without one, restores on return', async ({
     page,
   }) => {
-    // #347 reworked the backdrop from per-PANE ("survives tab switches") to
-    // per-TAB: each tab carries its own backdrop, so switching to a tab that
-    // has none clears the pane, and switching back restores it.
     await gotoApp(page)
     await clickHydraTab(page)
 
-    const btn = page.locator('[data-testid="viz-chrome-bg-toggle"]').first()
-    await btn.click()
+    await setBackdrop(page)
     await expect(
       page.locator('[data-workspace-background]').first(),
     ).toBeVisible({ timeout: 5000 })
@@ -148,13 +131,10 @@ test.describe('Backdrop viz-chrome toggle', () => {
     await gotoApp(page)
     await clickHydraTab(page)
 
-    const btn = page.locator('[data-testid="viz-chrome-bg-toggle"]').first()
-    await btn.click()
+    await setBackdrop(page)
     const backdrop = page.locator('[data-workspace-background]').first()
     await expect(backdrop).toBeVisible({ timeout: 5000 })
-    const fileIdBefore = await backdrop.getAttribute(
-      'data-background-file-id',
-    )
+    const fileIdBefore = await backdrop.getAttribute('data-background-file-id')
 
     await page.reload()
     await page.locator('[data-workspace-shell="root"]').waitFor({
@@ -162,19 +142,11 @@ test.describe('Backdrop viz-chrome toggle', () => {
     })
     await page.locator('.monaco-editor').waitFor({ timeout: 15000 })
 
-    const backdropAfter = page
-      .locator('[data-workspace-background]')
-      .first()
+    const backdropAfter = page.locator('[data-workspace-background]').first()
     await expect(backdropAfter).toBeVisible({ timeout: 5000 })
     const fileIdAfter = await backdropAfter.getAttribute(
       'data-background-file-id',
     )
     expect(fileIdAfter).toBe(fileIdBefore)
-
-    await clickHydraTab(page)
-    await page
-      .locator('[data-testid="viz-chrome-bg-toggle"]')
-      .first()
-      .click()
   })
 })

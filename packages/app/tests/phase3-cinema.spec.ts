@@ -12,6 +12,18 @@ async function gotoApp(page: import('@playwright/test').Page) {
   await page.locator('.monaco-editor').waitFor({ timeout: 15000 })
 }
 
+// #773 — open a hydra viz tab via the file tree (reliable; the default
+// workspace has no hydra tab), then set it as the group backdrop through the
+// ⚙ viz-settings popover.
+async function openHydraAndSetBackdrop(page: import('@playwright/test').Page) {
+  const hydra = page.locator('[data-file-tree-item*="hydra"]').first()
+  await hydra.dblclick()
+  const gear = page.locator('[data-testid="viz-chrome-settings"]').first()
+  await gear.waitFor({ timeout: 10000 })
+  await gear.click()
+  await page.locator('[data-testid="viz-preview-mode-backdrop"]').first().click()
+}
+
 test.describe('Code surface backdrop (#39)', () => {
   test('data-stave-backdrop attr flips on + off with backdrop state', async ({
     page,
@@ -23,26 +35,12 @@ test.describe('Code surface backdrop (#39)', () => {
       .first()
     await expect(panel).toHaveAttribute('data-stave-backdrop', 'off')
 
-    // Activate the hydra tab so its chrome button is mounted, then
-    // flip the backdrop on.
-    const allTabs = page.locator('[data-workspace-tab]')
-    const count = await allTabs.count()
-    for (let i = 0; i < count; i++) {
-      const text = await allTabs.nth(i).textContent()
-      if (text && /\.hydra/.test(text)) {
-        await allTabs.nth(i).click()
-        break
-      }
-    }
-    const btn = page
-      .locator('[data-testid="viz-chrome-bg-toggle"]')
-      .first()
-    await btn.click()
+    // Open a hydra tab and set it as backdrop → the code panel flips to
+    // backdrop mode.
+    await openHydraAndSetBackdrop(page)
     await expect(panel).toHaveAttribute('data-stave-backdrop', 'on', {
       timeout: 5000,
     })
-
-    await btn.click()
   })
 })
 
@@ -62,20 +60,8 @@ test.describe('Backdrop quality ladder (#41)', () => {
     })
     await page.locator('.monaco-editor').waitFor({ timeout: 15000 })
 
-    // Pin a backdrop via the viz-chrome toggle to exercise the render.
-    const allTabs = page.locator('[data-workspace-tab]')
-    const count = await allTabs.count()
-    for (let i = 0; i < count; i++) {
-      const text = await allTabs.nth(i).textContent()
-      if (text && /\.hydra/.test(text)) {
-        await allTabs.nth(i).click()
-        break
-      }
-    }
-    const btn = page
-      .locator('[data-testid="viz-chrome-bg-toggle"]')
-      .first()
-    await btn.click()
+    // Pin a backdrop (⚙ → preview=backdrop) to exercise the render.
+    await openHydraAndSetBackdrop(page)
 
     const backdrop = page.locator('[data-workspace-background]').first()
     await expect(backdrop).toBeVisible({ timeout: 5000 })
@@ -84,7 +70,6 @@ test.describe('Backdrop quality ladder (#41)', () => {
       'quarter',
     )
 
-    await btn.click()
     await page.evaluate(() => {
       window.localStorage.removeItem('stave:backdropQuality')
     })

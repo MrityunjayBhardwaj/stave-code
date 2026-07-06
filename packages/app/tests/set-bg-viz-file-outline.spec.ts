@@ -34,8 +34,10 @@ test('no blue focus outline frames a viz file set as its own background (#723)',
   await page.locator('.monaco-editor .view-lines').first().click()
   expect(await outlineStyle(page)).not.toBe('none')
 
-  // Set this viz file as the group backdrop (the real gesture the user reported).
-  await page.locator('[data-testid="viz-chrome-bg-toggle"]').first().click()
+  // Set this viz file as the group backdrop via the ⚙ viz-settings popover
+  // (#773): open the gear, pick preview=backdrop.
+  await page.locator('[data-testid="viz-chrome-settings"]').first().click()
+  await page.locator('[data-testid="viz-preview-mode-backdrop"]').first().click()
   await page.waitForTimeout(400)
   await expect(
     page.locator('[data-stave-code-panel][data-stave-backdrop="on"]'),

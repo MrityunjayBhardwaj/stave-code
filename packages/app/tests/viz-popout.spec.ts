@@ -25,9 +25,10 @@ async function openHydraTab(page: import('@playwright/test').Page) {
   const item = page.locator('[data-file-tree-item*="hydra"]').first()
   if ((await item.count()) === 0) throw new Error('no hydra preset in default project')
   await item.dblclick()
-  // The viz tab's chrome (Open Preview button) confirms the editor tab is active.
+  // The viz tab's chrome (⚙ settings gear, always present) confirms the editor
+  // tab is active (#773).
   await page
-    .locator('[data-testid="viz-chrome-open-preview"]')
+    .locator('[data-testid="viz-chrome-settings"]')
     .first()
     .waitFor({ timeout: 5000 })
 }

@@ -1,7 +1,7 @@
 /**
- * Viz editor chrome: the source dropdown sits LAST, after the bg + live toggles
- * (#733) — order is Preview → bg → live → source → spacer. Asserts the DOM
- * sibling order inside the chrome bar and captures a screenshot for a visual check.
+ * Viz editor chrome bar layout (#773). The bar was consolidated: the ⚙ viz-
+ * settings gear replaced the set-bg pill, and the source dropdown moved OFF the
+ * bar into the popover. Remaining bar order: ⚙ settings → ↻ live → spacer.
  */
 import { test, expect, type Page } from '@playwright/test'
 
@@ -18,17 +18,17 @@ async function openVizFile(page: Page): Promise<void> {
   await page.locator('[data-workspace-chrome="viz"]').first().waitFor({ timeout: 10000 })
 }
 
-test('source dropdown renders last, after the bg + live toggles (#733)', async ({ page }) => {
+test('bar shows ⚙ settings + ↻ live; source is off the bar (#773)', async ({ page }) => {
   await openVizFile(page)
   const chrome = page.locator('[data-workspace-chrome="viz"]').first()
 
-  // All present.
-  await expect(chrome.locator('[data-testid="viz-chrome-source"]')).toHaveCount(1)
-  await expect(chrome.locator('[data-testid="viz-chrome-bg-toggle"]')).toHaveCount(1)
+  // Gear + live present on the bar.
+  await expect(chrome.locator('[data-testid="viz-chrome-settings"]')).toHaveCount(1)
   await expect(chrome.locator('[data-testid="viz-chrome-live-toggle"]')).toHaveCount(1)
+  // Source dropdown is NOT on the bar anymore (it lives in the popover).
+  await expect(chrome.locator('[data-testid="viz-chrome-source"]')).toHaveCount(0)
 
-  // DOM order: bg → live → source (source is the last control), and the flex
-  // spacer trails source (so the group is left-aligned, not split to the edge).
+  // DOM order: settings → live, with the flex spacer trailing (left-aligned).
   const order = await chrome.evaluate((el) => {
     const kids = Array.from(el.children)
     const idxOf = (sel: string) => kids.findIndex((k) => (k as HTMLElement).matches(sel) || k.querySelector(sel) != null)
@@ -36,17 +36,15 @@ test('source dropdown renders last, after the bg + live toggles (#733)', async (
       (k) => (k as HTMLElement).style.flex === '1' || (k as HTMLElement).style.flexGrow === '1',
     )
     return {
-      source: idxOf('[data-testid="viz-chrome-source"]'),
-      bg: idxOf('[data-testid="viz-chrome-bg-toggle"]'),
+      settings: idxOf('[data-testid="viz-chrome-settings"]'),
       live: idxOf('[data-testid="viz-chrome-live-toggle"]'),
       spacer: spacerIdx,
     }
   })
 
-  expect(order.bg).toBeGreaterThanOrEqual(0)
-  expect(order.live).toBeGreaterThan(order.bg)
-  expect(order.source).toBeGreaterThan(order.live) // source is last, after live
-  expect(order.spacer).toBeGreaterThan(order.source) // spacer trails source
+  expect(order.settings).toBeGreaterThanOrEqual(0)
+  expect(order.live).toBeGreaterThan(order.settings)
+  expect(order.spacer).toBeGreaterThan(order.live)
 
   await page.screenshot({ path: `${SHOTS}/viz-chrome-order.png` })
 })

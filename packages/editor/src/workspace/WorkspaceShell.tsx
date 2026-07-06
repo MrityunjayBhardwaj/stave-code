@@ -137,6 +137,7 @@ import {
   onPlayVizOnHoverChange,
   getBackdropVizSpan,
   onBackdropVizSpanChange,
+  setBackdropVizSpan,
   type BackdropQuality,
   type BackdropVizSpan,
 } from './editorRegistry'
@@ -783,7 +784,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   onTabContextMenu,
   onEditViz,
   onCropViz,
-  onOpenVizBackdropControls,
+  onCropBackdrop,
+  onRevealBackdrop,
 }, forwardedRef) {
   const shellRootRef = useRef<HTMLDivElement>(null)
 
@@ -2138,15 +2140,34 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                   },
                   isBackground:
                     groups.get(groupId)?.backgroundFileId === tab.fileId,
-                  // When THIS viz file is already the group backdrop, its
-                  // chrome pill opens the host's shared backdrop-controls
-                  // popover instead of toggling off. Scoped to this file +
-                  // anchored to the clicked button. Omitted → the chrome
-                  // falls back to a plain toggle.
-                  onOpenBackdropControls: onOpenVizBackdropControls
-                    ? (rect: DOMRect) =>
-                        onOpenVizBackdropControls(tab.fileId, rect)
-                    : undefined,
+                  // #773 — close THIS file's side preview when the viz-settings
+                  // popover switches to 'off' or 'backdrop'. Re-read via
+                  // shellActionsRef so a stale closure (after the preview tab was
+                  // dragged elsewhere) still resolves the current location.
+                  onClosePreview: () => {
+                    const p = shellActionsRef.current.findTabByFileId(
+                      tab.fileId,
+                      'preview',
+                    )
+                    if (p) closeTabById(p.tabId)
+                  },
+                  // #773 — backdrop controls surfaced inside the viz-settings
+                  // popover when this file is the group backdrop. Values are the
+                  // group's RESOLVED settings (override ?? global default);
+                  // setters route to the group override. Crop/reveal come from
+                  // the host (app popups).
+                  backdropOpacity:
+                    groups.get(groupId)?.backdropOpacity ?? backdropOpacity,
+                  backdropQuality:
+                    groups.get(groupId)?.backdropQuality ?? backdropQuality,
+                  backdropVizSpan,
+                  onSetBackdropOpacity: (v) =>
+                    updateGroupBackdropOpacity(groupId, v),
+                  onSetBackdropQuality: (q) =>
+                    updateGroupBackdropQuality(groupId, q),
+                  onSetBackdropVizSpan: (s) => setBackdropVizSpan(s),
+                  onCropBackdrop,
+                  onRevealBackdrop,
                   onSave: () => {
                     // Bridge to the host-supplied save callback. The host
                     // owns the persistence layer (e.g., flushToPreset for
@@ -2314,10 +2335,16 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       findGroupWithAnyPreview,
       editorExtrasForTab,
       closeTabById,
-      // P239 guard — without this dep the ctx closes over a stale
-      // onOpenVizBackdropControls and the viz backdrop pill can't open
-      // the popover after the host wires it post-mount.
-      onOpenVizBackdropControls,
+      // P239 guard — the viz-settings ctx (#773) reads these; without them
+      // in the deps the callback closes over stale backdrop settings /
+      // handlers and the popover controls act on outdated values.
+      backdropOpacity,
+      backdropQuality,
+      backdropVizSpan,
+      updateGroupBackdropOpacity,
+      updateGroupBackdropQuality,
+      onCropBackdrop,
+      onRevealBackdrop,
     ],
   )
 

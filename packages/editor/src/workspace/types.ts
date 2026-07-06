@@ -1068,10 +1068,13 @@ export interface WorkspaceShellProps {
   readonly onCropViz?: (vizId: string, presetId: string | null, trackKey: string) => void
 
   /**
-   * A viz-file editor chrome's backdrop pill was clicked while that file is
-   * ALREADY the group backdrop. The host opens the shared backdrop-controls
-   * popover (opacity / quality / crop / reveal / clear / viz-span) scoped to
-   * `fileId`, anchored to `rect`. When omitted the viz chrome falls back to a
-   * plain toggle. See PreviewEditorChromeContext.onOpenBackdropControls. */
-  readonly onOpenVizBackdropControls?: (fileId: string, rect: DOMRect) => void
+   * #773 — open the app's backdrop crop popup for the active group's backdrop.
+   * Surfaced inside the viz-settings popover (crop… action). App-owned because
+   * the crop UI is an app-level popup. */
+  readonly onCropBackdrop?: () => void
+
+  /**
+   * #773 — reveal the active group's backdrop source viz file in the editor.
+   * Surfaced inside the viz-settings popover (reveal action). */
+  readonly onRevealBackdrop?: () => void
 }

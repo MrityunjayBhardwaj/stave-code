@@ -11,18 +11,13 @@ test('selection highlight visible with backdrop active', async ({ page }) => {
   await page.locator('[data-workspace-shell="root"]').waitFor({ timeout: 15000 })
   await page.locator('.monaco-editor').waitFor({ timeout: 15000 })
 
-  // Pin a hydra file as backdrop.
-  const tabs = page.locator('[data-workspace-tab]')
-  const count = await tabs.count()
-  for (let i = 0; i < count; i++) {
-    const t = await tabs.nth(i).textContent()
-    if (t && /\.hydra/.test(t)) {
-      await tabs.nth(i).click()
-      break
-    }
-  }
-  await page.waitForTimeout(200)
-  await page.locator('[data-testid="viz-chrome-bg-toggle"]').first().click()
+  // Open a hydra file via the file tree (the default workspace has no hydra
+  // tab) and set it as backdrop via the ⚙ viz-settings popover (#773).
+  await page.locator('[data-file-tree-item*="hydra"]').first().dblclick()
+  const gear = page.locator('[data-testid="viz-chrome-settings"]').first()
+  await gear.waitFor({ timeout: 10000 })
+  await gear.click()
+  await page.locator('[data-testid="viz-preview-mode-backdrop"]').first().click()
   await page.locator('[data-workspace-background]').first().waitFor({ timeout: 5000 })
 
   // Switch to strudel tab and select all text.
