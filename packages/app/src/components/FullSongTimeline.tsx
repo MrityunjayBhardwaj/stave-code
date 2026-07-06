@@ -581,8 +581,6 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     [displayCycles, loopCycles, dragAwareContentWidth, onSeek],
   )
 
-  const sections = analysis?.sections ?? []
-
   // Canvas scene: per-lane density (from analysis) + capped mini-note marks
   // (collected app-side from the IR over the display span). Memoised so the
   // collect + build run only when the analysis or IR changes — NOT on scroll or
@@ -1395,7 +1393,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         </div>
       </div>
 
-      {/* Ruler: section bands + cycle/bar ticks + clickable seek surface + playhead */}
+      {/* Ruler: cycle/bar ticks + clickable seek surface + playhead */}
       <div data-full-song="ruler" style={styles.topbar}>
         <div style={styles.gutter}>
           <span style={styles.caption}>SONG</span>
@@ -1410,30 +1408,6 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             data-full-song="ruler-content"
             style={{ ...styles.scrollContent, width: contentWidth, transform: `translateX(${-scrollLeft}px)` }}
           >
-            {areaWidth > 0 &&
-              sections.map((s, i) => {
-                const left = songCycleToX(s.startCycle, displayCycles, contentWidth)
-                const right = songCycleToX(s.endCycle, displayCycles, contentWidth)
-                return (
-                  <div
-                    key={`section-${s.startCycle}-${s.endCycle}`}
-                    data-full-song-section={i}
-                    title={`Section ${i + 1} · cycles ${s.startCycle}–${s.endCycle - 1}`}
-                    style={{
-                      ...styles.sectionChip,
-                      left,
-                      width: Math.max(0, right - left),
-                      // alternate tint so adjacent sections read as distinct
-                      background:
-                        i % 2 === 0
-                          ? 'var(--bg-input, rgba(255,255,255,0.04))'
-                          : 'var(--bg-panel, rgba(255,255,255,0.08))',
-                    }}
-                  >
-                    <span style={styles.sectionLabel}>{i + 1}</span>
-                  </div>
-                )
-              })}
             {areaWidth > 0 &&
               ticks.map((t) => (
                 <div
@@ -1876,18 +1850,6 @@ const styles = {
     overflow: 'hidden',
     cursor: 'pointer' as const,
   },
-  sectionChip: {
-    position: 'absolute' as const,
-    top: 4,
-    bottom: 4,
-    borderRadius: 2,
-    borderLeft: '1px solid var(--border-subtle, rgba(255,255,255,0.12))',
-    display: 'flex',
-    alignItems: 'center',
-    paddingLeft: 4,
-    pointerEvents: 'none' as const,
-  },
-  sectionLabel: { fontSize: 9, color: 'var(--text-tertiary, rgba(255,255,255,0.4))' },
   tickMajor: {
     position: 'absolute' as const,
     bottom: 0,
