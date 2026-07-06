@@ -147,6 +147,23 @@ describe('Strudel hover payload', () => {
     ).toBe(true)
   })
 
+  it('setcps resolves with its tempo-section permalink (#767)', () => {
+    const h = hoverFor(STRUDEL_DOCS_INDEX, 'setcps')
+    expect(h).not.toBeNull()
+    expect(h!.values[0]).toContain('setcps(')
+    expect(
+      h!.values.some(
+        (v) => v.includes('[Reference →]') && v.includes('strudel.cc/understand/cycles/'),
+      ),
+    ).toBe(true)
+  })
+
+  it('setCps (camelCase) aliases to the setcps doc (#767)', () => {
+    const h = hoverFor(STRUDEL_DOCS_INDEX, 'setCps')
+    expect(h).not.toBeNull()
+    expect(h!.values[0]).toContain('setcps(')
+  })
+
   it('degradeBy camelCase still resolves', () => {
     const h = hoverFor(STRUDEL_DOCS_INDEX, 'degradeBy')
     expect(h).not.toBeNull()
