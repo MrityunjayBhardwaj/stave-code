@@ -301,7 +301,7 @@ export function VizEditorChrome({
             flexShrink: 0,
           }}
         />
-        <span>{isBackground ? `bg: ${bgFileName}` : 'set bg'}</span>
+        <span>{isBackground ? 'viz bg' : 'set bg'}</span>
         {isBackground && (
           <span style={{ fontSize: 9, opacity: 0.8 }}>{'\u25BE'}</span>
         )}

@@ -9,7 +9,7 @@
  *   - Button absent on pattern tabs.
  *   - Button starts 'off' on viz tabs, labelled "set bg".
  *   - Click → backdrop layer mounts with the right fileId;
- *     button flips to 'on' and reads "bg: {name}" (#771).
+ *     button flips to 'on' and reads "viz bg" (#771).
  *   - Pinned click opens the shared controls popover (no picker); its
  *     "× clear" removes the backdrop → attribute back to 'off' (#771).
  *   - Backdrop survives tab switches (file-pinned model).
@@ -88,8 +88,8 @@ test.describe('Backdrop viz-chrome toggle', () => {
     const backdrop = page.locator('[data-workspace-background]').first()
     await expect(backdrop).toBeVisible({ timeout: 5000 })
     await expect(btn).toHaveAttribute('data-bg-mode', 'on')
-    // #771 — pinned pill reads "bg: {name}".
-    await expect(btn).toContainText('bg:')
+    // #771 — pinned pill reads "viz bg".
+    await expect(btn).toContainText('viz bg')
     const bgFileId = await backdrop.getAttribute('data-background-file-id')
     expect(bgFileId).toBeTruthy()
 

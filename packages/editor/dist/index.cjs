@@ -37603,7 +37603,7 @@ function VizEditorChrome({
                     }
                   }
                 ),
-                /* @__PURE__ */ jsxRuntime.jsx("span", { children: isBackground ? `bg: ${bgFileName}` : "set bg" }),
+                /* @__PURE__ */ jsxRuntime.jsx("span", { children: isBackground ? "viz bg" : "set bg" }),
                 isBackground && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: 9, opacity: 0.8 }, children: "\u25BE" })
               ]
             }

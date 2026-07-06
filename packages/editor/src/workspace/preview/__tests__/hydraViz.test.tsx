@@ -404,9 +404,9 @@ describe('HYDRA_VIZ render path', () => {
     expect(onOpenBackdropControls).not.toHaveBeenCalled()
   })
 
-  it('bg pill: pinned → "bg: {name}" label, click opens controls popover', () => {
+  it('bg pill: pinned → "viz bg" label, click opens controls popover', () => {
     // #771 — isBackground true means this file already IS the group backdrop.
-    // The pill reads "bg: rings" and a click opens the shared controls popover
+    // The pill reads "viz bg" and a click opens the shared controls popover
     // (onOpenBackdropControls) instead of toggling off — un-pin is the popover's
     // "× clear". The handler receives the button's bounding rect for anchoring.
     const onToggleBackground = vi.fn()
@@ -423,7 +423,7 @@ describe('HYDRA_VIZ render path', () => {
     const { getByTestId } = render(chrome as React.ReactElement)
     const btn = getByTestId('viz-chrome-bg-toggle')
     expect(btn.getAttribute('data-bg-mode')).toBe('on')
-    expect(btn.textContent).toContain('bg: rings')
+    expect(btn.textContent).toContain('viz bg')
     fireEvent.click(btn)
     expect(onOpenBackdropControls).toHaveBeenCalledTimes(1)
     expect(onOpenBackdropControls.mock.calls[0][0]).toBeTruthy()
