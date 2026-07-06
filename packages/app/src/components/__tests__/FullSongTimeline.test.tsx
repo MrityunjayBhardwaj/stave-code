@@ -152,13 +152,14 @@ describe('FullSongTimeline', () => {
     expect(container.querySelector('[data-full-song-lane="hh"]')).not.toBeNull()
   })
 
-  it('renders section chips on the ruler and mounts the canvas body', async () => {
+  it('mounts the canvas body without any DOM section chips on the ruler', async () => {
     const { container } = renderFull()
     await act(async () => {
       await Promise.resolve()
     })
-    // Section chips live on the (DOM) ruler overlay.
-    expect(container.querySelectorAll('[data-full-song-section]').length).toBe(2)
+    // Section bands were removed from the ruler (#752): the numbered labels
+    // collided with the cycle numbers and were a no-op for single-section songs.
+    expect(container.querySelectorAll('[data-full-song-section]').length).toBe(0)
     // The onset heatmap is now drawn on the canvas (the per-cell DOM nodes are
     // gone). Assert the canvas surface mounted; pixel output is covered by the
     // drawTimeline unit tests + the Playwright screenshot.
