@@ -18331,7 +18331,45 @@ function registerSonicPiProviders(monaco) {
 __name(registerSonicPiProviders, "registerSonicPiProviders");
 
 // src/monaco/strudelDocs.ts
+var VIZ_FEEDBACK_URL = "https://strudel.cc/learn/visual-feedback/";
+var VIZ_KINDS = {
+  pianoroll: { shows: "piano-roll (notes as pitch \xD7 time)", anchor: "#punchcard--pianoroll" },
+  punchcard: { shows: "punchcard of note onsets", anchor: "#punchcard--pianoroll" },
+  wordfall: { shows: "falling event labels", anchor: "" },
+  scope: { shows: "oscilloscope of the waveform", anchor: "#scope" },
+  tscope: { shows: "waveform scope (alias of scope)", anchor: "#scope" },
+  fscope: { shows: "frequency scope (FFT)", anchor: "" },
+  spectrum: { shows: "frequency-spectrum analyser", anchor: "#spectrum" },
+  spiral: { shows: "spiral (polar) cycle view", anchor: "#spiral" },
+  pitchwheel: { shows: "notes on a pitch-class wheel", anchor: "#pitchwheel" }
+};
+var VIZ_ENTRIES = Object.fromEntries(
+  Object.entries(VIZ_KINDS).flatMap(([name, { shows, anchor }]) => {
+    const sourceUrl = VIZ_FEEDBACK_URL + anchor;
+    return [
+      [
+        `_${name}`,
+        {
+          signature: `._${name}()`,
+          description: `Inline ${shows}, drawn below this pattern.`,
+          example: `s("bd*4")._${name}()`,
+          sourceUrl
+        }
+      ],
+      [
+        name,
+        {
+          signature: `.${name}()`,
+          description: `Full-screen backdrop ${shows}.`,
+          example: `s("bd*4").${name}()`,
+          sourceUrl
+        }
+      ]
+    ];
+  })
+);
 var STRUDEL_DOCS = {
+  ...VIZ_ENTRIES,
   note: {
     signature: "note(pattern: string)",
     description: "Play notes from a mini-notation pattern. Accepts note names (c4, eb3) or MIDI numbers.",

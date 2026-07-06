@@ -175,6 +175,29 @@ describe('Strudel hover payload', () => {
     expect(h!.values.some((v) => v.includes('[Reference →]'))).toBe(false)
   })
 
+  it('viz methods resolve in both forms: _name (inline) + name (backdrop) (#767)', () => {
+    // inline underscore form
+    const inline = hoverFor(STRUDEL_DOCS_INDEX, '_pianoroll')
+    expect(inline).not.toBeNull()
+    expect(inline!.values[0]).toContain('._pianoroll()')
+    expect(inline!.values.some((v) => /Inline/.test(v))).toBe(true)
+    expect(
+      inline!.values.some(
+        (v) => v.includes('[Reference →]') && v.includes('strudel.cc/learn/visual-feedback/'),
+      ),
+    ).toBe(true)
+
+    // full-screen backdrop (non-underscore) form
+    const bg = hoverFor(STRUDEL_DOCS_INDEX, 'pianoroll')
+    expect(bg).not.toBeNull()
+    expect(bg!.values[0]).toContain('.pianoroll()')
+    expect(bg!.values.some((v) => /backdrop/i.test(v))).toBe(true)
+
+    // a second viz name works too (the whole family is generated)
+    expect(hoverFor(STRUDEL_DOCS_INDEX, '_scope')).not.toBeNull()
+    expect(hoverFor(STRUDEL_DOCS_INDEX, 'spectrum')).not.toBeNull()
+  })
+
   it('degradeBy camelCase still resolves', () => {
     const h = hoverFor(STRUDEL_DOCS_INDEX, 'degradeBy')
     expect(h).not.toBeNull()

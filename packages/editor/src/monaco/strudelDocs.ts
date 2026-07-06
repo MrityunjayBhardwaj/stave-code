@@ -16,9 +16,60 @@ import { createHoverProvider } from './docs/providers'
 // Strudel's hand-curated style. Each also carries a verified per-function
 // `sourceUrl` permalink (strudel.cc/learn/<topic>/#<anchor>) for the Reference→
 // link; only `every` lacks one (no anchor on the site) and falls back to
-// STRUDEL_DOCS_INDEX.meta.docsBaseUrl.
+// STRUDEL_DOCS_INDEX.meta.docsBaseUrl. The viz methods (pianoroll/scope/…) are
+// generated in both chain forms from VIZ_KINDS below and spread in.
+
+const VIZ_FEEDBACK_URL = 'https://strudel.cc/learn/visual-feedback/'
+
+// Strudel's visualizer vocabulary (@strudel/draw + webaudio). Each viz has TWO
+// chain forms — Strudel's own convention, mirrored by Stave:
+//   ._name()  → inline viz zone drawn below the pattern
+//   .name()   → full-screen backdrop
+// Rather than hand-write 18 near-identical entries, generate both from this
+// table: { what it draws, the visual-feedback anchor ('' = no per-viz anchor,
+// so the Reference→ lands on the page root). tscope aliases scope; wordfall and
+// fscope aren't listed on that page, so they get the page root.
+const VIZ_KINDS: Record<string, { shows: string; anchor: string }> = {
+  pianoroll: { shows: 'piano-roll (notes as pitch × time)', anchor: '#punchcard--pianoroll' },
+  punchcard: { shows: 'punchcard of note onsets', anchor: '#punchcard--pianoroll' },
+  wordfall: { shows: 'falling event labels', anchor: '' },
+  scope: { shows: 'oscilloscope of the waveform', anchor: '#scope' },
+  tscope: { shows: 'waveform scope (alias of scope)', anchor: '#scope' },
+  fscope: { shows: 'frequency scope (FFT)', anchor: '' },
+  spectrum: { shows: 'frequency-spectrum analyser', anchor: '#spectrum' },
+  spiral: { shows: 'spiral (polar) cycle view', anchor: '#spiral' },
+  pitchwheel: { shows: 'notes on a pitch-class wheel', anchor: '#pitchwheel' },
+}
+
+/** Both chain forms for every viz — `_name` (inline) + `name` (backdrop). */
+const VIZ_ENTRIES: Record<string, RuntimeDoc> = Object.fromEntries(
+  Object.entries(VIZ_KINDS).flatMap(([name, { shows, anchor }]) => {
+    const sourceUrl = VIZ_FEEDBACK_URL + anchor
+    return [
+      [
+        `_${name}`,
+        {
+          signature: `._${name}()`,
+          description: `Inline ${shows}, drawn below this pattern.`,
+          example: `s("bd*4")._${name}()`,
+          sourceUrl,
+        } satisfies RuntimeDoc,
+      ],
+      [
+        name,
+        {
+          signature: `.${name}()`,
+          description: `Full-screen backdrop ${shows}.`,
+          example: `s("bd*4").${name}()`,
+          sourceUrl,
+        } satisfies RuntimeDoc,
+      ],
+    ]
+  }),
+)
 
 export const STRUDEL_DOCS: Record<string, RuntimeDoc> = {
+  ...VIZ_ENTRIES,
   note: {
     signature: 'note(pattern: string)',
     description: 'Play notes from a mini-notation pattern. Accepts note names (c4, eb3) or MIDI numbers.',
