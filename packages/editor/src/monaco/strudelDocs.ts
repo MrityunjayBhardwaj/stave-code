@@ -33,8 +33,10 @@ export const STRUDEL_DOCS: Record<string, RuntimeDoc> = {
   },
   setcps: {
     signature: 'setcps(cps)',
-    description:
-      'Set the global tempo in cycles per second. Default is 1 (one cycle/second); higher is faster. `setcpm(n)` is the same as `setcps(n / 60)`.',
+    // Keep to one terse sentence like the other entries — Monaco content-sizes
+    // the hover box, so a longer description makes setcps's box wider/taller
+    // than its peers (the setcpm equivalence lives on the linked doc).
+    description: 'Set the global tempo in cycles per second. Default is 1; higher is faster.',
     example: 'setcps(0.5)',
     // No dedicated #setcps anchor — the tempo section that documents it.
     sourceUrl: 'https://strudel.cc/understand/cycles/#setting-cpm',
