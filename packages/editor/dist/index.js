@@ -18521,6 +18521,16 @@ var STRUDEL_DOCS = {
     description: "Route to audio effect bus n. Patterns on the same orbit share effects.",
     example: 'note("c4 e4").room(0.5).orbit(1)',
     sourceUrl: "https://strudel.cc/learn/effects/#orbit"
+  },
+  // Stave extension — NOT a Strudel function. An empty `sourceUrl` suppresses
+  // the Reference→ link (providers.ts renders it only when the href is truthy;
+  // `'' ?? docsBaseUrl` stays `''`), so we never send the user to a strudel.cc
+  // page that doesn't document it.
+  viz: {
+    signature: ".viz(name)",
+    description: "Stave feature (not Strudel): render a named inline visualizer below this pattern.",
+    example: 's("bd*4").viz("pianoroll")',
+    sourceUrl: ""
   }
 };
 var STRUDEL_DOCS_INDEX = {
