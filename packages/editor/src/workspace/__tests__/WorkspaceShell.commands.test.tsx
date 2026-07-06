@@ -232,13 +232,14 @@ describe('WorkspaceShell commands integration', () => {
     expect(bgLayer).toBeNull()
   })
 
-  it('#350d — active pane backdrop is LIVE, inactive pane backdrop FREEZES (paused)', () => {
-    // Two split panes, each with its own pinned backdrop. Only the focused
-    // (active) pane renders its backdrop LIVE; the inactive pane freezes to its
-    // last frame (paused → renderer.pause()). This bounds the shared-GPU cost to
-    // ~1× regardless of how many panes are split (#299/#122). `data-backdrop-live`
-    // mirrors the group's `data-active-group`; the backdrop preview's `paused`
-    // ctx is the inverse.
+  it('#767 — EVERY split pane backdrop stays LIVE (never frozen), focused or not', () => {
+    // Two split panes, each with its own pinned backdrop. Both render LIVE
+    // regardless of which is focused — freezing the inactive pane (the old
+    // #350d `paused={!isShellActiveGroup}`) made the first pattern's viz visibly
+    // stop the moment a second pane was opened. The shared-GPU concern
+    // (#299/#122) is now owned by `vizGovernor`, which throttles adaptively only
+    // under real stress. So `data-backdrop-live` is always 'true' and every
+    // backdrop preview's `paused` ctx is false.
     createWorkspaceFile('f-hydra2', 'spectrum.hydra', '// hydra code 2', 'hydra')
     const provider = makePreviewProvider()
     const groups = new Map<string, WorkspaceGroupState>([
@@ -258,23 +259,18 @@ describe('WorkspaceShell commands integration', () => {
     const backdrops = container.querySelectorAll('[data-workspace-background]')
     expect(backdrops.length).toBe(2)
 
-    // Invariant: each backdrop's live flag matches its group's active state,
-    // and the backdrop preview's `paused` ctx is the inverse of live.
+    // Invariant: every backdrop is live and unpaused, independent of focus.
     let liveCount = 0
-    let frozenCount = 0
     container.querySelectorAll('[data-workspace-group]').forEach((g) => {
       const bg = g.querySelector('[data-workspace-background]')
       if (!bg) return
-      const live = bg.getAttribute('data-backdrop-live')
-      expect(live).toBe(g.getAttribute('data-active-group'))
+      expect(bg.getAttribute('data-backdrop-live')).toBe('true')
       const out = bg.querySelector('[data-testid="stub-preview-output"]')
-      expect(out?.getAttribute('data-paused')).toBe(String(live !== 'true'))
-      if (live === 'true') liveCount++
-      else frozenCount++
+      expect(out?.getAttribute('data-paused')).toBe('false')
+      liveCount++
     })
-    // Exactly one active (live) pane and one inactive (frozen) pane.
-    expect(liveCount).toBe(1)
-    expect(frozenCount).toBe(1)
+    // Both panes live — the inactive one is no longer frozen.
+    expect(liveCount).toBe(2)
   })
 
   it('#350c — per-pane opacity/quality override the global default; absent → default', () => {

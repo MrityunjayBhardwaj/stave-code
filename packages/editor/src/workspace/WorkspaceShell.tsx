@@ -2441,10 +2441,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                   data-workspace-background={group.id}
                   data-background-file-id={bgFileId}
                   data-backdrop-quality={groupQuality}
-                  // #350d: only the focused/active pane renders its backdrop
-                  // LIVE; inactive panes freeze to their last frame (see the
-                  // `paused` prop below). Exposed for observation.
-                  data-backdrop-live={isShellActiveGroup ? 'true' : 'false'}
+                  // #767: EVERY pane's backdrop renders LIVE, focused or not (see
+                  // the `paused` prop below) — a split of two patterns keeps both
+                  // backdrops animating. Always 'true' now; kept for observation.
+                  data-backdrop-live="true"
                   style={{
                     position: 'absolute',
                     inset: 0,
@@ -2479,15 +2479,19 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                       sourceRef={{ kind: 'default' }}
                       theme={theme}
                       hidden={false}
-                      // #350d: freeze the backdrop on inactive panes. GPU is
-                      // shared (#299/#122) — N split panes each rendering a
-                      // heavy backdrop LIVE = N× the compositor cost. Only the
-                      // focused pane renders live; the rest pause to their last
-                      // frame. `paused` routes to renderer.pause() (p5.noLoop /
-                      // hydra stop) which freezes the canvas (keeps the last
-                      // frame) and resumes instantly on focus — the lighter
-                      // freeze, not an off-screen teardown.
-                      paused={!isShellActiveGroup}
+                      // #767: keep EVERY split pane's backdrop live, focused or
+                      // not — freezing the inactive pane (the old #350d
+                      // `paused={!isShellActiveGroup}`) made the first pattern's
+                      // viz visibly stop the moment a second pane was opened.
+                      // The shared-GPU cost that freeze guarded against
+                      // (#299/#122 — N heavy backdrops = N× compositor cost) is
+                      // now owned by `vizGovernor`, which gates every
+                      // WorkerVizRenderer (the default) and round-robins /
+                      // throttles / drops resolution ONLY under real GPU stress,
+                      // and is a total no-op when smooth. So two light backdrops
+                      // both run full-rate, and heavy ones stay bounded — without
+                      // the crude always-freeze that regressed the common case.
+                      paused={false}
                       onSourceRefChange={() => {}}
                     />
                   </div>

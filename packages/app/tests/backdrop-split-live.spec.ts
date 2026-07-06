@@ -1,13 +1,15 @@
 import { test, expect, type Page } from '@playwright/test'
 
 /**
- * #366 (350d) — active pane renders the backdrop LIVE, inactive panes FREEZE
- * to their last frame.
+ * #767 — EVERY split pane's backdrop stays LIVE, focused or not.
  *
- * GPU is shared (#299/#122): N split panes each rendering a heavy backdrop LIVE
- * = N× the compositor cost. So only the focused/active pane renders its backdrop
- * live; inactive panes pause (paused → renderer.pause() → the worker stops
- * producing frames — the lighter freeze) and resume instantly on focus.
+ * Previously (#366/#350d) only the focused pane rendered its backdrop live and
+ * inactive panes FROZE to their last frame, to bound the shared-GPU cost
+ * (#299/#122). But that made the first pattern's viz visibly STOP the moment a
+ * second pane was opened. The shared-GPU concern is now owned by `vizGovernor`,
+ * which gates every WorkerVizRenderer and throttles/round-robins/drops-resolution
+ * ONLY under real GPU stress (and is a total no-op when smooth). So the crude
+ * always-freeze is gone: a split of two patterns keeps BOTH backdrops animating.
  *
  * Observation discipline — measure the WORKER FRAME-PRODUCTION rate, not pixels:
  *   - The default p5 backdrop renders in an OffscreenCanvas worker; getContext on
@@ -17,7 +19,7 @@ import { test, expect, type Page } from '@playwright/test'
  *     artifact — the editor changes even when the backdrop is frozen).
  *   - `__stavePerf` records a per-worker frame counter (`worker#N`). Its delta over
  *     a fixed window is the DIRECT measure of GPU frame production: live ⇒ tens of
- *     frames/sec; frozen ⇒ ~0. This is exactly the cost #366 removes, and it is
+ *     frames/sec; frozen ⇒ ~0. This is exactly the "stop" #767 removes, and it is
  *     immune to the editor-compositing confound.
  *   - P146: SYNTH (`.s("sawtooth")`) drives the playing program (the produce loop);
  *     drum samples don't load headless and would gate the code backdrop.
@@ -80,7 +82,7 @@ async function framesProducedOver(page: Page, ms: number): Promise<number> {
   return (await workerFrameCount(page)) - before
 }
 
-test('#366 — inactive pane backdrop stops producing frames (freezes), active stays live, resumes on focus', async ({ page }) => {
+test('#767 — backdrop keeps producing frames when its pane is NOT the focused one', async ({ page }) => {
   await gotoApp(page)
   await page.evaluate(() => (window as any).__stavePerf?.setEnabled?.(true)) // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -109,25 +111,27 @@ test('#366 — inactive pane backdrop stops producing frames (freezes), active s
   await page.waitForTimeout(500)
   expect(await page.locator('[data-workspace-group]').count()).toBe(2)
 
-  // 3) Focus the OTHER (empty) group → the backdrop's pane becomes inactive.
+  // 3) Focus the OTHER (empty) group → the backdrop's pane is no longer focused.
   const emptyGroup = page.locator('[data-workspace-group]', {
     hasNot: page.locator('[data-workspace-background]'),
   }).first()
   await emptyGroup.click({ position: { x: 40, y: 200 } })
   await page.waitForTimeout(500)
-  await expect(backdrop).toHaveAttribute('data-backdrop-live', 'false', { timeout: 4000 })
+  // #767: the backdrop stays LIVE even though its pane isn't the active group.
+  await expect(backdrop).toHaveAttribute('data-backdrop-live', 'true', { timeout: 4000 })
 
-  // 4) Inactive backdrop FREEZES — the worker stops producing frames (~0).
-  const frozenFrames = await framesProducedOver(page, 1200)
-  expect(frozenFrames, 'inactive backdrop worker should stop producing frames').toBeLessThanOrEqual(2)
+  // 4) The key assertion — the unfocused pane's backdrop KEEPS producing frames
+  //    (the old #350d froze it to ~0 here; #767 keeps it animating).
+  const unfocusedFrames = await framesProducedOver(page, 1200)
+  expect(unfocusedFrames, 'unfocused backdrop worker should keep producing frames').toBeGreaterThan(10)
 
-  // 5) Refocus the backdrop's pane → the worker RESUMES producing frames.
+  // 5) Refocusing the backdrop's pane changes nothing — it was already live.
   const bgGroup = page.locator('[data-workspace-group]', {
     has: page.locator('[data-workspace-background]'),
   }).first()
   await bgGroup.click({ position: { x: 40, y: 200 } })
   await page.waitForTimeout(500)
   await expect(backdrop).toHaveAttribute('data-backdrop-live', 'true', { timeout: 4000 })
-  const resumedFrames = await framesProducedOver(page, 1200)
-  expect(resumedFrames, 'refocused backdrop worker should resume producing frames').toBeGreaterThan(10)
+  const refocusedFrames = await framesProducedOver(page, 1200)
+  expect(refocusedFrames, 'refocused backdrop worker should still produce frames').toBeGreaterThan(10)
 })
