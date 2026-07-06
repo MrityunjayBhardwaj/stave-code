@@ -33497,7 +33497,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                         "data-workspace-background": group.id,
                         "data-background-file-id": bgFileId,
                         "data-backdrop-quality": groupQuality,
-                        "data-backdrop-live": isShellActiveGroup ? "true" : "false",
+                        "data-backdrop-live": "true",
                         style: {
                           position: "absolute",
                           inset: 0,
@@ -33531,7 +33531,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                                 sourceRef: { kind: "default" },
                                 theme,
                                 hidden: false,
-                                paused: !isShellActiveGroup,
+                                paused: false,
                                 onSourceRefChange: () => {
                                 }
                               }
