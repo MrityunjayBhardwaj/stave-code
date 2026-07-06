@@ -30867,7 +30867,8 @@ function ExpandDrawer({
   chunk,
   applyToStrip,
   beginGesture,
-  endGesture
+  endGesture,
+  zoom = 1
 }) {
   const applyEdit = React37__namespace.useCallback(
     (mutate) => applyToStrip(strip.id, mutate),
@@ -30890,7 +30891,9 @@ function ExpandDrawer({
         // the gap; the empty space below the effect-add row is the waiting drawer.
         alignSelf: "stretch",
         display: "flex",
-        minWidth: 264,
+        // Scale the base floor with the zoom so a near-empty drawer keeps a
+        // panel-like width proportional to the (zoomed) face, not a fixed 264.
+        minWidth: 264 * zoom,
         // Full outline (#609): the strip face drops its RIGHT border when
         // expanded, so the drawer's LEFT border is the single hairline seam
         // between them and the top/right/bottom borders close the card — the
@@ -30904,7 +30907,7 @@ function ExpandDrawer({
         borderRadius: "0 6px 6px 0",
         overflow: "hidden"
       },
-      children: /* @__PURE__ */ jsxRuntime.jsx(
+      children: /* @__PURE__ */ jsxRuntime.jsx("div", { style: { zoom, display: "flex", flex: 1, alignSelf: "flex-start" }, children: /* @__PURE__ */ jsxRuntime.jsx(
         MixerBody,
         {
           chunk,
@@ -30914,7 +30917,7 @@ function ExpandDrawer({
           knobFlow: "columns",
           showSoundPicker: false
         }
-      )
+      ) })
     }
   );
 }
@@ -31432,7 +31435,8 @@ function MixerStrips({
                       chunk: chunks[i],
                       applyToStrip,
                       beginGesture,
-                      endGesture
+                      endGesture,
+                      zoom: userZoom
                     }
                   )
                 ]

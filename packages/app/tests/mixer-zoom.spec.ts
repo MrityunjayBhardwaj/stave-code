@@ -116,4 +116,33 @@ test.describe('Mixer console zoom bar (#759)', () => {
     expect(await readPercent(drawer)).toBe(200)
     await expect(zin).toBeDisabled()
   })
+
+  test('the expand drawer content scales with the zoom, in lockstep with the face (#763)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, 'd1: note("c e g").lpf(800).room(0.5)')
+    const drawer = await openMixer(page)
+
+    // expand d1 so its knob chain (the drawer content) is on screen.
+    await drawer.locator('[data-mixer-strip-id="d1"] [data-mixer-strip-expand]').click()
+    const knob = drawer.locator('[data-mixer-expand-for="d1"] [data-knob]').first()
+    const knob100 = await knob.boundingBox()
+    if (!knob100) throw new Error('no drawer knob at 100%')
+
+    // zoom to 200% — the face doubles; the drawer knob must double TOO (before
+    // #763 it stayed frozen at 1×, dwarfed in a stretched-tall empty column).
+    for (let i = 0; i < 12 && !(await drawer.locator('[data-mixer-zoom-in]').isDisabled()); i++) {
+      await drawer.locator('[data-mixer-zoom-in]').click()
+    }
+    expect(await readPercent(drawer)).toBe(200)
+    const knob200 = await knob.boundingBox()
+    if (!knob200) throw new Error('no drawer knob at 200%')
+
+    // ~2× on both axes (100% → 200% is a doubling of the user scale).
+    expect(knob200.width / knob100.width).toBeGreaterThan(1.8)
+    expect(knob200.width / knob100.width).toBeLessThan(2.2)
+    expect(knob200.height / knob100.height).toBeGreaterThan(1.8)
+    expect(knob200.height / knob100.height).toBeLessThan(2.2)
+  })
 })

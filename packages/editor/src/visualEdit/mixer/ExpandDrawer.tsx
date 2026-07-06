@@ -32,6 +32,14 @@ interface ExpandDrawerProps {
   applyToStrip: (id: string, mutate: (fresh: ChunkInfo, wb: Writeback) => void) => void
   beginGesture: () => void
   endGesture: () => void
+  /** User zoom factor from the console zoom bar (#763). Scales the drawer
+   *  CONTENT so it tracks the face (which scales by CONSOLE_ZOOM × this). This is
+   *  the user multiplier, NOT the face's 1.5× baseline: at 100% the drawer keeps
+   *  its established 1× content; at 200% it doubles — same factor the face does,
+   *  so the strip + drawer read as one coherently-zoomed unit. Applied to an
+   *  INNER wrapper (not the outer card) so the card keeps its stretch-to-face-
+   *  height contract; CSS `zoom` (not `transform`) keeps knob drags delta-exact. */
+  zoom?: number
 }
 
 export function ExpandDrawer({
@@ -40,6 +48,7 @@ export function ExpandDrawer({
   applyToStrip,
   beginGesture,
   endGesture,
+  zoom = 1,
 }: ExpandDrawerProps): React.ReactElement {
   // Bind the shared body to THIS strip — identical shape to `useActiveChunk`'s
   // `applyEdit`, so MixerBody can't tell whether it's cursor- or strip-bound.
@@ -64,7 +73,9 @@ export function ExpandDrawer({
         // the gap; the empty space below the effect-add row is the waiting drawer.
         alignSelf: 'stretch',
         display: 'flex',
-        minWidth: 264,
+        // Scale the base floor with the zoom so a near-empty drawer keeps a
+        // panel-like width proportional to the (zoomed) face, not a fixed 264.
+        minWidth: 264 * zoom,
         // Full outline (#609): the strip face drops its RIGHT border when
         // expanded, so the drawer's LEFT border is the single hairline seam
         // between them and the top/right/bottom borders close the card — the
@@ -79,17 +90,24 @@ export function ExpandDrawer({
         overflow: 'hidden',
       }}
     >
-      <MixerBody
-        chunk={chunk}
-        applyEdit={applyEdit}
-        beginGesture={beginGesture}
-        endGesture={endGesture}
-        knobFlow="columns"
-        // The console is for mixing (levels / pan / effects). Picking a track's
-        // instrument is a pattern-authoring decision — its home is the Pattern
-        // tab inspector, so the drawer omits the sound-source picker.
-        showSoundPicker={false}
-      />
+      {/* Inner wrapper carries the user zoom (#763): the CONTENT scales while the
+          outer card above keeps `alignSelf: stretch` (so it still matches the
+          face height). `flex: 1` lets it fill the card width; `alignSelf:
+          flex-start` keeps the (zoomed) content pinned to the top with the empty
+          waiting-space below, exactly as at 1×. */}
+      <div style={{ zoom, display: 'flex', flex: 1, alignSelf: 'flex-start' }}>
+        <MixerBody
+          chunk={chunk}
+          applyEdit={applyEdit}
+          beginGesture={beginGesture}
+          endGesture={endGesture}
+          knobFlow="columns"
+          // The console is for mixing (levels / pan / effects). Picking a track's
+          // instrument is a pattern-authoring decision — its home is the Pattern
+          // tab inspector, so the drawer omits the sound-source picker.
+          showSoundPicker={false}
+        />
+      </div>
     </div>
   )
 }

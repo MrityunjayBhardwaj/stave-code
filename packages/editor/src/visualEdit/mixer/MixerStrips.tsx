@@ -211,6 +211,9 @@ export function MixerStrips({
                 applyToStrip={applyToStrip}
                 beginGesture={beginGesture}
                 endGesture={endGesture}
+                // #763 — scale the drawer content by the USER zoom (not faceZoom)
+                // so it tracks the face and the unit reads as one zoomed strip.
+                zoom={userZoom}
               />
             )}
           </div>
