@@ -7475,7 +7475,7 @@ function onVizInputsLiveValuesChange(cb) {
   };
 }
 __name(onVizInputsLiveValuesChange, "onVizInputsLiveValuesChange");
-var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;
+var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 25;
 var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
 var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
 function readMusicalTimelineSubRowHeight() {

@@ -704,10 +704,10 @@ export function onVizInputsLiveValuesChange(cb: (on: boolean) => void): () => vo
 
 // ── Musical Timeline sub-row height (Phase 20-12 wave-δ) ────────────
 // Sub-row band height (px) when an expanded track has multiple leaves.
-// Mockup default = 18; range 12-48 covers compact-density to "I want to
-// read pitch contours" comfortable. No CSS variable — the consumer is
-// React (layoutTrackRows + MusicalTimeline), not CSS.
-const DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18
+// Default = 25; range 12-48 covers compact-density to "I want to read
+// pitch contours" comfortable. No CSS variable — the consumer is React
+// (layoutTrackRows + MusicalTimeline), not CSS.
+const DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 25
 const MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = 'stave:musicalTimeline.subRowHeight'
 const musicalTimelineSubRowHeightListeners = new Set<(h: number) => void>()
 
