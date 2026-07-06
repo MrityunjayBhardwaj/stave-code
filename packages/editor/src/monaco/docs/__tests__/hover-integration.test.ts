@@ -124,12 +124,26 @@ describe('Sonic Pi hover payload', () => {
 })
 
 describe('Strudel hover payload', () => {
-  it('stack returns hover with docsBaseUrl fallback link', () => {
+  it('stack returns hover with its per-function permalink (#765)', () => {
     const h = hoverFor(STRUDEL_DOCS_INDEX, 'stack')
     expect(h).not.toBeNull()
     expect(h!.values[0]).toContain('stack(')
     expect(
-      h!.values.some((v) => v.includes('[Reference →]') && v.includes('strudel.cc')),
+      h!.values.some(
+        (v) => v.includes('[Reference →]') && v.includes('strudel.cc/learn/factories/#stack'),
+      ),
+    ).toBe(true)
+  })
+
+  it('every (no permalink) falls back to the docsBaseUrl function browser (#765)', () => {
+    const h = hoverFor(STRUDEL_DOCS_INDEX, 'every')
+    expect(h).not.toBeNull()
+    // `every` has no per-function anchor on strudel.cc, so it's the one entry
+    // that still uses meta.docsBaseUrl — proves the `?? fallbackUrl` path lives.
+    expect(
+      h!.values.some(
+        (v) => v.includes('[Reference →]') && v.includes('strudel.cc/functions/'),
+      ),
     ).toBe(true)
   })
 

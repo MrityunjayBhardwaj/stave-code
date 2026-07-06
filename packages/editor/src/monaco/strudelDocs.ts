@@ -13,49 +13,61 @@ import { createHoverProvider } from './docs/providers'
 // need to automate. Until then these entries are maintained manually.
 //
 // Each entry is a RuntimeDoc with `example` required — the pattern for
-// Strudel's hand-curated style. No per-function sourceUrl is set;
-// STRUDEL_DOCS_INDEX.meta.docsBaseUrl covers the Reference→ link.
+// Strudel's hand-curated style. Each also carries a verified per-function
+// `sourceUrl` permalink (strudel.cc/learn/<topic>/#<anchor>) for the Reference→
+// link; only `every` lacks one (no anchor on the site) and falls back to
+// STRUDEL_DOCS_INDEX.meta.docsBaseUrl.
 
 export const STRUDEL_DOCS: Record<string, RuntimeDoc> = {
   note: {
     signature: 'note(pattern: string)',
     description: 'Play notes from a mini-notation pattern. Accepts note names (c4, eb3) or MIDI numbers.',
     example: 'note("c4 e4 g4 b4")',
+    sourceUrl: 'https://strudel.cc/learn/notes/#notes',
   },
   s: {
     signature: 's(pattern: string)',
     description: 'Select a sound or synth. Accepts sample names or synth identifiers.',
     example: 's("bd sd hh sd")',
+    sourceUrl: 'https://strudel.cc/learn/sounds/#sounds',
   },
   stack: {
     signature: 'stack(...patterns)',
     description: 'Play multiple patterns simultaneously (vertical stack).',
     example: 'stack(note("c3 e3"), s("bd sd"))',
+    sourceUrl: 'https://strudel.cc/learn/factories/#stack',
   },
   cat: {
     signature: 'cat(...patterns)',
     description: 'Concatenate patterns sequentially — each plays for one cycle then moves to the next.',
     example: 'cat(note("c4 e4"), note("g4 b4"))',
+    sourceUrl: 'https://strudel.cc/learn/factories/#cat',
   },
   fast: {
     signature: '.fast(n)',
     description: 'Speed up the pattern by factor n.',
     example: 'note("c4 e4").fast(2)',
+    sourceUrl: 'https://strudel.cc/learn/time-modifiers/#fast',
   },
   slow: {
     signature: '.slow(n)',
     description: 'Slow down the pattern by factor n.',
     example: 'note("c4 e4 g4").slow(2)',
+    sourceUrl: 'https://strudel.cc/learn/time-modifiers/#slow',
   },
   rev: {
     signature: '.rev()',
     description: 'Reverse the pattern.',
     example: 'note("c4 d4 e4 f4").rev()',
+    sourceUrl: 'https://strudel.cc/learn/time-modifiers/#rev',
   },
   every: {
     signature: '.every(n, fn)',
     description: 'Apply fn to the pattern every n cycles.',
     example: 'note("c4 e4 g4").every(4, x => x.rev())',
+    // No per-function permalink on strudel.cc (no `#every` anchor on any
+    // /learn/ page as of this writing), so `every` intentionally has no
+    // sourceUrl — it falls back to meta.docsBaseUrl (the function browser).
     commonMistakes: [
       {
         // Calling `every(n, fn)` as a free function instead of chaining
@@ -74,116 +86,144 @@ export const STRUDEL_DOCS: Record<string, RuntimeDoc> = {
     signature: '.sometimes(fn)',
     description: 'Apply fn to events 50% of the time at random.',
     example: 'note("c4 e4 g4").sometimes(x => x.fast(2))',
+    sourceUrl: 'https://strudel.cc/learn/random-modifiers/#sometimes',
   },
   degradeBy: {
     signature: '.degradeBy(amount)',
     description: 'Randomly remove events. amount is 0–1 (0 = keep all, 1 = remove all).',
     example: 'note("c4 d4 e4 f4").degradeBy(0.3)',
+    sourceUrl: 'https://strudel.cc/learn/random-modifiers/#degradeby',
   },
   gain: {
     signature: '.gain(amount)',
     description: 'Set the volume. 1 is unity gain; values above 1 amplify.',
     example: 'note("c4 e4").gain(0.7)',
+    sourceUrl: 'https://strudel.cc/learn/effects/#gain',
   },
   pan: {
     signature: '.pan(value)',
     description: 'Set stereo panning. -1 is hard left, 0 is center, 1 is hard right.',
     example: 'note("c4 e4 g4").pan(sine)',
+    sourceUrl: 'https://strudel.cc/learn/effects/#pan',
   },
   room: {
     signature: '.room(amount)',
     description: 'Add reverb. 0 is dry, 1 is fully wet.',
     example: 'note("c4 e4").room(0.4)',
+    sourceUrl: 'https://strudel.cc/learn/effects/#room',
   },
   delay: {
     signature: '.delay(amount)',
     description: 'Add delay/echo effect.',
     example: 'note("c4 e4").delay(0.3)',
+    // #delay-1 is the delay FUNCTION (h3 w/ the JsDoc island); #delay is the
+    // parent "Delay" section heading. Point at the function.
+    sourceUrl: 'https://strudel.cc/learn/effects/#delay-1',
   },
   jux: {
     signature: '.jux(fn)',
     description: 'Apply fn to a copy of the pattern playing in the right channel, original in left.',
     example: 'note("c4 e4 g4").jux(rev)',
+    sourceUrl: 'https://strudel.cc/learn/effects/#jux',
   },
   off: {
     signature: '.off(timeOffset, fn)',
     description: 'Play an offset copy of the pattern with fn applied, layered over the original.',
     example: 'note("c4 e4 g4").off(0.25, x => x.gain(0.5))',
+    sourceUrl: 'https://strudel.cc/learn/accumulation/#off',
   },
   layer: {
     signature: '.layer(...fns)',
     description: 'Apply multiple functions to copies of the pattern and stack all results.',
     example: 'note("c4 e4 g4").layer(x => x.fast(2), rev)',
+    sourceUrl: 'https://strudel.cc/learn/accumulation/#layer',
   },
   struct: {
     signature: '.struct(pattern)',
     description: 'Impose a rhythmic structure on the pattern from a boolean/euclid pattern.',
     example: 'note("c4").struct("t f t t f t t f")',
+    sourceUrl: 'https://strudel.cc/learn/conditional-modifiers/#struct',
   },
   mask: {
     signature: '.mask(pattern)',
     description: 'Filter events by a boolean pattern — only play where the mask is true.',
     example: 'note("c4 d4 e4 f4").mask("t t f t")',
+    sourceUrl: 'https://strudel.cc/learn/conditional-modifiers/#mask',
   },
   euclid: {
     signature: '.euclid(steps, total)',
     description: 'Euclidean rhythm: distribute steps evenly across total slots.',
     example: 's("bd").euclid(3, 8)',
+    sourceUrl: 'https://strudel.cc/learn/time-modifiers/#euclid',
   },
   iter: {
     signature: '.iter(n)',
     description: 'Iterate through n rotations of the pattern over n cycles.',
     example: 'note("c4 d4 e4 f4").iter(4)',
+    sourceUrl: 'https://strudel.cc/learn/time-modifiers/#iter',
   },
   chunk: {
     signature: '.chunk(n, fn)',
     description: 'Divide pattern into n chunks, applying fn to one chunk per cycle in rotation.',
     example: 'note("c4 d4 e4 f4").chunk(4, x => x.fast(2))',
+    sourceUrl: 'https://strudel.cc/learn/conditional-modifiers/#chunk',
   },
   cutoff: {
     signature: '.cutoff(freq)',
     description: 'Low-pass filter cutoff frequency in Hz.',
     example: 'note("c4 e4").s("sawtooth").cutoff(800)',
+    // `cutoff` is documented as a synonym of `lpf` (no own anchor).
+    sourceUrl: 'https://strudel.cc/learn/effects/#lpf',
   },
   resonance: {
     signature: '.resonance(amount)',
     description: 'Filter resonance (Q). Higher values create a more pronounced peak.',
     example: 'note("c4 e4").s("sawtooth").cutoff(sine.range(200,2000)).resonance(8)',
+    // `resonance` is documented as a synonym of `lpq` (no own anchor).
+    sourceUrl: 'https://strudel.cc/learn/effects/#lpq',
   },
   hpf: {
     signature: '.hpf(freq)',
     description: 'High-pass filter — removes frequencies below the cutoff.',
     example: 's("amen").hpf(400)',
+    sourceUrl: 'https://strudel.cc/learn/effects/#hpf',
   },
   lpf: {
     signature: '.lpf(freq)',
     description: 'Low-pass filter — alias for cutoff.',
     example: 'note("c4 e4").lpf(1200)',
+    sourceUrl: 'https://strudel.cc/learn/effects/#lpf',
   },
   release: {
     signature: '.release(seconds)',
     description: 'Envelope release time in seconds.',
     example: 'note("c4 e4 g4").release(0.5)',
+    sourceUrl: 'https://strudel.cc/learn/effects/#release',
   },
   sustain: {
     signature: '.sustain(seconds)',
     description: 'Envelope sustain duration in seconds.',
     example: 'note("c4").sustain(0.1).release(0.3)',
+    sourceUrl: 'https://strudel.cc/learn/effects/#sustain',
   },
   speed: {
     signature: '.speed(rate)',
     description: 'Sample playback rate. 1 is normal, 2 is double speed (up one octave), -1 is reversed.',
     example: 's("amen").speed(0.5)',
+    // `speed` is a sampler control — documented on the samples page, not effects.
+    sourceUrl: 'https://strudel.cc/learn/samples/#speed',
   },
   vowel: {
     signature: '.vowel(v)',
     description: 'Vowel formant filter. Accepts "a", "e", "i", "o", "u".',
     example: 'note("c4 d4 e4").vowel("<a e i o>")',
+    sourceUrl: 'https://strudel.cc/learn/effects/#vowel',
   },
   orbit: {
     signature: '.orbit(n)',
     description: 'Route to audio effect bus n. Patterns on the same orbit share effects.',
     example: 'note("c4 e4").room(0.5).orbit(1)',
+    sourceUrl: 'https://strudel.cc/learn/effects/#orbit',
   },
 }
 
@@ -227,9 +267,11 @@ export const STRUDEL_DOCS_INDEX: DocsIndex = {
   ],
   meta: {
     source: 'hand-curated',
-    // Strudel's jsdoc isn't published with per-function permalinks, so
-    // hovers fall back to the main function reference page — the user
-    // lands inside the searchable function browser.
+    // Each entry carries its own `sourceUrl` — a verified per-function
+    // permalink on strudel.cc/learn (e.g. `#gain` on /learn/effects/). This
+    // `docsBaseUrl` is only the FALLBACK for the rare entry with no permalink
+    // (currently just `every`): it lands the user in the searchable function
+    // browser. See providers.ts: `href = doc.sourceUrl ?? docsBaseUrl`.
     docsBaseUrl: 'https://strudel.cc/functions/',
   },
 }

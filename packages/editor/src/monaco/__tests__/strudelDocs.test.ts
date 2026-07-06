@@ -108,12 +108,12 @@ describe('registerStrudelHover', () => {
 
     const result = invokeHover(provider, model, position)
     expect(result).not.toBeNull()
-    // Signature + description + example + Reference-fallback link
+    // Signature + description + example + Reference link (per-function permalink)
     expect(result!.contents).toHaveLength(4)
     expect((result!.contents[0] as { value: string }).value).toContain('fast')
     expect(
       (result!.contents[result!.contents.length - 1] as { value: string }).value,
-    ).toContain('strudel.cc/functions/')
+    ).toContain('strudel.cc/learn/time-modifiers/#fast')
   })
 
   it('returns null for unknown word', () => {
