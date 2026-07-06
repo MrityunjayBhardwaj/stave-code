@@ -1066,4 +1066,12 @@ export interface WorkspaceShellProps {
    *  the crop to this specific zone instance; see onCropViz above for the
    *  per-instance rationale. */
   readonly onCropViz?: (vizId: string, presetId: string | null, trackKey: string) => void
+
+  /**
+   * A viz-file editor chrome's backdrop pill was clicked while that file is
+   * ALREADY the group backdrop. The host opens the shared backdrop-controls
+   * popover (opacity / quality / crop / reveal / clear / viz-span) scoped to
+   * `fileId`, anchored to `rect`. When omitted the viz chrome falls back to a
+   * plain toggle. See PreviewEditorChromeContext.onOpenBackdropControls. */
+  readonly onOpenVizBackdropControls?: (fileId: string, rect: DOMRect) => void
 }

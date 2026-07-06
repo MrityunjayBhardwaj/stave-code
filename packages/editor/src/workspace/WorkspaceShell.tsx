@@ -783,6 +783,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   onTabContextMenu,
   onEditViz,
   onCropViz,
+  onOpenVizBackdropControls,
 }, forwardedRef) {
   const shellRootRef = useRef<HTMLDivElement>(null)
 
@@ -2137,6 +2138,15 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                   },
                   isBackground:
                     groups.get(groupId)?.backgroundFileId === tab.fileId,
+                  // When THIS viz file is already the group backdrop, its
+                  // chrome pill opens the host's shared backdrop-controls
+                  // popover instead of toggling off. Scoped to this file +
+                  // anchored to the clicked button. Omitted → the chrome
+                  // falls back to a plain toggle.
+                  onOpenBackdropControls: onOpenVizBackdropControls
+                    ? (rect: DOMRect) =>
+                        onOpenVizBackdropControls(tab.fileId, rect)
+                    : undefined,
                   onSave: () => {
                     // Bridge to the host-supplied save callback. The host
                     // owns the persistence layer (e.g., flushToPreset for
@@ -2304,6 +2314,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       findGroupWithAnyPreview,
       editorExtrasForTab,
       closeTabById,
+      // P239 guard — without this dep the ctx closes over a stale
+      // onOpenVizBackdropControls and the viz backdrop pill can't open
+      // the popover after the host wires it post-mount.
+      onOpenVizBackdropControls,
     ],
   )
 

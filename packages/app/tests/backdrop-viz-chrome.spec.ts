@@ -7,10 +7,11 @@
  *
  * Covers:
  *   - Button absent on pattern tabs.
- *   - Button starts 'off' on viz tabs.
+ *   - Button starts 'off' on viz tabs, labelled "set bg".
  *   - Click → backdrop layer mounts with the right fileId;
- *     button flips to 'on'.
- *   - Click again → backdrop layer removed; attribute back to 'off'.
+ *     button flips to 'on' and reads "bg: {name}" (#771).
+ *   - Pinned click opens the shared controls popover (no picker); its
+ *     "× clear" removes the backdrop → attribute back to 'off' (#771).
  *   - Backdrop survives tab switches (file-pinned model).
  *   - Selection persists across page reload (#38 unchanged).
  */
@@ -62,15 +63,17 @@ test.describe('Backdrop viz-chrome toggle', () => {
     ).toHaveCount(0)
   })
 
-  test('button appears on viz tabs and starts in off state', async ({ page }) => {
+  test('button appears on viz tabs and starts in off state, labelled "set bg"', async ({ page }) => {
     await gotoApp(page)
     await clickHydraTab(page)
     const btn = page.locator('[data-testid="viz-chrome-bg-toggle"]').first()
     await expect(btn).toBeVisible()
     await expect(btn).toHaveAttribute('data-bg-mode', 'off')
+    // #771 — matches the pattern-file pill: dot + "set bg" (no caret unpinned).
+    await expect(btn).toContainText('set bg')
   })
 
-  test('click toggles backdrop on / off', async ({ page }) => {
+  test('click pins (on, "bg:" label); pinned click opens controls popover; clear turns it off (#771)', async ({ page }) => {
     await gotoApp(page)
     await clickHydraTab(page)
 
@@ -79,15 +82,33 @@ test.describe('Backdrop viz-chrome toggle', () => {
     ).toHaveCount(0)
 
     const btn = page.locator('[data-testid="viz-chrome-bg-toggle"]').first()
+    // First click pins THIS file as the group backdrop (single-click, no picker).
     await btn.click()
 
     const backdrop = page.locator('[data-workspace-background]').first()
     await expect(backdrop).toBeVisible({ timeout: 5000 })
     await expect(btn).toHaveAttribute('data-bg-mode', 'on')
+    // #771 — pinned pill reads "bg: {name}".
+    await expect(btn).toContainText('bg:')
     const bgFileId = await backdrop.getAttribute('data-background-file-id')
     expect(bgFileId).toBeTruthy()
 
+    // Pinned click no longer toggles off — it opens the shared controls popover,
+    // in fixed-file mode (a static backdrop name, NO viz picker).
     await btn.click()
+    const popover = page.locator('[data-testid="backdrop-popover"]')
+    await expect(popover).toBeVisible({ timeout: 2000 })
+    await expect(
+      popover.locator('[data-testid="backdrop-popover-fixed-name"]'),
+    ).toBeVisible()
+    await expect(
+      popover.locator('[data-testid="backdrop-popover-picker"]'),
+    ).toHaveCount(0)
+    // The backdrop is still up while the popover is open.
+    await expect(page.locator('[data-workspace-background]')).toHaveCount(1)
+
+    // "× clear" is the deliberate un-pin path.
+    await popover.locator('[data-testid="backdrop-chrome-clear"]').click()
     await expect(
       page.locator('[data-workspace-background]'),
     ).toHaveCount(0)

@@ -32529,7 +32529,8 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
   onSaveFile,
   onTabContextMenu,
   onEditViz,
-  onCropViz
+  onCropViz,
+  onOpenVizBackdropControls
 }, forwardedRef) {
   const shellRootRef = React37.useRef(null);
   const initialState = React37.useRef(
@@ -33332,6 +33333,12 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
                     });
                   }, "onToggleBackground"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
+                  // When THIS viz file is already the group backdrop, its
+                  // chrome pill opens the host's shared backdrop-controls
+                  // popover instead of toggling off. Scoped to this file +
+                  // anchored to the clicked button. Omitted → the chrome
+                  // falls back to a plain toggle.
+                  onOpenBackdropControls: onOpenVizBackdropControls ? (rect) => onOpenVizBackdropControls(tab.fileId, rect) : void 0,
                   onSave: /* @__PURE__ */ __name(() => {
                     onSaveFileRef.current?.(tab);
                   }, "onSave")
@@ -33471,7 +33478,11 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
       findTabByFileId,
       findGroupWithAnyPreview,
       editorExtrasForTab,
-      closeTabById
+      closeTabById,
+      // P239 guard — without this dep the ctx closes over a stale
+      // onOpenVizBackdropControls and the viz backdrop pill can't open
+      // the popover after the host wires it post-mount.
+      onOpenVizBackdropControls
     ]
   );
   const workspaceSpanBackdrop = React37.useMemo(() => {
@@ -37468,8 +37479,20 @@ function VizEditorChrome({
   onTogglePausePreview,
   onChangePreviewSource,
   onToggleBackground,
+  onOpenBackdropControls,
   isBackground
 }) {
+  const bgFileName = file.path.split("/").pop()?.replace(/\.[^.]+$/, "") ?? file.path;
+  const handleBackgroundClick = React37.useCallback(
+    (e) => {
+      if (isBackground && onOpenBackdropControls) {
+        onOpenBackdropControls(e.currentTarget.getBoundingClientRect());
+      } else {
+        onToggleBackground();
+      }
+    },
+    [isBackground, onOpenBackdropControls, onToggleBackground]
+  );
   const [liveOn, setLiveOn] = React37.useState(() => getVizLive(file.id));
   React37.useEffect(() => {
     setLiveOn(getVizLive(file.id));
@@ -37545,17 +37568,17 @@ function VizEditorChrome({
               children: buttonLabel
             }
           ),
-          /* @__PURE__ */ jsxRuntime.jsx(
+          /* @__PURE__ */ jsxRuntime.jsxs(
             "button",
             {
               "data-testid": "viz-chrome-bg-toggle",
               "data-bg-mode": isBackground ? "on" : "off",
-              onClick: onToggleBackground,
-              title: isBackground ? "This file is the group backdrop \u2014 click to clear (Cmd+K B)" : "Set as background for this group (Cmd+K B)",
+              onClick: handleBackgroundClick,
+              title: isBackground ? `Backdrop: ${bgFileName} \u2014 click for controls (Cmd+K B)` : "Set as background for this group (Cmd+K B)",
               style: {
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 4,
+                gap: 5,
                 padding: "3px 8px",
                 borderRadius: 3,
                 fontSize: 10,
@@ -37566,7 +37589,23 @@ function VizEditorChrome({
                 color: isBackground ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
                 border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
               },
-              children: isBackground ? "\u25A0 bg" : "\u25A0"
+              children: [
+                /* @__PURE__ */ jsxRuntime.jsx(
+                  "span",
+                  {
+                    "aria-hidden": "true",
+                    style: {
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      background: isBackground ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+                      flexShrink: 0
+                    }
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntime.jsx("span", { children: isBackground ? `bg: ${bgFileName}` : "set bg" }),
+                isBackground && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: 9, opacity: 0.8 }, children: "\u25BE" })
+              ]
             }
           ),
           /* @__PURE__ */ jsxRuntime.jsx(

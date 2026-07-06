@@ -271,6 +271,16 @@ export interface PreviewEditorChromeContext {
   /** Toggle the background decoration (viz behind the editor). */
   readonly onToggleBackground: () => void
   /**
+   * Open the backdrop-controls popover for this file, anchored to the
+   * clicked button's rect. The VizEditorChrome calls this INSTEAD of
+   * onToggleBackground when the file is ALREADY the group backdrop
+   * (`isBackground`) — the host then opens the shared BackdropPopover
+   * (opacity / quality / crop / reveal / clear / viz-span) scoped to
+   * this file. Optional: when the host omits it, the chrome falls back
+   * to onToggleBackground for both states (bare toggle, no popover).
+   */
+  readonly onOpenBackdropControls?: (rect: DOMRect) => void
+  /**
    * Whether this chrome's file is the active group's pinned backdrop.
    * The VizEditorChrome uses it to render the Set/Clear BG button as
    * an active (on) or inactive (off) toggle — no round-trip through

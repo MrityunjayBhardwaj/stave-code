@@ -381,6 +381,73 @@ describe('HYDRA_VIZ render path', () => {
     expect(onOpenPreview).not.toHaveBeenCalled()
   })
 
+  it('bg pill: unpinned → "set bg" label, click pins via onToggleBackground', () => {
+    // #771 — no isBackground means the file is NOT the group backdrop.
+    // The pill reads "set bg" and a click pins it directly (single-click,
+    // no picker) via onToggleBackground — NOT the controls popover.
+    const onToggleBackground = vi.fn()
+    const onOpenBackdropControls = vi.fn()
+    const file = makeFile('rings', 'osc().out()')
+    const chrome = HYDRA_VIZ.renderEditorChrome!({
+      file,
+      onOpenPreview: vi.fn(),
+      onToggleBackground,
+      onOpenBackdropControls,
+      onSave: vi.fn(),
+    })
+    const { getByTestId } = render(chrome as React.ReactElement)
+    const btn = getByTestId('viz-chrome-bg-toggle')
+    expect(btn.getAttribute('data-bg-mode')).toBe('off')
+    expect(btn.textContent).toContain('set bg')
+    fireEvent.click(btn)
+    expect(onToggleBackground).toHaveBeenCalledTimes(1)
+    expect(onOpenBackdropControls).not.toHaveBeenCalled()
+  })
+
+  it('bg pill: pinned → "bg: {name}" label, click opens controls popover', () => {
+    // #771 — isBackground true means this file already IS the group backdrop.
+    // The pill reads "bg: rings" and a click opens the shared controls popover
+    // (onOpenBackdropControls) instead of toggling off — un-pin is the popover's
+    // "× clear". The handler receives the button's bounding rect for anchoring.
+    const onToggleBackground = vi.fn()
+    const onOpenBackdropControls = vi.fn()
+    const file = makeFile('rings', 'osc().out()')
+    const chrome = HYDRA_VIZ.renderEditorChrome!({
+      file,
+      onOpenPreview: vi.fn(),
+      onToggleBackground,
+      onOpenBackdropControls,
+      isBackground: true,
+      onSave: vi.fn(),
+    })
+    const { getByTestId } = render(chrome as React.ReactElement)
+    const btn = getByTestId('viz-chrome-bg-toggle')
+    expect(btn.getAttribute('data-bg-mode')).toBe('on')
+    expect(btn.textContent).toContain('bg: rings')
+    fireEvent.click(btn)
+    expect(onOpenBackdropControls).toHaveBeenCalledTimes(1)
+    expect(onOpenBackdropControls.mock.calls[0][0]).toBeTruthy()
+    expect(onToggleBackground).not.toHaveBeenCalled()
+  })
+
+  it('bg pill: pinned but no popover handler → falls back to toggle', () => {
+    // #771 — when the host omits onOpenBackdropControls (e.g. PreviewView
+    // embedded outside the shell), a pinned click can't open a popover, so
+    // it falls back to onToggleBackground (which clears the backdrop).
+    const onToggleBackground = vi.fn()
+    const file = makeFile('rings', 'osc().out()')
+    const chrome = HYDRA_VIZ.renderEditorChrome!({
+      file,
+      onOpenPreview: vi.fn(),
+      onToggleBackground,
+      isBackground: true,
+      onSave: vi.fn(),
+    })
+    const { getByTestId } = render(chrome as React.ReactElement)
+    fireEvent.click(getByTestId('viz-chrome-bg-toggle'))
+    expect(onToggleBackground).toHaveBeenCalledTimes(1)
+  })
+
   it('renders an error panel when compilePreset throws (invalid code)', () => {
     ;(compilePreset as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(
       () => {

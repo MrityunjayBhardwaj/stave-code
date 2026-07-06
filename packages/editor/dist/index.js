@@ -1,6 +1,6 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
 import * as React37 from 'react';
-import React37__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import React37__default, { forwardRef, useCallback, useState, useEffect, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { parse } from 'acorn';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
@@ -32503,7 +32503,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   onSaveFile,
   onTabContextMenu,
   onEditViz,
-  onCropViz
+  onCropViz,
+  onOpenVizBackdropControls
 }, forwardedRef) {
   const shellRootRef = useRef(null);
   const initialState = useRef(
@@ -33306,6 +33307,12 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     });
                   }, "onToggleBackground"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
+                  // When THIS viz file is already the group backdrop, its
+                  // chrome pill opens the host's shared backdrop-controls
+                  // popover instead of toggling off. Scoped to this file +
+                  // anchored to the clicked button. Omitted → the chrome
+                  // falls back to a plain toggle.
+                  onOpenBackdropControls: onOpenVizBackdropControls ? (rect) => onOpenVizBackdropControls(tab.fileId, rect) : void 0,
                   onSave: /* @__PURE__ */ __name(() => {
                     onSaveFileRef.current?.(tab);
                   }, "onSave")
@@ -33445,7 +33452,11 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       findTabByFileId,
       findGroupWithAnyPreview,
       editorExtrasForTab,
-      closeTabById
+      closeTabById,
+      // P239 guard — without this dep the ctx closes over a stale
+      // onOpenVizBackdropControls and the viz backdrop pill can't open
+      // the popover after the host wires it post-mount.
+      onOpenVizBackdropControls
     ]
   );
   const workspaceSpanBackdrop = useMemo(() => {
@@ -37442,8 +37453,20 @@ function VizEditorChrome({
   onTogglePausePreview,
   onChangePreviewSource,
   onToggleBackground,
+  onOpenBackdropControls,
   isBackground
 }) {
+  const bgFileName = file.path.split("/").pop()?.replace(/\.[^.]+$/, "") ?? file.path;
+  const handleBackgroundClick = useCallback(
+    (e) => {
+      if (isBackground && onOpenBackdropControls) {
+        onOpenBackdropControls(e.currentTarget.getBoundingClientRect());
+      } else {
+        onToggleBackground();
+      }
+    },
+    [isBackground, onOpenBackdropControls, onToggleBackground]
+  );
   const [liveOn, setLiveOn] = useState(() => getVizLive(file.id));
   useEffect(() => {
     setLiveOn(getVizLive(file.id));
@@ -37519,17 +37542,17 @@ function VizEditorChrome({
               children: buttonLabel
             }
           ),
-          /* @__PURE__ */ jsx(
+          /* @__PURE__ */ jsxs(
             "button",
             {
               "data-testid": "viz-chrome-bg-toggle",
               "data-bg-mode": isBackground ? "on" : "off",
-              onClick: onToggleBackground,
-              title: isBackground ? "This file is the group backdrop \u2014 click to clear (Cmd+K B)" : "Set as background for this group (Cmd+K B)",
+              onClick: handleBackgroundClick,
+              title: isBackground ? `Backdrop: ${bgFileName} \u2014 click for controls (Cmd+K B)` : "Set as background for this group (Cmd+K B)",
               style: {
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 4,
+                gap: 5,
                 padding: "3px 8px",
                 borderRadius: 3,
                 fontSize: 10,
@@ -37540,7 +37563,23 @@ function VizEditorChrome({
                 color: isBackground ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
                 border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
               },
-              children: isBackground ? "\u25A0 bg" : "\u25A0"
+              children: [
+                /* @__PURE__ */ jsx(
+                  "span",
+                  {
+                    "aria-hidden": "true",
+                    style: {
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      background: isBackground ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+                      flexShrink: 0
+                    }
+                  }
+                ),
+                /* @__PURE__ */ jsx("span", { children: isBackground ? `bg: ${bgFileName}` : "set bg" }),
+                isBackground && /* @__PURE__ */ jsx("span", { style: { fontSize: 9, opacity: 0.8 }, children: "\u25BE" })
+              ]
             }
           ),
           /* @__PURE__ */ jsx(

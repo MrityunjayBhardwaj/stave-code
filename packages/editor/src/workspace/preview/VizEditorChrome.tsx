@@ -76,8 +76,29 @@ export function VizEditorChrome({
   onTogglePausePreview,
   onChangePreviewSource,
   onToggleBackground,
+  onOpenBackdropControls,
   isBackground,
 }: PreviewEditorChromeContext): React.ReactElement {
+  // Basename without extension — drives the pinned label "bg: {name}",
+  // mirroring the pattern-file backdrop button (StrudelEditorClient's
+  // SetBackdropButton) so the two surfaces read identically.
+  const bgFileName = file.path.split('/').pop()?.replace(/\.[^.]+$/, '') ?? file.path
+
+  // Two-state click. The pattern-file button and this one now behave
+  // the same, minus the picker: because a viz file already IS the viz,
+  // pinning is a single click (no "choose a viz" step). Once pinned,
+  // clicking opens the shared settings popover instead of toggling off
+  // — the popover's "× clear" is the deliberate un-pin path.
+  const handleBackgroundClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (isBackground && onOpenBackdropControls) {
+        onOpenBackdropControls(e.currentTarget.getBoundingClientRect())
+      } else {
+        onToggleBackground()
+      }
+    },
+    [isBackground, onOpenBackdropControls, onToggleBackground],
+  )
   // Subscribe to the per-file hot-reload toggle so other surfaces
   // (command palette, future settings) stay in sync with the button.
   const [liveOn, setLiveOn] = useState<boolean>(() => getVizLive(file.id))
@@ -226,25 +247,33 @@ export function VizEditorChrome({
       </button>
 
       {/*
-       * Set-as-Background toggle. Pins / unpins this viz file as the
-       * active group's backdrop. Mirrors the Cmd+K B keybind but is
-       * discoverable without keyboard muscle memory. Active (accent-
-       * filled) when this file IS the group's backdrop; inactive
-       * (outline) otherwise.
+       * Set-as-Background pill. Mirrors the pattern-file backdrop button
+       * (StrudelEditorClient's SetBackdropButton) so viz tabs and pattern
+       * tabs share one visual language: a dot indicator + label + caret.
+       *
+       *   - unpinned → "● set bg": one click pins THIS file as the group
+       *     backdrop (no picker step — a viz file already IS the viz).
+       *   - pinned   → "● bg: {name} ▾": click opens the shared backdrop
+       *     controls popover (opacity / quality / crop / reveal / clear /
+       *     viz-span). Un-pin happens via the popover's "× clear".
+       *
+       * handleBackgroundClick falls back to a plain toggle when the host
+       * doesn't wire onOpenBackdropControls, so the chrome still works
+       * when PreviewView is embedded outside the shell.
        */}
       <button
         data-testid="viz-chrome-bg-toggle"
         data-bg-mode={isBackground ? 'on' : 'off'}
-        onClick={onToggleBackground}
+        onClick={handleBackgroundClick}
         title={
           isBackground
-            ? 'This file is the group backdrop — click to clear (Cmd+K B)'
+            ? `Backdrop: ${bgFileName} — click for controls (Cmd+K B)`
             : 'Set as background for this group (Cmd+K B)'
         }
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 4,
+          gap: 5,
           padding: '3px 8px',
           borderRadius: 3,
           fontSize: 10,
@@ -260,7 +289,22 @@ export function VizEditorChrome({
           }`,
         }}
       >
-        {isBackground ? '\u25A0 bg' : '\u25A0'}
+        <span
+          aria-hidden="true"
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: isBackground
+              ? 'var(--accent-strong, var(--accent))'
+              : 'var(--foreground-muted)',
+            flexShrink: 0,
+          }}
+        />
+        <span>{isBackground ? `bg: ${bgFileName}` : 'set bg'}</span>
+        {isBackground && (
+          <span style={{ fontSize: 9, opacity: 0.8 }}>{'\u25BE'}</span>
+        )}
       </button>
 
       {/*
