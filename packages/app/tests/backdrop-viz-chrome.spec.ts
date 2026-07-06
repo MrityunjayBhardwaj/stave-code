@@ -102,6 +102,33 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
     await expect(gear).toHaveAttribute('data-preview-mode', 'off')
   })
 
+  test('play/pause button pauses + resumes the BACKDROP (#781)', async ({ page }) => {
+    await gotoApp(page)
+    await clickHydraTab(page)
+    await setBackdrop(page)
+
+    const backdrop = page.locator('[data-workspace-background]').first()
+    await expect(backdrop).toBeVisible({ timeout: 5000 })
+    // Live by default.
+    await expect(backdrop).toHaveAttribute('data-backdrop-live', 'true')
+
+    // The play/pause button shows in backdrop mode (before the ⚙ gear).
+    const transport = page.locator('[data-testid="viz-chrome-open-preview"]').first()
+    await expect(transport).toBeVisible()
+    await expect(transport).toHaveAttribute('data-preview-mode', 'backdrop')
+    await expect(transport).toContainText('Pause')
+
+    // Pause → backdrop freezes (data-backdrop-live flips to false).
+    await transport.click()
+    await expect(backdrop).toHaveAttribute('data-backdrop-live', 'false')
+    await expect(transport).toContainText('Play')
+
+    // Play → resumes.
+    await transport.click()
+    await expect(backdrop).toHaveAttribute('data-backdrop-live', 'true')
+    await expect(transport).toContainText('Pause')
+  })
+
   test('backdrop is PER-TAB (#347) — clears on switch to a tab without one, restores on return', async ({
     page,
   }) => {

@@ -163,15 +163,18 @@ export function VizEditorChrome({
     [previewMode, onClosePreview, onToggleBackground, openSidePreview],
   )
 
-  // Primary button transport — rendered ONLY while a side preview is open
-  // (#773). Pause/resume delegates to onTogglePausePreview; the shell owns the
-  // built-in audio start/stop side effect that pairs with it.
+  // Play/pause transport — rendered whenever this viz is actively previewing,
+  // in EITHER placement (side tab or backdrop), and acts on whichever is active
+  // (#781). Pause/resume delegates to onTogglePausePreview, which flips the
+  // shell's per-file pause state; the shell applies it to the open preview tab
+  // AND the backdrop layer for this file, and owns the built-in audio side
+  // effect that pairs with it.
   const buttonState: 'paused' | 'running' = previewPaused ? 'paused' : 'running'
-  const buttonLabel = buttonState === 'paused' ? '\u25B6 Play' : '\u25A0 Stop'
+  const buttonLabel = buttonState === 'paused' ? '\u25B6 Play' : '\u23F8 Pause'
   const buttonTitle =
     buttonState === 'paused'
-      ? 'Resume preview rendering'
-      : 'Pause preview rendering (tab stays open)'
+      ? 'Resume this viz (side tab or backdrop)'
+      : 'Pause this viz (side tab or backdrop)'
 
   // The renderer kind drives the "Stave Inputs" reference panel (#309). Non-null
   // for every viz file; guard anyway so a non-viz tab never renders the panel.
@@ -194,16 +197,17 @@ export function VizEditorChrome({
       }}
     >
       {/*
-       * Primary transport — visible ONLY while a side preview is open (#773).
-       * Opening a preview now happens through the ⚙ popover's preview=side
-       * mode, so this button lost its "closed → open" role; it just pauses /
-       * resumes the render loop. Stop freezes the canvas; the tab is closed by
-       * its own ✕ button or the popover's preview=off.
+       * Play/pause transport (#781) — sits before the ⚙ gear and is visible
+       * whenever this viz is actively previewing, in EITHER placement (side tab
+       * or backdrop). It pauses / resumes whichever is active; opening a preview
+       * still happens through the ⚙ popover's preview mode. Hidden when
+       * preview=off (nothing to play/pause).
        */}
-      {previewOpen && (
+      {previewMode !== 'off' && (
         <button
           data-testid="viz-chrome-open-preview"
           data-button-state={buttonState}
+          data-preview-mode={previewMode}
           onClick={() => onTogglePausePreview?.()}
           title={buttonTitle}
           style={primaryBtnStyle}

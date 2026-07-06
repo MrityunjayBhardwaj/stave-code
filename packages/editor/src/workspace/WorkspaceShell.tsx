@@ -2596,7 +2596,11 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 quality: groupQuality,
                 opacity: groupOpacity,
                 crop: backgroundCrop ?? null,
-                paused: backdropPaused,
+                // #781 — the viz chrome's play/pause button pauses the backdrop
+                // through the same per-file `pausedPreviews` set it uses for
+                // side previews (a viz's placement is exclusive, so one flag
+                // covers both). OR it with the hover-gate policy above.
+                paused: backdropPaused || pausedPreviews.has(bgFileId),
               })
             })()}
             {activeTabObj ? (
@@ -2673,6 +2677,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       backdropVizSpan,
       workspaceSpanActive,
       renderBackdropLayer,
+      // #781: the backdrop `paused` now also reads `pausedPreviews` (the chrome
+      // play/pause button). Omit it and toggling pause never reaches the
+      // backdrop — the same P239 stale-closure trap.
+      pausedPreviews,
     ],
   )
 
@@ -3112,7 +3120,9 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             quality: workspaceSpanBackdrop.quality,
             opacity: workspaceSpanBackdrop.opacity,
             crop: backgroundCrop ?? null,
-            paused: false,
+            // #781 — pause the shared span backdrop when its source viz is
+            // paused via the chrome play/pause button (same per-file set).
+            paused: pausedPreviews.has(workspaceSpanBackdrop.fileId),
           })}
         <div
           data-workspace-groups-content="true"

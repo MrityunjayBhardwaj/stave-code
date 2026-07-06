@@ -33696,7 +33696,11 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
                       quality: groupQuality,
                       opacity: groupOpacity,
                       crop: backgroundCrop ?? null,
-                      paused: backdropPaused
+                      // #781 — the viz chrome's play/pause button pauses the backdrop
+                      // through the same per-file `pausedPreviews` set it uses for
+                      // side previews (a viz's placement is exclusive, so one flag
+                      // covers both). OR it with the hover-gate policy above.
+                      paused: backdropPaused || pausedPreviews.has(bgFileId)
                     });
                   })(),
                   activeTabObj ? /* @__PURE__ */ jsxRuntime.jsx(
@@ -33772,7 +33776,11 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
       // layer renderer is a fresh closure each time it changes. Same P239 trap.
       backdropVizSpan,
       workspaceSpanActive,
-      renderBackdropLayer
+      renderBackdropLayer,
+      // #781: the backdrop `paused` now also reads `pausedPreviews` (the chrome
+      // play/pause button). Omit it and toggling pause never reaches the
+      // backdrop — the same P239 stale-closure trap.
+      pausedPreviews
     ]
   );
   const totalGroupCount = React37.useMemo(
@@ -34115,7 +34123,9 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
                 quality: workspaceSpanBackdrop.quality,
                 opacity: workspaceSpanBackdrop.opacity,
                 crop: backgroundCrop ?? null,
-                paused: false
+                // #781 — pause the shared span backdrop when its source viz is
+                // paused via the chrome play/pause button (same per-file set).
+                paused: pausedPreviews.has(workspaceSpanBackdrop.fileId)
               }),
               /* @__PURE__ */ jsxRuntime.jsx(
                 "div",
@@ -37817,8 +37827,8 @@ function VizEditorChrome({
     [previewMode, onClosePreview, onToggleBackground, openSidePreview]
   );
   const buttonState = previewPaused ? "paused" : "running";
-  const buttonLabel = buttonState === "paused" ? "\u25B6 Play" : "\u25A0 Stop";
-  const buttonTitle = buttonState === "paused" ? "Resume preview rendering" : "Pause preview rendering (tab stays open)";
+  const buttonLabel = buttonState === "paused" ? "\u25B6 Play" : "\u23F8 Pause";
+  const buttonTitle = buttonState === "paused" ? "Resume this viz (side tab or backdrop)" : "Pause this viz (side tab or backdrop)";
   const vizKind = rendererForLanguage(file.language);
   return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
     /* @__PURE__ */ jsxRuntime.jsxs(
@@ -37837,11 +37847,12 @@ function VizEditorChrome({
           flexShrink: 0
         },
         children: [
-          previewOpen && /* @__PURE__ */ jsxRuntime.jsx(
+          previewMode !== "off" && /* @__PURE__ */ jsxRuntime.jsx(
             "button",
             {
               "data-testid": "viz-chrome-open-preview",
               "data-button-state": buttonState,
+              "data-preview-mode": previewMode,
               onClick: () => onTogglePausePreview?.(),
               title: buttonTitle,
               style: primaryBtnStyle,

@@ -332,9 +332,9 @@ describe('HYDRA_VIZ render path', () => {
     expect(onTogglePausePreview).not.toHaveBeenCalled()
   })
 
-  it('chrome primary button: running → Stop → calls onTogglePausePreview', () => {
-    // previewOpen=true, previewPaused=false → button shows "■ Stop"
-    // and clicks toggle pause instead of opening a new preview.
+  it('chrome play/pause: side running → Pause → calls onTogglePausePreview', () => {
+    // previewOpen=true, previewPaused=false → button shows "⏸ Pause" and clicks
+    // toggle pause on the active side preview (#774).
     const onOpenPreview = vi.fn()
     const onTogglePausePreview = vi.fn()
     const file = makeFile('f-preview-running', 's.osc().out()')
@@ -350,11 +350,46 @@ describe('HYDRA_VIZ render path', () => {
     const { getByTestId } = render(chrome as React.ReactElement)
     const btn = getByTestId('viz-chrome-open-preview')
     expect(btn.getAttribute('data-button-state')).toBe('running')
-    expect(btn.textContent).toContain('Stop')
+    expect(btn.getAttribute('data-preview-mode')).toBe('side')
+    expect(btn.textContent).toContain('Pause')
     fireEvent.click(btn)
     expect(onTogglePausePreview).toHaveBeenCalledTimes(1)
-    // Open should NOT have fired — we're in stop-toggle mode.
+    // Open should NOT have fired — we're in pause-toggle mode.
     expect(onOpenPreview).not.toHaveBeenCalled()
+  })
+
+  it('chrome play/pause: shows in BACKDROP mode and toggles pause (#774)', () => {
+    // isBackground → previewMode 'backdrop' → the play/pause button is visible
+    // (no side preview needed) and toggles pause on the backdrop.
+    const onTogglePausePreview = vi.fn()
+    const file = makeFile('rings', 'osc().out()')
+    const chrome = HYDRA_VIZ.renderEditorChrome!({
+      file,
+      isBackground: true,
+      previewPaused: false,
+      onOpenPreview: vi.fn(),
+      onTogglePausePreview,
+      onToggleBackground: vi.fn(),
+      onSave: vi.fn(),
+    })
+    const { getByTestId } = render(chrome as React.ReactElement)
+    const btn = getByTestId('viz-chrome-open-preview')
+    expect(btn.getAttribute('data-preview-mode')).toBe('backdrop')
+    expect(btn.textContent).toContain('Pause')
+    fireEvent.click(btn)
+    expect(onTogglePausePreview).toHaveBeenCalledTimes(1)
+  })
+
+  it('chrome play/pause: hidden when preview=off (#774)', () => {
+    const file = makeFile('rings', 'osc().out()')
+    const chrome = HYDRA_VIZ.renderEditorChrome!({
+      file,
+      onOpenPreview: vi.fn(),
+      onToggleBackground: vi.fn(),
+      onSave: vi.fn(),
+    })
+    const { queryByTestId } = render(chrome as React.ReactElement)
+    expect(queryByTestId('viz-chrome-open-preview')).toBeNull()
   })
 
   it('chrome primary button: paused → Play → calls onTogglePausePreview', () => {
