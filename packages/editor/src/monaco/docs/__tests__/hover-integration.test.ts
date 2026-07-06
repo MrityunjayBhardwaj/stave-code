@@ -164,12 +164,12 @@ describe('Strudel hover payload', () => {
     expect(h!.values[0]).toContain('setcps(')
   })
 
-  it('viz resolves, is flagged Stave-not-Strudel, and shows NO Reference link (#767)', () => {
+  it('viz resolves, is flagged a Stave feature, and shows NO Reference link (#767)', () => {
     const h = hoverFor(STRUDEL_DOCS_INDEX, 'viz')
     expect(h).not.toBeNull()
     expect(h!.values[0]).toContain('.viz(')
-    // explicitly states it is a Stave feature, not Strudel
-    expect(h!.values.some((v) => /Stave/.test(v) && /not Strudel/i.test(v))).toBe(true)
+    // flagged as a Stave feature
+    expect(h!.values.some((v) => /Stave feature/.test(v))).toBe(true)
     // no Reference→ link (empty sourceUrl suppresses the strudel.cc fallback,
     // since this is not a Strudel function)
     expect(h!.values.some((v) => v.includes('[Reference →]'))).toBe(false)

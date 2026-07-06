@@ -292,7 +292,7 @@ export const STRUDEL_DOCS: Record<string, RuntimeDoc> = {
   // page that doesn't document it.
   viz: {
     signature: '.viz(name)',
-    description: 'Stave feature (not Strudel): render a named inline visualizer below this pattern.',
+    description: 'Stave feature: render a named inline visualizer below this pattern.',
     example: 's("bd*4").viz("pianoroll")',
     sourceUrl: '',
   },
