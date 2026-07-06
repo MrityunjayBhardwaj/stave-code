@@ -1331,7 +1331,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           surfaced via the data attribute below for Playwright observation. */}
       <div data-full-song-period={periodLabel} style={{ display: 'none' }} />
 
-      {/* Controls: zoom cluster (right). The CYCLES/BARS units toggle moved to
+      {/* Controls: zoom cluster (left). The CYCLES/BARS units toggle moved to
           the editor pattern bar (#750). ⌘/Ctrl+wheel also zooms. */}
       <div data-full-song="controls" style={styles.controls}>
         <div style={styles.zoomCluster} data-full-song-zoom={zoomPercent}>
@@ -1765,7 +1765,7 @@ const styles = {
     minHeight: CONTROLS_HEIGHT,
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     gap: 8,
     padding: '0 8px',
     background: 'var(--bg-app, #090912)',
