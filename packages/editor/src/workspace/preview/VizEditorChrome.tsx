@@ -169,12 +169,24 @@ export function VizEditorChrome({
   // shell's per-file pause state; the shell applies it to the open preview tab
   // AND the backdrop layer for this file, and owns the built-in audio side
   // effect that pairs with it.
-  const buttonState: 'paused' | 'running' = previewPaused ? 'paused' : 'running'
-  const buttonLabel = buttonState === 'paused' ? '\u25B6 Play' : '\u23F8 Pause'
+  const buttonState: 'closed' | 'paused' | 'running' =
+    previewMode === 'off' ? 'closed' : previewPaused ? 'paused' : 'running'
+  const buttonLabel =
+    buttonState === 'closed'
+      ? '\u25B6 Preview'
+      : buttonState === 'paused'
+        ? '\u25B6 Play'
+        : '\u23F8 Pause'
   const buttonTitle =
-    buttonState === 'paused'
-      ? 'Resume this viz (side tab or backdrop)'
-      : 'Pause this viz (side tab or backdrop)'
+    buttonState === 'closed'
+      ? 'Open a preview of this viz'
+      : buttonState === 'paused'
+        ? 'Resume this viz (side tab or backdrop)'
+        : 'Pause this viz (side tab or backdrop)'
+  const handlePrimaryClick = useCallback(() => {
+    if (previewMode === 'off') openSidePreview()
+    else onTogglePausePreview?.()
+  }, [previewMode, openSidePreview, onTogglePausePreview])
 
   // The renderer kind drives the "Stave Inputs" reference panel (#309). Non-null
   // for every viz file; guard anyway so a non-viz tab never renders the panel.
@@ -197,24 +209,22 @@ export function VizEditorChrome({
       }}
     >
       {/*
-       * Play/pause transport (#781) — sits before the ⚙ gear and is visible
-       * whenever this viz is actively previewing, in EITHER placement (side tab
-       * or backdrop). It pauses / resumes whichever is active; opening a preview
-       * still happens through the ⚙ popover's preview mode. Hidden when
-       * preview=off (nothing to play/pause).
+       * Primary transport (#782, restoring the always-visible affordance #772
+       * removed) — sits before the ⚙ gear. Always rendered so a fresh viz file
+       * has a discoverable entry point: "▶ Preview" opens a side preview when
+       * off, then becomes ⏸Pause / ▶Play acting on whichever placement is active
+       * (side tab OR backdrop, #781).
        */}
-      {previewMode !== 'off' && (
-        <button
-          data-testid="viz-chrome-open-preview"
-          data-button-state={buttonState}
-          data-preview-mode={previewMode}
-          onClick={() => onTogglePausePreview?.()}
-          title={buttonTitle}
-          style={primaryBtnStyle}
-        >
-          {buttonLabel}
-        </button>
-      )}
+      <button
+        data-testid="viz-chrome-open-preview"
+        data-button-state={buttonState}
+        data-preview-mode={previewMode}
+        onClick={handlePrimaryClick}
+        title={buttonTitle}
+        style={primaryBtnStyle}
+      >
+        {buttonLabel}
+      </button>
 
       {/*
        * ⚙ viz settings (#773). One entry point for everything about this viz:

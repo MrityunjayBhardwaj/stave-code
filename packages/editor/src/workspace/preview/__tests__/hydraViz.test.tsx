@@ -305,9 +305,9 @@ describe('HYDRA_VIZ render path', () => {
   })
 
   it('settings popover: preview=side → calls onOpenPreview (#773)', () => {
-    // Opening a side preview moved from a standalone "▶ Preview" button to the
-    // ⚙ viz-settings popover. With no preview open there's no transport button;
-    // the gear opens the popover (mode 'off'), and the 'side' segment opens it.
+    // The ⚙ popover's 'side' segment opens a side preview. (#782 also restored
+    // the standalone "▶ Preview" primary button as a second entry point — see
+    // the dedicated test below; here we exercise the popover path.)
     const onOpenPreview = vi.fn()
     const onTogglePausePreview = vi.fn()
     const file = makeFile('f-preview-closed', 's.osc().out()')
@@ -318,11 +318,7 @@ describe('HYDRA_VIZ render path', () => {
       onToggleBackground: vi.fn(),
       onSave: vi.fn(),
     })
-    const { getByTestId, queryByTestId } = render(
-      chrome as React.ReactElement,
-    )
-    // No transport button while no side preview exists.
-    expect(queryByTestId('viz-chrome-open-preview')).toBeNull()
+    const { getByTestId } = render(chrome as React.ReactElement)
     fireEvent.click(getByTestId('viz-chrome-settings'))
     const popover = getByTestId('viz-settings-popover')
     expect(popover.getAttribute('data-mode')).toBe('off')
@@ -380,16 +376,28 @@ describe('HYDRA_VIZ render path', () => {
     expect(onTogglePausePreview).toHaveBeenCalledTimes(1)
   })
 
-  it('chrome play/pause: hidden when preview=off (#774)', () => {
+  it('chrome primary: preview=off → "▶ Preview" opens a side preview (#782)', () => {
+    // #782 restored the always-visible primary. In 'off' mode it is the OPEN
+    // affordance (not hidden as #774 had it): label "▶ Preview", state 'closed',
+    // and clicking opens a side preview via onOpenPreview (NOT onTogglePausePreview).
+    const onOpenPreview = vi.fn()
+    const onTogglePausePreview = vi.fn()
     const file = makeFile('rings', 'osc().out()')
     const chrome = HYDRA_VIZ.renderEditorChrome!({
       file,
-      onOpenPreview: vi.fn(),
+      onOpenPreview,
+      onTogglePausePreview,
       onToggleBackground: vi.fn(),
       onSave: vi.fn(),
     })
-    const { queryByTestId } = render(chrome as React.ReactElement)
-    expect(queryByTestId('viz-chrome-open-preview')).toBeNull()
+    const { getByTestId } = render(chrome as React.ReactElement)
+    const btn = getByTestId('viz-chrome-open-preview')
+    expect(btn.getAttribute('data-button-state')).toBe('closed')
+    expect(btn.getAttribute('data-preview-mode')).toBe('off')
+    expect(btn.textContent).toContain('Preview')
+    fireEvent.click(btn)
+    expect(onOpenPreview).toHaveBeenCalledTimes(1)
+    expect(onTogglePausePreview).not.toHaveBeenCalled()
   })
 
   it('chrome primary button: paused → Play → calls onTogglePausePreview', () => {

@@ -101,7 +101,10 @@ export function VizSettingsPopover(props: Props): React.ReactElement {
   )
   const top = props.anchorRect.bottom + 6
 
-  const showBackdrop = props.mode === 'backdrop'
+  // #782 — backdrop controls are ALWAYS rendered so the popover surfaces the
+  // viz's full capability in one place; they're disabled/greyed until this viz
+  // is actually the backdrop, since opacity/crop/span only apply to one.
+  const bdEnabled = props.mode === 'backdrop'
   const patternSources = workspaceAudioBus
     .listSources()
     .filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId))
@@ -168,97 +171,110 @@ export function VizSettingsPopover(props: Props): React.ReactElement {
         </div>
       </Row>
 
-      {showBackdrop && (
+      {/* Backdrop controls (#782) — always rendered; disabled + greyed until
+          preview=backdrop so the popover shows the full capability up front. */}
+      <div style={divider} />
+
+      {props.backdropOpacity != null && props.onSetBackdropOpacity && (
+        <Row label="opacity">
+          <input
+            data-testid="viz-settings-opacity"
+            data-disabled={bdEnabled ? 'false' : 'true'}
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={props.backdropOpacity}
+            disabled={!bdEnabled}
+            onChange={(e) =>
+              props.onSetBackdropOpacity!(Number(e.target.value))
+            }
+            style={{
+              flex: 1,
+              accentColor: 'var(--accent-strong, var(--accent))',
+              opacity: bdEnabled ? 1 : 0.4,
+              cursor: bdEnabled ? 'pointer' : 'not-allowed',
+            }}
+          />
+          <span style={{ ...valueStyle, opacity: bdEnabled ? 1 : 0.4 }}>
+            {Math.round(props.backdropOpacity * 100)}%
+          </span>
+        </Row>
+      )}
+
+      {props.backdropQuality != null && props.onSetBackdropQuality && (
+        <Row label="quality">
+          <select
+            data-testid="viz-settings-quality"
+            data-disabled={bdEnabled ? 'false' : 'true'}
+            value={props.backdropQuality}
+            disabled={!bdEnabled}
+            onChange={(e) =>
+              props.onSetBackdropQuality!(e.target.value as BackdropQuality)
+            }
+            style={{ ...selectStyle, opacity: bdEnabled ? 1 : 0.4, cursor: bdEnabled ? 'pointer' : 'not-allowed' }}
+          >
+            <option value="full">Full</option>
+            <option value="half">Half</option>
+            <option value="quarter">Quarter</option>
+          </select>
+        </Row>
+      )}
+
+      {(props.onCropBackdrop || props.onRevealBackdrop) && (
         <>
           <div style={divider} />
-
-          {props.backdropOpacity != null && props.onSetBackdropOpacity && (
-            <Row label="opacity">
-              <input
-                data-testid="viz-settings-opacity"
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={props.backdropOpacity}
-                onChange={(e) =>
-                  props.onSetBackdropOpacity!(Number(e.target.value))
-                }
-                style={{ flex: 1, accentColor: 'var(--accent-strong, var(--accent))' }}
-              />
-              <span style={valueStyle}>
-                {Math.round(props.backdropOpacity * 100)}%
-              </span>
-            </Row>
-          )}
-
-          {props.backdropQuality != null && props.onSetBackdropQuality && (
-            <Row label="quality">
-              <select
-                data-testid="viz-settings-quality"
-                value={props.backdropQuality}
-                onChange={(e) =>
-                  props.onSetBackdropQuality!(e.target.value as BackdropQuality)
-                }
-                style={selectStyle}
+          <div style={{ display: 'flex', flexDirection: 'column', padding: '6px 0' }}>
+            {props.onCropBackdrop && (
+              <button
+                data-testid="viz-settings-crop"
+                data-disabled={bdEnabled ? 'false' : 'true'}
+                disabled={!bdEnabled}
+                onClick={() => {
+                  props.onCropBackdrop!()
+                  props.onClose()
+                }}
+                style={{ ...actionBtnStyle, opacity: bdEnabled ? 1 : 0.4, cursor: bdEnabled ? 'pointer' : 'not-allowed' }}
               >
-                <option value="full">Full</option>
-                <option value="half">Half</option>
-                <option value="quarter">Quarter</option>
-              </select>
-            </Row>
-          )}
+                <span aria-hidden="true">⬚</span> crop…
+              </button>
+            )}
+            {props.onRevealBackdrop && (
+              <button
+                data-testid="viz-settings-reveal"
+                data-disabled={bdEnabled ? 'false' : 'true'}
+                disabled={!bdEnabled}
+                onClick={() => {
+                  props.onRevealBackdrop!()
+                  props.onClose()
+                }}
+                style={{ ...actionBtnStyle, opacity: bdEnabled ? 1 : 0.4, cursor: bdEnabled ? 'pointer' : 'not-allowed' }}
+              >
+                → reveal in editor
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
-          {(props.onCropBackdrop || props.onRevealBackdrop) && (
-            <>
-              <div style={divider} />
-              <div style={{ display: 'flex', flexDirection: 'column', padding: '6px 0' }}>
-                {props.onCropBackdrop && (
-                  <button
-                    data-testid="viz-settings-crop"
-                    onClick={() => {
-                      props.onCropBackdrop!()
-                      props.onClose()
-                    }}
-                    style={actionBtnStyle}
-                  >
-                    <span aria-hidden="true">⬚</span> crop…
-                  </button>
-                )}
-                {props.onRevealBackdrop && (
-                  <button
-                    data-testid="viz-settings-reveal"
-                    onClick={() => {
-                      props.onRevealBackdrop!()
-                      props.onClose()
-                    }}
-                    style={actionBtnStyle}
-                  >
-                    → reveal in editor
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-
-          {props.backdropVizSpan != null && props.onSetBackdropVizSpan && (
-            <>
-              <div style={divider} />
-              <Row label="viz span">
-                <select
-                  data-testid="viz-settings-vizspan"
-                  value={props.backdropVizSpan}
-                  onChange={(e) =>
-                    props.onSetBackdropVizSpan!(e.target.value as BackdropVizSpan)
-                  }
-                  style={selectStyle}
-                >
-                  <option value="file">File</option>
-                  <option value="workspace">Workspace</option>
-                </select>
-              </Row>
-            </>
-          )}
+      {props.backdropVizSpan != null && props.onSetBackdropVizSpan && (
+        <>
+          <div style={divider} />
+          <Row label="viz span">
+            <select
+              data-testid="viz-settings-vizspan"
+              data-disabled={bdEnabled ? 'false' : 'true'}
+              value={props.backdropVizSpan}
+              disabled={!bdEnabled}
+              onChange={(e) =>
+                props.onSetBackdropVizSpan!(e.target.value as BackdropVizSpan)
+              }
+              style={{ ...selectStyle, opacity: bdEnabled ? 1 : 0.4, cursor: bdEnabled ? 'pointer' : 'not-allowed' }}
+            >
+              <option value="file">File</option>
+              <option value="workspace">Workspace</option>
+            </select>
+          </Row>
         </>
       )}
 

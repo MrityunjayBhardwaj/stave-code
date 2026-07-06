@@ -176,4 +176,69 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
     )
     expect(fileIdAfter).toBe(fileIdBefore)
   })
+
+  // #782 — #772 stripped the always-visible primary button; a fresh viz file
+  // had NO open affordance. Restored: "▶ Preview" opens a side preview.
+  test('fresh viz file shows "▶ Preview" primary that opens a side preview (#782)', async ({
+    page,
+  }) => {
+    await gotoApp(page)
+    await clickHydraTab(page)
+
+    const primary = page.locator('[data-testid="viz-chrome-open-preview"]').first()
+    await expect(primary).toBeVisible()
+    await expect(primary).toHaveAttribute('data-button-state', 'closed')
+    await expect(primary).toHaveAttribute('data-preview-mode', 'off')
+    await expect(primary).toContainText('Preview')
+
+    // Clicking it opens a side preview → a preview pane mounts, button flips to
+    // the pause transport ('running' / "⏸ Pause").
+    await primary.click()
+    await expect(primary).toHaveAttribute('data-preview-mode', 'side')
+    await expect(primary).toContainText('Pause')
+  })
+
+  // #782 — backdrop controls used to vanish entirely off backdrop mode. Now
+  // they're always rendered, disabled/greyed until preview=backdrop.
+  test('⚙ popover shows backdrop controls disabled in off mode, enabled in backdrop (#782)', async ({
+    page,
+  }) => {
+    await gotoApp(page)
+    await clickHydraTab(page)
+
+    // Open the popover in the default 'off' mode.
+    await page.locator('[data-testid="viz-chrome-settings"]').first().click()
+    const popover = page.locator('[data-testid="viz-settings-popover"]')
+    await popover.waitFor({ timeout: 2000 })
+    await expect(popover).toHaveAttribute('data-mode', 'off')
+
+    // Controls PRESENT but disabled (data-disabled="true").
+    for (const tid of [
+      'viz-settings-opacity',
+      'viz-settings-quality',
+      'viz-settings-crop',
+      'viz-settings-reveal',
+      'viz-settings-vizspan',
+    ]) {
+      const el = popover.locator(`[data-testid="${tid}"]`)
+      await expect(el).toBeVisible()
+      await expect(el).toHaveAttribute('data-disabled', 'true')
+      await expect(el).toBeDisabled()
+    }
+
+    // Switch to backdrop → the same controls enable.
+    await popover.locator('[data-testid="viz-preview-mode-backdrop"]').click()
+    await expect(popover).toHaveAttribute('data-mode', 'backdrop')
+    for (const tid of [
+      'viz-settings-opacity',
+      'viz-settings-quality',
+      'viz-settings-crop',
+      'viz-settings-reveal',
+      'viz-settings-vizspan',
+    ]) {
+      const el = popover.locator(`[data-testid="${tid}"]`)
+      await expect(el).toHaveAttribute('data-disabled', 'false')
+      await expect(el).toBeEnabled()
+    }
+  })
 })

@@ -37512,7 +37512,7 @@ function VizSettingsPopover(props) {
     Math.min(window.innerWidth - 8 - POPOVER_WIDTH, props.anchorRect.left)
   );
   const top = props.anchorRect.bottom + 6;
-  const showBackdrop = props.mode === "backdrop";
+  const bdEnabled = props.mode === "backdrop";
   const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
@@ -37571,89 +37571,102 @@ function VizSettingsPopover(props) {
             })
           }
         ) }),
-        showBackdrop && /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntime.jsx("div", { style: divider }),
-          props.backdropOpacity != null && props.onSetBackdropOpacity && /* @__PURE__ */ jsxRuntime.jsxs(Row, { label: "opacity", children: [
-            /* @__PURE__ */ jsxRuntime.jsx(
-              "input",
-              {
-                "data-testid": "viz-settings-opacity",
-                type: "range",
-                min: 0,
-                max: 1,
-                step: 0.05,
-                value: props.backdropOpacity,
-                onChange: (e) => props.onSetBackdropOpacity(Number(e.target.value)),
-                style: { flex: 1, accentColor: "var(--accent-strong, var(--accent))" }
-              }
-            ),
-            /* @__PURE__ */ jsxRuntime.jsxs("span", { style: valueStyle, children: [
-              Math.round(props.backdropOpacity * 100),
-              "%"
-            ] })
-          ] }),
-          props.backdropQuality != null && props.onSetBackdropQuality && /* @__PURE__ */ jsxRuntime.jsx(Row, { label: "quality", children: /* @__PURE__ */ jsxRuntime.jsxs(
-            "select",
+        /* @__PURE__ */ jsxRuntime.jsx("div", { style: divider }),
+        props.backdropOpacity != null && props.onSetBackdropOpacity && /* @__PURE__ */ jsxRuntime.jsxs(Row, { label: "opacity", children: [
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "input",
             {
-              "data-testid": "viz-settings-quality",
-              value: props.backdropQuality,
-              onChange: (e) => props.onSetBackdropQuality(e.target.value),
-              style: selectStyle,
-              children: [
-                /* @__PURE__ */ jsxRuntime.jsx("option", { value: "full", children: "Full" }),
-                /* @__PURE__ */ jsxRuntime.jsx("option", { value: "half", children: "Half" }),
-                /* @__PURE__ */ jsxRuntime.jsx("option", { value: "quarter", children: "Quarter" })
-              ]
+              "data-testid": "viz-settings-opacity",
+              "data-disabled": bdEnabled ? "false" : "true",
+              type: "range",
+              min: 0,
+              max: 1,
+              step: 0.05,
+              value: props.backdropOpacity,
+              disabled: !bdEnabled,
+              onChange: (e) => props.onSetBackdropOpacity(Number(e.target.value)),
+              style: {
+                flex: 1,
+                accentColor: "var(--accent-strong, var(--accent))",
+                opacity: bdEnabled ? 1 : 0.4,
+                cursor: bdEnabled ? "pointer" : "not-allowed"
+              }
             }
-          ) }),
-          (props.onCropBackdrop || props.onRevealBackdrop) && /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
-            /* @__PURE__ */ jsxRuntime.jsx("div", { style: divider }),
-            /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", flexDirection: "column", padding: "6px 0" }, children: [
-              props.onCropBackdrop && /* @__PURE__ */ jsxRuntime.jsxs(
-                "button",
-                {
-                  "data-testid": "viz-settings-crop",
-                  onClick: () => {
-                    props.onCropBackdrop();
-                    props.onClose();
-                  },
-                  style: actionBtnStyle2,
-                  children: [
-                    /* @__PURE__ */ jsxRuntime.jsx("span", { "aria-hidden": "true", children: "\u2B1A" }),
-                    " crop\u2026"
-                  ]
-                }
-              ),
-              props.onRevealBackdrop && /* @__PURE__ */ jsxRuntime.jsx(
-                "button",
-                {
-                  "data-testid": "viz-settings-reveal",
-                  onClick: () => {
-                    props.onRevealBackdrop();
-                    props.onClose();
-                  },
-                  style: actionBtnStyle2,
-                  children: "\u2192 reveal in editor"
-                }
-              )
-            ] })
-          ] }),
-          props.backdropVizSpan != null && props.onSetBackdropVizSpan && /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
-            /* @__PURE__ */ jsxRuntime.jsx("div", { style: divider }),
-            /* @__PURE__ */ jsxRuntime.jsx(Row, { label: "viz span", children: /* @__PURE__ */ jsxRuntime.jsxs(
-              "select",
+          ),
+          /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { ...valueStyle, opacity: bdEnabled ? 1 : 0.4 }, children: [
+            Math.round(props.backdropOpacity * 100),
+            "%"
+          ] })
+        ] }),
+        props.backdropQuality != null && props.onSetBackdropQuality && /* @__PURE__ */ jsxRuntime.jsx(Row, { label: "quality", children: /* @__PURE__ */ jsxRuntime.jsxs(
+          "select",
+          {
+            "data-testid": "viz-settings-quality",
+            "data-disabled": bdEnabled ? "false" : "true",
+            value: props.backdropQuality,
+            disabled: !bdEnabled,
+            onChange: (e) => props.onSetBackdropQuality(e.target.value),
+            style: { ...selectStyle, opacity: bdEnabled ? 1 : 0.4, cursor: bdEnabled ? "pointer" : "not-allowed" },
+            children: [
+              /* @__PURE__ */ jsxRuntime.jsx("option", { value: "full", children: "Full" }),
+              /* @__PURE__ */ jsxRuntime.jsx("option", { value: "half", children: "Half" }),
+              /* @__PURE__ */ jsxRuntime.jsx("option", { value: "quarter", children: "Quarter" })
+            ]
+          }
+        ) }),
+        (props.onCropBackdrop || props.onRevealBackdrop) && /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: divider }),
+          /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", flexDirection: "column", padding: "6px 0" }, children: [
+            props.onCropBackdrop && /* @__PURE__ */ jsxRuntime.jsxs(
+              "button",
               {
-                "data-testid": "viz-settings-vizspan",
-                value: props.backdropVizSpan,
-                onChange: (e) => props.onSetBackdropVizSpan(e.target.value),
-                style: selectStyle,
+                "data-testid": "viz-settings-crop",
+                "data-disabled": bdEnabled ? "false" : "true",
+                disabled: !bdEnabled,
+                onClick: () => {
+                  props.onCropBackdrop();
+                  props.onClose();
+                },
+                style: { ...actionBtnStyle2, opacity: bdEnabled ? 1 : 0.4, cursor: bdEnabled ? "pointer" : "not-allowed" },
                 children: [
-                  /* @__PURE__ */ jsxRuntime.jsx("option", { value: "file", children: "File" }),
-                  /* @__PURE__ */ jsxRuntime.jsx("option", { value: "workspace", children: "Workspace" })
+                  /* @__PURE__ */ jsxRuntime.jsx("span", { "aria-hidden": "true", children: "\u2B1A" }),
+                  " crop\u2026"
                 ]
               }
-            ) })
+            ),
+            props.onRevealBackdrop && /* @__PURE__ */ jsxRuntime.jsx(
+              "button",
+              {
+                "data-testid": "viz-settings-reveal",
+                "data-disabled": bdEnabled ? "false" : "true",
+                disabled: !bdEnabled,
+                onClick: () => {
+                  props.onRevealBackdrop();
+                  props.onClose();
+                },
+                style: { ...actionBtnStyle2, opacity: bdEnabled ? 1 : 0.4, cursor: bdEnabled ? "pointer" : "not-allowed" },
+                children: "\u2192 reveal in editor"
+              }
+            )
           ] })
+        ] }),
+        props.backdropVizSpan != null && props.onSetBackdropVizSpan && /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: divider }),
+          /* @__PURE__ */ jsxRuntime.jsx(Row, { label: "viz span", children: /* @__PURE__ */ jsxRuntime.jsxs(
+            "select",
+            {
+              "data-testid": "viz-settings-vizspan",
+              "data-disabled": bdEnabled ? "false" : "true",
+              value: props.backdropVizSpan,
+              disabled: !bdEnabled,
+              onChange: (e) => props.onSetBackdropVizSpan(e.target.value),
+              style: { ...selectStyle, opacity: bdEnabled ? 1 : 0.4, cursor: bdEnabled ? "pointer" : "not-allowed" },
+              children: [
+                /* @__PURE__ */ jsxRuntime.jsx("option", { value: "file", children: "File" }),
+                /* @__PURE__ */ jsxRuntime.jsx("option", { value: "workspace", children: "Workspace" })
+              ]
+            }
+          ) })
         ] }),
         /* @__PURE__ */ jsxRuntime.jsx("div", { style: divider }),
         /* @__PURE__ */ jsxRuntime.jsx(Row, { label: "source", children: /* @__PURE__ */ jsxRuntime.jsxs(
@@ -37826,9 +37839,13 @@ function VizEditorChrome({
     },
     [previewMode, onClosePreview, onToggleBackground, openSidePreview]
   );
-  const buttonState = previewPaused ? "paused" : "running";
-  const buttonLabel = buttonState === "paused" ? "\u25B6 Play" : "\u23F8 Pause";
-  const buttonTitle = buttonState === "paused" ? "Resume this viz (side tab or backdrop)" : "Pause this viz (side tab or backdrop)";
+  const buttonState = previewMode === "off" ? "closed" : previewPaused ? "paused" : "running";
+  const buttonLabel = buttonState === "closed" ? "\u25B6 Preview" : buttonState === "paused" ? "\u25B6 Play" : "\u23F8 Pause";
+  const buttonTitle = buttonState === "closed" ? "Open a preview of this viz" : buttonState === "paused" ? "Resume this viz (side tab or backdrop)" : "Pause this viz (side tab or backdrop)";
+  const handlePrimaryClick = React37.useCallback(() => {
+    if (previewMode === "off") openSidePreview();
+    else onTogglePausePreview?.();
+  }, [previewMode, openSidePreview, onTogglePausePreview]);
   const vizKind = rendererForLanguage(file.language);
   return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
     /* @__PURE__ */ jsxRuntime.jsxs(
@@ -37847,13 +37864,13 @@ function VizEditorChrome({
           flexShrink: 0
         },
         children: [
-          previewMode !== "off" && /* @__PURE__ */ jsxRuntime.jsx(
+          /* @__PURE__ */ jsxRuntime.jsx(
             "button",
             {
               "data-testid": "viz-chrome-open-preview",
               "data-button-state": buttonState,
               "data-preview-mode": previewMode,
-              onClick: () => onTogglePausePreview?.(),
+              onClick: handlePrimaryClick,
               title: buttonTitle,
               style: primaryBtnStyle,
               children: buttonLabel
