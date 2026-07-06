@@ -7435,6 +7435,33 @@ function onTrackColourBarsChange(cb) {
   };
 }
 __name(onTrackColourBarsChange, "onTrackColourBarsChange");
+var DEFAULT_PLAY_VIZ_ON_HOVER = false;
+var PLAY_VIZ_ON_HOVER_STORAGE = "stave:playVizOnHover";
+var playVizOnHoverListeners = /* @__PURE__ */ new Set();
+function readPlayVizOnHoverEnabled() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_PLAY_VIZ_ON_HOVER;
+  const saved = ls.getItem(PLAY_VIZ_ON_HOVER_STORAGE);
+  if (saved === null) return DEFAULT_PLAY_VIZ_ON_HOVER;
+  return saved === "1";
+}
+__name(readPlayVizOnHoverEnabled, "readPlayVizOnHoverEnabled");
+function getPlayVizOnHoverEnabled() {
+  return readPlayVizOnHoverEnabled();
+}
+__name(getPlayVizOnHoverEnabled, "getPlayVizOnHoverEnabled");
+function setPlayVizOnHoverEnabled(on) {
+  safeLocalStorage2()?.setItem(PLAY_VIZ_ON_HOVER_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(playVizOnHoverListeners)) cb(on);
+}
+__name(setPlayVizOnHoverEnabled, "setPlayVizOnHoverEnabled");
+function onPlayVizOnHoverChange(cb) {
+  playVizOnHoverListeners.add(cb);
+  return () => {
+    playVizOnHoverListeners.delete(cb);
+  };
+}
+__name(onPlayVizOnHoverChange, "onPlayVizOnHoverChange");
 function getInlineVizTeardownMs() {
   if (!readInlineVizTeardownEnabled()) return 0;
   try {
@@ -32538,6 +32565,14 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
     () => onBackdropOpacityChange(setBackdropOpacityState),
     []
   );
+  const [playVizOnHover, setPlayVizOnHoverState] = React37.useState(
+    () => getPlayVizOnHoverEnabled()
+  );
+  React37.useEffect(
+    () => onPlayVizOnHoverChange(setPlayVizOnHoverState),
+    []
+  );
+  const [hoveredGroupId, setHoveredGroupId] = React37.useState(null);
   React37.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
@@ -33436,6 +33471,8 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
             }
           },
           onDrop: (e) => handleDropOnGroup(e, group.id),
+          onMouseEnter: playVizOnHover ? () => setHoveredGroupId(group.id) : void 0,
+          onMouseLeave: playVizOnHover ? () => setHoveredGroupId((h) => h === group.id ? null : h) : void 0,
           onMouseDown: () => {
             if (activeGroupId !== group.id) {
               setActiveGroupId(group.id);
@@ -33517,13 +33554,14 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
                     const innerSizePct = qf === 1 ? 100 : 100 / qf;
                     const translateX = -cx * 100;
                     const translateY = -cy * 100;
+                    const backdropPaused = playVizOnHover && !isShellActiveGroup && hoveredGroupId !== group.id;
                     return /* @__PURE__ */ jsxRuntime.jsx(
                       "div",
                       {
                         "data-workspace-background": group.id,
                         "data-background-file-id": bgFileId,
                         "data-backdrop-quality": groupQuality,
-                        "data-backdrop-live": "true",
+                        "data-backdrop-live": backdropPaused ? "false" : "true",
                         style: {
                           position: "absolute",
                           inset: 0,
@@ -33557,7 +33595,7 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
                                 sourceRef: { kind: "default" },
                                 theme,
                                 hidden: false,
-                                paused: false,
+                                paused: backdropPaused,
                                 onSourceRefChange: () => {
                                 }
                               }
@@ -33625,7 +33663,12 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
       backdropOpacity,
       bgOverrides,
       previewProviderFor,
-      theme
+      theme,
+      // #769: the backdrop `paused` policy reads both — omit them and
+      // renderGroup keeps a stale closure, so toggling "Play viz on hover"
+      // or hovering a pane never reaches the backdrop (P239 memo-dep trap).
+      playVizOnHover,
+      hoveredGroupId
     ]
   );
   const totalGroupCount = React37.useMemo(
@@ -38844,6 +38887,7 @@ exports.getMusicalTimelineSubRowHeight = getMusicalTimelineSubRowHeight;
 exports.getNamedViz = getNamedViz;
 exports.getNoteColorMode = getNoteColorMode;
 exports.getPerfEnabled = getPerfEnabled;
+exports.getPlayVizOnHoverEnabled = getPlayVizOnHoverEnabled;
 exports.getPresetIdForFile = getPresetIdForFile;
 exports.getPreviewProviderForExtension = getPreviewProviderForExtension;
 exports.getPreviewProviderForLanguage = getPreviewProviderForLanguage;
@@ -38936,6 +38980,7 @@ exports.onInlineVizTeardownChange = onInlineVizTeardownChange;
 exports.onMusicalTimelineSubRowHeightChange = onMusicalTimelineSubRowHeightChange;
 exports.onNamedVizChanged = onNamedVizChanged;
 exports.onPerfEnabledChange = onPerfEnabledChange;
+exports.onPlayVizOnHoverChange = onPlayVizOnHoverChange;
 exports.onSignalAliasesChange = onSignalAliasesChange;
 exports.onThemeChange = onThemeChange;
 exports.onTrackColourBarsChange = onTrackColourBarsChange;
@@ -39038,6 +39083,7 @@ exports.setMasterGain = setMasterGain;
 exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
 exports.setNoteColorMode = setNoteColorMode;
 exports.setPerfEnabled = setPerfEnabled;
+exports.setPlayVizOnHoverEnabled = setPlayVizOnHoverEnabled;
 exports.setProjectBackgroundCrop = setProjectBackgroundCrop;
 exports.setSignalAliases = setSignalAliases;
 exports.setSoundCatalogAccessor = setSoundCatalogAccessor;
