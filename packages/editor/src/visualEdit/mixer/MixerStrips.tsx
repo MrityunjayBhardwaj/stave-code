@@ -18,6 +18,7 @@ import * as React from 'react'
 import { useMixerModel } from './useMixerModel'
 import { useTrackMeters } from './useTrackMeters'
 import { useExpandedStrips } from './expandStore'
+import { useMixerZoom } from './mixerZoomStore'
 import { useSoloMuteSync } from './soloMuteSync'
 import { ChannelStrip } from './ChannelStrip'
 import { ExpandDrawer } from './ExpandDrawer'
@@ -39,6 +40,9 @@ import { useTrackMetaMap } from '../../workspace/useTrackMeta'
  * Console only: the Pattern-tab local strip and inspector mount `ChannelStrip`
  * directly, not through here, so they stay 1×.
  */
+// The baseline the "100%" readout maps to (#759). The user's [-] % [+] scale
+// (mixerZoomStore) multiplies it: faceZoom = CONSOLE_ZOOM * userScale, so
+// scale === 1 keeps this historical 1.5x look exactly.
 const CONSOLE_ZOOM = 1.5
 
 export function MixerStrips({
@@ -72,6 +76,11 @@ export function MixerStrips({
   // overlay that silences non-soloed tracks in the string sent to the engine.
   const { soloed, toggle: toggleSolo } = useSoloMuteSync()
   const soloActive = soloed.size > 0
+  // User zoom (#759): the [-] % [+] bar's scale multiplies the console baseline
+  // so every strip face (and the master) scales in lockstep. scale === 1 → the
+  // historical 1.5x. Read here so a change re-renders the whole band at once.
+  const { zoom: userZoom } = useMixerZoom()
+  const faceZoom = CONSOLE_ZOOM * userZoom
   if (strips.length === 0) return <>{emptyFallback ?? null}</>
 
   return (
@@ -133,7 +142,7 @@ export function MixerStrips({
           >
             <ChannelStrip
               strip={strip}
-              zoom={CONSOLE_ZOOM}
+              zoom={faceZoom}
               onGainChange={(value) =>
                 applyToStrip(strip.id, (fresh, wb) => {
                   const e = gainEdit(fresh, value)
@@ -210,7 +219,7 @@ export function MixerStrips({
       {/* synthetic master — meter-only, pinned to the right of the scroller (S5).
           Zoomed in lockstep with the channel groups so it reads at the same
           scale (it sits outside the groups, so it takes the zoom directly). */}
-      <MasterStrip zoom={CONSOLE_ZOOM} />
+      <MasterStrip zoom={faceZoom} />
     </div>
   )
 }

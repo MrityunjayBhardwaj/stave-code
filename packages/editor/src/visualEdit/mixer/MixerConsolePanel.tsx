@@ -10,12 +10,50 @@
  * tab, which dissolves the S0 sliver — the band no longer shares a narrow column
  * with the param panel). The per-strip expand drawer lands in S4b. When the
  * document has no editable statements the band shows the standby fallback.
+ *
+ * A `[-] % [+]` zoom bar (#759) pins to the top, mirroring the Timeline's
+ * cluster: it drives `mixerZoomStore`, which scales every strip face in lockstep
+ * (CSS `zoom`, aspect-exact). It's console chrome, so it shows even in the empty
+ * state — the buttons just stay enabled with nothing to scale yet.
  */
 import * as React from 'react'
 
 import { MixerStrips } from './MixerStrips'
+import { useMixerZoom } from './mixerZoomStore'
 import { VisualEditStandby } from '../panels/VisualEditStandby'
 import { MIXER_CONSOLE_TAB_ID } from '../panels/tabs'
+
+/** The `[-] NNN% [+]` cluster — pure chrome, reads/writes `mixerZoomStore`. */
+function MixerZoomBar(): React.ReactElement {
+  const { percent, zoomIn, zoomOut, canZoomIn, canZoomOut } = useMixerZoom()
+  return (
+    <div data-mixer-zoom={percent} style={styles.zoomBar}>
+      <button
+        type="button"
+        data-mixer-zoom-out
+        onClick={zoomOut}
+        disabled={!canZoomOut}
+        style={styles.zoomButton}
+        title="Zoom out — smaller strips"
+        aria-label="Zoom out"
+      >
+        −
+      </button>
+      <span style={styles.zoomReadout}>{percent}%</span>
+      <button
+        type="button"
+        data-mixer-zoom-in
+        onClick={zoomIn}
+        disabled={!canZoomIn}
+        style={styles.zoomButton}
+        title="Zoom in — larger strips"
+        aria-label="Zoom in"
+      >
+        +
+      </button>
+    </div>
+  )
+}
 
 export function MixerConsolePanel(): React.ReactElement {
   return (
@@ -31,6 +69,7 @@ export function MixerConsolePanel(): React.ReactElement {
         background: 'var(--background, #1c1c20)',
       }}
     >
+      <MixerZoomBar />
       {/* The band scrolls horizontally through all strips and fills the tab;
           with no editable statements it shows the standby instead. */}
       <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto' }}>
@@ -46,4 +85,41 @@ export function MixerConsolePanel(): React.ReactElement {
       </div>
     </div>
   )
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  zoomBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+    padding: '3px 8px',
+    borderBottom: '1px solid var(--border, #3a3a42)',
+    background: 'var(--background, #1c1c20)',
+    // left-aligned: the cluster sits at the start of the bar, over the strips
+    justifyContent: 'flex-start',
+  },
+  zoomButton: {
+    width: 20,
+    height: 20,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 13,
+    lineHeight: 1,
+    borderRadius: 4,
+    border: '1px solid var(--border, #3a3a42)',
+    background: 'var(--bg-input, rgba(255,255,255,0.04))',
+    color: 'var(--text, #d8d8dc)',
+    cursor: 'pointer',
+    padding: 0,
+  },
+  zoomReadout: {
+    minWidth: 40,
+    textAlign: 'center',
+    fontSize: 11,
+    fontVariantNumeric: 'tabular-nums',
+    color: 'var(--text-secondary, rgba(255,255,255,0.7))',
+    userSelect: 'none',
+  },
 }
