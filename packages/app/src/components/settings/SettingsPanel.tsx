@@ -37,6 +37,8 @@ import {
   setAdaptivePerfEnabled,
   getTrackColourBarsEnabled,
   setTrackColourBarsEnabled,
+  getPlayVizOnHoverEnabled,
+  setPlayVizOnHoverEnabled,
   type EditorTheme,
   type TierName,
 } from "@stave/editor";
@@ -96,6 +98,7 @@ const ADAPTERS: Record<string, SettingAdapter> = {
   perfOverlay: { get: getPerfEnabled, set: (v) => setPerfEnabled(Boolean(v)) },
   adaptivePerf: { get: getAdaptivePerfEnabled, set: (v) => setAdaptivePerfEnabled(Boolean(v)) },
   vizTeardown: { get: getInlineVizTeardownEnabled, set: (v) => setInlineVizTeardownEnabled(Boolean(v)) },
+  playVizOnHover: { get: getPlayVizOnHoverEnabled, set: (v) => setPlayVizOnHoverEnabled(Boolean(v)) },
 };
 
 /** Adapter key set — exported for the A3 coverage test. */

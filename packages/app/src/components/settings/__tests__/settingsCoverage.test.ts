@@ -18,7 +18,7 @@ vi.mock("@stave/editor", () => {
     "getEditorTheme", "setEditorTheme", "getNoteColorMode", "setNoteColorMode", "getTierFlags",
     "setTierFlag", "listTiers", "getSignalAliases", "setSignalAliases", "getPerfEnabled",
     "setPerfEnabled", "getAdaptivePerfEnabled", "setAdaptivePerfEnabled", "getTrackColourBarsEnabled",
-    "setTrackColourBarsEnabled",
+    "setTrackColourBarsEnabled", "getPlayVizOnHoverEnabled", "setPlayVizOnHoverEnabled",
   ];
   const mod: Record<string, unknown> = {};
   for (const n of names) mod[n] = () => undefined;

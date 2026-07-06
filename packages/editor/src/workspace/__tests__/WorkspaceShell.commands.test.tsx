@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import React from 'react'
-import { render, act } from '@testing-library/react'
+import { render, act, fireEvent } from '@testing-library/react'
 
 // ---------------------------------------------------------------------------
 // Mock @monaco-editor/react BEFORE importing anything that reaches for it.
@@ -73,6 +73,7 @@ import {
   createWorkspaceFile,
   __resetWorkspaceFilesForTests,
 } from '../WorkspaceFile'
+import { setPlayVizOnHoverEnabled, setBackdropVizSpan } from '../editorRegistry'
 import { __resetWorkspaceLanguagesForTests } from '../languages'
 import { __resetWorkspaceAudioBusForTests } from '../WorkspaceAudioBus'
 import { resetCommandRegistryForTests } from '../commands/CommandRegistry'
@@ -232,13 +233,14 @@ describe('WorkspaceShell commands integration', () => {
     expect(bgLayer).toBeNull()
   })
 
-  it('#350d — active pane backdrop is LIVE, inactive pane backdrop FREEZES (paused)', () => {
-    // Two split panes, each with its own pinned backdrop. Only the focused
-    // (active) pane renders its backdrop LIVE; the inactive pane freezes to its
-    // last frame (paused → renderer.pause()). This bounds the shared-GPU cost to
-    // ~1× regardless of how many panes are split (#299/#122). `data-backdrop-live`
-    // mirrors the group's `data-active-group`; the backdrop preview's `paused`
-    // ctx is the inverse.
+  it('#767 — EVERY split pane backdrop stays LIVE (never frozen), focused or not', () => {
+    // Two split panes, each with its own pinned backdrop. Both render LIVE
+    // regardless of which is focused — freezing the inactive pane (the old
+    // #350d `paused={!isShellActiveGroup}`) made the first pattern's viz visibly
+    // stop the moment a second pane was opened. The shared-GPU concern
+    // (#299/#122) is now owned by `vizGovernor`, which throttles adaptively only
+    // under real stress. So `data-backdrop-live` is always 'true' and every
+    // backdrop preview's `paused` ctx is false.
     createWorkspaceFile('f-hydra2', 'spectrum.hydra', '// hydra code 2', 'hydra')
     const provider = makePreviewProvider()
     const groups = new Map<string, WorkspaceGroupState>([
@@ -258,23 +260,111 @@ describe('WorkspaceShell commands integration', () => {
     const backdrops = container.querySelectorAll('[data-workspace-background]')
     expect(backdrops.length).toBe(2)
 
-    // Invariant: each backdrop's live flag matches its group's active state,
-    // and the backdrop preview's `paused` ctx is the inverse of live.
+    // Invariant: every backdrop is live and unpaused, independent of focus.
     let liveCount = 0
-    let frozenCount = 0
     container.querySelectorAll('[data-workspace-group]').forEach((g) => {
       const bg = g.querySelector('[data-workspace-background]')
       if (!bg) return
-      const live = bg.getAttribute('data-backdrop-live')
-      expect(live).toBe(g.getAttribute('data-active-group'))
+      expect(bg.getAttribute('data-backdrop-live')).toBe('true')
       const out = bg.querySelector('[data-testid="stub-preview-output"]')
-      expect(out?.getAttribute('data-paused')).toBe(String(live !== 'true'))
-      if (live === 'true') liveCount++
-      else frozenCount++
+      expect(out?.getAttribute('data-paused')).toBe('false')
+      liveCount++
     })
-    // Exactly one active (live) pane and one inactive (frozen) pane.
-    expect(liveCount).toBe(1)
-    expect(frozenCount).toBe(1)
+    // Both panes live — the inactive one is no longer frozen.
+    expect(liveCount).toBe(2)
+  })
+
+  it('#769 — "Play viz on hover" ON: focused pane live, non-focused frozen unless hovered', () => {
+    // With the opt-in setting ON, only the focused pane renders live; a
+    // non-focused pane freezes UNLESS the cursor is over it, then resumes.
+    createWorkspaceFile('f-hydra2', 'spectrum.hydra', '// hydra code 2', 'hydra')
+    try {
+      const provider = makePreviewProvider()
+      const groups = new Map<string, WorkspaceGroupState>([
+        ['g1', { id: 'g1', tabs: [editorTab('t1', 'f-hydra')], activeTabId: 't1', backgroundFileId: 'f-hydra' }],
+        ['g2', { id: 'g2', tabs: [editorTab('t2', 'f-hydra2')], activeTabId: 't2', backgroundFileId: 'f-hydra2' }],
+      ])
+      const { container } = render(
+        <WorkspaceShell
+          initialGroups={groups}
+          initialLayout={[['g1', 'g2']]}
+          initialActiveGroupId="g2"
+          previewProviderFor={() => provider}
+        />,
+      )
+      // Toggle ON after mount (via the change listener) — also verifies the
+      // setting re-evaluates panes live without a remount.
+      act(() => { setPlayVizOnHoverEnabled(true) })
+
+      const bgOf = (gid: string): Element | null =>
+        container
+          .querySelector(`[data-workspace-group="${gid}"]`)!
+          .querySelector('[data-workspace-background]')
+      const pausedOf = (gid: string): string | null | undefined =>
+        bgOf(gid)
+          ?.querySelector('[data-testid="stub-preview-output"]')
+          ?.getAttribute('data-paused')
+
+      // g2 is focused → live; g1 is non-focused and not hovered → frozen.
+      expect(bgOf('g2')?.getAttribute('data-backdrop-live')).toBe('true')
+      expect(pausedOf('g2')).toBe('false')
+      expect(bgOf('g1')?.getAttribute('data-backdrop-live')).toBe('false')
+      expect(pausedOf('g1')).toBe('true')
+
+      // Hover g1 → it resumes (live) while the cursor is over it.
+      fireEvent.mouseEnter(container.querySelector('[data-workspace-group="g1"]')!)
+      expect(bgOf('g1')?.getAttribute('data-backdrop-live')).toBe('true')
+      expect(pausedOf('g1')).toBe('false')
+
+      // Leave g1 → it freezes again; g2 (focused) stayed live throughout.
+      fireEvent.mouseLeave(container.querySelector('[data-workspace-group="g1"]')!)
+      expect(bgOf('g1')?.getAttribute('data-backdrop-live')).toBe('false')
+      expect(pausedOf('g1')).toBe('true')
+      expect(pausedOf('g2')).toBe('false')
+    } finally {
+      setPlayVizOnHoverEnabled(false) // localStorage isn't reset between tests
+    }
+  })
+
+  it('#770 — Workspace span renders ONE backdrop for the first pane with one; File keeps per-pane', () => {
+    createWorkspaceFile('f-hydra2', 'spectrum.hydra', '// hydra code 2', 'hydra')
+    try {
+      const provider = makePreviewProvider()
+      const groups = new Map<string, WorkspaceGroupState>([
+        ['g1', { id: 'g1', tabs: [editorTab('t1', 'f-hydra')], activeTabId: 't1', backgroundFileId: 'f-hydra' }],
+        ['g2', { id: 'g2', tabs: [editorTab('t2', 'f-hydra2')], activeTabId: 't2', backgroundFileId: 'f-hydra2' }],
+      ])
+      const { container } = render(
+        <WorkspaceShell
+          initialGroups={groups}
+          initialLayout={[['g1', 'g2']]}
+          initialActiveGroupId="g2"
+          previewProviderFor={() => provider}
+        />,
+      )
+
+      // File mode (default): one backdrop per pane, none labelled 'workspace'.
+      expect(container.querySelectorAll('[data-workspace-background]').length).toBe(2)
+      expect(container.querySelector('[data-workspace-background="workspace"]')).toBeNull()
+
+      // Switch to Workspace span (after mount, via the change listener).
+      act(() => { setBackdropVizSpan('workspace') })
+
+      // Exactly ONE spanning backdrop, driven by the FIRST pane (g1 → f-hydra),
+      // and no per-pane ones.
+      const backgrounds = container.querySelectorAll('[data-workspace-background]')
+      expect(backgrounds.length).toBe(1)
+      const span = container.querySelector('[data-workspace-background="workspace"]')
+      expect(span).not.toBeNull()
+      expect(span!.getAttribute('data-background-file-id')).toBe('f-hydra')
+
+      // Every pane's code panel is transparent so the single backdrop shows.
+      const panels = container.querySelectorAll('[data-stave-code-panel]')
+      expect(panels.length).toBeGreaterThan(0)
+      panels.forEach((p) => expect(p.getAttribute('data-stave-backdrop')).toBe('on'))
+    } finally {
+      setBackdropVizSpan('file') // localStorage isn't reset between tests
+    }
   })
 
   it('#350c — per-pane opacity/quality override the global default; absent → default', () => {

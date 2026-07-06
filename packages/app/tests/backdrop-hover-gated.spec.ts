@@ -1,32 +1,19 @@
 import { test, expect, type Page } from '@playwright/test'
 
 /**
- * #366 (350d) — active pane renders the backdrop LIVE, inactive panes FREEZE
- * to their last frame.
+ * #769 — the opt-in "Play viz on hover" setting.
  *
- * GPU is shared (#299/#122): N split panes each rendering a heavy backdrop LIVE
- * = N× the compositor cost. So only the focused/active pane renders its backdrop
- * live; inactive panes pause (paused → renderer.pause() → the worker stops
- * producing frames — the lighter freeze) and resume instantly on focus.
- *
- * Observation discipline — measure the WORKER FRAME-PRODUCTION rate, not pixels:
- *   - The default p5 backdrop renders in an OffscreenCanvas worker; getContext on
- *     the transferred canvas throws (PV90), and a COMPOSITOR screenshot of the
- *     backdrop region is confounded by the code editor (with its live play-head
- *     highlight) compositing IN FRONT of the semi-transparent backdrop (P121-class
- *     artifact — the editor changes even when the backdrop is frozen).
- *   - `__stavePerf` records a per-worker frame counter (`worker#N`). Its delta over
- *     a fixed window is the DIRECT measure of GPU frame production: live ⇒ tens of
- *     frames/sec; frozen ⇒ ~0. This is exactly the cost #366 removes, and it is
- *     immune to the editor-compositing confound.
- *   - P146: SYNTH (`.s("sawtooth")`) drives the playing program (the produce loop);
- *     drum samples don't load headless and would gate the code backdrop.
+ * OFF (default) → every split pane's backdrop stays live (#768, covered by
+ * backdrop-split-live.spec.ts). ON → only the focused pane renders live and
+ * non-focused panes FREEZE to their last frame UNLESS the cursor hovers them,
+ * then they resume. This spec enables the flag (localStorage, read at mount) and
+ * verifies freeze-when-unfocused-and-unhovered → resume-on-hover via the worker
+ * frame-production delta (same discipline as backdrop-split-live: measure frames
+ * produced, not pixels — PV90/P121).
  */
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
-// Any p5 sketch — the worker frame counter advances per draw regardless of what
-// it paints, so content doesn't matter; a moving bar just makes it concrete.
 const SKETCH = `
 function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
 function draw() {
@@ -39,6 +26,8 @@ async function gotoApp(page: Page): Promise<void> {
   await page.addInitScript(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(window as any).__STAVE_E2E__ = true
+    // Enable "Play viz on hover" before the shell mounts (read at mount).
+    try { localStorage.setItem('stave:playVizOnHover', '1') } catch { /* ignore */ }
   })
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await page.locator('[data-workspace-shell="root"]').waitFor({ timeout: 15000 })
@@ -61,7 +50,6 @@ async function runCode(page: Page): Promise<void> {
   await page.waitForTimeout(2500)
 }
 
-// Total frames produced by all worker viz renderers (the backdrop is one).
 async function workerFrameCount(page: Page): Promise<number> {
   return page.evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -73,18 +61,16 @@ async function workerFrameCount(page: Page): Promise<number> {
   })
 }
 
-// Frames the worker(s) produced over `ms` — the live-vs-frozen signal.
 async function framesProducedOver(page: Page, ms: number): Promise<number> {
   const before = await workerFrameCount(page)
   await page.waitForTimeout(ms)
   return (await workerFrameCount(page)) - before
 }
 
-test('#366 — inactive pane backdrop stops producing frames (freezes), active stays live, resumes on focus', async ({ page }) => {
+test('#769 — with the setting ON, an unfocused backdrop freezes and resumes on hover', async ({ page }) => {
   await gotoApp(page)
   await page.evaluate(() => (window as any).__stavePerf?.setEnabled?.(true)) // eslint-disable-line @typescript-eslint/no-explicit-any
 
-  // Drive the backdrop via a playing synth program's `.spectrum()` code-override.
   const overrode = await page.evaluate(
     (code) => (window as any).__staveOverrideVizFile?.('spectrum', code) ?? null, // eslint-disable-line @typescript-eslint/no-explicit-any
     SKETCH,
@@ -96,20 +82,13 @@ test('#366 — inactive pane backdrop stops producing frames (freezes), active s
 
   const backdrop = page.locator('[data-workspace-background]').first()
   await expect(backdrop).toBeVisible({ timeout: 6000 })
-  await expect(backdrop).toHaveAttribute('data-backdrop-live', 'true')
   await page.locator('[data-workspace-background] canvas').first().waitFor({ timeout: 8000 })
   await page.waitForTimeout(800)
 
-  // 1) Single pane = active → the backdrop worker produces frames (live).
-  const liveFrames = await framesProducedOver(page, 1200)
-  expect(liveFrames, 'active backdrop worker should produce frames').toBeGreaterThan(10)
-
-  // 2) Split right → a new EMPTY group. The backdrop's pane stays active for now.
+  // Split right → new empty group; then focus it so the backdrop's pane is
+  // non-focused. With the setting ON and no hover, it must FREEZE.
   await page.locator('[data-testid^="group-split-"]').first().click()
   await page.waitForTimeout(500)
-  expect(await page.locator('[data-workspace-group]').count()).toBe(2)
-
-  // 3) Focus the OTHER (empty) group → the backdrop's pane becomes inactive.
   const emptyGroup = page.locator('[data-workspace-group]', {
     hasNot: page.locator('[data-workspace-background]'),
   }).first()
@@ -117,17 +96,22 @@ test('#366 — inactive pane backdrop stops producing frames (freezes), active s
   await page.waitForTimeout(500)
   await expect(backdrop).toHaveAttribute('data-backdrop-live', 'false', { timeout: 4000 })
 
-  // 4) Inactive backdrop FREEZES — the worker stops producing frames (~0).
   const frozenFrames = await framesProducedOver(page, 1200)
-  expect(frozenFrames, 'inactive backdrop worker should stop producing frames').toBeLessThanOrEqual(2)
+  expect(frozenFrames, 'unfocused + unhovered backdrop should freeze').toBeLessThanOrEqual(2)
 
-  // 5) Refocus the backdrop's pane → the worker RESUMES producing frames.
+  // Hover the backdrop's pane (without clicking → focus stays on the empty
+  // group). It must RESUME while hovered.
   const bgGroup = page.locator('[data-workspace-group]', {
     has: page.locator('[data-workspace-background]'),
   }).first()
-  await bgGroup.click({ position: { x: 40, y: 200 } })
-  await page.waitForTimeout(500)
+  await bgGroup.hover()
   await expect(backdrop).toHaveAttribute('data-backdrop-live', 'true', { timeout: 4000 })
-  const resumedFrames = await framesProducedOver(page, 1200)
-  expect(resumedFrames, 'refocused backdrop worker should resume producing frames').toBeGreaterThan(10)
+  const hoveredFrames = await framesProducedOver(page, 1200)
+  expect(hoveredFrames, 'hovered backdrop should resume producing frames').toBeGreaterThan(10)
+
+  // Move the cursor away (onto the empty group) → it freezes again.
+  await emptyGroup.hover({ position: { x: 40, y: 200 } })
+  await expect(backdrop).toHaveAttribute('data-backdrop-live', 'false', { timeout: 4000 })
+  const refrozenFrames = await framesProducedOver(page, 1200)
+  expect(refrozenFrames, 'backdrop should re-freeze once the cursor leaves').toBeLessThanOrEqual(2)
 })

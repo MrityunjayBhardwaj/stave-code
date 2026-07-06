@@ -125,6 +125,7 @@ export const SECTION_DEFS: readonly SettingsSectionDef[] = [
       { key: "perfOverlay", name: "Performance overlay", description: "Frame timings, sections and long-task overlay.", kind: "switch", badge: "⌥P", badgeMono: true },
       { key: "adaptivePerf", name: "Adaptive performance", description: "GPU-budget governor auto-throttles heavy viz to protect the frame rate.", kind: "switch" },
       { key: "vizTeardown", name: "Off-screen viz teardown", description: "Free memory and GPU contexts 60s after a viz scrolls off-screen.", kind: "switch" },
+      { key: "playVizOnHover", name: "Play viz on hover", description: "In split panes, freeze non-focused backdrops and play them only while hovered — saves GPU with many panes. Off: every pane's backdrop stays live.", kind: "switch" },
     ],
   },
   { id: "modules", navLabel: "Modules", title: "Strudel modules", custom: "modules" },

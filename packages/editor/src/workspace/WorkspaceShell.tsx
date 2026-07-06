@@ -133,7 +133,12 @@ import {
   backdropQualityFactor,
   getBackdropOpacity,
   onBackdropOpacityChange,
+  getPlayVizOnHoverEnabled,
+  onPlayVizOnHoverChange,
+  getBackdropVizSpan,
+  onBackdropVizSpanChange,
   type BackdropQuality,
+  type BackdropVizSpan,
 } from './editorRegistry'
 import type { WorkspaceShellActions } from './commands/CommandRegistry'
 import type {
@@ -914,6 +919,33 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   )
   useEffect(
     () => onBackdropOpacityChange(setBackdropOpacityState),
+    [],
+  )
+
+  // #769 "Play viz on hover" — same subscribe pattern. OFF (default) → every
+  // pane's backdrop stays live (#768). ON → non-focused panes freeze unless the
+  // cursor hovers them, so the backdrop `paused` policy below reads this + the
+  // hovered group. Read live so toggling the setting re-evaluates all panes
+  // without a remount.
+  const [playVizOnHover, setPlayVizOnHoverState] = useState<boolean>(
+    () => getPlayVizOnHoverEnabled(),
+  )
+  useEffect(
+    () => onPlayVizOnHoverChange(setPlayVizOnHoverState),
+    [],
+  )
+  // Which group the cursor is currently over — only consulted when
+  // `playVizOnHover` is ON, to keep the hovered non-focused pane's backdrop live.
+  const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null)
+
+  // #770 backdrop viz span — 'file' (per-pane, default) or 'workspace' (one
+  // backdrop spanning every pane). Same subscribe pattern; read live so toggling
+  // the span in the popover re-renders (per-pane ⇄ spanning) without a remount.
+  const [backdropVizSpan, setBackdropVizSpanState] = useState<BackdropVizSpan>(
+    () => getBackdropVizSpan(),
+  )
+  useEffect(
+    () => onBackdropVizSpanChange(setBackdropVizSpanState),
     [],
   )
 
@@ -2275,6 +2307,105 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
     ],
   )
 
+  // #770 — in 'workspace' span mode, ONE backdrop spans every pane. It's driven
+  // by the FIRST group (in layout order) that has a backdrop set — stable, so it
+  // doesn't change or vanish as focus moves between panes. Null in 'file' mode or
+  // when no pane has a backdrop.
+  const workspaceSpanBackdrop = useMemo(() => {
+    if (backdropVizSpan !== 'workspace') return null
+    for (const gid of allGroupIds(layout)) {
+      const g = groups.get(gid)
+      if (!g) continue
+      const fileId = resolveBackdropFileId(g.backgroundFileId, bgOverrides.get(gid))
+      if (fileId) {
+        return {
+          fileId,
+          groupId: gid,
+          quality: g.backdropQuality ?? backdropQuality,
+          opacity: g.backdropOpacity ?? backdropOpacity,
+        }
+      }
+    }
+    return null
+  }, [backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity])
+  // True when a single spanning backdrop is active → every pane goes transparent
+  // (via `data-stave-backdrop="on"`) so the one backdrop shows behind all of them.
+  const workspaceSpanActive = workspaceSpanBackdrop != null
+
+  // Shared backdrop-layer renderer (#770) — used BOTH per-pane (file mode) and
+  // once at the workspace level (workspace mode). Extracted so the crop/quality
+  // transform math lives in one place. `dataGroupId` labels the layer for
+  // observation ('workspace' for the spanning one); `paused` routes to
+  // renderer.pause() (the #769 hover-gate in file mode; always live when spanning).
+  const renderBackdropLayer = useCallback(
+    (params: {
+      bgFileId: string
+      dataGroupId: string
+      quality: BackdropQuality
+      opacity: number
+      crop: { x: number; y: number; w: number; h: number } | null
+      paused: boolean
+    }): React.ReactNode => {
+      const { bgFileId, dataGroupId, quality, opacity, crop, paused } = params
+      const bgProvider = previewProviderFor?.({
+        kind: 'preview',
+        id: `bg-${bgFileId}`,
+        fileId: bgFileId,
+        sourceRef: { kind: 'default' },
+      })
+      if (!bgProvider) return null
+      const qf = backdropQualityFactor(quality)
+      const cx = crop?.x ?? 0
+      const cy = crop?.y ?? 0
+      const cw = crop?.w ?? 1
+      const ch = crop?.h ?? 1
+      const scaleX = qf / cw
+      const scaleY = qf / ch
+      const innerSizePct = qf === 1 ? 100 : 100 / qf
+      const translateX = -cx * 100
+      const translateY = -cy * 100
+      return (
+        <div
+          data-workspace-background={dataGroupId}
+          data-background-file-id={bgFileId}
+          data-backdrop-quality={quality}
+          data-backdrop-live={paused ? 'false' : 'true'}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 0,
+            opacity,
+            pointerEvents: 'none',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              width: `${innerSizePct}%`,
+              height: `${innerSizePct}%`,
+              transform:
+                crop || qf !== 1
+                  ? `scale(${scaleX}, ${scaleY}) translate(${translateX}%, ${translateY}%)`
+                  : undefined,
+              transformOrigin: 'top left',
+            }}
+          >
+            <PreviewView
+              fileId={bgFileId}
+              provider={bgProvider}
+              sourceRef={{ kind: 'default' }}
+              theme={theme}
+              hidden={false}
+              paused={paused}
+              onSourceRefChange={() => {}}
+            />
+          </div>
+        </div>
+      )
+    },
+    [previewProviderFor, theme],
+  )
+
   /**
    * Render one group's tab bar + content area. Factored out of the top-
    * level render body so the `SplitPane` children are readable.
@@ -2313,6 +2444,17 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             }
           }}
           onDrop={(e) => handleDropOnGroup(e, group.id)}
+          // #769: track the hovered group ONLY when "Play viz on hover" is on, so
+          // its non-focused backdrop resumes while the cursor is over it. Guarded
+          // on the flag so the common (OFF) path never re-renders on mouse move.
+          onMouseEnter={
+            playVizOnHover ? () => setHoveredGroupId(group.id) : undefined
+          }
+          onMouseLeave={
+            playVizOnHover
+              ? () => setHoveredGroupId((h) => (h === group.id ? null : h))
+              : undefined
+          }
           onMouseDown={() => {
             // Clicking anywhere inside a group focuses it without
             // changing the tab selection. Used by `onActiveTabChange`
@@ -2327,7 +2469,9 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             flexDirection: 'column',
             height: '100%',
             width: '100%',
-            background: 'var(--background)',
+            // #770: transparent in workspace-span mode so the single backdrop
+            // (rendered behind the groups container) shows through every pane.
+            background: workspaceSpanActive ? 'transparent' : 'var(--background)',
             outline: isDragOver
               ? '2px solid var(--accent, #75baff)'
               : 'none',
@@ -2383,6 +2527,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 the promoted file is deleted (provider lookup returns
                 undefined). */}
             {(() => {
+              // #770: in 'workspace' span mode the single backdrop is rendered
+              // ONCE at the workspace level (below), not per-pane — suppress the
+              // per-pane layer here so we don't paint N copies.
+              if (backdropVizSpan === 'workspace') return null
               // #350a precedence: code override (this eval) wins over the manual
               // sticky; neither set → no backdrop.
               const bgFileId = resolveBackdropFileId(
@@ -2390,114 +2538,34 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 bgOverrides.get(group.id),
               )
               if (!bgFileId) return null
-              const bgProvider = previewProviderFor?.({
-                kind: 'preview',
-                id: `bg-${bgFileId}`,
-                fileId: bgFileId,
-                sourceRef: { kind: 'default' },
-              })
-              if (!bgProvider) return null
               // #350c: per-pane opacity/quality override the global default.
-              // Absent on the group → the shell-wide value (the EditorSettings
-              // default) applies, so untuned panes are unchanged.
               const groupQuality = group.backdropQuality ?? backdropQuality
               const groupOpacity = group.backdropOpacity ?? backdropOpacity
-              // Quality ladder (#41): the inner wrapper is sized at
-              // (1/factor) × viewport and scaled back by `factor` —
-              // renderer sees a smaller container, CSS stretches the
-              // result. factor=1 → full; 0.5 → half (default, quartered
-              // pixel budget); 0.25 → quarter (1/16 budget).
-              const qf = backdropQualityFactor(groupQuality)
-              // Crop (#40): when set, the sub-rect {x,y,w,h} of the
-              // full viz should fill the viewport. We upscale the
-              // inner wrapper by 1/crop.w (horiz) and 1/crop.h
-              // (vert) and shift its origin up-left by crop.x /
-              // crop.y so the desired sub-rect lands at (0,0).
-              // Compose this with the quality transform — both use
-              // transform-origin top-left so they stack cleanly.
-              const crop = backgroundCrop ?? null
-              const cx = crop?.x ?? 0
-              const cy = crop?.y ?? 0
-              const cw = crop?.w ?? 1
-              const ch = crop?.h ?? 1
-              const scaleX = qf / cw
-              const scaleY = qf / ch
-              // Size the inner to (1/qf) viewport first so after
-              // quality down-scale alone it fills the viewport; then
-              // crop-scale multiplies the area and the translate
-              // picks the sub-rect. Using two dimensions because
-              // crop aspect may not match viewport aspect.
-              const innerSizePct = qf === 1 ? 100 : 100 / qf
-              // Translate is in % of the inner element's own box
-              // (CSS translate%). To map the point (cx, cy) in the
-              // viz to the element origin we need translate = -cx *
-              // 100%, -cy * 100% — no 1/cw factor because CSS
-              // translate% is relative to pre-scale box size, not
-              // post-scale rendered width.
-              const translateX = -cx * 100
-              const translateY = -cy * 100
-              return (
-                <div
-                  data-workspace-background={group.id}
-                  data-background-file-id={bgFileId}
-                  data-backdrop-quality={groupQuality}
-                  // #350d: only the focused/active pane renders its backdrop
-                  // LIVE; inactive panes freeze to their last frame (see the
-                  // `paused` prop below). Exposed for observation.
-                  data-backdrop-live={isShellActiveGroup ? 'true' : 'false'}
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    zIndex: 0,
-                    // Viz renders at user-set opacity. Stacks with
-                    // the code-panel wash in globals.css — both
-                    // dim the viz behind the code. Defaults to 1.
-                    opacity: groupOpacity,
-                    pointerEvents: 'none',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${innerSizePct}%`,
-                      height: `${innerSizePct}%`,
-                      // Build the transform string conditionally so
-                      // `transform: none` beats anything undefined
-                      // leaving the node unscaled when we DO want
-                      // scale(1). Crop translate is expressed in %
-                      // of the inner's post-scale viewport.
-                      transform:
-                        crop || qf !== 1
-                          ? `scale(${scaleX}, ${scaleY}) translate(${translateX}%, ${translateY}%)`
-                          : undefined,
-                      transformOrigin: 'top left',
-                    }}
-                  >
-                    <PreviewView
-                      fileId={bgFileId}
-                      provider={bgProvider}
-                      sourceRef={{ kind: 'default' }}
-                      theme={theme}
-                      hidden={false}
-                      // #350d: freeze the backdrop on inactive panes. GPU is
-                      // shared (#299/#122) — N split panes each rendering a
-                      // heavy backdrop LIVE = N× the compositor cost. Only the
-                      // focused pane renders live; the rest pause to their last
-                      // frame. `paused` routes to renderer.pause() (p5.noLoop /
-                      // hydra stop) which freezes the canvas (keeps the last
-                      // frame) and resumes instantly on focus — the lighter
-                      // freeze, not an off-screen teardown.
-                      paused={!isShellActiveGroup}
-                      onSourceRefChange={() => {}}
-                    />
-                  </div>
-                </div>
-              )
+              // #767/#769: by DEFAULT every pane's backdrop renders LIVE. With the
+              // opt-in "Play viz on hover" setting, non-focused panes freeze UNLESS
+              // hovered (the focused pane stays live). `vizGovernor` holds the GPU
+              // floor either way.
+              const backdropPaused =
+                playVizOnHover &&
+                !isShellActiveGroup &&
+                hoveredGroupId !== group.id
+              return renderBackdropLayer({
+                bgFileId,
+                dataGroupId: group.id,
+                quality: groupQuality,
+                opacity: groupOpacity,
+                crop: backgroundCrop ?? null,
+                paused: backdropPaused,
+              })
             })()}
             {activeTabObj ? (
               <div
                 data-stave-code-panel="true"
                 data-stave-backdrop={
+                  // #770: in workspace-span mode EVERY pane goes transparent so the
+                  // single shared backdrop shows behind all of them — not just panes
+                  // that have their own backdrop (the file-mode condition).
+                  workspaceSpanActive ||
                   resolveBackdropFileId(
                     group.backgroundFileId,
                     bgOverrides.get(group.id),
@@ -2554,6 +2622,16 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       bgOverrides,
       previewProviderFor,
       theme,
+      // #769: the backdrop `paused` policy reads both — omit them and
+      // renderGroup keeps a stale closure, so toggling "Play viz on hover"
+      // or hovering a pane never reaches the backdrop (P239 memo-dep trap).
+      playVizOnHover,
+      hoveredGroupId,
+      // #770: span mode gates the per-pane backdrop + pane transparency; the
+      // layer renderer is a fresh closure each time it changes. Same P239 trap.
+      backdropVizSpan,
+      workspaceSpanActive,
+      renderBackdropLayer,
     ],
   )
 
@@ -2977,8 +3055,35 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
+          // #770: relative so the workspace-spanning backdrop (absolute, inset 0)
+          // is bounded to the groups area. No-op for the default 'file' mode.
+          position: 'relative',
         }}
       >
+        {/* #770 — the ONE backdrop that spans every pane, painted behind the
+            groups (zIndex 0) with the layout above it (zIndex 1). Driven by the
+            first pane with a backdrop; every pane is transparent so it shows
+            through. Absent (and zero cost) in 'file' mode. */}
+        {workspaceSpanBackdrop &&
+          renderBackdropLayer({
+            bgFileId: workspaceSpanBackdrop.fileId,
+            dataGroupId: 'workspace',
+            quality: workspaceSpanBackdrop.quality,
+            opacity: workspaceSpanBackdrop.opacity,
+            crop: backgroundCrop ?? null,
+            paused: false,
+          })}
+        <div
+          data-workspace-groups-content="true"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
         {totalGroupCount === 0 ? (
           <div
             data-testid="workspace-shell-empty"
@@ -3027,6 +3132,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             })}
           </SplitPane>
         )}
+        </div>
       </div>
 
       {/*

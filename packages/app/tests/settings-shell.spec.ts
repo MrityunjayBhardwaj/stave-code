@@ -49,6 +49,24 @@ test('search filters rows across sections', async ({ page }) => {
   await expect(page.getByText('Minimap', { exact: true })).toBeVisible()
 })
 
+test('#769 — "Play viz on hover" toggle shows in Performance, OFF by default, persists', async ({ page }) => {
+  await openViaFile(page, 'Editor Settings...')
+  await page.getByTestId('settings-nav-perf').click()
+  const toggle = page.getByTestId('setting-playVizOnHover')
+  await expect(toggle).toBeVisible()
+  await expect(page.getByText('Play viz on hover', { exact: true })).toBeVisible()
+  // Default OFF — the #768 all-panes-live behaviour is the default.
+  await expect(toggle).not.toBeChecked()
+  // Real gesture → real persistence across reload.
+  await toggle.click()
+  await expect(toggle).toBeChecked()
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
+  await openViaFile(page, 'Editor Settings...')
+  await page.getByTestId('settings-nav-perf').click()
+  await expect(page.getByTestId('setting-playVizOnHover')).toBeChecked()
+})
+
 test('a toggle survives a reload (real gesture, real persistence)', async ({ page }) => {
   await openViaFile(page, 'Editor Settings...')
   const minimap = page.getByTestId('setting-minimap')
