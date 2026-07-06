@@ -133,6 +133,8 @@ import {
   backdropQualityFactor,
   getBackdropOpacity,
   onBackdropOpacityChange,
+  getPlayVizOnHoverEnabled,
+  onPlayVizOnHoverChange,
   type BackdropQuality,
 } from './editorRegistry'
 import type { WorkspaceShellActions } from './commands/CommandRegistry'
@@ -916,6 +918,22 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
     () => onBackdropOpacityChange(setBackdropOpacityState),
     [],
   )
+
+  // #769 "Play viz on hover" — same subscribe pattern. OFF (default) → every
+  // pane's backdrop stays live (#768). ON → non-focused panes freeze unless the
+  // cursor hovers them, so the backdrop `paused` policy below reads this + the
+  // hovered group. Read live so toggling the setting re-evaluates all panes
+  // without a remount.
+  const [playVizOnHover, setPlayVizOnHoverState] = useState<boolean>(
+    () => getPlayVizOnHoverEnabled(),
+  )
+  useEffect(
+    () => onPlayVizOnHoverChange(setPlayVizOnHoverState),
+    [],
+  )
+  // Which group the cursor is currently over — only consulted when
+  // `playVizOnHover` is ON, to keep the hovered non-focused pane's backdrop live.
+  const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null)
 
   // Theme application — PV6 / PK6. Effect, not render.
   useEffect(() => {
@@ -2313,6 +2331,17 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             }
           }}
           onDrop={(e) => handleDropOnGroup(e, group.id)}
+          // #769: track the hovered group ONLY when "Play viz on hover" is on, so
+          // its non-focused backdrop resumes while the cursor is over it. Guarded
+          // on the flag so the common (OFF) path never re-renders on mouse move.
+          onMouseEnter={
+            playVizOnHover ? () => setHoveredGroupId(group.id) : undefined
+          }
+          onMouseLeave={
+            playVizOnHover
+              ? () => setHoveredGroupId((h) => (h === group.id ? null : h))
+              : undefined
+          }
           onMouseDown={() => {
             // Clicking anywhere inside a group focuses it without
             // changing the tab selection. Used by `onActiveTabChange`
@@ -2436,15 +2465,24 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
               // post-scale rendered width.
               const translateX = -cx * 100
               const translateY = -cy * 100
+              // #767/#769: by DEFAULT every pane's backdrop renders LIVE (a split
+              // of two patterns keeps both animating). When the user opts into
+              // "Play viz on hover", non-focused panes freeze UNLESS the cursor is
+              // over them — the focused pane stays live, the hovered pane resumes,
+              // the rest pause. The shared-GPU floor is held by `vizGovernor`
+              // either way; this only trades always-live for lower idle cost.
+              const backdropPaused =
+                playVizOnHover &&
+                !isShellActiveGroup &&
+                hoveredGroupId !== group.id
               return (
                 <div
                   data-workspace-background={group.id}
                   data-background-file-id={bgFileId}
                   data-backdrop-quality={groupQuality}
-                  // #767: EVERY pane's backdrop renders LIVE, focused or not (see
-                  // the `paused` prop below) — a split of two patterns keeps both
-                  // backdrops animating. Always 'true' now; kept for observation.
-                  data-backdrop-live="true"
+                  // 'true' whenever the backdrop is animating; 'false' only for a
+                  // hover-gated pane that's currently frozen. Exposed for tests.
+                  data-backdrop-live={backdropPaused ? 'false' : 'true'}
                   style={{
                     position: 'absolute',
                     inset: 0,
@@ -2479,19 +2517,16 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                       sourceRef={{ kind: 'default' }}
                       theme={theme}
                       hidden={false}
-                      // #767: keep EVERY split pane's backdrop live, focused or
-                      // not — freezing the inactive pane (the old #350d
+                      // #767: by default EVERY split pane's backdrop stays live —
+                      // freezing the inactive pane (the old #350d
                       // `paused={!isShellActiveGroup}`) made the first pattern's
-                      // viz visibly stop the moment a second pane was opened.
-                      // The shared-GPU cost that freeze guarded against
-                      // (#299/#122 — N heavy backdrops = N× compositor cost) is
-                      // now owned by `vizGovernor`, which gates every
-                      // WorkerVizRenderer (the default) and round-robins /
-                      // throttles / drops resolution ONLY under real GPU stress,
-                      // and is a total no-op when smooth. So two light backdrops
-                      // both run full-rate, and heavy ones stay bounded — without
-                      // the crude always-freeze that regressed the common case.
-                      paused={false}
+                      // viz visibly stop the moment a second pane was opened. The
+                      // shared-GPU cost that freeze guarded against (#299/#122) is
+                      // now owned by `vizGovernor` (adaptive, no-op when smooth).
+                      // #769: the opt-in "Play viz on hover" setting restores a
+                      // hover-gated freeze for many-pane layouts — see
+                      // `backdropPaused` above (OFF → always false → all live).
+                      paused={backdropPaused}
                       onSourceRefChange={() => {}}
                     />
                   </div>
@@ -2558,6 +2593,11 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       bgOverrides,
       previewProviderFor,
       theme,
+      // #769: the backdrop `paused` policy reads both — omit them and
+      // renderGroup keeps a stale closure, so toggling "Play viz on hover"
+      // or hovering a pane never reaches the backdrop (P239 memo-dep trap).
+      playVizOnHover,
+      hoveredGroupId,
     ],
   )
 

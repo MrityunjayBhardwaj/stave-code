@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import React from 'react'
-import { render, act } from '@testing-library/react'
+import { render, act, fireEvent } from '@testing-library/react'
 
 // ---------------------------------------------------------------------------
 // Mock @monaco-editor/react BEFORE importing anything that reaches for it.
@@ -73,6 +73,7 @@ import {
   createWorkspaceFile,
   __resetWorkspaceFilesForTests,
 } from '../WorkspaceFile'
+import { setPlayVizOnHoverEnabled } from '../editorRegistry'
 import { __resetWorkspaceLanguagesForTests } from '../languages'
 import { __resetWorkspaceAudioBusForTests } from '../WorkspaceAudioBus'
 import { resetCommandRegistryForTests } from '../commands/CommandRegistry'
@@ -271,6 +272,58 @@ describe('WorkspaceShell commands integration', () => {
     })
     // Both panes live — the inactive one is no longer frozen.
     expect(liveCount).toBe(2)
+  })
+
+  it('#769 — "Play viz on hover" ON: focused pane live, non-focused frozen unless hovered', () => {
+    // With the opt-in setting ON, only the focused pane renders live; a
+    // non-focused pane freezes UNLESS the cursor is over it, then resumes.
+    createWorkspaceFile('f-hydra2', 'spectrum.hydra', '// hydra code 2', 'hydra')
+    try {
+      const provider = makePreviewProvider()
+      const groups = new Map<string, WorkspaceGroupState>([
+        ['g1', { id: 'g1', tabs: [editorTab('t1', 'f-hydra')], activeTabId: 't1', backgroundFileId: 'f-hydra' }],
+        ['g2', { id: 'g2', tabs: [editorTab('t2', 'f-hydra2')], activeTabId: 't2', backgroundFileId: 'f-hydra2' }],
+      ])
+      const { container } = render(
+        <WorkspaceShell
+          initialGroups={groups}
+          initialLayout={[['g1', 'g2']]}
+          initialActiveGroupId="g2"
+          previewProviderFor={() => provider}
+        />,
+      )
+      // Toggle ON after mount (via the change listener) — also verifies the
+      // setting re-evaluates panes live without a remount.
+      act(() => { setPlayVizOnHoverEnabled(true) })
+
+      const bgOf = (gid: string): Element | null =>
+        container
+          .querySelector(`[data-workspace-group="${gid}"]`)!
+          .querySelector('[data-workspace-background]')
+      const pausedOf = (gid: string): string | null | undefined =>
+        bgOf(gid)
+          ?.querySelector('[data-testid="stub-preview-output"]')
+          ?.getAttribute('data-paused')
+
+      // g2 is focused → live; g1 is non-focused and not hovered → frozen.
+      expect(bgOf('g2')?.getAttribute('data-backdrop-live')).toBe('true')
+      expect(pausedOf('g2')).toBe('false')
+      expect(bgOf('g1')?.getAttribute('data-backdrop-live')).toBe('false')
+      expect(pausedOf('g1')).toBe('true')
+
+      // Hover g1 → it resumes (live) while the cursor is over it.
+      fireEvent.mouseEnter(container.querySelector('[data-workspace-group="g1"]')!)
+      expect(bgOf('g1')?.getAttribute('data-backdrop-live')).toBe('true')
+      expect(pausedOf('g1')).toBe('false')
+
+      // Leave g1 → it freezes again; g2 (focused) stayed live throughout.
+      fireEvent.mouseLeave(container.querySelector('[data-workspace-group="g1"]')!)
+      expect(bgOf('g1')?.getAttribute('data-backdrop-live')).toBe('false')
+      expect(pausedOf('g1')).toBe('true')
+      expect(pausedOf('g2')).toBe('false')
+    } finally {
+      setPlayVizOnHoverEnabled(false) // localStorage isn't reset between tests
+    }
   })
 
   it('#350c — per-pane opacity/quality override the global default; absent → default', () => {
