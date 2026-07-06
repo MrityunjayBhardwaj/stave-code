@@ -34,6 +34,7 @@ import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
 import { buildTimelineScene, clipAtCycle } from './musicalTimeline/timelineScene'
 import { TrackSwatchPopover } from './TrackSwatchPopover'
+import { useRulerUnits } from '../state/rulerUnits'
 import {
   applyStableVoiceOrder,
   EMPTY_VOICE_ORDER,
@@ -76,10 +77,6 @@ const CLIP_EDGE_GRIP_PX = 6
  *  click (select/seek). Below this it stays a click so seek-anywhere is intact. */
 const CLIP_MOVE_THRESHOLD_PX = 4
 const FONT_MONO = 'var(--font-mono), ui-monospace, monospace'
-
-/** Ruler units (#412). CYCLES = Strudel's native numbering; BARS = DAW
- *  convention (one cycle ≈ one bar) with quarter-cycle beat ticks. */
-type RulerUnits = 'cycles' | 'bars'
 
 export interface FullSongTimelineProps {
   /** Whole-song analysis, or null before the first analysis completes. */
@@ -349,7 +346,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // (`overflowY: auto`); `scrollTop` mirrors that offset so the label gutter can
   // translate in lockstep and the Y hit-tests can map client→content space.
   const [scrollTop, setScrollTop] = useState(0)
-  const [units, setUnits] = useState<RulerUnits>('cycles')
+  // Ruler units (#412 → #750). The toggle now lives on the editor pattern bar
+  // (StrudelEditorClient); this view just reads the shared store.
+  const units = useRulerUnits()
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
   const scrollLeftRef = useRef(scrollLeft)
@@ -1334,19 +1333,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           surfaced via the data attribute below for Playwright observation. */}
       <div data-full-song-period={periodLabel} style={{ display: 'none' }} />
 
-      {/* Controls: units toggle (left) + zoom (right). Discoverable buttons over
-          shortcuts; ⌘/Ctrl+wheel also zooms. */}
+      {/* Controls: zoom cluster (right). The CYCLES/BARS units toggle moved to
+          the editor pattern bar (#750). ⌘/Ctrl+wheel also zooms. */}
       <div data-full-song="controls" style={styles.controls}>
-        <button
-          type="button"
-          data-full-song-units-toggle
-          data-units={units}
-          onClick={() => setUnits((u) => (u === 'cycles' ? 'bars' : 'cycles'))}
-          style={styles.unitsToggle}
-          title={units === 'cycles' ? 'Show bars & beats' : 'Show cycles'}
-        >
-          {units === 'cycles' ? 'CYCLES' : 'BARS'}
-        </button>
         <div style={styles.zoomCluster} data-full-song-zoom={zoomPercent}>
           <button
             type="button"
@@ -1802,7 +1791,7 @@ const styles = {
     minHeight: CONTROLS_HEIGHT,
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     gap: 8,
     padding: '0 8px',
     background: 'var(--bg-app, #090912)',

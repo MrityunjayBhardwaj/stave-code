@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
 import { promptAndCreateFile } from "../lib/newFile";
 import { BackdropPopover } from "./BackdropPopover";
+import { RulerUnitsButton } from "./RulerUnitsButton";
 import { PopoutPreviewController } from "./PopoutPreviewController";
 import { registerVizWorker } from "../visualizers/registerVizWorker";
 import {
@@ -1128,11 +1129,15 @@ export default function StrudelEditorClient({
       autoRefresh: state.autoRefresh,
       onToggleAutoRefresh: () => handleToggleAutoRefresh(tab.fileId),
       chromeExtras: (
-        <SetBackdropButton
-          pinned={tabBg != null}
-          fileName={backdropName(tabBg)}
-          onOpen={(rect) => setBgPopover({ rect, fileId: tab.fileId })}
-        />
+        <>
+          {/* #750 — ruler units toggle, moved off the Timeline controls. */}
+          <RulerUnitsButton />
+          <SetBackdropButton
+            pinned={tabBg != null}
+            fileName={backdropName(tabBg)}
+            onOpen={(rect) => setBgPopover({ rect, fileId: tab.fileId })}
+          />
+        </>
       ),
     };
     return runtimeProvider.renderChrome(ctx);

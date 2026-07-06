@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as React from 'react'
 import { act, render, cleanup, fireEvent } from '@testing-library/react'
 import type { SongAnalysis } from '@stave/editor'
+import { setRulerUnits } from '../../state/rulerUnits'
 
 // FullSongTimeline now pulls the editor runtime (collectCycles/laneKeyOf, via
 // timelineMarks) into its import graph; the real module drags in a CJS dep
@@ -338,23 +339,24 @@ describe('FullSongTimeline', () => {
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
   })
 
-  it('toggles CYCLES ↔ BARS and adds beat ticks in bars mode', async () => {
+  it('the ruler reflects the shared units store — bars adds beat ticks (#750)', async () => {
+    // The CYCLES/BARS toggle moved to the editor pattern bar; the ruler now
+    // reads the shared `rulerUnits` store. Drive the store directly.
+    setRulerUnits('cycles')
     const { container } = renderFull()
     await act(async () => {
       await Promise.resolve()
     })
-    const toggle = container.querySelector('[data-full-song-units-toggle]') as HTMLButtonElement
-    expect(toggle.textContent).toBe('CYCLES')
     // CYCLES: 4 major ticks (period 4 across 800px → 200px/cycle), no beats.
     expect(container.querySelectorAll('[data-full-song-tick="major"]').length).toBe(4)
     expect(container.querySelectorAll('[data-full-song-tick="beat"]').length).toBe(0)
     await act(async () => {
-      toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      setRulerUnits('bars')
     })
-    expect(toggle.textContent).toBe('BARS')
     // BARS: 4 majors + 4×3 interior beat ticks (200/4 = 50px/beat ≥ 14).
     expect(container.querySelectorAll('[data-full-song-tick="major"]').length).toBe(4)
     expect(container.querySelectorAll('[data-full-song-tick="beat"]').length).toBe(12)
+    setRulerUnits('cycles') // reset the module singleton for other tests
   })
 })
 

@@ -146,9 +146,11 @@ test('full-song view: zoom widens + scrolls, Fit refits, bars toggle adds beat t
   }
 
   // (5) Bars toggle adds beat ticks (zoom in first so beats clear the px floor).
+  // The toggle now lives on the editor pattern bar (#750); the ruler reacts
+  // via the shared units store.
   await page.locator('[data-full-song-zoom-in]').click()
   await page.locator('[data-full-song-zoom-in]').click()
-  const unitsToggle = page.locator('[data-full-song-units-toggle]')
+  const unitsToggle = page.locator('[data-testid="strudel-chrome-units-toggle"]').first()
   expect(await unitsToggle.textContent()).toBe('CYCLES')
   await unitsToggle.click()
   expect(await unitsToggle.textContent()).toBe('BARS')
