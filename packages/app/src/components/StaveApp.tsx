@@ -46,8 +46,7 @@ import {
   applyPersistedInlineVizActionSize,
   applyPersistedVizQuality,
 } from "@stave/editor";
-import { ShortcutsOverlay } from "./ShortcutsOverlay";
-import { EditorSettingsModal } from "./EditorSettingsModal";
+import { SettingsModal, type SettingsTab } from "./settings/SettingsModal";
 import { CropPopup, createBackdropCropAdapter } from "./CropPopup";
 import { DialogHost } from "./DialogHost";
 import { showPrompt, showToast, showConfirm } from "../dialogs/host";
@@ -136,8 +135,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
+  // Unified settings window (#739) — one shell, two tabs. `settingsTab`
+  // decides which surface opens; both File-menu items reuse it.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("settings");
   const [cropTarget, setCropTarget] = useState<
     | { mode: "inline"; vizId: string; presetId: string; fileId: string; trackKey: string; renderSize?: { w: number; h: number } }
     | { mode: "backdrop"; adapter: import("./CropPopup").CropAdapter }
@@ -1019,7 +1020,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       category: "View",
       description: "List every command that has a shortcut.",
       keybinding: "mod+/",
-      run: () => setShortcutsOpen(true),
+      run: () => { setSettingsTab("keys"); setSettingsOpen(true); },
     }));
     unregs.push(registerCommand({
       id: "stave.quickOpen",
@@ -1144,8 +1145,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         // Backdrop selection moved to the per-tab pattern-bar dropdown (#347);
         // the menubar no longer owns it.
         projectName={activeProject.name}
-        onOpenEditorSettings={() => setEditorSettingsOpen(true)}
-        onOpenShortcuts={() => setShortcutsOpen(true)}
+        onOpenEditorSettings={() => { setSettingsTab("settings"); setSettingsOpen(true); }}
+        onOpenShortcuts={() => { setSettingsTab("keys"); setSettingsOpen(true); }}
         onNewProject={() => setTemplateModalOpen(true)}
         onOpenProject={() => setSwitcherModalOpen(true)}
         onRenameProject={handleRenameActiveProject}
@@ -1426,14 +1427,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         </>
       )}
 
-      <ShortcutsOverlay
-        open={shortcutsOpen}
-        onClose={() => setShortcutsOpen(false)}
-      />
-
-      <EditorSettingsModal
-        open={editorSettingsOpen}
-        onClose={() => setEditorSettingsOpen(false)}
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        tab={settingsTab}
+        onTabChange={setSettingsTab}
       />
 
       {/* Perf overlay (#228) — renders only when profiling is enabled. */}

@@ -18,13 +18,13 @@ test('top-right icons and the bg-indicator are gone', async ({ page }) => {
 })
 
 test('Editor Settings + Keyboard Shortcuts live under the File menu', async ({ page }) => {
-  await page.getByRole('button', { name: 'File' }).click()
+  await page.getByRole('button', { name: 'File', exact: true }).click()
   await expect(page.getByText('Editor Settings...')).toBeVisible()
   await expect(page.getByText('Keyboard Shortcuts...')).toBeVisible()
-  // It actually opens the settings modal (title is exactly "Editor Settings",
-  // distinct from the "Editor Settings..." menu item which closes on click).
+  // It opens the unified settings shell (#739) on the Settings tab.
   await page.getByText('Editor Settings...').click()
-  await expect(page.getByText('Editor Settings', { exact: true })).toBeVisible({ timeout: 4000 })
+  await expect(page.getByTestId('settings-shell')).toBeVisible({ timeout: 4000 })
+  await expect(page.getByTestId('settings-tab-settings')).toHaveAttribute('aria-selected', 'true')
 })
 
 test('Help menu has Documentation + GitHub Repository', async ({ page }) => {
