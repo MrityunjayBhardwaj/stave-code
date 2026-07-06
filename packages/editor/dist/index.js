@@ -31500,8 +31500,8 @@ var styles = {
     padding: "3px 8px",
     borderBottom: "1px solid var(--border, #3a3a42)",
     background: "var(--background, #1c1c20)",
-    // pin the cluster to the right, matching the Timeline's controls
-    justifyContent: "flex-end"
+    // left-aligned: the cluster sits at the start of the bar, over the strips
+    justifyContent: "flex-start"
   },
   zoomButton: {
     width: 20,
