@@ -7462,6 +7462,31 @@ function onPlayVizOnHoverChange(cb) {
   };
 }
 __name(onPlayVizOnHoverChange, "onPlayVizOnHoverChange");
+var DEFAULT_BACKDROP_VIZ_SPAN = "file";
+var BACKDROP_VIZ_SPAN_STORAGE = "stave:backdropVizSpan";
+var backdropVizSpanListeners = /* @__PURE__ */ new Set();
+function readBackdropVizSpan() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_BACKDROP_VIZ_SPAN;
+  return ls.getItem(BACKDROP_VIZ_SPAN_STORAGE) === "workspace" ? "workspace" : "file";
+}
+__name(readBackdropVizSpan, "readBackdropVizSpan");
+function getBackdropVizSpan() {
+  return readBackdropVizSpan();
+}
+__name(getBackdropVizSpan, "getBackdropVizSpan");
+function setBackdropVizSpan(span) {
+  safeLocalStorage2()?.setItem(BACKDROP_VIZ_SPAN_STORAGE, span);
+  for (const cb of Array.from(backdropVizSpanListeners)) cb(span);
+}
+__name(setBackdropVizSpan, "setBackdropVizSpan");
+function onBackdropVizSpanChange(cb) {
+  backdropVizSpanListeners.add(cb);
+  return () => {
+    backdropVizSpanListeners.delete(cb);
+  };
+}
+__name(onBackdropVizSpanChange, "onBackdropVizSpanChange");
 function getInlineVizTeardownMs() {
   if (!readInlineVizTeardownEnabled()) return 0;
   try {
@@ -32573,6 +32598,13 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
     []
   );
   const [hoveredGroupId, setHoveredGroupId] = React37.useState(null);
+  const [backdropVizSpan, setBackdropVizSpanState] = React37.useState(
+    () => getBackdropVizSpan()
+  );
+  React37.useEffect(
+    () => onBackdropVizSpanChange(setBackdropVizSpanState),
+    []
+  );
   React37.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
@@ -33442,6 +33474,88 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
       closeTabById
     ]
   );
+  const workspaceSpanBackdrop = React37.useMemo(() => {
+    if (backdropVizSpan !== "workspace") return null;
+    for (const gid of allGroupIds(layout)) {
+      const g = groups.get(gid);
+      if (!g) continue;
+      const fileId = resolveBackdropFileId(g.backgroundFileId, bgOverrides.get(gid));
+      if (fileId) {
+        return {
+          fileId,
+          groupId: gid,
+          quality: g.backdropQuality ?? backdropQuality,
+          opacity: g.backdropOpacity ?? backdropOpacity
+        };
+      }
+    }
+    return null;
+  }, [backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity]);
+  const workspaceSpanActive = workspaceSpanBackdrop != null;
+  const renderBackdropLayer = React37.useCallback(
+    (params) => {
+      const { bgFileId, dataGroupId, quality, opacity, crop, paused } = params;
+      const bgProvider = previewProviderFor?.({
+        kind: "preview",
+        id: `bg-${bgFileId}`,
+        fileId: bgFileId,
+        sourceRef: { kind: "default" }
+      });
+      if (!bgProvider) return null;
+      const qf = backdropQualityFactor(quality);
+      const cx = crop?.x ?? 0;
+      const cy = crop?.y ?? 0;
+      const cw = crop?.w ?? 1;
+      const ch = crop?.h ?? 1;
+      const scaleX = qf / cw;
+      const scaleY = qf / ch;
+      const innerSizePct = qf === 1 ? 100 : 100 / qf;
+      const translateX = -cx * 100;
+      const translateY = -cy * 100;
+      return /* @__PURE__ */ jsxRuntime.jsx(
+        "div",
+        {
+          "data-workspace-background": dataGroupId,
+          "data-background-file-id": bgFileId,
+          "data-backdrop-quality": quality,
+          "data-backdrop-live": paused ? "false" : "true",
+          style: {
+            position: "absolute",
+            inset: 0,
+            zIndex: 0,
+            opacity,
+            pointerEvents: "none",
+            overflow: "hidden"
+          },
+          children: /* @__PURE__ */ jsxRuntime.jsx(
+            "div",
+            {
+              style: {
+                width: `${innerSizePct}%`,
+                height: `${innerSizePct}%`,
+                transform: crop || qf !== 1 ? `scale(${scaleX}, ${scaleY}) translate(${translateX}%, ${translateY}%)` : void 0,
+                transformOrigin: "top left"
+              },
+              children: /* @__PURE__ */ jsxRuntime.jsx(
+                PreviewView,
+                {
+                  fileId: bgFileId,
+                  provider: bgProvider,
+                  sourceRef: { kind: "default" },
+                  theme,
+                  hidden: false,
+                  paused,
+                  onSourceRefChange: () => {
+                  }
+                }
+              )
+            }
+          )
+        }
+      );
+    },
+    [previewProviderFor, theme]
+  );
   const renderGroup = React37.useCallback(
     (group) => {
       const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
@@ -33483,7 +33597,9 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
             flexDirection: "column",
             height: "100%",
             width: "100%",
-            background: "var(--background)",
+            // #770: transparent in workspace-span mode so the single backdrop
+            // (rendered behind the groups container) shows through every pane.
+            background: workspaceSpanActive ? "transparent" : "var(--background)",
             outline: isDragOver ? "2px solid var(--accent, #75baff)" : "none",
             outlineOffset: -2
           },
@@ -33529,90 +33645,37 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
                 style: { flex: 1, minHeight: 0, position: "relative" },
                 children: [
                   (() => {
+                    if (backdropVizSpan === "workspace") return null;
                     const bgFileId = resolveBackdropFileId(
                       group.backgroundFileId,
                       bgOverrides.get(group.id)
                     );
                     if (!bgFileId) return null;
-                    const bgProvider = previewProviderFor?.({
-                      kind: "preview",
-                      id: `bg-${bgFileId}`,
-                      fileId: bgFileId,
-                      sourceRef: { kind: "default" }
-                    });
-                    if (!bgProvider) return null;
                     const groupQuality = group.backdropQuality ?? backdropQuality;
                     const groupOpacity = group.backdropOpacity ?? backdropOpacity;
-                    const qf = backdropQualityFactor(groupQuality);
-                    const crop = backgroundCrop ?? null;
-                    const cx = crop?.x ?? 0;
-                    const cy = crop?.y ?? 0;
-                    const cw = crop?.w ?? 1;
-                    const ch = crop?.h ?? 1;
-                    const scaleX = qf / cw;
-                    const scaleY = qf / ch;
-                    const innerSizePct = qf === 1 ? 100 : 100 / qf;
-                    const translateX = -cx * 100;
-                    const translateY = -cy * 100;
                     const backdropPaused = playVizOnHover && !isShellActiveGroup && hoveredGroupId !== group.id;
-                    return /* @__PURE__ */ jsxRuntime.jsx(
-                      "div",
-                      {
-                        "data-workspace-background": group.id,
-                        "data-background-file-id": bgFileId,
-                        "data-backdrop-quality": groupQuality,
-                        "data-backdrop-live": backdropPaused ? "false" : "true",
-                        style: {
-                          position: "absolute",
-                          inset: 0,
-                          zIndex: 0,
-                          // Viz renders at user-set opacity. Stacks with
-                          // the code-panel wash in globals.css — both
-                          // dim the viz behind the code. Defaults to 1.
-                          opacity: groupOpacity,
-                          pointerEvents: "none",
-                          overflow: "hidden"
-                        },
-                        children: /* @__PURE__ */ jsxRuntime.jsx(
-                          "div",
-                          {
-                            style: {
-                              width: `${innerSizePct}%`,
-                              height: `${innerSizePct}%`,
-                              // Build the transform string conditionally so
-                              // `transform: none` beats anything undefined
-                              // leaving the node unscaled when we DO want
-                              // scale(1). Crop translate is expressed in %
-                              // of the inner's post-scale viewport.
-                              transform: crop || qf !== 1 ? `scale(${scaleX}, ${scaleY}) translate(${translateX}%, ${translateY}%)` : void 0,
-                              transformOrigin: "top left"
-                            },
-                            children: /* @__PURE__ */ jsxRuntime.jsx(
-                              PreviewView,
-                              {
-                                fileId: bgFileId,
-                                provider: bgProvider,
-                                sourceRef: { kind: "default" },
-                                theme,
-                                hidden: false,
-                                paused: backdropPaused,
-                                onSourceRefChange: () => {
-                                }
-                              }
-                            )
-                          }
-                        )
-                      }
-                    );
+                    return renderBackdropLayer({
+                      bgFileId,
+                      dataGroupId: group.id,
+                      quality: groupQuality,
+                      opacity: groupOpacity,
+                      crop: backgroundCrop ?? null,
+                      paused: backdropPaused
+                    });
                   })(),
                   activeTabObj ? /* @__PURE__ */ jsxRuntime.jsx(
                     "div",
                     {
                       "data-stave-code-panel": "true",
-                      "data-stave-backdrop": resolveBackdropFileId(
-                        group.backgroundFileId,
-                        bgOverrides.get(group.id)
-                      ) ? "on" : "off",
+                      "data-stave-backdrop": (
+                        // #770: in workspace-span mode EVERY pane goes transparent so the
+                        // single shared backdrop shows behind all of them — not just panes
+                        // that have their own backdrop (the file-mode condition).
+                        workspaceSpanActive || resolveBackdropFileId(
+                          group.backgroundFileId,
+                          bgOverrides.get(group.id)
+                        ) ? "on" : "off"
+                      ),
                       style: {
                         position: "relative",
                         zIndex: 0,
@@ -33668,7 +33731,12 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
       // renderGroup keeps a stale closure, so toggling "Play viz on hover"
       // or hovering a pane never reaches the backdrop (P239 memo-dep trap).
       playVizOnHover,
-      hoveredGroupId
+      hoveredGroupId,
+      // #770: span mode gates the per-pane backdrop + pane transparency; the
+      // layer renderer is a fresh closure each time it changes. Same P239 trap.
+      backdropVizSpan,
+      workspaceSpanActive,
+      renderBackdropLayer
     ]
   );
   const totalGroupCount = React37.useMemo(
@@ -33991,7 +34059,7 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
             }
           }
         ),
-        /* @__PURE__ */ jsxRuntime.jsx(
+        /* @__PURE__ */ jsxRuntime.jsxs(
           "div",
           {
             "data-workspace-groups": "container",
@@ -33999,42 +34067,69 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
               flex: 1,
               minHeight: 0,
               display: "flex",
-              flexDirection: "column"
+              flexDirection: "column",
+              // #770: relative so the workspace-spanning backdrop (absolute, inset 0)
+              // is bounded to the groups area. No-op for the default 'file' mode.
+              position: "relative"
             },
-            children: totalGroupCount === 0 ? /* @__PURE__ */ jsxRuntime.jsx(
-              "div",
-              {
-                "data-testid": "workspace-shell-empty",
-                style: {
-                  flex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--foreground-muted)",
-                  fontSize: 12
-                },
-                children: "Drop a tab here"
-              }
-            ) : layout.length === 1 && layout[0].length === 1 ? (() => {
-              const g = groups.get(layout[0][0]);
-              return g ? renderGroup(g) : null;
-            })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
-              if (column.length === 1) {
-                const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsxRuntime.jsx(React37__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
-              }
-              return /* @__PURE__ */ jsxRuntime.jsx(
-                SplitPane,
+            children: [
+              workspaceSpanBackdrop && renderBackdropLayer({
+                bgFileId: workspaceSpanBackdrop.fileId,
+                dataGroupId: "workspace",
+                quality: workspaceSpanBackdrop.quality,
+                opacity: workspaceSpanBackdrop.opacity,
+                crop: backgroundCrop ?? null,
+                paused: false
+              }),
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "div",
                 {
-                  direction: "vertical",
-                  children: column.map((gid) => {
-                    const g = groups.get(gid);
-                    return /* @__PURE__ */ jsxRuntime.jsx(React37__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
-                  })
-                },
-                `col-${colIdx}-${column.join("+")}`
-              );
-            }) })
+                  "data-workspace-groups-content": "true",
+                  style: {
+                    flex: 1,
+                    minHeight: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    position: "relative",
+                    zIndex: 1
+                  },
+                  children: totalGroupCount === 0 ? /* @__PURE__ */ jsxRuntime.jsx(
+                    "div",
+                    {
+                      "data-testid": "workspace-shell-empty",
+                      style: {
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--foreground-muted)",
+                        fontSize: 12
+                      },
+                      children: "Drop a tab here"
+                    }
+                  ) : layout.length === 1 && layout[0].length === 1 ? (() => {
+                    const g = groups.get(layout[0][0]);
+                    return g ? renderGroup(g) : null;
+                  })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
+                    if (column.length === 1) {
+                      const g = groups.get(column[0]);
+                      return /* @__PURE__ */ jsxRuntime.jsx(React37__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                    }
+                    return /* @__PURE__ */ jsxRuntime.jsx(
+                      SplitPane,
+                      {
+                        direction: "vertical",
+                        children: column.map((gid) => {
+                          const g = groups.get(gid);
+                          return /* @__PURE__ */ jsxRuntime.jsx(React37__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                        })
+                      },
+                      `col-${colIdx}-${column.join("+")}`
+                    );
+                  }) })
+                }
+              )
+            ]
           }
         ),
         /* @__PURE__ */ jsxRuntime.jsx(BottomPanel, {}),
@@ -38857,6 +38952,7 @@ exports.getActiveProjectId = getActiveProjectId;
 exports.getAdaptivePerfEnabled = getAdaptivePerfEnabled;
 exports.getBackdropOpacity = getBackdropOpacity;
 exports.getBackdropQuality = getBackdropQuality;
+exports.getBackdropVizSpan = getBackdropVizSpan;
 exports.getBottomPanelTab = getBottomPanelTab;
 exports.getCaptureBuffer = getCaptureBuffer;
 exports.getCaptureCapacity = getCaptureCapacity;
@@ -38974,6 +39070,7 @@ exports.onActiveEditorChange = onActiveEditorChange;
 exports.onAdaptivePerfChange = onAdaptivePerfChange;
 exports.onBackdropOpacityChange = onBackdropOpacityChange;
 exports.onBackdropQualityChange = onBackdropQualityChange;
+exports.onBackdropVizSpanChange = onBackdropVizSpanChange;
 exports.onInlineVizActionSizeChange = onInlineVizActionSizeChange;
 exports.onInlineVizResolutionChange = onInlineVizResolutionChange;
 exports.onInlineVizTeardownChange = onInlineVizTeardownChange;
@@ -39065,6 +39162,7 @@ exports.setActiveHistoryFile = setActiveHistoryFile;
 exports.setAdaptivePerfEnabled = setAdaptivePerfEnabled;
 exports.setBackdropOpacity = setBackdropOpacity;
 exports.setBackdropQuality = setBackdropQuality;
+exports.setBackdropVizSpan = setBackdropVizSpan;
 exports.setCaptureCapacity = setCaptureCapacity;
 exports.setChildOrder = setChildOrder;
 exports.setContent = setContent;

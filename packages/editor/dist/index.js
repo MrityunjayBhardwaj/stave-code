@@ -7436,6 +7436,31 @@ function onPlayVizOnHoverChange(cb) {
   };
 }
 __name(onPlayVizOnHoverChange, "onPlayVizOnHoverChange");
+var DEFAULT_BACKDROP_VIZ_SPAN = "file";
+var BACKDROP_VIZ_SPAN_STORAGE = "stave:backdropVizSpan";
+var backdropVizSpanListeners = /* @__PURE__ */ new Set();
+function readBackdropVizSpan() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_BACKDROP_VIZ_SPAN;
+  return ls.getItem(BACKDROP_VIZ_SPAN_STORAGE) === "workspace" ? "workspace" : "file";
+}
+__name(readBackdropVizSpan, "readBackdropVizSpan");
+function getBackdropVizSpan() {
+  return readBackdropVizSpan();
+}
+__name(getBackdropVizSpan, "getBackdropVizSpan");
+function setBackdropVizSpan(span) {
+  safeLocalStorage2()?.setItem(BACKDROP_VIZ_SPAN_STORAGE, span);
+  for (const cb of Array.from(backdropVizSpanListeners)) cb(span);
+}
+__name(setBackdropVizSpan, "setBackdropVizSpan");
+function onBackdropVizSpanChange(cb) {
+  backdropVizSpanListeners.add(cb);
+  return () => {
+    backdropVizSpanListeners.delete(cb);
+  };
+}
+__name(onBackdropVizSpanChange, "onBackdropVizSpanChange");
 function getInlineVizTeardownMs() {
   if (!readInlineVizTeardownEnabled()) return 0;
   try {
@@ -32547,6 +32572,13 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     []
   );
   const [hoveredGroupId, setHoveredGroupId] = useState(null);
+  const [backdropVizSpan, setBackdropVizSpanState] = useState(
+    () => getBackdropVizSpan()
+  );
+  useEffect(
+    () => onBackdropVizSpanChange(setBackdropVizSpanState),
+    []
+  );
   useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
@@ -33416,6 +33448,88 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       closeTabById
     ]
   );
+  const workspaceSpanBackdrop = useMemo(() => {
+    if (backdropVizSpan !== "workspace") return null;
+    for (const gid of allGroupIds(layout)) {
+      const g = groups.get(gid);
+      if (!g) continue;
+      const fileId = resolveBackdropFileId(g.backgroundFileId, bgOverrides.get(gid));
+      if (fileId) {
+        return {
+          fileId,
+          groupId: gid,
+          quality: g.backdropQuality ?? backdropQuality,
+          opacity: g.backdropOpacity ?? backdropOpacity
+        };
+      }
+    }
+    return null;
+  }, [backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity]);
+  const workspaceSpanActive = workspaceSpanBackdrop != null;
+  const renderBackdropLayer = useCallback(
+    (params) => {
+      const { bgFileId, dataGroupId, quality, opacity, crop, paused } = params;
+      const bgProvider = previewProviderFor?.({
+        kind: "preview",
+        id: `bg-${bgFileId}`,
+        fileId: bgFileId,
+        sourceRef: { kind: "default" }
+      });
+      if (!bgProvider) return null;
+      const qf = backdropQualityFactor(quality);
+      const cx = crop?.x ?? 0;
+      const cy = crop?.y ?? 0;
+      const cw = crop?.w ?? 1;
+      const ch = crop?.h ?? 1;
+      const scaleX = qf / cw;
+      const scaleY = qf / ch;
+      const innerSizePct = qf === 1 ? 100 : 100 / qf;
+      const translateX = -cx * 100;
+      const translateY = -cy * 100;
+      return /* @__PURE__ */ jsx(
+        "div",
+        {
+          "data-workspace-background": dataGroupId,
+          "data-background-file-id": bgFileId,
+          "data-backdrop-quality": quality,
+          "data-backdrop-live": paused ? "false" : "true",
+          style: {
+            position: "absolute",
+            inset: 0,
+            zIndex: 0,
+            opacity,
+            pointerEvents: "none",
+            overflow: "hidden"
+          },
+          children: /* @__PURE__ */ jsx(
+            "div",
+            {
+              style: {
+                width: `${innerSizePct}%`,
+                height: `${innerSizePct}%`,
+                transform: crop || qf !== 1 ? `scale(${scaleX}, ${scaleY}) translate(${translateX}%, ${translateY}%)` : void 0,
+                transformOrigin: "top left"
+              },
+              children: /* @__PURE__ */ jsx(
+                PreviewView,
+                {
+                  fileId: bgFileId,
+                  provider: bgProvider,
+                  sourceRef: { kind: "default" },
+                  theme,
+                  hidden: false,
+                  paused,
+                  onSourceRefChange: () => {
+                  }
+                }
+              )
+            }
+          )
+        }
+      );
+    },
+    [previewProviderFor, theme]
+  );
   const renderGroup = useCallback(
     (group) => {
       const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
@@ -33457,7 +33571,9 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             flexDirection: "column",
             height: "100%",
             width: "100%",
-            background: "var(--background)",
+            // #770: transparent in workspace-span mode so the single backdrop
+            // (rendered behind the groups container) shows through every pane.
+            background: workspaceSpanActive ? "transparent" : "var(--background)",
             outline: isDragOver ? "2px solid var(--accent, #75baff)" : "none",
             outlineOffset: -2
           },
@@ -33503,90 +33619,37 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                 style: { flex: 1, minHeight: 0, position: "relative" },
                 children: [
                   (() => {
+                    if (backdropVizSpan === "workspace") return null;
                     const bgFileId = resolveBackdropFileId(
                       group.backgroundFileId,
                       bgOverrides.get(group.id)
                     );
                     if (!bgFileId) return null;
-                    const bgProvider = previewProviderFor?.({
-                      kind: "preview",
-                      id: `bg-${bgFileId}`,
-                      fileId: bgFileId,
-                      sourceRef: { kind: "default" }
-                    });
-                    if (!bgProvider) return null;
                     const groupQuality = group.backdropQuality ?? backdropQuality;
                     const groupOpacity = group.backdropOpacity ?? backdropOpacity;
-                    const qf = backdropQualityFactor(groupQuality);
-                    const crop = backgroundCrop ?? null;
-                    const cx = crop?.x ?? 0;
-                    const cy = crop?.y ?? 0;
-                    const cw = crop?.w ?? 1;
-                    const ch = crop?.h ?? 1;
-                    const scaleX = qf / cw;
-                    const scaleY = qf / ch;
-                    const innerSizePct = qf === 1 ? 100 : 100 / qf;
-                    const translateX = -cx * 100;
-                    const translateY = -cy * 100;
                     const backdropPaused = playVizOnHover && !isShellActiveGroup && hoveredGroupId !== group.id;
-                    return /* @__PURE__ */ jsx(
-                      "div",
-                      {
-                        "data-workspace-background": group.id,
-                        "data-background-file-id": bgFileId,
-                        "data-backdrop-quality": groupQuality,
-                        "data-backdrop-live": backdropPaused ? "false" : "true",
-                        style: {
-                          position: "absolute",
-                          inset: 0,
-                          zIndex: 0,
-                          // Viz renders at user-set opacity. Stacks with
-                          // the code-panel wash in globals.css — both
-                          // dim the viz behind the code. Defaults to 1.
-                          opacity: groupOpacity,
-                          pointerEvents: "none",
-                          overflow: "hidden"
-                        },
-                        children: /* @__PURE__ */ jsx(
-                          "div",
-                          {
-                            style: {
-                              width: `${innerSizePct}%`,
-                              height: `${innerSizePct}%`,
-                              // Build the transform string conditionally so
-                              // `transform: none` beats anything undefined
-                              // leaving the node unscaled when we DO want
-                              // scale(1). Crop translate is expressed in %
-                              // of the inner's post-scale viewport.
-                              transform: crop || qf !== 1 ? `scale(${scaleX}, ${scaleY}) translate(${translateX}%, ${translateY}%)` : void 0,
-                              transformOrigin: "top left"
-                            },
-                            children: /* @__PURE__ */ jsx(
-                              PreviewView,
-                              {
-                                fileId: bgFileId,
-                                provider: bgProvider,
-                                sourceRef: { kind: "default" },
-                                theme,
-                                hidden: false,
-                                paused: backdropPaused,
-                                onSourceRefChange: () => {
-                                }
-                              }
-                            )
-                          }
-                        )
-                      }
-                    );
+                    return renderBackdropLayer({
+                      bgFileId,
+                      dataGroupId: group.id,
+                      quality: groupQuality,
+                      opacity: groupOpacity,
+                      crop: backgroundCrop ?? null,
+                      paused: backdropPaused
+                    });
                   })(),
                   activeTabObj ? /* @__PURE__ */ jsx(
                     "div",
                     {
                       "data-stave-code-panel": "true",
-                      "data-stave-backdrop": resolveBackdropFileId(
-                        group.backgroundFileId,
-                        bgOverrides.get(group.id)
-                      ) ? "on" : "off",
+                      "data-stave-backdrop": (
+                        // #770: in workspace-span mode EVERY pane goes transparent so the
+                        // single shared backdrop shows behind all of them — not just panes
+                        // that have their own backdrop (the file-mode condition).
+                        workspaceSpanActive || resolveBackdropFileId(
+                          group.backgroundFileId,
+                          bgOverrides.get(group.id)
+                        ) ? "on" : "off"
+                      ),
                       style: {
                         position: "relative",
                         zIndex: 0,
@@ -33642,7 +33705,12 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       // renderGroup keeps a stale closure, so toggling "Play viz on hover"
       // or hovering a pane never reaches the backdrop (P239 memo-dep trap).
       playVizOnHover,
-      hoveredGroupId
+      hoveredGroupId,
+      // #770: span mode gates the per-pane backdrop + pane transparency; the
+      // layer renderer is a fresh closure each time it changes. Same P239 trap.
+      backdropVizSpan,
+      workspaceSpanActive,
+      renderBackdropLayer
     ]
   );
   const totalGroupCount = useMemo(
@@ -33965,7 +34033,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             }
           }
         ),
-        /* @__PURE__ */ jsx(
+        /* @__PURE__ */ jsxs(
           "div",
           {
             "data-workspace-groups": "container",
@@ -33973,42 +34041,69 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
               flex: 1,
               minHeight: 0,
               display: "flex",
-              flexDirection: "column"
+              flexDirection: "column",
+              // #770: relative so the workspace-spanning backdrop (absolute, inset 0)
+              // is bounded to the groups area. No-op for the default 'file' mode.
+              position: "relative"
             },
-            children: totalGroupCount === 0 ? /* @__PURE__ */ jsx(
-              "div",
-              {
-                "data-testid": "workspace-shell-empty",
-                style: {
-                  flex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--foreground-muted)",
-                  fontSize: 12
-                },
-                children: "Drop a tab here"
-              }
-            ) : layout.length === 1 && layout[0].length === 1 ? (() => {
-              const g = groups.get(layout[0][0]);
-              return g ? renderGroup(g) : null;
-            })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
-              if (column.length === 1) {
-                const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsx(React37__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
-              }
-              return /* @__PURE__ */ jsx(
-                SplitPane,
+            children: [
+              workspaceSpanBackdrop && renderBackdropLayer({
+                bgFileId: workspaceSpanBackdrop.fileId,
+                dataGroupId: "workspace",
+                quality: workspaceSpanBackdrop.quality,
+                opacity: workspaceSpanBackdrop.opacity,
+                crop: backgroundCrop ?? null,
+                paused: false
+              }),
+              /* @__PURE__ */ jsx(
+                "div",
                 {
-                  direction: "vertical",
-                  children: column.map((gid) => {
-                    const g = groups.get(gid);
-                    return /* @__PURE__ */ jsx(React37__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
-                  })
-                },
-                `col-${colIdx}-${column.join("+")}`
-              );
-            }) })
+                  "data-workspace-groups-content": "true",
+                  style: {
+                    flex: 1,
+                    minHeight: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    position: "relative",
+                    zIndex: 1
+                  },
+                  children: totalGroupCount === 0 ? /* @__PURE__ */ jsx(
+                    "div",
+                    {
+                      "data-testid": "workspace-shell-empty",
+                      style: {
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--foreground-muted)",
+                        fontSize: 12
+                      },
+                      children: "Drop a tab here"
+                    }
+                  ) : layout.length === 1 && layout[0].length === 1 ? (() => {
+                    const g = groups.get(layout[0][0]);
+                    return g ? renderGroup(g) : null;
+                  })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
+                    if (column.length === 1) {
+                      const g = groups.get(column[0]);
+                      return /* @__PURE__ */ jsx(React37__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                    }
+                    return /* @__PURE__ */ jsx(
+                      SplitPane,
+                      {
+                        direction: "vertical",
+                        children: column.map((gid) => {
+                          const g = groups.get(gid);
+                          return /* @__PURE__ */ jsx(React37__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                        })
+                      },
+                      `col-${colIdx}-${column.join("+")}`
+                    );
+                  }) })
+                }
+              )
+            ]
           }
         ),
         /* @__PURE__ */ jsx(BottomPanel, {}),
@@ -38657,6 +38752,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyMasterGain, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getMasterGain, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerMasterGainHandler, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMasterGain, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useMasterGain, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyMasterGain, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getMasterGain, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerMasterGainHandler, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMasterGain, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, splitArm, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useMasterGain, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map
