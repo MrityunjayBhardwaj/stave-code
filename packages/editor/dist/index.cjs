@@ -18344,6 +18344,13 @@ var STRUDEL_DOCS = {
     example: 's("bd sd hh sd")',
     sourceUrl: "https://strudel.cc/learn/sounds/#sounds"
   },
+  setcps: {
+    signature: "setcps(cps)",
+    description: "Set the global tempo in cycles per second. Default is 1 (one cycle/second); higher is faster. `setcpm(n)` is the same as `setcps(n / 60)`.",
+    example: "setcps(0.5)",
+    // No dedicated #setcps anchor — the tempo section that documents it.
+    sourceUrl: "https://strudel.cc/understand/cycles/#setting-cpm"
+  },
   stack: {
     signature: "stack(...patterns)",
     description: "Play multiple patterns simultaneously (vertical stack).",
@@ -18542,6 +18549,8 @@ var STRUDEL_DOCS = {
 var STRUDEL_DOCS_INDEX = {
   runtime: "strudel",
   docs: STRUDEL_DOCS,
+  // camelCase spelling of setcps resolves to the same doc.
+  aliases: { setCps: "setcps" },
   // Catch-all friendly-error hints that aren't tied to a single symbol.
   // The two cases below are the highest-frequency Strudel papercut:
   // bare note / drum names outside a string. JS evaluates them as
