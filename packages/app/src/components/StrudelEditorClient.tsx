@@ -81,6 +81,8 @@ import {
   applyEvalSourceTransform,
   registerMasterGainHandler,
   getMasterGain,
+  getBackdropVizSpan,
+  setBackdropVizSpan,
 } from "@stave/editor";
 import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 
@@ -1504,6 +1506,8 @@ export default function StrudelEditorClient({
         }
         onSetOpacity={(v) => shellRef?.current?.setBackdropOpacity?.(v)}
         onSetQuality={(v) => shellRef?.current?.setBackdropQuality?.(v)}
+        vizSpan={getBackdropVizSpan()}
+        onSetVizSpan={(v) => setBackdropVizSpan(v)}
       />
     )}
     {/* #240 — viz pop-out window. Mounted only while open; unmount/onClose

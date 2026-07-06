@@ -73,7 +73,7 @@ import {
   createWorkspaceFile,
   __resetWorkspaceFilesForTests,
 } from '../WorkspaceFile'
-import { setPlayVizOnHoverEnabled } from '../editorRegistry'
+import { setPlayVizOnHoverEnabled, setBackdropVizSpan } from '../editorRegistry'
 import { __resetWorkspaceLanguagesForTests } from '../languages'
 import { __resetWorkspaceAudioBusForTests } from '../WorkspaceAudioBus'
 import { resetCommandRegistryForTests } from '../commands/CommandRegistry'
@@ -323,6 +323,47 @@ describe('WorkspaceShell commands integration', () => {
       expect(pausedOf('g2')).toBe('false')
     } finally {
       setPlayVizOnHoverEnabled(false) // localStorage isn't reset between tests
+    }
+  })
+
+  it('#770 — Workspace span renders ONE backdrop for the first pane with one; File keeps per-pane', () => {
+    createWorkspaceFile('f-hydra2', 'spectrum.hydra', '// hydra code 2', 'hydra')
+    try {
+      const provider = makePreviewProvider()
+      const groups = new Map<string, WorkspaceGroupState>([
+        ['g1', { id: 'g1', tabs: [editorTab('t1', 'f-hydra')], activeTabId: 't1', backgroundFileId: 'f-hydra' }],
+        ['g2', { id: 'g2', tabs: [editorTab('t2', 'f-hydra2')], activeTabId: 't2', backgroundFileId: 'f-hydra2' }],
+      ])
+      const { container } = render(
+        <WorkspaceShell
+          initialGroups={groups}
+          initialLayout={[['g1', 'g2']]}
+          initialActiveGroupId="g2"
+          previewProviderFor={() => provider}
+        />,
+      )
+
+      // File mode (default): one backdrop per pane, none labelled 'workspace'.
+      expect(container.querySelectorAll('[data-workspace-background]').length).toBe(2)
+      expect(container.querySelector('[data-workspace-background="workspace"]')).toBeNull()
+
+      // Switch to Workspace span (after mount, via the change listener).
+      act(() => { setBackdropVizSpan('workspace') })
+
+      // Exactly ONE spanning backdrop, driven by the FIRST pane (g1 → f-hydra),
+      // and no per-pane ones.
+      const backgrounds = container.querySelectorAll('[data-workspace-background]')
+      expect(backgrounds.length).toBe(1)
+      const span = container.querySelector('[data-workspace-background="workspace"]')
+      expect(span).not.toBeNull()
+      expect(span!.getAttribute('data-background-file-id')).toBe('f-hydra')
+
+      // Every pane's code panel is transparent so the single backdrop shows.
+      const panels = container.querySelectorAll('[data-stave-code-panel]')
+      expect(panels.length).toBeGreaterThan(0)
+      panels.forEach((p) => expect(p.getAttribute('data-stave-backdrop')).toBe('on'))
+    } finally {
+      setBackdropVizSpan('file') // localStorage isn't reset between tests
     }
   })
 

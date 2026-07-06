@@ -15,7 +15,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { type BackdropQuality } from "@stave/editor";
+import { type BackdropQuality, type BackdropVizSpan } from "@stave/editor";
 
 export interface BackdropPopoverVizFile {
   id: string;
@@ -40,6 +40,13 @@ interface Props {
   initialQuality: BackdropQuality;
   onSetOpacity: (opacity: number) => void;
   onSetQuality: (quality: BackdropQuality) => void;
+  /**
+   * #770 — backdrop span mode. 'file' (default) = per-pane backdrop; 'workspace'
+   * = one backdrop spanning every split pane. Global (not per-pane), so the
+   * value is read once at open and the setter writes the shared setting.
+   */
+  vizSpan: BackdropVizSpan;
+  onSetVizSpan: (span: BackdropVizSpan) => void;
 }
 
 export function BackdropPopover(props: Props) {
@@ -75,6 +82,7 @@ export function BackdropPopover(props: Props) {
   const [quality, setQuality] = useState<BackdropQuality>(
     () => props.initialQuality,
   );
+  const [vizSpan, setVizSpan] = useState<BackdropVizSpan>(() => props.vizSpan);
   const pinned = props.backgroundFileId != null;
 
   // Position below the indicator, LEFT-aligned to its left edge (#724) — opens
@@ -206,6 +214,26 @@ export function BackdropPopover(props: Props) {
               × clear
             </button>
           </div>
+
+          <div style={divider} />
+
+          {/* #770 — viz span: per-pane ('file') vs one backdrop spanning all
+              split panes ('workspace'). */}
+          <Row label="viz span">
+            <select
+              data-testid="backdrop-chrome-vizspan"
+              value={vizSpan}
+              onChange={(e) => {
+                const v = e.target.value as BackdropVizSpan;
+                setVizSpan(v);
+                props.onSetVizSpan(v);
+              }}
+              style={selectStyle}
+            >
+              <option value="file">File</option>
+              <option value="workspace">Workspace</option>
+            </select>
+          </Row>
         </>
       )}
     </div>

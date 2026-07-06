@@ -685,6 +685,42 @@ export function onPlayVizOnHoverChange(cb: (on: boolean) => void): () => void {
   return () => { playVizOnHoverListeners.delete(cb) }
 }
 
+// ── Backdrop viz span (#770) ─────────────────────────────────────────
+// 'file'      → each split pane shows its OWN backdrop (the default / historical
+//               behaviour: a per-pane backdrop bounded to that pane's box).
+// 'workspace' → a SINGLE backdrop spans the whole editor area behind ALL panes
+//               (the first pane with a backdrop set drives it), so a viz reads as
+//               one continuous image behind every split window rather than one
+//               copy per pane. Read live in WorkspaceShell's group render.
+export type BackdropVizSpan = 'file' | 'workspace'
+const DEFAULT_BACKDROP_VIZ_SPAN: BackdropVizSpan = 'file'
+const BACKDROP_VIZ_SPAN_STORAGE = 'stave:backdropVizSpan'
+const backdropVizSpanListeners = new Set<(span: BackdropVizSpan) => void>()
+
+function readBackdropVizSpan(): BackdropVizSpan {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_BACKDROP_VIZ_SPAN
+  return ls.getItem(BACKDROP_VIZ_SPAN_STORAGE) === 'workspace' ? 'workspace' : 'file'
+}
+
+/** Whether backdrops are per-pane ('file', default) or one shared viz spanning
+ *  every split pane ('workspace'). */
+export function getBackdropVizSpan(): BackdropVizSpan {
+  return readBackdropVizSpan()
+}
+
+/** Switch the backdrop span mode. Notifies listeners so the open WorkspaceShell
+ *  re-renders (per-pane backdrops ⇄ one spanning backdrop) without a remount. */
+export function setBackdropVizSpan(span: BackdropVizSpan): void {
+  safeLocalStorage()?.setItem(BACKDROP_VIZ_SPAN_STORAGE, span)
+  for (const cb of Array.from(backdropVizSpanListeners)) cb(span)
+}
+
+export function onBackdropVizSpanChange(cb: (span: BackdropVizSpan) => void): () => void {
+  backdropVizSpanListeners.add(cb)
+  return () => { backdropVizSpanListeners.delete(cb) }
+}
+
 /** Effective teardown delay in ms for a newly-mounted inline zone: the threshold
  *  when enabled, 0 (= never tear down) when disabled. Read at mount. An optional
  *  `stave:inlineVizTeardownMs` localStorage override tunes the delay (advanced /
