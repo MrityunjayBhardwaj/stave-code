@@ -9,7 +9,7 @@
  *      scrollbar appears: scrollWidth > clientWidth) and the readout grows.
  *   3. Scrolling the grid drives the ruler content (shared scrollLeft).
  *   4. Fit returns to 100% and refits to the viewport.
- *   5. The CYCLES↔BARS toggle adds beat ticks (bars mode).
+ *   5. Switching ruler units to bars (Settings › Pattern & Timeline) adds beat ticks.
  *   6. No console / page errors throughout.
  *
  * ⌘/Ctrl+wheel zoom shares the same `applyZoom` path as the buttons (unit-
@@ -145,16 +145,21 @@ test('full-song view: zoom widens + scrolls, Fit refits, bars toggle adds beat t
     await page.locator('[data-full-song-zoom-fit]').click() // reset for the bars step
   }
 
-  // (5) Bars toggle adds beat ticks (zoom in first so beats clear the px floor).
-  // The toggle now lives on the editor pattern bar (#750); the ruler reacts
-  // via the shared units store.
+  // (5) Bars mode adds beat ticks (zoom in first so beats clear the px floor).
+  // Ruler units now live in Settings › Pattern & Timeline (#755); the ruler
+  // reacts via the shared units store once the select changes.
   await page.locator('[data-full-song-zoom-in]').click()
   await page.locator('[data-full-song-zoom-in]').click()
-  const unitsToggle = page.locator('[data-testid="strudel-chrome-units-toggle"]').first()
-  expect(await unitsToggle.textContent()).toBe('CYCLES')
-  await unitsToggle.click()
-  expect(await unitsToggle.textContent()).toBe('BARS')
-  expect(await page.locator('[data-full-song-tick="beat"]').count()).toBeGreaterThan(0)
+  const beatsBefore = await page.locator('[data-full-song-tick="beat"]').count()
+  // Open File ▸ Editor Settings…, go to Pattern & Timeline, choose bars.
+  await page.getByRole('button', { name: 'File', exact: true }).click()
+  await page.getByRole('button', { name: 'Editor Settings...' }).click()
+  await page.locator('[data-testid="settings-nav-pattern"]').click()
+  await page.locator('[data-testid="setting-rulerUnits"]').selectOption('bars')
+  await page.keyboard.press('Escape') // close the settings window
+  await expect(page.locator('[data-full-song-tick="beat"]').first()).toBeVisible()
+  const beatsAfter = await page.locator('[data-full-song-tick="beat"]').count()
+  expect(beatsAfter).toBeGreaterThan(beatsBefore)
 
   // Visual evidence (observe, don't infer).
   await page.screenshot({ path: 'test-results/full-song-zoom-bars.png' })

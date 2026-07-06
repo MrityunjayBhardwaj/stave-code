@@ -62,6 +62,11 @@ const NOTE_COLOR_OPTIONS: readonly SelectOption[] = [
   { value: "velocity", label: "By velocity" },
 ];
 
+const RULER_UNITS_OPTIONS: readonly SelectOption[] = [
+  { value: "cycles", label: "Cycles" },
+  { value: "bars", label: "Bars & beats" },
+];
+
 const VIZ_QUALITY_OPTIONS: readonly SelectOption[] = [
   { value: "high", label: "High" },
   { value: "balanced", label: "Balanced" },
@@ -97,6 +102,7 @@ export const SECTION_DEFS: readonly SettingsSectionDef[] = [
     title: "Pattern & Timeline",
     fields: [
       { key: "noteColor", name: "Note colour", description: "How pattern-grid notes are coloured.", kind: "select", options: NOTE_COLOR_OPTIONS },
+      { key: "rulerUnits", name: "Ruler units", description: "Timeline ruler numbering: Strudel cycles, or DAW-style bars & beats.", kind: "select", options: RULER_UNITS_OPTIONS },
       { key: "timelineSubRow", name: "Timeline sub-row height", description: "Height of expanded per-voice lanes.", kind: "slider", min: 12, max: 48, unit: "px" },
     ],
   },
