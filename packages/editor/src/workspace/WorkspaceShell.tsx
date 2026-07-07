@@ -137,6 +137,7 @@ import {
   onPlayVizOnHoverChange,
   getBackdropVizSpan,
   onBackdropVizSpanChange,
+  setBackdropVizSpan,
   type BackdropQuality,
   type BackdropVizSpan,
 } from './editorRegistry'
@@ -783,6 +784,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   onTabContextMenu,
   onEditViz,
   onCropViz,
+  onCropBackdrop,
+  onRevealBackdrop,
 }, forwardedRef) {
   const shellRootRef = useRef<HTMLDivElement>(null)
 
@@ -2137,6 +2140,34 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                   },
                   isBackground:
                     groups.get(groupId)?.backgroundFileId === tab.fileId,
+                  // #773 — close THIS file's side preview when the viz-settings
+                  // popover switches to 'off' or 'backdrop'. Re-read via
+                  // shellActionsRef so a stale closure (after the preview tab was
+                  // dragged elsewhere) still resolves the current location.
+                  onClosePreview: () => {
+                    const p = shellActionsRef.current.findTabByFileId(
+                      tab.fileId,
+                      'preview',
+                    )
+                    if (p) closeTabById(p.tabId)
+                  },
+                  // #773 — backdrop controls surfaced inside the viz-settings
+                  // popover when this file is the group backdrop. Values are the
+                  // group's RESOLVED settings (override ?? global default);
+                  // setters route to the group override. Crop/reveal come from
+                  // the host (app popups).
+                  backdropOpacity:
+                    groups.get(groupId)?.backdropOpacity ?? backdropOpacity,
+                  backdropQuality:
+                    groups.get(groupId)?.backdropQuality ?? backdropQuality,
+                  backdropVizSpan,
+                  onSetBackdropOpacity: (v) =>
+                    updateGroupBackdropOpacity(groupId, v),
+                  onSetBackdropQuality: (q) =>
+                    updateGroupBackdropQuality(groupId, q),
+                  onSetBackdropVizSpan: (s) => setBackdropVizSpan(s),
+                  onCropBackdrop,
+                  onRevealBackdrop,
                   onSave: () => {
                     // Bridge to the host-supplied save callback. The host
                     // owns the persistence layer (e.g., flushToPreset for
@@ -2304,6 +2335,16 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       findGroupWithAnyPreview,
       editorExtrasForTab,
       closeTabById,
+      // P239 guard — the viz-settings ctx (#773) reads these; without them
+      // in the deps the callback closes over stale backdrop settings /
+      // handlers and the popover controls act on outdated values.
+      backdropOpacity,
+      backdropQuality,
+      backdropVizSpan,
+      updateGroupBackdropOpacity,
+      updateGroupBackdropQuality,
+      onCropBackdrop,
+      onRevealBackdrop,
     ],
   )
 
@@ -2555,7 +2596,11 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 quality: groupQuality,
                 opacity: groupOpacity,
                 crop: backgroundCrop ?? null,
-                paused: backdropPaused,
+                // #781 — the viz chrome's play/pause button pauses the backdrop
+                // through the same per-file `pausedPreviews` set it uses for
+                // side previews (a viz's placement is exclusive, so one flag
+                // covers both). OR it with the hover-gate policy above.
+                paused: backdropPaused || pausedPreviews.has(bgFileId),
               })
             })()}
             {activeTabObj ? (
@@ -2632,6 +2677,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       backdropVizSpan,
       workspaceSpanActive,
       renderBackdropLayer,
+      // #781: the backdrop `paused` now also reads `pausedPreviews` (the chrome
+      // play/pause button). Omit it and toggling pause never reaches the
+      // backdrop — the same P239 stale-closure trap.
+      pausedPreviews,
     ],
   )
 
@@ -3071,7 +3120,9 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             quality: workspaceSpanBackdrop.quality,
             opacity: workspaceSpanBackdrop.opacity,
             crop: backgroundCrop ?? null,
-            paused: false,
+            // #781 — pause the shared span backdrop when its source viz is
+            // paused via the chrome play/pause button (same per-file set).
+            paused: pausedPreviews.has(workspaceSpanBackdrop.fileId),
           })}
         <div
           data-workspace-groups-content="true"

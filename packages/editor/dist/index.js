@@ -7538,7 +7538,9 @@ var BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
 function readBackdropBlur() {
   const ls = safeLocalStorage2();
   if (!ls) return DEFAULT_BACKDROP_BLUR;
-  const saved = Number(ls.getItem(BACKDROP_BLUR_STORAGE));
+  const raw = ls.getItem(BACKDROP_BLUR_STORAGE);
+  if (raw == null || raw === "") return DEFAULT_BACKDROP_BLUR;
+  const saved = Number(raw);
   return Number.isFinite(saved) && saved >= 0 && saved <= 40 ? saved : DEFAULT_BACKDROP_BLUR;
 }
 __name(readBackdropBlur, "readBackdropBlur");
@@ -7574,7 +7576,9 @@ var backdropOpacityListeners = /* @__PURE__ */ new Set();
 function readBackdropOpacity() {
   const ls = safeLocalStorage2();
   if (!ls) return DEFAULT_BACKDROP_OPACITY;
-  const saved = Number(ls.getItem(BACKDROP_OPACITY_STORAGE));
+  const raw = ls.getItem(BACKDROP_OPACITY_STORAGE);
+  if (raw == null || raw === "") return DEFAULT_BACKDROP_OPACITY;
+  const saved = Number(raw);
   return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_BACKDROP_OPACITY;
 }
 __name(readBackdropOpacity, "readBackdropOpacity");
@@ -27354,8 +27358,8 @@ function StripColorPopover({
       window.removeEventListener("resize", onReflow);
     };
   }, [onClose]);
-  const POPOVER_WIDTH = 8 * 16 + 7 * 4 + 12;
-  const left = typeof window !== "undefined" ? Math.max(8, Math.min(window.innerWidth - 8 - POPOVER_WIDTH, anchorRect.left)) : anchorRect.left;
+  const POPOVER_WIDTH2 = 8 * 16 + 7 * 4 + 12;
+  const left = typeof window !== "undefined" ? Math.max(8, Math.min(window.innerWidth - 8 - POPOVER_WIDTH2, anchorRect.left)) : anchorRect.left;
   const top = anchorRect.bottom + 4;
   const customColor = currentColor && !TRACK_PALETTE_32.includes(currentColor) ? currentColor : "#888888";
   if (typeof document === "undefined") return null;
@@ -32503,7 +32507,9 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   onSaveFile,
   onTabContextMenu,
   onEditViz,
-  onCropViz
+  onCropViz,
+  onCropBackdrop,
+  onRevealBackdrop
 }, forwardedRef) {
   const shellRootRef = useRef(null);
   const initialState = useRef(
@@ -33306,6 +33312,30 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     });
                   }, "onToggleBackground"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
+                  // #773 — close THIS file's side preview when the viz-settings
+                  // popover switches to 'off' or 'backdrop'. Re-read via
+                  // shellActionsRef so a stale closure (after the preview tab was
+                  // dragged elsewhere) still resolves the current location.
+                  onClosePreview: /* @__PURE__ */ __name(() => {
+                    const p = shellActionsRef.current.findTabByFileId(
+                      tab.fileId,
+                      "preview"
+                    );
+                    if (p) closeTabById(p.tabId);
+                  }, "onClosePreview"),
+                  // #773 — backdrop controls surfaced inside the viz-settings
+                  // popover when this file is the group backdrop. Values are the
+                  // group's RESOLVED settings (override ?? global default);
+                  // setters route to the group override. Crop/reveal come from
+                  // the host (app popups).
+                  backdropOpacity: groups.get(groupId)?.backdropOpacity ?? backdropOpacity,
+                  backdropQuality: groups.get(groupId)?.backdropQuality ?? backdropQuality,
+                  backdropVizSpan,
+                  onSetBackdropOpacity: /* @__PURE__ */ __name((v) => updateGroupBackdropOpacity(groupId, v), "onSetBackdropOpacity"),
+                  onSetBackdropQuality: /* @__PURE__ */ __name((q) => updateGroupBackdropQuality(groupId, q), "onSetBackdropQuality"),
+                  onSetBackdropVizSpan: /* @__PURE__ */ __name((s) => setBackdropVizSpan(s), "onSetBackdropVizSpan"),
+                  onCropBackdrop,
+                  onRevealBackdrop,
                   onSave: /* @__PURE__ */ __name(() => {
                     onSaveFileRef.current?.(tab);
                   }, "onSave")
@@ -33445,7 +33475,17 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       findTabByFileId,
       findGroupWithAnyPreview,
       editorExtrasForTab,
-      closeTabById
+      closeTabById,
+      // P239 guard — the viz-settings ctx (#773) reads these; without them
+      // in the deps the callback closes over stale backdrop settings /
+      // handlers and the popover controls act on outdated values.
+      backdropOpacity,
+      backdropQuality,
+      backdropVizSpan,
+      updateGroupBackdropOpacity,
+      updateGroupBackdropQuality,
+      onCropBackdrop,
+      onRevealBackdrop
     ]
   );
   const workspaceSpanBackdrop = useMemo(() => {
@@ -33634,7 +33674,11 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                       quality: groupQuality,
                       opacity: groupOpacity,
                       crop: backgroundCrop ?? null,
-                      paused: backdropPaused
+                      // #781 — the viz chrome's play/pause button pauses the backdrop
+                      // through the same per-file `pausedPreviews` set it uses for
+                      // side previews (a viz's placement is exclusive, so one flag
+                      // covers both). OR it with the hover-gate policy above.
+                      paused: backdropPaused || pausedPreviews.has(bgFileId)
                     });
                   })(),
                   activeTabObj ? /* @__PURE__ */ jsx(
@@ -33710,7 +33754,11 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       // layer renderer is a fresh closure each time it changes. Same P239 trap.
       backdropVizSpan,
       workspaceSpanActive,
-      renderBackdropLayer
+      renderBackdropLayer,
+      // #781: the backdrop `paused` now also reads `pausedPreviews` (the chrome
+      // play/pause button). Omit it and toggling pause never reaches the
+      // backdrop — the same P239 stale-closure trap.
+      pausedPreviews
     ]
   );
   const totalGroupCount = useMemo(
@@ -34053,7 +34101,9 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                 quality: workspaceSpanBackdrop.quality,
                 opacity: workspaceSpanBackdrop.opacity,
                 crop: backgroundCrop ?? null,
-                paused: false
+                // #781 — pause the shared span backdrop when its source viz is
+                // paused via the chrome play/pause button (same per-file set).
+                paused: pausedPreviews.has(workspaceSpanBackdrop.fileId)
               }),
               /* @__PURE__ */ jsx(
                 "div",
@@ -37406,6 +37456,275 @@ function StaveInputsPanel({ kind }) {
   );
 }
 __name(StaveInputsPanel, "StaveInputsPanel");
+var MODES = [
+  { key: "off", label: "off" },
+  { key: "side", label: "side" },
+  { key: "backdrop", label: "backdrop" }
+];
+function VizSettingsPopover(props) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const onDown = /* @__PURE__ */ __name((e) => {
+      if (ref.current && !ref.current.contains(e.target)) props.onClose();
+    }, "onDown");
+    const onKey = /* @__PURE__ */ __name((e) => {
+      if (e.key === "Escape") props.onClose();
+    }, "onKey");
+    const t = setTimeout(() => document.addEventListener("mousedown", onDown), 0);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [props]);
+  const [, forceSourcesRerender] = useState(0);
+  useEffect(
+    () => workspaceAudioBus.onSourcesChanged(
+      () => forceSourcesRerender((n) => n + 1)
+    ),
+    []
+  );
+  const left = Math.max(
+    8,
+    Math.min(window.innerWidth - 8 - POPOVER_WIDTH, props.anchorRect.left)
+  );
+  const top = props.anchorRect.bottom + 6;
+  const bdEnabled = props.mode === "backdrop";
+  const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      ref,
+      "data-testid": "viz-settings-popover",
+      "data-mode": props.mode,
+      style: {
+        position: "fixed",
+        left,
+        top,
+        width: POPOVER_WIDTH,
+        background: "var(--bg-elevated, var(--surface))",
+        border: "1px solid var(--border-strong, var(--border))",
+        borderRadius: 6,
+        boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)",
+        zIndex: 16e3,
+        fontFamily: "var(--font-mono, ui-monospace, monospace)",
+        fontSize: 11,
+        padding: 0
+      },
+      children: [
+        /* @__PURE__ */ jsx(Row, { label: "preview", children: /* @__PURE__ */ jsx(
+          "div",
+          {
+            "data-testid": "viz-preview-mode",
+            role: "radiogroup",
+            style: { display: "flex", flex: 1, gap: 4 },
+            children: MODES.map((m) => {
+              const active2 = props.mode === m.key;
+              return /* @__PURE__ */ jsx(
+                "button",
+                {
+                  "data-testid": `viz-preview-mode-${m.key}`,
+                  "data-active": active2 ? "true" : "false",
+                  role: "radio",
+                  "aria-checked": active2,
+                  onClick: () => props.onSetMode(m.key),
+                  style: {
+                    flex: 1,
+                    padding: "4px 0",
+                    borderRadius: 3,
+                    fontSize: 10,
+                    fontFamily: "inherit",
+                    cursor: "pointer",
+                    userSelect: "none",
+                    textTransform: "none",
+                    background: active2 ? "var(--accent-dim)" : "none",
+                    color: active2 ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+                    border: `1px solid ${active2 ? "var(--accent-dim)" : "var(--border)"}`
+                  },
+                  children: m.label
+                },
+                m.key
+              );
+            })
+          }
+        ) }),
+        /* @__PURE__ */ jsx("div", { style: divider }),
+        props.backdropOpacity != null && props.onSetBackdropOpacity && /* @__PURE__ */ jsxs(Row, { label: "opacity", children: [
+          /* @__PURE__ */ jsx(
+            "input",
+            {
+              "data-testid": "viz-settings-opacity",
+              "data-disabled": bdEnabled ? "false" : "true",
+              type: "range",
+              min: 0,
+              max: 1,
+              step: 0.05,
+              value: props.backdropOpacity,
+              disabled: !bdEnabled,
+              onChange: (e) => props.onSetBackdropOpacity(Number(e.target.value)),
+              style: {
+                flex: 1,
+                accentColor: "var(--accent-strong, var(--accent))",
+                opacity: bdEnabled ? 1 : 0.4,
+                cursor: bdEnabled ? "pointer" : "not-allowed"
+              }
+            }
+          ),
+          /* @__PURE__ */ jsxs("span", { style: { ...valueStyle, opacity: bdEnabled ? 1 : 0.4 }, children: [
+            Math.round(props.backdropOpacity * 100),
+            "%"
+          ] })
+        ] }),
+        props.backdropQuality != null && props.onSetBackdropQuality && /* @__PURE__ */ jsx(Row, { label: "quality", children: /* @__PURE__ */ jsxs(
+          "select",
+          {
+            "data-testid": "viz-settings-quality",
+            "data-disabled": bdEnabled ? "false" : "true",
+            value: props.backdropQuality,
+            disabled: !bdEnabled,
+            onChange: (e) => props.onSetBackdropQuality(e.target.value),
+            style: { ...selectStyle, opacity: bdEnabled ? 1 : 0.4, cursor: bdEnabled ? "pointer" : "not-allowed" },
+            children: [
+              /* @__PURE__ */ jsx("option", { value: "full", children: "Full" }),
+              /* @__PURE__ */ jsx("option", { value: "half", children: "Half" }),
+              /* @__PURE__ */ jsx("option", { value: "quarter", children: "Quarter" })
+            ]
+          }
+        ) }),
+        (props.onCropBackdrop || props.onRevealBackdrop) && /* @__PURE__ */ jsxs(Fragment, { children: [
+          /* @__PURE__ */ jsx("div", { style: divider }),
+          /* @__PURE__ */ jsxs("div", { style: { display: "flex", flexDirection: "column", padding: "6px 0" }, children: [
+            props.onCropBackdrop && /* @__PURE__ */ jsxs(
+              "button",
+              {
+                "data-testid": "viz-settings-crop",
+                "data-disabled": bdEnabled ? "false" : "true",
+                disabled: !bdEnabled,
+                onClick: () => {
+                  props.onCropBackdrop();
+                  props.onClose();
+                },
+                style: { ...actionBtnStyle2, opacity: bdEnabled ? 1 : 0.4, cursor: bdEnabled ? "pointer" : "not-allowed" },
+                children: [
+                  /* @__PURE__ */ jsx("span", { "aria-hidden": "true", children: "\u2B1A" }),
+                  " crop\u2026"
+                ]
+              }
+            ),
+            props.onRevealBackdrop && /* @__PURE__ */ jsx(
+              "button",
+              {
+                "data-testid": "viz-settings-reveal",
+                "data-disabled": bdEnabled ? "false" : "true",
+                disabled: !bdEnabled,
+                onClick: () => {
+                  props.onRevealBackdrop();
+                  props.onClose();
+                },
+                style: { ...actionBtnStyle2, opacity: bdEnabled ? 1 : 0.4, cursor: bdEnabled ? "pointer" : "not-allowed" },
+                children: "\u2192 reveal in editor"
+              }
+            )
+          ] })
+        ] }),
+        props.backdropVizSpan != null && props.onSetBackdropVizSpan && /* @__PURE__ */ jsxs(Fragment, { children: [
+          /* @__PURE__ */ jsx("div", { style: divider }),
+          /* @__PURE__ */ jsx(Row, { label: "viz span", children: /* @__PURE__ */ jsxs(
+            "select",
+            {
+              "data-testid": "viz-settings-vizspan",
+              "data-disabled": bdEnabled ? "false" : "true",
+              value: props.backdropVizSpan,
+              disabled: !bdEnabled,
+              onChange: (e) => props.onSetBackdropVizSpan(e.target.value),
+              style: { ...selectStyle, opacity: bdEnabled ? 1 : 0.4, cursor: bdEnabled ? "pointer" : "not-allowed" },
+              children: [
+                /* @__PURE__ */ jsx("option", { value: "file", children: "File" }),
+                /* @__PURE__ */ jsx("option", { value: "workspace", children: "Workspace" })
+              ]
+            }
+          ) })
+        ] }),
+        /* @__PURE__ */ jsx("div", { style: divider }),
+        /* @__PURE__ */ jsx(Row, { label: "source", children: /* @__PURE__ */ jsxs(
+          "select",
+          {
+            "data-testid": "viz-chrome-source",
+            value: props.sourceValue,
+            onChange: props.onSourceChange,
+            style: selectStyle,
+            children: [
+              /* @__PURE__ */ jsx("option", { value: "default", children: "default (follow most recent)" }),
+              /* @__PURE__ */ jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
+              patternSources.length > 0 && /* @__PURE__ */ jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxs("option", { value: `file:${source.sourceId}`, children: [
+                source.playing ? "\u25CF " : "\u25CB ",
+                source.label
+              ] }, source.sourceId)) }),
+              /* @__PURE__ */ jsx("option", { value: "none", children: "none (demo mode)" })
+            ]
+          }
+        ) })
+      ]
+    }
+  );
+}
+__name(VizSettingsPopover, "VizSettingsPopover");
+var POPOVER_WIDTH = 300;
+function Row({ label, children }) {
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      style: {
+        display: "grid",
+        gridTemplateColumns: "64px 1fr auto",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 12px"
+      },
+      children: [
+        /* @__PURE__ */ jsx("span", { style: { color: "var(--text-secondary, var(--foreground-muted))", fontSize: 10 }, children: label }),
+        children
+      ]
+    }
+  );
+}
+__name(Row, "Row");
+var divider = {
+  height: 1,
+  background: "var(--border-subtle, var(--border))"
+};
+var valueStyle = {
+  color: "var(--text-tertiary, var(--foreground-muted))",
+  fontSize: 10,
+  minWidth: 36,
+  textAlign: "right"
+};
+var selectStyle = {
+  flex: 1,
+  minWidth: 0,
+  background: "var(--bg-input, var(--surface-elevated, var(--surface)))",
+  color: "var(--foreground)",
+  border: "1px solid var(--border)",
+  borderRadius: 3,
+  padding: "3px 6px",
+  fontSize: 10,
+  fontFamily: "inherit",
+  cursor: "pointer"
+};
+var actionBtnStyle2 = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "8px 14px",
+  background: "none",
+  border: "none",
+  color: "var(--text-primary, var(--foreground))",
+  fontSize: 11,
+  fontFamily: "inherit",
+  textAlign: "left",
+  cursor: "pointer"
+};
 function refToString(ref) {
   if (ref.kind === "default") return "default";
   if (ref.kind === "none") return "none";
@@ -37441,9 +37760,19 @@ function VizEditorChrome({
   previewPaused,
   onTogglePausePreview,
   onChangePreviewSource,
+  onClosePreview,
   onToggleBackground,
-  isBackground
+  isBackground,
+  backdropOpacity,
+  backdropQuality,
+  backdropVizSpan,
+  onSetBackdropOpacity,
+  onSetBackdropQuality,
+  onSetBackdropVizSpan,
+  onCropBackdrop,
+  onRevealBackdrop
 }) {
+  const [settingsAnchor, setSettingsAnchor] = useState(null);
   const [liveOn, setLiveOn] = useState(() => getVizLive(file.id));
   useEffect(() => {
     setLiveOn(getVizLive(file.id));
@@ -37452,44 +37781,67 @@ function VizEditorChrome({
   const [selectedSource, setSelectedSource] = useState({
     kind: "default"
   });
-  const [, forceSourcesRerender] = useState(0);
-  useEffect(() => {
-    return workspaceAudioBus.onSourcesChanged(() => {
-      forceSourcesRerender((n) => n + 1);
-    });
-  }, []);
   const handleSourceChange = useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
       const nextBuiltin = next.kind === "file" ? findBuiltinExampleSource(next.fileId) : void 0;
       setSelectedSource(next);
-      if (previewOpen && onChangePreviewSource) {
+      const previewingAnywhere = isBackground || previewOpen;
+      if (previewingAnywhere) {
         if (nextBuiltin && !previewPaused) {
           nextBuiltin.startIfIdle();
         }
         if (prevBuiltin && prevBuiltin !== nextBuiltin) {
           prevBuiltin.stopIfRunning();
         }
+      }
+      if (previewOpen && onChangePreviewSource) {
         onChangePreviewSource(next);
       }
     },
-    [previewOpen, previewPaused, onChangePreviewSource, selectedSource]
+    [isBackground, previewOpen, previewPaused, onChangePreviewSource, selectedSource]
   );
-  const handlePrimaryButtonClick = useCallback(() => {
-    if (previewOpen && onTogglePausePreview) {
-      onTogglePausePreview();
-      return;
-    }
+  const startSelectedBuiltin = useCallback(() => {
     if (selectedSource.kind === "file") {
       const builtin = findBuiltinExampleSource(selectedSource.fileId);
       if (builtin) builtin.startIfIdle();
     }
+  }, [selectedSource]);
+  const openSidePreview = useCallback(() => {
+    startSelectedBuiltin();
     onOpenPreview(selectedSource);
-  }, [onOpenPreview, onTogglePausePreview, previewOpen, selectedSource]);
-  const buttonState = !previewOpen ? "closed" : previewPaused ? "paused" : "running";
-  const buttonLabel = buttonState === "closed" ? "\u25B6 Preview" : buttonState === "paused" ? "\u25B6 Play" : "\u25A0 Stop";
-  const buttonTitle = buttonState === "closed" ? "Open preview to side (Cmd+K V)" : buttonState === "paused" ? "Resume preview rendering" : "Pause preview rendering (tab stays open)";
+  }, [startSelectedBuiltin, onOpenPreview, selectedSource]);
+  const previewMode = isBackground ? "backdrop" : previewOpen ? "side" : "off";
+  const [placementPref, setPlacementPref] = useState(
+    "backdrop"
+  );
+  const handleSetPreviewMode = useCallback(
+    (next) => {
+      if (next !== "off") setPlacementPref(next);
+      if (next === previewMode) return;
+      if (previewMode === "side") onClosePreview?.();
+      if (previewMode === "backdrop") onToggleBackground();
+      if (next === "side") openSidePreview();
+      if (next === "backdrop") onToggleBackground();
+    },
+    [previewMode, onClosePreview, onToggleBackground, openSidePreview]
+  );
+  const buttonState = previewMode === "off" ? "idle" : previewPaused ? "paused" : "running";
+  const buttonLabel = buttonState === "running" ? "\u23F8 Pause" : "\u25B6 Play";
+  const buttonTitle = buttonState === "running" ? "Pause this viz (side tab or backdrop)" : buttonState === "paused" ? "Resume this viz" : `Play this viz as ${placementPref === "backdrop" ? "backdrop" : "side preview"}`;
+  const activatePreferred = useCallback(() => {
+    if (placementPref === "backdrop") {
+      startSelectedBuiltin();
+      onToggleBackground();
+    } else {
+      openSidePreview();
+    }
+  }, [placementPref, startSelectedBuiltin, onToggleBackground, openSidePreview]);
+  const handlePrimaryClick = useCallback(() => {
+    if (previewMode === "off") activatePreferred();
+    else onTogglePausePreview?.();
+  }, [previewMode, activatePreferred, onTogglePausePreview]);
   const vizKind = rendererForLanguage(file.language);
   return /* @__PURE__ */ jsxs(Fragment, { children: [
     /* @__PURE__ */ jsxs(
@@ -37513,7 +37865,8 @@ function VizEditorChrome({
             {
               "data-testid": "viz-chrome-open-preview",
               "data-button-state": buttonState,
-              onClick: handlePrimaryButtonClick,
+              "data-preview-mode": previewMode,
+              onClick: handlePrimaryClick,
               title: buttonTitle,
               style: primaryBtnStyle,
               children: buttonLabel
@@ -37522,25 +37875,30 @@ function VizEditorChrome({
           /* @__PURE__ */ jsx(
             "button",
             {
-              "data-testid": "viz-chrome-bg-toggle",
-              "data-bg-mode": isBackground ? "on" : "off",
-              onClick: onToggleBackground,
-              title: isBackground ? "This file is the group backdrop \u2014 click to clear (Cmd+K B)" : "Set as background for this group (Cmd+K B)",
+              "data-testid": "viz-chrome-settings",
+              "data-settings-open": settingsAnchor ? "true" : "false",
+              "data-preview-mode": previewMode,
+              onClick: (e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setSettingsAnchor((prev) => prev ? null : rect);
+              },
+              title: "Viz settings \u2014 preview placement, backdrop, source",
               style: {
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 4,
-                padding: "3px 8px",
+                justifyContent: "center",
+                width: 26,
+                height: 22,
                 borderRadius: 3,
-                fontSize: 10,
+                fontSize: 13,
                 fontFamily: "inherit",
                 cursor: "pointer",
                 userSelect: "none",
-                background: isBackground ? "var(--accent-dim)" : "none",
-                color: isBackground ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
-                border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
+                background: settingsAnchor || previewMode !== "off" ? "var(--accent-dim)" : "none",
+                color: settingsAnchor || previewMode !== "off" ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+                border: `1px solid ${settingsAnchor || previewMode !== "off" ? "var(--accent-dim)" : "var(--border)"}`
               },
-              children: isBackground ? "\u25A0 bg" : "\u25A0"
+              children: "\u2699"
             }
           ),
           /* @__PURE__ */ jsx(
@@ -37567,48 +37925,27 @@ function VizEditorChrome({
               children: liveOn ? "\u27F3 live" : "\u27F3"
             }
           ),
-          /* @__PURE__ */ jsx(
-            "label",
-            {
-              htmlFor: `viz-chrome-source-${file.id}`,
-              style: { color: "var(--foreground-muted)", fontSize: 10 },
-              children: "source:"
-            }
-          ),
-          /* @__PURE__ */ jsxs(
-            "select",
-            {
-              id: `viz-chrome-source-${file.id}`,
-              "data-testid": "viz-chrome-source",
-              value: refToString(selectedSource),
-              onChange: handleSourceChange,
-              style: {
-                background: "var(--surface-elevated)",
-                color: "var(--foreground)",
-                border: "1px solid var(--border)",
-                borderRadius: 3,
-                padding: "2px 6px",
-                fontSize: 10,
-                fontFamily: "inherit",
-                cursor: "pointer"
-              },
-              children: [
-                /* @__PURE__ */ jsx("option", { value: "default", children: "default (follow most recent)" }),
-                /* @__PURE__ */ jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
-                (() => {
-                  const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
-                  if (patternSources.length === 0) return null;
-                  return /* @__PURE__ */ jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxs("option", { value: `file:${source.sourceId}`, children: [
-                    source.playing ? "\u25CF " : "\u25CB ",
-                    source.label
-                  ] }, source.sourceId)) });
-                })(),
-                /* @__PURE__ */ jsx("option", { value: "none", children: "none (demo mode)" })
-              ]
-            }
-          ),
           /* @__PURE__ */ jsx("div", { style: { flex: 1 } })
         ]
+      }
+    ),
+    settingsAnchor && /* @__PURE__ */ jsx(
+      VizSettingsPopover,
+      {
+        anchorRect: settingsAnchor,
+        onClose: () => setSettingsAnchor(null),
+        mode: previewMode,
+        onSetMode: handleSetPreviewMode,
+        backdropOpacity,
+        backdropQuality,
+        backdropVizSpan,
+        onSetBackdropOpacity,
+        onSetBackdropQuality,
+        onSetBackdropVizSpan,
+        onCropBackdrop,
+        onRevealBackdrop,
+        sourceValue: refToString(selectedSource),
+        onSourceChange: handleSourceChange
       }
     ),
     vizKind && /* @__PURE__ */ jsx(StaveInputsPanel, { kind: vizKind })

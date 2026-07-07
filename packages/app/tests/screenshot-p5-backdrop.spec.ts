@@ -29,15 +29,12 @@ test('screenshot: p5 sketch as backdrop', async ({ page }) => {
   // headless chromium won't start audio without a trusted gesture.
   // This verifies the backdrop render pipeline independently of the
   // scheduler wiring (which has its own E2E coverage).
-  const tabs = page.locator('[data-workspace-tab]')
-  const count = await tabs.count()
-  for (let i = 0; i < count; i++) {
-    const t = await tabs.nth(i).textContent()
-    if (t && /\.p5/.test(t)) {
-      await tabs.nth(i).click()
-      break
-    }
-  }
+  // Open a p5 file via the file tree (the default workspace has no p5 tab).
+  await page.locator('[data-file-tree-item*="p5"]').first().dblclick()
+  await page
+    .locator('[data-testid="viz-chrome-settings"]')
+    .first()
+    .waitFor({ timeout: 10000 })
   await page.waitForTimeout(400)
 
   const bigSketch = `// Bright sketch so the backdrop is visibly distinguishable
@@ -72,11 +69,9 @@ function draw() {
   // Debounced provider reload kicks in at 300ms; give it a beat.
   await page.waitForTimeout(600)
 
-  // Step 2 — pin as backdrop.
-  await page
-    .locator('[data-testid="viz-chrome-bg-toggle"]')
-    .first()
-    .click()
+  // Step 2 — pin as backdrop via the ⚙ viz-settings popover (#773).
+  await page.locator('[data-testid="viz-chrome-settings"]').first().click()
+  await page.locator('[data-testid="viz-preview-mode-backdrop"]').first().click()
 
   // Step 3 — let the backdrop render a few frames.
   await page

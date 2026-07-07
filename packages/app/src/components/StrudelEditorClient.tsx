@@ -1389,6 +1389,8 @@ export default function StrudelEditorClient({
       onTabContextMenu={onTabContextMenu}
       onEditViz={onEditViz}
       onCropViz={onCropViz}
+      onCropBackdrop={() => onCropBackdrop?.()}
+      onRevealBackdrop={() => onRevealBackdrop?.()}
       onBackgroundFileChange={handleBackgroundFileChange}
       onActiveBackdropChange={onActiveBackdropChange}
       onOpenPopoutPreview={handleOpenPopout}
@@ -1480,36 +1482,39 @@ export default function StrudelEditorClient({
         });
       }}
     />
-    {bgPopover && (
-      <BackdropPopover
-        anchorRect={bgPopover.rect}
-        onClose={() => setBgPopover(null)}
-        vizFiles={listWorkspaceFiles()
-          .filter((f) => isVizLanguage(f.language))
-          .map((f) => ({
-            id: f.id,
-            name: f.path.split("/").pop()!.replace(/\.[^.]+$/, ""),
-          }))}
-        backgroundFileId={tabBackdrops.get(bgPopover.fileId) ?? null}
-        backgroundFileName={backdropName(tabBackdrops.get(bgPopover.fileId) ?? null)}
-        onSetBackdrop={(id) => {
-          // Record against the tab the popover was opened from, and (since that
-          // tab is the active one) drive the active group's rendered backdrop.
-          recordTabBackdrop(bgPopover.fileId, id);
-          shellRef?.current?.setBackgroundFile?.(id);
-        }}
-        onCropBackground={() => onCropBackdrop?.()}
-        onRevealBackground={() => onRevealBackdrop?.()}
-        initialOpacity={shellRef?.current?.getBackdropSettings?.().opacity ?? 1}
-        initialQuality={
-          shellRef?.current?.getBackdropSettings?.().quality ?? "half"
-        }
-        onSetOpacity={(v) => shellRef?.current?.setBackdropOpacity?.(v)}
-        onSetQuality={(v) => shellRef?.current?.setBackdropQuality?.(v)}
-        vizSpan={getBackdropVizSpan()}
-        onSetVizSpan={(v) => setBackdropVizSpan(v)}
-      />
-    )}
+    {bgPopover &&
+      (
+        <BackdropPopover
+          anchorRect={bgPopover.rect}
+          onClose={() => setBgPopover(null)}
+          vizFiles={listWorkspaceFiles()
+            .filter((f) => isVizLanguage(f.language))
+            .map((f) => ({
+              id: f.id,
+              name: f.path.split("/").pop()!.replace(/\.[^.]+$/, ""),
+            }))}
+          backgroundFileId={tabBackdrops.get(bgPopover.fileId) ?? null}
+          backgroundFileName={backdropName(
+            tabBackdrops.get(bgPopover.fileId) ?? null,
+          )}
+          onSetBackdrop={(id) => {
+            // Record against the tab the popover was opened from, and (since
+            // that tab is the active one) drive the active group's backdrop.
+            recordTabBackdrop(bgPopover.fileId, id);
+            shellRef?.current?.setBackgroundFile?.(id);
+          }}
+          onCropBackground={() => onCropBackdrop?.()}
+          onRevealBackground={() => onRevealBackdrop?.()}
+          initialOpacity={shellRef?.current?.getBackdropSettings?.().opacity ?? 1}
+          initialQuality={
+            shellRef?.current?.getBackdropSettings?.().quality ?? "half"
+          }
+          onSetOpacity={(v) => shellRef?.current?.setBackdropOpacity?.(v)}
+          onSetQuality={(v) => shellRef?.current?.setBackdropQuality?.(v)}
+          vizSpan={getBackdropVizSpan()}
+          onSetVizSpan={(v) => setBackdropVizSpan(v)}
+        />
+      )}
     {/* #240 — viz pop-out window. Mounted only while open; unmount/onClose
         closes the window via the hook's cleanup. */}
     {popout && (
