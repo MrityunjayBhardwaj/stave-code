@@ -261,4 +261,29 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
       await expect(el).toBeEnabled()
     }
   })
+
+  // #785 — closing the viz FILE tab tears down its backdrop (and its audio,
+  // asserted in the WorkspaceShell unit test — audio can't be observed here).
+  test('closing the viz file tab clears its backdrop (#785)', async ({ page }) => {
+    await gotoApp(page)
+    await clickHydraTab(page)
+
+    // Play → backdrop.
+    await page.locator('[data-testid="viz-chrome-open-preview"]').first().click()
+    await expect(page.locator('[data-workspace-background]').first()).toBeVisible({
+      timeout: 5000,
+    })
+
+    // Close the hydra EDITOR tab via its × button.
+    const editorTab = page
+      .locator('[data-workspace-tab][data-tab-kind="editor"]')
+      .filter({ hasText: 'hydra' })
+      .first()
+    const tabId = await editorTab.getAttribute('data-workspace-tab')
+    await page.locator(`[data-testid="tab-close-${tabId}"]`).click()
+
+    // Backdrop layer is gone, and the viz chrome is gone with the tab.
+    await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
+    await expect(page.locator('[data-testid="viz-chrome-settings"]')).toHaveCount(0)
+  })
 })

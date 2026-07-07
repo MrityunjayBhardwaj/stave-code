@@ -1026,6 +1026,21 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
    * right of the closed position; falling back to the one to the left;
    * null if none remain).
    */
+  // #785 — the built-in audio source each file's BACKDROP started, keyed by
+  // file id. The backdrop (unlike a side preview tab) carries no sourceRef, so
+  // we record it here when the backdrop is activated and stop it on teardown
+  // (preview=off, Cmd+K B toggle-off, and viz-file tab close).
+  const backdropSourceByFile = useRef<
+    Map<string, import('./types').AudioSourceRef>
+  >(new Map())
+  const stopBackdropSource = useCallback((fileId: string) => {
+    const ref = backdropSourceByFile.current.get(fileId)
+    if (ref?.kind === 'file') {
+      findBuiltinExampleSource(ref.fileId)?.stopIfRunning()
+    }
+    backdropSourceByFile.current.delete(fileId)
+  }, [])
+
   const handleTabClose = useCallback(
     (groupId: string, tabId: string) => {
       let closedTab: WorkspaceTab | null = null
@@ -1121,10 +1136,29 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             if (builtin) builtin.stopIfRunning()
           }
         }
+        // #785 — closing a viz FILE (editor) tab tears down everything for that
+        // file: stop its backdrop's built-in audio, clear the backdrop in any
+        // group pinned to it, and close its side preview (whose close path stops
+        // that source). Non-viz editor tabs (Strudel patterns) have no backdrop
+        // or viz preview, so every step is a no-op for them.
+        if (maybePreview.kind === 'editor') {
+          const fileId = maybePreview.fileId
+          stopBackdropSource(fileId)
+          for (const [gid, g] of groups) {
+            if (g.backgroundFileId === fileId) {
+              shellActionsRef.current.updateGroupBackground(gid, null)
+            }
+          }
+          const sidePreview = shellActionsRef.current.findTabByFileId(
+            fileId,
+            'preview',
+          )
+          if (sidePreview) shellActionsRef.current.closeTab(sidePreview.tabId)
+        }
         onTabClose?.(closedTab)
       }
     },
-    [groups, layout, onTabClose],
+    [groups, layout, onTabClose, stopBackdropSource],
   )
 
   /**
@@ -1380,13 +1414,16 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       // persistence consumers that would otherwise see echoes.
       const prev = groups.get(groupId)?.backgroundFileId ?? null
       if (prev === backgroundFileId) return
+      // Leaving or replacing a backdrop stops the built-in audio it started
+      // (#785) — covers preview=off, Cmd+K B toggle-off, and switching backdrops.
+      if (prev) stopBackdropSource(prev)
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? undefined,
       }))
       onBackgroundFileChange?.(groupId, backgroundFileId)
     },
-    [groups, updateGroup, onBackgroundFileChange],
+    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource],
   )
 
   /**
@@ -2126,7 +2163,13 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                       newTab,
                     )
                   },
-                  onToggleBackground: () => {
+                  onToggleBackground: (sourceRef) => {
+                    // Whether this toggle ACTIVATES the backdrop (vs clears it).
+                    // On activate, record the source so teardown can stop it
+                    // (#785); the clear direction is handled by
+                    // updateGroupBackground, which stops the prior source.
+                    const willActivate =
+                      groups.get(groupId)?.backgroundFileId !== tab.fileId
                     executeCommand('workspace.toggleBackgroundPreview', {
                       activeTab: tab,
                       activeGroupId: groupId,
@@ -2137,6 +2180,9 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                         return previewProviderFor?.({ ...pTab, fileId: tab.fileId }) ?? undefined
                       },
                     })
+                    if (willActivate && sourceRef) {
+                      backdropSourceByFile.current.set(tab.fileId, sourceRef)
+                    }
                   },
                   isBackground:
                     groups.get(groupId)?.backgroundFileId === tab.fileId,

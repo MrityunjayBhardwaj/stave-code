@@ -32623,6 +32623,14 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     },
     [updateGroup]
   );
+  const backdropSourceByFile = useRef(/* @__PURE__ */ new Map());
+  const stopBackdropSource = useCallback((fileId) => {
+    const ref = backdropSourceByFile.current.get(fileId);
+    if (ref?.kind === "file") {
+      findBuiltinExampleSource(ref.fileId)?.stopIfRunning();
+    }
+    backdropSourceByFile.current.delete(fileId);
+  }, []);
   const handleTabClose = useCallback(
     (groupId, tabId) => {
       let closedTab = null;
@@ -32683,10 +32691,24 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             if (builtin) builtin.stopIfRunning();
           }
         }
+        if (maybePreview.kind === "editor") {
+          const fileId = maybePreview.fileId;
+          stopBackdropSource(fileId);
+          for (const [gid, g] of groups) {
+            if (g.backgroundFileId === fileId) {
+              shellActionsRef.current.updateGroupBackground(gid, null);
+            }
+          }
+          const sidePreview = shellActionsRef.current.findTabByFileId(
+            fileId,
+            "preview"
+          );
+          if (sidePreview) shellActionsRef.current.closeTab(sidePreview.tabId);
+        }
         onTabClose?.(closedTab);
       }
     },
-    [groups, layout, onTabClose]
+    [groups, layout, onTabClose, stopBackdropSource]
   );
   const handleSplit = useCallback(
     (groupId, direction = "east") => {
@@ -32831,13 +32853,14 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     (groupId, backgroundFileId) => {
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
+      if (prev) stopBackdropSource(prev);
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? void 0
       }));
       onBackgroundFileChange?.(groupId, backgroundFileId);
     },
-    [groups, updateGroup, onBackgroundFileChange]
+    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource]
   );
   const updateGroupOverride = useCallback(
     (groupId, overrideFileId) => {
@@ -33299,7 +33322,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                       newTab
                     );
                   }, "onOpenPreview"),
-                  onToggleBackground: /* @__PURE__ */ __name(() => {
+                  onToggleBackground: /* @__PURE__ */ __name((sourceRef) => {
+                    const willActivate = groups.get(groupId)?.backgroundFileId !== tab.fileId;
                     executeCommand("workspace.toggleBackgroundPreview", {
                       activeTab: tab,
                       activeGroupId: groupId,
@@ -33310,6 +33334,9 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                         return previewProviderFor?.({ ...pTab, fileId: tab.fileId }) ?? void 0;
                       }, "getPreviewProvider")
                     });
+                    if (willActivate && sourceRef) {
+                      backdropSourceByFile.current.set(tab.fileId, sourceRef);
+                    }
                   }, "onToggleBackground"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
                   // #773 — close THIS file's side preview when the viz-settings
@@ -37823,9 +37850,19 @@ function VizEditorChrome({
       if (previewMode === "side") onClosePreview?.();
       if (previewMode === "backdrop") onToggleBackground();
       if (next === "side") openSidePreview();
-      if (next === "backdrop") onToggleBackground();
+      if (next === "backdrop") {
+        startSelectedBuiltin();
+        onToggleBackground(selectedSource);
+      }
     },
-    [previewMode, onClosePreview, onToggleBackground, openSidePreview]
+    [
+      previewMode,
+      onClosePreview,
+      onToggleBackground,
+      openSidePreview,
+      startSelectedBuiltin,
+      selectedSource
+    ]
   );
   const buttonState = previewMode === "off" ? "idle" : previewPaused ? "paused" : "running";
   const buttonLabel = buttonState === "running" ? "\u23F8 Pause" : "\u25B6 Play";
@@ -37833,11 +37870,17 @@ function VizEditorChrome({
   const activatePreferred = useCallback(() => {
     if (placementPref === "backdrop") {
       startSelectedBuiltin();
-      onToggleBackground();
+      onToggleBackground(selectedSource);
     } else {
       openSidePreview();
     }
-  }, [placementPref, startSelectedBuiltin, onToggleBackground, openSidePreview]);
+  }, [
+    placementPref,
+    startSelectedBuiltin,
+    onToggleBackground,
+    openSidePreview,
+    selectedSource
+  ]);
   const handlePrimaryClick = useCallback(() => {
     if (previewMode === "off") activatePreferred();
     else onTogglePausePreview?.();

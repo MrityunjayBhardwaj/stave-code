@@ -272,8 +272,12 @@ export interface PreviewEditorChromeContext {
   /**
    * Toggle the background decoration (viz behind the editor). Used by the
    * viz-settings popover's preview control to enter / leave 'backdrop' mode.
+   * When ENTERING backdrop, the chrome passes the selected audio source so the
+   * shell can stop it on teardown (close / preview=off); omitted when clearing.
    */
-  readonly onToggleBackground: () => void
+  readonly onToggleBackground: (
+    sourceRef?: import('./types').AudioSourceRef,
+  ) => void
 
   /**
    * Close the open side-preview tab for this file (#773). The viz-settings

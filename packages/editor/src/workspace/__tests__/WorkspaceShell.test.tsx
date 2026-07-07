@@ -479,6 +479,39 @@ describe('WorkspaceShell', () => {
       expect(mountVizRendererSpy).toHaveBeenCalledTimes(1)
     })
 
+    it('closing a viz file tab stops its backdrop audio + clears the backdrop (#785)', async () => {
+      const { HYDRA_VIZ } = await import('../preview/hydraViz')
+      const tabs = [editorTab('t-hydra', 'f-hydra')]
+      const { getByTestId, queryByTestId } = render(
+        <WorkspaceShell initialTabs={tabs} previewProviderFor={() => HYDRA_VIZ} />,
+      )
+      builtinSampleStartSpy.mockClear()
+      builtinSampleStopSpy.mockClear()
+
+      // Pick the sample source in the ⚙ popover, then set preview=backdrop —
+      // this starts the sample audio and records it as the backdrop's source.
+      await act(async () => {
+        fireEvent.click(getByTestId('viz-chrome-settings'))
+      })
+      await act(async () => {
+        fireEvent.change(getByTestId('viz-chrome-source'), {
+          target: { value: 'file:__example_sample__' },
+        })
+      })
+      await act(async () => {
+        fireEvent.click(getByTestId('viz-preview-mode-backdrop'))
+      })
+      expect(builtinSampleStartSpy).toHaveBeenCalled()
+
+      // Close the viz FILE tab → teardown must stop the sample audio (#785).
+      await act(async () => {
+        fireEvent.click(getByTestId('tab-close-t-hydra'))
+      })
+      expect(builtinSampleStopSpy).toHaveBeenCalledTimes(1)
+      // Tab (and its chrome) gone — the viz surface is fully torn down.
+      expect(queryByTestId('viz-chrome-settings')).toBeNull()
+    })
+
     it('editor tab chrome flips Preview → Stop → Play through real shell state (regression)', async () => {
       // Integration regression for the three-state chrome button.
       // The chrome should show:
