@@ -79,8 +79,7 @@ import {
   type VizQualityLevel,
   registerReevalHandler,
   applyEvalSourceTransform,
-  registerMasterGainHandler,
-  getMasterGain,
+  purgeLegacyMasterGain,
   getBackdropVizSpan,
   setBackdropVizSpan,
   getActiveEditor,
@@ -601,6 +600,11 @@ export default function StrudelEditorClient({
   // projects get the full set of built-in viz workspace files.
   useEffect(() => { seedMissingPresetFiles(); }, []);
 
+  // #794 — one-time purge of the retired per-file master-gain store. The master
+  // trim now lives in the document (`all(x => x.gain())`); any old
+  // `stave:mixer.master:*` value is dead and must not linger as a second source.
+  useEffect(() => { purgeLegacyMasterGain(); }, []);
+
   // Phase B / B-3 (#245) — register the Next-bundled viz-worker constructor with
   // the editor's DI seam so `WorkerVizRenderer` can spawn it (gated behind the
   // `workerRenderer` flag, OFF by default — this only wires the seam).
@@ -890,15 +894,7 @@ export default function StrudelEditorClient({
       (cb) => subscribeToWorkspaceFile(fileId, cb),
     );
 
-    // Seed this file's persisted master gain into its engine before first play
-    // (play() re-asserts it onto the shared output node), so a stored master is
-    // honored from the very first cycle, per file.
-    runtime.setMasterGain(getMasterGain(fileId));
     runtime.onPlayingChanged((playing: boolean) => {
-      // Per-file master: playback is exclusive, so the file that just started
-      // owns the shared output node — re-seed its master so it overwrites
-      // whatever the previously-playing file set (an untouched file → unity).
-      if (playing) runtime.setMasterGain(getMasterGain(fileId));
       setRuntimeStates(prev => {
         const next = new Map(prev);
         const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
@@ -1131,20 +1127,6 @@ export default function StrudelEditorClient({
           });
         };
         run();
-      }),
-    [],
-  );
-
-  // Master fader (per file): apply a file's master gain to its engine LIVE, but
-  // ONLY while that file is the one playing — the output node is shared, so
-  // touching a non-playing file's master must never change another file's sound.
-  // A non-playing file's value is just persisted (masterStore) and seeded on its
-  // next play. No re-eval — it's a sample-accurate audio-graph gain.
-  useEffect(
-    () =>
-      registerMasterGainHandler((fileId: string, value: number) => {
-        const rt = runtimesRef.current.get(fileId);
-        if (rt?.getIsPlaying()) rt.setMasterGain(value);
       }),
     [],
   );

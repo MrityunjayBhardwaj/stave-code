@@ -962,3 +962,54 @@ test.describe('Mixer master strip code counterpart (#792)', () => {
     expect(await strudelValue(page)).toBe(original)
   })
 })
+
+test.describe('Mixer master — retired synthetic output-gain seam (#794)', () => {
+  test('purges legacy stave:mixer.master:* values on boot', async ({ page }) => {
+    // Seed the retired per-file master-gain keys BEFORE the app boots (addInitScript
+    // runs on every navigation). #794's boot purge must clear them so a stale
+    // non-unity value can never double-apply against the code `all()` gain.
+    await page.addInitScript(() => {
+      localStorage.setItem('stave:mixer.master:fileA', '0.1')
+      localStorage.setItem('stave:mixer.master:fileB', '0.5')
+      localStorage.setItem('stave:tabs', '[]') // unrelated — must survive
+    })
+    await boot(page)
+    // The purge runs in a boot effect; poll until the legacy keys are gone.
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Object.keys(localStorage).filter((k) => k.startsWith('stave:mixer.master:')).length,
+        ),
+      )
+      .toBe(0)
+    // an unrelated key is untouched
+    expect(await page.evaluate(() => localStorage.getItem('stave:tabs'))).toBe('[]')
+  })
+
+  test('playback gain tracks the code all() gain only — a stale legacy value is inert', async ({
+    page,
+  }) => {
+    // A legacy synthetic master of 0.1 would previously attenuate the whole mix.
+    // Post-#794 the seam is gone and the value is purged, so a loud pattern still
+    // drives the master meter — playback level follows the document, not the store.
+    await page.addInitScript(() => {
+      localStorage.setItem('stave:mixer.master:legacy', '0.1')
+    })
+    await boot(page)
+    const drawer = await openMixer(page)
+    await setStrudelCode(page, 'd1: s("bd*8").gain(0.9)')
+    await expect(drawer.locator('[data-mixer-master-strip]')).toHaveCount(1)
+
+    let mx = 0
+    for (let attempt = 0; attempt < 2 && mx < 15; attempt++) {
+      await play(page)
+      await page.waitForTimeout(1200)
+      for (let i = 0; i < 25; i++) {
+        mx = Math.max(mx, await masterFill(page, drawer))
+        await page.waitForTimeout(33)
+      }
+    }
+    // meter moves at full level — the stale 0.1 did NOT attenuate the output.
+    expect(mx).toBeGreaterThan(15)
+  })
+})
