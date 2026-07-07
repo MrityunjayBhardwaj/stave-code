@@ -4,13 +4,13 @@
  * The Mixer console strip is the SUMMARY (dot/name/mute, pan/fader/meter/gain);
  * this drawer is the EFFECTS chain (quick-transforms + a Knob per numeric arg —
  * lpf, attack, crush, send levels, …). It mounts the shared `MixerBody`, the
- * very same body the Pattern-tab inspector uses, bound to THIS strip instead of
- * the cursor: `applyEdit = (m) => applyToStrip(strip.id, m)` routes every knob
- * edit through the proven by-id write path, so each edit is a surgical, tagged,
- * one-undo text change that goes live while playing for free (centralised
- * Writeback re-eval). The drawer holds no document state itself — which strips
- * are open is the console's ephemeral, persisted UI state (`expandStore`), never
- * the file (V-mixer-1).
+ * very same body the Pattern-tab inspector uses, bound via an injected `applyEdit`
+ * instead of the cursor: a channel passes `(m) => applyToStrip(strip.id, m)`, the
+ * MASTER passes `applyToMasterChunk` (which adapts/materializes the `all()` line).
+ * Either way every knob edit is a surgical, tagged, one-undo text change that goes
+ * live while playing for free (centralised Writeback re-eval). The drawer holds no
+ * document state itself — which strips are open is the console's ephemeral,
+ * persisted UI state (`expandStore`), never the file (V-mixer-1).
  *
  * Two pieces of `MixerBody` are omitted because they're pattern-authoring
  * concerns, not mixing: the Snap picker (`division` left undefined) and the
@@ -21,15 +21,18 @@ import * as React from 'react'
 
 import type { ChunkInfo } from '../chunkDetect'
 import type { Writeback } from '../writeback'
-import type { StripModel } from './stripModel'
 import { MixerBody } from '../panels/MixerBody'
 
 interface ExpandDrawerProps {
-  strip: StripModel
-  /** the strip's render-time chunk (from `useMixerModel.chunks`, same index) */
+  /** stable id for the drawer's data attribute (a strip id, or `__master__`). */
+  id: string
+  /** the render-time chunk (a strip's chunk, or the adapted master chunk) */
   chunk: ChunkInfo
-  /** the by-id write path (re-resolves a fresh chunk at write time) */
-  applyToStrip: (id: string, mutate: (fresh: ChunkInfo, wb: Writeback) => void) => void
+  /** the write path — re-resolves a FRESH chunk at write time and hands `mutate`
+   *  it + the tagged Writeback (identical shape to `useActiveChunk.applyEdit`).
+   *  Channels pass `(m) => applyToStrip(strip.id, m)`; the master passes
+   *  `applyToMasterChunk` (which adapts/materializes the `all()` line). */
+  applyEdit: (mutate: (fresh: ChunkInfo, wb: Writeback) => void) => void
   beginGesture: () => void
   endGesture: () => void
   /** User zoom factor from the console zoom bar (#763). Scales the drawer
@@ -43,24 +46,17 @@ interface ExpandDrawerProps {
 }
 
 export function ExpandDrawer({
-  strip,
+  id,
   chunk,
-  applyToStrip,
+  applyEdit,
   beginGesture,
   endGesture,
   zoom = 1,
 }: ExpandDrawerProps): React.ReactElement {
-  // Bind the shared body to THIS strip — identical shape to `useActiveChunk`'s
-  // `applyEdit`, so MixerBody can't tell whether it's cursor- or strip-bound.
-  const applyEdit = React.useCallback(
-    (mutate: (fresh: ChunkInfo, wb: Writeback) => void): void => applyToStrip(strip.id, mutate),
-    [applyToStrip, strip.id],
-  )
-
   return (
     <div
       data-mixer-expand-drawer
-      data-mixer-expand-for={strip.id}
+      data-mixer-expand-for={id}
       style={{
         flexShrink: 0,
         // The body grows WIDER as knobs are added (the band scrolls

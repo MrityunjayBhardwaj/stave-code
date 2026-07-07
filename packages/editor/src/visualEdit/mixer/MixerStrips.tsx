@@ -24,11 +24,16 @@ import { ChannelStrip } from './ChannelStrip'
 import { ExpandDrawer } from './ExpandDrawer'
 import { MasterStrip } from './MasterStrip'
 import { gainEdit, panEdit, muteEdit, renameEdit } from './writeStrip'
-import { masterGainEdit } from './masterEdit'
+import { masterGainEdit, masterPanEdit, masterMuteEdit } from './masterEdit'
 import { trackIdentity } from '../trackColor'
 import { getActiveFileId, onActiveEditorChange } from '../../workspace/editorRegistry'
 import { getTrackMeta, setTrackMeta } from '../../workspace/WorkspaceFile'
 import { useTrackMetaMap } from '../../workspace/useTrackMeta'
+
+/** Reserved `expandStore` id for the MASTER strip's drawer — never a real strip
+ *  id (strip ids are chunk-derived), so the master's open state coexists with the
+ *  channels' in the same per-file persisted store. */
+const MASTER_EXPAND_ID = '__master__'
 
 /**
  * Console strips render their FACE at 1.5× via CSS `zoom` (aspect-exact, and —
@@ -59,7 +64,11 @@ export function MixerStrips({
     chunks,
     applyToStrip,
     masterGain,
+    masterPan,
+    masterMuted,
+    masterChunk,
     applyToMaster,
+    applyToMasterChunk,
     beginGesture,
     endGesture,
     selectedId,
@@ -80,8 +89,11 @@ export function MixerStrips({
   // the editor: caret ⇄ selected strip stay in lockstep both ways.
   const trackMeta = useTrackMetaMap(fileId ?? undefined)
   // Per-file ephemeral expand state (S4b): which strips show their knob chain.
-  // Persisted in localStorage, never the file (V-mixer-1).
+  // Persisted in localStorage, never the file (V-mixer-1). The master reuses the
+  // same store under a reserved id (never a real strip id), so its open state
+  // persists alongside the channels'.
   const { expanded, toggle } = useExpandedStrips()
+  const masterExpanded = expanded.has(MASTER_EXPAND_ID)
   // Solo (S5): session-ephemeral, never persisted/written; applies an eval-input
   // overlay that silences non-soloed tracks in the string sent to the engine.
   const { soloed, toggle: toggleSolo } = useSoloMuteSync()
@@ -216,9 +228,9 @@ export function MixerStrips({
             />
             {isOpen && chunks[i] && (
               <ExpandDrawer
-                strip={strip}
+                id={strip.id}
                 chunk={chunks[i]}
-                applyToStrip={applyToStrip}
+                applyEdit={(m) => applyToStrip(strip.id, m)}
                 beginGesture={beginGesture}
                 endGesture={endGesture}
                 // #763 — scale the drawer content by the USER zoom (not faceZoom)
@@ -229,23 +241,63 @@ export function MixerStrips({
           </div>
         )
       })}
-      {/* master strip — pinned to the right of the scroller (S5), zoomed in
-          lockstep with the channel groups. Its fader round-trips to code
-          (#792): reads the doc's `all(x=>x.gain())` scalar, writes it on drag
-          through the same `Writeback` seam as a channel fader. */}
-      <MasterStrip
-        zoom={faceZoom}
-        gain={masterGain.value}
-        foreign={masterGain.foreign}
-        onGainChange={(value) =>
-          applyToMaster((doc, wb) => {
-            const e = masterGainEdit(doc, value)
-            if (e) wb.replaceRange(e.range, e.text, 'mixer')
-          })
-        }
-        onGestureStart={beginGesture}
-        onGestureEnd={endGesture}
-      />
+      {/* master group — a plain trailing flex item (no longer sticky-pinned), so
+          it behaves exactly like a channel group: the face sits left and, when
+          the master EXPANDS, its drawer grows to the RIGHT and pushes the
+          scroller, same as any track strip. */}
+      <div
+        data-mixer-master-group
+        style={{
+          alignSelf: 'flex-start',
+          display: 'flex',
+          alignItems: 'stretch',
+          flexShrink: 0,
+          borderRadius: 6,
+        }}
+      >
+        <MasterStrip
+          zoom={faceZoom}
+          gain={masterGain.value}
+          foreign={masterGain.foreign}
+          pan={masterPan.value}
+          panForeign={masterPan.foreign}
+          muted={masterMuted}
+          expanded={masterExpanded}
+          onToggleExpand={() => toggle(MASTER_EXPAND_ID)}
+          onGainChange={(value) =>
+            applyToMaster((doc, wb) => {
+              const e = masterGainEdit(doc, value)
+              if (e) wb.replaceRange(e.range, e.text, 'mixer')
+            })
+          }
+          onPanChange={(value) =>
+            applyToMaster((doc, wb) => {
+              const e = masterPanEdit(doc, value)
+              if (e) wb.replaceRange(e.range, e.text, 'mixer')
+            })
+          }
+          onMuteToggle={() =>
+            applyToMaster((doc, wb) => {
+              const e = masterMuteEdit(doc, !masterMuted)
+              if (e) wb.replaceRange(e.range, e.text, 'mixer')
+            })
+          }
+          onGestureStart={beginGesture}
+          onGestureEnd={endGesture}
+        />
+        {masterExpanded && (
+          // The master's drawer grows to the RIGHT of the face, exactly like a
+          // channel drawer (the master is now a plain trailing group).
+          <ExpandDrawer
+            id={MASTER_EXPAND_ID}
+            chunk={masterChunk}
+            applyEdit={applyToMasterChunk}
+            beginGesture={beginGesture}
+            endGesture={endGesture}
+            zoom={userZoom}
+          />
+        )}
+      </div>
     </div>
   )
 }

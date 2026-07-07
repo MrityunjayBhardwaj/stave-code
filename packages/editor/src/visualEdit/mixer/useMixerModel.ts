@@ -20,7 +20,15 @@ import { getActiveEditor, onActiveEditorChange, getMonacoNamespace } from '../..
 import { detectAllChunks, type ChunkInfo } from '../chunkDetect'
 import { Writeback } from '../writeback'
 import { buildStripModels, type StripModel } from './stripModel'
-import { readMasterGain, type MasterGainState } from './masterEdit'
+import {
+  readMasterGain,
+  readMasterPan,
+  readMasterMute,
+  detectMasterAudioAll,
+  adaptMasterChunk,
+  type MasterGainState,
+  type MasterPanState,
+} from './masterEdit'
 
 export interface MixerModel {
   /** one strip per top-level statement, in source order (re-derived on edits) */
@@ -49,6 +57,34 @@ export interface MixerModel {
    * reads back exactly what it wrote — the master analog of a strip's gain.
    */
   masterGain: MasterGainState
+  /**
+   * The master strip's pan, projected from the document's `all(x => x.pan())`
+   * scalar (centre 0.5 when absent — the untouched master reads the default from
+   * the ABSENCE of a call). `foreign` disables the control on a signal/pattern
+   * pan. The master analog of a strip's pan.
+   */
+  masterPan: MasterPanState
+  /**
+   * Whether the master is muted — an `all(x => silence)` line is present in the
+   * document. Orthogonal to the fader (the gain line is untouched while muted),
+   * so unmute restores the exact pre-mute output. The master analog of a strip's
+   * `_`-prefix mute.
+   */
+  masterMuted: boolean
+  /**
+   * The master's insert chain adapted to a `ChunkInfo`, for the expand drawer's
+   * shared `MixerBody` (knobs + ＋More). Re-derived on content change; an empty
+   * placeholder when the master has no audio `all()` line yet.
+   */
+  masterChunk: ChunkInfo
+  /**
+   * The master analog of `applyToStrip` for the expand drawer: re-derives the
+   * master audio `all()` line FRESH, adapts it to a `ChunkInfo`, and hands
+   * `mutate` that chunk + the tagged `Writeback`. When no audio line exists, a
+   * deliberate add gesture first materializes the base `all(x => x)` line (one
+   * undo step), so the appended effect lands on a valid statement.
+   */
+  applyToMasterChunk: (mutate: (fresh: ChunkInfo, wb: Writeback) => void) => void
   /**
    * Mutate the master `all(...)` statements. Unlike `applyToStrip` there is no
    * stable-id chunk to re-find — the master is the whole-doc `all()` scope — so
@@ -82,8 +118,45 @@ interface Derived {
   strips: StripModel[]
   chunks: ChunkInfo[]
   masterGain: MasterGainState
+  masterPan: MasterPanState
+  masterMuted: boolean
+  masterChunk: ChunkInfo
 }
-const EMPTY_DERIVED: Derived = { strips: [], chunks: [], masterGain: { value: 1, foreign: false } }
+
+/** A placeholder master chunk for a doc with NO audio `all()` line — a lone
+ *  synthetic head, so the expand drawer renders an EMPTY effects body (just the
+ *  ＋More add-effect affordance). The first add materializes the real line via
+ *  `applyToMasterChunk`; `exprRange`/`statementRange` here are inert (the write
+ *  path re-derives against the live doc). */
+function emptyMasterChunk(doc: string): ChunkInfo {
+  const pos = doc.length
+  return {
+    statementRange: [pos, pos],
+    statementText: '',
+    exprRange: [pos, pos],
+    label: null,
+    headFn: null,
+    miniRange: null,
+    miniString: null,
+    chain: [{ name: 'x', args: [], range: [pos, pos] }],
+    type: 'knobs',
+    nested: false,
+  }
+}
+
+function deriveMasterChunk(doc: string): ChunkInfo {
+  const line = detectMasterAudioAll(doc)
+  return line ? adaptMasterChunk(doc, line) : emptyMasterChunk(doc)
+}
+
+const EMPTY_DERIVED: Derived = {
+  strips: [],
+  chunks: [],
+  masterGain: { value: 1, foreign: false },
+  masterPan: { value: 0.5, foreign: false },
+  masterMuted: false,
+  masterChunk: emptyMasterChunk(''),
+}
 
 /**
  * Follow a strip edit in the code view (#595): move the editor caret to the
@@ -175,6 +248,9 @@ export function useMixerModel(): MixerModel {
         strips,
         chunks: strips.map((s) => allChunks[s.index]),
         masterGain: readMasterGain(value),
+        masterPan: readMasterPan(value),
+        masterMuted: readMasterMute(value),
+        masterChunk: deriveMasterChunk(value),
       })
     }
     rederive()
@@ -221,6 +297,34 @@ export function useMixerModel(): MixerModel {
       // their own offsets from the whole-doc text, so — unlike a per-strip write
       // — there is no stale chunk to guard; hand them the live value directly.
       mutate(model.getValue(), wb)
+    },
+    [],
+  )
+
+  const applyToMasterChunk = React.useCallback(
+    (mutate: (fresh: ChunkInfo, wb: Writeback) => void): void => {
+      const ed = editorRef.current
+      const wb = writebackRef.current
+      if (!ed || !wb) return
+      const model = ed.getModel?.()
+      if (!model) return
+      const doc = model.getValue()
+      const line = detectMasterAudioAll(doc)
+      if (line) {
+        // Re-derive the adapted chunk FRESH (offsets valid after earlier edits in
+        // the same gesture), exactly like `applyToStrip`.
+        mutate(adaptMasterChunk(doc, line), wb)
+        return
+      }
+      // No audio line yet — a deliberate add gesture first materializes the base
+      // `all(x => x)` line, then the effect appends onto it, as ONE undo step.
+      wb.beginGesture()
+      const lead = doc.length === 0 || doc.endsWith('\n') ? '' : '\n'
+      wb.insertAt(doc.length, `${lead}all(x => x)`, 'mixer')
+      const next = model.getValue()
+      const fresh = detectMasterAudioAll(next)
+      if (fresh) mutate(adaptMasterChunk(next, fresh), wb)
+      wb.endGesture()
     },
     [],
   )
@@ -291,7 +395,11 @@ export function useMixerModel(): MixerModel {
     chunks: derived.chunks,
     applyToStrip,
     masterGain: derived.masterGain,
+    masterPan: derived.masterPan,
+    masterMuted: derived.masterMuted,
+    masterChunk: derived.masterChunk,
     applyToMaster,
+    applyToMasterChunk,
     beginGesture,
     endGesture,
     selectedId,

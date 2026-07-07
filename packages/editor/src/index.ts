@@ -629,13 +629,21 @@ export { renameEdit, isValidTrackLabel, type StripEdit } from './visualEdit/mixe
 // wires to the "set backdrop" UI (viz) and the Mixer uses internally (gain).
 export {
   detectMasterAll,
+  detectMasterAudioAll,
+  adaptMasterChunk,
   readMasterGain,
+  readMasterPan,
+  readMasterMute,
   readMasterViz,
   masterGainEdit,
+  masterPanEdit,
+  masterMuteEdit,
   masterVizEdit,
   MASTER_UNITY_GAIN,
+  MASTER_CENTRE_PAN,
   type MasterAll,
   type MasterGainState,
+  type MasterPanState,
 } from './visualEdit/mixer/masterEdit'
 // The display names of the OTHER tracks in a doc (#585) — the set the Song
 // Timeline's rename handler passes to `renameEdit` as `takenNames` so a rename
