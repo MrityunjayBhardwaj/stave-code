@@ -35,11 +35,6 @@ interface ExpandDrawerProps {
   applyEdit: (mutate: (fresh: ChunkInfo, wb: Writeback) => void) => void
   beginGesture: () => void
   endGesture: () => void
-  /** which side of the face the drawer sits on. `'right'` (default) — a channel
-   *  drawer grows rightward, so it rounds its RIGHT corners (the face rounds
-   *  left). `'left'` — the MASTER drawer opens leftward (the master is pinned
-   *  right), so it rounds its LEFT corners (the face rounds right). */
-  side?: 'left' | 'right'
   /** User zoom factor from the console zoom bar (#763). Scales the drawer
    *  CONTENT so it tracks the face (which scales by CONSOLE_ZOOM × this). This is
    *  the user multiplier, NOT the face's 1.5× baseline: at 100% the drawer keeps
@@ -57,13 +52,11 @@ export function ExpandDrawer({
   beginGesture,
   endGesture,
   zoom = 1,
-  side = 'right',
 }: ExpandDrawerProps): React.ReactElement {
   return (
     <div
       data-mixer-expand-drawer
       data-mixer-expand-for={id}
-      data-mixer-expand-side={side}
       style={{
         flexShrink: 0,
         // The body grows WIDER as knobs are added (the band scrolls
@@ -89,10 +82,7 @@ export function ExpandDrawer({
         // the accent outline wraps the whole unit and grows with the drawer.
         border: '1px solid var(--border, #3a3a42)',
         background: '#26262c69',
-        // Round the OUTER corners (away from the face), so the face + drawer read
-        // as one card: a right drawer rounds its right edge, a left drawer (master)
-        // its left edge; the seam edge is squared and abuts the face.
-        borderRadius: side === 'left' ? '6px 0 0 6px' : '0 6px 6px 0',
+        borderRadius: '0 6px 6px 0',
         overflow: 'hidden',
       }}
     >

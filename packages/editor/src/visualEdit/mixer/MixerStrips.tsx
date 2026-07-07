@@ -241,39 +241,20 @@ export function MixerStrips({
           </div>
         )
       })}
-      {/* master group — pinned to the right of the scroller (S5). The GROUP owns
-          the sticky-right pin + occlusion shadow (not the face), so when the
-          master EXPANDS, its drawer opens LEFTWARD into the console (the face is
-          the rightmost thing) and the whole unit — drawer + face — stays pinned
-          and travels together as tracks scroll under it. Collapsed, it's just the
-          face, exactly as before. */}
+      {/* master group — a plain trailing flex item (no longer sticky-pinned), so
+          it behaves exactly like a channel group: the face sits left and, when
+          the master EXPANDS, its drawer grows to the RIGHT and pushes the
+          scroller, same as any track strip. */}
       <div
         data-mixer-master-group
         style={{
-          position: 'sticky',
-          right: 0,
           alignSelf: 'flex-start',
           display: 'flex',
           alignItems: 'stretch',
           flexShrink: 0,
-          // Occlude strips scrolling under the pinned master (was on the face).
-          boxShadow: '-8px 0 8px -6px rgba(0,0,0,0.5)',
           borderRadius: 6,
         }}
       >
-        {masterExpanded && (
-          // The master's drawer opens on the LEFT of the face (`side="left"`),
-          // since the master is the rightmost, pinned element.
-          <ExpandDrawer
-            id={MASTER_EXPAND_ID}
-            side="left"
-            chunk={masterChunk}
-            applyEdit={applyToMasterChunk}
-            beginGesture={beginGesture}
-            endGesture={endGesture}
-            zoom={userZoom}
-          />
-        )}
         <MasterStrip
           zoom={faceZoom}
           gain={masterGain.value}
@@ -304,6 +285,18 @@ export function MixerStrips({
           onGestureStart={beginGesture}
           onGestureEnd={endGesture}
         />
+        {masterExpanded && (
+          // The master's drawer grows to the RIGHT of the face, exactly like a
+          // channel drawer (the master is now a plain trailing group).
+          <ExpandDrawer
+            id={MASTER_EXPAND_ID}
+            chunk={masterChunk}
+            applyEdit={applyToMasterChunk}
+            beginGesture={beginGesture}
+            endGesture={endGesture}
+            zoom={userZoom}
+          />
+        )}
       </div>
     </div>
   )

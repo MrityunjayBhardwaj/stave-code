@@ -158,12 +158,11 @@ export function MasterStrip({
       data-mixer-master-strip
       data-mixer-master-muted={muted ? '' : undefined}
       style={{
-        // The sticky-right pin + occlusion shadow live on the GROUP (MixerStrips),
-        // so an open drawer travels with the face; the face itself is a plain,
-        // non-stretching card (`alignSelf: flex-start` keeps its natural zoomed
-        // height while its left-side drawer stretches to match — V-mixer-10).
-        // Match the console channel groups' scale (set by MixerStrips). `zoom`
-        // (not transform) keeps it aspect-exact.
+        // A plain, non-stretching card (`alignSelf: flex-start` keeps its natural
+        // zoomed height while its right-side expand drawer stretches to match —
+        // V-mixer-10), exactly like a channel face. Match the console channel
+        // groups' scale (set by MixerStrips); `zoom` (not transform) keeps it
+        // aspect-exact.
         zoom,
         width: 84,
         flexShrink: 0,
@@ -172,14 +171,15 @@ export function MasterStrip({
         flexDirection: 'column',
         gap: 6,
         padding: 8,
-        // When expanded, the drawer abuts the LEFT edge (the master opens
-        // leftward), so flatten the left corners and drop the left border — the
-        // drawer's right border is the single seam — so face + drawer read as one.
-        borderRadius: expanded ? '0 6px 6px 0' : 6,
+        // When expanded, the drawer abuts the RIGHT edge (the master opens
+        // rightward like a channel), so flatten the right corners and drop the
+        // right border — the drawer's left border is the single seam — so face +
+        // drawer read as one unit.
+        borderRadius: expanded ? '6px 0 0 6px' : 6,
         border: '1px solid var(--border, #3a3a42)',
-        borderLeft: expanded ? 'none' : undefined,
-        // A slightly stronger surface than channel strips so it reads as the
-        // pinned master and occludes strips scrolling under it.
+        borderRight: expanded ? 'none' : undefined,
+        // A slightly stronger surface than the channel strips so it reads as the
+        // master bus.
         background: 'var(--background-elevated, #2c2c34)',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         color: 'var(--foreground, #e6e6ea)',
@@ -247,8 +247,8 @@ export function MasterStrip({
                 color: 'var(--foreground-muted, #a0a0aa)',
               }}
             >
-              {/* the master opens LEFTWARD, so ◂ = will-open-left, ▸ = collapse */}
-              {expanded ? '▸' : '◂'}
+              {/* the master opens rightward like a channel: ▸ = will-open, ◂ = collapse */}
+              {expanded ? '◂' : '▸'}
             </button>
           )}
         </div>
