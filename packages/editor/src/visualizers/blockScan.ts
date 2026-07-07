@@ -25,14 +25,25 @@
  *   `$: …`      audible anonymous track
  *   `_$: …`     muted / soloed-out anonymous track (`_`-prefix mute idiom)
  *   `setcps(…)` transport statement — its own top-level block
+ *   `all(x=>…)` master-bus statement — stacks every `$:`/named pattern and
+ *               applies the transform (master fader / global backdrop, #792).
+ *               A top-level statement in its own right, so it MUST end the
+ *               preceding block; otherwise a `$:`-with-inline-viz above it
+ *               greedily absorbs the `all()` line and the zone anchors below it.
  *   `/* …`      bare expression wrapped by the solo overlay (non-muteable)
  *
  * NOTE: block-IDENTITY keying (which positional `$N` a zone is) must stay on the
  * bare `$:` form so it agrees with the engine capture side, which skips
- * `_`-prefixed ids. This predicate is only for boundary detection.
+ * `_`-prefixed ids. This predicate is only for boundary detection — `all(…)` is
+ * a boundary but never a track (it fails `startsNamedTrack`: no leading `ident:`).
  */
 export function startsTopLevelBlock(trimmed: string): boolean {
-  return /^_?\$:/.test(trimmed) || trimmed.startsWith('setcps') || trimmed.startsWith('/*')
+  return (
+    /^_?\$:/.test(trimmed) ||
+    trimmed.startsWith('setcps') ||
+    /^all\s*\(/.test(trimmed) ||
+    trimmed.startsWith('/*')
+  )
 }
 
 /**

@@ -4330,7 +4330,7 @@ __name(renderNote, "renderNote");
 
 // src/visualizers/blockScan.ts
 function startsTopLevelBlock(trimmed) {
-  return /^_?\$:/.test(trimmed) || trimmed.startsWith("setcps") || trimmed.startsWith("/*");
+  return /^_?\$:/.test(trimmed) || trimmed.startsWith("setcps") || /^all\s*\(/.test(trimmed) || trimmed.startsWith("/*");
 }
 __name(startsTopLevelBlock, "startsTopLevelBlock");
 function startsNamedTrack(rawLine) {
