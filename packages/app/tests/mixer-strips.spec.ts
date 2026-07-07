@@ -885,3 +885,80 @@ test.describe('Mixer cursor-follows-strip (#595)', () => {
     expect(await cursorLine(page)).toBe(2)
   })
 })
+
+/** vertical drag on the MASTER fader by `dyUp` pixels (up = louder). The master
+ *  strip is pinned (sticky right) so it's on screen once the drawer is tall. */
+async function dragMasterFader(page: Page, drawer: ReturnType<Page['locator']>, dyUp: number): Promise<void> {
+  const fader = drawer.locator('[data-mixer-master-fader]')
+  const box = await fader.boundingBox()
+  if (!box) throw new Error('no master fader box')
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  await page.mouse.move(cx, cy - dyUp, { steps: 8 })
+  await page.mouse.up()
+  await page.waitForTimeout(80)
+}
+
+test.describe('Mixer master strip code counterpart (#792)', () => {
+  test('projects the master gain from the doc all(x=>x.gain()) line (code→UI)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd")\nall(x => x.gain(0.5))')
+    const drawer = await openMixer(page)
+    await expect(drawer.locator('[data-mixer-master-gain]')).toHaveText('0.5')
+  })
+
+  test('an untouched master projects unity from the ABSENCE of a line', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd")')
+    const drawer = await openMixer(page)
+    await expect(drawer.locator('[data-mixer-master-gain]')).toHaveText('1')
+  })
+
+  test('dragging the master fader writes all(x=>x.gain(N)); one undo reverts (UI→code)', async ({ page }) => {
+    await boot(page)
+    const original = '$: s("bd*4")'
+    await setStrudelCode(page, original)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+
+    await dragMasterFader(page, drawer, 30) // up → louder (but gain caps at ≤1)
+    const after = await strudelValue(page)
+    // the track line is byte-identical; a new all() master line is appended
+    expect(after.split('\n')[0]).toBe(original)
+    const m = after.match(/all\(x => x\.gain\((\d*\.?\d+)\)\)/)
+    expect(m, `unexpected doc: ${after}`).not.toBeNull()
+    expect(Number(m![1])).toBeGreaterThan(0)
+
+    // one undo reverts the whole gesture (the inserted line disappears)
+    await undo(page)
+    expect(await strudelValue(page)).toBe(original)
+  })
+
+  test('dragging the master fader patches an existing all() gain literal in place', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd*4")\nall(x => x.gain(0.9))')
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    await dragMasterFader(page, drawer, -40) // down → quieter
+    const after = await strudelValue(page)
+    // still exactly one all() line; the literal moved below 0.9
+    expect((after.match(/all\(x => x\.gain\(/g) ?? []).length).toBe(1)
+    const m = after.match(/all\(x => x\.gain\((\d*\.?\d+)\)\)/)
+    expect(m, `unexpected doc: ${after}`).not.toBeNull()
+    expect(Number(m![1])).toBeLessThan(0.9)
+  })
+
+  test('a signal master gain disables the fader (reads "sig", no write)', async ({ page }) => {
+    await boot(page)
+    const original = '$: s("bd")\nall(x => x.gain(sine))'
+    await setStrudelCode(page, original)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    // foreign → fader dimmed + reads "sig" (not a literal), and a drag makes NO edit (#796)
+    await expect(drawer.locator('[data-mixer-master-gain]')).toHaveText('sig')
+    await dragMasterFader(page, drawer, 40)
+    expect(await strudelValue(page)).toBe(original)
+  })
+})

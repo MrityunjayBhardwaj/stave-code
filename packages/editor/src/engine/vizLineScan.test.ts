@@ -66,4 +66,24 @@ describe('scanVizRequestLines — named tracks (#725)', () => {
     const out = scanVizRequestLines(reqs, NAMED, opts)
     expect(out.get('drums')?.options).toEqual({ fold: 1 })
   })
+
+  // #797 — a master `all(x=>…)` line below a `$:`-with-inline-viz block is a
+  // top-level statement, so the block MUST end above it. Pre-fix, the block-end
+  // scan didn't recognize `all(` as a boundary → the `$:` block absorbed the
+  // `all()` line → the zone anchored below it (and flickered as the mixer
+  // rewrote the gain literal). Same class as #569 (unrecognized top-level form).
+  it('ends the block ABOVE a master all(x=>…) line, not below it', () => {
+    const code = [
+      '$: stack(', //                       line 1 — block start
+      '  s("hh*8").gain(0.3),', //          line 2
+      '  s("bd [~ bd] ~ bd").gain(0.5),', //line 3
+      '  s("~ sd ~ [sd cp]").gain(0.4)', // line 4
+      ').viz("wordfall")', //               line 5 — block's real last line
+      'all(x => x.gain(0.089))', //         line 6 — master bus, its own block
+    ].join('\n')
+    const reqs = new Map([['$0', 'wordfall']])
+    const out = scanVizRequestLines(reqs, code)
+    // anchors after `).viz("wordfall")` (line 5), NOT after `all(...)` (line 6).
+    expect(out.get('$0')?.afterLine).toBe(5)
+  })
 })

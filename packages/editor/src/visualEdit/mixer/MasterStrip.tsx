@@ -1,21 +1,24 @@
 /**
- * MasterStrip — the synthetic master channel (S5, design §6.8).
+ * MasterStrip — the master channel (S5, design §6.8; code counterpart #792).
  *
- * Strudel has no "master gain" statement, so the master is synthetic. It shows:
+ * The master is Strudel's master bus: `all(x => …)`, stacking every track. It shows:
  *  - a live METER off the engine's post-mix `AnalyserNode` (read-only side-tap),
- *  - a FADER that drives superdough's output `destinationGain` PER FILE — an
- *    audio-graph gain, never written to the document (monitoring/output state,
- *    like solo and the meters; V-mixer-5). The value is persisted per file
- *    (`masterStore`) and applied to whichever file is playing.
+ *  - a FADER that round-trips to code: it PROJECTS the document's
+ *    `all(x => x.gain())` scalar (unity when the line is absent) and, on drag,
+ *    WRITES that line through the Mixer's `Writeback` — exactly like a channel
+ *    fader writes `.gain()` on its `$:` line (#792, REPLACE decision). No
+ *    synthetic per-file output gain: the master trim lives in the document.
  *
- * The meter is tapped AFTER `destinationGain`, so it's post-fader (it follows
- * the master fader — the DAW-correct default). Meter and fader share the channel
- * dB taper (`faderTaper`), so master and channels read on one scale.
+ * A pure projection — `gain`/`onGainChange` are supplied by `MixerStrips` from
+ * `useMixerModel` (which reads/writes the doc), so this component never touches
+ * the store or the engine. The meter reads the post-mix analyser, which already
+ * reflects the code gain (each hap is scaled in eval), so it stays post-fader.
+ * `foreign` (a signal/patterned master gain the fader can't rewrite) disables the
+ * drag. Meter and fader share the channel dB taper (`faderTaper`), one scale.
  */
 import * as React from 'react'
 
 import { useMasterMeter } from './useMasterMeter'
-import { useMasterGain } from './masterStore'
 import { gainToFaderPos, faderPosToGain, formatDb } from './faderTaper'
 
 const FADER_HEIGHT = 80
@@ -24,9 +27,26 @@ const DRAG_SPAN_PX = 160
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v)
 
-export function MasterStrip({ zoom = 1 }: { zoom?: number } = {}): React.ReactElement {
+export function MasterStrip({
+  zoom = 1,
+  gain,
+  foreign = false,
+  onGainChange,
+  onGestureStart,
+  onGestureEnd,
+}: {
+  zoom?: number
+  /** the master gain the fader shows — the doc's `all()` gain, or unity (#792). */
+  gain: number
+  /** true when the master gain is a signal/pattern the fader can't rewrite → disabled. */
+  foreign?: boolean
+  /** drag/reset writes the new master gain to code (via `MixerStrips`→Writeback). */
+  onGainChange: (value: number) => void
+  /** open/close the one-undo-step gesture around a continuous drag (as ChannelStrip). */
+  onGestureStart?: () => void
+  onGestureEnd?: () => void
+}): React.ReactElement {
   const meter = useMasterMeter()
-  const { gain, setGain } = useMasterGain()
   const fillRef = React.useRef<HTMLDivElement>(null)
   const peakRef = React.useRef<HTMLDivElement>(null)
 
@@ -40,26 +60,34 @@ export function MasterStrip({ zoom = 1 }: { zoom?: number } = {}): React.ReactEl
 
   const pos = gainToFaderPos(gain)
   // Pointer-capture drag with a start anchor, so a re-render mid-drag (the gain
-  // state updates as you drag) can't drop the gesture — the Knob/ChannelStrip
-  // pattern. No undo/gesture wrapping: the master never edits the document.
+  // projection updates as you drag) can't drop the gesture — the Knob/ChannelStrip
+  // pattern. The drag is wrapped in a Writeback gesture (begin on down, end on up)
+  // so a continuous move is ONE undo step + ONE re-eval on release (#792), exactly
+  // like a channel fader. A `foreign` (signal) master gain disables the drag.
   const drag = React.useRef<{ startY: number; startPos: number } | null>(null)
   const onDown = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (foreign) return
     e.preventDefault()
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+    onGestureStart?.()
     drag.current = { startY: e.clientY, startPos: pos }
   }
   const onMove = (e: React.PointerEvent<HTMLDivElement>): void => {
     const d = drag.current
     if (!d) return
     const next = faderPosToGain(clamp01(d.startPos + (d.startY - e.clientY) / DRAG_SPAN_PX))
-    setGain(Math.round(next * 1000) / 1000)
+    onGainChange(Math.round(next * 1000) / 1000)
   }
   const onUp = (e: React.PointerEvent<HTMLDivElement>): void => {
     if (!drag.current) return
     drag.current = null
     ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
+    onGestureEnd?.()
   }
-  const reset = (): void => setGain(1) // double-click → unity
+  const reset = (): void => {
+    if (foreign) return
+    onGainChange(1) // double-click → unity
+  }
 
   return (
     <div
@@ -161,13 +189,15 @@ export function MasterStrip({ zoom = 1 }: { zoom?: number } = {}): React.ReactEl
           onPointerUp={onUp}
           onPointerCancel={onUp}
           onDoubleClick={reset}
+          title={foreign ? 'master gain is a signal — edit it in code' : undefined}
           style={{
             position: 'relative',
             height: '100%',
             width: 26,
             display: 'flex',
             justifyContent: 'center',
-            cursor: 'ns-resize',
+            cursor: foreign ? 'default' : 'ns-resize',
+            opacity: foreign ? 0.5 : 1,
             touchAction: 'none',
             userSelect: 'none',
           }}
@@ -200,12 +230,18 @@ export function MasterStrip({ zoom = 1 }: { zoom?: number } = {}): React.ReactEl
         </div>
       </div>
 
-      {/* master gain readout: linear + dB (shares the channel readout shape) */}
+      {/* master gain readout: linear + dB (or "sig" for a foreign gain — mirrors ChannelStrip) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
-        <span data-mixer-master-gain>{Math.round(gain * 100) / 100}</span>
-        <span data-mixer-master-db style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>
-          {formatDb(gain)}
-        </span>
+        {foreign ? (
+          <span data-mixer-master-gain title="master gain is a signal — edit it in code">sig</span>
+        ) : (
+          <>
+            <span data-mixer-master-gain>{Math.round(gain * 100) / 100}</span>
+            <span data-mixer-master-db style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>
+              {formatDb(gain)}
+            </span>
+          </>
+        )}
       </div>
     </div>
   )

@@ -131,6 +131,51 @@ test('.viz("name") with NO backdrop flag stays an inline zone — no backdrop pi
   await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
 })
 
+test('inline viz zone anchors ABOVE a master all(x=>…) line and stays put when its gain is rewritten (#797)', async ({ page }) => {
+  // A `$:`-with-inline-viz block above a master `all()` line: the block-end scan
+  // must end the block at `).viz(...)`, not absorb the `all()` line. Pre-fix the
+  // zone anchored BELOW the all() line, and re-anchored (flickered) whenever the
+  // mixer rewrote the gain literal. Synth (headless-safe); observe real geometry.
+  // The `all(...)` line (line 5) is virtualized out of the DOM once the tall
+  // viz zone pushes it below the viewport, so measure Monaco's COMPUTED layout
+  // (getTopForLineNumber, virtualization-proof) against the zone's content-top.
+  // If the zone anchors after line 4, its content-top is above line 5's top; if
+  // it (wrongly) anchors after line 5, its top is below line 5's.
+  const zoneVsLine5 = () =>
+    page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ed = (window as any).monaco?.editor?.getEditors?.()?.[0]
+      const zoneEl = document.querySelector('[data-viz-zone-track]')
+      const linesContent = document.querySelector('.lines-content')
+      if (!ed || !zoneEl || !linesContent) return null
+      const zoneContentTop =
+        zoneEl.getBoundingClientRect().top - linesContent.getBoundingClientRect().top
+      return { zoneContentTop, line5Top: ed.getTopForLineNumber(5) }
+    })
+
+  await setCode(
+    page,
+    `$: stack(\n  note("c e g").s("sawtooth"),\n  note("e g b").s("sawtooth")\n).viz("spectrum")\nall(x => x.gain(0.5))`,
+  )
+  await runCode(page)
+  await expect(page.locator('[data-viz-zone-track]').first()).toBeVisible({ timeout: 6000 })
+
+  // The zone sits between `).viz("spectrum")` (line 4) and `all(...)` (line 5).
+  const before = await zoneVsLine5()
+  expect(before, 'editor + zone must be present').not.toBeNull()
+  expect(before!.zoneContentTop).toBeLessThan(before!.line5Top)
+
+  // Rewrite the master gain literal in place (what a mixer drag does). The zone
+  // must NOT re-anchor below the all() line — no flicker; ordering is invariant.
+  await setCode(
+    page,
+    `$: stack(\n  note("c e g").s("sawtooth"),\n  note("e g b").s("sawtooth")\n).viz("spectrum")\nall(x => x.gain(0.123))`,
+  )
+  await page.waitForTimeout(300)
+  const after = await zoneVsLine5()
+  expect(after!.zoneContentTop).toBeLessThan(after!.line5Top)
+})
+
 test('underscore ._punchcard() and ._tscope() render inline with no error and no fullscreen canvas', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(String(e)))

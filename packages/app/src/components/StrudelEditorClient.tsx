@@ -83,6 +83,11 @@ import {
   getMasterGain,
   getBackdropVizSpan,
   setBackdropVizSpan,
+  getActiveEditor,
+  applyOffsetEditsToFile,
+  masterVizEdit,
+  readMasterViz,
+  onActiveEditorChange,
 } from "@stave/editor";
 import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 
@@ -498,6 +503,87 @@ export default function StrudelEditorClient({
     },
     [],
   );
+
+  // #792 — the "set backdrop" gesture ALSO writes the global backdrop into the
+  // document as `all(x=>x.viz("name",{backdrop:true}))` (or removes it), so it
+  // round-trips to code — the master analog of a channel's inline `.viz()`. The
+  // viz FILE's basename is the name the code carries and the existing code→backdrop
+  // read path resolves back (`StaveApp.handleCodeBackdropChange`). Surgical + tagged
+  // 'mixer' (one undo step; the live re-eval picks it up) — the same seam the Mixer
+  // faders use. This is additive: the per-tab sticky still drives the indicator and
+  // the render, so all existing backdrop behavior is unchanged; the code just gains
+  // a durable, portable representation of the choice.
+  const writeBackdropToCode = useCallback(
+    (vizId: string | null) => {
+      const fileId = activeFileIdRef.current;
+      if (!fileId) return;
+      const doc = getActiveEditor()?.getModel?.()?.getValue?.();
+      if (doc == null) return;
+      const edit = masterVizEdit(doc, vizId ? backdropName(vizId) : null);
+      if (edit) applyOffsetEditsToFile(fileId, [edit], "mixer", doc);
+    },
+    [backdropName],
+  );
+
+  // #795 — resolve a viz NAME (as written in `all(x=>x.viz("name",…))`) back to a
+  // viz FILE id, by NORMALIZED basename — the inverse of the code→backdrop read
+  // path, so a code backdrop projects onto the sticky the indicator/render read.
+  const resolveVizNameToFileId = useCallback((name: string | null): string | null => {
+    if (!name) return null;
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const target = norm(name);
+    const matches = listWorkspaceFiles().filter(
+      (f) =>
+        isVizLanguage(f.language) &&
+        norm(f.path.split("/").pop()!.replace(/\.[^.]+$/, "")) === target,
+    );
+    if (matches.length === 0) return null;
+    return matches.find((f) => f.language === "p5js")?.id ?? matches[0].id;
+  }, []);
+
+  // #795 — keep the per-tab backdrop STICKY a reactive PROJECTION of the active
+  // pattern file's CODE. The sticky is what drives BOTH the [bg]/[set bg] indicator
+  // and the render (via override ?? sticky); syncing it from the code means editing
+  // or DELETING the `all(x=>x.viz(name,{backdrop:true}))` line flips the indicator
+  // and clears the backdrop with no manual re-pick — the code→UI half of the #792
+  // round-trip. Guard: only act when the CODE's backdrop actually CHANGES (tracked
+  // in prevCodeBackdropRef), so a keystroke elsewhere never disturbs a backdrop set
+  // from another surface (file-tree / Cmd+K B) that isn't in the code.
+  const prevCodeBackdropRef = useRef<string | null>(null);
+  useEffect(() => {
+    let sub: { dispose?: () => void } | undefined;
+    const codeBackdropOf = (): string | null => {
+      const model = getActiveEditor()?.getModel?.();
+      // master all() is a pattern-file concept — only sync for the Strudel editor
+      // (the monaco languageId is the reliable signal; the bg-toggle lives here).
+      if (model?.getLanguageId?.() !== "strudel") return null;
+      const name = readMasterViz(model.getValue?.() ?? "")?.name ?? null;
+      return name ? resolveVizNameToFileId(name) : null;
+    };
+    const sync = () => {
+      const fileId = activeFileIdRef.current;
+      if (!fileId) return;
+      const code = codeBackdropOf();
+      if (code === prevCodeBackdropRef.current) return; // code backdrop unchanged → leave the sticky alone
+      prevCodeBackdropRef.current = code;
+      recordTabBackdrop(fileId, code);
+      shellRef?.current?.setBackgroundFile?.(code);
+    };
+    const wire = () => {
+      sub?.dispose?.();
+      // reset per active file so its code backdrop is (re)projected on entry
+      prevCodeBackdropRef.current = null;
+      const model = getActiveEditor()?.getModel?.();
+      sub = model?.onDidChangeContent?.(sync);
+      sync();
+    };
+    wire();
+    const un = onActiveEditorChange(wire);
+    return () => {
+      sub?.dispose?.();
+      un?.();
+    };
+  }, [recordTabBackdrop, resolveVizNameToFileId]);
 
   // Track active file for the viz-ref watcher hook.
   const [watchedFileId, setWatchedFileId] = useState<string | null>(null);
@@ -1502,6 +1588,10 @@ export default function StrudelEditorClient({
             // that tab is the active one) drive the active group's backdrop.
             recordTabBackdrop(bgPopover.fileId, id);
             shellRef?.current?.setBackgroundFile?.(id);
+            // #792 — ALSO write the choice into the document as
+            // all(x=>x.viz("name",{backdrop:true})), so the global backdrop
+            // round-trips to code (portable with the file, editable as text).
+            writeBackdropToCode(id);
           }}
           onCropBackground={() => onCropBackdrop?.()}
           onRevealBackground={() => onRevealBackdrop?.()}
