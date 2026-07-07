@@ -83,6 +83,9 @@ import {
   getMasterGain,
   getBackdropVizSpan,
   setBackdropVizSpan,
+  getActiveEditor,
+  applyOffsetEditsToFile,
+  masterVizEdit,
 } from "@stave/editor";
 import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 
@@ -497,6 +500,27 @@ export default function StrudelEditorClient({
       return f.path.split("/").pop()!.replace(/\.[^.]+$/, "");
     },
     [],
+  );
+
+  // #792 — the "set backdrop" gesture ALSO writes the global backdrop into the
+  // document as `all(x=>x.viz("name",{backdrop:true}))` (or removes it), so it
+  // round-trips to code — the master analog of a channel's inline `.viz()`. The
+  // viz FILE's basename is the name the code carries and the existing code→backdrop
+  // read path resolves back (`StaveApp.handleCodeBackdropChange`). Surgical + tagged
+  // 'mixer' (one undo step; the live re-eval picks it up) — the same seam the Mixer
+  // faders use. This is additive: the per-tab sticky still drives the indicator and
+  // the render, so all existing backdrop behavior is unchanged; the code just gains
+  // a durable, portable representation of the choice.
+  const writeBackdropToCode = useCallback(
+    (vizId: string | null) => {
+      const fileId = activeFileIdRef.current;
+      if (!fileId) return;
+      const doc = getActiveEditor()?.getModel?.()?.getValue?.();
+      if (doc == null) return;
+      const edit = masterVizEdit(doc, vizId ? backdropName(vizId) : null);
+      if (edit) applyOffsetEditsToFile(fileId, [edit], "mixer", doc);
+    },
+    [backdropName],
   );
 
   // Track active file for the viz-ref watcher hook.
@@ -1502,6 +1526,10 @@ export default function StrudelEditorClient({
             // that tab is the active one) drive the active group's backdrop.
             recordTabBackdrop(bgPopover.fileId, id);
             shellRef?.current?.setBackgroundFile?.(id);
+            // #792 — ALSO write the choice into the document as
+            // all(x=>x.viz("name",{backdrop:true})), so the global backdrop
+            // round-trips to code (portable with the file, editable as text).
+            writeBackdropToCode(id);
           }}
           onCropBackground={() => onCropBackdrop?.()}
           onRevealBackground={() => onRevealBackdrop?.()}

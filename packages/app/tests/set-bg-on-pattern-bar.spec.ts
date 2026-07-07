@@ -58,6 +58,44 @@ test('clicking opens the BackdropPopover; picking a viz pins it, clearing remove
   expect(errors).toEqual([])
 })
 
+test('picking a viz ALSO writes the global backdrop to code — all(x=>x.viz(…,{backdrop:true})) (#792)', async ({ page }) => {
+  const strudelValue = () =>
+    page.evaluate(() => {
+      const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string; getValue: () => string } | null }> } } }).monaco
+      const eds = m?.editor?.getEditors?.() ?? []
+      const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+      return t?.getModel()?.getValue() ?? ''
+    })
+
+  // seed a known one-line doc so the appended master backdrop line is exact
+  await page.evaluate(() => {
+    const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string; setValue: (s: string) => void } | null; focus: () => void }> } } }).monaco
+    const eds = m?.editor?.getEditors?.() ?? []
+    const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+    t?.getModel()?.setValue('$: s("bd*4")')
+    t?.focus()
+  })
+  await page.waitForTimeout(150)
+
+  const btn = page.locator('[data-testid="strudel-chrome-bg-toggle"]')
+  await btn.click()
+  const picker = page.locator('[data-testid="backdrop-popover-picker"]')
+  const value = await picker.locator('option').nth(1).getAttribute('value')
+  await picker.selectOption(value!)
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(1)
+
+  // the choice round-trips to code: a master backdrop viz line is appended,
+  // the track line is byte-identical
+  const after = await strudelValue()
+  expect(after.split('\n')[0]).toBe('$: s("bd*4")')
+  expect(after).toMatch(/all\(x => x\.viz\("[^"]+", \{ backdrop: true \}\)\)/)
+
+  // clearing removes the code line too
+  await page.locator('[data-testid="backdrop-chrome-clear"]').click()
+  const cleared = await strudelValue()
+  expect(cleared).not.toMatch(/all\(x => x\.viz/)
+})
+
 test('backdrop is PER-TAB — switching tabs swaps/clears it, switching back restores', async ({ page }) => {
   const btn = page.locator('[data-testid="strudel-chrome-bg-toggle"]')
 

@@ -27271,6 +27271,16 @@ function findGainCall(m) {
   return m.chain.find((c) => c.name === "gain");
 }
 __name(findGainCall, "findGainCall");
+function findVizBackdropCall(m) {
+  return m.chain.find(
+    (c) => c.name === "viz" && c.args.some((a) => /\bbackdrop\s*:\s*true\b/.test(a.raw))
+  );
+}
+__name(findVizBackdropCall, "findVizBackdropCall");
+function vizNameArg(c) {
+  return c.args.find((a) => /^['"`]/.test(a.raw));
+}
+__name(vizNameArg, "vizNameArg");
 function readMasterGain(doc) {
   for (const m of detectMasterAll(doc)) {
     const g = findGainCall(m);
@@ -27283,6 +27293,17 @@ function readMasterGain(doc) {
   return { value: MASTER_UNITY_GAIN, foreign: false };
 }
 __name(readMasterGain, "readMasterGain");
+function readMasterViz(doc) {
+  for (const m of detectMasterAll(doc)) {
+    const v = findVizBackdropCall(m);
+    if (!v) continue;
+    const nameArg = vizNameArg(v);
+    if (!nameArg) continue;
+    return { name: nameArg.raw.slice(1, -1) };
+  }
+  return null;
+}
+__name(readMasterViz, "readMasterViz");
 function masterGainEdit(doc, value) {
   for (const m of detectMasterAll(doc)) {
     const g = findGainCall(m);
@@ -27294,12 +27315,40 @@ function masterGainEdit(doc, value) {
   return insertStatement(doc, `all(x => x.gain(${formatNumber(value)}))`);
 }
 __name(masterGainEdit, "masterGainEdit");
+function masterVizEdit(doc, name) {
+  for (const m of detectMasterAll(doc)) {
+    const v = findVizBackdropCall(m);
+    if (!v) continue;
+    if (name === null) {
+      if (m.chain.length === 1) return removeStatement(doc, m.statementRange);
+      return { range: v.range, text: "" };
+    }
+    const nameArg = vizNameArg(v);
+    if (!nameArg) return null;
+    return { range: nameArg.range, text: JSON.stringify(name) };
+  }
+  if (name === null) return null;
+  return insertStatement(doc, `all(x => x.viz(${JSON.stringify(name)}, { backdrop: true }))`);
+}
+__name(masterVizEdit, "masterVizEdit");
 function insertStatement(doc, statement) {
   const pos = doc.length;
   const lead = doc.length === 0 || doc.endsWith("\n") ? "" : "\n";
   return { range: [pos, pos], text: `${lead}${statement}` };
 }
 __name(insertStatement, "insertStatement");
+function removeStatement(doc, stmt) {
+  let start = stmt[0];
+  let end = stmt[1];
+  const prevNL = doc.lastIndexOf("\n", start - 1);
+  if (prevNL >= 0 && doc.slice(prevNL + 1, start).trim() === "") {
+    start = prevNL;
+  } else if (doc[end] === "\n") {
+    end = end + 1;
+  }
+  return { range: [start, end], text: "" };
+}
+__name(removeStatement, "removeStatement");
 
 // src/visualEdit/mixer/useMixerModel.ts
 var EMPTY_DERIVED = { strips: [], chunks: [], masterGain: { value: 1, foreign: false } };
@@ -39383,6 +39432,7 @@ exports.LiveCodingEditor = LiveCodingEditor;
 exports.LiveCodingRuntime = LiveCodingRuntime;
 exports.LiveRecorder = LiveRecorder;
 exports.MASTER_KEY = MASTER_KEY;
+exports.MASTER_UNITY_GAIN = MASTER_UNITY_GAIN;
 exports.MIXER_CONSOLE_TAB_ID = MIXER_CONSOLE_TAB_ID;
 exports.MIXER_TAB_ID = MIXER_TAB_ID;
 exports.MainSignalSampler = MainSignalSampler;
@@ -39490,6 +39540,7 @@ exports.detectAllPickControls = detectAllPickControls;
 exports.detectArrangeAt = detectArrangeAt;
 exports.detectBarePattern = detectBarePattern;
 exports.detectChunk = detectChunk;
+exports.detectMasterAll = detectMasterAll;
 exports.detectPeriod = detectPeriod;
 exports.detectPickControlAt = detectPickControlAt;
 exports.detectWorkerVizCapabilities = detectWorkerVizCapabilities;
@@ -39621,6 +39672,8 @@ exports.listWorkspaceFiles = listWorkspaceFiles;
 exports.liveCodingRuntimeRegistry = liveCodingRuntimeRegistry;
 exports.loadShellState = loadShellState;
 exports.makeFixedKey = makeFixedKey;
+exports.masterGainEdit = masterGainEdit;
+exports.masterVizEdit = masterVizEdit;
 exports.materializeBareDelete = materializeBareDelete;
 exports.materializeBareSplit = materializeBareSplit;
 exports.merge = merge;
@@ -39676,6 +39729,8 @@ exports.pruneTrackMetaForCode = pruneTrackMetaForCode;
 exports.pruneZoneOverrides = pruneZoneOverrides;
 exports.publishIRSnapshot = publishIRSnapshot;
 exports.readCurrentCycle = readCurrentCycle;
+exports.readMasterGain = readMasterGain;
+exports.readMasterViz = readMasterViz;
 exports.readPersistedActiveTabId = readPersistedActiveTabId;
 exports.readPersistedOpen = readPersistedOpen;
 exports.redo = redo;
