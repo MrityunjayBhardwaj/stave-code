@@ -32081,6 +32081,19 @@ function generateGroupId() {
 }
 __name(generateGroupId, "generateGroupId");
 var DRAG_MIME = "application/workspace-tab";
+function transferBackdropWithTab(next, sourceGroup, movingTab, destGroupId) {
+  if (movingTab.kind !== "editor") return;
+  if (sourceGroup.backgroundFileId !== movingTab.fileId) return;
+  const src = next.get(sourceGroup.id);
+  if (src && src.backgroundFileId === movingTab.fileId) {
+    next.set(sourceGroup.id, { ...src, backgroundFileId: void 0 });
+  }
+  const dest = next.get(destGroupId);
+  if (dest) {
+    next.set(destGroupId, { ...dest, backgroundFileId: movingTab.fileId });
+  }
+}
+__name(transferBackdropWithTab, "transferBackdropWithTab");
 function createInitialGroupState(initialTabs) {
   const id = generateGroupId();
   const group = {
@@ -32623,6 +32636,28 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     },
     [updateGroup]
   );
+  const backdropSourceByFile = useRef(/* @__PURE__ */ new Map());
+  const stopBackdropSource = useCallback((fileId) => {
+    const ref = backdropSourceByFile.current.get(fileId);
+    if (ref?.kind === "file") {
+      findBuiltinExampleSource(ref.fileId)?.stopIfRunning();
+    }
+    backdropSourceByFile.current.delete(fileId);
+  }, []);
+  const stopDisplacedBackdrop = useCallback(
+    (sourceGroupId, tabId, targetGroupId) => {
+      if (sourceGroupId === targetGroupId) return;
+      const src = groups.get(sourceGroupId);
+      const movingTab = src?.tabs.find((t) => t.id === tabId);
+      if (movingTab?.kind !== "editor") return;
+      if (src?.backgroundFileId !== movingTab.fileId) return;
+      const displaced = groups.get(targetGroupId)?.backgroundFileId;
+      if (displaced && displaced !== movingTab.fileId) {
+        stopBackdropSource(displaced);
+      }
+    },
+    [groups, stopBackdropSource]
+  );
   const handleTabClose = useCallback(
     (groupId, tabId) => {
       let closedTab = null;
@@ -32683,10 +32718,24 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             if (builtin) builtin.stopIfRunning();
           }
         }
+        if (maybePreview.kind === "editor") {
+          const fileId = maybePreview.fileId;
+          stopBackdropSource(fileId);
+          for (const [gid, g] of groups) {
+            if (g.backgroundFileId === fileId) {
+              shellActionsRef.current.updateGroupBackground(gid, null);
+            }
+          }
+          const sidePreview = shellActionsRef.current.findTabByFileId(
+            fileId,
+            "preview"
+          );
+          if (sidePreview) shellActionsRef.current.closeTab(sidePreview.tabId);
+        }
         onTabClose?.(closedTab);
       }
     },
-    [groups, layout, onTabClose]
+    [groups, layout, onTabClose, stopBackdropSource]
   );
   const handleSplit = useCallback(
     (groupId, direction = "east") => {
@@ -32782,6 +32831,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           tabs: [movingTab],
           activeTabId: movingTab.id
         });
+        transferBackdropWithTab(next, source, movingTab, newId2);
         return next;
       });
       setLayout((prev) => {
@@ -32817,6 +32867,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           tabs: [movingTab],
           activeTabId: movingTab.id
         });
+        transferBackdropWithTab(next, source, movingTab, newId2);
         return next;
       });
       setLayout((prev) => {
@@ -32831,13 +32882,14 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     (groupId, backgroundFileId) => {
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
+      if (prev) stopBackdropSource(prev);
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? void 0
       }));
       onBackgroundFileChange?.(groupId, backgroundFileId);
     },
-    [groups, updateGroup, onBackgroundFileChange]
+    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource]
   );
   const updateGroupOverride = useCallback(
     (groupId, overrideFileId) => {
@@ -33081,6 +33133,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         return;
       }
       const { sourceGroupId, tabId } = payload;
+      stopDisplacedBackdrop(sourceGroupId, tabId, targetGroupId);
       const tabNodes = e.currentTarget.querySelectorAll("[data-workspace-tab]");
       let insertionIndex = tabNodes.length;
       for (let i = 0; i < tabNodes.length; i++) {
@@ -33132,11 +33185,12 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           tabs: targetTabs,
           activeTabId: tabId
         });
+        transferBackdropWithTab(next, source, movingTab, targetGroupId);
         return next;
       });
       setActiveGroupId(targetGroupId);
     },
-    []
+    [stopDisplacedBackdrop]
   );
   const handleDropOnGroup = useCallback(
     (e, targetGroupId) => {
@@ -33167,6 +33221,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         return;
       }
       if (direction === "center") {
+        stopDisplacedBackdrop(sourceGroupId, tabId, targetGroupId);
         setGroups((prev) => {
           const source = prev.get(sourceGroupId);
           const target = prev.get(targetGroupId);
@@ -33193,6 +33248,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             tabs: [...target.tabs, movingTab],
             activeTabId: tabId
           });
+          transferBackdropWithTab(next, source, movingTab, targetGroupId);
           return next;
         });
         setLayout((prev) => {
@@ -33205,7 +33261,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       }
       moveTabToNewQuadrant(sourceGroupId, tabId, targetGroupId, direction);
     },
-    [computeQuadrant, groups, moveTabToNewQuadrant]
+    [computeQuadrant, groups, moveTabToNewQuadrant, stopDisplacedBackdrop]
   );
   const renderTabContent = useCallback(
     (tab, groupId, isActive) => {
@@ -33299,7 +33355,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                       newTab
                     );
                   }, "onOpenPreview"),
-                  onToggleBackground: /* @__PURE__ */ __name(() => {
+                  onToggleBackground: /* @__PURE__ */ __name((sourceRef) => {
+                    const willActivate = groups.get(groupId)?.backgroundFileId !== tab.fileId;
                     executeCommand("workspace.toggleBackgroundPreview", {
                       activeTab: tab,
                       activeGroupId: groupId,
@@ -33310,7 +33367,27 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                         return previewProviderFor?.({ ...pTab, fileId: tab.fileId }) ?? void 0;
                       }, "getPreviewProvider")
                     });
+                    if (willActivate && sourceRef?.kind === "file") {
+                      backdropSourceByFile.current.set(tab.fileId, sourceRef);
+                    }
                   }, "onToggleBackground"),
+                  // #788 — the popover's source dropdown changed while this
+                  // file's backdrop is live. The chrome already swapped the
+                  // audio (start next / stop prev, #784); re-key the teardown
+                  // record so close / clear stops the CURRENT source. Non-file
+                  // refs (default / none) clear the record — their swap already
+                  // stopped whatever built-in was playing, so teardown has
+                  // nothing left to own.
+                  onBackdropSourceChange: /* @__PURE__ */ __name((ref) => {
+                    if (groups.get(groupId)?.backgroundFileId !== tab.fileId) {
+                      return;
+                    }
+                    if (ref.kind === "file") {
+                      backdropSourceByFile.current.set(tab.fileId, ref);
+                    } else {
+                      backdropSourceByFile.current.delete(tab.fileId);
+                    }
+                  }, "onBackdropSourceChange"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
                   // #773 — close THIS file's side preview when the viz-settings
                   // popover switches to 'off' or 'backdrop'. Re-read via
@@ -37762,6 +37839,7 @@ function VizEditorChrome({
   onChangePreviewSource,
   onClosePreview,
   onToggleBackground,
+  onBackdropSourceChange,
   isBackground,
   backdropOpacity,
   backdropQuality,
@@ -37799,8 +37877,18 @@ function VizEditorChrome({
       if (previewOpen && onChangePreviewSource) {
         onChangePreviewSource(next);
       }
+      if (isBackground && onBackdropSourceChange) {
+        onBackdropSourceChange(next);
+      }
     },
-    [isBackground, previewOpen, previewPaused, onChangePreviewSource, selectedSource]
+    [
+      isBackground,
+      previewOpen,
+      previewPaused,
+      onChangePreviewSource,
+      onBackdropSourceChange,
+      selectedSource
+    ]
   );
   const startSelectedBuiltin = useCallback(() => {
     if (selectedSource.kind === "file") {
@@ -37823,9 +37911,19 @@ function VizEditorChrome({
       if (previewMode === "side") onClosePreview?.();
       if (previewMode === "backdrop") onToggleBackground();
       if (next === "side") openSidePreview();
-      if (next === "backdrop") onToggleBackground();
+      if (next === "backdrop") {
+        startSelectedBuiltin();
+        onToggleBackground(selectedSource);
+      }
     },
-    [previewMode, onClosePreview, onToggleBackground, openSidePreview]
+    [
+      previewMode,
+      onClosePreview,
+      onToggleBackground,
+      openSidePreview,
+      startSelectedBuiltin,
+      selectedSource
+    ]
   );
   const buttonState = previewMode === "off" ? "idle" : previewPaused ? "paused" : "running";
   const buttonLabel = buttonState === "running" ? "\u23F8 Pause" : "\u25B6 Play";
@@ -37833,11 +37931,17 @@ function VizEditorChrome({
   const activatePreferred = useCallback(() => {
     if (placementPref === "backdrop") {
       startSelectedBuiltin();
-      onToggleBackground();
+      onToggleBackground(selectedSource);
     } else {
       openSidePreview();
     }
-  }, [placementPref, startSelectedBuiltin, onToggleBackground, openSidePreview]);
+  }, [
+    placementPref,
+    startSelectedBuiltin,
+    onToggleBackground,
+    openSidePreview,
+    selectedSource
+  ]);
   const handlePrimaryClick = useCallback(() => {
     if (previewMode === "off") activatePreferred();
     else onTogglePausePreview?.();

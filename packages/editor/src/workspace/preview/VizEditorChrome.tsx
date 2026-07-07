@@ -73,6 +73,7 @@ export function VizEditorChrome({
   onChangePreviewSource,
   onClosePreview,
   onToggleBackground,
+  onBackdropSourceChange,
   isBackground,
   backdropOpacity,
   backdropQuality,
@@ -132,8 +133,22 @@ export function VizEditorChrome({
       if (previewOpen && onChangePreviewSource) {
         onChangePreviewSource(next)
       }
+      // #788 — a live backdrop's teardown record must track the CURRENT
+      // source: the swap above already moved the audio, so tell the shell to
+      // re-key its bookkeeping or close/clear will stop the stale source and
+      // leak this one.
+      if (isBackground && onBackdropSourceChange) {
+        onBackdropSourceChange(next)
+      }
     },
-    [isBackground, previewOpen, previewPaused, onChangePreviewSource, selectedSource],
+    [
+      isBackground,
+      previewOpen,
+      previewPaused,
+      onChangePreviewSource,
+      onBackdropSourceChange,
+      selectedSource,
+    ],
   )
 
   // Lazy-start whichever built-in example source the dropdown points at. MUST
@@ -182,11 +197,23 @@ export function VizEditorChrome({
       if (next !== 'off') setPlacementPref(next)
       if (next === previewMode) return
       if (previewMode === 'side') onClosePreview?.()
-      if (previewMode === 'backdrop') onToggleBackground()
+      if (previewMode === 'backdrop') onToggleBackground() // clear (no source)
       if (next === 'side') openSidePreview()
-      if (next === 'backdrop') onToggleBackground()
+      if (next === 'backdrop') {
+        // Parity with the Play path (#784): start the selected source and hand
+        // its ref to the shell so teardown can stop it.
+        startSelectedBuiltin()
+        onToggleBackground(selectedSource)
+      }
     },
-    [previewMode, onClosePreview, onToggleBackground, openSidePreview],
+    [
+      previewMode,
+      onClosePreview,
+      onToggleBackground,
+      openSidePreview,
+      startSelectedBuiltin,
+      selectedSource,
+    ],
   )
 
   // Play/pause transport — rendered whenever this viz is actively previewing,
@@ -214,11 +241,17 @@ export function VizEditorChrome({
   const activatePreferred = useCallback(() => {
     if (placementPref === 'backdrop') {
       startSelectedBuiltin()
-      onToggleBackground()
+      onToggleBackground(selectedSource)
     } else {
       openSidePreview()
     }
-  }, [placementPref, startSelectedBuiltin, onToggleBackground, openSidePreview])
+  }, [
+    placementPref,
+    startSelectedBuiltin,
+    onToggleBackground,
+    openSidePreview,
+    selectedSource,
+  ])
   const handlePrimaryClick = useCallback(() => {
     if (previewMode === 'off') activatePreferred()
     else onTogglePausePreview?.()
