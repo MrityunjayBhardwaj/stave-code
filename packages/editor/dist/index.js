@@ -37787,25 +37787,31 @@ function VizEditorChrome({
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
       const nextBuiltin = next.kind === "file" ? findBuiltinExampleSource(next.fileId) : void 0;
       setSelectedSource(next);
-      if (previewOpen && onChangePreviewSource) {
+      const previewingAnywhere = isBackground || previewOpen;
+      if (previewingAnywhere) {
         if (nextBuiltin && !previewPaused) {
           nextBuiltin.startIfIdle();
         }
         if (prevBuiltin && prevBuiltin !== nextBuiltin) {
           prevBuiltin.stopIfRunning();
         }
+      }
+      if (previewOpen && onChangePreviewSource) {
         onChangePreviewSource(next);
       }
     },
-    [previewOpen, previewPaused, onChangePreviewSource, selectedSource]
+    [isBackground, previewOpen, previewPaused, onChangePreviewSource, selectedSource]
   );
-  const openSidePreview = useCallback(() => {
+  const startSelectedBuiltin = useCallback(() => {
     if (selectedSource.kind === "file") {
       const builtin = findBuiltinExampleSource(selectedSource.fileId);
       if (builtin) builtin.startIfIdle();
     }
+  }, [selectedSource]);
+  const openSidePreview = useCallback(() => {
+    startSelectedBuiltin();
     onOpenPreview(selectedSource);
-  }, [onOpenPreview, selectedSource]);
+  }, [startSelectedBuiltin, onOpenPreview, selectedSource]);
   const previewMode = isBackground ? "backdrop" : previewOpen ? "side" : "off";
   const [placementPref, setPlacementPref] = useState(
     "backdrop"
@@ -37825,9 +37831,13 @@ function VizEditorChrome({
   const buttonLabel = buttonState === "running" ? "\u23F8 Pause" : "\u25B6 Play";
   const buttonTitle = buttonState === "running" ? "Pause this viz (side tab or backdrop)" : buttonState === "paused" ? "Resume this viz" : `Play this viz as ${placementPref === "backdrop" ? "backdrop" : "side preview"}`;
   const activatePreferred = useCallback(() => {
-    if (placementPref === "backdrop") onToggleBackground();
-    else openSidePreview();
-  }, [placementPref, onToggleBackground, openSidePreview]);
+    if (placementPref === "backdrop") {
+      startSelectedBuiltin();
+      onToggleBackground();
+    } else {
+      openSidePreview();
+    }
+  }, [placementPref, startSelectedBuiltin, onToggleBackground, openSidePreview]);
   const handlePrimaryClick = useCallback(() => {
     if (previewMode === "off") activatePreferred();
     else onTogglePausePreview?.();

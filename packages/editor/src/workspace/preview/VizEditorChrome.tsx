@@ -115,30 +115,46 @@ export function VizEditorChrome({
           ? findBuiltinExampleSource(next.fileId)
           : undefined
       setSelectedSource(next)
-      if (previewOpen && onChangePreviewSource) {
+      // Swap the built-in audio when previewing in EITHER placement (#784) —
+      // side OR backdrop. Previously this only fired for a side preview, so
+      // changing the source while a backdrop was live never swapped the sound.
+      const previewingAnywhere = isBackground || previewOpen
+      if (previewingAnywhere) {
         if (nextBuiltin && !previewPaused) {
           nextBuiltin.startIfIdle()
         }
         if (prevBuiltin && prevBuiltin !== nextBuiltin) {
           prevBuiltin.stopIfRunning()
         }
+      }
+      // Repointing the preview's subscription only applies to a side tab; the
+      // backdrop follows the bus default (most-recent publisher).
+      if (previewOpen && onChangePreviewSource) {
         onChangePreviewSource(next)
       }
     },
-    [previewOpen, previewPaused, onChangePreviewSource, selectedSource],
+    [isBackground, previewOpen, previewPaused, onChangePreviewSource, selectedSource],
   )
 
-  // Open the side-preview tab. Lazy-starts whichever built-in example source
-  // the dropdown points to inside the click handler so the browser's autoplay
-  // policy accepts the AudioContext creation. Idempotent — the shell's
-  // onOpenPreview no-ops if a preview tab already exists.
-  const openSidePreview = useCallback(() => {
+  // Lazy-start whichever built-in example source the dropdown points at. MUST
+  // run from inside a user gesture (click/change) so the browser's autoplay
+  // policy accepts the AudioContext creation. Shared by BOTH placements (#784):
+  // the side path always did this, but the backdrop path used to skip it, so a
+  // selected sample never played behind a backdrop and the audio-reactive viz
+  // stayed blank.
+  const startSelectedBuiltin = useCallback(() => {
     if (selectedSource.kind === 'file') {
       const builtin = findBuiltinExampleSource(selectedSource.fileId)
       if (builtin) builtin.startIfIdle()
     }
+  }, [selectedSource])
+
+  // Open the side-preview tab. Idempotent — the shell's onOpenPreview no-ops if
+  // a preview tab already exists.
+  const openSidePreview = useCallback(() => {
+    startSelectedBuiltin()
     onOpenPreview(selectedSource)
-  }, [onOpenPreview, selectedSource])
+  }, [startSelectedBuiltin, onOpenPreview, selectedSource])
 
   // Current preview placement (#773). Derived from the two shell flags so the
   // segmented control always mirrors reality: backdrop wins over a side preview
@@ -190,12 +206,19 @@ export function VizEditorChrome({
         : `Play this viz as ${
             placementPref === 'backdrop' ? 'backdrop' : 'side preview'
           }`
-  // Start the preview in the preferred placement. onToggleBackground mounts the
+  // Start the preview in the preferred placement. Both placements start the
+  // selected built-in source first (#784) so the sample actually plays; the
+  // backdrop follows the bus default, which resolves to this just-started
+  // source (now the most-recent publisher). onToggleBackground mounts the
   // backdrop for this group; openSidePreview opens a sibling split tab.
   const activatePreferred = useCallback(() => {
-    if (placementPref === 'backdrop') onToggleBackground()
-    else openSidePreview()
-  }, [placementPref, onToggleBackground, openSidePreview])
+    if (placementPref === 'backdrop') {
+      startSelectedBuiltin()
+      onToggleBackground()
+    } else {
+      openSidePreview()
+    }
+  }, [placementPref, startSelectedBuiltin, onToggleBackground, openSidePreview])
   const handlePrimaryClick = useCallback(() => {
     if (previewMode === 'off') activatePreferred()
     else onTogglePausePreview?.()

@@ -37813,25 +37813,31 @@ function VizEditorChrome({
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
       const nextBuiltin = next.kind === "file" ? findBuiltinExampleSource(next.fileId) : void 0;
       setSelectedSource(next);
-      if (previewOpen && onChangePreviewSource) {
+      const previewingAnywhere = isBackground || previewOpen;
+      if (previewingAnywhere) {
         if (nextBuiltin && !previewPaused) {
           nextBuiltin.startIfIdle();
         }
         if (prevBuiltin && prevBuiltin !== nextBuiltin) {
           prevBuiltin.stopIfRunning();
         }
+      }
+      if (previewOpen && onChangePreviewSource) {
         onChangePreviewSource(next);
       }
     },
-    [previewOpen, previewPaused, onChangePreviewSource, selectedSource]
+    [isBackground, previewOpen, previewPaused, onChangePreviewSource, selectedSource]
   );
-  const openSidePreview = React37.useCallback(() => {
+  const startSelectedBuiltin = React37.useCallback(() => {
     if (selectedSource.kind === "file") {
       const builtin = findBuiltinExampleSource(selectedSource.fileId);
       if (builtin) builtin.startIfIdle();
     }
+  }, [selectedSource]);
+  const openSidePreview = React37.useCallback(() => {
+    startSelectedBuiltin();
     onOpenPreview(selectedSource);
-  }, [onOpenPreview, selectedSource]);
+  }, [startSelectedBuiltin, onOpenPreview, selectedSource]);
   const previewMode = isBackground ? "backdrop" : previewOpen ? "side" : "off";
   const [placementPref, setPlacementPref] = React37.useState(
     "backdrop"
@@ -37851,9 +37857,13 @@ function VizEditorChrome({
   const buttonLabel = buttonState === "running" ? "\u23F8 Pause" : "\u25B6 Play";
   const buttonTitle = buttonState === "running" ? "Pause this viz (side tab or backdrop)" : buttonState === "paused" ? "Resume this viz" : `Play this viz as ${placementPref === "backdrop" ? "backdrop" : "side preview"}`;
   const activatePreferred = React37.useCallback(() => {
-    if (placementPref === "backdrop") onToggleBackground();
-    else openSidePreview();
-  }, [placementPref, onToggleBackground, openSidePreview]);
+    if (placementPref === "backdrop") {
+      startSelectedBuiltin();
+      onToggleBackground();
+    } else {
+      openSidePreview();
+    }
+  }, [placementPref, startSelectedBuiltin, onToggleBackground, openSidePreview]);
   const handlePrimaryClick = React37.useCallback(() => {
     if (previewMode === "off") activatePreferred();
     else onTogglePausePreview?.();
