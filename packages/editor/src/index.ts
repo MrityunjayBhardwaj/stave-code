@@ -346,10 +346,8 @@ export {
   requestReeval,
   registerEvalSourceTransform,
   applyEvalSourceTransform,
-  registerMasterGainHandler,
-  applyMasterGain,
 } from './workspace/editorRegistry'
-export { getMasterGain, setMasterGain, useMasterGain } from './visualEdit/mixer/masterStore'
+export { purgeLegacyMasterGain } from './visualEdit/mixer/purgeLegacyMasterGain'
 export {
   getNoteColorMode,
   setNoteColorMode,
