@@ -20,6 +20,19 @@ describe('startsTopLevelBlock', () => {
     expect(startsTopLevelBlock('/* setcps(0.5).gain(0.3)')).toBe(true)
   })
 
+  it('recognizes the master-bus statement (`all(x=>…)`) — the #797 case', () => {
+    // A master `all()` line below a `$:`-with-inline-viz block must end that
+    // block; else the block absorbs it and the zone anchors below (#797).
+    expect(startsTopLevelBlock('all(x => x.gain(0.089))')).toBe(true)
+    expect(startsTopLevelBlock('all(x => x.viz("wordfall", { backdrop: true }))')).toBe(true)
+    expect(startsTopLevelBlock('all (x => x.gain(1))')).toBe(true) // spacing-tolerant
+  })
+
+  it('does NOT mistake an `all`-prefixed identifier (e.g. `allpass(`) for the master bus', () => {
+    // `/^all\s*\(/` requires `(` right after `all` — `allpass(` has `pass` between.
+    expect(startsTopLevelBlock('allpass(0.5)')).toBe(false)
+  })
+
   it('does NOT treat a method-chain continuation line as a boundary', () => {
     expect(startsTopLevelBlock('.s("sawtooth")')).toBe(false)
     expect(startsTopLevelBlock('.lpf(sine.range(300, 900).slow(8))')).toBe(false)

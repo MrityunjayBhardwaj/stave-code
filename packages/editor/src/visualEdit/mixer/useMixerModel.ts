@@ -20,6 +20,7 @@ import { getActiveEditor, onActiveEditorChange, getMonacoNamespace } from '../..
 import { detectAllChunks, type ChunkInfo } from '../chunkDetect'
 import { Writeback } from '../writeback'
 import { buildStripModels, type StripModel } from './stripModel'
+import { readMasterGain, type MasterGainState } from './masterEdit'
 
 export interface MixerModel {
   /** one strip per top-level statement, in source order (re-derived on edits) */
@@ -41,6 +42,21 @@ export interface MixerModel {
    * gesture changed a literal's length. No-op if the strip can't be re-found.
    */
   applyToStrip: (id: string, mutate: (fresh: ChunkInfo, wb: Writeback) => void) => void
+  /**
+   * The master strip's gain, projected from the document's `all(x => x.gain())`
+   * line (unity when absent — the untouched master reads the default from the
+   * ABSENCE of a line, #792). Re-derived on every content change, so the fader
+   * reads back exactly what it wrote — the master analog of a strip's gain.
+   */
+  masterGain: MasterGainState
+  /**
+   * Mutate the master `all(...)` statements. Unlike `applyToStrip` there is no
+   * stable-id chunk to re-find — the master is the whole-doc `all()` scope — so
+   * `mutate` gets the live document text + the tagged `Writeback` and computes
+   * its own surgical edit (`masterGainEdit`/`masterVizEdit`). No-op without an
+   * editor. No cursor-follow: the master isn't a caret-selected track.
+   */
+  applyToMaster: (mutate: (doc: string, wb: Writeback) => void) => void
   /** open a gesture — edits until `endGesture` coalesce into one undo step */
   beginGesture: () => void
   endGesture: () => void
@@ -60,12 +76,14 @@ export interface MixerModel {
   selectTrack: (id: string) => void
 }
 
-/** the strip array + its source chunks, kept together so they can't drift */
+/** the strip array + its source chunks + the master projection, kept together so
+ *  they can't drift (all re-derived from one `getValue()` per content change). */
 interface Derived {
   strips: StripModel[]
   chunks: ChunkInfo[]
+  masterGain: MasterGainState
 }
-const EMPTY_DERIVED: Derived = { strips: [], chunks: [] }
+const EMPTY_DERIVED: Derived = { strips: [], chunks: [], masterGain: { value: 1, foreign: false } }
 
 /**
  * Follow a strip edit in the code view (#595): move the editor caret to the
@@ -144,7 +162,8 @@ export function useMixerModel(): MixerModel {
         setDerived(EMPTY_DERIVED)
         return
       }
-      const allChunks = detectAllChunks(model.getValue())
+      const value = model.getValue()
+      const allChunks = detectAllChunks(value)
       const strips = buildStripModels(allChunks)
       // Expose the chunks aligned 1:1 with strips by each strip's ABSOLUTE source
       // index. buildStripModels filters out config/transport statements (setcps,
@@ -152,7 +171,11 @@ export function useMixerModel(): MixerModel {
       // is the chunk's true position. Without this, a leading config line shifts
       // every strip's chunk by one and the expand drawer would write to the
       // PREVIOUS track (or onto setcps for the first strip).
-      setDerived({ strips, chunks: strips.map((s) => allChunks[s.index]) })
+      setDerived({
+        strips,
+        chunks: strips.map((s) => allChunks[s.index]),
+        masterGain: readMasterGain(value),
+      })
     }
     rederive()
     const model = editor.getModel?.()
@@ -183,6 +206,21 @@ export function useMixerModel(): MixerModel {
       const trackOffset = fresh.statementRange[0]
       mutate(fresh, wb)
       jumpCursorToTrack(ed, model, trackOffset, lastJumpRef)
+    },
+    [],
+  )
+
+  const applyToMaster = React.useCallback(
+    (mutate: (doc: string, wb: Writeback) => void): void => {
+      const ed = editorRef.current
+      const wb = writebackRef.current
+      if (!ed || !wb) return
+      const model = ed.getModel?.()
+      if (!model) return
+      // The master edit functions (`masterGainEdit`/`masterVizEdit`) compute
+      // their own offsets from the whole-doc text, so — unlike a per-strip write
+      // — there is no stale chunk to guard; hand them the live value directly.
+      mutate(model.getValue(), wb)
     },
     [],
   )
@@ -252,6 +290,8 @@ export function useMixerModel(): MixerModel {
     strips: derived.strips,
     chunks: derived.chunks,
     applyToStrip,
+    masterGain: derived.masterGain,
+    applyToMaster,
     beginGesture,
     endGesture,
     selectedId,

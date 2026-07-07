@@ -346,10 +346,8 @@ export {
   requestReeval,
   registerEvalSourceTransform,
   applyEvalSourceTransform,
-  registerMasterGainHandler,
-  applyMasterGain,
 } from './workspace/editorRegistry'
-export { getMasterGain, setMasterGain, useMasterGain } from './visualEdit/mixer/masterStore'
+export { purgeLegacyMasterGain } from './visualEdit/mixer/purgeLegacyMasterGain'
 export {
   getNoteColorMode,
   setNoteColorMode,
@@ -627,6 +625,18 @@ export { statementOffsetForSource } from './visualEdit/mixer/stripModel'
 // validator, so the app's Song Timeline can rename a lane (the Mixer uses them
 // internally). `StripEdit` is the surgical {range,text} the caller applies.
 export { renameEdit, isValidTrackLabel, type StripEdit } from './visualEdit/mixer/writeStrip'
+// Master-strip code counterpart (#792) — the pure `all(x=>…)` write path the app
+// wires to the "set backdrop" UI (viz) and the Mixer uses internally (gain).
+export {
+  detectMasterAll,
+  readMasterGain,
+  readMasterViz,
+  masterGainEdit,
+  masterVizEdit,
+  MASTER_UNITY_GAIN,
+  type MasterAll,
+  type MasterGainState,
+} from './visualEdit/mixer/masterEdit'
 // The display names of the OTHER tracks in a doc (#585) — the set the Song
 // Timeline's rename handler passes to `renameEdit` as `takenNames` so a rename
 // can't silently create a duplicate track name (which would collide on the

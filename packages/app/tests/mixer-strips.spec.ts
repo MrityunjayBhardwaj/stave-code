@@ -885,3 +885,131 @@ test.describe('Mixer cursor-follows-strip (#595)', () => {
     expect(await cursorLine(page)).toBe(2)
   })
 })
+
+/** vertical drag on the MASTER fader by `dyUp` pixels (up = louder). The master
+ *  strip is pinned (sticky right) so it's on screen once the drawer is tall. */
+async function dragMasterFader(page: Page, drawer: ReturnType<Page['locator']>, dyUp: number): Promise<void> {
+  const fader = drawer.locator('[data-mixer-master-fader]')
+  const box = await fader.boundingBox()
+  if (!box) throw new Error('no master fader box')
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  await page.mouse.move(cx, cy - dyUp, { steps: 8 })
+  await page.mouse.up()
+  await page.waitForTimeout(80)
+}
+
+test.describe('Mixer master strip code counterpart (#792)', () => {
+  test('projects the master gain from the doc all(x=>x.gain()) line (code→UI)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd")\nall(x => x.gain(0.5))')
+    const drawer = await openMixer(page)
+    await expect(drawer.locator('[data-mixer-master-gain]')).toHaveText('0.5')
+  })
+
+  test('an untouched master projects unity from the ABSENCE of a line', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd")')
+    const drawer = await openMixer(page)
+    await expect(drawer.locator('[data-mixer-master-gain]')).toHaveText('1')
+  })
+
+  test('dragging the master fader writes all(x=>x.gain(N)); one undo reverts (UI→code)', async ({ page }) => {
+    await boot(page)
+    const original = '$: s("bd*4")'
+    await setStrudelCode(page, original)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+
+    await dragMasterFader(page, drawer, 30) // up → louder (but gain caps at ≤1)
+    const after = await strudelValue(page)
+    // the track line is byte-identical; a new all() master line is appended
+    expect(after.split('\n')[0]).toBe(original)
+    const m = after.match(/all\(x => x\.gain\((\d*\.?\d+)\)\)/)
+    expect(m, `unexpected doc: ${after}`).not.toBeNull()
+    expect(Number(m![1])).toBeGreaterThan(0)
+
+    // one undo reverts the whole gesture (the inserted line disappears)
+    await undo(page)
+    expect(await strudelValue(page)).toBe(original)
+  })
+
+  test('dragging the master fader patches an existing all() gain literal in place', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd*4")\nall(x => x.gain(0.9))')
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    await dragMasterFader(page, drawer, -40) // down → quieter
+    const after = await strudelValue(page)
+    // still exactly one all() line; the literal moved below 0.9
+    expect((after.match(/all\(x => x\.gain\(/g) ?? []).length).toBe(1)
+    const m = after.match(/all\(x => x\.gain\((\d*\.?\d+)\)\)/)
+    expect(m, `unexpected doc: ${after}`).not.toBeNull()
+    expect(Number(m![1])).toBeLessThan(0.9)
+  })
+
+  test('a signal master gain disables the fader (reads "sig", no write)', async ({ page }) => {
+    await boot(page)
+    const original = '$: s("bd")\nall(x => x.gain(sine))'
+    await setStrudelCode(page, original)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    // foreign → fader dimmed + reads "sig" (not a literal), and a drag makes NO edit (#796)
+    await expect(drawer.locator('[data-mixer-master-gain]')).toHaveText('sig')
+    await dragMasterFader(page, drawer, 40)
+    expect(await strudelValue(page)).toBe(original)
+  })
+})
+
+test.describe('Mixer master — retired synthetic output-gain seam (#794)', () => {
+  test('purges legacy stave:mixer.master:* values on boot', async ({ page }) => {
+    // Seed the retired per-file master-gain keys BEFORE the app boots (addInitScript
+    // runs on every navigation). #794's boot purge must clear them so a stale
+    // non-unity value can never double-apply against the code `all()` gain.
+    await page.addInitScript(() => {
+      localStorage.setItem('stave:mixer.master:fileA', '0.1')
+      localStorage.setItem('stave:mixer.master:fileB', '0.5')
+      localStorage.setItem('stave:tabs', '[]') // unrelated — must survive
+    })
+    await boot(page)
+    // The purge runs in a boot effect; poll until the legacy keys are gone.
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Object.keys(localStorage).filter((k) => k.startsWith('stave:mixer.master:')).length,
+        ),
+      )
+      .toBe(0)
+    // an unrelated key is untouched
+    expect(await page.evaluate(() => localStorage.getItem('stave:tabs'))).toBe('[]')
+  })
+
+  test('playback gain tracks the code all() gain only — a stale legacy value is inert', async ({
+    page,
+  }) => {
+    // A legacy synthetic master of 0.1 would previously attenuate the whole mix.
+    // Post-#794 the seam is gone and the value is purged, so a loud pattern still
+    // drives the master meter — playback level follows the document, not the store.
+    await page.addInitScript(() => {
+      localStorage.setItem('stave:mixer.master:legacy', '0.1')
+    })
+    await boot(page)
+    const drawer = await openMixer(page)
+    await setStrudelCode(page, 'd1: s("bd*8").gain(0.9)')
+    await expect(drawer.locator('[data-mixer-master-strip]')).toHaveCount(1)
+
+    let mx = 0
+    for (let attempt = 0; attempt < 2 && mx < 15; attempt++) {
+      await play(page)
+      await page.waitForTimeout(1200)
+      for (let i = 0; i < 25; i++) {
+        mx = Math.max(mx, await masterFill(page, drawer))
+        await page.waitForTimeout(33)
+      }
+    }
+    // meter moves at full level — the stale 0.1 did NOT attenuate the output.
+    expect(mx).toBeGreaterThan(15)
+  })
+})

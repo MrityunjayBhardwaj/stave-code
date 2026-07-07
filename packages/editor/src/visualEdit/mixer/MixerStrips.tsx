@@ -24,6 +24,7 @@ import { ChannelStrip } from './ChannelStrip'
 import { ExpandDrawer } from './ExpandDrawer'
 import { MasterStrip } from './MasterStrip'
 import { gainEdit, panEdit, muteEdit, renameEdit } from './writeStrip'
+import { masterGainEdit } from './masterEdit'
 import { trackIdentity } from '../trackColor'
 import { getActiveFileId, onActiveEditorChange } from '../../workspace/editorRegistry'
 import { getTrackMeta, setTrackMeta } from '../../workspace/WorkspaceFile'
@@ -53,8 +54,17 @@ export function MixerStrips({
    *  second `useMixerModel` subscription just to read the count. */
   emptyFallback?: React.ReactNode
 } = {}): React.ReactElement | null {
-  const { strips, chunks, applyToStrip, beginGesture, endGesture, selectedId, selectTrack } =
-    useMixerModel()
+  const {
+    strips,
+    chunks,
+    applyToStrip,
+    masterGain,
+    applyToMaster,
+    beginGesture,
+    endGesture,
+    selectedId,
+    selectTrack,
+  } = useMixerModel()
   // One capped RAF loop + bus subscription for every strip's live meter (S2).
   const meters = useTrackMeters()
   // Per-track custom colour (Phase D, #581). Track the active file (same source
@@ -219,10 +229,23 @@ export function MixerStrips({
           </div>
         )
       })}
-      {/* synthetic master — meter-only, pinned to the right of the scroller (S5).
-          Zoomed in lockstep with the channel groups so it reads at the same
-          scale (it sits outside the groups, so it takes the zoom directly). */}
-      <MasterStrip zoom={faceZoom} />
+      {/* master strip — pinned to the right of the scroller (S5), zoomed in
+          lockstep with the channel groups. Its fader round-trips to code
+          (#792): reads the doc's `all(x=>x.gain())` scalar, writes it on drag
+          through the same `Writeback` seam as a channel fader. */}
+      <MasterStrip
+        zoom={faceZoom}
+        gain={masterGain.value}
+        foreign={masterGain.foreign}
+        onGainChange={(value) =>
+          applyToMaster((doc, wb) => {
+            const e = masterGainEdit(doc, value)
+            if (e) wb.replaceRange(e.range, e.text, 'mixer')
+          })
+        }
+        onGestureStart={beginGesture}
+        onGestureEnd={endGesture}
+      />
     </div>
   )
 }
