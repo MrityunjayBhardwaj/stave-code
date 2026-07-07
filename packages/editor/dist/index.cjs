@@ -29197,15 +29197,20 @@ function AddEffectMenu({
       if (e.key === "Escape") setOpen(false);
     }, "onKey");
     const dismiss = /* @__PURE__ */ __name(() => setOpen(false), "dismiss");
+    const onScroll = /* @__PURE__ */ __name((e) => {
+      const t = e.target;
+      if (t instanceof Node && menuRef.current?.contains(t)) return;
+      setOpen(false);
+    }, "onScroll");
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", dismiss);
-    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", dismiss);
-      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [open]);
   const q = query.trim().toLowerCase();

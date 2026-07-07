@@ -207,6 +207,28 @@ test.describe('Mixer (#381)', () => {
     await expect(drawer.locator('[data-knob="crush"]')).toHaveCount(1)
   })
 
+  test('scrolling the ＋More list keeps the menu open (does not self-dismiss)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd").lpf(800).room(0.4)')
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    await drawer.locator('[data-mixer-add-effect]').click()
+    const menu = page.locator('[data-mixer-add-effect-menu]')
+    await expect(menu).toBeVisible()
+
+    // Real gesture: hover the (overflowing) catalog and wheel-scroll it. The
+    // menu closes on ANCESTOR scroll but must survive its own list scroll —
+    // otherwise the long tail is unbrowsable.
+    const box = await menu.boundingBox()
+    if (!box) throw new Error('no menu box')
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, 160)
+    await page.waitForTimeout(150)
+    await expect(menu).toBeVisible()
+  })
+
   test('the menu marks an aliased call active (.cutoff → Low-pass) (#575)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd").cutoff(900)')
