@@ -1,0 +1,214 @@
+/**
+ * masterEdit — the MASTER strip's write decisions, as PURE functions.
+ *
+ * The master bus in Strudel is `all(x => …)`: it stacks every `$:`/named pattern
+ * and applies the transform to the whole mix (`@strudel/core/repl.mjs:153`). So
+ * the master strip's two round-tripped controls project to `all()` chains,
+ * structurally identical to a channel line but scoped to the whole mix:
+ *
+ *   master fader   → all(x => x.gain(0.85))
+ *   global backdrop→ all(x => x.viz("name", { backdrop: true }))
+ *
+ * By the SPLIT decision (design §9.4) gain and viz live on SEPARATE `all()`
+ * lines — each edit function owns its own line, so they never coordinate on one
+ * shared statement (`all()` transforms compose). The functions mirror
+ * `writeStrip.ts`: pure `doc + value → StripEdit`, applied through the same
+ * tagged `Writeback` seam every channel control uses (`MixerStrips.tsx`), so the
+ * write-back is unit-testable without Monaco. The read path (code → live
+ * backdrop / master gain) already ships in the engine — this is the write path.
+ *
+ * Robust to a hand-COMBINED chain: `masterGainEdit`/`masterVizEdit` bind to
+ * whichever `all()` line already carries the relevant call, so a user who wrote
+ * `all(x => x.gain(0.8).viz("a",{backdrop:true}))` still gets surgical edits;
+ * only a fresh materialization uses the split convention.
+ */
+import { parseTopLevel, collectChain, type ChainArg, type ChainCall } from '../chunkDetect'
+import { formatNumber } from '../writeback'
+import type { StripEdit } from './writeStrip'
+
+/** unity gain — an untouched master reads unity from the ABSENCE of a line. */
+export const MASTER_UNITY_GAIN = 1
+
+/**
+ * A top-level `all(<arrow>)` statement we can read/edit — an expression-body
+ * arrow (`all(x => x.chain())`). Block-body arrows / non-arrow `all(fast(…))`
+ * are master transforms too but carry no editable gain/viz chain, so the
+ * detector skips them (a fresh gain/viz line is materialized alongside instead).
+ */
+export interface MasterAll {
+  /** the whole `all(...)` ExpressionStatement span */
+  statementRange: [number, number]
+  /** the statement's exact source when detected — freshness (mirrors ChunkInfo) */
+  statementText: string
+  /** the arrow body expression (`x.gain(…)`) — append `.fx()` here */
+  arrowBodyRange: [number, number]
+  /** the chain in the arrow body, in source order (via the shared `collectChain`) */
+  chain: ChainCall[]
+}
+
+/** The arrow node of `all(<arrow with expression body>)`, or null. */
+function matchAllArrow(node: any): { body: any } | null {
+  if (!node || node.type !== 'ExpressionStatement') return null
+  const expr = node.expression
+  if (
+    !expr ||
+    expr.type !== 'CallExpression' ||
+    expr.callee.type !== 'Identifier' ||
+    expr.callee.name !== 'all' ||
+    expr.arguments.length < 1
+  ) {
+    return null
+  }
+  const arrow = expr.arguments[0]
+  if (!arrow || arrow.type !== 'ArrowFunctionExpression') return null
+  // Only expression-body arrows (`x => x.gain()`); a block body (`x => { … }`)
+  // has no single chain expression to read.
+  if (arrow.body.type === 'BlockStatement') return null
+  return { body: arrow.body }
+}
+
+/** Every editable master `all(x => …)` statement, in source order. Pure. */
+export function detectMasterAll(doc: string): MasterAll[] {
+  const statements = parseTopLevel(doc)
+  if (!statements) return []
+  const out: MasterAll[] = []
+  for (const node of statements) {
+    const arrow = matchAllArrow(node)
+    if (!arrow) continue
+    const headOut = { ref: null as any }
+    const chain = collectChain(doc, arrow.body, headOut)
+    out.push({
+      statementRange: [node.start, node.end],
+      statementText: doc.slice(node.start, node.end),
+      arrowBodyRange: [arrow.body.start, arrow.body.end],
+      chain,
+    })
+  }
+  return out
+}
+
+function findGainCall(m: MasterAll): ChainCall | undefined {
+  return m.chain.find((c) => c.name === 'gain')
+}
+
+/** A backdrop-viz call: `.viz(<name>, { backdrop: true })`. The flag is what
+ *  distinguishes a MASTER backdrop from a channel-scoped inline `.viz("name")`
+ *  (design §4). Matched on the arg source (spacing-tolerant) — the object arg is
+ *  raw text at this layer, and WE always emit the canonical `{ backdrop: true }`. */
+function findVizBackdropCall(m: MasterAll): ChainCall | undefined {
+  return m.chain.find(
+    (c) => c.name === 'viz' && c.args.some((a) => /\bbackdrop\s*:\s*true\b/.test(a.raw)),
+  )
+}
+
+/** The first string-literal arg of a call (the viz name), or undefined. Its
+ *  `range` spans the quotes, so replacing it swaps the whole literal. */
+function vizNameArg(c: ChainCall): ChainArg | undefined {
+  return c.args.find((a) => /^['"`]/.test(a.raw))
+}
+
+/** the master gain the fader shows: the `all()` gain scalar, or unity when
+ *  absent. `foreign` = a gain call whose arg is a signal/pattern (not a number),
+ *  so the fader can't rewrite it and should disable (mirrors the channel fader). */
+export interface MasterGainState {
+  value: number
+  foreign: boolean
+}
+
+export function readMasterGain(doc: string): MasterGainState {
+  for (const m of detectMasterAll(doc)) {
+    const g = findGainCall(m)
+    if (!g) continue
+    const arg = g.args[0]
+    if (!arg) return { value: MASTER_UNITY_GAIN, foreign: true } // `.gain()` empty — can't drive
+    if (arg.numeric === null) return { value: MASTER_UNITY_GAIN, foreign: true } // signal gain
+    return { value: arg.numeric, foreign: false }
+  }
+  return { value: MASTER_UNITY_GAIN, foreign: false }
+}
+
+/** the master backdrop the "set backdrop" UI shows: the `all()` backdrop-viz
+ *  name, or null when no master backdrop is declared in code. */
+export function readMasterViz(doc: string): { name: string } | null {
+  for (const m of detectMasterAll(doc)) {
+    const v = findVizBackdropCall(m)
+    if (!v) continue
+    const nameArg = vizNameArg(v)
+    if (!nameArg) continue
+    return { name: nameArg.raw.slice(1, -1) }
+  }
+  return null
+}
+
+/**
+ * The edit the master fader makes for `value` (a linear gain, decision 1 =
+ * REPLACE):
+ *  - present scalar → replace the literal in the existing `all()` gain call;
+ *  - absent         → insert a fresh `all(x => x.gain(value))` line (decision 4 =
+ *                     write the literal, incl. `.gain(1)` at unity, matching the
+ *                     channel `gainEdit`);
+ *  - foreign        → null (a signal/empty gain — the fader is disabled).
+ */
+export function masterGainEdit(doc: string, value: number): StripEdit | null {
+  for (const m of detectMasterAll(doc)) {
+    const g = findGainCall(m)
+    if (!g) continue
+    const arg = g.args[0]
+    if (!arg || arg.numeric === null) return null // foreign/empty — disabled
+    return { range: arg.range, text: formatNumber(value) }
+  }
+  return insertStatement(doc, `all(x => x.gain(${formatNumber(value)}))`)
+}
+
+/**
+ * The edit the "set backdrop" UI makes (decision 2 = code is the single source):
+ *  - set `name`  → replace the name literal in the existing master backdrop viz,
+ *                  or insert a fresh `all(x => x.viz("name", { backdrop: true }))`
+ *                  line;
+ *  - clear (null)→ remove the master backdrop viz: the whole `all()` statement
+ *                  when it holds nothing else, else just the `.viz(...)` call
+ *                  (so a hand-combined `gain().viz()` keeps its gain).
+ *
+ * Returns null when clearing with no master backdrop present (nothing to do), or
+ * when an existing backdrop viz has no string name to rewrite.
+ */
+export function masterVizEdit(doc: string, name: string | null): StripEdit | null {
+  for (const m of detectMasterAll(doc)) {
+    const v = findVizBackdropCall(m)
+    if (!v) continue
+    if (name === null) {
+      // clear — drop the whole line if the viz is all it carries, else surgical
+      if (m.chain.length === 1) return removeStatement(doc, m.statementRange)
+      return { range: v.range, text: '' }
+    }
+    const nameArg = vizNameArg(v)
+    if (!nameArg) return null // backdrop viz with no string name — nothing safe to patch
+    return { range: nameArg.range, text: JSON.stringify(name) }
+  }
+  if (name === null) return null // nothing to clear
+  return insertStatement(doc, `all(x => x.viz(${JSON.stringify(name)}, { backdrop: true }))`)
+}
+
+/** Append `statement` as the document's last line. Adds a single leading
+ *  newline unless the doc is empty or already ends in one — never a materialize
+ *  on render, only on a deliberate control gesture (design §7). */
+function insertStatement(doc: string, statement: string): StripEdit {
+  const pos = doc.length
+  const lead = doc.length === 0 || doc.endsWith('\n') ? '' : '\n'
+  return { range: [pos, pos], text: `${lead}${statement}` }
+}
+
+/** Remove a whole statement AND its own line (the preceding newline + any
+ *  indentation, or the trailing newline for a first line) so clearing leaves no
+ *  blank line behind. */
+function removeStatement(doc: string, stmt: [number, number]): StripEdit {
+  let start = stmt[0]
+  let end = stmt[1]
+  const prevNL = doc.lastIndexOf('\n', start - 1)
+  if (prevNL >= 0 && doc.slice(prevNL + 1, start).trim() === '') {
+    start = prevNL // consume the newline + indentation before the statement
+  } else if (doc[end] === '\n') {
+    end = end + 1 // first line — consume the trailing newline instead
+  }
+  return { range: [start, end], text: '' }
+}

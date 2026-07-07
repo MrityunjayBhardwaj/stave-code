@@ -300,8 +300,14 @@ function chainArgUnder(arg: any, pos: number): any {
  * Walk the callee spine of a chained expression, e.g.
  * `s("bd").bank("x").gain(0.6)` → [s, bank, gain] in source order.
  * Records the innermost (head) call node on `headOut.ref`.
+ *
+ * Exported so the master-strip detector (`masterEdit.ts`) can read an
+ * `all(x => x.gain().viz())` arrow body with byte-identical arg parsing
+ * (numeric detection, per-arg ranges) to a channel chain — one source of truth
+ * for "parse a method chain". A chain that bottoms out at a bare Identifier (the
+ * arrow param `x`, not a head call) simply leaves `headOut.ref` null.
  */
-function collectChain(doc: string, expr: any, headOut: { ref: any }): ChainCall[] {
+export function collectChain(doc: string, expr: any, headOut: { ref: any }): ChainCall[] {
   const calls: ChainCall[] = []
   let node = expr
   while (node) {
