@@ -443,6 +443,16 @@ export class StrudelEngine implements LiveCodingEngine {
     // Strategy A guard can read it at trigger time. Live read (not snapshot);
     // user `samples()` calls between init and trigger should be honored.
     this.soundMapRef = soundMapRef
+    // #804 — expose the live registry on globalThis so the app's instrument-
+    // picker bridge (StaveApp `readDict`) can enumerate the FULL ~1852 sounds,
+    // not just the curated 78 in soundCatalog.ts. Superdough keeps `soundMap`
+    // module-scoped and never publishes it; this mirrors vanilla strudel.cc's
+    // `window.soundMap`. The picker's own poll (StaveApp) notices the count
+    // rise and refreshes. Live ref, not a snapshot — later `samples()` calls
+    // keep flowing through.
+    if (soundMapRef) {
+      ;(globalThis as unknown as { soundMap?: unknown }).soundMap = soundMapRef
+    }
     const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

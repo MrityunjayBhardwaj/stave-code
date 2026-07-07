@@ -5157,6 +5157,9 @@ var _StrudelEngine = class _StrudelEngine {
     ]);
     const soundMapRef = webaudioMod.soundMap;
     this.soundMapRef = soundMapRef;
+    if (soundMapRef) {
+      globalThis.soundMap = soundMapRef;
+    }
     const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
     try {
       await webaudioMod.aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`);
