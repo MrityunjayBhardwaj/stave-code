@@ -31520,10 +31520,10 @@ function MasterStrip({
             ]
           }
         ),
-        /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10 }, children: [
+        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10 }, children: foreign ? /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-master-gain": true, title: "master gain is a signal \u2014 edit it in code", children: "sig" }) : /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
           /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-master-gain": true, children: Math.round(gain * 100) / 100 }),
           /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-master-db": true, style: { color: "var(--foreground-muted, #a0a0aa)" }, children: formatDb(gain) })
-        ] })
+        ] }) })
       ]
     }
   );

@@ -950,14 +950,14 @@ test.describe('Mixer master strip code counterpart (#792)', () => {
     expect(Number(m![1])).toBeLessThan(0.9)
   })
 
-  test('a signal master gain disables the fader (reads unity, no write)', async ({ page }) => {
+  test('a signal master gain disables the fader (reads "sig", no write)', async ({ page }) => {
     await boot(page)
     const original = '$: s("bd")\nall(x => x.gain(sine))'
     await setStrudelCode(page, original)
     const drawer = await openMixer(page)
     await enlargeDrawer(page)
-    // foreign → fader dimmed + reads unity, and a drag makes NO edit
-    await expect(drawer.locator('[data-mixer-master-gain]')).toHaveText('1')
+    // foreign → fader dimmed + reads "sig" (not a literal), and a drag makes NO edit (#796)
+    await expect(drawer.locator('[data-mixer-master-gain]')).toHaveText('sig')
     await dragMasterFader(page, drawer, 40)
     expect(await strudelValue(page)).toBe(original)
   })

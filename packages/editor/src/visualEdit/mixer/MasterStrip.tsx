@@ -230,12 +230,18 @@ export function MasterStrip({
         </div>
       </div>
 
-      {/* master gain readout: linear + dB (shares the channel readout shape) */}
+      {/* master gain readout: linear + dB (or "sig" for a foreign gain — mirrors ChannelStrip) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
-        <span data-mixer-master-gain>{Math.round(gain * 100) / 100}</span>
-        <span data-mixer-master-db style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>
-          {formatDb(gain)}
-        </span>
+        {foreign ? (
+          <span data-mixer-master-gain title="master gain is a signal — edit it in code">sig</span>
+        ) : (
+          <>
+            <span data-mixer-master-gain>{Math.round(gain * 100) / 100}</span>
+            <span data-mixer-master-db style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>
+              {formatDb(gain)}
+            </span>
+          </>
+        )}
       </div>
     </div>
   )
