@@ -286,4 +286,91 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
     await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
     await expect(page.locator('[data-testid="viz-chrome-settings"]')).toHaveCount(0)
   })
+
+  // #787 — a playing backdrop FOLLOWS its viz file tab when the tab is dragged
+  // to another pane, and closing the moved tab still stops the sample audio.
+  // Audio can't be heard headlessly, so the assertion tracks AudioContext
+  // lifecycle: the sample source's stop() closes its context.
+  test('backdrop + audio follow a moved viz tab; close after move stops audio (#787)', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      const w = window as unknown as { __ctxs: AudioContext[] }
+      w.__ctxs = []
+      const Orig = window.AudioContext
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).AudioContext = class extends Orig {
+        constructor(...args: ConstructorParameters<typeof Orig>) {
+          super(...args)
+          w.__ctxs.push(this)
+        }
+      }
+    })
+    await gotoApp(page)
+    await clickHydraTab(page)
+
+    // ⚙ → pin the "Sample sound" source, then ▶ Play → backdrop + audio.
+    await page.locator('[data-testid="viz-chrome-settings"]').first().click()
+    const src = page.locator('[data-testid="viz-chrome-source"]')
+    await src.waitFor({ timeout: 2000 })
+    await src.selectOption('file:__sample__')
+    await page.keyboard.press('Escape')
+    await page.locator('[data-testid="viz-chrome-open-preview"]').first().click()
+
+    const backdrop = page.locator('[data-workspace-background]')
+    await expect(backdrop.first()).toBeVisible({ timeout: 5000 })
+    const originalGroupId = await backdrop
+      .first()
+      .getAttribute('data-workspace-background')
+    const runningCtxs = () =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __ctxs: AudioContext[] }).__ctxs.filter(
+            (c) => c.state === 'running',
+          ).length,
+      )
+    expect(await runningCtxs()).toBeGreaterThan(0)
+
+    // Drag the hydra EDITOR tab to the east quadrant of its group → new pane.
+    const editorTab = page
+      .locator('[data-workspace-tab][data-tab-kind="editor"]')
+      .filter({ hasText: 'hydra' })
+      .first()
+    const groupEl = page.locator(
+      `[data-workspace-group="${originalGroupId}"]`,
+    )
+    const box = await groupEl.boundingBox()
+    if (!box) throw new Error('group bounding box unavailable')
+    await editorTab.dragTo(groupEl, {
+      targetPosition: { x: box.width - 30, y: Math.round(box.height / 2) },
+    })
+
+    // Bug1: exactly ONE backdrop, and it moved WITH the tab to the new group.
+    await expect(backdrop).toHaveCount(1)
+    const movedGroupId = await editorTab.evaluate((el) =>
+      el
+        .closest('[data-workspace-group]')
+        ?.getAttribute('data-workspace-group'),
+    )
+    expect(movedGroupId).not.toBe(originalGroupId)
+    await expect(backdrop.first()).toHaveAttribute(
+      'data-workspace-background',
+      movedGroupId!,
+    )
+    // The chrome in the new pane sees the live backdrop (Pause transport, not
+    // a fresh idle Play) — the gesture that used to break close's teardown.
+    await expect(
+      page.locator('[data-testid="viz-chrome-open-preview"]').first(),
+    ).toHaveAttribute('data-button-state', 'running')
+    // The move itself never interrupted the audio.
+    expect(await runningCtxs()).toBeGreaterThan(0)
+
+    // Bug2: closing the moved tab clears the backdrop AND stops the audio.
+    const tabId = await editorTab.getAttribute('data-workspace-tab')
+    await page.locator(`[data-testid="tab-close-${tabId}"]`).click()
+    await expect(backdrop).toHaveCount(0)
+    await expect
+      .poll(runningCtxs, { timeout: 3000 })
+      .toBe(0)
+  })
 })

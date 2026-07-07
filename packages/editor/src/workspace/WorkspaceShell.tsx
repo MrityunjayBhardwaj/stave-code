@@ -210,6 +210,40 @@ interface DragPayload {
 }
 
 /**
+ * #787 — a backdrop belongs to the FILE whose editor tab activated it, not to
+ * the pane it happened to be activated in. Every cross-group tab move
+ * (quadrant split, edge drop, tab-bar slot, center drop) funnels its
+ * `setGroups` updater through this helper so the source group's
+ * `backgroundFileId` travels with the tab: stripped from the source entry
+ * (when it survived the move) and pinned on the destination entry. Without
+ * this, the backdrop keeps rendering in the old pane while the tab lives in
+ * the new one — and the orphaned chrome then offers a second "Play" whose
+ * activation clobbers the audio-teardown record.
+ *
+ * Pure map mutation (safe for StrictMode double-invoked updaters). Callers
+ * own side effects: audio teardown records stay keyed by file id and are
+ * deliberately untouched, and no `onBackgroundFileChange` fires — the
+ * tab→backdrop association didn't change, only which pane renders it.
+ */
+function transferBackdropWithTab(
+  next: Map<string, WorkspaceGroupState>,
+  sourceGroup: WorkspaceGroupState,
+  movingTab: WorkspaceTab,
+  destGroupId: string,
+): void {
+  if (movingTab.kind !== 'editor') return
+  if (sourceGroup.backgroundFileId !== movingTab.fileId) return
+  const src = next.get(sourceGroup.id)
+  if (src && src.backgroundFileId === movingTab.fileId) {
+    next.set(sourceGroup.id, { ...src, backgroundFileId: undefined })
+  }
+  const dest = next.get(destGroupId)
+  if (dest) {
+    next.set(destGroupId, { ...dest, backgroundFileId: movingTab.fileId })
+  }
+}
+
+/**
  * Create the initial group state from seed tabs. Always produces exactly
  * one group; later splits / drag-drops may create more. The first seed
  * tab becomes the active tab. The initial layout is a single column
@@ -1041,6 +1075,27 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
     backdropSourceByFile.current.delete(fileId)
   }, [])
 
+  // #787 — when a moving tab carries its backdrop onto an EXISTING target
+  // group (tab-bar slot / center drop), the target's current backdrop — if it
+  // belongs to a DIFFERENT file — is displaced by the transfer. Stop that
+  // file's audio, matching updateGroupBackground's replace semantics. Runs
+  // in the drop callback (outside the setGroups updater) so the side effect
+  // fires exactly once. New-group destinations can't displace anything.
+  const stopDisplacedBackdrop = useCallback(
+    (sourceGroupId: string, tabId: string, targetGroupId: string) => {
+      if (sourceGroupId === targetGroupId) return
+      const src = groups.get(sourceGroupId)
+      const movingTab = src?.tabs.find((t) => t.id === tabId)
+      if (movingTab?.kind !== 'editor') return
+      if (src?.backgroundFileId !== movingTab.fileId) return
+      const displaced = groups.get(targetGroupId)?.backgroundFileId
+      if (displaced && displaced !== movingTab.fileId) {
+        stopBackdropSource(displaced)
+      }
+    },
+    [groups, stopBackdropSource],
+  )
+
   const handleTabClose = useCallback(
     (groupId: string, tabId: string) => {
       let closedTab: WorkspaceTab | null = null
@@ -1334,6 +1389,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           tabs: [movingTab],
           activeTabId: movingTab.id,
         })
+        transferBackdropWithTab(next, source, movingTab, newId)
         return next
       })
       setLayout((prev) => {
@@ -1387,6 +1443,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           tabs: [movingTab],
           activeTabId: movingTab.id,
         })
+        transferBackdropWithTab(next, source, movingTab, newId)
         return next
       })
       setLayout((prev) => {
@@ -1835,6 +1892,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         return
       }
       const { sourceGroupId, tabId } = payload
+      stopDisplacedBackdrop(sourceGroupId, tabId, targetGroupId)
 
       // Find the target-tab index from the cursor X. Each rendered tab
       // has a data-workspace-tab attr on its header node; left-half of
@@ -1899,11 +1957,12 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           tabs: targetTabs,
           activeTabId: tabId,
         })
+        transferBackdropWithTab(next, source, movingTab, targetGroupId)
         return next
       })
       setActiveGroupId(targetGroupId)
     },
-    [],
+    [stopDisplacedBackdrop],
   )
 
   const handleDropOnGroup = useCallback(
@@ -1944,6 +2003,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       if (direction === 'center') {
         // Cross-group drop into the center: add the moving tab to the
         // target group's tab list, remove from the source.
+        stopDisplacedBackdrop(sourceGroupId, tabId, targetGroupId)
         setGroups((prev) => {
           const source = prev.get(sourceGroupId)
           const target = prev.get(targetGroupId)
@@ -1971,6 +2031,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             tabs: [...target.tabs, movingTab],
             activeTabId: tabId,
           })
+          transferBackdropWithTab(next, source, movingTab, targetGroupId)
           return next
         })
         // If the source was collapsed, drop it from the layout too.
@@ -1986,7 +2047,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       // Directional drop → create a new split group adjacent to target.
       moveTabToNewQuadrant(sourceGroupId, tabId, targetGroupId, direction)
     },
-    [computeQuadrant, groups, moveTabToNewQuadrant],
+    [computeQuadrant, groups, moveTabToNewQuadrant, stopDisplacedBackdrop],
   )
 
   /**
@@ -2180,7 +2241,12 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                         return previewProviderFor?.({ ...pTab, fileId: tab.fileId }) ?? undefined
                       },
                     })
-                    if (willActivate && sourceRef) {
+                    // Only FILE refs are recorded: they're what teardown can
+                    // stop. A 'default'/'none' activation must NOT clobber an
+                    // existing file-ref entry — that entry tracks audio this
+                    // file already started that is still running, and
+                    // overwriting it would leak the source past close (#787).
+                    if (willActivate && sourceRef?.kind === 'file') {
                       backdropSourceByFile.current.set(tab.fileId, sourceRef)
                     }
                   },

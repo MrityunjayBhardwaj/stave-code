@@ -512,6 +512,132 @@ describe('WorkspaceShell', () => {
       expect(queryByTestId('viz-chrome-settings')).toBeNull()
     })
 
+    it('#787 — backdrop follows its tab across a cross-group move; close after the move still stops the audio', async () => {
+      const { HYDRA_VIZ } = await import('../preview/hydraViz')
+      const tabs = [
+        editorTab('t-a', 'f-strudel'),
+        editorTab('t-hydra', 'f-hydra'),
+      ]
+      const { container, getByTestId } = render(
+        <WorkspaceShell
+          initialTabs={tabs}
+          previewProviderFor={(t) =>
+            t.fileId === 'f-hydra' ? HYDRA_VIZ : undefined
+          }
+        />,
+      )
+      builtinSampleStartSpy.mockClear()
+      builtinSampleStopSpy.mockClear()
+
+      // Activate the hydra tab and play it as the backdrop with the sample
+      // source (same gesture chain as the #785 test above).
+      await act(async () => {
+        fireEvent.click(
+          container.querySelector('[data-workspace-tab="t-hydra"]')!,
+        )
+      })
+      await act(async () => {
+        fireEvent.click(getByTestId('viz-chrome-settings'))
+      })
+      await act(async () => {
+        fireEvent.change(getByTestId('viz-chrome-source'), {
+          target: { value: 'file:__example_sample__' },
+        })
+      })
+      await act(async () => {
+        fireEvent.click(getByTestId('viz-preview-mode-backdrop'))
+      })
+      expect(builtinSampleStartSpy).toHaveBeenCalled()
+
+      const groupEl = container.querySelector(
+        '[data-workspace-group]',
+      ) as HTMLElement
+      const originalGroupId = groupEl.getAttribute('data-workspace-group')!
+      expect(
+        container
+          .querySelector('[data-workspace-background]')
+          ?.getAttribute('data-workspace-background'),
+      ).toBe(originalGroupId)
+
+      // Drag the hydra tab to the EAST quadrant of its group → a new side
+      // group. Rect mocked so computeQuadrant sees a real 200×200 box.
+      groupEl.getBoundingClientRect = () =>
+        ({
+          x: 0, y: 0, left: 0, top: 0,
+          width: 200, height: 200,
+          right: 200, bottom: 200,
+          toJSON: () => ({}),
+        }) as DOMRect
+      const dataStore: Record<string, string> = {}
+      const dataTransfer = {
+        setData: (type: string, value: string) => {
+          dataStore[type] = value
+        },
+        getData: (type: string) => dataStore[type] ?? '',
+        types: [] as string[],
+        effectAllowed: '',
+        dropEffect: '',
+      }
+      fireEvent.dragStart(
+        container.querySelector('[data-workspace-tab="t-hydra"]')!,
+        { dataTransfer },
+      )
+      dataTransfer.types.push('application/workspace-tab')
+      const patchCoords = <E extends Event>(ev: E, x: number, y: number): E => {
+        Object.defineProperty(ev, 'clientX', { value: x, configurable: true })
+        Object.defineProperty(ev, 'clientY', { value: y, configurable: true })
+        return ev
+      }
+      await act(async () => {
+        fireEvent(
+          groupEl,
+          patchCoords(createEvent.drop(groupEl, { dataTransfer }), 180, 100),
+        )
+      })
+
+      // The tab moved into a NEW group…
+      expect(
+        container.querySelectorAll('[data-workspace-group]').length,
+      ).toBe(2)
+      const hydraGroupId = container
+        .querySelector('[data-workspace-tab="t-hydra"]')!
+        .closest('[data-workspace-group]')!
+        .getAttribute('data-workspace-group')!
+      expect(hydraGroupId).not.toBe(originalGroupId)
+
+      // …and the backdrop moved WITH it (Bug1): exactly one backdrop layer,
+      // pinned to the tab's new group, none left on the original group.
+      const backdrops = container.querySelectorAll(
+        '[data-workspace-background]',
+      )
+      expect(backdrops.length).toBe(1)
+      expect(backdrops[0].getAttribute('data-workspace-background')).toBe(
+        hydraGroupId,
+      )
+      // The move itself never interrupts the audio.
+      expect(builtinSampleStopSpy).not.toHaveBeenCalled()
+
+      // Bug2 regression guard: the remounted chrome in the new group SEES the
+      // live backdrop (Pause transport) — not a fresh idle "▶ Play" whose
+      // re-activation used to clobber the audio-teardown record with a
+      // 'default' ref that close could not stop.
+      expect(
+        getByTestId('viz-chrome-open-preview').getAttribute(
+          'data-button-state',
+        ),
+      ).toBe('running')
+
+      // Close the moved tab → the teardown still stops the sample audio and
+      // clears the backdrop (Bug2).
+      await act(async () => {
+        fireEvent.click(getByTestId('tab-close-t-hydra'))
+      })
+      expect(builtinSampleStopSpy).toHaveBeenCalledTimes(1)
+      expect(
+        container.querySelectorAll('[data-workspace-background]').length,
+      ).toBe(0)
+    })
+
     it('editor tab chrome flips Preview → Stop → Play through real shell state (regression)', async () => {
       // Integration regression for the three-state chrome button.
       // The chrome should show:

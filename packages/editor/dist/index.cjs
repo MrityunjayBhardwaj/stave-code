@@ -32107,6 +32107,19 @@ function generateGroupId() {
 }
 __name(generateGroupId, "generateGroupId");
 var DRAG_MIME = "application/workspace-tab";
+function transferBackdropWithTab(next, sourceGroup, movingTab, destGroupId) {
+  if (movingTab.kind !== "editor") return;
+  if (sourceGroup.backgroundFileId !== movingTab.fileId) return;
+  const src = next.get(sourceGroup.id);
+  if (src && src.backgroundFileId === movingTab.fileId) {
+    next.set(sourceGroup.id, { ...src, backgroundFileId: void 0 });
+  }
+  const dest = next.get(destGroupId);
+  if (dest) {
+    next.set(destGroupId, { ...dest, backgroundFileId: movingTab.fileId });
+  }
+}
+__name(transferBackdropWithTab, "transferBackdropWithTab");
 function createInitialGroupState(initialTabs) {
   const id = generateGroupId();
   const group = {
@@ -32657,6 +32670,20 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
     }
     backdropSourceByFile.current.delete(fileId);
   }, []);
+  const stopDisplacedBackdrop = React37.useCallback(
+    (sourceGroupId, tabId, targetGroupId) => {
+      if (sourceGroupId === targetGroupId) return;
+      const src = groups.get(sourceGroupId);
+      const movingTab = src?.tabs.find((t) => t.id === tabId);
+      if (movingTab?.kind !== "editor") return;
+      if (src?.backgroundFileId !== movingTab.fileId) return;
+      const displaced = groups.get(targetGroupId)?.backgroundFileId;
+      if (displaced && displaced !== movingTab.fileId) {
+        stopBackdropSource(displaced);
+      }
+    },
+    [groups, stopBackdropSource]
+  );
   const handleTabClose = React37.useCallback(
     (groupId, tabId) => {
       let closedTab = null;
@@ -32830,6 +32857,7 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
           tabs: [movingTab],
           activeTabId: movingTab.id
         });
+        transferBackdropWithTab(next, source, movingTab, newId2);
         return next;
       });
       setLayout((prev) => {
@@ -32865,6 +32893,7 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
           tabs: [movingTab],
           activeTabId: movingTab.id
         });
+        transferBackdropWithTab(next, source, movingTab, newId2);
         return next;
       });
       setLayout((prev) => {
@@ -33130,6 +33159,7 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
         return;
       }
       const { sourceGroupId, tabId } = payload;
+      stopDisplacedBackdrop(sourceGroupId, tabId, targetGroupId);
       const tabNodes = e.currentTarget.querySelectorAll("[data-workspace-tab]");
       let insertionIndex = tabNodes.length;
       for (let i = 0; i < tabNodes.length; i++) {
@@ -33181,11 +33211,12 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
           tabs: targetTabs,
           activeTabId: tabId
         });
+        transferBackdropWithTab(next, source, movingTab, targetGroupId);
         return next;
       });
       setActiveGroupId(targetGroupId);
     },
-    []
+    [stopDisplacedBackdrop]
   );
   const handleDropOnGroup = React37.useCallback(
     (e, targetGroupId) => {
@@ -33216,6 +33247,7 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
         return;
       }
       if (direction === "center") {
+        stopDisplacedBackdrop(sourceGroupId, tabId, targetGroupId);
         setGroups((prev) => {
           const source = prev.get(sourceGroupId);
           const target = prev.get(targetGroupId);
@@ -33242,6 +33274,7 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
             tabs: [...target.tabs, movingTab],
             activeTabId: tabId
           });
+          transferBackdropWithTab(next, source, movingTab, targetGroupId);
           return next;
         });
         setLayout((prev) => {
@@ -33254,7 +33287,7 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
       }
       moveTabToNewQuadrant(sourceGroupId, tabId, targetGroupId, direction);
     },
-    [computeQuadrant, groups, moveTabToNewQuadrant]
+    [computeQuadrant, groups, moveTabToNewQuadrant, stopDisplacedBackdrop]
   );
   const renderTabContent = React37.useCallback(
     (tab, groupId, isActive) => {
@@ -33360,7 +33393,7 @@ var WorkspaceShell = React37.forwardRef(/* @__PURE__ */ __name(function Workspac
                         return previewProviderFor?.({ ...pTab, fileId: tab.fileId }) ?? void 0;
                       }, "getPreviewProvider")
                     });
-                    if (willActivate && sourceRef) {
+                    if (willActivate && sourceRef?.kind === "file") {
                       backdropSourceByFile.current.set(tab.fileId, sourceRef);
                     }
                   }, "onToggleBackground"),
