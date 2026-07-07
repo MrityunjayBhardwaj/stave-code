@@ -247,3 +247,21 @@ body {
   background: var(--border-stronger, #4a4a6a);
   background-clip: padding-box;
 }
+
+/* --- Editor hover-doc width cap -------------------------------------------
+   Monaco sizes a hover widget to the widest line of its markdown and SCROLLS
+   overflow rather than wrapping it, so a long example line (e.g. pickRestart's
+   `.scale(...).s("piano")` one-liner) blows the box out to ~740px with a
+   horizontal scrollbar. Monaco sets width/max-width INLINE (~736px), so the
+   cap needs `!important`; then let the inline-code example wrap at spaces (and
+   break very long tokens) so the box stays compact and readable. */
+.monaco-hover,
+.monaco-hover .monaco-hover-content {
+  max-width: 340px !important;
+  width: auto !important;
+}
+.monaco-hover .markdown-hover code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
