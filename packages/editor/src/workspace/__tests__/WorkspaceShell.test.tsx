@@ -638,6 +638,53 @@ describe('WorkspaceShell', () => {
       ).toBe(0)
     })
 
+    it('#788 — changing a LIVE backdrop\'s source re-keys the teardown record; close stops the CURRENT source', async () => {
+      const { HYDRA_VIZ } = await import('../preview/hydraViz')
+      const tabs = [editorTab('t-hydra', 'f-hydra')]
+      const { getByTestId } = render(
+        <WorkspaceShell initialTabs={tabs} previewProviderFor={() => HYDRA_VIZ} />,
+      )
+      builtinSampleStartSpy.mockClear()
+      builtinSampleStopSpy.mockClear()
+      builtinDrumStartSpy.mockClear()
+      builtinDrumStopSpy.mockClear()
+
+      // Sample source → backdrop (records sample as the teardown source).
+      await act(async () => {
+        fireEvent.click(getByTestId('viz-chrome-settings'))
+      })
+      await act(async () => {
+        fireEvent.change(getByTestId('viz-chrome-source'), {
+          target: { value: 'file:__example_sample__' },
+        })
+      })
+      await act(async () => {
+        fireEvent.click(getByTestId('viz-preview-mode-backdrop'))
+      })
+      expect(builtinSampleStartSpy).toHaveBeenCalled()
+
+      // Swap the source to drums WHILE the backdrop is live: the chrome swaps
+      // the audio (drums start, sample stops) and must re-key the shell's
+      // teardown record to drums.
+      await act(async () => {
+        fireEvent.change(getByTestId('viz-chrome-source'), {
+          target: { value: 'file:__example_drums__' },
+        })
+      })
+      expect(builtinDrumStartSpy).toHaveBeenCalled()
+      expect(builtinSampleStopSpy).toHaveBeenCalledTimes(1)
+      expect(builtinDrumStopSpy).not.toHaveBeenCalled()
+
+      // Close the viz file tab → teardown stops DRUMS (the current source),
+      // not the stale sample recorded at activation.
+      await act(async () => {
+        fireEvent.click(getByTestId('tab-close-t-hydra'))
+      })
+      expect(builtinDrumStopSpy).toHaveBeenCalledTimes(1)
+      // The sample was only stopped once — by the swap, not by teardown.
+      expect(builtinSampleStopSpy).toHaveBeenCalledTimes(1)
+    })
+
     it('editor tab chrome flips Preview → Stop → Play through real shell state (regression)', async () => {
       // Integration regression for the three-state chrome button.
       // The chrome should show:

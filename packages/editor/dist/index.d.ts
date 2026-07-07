@@ -3598,6 +3598,14 @@ interface PreviewEditorChromeContext {
      */
     readonly onToggleBackground: (sourceRef?: AudioSourceRef) => void;
     /**
+     * #788 — the source dropdown changed while THIS file's backdrop is live.
+     * The chrome already swaps the audio itself (start next / stop prev, #784);
+     * this call lets the shell re-key its audio-teardown record so a later
+     * close / clear stops the CURRENT source instead of the stale one. Optional:
+     * hosts without backdrop audio bookkeeping omit it.
+     */
+    readonly onBackdropSourceChange?: (ref: AudioSourceRef) => void;
+    /**
      * Close the open side-preview tab for this file (#773). The viz-settings
      * popover calls this when the user picks 'off' or 'backdrop' while a side
      * preview is open. Optional: hosts that don't track preview tabs omit it.

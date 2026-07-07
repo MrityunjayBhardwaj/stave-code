@@ -2250,6 +2250,25 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                       backdropSourceByFile.current.set(tab.fileId, sourceRef)
                     }
                   },
+                  // #788 — the popover's source dropdown changed while this
+                  // file's backdrop is live. The chrome already swapped the
+                  // audio (start next / stop prev, #784); re-key the teardown
+                  // record so close / clear stops the CURRENT source. Non-file
+                  // refs (default / none) clear the record — their swap already
+                  // stopped whatever built-in was playing, so teardown has
+                  // nothing left to own.
+                  onBackdropSourceChange: (ref) => {
+                    if (
+                      groups.get(groupId)?.backgroundFileId !== tab.fileId
+                    ) {
+                      return
+                    }
+                    if (ref.kind === 'file') {
+                      backdropSourceByFile.current.set(tab.fileId, ref)
+                    } else {
+                      backdropSourceByFile.current.delete(tab.fileId)
+                    }
+                  },
                   isBackground:
                     groups.get(groupId)?.backgroundFileId === tab.fileId,
                   // #773 — close THIS file's side preview when the viz-settings
