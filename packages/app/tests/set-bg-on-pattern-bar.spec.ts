@@ -96,6 +96,37 @@ test('picking a viz ALSO writes the global backdrop to code — all(x=>x.viz(…
   expect(cleared).not.toMatch(/all\(x => x\.viz/)
 })
 
+test('manually DELETING the all() backdrop line flips the indicator to [set bg] (code→UI, #795)', async ({ page }) => {
+  const editValue = (fn: (src: string) => string) =>
+    page.evaluate((body) => {
+      const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string; getValue: () => string; setValue: (s: string) => void } | null }> } } }).monaco
+      const eds = m?.editor?.getEditors?.() ?? []
+      const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+      const model = t?.getModel()
+      if (!model) return
+      // eslint-disable-next-line no-new-func
+      model.setValue((new Function('src', `return (${body})(src)`))(model.getValue()))
+    }, fn.toString())
+
+  const btn = page.locator('[data-testid="strudel-chrome-bg-toggle"]')
+
+  // pick a viz → writes the all(x=>x.viz(…)) line AND pins the indicator
+  await btn.click()
+  const picker = page.locator('[data-testid="backdrop-popover-picker"]')
+  const value = await picker.locator('option').nth(1).getAttribute('value')
+  await picker.selectOption(value!)
+  await expect(btn).toHaveAttribute('data-pinned', 'true')
+  await page.keyboard.press('Escape')
+
+  // hand-delete the backdrop line from the code
+  await editValue((src: string) => src.split('\n').filter((l) => !/all\(x => x\.viz\(/.test(l)).join('\n'))
+
+  // the indicator REACTS to the code edit — back to [set bg], backdrop cleared
+  await expect(btn).toHaveAttribute('data-pinned', 'false')
+  await expect(btn).toContainText('set bg')
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
+})
+
 test('backdrop is PER-TAB — switching tabs swaps/clears it, switching back restores', async ({ page }) => {
   const btn = page.locator('[data-testid="strudel-chrome-bg-toggle"]')
 
