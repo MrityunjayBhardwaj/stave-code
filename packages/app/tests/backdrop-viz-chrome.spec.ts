@@ -206,6 +206,16 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
     await expect(primary).toContainText('Pause')
     // It did NOT open a side preview tab.
     expect(await page.locator('[data-workspace-tab]').count()).toBe(sideBefore)
+
+    // #783 — the backdrop must be VISIBLE, not opacity 0. Regression: a fresh
+    // profile read Number(null)===0 as a valid opacity and rendered the viz
+    // fully transparent behind the editor ("background not working").
+    const bgOpacity = await page.evaluate(() => {
+      const bg = document.querySelector('[data-workspace-background]')
+      return bg ? getComputedStyle(bg).opacity : null
+    })
+    expect(bgOpacity).not.toBeNull()
+    expect(Number(bgOpacity)).toBeGreaterThan(0)
   })
 
   // #782 — backdrop controls used to vanish entirely off backdrop mode. Now

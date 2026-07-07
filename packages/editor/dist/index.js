@@ -7538,7 +7538,9 @@ var BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
 function readBackdropBlur() {
   const ls = safeLocalStorage2();
   if (!ls) return DEFAULT_BACKDROP_BLUR;
-  const saved = Number(ls.getItem(BACKDROP_BLUR_STORAGE));
+  const raw = ls.getItem(BACKDROP_BLUR_STORAGE);
+  if (raw == null || raw === "") return DEFAULT_BACKDROP_BLUR;
+  const saved = Number(raw);
   return Number.isFinite(saved) && saved >= 0 && saved <= 40 ? saved : DEFAULT_BACKDROP_BLUR;
 }
 __name(readBackdropBlur, "readBackdropBlur");
@@ -7574,7 +7576,9 @@ var backdropOpacityListeners = /* @__PURE__ */ new Set();
 function readBackdropOpacity() {
   const ls = safeLocalStorage2();
   if (!ls) return DEFAULT_BACKDROP_OPACITY;
-  const saved = Number(ls.getItem(BACKDROP_OPACITY_STORAGE));
+  const raw = ls.getItem(BACKDROP_OPACITY_STORAGE);
+  if (raw == null || raw === "") return DEFAULT_BACKDROP_OPACITY;
+  const saved = Number(raw);
   return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_BACKDROP_OPACITY;
 }
 __name(readBackdropOpacity, "readBackdropOpacity");

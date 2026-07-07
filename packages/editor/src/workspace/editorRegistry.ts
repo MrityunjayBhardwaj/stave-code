@@ -825,7 +825,11 @@ export const BACKDROP_BLUR_VAR = '--stave-backdrop-blur'
 function readBackdropBlur(): number {
   const ls = safeLocalStorage()
   if (!ls) return DEFAULT_BACKDROP_BLUR
-  const saved = Number(ls.getItem(BACKDROP_BLUR_STORAGE))
+  // Same null→0 guard as readBackdropOpacity: a missing key → Number(null) === 0
+  // passes `>= 0` and would default blur to 0 instead of DEFAULT_BACKDROP_BLUR.
+  const raw = ls.getItem(BACKDROP_BLUR_STORAGE)
+  if (raw == null || raw === '') return DEFAULT_BACKDROP_BLUR
+  const saved = Number(raw)
   return Number.isFinite(saved) && saved >= 0 && saved <= 40
     ? saved
     : DEFAULT_BACKDROP_BLUR
@@ -865,7 +869,13 @@ const backdropOpacityListeners = new Set<(o: number) => void>()
 function readBackdropOpacity(): number {
   const ls = safeLocalStorage()
   if (!ls) return DEFAULT_BACKDROP_OPACITY
-  const saved = Number(ls.getItem(BACKDROP_OPACITY_STORAGE))
+  // Guard the ABSENT case before Number() — a missing key returns null and
+  // Number(null) === 0, which passes the range check below and would make the
+  // backdrop default to opacity 0 (fully invisible) instead of the intended
+  // DEFAULT_BACKDROP_OPACITY. A legitimately-saved "0" is still honoured.
+  const raw = ls.getItem(BACKDROP_OPACITY_STORAGE)
+  if (raw == null || raw === '') return DEFAULT_BACKDROP_OPACITY
+  const saved = Number(raw)
   return Number.isFinite(saved) && saved >= 0 && saved <= 1
     ? saved
     : DEFAULT_BACKDROP_OPACITY
