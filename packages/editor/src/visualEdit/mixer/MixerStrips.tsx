@@ -24,7 +24,7 @@ import { ChannelStrip } from './ChannelStrip'
 import { ExpandDrawer } from './ExpandDrawer'
 import { MasterStrip } from './MasterStrip'
 import { gainEdit, panEdit, muteEdit, renameEdit } from './writeStrip'
-import { masterGainEdit } from './masterEdit'
+import { masterGainEdit, masterPanEdit, masterMuteEdit } from './masterEdit'
 import { trackIdentity } from '../trackColor'
 import { getActiveFileId, onActiveEditorChange } from '../../workspace/editorRegistry'
 import { getTrackMeta, setTrackMeta } from '../../workspace/WorkspaceFile'
@@ -59,6 +59,8 @@ export function MixerStrips({
     chunks,
     applyToStrip,
     masterGain,
+    masterPan,
+    masterMuted,
     applyToMaster,
     beginGesture,
     endGesture,
@@ -237,9 +239,24 @@ export function MixerStrips({
         zoom={faceZoom}
         gain={masterGain.value}
         foreign={masterGain.foreign}
+        pan={masterPan.value}
+        panForeign={masterPan.foreign}
+        muted={masterMuted}
         onGainChange={(value) =>
           applyToMaster((doc, wb) => {
             const e = masterGainEdit(doc, value)
+            if (e) wb.replaceRange(e.range, e.text, 'mixer')
+          })
+        }
+        onPanChange={(value) =>
+          applyToMaster((doc, wb) => {
+            const e = masterPanEdit(doc, value)
+            if (e) wb.replaceRange(e.range, e.text, 'mixer')
+          })
+        }
+        onMuteToggle={() =>
+          applyToMaster((doc, wb) => {
+            const e = masterMuteEdit(doc, !masterMuted)
             if (e) wb.replaceRange(e.range, e.text, 'mixer')
           })
         }

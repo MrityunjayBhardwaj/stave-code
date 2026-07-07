@@ -1,13 +1,19 @@
 /**
  * MasterStrip — the master channel (S5, design §6.8; code counterpart #792).
  *
- * The master is Strudel's master bus: `all(x => …)`, stacking every track. It shows:
+ * The master is Strudel's master bus: `all(x => …)`, stacking every track. Like a
+ * channel strip it shows a mute button, a pan readout, a fader, and a live meter:
  *  - a live METER off the engine's post-mix `AnalyserNode` (read-only side-tap),
  *  - a FADER that round-trips to code: it PROJECTS the document's
  *    `all(x => x.gain())` scalar (unity when the line is absent) and, on drag,
  *    WRITES that line through the Mixer's `Writeback` — exactly like a channel
  *    fader writes `.gain()` on its `$:` line (#792, REPLACE decision). No
  *    synthetic per-file output gain: the master trim lives in the document.
+ *  - a PAN control (horizontal drag) that projects/writes `all(x => x.pan())`,
+ *    centre (0.5) when absent — the master analog of a channel `.pan()` (#800),
+ *  - a MUTE button that adds/removes an `all(x => silence)` line — the master
+ *    analog of a channel's `_`-prefix, ORTHOGONAL to the fader so the gain
+ *    survives a mute/unmute. A signal/pattern gain or pan disables its control.
  *
  * A pure projection — `gain`/`onGainChange` are supplied by `MixerStrips` from
  * `useMixerModel` (which reads/writes the doc), so this component never touches
@@ -27,11 +33,24 @@ const DRAG_SPAN_PX = 160
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v)
 
+/** pan readout: `C`, `L<n>`, or `R<n>` (0=hard L, 0.5=C, 1=hard R) — mirrors
+ *  ChannelStrip so the master reads the same as the tracks below it. */
+function panLabel(pan: number): string {
+  if (pan === 0.5) return 'C'
+  if (pan < 0.5) return `L${Math.round((0.5 - pan) * 200)}`
+  return `R${Math.round((pan - 0.5) * 200)}`
+}
+
 export function MasterStrip({
   zoom = 1,
   gain,
   foreign = false,
+  pan = 0.5,
+  panForeign = false,
+  muted = false,
   onGainChange,
+  onPanChange,
+  onMuteToggle,
   onGestureStart,
   onGestureEnd,
 }: {
@@ -40,8 +59,18 @@ export function MasterStrip({
   gain: number
   /** true when the master gain is a signal/pattern the fader can't rewrite → disabled. */
   foreign?: boolean
+  /** the master pan the control shows — the doc's `all(x=>x.pan())`, or centre (0.5). */
+  pan?: number
+  /** true when the master pan is a signal/pattern the control can't rewrite → disabled. */
+  panForeign?: boolean
+  /** whether the master is muted (an `all(x => silence)` line is present). */
+  muted?: boolean
   /** drag/reset writes the new master gain to code (via `MixerStrips`→Writeback). */
   onGainChange: (value: number) => void
+  /** horizontal drag writes the new master pan to code. */
+  onPanChange?: (value: number) => void
+  /** toggle the master mute — add/remove the `all(x => silence)` line. */
+  onMuteToggle?: () => void
   /** open/close the one-undo-step gesture around a continuous drag (as ChannelStrip). */
   onGestureStart?: () => void
   onGestureEnd?: () => void
@@ -89,9 +118,39 @@ export function MasterStrip({
     onGainChange(1) // double-click → unity
   }
 
+  // Pan — a horizontal drag on the pan row, mirroring ChannelStrip: pointer
+  // capture + a start anchor (a re-render mid-drag can't drop the gesture),
+  // wrapped in one Writeback gesture. A `panForeign` (signal) pan disables it.
+  const panEnabled = !panForeign && onPanChange !== undefined
+  const panDrag = React.useRef<{ startX: number; startPan: number } | null>(null)
+  const onPanDown = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (!panEnabled) return
+    e.preventDefault()
+    ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+    panDrag.current = { startX: e.clientX, startPan: pan }
+    onGestureStart?.()
+  }
+  const onPanMove = (e: React.PointerEvent<HTMLDivElement>): void => {
+    const d = panDrag.current
+    if (!d) return
+    const next = clamp01(d.startPan + (e.clientX - d.startX) / DRAG_SPAN_PX)
+    onPanChange?.(Math.round(next * 100) / 100)
+  }
+  const endPan = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (!panDrag.current) return
+    panDrag.current = null
+    ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
+    onGestureEnd?.()
+  }
+  const resetPan = (): void => {
+    if (panEnabled) onPanChange?.(0.5) // double-click → centre
+  }
+  const muteEnabled = onMuteToggle !== undefined
+
   return (
     <div
       data-mixer-master-strip
+      data-mixer-master-muted={muted ? '' : undefined}
       style={{
         // Pinned to the right edge of the horizontal scroller (design §7.2) so
         // the master stays visible when tracks overflow.
@@ -117,20 +176,70 @@ export function MasterStrip({
         color: 'var(--foreground, #e6e6ea)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-        <span
-          data-mixer-master-name
-          style={{ flex: 1, fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}
-        >
-          Master
-        </span>
+      {/* header: name row over a mute-button row — structurally mirrors the
+          channel header (name row + button row), so the master meter/fader align
+          with the channel meters/faders below it without a hand-tuned spacer. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+          <span
+            data-mixer-master-name
+            style={{ flex: 1, fontSize: 11, fontWeight: 700, letterSpacing: 0.3, opacity: muted ? 0.45 : 1 }}
+          >
+            Master
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            type="button"
+            data-mixer-master-mute
+            aria-label={muted ? 'Unmute master' : 'Mute master'}
+            aria-pressed={muted}
+            disabled={!muteEnabled}
+            onClick={() => onMuteToggle?.()}
+            title={muted ? 'Unmute master' : 'Mute master (silence the whole mix)'}
+            style={{
+              flexShrink: 0,
+              width: 16,
+              height: 16,
+              padding: 0,
+              borderRadius: 3,
+              fontSize: 9,
+              fontWeight: 700,
+              lineHeight: '14px',
+              cursor: muteEnabled ? 'pointer' : 'default',
+              border: '1px solid var(--border, #3a3a42)',
+              background: muted ? 'var(--meter-red, #e0564a)' : 'var(--background, #1c1c20)',
+              color: muted ? '#fff' : 'var(--foreground-muted, #a0a0aa)',
+              opacity: muteEnabled ? 1 : 0.3,
+            }}
+          >
+            M
+          </button>
+        </div>
       </div>
 
-      {/* spacer matching a channel's taller (two-row) header + pan row, so the
-          master meter/fader align with the channel meters/faders below it AND the
-          strip's total height equals a channel face (tuned to the measured 6px
-          ÷ 1.5 zoom delta — keep in step with the channel header if it changes). */}
-      <div style={{ height: 35 }} />
+      {/* pan — horizontal drag sets the master pan (`all(x => x.pan())`) */}
+      <div
+        data-mixer-master-pan-control
+        onPointerDown={onPanDown}
+        onPointerMove={onPanMove}
+        onPointerUp={endPan}
+        onPointerCancel={endPan}
+        onDoubleClick={resetPan}
+        title={panForeign ? 'master pan is a signal — edit it in code' : undefined}
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          fontSize: 10,
+          cursor: panEnabled ? 'ew-resize' : 'default',
+          opacity: panForeign ? 0.4 : 1,
+          touchAction: 'none',
+          userSelect: 'none',
+        }}
+      >
+        <span style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>pan</span>
+        <span data-mixer-master-pan>{panForeign ? 'sig' : panLabel(pan)}</span>
+      </div>
 
       {/* fused meter + fader — Logic-style, sharing one dB scale (faderTaper) */}
       <div

@@ -20,7 +20,13 @@ import { getActiveEditor, onActiveEditorChange, getMonacoNamespace } from '../..
 import { detectAllChunks, type ChunkInfo } from '../chunkDetect'
 import { Writeback } from '../writeback'
 import { buildStripModels, type StripModel } from './stripModel'
-import { readMasterGain, type MasterGainState } from './masterEdit'
+import {
+  readMasterGain,
+  readMasterPan,
+  readMasterMute,
+  type MasterGainState,
+  type MasterPanState,
+} from './masterEdit'
 
 export interface MixerModel {
   /** one strip per top-level statement, in source order (re-derived on edits) */
@@ -49,6 +55,20 @@ export interface MixerModel {
    * reads back exactly what it wrote — the master analog of a strip's gain.
    */
   masterGain: MasterGainState
+  /**
+   * The master strip's pan, projected from the document's `all(x => x.pan())`
+   * scalar (centre 0.5 when absent — the untouched master reads the default from
+   * the ABSENCE of a call). `foreign` disables the control on a signal/pattern
+   * pan. The master analog of a strip's pan.
+   */
+  masterPan: MasterPanState
+  /**
+   * Whether the master is muted — an `all(x => silence)` line is present in the
+   * document. Orthogonal to the fader (the gain line is untouched while muted),
+   * so unmute restores the exact pre-mute output. The master analog of a strip's
+   * `_`-prefix mute.
+   */
+  masterMuted: boolean
   /**
    * Mutate the master `all(...)` statements. Unlike `applyToStrip` there is no
    * stable-id chunk to re-find — the master is the whole-doc `all()` scope — so
@@ -82,8 +102,16 @@ interface Derived {
   strips: StripModel[]
   chunks: ChunkInfo[]
   masterGain: MasterGainState
+  masterPan: MasterPanState
+  masterMuted: boolean
 }
-const EMPTY_DERIVED: Derived = { strips: [], chunks: [], masterGain: { value: 1, foreign: false } }
+const EMPTY_DERIVED: Derived = {
+  strips: [],
+  chunks: [],
+  masterGain: { value: 1, foreign: false },
+  masterPan: { value: 0.5, foreign: false },
+  masterMuted: false,
+}
 
 /**
  * Follow a strip edit in the code view (#595): move the editor caret to the
@@ -175,6 +203,8 @@ export function useMixerModel(): MixerModel {
         strips,
         chunks: strips.map((s) => allChunks[s.index]),
         masterGain: readMasterGain(value),
+        masterPan: readMasterPan(value),
+        masterMuted: readMasterMute(value),
       })
     }
     rederive()
@@ -291,6 +321,8 @@ export function useMixerModel(): MixerModel {
     chunks: derived.chunks,
     applyToStrip,
     masterGain: derived.masterGain,
+    masterPan: derived.masterPan,
+    masterMuted: derived.masterMuted,
     applyToMaster,
     beginGesture,
     endGesture,

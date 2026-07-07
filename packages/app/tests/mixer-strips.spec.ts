@@ -901,6 +901,131 @@ async function dragMasterFader(page: Page, drawer: ReturnType<Page['locator']>, 
   await page.waitForTimeout(80)
 }
 
+/** horizontal drag on the MASTER pan control by `dxRight` pixels (right = more R). */
+async function dragMasterPan(page: Page, drawer: ReturnType<Page['locator']>, dxRight: number): Promise<void> {
+  const ctl = drawer.locator('[data-mixer-master-pan-control]')
+  const box = await ctl.boundingBox()
+  if (!box) throw new Error('no master pan-control box')
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  await page.mouse.move(cx + dxRight, cy, { steps: 8 })
+  await page.mouse.up()
+  await page.waitForTimeout(80)
+}
+
+test.describe('Mixer master strip — mute + pan (#800)', () => {
+  test('projects the master pan label from the doc all(x=>x.pan()) line (code→UI)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd")\nall(x => x.pan(0.65))')
+    const drawer = await openMixer(page)
+    await expect(drawer.locator('[data-mixer-master-pan]')).toHaveText('R30')
+  })
+
+  test('an untouched master pan projects centre (C) from the ABSENCE of a call', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd")')
+    const drawer = await openMixer(page)
+    await expect(drawer.locator('[data-mixer-master-pan]')).toHaveText('C')
+  })
+
+  test('dragging the master pan rides the gain line (one chain: gain().pan())', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd*4")\nall(x => x.gain(0.9))')
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    await dragMasterPan(page, drawer, 40) // right → toward R
+    const after = await strudelValue(page)
+    // exactly one all() line, now carrying both gain and pan
+    expect((after.match(/all\(x => x\./g) ?? []).length).toBe(1)
+    expect(after).toMatch(/all\(x => x\.gain\(0\.9\)\.pan\((\d*\.?\d+)\)\)/)
+  })
+
+  test('dragging the master pan with no gain line writes its own all(x=>x.pan()) line', async ({ page }) => {
+    await boot(page)
+    const original = '$: s("bd*4")'
+    await setStrudelCode(page, original)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    await dragMasterPan(page, drawer, -30) // left → toward L
+    const after = await strudelValue(page)
+    expect(after.split('\n')[0]).toBe(original)
+    expect(after).toMatch(/all\(x => x\.pan\((\d*\.?\d+)\)\)/)
+    // one undo reverts the whole gesture
+    await undo(page)
+    expect(await strudelValue(page)).toBe(original)
+  })
+
+  test('a signal master pan disables the control (reads "sig", no write)', async ({ page }) => {
+    await boot(page)
+    const original = '$: s("bd")\nall(x => x.pan(sine))'
+    await setStrudelCode(page, original)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    await expect(drawer.locator('[data-mixer-master-pan]')).toHaveText('sig')
+    await dragMasterPan(page, drawer, 40)
+    expect(await strudelValue(page)).toBe(original)
+  })
+
+  test('mute adds all(x => silence); unmute removes it; the fader value survives (orthogonal)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd*4")\nall(x => x.gain(0.42))')
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+
+    // mute → a silence line is appended, the strip flags muted, and the gain the
+    // fader reads is UNCHANGED (mute never touches .gain — V-mixer-2)
+    await drawer.locator('[data-mixer-master-mute]').click()
+    await page.waitForTimeout(80)
+    let doc = await strudelValue(page)
+    expect(doc).toContain('all(x => silence)')
+    expect(doc).toContain('all(x => x.gain(0.42))')
+    await expect(drawer.locator('[data-mixer-master-strip][data-mixer-master-muted]')).toHaveCount(1)
+    await expect(drawer.locator('[data-mixer-master-gain]')).toHaveText('0.42')
+
+    // unmute → the silence line is removed, the gain line is byte-identical
+    await drawer.locator('[data-mixer-master-mute]').click()
+    await page.waitForTimeout(80)
+    doc = await strudelValue(page)
+    expect(doc).not.toContain('silence')
+    expect(doc).toBe('$: s("bd*4")\nall(x => x.gain(0.42))')
+  })
+
+  test('muting silences the master meter (audio observation)', async ({ page }) => {
+    await boot(page)
+    // Open the mixer BEFORE evaluating so the meter's bus subscription is live
+    // (P-MIX-4). No enlarge — masterFill reads a style percentage, and the mute
+    // button is clickable in the console without a taller drawer.
+    const drawer = await openMixer(page)
+    await setStrudelCode(page, 'd1: s("bd*8").gain(0.9)')
+
+    // play until the master meter is audibly moving (Mod+Enter is a toggle — retry)
+    let mx = 0
+    for (let attempt = 0; attempt < 2 && mx < 15; attempt++) {
+      await play(page)
+      await page.waitForTimeout(1200)
+      for (let i = 0; i < 25; i++) {
+        mx = Math.max(mx, await masterFill(page, drawer))
+        await page.waitForTimeout(33)
+      }
+    }
+    expect(mx, 'master meter should move before mute').toBeGreaterThan(15)
+
+    // MUTE → the write re-evals live to all(x => silence); the mix goes silent.
+    // The master meter has peak-hold smoothing, so it DECAYS to the floor over a
+    // few seconds rather than dropping instantly — poll until it settles low
+    // (proves the audio actually stopped, not just that a frame dipped).
+    await drawer.locator('[data-mixer-master-mute]').click()
+    let settled = 99
+    for (let i = 0; i < 16 && settled >= 8; i++) {
+      await page.waitForTimeout(400)
+      settled = await masterFill(page, drawer)
+    }
+    expect(settled, 'master meter should decay to silence after mute').toBeLessThan(8)
+  })
+})
+
 test.describe('Mixer master strip code counterpart (#792)', () => {
   test('projects the master gain from the doc all(x=>x.gain()) line (code→UI)', async ({ page }) => {
     await boot(page)

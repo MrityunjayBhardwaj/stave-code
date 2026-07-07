@@ -27219,6 +27219,7 @@ __name(ResolutionControl, "ResolutionControl");
 
 // src/visualEdit/mixer/masterEdit.ts
 var MASTER_UNITY_GAIN = 1;
+var MASTER_CENTRE_PAN = 0.5;
 function matchAllArrow(node) {
   if (!node || node.type !== "ExpressionStatement") return null;
   const expr = node.expression;
@@ -27254,6 +27255,18 @@ function findGainCall(m) {
   return m.chain.find((c) => c.name === "gain");
 }
 __name(findGainCall, "findGainCall");
+function findPanCall(m) {
+  return m.chain.find((c) => c.name === "pan" && c.args.length >= 1);
+}
+__name(findPanCall, "findPanCall");
+function arrowBodyText(doc, m) {
+  return doc.slice(m.arrowBodyRange[0], m.arrowBodyRange[1]).trim();
+}
+__name(arrowBodyText, "arrowBodyText");
+function findMuteLine(doc) {
+  return detectMasterAll(doc).find((m) => arrowBodyText(doc, m) === "silence");
+}
+__name(findMuteLine, "findMuteLine");
 function findVizBackdropCall(m) {
   return m.chain.find(
     (c) => c.name === "viz" && c.args.some((a) => /\bbackdrop\s*:\s*true\b/.test(a.raw))
@@ -27276,6 +27289,21 @@ function readMasterGain(doc) {
   return { value: MASTER_UNITY_GAIN, foreign: false };
 }
 __name(readMasterGain, "readMasterGain");
+function readMasterPan(doc) {
+  for (const m of detectMasterAll(doc)) {
+    const p = findPanCall(m);
+    if (!p) continue;
+    const arg = p.args[0];
+    if (arg.numeric === null) return { value: MASTER_CENTRE_PAN, foreign: true };
+    return { value: arg.numeric, foreign: false };
+  }
+  return { value: MASTER_CENTRE_PAN, foreign: false };
+}
+__name(readMasterPan, "readMasterPan");
+function readMasterMute(doc) {
+  return findMuteLine(doc) !== void 0;
+}
+__name(readMasterMute, "readMasterMute");
 function readMasterViz(doc) {
   for (const m of detectMasterAll(doc)) {
     const v = findVizBackdropCall(m);
@@ -27298,6 +27326,28 @@ function masterGainEdit(doc, value) {
   return insertStatement(doc, `all(x => x.gain(${formatNumber(value)}))`);
 }
 __name(masterGainEdit, "masterGainEdit");
+function masterPanEdit(doc, value) {
+  for (const m of detectMasterAll(doc)) {
+    const p = findPanCall(m);
+    if (!p) continue;
+    const arg = p.args[0];
+    if (arg.numeric === null) return null;
+    return { range: arg.range, text: formatNumber(value) };
+  }
+  for (const m of detectMasterAll(doc)) {
+    if (findGainCall(m)) {
+      return { range: [m.arrowBodyRange[1], m.arrowBodyRange[1]], text: `.pan(${formatNumber(value)})` };
+    }
+  }
+  return insertStatement(doc, `all(x => x.pan(${formatNumber(value)}))`);
+}
+__name(masterPanEdit, "masterPanEdit");
+function masterMuteEdit(doc, muted3) {
+  const line = findMuteLine(doc);
+  if (muted3) return line ? null : insertStatement(doc, "all(x => silence)");
+  return line ? removeStatement(doc, line.statementRange) : null;
+}
+__name(masterMuteEdit, "masterMuteEdit");
 function masterVizEdit(doc, name) {
   for (const m of detectMasterAll(doc)) {
     const v = findVizBackdropCall(m);
@@ -27334,7 +27384,13 @@ function removeStatement(doc, stmt) {
 __name(removeStatement, "removeStatement");
 
 // src/visualEdit/mixer/useMixerModel.ts
-var EMPTY_DERIVED = { strips: [], chunks: [], masterGain: { value: 1, foreign: false } };
+var EMPTY_DERIVED = {
+  strips: [],
+  chunks: [],
+  masterGain: { value: 1, foreign: false },
+  masterPan: { value: 0.5, foreign: false },
+  masterMuted: false
+};
 function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
   try {
     const pos = model.getPositionAt?.(trackOffset);
@@ -27383,7 +27439,9 @@ function useMixerModel() {
       setDerived({
         strips,
         chunks: strips.map((s) => allChunks[s.index]),
-        masterGain: readMasterGain(value)
+        masterGain: readMasterGain(value),
+        masterPan: readMasterPan(value),
+        masterMuted: readMasterMute(value)
       });
     }, "rederive");
     rederive();
@@ -27467,6 +27525,8 @@ function useMixerModel() {
     chunks: derived.chunks,
     applyToStrip,
     masterGain: derived.masterGain,
+    masterPan: derived.masterPan,
+    masterMuted: derived.masterMuted,
     applyToMaster,
     beginGesture,
     endGesture,
@@ -31309,11 +31369,22 @@ __name(useMasterMeter, "useMasterMeter");
 var FADER_HEIGHT2 = 80;
 var DRAG_SPAN_PX3 = 160;
 var clamp016 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
+function panLabel2(pan) {
+  if (pan === 0.5) return "C";
+  if (pan < 0.5) return `L${Math.round((0.5 - pan) * 200)}`;
+  return `R${Math.round((pan - 0.5) * 200)}`;
+}
+__name(panLabel2, "panLabel");
 function MasterStrip({
   zoom = 1,
   gain,
   foreign = false,
+  pan = 0.5,
+  panForeign = false,
+  muted: muted3 = false,
   onGainChange,
+  onPanChange,
+  onMuteToggle,
   onGestureStart,
   onGestureEnd
 }) {
@@ -31352,10 +31423,36 @@ function MasterStrip({
     if (foreign) return;
     onGainChange(1);
   }, "reset");
+  const panEnabled = !panForeign && onPanChange !== void 0;
+  const panDrag = React36__namespace.useRef(null);
+  const onPanDown = /* @__PURE__ */ __name((e) => {
+    if (!panEnabled) return;
+    e.preventDefault();
+    e.target.setPointerCapture?.(e.pointerId);
+    panDrag.current = { startX: e.clientX, startPan: pan };
+    onGestureStart?.();
+  }, "onPanDown");
+  const onPanMove = /* @__PURE__ */ __name((e) => {
+    const d = panDrag.current;
+    if (!d) return;
+    const next = clamp016(d.startPan + (e.clientX - d.startX) / DRAG_SPAN_PX3);
+    onPanChange?.(Math.round(next * 100) / 100);
+  }, "onPanMove");
+  const endPan = /* @__PURE__ */ __name((e) => {
+    if (!panDrag.current) return;
+    panDrag.current = null;
+    e.target.releasePointerCapture?.(e.pointerId);
+    onGestureEnd?.();
+  }, "endPan");
+  const resetPan = /* @__PURE__ */ __name(() => {
+    if (panEnabled) onPanChange?.(0.5);
+  }, "resetPan");
+  const muteEnabled = onMuteToggle !== void 0;
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
       "data-mixer-master-strip": true,
+      "data-mixer-master-muted": muted3 ? "" : void 0,
       style: {
         // Pinned to the right edge of the horizontal scroller (design §7.2) so
         // the master stays visible when tracks overflow.
@@ -31381,15 +31478,69 @@ function MasterStrip({
         color: "var(--foreground, #e6e6ea)"
       },
       children: [
-        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", alignItems: "center", gap: 5, minWidth: 0 }, children: /* @__PURE__ */ jsxRuntime.jsx(
-          "span",
+        /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }, children: [
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", alignItems: "center", gap: 5, minWidth: 0 }, children: /* @__PURE__ */ jsxRuntime.jsx(
+            "span",
+            {
+              "data-mixer-master-name": true,
+              style: { flex: 1, fontSize: 11, fontWeight: 700, letterSpacing: 0.3, opacity: muted3 ? 0.45 : 1 },
+              children: "Master"
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", alignItems: "center", gap: 4 }, children: /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              type: "button",
+              "data-mixer-master-mute": true,
+              "aria-label": muted3 ? "Unmute master" : "Mute master",
+              "aria-pressed": muted3,
+              disabled: !muteEnabled,
+              onClick: () => onMuteToggle?.(),
+              title: muted3 ? "Unmute master" : "Mute master (silence the whole mix)",
+              style: {
+                flexShrink: 0,
+                width: 16,
+                height: 16,
+                padding: 0,
+                borderRadius: 3,
+                fontSize: 9,
+                fontWeight: 700,
+                lineHeight: "14px",
+                cursor: muteEnabled ? "pointer" : "default",
+                border: "1px solid var(--border, #3a3a42)",
+                background: muted3 ? "var(--meter-red, #e0564a)" : "var(--background, #1c1c20)",
+                color: muted3 ? "#fff" : "var(--foreground-muted, #a0a0aa)",
+                opacity: muteEnabled ? 1 : 0.3
+              },
+              children: "M"
+            }
+          ) })
+        ] }),
+        /* @__PURE__ */ jsxRuntime.jsxs(
+          "div",
           {
-            "data-mixer-master-name": true,
-            style: { flex: 1, fontSize: 11, fontWeight: 700, letterSpacing: 0.3 },
-            children: "Master"
+            "data-mixer-master-pan-control": true,
+            onPointerDown: onPanDown,
+            onPointerMove: onPanMove,
+            onPointerUp: endPan,
+            onPointerCancel: endPan,
+            onDoubleClick: resetPan,
+            title: panForeign ? "master pan is a signal \u2014 edit it in code" : void 0,
+            style: {
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 10,
+              cursor: panEnabled ? "ew-resize" : "default",
+              opacity: panForeign ? 0.4 : 1,
+              touchAction: "none",
+              userSelect: "none"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: "pan" }),
+              /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-master-pan": true, children: panForeign ? "sig" : panLabel2(pan) })
+            ]
           }
-        ) }),
-        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { height: 35 } }),
+        ),
         /* @__PURE__ */ jsxRuntime.jsxs(
           "div",
           {
@@ -31526,6 +31677,8 @@ function MixerStrips({
     chunks,
     applyToStrip,
     masterGain,
+    masterPan,
+    masterMuted,
     applyToMaster,
     beginGesture,
     endGesture,
@@ -31661,8 +31814,19 @@ function MixerStrips({
             zoom: faceZoom,
             gain: masterGain.value,
             foreign: masterGain.foreign,
+            pan: masterPan.value,
+            panForeign: masterPan.foreign,
+            muted: masterMuted,
             onGainChange: (value) => applyToMaster((doc, wb) => {
               const e = masterGainEdit(doc, value);
+              if (e) wb.replaceRange(e.range, e.text, "mixer");
+            }),
+            onPanChange: (value) => applyToMaster((doc, wb) => {
+              const e = masterPanEdit(doc, value);
+              if (e) wb.replaceRange(e.range, e.text, "mixer");
+            }),
+            onMuteToggle: () => applyToMaster((doc, wb) => {
+              const e = masterMuteEdit(doc, !masterMuted);
               if (e) wb.replaceRange(e.range, e.text, "mixer");
             }),
             onGestureStart: beginGesture,
@@ -39352,6 +39516,7 @@ exports.LIGHT_THEME_TOKENS = LIGHT_THEME_TOKENS;
 exports.LiveCodingEditor = LiveCodingEditor;
 exports.LiveCodingRuntime = LiveCodingRuntime;
 exports.LiveRecorder = LiveRecorder;
+exports.MASTER_CENTRE_PAN = MASTER_CENTRE_PAN;
 exports.MASTER_KEY = MASTER_KEY;
 exports.MASTER_UNITY_GAIN = MASTER_UNITY_GAIN;
 exports.MIXER_CONSOLE_TAB_ID = MIXER_CONSOLE_TAB_ID;
@@ -39592,6 +39757,8 @@ exports.liveCodingRuntimeRegistry = liveCodingRuntimeRegistry;
 exports.loadShellState = loadShellState;
 exports.makeFixedKey = makeFixedKey;
 exports.masterGainEdit = masterGainEdit;
+exports.masterMuteEdit = masterMuteEdit;
+exports.masterPanEdit = masterPanEdit;
 exports.masterVizEdit = masterVizEdit;
 exports.materializeBareDelete = materializeBareDelete;
 exports.materializeBareSplit = materializeBareSplit;
@@ -39650,6 +39817,8 @@ exports.publishIRSnapshot = publishIRSnapshot;
 exports.purgeLegacyMasterGain = purgeLegacyMasterGain;
 exports.readCurrentCycle = readCurrentCycle;
 exports.readMasterGain = readMasterGain;
+exports.readMasterMute = readMasterMute;
+exports.readMasterPan = readMasterPan;
 exports.readMasterViz = readMasterViz;
 exports.readPersistedActiveTabId = readPersistedActiveTabId;
 exports.readPersistedOpen = readPersistedOpen;
