@@ -12,6 +12,8 @@ import { applyEdits } from '../../writeback'
 import type { StripEdit } from '../writeStrip'
 import {
   detectMasterAll,
+  detectMasterAudioAll,
+  adaptMasterChunk,
   readMasterGain,
   readMasterPan,
   readMasterMute,
@@ -187,6 +189,52 @@ describe('masterMuteEdit', () => {
     expect(readMasterGain(muted)).toEqual({ value: 0.42, foreign: false })
     // unmute is the exact inverse
     expect(applied(muted, masterMuteEdit(muted, false))).toBe(src)
+  })
+})
+
+describe('detectMasterAudioAll', () => {
+  it('picks the gain/insert line as the audio line', () => {
+    const m = detectMasterAudioAll('$: s("bd")\nall(x => x.gain(0.8).room(0.3))')
+    expect(m).toBeDefined()
+    expect(m!.chain.map((c) => c.name)).toEqual(['gain', 'room'])
+  })
+
+  it('skips the mute sentinel line (x => silence)', () => {
+    expect(detectMasterAudioAll('all(x => silence)')).toBeUndefined()
+    // when a real audio line coexists with the mute line, the audio line wins
+    const m = detectMasterAudioAll('all(x => x.gain(0.8))\nall(x => silence)')
+    expect(m!.chain.map((c) => c.name)).toEqual(['gain'])
+  })
+
+  it('skips a pure backdrop-viz line (presentation, not audio)', () => {
+    expect(detectMasterAudioAll('all(x => x.viz("Prism", { backdrop: true }))')).toBeUndefined()
+  })
+
+  it('treats an identity all(x => x) as an audio base (the scaffold)', () => {
+    const m = detectMasterAudioAll('all(x => x)')
+    expect(m).toBeDefined()
+    expect(m!.chain).toEqual([])
+  })
+})
+
+describe('adaptMasterChunk', () => {
+  it('prepends a synthetic head so effects start at index 1 (channel-parity)', () => {
+    const doc = 'all(x => x.gain(0.8).room(0.3))'
+    const m = detectMasterAudioAll(doc)!
+    const chunk = adaptMasterChunk(doc, m)
+    // chain[0] is the inert head; the inserts follow
+    expect(chunk.chain.map((c) => c.name)).toEqual(['x', 'gain', 'room'])
+    expect(chunk.chain[0].args).toEqual([])
+    // exprRange is the arrow body, so a new .fx() appends at the chain end
+    expect(doc.slice(chunk.exprRange[0], chunk.exprRange[1])).toBe('x.gain(0.8).room(0.3)')
+    expect(chunk.miniString).toBeNull()
+  })
+
+  it('adapts an identity scaffold to a head-only chunk (empty inserts)', () => {
+    const doc = 'all(x => x)'
+    const chunk = adaptMasterChunk(doc, detectMasterAudioAll(doc)!)
+    expect(chunk.chain.map((c) => c.name)).toEqual(['x'])
+    expect(doc.slice(chunk.exprRange[0], chunk.exprRange[1])).toBe('x')
   })
 })
 

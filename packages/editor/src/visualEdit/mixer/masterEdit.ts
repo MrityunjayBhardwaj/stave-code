@@ -24,7 +24,7 @@
  * `all(x => x.gain(0.8).viz("a",{backdrop:true}))` still gets surgical edits;
  * only a fresh materialization uses the split convention.
  */
-import { parseTopLevel, collectChain, type ChainArg, type ChainCall } from '../chunkDetect'
+import { parseTopLevel, collectChain, type ChainArg, type ChainCall, type ChunkInfo } from '../chunkDetect'
 import { formatNumber } from '../writeback'
 import type { StripEdit } from './writeStrip'
 
@@ -177,6 +177,55 @@ export function readMasterPan(doc: string): MasterPanState {
  *  line, so unmute is the exact inverse and the fader value survives untouched. */
 export function readMasterMute(doc: string): boolean {
   return findMuteLine(doc) !== undefined
+}
+
+/**
+ * The master "audio" `all()` line — the one the EXPAND DRAWER binds its insert
+ * chain to. It is the first expression-body `all(x => …)` that is NOT the mute
+ * sentinel (`x => silence`) and NOT a pure backdrop-viz line (presentation, not
+ * audio). Gain/pan/effect inserts all live here (pan rides the gain line), so the
+ * drawer's effects chain and the fader/pan controls act on ONE statement.
+ */
+export function detectMasterAudioAll(doc: string): MasterAll | undefined {
+  return detectMasterAll(doc).find((m) => {
+    if (arrowBodyText(doc, m) === 'silence') return false // the mute sentinel line
+    // a line carrying ONLY backdrop-viz calls is presentation, not an audio chain
+    if (m.chain.length >= 1 && m.chain.every((c) => c.name === 'viz')) return false
+    return true
+  })
+}
+
+/**
+ * Adapt a master `all(x => …)` line to a `ChunkInfo` so the shared `MixerBody` /
+ * `ExpandDrawer` can render + edit its insert chain exactly as for a channel.
+ *
+ * A channel's `chain[0]` is its HEAD call (`s("bd")`); the master arrow's base is
+ * the bare param `x` (an identifier, not a call), so `collectChain` yields a chain
+ * with NO head. We prepend a SYNTHETIC head at index 0 so the body's index math
+ * matches a channel: `MixerBody` skips index 0 for effect add/remove (`i > 0`, so
+ * it never deletes the base), and `knobsFromChunk` ignores it (no numeric args).
+ * `exprRange` is the arrow body, so a new `.fx()` appends at the chain's end
+ * (`x.gain(1)` → `x.gain(1).room(0.4)`). Gain/pan carry knobs only when surfaced
+ * (they're strip-owned — the fader/pan row), so the drawer shows the INSERTS.
+ */
+export function adaptMasterChunk(doc: string, m: MasterAll): ChunkInfo {
+  const head: ChainCall = {
+    name: 'x', // the arrow param — inert: index 0 is never edited by MixerBody
+    args: [],
+    range: [m.arrowBodyRange[0], m.arrowBodyRange[0]],
+  }
+  return {
+    statementRange: m.statementRange,
+    statementText: m.statementText,
+    exprRange: m.arrowBodyRange,
+    label: null,
+    headFn: null,
+    miniRange: null,
+    miniString: null,
+    chain: [head, ...m.chain],
+    type: 'knobs',
+    nested: false,
+  }
 }
 
 /** the master backdrop the "set backdrop" UI shows: the `all()` backdrop-viz

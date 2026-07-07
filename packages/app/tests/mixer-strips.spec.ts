@@ -1026,6 +1026,105 @@ test.describe('Mixer master strip — mute + pan (#800)', () => {
   })
 })
 
+/** vertical drag on a knob inside the master expand drawer by `dyUp` px. */
+async function dragMasterKnob(page: Page, drawer: ReturnType<Page['locator']>, name: string, dyUp: number): Promise<void> {
+  const knob = drawer.locator(`[data-mixer-expand-for="__master__"] [data-knob="${name}"]`)
+  const box = await knob.boundingBox()
+  if (!box) throw new Error(`no master knob box: ${name}`)
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  await page.mouse.move(cx, cy - dyUp, { steps: 8 })
+  await page.mouse.up()
+  await page.waitForTimeout(80)
+}
+
+test.describe('Mixer master strip — expand drawer (#800)', () => {
+  const masterDrawer = (drawer: ReturnType<Page['locator']>) =>
+    drawer.locator('[data-mixer-expand-for="__master__"]')
+
+  test('expand shows the master INSERT knobs, not gain/pan (strip-owned)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, 'd1: s("bd*4")\nall(x => x.gain(0.8).room(0.3))')
+    const drawer = await openMixer(page)
+    await drawer.locator('[data-mixer-master-expand]').click()
+    await expect(masterDrawer(drawer)).toHaveCount(1)
+    // the room insert surfaces a knob; gain + pan do NOT (owned by the fader/pan row)
+    await expect(masterDrawer(drawer).locator('[data-knob="room"]')).toHaveCount(1)
+    await expect(masterDrawer(drawer).locator('[data-knob="gain"]')).toHaveCount(0)
+    await expect(masterDrawer(drawer).locator('[data-knob="pan"]')).toHaveCount(0)
+  })
+
+  test('dragging a drawer knob edits that insert literal on the all() line', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, 'd1: s("bd*4")\nall(x => x.gain(0.8).room(0.3))')
+    const drawer = await openMixer(page)
+    await drawer.locator('[data-mixer-master-expand]').click()
+    await enlargeDrawer(page)
+    await dragMasterKnob(page, drawer, 'room', 24) // up → larger
+    const after = await strudelValue(page)
+    // only the room literal moved; gain byte-identical, still one all() line
+    expect(after).toMatch(/all\(x => x\.gain\(0\.8\)\.room\((\d*\.?\d+)\)\)/)
+    const m = after.match(/\.room\((\d*\.?\d+)\)/)
+    expect(Number(m![1])).toBeGreaterThan(0.3)
+  })
+
+  test('＋More appends an effect to the master all() line', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, 'd1: s("bd*4")\nall(x => x.gain(0.8))')
+    const drawer = await openMixer(page)
+    await drawer.locator('[data-mixer-master-expand]').click()
+    await masterDrawer(drawer).locator('[data-mixer-add-effect]').click()
+    const menu = page.locator('[data-mixer-add-effect-menu]')
+    await expect(menu).toBeVisible()
+    await menu.locator('[data-mixer-add-effect-item="crush"]').click()
+    await page.waitForTimeout(120)
+    expect(await strudelValue(page)).toBe('d1: s("bd*4")\nall(x => x.gain(0.8).crush(8))')
+  })
+
+  test('adding an effect to an EMPTY master materializes all(x => x.<fx>()); one undo reverts', async ({ page }) => {
+    await boot(page)
+    const original = 'd1: s("bd*4")'
+    await setStrudelCode(page, original)
+    const drawer = await openMixer(page)
+    await drawer.locator('[data-mixer-master-expand]').click()
+    // the empty master drawer still offers ＋More
+    await masterDrawer(drawer).locator('[data-mixer-add-effect]').click()
+    const menu = page.locator('[data-mixer-add-effect-menu]')
+    await expect(menu).toBeVisible()
+    await menu.locator('[data-mixer-add-effect-item="crush"]').click()
+    await page.waitForTimeout(120)
+    // the scaffold + append is a clean single line (no spurious gain(1))
+    expect(await strudelValue(page)).toBe('d1: s("bd*4")\nall(x => x.crush(8))')
+    // scaffold + append coalesce into ONE undo step
+    await undo(page)
+    expect(await strudelValue(page)).toBe(original)
+  })
+
+  test('the × on a drawer knob removes that insert from the all() line', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, 'd1: s("bd*4")\nall(x => x.gain(0.8).crush(8))')
+    const drawer = await openMixer(page)
+    await drawer.locator('[data-mixer-master-expand]').click()
+    await enlargeDrawer(page)
+    // the knob's × affordance removes the method (its data attr is scoped to the knob)
+    await masterDrawer(drawer).locator('[data-knob="crush"] [data-knob-remove="crush"]').click()
+    await page.waitForTimeout(120)
+    expect(await strudelValue(page)).toBe('d1: s("bd*4")\nall(x => x.gain(0.8))')
+  })
+
+  test('collapse hides the master drawer', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, 'd1: s("bd*4")\nall(x => x.gain(0.8).room(0.3))')
+    const drawer = await openMixer(page)
+    await drawer.locator('[data-mixer-master-expand]').click()
+    await expect(masterDrawer(drawer)).toHaveCount(1)
+    await drawer.locator('[data-mixer-master-expand]').click()
+    await expect(masterDrawer(drawer)).toHaveCount(0)
+  })
+})
+
 test.describe('Mixer master strip code counterpart (#792)', () => {
   test('projects the master gain from the doc all(x=>x.gain()) line (code→UI)', async ({ page }) => {
     await boot(page)

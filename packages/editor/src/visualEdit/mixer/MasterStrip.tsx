@@ -48,6 +48,8 @@ export function MasterStrip({
   pan = 0.5,
   panForeign = false,
   muted = false,
+  expanded = false,
+  onToggleExpand,
   onGainChange,
   onPanChange,
   onMuteToggle,
@@ -65,6 +67,10 @@ export function MasterStrip({
   panForeign?: boolean
   /** whether the master is muted (an `all(x => silence)` line is present). */
   muted?: boolean
+  /** whether the master's expand drawer (its effects chain) is open. */
+  expanded?: boolean
+  /** toggle the master expand drawer — a ▸/◂ disclosure in the header. */
+  onToggleExpand?: () => void
   /** drag/reset writes the new master gain to code (via `MixerStrips`→Writeback). */
   onGainChange: (value: number) => void
   /** horizontal drag writes the new master pan to code. */
@@ -152,12 +158,12 @@ export function MasterStrip({
       data-mixer-master-strip
       data-mixer-master-muted={muted ? '' : undefined}
       style={{
-        // Pinned to the right edge of the horizontal scroller (design §7.2) so
-        // the master stays visible when tracks overflow.
-        position: 'sticky',
-        right: 0,
+        // The sticky-right pin + occlusion shadow live on the GROUP (MixerStrips),
+        // so an open drawer travels with the face; the face itself is a plain,
+        // non-stretching card (`alignSelf: flex-start` keeps its natural zoomed
+        // height while its left-side drawer stretches to match — V-mixer-10).
         // Match the console channel groups' scale (set by MixerStrips). `zoom`
-        // (not transform) keeps it aspect-exact and sticky-friendly.
+        // (not transform) keeps it aspect-exact.
         zoom,
         width: 84,
         flexShrink: 0,
@@ -166,12 +172,15 @@ export function MasterStrip({
         flexDirection: 'column',
         gap: 6,
         padding: 8,
-        borderRadius: 6,
+        // When expanded, the drawer abuts the LEFT edge (the master opens
+        // leftward), so flatten the left corners and drop the left border — the
+        // drawer's right border is the single seam — so face + drawer read as one.
+        borderRadius: expanded ? '0 6px 6px 0' : 6,
         border: '1px solid var(--border, #3a3a42)',
+        borderLeft: expanded ? 'none' : undefined,
         // A slightly stronger surface than channel strips so it reads as the
         // pinned master and occludes strips scrolling under it.
         background: 'var(--background-elevated, #2c2c34)',
-        boxShadow: '-8px 0 8px -6px rgba(0,0,0,0.5)',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         color: 'var(--foreground, #e6e6ea)',
       }}
@@ -215,6 +224,33 @@ export function MasterStrip({
           >
             M
           </button>
+          {onToggleExpand && (
+            <button
+              type="button"
+              data-mixer-master-expand
+              aria-label={expanded ? 'Collapse master' : 'Expand master'}
+              aria-expanded={expanded}
+              onClick={() => onToggleExpand()}
+              title={expanded ? 'Collapse master effects' : 'Expand master effects'}
+              style={{
+                flexShrink: 0,
+                width: 16,
+                height: 16,
+                padding: 0,
+                borderRadius: 3,
+                fontSize: 10,
+                fontWeight: 700,
+                lineHeight: '14px',
+                cursor: 'pointer',
+                border: '1px solid var(--border, #3a3a42)',
+                background: expanded ? 'var(--background-elevated, #26262c)' : 'var(--background, #1c1c20)',
+                color: 'var(--foreground-muted, #a0a0aa)',
+              }}
+            >
+              {/* the master opens LEFTWARD, so ◂ = will-open-left, ▸ = collapse */}
+              {expanded ? '▸' : '◂'}
+            </button>
+          )}
         </div>
       </div>
 

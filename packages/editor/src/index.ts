@@ -629,6 +629,8 @@ export { renameEdit, isValidTrackLabel, type StripEdit } from './visualEdit/mixe
 // wires to the "set backdrop" UI (viz) and the Mixer uses internally (gain).
 export {
   detectMasterAll,
+  detectMasterAudioAll,
+  adaptMasterChunk,
   readMasterGain,
   readMasterPan,
   readMasterMute,
