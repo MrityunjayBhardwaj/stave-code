@@ -65,16 +65,28 @@ export function AddEffectMenu({
       if (e.key === 'Escape') setOpen(false)
     }
     const dismiss = (): void => setOpen(false)
+    // A scroll dismisses the menu only when it originates OUTSIDE the menu —
+    // an ancestor (the drawer body) or the page moving would drift the
+    // fixed-position anchor. The menu's own `overflowY:auto` list also emits
+    // scroll events, and the capture listener below sees them too; without
+    // this guard, scrolling the list closes the menu (the user can't browse
+    // the long tail). The menu is portaled to <body>, so an ancestor scroll's
+    // target is never inside menuRef — only the list's own scroll is.
+    const onScroll = (e: Event): void => {
+      const t = e.target
+      if (t instanceof Node && menuRef.current?.contains(t)) return
+      setOpen(false)
+    }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
     window.addEventListener('resize', dismiss)
     // capture so a scroll in any ancestor (the drawer body) dismisses too
-    window.addEventListener('scroll', dismiss, true)
+    window.addEventListener('scroll', onScroll, true)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
       window.removeEventListener('resize', dismiss)
-      window.removeEventListener('scroll', dismiss, true)
+      window.removeEventListener('scroll', onScroll, true)
     }
   }, [open])
 
