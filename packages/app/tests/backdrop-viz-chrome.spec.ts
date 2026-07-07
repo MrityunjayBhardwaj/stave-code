@@ -177,9 +177,10 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
     expect(fileIdAfter).toBe(fileIdBefore)
   })
 
-  // #782 — #772 stripped the always-visible primary button; a fresh viz file
-  // had NO open affordance. Restored: "▶ Preview" opens a side preview.
-  test('fresh viz file shows "▶ Preview" primary that opens a side preview (#782)', async ({
+  // #783 — the primary is a pure play/pause (NOT an "open onto the side"
+  // shortcut). A fresh viz file shows "▶ Play" and, since the default placement
+  // is backdrop, clicking PLAYS it as the backdrop (not a side split).
+  test('fresh viz file shows "▶ Play" that activates the BACKDROP by default (#783)', async ({
     page,
   }) => {
     await gotoApp(page)
@@ -187,15 +188,24 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
 
     const primary = page.locator('[data-testid="viz-chrome-open-preview"]').first()
     await expect(primary).toBeVisible()
-    await expect(primary).toHaveAttribute('data-button-state', 'closed')
+    await expect(primary).toHaveAttribute('data-button-state', 'idle')
     await expect(primary).toHaveAttribute('data-preview-mode', 'off')
-    await expect(primary).toContainText('Preview')
+    await expect(primary).toContainText('Play')
+    await expect(primary).not.toContainText('Preview')
 
-    // Clicking it opens a side preview → a preview pane mounts, button flips to
-    // the pause transport ('running' / "⏸ Pause").
+    // No side preview pane exists yet.
+    const sideBefore = await page.locator('[data-workspace-tab]').count()
+
+    // Click Play → the BACKDROP mounts (not a side split); button flips to
+    // the backdrop pause transport.
     await primary.click()
-    await expect(primary).toHaveAttribute('data-preview-mode', 'side')
+    await expect(page.locator('[data-workspace-background]').first()).toBeVisible({
+      timeout: 5000,
+    })
+    await expect(primary).toHaveAttribute('data-preview-mode', 'backdrop')
     await expect(primary).toContainText('Pause')
+    // It did NOT open a side preview tab.
+    expect(await page.locator('[data-workspace-tab]').count()).toBe(sideBefore)
   })
 
   // #782 — backdrop controls used to vanish entirely off backdrop mode. Now

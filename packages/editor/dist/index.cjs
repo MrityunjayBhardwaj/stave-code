@@ -37829,8 +37829,12 @@ function VizEditorChrome({
     onOpenPreview(selectedSource);
   }, [onOpenPreview, selectedSource]);
   const previewMode = isBackground ? "backdrop" : previewOpen ? "side" : "off";
+  const [placementPref, setPlacementPref] = React37.useState(
+    "backdrop"
+  );
   const handleSetPreviewMode = React37.useCallback(
     (next) => {
+      if (next !== "off") setPlacementPref(next);
       if (next === previewMode) return;
       if (previewMode === "side") onClosePreview?.();
       if (previewMode === "backdrop") onToggleBackground();
@@ -37839,13 +37843,17 @@ function VizEditorChrome({
     },
     [previewMode, onClosePreview, onToggleBackground, openSidePreview]
   );
-  const buttonState = previewMode === "off" ? "closed" : previewPaused ? "paused" : "running";
-  const buttonLabel = buttonState === "closed" ? "\u25B6 Preview" : buttonState === "paused" ? "\u25B6 Play" : "\u23F8 Pause";
-  const buttonTitle = buttonState === "closed" ? "Open a preview of this viz" : buttonState === "paused" ? "Resume this viz (side tab or backdrop)" : "Pause this viz (side tab or backdrop)";
+  const buttonState = previewMode === "off" ? "idle" : previewPaused ? "paused" : "running";
+  const buttonLabel = buttonState === "running" ? "\u23F8 Pause" : "\u25B6 Play";
+  const buttonTitle = buttonState === "running" ? "Pause this viz (side tab or backdrop)" : buttonState === "paused" ? "Resume this viz" : `Play this viz as ${placementPref === "backdrop" ? "backdrop" : "side preview"}`;
+  const activatePreferred = React37.useCallback(() => {
+    if (placementPref === "backdrop") onToggleBackground();
+    else openSidePreview();
+  }, [placementPref, onToggleBackground, openSidePreview]);
   const handlePrimaryClick = React37.useCallback(() => {
-    if (previewMode === "off") openSidePreview();
+    if (previewMode === "off") activatePreferred();
     else onTogglePausePreview?.();
-  }, [previewMode, openSidePreview, onTogglePausePreview]);
+  }, [previewMode, activatePreferred, onTogglePausePreview]);
   const vizKind = rendererForLanguage(file.language);
   return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
     /* @__PURE__ */ jsxRuntime.jsxs(

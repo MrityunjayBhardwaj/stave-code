@@ -149,11 +149,21 @@ export function VizEditorChrome({
       ? 'side'
       : 'off'
 
+  // Placement preference (#783) — WHERE the play button activates the preview
+  // when nothing is running yet. Defaults to 'backdrop' (the viz setting); the
+  // ⚙ popover updates it whenever the user picks side/backdrop. This is what
+  // makes "▶ Play" a pure transport instead of an "open onto the side" shortcut.
+  const [placementPref, setPlacementPref] = useState<'side' | 'backdrop'>(
+    'backdrop',
+  )
+
   // Switch placement. Each transition tears down the old placement then sets up
   // the new one. onToggleBackground FLIPS based on current backdrop state, so
   // calling it when leaving 'backdrop' clears and when entering 'backdrop' sets.
+  // Picking side/backdrop also remembers it as the play target (placementPref).
   const handleSetPreviewMode = useCallback(
     (next: VizPreviewMode) => {
+      if (next !== 'off') setPlacementPref(next)
       if (next === previewMode) return
       if (previewMode === 'side') onClosePreview?.()
       if (previewMode === 'backdrop') onToggleBackground()
@@ -169,24 +179,27 @@ export function VizEditorChrome({
   // shell's per-file pause state; the shell applies it to the open preview tab
   // AND the backdrop layer for this file, and owns the built-in audio side
   // effect that pairs with it.
-  const buttonState: 'closed' | 'paused' | 'running' =
-    previewMode === 'off' ? 'closed' : previewPaused ? 'paused' : 'running'
-  const buttonLabel =
-    buttonState === 'closed'
-      ? '\u25B6 Preview'
-      : buttonState === 'paused'
-        ? '\u25B6 Play'
-        : '\u23F8 Pause'
+  const buttonState: 'idle' | 'paused' | 'running' =
+    previewMode === 'off' ? 'idle' : previewPaused ? 'paused' : 'running'
+  const buttonLabel = buttonState === 'running' ? '\u23F8 Pause' : '\u25B6 Play'
   const buttonTitle =
-    buttonState === 'closed'
-      ? 'Open a preview of this viz'
+    buttonState === 'running'
+      ? 'Pause this viz (side tab or backdrop)'
       : buttonState === 'paused'
-        ? 'Resume this viz (side tab or backdrop)'
-        : 'Pause this viz (side tab or backdrop)'
+        ? 'Resume this viz'
+        : `Play this viz as ${
+            placementPref === 'backdrop' ? 'backdrop' : 'side preview'
+          }`
+  // Start the preview in the preferred placement. onToggleBackground mounts the
+  // backdrop for this group; openSidePreview opens a sibling split tab.
+  const activatePreferred = useCallback(() => {
+    if (placementPref === 'backdrop') onToggleBackground()
+    else openSidePreview()
+  }, [placementPref, onToggleBackground, openSidePreview])
   const handlePrimaryClick = useCallback(() => {
-    if (previewMode === 'off') openSidePreview()
+    if (previewMode === 'off') activatePreferred()
     else onTogglePausePreview?.()
-  }, [previewMode, openSidePreview, onTogglePausePreview])
+  }, [previewMode, activatePreferred, onTogglePausePreview])
 
   // The renderer kind drives the "Stave Inputs" reference panel (#309). Non-null
   // for every viz file; guard anyway so a non-viz tab never renders the panel.
@@ -209,11 +222,11 @@ export function VizEditorChrome({
       }}
     >
       {/*
-       * Primary transport (#782, restoring the always-visible affordance #772
-       * removed) — sits before the ⚙ gear. Always rendered so a fresh viz file
-       * has a discoverable entry point: "▶ Preview" opens a side preview when
-       * off, then becomes ⏸Pause / ▶Play acting on whichever placement is active
-       * (side tab OR backdrop, #781).
+       * Primary transport (#783) — a pure play/pause, always rendered before the
+       * ⚙ gear. "▶ Play" starts the viz in its set placement (backdrop by
+       * default, or side — chosen in the popover, NOT opened by this button);
+       * once running it is "⏸ Pause"/"▶ Play" acting on whichever placement is
+       * active (side tab OR backdrop, #781).
        */}
       <button
         data-testid="viz-chrome-open-preview"

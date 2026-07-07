@@ -376,28 +376,57 @@ describe('HYDRA_VIZ render path', () => {
     expect(onTogglePausePreview).toHaveBeenCalledTimes(1)
   })
 
-  it('chrome primary: preview=off → "▶ Preview" opens a side preview (#782)', () => {
-    // #782 restored the always-visible primary. In 'off' mode it is the OPEN
-    // affordance (not hidden as #774 had it): label "▶ Preview", state 'closed',
-    // and clicking opens a side preview via onOpenPreview (NOT onTogglePausePreview).
+  it('chrome primary: preview=off → "▶ Play" activates the DEFAULT backdrop (#783)', () => {
+    // #783 — the primary is a pure play/pause, never an "open onto the side"
+    // shortcut. In 'off' mode it is "▶ Play" (state 'idle') and, since the
+    // default placement is backdrop, clicking activates the backdrop via
+    // onToggleBackground (NOT onOpenPreview, NOT onTogglePausePreview).
     const onOpenPreview = vi.fn()
+    const onToggleBackground = vi.fn()
     const onTogglePausePreview = vi.fn()
     const file = makeFile('rings', 'osc().out()')
     const chrome = HYDRA_VIZ.renderEditorChrome!({
       file,
       onOpenPreview,
       onTogglePausePreview,
-      onToggleBackground: vi.fn(),
+      onToggleBackground,
       onSave: vi.fn(),
     })
     const { getByTestId } = render(chrome as React.ReactElement)
     const btn = getByTestId('viz-chrome-open-preview')
-    expect(btn.getAttribute('data-button-state')).toBe('closed')
+    expect(btn.getAttribute('data-button-state')).toBe('idle')
     expect(btn.getAttribute('data-preview-mode')).toBe('off')
-    expect(btn.textContent).toContain('Preview')
+    expect(btn.textContent).toContain('Play')
+    expect(btn.textContent).not.toContain('Preview')
     fireEvent.click(btn)
-    expect(onOpenPreview).toHaveBeenCalledTimes(1)
+    expect(onToggleBackground).toHaveBeenCalledTimes(1)
+    expect(onOpenPreview).not.toHaveBeenCalled()
     expect(onTogglePausePreview).not.toHaveBeenCalled()
+  })
+
+  it('chrome primary: after popover picks side, "▶ Play" opens a SIDE preview (#783)', () => {
+    // Choosing 'side' in the ⚙ popover updates the play target (placementPref),
+    // so a subsequent Play (while still off) opens a side preview, not backdrop.
+    const onOpenPreview = vi.fn()
+    const onToggleBackground = vi.fn()
+    const file = makeFile('rings', 'osc().out()')
+    const chrome = HYDRA_VIZ.renderEditorChrome!({
+      file,
+      onOpenPreview,
+      onToggleBackground,
+      onSave: vi.fn(),
+    })
+    const { getByTestId } = render(chrome as React.ReactElement)
+    // Open popover, pick 'side' (fires onOpenPreview once for the switch itself).
+    fireEvent.click(getByTestId('viz-chrome-settings'))
+    fireEvent.click(getByTestId('viz-preview-mode-side'))
+    expect(onOpenPreview).toHaveBeenCalledTimes(1)
+    // Still 'off' in this stateless render (shell flags unchanged) → Play now
+    // targets 'side' (the remembered pref), calling onOpenPreview again, never backdrop.
+    const btn = getByTestId('viz-chrome-open-preview')
+    fireEvent.click(btn)
+    expect(onOpenPreview).toHaveBeenCalledTimes(2)
+    expect(onToggleBackground).not.toHaveBeenCalled()
   })
 
   it('chrome primary button: paused → Play → calls onTogglePausePreview', () => {
