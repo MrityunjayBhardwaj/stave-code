@@ -29652,6 +29652,17 @@ function filterGroups(groups, query, category) {
 }
 __name(filterGroups, "filterGroups");
 var MENU_WIDTH2 = 230;
+var catScrollStyleInjected = false;
+function ensureCatScrollStyle() {
+  if (catScrollStyleInjected) return;
+  if (typeof document === "undefined") return;
+  const el = document.createElement("style");
+  el.setAttribute("data-stave-style", "sound-picker-cats");
+  el.textContent = "[data-mixer-sound-cats]::-webkit-scrollbar{display:none;width:0;height:0}";
+  document.head.appendChild(el);
+  catScrollStyleInjected = true;
+}
+__name(ensureCatScrollStyle, "ensureCatScrollStyle");
 function SoundPickerMenu({
   label,
   groups,
@@ -29687,6 +29698,7 @@ function SoundPickerMenu({
   }, [open, place]);
   React36__namespace.useEffect(() => {
     if (open) {
+      ensureCatScrollStyle();
       setQuery("");
       setCategory(null);
     }
@@ -29774,6 +29786,7 @@ function SoundPickerMenu({
           cats.length > 1 && /* @__PURE__ */ jsxRuntime.jsxs(
             "div",
             {
+              "data-mixer-sound-cats": true,
               style: {
                 display: "grid",
                 gridAutoFlow: "column",

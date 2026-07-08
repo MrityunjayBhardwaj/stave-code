@@ -25,6 +25,20 @@ import { categoryCounts, filterGroups, totalOptions } from './soundPickerFilter'
 
 const MENU_WIDTH = 230
 
+// Blink doesn't honour `scrollbarWidth: 'none'` inline, so inject a one-time
+// rule to hide the category row's horizontal scrollbar (it still scrolls). Same
+// pattern as WorkspaceShell's tabbar.
+let catScrollStyleInjected = false
+function ensureCatScrollStyle(): void {
+  if (catScrollStyleInjected) return
+  if (typeof document === 'undefined') return
+  const el = document.createElement('style')
+  el.setAttribute('data-stave-style', 'sound-picker-cats')
+  el.textContent = '[data-mixer-sound-cats]::-webkit-scrollbar{display:none;width:0;height:0}'
+  document.head.appendChild(el)
+  catScrollStyleInjected = true
+}
+
 export function SoundPickerMenu({
   label,
   groups,
@@ -77,6 +91,7 @@ export function SoundPickerMenu({
   // Reset the transient search/category each time the menu opens.
   React.useEffect(() => {
     if (open) {
+      ensureCatScrollStyle()
       setQuery('')
       setCategory(null)
     }
@@ -172,6 +187,7 @@ export function SoundPickerMenu({
                 top-then-bottom per column; the row overflows sideways. */}
             {cats.length > 1 && (
               <div
+                data-mixer-sound-cats
                 style={{
                   display: 'grid',
                   gridAutoFlow: 'column',
