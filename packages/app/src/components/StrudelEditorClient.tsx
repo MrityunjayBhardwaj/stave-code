@@ -1438,6 +1438,45 @@ export default function StrudelEditorClient({
     });
   }, [runtimeStates, onActiveRuntimeStateChange]);
 
+  // #813 — Eager engine warm-up so the instrument picker is fully populated
+  // before the user presses Play. The picker reads superdough's global
+  // `soundMap`, which is published only when an engine initializes — and init
+  // is lazy (first Play). Without this, opening the picker on a fresh page
+  // shows only the ~27-item curated fallback. We create the active (or first)
+  // Strudel file's runtime and `init()` it on idle: init only registers sounds
+  // and fetches sample manifests — no scheduler.start(), and it creates the
+  // AudioContext suspended, so no user gesture is needed and no audio plays.
+  // The runtime + init are idempotent, so a later Play reuses this same warmed
+  // runtime (soundMap is a superdough module singleton — warming any one
+  // Strudel engine fills every picker). Runs once; retries via the file-list
+  // subscription because files load async (IDB) and may be absent at mount.
+  const warmedRef = useRef(false);
+  useEffect(() => {
+    const tryWarm = () => {
+      if (warmedRef.current) return;
+      const active = activeFileIdRef.current;
+      const fid =
+        active && getFile(active)?.language === "strudel"
+          ? active
+          : listWorkspaceFiles().find((f) => f.language === "strudel")?.id ??
+            null;
+      if (!fid) return; // no Strudel file yet — the subscription retries
+      warmedRef.current = true;
+      const warm = () => {
+        void getOrCreateRuntime(fid)
+          ?.init()
+          .catch(() => {}); // warm-up is best-effort; Play still inits on demand
+      };
+      const w = window as unknown as {
+        requestIdleCallback?: (cb: () => void) => number;
+      };
+      if (typeof w.requestIdleCallback === "function") w.requestIdleCallback(warm);
+      else window.setTimeout(warm, 0);
+    };
+    tryWarm(); // files already present at mount (warm start / cached project)
+    return subscribeToFileList(tryWarm); // or when they finish loading
+  }, [getOrCreateRuntime]);
+
   // Persist on every shell mutation (#175). Fires reactively from the
   // shell's single onGroupsChange sink; no debounce — localStorage
   // writes are O(1) and the snapshot is small.

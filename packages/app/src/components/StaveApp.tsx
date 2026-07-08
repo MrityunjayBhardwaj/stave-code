@@ -709,20 +709,34 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     setSoundCatalogAccessor(() => groupSoundCatalog(readDict()));
     let lastCount = -1;
     let stable = 0;
+    let ticks = 0;
+    // Ceiling so we never poll forever if the engine never initializes (eager
+    // warm-up failed AND the user never pressed Play). ~2 min at 1.5s cadence.
+    const MAX_TICKS = 80;
     const tick = () => {
+      ticks += 1;
       const dict = readDict();
       const count = dict ? Object.keys(dict).length : 0;
       if (count !== lastCount) {
         lastCount = count;
         stable = 0;
         notifySoundCatalogChanged();
-      } else {
+      } else if (count > 0) {
+        // Only settle once we actually have a live list. A count stuck at 0
+        // means the engine hasn't inited yet (init is lazy — first Play or the
+        // eager warm-up in StrudelEditorClient) — keep polling so a later init
+        // refreshes the picker instead of leaving it on the curated fallback
+        // (#813). The old `else` incremented here even at 0, so a slow/late
+        // init would find the poll already dead and never repopulate.
         stable += 1;
       }
     };
     const id = window.setInterval(() => {
       tick();
-      if (stable >= 4) window.clearInterval(id); // count settled → stop polling
+      // Stop once a real (non-zero) list has settled, or give up at the ceiling.
+      if ((lastCount > 0 && stable >= 4) || ticks >= MAX_TICKS) {
+        window.clearInterval(id);
+      }
     }, 1500);
     tick();
     return () => {
