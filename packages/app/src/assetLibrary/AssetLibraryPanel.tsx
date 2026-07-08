@@ -170,7 +170,6 @@ export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
         loading={loading}
         previewingKey={previewingKey}
         onTogglePreview={togglePreview}
-        data-asset-list
       />
     </div>
   );
@@ -228,7 +227,7 @@ function AssetList({
   loading: boolean;
   previewingKey: string | null;
   onTogglePreview: (key: string, asset: Asset) => void;
-} & Record<`data-${string}`, string>) {
+}) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportH, setViewportH] = useState(0);

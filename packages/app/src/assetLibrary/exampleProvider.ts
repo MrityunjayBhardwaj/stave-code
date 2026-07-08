@@ -10,7 +10,7 @@
  */
 
 import { registerAssetProvider } from "./registry";
-import type { Asset, AssetProvider, AssetSource, AssetType } from "./types";
+import type { Asset, AssetSource, AssetType } from "./types";
 
 const FLAG = "stave.assetLibrary.demo";
 
@@ -60,18 +60,11 @@ const DEMO_ASSETS: Asset[] = [
   makeAsset("sound", "storepad", "Store Pad", "community", "Marketplace", ["pad"]),
 ];
 
-const demoProvider: AssetProvider = {
-  type: "sound",
-  label: "Demo",
-  // A single stub stands in for every type; the shell filters it by type, so
-  // list() returns all demo assets and the type filter narrows them.
-  list: () => DEMO_ASSETS,
-};
-
 /**
  * Register the demo provider(s) when the flag is set. Returns an unregister fn
  * (no-op when the flag is off). The stub covers 4 types, so we register one
- * provider per distinct type it contains (the registry is keyed by type).
+ * provider per distinct type it contains (the registry is keyed by type) —
+ * which also mirrors the real model where each type is its own provider.
  */
 export function registerDemoAssetProviders(): () => void {
   if (typeof window === "undefined") return () => {};
@@ -91,8 +84,5 @@ export function registerDemoAssetProviders(): () => void {
       list: () => DEMO_ASSETS.filter((a) => a.type === t),
     }),
   );
-  // Keep the aggregate provider referenced so tree-shaking doesn't drop it and
-  // future manual testing can import it directly.
-  void demoProvider;
   return () => unregs.forEach((u) => u());
 }
