@@ -18628,6 +18628,92 @@ var STRUDEL_DOCS = {
     example: 'note("c4 e4").room(0.5).orbit(1)',
     sourceUrl: "https://strudel.cc/learn/effects/#orbit"
   },
+  // ---- pick family (@strudel/core/pick.mjs) --------------------------------
+  // One pattern picks events from a list (by index) or a lookup table (by
+  // name). Signatures/descriptions/examples are grounded in the upstream
+  // JSDoc. Reference→ permalinks are the VERIFIED anchors on
+  // strudel.cc/learn/conditional-modifiers/ (harvested from the live page —
+  // see monaco/docs/STRUDEL_DOCS_PARITY.md §7). `pickOut`/`pickmodOut` have no
+  // heading on that page, so they omit `sourceUrl` and fall back to the
+  // functions browser (the `every` precedent). Added as a whole family, not
+  // one member, so the next `pickmod`/`inhabit` hover isn't a fresh gap
+  // (incomplete-enumeration guard, [[PV163]]).
+  pick: {
+    signature: ".pick(list | table)",
+    description: "Pick a pattern (or value) from a list by index, or a lookup table by name, keeping the picking pattern structure (innerJoin).",
+    example: 'note("<0 1 2!2 3>".pick(["g a", "e f", "f g f g", "g c d"]))',
+    sourceUrl: "https://strudel.cc/learn/conditional-modifiers/#pick"
+  },
+  pickmod: {
+    signature: ".pickmod(list | table)",
+    description: "Like pick, but an out-of-range index wraps around (modulo) instead of clamping to the last entry.",
+    example: 's("<0 1 2 3 4>".pickmod(["bd sd", "cp cp", "hh hh"]))',
+    sourceUrl: "https://strudel.cc/learn/conditional-modifiers/#pickmod"
+  },
+  pickF: {
+    signature: ".pickF(index, funcs)",
+    description: "Use a pattern of indices to pick which function to apply to this pattern.",
+    example: 's("bd [rim hh]").pickF("<0 1 2>", [rev, jux(rev), fast(2)])',
+    sourceUrl: "https://strudel.cc/learn/conditional-modifiers/#pickf"
+  },
+  pickmodF: {
+    signature: ".pickmodF(index, funcs)",
+    description: "Like pickF, but an out-of-range index wraps around (modulo).",
+    example: 's("bd [rim hh]").pickmodF("<0 1 2 3>", [rev, fast(2)])',
+    sourceUrl: "https://strudel.cc/learn/conditional-modifiers/#pickmodf"
+  },
+  pickOut: {
+    signature: ".pickOut(list | table)",
+    description: "Like pick, but joins with an outerJoin \u2014 the result takes the outer (picking) pattern structure.",
+    example: 's("<0 1 2>".pickOut(["bd sd", "cp cp", "hh hh"]))'
+  },
+  pickmodOut: {
+    signature: ".pickmodOut(list | table)",
+    description: "Like pickOut, but an out-of-range index wraps around (modulo).",
+    example: 's("<0 1 5>".pickmodOut(["bd sd", "cp cp", "hh hh"]))'
+  },
+  pickRestart: {
+    signature: ".pickRestart(list | table)",
+    description: "Like pick, but the chosen pattern is restarted from the top each time its index is triggered.",
+    example: '"<a@2 b@2>".pickRestart({ a: n("0 1 2 0"), b: n("2 3 4 ~") }).scale("C:major").s("piano")',
+    sourceUrl: "https://strudel.cc/learn/conditional-modifiers/#pickrestart"
+  },
+  pickmodRestart: {
+    signature: ".pickmodRestart(list | table)",
+    description: "Like pickRestart, but an out-of-range index wraps around (modulo).",
+    example: '"<0 1 4>".pickmodRestart([n("0 1 2 0"), n("2 3 4 ~")]).s("piano")',
+    sourceUrl: "https://strudel.cc/learn/conditional-modifiers/#pickmodrestart"
+  },
+  pickReset: {
+    signature: ".pickReset(list | table)",
+    description: "Like pick, but the chosen pattern is reset each time its index is triggered.",
+    example: '"<a b>".pickReset({ a: n("0 1 2 0"), b: n("2 3 4 ~") }).s("piano")',
+    sourceUrl: "https://strudel.cc/learn/conditional-modifiers/#pickreset"
+  },
+  pickmodReset: {
+    signature: ".pickmodReset(list | table)",
+    description: "Like pickReset, but an out-of-range index wraps around (modulo).",
+    example: '"<0 1 3>".pickmodReset([n("0 1 2"), n("2 3 4")]).s("piano")',
+    sourceUrl: "https://strudel.cc/learn/conditional-modifiers/#pickmodreset"
+  },
+  inhabit: {
+    signature: ".inhabit(table)",
+    description: "Like pick, but each picked cycle is squeezed (compressed) into the duration of the picking event. Synonym: pickSqueeze.",
+    example: '"<a b [a,b]>".inhabit({ a: s("bd(3,8)"), b: s("cp sd") })',
+    sourceUrl: "https://strudel.cc/learn/conditional-modifiers/#inhabit"
+  },
+  inhabitmod: {
+    signature: ".inhabitmod(table)",
+    description: "Like inhabit, but an out-of-range index wraps around (modulo). Synonym: pickmodSqueeze.",
+    example: '"<0 1 5>".inhabitmod([s("bd(3,8)"), s("cp sd")])',
+    sourceUrl: "https://strudel.cc/learn/conditional-modifiers/#inhabitmod"
+  },
+  squeeze: {
+    signature: "squeeze(index, list)",
+    description: "Pick from a list by a pattern of indices; the selected pattern is compressed to fit the duration of each selecting event.",
+    example: 'note(squeeze("<0@2 [1!2] 2>", ["g a", "f g f g", "g a c d"]))',
+    sourceUrl: "https://strudel.cc/learn/conditional-modifiers/#squeeze"
+  },
   // Stave extension — NOT a Strudel function. An empty `sourceUrl` suppresses
   // the Reference→ link (providers.ts renders it only when the href is truthy;
   // `'' ?? docsBaseUrl` stays `''`), so we never send the user to a strudel.cc
@@ -18643,7 +18729,13 @@ var STRUDEL_DOCS_INDEX = {
   runtime: "strudel",
   docs: STRUDEL_DOCS,
   // camelCase spelling of setcps resolves to the same doc.
-  aliases: { setCps: "setcps" },
+  // pickSqueeze/pickmodSqueeze are Strudel's registered synonyms for
+  // inhabit/inhabitmod (see @strudel/core/pick.mjs `register(['inhabit', …])`).
+  aliases: {
+    setCps: "setcps",
+    pickSqueeze: "inhabit",
+    pickmodSqueeze: "inhabitmod"
+  },
   // Catch-all friendly-error hints that aren't tied to a single symbol.
   // The two cases below are the highest-frequency Strudel papercut:
   // bare note / drum names outside a string. JS evaluates them as
