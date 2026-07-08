@@ -114,14 +114,32 @@ export function soundMapToAssets(
   return assets;
 }
 
-/** Build the Sounds provider. `list()` reads the live soundMap on each call
- *  (cheap; the shell re-lists only on registry ticks), `isLoading()` reports the
- *  pre-warm-up empty state so the shell shows "Loading…". */
+/**
+ * Build the Sounds provider. `list()` is called on every shell re-list —
+ * including every search keystroke (the shell filters over `list()`, this
+ * provider has no own `search`). Rebuilding 1851 Assets + sorting on each call
+ * would jank typing, so the built list is MEMOISED on the soundMap's entry
+ * count: it rebuilds only when the catalog grows (warm-up), and returns the
+ * same array between growths — which also keeps the shell's `useMemo` stable.
+ * Count is the key because superdough's soundMap only ever grows to its final
+ * size (the poll notifies on count change), matching the existing catalog
+ * accessor's contract.
+ */
 export function createSoundsProvider(deps: SoundsProviderDeps) {
+  let cachedCount = -1;
+  let cached: Asset[] = [];
   return {
     type: "sound" as const,
     label: "Sounds",
-    list: () => soundMapToAssets(deps.readDict(), deps),
+    list: () => {
+      const dict = deps.readDict();
+      const count = dict ? Object.keys(dict).length : 0;
+      if (count !== cachedCount) {
+        cachedCount = count;
+        cached = soundMapToAssets(dict, deps);
+      }
+      return cached;
+    },
     isLoading: () => {
       const d = deps.readDict();
       return !d || Object.keys(d).length === 0;

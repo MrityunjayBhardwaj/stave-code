@@ -97,4 +97,19 @@ describe("createSoundsProvider", () => {
     expect(p.type).toBe("sound");
     expect(p.label).toBe("Sounds");
   });
+
+  it("memoises list() on entry count — stable ref between calls, rebuilds on growth", () => {
+    let dict: SoundMapDict = { a: { data: { type: "synth" } } };
+    const readDict = vi.fn(() => dict);
+    const p = createSoundsProvider({ readDict, ...deps });
+    const first = p.list();
+    const second = p.list();
+    expect(second).toBe(first); // same array — no per-keystroke rebuild
+
+    // Catalog grows (warm-up) → rebuild, new array with the extra sound.
+    dict = { a: { data: { type: "synth" } }, b: { data: { type: "sample" } } };
+    const third = p.list();
+    expect(third).not.toBe(first);
+    expect(third.map((x) => x.id).sort()).toEqual(["a", "b"]);
+  });
 });
