@@ -65,11 +65,13 @@ export function groupSoundCatalog(dict: SoundMapDict | null | undefined): SoundG
   if (!dict) return null
   const synths: string[] = []
   const soundfonts: string[] = []
+  const wavetables: string[] = []
   const samples: string[] = []
   for (const name of Object.keys(dict)) {
     if (name.startsWith('_')) continue
     const data = dict[name]?.data
     if (data?.tag === 'drum-machines') continue // kit voices, not melodic
+    if (data?.type === 'input') continue // live audio-in bus, not a pickable sound
     switch (data?.type) {
       case 'synth':
         synths.push(name)
@@ -77,14 +79,21 @@ export function groupSoundCatalog(dict: SoundMapDict | null | undefined): SoundG
       case 'soundfont':
         soundfonts.push(name)
         break
-      case 'sample':
-        samples.push(name)
+      case 'wavetable':
+        wavetables.push(name)
         break
-      default:
+      case 'sample':
+      // A sound type we don't have a dedicated group for is still a PLAYABLE
+      // melodic sound — treat it as a sample rather than silently drop it. The
+      // old `default: break` swallowed `wavetable` (7 uzu-wavetables) whole
+      // (incomplete type-enumeration, the P254/PV162 family). Include-by-default
+      // so the next new upstream type can't vanish from the picker.
+      default: // eslint-disable-line no-fallthrough
+        samples.push(name)
         break
     }
   }
-  if (synths.length + soundfonts.length + samples.length === 0) return null
+  if (synths.length + soundfonts.length + wavetables.length + samples.length === 0) return null
   const groups: SoundGroup[] = []
   if (synths.length) {
     groups.push({
@@ -96,6 +105,12 @@ export function groupSoundCatalog(dict: SoundMapDict | null | undefined): SoundG
     groups.push({
       group: 'Soundfonts',
       options: soundfonts.sort().map((v) => ({ value: v, label: soundfontLabel(v) })),
+    })
+  }
+  if (wavetables.length) {
+    groups.push({
+      group: 'Wavetables',
+      options: wavetables.sort().map((v) => ({ value: v, label: simpleLabel(v) })),
     })
   }
   if (samples.length) {
