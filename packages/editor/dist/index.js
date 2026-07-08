@@ -29772,6 +29772,10 @@ function SoundPickerMenu({
                 // Explicit hidden so `overflowX:auto` doesn't compute overflowY
                 // to `auto` and add a vertical scrollbar; the 2 rows fit exactly.
                 overflowY: "hidden",
+                // Firefox ignores the injected `::-webkit-scrollbar` rule, so
+                // hide its scrollbar with the standard prop too (belt still
+                // scrolls). Same dual pattern as WorkspaceShell's tabbar.
+                scrollbarWidth: "none",
                 paddingBottom: 2,
                 // Keep the natural 2-row height — don't let the tall option list
                 // below shrink this to a sliver (the flex-column default).
