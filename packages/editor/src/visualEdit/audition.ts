@@ -18,6 +18,27 @@
  */
 import { superdough, getAudioContext } from '@strudel/webaudio'
 
+/**
+ * Shared audition envelope (#816). Both this one-shot preview and PianoRollGrid's
+ * key press (`playMidi`) trigger a note through this SAME shape, so a picker ▶
+ * preview sounds identical to a key tap — one constant, no drift. `sustain: 1`
+ * (full level, not the synth default pluck of 0) gives the note body; the short
+ * `release` keeps the tail tight.
+ */
+export const AUDITION_ENVELOPE = {
+  gain: 0.9,
+  attack: 0.01,
+  sustain: 1,
+  release: 0.08,
+} as const
+
+/**
+ * One-shot / single-tap note length in seconds. A held pianoroll key retriggers
+ * at this interval (PianoRollGrid `HOLD_RETRIGGER_MS = AUDITION_DUR_S * 1000`),
+ * so a single tap and a ▶ preview are the same length.
+ */
+export const AUDITION_DUR_S = 0.22
+
 /** Preview `sound` once (a single `note`, default c4). Safe to call anytime. */
 export function auditionSound(sound: string, note = 'c4'): void {
   if (!sound) return
@@ -28,13 +49,10 @@ export function auditionSound(sound: string, note = 'c4'): void {
     const value: Record<string, unknown> = {
       note,
       s: sound,
-      gain: 0.9,
-      attack: 0.01,
-      sustain: 0.5, // ring out briefly rather than the synth default pluck (0)
-      release: 0.12,
+      ...AUDITION_ENVELOPE,
     }
     // t must be the absolute onset; a small lead avoids scheduling in the past.
-    void superdough(value, ctx.currentTime + 0.02, 0.5, 0.5, 0)?.catch(() => {})
+    void superdough(value, ctx.currentTime + 0.02, AUDITION_DUR_S, 0.5, 0)?.catch(() => {})
   } catch {
     /* audio graph not ready — never break the UI */
   }

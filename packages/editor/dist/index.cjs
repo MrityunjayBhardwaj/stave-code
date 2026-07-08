@@ -28490,12 +28490,35 @@ function getNoteClip() {
   return clip;
 }
 __name(getNoteClip, "getNoteClip");
+var AUDITION_ENVELOPE = {
+  gain: 0.9,
+  attack: 0.01,
+  sustain: 1,
+  release: 0.08
+};
+var AUDITION_DUR_S = 0.22;
+function auditionSound(sound, note = "c4") {
+  if (!sound) return;
+  try {
+    const ctx = webaudio.getAudioContext();
+    void ctx.resume();
+    const value = {
+      note,
+      s: sound,
+      ...AUDITION_ENVELOPE
+    };
+    void webaudio.superdough(value, ctx.currentTime + 0.02, AUDITION_DUR_S, 0.5, 0)?.catch(() => {
+    });
+  } catch {
+  }
+}
+__name(auditionSound, "auditionSound");
 var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
 var RESIZE_ZONE_PX = 8;
-var HOLD_RETRIGGER_MS = 220;
+var HOLD_RETRIGGER_MS = AUDITION_DUR_S * 1e3;
 var LANE_HEIGHT = 48;
 var VELOCITY_FULL_PX2 = 80;
 var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
@@ -28606,11 +28629,7 @@ function PianoRollGrid({
       const sound = chunk ? readChainMethod(chunk, ["sound", "s"])?.value : null;
       const value = {
         note: midiToPitch(midi),
-        gain: 0.9,
-        attack: 0.01,
-        sustain: 1,
-        // hold at full so the note sustains for its slice
-        release: 0.08
+        ...AUDITION_ENVELOPE
       };
       if (sound) value.s = sound;
       void webaudio.superdough(value, ctx.currentTime + 0.02, HOLD_RETRIGGER_MS / 1e3, 0.5, 0)?.catch(() => {
@@ -29761,26 +29780,6 @@ var setDrumKitAccessor = drumKitStore.setAccessor;
 var notifyDrumKitChanged = drumKitStore.notify;
 drumKitStore.read;
 var useDrumKitCatalog = drumKitStore.useCatalog;
-function auditionSound(sound, note = "c4") {
-  if (!sound) return;
-  try {
-    const ctx = webaudio.getAudioContext();
-    void ctx.resume();
-    const value = {
-      note,
-      s: sound,
-      gain: 0.9,
-      attack: 0.01,
-      sustain: 0.5,
-      // ring out briefly rather than the synth default pluck (0)
-      release: 0.12
-    };
-    void webaudio.superdough(value, ctx.currentTime + 0.02, 0.5, 0.5, 0)?.catch(() => {
-    });
-  } catch {
-  }
-}
-__name(auditionSound, "auditionSound");
 function knobsFromChunk(chunk, includeGain = false) {
   const knobs = [];
   chunk.chain.forEach((call, chainIndex) => {
