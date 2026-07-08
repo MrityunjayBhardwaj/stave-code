@@ -24,6 +24,7 @@ import {
   collectAssets,
   type AssetFilter,
 } from "./filter";
+import { computeWindow } from "./windowing";
 import type { Asset, AssetPreviewHandle, AssetSource, AssetType } from "./types";
 
 const ROW_HEIGHT = 40;
@@ -170,6 +171,10 @@ export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
         loading={loading}
         previewingKey={previewingKey}
         onTogglePreview={togglePreview}
+        // Reset scroll to top when the FILTER changes (not when the catalog
+        // grows under a stable filter) — a new search starts at the top, but
+        // browsing position survives a lazily-growing provider.
+        resetKey={`${type ?? ""}|${source ?? ""}|${query}`}
       />
     </div>
   );
@@ -196,6 +201,7 @@ function ChipRow<T extends string>({
       <button
         style={{ ...styles.chip, ...(active === null ? styles.chipActive : {}) }}
         onClick={() => onPick(null)}
+        aria-pressed={active === null}
         data-chip="all"
       >
         All
@@ -205,6 +211,7 @@ function ChipRow<T extends string>({
           key={v}
           style={{ ...styles.chip, ...(active === v ? styles.chipActive : {}) }}
           onClick={() => onPick(active === v ? null : v)}
+          aria-pressed={active === v}
           data-chip={v}
         >
           {render(v)}
@@ -222,30 +229,48 @@ function AssetList({
   loading,
   previewingKey,
   onTogglePreview,
+  resetKey,
 }: {
   assets: Asset[];
   loading: boolean;
   previewingKey: string | null;
   onTogglePreview: (key: string, asset: Asset) => void;
+  resetKey: string;
 }) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const nodeRef = useRef<HTMLDivElement | null>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportH, setViewportH] = useState(0);
 
-  useEffect(() => {
-    const el = scrollRef.current;
+  // Callback ref, NOT a mount effect: the scroll node only exists once the
+  // catalog is non-empty, so a one-shot `[]` effect that reads scrollRef at
+  // first mount misses the loading→loaded transition (the node is null then
+  // and the effect never re-runs). A stable callback ref fires on every
+  // attach/detach, so the observer wires up whenever the list actually renders
+  // — including after a lazy provider (sounds) warms up. (F1)
+  const setScrollEl = useCallback((el: HTMLDivElement | null) => {
+    roRef.current?.disconnect();
+    roRef.current = null;
+    nodeRef.current = el;
     if (!el) return;
-    const measure = () => setViewportH(el.clientHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
+    setViewportH(el.clientHeight);
+    const ro = new ResizeObserver(() => setViewportH(el.clientHeight));
     ro.observe(el);
-    return () => ro.disconnect();
+    roRef.current = ro;
   }, []);
+  useEffect(() => () => roRef.current?.disconnect(), []);
+
+  // Reset scroll when the filter changes so a new search starts at the top and
+  // a stale scrollTop can't point past the (now shorter) content. (F2)
+  useEffect(() => {
+    if (nodeRef.current) nodeRef.current.scrollTop = 0;
+    setScrollTop(0);
+  }, [resetKey]);
 
   const total = assets.length;
-  const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-  const visibleCount = Math.ceil(viewportH / ROW_HEIGHT) + OVERSCAN * 2;
-  const last = Math.min(total, first + visibleCount);
+  // `computeWindow` clamps `first` so a stale (too-large) scrollTop after the
+  // list shrinks can never produce an empty slice (start > end → blank). (F2)
+  const { first, last } = computeWindow(total, scrollTop, viewportH, ROW_HEIGHT, OVERSCAN);
   const slice = assets.slice(first, last);
 
   if (loading && total === 0) {
@@ -265,7 +290,7 @@ function AssetList({
 
   return (
     <div
-      ref={scrollRef}
+      ref={setScrollEl}
       style={styles.listScroll}
       onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       data-asset-list
