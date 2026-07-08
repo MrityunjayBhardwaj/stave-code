@@ -36,6 +36,7 @@ import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 import { setNoteClip, getNoteClip } from './clipboard'
 import { readChainMethod } from './chainMethod'
+import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
 
 const ROLL_HINT = 'Click a melody to edit its notes.'
@@ -63,7 +64,7 @@ const RESIZE_ZONE_PX = 8
  * the tail bridges the seam; the loop stops on release, so the note rings out
  * within one slice of letting go.
  */
-const HOLD_RETRIGGER_MS = 220
+const HOLD_RETRIGGER_MS = AUDITION_DUR_S * 1000
 
 /** velocity lane height (px) and the drag distance that spans the full 0→1 */
 const LANE_HEIGHT = 48
@@ -261,12 +262,11 @@ export function PianoRollGrid({
       const ctx = getAudioContext()
       void ctx.resume() // the press is the user gesture that unlocks audio
       const sound = chunk ? readChainMethod(chunk, ['sound', 's'])?.value : null
+      // Shared envelope (#816) so a key tap and the Mixer picker's ▶ preview
+      // sound identical — both trigger the same note shape through superdough.
       const value: Record<string, unknown> = {
         note: midiToPitch(midi),
-        gain: 0.9,
-        attack: 0.01,
-        sustain: 1, // hold at full so the note sustains for its slice
-        release: 0.08,
+        ...AUDITION_ENVELOPE,
       }
       if (sound) value.s = sound
       void superdough(value, ctx.currentTime + 0.02, HOLD_RETRIGGER_MS / 1000, 0.5, 0)?.catch(() => {})

@@ -11,7 +11,7 @@ vi.mock('@strudel/webaudio', () => ({
   getAudioContext: () => getAudioContext(),
 }))
 
-import { auditionSound } from '../audition'
+import { auditionSound, AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 
 describe('auditionSound', () => {
   beforeEach(() => {
@@ -27,6 +27,19 @@ describe('auditionSound', () => {
     expect(value.note).toBe('c4')
     expect(value.sustain).toBeGreaterThan(0) // rings out, not the synth pluck default
     expect(t).toBeGreaterThan(10) // absolute onset just ahead of ctx.currentTime
+  })
+
+  it('triggers with the SHARED audition envelope + duration (#816 — matches a pianoroll key press)', () => {
+    // The whole point of AUDITION_ENVELOPE / AUDITION_DUR_S is that a ▶ preview
+    // and PianoRollGrid's playMidi trigger the SAME note shape. Lock the emitted
+    // value to the shared constants so the two auditions can never drift again.
+    auditionSound('piano')
+    const [value, , dur] = superdough.mock.calls[0] as [Record<string, unknown>, number, number]
+    expect(value.gain).toBe(AUDITION_ENVELOPE.gain)
+    expect(value.attack).toBe(AUDITION_ENVELOPE.attack)
+    expect(value.sustain).toBe(AUDITION_ENVELOPE.sustain)
+    expect(value.release).toBe(AUDITION_ENVELOPE.release)
+    expect(dur).toBe(AUDITION_DUR_S)
   })
 
   it('honours an explicit note', () => {
