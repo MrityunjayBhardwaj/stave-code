@@ -34873,6 +34873,17 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     this.isDisposed = false;
     this.currentBpm = void 0;
     this.isPlayingState = false;
+    /**
+     * Monotonic play generation. `play()` is async and yields across `await`
+     * init/evaluate before it starts the scheduler. If a `stop()` (or a newer
+     * `play()`) lands during those awaits, the in-flight `play()` must abort
+     * BEFORE step 7/8 — otherwise it publishes stale state and restarts the
+     * scheduler right after Stop already stopped it, leaving audio running while
+     * `isPlayingState` reads `false` (Stop then becomes a permanent no-op). Each
+     * `play()` captures this counter at entry; `stop()` and each new `play()`
+     * bump it; after every await, `play()` bails if its token is stale (#811).
+     */
+    this.playGeneration = 0;
     this.errorListeners = /* @__PURE__ */ new Set();
     this.playingChangedListeners = /* @__PURE__ */ new Set();
     this.evaluateSuccessListeners = /* @__PURE__ */ new Set();
@@ -34935,6 +34946,8 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
       this.fireOnError(err);
       return { error: err };
     }
+    const myGen = ++this.playGeneration;
+    const superseded = /* @__PURE__ */ __name(() => this.isDisposed || myGen !== this.playGeneration, "superseded");
     try {
       if (!this.isInitialized) {
         await this.engine.init();
@@ -34957,6 +34970,9 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     if (evalResult.error) {
       this.fireOnError(evalResult.error);
       return { error: evalResult.error };
+    }
+    if (superseded()) {
+      return { error: null };
     }
     const components = this.engine.components;
     const streaming = components.streaming;
@@ -35013,18 +35029,18 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     return this.isPlayingState;
   }
   stop() {
+    this.playGeneration++;
     if (this.isDisposed) return;
-    if (!this.isPlayingState) {
-      workspaceAudioBus.unpublish(this.fileId);
-      return;
-    }
+    const wasPlaying = this.isPlayingState;
     try {
       this.engine.stop();
     } finally {
       workspaceAudioBus.unpublish(this.fileId);
-      this.isPlayingState = false;
-      this.firePlayingChanged(false);
-      notifyPlaybackStopped(this.fileId);
+      if (wasPlaying) {
+        this.isPlayingState = false;
+        this.firePlayingChanged(false);
+        notifyPlaybackStopped(this.fileId);
+      }
       this.reconcileAutoRefresh();
     }
   }

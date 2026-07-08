@@ -1119,6 +1119,16 @@ export default function StrudelEditorClient({
         reevalState.current.set(fileId, st);
         if (st.inFlight) { st.pending = true; return; }
         const run = (): void => {
+          // Re-check the play gate on every (re)entry, not just at the handler
+          // top. A Stop can land while a re-eval is in flight; the pending loop
+          // below would otherwise call rt.play() again and restart playback
+          // right after Stop (#811). rt.play() has no "still playing?" guard of
+          // its own — this is the only place that gate belongs.
+          if (!(rt.getIsPlaying() && !rt.isAutoRefreshEnabled())) {
+            st.pending = false;
+            st.inFlight = false;
+            return;
+          }
           st.pending = false;
           st.inFlight = true;
           Promise.resolve(rt.play()).finally(() => {

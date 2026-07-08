@@ -207,6 +207,18 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   private currentBpm: number | undefined = undefined
   private isPlayingState = false
 
+  /**
+   * Monotonic play generation. `play()` is async and yields across `await`
+   * init/evaluate before it starts the scheduler. If a `stop()` (or a newer
+   * `play()`) lands during those awaits, the in-flight `play()` must abort
+   * BEFORE step 7/8 — otherwise it publishes stale state and restarts the
+   * scheduler right after Stop already stopped it, leaving audio running while
+   * `isPlayingState` reads `false` (Stop then becomes a permanent no-op). Each
+   * `play()` captures this counter at entry; `stop()` and each new `play()`
+   * bump it; after every await, `play()` bails if its token is stale (#811).
+   */
+  private playGeneration = 0
+
   private readonly errorListeners = new Set<(err: Error) => void>()
   private readonly playingChangedListeners = new Set<(playing: boolean) => void>()
   private readonly evaluateSuccessListeners = new Set<(code: string) => void>()
@@ -293,6 +305,13 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
       return { error: err }
     }
 
+    // Supersede any earlier in-flight play() and record our generation. After
+    // each await below we compare against this — if a stop() or a newer play()
+    // bumped the counter in the meantime, we abort before starting the
+    // scheduler so we never restart audio that Stop just stopped (#811).
+    const myGen = ++this.playGeneration
+    const superseded = (): boolean => this.isDisposed || myGen !== this.playGeneration
+
     // Step 1 — init if needed.
     try {
       if (!this.isInitialized) {
@@ -320,6 +339,15 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     if (evalResult.error) {
       this.fireOnError(evalResult.error)
       return { error: evalResult.error }
+    }
+
+    // Step 3b — supersession gate. A stop() (or a newer play()) landed during
+    // the init/evaluate awaits above. Abort BEFORE publishing to the bus and
+    // BEFORE step 8's scheduler.start(): restarting here is exactly the race
+    // that leaves audio playing after Stop with isPlayingState === false (#811).
+    // Placed here so the step 4→7 window stays await-free (PK1).
+    if (superseded()) {
+      return { error: null }
     }
 
     // Steps 4–6 — read components, elevate scheduler if needed, build payload.
@@ -416,25 +444,38 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   }
 
   stop(): void {
+    // Invalidate any in-flight play() so it aborts after its await instead of
+    // restarting the scheduler we're about to stop (#811). Bump first, before
+    // any early-return, so the guard can't be skipped.
+    this.playGeneration++
     if (this.isDisposed) return
-    // Stopping is idempotent — calling twice should be a no-op, not throw.
-    if (!this.isPlayingState) {
-      // Even when not playing, the bus may still hold our entry from a
-      // previous publish that wasn't followed by stop. Clear it to be safe.
-      workspaceAudioBus.unpublish(this.fileId)
-      return
-    }
+
+    const wasPlaying = this.isPlayingState
+
+    // Stop the engine UNCONDITIONALLY — do NOT gate on isPlayingState. A
+    // play()/stop() race can leave the scheduler running while isPlayingState
+    // reads `false` (#811); the old `if (!isPlayingState) return` made Stop a
+    // permanent no-op in exactly that state, so audio played forever and the
+    // transport button (bound to isPlayingState) never issued another stop.
+    // scheduler.stop() is idempotent and repl is optional-chained, so calling
+    // it when already stopped / never initialized is safe.
     try {
       this.engine.stop()
     } finally {
       // Always unpublish, even if engine.stop throws — leaving a phantom
       // entry on the bus is worse than swallowing a stop error.
       workspaceAudioBus.unpublish(this.fileId)
-      this.isPlayingState = false
-      this.firePlayingChanged(false)
-      // Notify the coordinator AFTER we've marked ourselves stopped
-      // so any listeners see a consistent state.
-      notifyPlaybackStopped(this.fileId)
+      // Fire the transition listeners only on a real playing→stopped edge so
+      // idempotent double-stops don't spam a redundant `false`. In the race
+      // case wasPlaying is already false and the UI already reads stopped —
+      // the load-bearing recovery is engine.stop() above, not the event.
+      if (wasPlaying) {
+        this.isPlayingState = false
+        this.firePlayingChanged(false)
+        // Notify the coordinator AFTER we've marked ourselves stopped
+        // so any listeners see a consistent state.
+        notifyPlaybackStopped(this.fileId)
+      }
       // Live mode: tear down the subscription but keep autoRefreshEnabled
       // as-is so a subsequent play() re-installs it. Matches the legacy
       // LiveCodingEditor behavior where toggling Stop doesn't flip the
