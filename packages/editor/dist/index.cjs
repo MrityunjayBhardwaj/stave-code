@@ -28497,8 +28497,7 @@ var AUDITION_ENVELOPE = {
   release: 0.08
 };
 var AUDITION_DUR_S = 0.22;
-function auditionSound(sound, note = "c4") {
-  if (!sound) return;
+function fireOnce(sound, note) {
   try {
     const ctx = webaudio.getAudioContext();
     void ctx.resume();
@@ -28512,7 +28511,27 @@ function auditionSound(sound, note = "c4") {
   } catch {
   }
 }
+__name(fireOnce, "fireOnce");
+function auditionSound(sound, note = "c4") {
+  if (!sound) return;
+  fireOnce(sound, note);
+}
 __name(auditionSound, "auditionSound");
+function startAudition(sound, note = "c4") {
+  if (!sound) return { stop: /* @__PURE__ */ __name(() => {
+  }, "stop") };
+  fireOnce(sound, note);
+  const timer = setInterval(() => fireOnce(sound, note), AUDITION_DUR_S * 1e3);
+  let stopped = false;
+  return {
+    stop: /* @__PURE__ */ __name(() => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+    }, "stop")
+  };
+}
+__name(startAudition, "startAudition");
 var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
@@ -34652,7 +34671,31 @@ var WorkspaceShell = React35.forwardRef(/* @__PURE__ */ __name(function Workspac
           opacity: g?.backdropOpacity ?? backdropOpacity,
           quality: g?.backdropQuality ?? backdropQuality
         };
-      }, "getBackdropSettings")
+      }, "getBackdropSettings"),
+      assignSoundToCursor: /* @__PURE__ */ __name((sound) => {
+        if (!sound) return;
+        const editor = getActiveEditor();
+        const monaco = getMonacoNamespace();
+        const model = editor?.getModel();
+        const pos = editor?.getPosition();
+        if (!editor || !monaco || !model || !pos) return;
+        const offset = model.getOffsetAt(pos);
+        const chunk = detectChunk(model.getValue(), offset);
+        const wb = new Writeback(editor, monaco);
+        if (chunk && patternKind(chunk) === "roll") {
+          const cur = readChainMethod(chunk, ["sound", "s"]);
+          if (cur) wb.replaceRange(cur.range, `'${sound}'`, "mixer");
+          else wb.insertAt(chunk.exprRange[1], `.sound('${sound}')`, "mixer");
+        } else {
+          const line = pos.lineNumber;
+          const lineEnd = model.getOffsetAt({
+            lineNumber: line,
+            column: model.getLineMaxColumn(line)
+          });
+          const hasContent = model.getLineContent(line).trim().length > 0;
+          wb.insertAt(lineEnd, `${hasContent ? "\n" : ""}s("${sound}")`, "mixer");
+        }
+      }, "assignSoundToCursor")
     }),
     [
       groups,
@@ -39803,6 +39846,8 @@ function isPersistableTab(t) {
 __name(isPersistableTab, "isPersistableTab");
 
 exports.ALIAS_MAP = ALIAS_MAP;
+exports.AUDITION_DUR_S = AUDITION_DUR_S;
+exports.AUDITION_ENVELOPE = AUDITION_ENVELOPE;
 exports.AUTO_SNAPSHOT_PREFIX = AUTO_SNAPSHOT_PREFIX;
 exports.BACKDROP_BLUR_VAR = BACKDROP_BLUR_VAR;
 exports.BOTTOM_PANEL_ACTIVE_TAB_KEY = BOTTOM_PANEL_ACTIVE_TAB_KEY;
@@ -39913,6 +39958,7 @@ exports.applyPersistedTheme = applyPersistedTheme;
 exports.applyPersistedUiIconSize = applyPersistedUiIconSize;
 exports.applyPersistedVizQuality = applyPersistedVizQuality;
 exports.applyTheme = applyTheme;
+exports.auditionSound = auditionSound;
 exports.backdropQualityFactor = backdropQualityFactor;
 exports.banksFromDrumMachineManifest = banksFromDrumMachineManifest;
 exports.buildAliasSuffix = buildAliasSuffix;
@@ -40233,6 +40279,7 @@ exports.setZoneHeightOverride = setZoneHeightOverride;
 exports.shellStateKeyFor = shellStateKeyFor;
 exports.silenceArm = silenceArm;
 exports.splitArm = splitArm;
+exports.startAudition = startAudition;
 exports.startHistoryDriver = startHistoryDriver;
 exports.startSampleSound = startSampleSound;
 exports.statementOffsetForSource = statementOffsetForSource;
