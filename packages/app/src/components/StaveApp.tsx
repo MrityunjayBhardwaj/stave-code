@@ -95,6 +95,7 @@ import {
 } from "@stave/editor";
 import { getLogHistory } from "@stave/editor";
 import { startAudition } from "@stave/editor";
+import { gmFamily, soundfontGroupLabel } from "@stave/editor";
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
 import { PerfOverlay } from "./PerfOverlay";
 
@@ -720,6 +721,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         readDict,
         startPreview: (sound) => startAudition(sound),
         onInsert: (sound) => shellRef.current?.assignSoundToCursor(sound),
+        // #807 — GM soundfont family grouping, from the shared editor module so
+        // the Mixer picker and this provider label soundfonts identically.
+        gmFamily,
+        soundfontGroupLabel,
       }),
     );
     let lastCount = -1;
