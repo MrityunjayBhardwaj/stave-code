@@ -30,6 +30,7 @@ import { type Division, DIVISIONS, isRepresentable, stepsPerBar } from './divisi
 import { readChainMethod } from './chainMethod'
 import { INSTRUMENTS, DRUM_KITS, type SoundGroup } from './soundCatalog'
 import { useSoundCatalog, useDrumKitCatalog } from '../../workspace/soundRegistry'
+import { auditionSound } from '../audition'
 
 /** one knob = one numeric argument of one chain call */
 interface KnobEntry {
@@ -81,12 +82,16 @@ function SoundSelect({
   value,
   placeholder,
   onChange,
+  onAudition,
 }: {
   label: string
   groups: SoundGroup[]
   value: string
   placeholder: string
   onChange: (v: string) => void
+  /** When set, render a ▶ button that previews the current value without
+   *  changing it ("hear before you place", #805). Omitted → no audition UI. */
+  onAudition?: (v: string) => void
 }): React.ReactElement {
   const known = groups.some((g) => g.options.some((o) => o.value === value))
   return (
@@ -95,32 +100,66 @@ function SoundSelect({
       style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}
     >
       <span style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>{label}</span>
-      <select
-        data-mixer-sound-select={label.toLowerCase()}
-        value={known ? value : value === '' ? '' : '__custom__'}
-        onChange={(e) => e.target.value !== '__custom__' && onChange(e.target.value)}
-        style={{
-          padding: '4px 8px',
-          fontSize: 12,
-          borderRadius: 4,
-          border: '1px solid var(--border, #3a3a42)',
-          background: 'var(--background-elevated, #26262c)',
-          color: 'var(--foreground, #e6e6ea)',
-          maxWidth: 220,
-        }}
-      >
-        <option value="">{placeholder}</option>
-        {value !== '' && !known && <option value="__custom__">{value} (current)</option>}
-        {groups.map((g) => (
-          <optgroup key={g.group} label={g.group}>
-            {g.options.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <select
+          data-mixer-sound-select={label.toLowerCase()}
+          value={known ? value : value === '' ? '' : '__custom__'}
+          onChange={(e) => {
+            if (e.target.value === '__custom__') return
+            onChange(e.target.value)
+            // Audition-on-select: hear the sound the moment it's picked (#805).
+            onAudition?.(e.target.value)
+          }}
+          style={{
+            padding: '4px 8px',
+            fontSize: 12,
+            borderRadius: 4,
+            border: '1px solid var(--border, #3a3a42)',
+            background: 'var(--background-elevated, #26262c)',
+            color: 'var(--foreground, #e6e6ea)',
+            maxWidth: 220,
+          }}
+        >
+          <option value="">{placeholder}</option>
+          {value !== '' && !known && <option value="__custom__">{value} (current)</option>}
+          {groups.map((g) => (
+            <optgroup key={g.group} label={g.group}>
+              {g.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        {onAudition && (
+          <button
+            type="button"
+            data-mixer-sound-audition={label.toLowerCase()}
+            title={value ? `Preview ${value}` : 'Pick a sound to preview'}
+            aria-label="Preview sound"
+            disabled={!value}
+            onClick={() => value && onAudition(value)}
+            style={{
+              flexShrink: 0,
+              width: 24,
+              height: 24,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 11,
+              lineHeight: 1,
+              borderRadius: 4,
+              border: '1px solid var(--border, #3a3a42)',
+              background: 'var(--background-elevated, #26262c)',
+              color: value ? 'var(--foreground, #e6e6ea)' : 'var(--text-disabled, #555)',
+              cursor: value ? 'pointer' : 'default',
+            }}
+          >
+            ▶
+          </button>
+        )}
+      </div>
     </label>
   )
 }
@@ -361,6 +400,7 @@ export function MixerBody({
           value={readChainMethod(chunk, ['sound', 's'])?.value ?? ''}
           placeholder="Default synth"
           onChange={(v) => writeChainMethod(['sound', 's'], 'sound', v)}
+          onAudition={(v) => auditionSound(v)}
         />
       )}
       {kind === 'roll' && division !== undefined && onDivisionChange && (

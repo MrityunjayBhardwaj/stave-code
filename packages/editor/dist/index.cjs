@@ -5013,7 +5013,7 @@ var _StrudelEngine = class _StrudelEngine {
     }
     miniMod.miniAllStrings();
     const { transpiler } = await import('@strudel/transpiler');
-    const { initAudio, getAudioContext: getAudioContext2, webaudioOutput, webaudioRepl } = webaudioMod;
+    const { initAudio, getAudioContext: getAudioContext3, webaudioOutput, webaudioRepl } = webaudioMod;
     await initAudio();
     webaudioMod.registerSynthSounds();
     webaudioMod.registerZZFXSounds();
@@ -5157,6 +5157,9 @@ var _StrudelEngine = class _StrudelEngine {
     ]);
     const soundMapRef = webaudioMod.soundMap;
     this.soundMapRef = soundMapRef;
+    if (soundMapRef) {
+      globalThis.soundMap = soundMapRef;
+    }
     const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
     try {
       await webaudioMod.aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`);
@@ -5167,7 +5170,7 @@ var _StrudelEngine = class _StrudelEngine {
     console.log(`[StrudelEngine] aliasBank: soundMap keys ${preAliasCount} \u2192 ${postAliasCount} (\u0394 ${postAliasCount - preAliasCount}; expect non-negative)`);
     const soundMapData = webaudioMod.soundMap?.get() ?? {};
     this.loadedSoundNames = Object.keys(soundMapData).filter((k) => !k.startsWith("_"));
-    this.audioCtx = getAudioContext2();
+    this.audioCtx = getAudioContext3();
     const audioCtx = this.audioCtx;
     this.analyserNode = audioCtx.createAnalyser();
     this.analyserNode.fftSize = 2048;
@@ -29741,6 +29744,26 @@ var setDrumKitAccessor = drumKitStore.setAccessor;
 var notifyDrumKitChanged = drumKitStore.notify;
 drumKitStore.read;
 var useDrumKitCatalog = drumKitStore.useCatalog;
+function auditionSound(sound, note = "c4") {
+  if (!sound) return;
+  try {
+    const ctx = webaudio.getAudioContext();
+    void ctx.resume();
+    const value = {
+      note,
+      s: sound,
+      gain: 0.9,
+      attack: 0.01,
+      sustain: 0.5,
+      // ring out briefly rather than the synth default pluck (0)
+      release: 0.12
+    };
+    void webaudio.superdough(value, ctx.currentTime + 0.02, 0.5, 0.5, 0)?.catch(() => {
+    });
+  } catch {
+  }
+}
+__name(auditionSound, "auditionSound");
 function knobsFromChunk(chunk, includeGain = false) {
   const knobs = [];
   chunk.chain.forEach((call, chainIndex) => {
@@ -29766,7 +29789,8 @@ function SoundSelect({
   groups,
   value,
   placeholder,
-  onChange
+  onChange,
+  onAudition
 }) {
   const known = groups.some((g) => g.options.some((o) => o.value === value));
   return /* @__PURE__ */ jsxRuntime.jsxs(
@@ -29776,31 +29800,64 @@ function SoundSelect({
       style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11 },
       children: [
         /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: label }),
-        /* @__PURE__ */ jsxRuntime.jsxs(
-          "select",
-          {
-            "data-mixer-sound-select": label.toLowerCase(),
-            value: known ? value : value === "" ? "" : "__custom__",
-            onChange: (e) => e.target.value !== "__custom__" && onChange(e.target.value),
-            style: {
-              padding: "4px 8px",
-              fontSize: 12,
-              borderRadius: 4,
-              border: "1px solid var(--border, #3a3a42)",
-              background: "var(--background-elevated, #26262c)",
-              color: "var(--foreground, #e6e6ea)",
-              maxWidth: 220
-            },
-            children: [
-              /* @__PURE__ */ jsxRuntime.jsx("option", { value: "", children: placeholder }),
-              value !== "" && !known && /* @__PURE__ */ jsxRuntime.jsxs("option", { value: "__custom__", children: [
-                value,
-                " (current)"
-              ] }),
-              groups.map((g) => /* @__PURE__ */ jsxRuntime.jsx("optgroup", { label: g.group, children: g.options.map((o) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: o.value, children: o.label }, o.value)) }, g.group))
-            ]
-          }
-        )
+        /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4 }, children: [
+          /* @__PURE__ */ jsxRuntime.jsxs(
+            "select",
+            {
+              "data-mixer-sound-select": label.toLowerCase(),
+              value: known ? value : value === "" ? "" : "__custom__",
+              onChange: (e) => {
+                if (e.target.value === "__custom__") return;
+                onChange(e.target.value);
+                onAudition?.(e.target.value);
+              },
+              style: {
+                padding: "4px 8px",
+                fontSize: 12,
+                borderRadius: 4,
+                border: "1px solid var(--border, #3a3a42)",
+                background: "var(--background-elevated, #26262c)",
+                color: "var(--foreground, #e6e6ea)",
+                maxWidth: 220
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntime.jsx("option", { value: "", children: placeholder }),
+                value !== "" && !known && /* @__PURE__ */ jsxRuntime.jsxs("option", { value: "__custom__", children: [
+                  value,
+                  " (current)"
+                ] }),
+                groups.map((g) => /* @__PURE__ */ jsxRuntime.jsx("optgroup", { label: g.group, children: g.options.map((o) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: o.value, children: o.label }, o.value)) }, g.group))
+              ]
+            }
+          ),
+          onAudition && /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              type: "button",
+              "data-mixer-sound-audition": label.toLowerCase(),
+              title: value ? `Preview ${value}` : "Pick a sound to preview",
+              "aria-label": "Preview sound",
+              disabled: !value,
+              onClick: () => value && onAudition(value),
+              style: {
+                flexShrink: 0,
+                width: 24,
+                height: 24,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 11,
+                lineHeight: 1,
+                borderRadius: 4,
+                border: "1px solid var(--border, #3a3a42)",
+                background: "var(--background-elevated, #26262c)",
+                color: value ? "var(--foreground, #e6e6ea)" : "var(--text-disabled, #555)",
+                cursor: value ? "pointer" : "default"
+              },
+              children: "\u25B6"
+            }
+          )
+        ] })
       ]
     }
   );
@@ -29951,7 +30008,8 @@ function MixerBody({
                   groups: liveInstruments ?? INSTRUMENTS,
                   value: readChainMethod(chunk, ["sound", "s"])?.value ?? "",
                   placeholder: "Default synth",
-                  onChange: (v) => writeChainMethod(["sound", "s"], "sound", v)
+                  onChange: (v) => writeChainMethod(["sound", "s"], "sound", v),
+                  onAudition: (v) => auditionSound(v)
                 }
               ),
               kind === "roll" && division2 !== void 0 && onDivisionChange && /* @__PURE__ */ jsxRuntime.jsx(DivisionSelect, { division: division2, spb: rollSpb, onChange: onDivisionChange }),
