@@ -20,6 +20,7 @@ import {
   subscribeToAssetProviders,
 } from "./registry";
 import {
+  availableCategories,
   availableSources,
   availableTypes,
   collectAssets,
@@ -81,10 +82,11 @@ export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<AssetType | null>(null);
   const [source, setSource] = useState<AssetSource | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
 
   const filter: AssetFilter = useMemo(
-    () => ({ query, type, source }),
-    [query, type, source],
+    () => ({ query, type, source, category }),
+    [query, type, source, category],
   );
   const assets = useMemo(
     () => collectAssets(providers, filter),
@@ -93,6 +95,16 @@ export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
 
   const types = useMemo(() => availableTypes(providers), [providers]);
   const sources = useMemo(() => availableSources(providers), [providers]);
+  // Category counts are scoped to the active type/source (so they match "All")
+  // but ignore the query/category, so the numbers stay put while browsing.
+  const categories = useMemo(
+    () => availableCategories(providers, { type, source }),
+    [providers, type, source],
+  );
+  const total = useMemo(
+    () => categories.reduce((n, c) => n + c.count, 0),
+    [categories],
+  );
   const loading = providers.some((p) => p.isLoading?.() ?? false);
 
   // A type/source chip that filters to a value no longer present would strand
@@ -103,6 +115,9 @@ export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     if (source && !sources.includes(source)) setSource(null);
   }, [source, sources]);
+  useEffect(() => {
+    if (category && !categories.some((c) => c.category === category)) setCategory(null);
+  }, [category, categories]);
 
   // ---- Single-active-preview: starting a row stops the previous one. --------
   const activePreview = useRef<{ key: string; handle: AssetPreviewHandle | null } | null>(null);
@@ -173,6 +188,14 @@ export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
           data-asset-search
           aria-label="Search assets"
         />
+        {categories.length > 1 && (
+          <CategoryChips
+            active={category}
+            total={total}
+            categories={categories}
+            onPick={setCategory}
+          />
+        )}
         {types.length > 1 && (
           <ChipRow
             label="Type"
@@ -203,7 +226,7 @@ export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
         // Reset scroll to top when the FILTER changes (not when the catalog
         // grows under a stable filter) — a new search starts at the top, but
         // browsing position survives a lazily-growing provider.
-        resetKey={`${type ?? ""}|${source ?? ""}|${query}`}
+        resetKey={`${type ?? ""}|${source ?? ""}|${category ?? ""}|${query}`}
       />
     </div>
   );
@@ -244,6 +267,46 @@ function ChipRow<T extends string>({
           data-chip={v}
         >
           {render(v)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Category filter chips with entry counts: `All <total>` + one per category
+ *  (`Drums 1357`, `Soundfonts 125`, …). Picking narrows the list to that
+ *  category; clicking the active one (or All) clears it. Wraps to fit the
+ *  compact sidebar (the shared chipRow style). */
+function CategoryChips({
+  active,
+  total,
+  categories,
+  onPick,
+}: {
+  active: string | null;
+  total: number;
+  categories: { category: string; count: number }[];
+  onPick: (c: string | null) => void;
+}) {
+  return (
+    <div style={styles.categoryChipRow} data-filter="asset-category-filter" aria-label="Category filter">
+      <button
+        style={{ ...styles.chip, ...(active === null ? styles.chipActive : {}) }}
+        onClick={() => onPick(null)}
+        aria-pressed={active === null}
+        data-chip="all"
+      >
+        All <span style={styles.chipCount}>{total}</span>
+      </button>
+      {categories.map(({ category, count }) => (
+        <button
+          key={category}
+          style={{ ...styles.chip, ...(active === category ? styles.chipActive : {}) }}
+          onClick={() => onPick(active === category ? null : category)}
+          aria-pressed={active === category}
+          data-chip={category}
+        >
+          {category} <span style={styles.chipCount}>{count}</span>
         </button>
       ))}
     </div>
@@ -480,12 +543,35 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: "wrap",
     gap: 4,
   },
+  // Category tags: capped at 2 rows that scroll horizontally (a column-flow
+  // grid — chips fill top-then-bottom per column, the belt overflows sideways).
+  // The scrollbar is hidden via a globals.css `::-webkit-scrollbar` rule on the
+  // `[data-filter="asset-category-filter"]` selector (inline can't do pseudos).
+  categoryChipRow: {
+    display: "grid",
+    gridAutoFlow: "column",
+    gridTemplateRows: "repeat(2, auto)",
+    gridAutoColumns: "max-content",
+    gap: 4,
+    overflowX: "auto",
+    overflowY: "hidden",
+    // Hide the scrollbar cross-browser: `scrollbarWidth` covers Firefox (which
+    // ignores the webkit pseudo); the globals.css `::-webkit-scrollbar` rule
+    // covers Blink/WebKit. The belt still scrolls. (Same dual pattern as
+    // WorkspaceShell's tabbar.)
+    scrollbarWidth: "none",
+  },
   chip: {
     padding: "2px 8px",
     fontSize: 11,
+    whiteSpace: "nowrap",
     color: "var(--text-secondary)",
     background: "transparent",
-    border: "1px solid var(--border-subtle)",
+    // Longhand (not the `border` shorthand) so `chipActive`'s borderColor
+    // override doesn't mix shorthand+longhand on re-render (React warns).
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "var(--border-subtle)",
     borderRadius: 10,
     cursor: "pointer",
     fontFamily: "inherit",
@@ -495,6 +581,10 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--text-primary)",
     background: "var(--accent-soft, var(--bg-chrome))",
     borderColor: "var(--accent-strong)",
+  },
+  chipCount: {
+    opacity: 0.6,
+    fontVariantNumeric: "tabular-nums",
   },
   listScroll: {
     flex: 1,
