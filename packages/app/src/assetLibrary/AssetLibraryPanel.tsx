@@ -289,7 +289,7 @@ function CategoryChips({
   onPick: (c: string | null) => void;
 }) {
   return (
-    <div style={styles.chipRow} data-filter="asset-category-filter" aria-label="Category filter">
+    <div style={styles.categoryChipRow} data-filter="asset-category-filter" aria-label="Category filter">
       <button
         style={{ ...styles.chip, ...(active === null ? styles.chipActive : {}) }}
         onClick={() => onPick(null)}
@@ -543,9 +543,23 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: "wrap",
     gap: 4,
   },
+  // Category tags: capped at 2 rows that scroll horizontally (a column-flow
+  // grid — chips fill top-then-bottom per column, the belt overflows sideways).
+  // The scrollbar is hidden via a globals.css `::-webkit-scrollbar` rule on the
+  // `[data-filter="asset-category-filter"]` selector (inline can't do pseudos).
+  categoryChipRow: {
+    display: "grid",
+    gridAutoFlow: "column",
+    gridTemplateRows: "repeat(2, auto)",
+    gridAutoColumns: "max-content",
+    gap: 4,
+    overflowX: "auto",
+    overflowY: "hidden",
+  },
   chip: {
     padding: "2px 8px",
     fontSize: 11,
+    whiteSpace: "nowrap",
     color: "var(--text-secondary)",
     background: "transparent",
     // Longhand (not the `border` shorthand) so `chipActive`'s borderColor
