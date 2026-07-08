@@ -57,20 +57,32 @@ async function openPattern(page: Page) {
   return drawer
 }
 
+/**
+ * Pick a value from the searchable sound popover (#827): open the trigger, type
+ * the value to narrow (the menu is portaled to <body>, so locate it on `page`,
+ * not inside the drawer), then click the option.
+ */
+async function pickSound(page, scope, label: string, value: string) {
+  await scope.locator(`[data-mixer-sound-trigger="${label}"]`).click()
+  const menu = page.locator(`[data-mixer-sound-menu="${label}"]`)
+  await menu.waitFor({ state: 'visible' })
+  await menu.locator('[data-mixer-sound-search]').fill(value)
+  await menu.locator(`[data-mixer-sound-option="${value}"]`).click()
+}
+
 test.describe('Sound assignment (#514/#515/#516)', () => {
   test('#514 Piano Roll instrument picker writes + replaces .sound', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c e g")')
     const drawer = await openPattern(page)
-    const select = drawer.locator('[data-mixer-sound-select="instrument"]')
-    await expect(select).toHaveCount(1)
+    await expect(drawer.locator('[data-mixer-sound-trigger="instrument"]')).toHaveCount(1)
 
-    await select.selectOption('sawtooth')
+    await pickSound(page, drawer, 'instrument', 'sawtooth')
     await page.waitForTimeout(120)
     expect(await strudelValue(page)).toBe("$: note(\"c e g\").sound('sawtooth')")
 
-    // selecting a different instrument REPLACES the arg in place (no second call)
-    await select.selectOption('gm_alto_sax')
+    // picking a different instrument REPLACES the arg in place (no second call)
+    await pickSound(page, drawer, 'instrument', 'gm_alto_sax')
     await page.waitForTimeout(120)
     expect(await strudelValue(page)).toBe("$: note(\"c e g\").sound('gm_alto_sax')")
   })
@@ -79,14 +91,13 @@ test.describe('Sound assignment (#514/#515/#516)', () => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd sd hh")')
     const drawer = await openPattern(page)
-    const select = drawer.locator('[data-mixer-sound-select="kit"]')
-    await expect(select).toHaveCount(1)
+    await expect(drawer.locator('[data-mixer-sound-trigger="kit"]')).toHaveCount(1)
 
-    await select.selectOption('RolandTR909')
+    await pickSound(page, drawer, 'kit', 'RolandTR909')
     await page.waitForTimeout(120)
     expect(await strudelValue(page)).toBe("$: s(\"bd sd hh\").bank('RolandTR909')")
 
-    await select.selectOption('YamahaRX5')
+    await pickSound(page, drawer, 'kit', 'YamahaRX5')
     await page.waitForTimeout(120)
     expect(await strudelValue(page)).toBe("$: s(\"bd sd hh\").bank('YamahaRX5')")
   })
