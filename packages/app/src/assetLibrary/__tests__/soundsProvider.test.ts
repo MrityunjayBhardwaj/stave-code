@@ -5,9 +5,19 @@ import {
   type SoundMapDict,
 } from "../soundsProvider";
 
+// The GM-family grouping is injected (the real fns live in @stave/editor — the
+// map's correctness is covered by gmFamilies.test.ts there). These stubs let the
+// provider's mapping be tested hermetically, without importing the editor barrel.
+const gmFamily = (name: string) => (name === "gm_alto_sax" ? "Reed" : null);
+const soundfontGroupLabel = (name: string) => {
+  const f = gmFamily(name);
+  return f ? `Soundfonts · ${f}` : "Soundfonts";
+};
 const deps = {
   startPreview: () => ({ stop: () => {} }),
   onInsert: () => {},
+  gmFamily,
+  soundfontGroupLabel,
 };
 
 const DICT: SoundMapDict = {
@@ -43,9 +53,15 @@ describe("soundMapToAssets", () => {
   it("groups melodic sounds by type", () => {
     const byId = new Map(soundMapToAssets(DICT, deps).map((a) => [a.id, a]));
     expect(byId.get("sawtooth")?.group).toBe("Synths");
-    expect(byId.get("piano")?.group).toBe("Soundfonts");
+    expect(byId.get("piano")?.group).toBe("Soundfonts"); // unmapped soundfont → flat
     expect(byId.get("wt_fmsynth")?.group).toBe("Wavetables");
     expect(byId.get("bd")?.group).toBe("Samples");
+  });
+
+  it("sub-categorises gm_* soundfonts by GM family + adds the family search tag (#807)", () => {
+    const a = soundMapToAssets(DICT, deps).find((x) => x.id === "gm_alto_sax");
+    expect(a?.group).toBe("Soundfonts · Reed");
+    expect(a?.tags).toContain("reed"); // searchable by family name
   });
 
   it("unknown type falls through to Samples (never dropped — P254)", () => {
@@ -71,6 +87,7 @@ describe("soundMapToAssets", () => {
     const startPreview = vi.fn(() => ({ stop: () => {} }));
     const onInsert = vi.fn();
     const a = soundMapToAssets({ piano: { data: { type: "soundfont" } } }, {
+      ...deps,
       startPreview,
       onInsert,
     })[0];
