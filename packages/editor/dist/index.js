@@ -29565,11 +29565,13 @@ function groupSoundCatalog(dict) {
   if (!dict) return null;
   const synths = [];
   const soundfonts = [];
+  const wavetables = [];
   const samples = [];
   for (const name of Object.keys(dict)) {
     if (name.startsWith("_")) continue;
     const data = dict[name]?.data;
     if (data?.tag === "drum-machines") continue;
+    if (data?.type === "input") continue;
     switch (data?.type) {
       case "synth":
         synths.push(name);
@@ -29577,12 +29579,21 @@ function groupSoundCatalog(dict) {
       case "soundfont":
         soundfonts.push(name);
         break;
+      case "wavetable":
+        wavetables.push(name);
+        break;
       case "sample":
+      // A sound type we don't have a dedicated group for is still a PLAYABLE
+      // melodic sound — treat it as a sample rather than silently drop it. The
+      // old `default: break` swallowed `wavetable` (7 uzu-wavetables) whole
+      // (incomplete type-enumeration, the P254/PV162 family). Include-by-default
+      // so the next new upstream type can't vanish from the picker.
+      default:
         samples.push(name);
         break;
     }
   }
-  if (synths.length + soundfonts.length + samples.length === 0) return null;
+  if (synths.length + soundfonts.length + wavetables.length + samples.length === 0) return null;
   const groups = [];
   if (synths.length) {
     groups.push({
@@ -29594,6 +29605,12 @@ function groupSoundCatalog(dict) {
     groups.push({
       group: "Soundfonts",
       options: soundfonts.sort().map((v) => ({ value: v, label: soundfontLabel(v) }))
+    });
+  }
+  if (wavetables.length) {
+    groups.push({
+      group: "Wavetables",
+      options: wavetables.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
     });
   }
   if (samples.length) {
