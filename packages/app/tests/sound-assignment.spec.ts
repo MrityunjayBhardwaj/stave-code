@@ -6,7 +6,7 @@
  * on a Sequencer `s(...)`, and a new drum voice that stages in-model then writes
  * to the pattern on the first hit. Single-quoted literals (PV44).
  */
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page, type Locator } from '@playwright/test'
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
@@ -62,7 +62,7 @@ async function openPattern(page: Page) {
  * the value to narrow (the menu is portaled to <body>, so locate it on `page`,
  * not inside the drawer), then click the option.
  */
-async function pickSound(page, scope, label: string, value: string) {
+async function pickSound(page: Page, scope: Locator, label: string, value: string) {
   await scope.locator(`[data-mixer-sound-trigger="${label}"]`).click()
   const menu = page.locator(`[data-mixer-sound-menu="${label}"]`)
   await menu.waitFor({ state: 'visible' })
