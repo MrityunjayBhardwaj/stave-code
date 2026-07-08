@@ -23,12 +23,13 @@ import { Knob } from './Knob'
 import { knobRangeFor } from './knobRanges'
 import { FAVORITES, isEffectActive, effectNames, type Effect } from './effectCatalog'
 import { AddEffectMenu } from './AddEffectMenu'
+import { SoundPickerMenu } from './SoundPickerMenu'
 import { ResolutionControl, type ResolutionControlProps } from './ResolutionControl'
 import { patternKind, isRollChunk } from './patternKind'
 import { parsePianoRoll } from '../notation/parse'
 import { type Division, DIVISIONS, isRepresentable, stepsPerBar } from './division'
 import { readChainMethod } from './chainMethod'
-import { INSTRUMENTS, DRUM_KITS, type SoundGroup } from './soundCatalog'
+import { INSTRUMENTS, DRUM_KITS } from './soundCatalog'
 import { useSoundCatalog, useDrumKitCatalog } from '../../workspace/soundRegistry'
 import { auditionSound } from '../audition'
 
@@ -70,105 +71,6 @@ function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry[] {
   return knobs
 }
 
-/**
- * A grouped `<select>` for sound assignment (#514 instrument / #515 kit). When
- * the chunk's current value isn't in the curated catalog (a hand-typed sound or
- * a kit outside the shortlist), it's surfaced as a leading option so the picker
- * still shows what's set — the write-back accepts any string (PV141 #6).
- */
-function SoundSelect({
-  label,
-  groups,
-  value,
-  placeholder,
-  onChange,
-  onAudition,
-}: {
-  label: string
-  groups: SoundGroup[]
-  value: string
-  placeholder: string
-  onChange: (v: string) => void
-  /** When set, render a ▶ button that previews the current value without
-   *  changing it ("hear before you place", #805). Omitted → no audition UI. */
-  onAudition?: (v: string) => void
-}): React.ReactElement {
-  const known = groups.some((g) => g.options.some((o) => o.value === value))
-  return (
-    <label
-      data-mixer-sound={label.toLowerCase()}
-      style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}
-    >
-      <span style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>{label}</span>
-      {/* Full-width row so the select shrinks to leave room for the ▶ button in
-          the narrow Pattern-tab inspector — otherwise the select's max-width
-          overflows and pushes ▶ off the panel's right edge (#808). */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%', maxWidth: 220 }}>
-        <select
-          data-mixer-sound-select={label.toLowerCase()}
-          value={known ? value : value === '' ? '' : '__custom__'}
-          onChange={(e) => {
-            if (e.target.value === '__custom__') return
-            onChange(e.target.value)
-            // Audition-on-select: hear the sound the moment it's picked (#805).
-            onAudition?.(e.target.value)
-          }}
-          style={{
-            padding: '4px 8px',
-            fontSize: 12,
-            borderRadius: 4,
-            border: '1px solid var(--border, #3a3a42)',
-            background: 'var(--background-elevated, #26262c)',
-            color: 'var(--foreground, #e6e6ea)',
-            // Shrink within the row (min-width:0 lets it go below content width)
-            // so the ▶ button always stays visible next to it.
-            flex: '1 1 auto',
-            minWidth: 0,
-          }}
-        >
-          <option value="">{placeholder}</option>
-          {value !== '' && !known && <option value="__custom__">{value} (current)</option>}
-          {groups.map((g) => (
-            <optgroup key={g.group} label={g.group}>
-              {g.options.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-        {onAudition && (
-          <button
-            type="button"
-            data-mixer-sound-audition={label.toLowerCase()}
-            title={value ? `Preview ${value}` : 'Pick a sound to preview'}
-            aria-label="Preview sound"
-            disabled={!value}
-            onClick={() => value && onAudition(value)}
-            style={{
-              flexShrink: 0,
-              width: 24,
-              height: 24,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 11,
-              lineHeight: 1,
-              borderRadius: 4,
-              border: '1px solid var(--border, #3a3a42)',
-              background: 'var(--background-elevated, #26262c)',
-              color: value ? 'var(--foreground, #e6e6ea)' : 'var(--text-disabled, #555)',
-              cursor: value ? 'pointer' : 'default',
-            }}
-          >
-            ▶
-          </button>
-        )}
-      </div>
-    </label>
-  )
-}
 
 /**
  * Columns-per-bar of the roll under the cursor, read straight off the chunk's
@@ -400,7 +302,7 @@ export function MixerBody({
           grid-editable pattern is under the cursor. */}
       {resolution && <ResolutionControl {...resolution} />}
       {showSoundPicker && kind === 'roll' && (
-        <SoundSelect
+        <SoundPickerMenu
           label="Instrument"
           groups={liveInstruments ?? INSTRUMENTS}
           value={readChainMethod(chunk, ['sound', 's'])?.value ?? ''}
@@ -413,7 +315,7 @@ export function MixerBody({
         <DivisionSelect division={division} spb={rollSpb} onChange={onDivisionChange} />
       )}
       {showSoundPicker && kind === 'step' && (
-        <SoundSelect
+        <SoundPickerMenu
           label="Kit"
           groups={liveKits ?? DRUM_KITS}
           value={readChainMethod(chunk, ['bank'])?.value ?? ''}

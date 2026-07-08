@@ -55,14 +55,20 @@ test('Mixer Kit picker enumerates live drum banks from the manifest (#515)', asy
   await drawer.locator('role=tab[name="Pattern"]').click()
   await page.waitForTimeout(1_500)
 
-  const select = drawer.locator('[data-mixer-sound-select="kit"]')
-  const info = await select.evaluate((el) => {
-    const s = el as HTMLSelectElement
-    const groups = Array.from(s.querySelectorAll('optgroup')).map((g) => (g as HTMLOptGroupElement).label)
-    const values = Array.from(s.querySelectorAll('option')).map((o) => (o as HTMLOptionElement).value)
+  // Open the searchable popover (#827) and read its rendered option set.
+  await drawer.locator('[data-mixer-sound-trigger="kit"]').click()
+  const menu = page.locator('[data-mixer-sound-menu="kit"]')
+  await menu.waitFor({ state: 'visible' })
+  const info = await menu.evaluate((el) => {
+    const values = Array.from(el.querySelectorAll('[data-mixer-sound-option]')).map(
+      (o) => o.getAttribute('data-mixer-sound-option'),
+    )
+    const cats = Array.from(el.querySelectorAll('[data-mixer-sound-category]')).map(
+      (c) => c.getAttribute('data-mixer-sound-category'),
+    )
     return {
       count: values.length,
-      groups,
+      cats,
       hasTR909: values.includes('RolandTR909'),
       // A bank present in the live manifest but NOT in the curated shortlist —
       // proves the live list is in play, not the fallback.
@@ -72,9 +78,9 @@ test('Mixer Kit picker enumerates live drum banks from the manifest (#515)', asy
 
   // Far more than the curated shortlist (~30) → the live manifest is in play.
   expect(info.count).toBeGreaterThan(50)
-  // Grouped by manufacturer.
-  expect(info.groups).toContain('Roland')
-  expect(info.groups).toContain('Yamaha')
+  // Category tags grouped by manufacturer.
+  expect(info.cats).toContain('Roland')
+  expect(info.cats).toContain('Yamaha')
   // Concrete live members present (one curated, one live-only).
   expect(info.hasTR909).toBe(true)
   expect(info.hasLiveOnly).toBe(true)

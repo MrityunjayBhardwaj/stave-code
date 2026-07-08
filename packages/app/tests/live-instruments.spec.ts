@@ -56,19 +56,25 @@ test('Mixer instrument picker enumerates the live soundMap (#514)', async ({ pag
   await drawer.locator('role=tab[name="Pattern"]').click()
   await page.waitForTimeout(1_500)
 
-  const select = drawer.locator('[data-mixer-sound-select="instrument"]')
-  const info = await select.evaluate((el) => {
-    const s = el as HTMLSelectElement
-    const groups = Array.from(s.querySelectorAll('optgroup')).map((g) => (g as HTMLOptGroupElement).label)
-    const values = Array.from(s.querySelectorAll('option')).map((o) => (o as HTMLOptionElement).value)
-    return { count: values.length, groups, hasSawtooth: values.includes('sawtooth'), hasSoundfont: values.some((v) => v.startsWith('gm_')) }
+  // Open the searchable popover (#827) and read its rendered option set.
+  await drawer.locator('[data-mixer-sound-trigger="instrument"]').click()
+  const menu = page.locator('[data-mixer-sound-menu="instrument"]')
+  await menu.waitFor({ state: 'visible' })
+  const info = await menu.evaluate((el) => {
+    const values = Array.from(el.querySelectorAll('[data-mixer-sound-option]')).map(
+      (o) => o.getAttribute('data-mixer-sound-option'),
+    )
+    const cats = Array.from(el.querySelectorAll('[data-mixer-sound-category]')).map(
+      (c) => c.getAttribute('data-mixer-sound-category'),
+    )
+    return { count: values.length, cats, hasSawtooth: values.includes('sawtooth'), hasSoundfont: values.some((v) => v?.startsWith('gm_')) }
   })
 
   // Far more than the curated shortlist (~30) → the live registry is in play.
   expect(info.count).toBeGreaterThan(100)
-  // Grouped by the live registration type.
-  expect(info.groups).toContain('Synths')
-  expect(info.groups).toContain('Soundfonts')
+  // Category tags reflect the live registration types.
+  expect(info.cats).toContain('Synths')
+  expect(info.cats).toContain('Soundfonts')
   // Concrete live members present.
   expect(info.hasSawtooth).toBe(true)
   expect(info.hasSoundfont).toBe(true)
