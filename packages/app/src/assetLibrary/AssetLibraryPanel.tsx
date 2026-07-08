@@ -6,10 +6,11 @@
  * {@link AssetProvider}s, applies the search + type + source filters, and
  * renders a windowed list of provider-supplied {@link Asset}s. Each row exposes
  * two uniform action slots — a primary preview (play/stop) and a hover insert —
- * that just drive `asset.preview()` / `asset.insert()`.
+ * plus a hover Copy (#823) — that just drive `asset.preview()` / `asset.insert()`
+ * and copy `asset.id`.
  *
- * The concrete Sounds provider lands in #820; until then a demo stub (behind the
- * `stave.assetLibrary.demo` localStorage flag) exercises the shell.
+ * The concrete Sounds provider (#820) is the first real provider; the shell stays
+ * type-agnostic so the viz/snippet providers register the same way.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
