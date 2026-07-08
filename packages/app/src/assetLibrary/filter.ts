@@ -14,6 +14,23 @@ export interface AssetFilter {
   type: AssetType | null;
   /** null = all sources; otherwise restrict to this one. */
   source: AssetSource | null;
+  /** null = all categories; otherwise restrict to this top-level category
+   *  (the group prefix, e.g. "Drums" / "Soundfonts"). See {@link assetCategory}. */
+  category: string | null;
+}
+
+/**
+ * An asset's top-level category — the group prefix before ` · `
+ * (`Soundfonts · Strings` → `Soundfonts`, `Drums · RolandTR909` → `Drums`,
+ * `Synths` → `Synths`). Groupless assets fall under `Other`. This is the
+ * dimension the category filter chips slice on; it's derived from the same
+ * `group` convention (`<Category> · <sub>`) the providers already use.
+ */
+export function assetCategory(asset: Asset): string {
+  const g = asset.group?.trim();
+  if (!g) return "Other";
+  const i = g.indexOf(" · ");
+  return i > 0 ? g.slice(0, i) : g;
 }
 
 /** Generic name/tag/group substring match — the fallback when a provider has no
@@ -44,6 +61,7 @@ export function collectAssets(
     const base = q && provider.search ? provider.search(q) : provider.list();
     for (const asset of base) {
       if (filter.source && asset.source !== filter.source) continue;
+      if (filter.category && assetCategory(asset) !== filter.category) continue;
       // Provider `search` already applied the query; only the generic path
       // needs the substring gate here.
       if (q && !provider.search && !matchesQuery(asset, q)) continue;
@@ -69,4 +87,29 @@ export function availableSources(providers: readonly AssetProvider[]): AssetSour
     for (const a of p.list()) seen.add(a.source);
   }
   return Array.from(seen);
+}
+
+/**
+ * The categories present, each with its entry count — drives the category
+ * filter chips and their counts. Scoped to the current type/source (so counts
+ * match what "All" would show) but NOT the query or category itself, so the
+ * numbers stay stable while the musician types or switches chips. Sorted by
+ * count desc (biggest buckets first), then name for ties.
+ */
+export function availableCategories(
+  providers: readonly AssetProvider[],
+  scope?: { type?: AssetType | null; source?: AssetSource | null },
+): { category: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const p of providers) {
+    if (scope?.type && p.type !== scope.type) continue;
+    for (const a of p.list()) {
+      if (scope?.source && a.source !== scope.source) continue;
+      const c = assetCategory(a);
+      counts.set(c, (counts.get(c) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
 }

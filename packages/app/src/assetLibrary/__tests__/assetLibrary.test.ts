@@ -11,6 +11,8 @@ import {
   matchesQuery,
   availableTypes,
   availableSources,
+  availableCategories,
+  assetCategory,
   type AssetFilter,
 } from "../filter";
 import type { Asset, AssetProvider, AssetType, AssetSource } from "../types";
@@ -99,7 +101,7 @@ describe("collectAssets", () => {
   ]);
   const viz = provider("viz", [asset("viz", "scope", "Scope", "built-in", ["wave"])]);
   const providers = [sounds, viz];
-  const base: AssetFilter = { query: "", type: null, source: null };
+  const base: AssetFilter = { query: "", type: null, source: null, category: null };
 
   it("flattens all providers with no filter", () => {
     expect(collectAssets(providers, base)).toHaveLength(3);
@@ -131,8 +133,20 @@ describe("collectAssets", () => {
   });
 
   it("combines type + source + query", () => {
-    const r = collectAssets(providers, { query: "piano", type: "sound", source: "built-in" });
+    const r = collectAssets(providers, { query: "piano", type: "sound", source: "built-in", category: null });
     expect(r.map((a) => a.id)).toEqual(["piano"]);
+  });
+
+  it("category filter restricts to one top-level group (#826)", () => {
+    const cats = provider("sound", [
+      asset("sound", "bd", "Kick", "built-in", [], "Drums · RolandTR909"),
+      asset("sound", "vln", "Violin", "built-in", [], "Soundfonts · Strings"),
+      asset("sound", "saw", "Saw", "built-in", [], "Synths"),
+    ]);
+    const r = collectAssets([cats], { ...base, category: "Soundfonts" });
+    expect(r.map((a) => a.id)).toEqual(["vln"]);
+    const drums = collectAssets([cats], { ...base, category: "Drums" });
+    expect(drums.map((a) => a.id)).toEqual(["bd"]);
   });
 });
 
@@ -152,6 +166,39 @@ describe("available filter values", () => {
       "built-in",
       "community",
       "user",
+    ]);
+  });
+});
+
+describe("categories (#826)", () => {
+  it("assetCategory takes the group prefix before ` · `, else the whole group, else Other", () => {
+    expect(assetCategory(asset("sound", "x", "x", "built-in", [], "Soundfonts · Strings"))).toBe("Soundfonts");
+    expect(assetCategory(asset("sound", "x", "x", "built-in", [], "Drums · RolandTR909"))).toBe("Drums");
+    expect(assetCategory(asset("sound", "x", "x", "built-in", [], "Synths"))).toBe("Synths");
+    expect(assetCategory(asset("sound", "x", "x", "built-in", []))).toBe("Other");
+  });
+
+  it("availableCategories counts entries per category, sorted by count desc", () => {
+    const p = provider("sound", [
+      asset("sound", "bd", "bd", "built-in", [], "Drums · RolandTR909"),
+      asset("sound", "sd", "sd", "built-in", [], "Drums · RolandTR808"),
+      asset("sound", "vln", "vln", "built-in", [], "Soundfonts · Strings"),
+      asset("sound", "saw", "saw", "built-in", [], "Synths"),
+    ]);
+    expect(availableCategories([p])).toEqual([
+      { category: "Drums", count: 2 },
+      { category: "Soundfonts", count: 1 },
+      { category: "Synths", count: 1 },
+    ]);
+  });
+
+  it("availableCategories scopes counts to the given type/source", () => {
+    const p = provider("sound", [
+      asset("sound", "bd", "bd", "built-in", [], "Drums · X"),
+      asset("sound", "mine", "mine", "user", [], "Samples"),
+    ]);
+    expect(availableCategories([p], { source: "user" })).toEqual([
+      { category: "Samples", count: 1 },
     ]);
   });
 });
