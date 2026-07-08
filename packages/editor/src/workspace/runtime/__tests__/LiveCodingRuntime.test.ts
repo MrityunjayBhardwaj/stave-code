@@ -492,6 +492,64 @@ describe('LiveCodingRuntime', () => {
       expect(playingListener.mock.calls.length).toBe(callCountAfterFirstStop)
     })
 
+    // -----------------------------------------------------------------------
+    // #811 — Stop during an in-flight play(). A live re-eval (mixer/knob edit)
+    // fires play(), which parks on `await engine.evaluate()`. The user presses
+    // Stop mid-await. Before the fix, the in-flight play() resumed and started
+    // the scheduler AFTER Stop, leaving audio running while isPlayingState read
+    // false — the transport button (bound to isPlayingState) could never issue
+    // another stop, so audio played forever.
+    // -----------------------------------------------------------------------
+    it('stop() during an in-flight play() aborts the start — scheduler is NOT restarted (#811)', async () => {
+      const engine = createMockEngine()
+      engine.setComponents({
+        streaming: makeStreamingComponent(),
+        audio: makeAudioComponent(),
+      })
+      // Gate evaluate on an external deferred so Stop can land while play() is
+      // parked on `await engine.evaluate(...)`.
+      let releaseEvaluate!: () => void
+      const evaluateGate = new Promise<void>((res) => {
+        releaseEvaluate = res
+      })
+      const originalEvaluate = engine.evaluate
+      engine.evaluate = vi.fn(async (code: string) => {
+        await evaluateGate
+        return originalEvaluate(code)
+      }) as typeof engine.evaluate
+
+      const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+
+      // 1. Start play() without awaiting — it parks on the evaluate gate.
+      const playPromise = runtime.play()
+      // Flush microtasks so play() reaches and parks on the gate.
+      await new Promise((r) => setTimeout(r, 0))
+
+      // 2. Stop lands while play() is mid-evaluate.
+      runtime.stop()
+
+      // 3. Release evaluate; the in-flight play() resumes and hits the gate.
+      releaseEvaluate()
+      await playPromise
+
+      // The scheduler was NEVER started after Stop — play() bailed at the
+      // supersession gate before step 8.
+      expect(engine.callLog).not.toContain('play')
+      // Runtime reads stopped and the bus holds no phantom source.
+      expect(runtime.getIsPlaying()).toBe(false)
+      expect(workspaceAudioBus.listSources()).toHaveLength(0)
+    })
+
+    it('stop() always reaches engine.stop() even when isPlayingState is false (authoritative stop, #811)', () => {
+      const engine = createMockEngine()
+      const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+      // Never played → isPlayingState is false. The old code early-returned
+      // here WITHOUT calling engine.stop(); the fix always reaches it so a
+      // desynced-but-running scheduler can always be halted.
+      runtime.stop()
+      expect(engine.stopFn).toHaveBeenCalled()
+    })
+
     it('dispose() calls stop() AND engine.dispose()', async () => {
       const engine = createMockEngine()
       engine.setComponents({

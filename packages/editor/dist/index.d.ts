@@ -6986,6 +6986,17 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     private isDisposed;
     private currentBpm;
     private isPlayingState;
+    /**
+     * Monotonic play generation. `play()` is async and yields across `await`
+     * init/evaluate before it starts the scheduler. If a `stop()` (or a newer
+     * `play()`) lands during those awaits, the in-flight `play()` must abort
+     * BEFORE step 7/8 — otherwise it publishes stale state and restarts the
+     * scheduler right after Stop already stopped it, leaving audio running while
+     * `isPlayingState` reads `false` (Stop then becomes a permanent no-op). Each
+     * `play()` captures this counter at entry; `stop()` and each new `play()`
+     * bump it; after every await, `play()` bails if its token is stale (#811).
+     */
+    private playGeneration;
     private readonly errorListeners;
     private readonly playingChangedListeners;
     private readonly evaluateSuccessListeners;
