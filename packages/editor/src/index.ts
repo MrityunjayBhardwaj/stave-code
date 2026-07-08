@@ -617,6 +617,17 @@ export {
   MIXER_TAB_ID,
   PIANO_ROLL_TAB_ID,
 } from './visualEdit'
+// Sound audition (#805/#816/#820) — preview a sound through the shared
+// superdough graph. `auditionSound` is the one-shot (Mixer ▶); `startAudition`
+// is the sustained/looping preview (Asset Library play/pause) returning a stop
+// handle. Both share `AUDITION_ENVELOPE` so a preview matches a real key (PV166).
+export {
+  auditionSound,
+  startAudition,
+  AUDITION_ENVELOPE,
+  AUDITION_DUR_S,
+  type AuditionHandle,
+} from './visualEdit/audition'
 // Locate a runtime error (e.g. soundfont out-of-range, #567) back to the owning
 // track's line by its instrument — the app's onError uses this when the error's
 // stack is bundle-only.

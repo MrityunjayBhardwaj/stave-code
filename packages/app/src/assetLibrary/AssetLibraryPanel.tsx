@@ -6,10 +6,11 @@
  * {@link AssetProvider}s, applies the search + type + source filters, and
  * renders a windowed list of provider-supplied {@link Asset}s. Each row exposes
  * two uniform action slots — a primary preview (play/stop) and a hover insert —
- * that just drive `asset.preview()` / `asset.insert()`.
+ * plus a hover Copy (#823) — that just drive `asset.preview()` / `asset.insert()`
+ * and copy `asset.id`.
  *
- * The concrete Sounds provider lands in #820; until then a demo stub (behind the
- * `stave.assetLibrary.demo` localStorage flag) exercises the shell.
+ * The concrete Sounds provider (#820) is the first real provider; the shell stays
+ * type-agnostic so the viz/snippet providers register the same way.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -30,6 +31,34 @@ import type { Asset, AssetPreviewHandle, AssetSource, AssetType } from "./types"
 const ROW_HEIGHT = 40;
 /** Extra rows rendered above/below the viewport so fast scrolls don't flash. */
 const OVERSCAN = 6;
+/** How long the copy button shows its "copied" check before reverting. */
+const COPIED_MS = 1200;
+
+/** Copy text to the clipboard — async Clipboard API with an execCommand
+ *  fallback for non-secure contexts. Resolves true on success. */
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* fall through to the legacy path */
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
 
 const TYPE_LABELS: Record<AssetType, string> = {
   sound: "Sounds",
@@ -330,6 +359,19 @@ function AssetRow({
   onTogglePreview: (key: string, asset: Asset) => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+
+  const handleCopy = useCallback(() => {
+    void copyToClipboard(asset.id).then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), COPIED_MS);
+    });
+  }, [asset.id]);
+
   return (
     <div
       style={{ ...styles.row, top }}
@@ -342,6 +384,18 @@ function AssetRow({
         {asset.group && <span style={styles.rowGroup}>{asset.group}</span>}
       </div>
       <div style={styles.rowActions}>
+        {/* Copy the code name (asset.id) — hover-revealed; brief check on success. */}
+        {(hovered || previewing || copied) && (
+          <button
+            style={{ ...styles.rowBtn, ...(copied ? styles.rowBtnActive : {}) }}
+            title={copied ? "Copied!" : `Copy "${asset.id}"`}
+            aria-label={`Copy name ${asset.id}`}
+            onClick={handleCopy}
+            data-asset-copy={rowKey}
+          >
+            <Icon name={copied ? "check" : "copy"} size="14px" />
+          </button>
+        )}
         {/* Insert — hover-revealed secondary slot. */}
         {asset.insert && (hovered || previewing) && (
           <button

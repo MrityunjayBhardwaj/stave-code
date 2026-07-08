@@ -140,7 +140,16 @@ import {
   setBackdropVizSpan,
   type BackdropQuality,
   type BackdropVizSpan,
+  getActiveEditor,
+  getMonacoNamespace,
 } from './editorRegistry'
+// Cursor-targeted sound assignment (#820) — the Asset Library sidebar writes a
+// `.sound()` / `s()` into the code at the cursor via `assignSoundToCursor`,
+// reusing the same chunk-detection + writeback spine the Mixer picker uses.
+import { detectChunk } from '../visualEdit/chunkDetect'
+import { Writeback } from '../visualEdit/writeback'
+import { readChainMethod } from '../visualEdit/panels/chainMethod'
+import { patternKind } from '../visualEdit/panels/patternKind'
 import type { WorkspaceShellActions } from './commands/CommandRegistry'
 import type {
   WorkspaceGroupState,
@@ -382,6 +391,16 @@ export interface WorkspaceShellHandle {
    * Lets the popover seed its controls without subscribing to shell state.
    */
   getBackdropSettings(groupId?: string): { opacity: number; quality: BackdropQuality }
+
+  /**
+   * Write a sound into the code at the cursor (#820, Asset Library insert).
+   * If the cursor sits in a note/roll chunk, sets/replaces its `.sound('x')`
+   * (mirrors the Mixer picker); otherwise inserts a fresh `s("x")` at the
+   * cursor. No-op when there's no active editor. Detects the chunk fresh from
+   * the active editor at call time — it does NOT depend on the Pattern/Mixer
+   * panel being open.
+   */
+  assignSoundToCursor(sound: string): void
 }
 
 /** Resolve a tab's display name from the file store. Falls back to fileId. */
@@ -3106,6 +3125,46 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         return {
           opacity: g?.backdropOpacity ?? backdropOpacity,
           quality: g?.backdropQuality ?? backdropQuality,
+        }
+      },
+      assignSoundToCursor: (sound: string) => {
+        if (!sound) return
+        // Reach the live editor through the registry singleton, NOT the
+        // Mixer's `useActiveChunk` (which only exists while that panel is
+        // mounted) — the sidebar assigns with the Pattern tab closed.
+        const editor = getActiveEditor()
+        const monaco = getMonacoNamespace()
+        const model = editor?.getModel()
+        const pos = editor?.getPosition()
+        if (!editor || !monaco || !model || !pos) return
+        const offset = model.getOffsetAt(pos)
+        // Detect the chunk fresh at call time (also sidesteps the freshness
+        // guard — we write immediately after detecting).
+        const chunk = detectChunk(model.getValue(), offset)
+        const wb = new Writeback(editor, monaco)
+        if (chunk && patternKind(chunk) === 'roll') {
+          // Note/roll chunk under the cursor → set/replace its `.sound()`,
+          // exactly like the Mixer picker (chainMethod idiom). Single-quoted so
+          // the name stays a literal, not a reified mini-pattern (PV44). If a
+          // `.sound()` exists with a non-string arg, `readChainMethod` returns
+          // null and we append a second one — same edge the picker has.
+          const cur = readChainMethod(chunk, ['sound', 's'])
+          if (cur) wb.replaceRange(cur.range, `'${sound}'`, 'mixer')
+          else wb.insertAt(chunk.exprRange[1], `.sound('${sound}')`, 'mixer')
+        } else {
+          // No note chunk under the cursor → drop a fresh source pattern on its
+          // OWN line. A raw offset insert lands mid-token / inside a comment
+          // (observed: `// scratch` → `// scratchs("…")`, commented out), so
+          // insert at the end of the cursor's line, prefixed with a newline when
+          // that line already has content. Double-quoted: a standalone `s("…")`
+          // is idiomatic mini-notation.
+          const line = pos.lineNumber
+          const lineEnd = model.getOffsetAt({
+            lineNumber: line,
+            column: model.getLineMaxColumn(line),
+          })
+          const hasContent = model.getLineContent(line).trim().length > 0
+          wb.insertAt(lineEnd, `${hasContent ? '\n' : ''}s("${sound}")`, 'mixer')
         }
       },
     }),

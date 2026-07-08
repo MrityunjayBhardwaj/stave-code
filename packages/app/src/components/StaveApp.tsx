@@ -60,7 +60,8 @@ import { registerCommand } from "../commands/registry";
 import { installKeybindingDispatcher } from "../commands/keybindings";
 import { registerPanel } from "../panels/registry";
 import { AssetLibraryPanel } from "../assetLibrary/AssetLibraryPanel";
-import { registerDemoAssetProviders } from "../assetLibrary/exampleProvider";
+import { registerAssetProvider, notifyAssetProvidersChanged } from "../assetLibrary/registry";
+import { createSoundsProvider } from "../assetLibrary/soundsProvider";
 import {
   listWorkspaceFiles,
   subscribeToFileList,
@@ -93,6 +94,7 @@ import {
   applyPersistedAdaptivePerf,
 } from "@stave/editor";
 import { getLogHistory } from "@stave/editor";
+import { startAudition } from "@stave/editor";
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
 import { PerfOverlay } from "./PerfOverlay";
 
@@ -709,6 +711,17 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       (globalThis as unknown as { soundMap?: { get?: () => SoundMapDict } })
         .soundMap?.get?.() ?? null;
     setSoundCatalogAccessor(() => groupSoundCatalog(readDict()));
+    // #820 — the Asset Library's Sounds provider reads the SAME live soundMap
+    // (the raw superset, drums included — unlike the melodic groupSoundCatalog),
+    // previews via the shared sustained audition, and inserts through the
+    // editor's cursor writer. Registered here so it shares this warm-up/poll.
+    const unregSounds = registerAssetProvider(
+      createSoundsProvider({
+        readDict,
+        startPreview: (sound) => startAudition(sound),
+        onInsert: (sound) => shellRef.current?.assignSoundToCursor(sound),
+      }),
+    );
     let lastCount = -1;
     let stable = 0;
     let ticks = 0;
@@ -723,6 +736,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         lastCount = count;
         stable = 0;
         notifySoundCatalogChanged();
+        notifyAssetProvidersChanged();
       } else if (count > 0) {
         // Only settle once we actually have a live list. A count stuck at 0
         // means the engine hasn't inited yet (init is lazy — first Play or the
@@ -744,6 +758,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     return () => {
       window.clearInterval(id);
       setSoundCatalogAccessor(null);
+      unregSounds();
     };
   }, []);
 
@@ -1089,10 +1104,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       order: 40,
       render: () => null,
     }));
-    // Asset Library demo providers (#819) — only registered behind the
-    // `stave.assetLibrary.demo` localStorage flag; no-op in production. The
-    // real Sounds provider (#820) supersedes these.
-    unregs.push(registerDemoAssetProviders());
+    // Asset Library providers register alongside the live-catalog lifecycle
+    // they depend on: the Sounds provider is wired in the soundMap poll effect
+    // (it reuses the same warm-up/poll), not here.
     unregs.push(registerPanel({
       id: "console",
       title: "Console",

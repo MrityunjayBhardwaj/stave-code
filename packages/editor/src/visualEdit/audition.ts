@@ -39,9 +39,10 @@ export const AUDITION_ENVELOPE = {
  */
 export const AUDITION_DUR_S = 0.22
 
-/** Preview `sound` once (a single `note`, default c4). Safe to call anytime. */
-export function auditionSound(sound: string, note = 'c4'): void {
-  if (!sound) return
+/** Fire one note through the shared audio graph. Internal — the shared unit
+ *  behind both the one-shot preview and the sustained/looping preview so they
+ *  can never drift (same envelope, same scheduling). */
+function fireOnce(sound: string, note: string): void {
   try {
     const ctx = getAudioContext()
     // The click/select is the user gesture that unlocks a suspended context.
@@ -55,5 +56,42 @@ export function auditionSound(sound: string, note = 'c4'): void {
     void superdough(value, ctx.currentTime + 0.02, AUDITION_DUR_S, 0.5, 0)?.catch(() => {})
   } catch {
     /* audio graph not ready — never break the UI */
+  }
+}
+
+/** Preview `sound` once (a single `note`, default c4). Safe to call anytime. */
+export function auditionSound(sound: string, note = 'c4'): void {
+  if (!sound) return
+  fireOnce(sound, note)
+}
+
+/** Handle for a sustained preview — {@link stopAudition}/`stop()` ends it. */
+export interface AuditionHandle {
+  /** Stop the preview. Idempotent — safe to call after it already ended. */
+  stop: () => void
+}
+
+/**
+ * Start a SUSTAINED preview of `sound` (the Asset Library's play/pause), the
+ * same way a held pianoroll key stays sounding (#633): retrigger an overlapping
+ * note every {@link AUDITION_DUR_S} so a sample/synth keeps playing until the
+ * user stops it. Uses the SAME `fireOnce` (hence the SAME {@link AUDITION_ENVELOPE},
+ * PV166) as the one-shot preview, so sustained and single-tap match.
+ *
+ * Returns a handle whose `stop()` clears the retrigger; the final note's own
+ * release tail lets it fade naturally. Never throws (audio-not-ready no-ops).
+ */
+export function startAudition(sound: string, note = 'c4'): AuditionHandle {
+  if (!sound) return { stop: () => {} }
+  fireOnce(sound, note)
+  // Mirror PianoRollGrid's HOLD_RETRIGGER_MS (= AUDITION_DUR_S * 1000).
+  const timer = setInterval(() => fireOnce(sound, note), AUDITION_DUR_S * 1000)
+  let stopped = false
+  return {
+    stop: () => {
+      if (stopped) return
+      stopped = true
+      clearInterval(timer)
+    },
   }
 }
