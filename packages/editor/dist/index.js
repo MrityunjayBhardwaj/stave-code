@@ -29734,6 +29734,7 @@ function SoundPickerMenu({
               style: {
                 width: "100%",
                 boxSizing: "border-box",
+                flexShrink: 0,
                 padding: "4px 8px",
                 marginBottom: 4,
                 fontSize: 12,
@@ -29747,7 +29748,22 @@ function SoundPickerMenu({
           cats.length > 1 && /* @__PURE__ */ jsxs(
             "div",
             {
-              style: { display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 4 },
+              style: {
+                display: "grid",
+                gridAutoFlow: "column",
+                gridTemplateRows: "repeat(2, auto)",
+                gridAutoColumns: "max-content",
+                gap: 3,
+                marginBottom: 4,
+                overflowX: "auto",
+                // Explicit hidden so `overflowX:auto` doesn't compute overflowY
+                // to `auto` and add a vertical scrollbar; the 2 rows fit exactly.
+                overflowY: "hidden",
+                paddingBottom: 2,
+                // Keep the natural 2-row height — don't let the tall option list
+                // below shrink this to a sliver (the flex-column default).
+                flexShrink: 0
+              },
               children: [
                 /* @__PURE__ */ jsx(
                   CategoryChip,
@@ -29773,7 +29789,7 @@ function SoundPickerMenu({
               ]
             }
           ),
-          /* @__PURE__ */ jsxs("div", { style: { overflowY: "auto", minHeight: 0 }, children: [
+          /* @__PURE__ */ jsxs("div", { style: { flex: "1 1 auto", overflowY: "auto", minHeight: 0 }, children: [
             /* @__PURE__ */ jsx(
               "button",
               {
@@ -29931,6 +29947,7 @@ function CategoryChip({
         fontSize: 10,
         borderRadius: 9,
         cursor: "pointer",
+        whiteSpace: "nowrap",
         borderWidth: 1,
         borderStyle: "solid",
         borderColor: active2 ? "var(--accent, #6ea8fe)" : "var(--border, #3a3a42)",

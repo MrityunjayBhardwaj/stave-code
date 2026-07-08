@@ -155,6 +155,7 @@ export function SoundPickerMenu({
               style={{
                 width: '100%',
                 boxSizing: 'border-box',
+                flexShrink: 0,
                 padding: '4px 8px',
                 marginBottom: 4,
                 fontSize: 12,
@@ -164,10 +165,29 @@ export function SoundPickerMenu({
                 color: 'var(--foreground, #e6e6ea)',
               }}
             />
-            {/* Category tags with counts (All + one per category). */}
+            {/* Category tags with counts (All + one per category). Capped at 2
+                rows that scroll horizontally — the kit picker has ~12
+                manufacturers, which would otherwise stack into many rows and
+                push the list down. A column-flow grid with 2 rows lays chips out
+                top-then-bottom per column; the row overflows sideways. */}
             {cats.length > 1 && (
               <div
-                style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 4 }}
+                style={{
+                  display: 'grid',
+                  gridAutoFlow: 'column',
+                  gridTemplateRows: 'repeat(2, auto)',
+                  gridAutoColumns: 'max-content',
+                  gap: 3,
+                  marginBottom: 4,
+                  overflowX: 'auto',
+                  // Explicit hidden so `overflowX:auto` doesn't compute overflowY
+                  // to `auto` and add a vertical scrollbar; the 2 rows fit exactly.
+                  overflowY: 'hidden',
+                  paddingBottom: 2,
+                  // Keep the natural 2-row height — don't let the tall option list
+                  // below shrink this to a sliver (the flex-column default).
+                  flexShrink: 0,
+                }}
               >
                 <CategoryChip
                   label="All"
@@ -188,7 +208,7 @@ export function SoundPickerMenu({
                 ))}
               </div>
             )}
-            <div style={{ overflowY: 'auto', minHeight: 0 }}>
+            <div style={{ flex: '1 1 auto', overflowY: 'auto', minHeight: 0 }}>
               {/* "Default" clears to the placeholder (the old empty <option>). */}
               <button
                 type="button"
@@ -348,6 +368,7 @@ function CategoryChip({
         fontSize: 10,
         borderRadius: 9,
         cursor: 'pointer',
+        whiteSpace: 'nowrap',
         borderWidth: 1,
         borderStyle: 'solid',
         borderColor: active ? 'var(--accent, #6ea8fe)' : 'var(--border, #3a3a42)',
