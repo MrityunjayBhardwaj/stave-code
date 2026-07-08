@@ -27,6 +27,7 @@
 import * as React from 'react'
 
 import type { SoundGroup, SoundOption } from '../visualEdit/panels/soundCatalog'
+import { GM_FAMILY_ORDER, soundfontGroupLabel } from './gmFamilies'
 
 /** The minimal shape we read off a superdough soundMap entry. */
 export interface SoundMapEntry {
@@ -102,10 +103,23 @@ export function groupSoundCatalog(dict: SoundMapDict | null | undefined): SoundG
     })
   }
   if (soundfonts.length) {
-    groups.push({
-      group: 'Soundfonts',
-      options: soundfonts.sort().map((v) => ({ value: v, label: soundfontLabel(v) })),
-    })
+    // #807 — split the flat 125-soundfont bucket into `Soundfonts · <GM family>`
+    // groups (Piano/Strings/Brass/…) so browsing isn't one 125-row list. Bucket
+    // by the shared label, then emit in GM order; any unmapped soundfont (bare /
+    // new upstream key → flat "Soundfonts") comes last, never dropped.
+    const byLabel = new Map<string, SoundOption[]>()
+    for (const v of soundfonts.sort()) {
+      const label = soundfontGroupLabel(v)
+      const opts = byLabel.get(label) ?? []
+      opts.push({ value: v, label: soundfontLabel(v) })
+      byLabel.set(label, opts)
+    }
+    for (const family of GM_FAMILY_ORDER) {
+      const opts = byLabel.get(`Soundfonts · ${family}`)
+      if (opts?.length) groups.push({ group: `Soundfonts · ${family}`, options: opts })
+    }
+    const flat = byLabel.get('Soundfonts')
+    if (flat?.length) groups.push({ group: 'Soundfonts', options: flat })
   }
   if (wavetables.length) {
     groups.push({

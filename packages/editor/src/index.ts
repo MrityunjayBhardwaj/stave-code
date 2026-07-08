@@ -555,6 +555,16 @@ export {
   type SoundMapDict,
   type DrumMachineManifest,
 } from './workspace/soundRegistry'
+// GM soundfont families (#807) — sub-categorise the 125 `gm_*` soundfonts by
+// instrument family, shared by the Mixer picker and the Asset Library so the
+// `Soundfonts · <Family>` label is defined once.
+export {
+  gmFamily,
+  soundfontGroupLabel,
+  GM_FAMILY_ORDER,
+  GM_FAMILY_KEY_COUNT,
+  type GmFamily,
+} from './workspace/gmFamilies'
 
 // Visual-editing spine (#379) — chunk detection + tagged writeback + notation.
 // The durable layer the musician-facing write-back panels sit on; panels live

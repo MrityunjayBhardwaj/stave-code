@@ -11,8 +11,9 @@ import {
 const dict: SoundMapDict = {
   sawtooth: { data: { type: 'synth' } },
   sine: { data: { type: 'synth' } },
-  gm_alto_sax: { data: { type: 'soundfont' } },
-  gm_acoustic_grand_piano: { data: { type: 'soundfont' } },
+  gm_alto_sax: { data: { type: 'soundfont' } }, // Reed family (#807)
+  gm_violin: { data: { type: 'soundfont' } }, // Strings family (#807)
+  gm_notarealfont: { data: { type: 'soundfont' } }, // unmapped → flat Soundfonts
   piano: { data: { type: 'sample' } },
   uzu_wt_saw: { data: { type: 'wavetable' } }, // melodic → Wavetables group (#810)
   future_thing: { data: { type: 'mysterytype' } }, // unknown type → included as sample, never dropped
@@ -28,10 +29,22 @@ describe('groupSoundCatalog (#514 live enumeration)', () => {
     expect(groups).not.toBeNull()
     const byName = Object.fromEntries(groups!.map((g) => [g.group, g.options.map((o) => o.value)]))
     expect(byName['Synths']).toEqual(['sawtooth', 'sine'])
-    expect(byName['Soundfonts']).toEqual(['gm_acoustic_grand_piano', 'gm_alto_sax'])
     expect(byName['Wavetables']).toEqual(['uzu_wt_saw'])
     // `piano` (sample) + `future_thing` (unknown type, included as a sample)
     expect(byName['Samples']).toEqual(['future_thing', 'piano'])
+  })
+
+  it('sub-categorises gm_* soundfonts by GM family, unmapped → flat Soundfonts (#807)', () => {
+    const groups = groupSoundCatalog(dict)!
+    const byName = Object.fromEntries(groups.map((g) => [g.group, g.options.map((o) => o.value)]))
+    expect(byName['Soundfonts · Strings']).toEqual(['gm_violin'])
+    expect(byName['Soundfonts · Reed']).toEqual(['gm_alto_sax'])
+    // an unmapped soundfont is never dropped — it stays in the flat bucket
+    expect(byName['Soundfonts']).toEqual(['gm_notarealfont'])
+    // family groups emit in GM order (Strings before Reed) and after Synths
+    const order = groups.map((g) => g.group)
+    expect(order.indexOf('Soundfonts · Strings')).toBeLessThan(order.indexOf('Soundfonts · Reed'))
+    expect(order.indexOf('Synths')).toBeLessThan(order.indexOf('Soundfonts · Strings'))
   })
 
   it('includes wavetables (they are melodic sounds, not drum voices) — regression for #810', () => {
@@ -62,7 +75,7 @@ describe('groupSoundCatalog (#514 live enumeration)', () => {
 
   it('friendly-labels soundfonts (gm_alto_sax → Alto Sax) and title-cases synths', () => {
     const groups = groupSoundCatalog(dict)!
-    const sf = groups.find((g) => g.group === 'Soundfonts')!
+    const sf = groups.find((g) => g.group === 'Soundfonts · Reed')!
     expect(sf.options.find((o) => o.value === 'gm_alto_sax')!.label).toBe('Alto Sax')
     const syn = groups.find((g) => g.group === 'Synths')!
     expect(syn.options.find((o) => o.value === 'sawtooth')!.label).toBe('Sawtooth')
