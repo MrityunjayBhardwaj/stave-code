@@ -14,19 +14,39 @@ const dict: SoundMapDict = {
   gm_alto_sax: { data: { type: 'soundfont' } },
   gm_acoustic_grand_piano: { data: { type: 'soundfont' } },
   piano: { data: { type: 'sample' } },
+  uzu_wt_saw: { data: { type: 'wavetable' } }, // melodic → Wavetables group (#810)
+  future_thing: { data: { type: 'mysterytype' } }, // unknown type → included as sample, never dropped
   bd: { data: { type: 'sample', tag: 'drum-machines' } }, // kit voice → excluded
   sd: { data: { type: 'sample', tag: 'drum-machines' } },
+  mic: { data: { type: 'input' } }, // live audio-in bus → excluded (not pickable)
   _mySetting: { data: { type: 'synth' } }, // superdough internal → excluded
 }
 
 describe('groupSoundCatalog (#514 live enumeration)', () => {
-  it('groups by data.type into Synths / Soundfonts / Samples', () => {
+  it('groups by data.type into Synths / Soundfonts / Wavetables / Samples', () => {
     const groups = groupSoundCatalog(dict)
     expect(groups).not.toBeNull()
     const byName = Object.fromEntries(groups!.map((g) => [g.group, g.options.map((o) => o.value)]))
     expect(byName['Synths']).toEqual(['sawtooth', 'sine'])
     expect(byName['Soundfonts']).toEqual(['gm_acoustic_grand_piano', 'gm_alto_sax'])
-    expect(byName['Samples']).toEqual(['piano'])
+    expect(byName['Wavetables']).toEqual(['uzu_wt_saw'])
+    // `piano` (sample) + `future_thing` (unknown type, included as a sample)
+    expect(byName['Samples']).toEqual(['future_thing', 'piano'])
+  })
+
+  it('includes wavetables (they are melodic sounds, not drum voices) — regression for #810', () => {
+    const all = groupSoundCatalog(dict)!.flatMap((g) => g.options.map((o) => o.value))
+    expect(all).toContain('uzu_wt_saw')
+  })
+
+  it('includes an unrecognized sound type rather than silently dropping it (P254 guard)', () => {
+    const all = groupSoundCatalog(dict)!.flatMap((g) => g.options.map((o) => o.value))
+    expect(all).toContain('future_thing')
+  })
+
+  it('excludes the live audio-input bus (type `input` is not a pickable sound)', () => {
+    const all = groupSoundCatalog(dict)!.flatMap((g) => g.options.map((o) => o.value))
+    expect(all).not.toContain('mic')
   })
 
   it('excludes drum-machine voices (they belong to the Sequencer kit model)', () => {

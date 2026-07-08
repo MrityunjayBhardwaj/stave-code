@@ -29591,11 +29591,13 @@ function groupSoundCatalog(dict) {
   if (!dict) return null;
   const synths = [];
   const soundfonts = [];
+  const wavetables = [];
   const samples = [];
   for (const name of Object.keys(dict)) {
     if (name.startsWith("_")) continue;
     const data = dict[name]?.data;
     if (data?.tag === "drum-machines") continue;
+    if (data?.type === "input") continue;
     switch (data?.type) {
       case "synth":
         synths.push(name);
@@ -29603,12 +29605,21 @@ function groupSoundCatalog(dict) {
       case "soundfont":
         soundfonts.push(name);
         break;
+      case "wavetable":
+        wavetables.push(name);
+        break;
       case "sample":
+      // A sound type we don't have a dedicated group for is still a PLAYABLE
+      // melodic sound — treat it as a sample rather than silently drop it. The
+      // old `default: break` swallowed `wavetable` (7 uzu-wavetables) whole
+      // (incomplete type-enumeration, the P254/PV162 family). Include-by-default
+      // so the next new upstream type can't vanish from the picker.
+      default:
         samples.push(name);
         break;
     }
   }
-  if (synths.length + soundfonts.length + samples.length === 0) return null;
+  if (synths.length + soundfonts.length + wavetables.length + samples.length === 0) return null;
   const groups = [];
   if (synths.length) {
     groups.push({
@@ -29620,6 +29631,12 @@ function groupSoundCatalog(dict) {
     groups.push({
       group: "Soundfonts",
       options: soundfonts.sort().map((v) => ({ value: v, label: soundfontLabel(v) }))
+    });
+  }
+  if (wavetables.length) {
+    groups.push({
+      group: "Wavetables",
+      options: wavetables.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
     });
   }
   if (samples.length) {
@@ -29800,7 +29817,7 @@ function SoundSelect({
       style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11 },
       children: [
         /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: label }),
-        /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4 }, children: [
+        /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4, width: "100%", maxWidth: 220 }, children: [
           /* @__PURE__ */ jsxRuntime.jsxs(
             "select",
             {
@@ -29818,7 +29835,10 @@ function SoundSelect({
                 border: "1px solid var(--border, #3a3a42)",
                 background: "var(--background-elevated, #26262c)",
                 color: "var(--foreground, #e6e6ea)",
-                maxWidth: 220
+                // Shrink within the row (min-width:0 lets it go below content width)
+                // so the ▶ button always stays visible next to it.
+                flex: "1 1 auto",
+                minWidth: 0
               },
               children: [
                 /* @__PURE__ */ jsxRuntime.jsx("option", { value: "", children: placeholder }),
