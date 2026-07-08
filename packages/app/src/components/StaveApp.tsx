@@ -59,6 +59,8 @@ import { IRInspectorPanel } from "./IRInspectorPanel";
 import { registerCommand } from "../commands/registry";
 import { installKeybindingDispatcher } from "../commands/keybindings";
 import { registerPanel } from "../panels/registry";
+import { AssetLibraryPanel } from "../assetLibrary/AssetLibraryPanel";
+import { registerDemoAssetProviders } from "../assetLibrary/exampleProvider";
 import {
   listWorkspaceFiles,
   subscribeToFileList,
@@ -1081,6 +1083,17 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       render: () => null,
     }));
     unregs.push(registerPanel({
+      id: "library",
+      title: "Library",
+      icon: "library",
+      order: 40,
+      render: () => null,
+    }));
+    // Asset Library demo providers (#819) — only registered behind the
+    // `stave.assetLibrary.demo` localStorage flag; no-op in production. The
+    // real Sounds provider (#820) supersedes these.
+    unregs.push(registerDemoAssetProviders());
+    unregs.push(registerPanel({
       id: "console",
       title: "Console",
       icon: "terminal",
@@ -1228,6 +1241,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
               />
             </div>
           </div>
+        )}
+        {!zenMode && activePanelId === "library" && (
+          <AssetLibraryPanel onClose={() => setActivePanelId(null)} />
         )}
         {!zenMode && activePanelId === "console" && <ConsolePanel />}
         {!zenMode && activePanelId === "ir-inspector" && (

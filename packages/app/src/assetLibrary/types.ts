@@ -1,0 +1,92 @@
+/**
+ * Asset Library — the typed model behind the unified sidebar browser (#818).
+ *
+ * One shell, pluggable providers. Every browsable thing — sounds, viz presets,
+ * snippets, user samples, and (later) community/marketplace items — is an
+ * {@link Asset} surfaced by an {@link AssetProvider}. The shell renders a search
+ * box + a type filter + a source filter over the union of all providers; it
+ * never knows what a "sound" or a "viz preset" is. Adding an asset type is
+ * registering one provider (see {@link ./registry}); adding the community store
+ * is one new `source` + a remote provider, not a UI rewrite.
+ *
+ * `preview()` / `insert()` live ON the asset (a sound auditions and writes
+ * `.sound()`; a viz preset renders a thumbnail and writes `.viz()`), so the
+ * shell drives them uniformly through the row action slots.
+ */
+
+/** Asset categories. Each maps to exactly one registered provider. */
+export type AssetType = "sound" | "viz" | "snippet" | "sample";
+
+/**
+ * Where an asset comes from — a filter axis, not a provider axis. `built-in`
+ * ships with Stave; `user` is locally imported (Pillar 6); `community` is the
+ * future marketplace, which slots in as a remote provider tagged this source
+ * with no shell changes.
+ */
+export type AssetSource = "built-in" | "user" | "community";
+
+/**
+ * A handle returned by {@link Asset.preview} so the shell can stop an in-flight
+ * preview (a sustained/looping audition) when another row starts or the panel
+ * closes. Providers whose preview is instantaneous may return a no-op.
+ */
+export interface AssetPreviewHandle {
+  /** Stop this preview. Idempotent — safe to call after it already ended. */
+  stop: () => void;
+}
+
+/**
+ * One browsable item. `preview`/`insert` are the two verbs the shell exposes
+ * as row action slots; both are optional so a provider can offer either, both,
+ * or (rarely) neither.
+ */
+export interface Asset {
+  readonly type: AssetType;
+  /** Stable within a provider; the shell keys rows on `${type}:${id}`. */
+  readonly id: string;
+  readonly name: string;
+  readonly source: AssetSource;
+  /** Free-form tags — searched alongside the name, shown as row metadata. */
+  readonly tags: readonly string[];
+  /** Optional secondary label (e.g. category / GM family) shown muted. */
+  readonly group?: string;
+  /**
+   * Start a preview. Returns a handle to stop it, or void for a fire-and-forget
+   * preview. May be async (engine warm-up). Absent → no preview affordance.
+   */
+  readonly preview?: () => AssetPreviewHandle | void | Promise<AssetPreviewHandle | void>;
+  /**
+   * Round-trip this asset into legible code (assign to the focused track, or
+   * insert at the cursor). Absent → no insert affordance.
+   */
+  readonly insert?: () => void | Promise<void>;
+}
+
+/**
+ * Supplies assets of one {@link AssetType}. Mirrors the accessor/registry model
+ * Stave already uses for sounds (`setSoundCatalogAccessor`) and viz
+ * (`VizPresetStore`): the provider owns enumeration; preview/insert live on the
+ * assets it returns.
+ */
+export interface AssetProvider {
+  readonly type: AssetType;
+  /** Human label for the type filter chip (e.g. "Sounds"). */
+  readonly label: string;
+  /**
+   * All assets this provider currently knows about. Cheap and synchronous —
+   * the shell re-lists on {@link ./registry.subscribeToAssetProviders} ticks,
+   * so a provider whose catalog fills lazily (sounds warm up after engine init)
+   * notifies the registry and returns the grown list here.
+   */
+  list: () => readonly Asset[];
+  /**
+   * Optional provider-specific search. When absent, the shell falls back to a
+   * generic name/tag/group substring match over {@link list}.
+   */
+  search?: (query: string) => readonly Asset[];
+  /**
+   * Whether this provider's catalog is still populating (engine warm-up). Drives
+   * the shell's loading state. Absent → treated as ready.
+   */
+  isLoading?: () => boolean;
+}
