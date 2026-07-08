@@ -100,7 +100,10 @@ function SoundSelect({
       style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}
     >
       <span style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>{label}</span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      {/* Full-width row so the select shrinks to leave room for the ▶ button in
+          the narrow Pattern-tab inspector — otherwise the select's max-width
+          overflows and pushes ▶ off the panel's right edge (#808). */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%', maxWidth: 220 }}>
         <select
           data-mixer-sound-select={label.toLowerCase()}
           value={known ? value : value === '' ? '' : '__custom__'}
@@ -117,7 +120,10 @@ function SoundSelect({
             border: '1px solid var(--border, #3a3a42)',
             background: 'var(--background-elevated, #26262c)',
             color: 'var(--foreground, #e6e6ea)',
-            maxWidth: 220,
+            // Shrink within the row (min-width:0 lets it go below content width)
+            // so the ▶ button always stays visible next to it.
+            flex: '1 1 auto',
+            minWidth: 0,
           }}
         >
           <option value="">{placeholder}</option>
