@@ -26,6 +26,31 @@ describe('STRUDEL_DOCS', () => {
     expect(STRUDEL_DOCS).toHaveProperty('fast')
     expect(STRUDEL_DOCS).toHaveProperty('slow')
   })
+
+  // The pick family is added as a whole, not one member at a time — this
+  // guards against the incomplete-enumeration gap that left pickRestart (and
+  // its siblings) without a hover doc.
+  it('covers the pick family (@strudel/core/pick.mjs)', () => {
+    for (const name of [
+      'pick',
+      'pickmod',
+      'pickF',
+      'pickmodF',
+      'pickOut',
+      'pickmodOut',
+      'pickRestart',
+      'pickmodRestart',
+      'pickReset',
+      'pickmodReset',
+      'inhabit',
+      'inhabitmod',
+      'squeeze',
+    ]) {
+      expect(STRUDEL_DOCS, `${name} missing from STRUDEL_DOCS`).toHaveProperty(
+        name,
+      )
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------
