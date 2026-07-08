@@ -555,6 +555,11 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     overflowX: "auto",
     overflowY: "hidden",
+    // Hide the scrollbar cross-browser: `scrollbarWidth` covers Firefox (which
+    // ignores the webkit pseudo); the globals.css `::-webkit-scrollbar` rule
+    // covers Blink/WebKit. The belt still scrolls. (Same dual pattern as
+    // WorkspaceShell's tabbar.)
+    scrollbarWidth: "none",
   },
   chip: {
     padding: "2px 8px",
