@@ -49,6 +49,7 @@ import {
   type AliasRowError,
 } from "../signalAliasRows";
 import { getRulerUnits, setRulerUnits, type RulerUnits } from "../../state/rulerUnits";
+import { getVizPreviewHeight, setVizPreviewHeight } from "../../state/vizPreviewHeight";
 import { Switch } from "./Switch";
 import { SettingRow } from "./SettingRow";
 import {
@@ -92,6 +93,7 @@ const ADAPTERS: Record<string, SettingAdapter> = {
   rulerUnits: { get: getRulerUnits, set: (v) => setRulerUnits(v as RulerUnits) },
   timelineSubRow: { get: getMusicalTimelineSubRowHeight, set: (v) => setMusicalTimelineSubRowHeight(Number(v)) },
   inlineVizButtons: { get: getInlineVizActionSize, set: (v) => setInlineVizActionSize(Number(v)) },
+  vizPreviewHeight: { get: getVizPreviewHeight, set: (v) => setVizPreviewHeight(Number(v)) },
   vizQuality: { get: getVizQuality, set: (v) => setVizQuality(v as VizQualityLevel) },
   vizResolution: { get: getInlineVizResolution, set: (v) => setInlineVizResolution(Number(v)) },
   vizInputsLive: { get: getVizInputsLiveValuesEnabled, set: (v) => setVizInputsLiveValuesEnabled(Boolean(v)) },

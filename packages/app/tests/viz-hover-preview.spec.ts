@@ -97,3 +97,52 @@ test.describe('Asset Library — viz card hover preview (#838)', () => {
     expect(hashes.size, 'preview animates (distinct compositor frames)').toBeGreaterThan(1)
   })
 })
+
+test.describe('Asset Library — viz preview height setting (#838)', () => {
+  async function openSettingsViz(page: Page) {
+    await page.getByRole('button', { name: 'File', exact: true }).click()
+    await page.getByText('Editor Settings...').click()
+    await expect(page.getByTestId('settings-shell')).toBeVisible({ timeout: 4000 })
+    await page.getByTestId('settings-nav-viz').click()
+  }
+
+  test('a "Preview height" slider is exposed under Visualization', async ({ page }) => {
+    await boot(page)
+    await openSettingsViz(page)
+    await expect(page.getByTestId('setting-vizPreviewHeight')).toBeVisible()
+    await expect(page.getByText('Preview height', { exact: true })).toBeVisible()
+  })
+
+  test('changing the slider resizes the viz cards (real gesture, end to end)', async ({ page }) => {
+    await boot(page)
+
+    // Baseline card height at the default setting.
+    let panel = await openVizLibrary(page)
+    const box0 = await panel.locator('[data-viz-preview-box="viz:prism"]').boundingBox()
+    expect(box0).toBeTruthy()
+
+    // Drive the real slider to a distinctly taller value.
+    await openSettingsViz(page)
+    const slider = page.getByTestId('setting-vizPreviewHeight') // the range input itself
+    await slider.fill('176')
+    await page.keyboard.press('Escape') // close the settings shell
+    await expect(page.getByTestId('settings-shell')).toHaveCount(0)
+
+    // The open library reflects it live (the card box grows to ~176px).
+    panel = page.locator('[data-asset-library]')
+    await expect(panel).toBeVisible()
+    await expect
+      .poll(async () => (await panel.locator('[data-viz-preview-box="viz:prism"]').boundingBox())?.height ?? 0)
+      .toBeGreaterThan(box0!.height + 20)
+    const box1 = await panel.locator('[data-viz-preview-box="viz:prism"]').boundingBox()
+    expect(Math.abs(box1!.height - 176)).toBeLessThan(4)
+    await panel.screenshot({ path: 'test-results/viz-preview-height-176.png' })
+
+    // Persists across reload (localStorage-backed).
+    await page.reload()
+    await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 30_000 })
+    const panel2 = await openVizLibrary(page)
+    const box2 = await panel2.locator('[data-viz-preview-box="viz:prism"]').boundingBox()
+    expect(Math.abs(box2!.height - 176)).toBeLessThan(4)
+  })
+})

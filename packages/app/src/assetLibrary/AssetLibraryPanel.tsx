@@ -27,6 +27,7 @@ import {
   type AssetFilter,
 } from "./filter";
 import { computeWindow } from "./windowing";
+import { useVizPreviewHeight } from "../state/vizPreviewHeight";
 import type { Asset, AssetPreviewHandle, AssetSource, AssetType } from "./types";
 
 const ROW_HEIGHT = 40;
@@ -589,6 +590,7 @@ function AssetCard({
   // ShaderToy-style live preview: while hovered, mount the real viz (muted) over
   // the static tile; tear it down on leave/unmount so only one is ever alive
   // (#838). `live` fades the static thumbnail out once the canvas is up.
+  const previewHeight = useVizPreviewHeight();
   const previewHost = useRef<HTMLDivElement | null>(null);
   const mountPreviewRef = useRef(asset.mountLivePreview);
   mountPreviewRef.current = asset.mountLivePreview;
@@ -613,7 +615,10 @@ function AssetCard({
 
   return (
     <div style={styles.card} {...hoverProps} data-asset-row={rowKey}>
-      <div style={styles.cardThumbWrap}>
+      <div
+        style={{ ...styles.cardThumbWrap, height: previewHeight }}
+        data-viz-preview-box={rowKey}
+      >
         {asset.thumbnail && (
           <img
             src={asset.thumbnail}
@@ -818,8 +823,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cardThumb: {
     width: "100%",
-    height: "auto",
+    height: "100%",
     display: "block",
+    objectFit: "cover", // fill the settings-controlled fixed height, no distortion
     borderRadius: 6,
     border: "1px solid var(--border-subtle)",
     background: "var(--bg-inset, rgba(127,127,127,0.12))",

@@ -112,6 +112,7 @@ export const SECTION_DEFS: readonly SettingsSectionDef[] = [
     title: "Visualization",
     fields: [
       { key: "inlineVizButtons", name: "Inline viz buttons", description: "Size of the inline .viz() action icons.", kind: "slider", min: 8, max: 28, unit: "px" },
+      { key: "vizPreviewHeight", name: "Preview height", description: "Height of the viz cards in the Asset Library (the thumbnail and live hover preview).", kind: "slider", min: 48, max: 200, unit: "px" },
       { key: "vizQuality", name: "Quality", description: "One preset scales viz resolution and detail together.", kind: "select", options: VIZ_QUALITY_OPTIONS },
       { key: "vizResolution", name: "Custom resolution", description: "Overrides the preset's render resolution.", kind: "select", options: VIZ_RES_OPTIONS, badge: "Advanced", indent: true, advanced: true },
       { key: "vizInputsLive", name: "Live values in viz inputs", description: "Show live master signal values in the Inputs drawer.", kind: "switch" },
