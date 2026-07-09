@@ -14,6 +14,7 @@
 
 import type { Asset } from "./types";
 import { VIZ_LIBRARY, type VizLibItem } from "./vizLibrary";
+import { vizThumbnailPlaceholder } from "./vizThumbnail";
 
 export interface VizProviderDeps {
   /** Add a package to the workspace (materialise its files + register the
@@ -46,10 +47,13 @@ export function vizLibraryToAssets(
     source: "built-in",
     group: RENDERER_LABELS[item.renderer] ?? item.renderer,
     tags: [item.renderer],
+    // A baked frame of the running shader, or a renderer-hued placeholder when a
+    // package ships none — so every viz row has a consistent leading tile.
+    thumbnail: item.thumbnail ?? vizThumbnailPlaceholder(item),
     // `+` adds the package to the workspace (see the row's `insertLabel`).
     insert: () => deps.onAdd(item),
     insertLabel: "Add to workspace",
-    // no `preview` — a viz thumbnail is a separate follow-up.
+    // no `preview` — viz is visual, not audible; the thumbnail is its preview.
   }));
   assets.sort(
     (a, b) => (a.group ?? "").localeCompare(b.group ?? "") || a.name.localeCompare(b.name),

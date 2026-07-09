@@ -41,9 +41,22 @@ describe("vizLibraryToAssets (#834)", () => {
     expect(assets.find((a) => a.id === "prism")?.group).toBe("GLSL");
   });
 
-  it("carries no preview affordance (a viz thumbnail is a follow-up)", () => {
+  it("carries no play/stop preview affordance (viz is visual — the thumbnail is its preview)", () => {
     const [a] = vizLibraryToAssets([items[0]], { onAdd: vi.fn() });
     expect(a.preview).toBeUndefined();
+  });
+
+  it("uses the package's baked thumbnail when present", () => {
+    const baked = "data:image/png;base64,AAAA";
+    const [a] = vizLibraryToAssets([{ ...items[0], thumbnail: baked }], {
+      onAdd: vi.fn(),
+    });
+    expect(a.thumbnail).toBe(baked);
+  });
+
+  it("falls back to a renderer-hued placeholder data-URI when a package has no baked thumbnail", () => {
+    const [a] = vizLibraryToAssets([items[0]], { onAdd: vi.fn() });
+    expect(a.thumbnail).toMatch(/^data:image\/svg\+xml,/);
   });
 
   it("sorts by (group, name)", () => {

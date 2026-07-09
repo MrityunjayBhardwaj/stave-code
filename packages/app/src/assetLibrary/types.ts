@@ -59,6 +59,13 @@ export interface Asset {
   /** Optional secondary label (e.g. category / GM family) shown muted. */
   readonly group?: string;
   /**
+   * Optional leading thumbnail — a self-contained image URI (`data:…`) rendered
+   * in a small square slot at the head of the row. Viz packages ship a baked
+   * frame of the running shader (falling back to a renderer-hued placeholder);
+   * sounds leave this unset. Kept generic so any visual asset type can opt in.
+   */
+  readonly thumbnail?: string;
+  /**
    * Start a preview. Returns a handle to stop it, or void for a fire-and-forget
    * preview. May be async (engine warm-up). Absent → no preview affordance.
    */

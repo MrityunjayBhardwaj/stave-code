@@ -47,6 +47,16 @@ export interface VizLibItem {
   /** The files that make up this package. The primary viz file (the one whose
    *  basename matches {@link name}) is what registers as a named viz. */
   readonly files: readonly VizLibFile[];
+  /**
+   * A baked thumbnail of the running viz — a self-contained `data:image/*` URI.
+   * These are captured ONCE, offline, through the compositor-capture harness
+   * (`tests/viz-thumbnails.bake.spec.ts`): the shader runs against a real
+   * pattern, a representative frame is grabbed, centre-cropped, downscaled, and
+   * pasted here. Absent → the provider falls back to a renderer-hued placeholder
+   * tile, so a package without a baked frame (e.g. a future user-authored one)
+   * still reads as intentional.
+   */
+  readonly thumbnail?: string;
 }
 
 // ── Bundled GLSL example shaders (originally issue #287) ─────────────────

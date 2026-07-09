@@ -463,6 +463,16 @@ function AssetRow({
       onMouseLeave={() => setHovered(false)}
       data-asset-row={rowKey}
     >
+      {/* Leading thumbnail — present for visual assets (viz packages ship a
+          baked frame, else a renderer-hued placeholder); sounds leave it unset. */}
+      {asset.thumbnail && (
+        <img
+          src={asset.thumbnail}
+          alt=""
+          style={styles.rowThumb}
+          data-asset-thumb={rowKey}
+        />
+      )}
       <div style={styles.rowText}>
         <span style={styles.rowName}>{asset.name}</span>
         {asset.group && <span style={styles.rowGroup}>{asset.group}</span>}
@@ -635,6 +645,15 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "0 8px 0 14px",
     boxSizing: "border-box",
     gap: 6,
+  },
+  rowThumb: {
+    width: 26,
+    height: 26,
+    flexShrink: 0,
+    borderRadius: 5,
+    objectFit: "cover",
+    background: "var(--bg-inset, rgba(127,127,127,0.12))",
+    border: "1px solid var(--border-subtle)",
   },
   rowText: {
     display: "flex",
