@@ -37324,7 +37324,7 @@ function voiceEnvelope(pos, voice) {
 }
 __name(voiceEnvelope, "voiceEnvelope");
 function createDrumDemoSignalSource(opts = {}) {
-  const cycleSeconds = opts.cycleSeconds ?? 2;
+  const cycleSeconds = opts.cycleSeconds ?? 3.33;
   let seq = 0;
   let prevPos = null;
   return {
