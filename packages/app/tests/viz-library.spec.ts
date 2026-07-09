@@ -127,6 +127,14 @@ test.describe('Asset Library — Viz library (#834)', () => {
     await expect(
       page.locator('[data-workspace-tab][data-tab-active="true"]'),
     ).toContainText('Prism.glsl')
+
+    // The add (which churns the provider list via `notifyAssetProvidersChanged`)
+    // must NOT bounce the Type filter off Viz — the row stays put.
+    await expect(panel.locator('[data-filter="asset-type-filter"] button[data-chip="viz"]')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await expect(prism).toBeVisible()
   })
 
   test('adding Pulse Grid (a name with a space) materialises + is recognised', async ({ page }) => {
