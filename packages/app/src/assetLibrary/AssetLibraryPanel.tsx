@@ -666,6 +666,11 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateRows: "repeat(2, auto)",
     gridAutoColumns: "max-content",
     gap: 4,
+    // Darker inset band → the tag belt reads as a subordinate layer under the
+    // primary Type filter (visual hierarchy).
+    background: "var(--bg-inset, rgba(0,0,0,0.22))",
+    padding: "5px 6px",
+    borderRadius: 6,
     overflowX: "auto",
     overflowY: "hidden",
     // Hide the scrollbar cross-browser: `scrollbarWidth` covers Firefox (which
