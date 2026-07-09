@@ -142,6 +142,7 @@ export {
 } from './visualizers/vizPreset'
 export { compilePreset } from './visualizers/vizCompiler'
 export { mountVizRenderer } from './visualizers/mountVizRenderer'
+export { mountVizPreview, type VizPreviewSpec } from './visualizers/mountVizPreview'
 // #240 — viz pop-out: the hook drives a window.open() preview; the app host
 // wires it through `WorkspaceShellProps.onOpenPopoutPreview` (Cmd+K W).
 export { usePopoutPreview } from './visualizers/editor/PopoutPreview'

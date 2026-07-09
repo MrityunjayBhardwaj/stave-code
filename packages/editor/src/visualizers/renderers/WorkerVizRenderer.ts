@@ -34,6 +34,7 @@ import type { BusAnalyser } from '../signals/SignalBus'
 import type { IRPattern } from '../../ir/IRPattern'
 import { MainSignalSampler } from '../worker/signalSampler'
 import { createPostMessageWriter, type SignalTransportWriter } from '../worker/signalTransport'
+import type { SignalFrameSource } from '../demoSignalSource'
 import { getVizWorkerFactory } from '../vizWorkerFactory'
 import { acquireVizWorker, releaseVizWorker } from '../vizWorkerPool'
 import { isP5DirectCanvasEnabled, isVizWorkerPoolEnabled } from '../vizFlags'
@@ -86,6 +87,11 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
   private worker: Worker | null = null
   private writer: SignalTransportWriter | null = null
   private readonly sampler = new MainSignalSampler()
+  /** When set (viz PREVIEWS, #838), supersedes the live sampler in the pump: the
+   *  frame comes from this muted demo feed instead of the analyser/scheduler, so a
+   *  card can render its viz audio-reactively while nothing is playing. Null =
+   *  the normal live path. */
+  private demoSource: SignalFrameSource | null = null
   private running = false
   /** Frames written but not yet acked by the worker (#261 backpressure). The
    *  sampler skips producing while this is at the cap so a slow worker can't be
@@ -143,6 +149,13 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
    *  must be set BEFORE `mount`. */
   whenReady(cb: () => void): void {
     this.onReady = cb
+  }
+
+  /** Drive this renderer from a muted DEMO signal feed instead of the live
+   *  analyser/scheduler (viz PREVIEWS, #838). Set before/after mount; null
+   *  restores the live path. The pump reads `next(ts)` each produced frame. */
+  setDemoSource(src: SignalFrameSource | null): void {
+    this.demoSource = src
   }
 
   mount(
@@ -443,7 +456,9 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
         // PV72); `write` = transport (envelope structured-clone + postMessage —
         // bytes already transferred zero-copy).
         perf.begin('viz.worker.sample')
-        const frame = this.sampler.sample(cache)
+        // Viz previews (#838) drive from a muted demo feed keyed off the rAF
+        // clock; everything else samples the live analyser/scheduler.
+        const frame = this.demoSource ? this.demoSource.next(ts) : this.sampler.sample(cache)
         perf.end('viz.worker.sample')
         perf.begin('viz.worker.write')
         this.writer.writeFrame(frame)

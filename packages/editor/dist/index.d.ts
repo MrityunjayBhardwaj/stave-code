@@ -2087,6 +2087,182 @@ declare class HydraVizRenderer implements VizRenderer {
 }
 
 /**
+ * SignalFrame — the serializable per-frame snapshot that crosses main → worker
+ * so a worker-side `SignalBus` produces the same readings as the main-side bus
+ * (Phase B / B-2, epic #228).
+ *
+ * The pure `SignalBus` (PV65/P12) ports into the worker unchanged, but its FEED
+ * is main-thread-bound: `AnalyserNode` bytes (Web Audio), `scheduler.now()` /
+ * `query()` (IRPattern closures), the hap stream. Each frame the MAIN thread
+ * samples those into a `SignalFrame`; the worker reconstructs the bus's inputs
+ * from it. This module owns ONLY the data shape + (de)serialization helpers —
+ * pure, no DOM/worker, plain-object unit tests.
+ *
+ * What the bus actually reads (so we ship exactly that, no more):
+ *   - analysers → `frequencyBinCount` + the freq/time byte arrays (deriveAudio
+ *     runs in the WORKER on these bytes, keeping the DSP off main).
+ *   - scheduler → `now()` + the active `IREvent`s for [now, now+ε) (combined and
+ *     per-track, keyed in the SCHEDULER key space — SignalBus TRAP §5).
+ *   - bump feed → per hap: `s`, `color`, `gain` (drives the envelope).
+ *
+ * Active events are summarised to the four fields the bus reads off an active
+ * `IREvent` (`s`/`velocity`/`note`/`color` — SignalBus.sound/track), NOT the full
+ * IREvent. That keeps the frame small and the transport string-set bounded.
+ */
+/** The fields the bus reads off an active scheduler event (see SignalBus). */
+interface ActiveEventSummary {
+    /** Instrument/sample name — env-map + audioFor key. */
+    s: string | null;
+    /** Active-event velocity 0..1 (scheduler feed). */
+    velocity: number;
+    /** Note in the user's form (name|number|null). */
+    note: number | string | null;
+    /** Display color. */
+    color: string | null;
+}
+/** A hap replayed into the worker bus's envelope feed (`SignalBus.bump`). */
+interface BumpSummary {
+    /** Env-map key (`BusHapEvent.s`). */
+    s: string | null;
+    /** `.color()` value, if any. */
+    color: string | null;
+    /** Gain 0..1 — the bus reads it from `hap.value.gain` (default 1). */
+    gain: number;
+}
+/** One analyser's raw bytes for this frame (the worker runs `deriveAudio`). */
+interface AnalyserBytes {
+    /** Bus/scheduler key: `'master'` for the combined mix, else the SCHEDULER key
+     *  space track key (`'$0'`/`'d1'` — TRAP §5), matching `trackAnalysers`. */
+    key: string;
+    /** `AnalyserNode.frequencyBinCount` (= fftSize/2). */
+    frequencyBinCount: number;
+    /** Magnitude spectrum, one byte per bin (0..255). length === frequencyBinCount. */
+    freq: Uint8Array;
+    /**
+     * Time-domain waveform, one byte per sample (0..255, 128 = silence).
+     * B-3: length === `fftSize` (the FULL time-domain), not `frequencyBinCount` —
+     * the bus only reads the first `frequencyBinCount` samples (so parity is
+     * unchanged), but a raw `stave.analyser` sketch (e.g. synthterrain) calls
+     * `getFloatTimeDomainData(new Float32Array(fftSize))` and needs all `fftSize`.
+     * Falls back to `frequencyBinCount` length for callers that don't set fftSize.
+     */
+    time: Uint8Array;
+    /**
+     * `AnalyserNode.fftSize` (= 2 × frequencyBinCount). B-3 — lets the worker's
+     * raw `stave.analyser` shim report the same `fftSize` a sketch reads. Optional
+     * (additive): the bus ignores it; absent → `frequencyBinCount × 2`.
+     */
+    fftSize?: number;
+    /** `AnalyserNode.minDecibels` (default -100). B-3 — lets the raw shim
+     *  reconstruct `getFloatFrequencyData` (dB) from the magnitude bytes. */
+    minDecibels?: number;
+    /** `AnalyserNode.maxDecibels` (default -30). See {@link AnalyserBytes.minDecibels}. */
+    maxDecibels?: number;
+}
+/**
+ * One scheduler event marshalled for a RAW `stave.scheduler.query()` consumer
+ * (B-3). The signal BUS reads only the four `ActiveEventSummary` fields, but a
+ * raw sketch (synthterrain, scope, pianoroll…) reads the full hap shape over an
+ * arbitrary window. We ship the top-level `IREvent` fields the built-in sketches
+ * actually read — NOT `loc`/`irNodeId`/`dollarPos` (heavy, viz-irrelevant). The
+ * worker scheduler shim hands these back as plain objects, so a sketch reads
+ * `h.begin`/`h.note`/`h.gain` exactly as on main.
+ */
+interface RawHapSummary {
+    begin: number;
+    end: number;
+    endClipped: number;
+    note: number | string | null;
+    freq: number | null;
+    s: string | null;
+    gain: number;
+    velocity: number;
+    color: string | null;
+}
+/**
+ * The raw COMBINED-scheduler feed for `stave.scheduler` (B-3). The main sampler
+ * queries one WIDE window each frame (covering every built-in sketch's window —
+ * scope needs `now-4`, pianoroll/wordfall need `now+2`); the worker shim's
+ * `query(a,b)` filters these events to the requested sub-window. Only the
+ * combined scheduler is shipped (per-track raw query is not a built-in need).
+ */
+interface RawSchedulerFrame {
+    /** `scheduler.now()` at sample (same value as `SignalFrame.now`). */
+    now: number;
+    /** Events in the shipped wide window, in query order. */
+    events: RawHapSummary[];
+}
+/** The master analyser key — the combined-mix analyser (`SignalBus.master()`). */
+declare const MASTER_KEY = "master";
+/**
+ * One frame of signal state, fully serializable (structured-clone / transferable).
+ * The Uint8Arrays are the transferable payload; everything else is small JSON.
+ */
+interface SignalFrame {
+    /** Monotonic frame counter — lets the worker drop a stale/duplicate frame. */
+    seq: number;
+    /** Scheduler time at sample (`SignalBus.now()` source). */
+    now: number;
+    /** Per-analyser bytes. `key === MASTER_KEY` is the master; others are tracks. */
+    analysers: AnalyserBytes[];
+    /** Combined active events for [now, now+ε) (`SignalBus.refreshActive`). */
+    activeEvents: ActiveEventSummary[];
+    /** Active events per track key (SCHEDULER key space — TRAP §5). */
+    activeByTrack: Array<[string, ActiveEventSummary[]]>;
+    /** Haps fired since the previous frame, in order (envelope `bump` feed). */
+    bumps: BumpSummary[];
+    /**
+     * Wide-window combined-scheduler feed for raw `stave.scheduler` sketches (B-3).
+     * Optional + additive: absent in B-2 frames and ignored by the signal bus
+     * (which uses `activeEvents`/`activeByTrack`). The worker scheduler shim reads
+     * it; absent → the shim returns no events.
+     */
+    rawScheduler?: RawSchedulerFrame;
+}
+/** Collect the transferable `ArrayBuffer`s in a frame (for postMessage transfer
+ *  list). Returns the underlying buffers of every analyser byte array — passing
+ *  these as transfer makes the postMessage zero-copy (no structured clone of the
+ *  bytes). The frame is unusable on the sender after transfer (by design). */
+declare function frameTransferables(frame: SignalFrame): ArrayBuffer[];
+/** An empty frame — the worker's degraded state before the first real frame, and
+ *  the main sampler's value when no analyser/scheduler/haps are bound (demo /
+ *  IR-only mode). Mirrors the bus degrading absent inputs to 0/[] (never NaN). */
+declare function emptyFrame(seq?: number): SignalFrame;
+
+/**
+ * demoSignalSource — a muted, looping signal feed for viz PREVIEWS (#838).
+ *
+ * A viz-library card renders its real viz LIVE on hover, but nothing is playing
+ * (and we produce no sound), so an audio-reactive shader would read near-black —
+ * the master analyser is silent, no haps fire. This module synthesizes the SAME
+ * `SignalFrame`s a running engine would, from the DEFAULT DRUM PATTERN we already
+ * use for baking thumbnails — `s("bd*4, ~ sd, hh*8")`:
+ *
+ *   - kick  (`bd`) on every quarter        → 0, ¼, ½, ¾ of the cycle
+ *   - snare (`sd`) on the second half      → ½              (`~ sd`)
+ *   - hat   (`hh`) eight per cycle          → 0, ⅛, ¼, … , ⅞ (`hh*8`)
+ *
+ * Each onset emits a `bump` keyed by the Strudel sound name (`bd`/`sd`/`hh`), so
+ * the worker `SignalBus` lights `uKick`/`uSnare`/`uHat` and decays them itself
+ * (aliasMap `uKick → bd`). For spectrum-reading shaders (Prism's `iChannel0` →
+ * `uBass/uMid/uTreble/uRms`) we also synthesize a master magnitude spectrum whose
+ * low/mid/high bands pulse with the kick/snare/hat envelopes. No audio graph, no
+ * scheduler, no DOM — a pure clock-in → frame-out function, unit-testable as
+ * plain objects, and byte-deterministic for a given time.
+ *
+ * The consumer is `WorkerVizRenderer`: when a demo source is set it supersedes the
+ * live `MainSignalSampler` in the frame pump (see `setDemoSource`). The frame
+ * shape is exactly `signalFrame.ts`'s, so the worker path is unchanged.
+ */
+
+/** A clock-driven frame provider. `next(nowMs)` returns the frame for the given
+ *  monotonic time (`performance.now()`-style ms); it is STATEFUL (tracks the
+ *  previous time to detect onsets crossed since the last frame + a rising seq). */
+interface SignalFrameSource {
+    next(nowMs: number): SignalFrame;
+}
+
+/**
  * SignalBus — renderer-agnostic per-sound / per-track musical-signal bus.
  *
  * PURE module (P12): imports ONLY types + `noteToMidi`. NO p5 / hydra /
@@ -2297,149 +2473,6 @@ declare class SignalBus {
 }
 
 /**
- * SignalFrame — the serializable per-frame snapshot that crosses main → worker
- * so a worker-side `SignalBus` produces the same readings as the main-side bus
- * (Phase B / B-2, epic #228).
- *
- * The pure `SignalBus` (PV65/P12) ports into the worker unchanged, but its FEED
- * is main-thread-bound: `AnalyserNode` bytes (Web Audio), `scheduler.now()` /
- * `query()` (IRPattern closures), the hap stream. Each frame the MAIN thread
- * samples those into a `SignalFrame`; the worker reconstructs the bus's inputs
- * from it. This module owns ONLY the data shape + (de)serialization helpers —
- * pure, no DOM/worker, plain-object unit tests.
- *
- * What the bus actually reads (so we ship exactly that, no more):
- *   - analysers → `frequencyBinCount` + the freq/time byte arrays (deriveAudio
- *     runs in the WORKER on these bytes, keeping the DSP off main).
- *   - scheduler → `now()` + the active `IREvent`s for [now, now+ε) (combined and
- *     per-track, keyed in the SCHEDULER key space — SignalBus TRAP §5).
- *   - bump feed → per hap: `s`, `color`, `gain` (drives the envelope).
- *
- * Active events are summarised to the four fields the bus reads off an active
- * `IREvent` (`s`/`velocity`/`note`/`color` — SignalBus.sound/track), NOT the full
- * IREvent. That keeps the frame small and the transport string-set bounded.
- */
-/** The fields the bus reads off an active scheduler event (see SignalBus). */
-interface ActiveEventSummary {
-    /** Instrument/sample name — env-map + audioFor key. */
-    s: string | null;
-    /** Active-event velocity 0..1 (scheduler feed). */
-    velocity: number;
-    /** Note in the user's form (name|number|null). */
-    note: number | string | null;
-    /** Display color. */
-    color: string | null;
-}
-/** A hap replayed into the worker bus's envelope feed (`SignalBus.bump`). */
-interface BumpSummary {
-    /** Env-map key (`BusHapEvent.s`). */
-    s: string | null;
-    /** `.color()` value, if any. */
-    color: string | null;
-    /** Gain 0..1 — the bus reads it from `hap.value.gain` (default 1). */
-    gain: number;
-}
-/** One analyser's raw bytes for this frame (the worker runs `deriveAudio`). */
-interface AnalyserBytes {
-    /** Bus/scheduler key: `'master'` for the combined mix, else the SCHEDULER key
-     *  space track key (`'$0'`/`'d1'` — TRAP §5), matching `trackAnalysers`. */
-    key: string;
-    /** `AnalyserNode.frequencyBinCount` (= fftSize/2). */
-    frequencyBinCount: number;
-    /** Magnitude spectrum, one byte per bin (0..255). length === frequencyBinCount. */
-    freq: Uint8Array;
-    /**
-     * Time-domain waveform, one byte per sample (0..255, 128 = silence).
-     * B-3: length === `fftSize` (the FULL time-domain), not `frequencyBinCount` —
-     * the bus only reads the first `frequencyBinCount` samples (so parity is
-     * unchanged), but a raw `stave.analyser` sketch (e.g. synthterrain) calls
-     * `getFloatTimeDomainData(new Float32Array(fftSize))` and needs all `fftSize`.
-     * Falls back to `frequencyBinCount` length for callers that don't set fftSize.
-     */
-    time: Uint8Array;
-    /**
-     * `AnalyserNode.fftSize` (= 2 × frequencyBinCount). B-3 — lets the worker's
-     * raw `stave.analyser` shim report the same `fftSize` a sketch reads. Optional
-     * (additive): the bus ignores it; absent → `frequencyBinCount × 2`.
-     */
-    fftSize?: number;
-    /** `AnalyserNode.minDecibels` (default -100). B-3 — lets the raw shim
-     *  reconstruct `getFloatFrequencyData` (dB) from the magnitude bytes. */
-    minDecibels?: number;
-    /** `AnalyserNode.maxDecibels` (default -30). See {@link AnalyserBytes.minDecibels}. */
-    maxDecibels?: number;
-}
-/**
- * One scheduler event marshalled for a RAW `stave.scheduler.query()` consumer
- * (B-3). The signal BUS reads only the four `ActiveEventSummary` fields, but a
- * raw sketch (synthterrain, scope, pianoroll…) reads the full hap shape over an
- * arbitrary window. We ship the top-level `IREvent` fields the built-in sketches
- * actually read — NOT `loc`/`irNodeId`/`dollarPos` (heavy, viz-irrelevant). The
- * worker scheduler shim hands these back as plain objects, so a sketch reads
- * `h.begin`/`h.note`/`h.gain` exactly as on main.
- */
-interface RawHapSummary {
-    begin: number;
-    end: number;
-    endClipped: number;
-    note: number | string | null;
-    freq: number | null;
-    s: string | null;
-    gain: number;
-    velocity: number;
-    color: string | null;
-}
-/**
- * The raw COMBINED-scheduler feed for `stave.scheduler` (B-3). The main sampler
- * queries one WIDE window each frame (covering every built-in sketch's window —
- * scope needs `now-4`, pianoroll/wordfall need `now+2`); the worker shim's
- * `query(a,b)` filters these events to the requested sub-window. Only the
- * combined scheduler is shipped (per-track raw query is not a built-in need).
- */
-interface RawSchedulerFrame {
-    /** `scheduler.now()` at sample (same value as `SignalFrame.now`). */
-    now: number;
-    /** Events in the shipped wide window, in query order. */
-    events: RawHapSummary[];
-}
-/** The master analyser key — the combined-mix analyser (`SignalBus.master()`). */
-declare const MASTER_KEY = "master";
-/**
- * One frame of signal state, fully serializable (structured-clone / transferable).
- * The Uint8Arrays are the transferable payload; everything else is small JSON.
- */
-interface SignalFrame {
-    /** Monotonic frame counter — lets the worker drop a stale/duplicate frame. */
-    seq: number;
-    /** Scheduler time at sample (`SignalBus.now()` source). */
-    now: number;
-    /** Per-analyser bytes. `key === MASTER_KEY` is the master; others are tracks. */
-    analysers: AnalyserBytes[];
-    /** Combined active events for [now, now+ε) (`SignalBus.refreshActive`). */
-    activeEvents: ActiveEventSummary[];
-    /** Active events per track key (SCHEDULER key space — TRAP §5). */
-    activeByTrack: Array<[string, ActiveEventSummary[]]>;
-    /** Haps fired since the previous frame, in order (envelope `bump` feed). */
-    bumps: BumpSummary[];
-    /**
-     * Wide-window combined-scheduler feed for raw `stave.scheduler` sketches (B-3).
-     * Optional + additive: absent in B-2 frames and ignored by the signal bus
-     * (which uses `activeEvents`/`activeByTrack`). The worker scheduler shim reads
-     * it; absent → the shim returns no events.
-     */
-    rawScheduler?: RawSchedulerFrame;
-}
-/** Collect the transferable `ArrayBuffer`s in a frame (for postMessage transfer
- *  list). Returns the underlying buffers of every analyser byte array — passing
- *  these as transfer makes the postMessage zero-copy (no structured clone of the
- *  bytes). The frame is unusable on the sender after transfer (by design). */
-declare function frameTransferables(frame: SignalFrame): ArrayBuffer[];
-/** An empty frame — the worker's degraded state before the first real frame, and
- *  the main sampler's value when no analyser/scheduler/haps are bound (demo /
- *  IR-only mode). Mirrors the bus degrading absent inputs to 0/[] (never NaN). */
-declare function emptyFrame(seq?: number): SignalFrame;
-
-/**
  * FrameSampleCache — the per-rAF-tick memo that makes the shared frame pump a win
  * (PV72, #302). It collapses the work that N worker viz duplicate every frame when
  * they read the SAME live input object:
@@ -2580,6 +2613,11 @@ declare class WorkerVizRenderer implements VizRenderer, PumpDriven {
     private worker;
     private writer;
     private readonly sampler;
+    /** When set (viz PREVIEWS, #838), supersedes the live sampler in the pump: the
+     *  frame comes from this muted demo feed instead of the analyser/scheduler, so a
+     *  card can render its viz audio-reactively while nothing is playing. Null =
+     *  the normal live path. */
+    private demoSource;
     private running;
     /** Frames written but not yet acked by the worker (#261 backpressure). The
      *  sampler skips producing while this is at the cap so a slow worker can't be
@@ -2630,6 +2668,10 @@ declare class WorkerVizRenderer implements VizRenderer, PumpDriven {
      *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
      *  must be set BEFORE `mount`. */
     whenReady(cb: () => void): void;
+    /** Drive this renderer from a muted DEMO signal feed instead of the live
+     *  analyser/scheduler (viz PREVIEWS, #838). Set before/after mount; null
+     *  restores the live path. The pump reads `next(ts)` each produced frame. */
+    setDemoSource(src: SignalFrameSource | null): void;
     mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
         w: number;
         h: number;
@@ -5255,6 +5297,46 @@ declare function mountVizRenderer(container: HTMLDivElement, source: VizRenderer
     renderer: VizRenderer;
     disconnect: () => void;
 };
+
+/**
+ * mountVizPreview — render a viz LIVE, muted, into a small container (#838).
+ *
+ * The single app-facing seam for the viz-library card's ShaderToy-style hover
+ * preview: given a viz's raw source (renderer kind + code), it mounts the real
+ * worker viz into `container` and drives it from the muted drum-pattern demo
+ * feed (`demoSignalSource`) so an audio-reactive shader animates while nothing
+ * is playing and no sound is produced. The worker presents directly onto the
+ * on-screen canvas — there is NO frame readback / ImageBitmap capture.
+ *
+ * Worker-ONLY by design: the demo feed is a worker `SignalFrame` stream, and the
+ * user wants previews rendered in the dedicated viz worker. Where the worker path
+ * is unavailable (old/non-isolated browser, flag off) this returns `null` and the
+ * caller keeps its static baked/placeholder tile — a preview is a best-effort
+ * enhancement, never a requirement.
+ *
+ * Teardown is the caller's responsibility on mouse-leave: call `disconnect()`,
+ * which stops the ResizeObserver/lifecycle AND destroys the renderer so the
+ * worker + its GPU context are released immediately (only one preview is ever
+ * alive, so the shared GPU never accumulates contexts — P122).
+ *
+ * REF: mountVizRenderer (the shared preview lifecycle), WorkerVizRenderer
+ *      (setDemoSource), demoSignalSource, [[project_asset_library]] (#838).
+ */
+/** The renderer kind + raw source a library card knows about its viz. */
+interface VizPreviewSpec {
+    readonly renderer: 'p5' | 'hydra' | 'glsl';
+    readonly code: string;
+    /** Display/attribution name (used for worker error messages). */
+    readonly name: string;
+}
+/** Mount a muted live preview, or return `null` if the worker path is unavailable
+ *  (caller then keeps its static tile). `disconnect()` fully tears down. */
+declare function mountVizPreview(container: HTMLDivElement, spec: VizPreviewSpec, size: {
+    w: number;
+    h: number;
+}, onError: (e: Error) => void): {
+    disconnect: () => void;
+} | null;
 
 interface PopoutPreviewProps {
     descriptor: VizDescriptor | null;
@@ -9804,4 +9886,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { ALIAS_MAP, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AudioPayload, type AudioReading, type AudioSourceRef, type AuditionHandle, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, type BackdropVizSpan, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, type CapabilityEnv, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DocKind, type DocsIndex, type DrumMachineManifest, EPHEMERAL_ID_PREFIX, type EditorTheme, EditorView, type EngineAliasMap, type EngineAliasValue, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, type GmFamily, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, type LaneActivity, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_CENTRE_PAN, MASTER_KEY, MASTER_UNITY_GAIN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, type MasterAll, type MasterArray, type MasterGainState, type MasterPanState, type MasterScalar, Mixer, type NormalizedHap, type NoteColorMode, OfflineRenderer, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, type PatternIR, type PatternKind, PatternPanel, type PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectDocInitResult, type ProjectHistory, type ProjectMeta, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplerInputs, type SectionStats, SequencerGrid, type ShellSnapshot, type SignalAliasMap, SignalBus, type SignalFrame, type SignalReading, type SignalTransportReader, type SignalTransportWriter, type SnapshotMeta, type SongAnalysis, type SongSection, SonicPiEngine, type SoundMapDict, type SourceLocation, SplitPane, type StepGridModel, type StepLane, type StoredSignalAliases, type StripEdit, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, VizQualityLevel, type VizRefs, type VizRenderer, type VizRendererKind, type VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteSource, Writeback, accumulateLanes, adaptMasterChunk, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterPanEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, removeArm as pickRemoveArm, reorderArm as pickReorderArm, setWeight as pickSetWeight, splitArm as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, readCurrentCycle, readMasterGain, readMasterMute, readMasterPan, readMasterViz, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm$1 as removeArm, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, soundfontGroupLabel, splitArm$1 as splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AudioPayload, type AudioReading, type AudioSourceRef, type AuditionHandle, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, type BackdropVizSpan, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, type CapabilityEnv, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DocKind, type DocsIndex, type DrumMachineManifest, EPHEMERAL_ID_PREFIX, type EditorTheme, EditorView, type EngineAliasMap, type EngineAliasValue, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, type GmFamily, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, type LaneActivity, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_CENTRE_PAN, MASTER_KEY, MASTER_UNITY_GAIN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, type MasterAll, type MasterArray, type MasterGainState, type MasterPanState, type MasterScalar, Mixer, type NormalizedHap, type NoteColorMode, OfflineRenderer, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, type PatternIR, type PatternKind, PatternPanel, type PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectDocInitResult, type ProjectHistory, type ProjectMeta, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplerInputs, type SectionStats, SequencerGrid, type ShellSnapshot, type SignalAliasMap, SignalBus, type SignalFrame, type SignalReading, type SignalTransportReader, type SignalTransportWriter, type SnapshotMeta, type SongAnalysis, type SongSection, SonicPiEngine, type SoundMapDict, type SourceLocation, SplitPane, type StepGridModel, type StepLane, type StoredSignalAliases, type StripEdit, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizPreviewSpec, VizQualityLevel, type VizRefs, type VizRenderer, type VizRendererKind, type VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteSource, Writeback, accumulateLanes, adaptMasterChunk, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterPanEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, removeArm as pickRemoveArm, reorderArm as pickReorderArm, setWeight as pickSetWeight, splitArm as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, readCurrentCycle, readMasterGain, readMasterMute, readMasterPan, readMasterViz, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm$1 as removeArm, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, soundfontGroupLabel, splitArm$1 as splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
