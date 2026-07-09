@@ -666,6 +666,9 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateRows: "repeat(2, auto)",
     gridAutoColumns: "max-content",
     gap: 4,
+    // Separator from the Type filter above — the tag belt is a secondary axis.
+    borderTop: "1px solid var(--border-subtle)",
+    paddingTop: 8,
     overflowX: "auto",
     overflowY: "hidden",
     // Hide the scrollbar cross-browser: `scrollbarWidth` covers Firefox (which
