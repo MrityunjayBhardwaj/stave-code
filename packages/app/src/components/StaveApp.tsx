@@ -795,7 +795,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       createVizProvider({
         readPresets: () => vizPresetsRef.current,
         isBundled: isBundledPresetId,
-        onInsert: (name) => shellRef.current?.assignVizToCursor(name),
+        onInsert: (name) => {
+          // A viz attaches to a pattern — if the cursor isn't on one, nothing is
+          // written. Guide the user instead of failing silently.
+          const wrote = shellRef.current?.assignVizToCursor(name);
+          if (!wrote) {
+            showToast("Place the cursor on a pattern to attach this viz.", "info");
+          }
+        },
       }),
     );
     void refreshVizPresets();

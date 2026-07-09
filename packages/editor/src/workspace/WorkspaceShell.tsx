@@ -401,8 +401,9 @@ export interface WorkspaceShellHandle {
    */
   assignSoundToCursor(sound: string): void
   /** Attach `.viz("name")` to the pattern chunk under the cursor (Asset Library
-   *  viz insert). No pattern under the cursor → no-op. */
-  assignVizToCursor(name: string): void
+   *  viz insert). Returns true if it wrote, false when there's no pattern under
+   *  the cursor (nothing to attach to) so the caller can guide the user. */
+  assignVizToCursor(name: string): boolean
 }
 
 /** Resolve a tab's display name from the file store. Falls back to fileId. */
@@ -3152,23 +3153,25 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         if (plan.kind === 'replace') wb.replaceRange(plan.range, plan.text, 'mixer')
         else wb.insertAt(plan.offset, plan.text, 'mixer')
       },
-      assignVizToCursor: (name: string) => {
-        if (!name) return
+      assignVizToCursor: (name: string): boolean => {
+        if (!name) return false
         // Same live-editor reach as assignSoundToCursor. `planVizAssignment`
         // appends/replaces `.viz("name")` on the pattern chunk under the cursor
-        // (#832) — pure + unit-tested. No pattern under the cursor → null → no-op
-        // (a viz decorates a pattern; it can't stand alone).
+        // (#832) — pure + unit-tested. No pattern under the cursor → null → no
+        // write; returns false so the caller can guide the user (a viz decorates
+        // a pattern; it can't stand alone).
         const editor = getActiveEditor()
         const monaco = getMonacoNamespace()
         const model = editor?.getModel()
         const pos = editor?.getPosition()
-        if (!editor || !monaco || !model || !pos) return
+        if (!editor || !monaco || !model || !pos) return false
         const offset = model.getOffsetAt(pos)
         const plan = planVizAssignment(model.getValue(), offset, name)
-        if (!plan) return
+        if (!plan) return false
         const wb = new Writeback(editor, monaco)
         if (plan.kind === 'replace') wb.replaceRange(plan.range, plan.text, 'mixer')
         else wb.insertAt(plan.offset, plan.text, 'mixer')
+        return true
       },
     }),
     [

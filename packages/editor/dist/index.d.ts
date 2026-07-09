@@ -5679,8 +5679,9 @@ interface WorkspaceShellHandle {
      */
     assignSoundToCursor(sound: string): void;
     /** Attach `.viz("name")` to the pattern chunk under the cursor (Asset Library
-     *  viz insert). No pattern under the cursor → no-op. */
-    assignVizToCursor(name: string): void;
+     *  viz insert). Returns true if it wrote, false when there's no pattern under
+     *  the cursor (nothing to attach to) so the caller can guide the user. */
+    assignVizToCursor(name: string): boolean;
 }
 declare const WorkspaceShell: React__default.ForwardRefExoticComponent<WorkspaceShellProps & React__default.RefAttributes<WorkspaceShellHandle>>;
 

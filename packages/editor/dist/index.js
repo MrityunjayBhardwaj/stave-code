@@ -35067,18 +35067,19 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         else wb.insertAt(plan.offset, plan.text, "mixer");
       }, "assignSoundToCursor"),
       assignVizToCursor: /* @__PURE__ */ __name((name) => {
-        if (!name) return;
+        if (!name) return false;
         const editor = getActiveEditor();
         const monaco = getMonacoNamespace();
         const model = editor?.getModel();
         const pos = editor?.getPosition();
-        if (!editor || !monaco || !model || !pos) return;
+        if (!editor || !monaco || !model || !pos) return false;
         const offset = model.getOffsetAt(pos);
         const plan = planVizAssignment(model.getValue(), offset, name);
-        if (!plan) return;
+        if (!plan) return false;
         const wb = new Writeback(editor, monaco);
         if (plan.kind === "replace") wb.replaceRange(plan.range, plan.text, "mixer");
         else wb.insertAt(plan.offset, plan.text, "mixer");
+        return true;
       }, "assignVizToCursor")
     }),
     [
