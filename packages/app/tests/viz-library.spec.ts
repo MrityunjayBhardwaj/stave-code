@@ -106,6 +106,25 @@ test.describe('Asset Library — Viz library (#834)', () => {
     expect(await vizFileId(page, 'Prism')).not.toBeNull()
   })
 
+  test('adding Pulse Grid (a name with a space) materialises + is recognised', async ({ page }) => {
+    await boot(page)
+    expect(await vizFileId(page, 'Pulse Grid')).toBeNull()
+
+    const panel = await openLibrary(page)
+    await showVizType(page, panel)
+    const pulse = panel.locator('[data-asset-row="viz:pulse-grid"]')
+    await pulse.hover()
+    await pulse.locator('[data-asset-insert]').click()
+
+    await expect(
+      page.getByText('Added Pulse Grid → viz_lib/Pulse Grid/. Use .viz("Pulse Grid").'),
+    ).toBeVisible()
+    // The spaced folder/file path resolves as a viz-language file named
+    // "Pulse Grid" (so `.viz("Pulse Grid")` registers) — the one thing that
+    // could differ from Prism.
+    expect(await vizFileId(page, 'Pulse Grid')).not.toBeNull()
+  })
+
   test('adding the same package twice is idempotent (no duplicate)', async ({ page }) => {
     await boot(page)
     const panel = await openLibrary(page)
