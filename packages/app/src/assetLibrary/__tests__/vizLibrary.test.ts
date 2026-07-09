@@ -29,6 +29,17 @@ describe("VIZ_LIBRARY corpus (#834)", () => {
       }
     }
   });
+
+  it("every curated package ships a baked PNG thumbnail (#836)", () => {
+    // The shelf is curated, so each item carries a real captured frame — not the
+    // placeholder fallback. A regressed/empty bake would strip these.
+    for (const item of VIZ_LIBRARY) {
+      expect(item.thumbnail, `${item.name} has a baked thumbnail`).toMatch(
+        /^data:image\/png;base64,/,
+      );
+      expect((item.thumbnail ?? "").length).toBeGreaterThan(500);
+    }
+  });
 });
 
 describe("planVizLibFiles (#834)", () => {

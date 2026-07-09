@@ -76,6 +76,23 @@ test.describe('Asset Library — Viz library (#834)', () => {
     await expect(pulse).toContainText('Pulse Grid')
   })
 
+  test('each viz row shows a baked thumbnail (#836)', async ({ page }) => {
+    await boot(page)
+    const panel = await openLibrary(page)
+    await showVizType(page, panel)
+
+    // Every curated package renders a leading thumbnail whose src is a baked PNG
+    // data-URI (not the SVG placeholder fallback, not an empty box).
+    for (const id of ['prism', 'pulse-grid']) {
+      const thumb = panel.locator(`img[data-asset-thumb="viz:${id}"]`)
+      await expect(thumb, `${id} thumbnail is present`).toBeVisible()
+      await expect(thumb).toHaveAttribute('src', /^data:image\/png/)
+    }
+
+    // Visual observation of the whole shelf with thumbnails.
+    await panel.screenshot({ path: 'test-results/viz-library-thumbs.png' })
+  })
+
   test('the row action is "Add to workspace", not "Insert"', async ({ page }) => {
     await boot(page)
     const panel = await openLibrary(page)

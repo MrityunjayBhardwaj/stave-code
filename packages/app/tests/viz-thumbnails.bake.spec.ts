@@ -1,0 +1,176 @@
+/**
+ * Viz-library thumbnail BAKER (#836) — a one-shot tool, not a regression gate.
+ *
+ * Baked thumbnails let a curated viz package ship a representative frame of the
+ * running shader (see `assetLibrary/vizLibrary.ts` `VizLibItem.thumbnail`). We
+ * capture that frame the ONLY reliable way for worker-offloaded GLSL: through
+ * the COMPOSITOR (`page.screenshot({ clip })`), the last presented frame — never
+ * a WebGL canvas readback, which false-positives / blanks on the worker path
+ * (PV90). The captured raster is then centre-cropped + downscaled to a small
+ * square PNG via a plain 2D canvas (a re-encode of an already-rasterised image —
+ * no GL readback) and written to `test-results/viz-thumbs.json`. Paste those
+ * data-URIs into `vizLibrary.ts` as each package's `thumbnail`.
+ *
+ * Because it needs the real GPU it is gated (like the other viz gates) and runs
+ * HEADED on real hardware:
+ *   E2E_VERIFY=1 pnpm --filter @stave/app exec playwright test viz-thumbnails.bake --headed --workers=1 --timeout=180000
+ */
+import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
+import { writeFileSync } from 'node:fs'
+
+const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
+
+/** The packages to bake: row id (→ `viz:<id>`) and the `.viz("<name>")` token. */
+const PACKAGES = [
+  { id: 'prism', name: 'Prism' },
+  { id: 'pulse-grid', name: 'Pulse Grid' },
+]
+
+/** Rendered thumbnail size (px, square). Displayed ~26px; 64 gives retina crispness. */
+const THUMB = 64
+
+async function open(browser: Browser): Promise<{ ctx: BrowserContext; page: Page }> {
+  const ctx = await browser.newContext()
+  const page = await ctx.newPage()
+  await page.addInitScript(() => {
+    ;(window as any).__STAVE_E2E__ = true
+    try {
+      localStorage.setItem('stave.viz.worker', '1') // realistic worker path
+    } catch {
+      /* ignore */
+    }
+  })
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await page.locator('.monaco-editor').first().waitFor({ timeout: 30000 })
+  await page.waitForTimeout(2500) // startup seed + registerAllVizFiles (mount)
+  return { ctx, page }
+}
+
+/** Add a package from the Viz library — the runtime "Add to workspace" path
+ *  registers it as a named viz — then switch back to the pattern editor. */
+async function addPackage(page: Page, id: string, name: string): Promise<void> {
+  // The ActivityBar button TOGGLES the panel — only click it to OPEN (it stays
+  // open across packages, so a second click would close it).
+  const panel = page.locator('[data-asset-library]')
+  if (!(await panel.isVisible())) {
+    await page.locator('[data-activity-bar] button[aria-label="Library"]').click()
+    await panel.waitFor({ timeout: 10000 })
+  }
+  // Ensure the Viz type filter is active and the row is rendered. Adding a
+  // package churns the provider list, which can bounce the type filter off Viz
+  // and race a single click — so re-click until the row appears (a set type
+  // filter skips other providers' rows entirely, filter.ts).
+  const row = panel.locator(`[data-asset-row="viz:${id}"]`)
+  const vizChip = panel.locator('[data-filter="asset-type-filter"] button[data-chip="viz"]')
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await vizChip.click().catch(() => {})
+    try {
+      await row.waitFor({ state: 'visible', timeout: 2000 })
+      break
+    } catch {
+      await page.waitForTimeout(500)
+    }
+  }
+  await row.hover()
+  await row.locator('[data-asset-insert]').click()
+  await page.getByText(`Use .viz("${name}").`).waitFor({ timeout: 5000 })
+  await page.waitForTimeout(400) // file-list → registerAllVizFiles
+  await page.locator('[data-workspace-tab="tab-pattern.strudel"]').click()
+  await page.waitForTimeout(300)
+}
+
+async function setCode(page: Page, code: string): Promise<void> {
+  const ok = await page.evaluate((c) => {
+    const e = (window as any).monaco?.editor?.getEditors?.()?.[0]
+    if (!e) return false
+    e.getModel()?.setValue(c)
+    return true
+  }, code)
+  expect(ok).toBe(true)
+  await page.waitForTimeout(250)
+}
+
+async function evalCode(page: Page): Promise<void> {
+  await page.evaluate(() => (window as any).monaco?.editor?.getEditors?.()?.[0]?.focus())
+  await page.keyboard.press(`${MOD}+Enter`)
+}
+
+/**
+ * Capture the liveliest compositor frame of the inline viz canvas, centre-crop
+ * to a square, downscale to THUMB², return a `data:image/png` URI. "Liveliest" =
+ * the largest PNG across a short burst — a busier (more-lit) frame compresses to
+ * more bytes, which for Pulse Grid picks a frame on a pulse rather than a lull.
+ */
+async function bakeThumb(page: Page): Promise<string> {
+  const canvas = page.locator('[data-viz-zone] canvas').first()
+  await canvas.waitFor({ timeout: 15000 })
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error('no viz canvas boundingBox')
+
+  let bestB64 = ''
+  let bestLen = 0
+  for (let i = 0; i < 8; i++) {
+    const buf = await page.screenshot({ clip: box }).catch(() => Buffer.from([]))
+    if (buf.length > bestLen) {
+      bestLen = buf.length
+      bestB64 = buf.toString('base64')
+    }
+    await page.waitForTimeout(120)
+  }
+  if (bestLen < 1000) throw new Error(`viz frame looks blank (${bestLen}B)`)
+
+  // Re-encode the rasterised PNG through a 2D canvas — centre-crop + downscale.
+  return page.evaluate(
+    async ({ b64, size }) => {
+      const img = new Image()
+      img.src = 'data:image/png;base64,' + b64
+      await img.decode()
+      const side = Math.min(img.width, img.height)
+      const sx = (img.width - side) / 2
+      const sy = (img.height - side) / 2
+      const c = document.createElement('canvas')
+      c.width = size
+      c.height = size
+      const ctx = c.getContext('2d')!
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size)
+      return c.toDataURL('image/png')
+    },
+    { b64: bestB64, size: THUMB },
+  )
+}
+
+test.describe('#836 viz thumbnail baker', () => {
+  test.skip(!process.env.E2E_VERIFY, 'bake tool — set E2E_VERIFY=1')
+
+  test('bake a frame for each curated viz package', async ({ browser }) => {
+    const { ctx, page } = await open(browser)
+    const thumbs: Record<string, string> = {}
+    try {
+      for (const pkg of PACKAGES) {
+        await addPackage(page, pkg.id, pkg.name)
+        await setCode(page, `$: s("bd*4, ~ sd, hh*8").bank("RolandTR909").viz('${pkg.name}')`)
+        await evalCode(page)
+        await page.waitForTimeout(3500) // let it warm + animate
+        await page.evaluate(() =>
+          (window as any).monaco?.editor?.getEditors?.()?.[0]?.setScrollTop(0),
+        ) // keep the inline zone on-screen (PV78)
+        await page.waitForTimeout(800)
+
+        const uri = await bakeThumb(page)
+        thumbs[pkg.id] = uri
+        console.log(`[#836] baked ${pkg.id}: ${uri.length}B data-URI`)
+        expect(uri.startsWith('data:image/png')).toBe(true)
+
+        // Clear the editor before the next package so zones don't stack.
+        await setCode(page, '$: silence')
+        await evalCode(page)
+        await page.waitForTimeout(600)
+      }
+      writeFileSync('test-results/viz-thumbs.json', JSON.stringify(thumbs, null, 2))
+      console.log(`[#836] wrote test-results/viz-thumbs.json (${Object.keys(thumbs).join(', ')})`)
+      expect(Object.keys(thumbs)).toEqual(PACKAGES.map((p) => p.id))
+    } finally {
+      await ctx.close()
+    }
+  })
+})
