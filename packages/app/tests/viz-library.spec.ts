@@ -104,6 +104,12 @@ test.describe('Asset Library — Viz library (#834)', () => {
     // resolves). Its exact path (`viz_lib/Prism/Prism.glsl`) is proven by the
     // `planVizLibFiles` unit test + the toast above.
     expect(await vizFileId(page, 'Prism')).not.toBeNull()
+
+    // The added file auto-opens as the active editor tab (desired UX — the user
+    // lands on the shader they just added).
+    await expect(
+      page.locator('[data-workspace-tab][data-tab-active="true"]'),
+    ).toContainText('Prism.glsl')
   })
 
   test('adding Pulse Grid (a name with a space) materialises + is recognised', async ({ page }) => {
