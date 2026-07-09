@@ -29,6 +29,28 @@ const PACKAGES = [
 /** Rendered thumbnail size (px, square). Displayed ~26px; 64 gives retina crispness. */
 const THUMB = 64
 
+/** The generated `vizThumbnails.data.ts` source, from the baked id→data-URI map. */
+function renderDataModule(thumbs: Record<string, string>): string {
+  const entries = Object.entries(thumbs)
+    .map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)},`)
+    .join('\n')
+  return (
+    `/**\n` +
+    ` * BAKED viz-library thumbnails (#836) — GENERATED, do not hand-edit.\n` +
+    ` *\n` +
+    ` * Each value is a representative frame of the running shader, captured through\n` +
+    ` * the compositor and downscaled to a ${THUMB}x${THUMB} PNG data-URI by the baker spec\n` +
+    ` * (\`tests/viz-thumbnails.bake.spec.ts\`). Keyed by \`VizLibItem.id\`. Regenerate\n` +
+    ` * (and re-commit this file) with:\n` +
+    ` *   E2E_VERIFY=1 pnpm --filter @stave/app exec playwright test viz-thumbnails.bake --headed --workers=1\n` +
+    ` * A package with no entry here falls back to a renderer-hued placeholder tile\n` +
+    ` * (see \`vizThumbnail.ts\`).\n` +
+    ` */\n` +
+    `export const BAKED_VIZ_THUMBNAILS: Record<string, string> = {\n` +
+    `${entries}\n};\n`
+  )
+}
+
 async function open(browser: Browser): Promise<{ ctx: BrowserContext; page: Page }> {
   const ctx = await browser.newContext()
   const page = await ctx.newPage()
@@ -167,7 +189,10 @@ test.describe('#836 viz thumbnail baker', () => {
         await page.waitForTimeout(600)
       }
       writeFileSync('test-results/viz-thumbs.json', JSON.stringify(thumbs, null, 2))
-      console.log(`[#836] wrote test-results/viz-thumbs.json (${Object.keys(thumbs).join(', ')})`)
+      // Emit the generated data module directly so regeneration is one command:
+      // run this spec, then commit `vizThumbnails.data.ts`. No manual paste step.
+      writeFileSync('src/assetLibrary/vizThumbnails.data.ts', renderDataModule(thumbs))
+      console.log(`[#836] wrote src/assetLibrary/vizThumbnails.data.ts (${Object.keys(thumbs).join(', ')})`)
       expect(Object.keys(thumbs)).toEqual(PACKAGES.map((p) => p.id))
     } finally {
       await ctx.close()
