@@ -12,14 +12,41 @@
  * provider uses.
  */
 
-import type { Asset } from "./types";
+import type { Asset, LivePreviewHandle } from "./types";
 import { VIZ_LIBRARY, type VizLibItem } from "./vizLibrary";
 import { vizThumbnailPlaceholder } from "./vizThumbnail";
+
+/** The raw source a live preview needs: renderer kind + code + a name for error
+ *  attribution. Structural (no `@stave/editor` import) so this module's tests
+ *  stay hermetic — `StaveApp` injects the real `mountVizPreview`. */
+export interface VizPreviewSpec {
+  renderer: "glsl" | "p5" | "hydra";
+  code: string;
+  name: string;
+}
 
 export interface VizProviderDeps {
   /** Add a package to the workspace (materialise its files + register the
    *  named viz). Wired in `StaveApp`. */
   onAdd: (item: VizLibItem) => void;
+  /** Mount a live, muted worker preview of a viz into `container` (injected —
+   *  wraps `@stave/editor`'s `mountVizPreview`). Absent → cards stay static
+   *  (tests, or a browser without the worker path). */
+  mountPreview?: (
+    container: HTMLDivElement,
+    spec: VizPreviewSpec,
+    size: { w: number; h: number },
+  ) => LivePreviewHandle | null;
+}
+
+/** The package's PRIMARY viz file (the one whose basename matches the package
+ *  name — what registers as the named viz). Falls back to the first file (v1
+ *  packages are single-file). */
+function primaryFile(item: VizLibItem): VizLibItem["files"][number] {
+  const byName = item.files.find(
+    (f) => f.relPath.split("/").pop()!.replace(/\.[^.]+$/, "") === item.name,
+  );
+  return byName ?? item.files[0];
 }
 
 /** Display label for a renderer — also the asset `group` and category chip. */
@@ -54,6 +81,16 @@ export function vizLibraryToAssets(
     insert: () => deps.onAdd(item),
     insertLabel: "Add to workspace",
     // no `preview` — viz is visual, not audible; the thumbnail is its preview.
+    // Live hover preview: render the real shader, muted, over the static tile.
+    // Only when the mount capability is injected (absent in tests / no worker).
+    mountLivePreview: deps.mountPreview
+      ? (container, size) =>
+          deps.mountPreview!(
+            container,
+            { renderer: item.renderer, code: primaryFile(item).content, name: item.name },
+            size,
+          )
+      : undefined,
   }));
   assets.sort(
     (a, b) => (a.group ?? "").localeCompare(b.group ?? "") || a.name.localeCompare(b.name),

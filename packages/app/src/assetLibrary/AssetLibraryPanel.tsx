@@ -585,11 +585,43 @@ function AssetCard({
     previewing,
     onTogglePreview,
   );
+
+  // ShaderToy-style live preview: while hovered, mount the real viz (muted) over
+  // the static tile; tear it down on leave/unmount so only one is ever alive
+  // (#838). `live` fades the static thumbnail out once the canvas is up.
+  const previewHost = useRef<HTMLDivElement | null>(null);
+  const [live, setLive] = useState(false);
+  useEffect(() => {
+    const host = previewHost.current;
+    if (!hovered || !asset.mountLivePreview || !host) return;
+    const size = { w: host.clientWidth || 120, h: host.clientHeight || 64 };
+    const handle = asset.mountLivePreview(host, size);
+    if (!handle) return; // worker path unavailable → keep the static tile
+    setLive(true);
+    return () => {
+      handle.disconnect();
+      setLive(false);
+    };
+  }, [hovered, asset]);
+
   return (
     <div style={styles.card} {...hoverProps} data-asset-row={rowKey}>
       <div style={styles.cardThumbWrap}>
         {asset.thumbnail && (
-          <img src={asset.thumbnail} alt="" style={styles.cardThumb} data-asset-thumb={rowKey} />
+          <img
+            src={asset.thumbnail}
+            alt=""
+            style={{ ...styles.cardThumb, ...(live ? styles.cardThumbHidden : {}) }}
+            data-asset-thumb={rowKey}
+          />
+        )}
+        {asset.mountLivePreview && (
+          <div
+            ref={previewHost}
+            style={styles.cardPreviewHost}
+            data-viz-preview={rowKey}
+            aria-hidden
+          />
         )}
         {(hovered || previewing || copied) && (
           <div style={styles.cardActions}>{actions(styles.cardBtn)}</div>
@@ -784,6 +816,21 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     border: "1px solid var(--border-subtle)",
     background: "var(--bg-inset, rgba(127,127,127,0.12))",
+    transition: "opacity 160ms ease",
+  },
+  // Fade the static tile out once the live canvas is painting (leave it in the
+  // layout so the card keeps its aspect-true height).
+  cardThumbHidden: {
+    opacity: 0,
+  },
+  // Overlays the thumbnail box; the live worker canvas mounts here on hover.
+  // `inset:0` fills the tile; the child <canvas> is sized to this box in px.
+  cardPreviewHost: {
+    position: "absolute",
+    inset: 0,
+    borderRadius: 6,
+    overflow: "hidden",
+    pointerEvents: "none",
   },
   cardActions: {
     position: "absolute",

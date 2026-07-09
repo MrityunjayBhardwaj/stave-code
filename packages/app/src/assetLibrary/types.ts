@@ -36,6 +36,17 @@ export interface AssetPreviewHandle {
 }
 
 /**
+ * A handle returned by {@link Asset.mountLivePreview} so the shell can tear the
+ * live preview down (on mouse-leave / unmount). Distinct from
+ * {@link AssetPreviewHandle}: that stops an audible audition; this disposes a
+ * live-rendering canvas.
+ */
+export interface LivePreviewHandle {
+  /** Tear down the live preview (unmount the canvas, release the worker). */
+  disconnect: () => void;
+}
+
+/**
  * One browsable item. `preview`/`insert` are the two verbs the shell exposes
  * as row action slots; both are optional so a provider can offer either, both,
  * or (rarely) neither.
@@ -70,6 +81,17 @@ export interface Asset {
    * preview. May be async (engine warm-up). Absent → no preview affordance.
    */
   readonly preview?: () => AssetPreviewHandle | void | Promise<AssetPreviewHandle | void>;
+  /**
+   * Mount a LIVE preview into `container` at `size` (px) — e.g. a viz card
+   * renders its real shader, muted, while hovered. Returns a handle to tear it
+   * down, or `null` when unavailable (the caller keeps the static
+   * {@link thumbnail}). Absent → no live preview; the thumbnail stands alone.
+   * Generic so any visual asset type can opt in.
+   */
+  readonly mountLivePreview?: (
+    container: HTMLDivElement,
+    size: { w: number; h: number },
+  ) => LivePreviewHandle | null;
   /**
    * Round-trip this asset into legible code (assign to the focused track, or
    * insert at the cursor), or otherwise materialise it into the project. Absent

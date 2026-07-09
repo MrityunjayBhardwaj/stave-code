@@ -97,6 +97,7 @@ import { getLogHistory } from "@stave/editor";
 import { startAudition } from "@stave/editor";
 import { gmFamily, soundfontGroupLabel } from "@stave/editor";
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
+import { mountVizPreview } from "@stave/editor";
 import { getFile } from "@stave/editor";
 import { createVizProvider } from "../assetLibrary/vizProvider";
 import { planVizLibFiles, VIZ_LIB_ROOT, type VizLibItem } from "../assetLibrary/vizLibrary";
@@ -799,7 +800,16 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     };
 
     const unregViz = registerAssetProvider(
-      createVizProvider({ onAdd: addVizPackage }),
+      createVizProvider({
+        onAdd: addVizPackage,
+        // Live hover preview (#838): render the card's real shader in the viz
+        // worker, muted, driven by the demo drum-pattern feed. Worker-only —
+        // returns null where unsupported so the card keeps its static tile.
+        mountPreview: (container, spec, size) =>
+          mountVizPreview(container, spec, size, (e) =>
+            console.error("[viz preview]", spec.name, e),
+          ),
+      }),
     );
     return unregViz;
   }, []);

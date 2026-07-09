@@ -66,6 +66,40 @@ describe("vizLibraryToAssets (#834)", () => {
       "P5/Aurora",
     ]);
   });
+
+  it("wires mountLivePreview to the injected mountPreview with the primary file's source (#838)", () => {
+    const mountPreview = vi.fn(() => ({ disconnect: vi.fn() }));
+    const [a] = vizLibraryToAssets([items[1]], { onAdd: vi.fn(), mountPreview });
+    const container = {} as HTMLDivElement;
+    const handle = a.mountLivePreview!(container, { w: 120, h: 64 });
+    expect(mountPreview).toHaveBeenCalledWith(
+      container,
+      { renderer: "glsl", code: "// prism", name: "Prism" },
+      { w: 120, h: 64 },
+    );
+    expect(handle).not.toBeNull();
+  });
+
+  it("picks the PRIMARY file (basename === package name) for the preview source (#838)", () => {
+    const mountPreview = vi.fn(() => null);
+    const multi: VizLibItem = {
+      id: "prism",
+      name: "Prism",
+      renderer: "glsl",
+      files: [
+        { relPath: "helper.glsl", content: "// helper", language: "glsl" },
+        { relPath: "Prism.glsl", content: "// primary", language: "glsl" },
+      ],
+    };
+    const [a] = vizLibraryToAssets([multi], { onAdd: vi.fn(), mountPreview });
+    a.mountLivePreview!({} as HTMLDivElement, { w: 10, h: 10 });
+    expect(mountPreview.mock.calls[0][1]).toMatchObject({ code: "// primary" });
+  });
+
+  it("omits mountLivePreview when no mountPreview is injected (tests / no worker)", () => {
+    const [a] = vizLibraryToAssets([items[0]], { onAdd: vi.fn() });
+    expect(a.mountLivePreview).toBeUndefined();
+  });
 });
 
 describe("createVizProvider (#834)", () => {
