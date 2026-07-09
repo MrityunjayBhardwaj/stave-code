@@ -484,8 +484,8 @@ function AssetRow({
         {asset.insert && (hovered || previewing) && (
           <button
             style={styles.rowBtn}
-            title="Insert into code"
-            aria-label={`Insert ${asset.name}`}
+            title={asset.insertLabel ?? "Insert into code"}
+            aria-label={`${asset.insertLabel ?? "Insert"} ${asset.name}`}
             onClick={() => asset.insert?.()}
             data-asset-insert={rowKey}
           >

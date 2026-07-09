@@ -163,61 +163,6 @@ export interface ProjectTemplate {
 const p5PresetId = () => bundledPresetId("Piano Roll", "p5");
 const hydraPresetId = () => bundledPresetId("Piano Roll Hydra", "hydra");
 
-// Bundled GLSL example shaders (issue #287). "Pulse Grid" is an original Stave
-// shader; "Prism" is the classic "Creation" demo by Danilo Guanabara, included
-// with author credit. Both are single-pass ShaderToy-style `mainImage`.
-const PRISM_GLSL_CODE = `// "Prism" — after "Creation" by Danilo Guanabara, made audio-reactive for Stave.
-// http://www.pouet.net/prod.php?which=57245
-// If you intend to reuse this shader, please add credits to 'Danilo Guanabara'.
-// iChannel0: row 0 (y=0.0) = FFT magnitude.
-#define t iTime
-#define r iResolution.xy
-
-void mainImage( out vec4 fragColor, in vec2 fragCoord ){
-    float bass   = texture(iChannel0, vec2(0.03, 0.0)).x;
-    float mid    = texture(iChannel0, vec2(0.30, 0.0)).x;
-    float treble = texture(iChannel0, vec2(0.65, 0.0)).x;
-    vec3 c;
-    float l, z = t;
-    for (int i = 0; i < 3; i++) {
-        vec2 uv, p = fragCoord.xy / r;
-        uv = p;
-        p -= .5;
-        p.x *= r.x / r.y;
-        z += .07 + bass * .08;                                  // bass drives the zoom
-        l = length(p);
-        uv += p / l * (sin(z) + 1.) * abs(sin(l * 9. - z - z))
-            * (1. + treble * 1.4);                              // treble ripples the warp
-        c[i] = .01 / length(mod(uv, 1.) - .5);
-    }
-    vec3 col = c / l;
-    col = mix(col, col.gbr, mid * .6);                          // mids swirl the hue
-    fragColor = vec4(col * (.6 + bass * 1.7), 1.0);             // bass brightens
-}
-`;
-
-const PULSEGRID_GLSL_CODE = `// "Pulse Grid" — pattern-event reactive cells. An original Stave shader.
-// Reacts to PATTERN EVENTS (uKick/uSnare/uHat/uRms), not the raw spectrum.
-void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-  vec2 uv = fragCoord / iResolution.xy;
-  vec2 g  = uv * vec2(8.0, 5.0);
-  vec2 cell = fract(g) - 0.5;
-  vec2 id   = floor(g);
-
-  // Per-cell random phase so the grid never pulses uniformly.
-  float phase = fract(sin(dot(id, vec2(12.9, 78.2))) * 43758.5);
-  float d   = max(abs(cell.x), abs(cell.y));
-  float box = smoothstep(0.46, 0.40, d);
-
-  vec3 col = vec3(0.02, 0.02, 0.05);
-  col += vec3(1.0, 0.3, 0.2) * uKick  * box * (0.4 + 0.6 * step(id.x, 3.0)); // kick → left red
-  col += vec3(0.3, 0.6, 1.0) * uSnare * box * step(2.0, id.y);               // snare → top blue
-  col += vec3(1.0)           * uHat   * box * (0.3 + 0.7 * phase);           // hat  → scattered white
-  col += box * uRms * 0.25 * (0.5 + 0.5 * sin(iTime * 3.0 + phase * 6.28));  // loudness → breathing
-  fragColor = vec4(col, 1.0);
-}
-`;
-
 // ── Templates ─────────────────────────────────────────────────────────
 
 /**
@@ -287,9 +232,9 @@ function makeStarterFiles(): TemplateFile[] {
     vizFile("scope", "hydra", HYDRA_SCOPE_CODE),
     vizFile("kaleidoscope", "hydra", HYDRA_KALEIDOSCOPE_CODE),
     vizFile("Signals (Bands)", "hydra", SIGNALS_BANDS_HYDRA_CODE),
-    // Viz presets — GLSL / ShaderToy (issue #287)
-    vizFile("Prism", "glsl", PRISM_GLSL_CODE),
-    vizFile("Pulse Grid", "glsl", PULSEGRID_GLSL_CODE),
+    // GLSL example shaders (Prism, Pulse Grid) are no longer seeded here — they
+    // moved to the curated Viz library (`assetLibrary/vizLibrary.ts`, #834), so
+    // the user opts into them via the Library's "Add to workspace" instead.
   ];
 }
 

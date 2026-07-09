@@ -10,12 +10,13 @@
  * (worker:0, no error). tsc + 40 unit tests were green; only live observation
  * caught it.
  *
- * This spec closes that hole on the REAL path: the bundled `Prism.glsl` starter
- * file is seeded at project creation and registered by `registerAllVizFiles`
- * on mount (the consolidated `isVizLanguage` allow-list). The spec then drives
- * inline `.viz("Prism")` and OBSERVES the worker mount + draw frames + painted
- * pixels. If a future renderer kind is dropped from the allow-list
- * (`isVizLanguage` / `VIZ_LANGUAGES`), this goes red.
+ * This spec closes that hole on the REAL path: Prism is ADDED from the Viz
+ * library (#834) — `viz_lib/Prism/Prism.glsl` — and registered as a named viz
+ * by the runtime "Add to workspace" path (`registerAddedViz`, the same
+ * `isVizLanguage` allow-list). The spec then drives inline `.viz("Prism")` and
+ * OBSERVES the worker mount + draw frames + painted pixels. If a future renderer
+ * kind is dropped from the allow-list (`isVizLanguage` / `VIZ_LANGUAGES`) — or
+ * the library add stops registering — this goes red.
  *
  * Run HEADED on real GPU (P108) with per-test context isolation (PV84):
  *   E2E_VERIFY=1 pnpm --filter @stave/app exec playwright test glsl-seeded-viz.spec.ts --headed --timeout=180000 --workers=1
@@ -43,6 +44,24 @@ async function open(browser: Browser): Promise<{ ctx: BrowserContext; page: Page
   await page.locator('.monaco-editor').first().waitFor({ timeout: 30000 })
   await page.waitForTimeout(2500) // let startup seed + registerAllVizFiles (on mount) run
   return { ctx, page }
+}
+
+/** Add the Prism package from the Viz library (#834) — it is no longer seeded
+ *  at project creation, so the runtime "Add to workspace" path is what
+ *  registers it as a named viz (`registerAddedViz` → `.viz("Prism")` resolves). */
+async function addPrismFromLibrary(page: Page): Promise<void> {
+  await page.locator('[data-activity-bar] button[aria-label="Library"]').click()
+  const panel = page.locator('[data-asset-library]')
+  await panel.waitFor({ timeout: 10000 })
+  await panel.locator('[data-filter="asset-type-filter"] button[data-chip="viz"]').click()
+  const prism = panel.locator('[data-asset-row="viz:prism"]')
+  await prism.hover()
+  await prism.locator('[data-asset-insert]').click()
+  await page.getByText('Added Prism → viz_lib/Prism/. Use .viz("Prism").').waitFor({ timeout: 5000 })
+  await page.waitForTimeout(400) // let the file-list → registerAllVizFiles register it
+  // The add auto-opens Prism.glsl; switch back to the pattern editor to run code.
+  await page.locator('[data-workspace-tab="tab-pattern.strudel"]').click()
+  await page.waitForTimeout(400)
 }
 
 async function setCode(page: Page, code: string): Promise<void> {
@@ -98,9 +117,10 @@ test.describe('#293 GLSL seeded-`.viz()` path — P118/PV88 regression gate', ()
   }) => {
     const { ctx, page } = await open(browser)
     try {
-      // The bundled `Prism.glsl` starter is seeded at project creation and
-      // registered as a named viz by registerAllVizFiles on mount (the
-      // consolidated allow-list). Reference it from inline `.viz("Prism")`.
+      // Prism is added from the Viz library (#834) — no longer seeded — so the
+      // runtime "Add to workspace" path registers it as a named viz. Then
+      // reference it from inline `.viz("Prism")`.
+      await addPrismFromLibrary(page)
       const program = `$: s("bd*4, ~ sd, hh*8").bank("RolandTR909").viz('Prism')`
       await setCode(page, program)
       await press(page, `${MOD}+Enter`)

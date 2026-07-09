@@ -683,6 +683,17 @@ export default function StrudelEditorClient({
     [registerAllVizFiles],
   );
 
+  // #834 — a viz file added at RUNTIME (the Viz library's "Add to workspace",
+  // or the New File dialog) must register as a named viz too. The mount-time
+  // run above fires once, so re-run whenever the workspace file LIST changes
+  // (add / remove / rename — subscribeToFileList ignores content edits, so this
+  // is not per-keystroke). Without this, inline `.viz("<name>")` on a
+  // just-added file silently resolves to nothing until reload (P118).
+  useEffect(
+    () => subscribeToFileList(() => { void registerAllVizFiles(); }),
+    [registerAllVizFiles],
+  );
+
   // Register bundled presets as named viz (for `.viz("Piano Roll")` lookup).
   useEffect(() => {
     const p5Preset: VizPreset = {

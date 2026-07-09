@@ -1,29 +1,25 @@
 /**
- * Asset Library — Viz preset provider (#832) + default-to-type coexistence.
+ * Asset Library — Viz library (#834): curated viz *packages* you ADD to the
+ * workspace.
  *
- * End-to-end proof that saved viz presets browse alongside Sounds in one panel:
- * the panel defaults to a type (not the mixed "All" union), the Viz filter lists
- * presets grouped by renderer, inserting one writes `.viz("name")` onto the
- * pattern under the cursor, and attempting it with the cursor off any pattern
- * guides the user instead of failing silently.
+ * End-to-end proof that the Viz filter lists a small curated shelf of
+ * non-default viz (Prism + Pulse Grid), and that a row's `+` = "Add to
+ * workspace" materialises the package under `viz_lib/<Name>/` — a `.glsl` file
+ * that registers as a named viz — idempotently.
  *
- * Presets are seeded straight into IndexedDB (`stave-viz-presets`) — the same
- * store the app reads — with an `E2E ` name prefix so assertions don't depend on
- * the app's own bundled preset set (which shares the DB).
+ * Nothing is seeded into IndexedDB: the library is a static in-app corpus, so
+ * the Viz rows are present on boot. Registration/materialisation is observed
+ * via the `__staveOverrideVizFile` hook (finds a viz-language workspace file by
+ * basename — the exact predicate the named-viz bridge uses) and the file tree.
  */
 import { test, expect, type Page } from '@playwright/test'
 
-const VIZ_DB = 'stave-viz-presets'
-const VIZ_STORE = 'presets'
-
-type SeedPreset = { id: string; name: string; renderer: 'p5' | 'hydra' | 'glsl' }
-
-const SEEDS: SeedPreset[] = [
-  { id: 'e2e_aurora_p5', name: 'E2E Aurora', renderer: 'p5' },
-  { id: 'e2e_kaleido_hydra', name: 'E2E Kaleido', renderer: 'hydra' },
-]
-
 async function boot(page: Page): Promise<void> {
+  // Enable the `__stave*` E2E hooks (e.g. `__staveOverrideVizFile`) — they are
+  // gated on this flag and must be set before the app mounts.
+  await page.addInitScript(() => {
+    ;(window as unknown as { __STAVE_E2E__?: boolean }).__STAVE_E2E__ = true
+  })
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 30_000 })
   await page.waitForFunction(
@@ -35,146 +31,94 @@ async function boot(page: Page): Promise<void> {
   )
 }
 
-async function seedPresets(page: Page, presets: SeedPreset[]): Promise<void> {
-  await page.evaluate(
-    async ({ db, store, presets }) => {
-      const open = () =>
-        new Promise<IDBDatabase>((res, rej) => {
-          const req = indexedDB.open(db, 1)
-          req.onupgradeneeded = () => {
-            const d = req.result
-            if (!d.objectStoreNames.contains(store)) d.createObjectStore(store, { keyPath: 'id' })
-          }
-          req.onsuccess = () => res(req.result)
-          req.onerror = () => rej(req.error)
-        })
-      const d = await open()
-      for (const p of presets) {
-        await new Promise<void>((res, rej) => {
-          const r = d
-            .transaction(store, 'readwrite')
-            .objectStore(store)
-            .put({ ...p, code: '// e2e', requires: [], createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000 })
-          r.onsuccess = () => res()
-          r.onerror = () => rej(r.error)
-        })
-      }
-      d.close()
-    },
-    { db: VIZ_DB, store: VIZ_STORE, presets },
-  )
-}
-
-async function setStrudelCode(page: Page, code: string, column: number): Promise<void> {
-  const ok = await page.evaluate(
-    ({ c, col }) => {
-      const monaco = (window as unknown as { monaco?: { editor?: { getEditors?: () => unknown[] } } }).monaco
-      const editors = (monaco?.editor?.getEditors?.() ?? []) as Array<{
-        getModel: () => { getLanguageId?: () => string; setValue: (s: string) => void; getValue: () => string } | null
-        focus: () => void
-        setPosition: (p: { lineNumber: number; column: number }) => void
-      }>
-      const t = editors.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? editors[0]
-      if (!t) return false
-      t.getModel()?.setValue(c)
-      t.setPosition({ lineNumber: 1, column: col })
-      t.focus()
-      return true
-    },
-    { c: code, col: column },
-  )
-  expect(ok).toBe(true)
-  await page.waitForTimeout(150)
-}
-
-async function strudelValue(page: Page): Promise<string> {
-  return page.evaluate(() => {
-    const monaco = (window as unknown as { monaco?: { editor?: { getEditors?: () => unknown[] } } }).monaco
-    const editors = (monaco?.editor?.getEditors?.() ?? []) as Array<{
-      getModel: () => { getLanguageId?: () => string; getValue: () => string } | null
-    }>
-    const t = editors.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? editors[0]
-    return t?.getModel()?.getValue() ?? ''
-  })
-}
-
 async function openLibrary(page: Page) {
   await page.locator('[data-activity-bar] button[aria-label="Library"]').click()
   const panel = page.locator('[data-asset-library]')
   await panel.waitFor({ timeout: 10_000 })
-  // Let the async preset refetch (on library open) + notify land.
-  await page.waitForTimeout(500)
+  await page.waitForTimeout(200)
   return panel
 }
 
-/** Select the Viz type, then narrow to a single seeded preset via search so the
- *  windowed list renders exactly that row (no scroll-into-window needed). */
-async function showVizPreset(page: Page, panel: ReturnType<Page['locator']>, name: string) {
+async function showVizType(page: Page, panel: ReturnType<Page['locator']>) {
   await panel.locator('[data-filter="asset-type-filter"] button[data-chip="viz"]').click()
-  await panel.locator('[data-asset-search]').fill(name)
-  await page.waitForTimeout(150)
+  await page.waitForTimeout(100)
 }
 
-test.describe('Asset Library — Viz presets (#832)', () => {
-  test('defaults to Sounds (not All) and shows the Viz filter chip', async ({ page }) => {
+/** Whether a viz-language workspace file with the given basename exists (the
+ *  same predicate the named-viz bridge registers on). Returns the file id. */
+async function vizFileId(page: Page, basename: string): Promise<string | null> {
+  return page.evaluate(
+    (name) =>
+      (window as unknown as {
+        __staveOverrideVizFile?: (b: string, c: string) => string | null
+      }).__staveOverrideVizFile?.(name, `// probe ${Date.now()}`) ?? null,
+    basename,
+  )
+}
+
+test.describe('Asset Library — Viz library (#834)', () => {
+  test('lists the curated viz packages (Prism + Pulse Grid) grouped under GLSL', async ({ page }) => {
     await boot(page)
     const panel = await openLibrary(page)
+
+    // Viz is a first-class type — its chip is present without any seeding.
     const typeRow = panel.locator('[data-filter="asset-type-filter"]')
-    // Default-to-type: lands on the first type (Sounds), not the "All" union.
-    await expect(typeRow.locator('button[data-chip="sound"]')).toHaveAttribute('aria-pressed', 'true')
-    await expect(typeRow.locator('button[data-chip="all"]')).toHaveAttribute('aria-pressed', 'false')
-    // Viz is a first-class type — its chip is present.
     await expect(typeRow.locator('button[data-chip="viz"]')).toBeVisible()
+    await showVizType(page, panel)
+
+    const prism = panel.locator('[data-asset-row="viz:prism"]')
+    await expect(prism).toBeVisible()
+    await expect(prism).toContainText('Prism')
+    await expect(prism).toContainText('GLSL')
+
+    const pulse = panel.locator('[data-asset-row="viz:pulse-grid"]')
+    await expect(pulse).toBeVisible()
+    await expect(pulse).toContainText('Pulse Grid')
   })
 
-  test('lists seeded viz presets grouped by renderer under the Viz filter', async ({ page }) => {
+  test('the row action is "Add to workspace", not "Insert"', async ({ page }) => {
     await boot(page)
-    await seedPresets(page, SEEDS)
     const panel = await openLibrary(page)
-    await panel.locator('[data-filter="asset-type-filter"] button[data-chip="viz"]').click()
-
-    // Narrow to each seed and assert its row + renderer group.
-    await panel.locator('[data-asset-search]').fill('E2E Aurora')
-    const aurora = panel.locator('[data-asset-row="viz:e2e_aurora_p5"]')
-    await expect(aurora).toBeVisible()
-    await expect(aurora).toContainText('E2E Aurora')
-    await expect(aurora).toContainText('P5')
-
-    await panel.locator('[data-asset-search]').fill('E2E Kaleido')
-    const kaleido = panel.locator('[data-asset-row="viz:e2e_kaleido_hydra"]')
-    await expect(kaleido).toBeVisible()
-    await expect(kaleido).toContainText('Hydra')
+    await showVizType(page, panel)
+    const prism = panel.locator('[data-asset-row="viz:prism"]')
+    await prism.hover()
+    await expect(prism.locator('[data-asset-insert]')).toHaveAttribute('aria-label', /Add to workspace/)
   })
 
-  test('inserting a viz preset writes .viz("name") on the pattern under the cursor', async ({ page }) => {
+  test('adding Prism materialises viz_lib/Prism/Prism.glsl and registers it', async ({ page }) => {
     await boot(page)
-    await seedPresets(page, SEEDS)
-    await setStrudelCode(page, 'note("c4 e4 g4")', 8)
+    // Not present before the add.
+    expect(await vizFileId(page, 'Prism')).toBeNull()
+
     const panel = await openLibrary(page)
-    await showVizPreset(page, panel, 'E2E Aurora')
+    await showVizType(page, panel)
+    const prism = panel.locator('[data-asset-row="viz:prism"]')
+    await prism.hover()
+    await prism.locator('[data-asset-insert]').click()
 
-    const row = panel.locator('[data-asset-row="viz:e2e_aurora_p5"]')
-    await row.hover()
-    await row.locator('[data-asset-insert]').click()
-    await page.waitForTimeout(200)
+    // Guiding toast names the destination + how to use it.
+    await expect(page.getByText('Added Prism → viz_lib/Prism/. Use .viz("Prism").')).toBeVisible()
 
-    expect(await strudelValue(page)).toBe('note("c4 e4 g4").viz("E2E Aurora")')
+    // The file now exists in the workspace as a viz-language file named "Prism"
+    // (the predicate the named-viz bridge registers on, so `.viz("Prism")`
+    // resolves). Its exact path (`viz_lib/Prism/Prism.glsl`) is proven by the
+    // `planVizLibFiles` unit test + the toast above.
+    expect(await vizFileId(page, 'Prism')).not.toBeNull()
   })
 
-  test('guides the user when the cursor is not on a pattern (no silent no-op)', async ({ page }) => {
+  test('adding the same package twice is idempotent (no duplicate)', async ({ page }) => {
     await boot(page)
-    await seedPresets(page, SEEDS)
-    // Cursor on a comment line — no pattern chunk to attach to.
-    await setStrudelCode(page, '// scratch', 3)
     const panel = await openLibrary(page)
-    await showVizPreset(page, panel, 'E2E Aurora')
+    await showVizType(page, panel)
+    const prism = panel.locator('[data-asset-row="viz:prism"]')
 
-    const row = panel.locator('[data-asset-row="viz:e2e_aurora_p5"]')
-    await row.hover()
-    await row.locator('[data-asset-insert]').click()
+    await prism.hover()
+    await prism.locator('[data-asset-insert]').click()
+    await expect(page.getByText('Added Prism → viz_lib/Prism/. Use .viz("Prism").')).toBeVisible()
 
-    // A guiding toast appears, and the document is untouched.
-    await expect(page.getByText('Place the cursor on a pattern to attach this viz.')).toBeVisible()
-    expect(await strudelValue(page)).toBe('// scratch')
+    // Second add — the stable workspace id means it's already there.
+    await prism.hover()
+    await prism.locator('[data-asset-insert]').click()
+    await expect(page.getByText('Prism is already in your workspace.')).toBeVisible()
   })
 })

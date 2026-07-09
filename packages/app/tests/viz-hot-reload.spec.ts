@@ -22,8 +22,6 @@
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import { vizFrameHashes, distinct } from './_vizFrames'
 
-const PRISM_FILE_ID = 'viz:__bundled_prism_glsl__'
-
 // A valid single-pass ShaderToy `mainImage` that paints ONE flat colour — no iTime,
 // no iChannel0, so it can NEVER animate. distinct === 1 ⇒ the new shader is live.
 const STATIC_GLSL = `void mainImage(out vec4 fragColor, in vec2 fragCoord){ fragColor = vec4(1.0, 0.0, 1.0, 1.0); }`
@@ -48,13 +46,31 @@ async function open(browser: Browser): Promise<{ ctx: BrowserContext; page: Page
   return { ctx, page }
 }
 
+/** Add the Prism package from the Viz library (#834) — it is no longer seeded,
+ *  so the runtime "Add to workspace" path registers it as a named viz. */
+async function addPrismFromLibrary(page: Page): Promise<void> {
+  await page.locator('[data-activity-bar] button[aria-label="Library"]').click()
+  const panel = page.locator('[data-asset-library]')
+  await panel.waitFor({ timeout: 10000 })
+  await panel.locator('[data-filter="asset-type-filter"] button[data-chip="viz"]').click()
+  const prism = panel.locator('[data-asset-row="viz:prism"]')
+  await prism.hover()
+  await prism.locator('[data-asset-insert]').click()
+  await page.getByText('Added Prism → viz_lib/Prism/. Use .viz("Prism").').waitFor({ timeout: 5000 })
+  await page.waitForTimeout(400) // let the file-list → registerAllVizFiles register it
+  // The add auto-opens Prism.glsl; switch back to the pattern editor to run code.
+  await page.locator('[data-workspace-tab="tab-pattern.strudel"]').click()
+  await page.waitForTimeout(400)
+}
+
 test.describe('inline `.viz()` hot-reload — save→repaint (PV89/PV90)', () => {
   test.skip(!process.env.E2E_VERIFY, 'acceptance gate — set E2E_VERIFY=1')
 
   test('editing a referenced .glsl preset + save repaints the running inline viz', async ({ browser }) => {
     const { ctx, page } = await open(browser)
     try {
-      // Play a pattern referencing the bundled animated Prism.glsl.
+      // Prism is added from the Viz library (#834), then referenced by a pattern.
+      await addPrismFromLibrary(page)
       const program = `$: s("bd*4, ~ sd, hh*8").bank("RolandTR909").viz('Prism')`
       await page.evaluate((c) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -82,7 +98,7 @@ test.describe('inline `.viz()` hot-reload — save→repaint (PV89/PV90)', () =>
         (code) => (window as any).__staveOverrideVizFile('Prism', code),
         STATIC_GLSL,
       )
-      expect(fileId, 'Prism.glsl workspace file found').toBe(PRISM_FILE_ID)
+      expect(fileId, 'Prism.glsl workspace file found').not.toBeNull()
       const saved = await page.evaluate(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (id) => (window as any).__staveSaveVizFileById(id),

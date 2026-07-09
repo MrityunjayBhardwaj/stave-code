@@ -97,8 +97,9 @@ import { getLogHistory } from "@stave/editor";
 import { startAudition } from "@stave/editor";
 import { gmFamily, soundfontGroupLabel } from "@stave/editor";
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
-import { VizPresetStore, isBundledPresetId, type VizPreset } from "@stave/editor";
+import { getFile } from "@stave/editor";
 import { createVizProvider } from "../assetLibrary/vizProvider";
+import { planVizLibFiles, VIZ_LIB_ROOT, type VizLibItem } from "../assetLibrary/vizLibrary";
 import { PerfOverlay } from "./PerfOverlay";
 
 interface StaveAppProps {
@@ -769,48 +770,39 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     };
   }, []);
 
-  // #832 — Asset Library Viz provider: browse saved viz presets, insert
-  // `.viz("name")` at the cursor. Presets live in IndexedDB (`VizPresetStore`);
-  // `list()` is synchronous, so we load into a ref cache and notify the shell.
-  // There is no preset-change event to subscribe to, so we also refetch when the
-  // Library panel opens (below) — a preset saved via the Viz editor then shows
-  // up without a reload.
-  const vizPresetsRef = useRef<VizPreset[] | null>(null);
-  const refreshVizPresets = useCallback(async () => {
-    try {
-      const presets = await VizPresetStore.getAll();
-      vizPresetsRef.current = presets;
-      notifyAssetProvidersChanged();
-    } catch {
-      // IDB unavailable/blocked (bounded — never hangs, PV151). Resolve the
-      // provider's loading state to "empty" instead of leaving it spinning.
-      if (vizPresetsRef.current === null) {
-        vizPresetsRef.current = [];
-        notifyAssetProvidersChanged();
+  // #834 — Asset Library Viz provider: a curated shelf of non-default viz
+  // *packages* you ADD to the workspace (not the bundled default presets). The
+  // `+` on a row materialises the package under `viz_lib/<Name>/` and registers
+  // its primary file as a named viz so `.viz("<Name>")` resolves immediately.
+  useEffect(() => {
+    const addVizPackage = (item: VizLibItem): void => {
+      const planned = planVizLibFiles(item);
+      // Idempotent: `seedWorkspaceFile` returns the persisted file for a known
+      // id without overwriting, so a second "add" of the same package is a
+      // no-op on already-present files.
+      let created = false;
+      for (const pf of planned) {
+        const existed = getFile(pf.workspaceId) !== undefined;
+        seedWorkspaceFile(pf.workspaceId, pf.path, pf.content, pf.language);
+        if (!existed) created = true;
       }
-    }
-  }, []);
-  useEffect(() => {
+      // The added file(s) register as named viz via StrudelEditorClient's
+      // file-list subscription (#834), so `.viz("<Name>")` resolves without a
+      // reload — the registration lives on the proven `registerAllVizFiles`
+      // path, not duplicated here.
+      showToast(
+        created
+          ? `Added ${item.name} → ${VIZ_LIB_ROOT}/${item.name}/. Use .viz("${item.name}").`
+          : `${item.name} is already in your workspace.`,
+        "info",
+      );
+    };
+
     const unregViz = registerAssetProvider(
-      createVizProvider({
-        readPresets: () => vizPresetsRef.current,
-        isBundled: isBundledPresetId,
-        onInsert: (name) => {
-          // A viz attaches to a pattern — if the cursor isn't on one, nothing is
-          // written. Guide the user instead of failing silently.
-          const wrote = shellRef.current?.assignVizToCursor(name);
-          if (!wrote) {
-            showToast("Place the cursor on a pattern to attach this viz.", "info");
-          }
-        },
-      }),
+      createVizProvider({ onAdd: addVizPackage }),
     );
-    void refreshVizPresets();
     return unregViz;
-  }, [refreshVizPresets]);
-  useEffect(() => {
-    if (activePanelId === "library") void refreshVizPresets();
-  }, [activePanelId, refreshVizPresets]);
+  }, []);
 
   // #515 / PV141 #6 — enumerate live drum banks for the Mixer's Kit picker.
   // Banks load from the tidal-drum-machines manifest (its keys are

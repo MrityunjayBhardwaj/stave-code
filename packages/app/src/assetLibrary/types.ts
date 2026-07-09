@@ -65,9 +65,16 @@ export interface Asset {
   readonly preview?: () => AssetPreviewHandle | void | Promise<AssetPreviewHandle | void>;
   /**
    * Round-trip this asset into legible code (assign to the focused track, or
-   * insert at the cursor). Absent → no insert affordance.
+   * insert at the cursor), or otherwise materialise it into the project. Absent
+   * → no insert affordance.
    */
   readonly insert?: () => void | Promise<void>;
+  /**
+   * Label for the {@link insert} affordance (tooltip / aria). Defaults to
+   * "Insert into code". Viz-library packages set "Add to workspace" since their
+   * `+` writes files under `viz_lib/` rather than inserting at the cursor.
+   */
+  readonly insertLabel?: string;
 }
 
 /**
