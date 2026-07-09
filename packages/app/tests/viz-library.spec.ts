@@ -89,6 +89,14 @@ test.describe('Asset Library — Viz library (#834)', () => {
       await expect(thumb).toHaveAttribute('src', /^data:image\/png/)
     }
 
+    // The cards flow in a grid — the two sit side by side (same row top), not
+    // stacked in a single column.
+    const prismBox = await panel.locator('[data-asset-row="viz:prism"]').boundingBox()
+    const pulseBox = await panel.locator('[data-asset-row="viz:pulse-grid"]').boundingBox()
+    expect(prismBox && pulseBox).toBeTruthy()
+    expect(Math.abs(prismBox!.y - pulseBox!.y)).toBeLessThan(8) // same row
+    expect(pulseBox!.x).toBeGreaterThan(prismBox!.x + prismBox!.width - 8) // to the right
+
     // Visual observation of the whole shelf with thumbnails.
     await panel.screenshot({ path: 'test-results/viz-library-thumbs.png' })
   })

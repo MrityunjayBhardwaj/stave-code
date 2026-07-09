@@ -30,14 +30,10 @@ import { computeWindow } from "./windowing";
 import type { Asset, AssetPreviewHandle, AssetSource, AssetType } from "./types";
 
 const ROW_HEIGHT = 40;
-/** Card row height for visual asset types (thumbnail on top + name below). */
-const CARD_HEIGHT = 112;
-/** Baked thumbnail display height (px) — the card renders it height-locked,
- *  width follows the shader's native aspect (left-aligned). */
-const CARD_THUMB_H = 64;
-/** Types shown as CARDS (big aspect-true thumbnail + name beneath) rather than
- *  compact icon-rows. A card view is always a single type (the Type filter
- *  isolates it), so the windowed list stays uniform-height. */
+/** Types shown as a wrapping CARD GRID (aspect-true thumbnail + name beneath)
+ *  rather than the compact windowed icon-list. A card view is always a single
+ *  type (the Type filter isolates it) and small (a curated shelf), so it renders
+ *  every card in a flex grid — no windowing. */
 const CARD_TYPES = new Set<AssetType>(["viz"]);
 /** Extra rows rendered above/below the viewport so fast scrolls don't flash. */
 const OVERSCAN = 6;
@@ -391,14 +387,6 @@ function AssetList({
   }, [resetKey]);
 
   const total = assets.length;
-  // A card view is a single type (the Type filter isolates it), so the list
-  // stays uniform-height — windowing needs only this per-view row height.
-  const rowH = card ? CARD_HEIGHT : ROW_HEIGHT;
-  // `computeWindow` clamps `first` so a stale (too-large) scrollTop after the
-  // list shrinks can never produce an empty slice (start > end → blank). (F2)
-  const { first, last } = computeWindow(total, scrollTop, viewportH, rowH, OVERSCAN);
-  const slice = assets.slice(first, last);
-
   if (loading && total === 0) {
     return (
       <div style={styles.listEmpty} data-asset-list data-state="loading">
@@ -414,6 +402,35 @@ function AssetList({
     );
   }
 
+  // Card view (viz): a small curated corpus, so render a wrapping flex grid —
+  // no windowing (the Type filter isolates one type, so this is only cards, and
+  // there are only a handful). The container scrolls natively if they overflow.
+  if (card) {
+    return (
+      <div style={styles.gridScroll} data-asset-list data-count={String(total)}>
+        <div style={styles.cardGrid}>
+          {assets.map((asset) => {
+            const key = `${asset.type}:${asset.id}`;
+            return (
+              <AssetCard
+                key={key}
+                asset={asset}
+                rowKey={key}
+                previewing={previewingKey === key}
+                onTogglePreview={onTogglePreview}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Compact windowed list (sounds + mixed "All"): fixed-height rows, only the
+  // visible slice rendered. `computeWindow` clamps `first` so a stale
+  // scrollTop after the list shrinks can't yield an empty slice → blank. (F2)
+  const { first, last } = computeWindow(total, scrollTop, viewportH, ROW_HEIGHT, OVERSCAN);
+  const slice = assets.slice(first, last);
   return (
     <div
       ref={setScrollEl}
@@ -422,7 +439,7 @@ function AssetList({
       data-asset-list
       data-count={String(total)}
     >
-      <div style={{ height: total * rowH, position: "relative" }}>
+      <div style={{ height: total * ROW_HEIGHT, position: "relative" }}>
         {slice.map((asset, i) => {
           const index = first + i;
           const key = `${asset.type}:${asset.id}`;
@@ -431,9 +448,7 @@ function AssetList({
               key={key}
               asset={asset}
               rowKey={key}
-              top={index * rowH}
-              height={rowH}
-              card={card}
+              top={index * ROW_HEIGHT}
               previewing={previewingKey === key}
               onTogglePreview={onTogglePreview}
             />
@@ -444,23 +459,15 @@ function AssetList({
   );
 }
 
-function AssetRow({
-  asset,
-  rowKey,
-  top,
-  height,
-  card,
-  previewing,
-  onTogglePreview,
-}: {
-  asset: Asset;
-  rowKey: string;
-  top: number;
-  height: number;
-  card: boolean;
-  previewing: boolean;
-  onTogglePreview: (key: string, asset: Asset) => void;
-}) {
+/** Shared per-item state + the three hover action slots (copy / add / preview),
+ *  used by both the compact `AssetRow` and the grid `AssetCard`. `btn` styles
+ *  the icons so the card can use lighter ones over its dark overlay. */
+function useRowActions(
+  asset: Asset,
+  rowKey: string,
+  previewing: boolean,
+  onTogglePreview: (key: string, asset: Asset) => void,
+) {
   const [hovered, setHovered] = useState(false);
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -479,9 +486,6 @@ function AssetRow({
     });
   }, [codeToken]);
 
-  // The three hover action slots — shared by both layouts (compact right-rail,
-  // card top-right overlay). `btn` lets the card use lighter icons over its dark
-  // thumbnail overlay.
   const actions = (btn: React.CSSProperties) => (
     <>
       {/* Copy the code token — hover-revealed; brief check on success. */}
@@ -523,38 +527,31 @@ function AssetRow({
     </>
   );
 
-  // Card layout for visual assets: aspect-true thumbnail on top (left-aligned),
-  // name + group beneath, actions overlaid on the thumbnail's top-right on hover.
-  if (card) {
-    return (
-      <div
-        style={{ ...styles.card, top, height }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        data-asset-row={rowKey}
-      >
-        <div style={styles.cardThumbWrap}>
-          {asset.thumbnail && (
-            <img src={asset.thumbnail} alt="" style={styles.cardThumb} data-asset-thumb={rowKey} />
-          )}
-          {(hovered || previewing || copied) && (
-            <div style={styles.cardActions}>{actions(styles.cardBtn)}</div>
-          )}
-        </div>
-        <span style={styles.cardName}>{asset.name}</span>
-        {asset.group && <span style={styles.rowGroup}>{asset.group}</span>}
-      </div>
-    );
-  }
+  const hoverProps = {
+    onMouseEnter: () => setHovered(true),
+    onMouseLeave: () => setHovered(false),
+  };
+  return { hovered, copied, previewing, actions, hoverProps };
+}
 
-  // Compact icon-row (sounds; viz under the mixed "All" view).
+/** Compact icon-row — absolute-positioned in the windowed list (sounds; viz
+ *  under the mixed "All" view). */
+function AssetRow({
+  asset,
+  rowKey,
+  top,
+  previewing,
+  onTogglePreview,
+}: {
+  asset: Asset;
+  rowKey: string;
+  top: number;
+  previewing: boolean;
+  onTogglePreview: (key: string, asset: Asset) => void;
+}) {
+  const { actions, hoverProps } = useRowActions(asset, rowKey, previewing, onTogglePreview);
   return (
-    <div
-      style={{ ...styles.row, top, height }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      data-asset-row={rowKey}
-    >
+    <div style={{ ...styles.row, top }} {...hoverProps} data-asset-row={rowKey}>
       {/* Leading thumbnail — present for visual assets (viz packages ship a
           baked frame, else a renderer-hued placeholder); sounds leave it unset. */}
       {asset.thumbnail && (
@@ -565,6 +562,41 @@ function AssetRow({
         {asset.group && <span style={styles.rowGroup}>{asset.group}</span>}
       </div>
       <div style={styles.rowActions}>{actions(styles.rowBtn)}</div>
+    </div>
+  );
+}
+
+/** Grid card — a flow-positioned tile in the wrapping viz grid: an aspect-true
+ *  thumbnail with the name + renderer beneath, actions overlaid on hover. */
+function AssetCard({
+  asset,
+  rowKey,
+  previewing,
+  onTogglePreview,
+}: {
+  asset: Asset;
+  rowKey: string;
+  previewing: boolean;
+  onTogglePreview: (key: string, asset: Asset) => void;
+}) {
+  const { hovered, copied, actions, hoverProps } = useRowActions(
+    asset,
+    rowKey,
+    previewing,
+    onTogglePreview,
+  );
+  return (
+    <div style={styles.card} {...hoverProps} data-asset-row={rowKey}>
+      <div style={styles.cardThumbWrap}>
+        {asset.thumbnail && (
+          <img src={asset.thumbnail} alt="" style={styles.cardThumb} data-asset-thumb={rowKey} />
+        )}
+        {(hovered || previewing || copied) && (
+          <div style={styles.cardActions}>{actions(styles.cardBtn)}</div>
+        )}
+      </div>
+      <span style={styles.cardName}>{asset.name}</span>
+      {asset.group && <span style={styles.rowGroup}>{asset.group}</span>}
     </div>
   );
 }
@@ -705,28 +737,39 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--bg-inset, rgba(127,127,127,0.12))",
     border: "1px solid var(--border-subtle)",
   },
+  gridScroll: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    overflowX: "hidden",
+  },
+  cardGrid: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 10,
+    padding: 12,
+    alignContent: "flex-start",
+    boxSizing: "border-box",
+  },
   card: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    height: CARD_HEIGHT,
+    // A flow-positioned grid tile: flex-grows to fill the row, wraps, and shows
+    // its thumbnail at the shader's native aspect (width 100% → height auto).
+    flex: "1 1 96px",
+    minWidth: 88,
+    maxWidth: 132,
     display: "flex",
     flexDirection: "column",
-    alignItems: "flex-start",
     gap: 4,
-    padding: "6px 14px",
     boxSizing: "border-box",
   },
   cardThumbWrap: {
     position: "relative",
-    flexShrink: 0,
+    width: "100%",
     lineHeight: 0, // drop the inline-image descender gap
-    maxWidth: "100%",
   },
   cardThumb: {
-    height: CARD_THUMB_H,
-    width: "auto",
-    maxWidth: "100%",
+    width: "100%",
+    height: "auto",
     display: "block",
     borderRadius: 6,
     border: "1px solid var(--border-subtle)",
