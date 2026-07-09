@@ -6,10 +6,10 @@
  * capture that frame the ONLY reliable way for worker-offloaded GLSL: through
  * the COMPOSITOR (`page.screenshot({ clip })`), the last presented frame — never
  * a WebGL canvas readback, which false-positives / blanks on the worker path
- * (PV90). The captured raster is then centre-cropped + downscaled to a small
- * square PNG via a plain 2D canvas (a re-encode of an already-rasterised image —
- * no GL readback) and written to `test-results/viz-thumbs.json`. Paste those
- * data-URIs into `vizLibrary.ts` as each package's `thumbnail`.
+ * (PV90). The captured raster is then downscaled to a 64px-tall PNG that
+ * PRESERVES the shader's native aspect (the card shows it height-locked,
+ * left-aligned) via a plain 2D canvas (a re-encode of an already-rasterised
+ * image — no GL readback) and written straight into `vizThumbnails.data.ts`.
  *
  * Because it needs the real GPU it is gated (like the other viz gates) and runs
  * HEADED on real hardware:
@@ -26,8 +26,12 @@ const PACKAGES = [
   { id: 'pulse-grid', name: 'Pulse Grid' },
 ]
 
-/** Rendered thumbnail size (px, square). Displayed ~26px; 64 gives retina crispness. */
-const THUMB = 64
+/** Baked thumbnail HEIGHT (px). The card renders it height-locked with the
+ *  shader's native aspect; 64 gives retina crispness at the ~64px display. */
+const THUMB_H = 64
+/** Safety cap on baked width so a very wide viz zone can't produce a monster
+ *  data-URI / overflow the 260px sidebar (crops width, never squishes). */
+const THUMB_MAXW = 220
 
 /** The generated `vizThumbnails.data.ts` source, from the baked id→data-URI map. */
 function renderDataModule(thumbs: Record<string, string>): string {
@@ -39,7 +43,7 @@ function renderDataModule(thumbs: Record<string, string>): string {
     ` * BAKED viz-library thumbnails (#836) — GENERATED, do not hand-edit.\n` +
     ` *\n` +
     ` * Each value is a representative frame of the running shader, captured through\n` +
-    ` * the compositor and downscaled to a ${THUMB}x${THUMB} PNG data-URI by the baker spec\n` +
+    ` * the compositor and downscaled to a ${THUMB_H}px-tall (aspect-preserved) PNG data-URI by the baker spec\n` +
     ` * (\`tests/viz-thumbnails.bake.spec.ts\`). Keyed by \`VizLibItem.id\`. Regenerate\n` +
     ` * (and re-commit this file) with:\n` +
     ` *   E2E_VERIFY=1 pnpm --filter @stave/app exec playwright test viz-thumbnails.bake --headed --workers=1\n` +
@@ -141,23 +145,28 @@ async function bakeThumb(page: Page): Promise<string> {
   }
   if (bestLen < 1000) throw new Error(`viz frame looks blank (${bestLen}B)`)
 
-  // Re-encode the rasterised PNG through a 2D canvas — centre-crop + downscale.
+  // Re-encode the rasterised PNG through a 2D canvas — downscale to a fixed
+  // HEIGHT, preserving the shader's native aspect (no square crop). If the
+  // result would exceed the width cap, centre-crop width (never squish).
   return page.evaluate(
-    async ({ b64, size }) => {
+    async ({ b64, h, maxW }) => {
       const img = new Image()
       img.src = 'data:image/png;base64,' + b64
       await img.decode()
-      const side = Math.min(img.width, img.height)
-      const sx = (img.width - side) / 2
-      const sy = (img.height - side) / 2
+      const scale = h / img.height
+      const fullW = Math.max(1, Math.round(img.width * scale))
+      const w = Math.min(maxW, fullW)
+      // Source rect: centre-crop width when capped so aspect stays true.
+      const srcW = Math.round(w / scale)
+      const sx = Math.max(0, Math.round((img.width - srcW) / 2))
       const c = document.createElement('canvas')
-      c.width = size
-      c.height = size
+      c.width = w
+      c.height = h
       const ctx = c.getContext('2d')!
-      ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size)
+      ctx.drawImage(img, sx, 0, srcW, img.height, 0, 0, w, h)
       return c.toDataURL('image/png')
     },
-    { b64: bestB64, size: THUMB },
+    { b64: bestB64, h: THUMB_H, maxW: THUMB_MAXW },
   )
 }
 

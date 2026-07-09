@@ -30,6 +30,15 @@ import { computeWindow } from "./windowing";
 import type { Asset, AssetPreviewHandle, AssetSource, AssetType } from "./types";
 
 const ROW_HEIGHT = 40;
+/** Card row height for visual asset types (thumbnail on top + name below). */
+const CARD_HEIGHT = 112;
+/** Baked thumbnail display height (px) — the card renders it height-locked,
+ *  width follows the shader's native aspect (left-aligned). */
+const CARD_THUMB_H = 64;
+/** Types shown as CARDS (big aspect-true thumbnail + name beneath) rather than
+ *  compact icon-rows. A card view is always a single type (the Type filter
+ *  isolates it), so the windowed list stays uniform-height. */
+const CARD_TYPES = new Set<AssetType>(["viz"]);
 /** Extra rows rendered above/below the viewport so fast scrolls don't flash. */
 const OVERSCAN = 6;
 /** How long the copy button shows its "copied" check before reverting. */
@@ -238,6 +247,9 @@ export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
       <AssetList
         assets={assets}
         loading={loading}
+        // Viz-type view renders as cards (aspect-true thumbnail + name below).
+        // Only when a single card-type is active, so the list stays uniform.
+        card={type != null && CARD_TYPES.has(type)}
         previewingKey={previewingKey}
         onTogglePreview={togglePreview}
         // Reset scroll to top when the FILTER changes (not when the catalog
@@ -336,12 +348,14 @@ function CategoryChips({
 function AssetList({
   assets,
   loading,
+  card,
   previewingKey,
   onTogglePreview,
   resetKey,
 }: {
   assets: Asset[];
   loading: boolean;
+  card: boolean;
   previewingKey: string | null;
   onTogglePreview: (key: string, asset: Asset) => void;
   resetKey: string;
@@ -377,9 +391,12 @@ function AssetList({
   }, [resetKey]);
 
   const total = assets.length;
+  // A card view is a single type (the Type filter isolates it), so the list
+  // stays uniform-height — windowing needs only this per-view row height.
+  const rowH = card ? CARD_HEIGHT : ROW_HEIGHT;
   // `computeWindow` clamps `first` so a stale (too-large) scrollTop after the
   // list shrinks can never produce an empty slice (start > end → blank). (F2)
-  const { first, last } = computeWindow(total, scrollTop, viewportH, ROW_HEIGHT, OVERSCAN);
+  const { first, last } = computeWindow(total, scrollTop, viewportH, rowH, OVERSCAN);
   const slice = assets.slice(first, last);
 
   if (loading && total === 0) {
@@ -405,7 +422,7 @@ function AssetList({
       data-asset-list
       data-count={String(total)}
     >
-      <div style={{ height: total * ROW_HEIGHT, position: "relative" }}>
+      <div style={{ height: total * rowH, position: "relative" }}>
         {slice.map((asset, i) => {
           const index = first + i;
           const key = `${asset.type}:${asset.id}`;
@@ -414,7 +431,9 @@ function AssetList({
               key={key}
               asset={asset}
               rowKey={key}
-              top={index * ROW_HEIGHT}
+              top={index * rowH}
+              height={rowH}
+              card={card}
               previewing={previewingKey === key}
               onTogglePreview={onTogglePreview}
             />
@@ -429,12 +448,16 @@ function AssetRow({
   asset,
   rowKey,
   top,
+  height,
+  card,
   previewing,
   onTogglePreview,
 }: {
   asset: Asset;
   rowKey: string;
   top: number;
+  height: number;
+  card: boolean;
   previewing: boolean;
   onTogglePreview: (key: string, asset: Asset) => void;
 }) {
@@ -456,9 +479,78 @@ function AssetRow({
     });
   }, [codeToken]);
 
+  // The three hover action slots — shared by both layouts (compact right-rail,
+  // card top-right overlay). `btn` lets the card use lighter icons over its dark
+  // thumbnail overlay.
+  const actions = (btn: React.CSSProperties) => (
+    <>
+      {/* Copy the code token — hover-revealed; brief check on success. */}
+      {(hovered || previewing || copied) && (
+        <button
+          style={{ ...btn, ...(copied ? styles.rowBtnActive : {}) }}
+          title={copied ? "Copied!" : `Copy "${codeToken}"`}
+          aria-label={`Copy name ${codeToken}`}
+          onClick={handleCopy}
+          data-asset-copy={rowKey}
+        >
+          <Icon name={copied ? "check" : "copy"} size="14px" />
+        </button>
+      )}
+      {/* Insert / add — hover-revealed. */}
+      {asset.insert && (hovered || previewing) && (
+        <button
+          style={btn}
+          title={asset.insertLabel ?? "Insert into code"}
+          aria-label={`${asset.insertLabel ?? "Insert"} ${asset.name}`}
+          onClick={() => asset.insert?.()}
+          data-asset-insert={rowKey}
+        >
+          <Icon name="add" size="14px" />
+        </button>
+      )}
+      {/* Preview — play toggles to stop while active. */}
+      {asset.preview && (
+        <button
+          style={{ ...btn, ...(previewing ? styles.rowBtnActive : {}) }}
+          title={previewing ? "Stop" : "Preview"}
+          aria-label={previewing ? `Stop ${asset.name}` : `Preview ${asset.name}`}
+          onClick={() => onTogglePreview(rowKey, asset)}
+          data-asset-preview={rowKey}
+        >
+          <Icon name={previewing ? "debug-stop" : "play"} size="14px" />
+        </button>
+      )}
+    </>
+  );
+
+  // Card layout for visual assets: aspect-true thumbnail on top (left-aligned),
+  // name + group beneath, actions overlaid on the thumbnail's top-right on hover.
+  if (card) {
+    return (
+      <div
+        style={{ ...styles.card, top, height }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        data-asset-row={rowKey}
+      >
+        <div style={styles.cardThumbWrap}>
+          {asset.thumbnail && (
+            <img src={asset.thumbnail} alt="" style={styles.cardThumb} data-asset-thumb={rowKey} />
+          )}
+          {(hovered || previewing || copied) && (
+            <div style={styles.cardActions}>{actions(styles.cardBtn)}</div>
+          )}
+        </div>
+        <span style={styles.cardName}>{asset.name}</span>
+        {asset.group && <span style={styles.rowGroup}>{asset.group}</span>}
+      </div>
+    );
+  }
+
+  // Compact icon-row (sounds; viz under the mixed "All" view).
   return (
     <div
-      style={{ ...styles.row, top }}
+      style={{ ...styles.row, top, height }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       data-asset-row={rowKey}
@@ -466,55 +558,13 @@ function AssetRow({
       {/* Leading thumbnail — present for visual assets (viz packages ship a
           baked frame, else a renderer-hued placeholder); sounds leave it unset. */}
       {asset.thumbnail && (
-        <img
-          src={asset.thumbnail}
-          alt=""
-          style={styles.rowThumb}
-          data-asset-thumb={rowKey}
-        />
+        <img src={asset.thumbnail} alt="" style={styles.rowThumb} data-asset-thumb={rowKey} />
       )}
       <div style={styles.rowText}>
         <span style={styles.rowName}>{asset.name}</span>
         {asset.group && <span style={styles.rowGroup}>{asset.group}</span>}
       </div>
-      <div style={styles.rowActions}>
-        {/* Copy the code name (asset.id) — hover-revealed; brief check on success. */}
-        {(hovered || previewing || copied) && (
-          <button
-            style={{ ...styles.rowBtn, ...(copied ? styles.rowBtnActive : {}) }}
-            title={copied ? "Copied!" : `Copy "${codeToken}"`}
-            aria-label={`Copy name ${codeToken}`}
-            onClick={handleCopy}
-            data-asset-copy={rowKey}
-          >
-            <Icon name={copied ? "check" : "copy"} size="14px" />
-          </button>
-        )}
-        {/* Insert — hover-revealed secondary slot. */}
-        {asset.insert && (hovered || previewing) && (
-          <button
-            style={styles.rowBtn}
-            title={asset.insertLabel ?? "Insert into code"}
-            aria-label={`${asset.insertLabel ?? "Insert"} ${asset.name}`}
-            onClick={() => asset.insert?.()}
-            data-asset-insert={rowKey}
-          >
-            <Icon name="add" size="14px" />
-          </button>
-        )}
-        {/* Preview — primary slot; play toggles to stop while active. */}
-        {asset.preview && (
-          <button
-            style={{ ...styles.rowBtn, ...(previewing ? styles.rowBtnActive : {}) }}
-            title={previewing ? "Stop" : "Preview"}
-            aria-label={previewing ? `Stop ${asset.name}` : `Preview ${asset.name}`}
-            onClick={() => onTogglePreview(rowKey, asset)}
-            data-asset-preview={rowKey}
-          >
-            <Icon name={previewing ? "debug-stop" : "play"} size="14px" />
-          </button>
-        )}
-      </div>
+      <div style={styles.rowActions}>{actions(styles.rowBtn)}</div>
     </div>
   );
 }
@@ -654,6 +704,65 @@ const styles: Record<string, React.CSSProperties> = {
     objectFit: "cover",
     background: "var(--bg-inset, rgba(127,127,127,0.12))",
     border: "1px solid var(--border-subtle)",
+  },
+  card: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: CARD_HEIGHT,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 4,
+    padding: "6px 14px",
+    boxSizing: "border-box",
+  },
+  cardThumbWrap: {
+    position: "relative",
+    flexShrink: 0,
+    lineHeight: 0, // drop the inline-image descender gap
+    maxWidth: "100%",
+  },
+  cardThumb: {
+    height: CARD_THUMB_H,
+    width: "auto",
+    maxWidth: "100%",
+    display: "block",
+    borderRadius: 6,
+    border: "1px solid var(--border-subtle)",
+    background: "var(--bg-inset, rgba(127,127,127,0.12))",
+  },
+  cardActions: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    display: "flex",
+    gap: 2,
+    padding: 2,
+    borderRadius: 5,
+    background: "rgba(0,0,0,0.5)",
+  },
+  cardBtn: {
+    width: 22,
+    height: 22,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "none",
+    border: "none",
+    borderRadius: 4,
+    color: "rgba(255,255,255,0.9)",
+    cursor: "pointer",
+    padding: 0,
+  },
+  cardName: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: "var(--text-primary)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "100%",
   },
   rowText: {
     display: "flex",
