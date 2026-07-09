@@ -210,14 +210,6 @@ export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
           data-asset-search
           aria-label="Search assets"
         />
-        {categories.length > 1 && (
-          <CategoryChips
-            active={category}
-            total={total}
-            categories={categories}
-            onPick={setCategory}
-          />
-        )}
         {types.length > 1 && (
           <ChipRow
             label="Type"
@@ -226,6 +218,14 @@ export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
             render={(t) => TYPE_LABELS[t]}
             onPick={(t) => setType(t)}
             dataAttr="asset-type-filter"
+          />
+        )}
+        {categories.length > 1 && (
+          <CategoryChips
+            active={category}
+            total={total}
+            categories={categories}
+            onPick={setCategory}
           />
         )}
         {sources.length > 1 && (
