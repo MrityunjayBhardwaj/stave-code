@@ -666,11 +666,6 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateRows: "repeat(2, auto)",
     gridAutoColumns: "max-content",
     gap: 4,
-    // Darker inset band → the tag belt reads as a subordinate layer under the
-    // primary Type filter (visual hierarchy).
-    background: "var(--bg-inset, rgba(0,0,0,0.22))",
-    padding: "5px 6px",
-    borderRadius: 6,
     overflowX: "auto",
     overflowY: "hidden",
     // Hide the scrollbar cross-browser: `scrollbarWidth` covers Firefox (which
@@ -709,6 +704,9 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 0,
     overflowY: "auto",
     overflowX: "hidden",
+    // Darker surface for the asset list → the content area recedes beneath the
+    // lighter search + filter controls (visual hierarchy).
+    background: "var(--bg-inset, rgba(0,0,0,0.22))",
   },
   listEmpty: {
     flex: 1,
@@ -720,6 +718,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: "var(--text-tertiary)",
     textAlign: "center",
+    background: "var(--bg-inset, rgba(0,0,0,0.22))",
   },
   row: {
     position: "absolute",
@@ -747,6 +746,9 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 0,
     overflowY: "auto",
     overflowX: "hidden",
+    // Same darker surface as the list — the card grid recedes beneath the
+    // lighter search + filter controls (visual hierarchy).
+    background: "var(--bg-inset, rgba(0,0,0,0.22))",
   },
   cardGrid: {
     display: "flex",
