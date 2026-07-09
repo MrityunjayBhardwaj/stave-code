@@ -590,19 +590,26 @@ function AssetCard({
   // the static tile; tear it down on leave/unmount so only one is ever alive
   // (#838). `live` fades the static thumbnail out once the canvas is up.
   const previewHost = useRef<HTMLDivElement | null>(null);
+  const mountPreviewRef = useRef(asset.mountLivePreview);
+  mountPreviewRef.current = asset.mountLivePreview;
   const [live, setLive] = useState(false);
+  // Key on `rowKey` (stable `type:id`), NOT `asset`: the provider re-lists on
+  // every tick so `asset` is a fresh object each render — depending on it would
+  // remount the worker preview on an unrelated tick mid-hover. Read the current
+  // mount fn via a ref so a re-list can't stale it either.
   useEffect(() => {
     const host = previewHost.current;
-    if (!hovered || !asset.mountLivePreview || !host) return;
+    const mount = mountPreviewRef.current;
+    if (!hovered || !mount || !host) return;
     const size = { w: host.clientWidth || 120, h: host.clientHeight || 64 };
-    const handle = asset.mountLivePreview(host, size);
+    const handle = mount(host, size);
     if (!handle) return; // worker path unavailable → keep the static tile
     setLive(true);
     return () => {
       handle.disconnect();
       setLive(false);
     };
-  }, [hovered, asset]);
+  }, [hovered, rowKey]);
 
   return (
     <div style={styles.card} {...hoverProps} data-asset-row={rowKey}>

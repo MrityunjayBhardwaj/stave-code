@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 
-import { createVizProvider, vizLibraryToAssets } from "../vizProvider";
+import { createVizProvider, vizLibraryToAssets, type VizPreviewSpec } from "../vizProvider";
 import { VIZ_LIBRARY, type VizLibItem } from "../vizLibrary";
 
 const items: VizLibItem[] = [
@@ -81,7 +81,9 @@ describe("vizLibraryToAssets (#834)", () => {
   });
 
   it("picks the PRIMARY file (basename === package name) for the preview source (#838)", () => {
-    const mountPreview = vi.fn(() => null);
+    const mountPreview = vi.fn(
+      (_c: HTMLDivElement, _spec: VizPreviewSpec, _s: { w: number; h: number }) => null,
+    );
     const multi: VizLibItem = {
       id: "prism",
       name: "Prism",
