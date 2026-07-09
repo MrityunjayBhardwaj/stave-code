@@ -66,7 +66,9 @@ const LOW_END = Math.floor(BIN_COUNT * 0.18) // bass bins: kick
 const MID_END = Math.floor(BIN_COUNT * 0.55) // mid bins: snare body
 
 export interface DrumDemoOptions {
-  /** Seconds per cycle of the loop. Default 1s = one punchy bar of the pattern. */
+  /** Seconds per cycle of the loop. Default 2s matches Strudel's default tempo
+   *  (`cps 0.5`) — one bar (4 kicks / 8 hats) every 2s ≈ 120 BPM, a natural beat.
+   *  (1s felt frantic — ~240 BPM.) */
   readonly cycleSeconds?: number
 }
 
@@ -89,7 +91,7 @@ function voiceEnvelope(pos: number, voice: DemoVoice): number {
  * previous `nowMs` to emit a bump exactly once when an onset is crossed).
  */
 export function createDrumDemoSignalSource(opts: DrumDemoOptions = {}): SignalFrameSource {
-  const cycleSeconds = opts.cycleSeconds ?? 1
+  const cycleSeconds = opts.cycleSeconds ?? 2
   let seq = 0
   let prevPos: number | null = null
 
