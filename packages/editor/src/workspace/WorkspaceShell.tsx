@@ -146,10 +146,8 @@ import {
 // Cursor-targeted sound assignment (#820) — the Asset Library sidebar writes a
 // `.sound()` / `s()` into the code at the cursor via `assignSoundToCursor`,
 // reusing the same chunk-detection + writeback spine the Mixer picker uses.
-import { detectChunk } from '../visualEdit/chunkDetect'
 import { Writeback } from '../visualEdit/writeback'
-import { readChainMethod } from '../visualEdit/panels/chainMethod'
-import { patternKind } from '../visualEdit/panels/patternKind'
+import { planSoundAssignment } from '../visualEdit/soundAssign'
 import type { WorkspaceShellActions } from './commands/CommandRegistry'
 import type {
   WorkspaceGroupState,
@@ -3138,34 +3136,17 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         const pos = editor?.getPosition()
         if (!editor || !monaco || !model || !pos) return
         const offset = model.getOffsetAt(pos)
-        // Detect the chunk fresh at call time (also sidesteps the freshness
-        // guard — we write immediately after detecting).
-        const chunk = detectChunk(model.getValue(), offset)
+        // The whole decision — roll chunk under the cursor → set/replace its
+        // `.sound()` (chainMethod idiom, single-quoted so PV44 doesn't reify
+        // it); else drop a fresh `s("…")` on its OWN line (line-aware so a raw
+        // offset can't land mid-token or inside a comment) — lives in the pure
+        // `planSoundAssignment` helper so it can be unit-tested (#830). Detect
+        // is fresh at call time, which also sidesteps the freshness guard.
+        const plan = planSoundAssignment(model.getValue(), offset, sound)
+        if (!plan) return
         const wb = new Writeback(editor, monaco)
-        if (chunk && patternKind(chunk) === 'roll') {
-          // Note/roll chunk under the cursor → set/replace its `.sound()`,
-          // exactly like the Mixer picker (chainMethod idiom). Single-quoted so
-          // the name stays a literal, not a reified mini-pattern (PV44). If a
-          // `.sound()` exists with a non-string arg, `readChainMethod` returns
-          // null and we append a second one — same edge the picker has.
-          const cur = readChainMethod(chunk, ['sound', 's'])
-          if (cur) wb.replaceRange(cur.range, `'${sound}'`, 'mixer')
-          else wb.insertAt(chunk.exprRange[1], `.sound('${sound}')`, 'mixer')
-        } else {
-          // No note chunk under the cursor → drop a fresh source pattern on its
-          // OWN line. A raw offset insert lands mid-token / inside a comment
-          // (observed: `// scratch` → `// scratchs("…")`, commented out), so
-          // insert at the end of the cursor's line, prefixed with a newline when
-          // that line already has content. Double-quoted: a standalone `s("…")`
-          // is idiomatic mini-notation.
-          const line = pos.lineNumber
-          const lineEnd = model.getOffsetAt({
-            lineNumber: line,
-            column: model.getLineMaxColumn(line),
-          })
-          const hasContent = model.getLineContent(line).trim().length > 0
-          wb.insertAt(lineEnd, `${hasContent ? '\n' : ''}s("${sound}")`, 'mixer')
-        }
+        if (plan.kind === 'replace') wb.replaceRange(plan.range, plan.text, 'mixer')
+        else wb.insertAt(plan.offset, plan.text, 'mixer')
       },
     }),
     [

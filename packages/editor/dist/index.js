@@ -24936,6 +24936,27 @@ function HistoryViewOverlay({
 }
 __name(HistoryViewOverlay, "HistoryViewOverlay");
 
+// src/visualEdit/soundAssign.ts
+function planSoundAssignment(doc, offset, sound) {
+  if (!sound) return null;
+  const chunk = detectChunk(doc, offset);
+  if (chunk && patternKind(chunk) === "roll") {
+    const cur = readChainMethod(chunk, ["sound", "s"]);
+    if (cur) return { kind: "replace", range: cur.range, text: `'${sound}'` };
+    return { kind: "insert", offset: chunk.exprRange[1], text: `.sound('${sound}')` };
+  }
+  const lineStart = doc.lastIndexOf("\n", offset - 1) + 1;
+  const nextNewline = doc.indexOf("\n", offset);
+  const lineEnd = nextNewline === -1 ? doc.length : nextNewline;
+  const hasContent = doc.slice(lineStart, lineEnd).trim().length > 0;
+  return {
+    kind: "insert",
+    offset: lineEnd,
+    text: `${hasContent ? "\n" : ""}s("${sound}")`
+  };
+}
+__name(planSoundAssignment, "planSoundAssignment");
+
 // src/workspace/backdropPrecedence.ts
 function resolveBackdropFileId(stickyFileId, overrideFileId) {
   return overrideFileId ?? stickyFileId;
@@ -35027,21 +35048,11 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         const pos = editor?.getPosition();
         if (!editor || !monaco || !model || !pos) return;
         const offset = model.getOffsetAt(pos);
-        const chunk = detectChunk(model.getValue(), offset);
+        const plan = planSoundAssignment(model.getValue(), offset, sound);
+        if (!plan) return;
         const wb = new Writeback(editor, monaco);
-        if (chunk && patternKind(chunk) === "roll") {
-          const cur = readChainMethod(chunk, ["sound", "s"]);
-          if (cur) wb.replaceRange(cur.range, `'${sound}'`, "mixer");
-          else wb.insertAt(chunk.exprRange[1], `.sound('${sound}')`, "mixer");
-        } else {
-          const line = pos.lineNumber;
-          const lineEnd = model.getOffsetAt({
-            lineNumber: line,
-            column: model.getLineMaxColumn(line)
-          });
-          const hasContent = model.getLineContent(line).trim().length > 0;
-          wb.insertAt(lineEnd, `${hasContent ? "\n" : ""}s("${sound}")`, "mixer");
-        }
+        if (plan.kind === "replace") wb.replaceRange(plan.range, plan.text, "mixer");
+        else wb.insertAt(plan.offset, plan.text, "mixer");
       }, "assignSoundToCursor")
     }),
     [
