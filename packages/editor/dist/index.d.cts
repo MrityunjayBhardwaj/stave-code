@@ -5678,6 +5678,9 @@ interface WorkspaceShellHandle {
      * panel being open.
      */
     assignSoundToCursor(sound: string): void;
+    /** Attach `.viz("name")` to the pattern chunk under the cursor (Asset Library
+     *  viz insert). No pattern under the cursor → no-op. */
+    assignVizToCursor(name: string): void;
 }
 declare const WorkspaceShell: React__default.ForwardRefExoticComponent<WorkspaceShellProps & React__default.RefAttributes<WorkspaceShellHandle>>;
 

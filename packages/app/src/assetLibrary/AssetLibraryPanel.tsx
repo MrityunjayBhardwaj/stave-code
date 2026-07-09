@@ -107,10 +107,27 @@ export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
   );
   const loading = providers.some((p) => p.isLoading?.() ?? false);
 
+  // Default to the FIRST available type instead of the noisy "All" union once
+  // more than one type exists. Sounds outnumber viz ~1851:12, so "All" buries
+  // viz at the end and mixes two category taxonomies in one belt; landing on a
+  // type shows one clean taxonomy. Fires ONCE (a ref guard) so the user can pick
+  // "All" afterward without it snapping back. (#832)
+  const didInitType = useRef(false);
+  useEffect(() => {
+    if (didInitType.current) return;
+    if (types.length > 1) {
+      didInitType.current = true;
+      setType(types[0]);
+    }
+  }, [types]);
+
   // A type/source chip that filters to a value no longer present would strand
   // the list empty with no way back — drop the filter if its value vanished.
+  // For `type`, fall back to another available type (not "All") to keep the
+  // default-to-type policy; only null when a single type remains (the Type row
+  // hides then and "All" == that lone type anyway).
   useEffect(() => {
-    if (type && !types.includes(type)) setType(null);
+    if (type && !types.includes(type)) setType(types.length > 1 ? types[0] : null);
   }, [type, types]);
   useEffect(() => {
     if (source && !sources.includes(source)) setSource(null);
@@ -426,14 +443,18 @@ function AssetRow({
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
 
+  // What Copy puts on the clipboard: the asset's code token (the string you'd
+  // type in code). Sounds leave `code` unset → the id; viz sets it to the preset
+  // name (`.viz("name")` resolves by name, not the unique row id).
+  const codeToken = asset.code ?? asset.id;
   const handleCopy = useCallback(() => {
-    void copyToClipboard(asset.id).then((ok) => {
+    void copyToClipboard(codeToken).then((ok) => {
       if (!ok) return;
       setCopied(true);
       if (copyTimer.current) clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => setCopied(false), COPIED_MS);
     });
-  }, [asset.id]);
+  }, [codeToken]);
 
   return (
     <div
@@ -451,8 +472,8 @@ function AssetRow({
         {(hovered || previewing || copied) && (
           <button
             style={{ ...styles.rowBtn, ...(copied ? styles.rowBtnActive : {}) }}
-            title={copied ? "Copied!" : `Copy "${asset.id}"`}
-            aria-label={`Copy name ${asset.id}`}
+            title={copied ? "Copied!" : `Copy "${codeToken}"`}
+            aria-label={`Copy name ${codeToken}`}
             onClick={handleCopy}
             data-asset-copy={rowKey}
           >

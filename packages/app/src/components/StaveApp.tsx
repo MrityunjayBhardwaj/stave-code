@@ -97,6 +97,8 @@ import { getLogHistory } from "@stave/editor";
 import { startAudition } from "@stave/editor";
 import { gmFamily, soundfontGroupLabel } from "@stave/editor";
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
+import { VizPresetStore, isBundledPresetId, type VizPreset } from "@stave/editor";
+import { createVizProvider } from "../assetLibrary/vizProvider";
 import { PerfOverlay } from "./PerfOverlay";
 
 interface StaveAppProps {
@@ -766,6 +768,42 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       unregSounds();
     };
   }, []);
+
+  // #832 — Asset Library Viz provider: browse saved viz presets, insert
+  // `.viz("name")` at the cursor. Presets live in IndexedDB (`VizPresetStore`);
+  // `list()` is synchronous, so we load into a ref cache and notify the shell.
+  // There is no preset-change event to subscribe to, so we also refetch when the
+  // Library panel opens (below) — a preset saved via the Viz editor then shows
+  // up without a reload.
+  const vizPresetsRef = useRef<VizPreset[] | null>(null);
+  const refreshVizPresets = useCallback(async () => {
+    try {
+      const presets = await VizPresetStore.getAll();
+      vizPresetsRef.current = presets;
+      notifyAssetProvidersChanged();
+    } catch {
+      // IDB unavailable/blocked (bounded — never hangs, PV151). Resolve the
+      // provider's loading state to "empty" instead of leaving it spinning.
+      if (vizPresetsRef.current === null) {
+        vizPresetsRef.current = [];
+        notifyAssetProvidersChanged();
+      }
+    }
+  }, []);
+  useEffect(() => {
+    const unregViz = registerAssetProvider(
+      createVizProvider({
+        readPresets: () => vizPresetsRef.current,
+        isBundled: isBundledPresetId,
+        onInsert: (name) => shellRef.current?.assignVizToCursor(name),
+      }),
+    );
+    void refreshVizPresets();
+    return unregViz;
+  }, [refreshVizPresets]);
+  useEffect(() => {
+    if (activePanelId === "library") void refreshVizPresets();
+  }, [activePanelId, refreshVizPresets]);
 
   // #515 / PV141 #6 — enumerate live drum banks for the Mixer's Kit picker.
   // Banks load from the tidal-drum-machines manifest (its keys are

@@ -24957,6 +24957,18 @@ function planSoundAssignment(doc, offset, sound) {
 }
 __name(planSoundAssignment, "planSoundAssignment");
 
+// src/visualEdit/vizAssign.ts
+function planVizAssignment(doc, offset, name) {
+  if (!name) return null;
+  const chunk = detectChunk(doc, offset);
+  if (!chunk) return null;
+  const text = JSON.stringify(name);
+  const cur = readChainMethod(chunk, ["viz"]);
+  if (cur) return { kind: "replace", range: cur.range, text };
+  return { kind: "insert", offset: chunk.exprRange[1], text: `.viz(${text})` };
+}
+__name(planVizAssignment, "planVizAssignment");
+
 // src/workspace/backdropPrecedence.ts
 function resolveBackdropFileId(stickyFileId, overrideFileId) {
   return overrideFileId ?? stickyFileId;
@@ -35053,7 +35065,21 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         const wb = new Writeback(editor, monaco);
         if (plan.kind === "replace") wb.replaceRange(plan.range, plan.text, "mixer");
         else wb.insertAt(plan.offset, plan.text, "mixer");
-      }, "assignSoundToCursor")
+      }, "assignSoundToCursor"),
+      assignVizToCursor: /* @__PURE__ */ __name((name) => {
+        if (!name) return;
+        const editor = getActiveEditor();
+        const monaco = getMonacoNamespace();
+        const model = editor?.getModel();
+        const pos = editor?.getPosition();
+        if (!editor || !monaco || !model || !pos) return;
+        const offset = model.getOffsetAt(pos);
+        const plan = planVizAssignment(model.getValue(), offset, name);
+        if (!plan) return;
+        const wb = new Writeback(editor, monaco);
+        if (plan.kind === "replace") wb.replaceRange(plan.range, plan.text, "mixer");
+        else wb.insertAt(plan.offset, plan.text, "mixer");
+      }, "assignVizToCursor")
     }),
     [
       groups,

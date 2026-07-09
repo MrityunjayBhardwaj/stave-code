@@ -148,6 +148,7 @@ import {
 // reusing the same chunk-detection + writeback spine the Mixer picker uses.
 import { Writeback } from '../visualEdit/writeback'
 import { planSoundAssignment } from '../visualEdit/soundAssign'
+import { planVizAssignment } from '../visualEdit/vizAssign'
 import type { WorkspaceShellActions } from './commands/CommandRegistry'
 import type {
   WorkspaceGroupState,
@@ -399,6 +400,9 @@ export interface WorkspaceShellHandle {
    * panel being open.
    */
   assignSoundToCursor(sound: string): void
+  /** Attach `.viz("name")` to the pattern chunk under the cursor (Asset Library
+   *  viz insert). No pattern under the cursor → no-op. */
+  assignVizToCursor(name: string): void
 }
 
 /** Resolve a tab's display name from the file store. Falls back to fileId. */
@@ -3143,6 +3147,24 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         // `planSoundAssignment` helper so it can be unit-tested (#830). Detect
         // is fresh at call time, which also sidesteps the freshness guard.
         const plan = planSoundAssignment(model.getValue(), offset, sound)
+        if (!plan) return
+        const wb = new Writeback(editor, monaco)
+        if (plan.kind === 'replace') wb.replaceRange(plan.range, plan.text, 'mixer')
+        else wb.insertAt(plan.offset, plan.text, 'mixer')
+      },
+      assignVizToCursor: (name: string) => {
+        if (!name) return
+        // Same live-editor reach as assignSoundToCursor. `planVizAssignment`
+        // appends/replaces `.viz("name")` on the pattern chunk under the cursor
+        // (#832) — pure + unit-tested. No pattern under the cursor → null → no-op
+        // (a viz decorates a pattern; it can't stand alone).
+        const editor = getActiveEditor()
+        const monaco = getMonacoNamespace()
+        const model = editor?.getModel()
+        const pos = editor?.getPosition()
+        if (!editor || !monaco || !model || !pos) return
+        const offset = model.getOffsetAt(pos)
+        const plan = planVizAssignment(model.getValue(), offset, name)
         if (!plan) return
         const wb = new Writeback(editor, monaco)
         if (plan.kind === 'replace') wb.replaceRange(plan.range, plan.text, 'mixer')

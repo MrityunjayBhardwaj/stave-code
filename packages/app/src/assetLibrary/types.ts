@@ -46,6 +46,14 @@ export interface Asset {
   readonly id: string;
   readonly name: string;
   readonly source: AssetSource;
+  /**
+   * The code token this asset represents — what the Copy button copies. Defaults
+   * to {@link id} when absent. For sounds `id` IS the code token (the string in
+   * `s("…")`); for viz presets `id` is a unique row key but the code token is the
+   * preset name (`.viz("name")` resolves by name), so they diverge and viz sets
+   * this explicitly.
+   */
+  readonly code?: string;
   /** Free-form tags — searched alongside the name, shown as row metadata. */
   readonly tags: readonly string[];
   /** Optional secondary label (e.g. category / GM family) shown muted. */
