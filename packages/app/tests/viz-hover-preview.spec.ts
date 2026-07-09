@@ -121,28 +121,55 @@ test.describe('Asset Library — viz preview height setting (#838)', () => {
     const box0 = await panel.locator('[data-viz-preview-box="viz:prism"]').boundingBox()
     expect(box0).toBeTruthy()
 
-    // Drive the real slider to a distinctly taller value.
+    // Drive the real slider to a taller value that still fits one column
+    // aspect-true (2:1 baked frame → width ≈ 2 × height, and 2×110 < panel width).
     await openSettingsViz(page)
-    const slider = page.getByTestId('setting-vizPreviewHeight') // the range input itself
-    await slider.fill('176')
+    await page.getByTestId('setting-vizPreviewHeight').fill('110')
     await page.keyboard.press('Escape') // close the settings shell
     await expect(page.getByTestId('settings-shell')).toHaveCount(0)
 
-    // The open library reflects it live (the card box grows to ~176px).
+    // The open library reflects it live: the card grows AND keeps the shader's
+    // 2:1 aspect (the width scales with the height, not a fixed-width crop).
     panel = page.locator('[data-asset-library]')
     await expect(panel).toBeVisible()
     await expect
       .poll(async () => (await panel.locator('[data-viz-preview-box="viz:prism"]').boundingBox())?.height ?? 0)
-      .toBeGreaterThan(box0!.height + 20)
+      .toBeGreaterThan(box0!.height)
     const box1 = await panel.locator('[data-viz-preview-box="viz:prism"]').boundingBox()
-    expect(Math.abs(box1!.height - 176)).toBeLessThan(4)
-    await panel.screenshot({ path: 'test-results/viz-preview-height-176.png' })
+    expect(Math.abs(box1!.height - 110)).toBeLessThan(6)
+    expect(box1!.width / box1!.height, 'card keeps the 2:1 shader aspect').toBeGreaterThan(1.7)
+    expect(box1!.width / box1!.height).toBeLessThan(2.3)
+    await panel.screenshot({ path: 'test-results/viz-preview-height.png' })
 
     // Persists across reload (localStorage-backed).
     await page.reload()
     await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 30_000 })
     const panel2 = await openVizLibrary(page)
     const box2 = await panel2.locator('[data-viz-preview-box="viz:prism"]').boundingBox()
-    expect(Math.abs(box2!.height - 176)).toBeLessThan(4)
+    expect(Math.abs(box2!.height - 110)).toBeLessThan(6)
+  })
+
+  test('the grid reflows: small cards share a row, large cards stack', async ({ page }) => {
+    await boot(page)
+    const prism = () => page.locator('[data-viz-preview-box="viz:prism"]')
+    const pulse = () => page.locator('[data-viz-preview-box="viz:pulse-grid"]')
+
+    // Small height → narrow cards → two per row (same y, side by side).
+    await openSettingsViz(page)
+    await page.getByTestId('setting-vizPreviewHeight').fill('48')
+    await page.keyboard.press('Escape')
+    await openVizLibrary(page)
+    let a = await prism().boundingBox()
+    let b = await pulse().boundingBox()
+    expect(Math.abs(a!.y - b!.y), 'small cards share a row').toBeLessThan(8)
+    expect(b!.x, 'and sit side by side').toBeGreaterThan(a!.x + a!.width - 8)
+
+    // Large height → wide cards → one per row (stacked: different y).
+    await openSettingsViz(page)
+    await page.getByTestId('setting-vizPreviewHeight').fill('120')
+    await page.keyboard.press('Escape')
+    a = await prism().boundingBox()
+    b = await pulse().boundingBox()
+    expect(b!.y, 'large cards stack').toBeGreaterThan(a!.y + a!.height - 8)
   })
 })

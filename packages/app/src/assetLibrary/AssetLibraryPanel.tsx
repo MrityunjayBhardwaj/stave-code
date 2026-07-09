@@ -405,25 +405,16 @@ function AssetList({
 
   // Card view (viz): a small curated corpus, so render a wrapping flex grid —
   // no windowing (the Type filter isolates one type, so this is only cards, and
-  // there are only a handful). The container scrolls natively if they overflow.
+  // there are only a handful). Cards are sized by the shader's aspect at the
+  // settings-controlled height, so the grid reflows (fewer columns as they grow).
   if (card) {
     return (
-      <div style={styles.gridScroll} data-asset-list data-count={String(total)}>
-        <div style={styles.cardGrid}>
-          {assets.map((asset) => {
-            const key = `${asset.type}:${asset.id}`;
-            return (
-              <AssetCard
-                key={key}
-                asset={asset}
-                rowKey={key}
-                previewing={previewingKey === key}
-                onTogglePreview={onTogglePreview}
-              />
-            );
-          })}
-        </div>
-      </div>
+      <CardGrid
+        assets={assets}
+        previewingKey={previewingKey}
+        onTogglePreview={onTogglePreview}
+        total={total}
+      />
     );
   }
 
@@ -567,16 +558,77 @@ function AssetRow({
   );
 }
 
-/** Grid card — a flow-positioned tile in the wrapping viz grid: an aspect-true
- *  thumbnail with the name + renderer beneath, actions overlaid on hover. */
+/** The viz card grid. Cards are sized by each shader's aspect at the settings
+ *  height, so this measures its own content width — a card is capped to one
+ *  column (a wide 2:1 shader at a tall height would otherwise overflow the
+ *  narrow sidebar) — and the flex row reflows: more columns when cards are
+ *  small, fewer as they grow. */
+function CardGrid({
+  assets,
+  previewingKey,
+  onTogglePreview,
+  total,
+}: {
+  assets: Asset[];
+  previewingKey: string | null;
+  onTogglePreview: (key: string, asset: Asset) => void;
+  total: number;
+}) {
+  const [maxCardW, setMaxCardW] = useState(0);
+  const roRef = useRef<ResizeObserver | null>(null);
+  // Callback ref + ResizeObserver (same pattern as the windowed list): measure
+  // the grid's CONTENT width (client minus padding) on attach and on any panel
+  // resize, so each card can cap its width to one column.
+  const setGridEl = useCallback((el: HTMLDivElement | null) => {
+    roRef.current?.disconnect();
+    roRef.current = null;
+    if (!el) return;
+    const measure = () => {
+      const cs = getComputedStyle(el);
+      const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      setMaxCardW(Math.max(0, el.clientWidth - pad));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    roRef.current = ro;
+  }, []);
+  useEffect(() => () => roRef.current?.disconnect(), []);
+
+  return (
+    <div style={styles.gridScroll} data-asset-list data-count={String(total)}>
+      <div ref={setGridEl} style={styles.cardGrid}>
+        {assets.map((asset) => {
+          const key = `${asset.type}:${asset.id}`;
+          return (
+            <AssetCard
+              key={key}
+              asset={asset}
+              rowKey={key}
+              maxCardW={maxCardW}
+              previewing={previewingKey === key}
+              onTogglePreview={onTogglePreview}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Grid card — an aspect-true tile in the wrapping viz grid: the shader frame
+ *  (thumbnail or live hover preview) sized by its aspect at the settings height,
+ *  with the name + renderer beneath and actions overlaid on hover. */
 function AssetCard({
   asset,
   rowKey,
+  maxCardW,
   previewing,
   onTogglePreview,
 }: {
   asset: Asset;
   rowKey: string;
+  maxCardW: number;
   previewing: boolean;
   onTogglePreview: (key: string, asset: Asset) => void;
 }) {
@@ -587,10 +639,20 @@ function AssetCard({
     onTogglePreview,
   );
 
+  const previewHeight = useVizPreviewHeight();
+  // Card size = the shader's aspect at the chosen height. Aspect comes from the
+  // thumbnail's natural size once it loads (baked frames are 2:1, placeholders
+  // 1:1); default 2:1 so the current corpus doesn't jump on load. Width follows
+  // height×aspect but is capped to one column; when capped, height YIELDS so the
+  // frame stays aspect-true — never cropped, never overflowing the sidebar.
+  const [aspect, setAspect] = useState(2);
+  const wUncapped = previewHeight * aspect;
+  const boxW = maxCardW > 0 ? Math.min(wUncapped, maxCardW) : wUncapped;
+  const boxH = boxW / aspect;
+
   // ShaderToy-style live preview: while hovered, mount the real viz (muted) over
   // the static tile; tear it down on leave/unmount so only one is ever alive
   // (#838). `live` fades the static thumbnail out once the canvas is up.
-  const previewHeight = useVizPreviewHeight();
   const previewHost = useRef<HTMLDivElement | null>(null);
   const mountPreviewRef = useRef(asset.mountLivePreview);
   mountPreviewRef.current = asset.mountLivePreview;
@@ -614,15 +676,22 @@ function AssetCard({
   }, [hovered, rowKey]);
 
   return (
-    <div style={styles.card} {...hoverProps} data-asset-row={rowKey}>
+    <div style={{ ...styles.card, width: boxW }} {...hoverProps} data-asset-row={rowKey}>
       <div
-        style={{ ...styles.cardThumbWrap, height: previewHeight }}
+        style={{ ...styles.cardThumbWrap, width: boxW, height: boxH }}
         data-viz-preview-box={rowKey}
       >
         {asset.thumbnail && (
           <img
             src={asset.thumbnail}
             alt=""
+            // Read the shader's true aspect from the (baked or placeholder) tile.
+            onLoad={(e) => {
+              const im = e.currentTarget;
+              if (im.naturalWidth > 0 && im.naturalHeight > 0) {
+                setAspect(im.naturalWidth / im.naturalHeight);
+              }
+            }}
             style={{ ...styles.cardThumb, ...(live ? styles.cardThumbHidden : {}) }}
             data-asset-thumb={rowKey}
           />
@@ -803,14 +872,14 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
     padding: 12,
     alignContent: "flex-start",
+    alignItems: "flex-start", // top-align cards of differing aspect/height
     boxSizing: "border-box",
   },
   card: {
-    // A flow-positioned grid tile: flex-grows to fill the row, wraps, and shows
-    // its thumbnail at the shader's native aspect (width 100% → height auto).
-    flex: "1 1 96px",
-    minWidth: 88,
-    maxWidth: 132,
+    // Sized to its content: the thumb box is width height×aspect (capped to one
+    // column), so the card takes that width and the flex row reflows around it.
+    flex: "0 0 auto",
+    maxWidth: "100%",
     display: "flex",
     flexDirection: "column",
     gap: 4,
@@ -818,8 +887,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cardThumbWrap: {
     position: "relative",
-    width: "100%",
     lineHeight: 0, // drop the inline-image descender gap
+    // width + height are set inline (the shader's aspect at the settings height).
   },
   cardThumb: {
     width: "100%",
