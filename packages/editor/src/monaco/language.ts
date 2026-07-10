@@ -1,6 +1,5 @@
 import type * as Monaco from 'monaco-editor'
 import { SONICPI_DOCS_INDEX } from './docs/sonicpi'
-import { STRUDEL_DOCS_INDEX } from './strudelDocs'
 import { buildIdentifierAlternation } from './docs/tokenizer-utils'
 
 export function registerSonicPiLanguage(monaco: typeof Monaco): void {
@@ -141,18 +140,6 @@ export function registerStrudelLanguage(monaco: typeof Monaco): void {
 
   monaco.languages.register({ id: 'strudel' })
 
-  // Derive the function-name alternation from the docs index. Extras stay
-  // as a short hand-curated list for symbols the docs haven't covered yet
-  // (mini-notation helpers and tempo aliases).
-  const strudelFns = buildIdentifierAlternation(STRUDEL_DOCS_INDEX, {
-    extra: [
-      'sub', 'add', 'mul', 'div', 'mod', 'abs',
-      'sine', 'saw', 'square', 'tri',
-      'setcps', 'setCps', 'cpm',
-      'loopBegin', 'loopEnd', 'n', 'ftype', 'fanchor',
-    ],
-  })
-
   monaco.languages.setMonarchTokensProvider('strudel', {
     defaultToken: '',
     tokenPostfix: '.strudel',
@@ -173,25 +160,30 @@ export function registerStrudelLanguage(monaco: typeof Monaco): void {
         // Note names: c3, eb4, f#2, C#5
         [/\b[a-gA-G][b#]?\d\b/, 'strudel.note'],
 
-        // Strudel function names (must come before keywords check)
-        [new RegExp(`\\b(${strudelFns})\\b`), 'strudel.function'],
-
-        // JS keywords
+        // JS keywords — before the structural call rules so `if (`, `for (`,
+        // `function (` stay keywords instead of being colored as calls.
         [
           /\b(const|let|var|await|async|return|if|else|for|while|function|class|import|export|from)\b/,
           'keyword',
         ],
 
-        // Line comment
+        // Comments — before the call rules so a `// gain(0.5)` line isn't
+        // tokenized as a call inside the comment.
         [/\/\/.*$/, 'comment'],
-
-        // Block comment
         [/\/\*/, 'comment', '@block_comment'],
 
         // Strings (mini-notation)
         [/"/, 'string', '@mini_string_double'],
         [/'/, 'string', '@mini_string_single'],
         [/`/, 'string', '@template_string'],
+
+        // Function highlighting — structural, like Strudel's own CodeMirror
+        // editor: color every call by SHAPE, not from a fixed vocabulary, so
+        // any control/function (crush, size, …) highlights, known or not.
+        //   .method → chained call  (.lpf, .crush, .gain)
+        [/(\.)([a-zA-Z_$][\w$]*)/, ['delimiter', 'strudel.function']],
+        //   name(   → bare call     (s(, note(, stack()
+        [/\b([a-zA-Z_$][\w$]*)(?=\s*\()/, 'strudel.function'],
 
         // Numbers
         [/\b\d+(\.\d+)?\b/, 'number'],
