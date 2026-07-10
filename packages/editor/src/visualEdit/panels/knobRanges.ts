@@ -8,6 +8,7 @@
  *
  * Pure — no Monaco, no React.
  */
+import { STRUDEL_CONTROLS } from './strudelControls'
 
 export interface KnobRange {
   min: number
@@ -90,7 +91,25 @@ const RANGES: Record<string, KnobRange> = {
  * keep one knob per argument.
  */
 export function isKnownControl(method: string): boolean {
-  return Object.prototype.hasOwnProperty.call(RANGES, method)
+  // "Effectively unary" = either a real Strudel control (createParam → unary,
+  // full vocabulary in STRUDEL_CONTROLS) OR one of the unary range-table methods
+  // (slow/fast/degradeBy/…). Either way the call's extra numeric args are not
+  // independent dials, so the drawer caps it to one. Using the full control
+  // vocabulary (not just RANGES) closes the phantom-dial gap for controls we
+  // don't catalogue, e.g. `.chorus(0.5, 0, 100)` (#847).
+  return STRUDEL_CONTROLS.has(method) || Object.prototype.hasOwnProperty.call(RANGES, method)
+}
+
+/**
+ * Whether `method` is a genuine Strudel CONTROL (createParam). Only these carry
+ * the #844 range metadata in their extra args — grounded that a control ignores
+ * everything past its first argument (controls.mjs:50), so `.room(v, min, max)`
+ * plays as `.room(v)`. A unary range-table method that is NOT a control
+ * (slow/fast/…) is one-dial but NOT range-editable — we can't prove its extra
+ * args are ignored, so the popup stays off (never write args we don't model).
+ */
+export function isStrudelControl(method: string): boolean {
+  return STRUDEL_CONTROLS.has(method)
 }
 
 /** A nice round step ~1/100 of the span (e.g. 0.01, 0.1, 1, 10). */
@@ -107,9 +126,15 @@ function niceStep(span: number): number {
  * fight their intent. Guards a degenerate span (min === max) so the knob stays
  * usable, and orders the bounds so `(100, 0)` reads the same as `(0, 100)`.
  */
-export function customRange(min: number, max: number): KnobRange {
-  const lo = Math.min(min, max)
-  const hi = Math.max(min, max)
+export function customRange(min: number, max: number, value?: number): KnobRange {
+  let lo = Math.min(min, max)
+  let hi = Math.max(min, max)
+  // Keep the authored value representable — an out-of-bounds literal (e.g. a hand
+  // -typed `.room(150, 0, 100)`) widens the range rather than pinning the dial.
+  if (value !== undefined && Number.isFinite(value)) {
+    if (value < lo) lo = value
+    if (value > hi) hi = value
+  }
   const span = hi - lo || 1
   return { min: lo, max: hi, step: niceStep(span), scale: 'linear' }
 }
