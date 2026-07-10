@@ -8929,16 +8929,6 @@ type PatternKind = 'step' | 'roll' | null;
 /** which grid editor (if any) the chunk under the cursor maps to */
 declare function patternKind(chunk: ChunkInfo | null): PatternKind;
 
-/**
- * Per-method knob ranges for the Mixer (S4).
- *
- * Each numeric chain argument becomes a knob; the method name picks a sensible
- * range and step (gain 0..1, speed −2..2, lpf log 20..20k, …). Unknown methods
- * fall back to a range derived from the current value so any numeric literal is
- * still draggable — the user can always type an exact value in code.
- *
- * Pure — no Monaco, no React.
- */
 interface KnobRange {
     min: number;
     max: number;
@@ -8973,10 +8963,17 @@ interface KnobProps {
     onChange: (value: number) => void;
     /** when set, a small `×` removes this effect's call (#575) */
     onRemove?: () => void;
+    /** when set, double-clicking the dial opens an in-place popup to edit its
+     *  range; committing calls this with the new start/end (#844). Absent → the
+     *  dial isn't range-editable (e.g. a multi-arg function's real args). */
+    onRangeChange?: (min: number, max: number) => void;
+    /** when set, the popup shows a "Reset" that clears the custom range back to
+     *  the method default (#844). Absent → no custom range to reset. */
+    onRangeReset?: () => void;
     onGestureStart?: () => void;
     onGestureEnd?: () => void;
 }
-declare function Knob({ label, value, range, onChange, onRemove, onGestureStart, onGestureEnd, }: KnobProps): React.ReactElement;
+declare function Knob({ label, value, range, onChange, onRemove, onRangeChange, onRangeReset, onGestureStart, onGestureEnd, }: KnobProps): React.ReactElement;
 
 /**
  * Single source of truth for the visual-editing bottom-panel tab.
