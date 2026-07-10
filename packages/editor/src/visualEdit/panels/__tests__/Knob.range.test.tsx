@@ -69,4 +69,12 @@ describe('Knob — custom range popup (#844)', () => {
     fireEvent.doubleClick(screen.getByRole('slider'))
     expect(document.querySelector('[data-knob-range-popup]')).toBeNull()
   })
+
+  it('an outside mousedown dismisses the popup', () => {
+    render(<Knob label="room" value={0.25} range={RANGE} onChange={vi.fn()} onRangeChange={vi.fn()} />)
+    fireEvent.doubleClick(screen.getByRole('slider'))
+    expect(document.querySelector('[data-knob-range-popup]')).not.toBeNull()
+    fireEvent.mouseDown(document.body)
+    expect(document.querySelector('[data-knob-range-popup]')).toBeNull()
+  })
 })

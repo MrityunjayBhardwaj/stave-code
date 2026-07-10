@@ -11,6 +11,7 @@
  * into one undo step.
  */
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import type { KnobRange } from './knobRanges'
 
 export interface KnobProps {
@@ -75,6 +76,14 @@ export function Knob({
   const [editing, setEditing] = React.useState(false)
   const [draftMin, setDraftMin] = React.useState('')
   const [draftMax, setDraftMax] = React.useState('')
+  // The popup is portaled to <body> and positioned off the dial's viewport rect:
+  // the Mixer console drawer is `overflow:hidden`, so an in-flow absolute popup
+  // would be clipped (same reason AddEffectMenu portals — #844 review).
+  const [popupPos, setPopupPos] = React.useState<{ top: number; left: number } | null>(null)
+  const sliderRef = React.useRef<HTMLDivElement>(null)
+  const popupRef = React.useRef<HTMLDivElement>(null)
+
+  const POPUP_W = 132
 
   const openRangeEditor = (): void => {
     if (!onRangeChange) return
@@ -92,6 +101,48 @@ export function Knob({
     }
     setEditing(false)
   }
+
+  // Place the portal off the dial's rect; flip above when cramped below.
+  React.useLayoutEffect(() => {
+    if (!editing) return
+    const r = sliderRef.current?.getBoundingClientRect()
+    if (!r) return
+    const margin = 8
+    const height = 96 // approx popup height for the flip decision
+    const openUp = window.innerHeight - r.bottom - margin < height && r.top > height
+    setPopupPos({
+      top: openUp ? Math.max(margin, r.top - 4 - height) : r.bottom + 4,
+      left: Math.max(
+        margin,
+        Math.min(r.left + r.width / 2 - POPUP_W / 2, window.innerWidth - POPUP_W - margin),
+      ),
+    })
+  }, [editing])
+
+  // Dismiss on outside click, Escape, resize, or any ancestor scroll — a fixed
+  // popup would otherwise drift from the dial (mirrors AddEffectMenu).
+  React.useEffect(() => {
+    if (!editing) return
+    const onDown = (e: MouseEvent): void => {
+      const t = e.target as Node
+      if (sliderRef.current?.contains(t) || popupRef.current?.contains(t)) return
+      setEditing(false)
+    }
+    const dismiss = (): void => setEditing(false)
+    const onScroll = (e: Event): void => {
+      const t = e.target
+      if (t instanceof Node && popupRef.current?.contains(t)) return
+      setEditing(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('resize', dismiss)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      window.removeEventListener('resize', dismiss)
+      window.removeEventListener('scroll', onScroll, true)
+    }
+  }, [editing])
 
   const pos = Math.max(0, Math.min(1, toPosition(value, range)))
   // sweep the indicator across a 270° arc (−135° … +135°)
@@ -176,6 +227,7 @@ export function Knob({
         </button>
       )}
       <div
+        ref={sliderRef}
         role="slider"
         tabIndex={0}
         aria-label={label}
@@ -238,18 +290,20 @@ export function Knob({
       >
         {value}
       </span>
-      {editing && (
+      {editing &&
+        createPortal(
         <div
+          ref={popupRef}
           data-knob-range-popup={label}
           // Own pointer/keys: stop a stray drag from starting on the parent knob,
           // and keep Escape/Enter local to the popup.
           onPointerDown={(e) => e.stopPropagation()}
           style={{
-            position: 'absolute',
-            top: 44,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 20,
+            position: 'fixed',
+            top: popupPos?.top ?? 0,
+            left: popupPos?.left ?? 0,
+            width: POPUP_W,
+            zIndex: 1000,
             display: 'flex',
             flexDirection: 'column',
             gap: 6,
@@ -257,7 +311,7 @@ export function Knob({
             borderRadius: 6,
             border: '1px solid var(--border, #3a3a42)',
             background: 'var(--background, #1c1c20)',
-            boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
           }}
         >
           <div style={{ display: 'flex', gap: 6 }}>
@@ -335,8 +389,9 @@ export function Knob({
               </button>
             )}
           </div>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   )
 }

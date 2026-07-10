@@ -29187,6 +29187,10 @@ function Knob({
   const [editing, setEditing] = React36.useState(false);
   const [draftMin, setDraftMin] = React36.useState("");
   const [draftMax, setDraftMax] = React36.useState("");
+  const [popupPos, setPopupPos] = React36.useState(null);
+  const sliderRef = React36.useRef(null);
+  const popupRef = React36.useRef(null);
+  const POPUP_W = 132;
   const openRangeEditor = /* @__PURE__ */ __name(() => {
     if (!onRangeChange) return;
     setDraftMin(String(range2.min));
@@ -29201,6 +29205,43 @@ function Knob({
     }
     setEditing(false);
   }, "commitRange");
+  React36.useLayoutEffect(() => {
+    if (!editing) return;
+    const r = sliderRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const margin = 8;
+    const height = 96;
+    const openUp = window.innerHeight - r.bottom - margin < height && r.top > height;
+    setPopupPos({
+      top: openUp ? Math.max(margin, r.top - 4 - height) : r.bottom + 4,
+      left: Math.max(
+        margin,
+        Math.min(r.left + r.width / 2 - POPUP_W / 2, window.innerWidth - POPUP_W - margin)
+      )
+    });
+  }, [editing]);
+  React36.useEffect(() => {
+    if (!editing) return;
+    const onDown = /* @__PURE__ */ __name((e) => {
+      const t = e.target;
+      if (sliderRef.current?.contains(t) || popupRef.current?.contains(t)) return;
+      setEditing(false);
+    }, "onDown");
+    const dismiss = /* @__PURE__ */ __name(() => setEditing(false), "dismiss");
+    const onScroll = /* @__PURE__ */ __name((e) => {
+      const t = e.target;
+      if (t instanceof Node && popupRef.current?.contains(t)) return;
+      setEditing(false);
+    }, "onScroll");
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [editing]);
   const pos = Math.max(0, Math.min(1, toPosition(value, range2)));
   const angle = -135 + pos * 270;
   const onPointerDown = /* @__PURE__ */ __name((e) => {
@@ -29281,6 +29322,7 @@ function Knob({
         /* @__PURE__ */ jsx(
           "div",
           {
+            ref: sliderRef,
             role: "slider",
             tabIndex: 0,
             "aria-label": label,
@@ -29349,105 +29391,109 @@ function Knob({
             children: value
           }
         ),
-        editing && /* @__PURE__ */ jsxs(
-          "div",
-          {
-            "data-knob-range-popup": label,
-            onPointerDown: (e) => e.stopPropagation(),
-            style: {
-              position: "absolute",
-              top: 44,
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 20,
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              padding: 8,
-              borderRadius: 6,
-              border: "1px solid var(--border, #3a3a42)",
-              background: "var(--background, #1c1c20)",
-              boxShadow: "0 4px 14px rgba(0,0,0,0.4)"
-            },
-            children: [
-              /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 6 }, children: ["min", "max"].map((which) => /* @__PURE__ */ jsxs(
-                "label",
-                {
-                  style: { display: "flex", flexDirection: "column", gap: 2, fontSize: 9 },
-                  children: [
-                    /* @__PURE__ */ jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: which === "min" ? "Start" : "End" }),
-                    /* @__PURE__ */ jsx(
-                      "input",
-                      {
-                        "data-knob-range-input": which,
-                        type: "number",
-                        autoFocus: which === "min",
-                        value: which === "min" ? draftMin : draftMax,
-                        onChange: (e) => (which === "min" ? setDraftMin : setDraftMax)(e.target.value),
-                        onKeyDown: (e) => {
-                          if (e.key === "Enter") commitRange();
-                          else if (e.key === "Escape") setEditing(false);
-                        },
-                        style: {
-                          width: 52,
-                          padding: "3px 5px",
-                          fontSize: 11,
-                          borderRadius: 4,
-                          border: "1px solid var(--border, #3a3a42)",
-                          background: "var(--background-elevated, #26262c)",
-                          color: "var(--foreground, #e6e6ea)"
+        editing && createPortal(
+          /* @__PURE__ */ jsxs(
+            "div",
+            {
+              ref: popupRef,
+              "data-knob-range-popup": label,
+              onPointerDown: (e) => e.stopPropagation(),
+              style: {
+                position: "fixed",
+                top: popupPos?.top ?? 0,
+                left: popupPos?.left ?? 0,
+                width: POPUP_W,
+                zIndex: 1e3,
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                padding: 8,
+                borderRadius: 6,
+                border: "1px solid var(--border, #3a3a42)",
+                background: "var(--background, #1c1c20)",
+                boxShadow: "0 6px 20px rgba(0,0,0,0.4)"
+              },
+              children: [
+                /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 6 }, children: ["min", "max"].map((which) => /* @__PURE__ */ jsxs(
+                  "label",
+                  {
+                    style: { display: "flex", flexDirection: "column", gap: 2, fontSize: 9 },
+                    children: [
+                      /* @__PURE__ */ jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: which === "min" ? "Start" : "End" }),
+                      /* @__PURE__ */ jsx(
+                        "input",
+                        {
+                          "data-knob-range-input": which,
+                          type: "number",
+                          autoFocus: which === "min",
+                          value: which === "min" ? draftMin : draftMax,
+                          onChange: (e) => (which === "min" ? setDraftMin : setDraftMax)(e.target.value),
+                          onKeyDown: (e) => {
+                            if (e.key === "Enter") commitRange();
+                            else if (e.key === "Escape") setEditing(false);
+                          },
+                          style: {
+                            width: 52,
+                            padding: "3px 5px",
+                            fontSize: 11,
+                            borderRadius: 4,
+                            border: "1px solid var(--border, #3a3a42)",
+                            background: "var(--background-elevated, #26262c)",
+                            color: "var(--foreground, #e6e6ea)"
+                          }
                         }
-                      }
-                    )
-                  ]
-                },
-                which
-              )) }),
-              /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, justifyContent: "space-between" }, children: [
-                /* @__PURE__ */ jsx(
-                  "button",
-                  {
-                    type: "button",
-                    "data-knob-range-apply": label,
-                    onClick: commitRange,
-                    style: {
-                      flex: 1,
-                      padding: "3px 8px",
-                      fontSize: 11,
-                      borderRadius: 4,
-                      cursor: "pointer",
-                      border: "1px solid var(--accent, #6ea8fe)",
-                      background: "var(--accent, #6ea8fe)",
-                      color: "#0b0b0e"
-                    },
-                    children: "Apply"
-                  }
-                ),
-                onRangeReset && /* @__PURE__ */ jsx(
-                  "button",
-                  {
-                    type: "button",
-                    "data-knob-range-reset": label,
-                    title: "Reset to default range",
-                    onClick: () => {
-                      onRangeReset();
-                      setEditing(false);
-                    },
-                    style: {
-                      padding: "3px 8px",
-                      fontSize: 11,
-                      borderRadius: 4,
-                      cursor: "pointer",
-                      border: "1px solid var(--border, #3a3a42)",
-                      background: "var(--background-elevated, #26262c)",
-                      color: "var(--foreground-muted, #a0a0aa)"
-                    },
-                    children: "Reset"
-                  }
-                )
-              ] })
-            ]
-          }
+                      )
+                    ]
+                  },
+                  which
+                )) }),
+                /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, justifyContent: "space-between" }, children: [
+                  /* @__PURE__ */ jsx(
+                    "button",
+                    {
+                      type: "button",
+                      "data-knob-range-apply": label,
+                      onClick: commitRange,
+                      style: {
+                        flex: 1,
+                        padding: "3px 8px",
+                        fontSize: 11,
+                        borderRadius: 4,
+                        cursor: "pointer",
+                        border: "1px solid var(--accent, #6ea8fe)",
+                        background: "var(--accent, #6ea8fe)",
+                        color: "#0b0b0e"
+                      },
+                      children: "Apply"
+                    }
+                  ),
+                  onRangeReset && /* @__PURE__ */ jsx(
+                    "button",
+                    {
+                      type: "button",
+                      "data-knob-range-reset": label,
+                      title: "Reset to default range",
+                      onClick: () => {
+                        onRangeReset();
+                        setEditing(false);
+                      },
+                      style: {
+                        padding: "3px 8px",
+                        fontSize: 11,
+                        borderRadius: 4,
+                        cursor: "pointer",
+                        border: "1px solid var(--border, #3a3a42)",
+                        background: "var(--background-elevated, #26262c)",
+                        color: "var(--foreground-muted, #a0a0aa)"
+                      },
+                      children: "Reset"
+                    }
+                  )
+                ] })
+              ]
+            }
+          ),
+          document.body
         )
       ]
     }
