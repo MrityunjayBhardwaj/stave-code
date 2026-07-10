@@ -8929,16 +8929,6 @@ type PatternKind = 'step' | 'roll' | null;
 /** which grid editor (if any) the chunk under the cursor maps to */
 declare function patternKind(chunk: ChunkInfo | null): PatternKind;
 
-/**
- * Per-method knob ranges for the Mixer (S4).
- *
- * Each numeric chain argument becomes a knob; the method name picks a sensible
- * range and step (gain 0..1, speed −2..2, lpf log 20..20k, …). Unknown methods
- * fall back to a range derived from the current value so any numeric literal is
- * still draggable — the user can always type an exact value in code.
- *
- * Pure — no Monaco, no React.
- */
 interface KnobRange {
     min: number;
     max: number;

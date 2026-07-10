@@ -20,7 +20,7 @@ import * as React from 'react'
 import { type ChunkInfo, type ChainCall } from '../chunkDetect'
 import { type Writeback, type OffsetEdit, formatNumber } from '../writeback'
 import { Knob } from './Knob'
-import { knobRangeFor, isKnownControl, customRange } from './knobRanges'
+import { knobRangeFor, isKnownControl, isStrudelControl, customRange } from './knobRanges'
 import { FAVORITES, isEffectActive, effectNames, type Effect } from './effectCatalog'
 import { AddEffectMenu } from './AddEffectMenu'
 import { SoundPickerMenu } from './SoundPickerMenu'
@@ -49,13 +49,28 @@ interface KnobEntry {
   rangeEditable: boolean
 }
 
-/** The dial range a control carries as `.control(value, min, max)` — both extra
- *  args must be numeric literals, else the dial keeps its default range. */
-function readCustomRange(call: ChainCall): { min: number; max: number } | undefined {
-  const min = call.args[1]?.numeric
-  const max = call.args[2]?.numeric
-  if (min == null || max == null) return undefined
-  return { min, max }
+/**
+ * What a control's extra args mean for its dial (#844/#847). The guardrail: only
+ * a shape we fully model is acted on — anything else is INERT, so unsupported
+ * code in the text never spawns a broken dial nor lets the popup clobber it.
+ *
+ *  - 0 extra args → no custom range, but editable (double-click can ADD one).
+ *  - exactly 2 FINITE numeric literals → that's the range; editable.
+ *  - 1, 3+, or any non-numeric / non-finite slot → we don't model it: no custom
+ *    range AND not editable (the range popup can't overwrite a signal/expr or
+ *    extra args we didn't author).
+ */
+function rangeInfo(call: ChainCall): { customRange?: { min: number; max: number }; editable: boolean } {
+  const extra = call.args.slice(1)
+  if (extra.length === 0) return { editable: true }
+  if (extra.length === 2) {
+    const min = extra[0].numeric
+    const max = extra[1].numeric
+    if (min != null && max != null && Number.isFinite(min) && Number.isFinite(max)) {
+      return { customRange: { min, max }, editable: true }
+    }
+  }
+  return { editable: false }
 }
 
 /**
@@ -110,10 +125,13 @@ export function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry
     // phantom "room 2"/"room 3" that edits a literal with no audible effect (#842).
     // Genuinely multi-arg functions (euclid, range, …) aren't controls → one knob
     // per numeric arg, as before.
+    // A control (or unary range-table method) is ONE dial — extra numeric args
+    // aren't independent dials (#842). Only a genuine Strudel control can carry
+    // range metadata in those extra args (#844); a range-table-only method
+    // (slow/fast/…) is one-dial but not range-editable (#847).
     const isControl = isKnownControl(call.name)
     const dialArgs = isControl ? numericArgs.slice(0, 1) : numericArgs
-    // A control's args 2+ are its dial range (#844), not extra dials.
-    const range = isControl ? readCustomRange(call) : undefined
+    const info = isStrudelControl(call.name) ? rangeInfo(call) : { editable: false }
     dialArgs.forEach(({ a, argIndex }) => {
       knobs.push({
         chainIndex,
@@ -122,8 +140,8 @@ export function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry
         // disambiguate when a single call exposes several numeric knobs
         label: dialArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
         value: a.numeric as number,
-        customRange: range,
-        rangeEditable: isControl,
+        customRange: info.customRange,
+        rangeEditable: info.editable,
       })
     })
   })
@@ -507,7 +525,7 @@ export function MixerBody({
               value={k.value}
               range={
                 k.customRange
-                  ? customRange(k.customRange.min, k.customRange.max)
+                  ? customRange(k.customRange.min, k.customRange.max, k.value)
                   : knobRangeFor(k.method, k.value)
               }
               onChange={(v) => writeKnob(k, v)}
