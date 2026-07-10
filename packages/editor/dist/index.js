@@ -21528,13 +21528,29 @@ function ensureWorkspaceLanguages(monaco) {
   ensureProviders("viz-inputs-glsl", monaco, (m) => registerVizInputsHover(m, "glsl", "glsl"));
 }
 __name(ensureWorkspaceLanguages, "ensureWorkspaceLanguages");
-var providersRegistered = {};
+var PROVIDERS_GUARD_KEY = "__staveProvidersRegistered";
+function registeredProviderKeys(monaco) {
+  const holder = monaco;
+  let set = holder[PROVIDERS_GUARD_KEY];
+  if (!set) {
+    set = /* @__PURE__ */ new Set();
+    Object.defineProperty(monaco, PROVIDERS_GUARD_KEY, {
+      value: set,
+      enumerable: false,
+      configurable: true,
+      writable: false
+    });
+  }
+  return set;
+}
+__name(registeredProviderKeys, "registeredProviderKeys");
 function ensureProviders(key2, monaco, register) {
-  if (providersRegistered[key2]) return;
   if (typeof monaco.languages?.registerCompletionItemProvider !== "function" || typeof monaco.languages?.registerHoverProvider !== "function") {
     return;
   }
-  providersRegistered[key2] = true;
+  const registered = registeredProviderKeys(monaco);
+  if (registered.has(key2)) return;
+  registered.add(key2);
   register(monaco);
 }
 __name(ensureProviders, "ensureProviders");

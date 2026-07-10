@@ -472,27 +472,52 @@ export function ensureWorkspaceLanguages(monaco: typeof Monaco): void {
   ensureProviders('viz-inputs-glsl', monaco, (m) => registerVizInputsHover(m, 'glsl', 'glsl'))
 }
 
-// Per-runtime idempotency flags so `ensureWorkspaceLanguages` is safe on
-// every EditorView mount. Monaco's provider registry is append-only per
-// invocation — without the guard, mounting N editors would register N
-// copies of each provider.
-const providersRegistered: Record<string, boolean> = {}
+// Per-runtime idempotency for `ensureWorkspaceLanguages` — safe on every
+// EditorView mount. Monaco's provider registry is append-only, so without a
+// guard, mounting N editors (or surviving N Fast-Refresh cycles) would stack
+// N copies of each provider and Monaco would render every one — e.g. a hover
+// doc repeated N times back-to-back (#840).
+//
+// The guard is stashed ON the Monaco instance, not in module scope: the
+// providers live on the Monaco global, which persists across React Fast
+// Refresh, whereas a module-level flag resets on every module re-eval and
+// falls out of sync with the still-live registry (the #840 root cause).
+// Co-locating the guard with what it guards keeps the two in lockstep across
+// hot reloads and any duplicate module instances.
+const PROVIDERS_GUARD_KEY = '__staveProvidersRegistered'
+
+function registeredProviderKeys(monaco: typeof Monaco): Set<string> {
+  const holder = monaco as unknown as { [PROVIDERS_GUARD_KEY]?: Set<string> }
+  let set = holder[PROVIDERS_GUARD_KEY]
+  if (!set) {
+    set = new Set<string>()
+    Object.defineProperty(monaco, PROVIDERS_GUARD_KEY, {
+      value: set,
+      enumerable: false,
+      configurable: true,
+      writable: false,
+    })
+  }
+  return set
+}
 
 function ensureProviders(
   key: string,
   monaco: typeof Monaco,
   register: (m: typeof Monaco) => void,
 ): void {
-  if (providersRegistered[key]) return
   // Tests use a thin Monaco mock — skip when the required APIs are
-  // absent rather than crashing on `undefined is not a function`.
+  // absent rather than crashing on `undefined is not a function`. Checked
+  // before touching the guard so a thin mock never gets the stashed marker.
   if (
     typeof monaco.languages?.registerCompletionItemProvider !== 'function' ||
     typeof monaco.languages?.registerHoverProvider !== 'function'
   ) {
     return
   }
-  providersRegistered[key] = true
+  const registered = registeredProviderKeys(monaco)
+  if (registered.has(key)) return
+  registered.add(key)
   register(monaco)
 }
 
@@ -521,17 +546,17 @@ export function toMonacoLanguage(lang: WorkspaceLanguage): string {
 }
 
 /**
- * TESTING ONLY — reset the idempotency guards so a fresh Monaco instance
- * (test fixture) can re-register the inline `hydra` / `p5js` languages.
- * Does NOT reset `registerStrudelLanguage` / `registerSonicPiLanguage` —
- * those helpers own their own guards and are stable enough across tests
- * that resetting them has never been needed. Not exported from the barrel.
+ * TESTING ONLY — reset the inline-language idempotency flags so a fresh Monaco
+ * instance (test fixture) can re-register the inline `hydra` / `p5js` / `glsl`
+ * languages. Does NOT reset `registerStrudelLanguage` / `registerSonicPiLanguage`
+ * — those helpers own their own guards and are stable enough across tests that
+ * resetting them has never been needed. The provider guard needs no reset here:
+ * it lives on the Monaco instance (see `registeredProviderKeys`), so a fresh
+ * Monaco fixture starts with a clean guard automatically. Not exported from the
+ * barrel.
  */
 export function __resetWorkspaceLanguagesForTests(): void {
   hydraRegistered = false
   p5jsRegistered = false
   glslRegistered = false
-  for (const k of Object.keys(providersRegistered)) {
-    providersRegistered[k] = false
-  }
 }
