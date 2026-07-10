@@ -95,3 +95,29 @@ test('mini-notation: every element colored, sample index, and backtick strings (
     expect(typeOf(n), `backtick ${n} should be mini.note`).toContain('strudel.mini.note')
   }
 })
+
+test('JS syntax: keywords / identifiers / operators are distinct (#853)', async ({ page }) => {
+  await boot(page)
+  const code = [
+    'let bpm = 120',
+    'const melody = note("c3 e3").every(4, x => x.fast(2))',
+  ].join('\n')
+  await setStrudelCode(page, code)
+  const tokens = await tokenTypes(page, code)
+  const typeOf = (text: string): string | undefined => tokens.find((t) => t.text === text)?.type
+
+  // Keywords (borrowed from Monaco's list) color as keyword…
+  expect(typeOf('let')).toContain('keyword')
+  expect(typeOf('const')).toContain('keyword')
+  // …distinct from plain variables, which are identifiers.
+  expect(typeOf('bpm')).toContain('identifier')
+  expect(typeOf('melody')).toContain('identifier')
+  expect(typeOf('x')).toContain('identifier')
+  // Operators get the operator color (`=`, `=>`).
+  expect(typeOf('=')).toContain('keyword.operator')
+  expect(typeOf('=>')).toContain('keyword.operator')
+  // Strudel functions still win over the identifier rule.
+  expect(typeOf('note')).toContain('strudel.function')
+  expect(typeOf('every')).toContain('strudel.function')
+  expect(typeOf('fast')).toContain('strudel.function')
+})
