@@ -1,6 +1,7 @@
 import type * as Monaco from 'monaco-editor'
 import { SONICPI_DOCS_INDEX } from './docs/sonicpi'
 import { buildIdentifierAlternation } from './docs/tokenizer-utils'
+import { JS_KEYWORDS } from './jsKeywords'
 
 export function registerSonicPiLanguage(monaco: typeof Monaco): void {
   const langs = monaco.languages.getLanguages()
@@ -144,10 +145,9 @@ export function registerStrudelLanguage(monaco: typeof Monaco): void {
     defaultToken: '',
     tokenPostfix: '.strudel',
 
-    keywords: [
-      'const', 'let', 'var', 'await', 'async', 'return', 'if', 'else',
-      'for', 'while', 'function', 'class', 'import', 'export', 'from',
-    ],
+    // Keyword list is borrowed from Monaco's own JS/TS grammar (generated into
+    // jsKeywords.ts), not hand-maintained. Used by the `@keywords` cases below.
+    keywords: [...JS_KEYWORDS],
 
     tokenizer: {
       root: [
@@ -160,15 +160,8 @@ export function registerStrudelLanguage(monaco: typeof Monaco): void {
         // Note names: c3, eb4, f#2, C#5
         [/\b[a-gA-G][b#]?\d\b/, 'strudel.note'],
 
-        // JS keywords — before the structural call rules so `if (`, `for (`,
-        // `function (` stay keywords instead of being colored as calls.
-        [
-          /\b(const|let|var|await|async|return|if|else|for|while|function|class|import|export|from)\b/,
-          'keyword',
-        ],
-
-        // Comments — before the call rules so a `// gain(0.5)` line isn't
-        // tokenized as a call inside the comment.
+        // Comments — before the call/identifier rules so a `// gain(0.5)` line
+        // isn't tokenized as a call inside the comment.
         [/\/\/.*$/, 'comment'],
         [/\/\*/, 'comment', '@block_comment'],
 
@@ -178,15 +171,31 @@ export function registerStrudelLanguage(monaco: typeof Monaco): void {
         [/`/, 'string', '@template_string'],
 
         // Function highlighting — structural, like Strudel's own CodeMirror
-        // editor: color every call by SHAPE, not from a fixed vocabulary, so
-        // any control/function (crush, size, …) highlights, known or not.
+        // editor: color every call by SHAPE, not from a fixed vocabulary. The
+        // `@keywords` case lets Monaco's own keyword list veto function-coloring,
+        // so `if (`, `for (` stay keywords rather than calls.
         //   .method → chained call  (.lpf, .crush, .gain)
         [/(\.)([a-zA-Z_$][\w$]*)/, ['delimiter', 'strudel.function']],
         //   name(   → bare call     (s(, note(, stack()
-        [/\b([a-zA-Z_$][\w$]*)(?=\s*\()/, 'strudel.function'],
+        [
+          /\b([a-zA-Z_$][\w$]*)(?=\s*\()/,
+          { cases: { '@keywords': 'keyword', '@default': 'strudel.function' } },
+        ],
+
+        // Remaining identifiers: a JS keyword (const, let, true, …) or a plain
+        // variable name. Keeps keywords distinct from variables.
+        [
+          /\b[a-zA-Z_$][\w$]*\b/,
+          { cases: { '@keywords': 'keyword', '@default': 'identifier' } },
+        ],
 
         // Numbers
         [/\b\d+(\.\d+)?\b/, 'number'],
+
+        // JS operators & separators. Brackets are left to Monaco's bracket-pair
+        // colorization. No regex-literal handling — avoids the `/` misfire.
+        [/[=+\-*/%<>!&|?:~^]+/, 'keyword.operator'],
+        [/[,;]/, 'delimiter'],
       ],
 
       block_comment: [
