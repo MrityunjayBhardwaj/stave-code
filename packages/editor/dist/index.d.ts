@@ -8973,10 +8973,17 @@ interface KnobProps {
     onChange: (value: number) => void;
     /** when set, a small `×` removes this effect's call (#575) */
     onRemove?: () => void;
+    /** when set, double-clicking the dial opens an in-place popup to edit its
+     *  range; committing calls this with the new start/end (#844). Absent → the
+     *  dial isn't range-editable (e.g. a multi-arg function's real args). */
+    onRangeChange?: (min: number, max: number) => void;
+    /** when set, the popup shows a "Reset" that clears the custom range back to
+     *  the method default (#844). Absent → no custom range to reset. */
+    onRangeReset?: () => void;
     onGestureStart?: () => void;
     onGestureEnd?: () => void;
 }
-declare function Knob({ label, value, range, onChange, onRemove, onGestureStart, onGestureEnd, }: KnobProps): React.ReactElement;
+declare function Knob({ label, value, range, onChange, onRemove, onRangeChange, onRangeReset, onGestureStart, onGestureEnd, }: KnobProps): React.ReactElement;
 
 /**
  * Single source of truth for the visual-editing bottom-panel tab.
