@@ -195,25 +195,49 @@ export function registerStrudelLanguage(monaco: typeof Monaco): void {
         [/[/*]/, 'comment'],
       ],
 
+      // Mini-notation states. The whitespace + word rules are what let EVERY
+      // element re-enter the note/operator/number rules — a greedy `[^"]+`
+      // fallback would otherwise swallow the rest of the string after the
+      // first token (so `"c3 e3 g3"` only colored `c3`). Operator class covers
+      // `:` (sample index, bd:3), `-` (rest) and `.` (subdivision) too.
       mini_string_double: [
-        [/[~*!%?@<>\[\]{}|,_]/, 'strudel.mini.operator'],
+        [/[~*!%?@<>\[\]{}|,_:.\-]/, 'strudel.mini.operator'],
         [/[a-gA-G][b#]?\d?/, 'strudel.mini.note'],
         [/\d+(\.\d+)?/, 'strudel.mini.number'],
+        [/\s+/, 'white'],
+        [/[a-zA-Z][\w]*/, 'string'], // sample/word names (hh, sawtooth, …)
         [/"/, 'string', '@pop'],
-        [/[^"]+/, 'string'],
+        [/[^"]/, 'string'],
       ],
 
       mini_string_single: [
-        [/[~*!%?@<>\[\]{}|,_]/, 'strudel.mini.operator'],
+        [/[~*!%?@<>\[\]{}|,_:.\-]/, 'strudel.mini.operator'],
         [/[a-gA-G][b#]?\d?/, 'strudel.mini.note'],
         [/\d+(\.\d+)?/, 'strudel.mini.number'],
+        [/\s+/, 'white'],
+        [/[a-zA-Z][\w]*/, 'string'],
         [/'/, 'string', '@pop'],
-        [/[^']+/, 'string'],
+        [/[^']/, 'string'],
       ],
 
+      // Backtick strings are Strudel's multi-line mini-notation form, so they
+      // tokenize like the quoted ones — plus `${…}` interpolation, which drops
+      // to `root` for normal JS/Strudel highlighting.
       template_string: [
+        [/\$\{/, { token: 'delimiter.strudel', next: '@template_interp' }],
+        [/[~*!%?@<>\[\]{}|,_:.\-]/, 'strudel.mini.operator'],
+        [/[a-gA-G][b#]?\d?/, 'strudel.mini.note'],
+        [/\d+(\.\d+)?/, 'strudel.mini.number'],
+        [/\s+/, 'white'],
+        [/[a-zA-Z][\w]*/, 'string'],
         [/`/, 'string', '@pop'],
-        [/[^`]+/, 'string'],
+        [/[^`$]/, 'string'],
+        [/\$/, 'string'],
+      ],
+
+      template_interp: [
+        [/\}/, { token: 'delimiter.strudel', next: '@pop' }],
+        { include: 'root' },
       ],
     },
   })

@@ -72,3 +72,26 @@ test('colors controls absent from the docs vocab, keeps comments/mini intact', a
   // Comments keep priority: `gain(` inside a comment is NOT a function.
   expect(tokens.find((t) => t.text.includes('gain'))?.type).toContain('comment')
 })
+
+test('mini-notation: every element colored, sample index, and backtick strings (#851)', async ({ page }) => {
+  await boot(page)
+  const code = [
+    'note("c3 e3 g3")',   // #851: e3/g3 were swallowed by the greedy fallback
+    's("bd:3 hh*2")',      // #851: `:` sample index is an operator
+    'note(`a3 c4 e4`)',    // #851: backtick strings tokenize as mini-notation
+  ].join('\n')
+  await setStrudelCode(page, code)
+  const tokens = await tokenTypes(page, code)
+  const typeOf = (text: string): string | undefined => tokens.find((t) => t.text === text)?.type
+
+  // Every note element re-enters the note rule — not just the first.
+  for (const n of ['c3', 'e3', 'g3']) {
+    expect(typeOf(n), `${n} should be mini.note`).toContain('strudel.mini.note')
+  }
+  // Sample-index `:` is an operator; the index digit is a number.
+  expect(typeOf(':')).toContain('strudel.mini.operator')
+  // Backtick (template) strings now tokenize as mini-notation too.
+  for (const n of ['a3', 'c4', 'e4']) {
+    expect(typeOf(n), `backtick ${n} should be mini.note`).toContain('strudel.mini.note')
+  }
+})
