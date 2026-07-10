@@ -20,6 +20,13 @@ export interface KnobProps {
   onChange: (value: number) => void
   /** when set, a small `×` removes this effect's call (#575) */
   onRemove?: () => void
+  /** when set, double-clicking the dial opens an in-place popup to edit its
+   *  range; committing calls this with the new start/end (#844). Absent → the
+   *  dial isn't range-editable (e.g. a multi-arg function's real args). */
+  onRangeChange?: (min: number, max: number) => void
+  /** when set, the popup shows a "Reset" that clears the custom range back to
+   *  the method default (#844). Absent → no custom range to reset. */
+  onRangeReset?: () => void
   onGestureStart?: () => void
   onGestureEnd?: () => void
 }
@@ -56,10 +63,35 @@ export function Knob({
   range,
   onChange,
   onRemove,
+  onRangeChange,
+  onRangeReset,
   onGestureStart,
   onGestureEnd,
 }: KnobProps): React.ReactElement {
   const dragRef = React.useRef<{ startY: number; startPos: number } | null>(null)
+
+  // Custom-range popup (#844): double-click the dial to edit its start/end. The
+  // draft strings mirror the two inputs; commit parses them and writes to code.
+  const [editing, setEditing] = React.useState(false)
+  const [draftMin, setDraftMin] = React.useState('')
+  const [draftMax, setDraftMax] = React.useState('')
+
+  const openRangeEditor = (): void => {
+    if (!onRangeChange) return
+    setDraftMin(String(range.min))
+    setDraftMax(String(range.max))
+    setEditing(true)
+  }
+
+  const commitRange = (): void => {
+    const min = Number(draftMin)
+    const max = Number(draftMax)
+    // Ignore a non-numeric or zero-span entry rather than writing junk into code.
+    if (Number.isFinite(min) && Number.isFinite(max) && min !== max) {
+      onRangeChange?.(min, max)
+    }
+    setEditing(false)
+  }
 
   const pos = Math.max(0, Math.min(1, toPosition(value, range)))
   // sweep the indicator across a 270° arc (−135° … +135°)
@@ -154,7 +186,9 @@ export function Knob({
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onDoubleClick={onRangeChange ? openRangeEditor : undefined}
         onKeyDown={onKeyDown}
+        title={onRangeChange ? 'Drag to change · double-click to set range' : undefined}
         style={{
           width: 40,
           height: 40,
@@ -204,6 +238,105 @@ export function Knob({
       >
         {value}
       </span>
+      {editing && (
+        <div
+          data-knob-range-popup={label}
+          // Own pointer/keys: stop a stray drag from starting on the parent knob,
+          // and keep Escape/Enter local to the popup.
+          onPointerDown={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            top: 44,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 20,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            padding: 8,
+            borderRadius: 6,
+            border: '1px solid var(--border, #3a3a42)',
+            background: 'var(--background, #1c1c20)',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+          }}
+        >
+          <div style={{ display: 'flex', gap: 6 }}>
+            {(['min', 'max'] as const).map((which) => (
+              <label
+                key={which}
+                style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 9 }}
+              >
+                <span style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>
+                  {which === 'min' ? 'Start' : 'End'}
+                </span>
+                <input
+                  data-knob-range-input={which}
+                  type="number"
+                  autoFocus={which === 'min'}
+                  value={which === 'min' ? draftMin : draftMax}
+                  onChange={(e) =>
+                    (which === 'min' ? setDraftMin : setDraftMax)(e.target.value)
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitRange()
+                    else if (e.key === 'Escape') setEditing(false)
+                  }}
+                  style={{
+                    width: 52,
+                    padding: '3px 5px',
+                    fontSize: 11,
+                    borderRadius: 4,
+                    border: '1px solid var(--border, #3a3a42)',
+                    background: 'var(--background-elevated, #26262c)',
+                    color: 'var(--foreground, #e6e6ea)',
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'space-between' }}>
+            <button
+              type="button"
+              data-knob-range-apply={label}
+              onClick={commitRange}
+              style={{
+                flex: 1,
+                padding: '3px 8px',
+                fontSize: 11,
+                borderRadius: 4,
+                cursor: 'pointer',
+                border: '1px solid var(--accent, #6ea8fe)',
+                background: 'var(--accent, #6ea8fe)',
+                color: '#0b0b0e',
+              }}
+            >
+              Apply
+            </button>
+            {onRangeReset && (
+              <button
+                type="button"
+                data-knob-range-reset={label}
+                title="Reset to default range"
+                onClick={() => {
+                  onRangeReset()
+                  setEditing(false)
+                }}
+                style={{
+                  padding: '3px 8px',
+                  fontSize: 11,
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  border: '1px solid var(--border, #3a3a42)',
+                  background: 'var(--background-elevated, #26262c)',
+                  color: 'var(--foreground-muted, #a0a0aa)',
+                }}
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

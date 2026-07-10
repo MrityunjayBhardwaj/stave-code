@@ -17,10 +17,10 @@
  */
 import * as React from 'react'
 
-import { type ChunkInfo } from '../chunkDetect'
-import { type Writeback, formatNumber } from '../writeback'
+import { type ChunkInfo, type ChainCall } from '../chunkDetect'
+import { type Writeback, type OffsetEdit, formatNumber } from '../writeback'
 import { Knob } from './Knob'
-import { knobRangeFor, isKnownControl } from './knobRanges'
+import { knobRangeFor, isKnownControl, customRange } from './knobRanges'
 import { FAVORITES, isEffectActive, effectNames, type Effect } from './effectCatalog'
 import { AddEffectMenu } from './AddEffectMenu'
 import { SoundPickerMenu } from './SoundPickerMenu'
@@ -40,6 +40,53 @@ interface KnobEntry {
   method: string
   label: string
   value: number
+  /** the user-authored dial range from `.control(value, min, max)` (#844), when
+   *  both extra args are present; undefined → the method's default range. */
+  customRange?: { min: number; max: number }
+  /** whether this dial's range can be edited via the double-click popup (#844).
+   *  Only single-value controls qualify — their args 2+ are Strudel-ignored, so
+   *  they can safely carry range metadata; a multi-arg function's args are real. */
+  rangeEditable: boolean
+}
+
+/** The dial range a control carries as `.control(value, min, max)` — both extra
+ *  args must be numeric literals, else the dial keeps its default range. */
+function readCustomRange(call: ChainCall): { min: number; max: number } | undefined {
+  const min = call.args[1]?.numeric
+  const max = call.args[2]?.numeric
+  if (min == null || max == null) return undefined
+  return { min, max }
+}
+
+/**
+ * The text edit that writes `min, max` into a control's range slots (#844):
+ * replace the existing extra-arg span in place, or insert `, min, max` right
+ * after the value arg when there is none. Pure — a `(range, text)` OffsetEdit,
+ * so it unit-tests against `applyEdits` with no Monaco.
+ */
+export function rangeArgsEdit(call: ChainCall, min: number, max: number): OffsetEdit {
+  const value = call.args[0]
+  const body = `${formatNumber(min)}, ${formatNumber(max)}`
+  const extra = call.args.slice(1)
+  if (extra.length > 0) {
+    // Replace whatever extra args exist with exactly two — normalises a lone or
+    // junk extra arg to a clean `min, max`. The leading `, ` before the first
+    // extra arg is outside the value arg's range, so it is preserved.
+    return { range: [extra[0].range[0], extra[extra.length - 1].range[1]], text: body }
+  }
+  return { range: [value.range[1], value.range[1]], text: `, ${body}` }
+}
+
+/**
+ * The text edit that clears a control's range back to `.control(value)` (#844):
+ * delete from the end of the value arg through the last extra arg (dropping the
+ * `, min, max`). Returns null when there is no range to remove. Pure.
+ */
+export function rangeResetEdit(call: ChainCall): OffsetEdit | null {
+  const value = call.args[0]
+  const extra = call.args.slice(1)
+  if (!value || extra.length === 0) return null
+  return { range: [value.range[1], extra[extra.length - 1].range[1]], text: '' }
 }
 
 /**
@@ -63,7 +110,10 @@ export function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry
     // phantom "room 2"/"room 3" that edits a literal with no audible effect (#842).
     // Genuinely multi-arg functions (euclid, range, …) aren't controls → one knob
     // per numeric arg, as before.
-    const dialArgs = isKnownControl(call.name) ? numericArgs.slice(0, 1) : numericArgs
+    const isControl = isKnownControl(call.name)
+    const dialArgs = isControl ? numericArgs.slice(0, 1) : numericArgs
+    // A control's args 2+ are its dial range (#844), not extra dials.
+    const range = isControl ? readCustomRange(call) : undefined
     dialArgs.forEach(({ a, argIndex }) => {
       knobs.push({
         chainIndex,
@@ -72,6 +122,8 @@ export function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry
         // disambiguate when a single call exposes several numeric knobs
         label: dialArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
         value: a.numeric as number,
+        customRange: range,
+        rangeEditable: isControl,
       })
     })
   })
@@ -221,6 +273,34 @@ export function MixerBody({
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex]
         if (!arg) return
         wb.replaceRange(arg.range, formatNumber(value), 'knob')
+      })
+    },
+    [applyEdit],
+  )
+
+  // Custom dial range (#844): the double-click popup writes `min, max` into the
+  // control's range slots — one tagged, one-undo text edit, bidirectionally
+  // linked (the strip re-derives from the text, so the dial re-ranges live).
+  const writeRange = React.useCallback(
+    (entry: KnobEntry, min: number, max: number): void => {
+      applyEdit((fresh, wb) => {
+        const call = fresh.chain[entry.chainIndex]
+        if (!call) return
+        const edit = rangeArgsEdit(call, min, max)
+        wb.replaceRange(edit.range, edit.text, 'knob')
+      })
+    },
+    [applyEdit],
+  )
+
+  // Reset the dial back to its default range — drop the `, min, max` metadata.
+  const resetRange = React.useCallback(
+    (entry: KnobEntry): void => {
+      applyEdit((fresh, wb) => {
+        const call = fresh.chain[entry.chainIndex]
+        if (!call) return
+        const edit = rangeResetEdit(call)
+        if (edit) wb.deleteRange(edit.range, 'knob')
       })
     },
     [applyEdit],
@@ -425,9 +505,17 @@ export function MixerBody({
               key={`${k.chainIndex}:${k.argIndex}`}
               label={k.label}
               value={k.value}
-              range={knobRangeFor(k.method, k.value)}
+              range={
+                k.customRange
+                  ? customRange(k.customRange.min, k.customRange.max)
+                  : knobRangeFor(k.method, k.value)
+              }
               onChange={(v) => writeKnob(k, v)}
               onRemove={() => removeMethod(k.method)}
+              onRangeChange={k.rangeEditable ? (min, max) => writeRange(k, min, max) : undefined}
+              onRangeReset={
+                k.rangeEditable && k.customRange ? () => resetRange(k) : undefined
+              }
               onGestureStart={beginGesture}
               onGestureEnd={endGesture}
             />

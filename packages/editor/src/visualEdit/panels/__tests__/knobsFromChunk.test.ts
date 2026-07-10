@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { detectAllChunks } from '../../chunkDetect'
-import { knobsFromChunk } from '../MixerBody'
+import { knobsFromChunk, rangeArgsEdit, rangeResetEdit } from '../MixerBody'
+import { applyEdits } from '../../writeback'
 
 /**
  * A known Strudel control is UNARY (controls.mjs:50 — the chainable prototype
@@ -51,5 +52,68 @@ describe('knobsFromChunk — one dial per known control (#842)', () => {
   it('pan and gain are still owned by the strip, not the drawer', () => {
     const knobs = knobsFor('$: s("bd").pan(0.3).gain(0.8).room(0.4)')
     expect(knobs.map((k) => k.method)).toEqual(['room'])
+  })
+})
+
+describe('custom dial range (#844)', () => {
+  it('reads a control range from .control(value, min, max)', () => {
+    const [k] = knobsFor('$: s("bd*4").room(0.25, 0, 100)')
+    expect(k.value).toBe(0.25)
+    expect(k.customRange).toEqual({ min: 0, max: 100 })
+    expect(k.rangeEditable).toBe(true)
+  })
+
+  it('a plain control is range-editable but carries no custom range yet', () => {
+    const [k] = knobsFor('$: s("bd*4").room(0.25)')
+    expect(k.customRange).toBeUndefined()
+    expect(k.rangeEditable).toBe(true)
+  })
+
+  it('a multi-arg function is NOT range-editable (its args are real)', () => {
+    const knobs = knobsFor('$: s("bd").euclid(3, 8)')
+    expect(knobs.every((k) => k.rangeEditable === false)).toBe(true)
+    expect(knobs.every((k) => k.customRange === undefined)).toBe(true)
+  })
+
+  // Write side — pure edits, verified by applying them to the source text.
+  function callOf(doc: string) {
+    return detectAllChunks(doc)[0].chain.find((c) => c.name === 'room')!
+  }
+
+  it('inserts "min, max" after the value when no range exists', () => {
+    const doc = '$: s("bd*4").room(0.25)'
+    const edit = rangeArgsEdit(callOf(doc), 0, 100)
+    expect(applyEdits(doc, [edit])).toBe('$: s("bd*4").room(0.25, 0, 100)')
+  })
+
+  it('replaces an existing range in place', () => {
+    const doc = '$: s("bd*4").room(0.25, 0, 100)'
+    const edit = rangeArgsEdit(callOf(doc), 20, 80)
+    expect(applyEdits(doc, [edit])).toBe('$: s("bd*4").room(0.25, 20, 80)')
+  })
+
+  it('normalises a lone extra arg to a clean min, max', () => {
+    const doc = '$: s("bd*4").room(0.25, 50)'
+    const edit = rangeArgsEdit(callOf(doc), 0, 100)
+    expect(applyEdits(doc, [edit])).toBe('$: s("bd*4").room(0.25, 0, 100)')
+  })
+
+  it('reset drops the range back to .control(value)', () => {
+    const doc = '$: s("bd*4").room(0.25, 0, 100)'
+    const edit = rangeResetEdit(callOf(doc))!
+    expect(applyEdits(doc, [edit])).toBe('$: s("bd*4").room(0.25)')
+  })
+
+  it('reset is a no-op (null) when there is no range', () => {
+    expect(rangeResetEdit(callOf('$: s("bd*4").room(0.25)'))).toBeNull()
+  })
+
+  it('round-trips: writing a range then re-parsing yields the same range', () => {
+    const doc = '$: s("bd*4").room(0.25)'
+    const written = applyEdits(doc, [rangeArgsEdit(callOf(doc), 10, 90)])
+    expect(knobsFromChunk(detectAllChunks(written)[0])[0].customRange).toEqual({
+      min: 10,
+      max: 90,
+    })
   })
 })

@@ -101,6 +101,20 @@ function niceStep(span: number): number {
 }
 
 /**
+ * A user-authored knob range from the custom-range feature (#844): the `min`/`max`
+ * a dial carries as `.control(value, min, max)`. Always linear — the user gave
+ * explicit bounds, so a log mapping (which the method's default might use) would
+ * fight their intent. Guards a degenerate span (min === max) so the knob stays
+ * usable, and orders the bounds so `(100, 0)` reads the same as `(0, 100)`.
+ */
+export function customRange(min: number, max: number): KnobRange {
+  const lo = Math.min(min, max)
+  const hi = Math.max(min, max)
+  const span = hi - lo || 1
+  return { min: lo, max: hi, step: niceStep(span), scale: 'linear' }
+}
+
+/**
  * The knob range for a method given the literal's current value. Known methods
  * use the override table; unknown methods get a range that comfortably
  * contains the current value so the knob is still usable.

@@ -29204,10 +29204,29 @@ function Knob({
   range: range2,
   onChange,
   onRemove,
+  onRangeChange,
+  onRangeReset,
   onGestureStart,
   onGestureEnd
 }) {
   const dragRef = React36__namespace.useRef(null);
+  const [editing, setEditing] = React36__namespace.useState(false);
+  const [draftMin, setDraftMin] = React36__namespace.useState("");
+  const [draftMax, setDraftMax] = React36__namespace.useState("");
+  const openRangeEditor = /* @__PURE__ */ __name(() => {
+    if (!onRangeChange) return;
+    setDraftMin(String(range2.min));
+    setDraftMax(String(range2.max));
+    setEditing(true);
+  }, "openRangeEditor");
+  const commitRange = /* @__PURE__ */ __name(() => {
+    const min = Number(draftMin);
+    const max = Number(draftMax);
+    if (Number.isFinite(min) && Number.isFinite(max) && min !== max) {
+      onRangeChange?.(min, max);
+    }
+    setEditing(false);
+  }, "commitRange");
   const pos = Math.max(0, Math.min(1, toPosition(value, range2)));
   const angle = -135 + pos * 270;
   const onPointerDown = /* @__PURE__ */ __name((e) => {
@@ -29298,7 +29317,9 @@ function Knob({
             onPointerMove,
             onPointerUp: endDrag,
             onPointerCancel: endDrag,
+            onDoubleClick: onRangeChange ? openRangeEditor : void 0,
             onKeyDown,
+            title: onRangeChange ? "Drag to change \xB7 double-click to set range" : void 0,
             style: {
               width: 40,
               height: 40,
@@ -29352,6 +29373,106 @@ function Knob({
               fontVariantNumeric: "tabular-nums"
             },
             children: value
+          }
+        ),
+        editing && /* @__PURE__ */ jsxRuntime.jsxs(
+          "div",
+          {
+            "data-knob-range-popup": label,
+            onPointerDown: (e) => e.stopPropagation(),
+            style: {
+              position: "absolute",
+              top: 44,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 20,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              padding: 8,
+              borderRadius: 6,
+              border: "1px solid var(--border, #3a3a42)",
+              background: "var(--background, #1c1c20)",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.4)"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 6 }, children: ["min", "max"].map((which) => /* @__PURE__ */ jsxRuntime.jsxs(
+                "label",
+                {
+                  style: { display: "flex", flexDirection: "column", gap: 2, fontSize: 9 },
+                  children: [
+                    /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: which === "min" ? "Start" : "End" }),
+                    /* @__PURE__ */ jsxRuntime.jsx(
+                      "input",
+                      {
+                        "data-knob-range-input": which,
+                        type: "number",
+                        autoFocus: which === "min",
+                        value: which === "min" ? draftMin : draftMax,
+                        onChange: (e) => (which === "min" ? setDraftMin : setDraftMax)(e.target.value),
+                        onKeyDown: (e) => {
+                          if (e.key === "Enter") commitRange();
+                          else if (e.key === "Escape") setEditing(false);
+                        },
+                        style: {
+                          width: 52,
+                          padding: "3px 5px",
+                          fontSize: 11,
+                          borderRadius: 4,
+                          border: "1px solid var(--border, #3a3a42)",
+                          background: "var(--background-elevated, #26262c)",
+                          color: "var(--foreground, #e6e6ea)"
+                        }
+                      }
+                    )
+                  ]
+                },
+                which
+              )) }),
+              /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 6, justifyContent: "space-between" }, children: [
+                /* @__PURE__ */ jsxRuntime.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "data-knob-range-apply": label,
+                    onClick: commitRange,
+                    style: {
+                      flex: 1,
+                      padding: "3px 8px",
+                      fontSize: 11,
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      border: "1px solid var(--accent, #6ea8fe)",
+                      background: "var(--accent, #6ea8fe)",
+                      color: "#0b0b0e"
+                    },
+                    children: "Apply"
+                  }
+                ),
+                onRangeReset && /* @__PURE__ */ jsxRuntime.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "data-knob-range-reset": label,
+                    title: "Reset to default range",
+                    onClick: () => {
+                      onRangeReset();
+                      setEditing(false);
+                    },
+                    style: {
+                      padding: "3px 8px",
+                      fontSize: 11,
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      border: "1px solid var(--border, #3a3a42)",
+                      background: "var(--background-elevated, #26262c)",
+                      color: "var(--foreground-muted, #a0a0aa)"
+                    },
+                    children: "Reset"
+                  }
+                )
+              ] })
+            ]
           }
         )
       ]
@@ -29425,6 +29546,13 @@ function niceStep(span) {
   return pow || 0.01;
 }
 __name(niceStep, "niceStep");
+function customRange(min, max) {
+  const lo = Math.min(min, max);
+  const hi = Math.max(min, max);
+  const span = hi - lo || 1;
+  return { min: lo, max: hi, step: niceStep(span), scale: "linear" };
+}
+__name(customRange, "customRange");
 function knobRangeFor(method, value) {
   const known = RANGES[method];
   if (known) {
@@ -30318,13 +30446,39 @@ var setDrumKitAccessor = drumKitStore.setAccessor;
 var notifyDrumKitChanged = drumKitStore.notify;
 drumKitStore.read;
 var useDrumKitCatalog = drumKitStore.useCatalog;
+function readCustomRange(call) {
+  const min = call.args[1]?.numeric;
+  const max = call.args[2]?.numeric;
+  if (min == null || max == null) return void 0;
+  return { min, max };
+}
+__name(readCustomRange, "readCustomRange");
+function rangeArgsEdit(call, min, max) {
+  const value = call.args[0];
+  const body = `${formatNumber(min)}, ${formatNumber(max)}`;
+  const extra = call.args.slice(1);
+  if (extra.length > 0) {
+    return { range: [extra[0].range[0], extra[extra.length - 1].range[1]], text: body };
+  }
+  return { range: [value.range[1], value.range[1]], text: `, ${body}` };
+}
+__name(rangeArgsEdit, "rangeArgsEdit");
+function rangeResetEdit(call) {
+  const value = call.args[0];
+  const extra = call.args.slice(1);
+  if (!value || extra.length === 0) return null;
+  return { range: [value.range[1], extra[extra.length - 1].range[1]], text: "" };
+}
+__name(rangeResetEdit, "rangeResetEdit");
 function knobsFromChunk(chunk, includeGain = false) {
   const knobs = [];
   chunk.chain.forEach((call, chainIndex) => {
     if (call.name === "pan") return;
     if (call.name === "gain" && !includeGain) return;
     const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);
-    const dialArgs = isKnownControl(call.name) ? numericArgs.slice(0, 1) : numericArgs;
+    const isControl = isKnownControl(call.name);
+    const dialArgs = isControl ? numericArgs.slice(0, 1) : numericArgs;
+    const range2 = isControl ? readCustomRange(call) : void 0;
     dialArgs.forEach(({ a, argIndex }) => {
       knobs.push({
         chainIndex,
@@ -30332,7 +30486,9 @@ function knobsFromChunk(chunk, includeGain = false) {
         method: call.name,
         // disambiguate when a single call exposes several numeric knobs
         label: dialArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
-        value: a.numeric
+        value: a.numeric,
+        customRange: range2,
+        rangeEditable: isControl
       });
     });
   });
@@ -30408,6 +30564,28 @@ function MixerBody({
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex];
         if (!arg) return;
         wb.replaceRange(arg.range, formatNumber(value), "knob");
+      });
+    },
+    [applyEdit]
+  );
+  const writeRange = React36__namespace.useCallback(
+    (entry, min, max) => {
+      applyEdit((fresh, wb) => {
+        const call = fresh.chain[entry.chainIndex];
+        if (!call) return;
+        const edit = rangeArgsEdit(call, min, max);
+        wb.replaceRange(edit.range, edit.text, "knob");
+      });
+    },
+    [applyEdit]
+  );
+  const resetRange = React36__namespace.useCallback(
+    (entry) => {
+      applyEdit((fresh, wb) => {
+        const call = fresh.chain[entry.chainIndex];
+        if (!call) return;
+        const edit = rangeResetEdit(call);
+        if (edit) wb.deleteRange(edit.range, "knob");
       });
     },
     [applyEdit]
@@ -30594,9 +30772,11 @@ function MixerBody({
               {
                 label: k.label,
                 value: k.value,
-                range: knobRangeFor(k.method, k.value),
+                range: k.customRange ? customRange(k.customRange.min, k.customRange.max) : knobRangeFor(k.method, k.value),
                 onChange: (v) => writeKnob(k, v),
                 onRemove: () => removeMethod(k.method),
+                onRangeChange: k.rangeEditable ? (min, max) => writeRange(k, min, max) : void 0,
+                onRangeReset: k.rangeEditable && k.customRange ? () => resetRange(k) : void 0,
                 onGestureStart: beginGesture,
                 onGestureEnd: endGesture
               },
