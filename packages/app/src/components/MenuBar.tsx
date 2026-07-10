@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { TransportLCD } from "./TransportLCD";
+import { useMenubarLcd } from "../state/menubarLcd";
 
 const GITHUB_REPO_URL = "https://github.com/MrityunjayBhardwaj/stave-code";
 
@@ -26,6 +28,10 @@ interface MenuBarProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /** Transport LCD data (#857). Fed from the active runtime in StaveApp. */
+  isPlaying: boolean;
+  getCycle: () => number | null;
+  getCps: () => number | null;
 }
 
 type MenuId = "file" | "edit" | "view" | "help" | null;
@@ -49,9 +55,13 @@ export function MenuBar({
   onRedo,
   canUndo,
   canRedo,
+  isPlaying,
+  getCycle,
+  getCps,
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<MenuId>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  const lcdEnabled = useMenubarLcd();
 
   // Close menu on click outside OR Escape
   useEffect(() => {
@@ -126,9 +136,15 @@ export function MenuBar({
         />
       </MenuButton>
 
-      <div data-stave-brand style={styles.brand} aria-hidden="true">
-        Stave Code
-      </div>
+      {lcdEnabled ? (
+        <div style={styles.centerSlot}>
+          <TransportLCD isPlaying={isPlaying} getCycle={getCycle} getCps={getCps} />
+        </div>
+      ) : (
+        <div data-stave-brand style={styles.brand} aria-hidden="true">
+          Stave Code
+        </div>
+      )}
 
       <div style={styles.spacer} />
     </div>
@@ -210,6 +226,12 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 500,
     letterSpacing: 0.4,
     whiteSpace: "nowrap" as const,
+  },
+  centerSlot: {
+    position: "absolute" as const,
+    left: "50%",
+    top: "50%",
+    transform: "translate(-50%, -50%)",
   },
   menuButtonWrap: {
     position: "relative" as const,

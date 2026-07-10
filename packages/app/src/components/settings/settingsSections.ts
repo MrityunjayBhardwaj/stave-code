@@ -94,6 +94,7 @@ export const SECTION_DEFS: readonly SettingsSectionDef[] = [
       { key: "iconSize", name: "Icon size", description: "Toolbar and gutter icon scale.", kind: "slider", min: 10, max: 32, unit: "px" },
       { key: "minimap", name: "Minimap", description: "Show the code minimap on the right edge.", kind: "switch" },
       { key: "trackColourBar", name: "Track colour bar", description: "Per-track colour stripe on the left gutter.", kind: "switch" },
+      { key: "menubarLcd", name: "Transport LCD", description: "Show the live transport readout (position, tempo, frame health) in the menubar's centre. Off shows the Stave Code label instead.", kind: "switch" },
     ],
   },
   {
