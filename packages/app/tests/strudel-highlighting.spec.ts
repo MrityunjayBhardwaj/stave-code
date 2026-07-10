@@ -121,3 +121,17 @@ test('JS syntax: keywords / identifiers / operators are distinct (#853)', async 
   expect(typeOf('every')).toContain('strudel.function')
   expect(typeOf('fast')).toContain('strudel.function')
 })
+
+test('member access: .method( is a call, .property is not (#855)', async ({ page }) => {
+  await boot(page)
+  const code = 'note("c3").fast(2).currentTime'
+  await setStrudelCode(page, code)
+  const tokens = await tokenTypes(page, code)
+  const typeOf = (text: string): string | undefined => tokens.find((t) => t.text === text)?.type
+
+  // A called method stays a function…
+  expect(typeOf('fast')).toContain('strudel.function')
+  // …but a bare property access is NOT a function (plain identifier).
+  expect(typeOf('currentTime')).toContain('identifier')
+  expect(typeOf('currentTime')).not.toContain('strudel.function')
+})

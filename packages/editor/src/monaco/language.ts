@@ -174,8 +174,11 @@ export function registerStrudelLanguage(monaco: typeof Monaco): void {
         // editor: color every call by SHAPE, not from a fixed vocabulary. The
         // `@keywords` case lets Monaco's own keyword list veto function-coloring,
         // so `if (`, `for (` stay keywords rather than calls.
-        //   .method → chained call  (.lpf, .crush, .gain)
-        [/(\.)([a-zA-Z_$][\w$]*)/, ['delimiter', 'strudel.function']],
+        //   .method( → chained call  (.lpf, .crush, .gain) — only when a call,
+        //   so a property access (x.currentTime, Math.PI) stays plain below.
+        [/(\.)([a-zA-Z_$][\w$]*)(?=\s*\()/, ['delimiter', 'strudel.function']],
+        //   .property → member access, no call: plain identifier
+        [/(\.)([a-zA-Z_$][\w$]*)/, ['delimiter', 'identifier']],
         //   name(   → bare call     (s(, note(, stack()
         [
           /\b([a-zA-Z_$][\w$]*)(?=\s*\()/,
