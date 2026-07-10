@@ -20,7 +20,7 @@ import * as React from 'react'
 import { type ChunkInfo } from '../chunkDetect'
 import { type Writeback, formatNumber } from '../writeback'
 import { Knob } from './Knob'
-import { knobRangeFor } from './knobRanges'
+import { knobRangeFor, isKnownControl } from './knobRanges'
 import { FAVORITES, isEffectActive, effectNames, type Effect } from './effectCatalog'
 import { AddEffectMenu } from './AddEffectMenu'
 import { SoundPickerMenu } from './SoundPickerMenu'
@@ -49,7 +49,7 @@ interface KnobEntry {
  * nested stack voice (#620) whose gain the track-scoped strip fader doesn't
  * reach, so the inspector surfaces it as a per-voice fader knob.
  */
-function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry[] {
+export function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry[] {
   const knobs: KnobEntry[] = []
   chunk.chain.forEach((call, chainIndex) => {
     if (call.name === 'pan') return // pan lives on the strip pan row
@@ -57,13 +57,20 @@ function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry[] {
     const numericArgs = call.args
       .map((a, argIndex) => ({ a, argIndex }))
       .filter((x) => x.a.numeric !== null)
-    numericArgs.forEach(({ a, argIndex }) => {
+    // A known Strudel control (room, lpf, delay, …) is UNARY — the chainable
+    // prototype method reads only its first argument (controls.mjs:50), so extra
+    // positional numbers are ignored at runtime. Surface ONE knob for it, never a
+    // phantom "room 2"/"room 3" that edits a literal with no audible effect (#842).
+    // Genuinely multi-arg functions (euclid, range, …) aren't controls → one knob
+    // per numeric arg, as before.
+    const dialArgs = isKnownControl(call.name) ? numericArgs.slice(0, 1) : numericArgs
+    dialArgs.forEach(({ a, argIndex }) => {
       knobs.push({
         chainIndex,
         argIndex,
         method: call.name,
-        // disambiguate when a single call has several numeric args
-        label: numericArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
+        // disambiguate when a single call exposes several numeric knobs
+        label: dialArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
         value: a.numeric as number,
       })
     })

@@ -77,6 +77,22 @@ const RANGES: Record<string, KnobRange> = {
   n: lin(0, 16, 1),
 }
 
+/**
+ * Whether `method` is a known single-value Strudel control (reverb send, filter
+ * cutoff, envelope stage, …). Grounded in `@strudel/core` `controls.mjs`: every
+ * control created by `createParam` is exposed as a UNARY prototype method
+ * (`Pattern.prototype[name] = function (value) { … }`, controls.mjs:50), so it
+ * reads only its FIRST argument — any extra positional numbers are silently
+ * ignored at runtime. The Mixer uses this to cap such a call to a single knob:
+ * a `.room(0.25, 0, 100)` plays exactly like `.room(0.25)`, so surfacing dials
+ * for the ignored `0`/`100` would be a false projection. Genuinely multi-arg
+ * functions (`euclid`, `range`, …) are NOT controls, aren't in this table, and
+ * keep one knob per argument.
+ */
+export function isKnownControl(method: string): boolean {
+  return Object.prototype.hasOwnProperty.call(RANGES, method)
+}
+
 /** A nice round step ~1/100 of the span (e.g. 0.01, 0.1, 1, 10). */
 function niceStep(span: number): number {
   const raw = span / 100

@@ -29389,6 +29389,10 @@ var RANGES = {
   // discrete index
   n: lin(0, 16, 1)
 };
+function isKnownControl(method) {
+  return Object.prototype.hasOwnProperty.call(RANGES, method);
+}
+__name(isKnownControl, "isKnownControl");
 function niceStep(span) {
   const raw = span / 100;
   const pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
@@ -30294,13 +30298,14 @@ function knobsFromChunk(chunk, includeGain = false) {
     if (call.name === "pan") return;
     if (call.name === "gain" && !includeGain) return;
     const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);
-    numericArgs.forEach(({ a, argIndex }) => {
+    const dialArgs = isKnownControl(call.name) ? numericArgs.slice(0, 1) : numericArgs;
+    dialArgs.forEach(({ a, argIndex }) => {
       knobs.push({
         chainIndex,
         argIndex,
         method: call.name,
-        // disambiguate when a single call has several numeric args
-        label: numericArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
+        // disambiguate when a single call exposes several numeric knobs
+        label: dialArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
         value: a.numeric
       });
     });
