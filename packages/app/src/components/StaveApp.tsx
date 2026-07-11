@@ -1260,6 +1260,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onRedo={() => { redo(); }}
         canUndo={undoState.canUndo}
         canRedo={undoState.canRedo}
+        // Transport LCD (#857) — same accessors the MusicalTimeline reads.
+        isPlaying={activeRuntime?.isPlaying ?? false}
+        getCycle={() => getCycleRef.current()}
+        getCps={() => getCpsRef.current()}
       />
 
       <div style={styles.main} data-stave-main-backdrop={backgroundFileId ? "on" : "off"}>
