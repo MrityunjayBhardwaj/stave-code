@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
+import { perf } from "@stave/editor";
 import { useRulerUnits, toggleRulerUnits } from "../state/rulerUnits";
+import { healthClass, healthBars } from "./transportLcdHealth";
 
 /**
  * TransportLCD (#857) — a backlit hardware-style readout for the menubar's
@@ -12,6 +14,17 @@ import { useRulerUnits, toggleRulerUnits } from "../state/rulerUnits";
  * (position, tempo, FPS) are written straight to DOM refs on a rAF loop so the
  * menubar never re-renders per frame; only the slow state (isPlaying, mode)
  * flows through React.
+ *
+ * The health meter is layered and honest about what it can see:
+ *  - Profiler ON (perf overlay / setting): reads the canonical `perf.snapshot()`
+ *    — worst live viz-frame fps + slowFrames + longtasks — the same instrument
+ *    PerfOverlay uses, which reflects the actual viz render cadence, not just a
+ *    bare main-thread rAF.
+ *  - Profiler OFF (default): the rAF cadence, plus an always-on `longtask`
+ *    observer so a real main-thread stall pulls the meter to amber/red even when
+ *    the smoothed fps still looks fine.
+ *  - GPU/compositor strain while the profiler is OFF isn't main-thread-measurable
+ *    here (see the perf catalogue) and stays out of scope — not silently green.
  *
  * Display mode reuses the app-wide Ruler-units preference — CYCLES shows
  * `CYC 042.3 · 0.50 CPS`, BARS shows `BAR 011.3.1 · 120 BPM` — and clicking
@@ -116,17 +129,40 @@ export function TransportLCD({ isPlaying, getCycle, getCps }: TransportLCDProps)
     let raf = 0;
     let last = performance.now();
     let fps = 60;
-    let acc = 0;
+    let posAcc = 0;
+    let healthAcc = 0;
+    let prevLtCount = 0; // profiler longtask counter, diffed per health tick
+    let ownLtAt = -Infinity; // last main-thread stall we saw (profiler-OFF path)
+    let ownLtMs = 0;
+
+    // Always-on main-thread stall detector for when the profiler is off. Guarded:
+    // 'longtask' isn't observable in Safari / jsdom — the meter then just rides
+    // the rAF cadence, no worse than before.
+    let ltObs: PerformanceObserver | null = null;
+    try {
+      if (typeof PerformanceObserver !== "undefined") {
+        ltObs = new PerformanceObserver((list) => {
+          for (const e of list.getEntries()) {
+            ownLtAt = performance.now();
+            ownLtMs = e.duration;
+          }
+        });
+        ltObs.observe({ entryTypes: ["longtask"] });
+      }
+    } catch {
+      ltObs = null;
+    }
 
     const tick = (now: number): void => {
       const dt = Math.max(0.001, (now - last) / 1000);
       last = now;
-      // FPS from the rAF delta, smoothed so it reads steady not jittery.
+      // Smoothed rAF cadence — the fallback health signal when the profiler is off.
       fps += (1 / dt - fps) * 0.1;
 
-      acc += dt;
-      if (acc >= 0.08) {
-        acc = 0;
+      // Position / tempo — smooth (~12.5Hz) so the counter reads like a display.
+      posAcc += dt;
+      if (posAcc >= 0.08) {
+        posAcc = 0;
         const cps = getCpsRef.current();
         const cyc = getCycleRef.current();
         const inCycle = cycleModeRef.current;
@@ -139,12 +175,38 @@ export function TransportLCD({ isPlaying, getCycle, getCps }: TransportLCDProps)
           tempoRef.current.textContent =
             cps === null ? `${DASH}${DASH}` : inCycle ? cps.toFixed(2) : String(Math.round(cps * 240));
         }
+      }
 
-        const shown = Math.max(1, Math.round(fps));
+      // Health — coarser (~4Hz). Reuses the canonical profiler when it's on
+      // (worst live viz-frame fps + slowFrames + longtasks), else the rAF cadence
+      // dragged down by any recent main-thread stall.
+      healthAcc += dt;
+      if (healthAcc >= 0.25) {
+        healthAcc = 0;
+        let shownFps: number;
+        let slow = false;
+        let stallMs = 0;
+
+        if (perf.enabled) {
+          const snap = perf.snapshot();
+          const frameFps = Object.values(snap.frames)
+            .map((f) => f.fps)
+            .filter((v) => v > 0);
+          // The slowest live viz is what the eye actually reads as jank.
+          shownFps = frameFps.length ? Math.min(...frameFps) : fps;
+          slow = Object.values(snap.frames).some((f) => f.slowFrames > 0);
+          if (snap.longtasks.count > prevLtCount) stallMs = snap.longtasks.maxMs;
+          prevLtCount = snap.longtasks.count;
+        } else {
+          shownFps = fps;
+          if (now - ownLtAt < 1200) stallMs = ownLtMs;
+        }
+
+        const shown = Math.max(1, Math.round(shownFps));
         if (fpsNumRef.current) fpsNumRef.current.textContent = String(Math.min(shown, 120));
-        const cls = shown >= 55 ? "good" : shown >= 30 ? "warn" : "crit";
+        const cls = healthClass(shown, slow, stallMs);
         if (fpsWrapRef.current) fpsWrapRef.current.className = `stave-lcd-fps ${cls}`;
-        const lit = Math.round((Math.min(shown, 60) / 60) * 5);
+        const lit = healthBars(cls, shown);
         if (barsRef.current) {
           const bars = barsRef.current.children;
           for (let i = 0; i < bars.length; i++) {
@@ -155,7 +217,10 @@ export function TransportLCD({ isPlaying, getCycle, getCps }: TransportLCDProps)
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      ltObs?.disconnect();
+    };
   }, []);
 
   return (
