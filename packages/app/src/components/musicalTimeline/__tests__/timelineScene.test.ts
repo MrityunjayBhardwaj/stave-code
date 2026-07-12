@@ -305,3 +305,55 @@ describe('clipAtCycle', () => {
     expect(clipAtCycle(lane, -1)).toBeNull()
   })
 })
+
+describe('eval-backed lanes (#864 / P1b)', () => {
+  it('renders a lane for a marks key not present in the analysis, appended after IR lanes', () => {
+    // `d2` is an eval-only lane (a signal/bare-ref track the IR analysis missed):
+    // it appears in the marks but NOT in `analysisFixture.lanes` (bd, lead).
+    const scene = buildTimelineScene(
+      analysisFixture,
+      marks({
+        bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }],
+        d2: [
+          { cycle: 0, end: 0.5, pitch: 48, gain: 1 },
+          { cycle: 0, end: 0.5, pitch: 52, gain: 1 },
+          { cycle: 2, end: 2.5, pitch: 55, gain: 1 },
+        ],
+      }),
+    )
+    // IR lanes first (bd, lead), eval lane appended (d2).
+    expect(scene.lanes.map((l) => l.laneKey)).toEqual(['bd', 'lead', 'd2'])
+    const d2 = scene.lanes.find((l) => l.laneKey === 'd2')!
+    // Density synthesised from the marks: 2 onsets in cycle 0, 1 in cycle 2.
+    expect(d2.density).toEqual([2, 0, 1, 0])
+    // Pitch range from its marks; a positional display name (no labelOffset).
+    expect(d2.pitchMin).toBe(48)
+    expect(d2.pitchMax).toBe(55)
+    expect(d2.displayName).toBe('d2')
+    // One implicit clip spanning the display span (no armIndex on eval marks).
+    expect(d2.clips).toEqual([{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }])
+  })
+
+  it('folds eval-lane density into peakDensity', () => {
+    const scene = buildTimelineScene(
+      analysisFixture, // IR peak is 3 (bd cell)
+      marks({
+        d2: [
+          { cycle: 1, end: 1.5, pitch: 60, gain: 1 },
+          { cycle: 1, end: 1.5, pitch: 62, gain: 1 },
+          { cycle: 1, end: 1.5, pitch: 64, gain: 1 },
+          { cycle: 1, end: 1.5, pitch: 65, gain: 1 }, // 4 onsets in cycle 1
+        ],
+      }),
+    )
+    expect(scene.peakDensity).toBe(4) // eval lane's busiest cell beats the IR peak
+  })
+
+  it('adds no lanes when every marks key is an IR lane (no regression)', () => {
+    const scene = buildTimelineScene(
+      analysisFixture,
+      marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] }),
+    )
+    expect(scene.lanes.map((l) => l.laneKey)).toEqual(['bd', 'lead'])
+  })
+})

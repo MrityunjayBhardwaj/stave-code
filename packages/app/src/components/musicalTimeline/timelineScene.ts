@@ -242,15 +242,33 @@ export function buildTimelineScene(
         ? Math.max(1, analysis.periodCycles ?? analysis.horizonCycles)
         : 1
   const lanesIn = analysis?.lanes ?? []
+  const analysisKeys = new Set(lanesIn.map((l) => l.laneKey))
+  const nCycles = Math.ceil(displayCycles)
 
-  // Peak onset across all lanes (≥1) so the busiest cell is full-intensity.
+  // Eval-backed lanes (#864 / P1b): marks lanes the static-IR analysis never
+  // produced — a signal (`.segment`) or bare-ref track that emits no static IR
+  // events, so it has no `LaneActivity` here. `collectHapMarks` already keys them
+  // by the positional/named eval identity (`evalTrackIdToLaneKey`), disjoint from
+  // the IR lane keys, so any marks key not in `analysisKeys` is one such track.
+  // Their coarse density is synthesised from their marks (below); they append
+  // AFTER the IR lanes in first-seen (Map) order. Absent → the IR-only behaviour.
+  const evalLaneKeys = [...marks.marksByLane.keys()].filter((k) => !analysisKeys.has(k))
+  const evalDensities = new Map<string, number[]>()
+  for (const key of evalLaneKeys) {
+    evalDensities.set(key, densityFromNotes(marks.marksByLane.get(key) ?? [], nCycles))
+  }
+
+  // Peak onset across ALL lanes (IR + eval, ≥1) so the busiest cell is full-intensity.
   let peakDensity = 1
   for (const lane of lanesIn) {
     for (const c of lane.onsetsByCycle) if (c > peakDensity) peakDensity = c
   }
+  for (const density of evalDensities.values()) {
+    for (const c of density) if (c > peakDensity) peakDensity = c
+  }
 
-  const lanes: SceneLane[] = lanesIn.map((lane) => {
-    const notes = marks.marksByLane.get(lane.laneKey) ?? []
+  const buildLane = (laneKey: string, density: readonly number[]): SceneLane => {
+    const notes = marks.marksByLane.get(laneKey) ?? []
     let pitchMin: number | null = null
     let pitchMax: number | null = null
     for (const n of notes) {
@@ -258,41 +276,44 @@ export function buildTimelineScene(
       if (pitchMin == null || n.pitch < pitchMin) pitchMin = n.pitch
       if (pitchMax == null || n.pitch > pitchMax) pitchMax = n.pitch
     }
-    // Clips: an arrangement track contributes per-arm clips; a bare track (no
-    // combinator → no `armIndex` events) gets ONE implicit clip spanning the
+    // Clips: an arrangement track contributes per-arm clips; a bare/eval track
+    // (no combinator → no `armIndex` events) gets ONE implicit clip spanning the
     // whole song (design §5 option b). The implicit clip is synthesised here
     // (the pure builder owns `displayCycles`) so every lane has ≥1 clip.
-    const clips: SceneClip[] = marks.clipsByLane.get(lane.laneKey) ?? [
+    const clips: SceneClip[] = marks.clipsByLane.get(laneKey) ?? [
       { armIndex: -1, startCycle: 0, endCycle: displayCycles, label: null },
     ]
     // Display name (#579 STEP 2): a NAMED track's source label, else the
     // positional `d{N}`. Both the name AND the colour key on it, so a named
     // lane reads + colours identically to its Mixer strip (one `trackIdentity`).
-    const displayName = resolveLaneName(
-      lane.laneKey,
-      marks.labelOffsetByLane.get(lane.laneKey),
-      code,
-    )
+    // An eval lane has no `labelOffset` → `resolveLaneName` returns the key, which
+    // `evalTrackIdToLaneKey` already made the positional `d{N}` (or the name).
+    const displayName = resolveLaneName(laneKey, marks.labelOffsetByLane.get(laneKey), code)
     // Colour resolves through the SHARED `trackIdentity` (V-track-1/2): the
     // deterministic palette by default, the per-track custom override when set —
     // `customColor ?? colorForTrack(displayName)` — keyed by the display name so
     // the lane matches its Mixer strip. Drives the dot AND the canvas density bars
     // (the renderer reads `lane.color`).
     return {
-      laneKey: lane.laneKey,
+      laneKey,
       displayName,
       color: trackIdentity(displayName, customColorByName?.get(displayName)).color,
-      density: lane.onsetsByCycle,
+      density,
       notes,
       pitchMin,
       pitchMax,
       voices: groupVoices(notes),
       clips,
-      sourceOffset: marks.sourceByLane.get(lane.laneKey) ?? null,
-      arrangeOffset: marks.arrangeByLane.get(lane.laneKey) ?? null,
-      labelOffset: marks.labelOffsetByLane.get(lane.laneKey) ?? null,
+      sourceOffset: marks.sourceByLane.get(laneKey) ?? null,
+      arrangeOffset: marks.arrangeByLane.get(laneKey) ?? null,
+      labelOffset: marks.labelOffsetByLane.get(laneKey) ?? null,
     }
-  })
+  }
+
+  const lanes: SceneLane[] = [
+    ...lanesIn.map((lane) => buildLane(lane.laneKey, lane.onsetsByCycle)),
+    ...evalLaneKeys.map((key) => buildLane(key, evalDensities.get(key)!)),
+  ]
 
   return {
     lanes,
@@ -316,6 +337,23 @@ export function clipAtCycle(lane: SceneLane, cycle: number): SceneClip | null {
     if (cycle >= clip.startCycle && cycle < clip.endCycle) return clip
   }
   return null
+}
+
+/**
+ * Per-integer-cycle onset counts for a lane synthesised from its marks (#864).
+ * Eval-backed lanes have no `analyzeSong` `LaneActivity`, so their coarse density
+ * (the zoomed-out heatmap) is counted here from the note onsets by `floor(cycle)`
+ * — the same bucketing `accumulateLanes` uses for IR lanes. Length is `nCycles`
+ * (the display span); onsets outside `[0, nCycles)` are ignored, mirroring the
+ * IR path. PURE — operates on already-collected marks only.
+ */
+function densityFromNotes(notes: readonly SceneNote[], nCycles: number): number[] {
+  const density = new Array<number>(Math.max(0, nCycles)).fill(0)
+  for (const n of notes) {
+    const c = Math.floor(n.cycle)
+    if (c >= 0 && c < density.length) density[c] += 1
+  }
+  return density
 }
 
 /**
