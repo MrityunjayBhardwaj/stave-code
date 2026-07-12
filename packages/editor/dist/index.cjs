@@ -6748,6 +6748,14 @@ function detectChunk(doc, pos) {
   const bindings = buildBindingIndex(statements);
   for (const node of statements) {
     if (pos >= node.start && pos <= node.end) {
+      if (node.type === "VariableDeclaration") {
+        const decls = Array.isArray(node.declarations) ? node.declarations : [];
+        if (decls.length !== 1) return null;
+        const decl = decls[0];
+        if (decl?.id?.type !== "Identifier" || !decl.init) return null;
+        const initTarget = innermostChainUnder(doc, decl.init, pos, bindings);
+        return initTarget === decl.init ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings) : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true);
+      }
       let label = null;
       let body = node;
       if (node.type === "LabeledStatement") {
