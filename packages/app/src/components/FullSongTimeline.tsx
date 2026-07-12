@@ -41,6 +41,7 @@ import {
   type VoiceOrderByLane,
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks } from './musicalTimeline/timelineMarks'
+import { sourceTrackOrder } from './musicalTimeline/trackOrder'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import {
   loadTimelineCamera,
@@ -607,6 +608,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const events = props.getTimelineEvents?.(loopCycles) ?? null
     return collectNoteMarks(events, props.ir ?? null, loopCycles)
   }, [props.ir, loopCycles, props.getTimelineEvents])
+  // #871 — the lane order the user WROTE, read off the IR's track list. Lane
+  // order is structure, and structure is IR-owned: the IR carries a Track node
+  // per statement even when that track emits no static-IR events (a signal, a
+  // bare ref), which is exactly the case the eval-backed lanes cover. Without it
+  // the scene can only append those lanes after the IR ones, so a signal written
+  // first renders last.
+  const trackOrder = useMemo(() => sourceTrackOrder(props.ir ?? null), [props.ir])
   // Per-lane voice sub-row order is pinned first-seen across re-evals (#480) so
   // reordering clips in time doesn't reshuffle the instrument rows — the SAME
   // first-seen stability `stableTrackOrder` gives the top-level lanes, one level
@@ -623,11 +631,18 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // exactly when the user picks, not on every render.
   const { customColorByName } = props
   const scene = useMemo(() => {
-    const raw = buildTimelineScene(analysis, marks, displayCycles, source, customColorByName)
+    const raw = buildTimelineScene(
+      analysis,
+      marks,
+      displayCycles,
+      source,
+      customColorByName,
+      trackOrder,
+    )
     const { scene: ordered, order } = applyStableVoiceOrder(raw, voiceOrderRef.current)
     voiceOrderRef.current = order
     return ordered
-  }, [analysis, marks, displayCycles, source, customColorByName])
+  }, [analysis, marks, displayCycles, source, customColorByName, trackOrder])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind

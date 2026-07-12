@@ -211,9 +211,10 @@ export const EMPTY_MARKS: CollectedMarks = {
 
 /**
  * Build the render scene from the analysis (density, sections, span, period)
- * merged with the collected note marks. PURE — no IR walk, no canvas. Lanes
- * keep `analyzeSong`'s first-seen order and key, so the canvas rows line up
- * with the DOM lane labels exactly.
+ * merged with the collected note marks. PURE — no IR walk, no canvas. Lanes keep
+ * `analyzeSong`'s key, so the canvas rows line up with the DOM lane labels
+ * exactly; their ORDER is the caller's `sourceTrackOrder` when given (#871),
+ * else `analyzeSong`'s first-seen order with the eval lanes appended.
  */
 export function buildTimelineScene(
   analysis: SongAnalysis | null,
@@ -229,6 +230,12 @@ export function buildTimelineScene(
    *  → the deterministic palette. Drives the lane dot AND the canvas density bars
    *  (the renderer reads `lane.color`). */
   customColorByName?: ReadonlyMap<string, string>,
+  /** Track ids in SOURCE order (#871), from the IR's track list — the lane order
+   *  the user wrote. Ranks IR-backed and eval-backed lanes together, so a track
+   *  that emits no static-IR events (a signal, a bare ref) sits where it was
+   *  written instead of after every IR lane. Absent/empty → no order information,
+   *  keep `analyzeSong`'s first-seen order with the eval lanes appended. */
+  sourceTrackOrder?: readonly string[],
 ): TimelineScene {
   // The caller (FullSongTimeline) owns the authoritative span — it floors a bare
   // loop to a minimum arrangement length so the single implicit clip has room to
@@ -310,10 +317,30 @@ export function buildTimelineScene(
     }
   }
 
-  const lanes: SceneLane[] = [
+  // IR lanes keep `analyzeSong`'s first-seen order; eval lanes follow in marks
+  // order. That concatenation is only a DEFAULT — it puts every eval lane after
+  // every IR lane, which reverses a signal/bare-ref track written first (#871).
+  const built: SceneLane[] = [
     ...lanesIn.map((lane) => buildLane(lane.laneKey, lane.onsetsByCycle)),
     ...evalLaneKeys.map((key) => buildLane(key, evalDensities.get(key)!)),
   ]
+  // Source order (#871): rank IR-backed and eval-backed lanes TOGETHER by the
+  // IR's track list, so each lane sits where the user wrote it regardless of
+  // which layer produced its marks. A lane whose key isn't a track id (a hand-
+  // built IR, an `s`-keyed fallback lane) has no source position — it keeps its
+  // relative order at the end rather than being dropped or guessed at. The sort
+  // is stable, so an IR-only song (whose analysis order ALREADY follows the IR)
+  // is unchanged.
+  const rank = new Map(sourceTrackOrder?.map((id, i) => [id, i] as const) ?? [])
+  const lanes: SceneLane[] =
+    rank.size === 0
+      ? built
+      : [
+          ...built
+            .filter((l) => rank.has(l.laneKey))
+            .sort((a, b) => rank.get(a.laneKey)! - rank.get(b.laneKey)!),
+          ...built.filter((l) => !rank.has(l.laneKey)),
+        ]
 
   return {
     lanes,
