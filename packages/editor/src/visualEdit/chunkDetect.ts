@@ -199,6 +199,28 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
   const bindings = buildBindingIndex(statements)
   for (const node of statements) {
     if (pos >= node.start && pos <= node.end) {
+      // #868 — a `const/let/var x = <expr>` declaration yields a chunk for its
+      // RHS, anchored at the declaration. A resolved bare-ref anchors its
+      // `statementRange` HERE (the definition — the edit target), and every
+      // visual write re-detects at that anchor (`useActiveChunk.applyEdit`).
+      // Without this arm the re-detect returned null (a VariableDeclaration is
+      // not an ExpressionStatement) and the write silently no-opped. Also makes
+      // a cursor placed directly on the `const` line editable.
+      if (node.type === 'VariableDeclaration') {
+        const decls = Array.isArray(node.declarations) ? node.declarations : []
+        if (decls.length !== 1) return null // multi-declarator → ambiguous
+        const decl = decls[0]
+        if (decl?.id?.type !== 'Identifier' || !decl.init) return null
+        // Mirror the ExpressionStatement path: descend to the innermost chain
+        // under `pos` (a cursor inside a const-defined `stack(...)` arm binds
+        // THAT arm), else the whole RHS anchored at the declaration. The
+        // re-anchor (`pos` = the declaration start) sits outside the init, so it
+        // resolves to the whole RHS — exactly the render-time chunk.
+        const initTarget = innermostChainUnder(doc, decl.init, pos, bindings)
+        return initTarget === decl.init
+          ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings)
+          : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true)
+      }
       let label: string | null = null
       let body = node
       if (node.type === 'LabeledStatement') {
