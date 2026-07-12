@@ -39,6 +39,18 @@ async function boot(page: Page): Promise<void> {
     },
     { timeout: 20_000 },
   )
+  // #872 — the editor's content is a CONTROLLED value fed by the async project
+  // file load. Seeding before that lands lets it overwrite our code, and the app
+  // evaluates the STARTER example instead (silently: the spec still runs, just
+  // against the wrong song). Wait for the load: the model goes empty → file.
+  await page.waitForFunction(
+    () => {
+      const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getValue?: () => string } | null }> } } }).monaco
+      const eds = m?.editor?.getEditors?.() ?? []
+      return eds.some((e) => (e.getModel()?.getValue?.()?.length ?? 0) > 0)
+    },
+    { timeout: 20_000 },
+  )
 }
 
 async function evalCode(page: Page, code: string): Promise<void> {

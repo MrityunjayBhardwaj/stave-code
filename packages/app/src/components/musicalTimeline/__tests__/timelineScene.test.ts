@@ -357,3 +357,47 @@ describe('eval-backed lanes (#864 / P1b)', () => {
     expect(scene.lanes.map((l) => l.laneKey)).toEqual(['bd', 'lead'])
   })
 })
+
+describe('source lane order (#871)', () => {
+  // An eval-only lane (`sig`) written BEFORE the IR-backed lanes. Without a
+  // source order the scene can only append it after them (the default above).
+  const evalFirst = () =>
+    marks({
+      sig: [{ cycle: 0, end: 0.5, pitch: 48, gain: 1 }],
+      bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }],
+      lead: [{ cycle: 0, end: 0.5, pitch: 60, gain: 1 }],
+    })
+
+  const keys = (analysis: SongAnalysis, order?: readonly string[]) =>
+    buildTimelineScene(analysis, evalFirst(), undefined, undefined, undefined, order).lanes.map(
+      (l) => l.laneKey,
+    )
+
+  it('ranks an eval lane INTO source order, not after the IR lanes', () => {
+    expect(keys(analysisFixture, ['sig', 'bd', 'lead'])).toEqual(['sig', 'bd', 'lead'])
+  })
+
+  it('places the eval lane between IR lanes when that is where it was written', () => {
+    expect(keys(analysisFixture, ['bd', 'sig', 'lead'])).toEqual(['bd', 'sig', 'lead'])
+  })
+
+  it('leaves an IR-only song untouched (its analysis order already follows the IR)', () => {
+    const irOnly = marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] })
+    const scene = buildTimelineScene(analysisFixture, irOnly, undefined, undefined, undefined, [
+      'bd',
+      'lead',
+    ])
+    expect(scene.lanes.map((l) => l.laneKey)).toEqual(['bd', 'lead'])
+  })
+
+  it('falls back to the appended order when there is no source order', () => {
+    expect(keys(analysisFixture)).toEqual(['bd', 'lead', 'sig'])
+    expect(keys(analysisFixture, [])).toEqual(['bd', 'lead', 'sig'])
+  })
+
+  it('keeps a lane the order does not mention (no source position) at the end', () => {
+    // `lead` is absent from the track list — it keeps its relative place last
+    // rather than being dropped or guessed at.
+    expect(keys(analysisFixture, ['sig', 'bd'])).toEqual(['sig', 'bd', 'lead'])
+  })
+})

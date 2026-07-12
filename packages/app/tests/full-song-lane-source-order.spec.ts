@@ -1,19 +1,21 @@
 /**
- * Eval-backed lanes (#864 / P1b) — Playwright observation spec.
+ * Eval-backed lanes sit in SOURCE order (#871) — Playwright observation spec.
  *
- * AnviDev observe gate: the unit tests (collectNoteMarks / timelineScene) cover
- * the lane-synthesis logic against a mocked IR; this drives the REAL app to
- * confirm the end-to-end path — a track that emits NO static-IR events (a
- * sampled signal) still gets its own timeline lane from the evaluated haps,
- * instead of vanishing (or polluting a neighbouring lane).
+ * AnviDev observe gate: the unit tests pin the pure pieces (`sourceTrackOrder`
+ * off the IR, the scene's ranking); this drives the REAL app end-to-end.
  *
- * `toHaveCount` auto-retries, so this waits for the analysis + marks to settle
- * rather than racing a one-shot `count()` (the settle-race the older
- * full-song-timeline spec is prone to on a cold server).
+ * A track that emits no static-IR events — a sampled signal, a bare ref — has no
+ * `analyzeSong` lane, so its marks come from the evaluated haps (#865) and the
+ * scene could only APPEND its lane after the IR lanes. Written first, it then
+ * rendered last: `$: <signal>` + `$: s("bd sd hh")` produced lanes ["d2","d1"] —
+ * a lane labelled d2 above one labelled d1. Lane order is structure, and the IR
+ * knows it (it carries a Track node per statement even with zero events), so the
+ * scene now ranks IR-backed and eval-backed lanes together by the IR track list.
  */
 import { test, expect, type Page } from '@playwright/test'
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
+const SIGNAL = 'note(sine.range(48,72).segment(8))'
 
 async function boot(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -66,7 +68,16 @@ async function evalCode(page: Page, code: string): Promise<void> {
   await page.keyboard.press(`${MOD}+Enter`)
 }
 
-test('a sampled-signal track (no static-IR events) gets its own eval-backed lane', async ({ page }) => {
+/** The rendered lane rows, top to bottom. */
+async function laneOrder(page: Page): Promise<Array<string | null>> {
+  const lanes = page.locator('[data-full-song-lane]')
+  const n = await lanes.count()
+  const out: Array<string | null> = []
+  for (let i = 0; i < n; i++) out.push(await lanes.nth(i).getAttribute('data-full-song-lane'))
+  return out
+}
+
+test('an eval-backed lane written FIRST renders first, not after the IR lanes', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
   page.on('console', (m) => {
@@ -74,22 +85,31 @@ test('a sampled-signal track (no static-IR events) gets its own eval-backed lane
   })
 
   await boot(page)
-  // Track 1: a normal drum pattern (produces static-IR events → an IR lane).
-  // Track 2: a SAMPLED SIGNAL — `.segment` yields discrete haps but no static-IR
-  // note events, so pre-P1b it had no lane and its haps fell to the drum lane.
-  await evalCode(page, '$: s("bd sd hh")\n$: note(sine.range(48,72).segment(8))')
-
+  await evalCode(page, `$: ${SIGNAL}\n$: s("bd sd hh")`)
   await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
+  await expect(page.locator('[data-full-song-lane]')).toHaveCount(2, { timeout: 10_000 })
 
-  // Both tracks now render a lane — the drum IR lane AND the signal eval lane.
-  // `toHaveCount` retries until the analysis + marks settle.
-  const lanes = page.locator('[data-full-song-lane]')
-  await expect(lanes).toHaveCount(2, { timeout: 10_000 })
-
-  // The signal track owns the positional `d2` row (source-order after the drums),
-  // i.e. it is NOT folded into the drum lane.
-  await expect(page.locator('[data-full-song-lane="d1"]')).toHaveCount(1)
-  await expect(page.locator('[data-full-song-lane="d2"]')).toHaveCount(1)
-
+  // The signal is track 1 (d1), the drums track 2 (d2) — and that is the order
+  // they render in. Pre-fix this was ["d2","d1"].
+  expect(await laneOrder(page)).toEqual(['d1', 'd2'])
   expect(errors).toEqual([])
+})
+
+test('the IR-first control is unchanged', async ({ page }) => {
+  await boot(page)
+  await evalCode(page, `$: s("bd sd hh")\n$: ${SIGNAL}`)
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
+  await expect(page.locator('[data-full-song-lane]')).toHaveCount(2, { timeout: 10_000 })
+
+  expect(await laneOrder(page)).toEqual(['d1', 'd2'])
+})
+
+test('named tracks keep source order too (the lane key is the label)', async ({ page }) => {
+  await boot(page)
+  await evalCode(page, `sig: ${SIGNAL}\ndrums: s("bd sd hh")`)
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
+  await expect(page.locator('[data-full-song-lane]')).toHaveCount(2, { timeout: 10_000 })
+
+  // Pre-fix: ["drums","sig"].
+  expect(await laneOrder(page)).toEqual(['sig', 'drums'])
 })
