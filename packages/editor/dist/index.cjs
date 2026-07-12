@@ -5671,9 +5671,11 @@ var _StrudelEngine = class _StrudelEngine {
    * static IR (`collectCycles`), which carries the raw source token (`note:"0"`)
    * and drops `.scale` to an unused param, and so is source-lossy for pitch/scale
    * (PV174). Display must degrade to evaluation; the IR stays the source of truth
-   * for structure (lanes/clips) and editing. Empty before first evaluate / after
-   * an evaluate error (empty `songPatterns`). A per-track query that throws is
-   * skipped.
+   * for structure (lanes/clips) and editing. Empty before the first evaluate; a
+   * FAILED evaluate leaves the last good eval's patterns in place (as
+   * `trackSchedulers` does — neither is reassigned outside the success branch),
+   * which the timeline never sees, because it also needs the IR and the engine
+   * DOES clear that on error. A per-track query that throws is skipped.
    *
    * SONG FRAME, not the scheduler frame (#863). Queries `songPatterns` — the
    * patterns as captured BEFORE the `.late(transportOffset)` seek wrap — so
