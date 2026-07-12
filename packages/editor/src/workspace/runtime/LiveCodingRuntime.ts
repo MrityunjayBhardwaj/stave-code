@@ -100,6 +100,7 @@
 
 import type { LiveCodingEngine } from '../../engine/LiveCodingEngine'
 import type { HapStream } from '../../engine/HapStream'
+import type { IREvent } from '../../ir/IREvent'
 import type { BreakpointStore } from '../../engine/BreakpointStore'
 import { BufferedScheduler } from '../../engine/BufferedScheduler'
 import { workspaceAudioBus } from '../WorkspaceAudioBus'
@@ -763,6 +764,19 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
    */
   getHapStream(): HapStream | null {
     return this.engine.components.streaming?.hapStream ?? null
+  }
+
+  /**
+   * Evaluated note events over `[0, ceil(cycles))` for the Song timeline's
+   * DISPLAY marks (#861) — read-through accessor over the engine's per-track
+   * schedulers, mirroring `getHapStream`'s shape. Returns `[]` for non-Strudel
+   * runtimes / not-yet-evaluated engines (optional-chained delegate). The IR
+   * (structure) stays the timeline's source of truth; only note pitch/scale
+   * comes from here, where Strudel has already resolved it (PV174).
+   */
+  getTimelineEvents(cycles: number): IREvent[] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (this.engine as any).getTimelineEvents?.(cycles) ?? []
   }
 
   /**

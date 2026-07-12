@@ -9,7 +9,7 @@
  * Playwright spec against a real evaluated song.
  */
 
-import type { PatternIR } from '@stave/editor'
+import type { IREvent, PatternIR } from '@stave/editor'
 import { collectCycles, laneKeyOf } from '@stave/editor'
 import { extractPitch } from './pitch'
 import {
@@ -38,12 +38,29 @@ function clamp01(n: number): number {
  * builder can merge them onto the matching analysis lanes.
  */
 export function collectNoteMarks(
+  events: IREvent[] | null,
   ir: PatternIR | null,
   displayCycles: number,
   capPerLane: number = NOTE_MARK_CAP_PER_LANE,
 ): CollectedMarks {
   if (!ir || !Number.isFinite(displayCycles) || displayCycles <= 0) return EMPTY_MARKS
+  // Display fidelity requires the EVAL path when it's available: an evaluated
+  // hap carries the RESOLVED note (`n("0 2 4").scale("C:major")` → "C3"/"E3"/"G3"
+  // — Strudel applies the scale at query time) plus `context.locations`, while
+  // the static IR carries the raw source token ("0") and drops `.scale` to an
+  // unused param, so IR-read pitch is a flat/wrong-pitch bar for any degree/
+  // scale pattern (PV174 / P274). So: STRUCTURE (lanes/clips/source anchors)
+  // always comes from the IR walk below; MARKS come from `events` when present
+  // (attributed to IR lanes by source containment) and fall back to the IR only
+  // pre-eval — correct there for note-names + percussion, and the only source
+  // before the first eval. `events` present ⇒ skip the IR mark build (discarded).
+  const useEval = Array.isArray(events) && events.length > 0
+  // IR-derived note marks — the pre-eval fallback. Left empty when `useEval`.
   const marksByLane = new Map<string, SceneNote[]>()
+  // First-seen IR lane keys — the containment default for a hap with no `loc`
+  // (continuous/sampled signal) or a `loc` before every lane's statement.
+  const laneOrder: string[] = []
+  const laneSeen = new Set<string>()
   // Per-lane representative source offset for expand-to-bind: the FIRST event of
   // the lane that carries a `loc` (char offsets into the evaluated source). The
   // bind maps this → editor cursor → the Pattern panel rebinds (#422). First-
@@ -87,11 +104,15 @@ export function collectNoteMarks(
   const armByCycleByLane = new Map<string, Array<number | undefined>>()
   const armLabelByLane = new Map<string, Map<number, string>>()
   let capped = false
-  const events = collectCycles(ir, 0, nCycles)
-  for (const ev of events) {
+  const irEvents = collectCycles(ir, 0, nCycles)
+  for (const ev of irEvents) {
     const cycle = ev.begin
     if (!Number.isFinite(cycle) || cycle < 0 || cycle >= displayCycles) continue
     const key = laneKeyOf(ev)
+    if (!laneSeen.has(key)) {
+      laneSeen.add(key)
+      laneOrder.push(key)
+    }
     if (!sourceByLane.has(key)) {
       const offset = ev.loc?.[0]?.start
       if (typeof offset === 'number' && Number.isFinite(offset)) sourceByLane.set(key, offset)
@@ -129,37 +150,48 @@ export function collectNoteMarks(
         if (lbl != null) labels.set(ev.armIndex, lbl)
       }
     }
-    let arr = marksByLane.get(key)
-    if (!arr) {
-      arr = []
-      marksByLane.set(key, arr)
+    // IR-derived marks (the pre-eval fallback). Skipped when eval events are
+    // present — they'd be discarded in favour of the hap marks (PV174).
+    if (!useEval) {
+      let arr = marksByLane.get(key)
+      if (!arr) {
+        arr = []
+        marksByLane.set(key, arr)
+      }
+      // Collect ALL marks here; the per-lane cap is applied AFTER the walk as a
+      // span-preserving downsample (see below). Capping in cycle order here would
+      // drop the tail and truncate a dense lane's clip mid-song (#714).
+      const end = Number.isFinite(ev.end) && ev.end > cycle ? ev.end : cycle
+      // `voice` = the sample name (`ev.s`), the per-voice partition key (#424). A
+      // `$:` drum stack shares one lane key (`trackId`) but distinct `s` per voice,
+      // so this recovers bd/sd/hh as sub-rows. `ev.s` is a native IREvent field —
+      // reading it here (the runtime consumer) keeps the pure scene module out of
+      // the editor-bundle / gifenc import (P172).
+      arr.push({
+        cycle,
+        end,
+        pitch: extractPitch(ev)?.midi ?? null,
+        gain: clamp01(ev.gain ?? 1),
+        voice: ev.s ?? null,
+      })
     }
-    // Collect ALL marks here; the per-lane cap is applied AFTER the walk as a
-    // span-preserving downsample (see below). Capping in cycle order here would
-    // drop the tail and truncate a dense lane's clip mid-song (#714).
-    const end = Number.isFinite(ev.end) && ev.end > cycle ? ev.end : cycle
-    // `voice` = the sample name (`ev.s`), the per-voice partition key (#424). A
-    // `$:` drum stack shares one lane key (`trackId`) but distinct `s` per voice,
-    // so this recovers bd/sd/hh as sub-rows. `ev.s` is a native IREvent field —
-    // reading it here (the runtime consumer) keeps the pure scene module out of
-    // the editor-bundle / gifenc import (P172).
-    arr.push({
-      cycle,
-      end,
-      pitch: extractPitch(ev)?.midi ?? null,
-      gain: clamp01(ev.gain ?? 1),
-      voice: ev.s ?? null,
-    })
   }
+  // When eval events are present, derive the marks from them instead of the IR
+  // (display fidelity — PV174). Attributed to the IR lanes by source containment
+  // (NOT trackId equality, which diverges for anon `$:` — PV175). Structure
+  // (source/arrange/label offsets, clips) stays IR-owned above.
+  const activeMarksByLane = useEval
+    ? collectHapMarks(events as IREvent[], displayCycles, labelOffsetByLane, laneOrder)
+    : marksByLane
   // Bound each lane to `capPerLane` marks by downsampling ACROSS its span (keep
   // every Nth), not by dropping the tail. A dense lane (e.g. a drum stack at
   // ~35 onsets/cycle) keeps its full clip extent with uniformly thinner ticks
   // instead of being cut off at cycle ~57 (#714). Sparse lanes (≤ cap) are
   // untouched (same array reference).
-  for (const [key, arr] of marksByLane) {
+  for (const [key, arr] of activeMarksByLane) {
     const ds = downsampleMarksToCap(arr, capPerLane)
     if (ds.capped) {
-      marksByLane.set(key, ds.marks)
+      activeMarksByLane.set(key, ds.marks)
       capped = true
     }
   }
@@ -195,5 +227,68 @@ export function collectNoteMarks(
     flush(nCycles)
     if (clips.length > 0) clipsByLane.set(key, clips)
   }
-  return { marksByLane, sourceByLane, arrangeByLane, labelOffsetByLane, clipsByLane, capped }
+  return { marksByLane: activeMarksByLane, sourceByLane, arrangeByLane, labelOffsetByLane, clipsByLane, capped }
+}
+
+/**
+ * Derive note marks from EVALUATED haps (#861), attributed to the IR lanes by
+ * SOURCE CONTAINMENT — the lane whose `$:`/`name:` statement offset (`dollarPos`,
+ * carried in `labelOffsetByLane`) is the LARGEST one ≤ the hap's `loc[0].start`.
+ *
+ * Not `laneKeyOf(hap)` string equality: the IR lane key for an anonymous `$:` is
+ * `d{N}` (trackId.ts) while the eval hap's trackId is `$N`, so equality would
+ * SPLIT them (PV175). Containment aligns them via the shared source offsets both
+ * sides already carry.
+ *
+ * A hap with no `loc` (a continuous/sampled signal) or a `loc` before every
+ * lane's statement is attributed to the first-seen IR lane (`laneOrder[0]`) —
+ * kept, not dropped (it still plays; it's just not yet lane-attributable; a
+ * dedicated eval-backed lane for signal/bare-ref tracks is the P1b follow-on).
+ * Returns an empty map when the IR produced no lanes (nothing to attach to).
+ *
+ * Pitch comes from `extractPitch` — the hap's `note` is already the RESOLVED
+ * name/number ("C3", or a fractional MIDI for a sampled signal), so no scale/
+ * degree logic is needed here.
+ */
+function collectHapMarks(
+  events: readonly IREvent[],
+  displayCycles: number,
+  labelOffsetByLane: ReadonlyMap<string, number>,
+  laneOrder: readonly string[],
+): Map<string, SceneNote[]> {
+  const out = new Map<string, SceneNote[]>()
+  const defaultLane = laneOrder[0]
+  // (laneKey, dollarPos) pairs ascending by dollarPos — the containment index.
+  const anchors = [...labelOffsetByLane].sort((a, b) => a[1] - b[1])
+  const laneFor = (start: number | undefined): string | undefined => {
+    if (typeof start === 'number' && Number.isFinite(start)) {
+      let hit: string | undefined
+      for (const [key, pos] of anchors) {
+        if (pos <= start) hit = key
+        else break // ascending → no later anchor can be ≤ start
+      }
+      if (hit !== undefined) return hit
+    }
+    return defaultLane
+  }
+  for (const ev of events) {
+    const cycle = ev.begin
+    if (!Number.isFinite(cycle) || cycle < 0 || cycle >= displayCycles) continue
+    const key = laneFor(ev.loc?.[0]?.start)
+    if (key === undefined) continue // no IR lanes → nothing to attach to
+    let arr = out.get(key)
+    if (!arr) {
+      arr = []
+      out.set(key, arr)
+    }
+    const end = Number.isFinite(ev.end) && ev.end > cycle ? ev.end : cycle
+    arr.push({
+      cycle,
+      end,
+      pitch: extractPitch(ev)?.midi ?? null,
+      gain: clamp01(ev.gain ?? 1),
+      voice: ev.s ?? null,
+    })
+  }
+  return out
 }

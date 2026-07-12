@@ -1535,6 +1535,23 @@ declare class StrudelEngine implements LiveCodingEngine {
      */
     getTrackSchedulers(): Map<string, PatternScheduler>;
     /**
+     * Evaluated note events across all tracks over `[0, ceil(cycles))`, for the
+     * Song timeline's DISPLAY marks (#861). Iterates the per-track schedulers
+     * captured during the last evaluate() and concatenates their normalized haps
+     * (`sched.query` → `normalizeStrudelHap`), so every event carries the RESOLVED
+     * note (`n("0 2 4").scale("C:major")` → `note:"C3","E3","G3"`, Strudel applies
+     * the scale at query time) plus its `context.locations`.
+     *
+     * This is the eval-backed source of truth for what PLAYS — distinct from the
+     * static IR (`collectCycles`), which carries the raw source token (`note:"0"`)
+     * and drops `.scale` to an unused param, and so is source-lossy for pitch/scale
+     * (PV174). Display must degrade to evaluation; the IR stays the source of truth
+     * for structure (lanes/clips) and editing. Empty before first evaluate / after
+     * an evaluate error (empty `trackSchedulers`). A per-track query that throws is
+     * skipped (its scheduler already guards internally and returns `[]`).
+     */
+    getTimelineEvents(cycles: number): IREvent[];
+    /**
      * Returns per-track viz requests captured during the last evaluate() call.
      * Maps track keys ("$0", "$1", "d1") to viz descriptor IDs ("pianoroll", "scope").
      * Only patterns that called .viz("name") in user code appear in this map.
@@ -7223,6 +7240,15 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
      * (PV38 / PK13 step 8 — musician half).
      */
     getHapStream(): HapStream | null;
+    /**
+     * Evaluated note events over `[0, ceil(cycles))` for the Song timeline's
+     * DISPLAY marks (#861) — read-through accessor over the engine's per-track
+     * schedulers, mirroring `getHapStream`'s shape. Returns `[]` for non-Strudel
+     * runtimes / not-yet-evaluated engines (optional-chained delegate). The IR
+     * (structure) stays the timeline's source of truth; only note pitch/scale
+     * comes from here, where Strudel has already resolved it (PV174).
+     */
+    getTimelineEvents(cycles: number): IREvent[];
     /**
      * Backdrop viz requested by a non-underscore Strudel viz method
      * (e.g. `.scope()`, `.pianoroll()`) during the last evaluate, or `null`.
