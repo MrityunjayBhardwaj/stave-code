@@ -6734,7 +6734,7 @@ function buildMaybeResolved(doc, expr, label, stmtRange, index, nested = false) 
     return buildChunkFromExpr(
       doc,
       resolved.rhs,
-      null,
+      label,
       [resolved.declStmt.start, resolved.declStmt.end],
       nested
     );

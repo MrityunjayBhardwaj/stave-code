@@ -173,10 +173,14 @@ function buildMaybeResolved(
 ): ChunkInfo {
   const resolved = resolveBinding(expr, index)
   if (resolved) {
+    // Keep the call-site `label` (display-only) so a named-label ref
+    // (`drums: bass`) still names its strip, while the edit/freshness ranges
+    // anchor at the definition. label is independent of stmtRange, so this is
+    // safe — a nested stack arg passes label=null anyway.
     return buildChunkFromExpr(
       doc,
       resolved.rhs,
-      null,
+      label,
       [resolved.declStmt.start, resolved.declStmt.end],
       nested,
     )

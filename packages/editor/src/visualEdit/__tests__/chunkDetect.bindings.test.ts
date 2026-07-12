@@ -40,6 +40,13 @@ describe('#866 — chunkDetect binding resolution', () => {
     expect(c?.type).toBe('step')
   })
 
+  it('a named-label ref keeps its display label while anchoring at the def', () => {
+    const doc = 'const bass = note("c2 e2")\ndrums: bass'
+    const c = detectAllChunks(doc).find((x) => x.headFn === 'note')
+    expect(c?.label).toBe('drums') // display label preserved (from the usage)
+    expect(c?.statementText.startsWith('const bass')).toBe(true) // edits anchor at def
+  })
+
   it('resolves transitive identifier bindings (a = b; b = note(...))', () => {
     const doc = 'const b = note("c2 e2")\nconst a = b\n$: a'
     const c = detectAllChunks(doc)[0]
