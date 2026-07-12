@@ -24,7 +24,7 @@
 
 import * as React from 'react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { SongAnalysis, PatternIR, HapStream } from '@stave/editor'
+import type { SongAnalysis, PatternIR, HapStream, IREvent } from '@stave/editor'
 import {
   collectCycles,
   getMusicalTimelineSubRowHeight,
@@ -92,6 +92,13 @@ export interface FullSongTimelineProps {
    *  hap stream lights scene marks under the following playhead. Optional — the
    *  overlay simply never lights when unset (the static scene still renders). */
   readonly getHapStream?: () => HapStream | null
+  /** #861 — evaluated per-track note events over `[0, ceil(cycles))` for the
+   *  eval-backed DISPLAY marks. When present, the canvas note marks come from
+   *  these haps (Strudel has already resolved pitch/scale — `n("0 2 4").scale(…)`
+   *  → `note:"C3"…`), attributed to IR lanes by source containment; the IR still
+   *  owns lanes/clips (structure). Absent / returns `[]` (pre-eval, non-Strudel)
+   *  → the static-IR marks fallback (source-lossy for degree/scale — PV174). */
+  readonly getTimelineEvents?: (cycles: number) => IREvent[]
   /** Transport-offset-aware song position (cycles), or null when stopped. */
   readonly getSongPosition: () => number | null
   /** Seek the transport to an absolute song cycle. */
@@ -589,7 +596,17 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // looping pattern into the trailing room instead of leaving it empty. The
   // scene's transform basis still uses the (possibly grown) `displayCycles` so the
   // canvas and the component agree (PV116).
-  const marks = useMemo(() => collectNoteMarks(props.ir ?? null, loopCycles), [props.ir, loopCycles])
+  // #861 — DISPLAY marks come from the EVALUATED haps when available (Strudel
+  // has resolved pitch/scale — the static IR is source-lossy for those, PV174),
+  // else fall back to the IR (pre-eval). Re-query on each new snapshot: a fresh
+  // eval publishes a new `props.ir` AND updates the engine's track schedulers in
+  // lock-step, so keying the memo on `props.ir` refreshes the events too. The
+  // `getTimelineEvents` closure is stable (StaveApp binds it once), so its
+  // presence in the deps never re-fires the memo on its own.
+  const marks = useMemo(() => {
+    const events = props.getTimelineEvents?.(loopCycles) ?? null
+    return collectNoteMarks(events, props.ir ?? null, loopCycles)
+  }, [props.ir, loopCycles, props.getTimelineEvents])
   // Per-lane voice sub-row order is pinned first-seen across re-evals (#480) so
   // reordering clips in time doesn't reshuffle the instrument rows — the SAME
   // first-seen stability `stableTrackOrder` gives the top-level lanes, one level

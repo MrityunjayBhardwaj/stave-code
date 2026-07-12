@@ -21,6 +21,7 @@ import {
   type ProjectMeta,
   type WorkspaceShellHandle,
   type HapStream,
+  type IREvent,
   type BreakpointStore,
 } from "@stave/editor";
 import { seedProjectFromTemplate } from "../templates";
@@ -582,6 +583,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // Phase 20-06 (PV38, PK13 step 7+8) — closure-bound accessor onto the
   // active runtime's HapStream for the MusicalTimeline subscriber.
   const getHapStreamRef = useRef<() => HapStream | null>(() => null);
+  // #861 — closure-bound accessor onto the active runtime's evaluated timeline
+  // events, for the full-song timeline's eval-backed DISPLAY marks. Same
+  // ref-closure shape as getHapStreamRef; default returns [] until a runtime
+  // attaches (non-Strudel runtimes never populate it).
+  const getTimelineEventsRef = useRef<(cycles: number) => IREvent[]>(() => []);
   // #384/#385 — transport seek accessors for the full-song timeline. Same
   // ref-closure shape as getCycleRef so the registered element never
   // re-registers when the active runtime swaps. getSongPosition is the
@@ -619,6 +625,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             getCycle?: () => number | null;
             getCps?: () => number | null;
             getHapStream?: () => HapStream | null;
+            // #861 — evaluated timeline events for the eval-backed DISPLAY marks.
+            getTimelineEvents?: (cycles: number) => IREvent[];
             // #384/#385 — transport seek accessors (Strudel only).
             getSongPosition?: () => number | null;
             onSeek?: (cycle: number) => void;
@@ -640,6 +648,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       getCycleRef.current = s?.getCycle ?? (() => null);
       getCpsRef.current = s?.getCps ?? (() => null);
       getHapStreamRef.current = s?.getHapStream ?? (() => null);
+      getTimelineEventsRef.current = s?.getTimelineEvents ?? (() => []);
       getSongPositionRef.current = s?.getSongPosition ?? (() => null);
       onSeekRef.current = s?.onSeek ?? (() => {});
       onRequestSnapshotRef.current = s?.onRequestSnapshot ?? (() => {});
@@ -682,6 +691,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           getCycle={() => getCycleRef.current()}
           getCps={() => getCpsRef.current()}
           getHapStream={() => getHapStreamRef.current()}
+          getTimelineEvents={(cycles) => getTimelineEventsRef.current(cycles)}
           getSongPosition={() => getSongPositionRef.current()}
           onSeek={(cycle) => onSeekRef.current(cycle)}
           onRequestSnapshot={() => onRequestSnapshotRef.current()}

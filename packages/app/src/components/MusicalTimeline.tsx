@@ -33,6 +33,7 @@ import { useEffect, useState } from 'react'
 import {
   type IRSnapshot,
   type HapStream,
+  type IREvent,
   type PatternIR,
   getIRSnapshot,
   subscribeIRSnapshot,
@@ -84,6 +85,14 @@ export interface MusicalTimelineProps {
    * this stream to drive activeKeys (D-01: real-hap REPLACES cycle-derived).
    */
   readonly getHapStream: () => HapStream | null
+  /**
+   * #861 — evaluated per-track note events over `[0, ceil(cycles))`, forwarded
+   * to FullSongTimeline to drive its eval-backed DISPLAY marks (pitch/scale are
+   * resolved by Strudel at query time; the static IR is source-lossy for them —
+   * PV174). Optional: registrations that predate this pass nothing → the song
+   * view falls back to IR-collected marks (pre-eval behaviour).
+   */
+  readonly getTimelineEvents?: (cycles: number) => IREvent[]
   /** Drawer open state — forwarded to FullSongTimeline to gate its playhead
    *  rAF loop (Trap NEW-1). */
   readonly getDrawerOpen: () => boolean
@@ -586,6 +595,7 @@ export function MusicalTimeline(
           ir={snapshot?.ir ?? null}
           source={snapshot?.code ?? null}
           getHapStream={props.getHapStream}
+          getTimelineEvents={props.getTimelineEvents}
           getSongPosition={props.getSongPosition ?? (() => null)}
           onSeek={props.onSeek ?? (() => {})}
           getDrawerOpen={props.getDrawerOpen}

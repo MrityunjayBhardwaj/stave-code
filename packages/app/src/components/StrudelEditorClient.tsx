@@ -68,6 +68,7 @@ import {
   type VizDescriptor,
   type PreviewProvider,
   type HapStream,
+  type IREvent,
   type BreakpointStore,
   loadShellState,
   saveShellState,
@@ -235,6 +236,12 @@ interface StrudelEditorClientProps {
      * the engine isn't running or the runtime is non-Strudel.
      */
     getHapStream: () => HapStream | null;
+    /**
+     * #861 — evaluated per-track note events over `[0, ceil(cycles))` for the
+     * full-song timeline's DISPLAY marks. Mirrors `getHapStream`'s closure-bound
+     * shape; `[]` when the engine isn't running or the runtime is non-Strudel.
+     */
+    getTimelineEvents: (cycles: number) => IREvent[];
     /**
      * #384/#385 — transport seek accessors for the full-song timeline.
      * `getSongPosition` is the transport-offset-aware clock; `onSeek`
@@ -1418,6 +1425,10 @@ export default function StrudelEditorClient({
       },
       getHapStream: () =>
         runtimesRef.current.get(accessorFid)?.getHapStream?.() ?? null,
+      // #861 — evaluated timeline events for the full-song DISPLAY marks.
+      // Closure-bound through runtimesRef like getHapStream.
+      getTimelineEvents: (cycles: number) =>
+        runtimesRef.current.get(accessorFid)?.getTimelineEvents?.(cycles) ?? [],
       // #384/#385 — transport seek accessors. Closure-bound through
       // runtimesRef like getHapStream; seekTo is fire-and-forget here (the
       // full-song ruler doesn't await the re-eval — clock + playhead reflect
@@ -1570,6 +1581,12 @@ export default function StrudelEditorClient({
             runtimesRef.current
               .get(accessorFid)
               ?.getHapStream?.() ?? null,
+          // #861 — evaluated timeline events for the full-song DISPLAY marks
+          // (same closure shape as the useEffect builder above).
+          getTimelineEvents: (cycles: number) =>
+            runtimesRef.current
+              .get(accessorFid)
+              ?.getTimelineEvents?.(cycles) ?? [],
           // #384/#385 — transport seek accessors (same shape as the
           // useEffect builder above).
           getSongPosition: () =>
