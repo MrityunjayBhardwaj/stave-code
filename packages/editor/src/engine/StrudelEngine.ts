@@ -121,8 +121,19 @@ export class StrudelEngine implements LiveCodingEngine {
   private runtimeErrorHandler: ((err: Error) => void) | null = null
   // Sound names registered after init() — used for editor autocompletion
   private loadedSoundNames: string[] = []
-  // Per-track PatternSchedulers captured during the last evaluate() call
+  // Per-track PatternSchedulers captured during the last evaluate() call.
+  // These hold the pattern in the SCHEDULER frame — `.late(transportOffset)`
+  // applied — because every consumer (viz, signal bus, meters, the live
+  // playhead) reads them against the wall clock.
   private trackSchedulers: Map<string, PatternScheduler> = new Map()
+  // #863 — the same per-track patterns in the SONG frame: captured BEFORE the
+  // `.late(transportOffset)` seek wrap, so cycle 0 is the start of the song
+  // rather than the start of the current scheduler window. The Song timeline
+  // draws static marks on a song-absolute axis against IR-derived lanes, so it
+  // must read from here (`getTimelineEvents`) — a shifted query would drift the
+  // marks off their lanes by the offset after any seek. Kept in lock-step with
+  // `trackSchedulers` (assigned together on a successful evaluate).
+  private songPatterns: Map<string, any> = new Map() // eslint-disable-line @typescript-eslint/no-explicit-any
   // Per-track viz requests captured during the last evaluate() call
   private vizRequests: Map<string, string> = new Map()
   // Per-track viz options (the `.pianoroll({...})` argument), keyed by the
@@ -623,6 +634,8 @@ export class StrudelEngine implements LiveCodingEngine {
     this.lastAliasResolutions = []
 
     const capturedPatterns = new Map<string, any>() // eslint-disable-line @typescript-eslint/no-explicit-any
+    // #863 — the same patterns in the SONG frame (pre-`.late` seek wrap).
+    const capturedSongPatterns = new Map<string, any>() // eslint-disable-line @typescript-eslint/no-explicit-any
     const capturedVizRequests = new Map<string, string>()
     // Per-track viz options from a `.pianoroll({ ... })` / `._pianoroll({ ... })`
     // argument, keyed by captureId — flows to the renderer's `stave.options`.
@@ -850,6 +863,11 @@ export class StrudelEngine implements LiveCodingEngine {
               // if `.late` is present (registered @strudel/core; exotic
               // patterns may lack it → keep unshifted). PV2: this time-shift on
               // Pattern.prototype lives engine-side only.
+              // #863 — the SONG-frame pattern is the one BEFORE the seek wrap:
+              // its cycle 0 is the start of the song, which is the axis the Song
+              // timeline's static marks (and the IR lanes they sit in) are drawn
+              // on. Captured post-orbit so both frames route identically.
+              capturedSongPatterns.set(captureId, effectivePattern)
               if (transportOffset !== 0 && typeof effectivePattern.late === 'function') {
                 try { effectivePattern = effectivePattern.late(transportOffset) } catch { /* keep unshifted */ }
               }
@@ -903,6 +921,9 @@ export class StrudelEngine implements LiveCodingEngine {
             },
           })
         }
+        // #863 — assigned WITH trackSchedulers so the two frames never diverge:
+        // a re-eval that publishes new schedulers publishes new song patterns.
+        this.songPatterns = capturedSongPatterns
         this.vizRequests = capturedVizRequests
         this.vizOptions = capturedVizOptions
         this.backdropVizRequest = capturedBackdropViz
@@ -1263,17 +1284,31 @@ export class StrudelEngine implements LiveCodingEngine {
    * static IR (`collectCycles`), which carries the raw source token (`note:"0"`)
    * and drops `.scale` to an unused param, and so is source-lossy for pitch/scale
    * (PV174). Display must degrade to evaluation; the IR stays the source of truth
-   * for structure (lanes/clips) and editing. Empty before first evaluate / after
-   * an evaluate error (empty `trackSchedulers`). A per-track query that throws is
-   * skipped (its scheduler already guards internally and returns `[]`).
+   * for structure (lanes/clips) and editing. Empty before the first evaluate; a
+   * FAILED evaluate leaves the last good eval's patterns in place (as
+   * `trackSchedulers` does — neither is reassigned outside the success branch),
+   * which the timeline never sees, because it also needs the IR and the engine
+   * DOES clear that on error. A per-track query that throws is skipped.
+   *
+   * SONG FRAME, not the scheduler frame (#863). Queries `songPatterns` — the
+   * patterns as captured BEFORE the `.late(transportOffset)` seek wrap — so
+   * cycle 0 is the start of the SONG. The timeline draws these marks on a
+   * song-absolute axis, inside lanes/clips derived from the (unshifted) static
+   * IR; querying the shifted `trackSchedulers` instead would slide every mark by
+   * the transport offset after a seek and rotate the loop's tail into the window,
+   * desyncing marks from their own lanes. The live surfaces that DO want the
+   * scheduler frame (viz, signal bus, meters, playhead overlay) keep reading
+   * `trackSchedulers` — the two frames coincide only while `transportOffset` is 0.
    */
   getTimelineEvents(cycles: number): IREvent[] {
     const n = Math.max(1, Math.ceil(Number.isFinite(cycles) ? cycles : 1))
     const out: IREvent[] = []
-    for (const sched of this.trackSchedulers.values()) {
+    for (const [trackId, pattern] of this.songPatterns) {
       try {
-        const evs = sched.query(0, n)
-        for (const ev of evs) out.push(ev)
+        const haps = pattern.queryArc(0, n) as unknown[]
+        for (const hap of haps) {
+          out.push(normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? undefined))
+        }
       } catch { /* per-track query failure — skip this track */ }
     }
     return out
