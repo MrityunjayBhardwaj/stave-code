@@ -4840,8 +4840,20 @@ var _StrudelEngine = class _StrudelEngine {
     this.runtimeErrorHandler = null;
     // Sound names registered after init() — used for editor autocompletion
     this.loadedSoundNames = [];
-    // Per-track PatternSchedulers captured during the last evaluate() call
+    // Per-track PatternSchedulers captured during the last evaluate() call.
+    // These hold the pattern in the SCHEDULER frame — `.late(transportOffset)`
+    // applied — because every consumer (viz, signal bus, meters, the live
+    // playhead) reads them against the wall clock.
     this.trackSchedulers = /* @__PURE__ */ new Map();
+    // #863 — the same per-track patterns in the SONG frame: captured BEFORE the
+    // `.late(transportOffset)` seek wrap, so cycle 0 is the start of the song
+    // rather than the start of the current scheduler window. The Song timeline
+    // draws static marks on a song-absolute axis against IR-derived lanes, so it
+    // must read from here (`getTimelineEvents`) — a shifted query would drift the
+    // marks off their lanes by the offset after any seek. Kept in lock-step with
+    // `trackSchedulers` (assigned together on a successful evaluate).
+    this.songPatterns = /* @__PURE__ */ new Map();
+    // eslint-disable-line @typescript-eslint/no-explicit-any
     // Per-track viz requests captured during the last evaluate() call
     this.vizRequests = /* @__PURE__ */ new Map();
     // Per-track viz options (the `.pianoroll({...})` argument), keyed by the
@@ -5207,6 +5219,7 @@ var _StrudelEngine = class _StrudelEngine {
     this.lastEvaluatedCode = code;
     this.lastAliasResolutions = [];
     const capturedPatterns = /* @__PURE__ */ new Map();
+    const capturedSongPatterns = /* @__PURE__ */ new Map();
     const capturedVizRequests = /* @__PURE__ */ new Map();
     const capturedVizOptions = /* @__PURE__ */ new Map();
     let capturedBackdropViz = null;
@@ -5326,6 +5339,7 @@ var _StrudelEngine = class _StrudelEngine {
                 } catch {
                 }
               }
+              capturedSongPatterns.set(captureId, effectivePattern);
               if (transportOffset !== 0 && typeof effectivePattern.late === "function") {
                 try {
                   effectivePattern = effectivePattern.late(transportOffset);
@@ -5368,6 +5382,7 @@ var _StrudelEngine = class _StrudelEngine {
             }, "query")
           });
         }
+        this.songPatterns = capturedSongPatterns;
         this.vizRequests = capturedVizRequests;
         this.vizOptions = capturedVizOptions;
         this.backdropVizRequest = capturedBackdropViz;
@@ -5631,16 +5646,28 @@ var _StrudelEngine = class _StrudelEngine {
    * and drops `.scale` to an unused param, and so is source-lossy for pitch/scale
    * (PV174). Display must degrade to evaluation; the IR stays the source of truth
    * for structure (lanes/clips) and editing. Empty before first evaluate / after
-   * an evaluate error (empty `trackSchedulers`). A per-track query that throws is
-   * skipped (its scheduler already guards internally and returns `[]`).
+   * an evaluate error (empty `songPatterns`). A per-track query that throws is
+   * skipped.
+   *
+   * SONG FRAME, not the scheduler frame (#863). Queries `songPatterns` — the
+   * patterns as captured BEFORE the `.late(transportOffset)` seek wrap — so
+   * cycle 0 is the start of the SONG. The timeline draws these marks on a
+   * song-absolute axis, inside lanes/clips derived from the (unshifted) static
+   * IR; querying the shifted `trackSchedulers` instead would slide every mark by
+   * the transport offset after a seek and rotate the loop's tail into the window,
+   * desyncing marks from their own lanes. The live surfaces that DO want the
+   * scheduler frame (viz, signal bus, meters, playhead overlay) keep reading
+   * `trackSchedulers` — the two frames coincide only while `transportOffset` is 0.
    */
   getTimelineEvents(cycles) {
     const n = Math.max(1, Math.ceil(Number.isFinite(cycles) ? cycles : 1));
     const out = [];
-    for (const sched of this.trackSchedulers.values()) {
+    for (const [trackId, pattern] of this.songPatterns) {
       try {
-        const evs = sched.query(0, n);
-        for (const ev of evs) out.push(ev);
+        const haps = pattern.queryArc(0, n);
+        for (const hap of haps) {
+          out.push(normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? void 0));
+        }
       } catch {
       }
     }

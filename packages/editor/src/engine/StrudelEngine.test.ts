@@ -30,12 +30,22 @@ let capturedOnEvalError: ((err: Error) => void) | null = null
 
 class MockPattern {
   private instanceId: number
-  constructor() {
-    this.instanceId = ++patternInstanceCounter
+  // Accumulated `.late()` shift (#863) — the seek wrap the engine applies to the
+  // SCHEDULER-frame pattern. `0` for a pattern in the song frame.
+  private shift: number
+  constructor(clone?: { instanceId: number; shift: number }) {
+    this.instanceId = clone ? clone.instanceId : ++patternInstanceCounter
+    this.shift = clone ? clone.shift : 0
+  }
+  // Models `@strudel/core`'s `.late(offset)`: delays every onset by `offset`
+  // cycles. Returns a NEW pattern (as Strudel does) that keeps the same
+  // instanceId, so the orbit each analyser test asserts on is unaffected.
+  late(offset: number) {
+    return new MockPattern({ instanceId: this.instanceId, shift: this.shift + offset })
   }
   queryArc(begin: number, end: number) {
     return [{
-      whole: { begin, end },
+      whole: { begin: begin + this.shift, end: end + this.shift },
       // `orbit` field is read by StrudelEngine.resolveOrbit() to decide which
       // superdough orbit to side-tap for per-track analysers. Using instanceId
       // gives each pattern a distinct orbit in tests.
@@ -524,6 +534,71 @@ describe('StrudelEngine transport offset (#384)', () => {
     expect(engine.getTransportOffset()).toBe(0)
     engine.setTransportOffset(Number.POSITIVE_INFINITY)
     expect(engine.getTransportOffset()).toBe(0)
+    engine.dispose()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getTimelineEvents — the SONG frame (#863)
+// ---------------------------------------------------------------------------
+// The Song timeline draws its static marks on a song-absolute axis, inside lanes
+// and clips derived from the (unshifted) static IR. A seek wraps every captured
+// pattern in `.late(transportOffset)` so audio and the live playhead stay in one
+// scheduler frame — so reading the marks off `trackSchedulers` slid them by the
+// offset and desynced them from their own lanes. `getTimelineEvents` must read
+// the pre-wrap SONG pattern instead; the live surfaces keep the shifted one.
+describe('StrudelEngine.getTimelineEvents (song frame, #863)', () => {
+  beforeEach(() => {
+    patternInstanceCounter = 0
+    capturedOnEvalError = null
+    evalBehavior = 'one-track'
+    vi.clearAllMocks()
+  })
+
+  it('returns no events before the first evaluate', () => {
+    const engine = new StrudelEngine()
+    expect(engine.getTimelineEvents(4)).toEqual([])
+    engine.dispose()
+  })
+
+  it('is song-absolute at offset 0 (the frames coincide)', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('one-track')
+    const evs = engine.getTimelineEvents(4)
+    expect(evs.length).toBe(1)
+    expect(evs[0].begin).toBe(0)
+    engine.dispose()
+  })
+
+  it('stays song-absolute AFTER a seek, while the track schedulers shift', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    // A seek: the transport offset is applied at the next evaluate (the `.late`
+    // wrap lives at the engine's `.p` capture seam).
+    engine.setTransportOffset(2)
+    await engine.evaluate('one-track')
+
+    // DISPLAY frame — unmoved: song cycle 0 is still song cycle 0.
+    const marks = engine.getTimelineEvents(4)
+    expect(marks.length).toBe(1)
+    expect(marks[0].begin).toBe(0)
+
+    // LIVE frame — still shifted by the offset, as the audio/playhead/viz need.
+    const sched = engine.getTrackSchedulers().get('$0')!
+    expect(sched.query(0, 4)[0].begin).toBe(2)
+    engine.dispose()
+  })
+
+  it('re-evaluating after a seek-back returns the marks to the same place', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    engine.setTransportOffset(3.5)
+    await engine.evaluate('one-track')
+    expect(engine.getTimelineEvents(4)[0].begin).toBe(0)
+    engine.setTransportOffset(0)
+    await engine.evaluate('one-track')
+    expect(engine.getTimelineEvents(4)[0].begin).toBe(0)
     engine.dispose()
   })
 })

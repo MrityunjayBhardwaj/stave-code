@@ -1406,6 +1406,7 @@ declare class StrudelEngine implements LiveCodingEngine {
     private runtimeErrorHandler;
     private loadedSoundNames;
     private trackSchedulers;
+    private songPatterns;
     private vizRequests;
     private vizOptions;
     private backdropVizOptions;
@@ -1547,8 +1548,18 @@ declare class StrudelEngine implements LiveCodingEngine {
      * and drops `.scale` to an unused param, and so is source-lossy for pitch/scale
      * (PV174). Display must degrade to evaluation; the IR stays the source of truth
      * for structure (lanes/clips) and editing. Empty before first evaluate / after
-     * an evaluate error (empty `trackSchedulers`). A per-track query that throws is
-     * skipped (its scheduler already guards internally and returns `[]`).
+     * an evaluate error (empty `songPatterns`). A per-track query that throws is
+     * skipped.
+     *
+     * SONG FRAME, not the scheduler frame (#863). Queries `songPatterns` — the
+     * patterns as captured BEFORE the `.late(transportOffset)` seek wrap — so
+     * cycle 0 is the start of the SONG. The timeline draws these marks on a
+     * song-absolute axis, inside lanes/clips derived from the (unshifted) static
+     * IR; querying the shifted `trackSchedulers` instead would slide every mark by
+     * the transport offset after a seek and rotate the loop's tail into the window,
+     * desyncing marks from their own lanes. The live surfaces that DO want the
+     * scheduler frame (viz, signal bus, meters, playhead overlay) keep reading
+     * `trackSchedulers` — the two frames coincide only while `transportOffset` is 0.
      */
     getTimelineEvents(cycles: number): IREvent[];
     /**
