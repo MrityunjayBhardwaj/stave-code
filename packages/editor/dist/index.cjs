@@ -6697,9 +6697,55 @@ function isChunkFresh(doc, chunk) {
   return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText;
 }
 __name(isChunkFresh, "isChunkFresh");
+function buildBindingIndex(statements) {
+  const map = /* @__PURE__ */ new Map();
+  const dropped = /* @__PURE__ */ new Set();
+  for (const stmt of statements) {
+    if (!stmt || stmt.type !== "VariableDeclaration" || !Array.isArray(stmt.declarations)) continue;
+    for (const decl of stmt.declarations) {
+      if (decl?.id?.type !== "Identifier" || !decl.init) continue;
+      const name = decl.id.name;
+      if (map.has(name) || dropped.has(name)) {
+        map.delete(name);
+        dropped.add(name);
+        continue;
+      }
+      map.set(name, { rhs: decl.init, declStmt: stmt });
+    }
+  }
+  return map;
+}
+__name(buildBindingIndex, "buildBindingIndex");
+function resolveBinding(node, index, seen = /* @__PURE__ */ new Set()) {
+  if (!node || node.type !== "Identifier" || seen.has(node.name)) return null;
+  const b = index.get(node.name);
+  if (!b) return null;
+  seen.add(node.name);
+  if (b.rhs?.type === "Identifier") {
+    const deeper = resolveBinding(b.rhs, index, seen);
+    if (deeper) return deeper;
+  }
+  return b;
+}
+__name(resolveBinding, "resolveBinding");
+function buildMaybeResolved(doc, expr, label, stmtRange, index, nested = false) {
+  const resolved = resolveBinding(expr, index);
+  if (resolved) {
+    return buildChunkFromExpr(
+      doc,
+      resolved.rhs,
+      null,
+      [resolved.declStmt.start, resolved.declStmt.end],
+      nested
+    );
+  }
+  return buildChunkFromExpr(doc, expr, label, stmtRange, nested);
+}
+__name(buildMaybeResolved, "buildMaybeResolved");
 function detectChunk(doc, pos) {
   const statements = parseTopLevel(doc);
   if (!statements) return null;
+  const bindings = buildBindingIndex(statements);
   for (const node of statements) {
     if (pos >= node.start && pos <= node.end) {
       let label = null;
@@ -6710,8 +6756,8 @@ function detectChunk(doc, pos) {
       }
       if (body.type !== "ExpressionStatement") return null;
       const topExpr = body.expression;
-      const target = innermostChainUnder(doc, topExpr, pos);
-      return target === topExpr ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end]) : buildChunkFromExpr(doc, target, null, [target.start, target.end], true);
+      const target = innermostChainUnder(doc, topExpr, pos, bindings);
+      return target === topExpr ? buildMaybeResolved(doc, topExpr, label, [node.start, node.end], bindings) : buildMaybeResolved(doc, target, null, [target.start, target.end], bindings, true);
     }
   }
   return null;
@@ -6720,10 +6766,11 @@ __name(detectChunk, "detectChunk");
 function detectAllChunks(doc) {
   const statements = parseTopLevel(doc);
   if (!statements) return [];
-  return statements.map((node) => buildChunk(doc, node)).filter((c) => c !== null);
+  const bindings = buildBindingIndex(statements);
+  return statements.map((node) => buildChunk(doc, node, bindings)).filter((c) => c !== null);
 }
 __name(detectAllChunks, "detectAllChunks");
-function buildChunk(doc, node) {
+function buildChunk(doc, node, bindings) {
   let label = null;
   let body = node;
   if (node.type === "LabeledStatement") {
@@ -6731,7 +6778,7 @@ function buildChunk(doc, node) {
     body = node.body;
   }
   if (body.type !== "ExpressionStatement") return null;
-  return buildChunkFromExpr(doc, body.expression, label, [node.start, node.end]);
+  return buildMaybeResolved(doc, body.expression, label, [node.start, node.end], bindings);
 }
 __name(buildChunk, "buildChunk");
 function buildChunkFromExpr(doc, expr, label, stmtRange, nested = false) {
@@ -6765,16 +6812,17 @@ function buildChunkFromExpr(doc, expr, label, stmtRange, nested = false) {
   return info;
 }
 __name(buildChunkFromExpr, "buildChunkFromExpr");
-function innermostChainUnder(doc, expr, pos) {
+function innermostChainUnder(doc, expr, pos, bindings) {
   const pickSection = pickSectionUnder(expr, pos);
-  if (pickSection) return innermostChainUnder(doc, pickSection, pos);
+  if (pickSection) return innermostChainUnder(doc, pickSection, pos, bindings);
   const headOut = { ref: null };
   collectChain(doc, expr, headOut);
   const head = headOut.ref;
   if (!head || !Array.isArray(head.arguments)) return expr;
   for (const arg of head.arguments) {
-    const inner = chainArgUnder(arg, pos);
-    if (inner) return innermostChainUnder(doc, inner, pos);
+    const inner = chainArgUnder(arg, pos, bindings);
+    if (inner && inner.type === "Identifier") return inner;
+    if (inner) return innermostChainUnder(doc, inner, pos, bindings);
   }
   return expr;
 }
@@ -6799,9 +6847,10 @@ function pickSectionUnder(expr, pos) {
   return null;
 }
 __name(pickSectionUnder, "pickSectionUnder");
-function chainArgUnder(arg, pos) {
+function chainArgUnder(arg, pos, bindings) {
   if (!arg || typeof arg.start !== "number" || pos < arg.start || pos > arg.end) return null;
   if (arg.type === "CallExpression") return arg;
+  if (arg.type === "Identifier" && bindings?.has(arg.name)) return arg;
   if (arg.type === "ArrayExpression" && Array.isArray(arg.elements)) {
     for (const el of arg.elements) {
       if (el && el.type === "CallExpression" && typeof el.start === "number" && pos >= el.start && pos <= el.end) {
