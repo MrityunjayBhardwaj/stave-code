@@ -57,10 +57,6 @@ export function collectNoteMarks(
   const useEval = Array.isArray(events) && events.length > 0
   // IR-derived note marks — the pre-eval fallback. Left empty when `useEval`.
   const marksByLane = new Map<string, SceneNote[]>()
-  // First-seen IR lane keys — the containment default for a hap with no `loc`
-  // (continuous/sampled signal) or a `loc` before every lane's statement.
-  const laneOrder: string[] = []
-  const laneSeen = new Set<string>()
   // Per-lane representative source offset for expand-to-bind: the FIRST event of
   // the lane that carries a `loc` (char offsets into the evaluated source). The
   // bind maps this → editor cursor → the Pattern panel rebinds (#422). First-
@@ -109,10 +105,6 @@ export function collectNoteMarks(
     const cycle = ev.begin
     if (!Number.isFinite(cycle) || cycle < 0 || cycle >= displayCycles) continue
     const key = laneKeyOf(ev)
-    if (!laneSeen.has(key)) {
-      laneSeen.add(key)
-      laneOrder.push(key)
-    }
     if (!sourceByLane.has(key)) {
       const offset = ev.loc?.[0]?.start
       if (typeof offset === 'number' && Number.isFinite(offset)) sourceByLane.set(key, offset)
@@ -181,7 +173,7 @@ export function collectNoteMarks(
   // (NOT trackId equality, which diverges for anon `$:` — PV175). Structure
   // (source/arrange/label offsets, clips) stays IR-owned above.
   const activeMarksByLane = useEval
-    ? collectHapMarks(events as IREvent[], displayCycles, labelOffsetByLane, laneOrder)
+    ? collectHapMarks(events as IREvent[], displayCycles, labelOffsetByLane)
     : marksByLane
   // Bound each lane to `capPerLane` marks by downsampling ACROSS its span (keep
   // every Nth), not by dropping the tail. A dense lane (e.g. a drum stack at
@@ -231,51 +223,66 @@ export function collectNoteMarks(
 }
 
 /**
- * Derive note marks from EVALUATED haps (#861), attributed to the IR lanes by
- * SOURCE CONTAINMENT — the lane whose `$:`/`name:` statement offset (`dollarPos`,
- * carried in `labelOffsetByLane`) is the LARGEST one ≤ the hap's `loc[0].start`.
+ * Lane key for an eval hap that has no IR lane — a signal (`.segment`) or
+ * bare-ref track the static IR never emitted events for (#864 / P1b). Mirrors
+ * `trackIdFromLabel`: an anonymous `$:` producer id (`$N`, source-ordered) → the
+ * positional `d{N+1}`; a named track keeps its name. This aligns eval-only lane
+ * identity with the IR convention (a signal at source position 1 reads `d2`, not
+ * `$1`) and keeps eval lanes disjoint from IR lanes (which exist only for
+ * event-producing tracks). Absent trackId (hand-built haps) → a single `d1`.
+ */
+function evalTrackIdToLaneKey(trackId: string | undefined): string {
+  if (!trackId) return 'd1'
+  const m = /^\$(\d+)$/.exec(trackId)
+  return m ? `d${Number(m[1]) + 1}` : trackId
+}
+
+/**
+ * Derive note marks from EVALUATED haps (#861), attributed to a lane by SOURCE
+ * CONTAINMENT when possible, else to an EVAL-BACKED lane (#864 / P1b).
  *
- * Not `laneKeyOf(hap)` string equality: the IR lane key for an anonymous `$:` is
- * `d{N}` (trackId.ts) while the eval hap's trackId is `$N`, so equality would
- * SPLIT them (PV175). Containment aligns them via the shared source offsets both
- * sides already carry.
+ * Containment: the IR lane whose `$:`/`name:` statement offset (`dollarPos`, in
+ * `labelOffsetByLane`) is the LARGEST one ≤ the hap's `loc[0].start`. NOT
+ * `laneKeyOf(hap)` string equality — the IR lane key for an anon `$:` is `d{N}`
+ * while the eval hap trackId is `$N`, so equality would SPLIT them (PV175).
+ * Containment aligns them via the source offsets both sides already carry.
  *
- * A hap with no `loc` (a continuous/sampled signal) or a `loc` before every
- * lane's statement is attributed to the first-seen IR lane (`laneOrder[0]`) —
- * kept, not dropped (it still plays; it's just not yet lane-attributable; a
- * dedicated eval-backed lane for signal/bare-ref tracks is the P1b follow-on).
- * Returns an empty map when the IR produced no lanes (nothing to attach to).
+ * When a hap has no `loc` (a sampled signal), or its `loc` lands before every IR
+ * lane's statement (a bare-ref whose `loc` points at the `const` definition), it
+ * belongs to a track the static IR produced no lane for. It is routed to an EVAL
+ * lane keyed by its own `trackId` (`evalTrackIdToLaneKey`); `buildTimelineScene`
+ * renders those keys as their own rows (#864). This surfaces signal/bare-ref
+ * tracks AND stops their marks polluting an unrelated IR lane (the prior
+ * default-lane behaviour).
  *
  * Pitch comes from `extractPitch` — the hap's `note` is already the RESOLVED
- * name/number ("C3", or a fractional MIDI for a sampled signal), so no scale/
- * degree logic is needed here.
+ * name/number ("C3", or a fractional MIDI for a sampled signal).
  */
 function collectHapMarks(
   events: readonly IREvent[],
   displayCycles: number,
   labelOffsetByLane: ReadonlyMap<string, number>,
-  laneOrder: readonly string[],
 ): Map<string, SceneNote[]> {
   const out = new Map<string, SceneNote[]>()
-  const defaultLane = laneOrder[0]
   // (laneKey, dollarPos) pairs ascending by dollarPos — the containment index.
   const anchors = [...labelOffsetByLane].sort((a, b) => a[1] - b[1])
-  const laneFor = (start: number | undefined): string | undefined => {
-    if (typeof start === 'number' && Number.isFinite(start)) {
-      let hit: string | undefined
-      for (const [key, pos] of anchors) {
-        if (pos <= start) hit = key
-        else break // ascending → no later anchor can be ≤ start
-      }
-      if (hit !== undefined) return hit
+  // Containment hit (an IR lane), or undefined when the hap's source start lands
+  // before every lane's statement (or it has no `loc`).
+  const irLaneFor = (start: number | undefined): string | undefined => {
+    if (typeof start !== 'number' || !Number.isFinite(start)) return undefined
+    let hit: string | undefined
+    for (const [key, pos] of anchors) {
+      if (pos <= start) hit = key
+      else break // ascending → no later anchor can be ≤ start
     }
-    return defaultLane
+    return hit
   }
   for (const ev of events) {
     const cycle = ev.begin
     if (!Number.isFinite(cycle) || cycle < 0 || cycle >= displayCycles) continue
-    const key = laneFor(ev.loc?.[0]?.start)
-    if (key === undefined) continue // no IR lanes → nothing to attach to
+    // Containment first (keeps a hap on its named/positional IR lane); else an
+    // eval-backed lane keyed by the hap's own producer id (#864 / P1b).
+    const key = irLaneFor(ev.loc?.[0]?.start) ?? evalTrackIdToLaneKey(ev.trackId)
     let arr = out.get(key)
     if (!arr) {
       arr = []

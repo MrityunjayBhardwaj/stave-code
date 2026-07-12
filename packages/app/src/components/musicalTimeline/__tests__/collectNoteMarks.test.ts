@@ -75,18 +75,34 @@ describe('collectNoteMarks — eval-backed marks (#861)', () => {
     expect(marks.marksByLane.get('d2')?.map((n) => n.pitch)).toEqual([E3])
   })
 
-  it('routes a loc-less hap to the first-seen (default) lane, not dropped', () => {
-    // A sampled/continuous-signal hap carries NO loc → un-attributable by
-    // containment → the first IR lane (`d1`). Kept (still plays), just not
-    // lane-precise (the eval-backed-lanes follow-on, P1b).
+  it('routes a loc-less hap to its OWN eval lane by trackId, not a default IR lane (#864)', () => {
+    // A sampled-signal hap carries NO loc → un-attributable by containment. P1b
+    // routes it to an EVAL lane keyed by its producer id (`$1` → `d2`), NOT the
+    // first IR lane — so it neither vanishes nor pollutes an unrelated lane.
     const haps = [
-      { begin: 0, end: 1, trackId: '$3', note: 'C3', gain: 1 },
+      { begin: 0, end: 1, trackId: '$1', note: 'C3', gain: 1 },
     ] as unknown as Parameters<typeof collectNoteMarks>[0]
 
     const marks = collectNoteMarks(haps, { fake: true } as never, 4)
 
-    expect(marks.marksByLane.get('d1')?.map((n) => n.pitch)).toEqual([C3])
-    expect(marks.marksByLane.get('d2')).toBeUndefined()
+    // Its own eval lane `d2` (`$1` → d{1+1}); the IR lanes d1/d2 got no marks
+    // (d2 here is the EVAL lane, disjoint from any IR lane — the mock IR has
+    // events only under d1/d2 keys, but this hap has no loc so it can't attach).
+    expect(marks.marksByLane.get('d2')?.map((n) => n.pitch)).toEqual([C3])
+    // Not routed to the first IR lane (the old default-lane pollution bug).
+    expect(marks.marksByLane.get('d1')).toBeUndefined()
+  })
+
+  it('keys a named-producer eval lane by the name verbatim (#864)', () => {
+    // An un-attributable hap from a NAMED producer (no loc) → eval lane keyed by
+    // the name, not a positional `d{N}` — mirroring `trackIdFromLabel`.
+    const haps = [
+      { begin: 0, end: 1, trackId: 'bass', note: 'E3', gain: 1 },
+    ] as unknown as Parameters<typeof collectNoteMarks>[0]
+
+    const marks = collectNoteMarks(haps, { fake: true } as never, 4)
+
+    expect(marks.marksByLane.get('bass')?.map((n) => n.pitch)).toEqual([E3])
   })
 
   it('falls back to IR marks (source-lossy pitch) when there are no eval events', () => {
