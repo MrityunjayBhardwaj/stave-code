@@ -1,24 +1,24 @@
 {
   "tunes": 53,
   "tuneLevel": {
-    "fully": 14,
-    "partial": 8,
-    "anyEditable": 22,
-    "knobsOnly": 7,
-    "codeOnly": 23,
+    "fully": 17,
+    "partial": 9,
+    "anyEditable": 26,
+    "knobsOnly": 20,
+    "codeOnly": 6,
     "unparseable": 1,
-    "anyEditablePct": 41.5
+    "anyEditablePct": 49.1
   },
   "unitLevel": {
-    "totalUnits": 71,
-    "note": 37,
+    "totalUnits": 93,
+    "note": 43,
     "clip": 0,
-    "structurallyEditable": 37,
+    "structurallyEditable": 43,
     "noteBroken": 6,
-    "knobs": 18,
-    "codeOnly": 10,
+    "knobs": 31,
+    "codeOnly": 13,
     "setup": 34,
-    "structurallyEditablePct": 52.1
+    "structurallyEditablePct": 46.2
   },
   "brokenReasons": {
     "step: uses mini-notation features beyond the editable subset": 4,
@@ -28,8 +28,10 @@
   "codeOnlyHeads": {
     "chord": 3,
     "color": 3,
+    "(no-head)": 2,
     "note": 2,
-    "(no-head)": 1,
+    "fast": 1,
+    "sound": 1,
     "all": 1
   },
   "perTune": [
@@ -71,13 +73,13 @@
     },
     {
       "file": "bakery-140-binding-transitive.strudel",
-      "units": 0,
+      "units": 2,
       "setup": 0,
       "noteEditable": 0,
       "clip": 0,
       "noteBroken": 0,
       "knobs": 0,
-      "codeOnly": 0,
+      "codeOnly": 2,
       "structurallyEditable": 0,
       "tuneClass": "code-only"
     },
@@ -119,15 +121,15 @@
     },
     {
       "file": "bakery-141-irand-chain-root.strudel",
-      "units": 0,
+      "units": 1,
       "setup": 0,
       "noteEditable": 0,
       "clip": 0,
       "noteBroken": 0,
-      "knobs": 0,
+      "knobs": 1,
       "codeOnly": 0,
       "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "tuneClass": "knobs-only"
     },
     {
       "file": "bakery-142-samples-objlit.strudel",
@@ -191,39 +193,39 @@
     },
     {
       "file": "bakery-148-leading-dot-chain.strudel",
-      "units": 0,
+      "units": 1,
       "setup": 0,
-      "noteEditable": 0,
+      "noteEditable": 1,
       "clip": 0,
       "noteBroken": 0,
       "knobs": 0,
       "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "structurallyEditable": 1,
+      "tuneClass": "fully"
     },
     {
       "file": "bakery-150-eq-continuation.strudel",
-      "units": 0,
+      "units": 2,
       "setup": 0,
-      "noteEditable": 0,
+      "noteEditable": 1,
       "clip": 0,
       "noteBroken": 0,
       "knobs": 0,
-      "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "codeOnly": 1,
+      "structurallyEditable": 1,
+      "tuneClass": "partial"
     },
     {
       "file": "bakery-151-comment-only.strudel",
-      "units": 0,
+      "units": 2,
       "setup": 0,
-      "noteEditable": 0,
+      "noteEditable": 2,
       "clip": 0,
       "noteBroken": 0,
       "knobs": 0,
       "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "structurallyEditable": 2,
+      "tuneClass": "fully"
     },
     {
       "file": "bakery-152-block-comment.strudel",
@@ -239,135 +241,135 @@
     },
     {
       "file": "bakery-158-NEGATIVE-no-sideeffect.strudel",
-      "units": 0,
-      "setup": 0,
-      "noteEditable": 0,
-      "clip": 0,
-      "noteBroken": 0,
-      "knobs": 0,
-      "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "code-only"
-    },
-    {
-      "file": "bakery-158-aliasBank-shape-fence.strudel",
-      "units": 0,
-      "setup": 1,
-      "noteEditable": 0,
-      "clip": 0,
-      "noteBroken": 0,
-      "knobs": 0,
-      "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "code-only"
-    },
-    {
-      "file": "bakery-158-all-shape-fence.strudel",
       "units": 1,
       "setup": 0,
       "noteEditable": 0,
       "clip": 0,
       "noteBroken": 0,
-      "knobs": 0,
+      "knobs": 1,
+      "codeOnly": 0,
+      "structurallyEditable": 0,
+      "tuneClass": "knobs-only"
+    },
+    {
+      "file": "bakery-158-aliasBank-shape-fence.strudel",
+      "units": 1,
+      "setup": 1,
+      "noteEditable": 0,
+      "clip": 0,
+      "noteBroken": 0,
+      "knobs": 1,
+      "codeOnly": 0,
+      "structurallyEditable": 0,
+      "tuneClass": "knobs-only"
+    },
+    {
+      "file": "bakery-158-all-shape-fence.strudel",
+      "units": 2,
+      "setup": 0,
+      "noteEditable": 0,
+      "clip": 0,
+      "noteBroken": 0,
+      "knobs": 1,
       "codeOnly": 1,
       "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "tuneClass": "knobs-only"
     },
     {
       "file": "bakery-158-initAudio-shape-fence.strudel",
-      "units": 0,
+      "units": 1,
       "setup": 1,
       "noteEditable": 0,
       "clip": 0,
       "noteBroken": 0,
-      "knobs": 0,
+      "knobs": 1,
       "codeOnly": 0,
       "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "tuneClass": "knobs-only"
     },
     {
       "file": "bakery-158-samples-shape-fence.strudel",
-      "units": 0,
+      "units": 1,
       "setup": 1,
       "noteEditable": 0,
       "clip": 0,
       "noteBroken": 0,
-      "knobs": 0,
+      "knobs": 1,
       "codeOnly": 0,
       "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "tuneClass": "knobs-only"
     },
     {
       "file": "bakery-158-setCpm-camel-shape-fence.strudel",
-      "units": 0,
+      "units": 1,
       "setup": 1,
       "noteEditable": 0,
       "clip": 0,
       "noteBroken": 0,
-      "knobs": 0,
+      "knobs": 1,
       "codeOnly": 0,
       "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "tuneClass": "knobs-only"
     },
     {
       "file": "bakery-158-setCps-camel-shape-fence.strudel",
-      "units": 0,
+      "units": 1,
       "setup": 1,
       "noteEditable": 0,
       "clip": 0,
       "noteBroken": 0,
-      "knobs": 0,
+      "knobs": 1,
       "codeOnly": 0,
       "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "tuneClass": "knobs-only"
     },
     {
       "file": "bakery-158-setVoicingRange-shape-fence.strudel",
-      "units": 0,
+      "units": 1,
       "setup": 1,
       "noteEditable": 0,
       "clip": 0,
       "noteBroken": 0,
-      "knobs": 0,
+      "knobs": 1,
       "codeOnly": 0,
       "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "tuneClass": "knobs-only"
     },
     {
       "file": "bakery-158-setcpm-shape-fence.strudel",
-      "units": 0,
+      "units": 1,
       "setup": 1,
       "noteEditable": 0,
       "clip": 0,
       "noteBroken": 0,
-      "knobs": 0,
+      "knobs": 1,
       "codeOnly": 0,
       "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "tuneClass": "knobs-only"
     },
     {
       "file": "bakery-158-setcps-shape-fence.strudel",
-      "units": 0,
+      "units": 1,
       "setup": 1,
       "noteEditable": 0,
       "clip": 0,
       "noteBroken": 0,
-      "knobs": 0,
+      "knobs": 1,
       "codeOnly": 0,
       "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "tuneClass": "knobs-only"
     },
     {
       "file": "bakery-158-useRNG-shape-fence.strudel",
-      "units": 0,
+      "units": 1,
       "setup": 1,
       "noteEditable": 0,
       "clip": 0,
       "noteBroken": 0,
-      "knobs": 0,
+      "knobs": 1,
       "codeOnly": 0,
       "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "tuneClass": "knobs-only"
     },
     {
       "file": "bakery-159-NEGATIVE-no-whitespace.strudel",
@@ -395,15 +397,15 @@
     },
     {
       "file": "bakery-G1-let-binding.strudel",
-      "units": 0,
+      "units": 2,
       "setup": 0,
-      "noteEditable": 0,
+      "noteEditable": 2,
       "clip": 0,
       "noteBroken": 0,
       "knobs": 0,
       "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "structurallyEditable": 2,
+      "tuneClass": "fully"
     },
     {
       "file": "bakery-G2-setCpm-camel.strudel",
@@ -491,15 +493,15 @@
     },
     {
       "file": "bakery-chord-voicing-root.strudel",
-      "units": 0,
+      "units": 1,
       "setup": 0,
       "noteEditable": 0,
       "clip": 0,
       "noteBroken": 0,
-      "knobs": 0,
+      "knobs": 1,
       "codeOnly": 0,
       "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "tuneClass": "knobs-only"
     },
     {
       "file": "barryHarris.strudel",

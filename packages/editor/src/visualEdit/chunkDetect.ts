@@ -102,6 +102,93 @@ export function isChunkFresh(doc: string, chunk: ChunkInfo): boolean {
 }
 
 /**
+ * #866 — binding index: a top-level `const/let/var name = <expr>` maps `name`
+ * to its RHS expression node (and its declaring statement). Lets `chunkDetect`
+ * resolve a bare-identifier reference (`$: bass`, or `stack(beat, …)`) to the
+ * voice it names, instead of classifying it `unknown`/code-only.
+ *
+ * Same D-02 boundary as the parser's binding map (parseStrudel `buildBindingMap`):
+ * a name declared more than once (reassignment / shadowing) is DROPPED — an
+ * ambiguous binding stays unresolved (graceful `unknown`). Only simple
+ * `Identifier = init` declarations are indexed (no destructuring / bare `let x`).
+ */
+type BindingIndex = Map<string, { rhs: any; declStmt: any }>
+
+function buildBindingIndex(statements: any[]): BindingIndex {
+  const map: BindingIndex = new Map()
+  const dropped = new Set<string>()
+  for (const stmt of statements) {
+    if (!stmt || stmt.type !== 'VariableDeclaration' || !Array.isArray(stmt.declarations)) continue
+    for (const decl of stmt.declarations) {
+      if (decl?.id?.type !== 'Identifier' || !decl.init) continue
+      const name = decl.id.name
+      if (map.has(name) || dropped.has(name)) {
+        map.delete(name) // D-02: reassignment / shadowing → ambiguous, drop entirely
+        dropped.add(name)
+        continue
+      }
+      map.set(name, { rhs: decl.init, declStmt: stmt })
+    }
+  }
+  return map
+}
+
+/**
+ * Resolve a bare `Identifier` node to the binding it references, following a
+ * chain of identifier-to-identifier bindings (`const a = b; const b = s("bd")`)
+ * with a cycle guard. Returns the terminal `{ rhs, declStmt }` or null when the
+ * node is not a resolvable binding reference.
+ */
+function resolveBinding(
+  node: any,
+  index: BindingIndex,
+  seen: Set<string> = new Set(),
+): { rhs: any; declStmt: any } | null {
+  if (!node || node.type !== 'Identifier' || seen.has(node.name)) return null
+  const b = index.get(node.name)
+  if (!b) return null
+  seen.add(node.name)
+  if (b.rhs?.type === 'Identifier') {
+    const deeper = resolveBinding(b.rhs, index, seen)
+    if (deeper) return deeper
+  }
+  return b
+}
+
+/**
+ * Build a chunk from `expr`, resolving it first if it is a bare-identifier
+ * binding reference. A resolved chunk is anchored at the binding's DEFINITION
+ * (its RHS span + the declaring statement's freshness range) — the single
+ * source of truth, so an edit writes to `const bass = …`, not the `$: bass`
+ * usage. `nested` reflects the CALL SITE (a stack arg is nested; a whole-track
+ * ref is not), independent of resolution.
+ */
+function buildMaybeResolved(
+  doc: string,
+  expr: any,
+  label: string | null,
+  stmtRange: [number, number],
+  index: BindingIndex,
+  nested = false,
+): ChunkInfo {
+  const resolved = resolveBinding(expr, index)
+  if (resolved) {
+    // Keep the call-site `label` (display-only) so a named-label ref
+    // (`drums: bass`) still names its strip, while the edit/freshness ranges
+    // anchor at the definition. label is independent of stmtRange, so this is
+    // safe — a nested stack arg passes label=null anyway.
+    return buildChunkFromExpr(
+      doc,
+      resolved.rhs,
+      label,
+      [resolved.declStmt.start, resolved.declStmt.end],
+      nested,
+    )
+  }
+  return buildChunkFromExpr(doc, expr, label, stmtRange, nested)
+}
+
+/**
  * The innermost editable chunk under `pos`, or null. Descends into combinator
  * arguments — a cursor on a track inside `stack(...)` binds THAT track, not the
  * whole `$: stack(...)` statement (#395). A top-level cursor is unchanged.
@@ -109,6 +196,7 @@ export function isChunkFresh(doc: string, chunk: ChunkInfo): boolean {
 export function detectChunk(doc: string, pos: number): ChunkInfo | null {
   const statements = parseTopLevel(doc)
   if (!statements) return null
+  const bindings = buildBindingIndex(statements)
   for (const node of statements) {
     if (pos >= node.start && pos <= node.end) {
       let label: string | null = null
@@ -119,13 +207,15 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
       }
       if (body.type !== 'ExpressionStatement') return null
       const topExpr = body.expression
-      const target = innermostChainUnder(doc, topExpr, pos)
+      const target = innermostChainUnder(doc, topExpr, pos, bindings)
       // The top-level statement keeps its full range (incl. the `$:` label) so
       // the freshness guard watches the whole statement; a nested target is
-      // anchored to its own expression span and carries no label.
+      // anchored to its own expression span and carries no label. A bare-ref
+      // target (`$: bass`, or a `stack(beat, …)` arm) is resolved to its
+      // binding's definition inside buildMaybeResolved (#866).
       return target === topExpr
-        ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end])
-        : buildChunkFromExpr(doc, target, null, [target.start, target.end], true)
+        ? buildMaybeResolved(doc, topExpr, label, [node.start, node.end], bindings)
+        : buildMaybeResolved(doc, target, null, [target.start, target.end], bindings, true)
     }
   }
   return null
@@ -135,12 +225,13 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
 export function detectAllChunks(doc: string): ChunkInfo[] {
   const statements = parseTopLevel(doc)
   if (!statements) return []
+  const bindings = buildBindingIndex(statements)
   return statements
-    .map((node: any) => buildChunk(doc, node))
+    .map((node: any) => buildChunk(doc, node, bindings))
     .filter((c: ChunkInfo | null): c is ChunkInfo => c !== null)
 }
 
-function buildChunk(doc: string, node: any): ChunkInfo | null {
+function buildChunk(doc: string, node: any, bindings: BindingIndex): ChunkInfo | null {
   let label: string | null = null
   let body = node
   if (node.type === 'LabeledStatement') {
@@ -148,7 +239,10 @@ function buildChunk(doc: string, node: any): ChunkInfo | null {
     body = node.body
   }
   if (body.type !== 'ExpressionStatement') return null
-  return buildChunkFromExpr(doc, body.expression, label, [node.start, node.end])
+  // A whole-track bare-ref (`$: bass`) resolves to its binding's voice (#866);
+  // a `const bass = …` declaration itself is a VariableDeclaration, not an
+  // ExpressionStatement, so it never yields its own chunk (no double).
+  return buildMaybeResolved(doc, body.expression, label, [node.start, node.end], bindings)
 }
 
 /**
@@ -205,19 +299,22 @@ function buildChunkFromExpr(
  * args are Literals, not CallExpressions, so a cursor on them keeps the
  * enclosing chain.
  */
-function innermostChainUnder(doc: string, expr: any, pos: number): any {
+function innermostChainUnder(doc: string, expr: any, pos: number, bindings?: BindingIndex): any {
   // A `pick*({…})` section value is a chain the panels can bind, but the pick
   // receiver is a string literal (not an identifier head), so the combinator-arg
   // path below never reaches it — check the pick object first (#667).
   const pickSection = pickSectionUnder(expr, pos)
-  if (pickSection) return innermostChainUnder(doc, pickSection, pos)
+  if (pickSection) return innermostChainUnder(doc, pickSection, pos, bindings)
   const headOut = { ref: null as any }
   collectChain(doc, expr, headOut)
   const head = headOut.ref
   if (!head || !Array.isArray(head.arguments)) return expr
   for (const arg of head.arguments) {
-    const inner = chainArgUnder(arg, pos)
-    if (inner) return innermostChainUnder(doc, inner, pos)
+    const inner = chainArgUnder(arg, pos, bindings)
+    // A bare-ref arm (`stack(beat, …)`) has no chain to descend, so return it
+    // directly — detectChunk resolves it to the binding's voice (#866).
+    if (inner && inner.type === 'Identifier') return inner
+    if (inner) return innermostChainUnder(doc, inner, pos, bindings)
   }
   return expr
 }
@@ -277,9 +374,13 @@ function pickSectionUnder(expr: any, pos: number): any {
  * arrange arm leaf never binds a panel — the cursor resolves to the whole
  * `arrange(...)` (head `arrange`, no mini) → standby.
  */
-function chainArgUnder(arg: any, pos: number): any {
+function chainArgUnder(arg: any, pos: number, bindings?: BindingIndex): any {
   if (!arg || typeof arg.start !== 'number' || pos < arg.start || pos > arg.end) return null
   if (arg.type === 'CallExpression') return arg
+  // A bare-identifier arm that names a binding (`stack(beat, …)`) is descendable
+  // — return it so detectChunk resolves it to the bound voice (#866). A
+  // non-binding identifier stays non-descendable (unchanged behaviour).
+  if (arg.type === 'Identifier' && bindings?.has(arg.name)) return arg
   if (arg.type === 'ArrayExpression' && Array.isArray(arg.elements)) {
     for (const el of arg.elements) {
       if (
