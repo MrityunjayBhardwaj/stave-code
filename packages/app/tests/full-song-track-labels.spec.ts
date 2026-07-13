@@ -50,8 +50,13 @@ const SONG = [
   '$: s("oh*2")',
 ].join('\n')
 
-// Track order (config excluded): bass(d1) $(d2) d3(d3) $(d4) lead(d5) $(d6).
-// Expected DISPLAY name per lane, in source order — named→label, anon→d{N}.
+// Track order (config excluded), in source order. A track's IDENTITY is its label
+// when it has one and `d{N}` (its position) when it doesn't — the engine emits
+// exactly that as the hap's `trackId` (#138), the Mixer uses it as the strip id,
+// and the Timeline keys the lane by it. So the lane KEY and the DISPLAY name are
+// the same string; there is no separate positional identity behind the label.
+// (This spec used to assert keys of `d1…d6` regardless of label — the model
+// before #138 gave named tracks a positional id too. It hasn't for a long time.)
 const EXPECTED_NAMES = ['bass', 'd2', 'd3', 'd4', 'lead', 'd6']
 
 test('Song Timeline shows track labels and matches the Mixer (named + anon)', async ({ page }) => {
@@ -78,9 +83,10 @@ test('Song Timeline shows track labels and matches the Mixer (named + anon)', as
     })),
   )
 
-  // Identity stays positional (drives the live overlay match) …
-  expect(timeline.map((l) => l.key)).toEqual(['d1', 'd2', 'd3', 'd4', 'd5', 'd6'])
-  // … while the DISPLAY name resolves to the label for named tracks.
+  // The lane KEY is the track's identity — the label for a named track, `d{N}` for
+  // an anonymous one — and it is what the live overlay matches haps on.
+  expect(timeline.map((l) => l.key)).toEqual(EXPECTED_NAMES)
+  // The DISPLAY name resolves to the same identity.
   expect(timeline.map((l) => l.name)).toEqual(EXPECTED_NAMES)
 
   // ── Mixer console: strip names + dot colours, in track order.
