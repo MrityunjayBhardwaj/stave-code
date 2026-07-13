@@ -24,6 +24,7 @@ import { ChannelStrip } from './ChannelStrip'
 import { ExpandDrawer } from './ExpandDrawer'
 import { MasterStrip } from './MasterStrip'
 import { gainEdit, panEdit, muteEdit, renameEdit } from './writeStrip'
+import { otherTrackNames } from './stripModel'
 import { masterGainEdit, masterPanEdit, masterMuteEdit } from './masterEdit'
 import { trackIdentity } from '../trackColor'
 import { getActiveFileId, onActiveEditorChange } from '../../workspace/editorRegistry'
@@ -63,6 +64,7 @@ export function MixerStrips({
     strips,
     chunks,
     applyToStrip,
+    applyToStripAt,
     masterGain,
     masterPan,
     masterMuted,
@@ -184,12 +186,18 @@ export function MixerStrips({
                 })
               }
               onRename={(newLabel) =>
-                applyToStrip(strip.id, (fresh, wb) => {
+                // Anchored, NOT id-addressed (#877). A rename changes the strip's
+                // own id — naming an anonymous track turns `#0` into `drums` AND
+                // renumbers every later anonymous strip — so `applyToStrip(id)`
+                // would resolve a repeated write onto a DIFFERENT track and rename
+                // that one too. The statement's start offset is invariant under the
+                // rename, so the write addresses the track by it.
+                applyToStripAt(chunks[i].statementRange[0], (fresh, wb, doc) => {
                   // Reject a rename that would duplicate another track's display
-                  // name (#585) — `takenNames` is every OTHER strip's name.
-                  const taken = new Set(
-                    strips.filter((s) => s.id !== strip.id).map((s) => s.name),
-                  )
+                  // name (#585). Read from the FRESH document, not the render-time
+                  // `strips` — the same `otherTrackNames` projection the Song
+                  // Timeline's rename uses, so both views reject the same set.
+                  const taken = new Set(otherTrackNames(doc, fresh.statementRange[0]))
                   const e = renameEdit(fresh, newLabel, taken)
                   if (!e) return
                   wb.replaceRange(e.range, e.text, 'mixer')

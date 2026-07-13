@@ -51,6 +51,22 @@ export interface MixerModel {
    */
   applyToStrip: (id: string, mutate: (fresh: ChunkInfo, wb: Writeback) => void) => void
   /**
+   * Mutate the strip whose STATEMENT STARTS at `anchor`, re-detected fresh against
+   * the live model (V-mixer-11, #877). Use this — never `applyToStrip` — for a
+   * write that CHANGES the strip's own id: a strip is identified by `bare ?? #k`
+   * (stripModel.ts), so naming an anonymous track both renames its id AND
+   * renumbers every later anonymous strip's `#k`. Addressed by id, a second
+   * application of the same rename therefore resolves to a DIFFERENT track and
+   * corrupts it. The statement's start offset is invariant under the rename (the
+   * label is rewritten in place, at the statement start), so it is the one anchor
+   * that survives the write — the Song Timeline's rename handler already keys off
+   * it, and this is the Mixer's half of the same funnel.
+   */
+  applyToStripAt: (
+    anchor: number,
+    mutate: (fresh: ChunkInfo, wb: Writeback, doc: string) => void,
+  ) => void
+  /**
    * The master strip's gain, projected from the document's `all(x => x.gain())`
    * line (unity when absent — the untouched master reads the default from the
    * ABSENCE of a line, #792). Re-derived on every content change, so the fader
@@ -286,6 +302,27 @@ export function useMixerModel(): MixerModel {
     [],
   )
 
+  // The id-free write funnel (#877). Re-detects the statement at `anchor` against
+  // the LIVE model and requires the re-detection to be a FIXPOINT (the chunk found
+  // there starts exactly there) — the same contract `useActiveChunk.applyEdit`
+  // enforces. A stale anchor finds no statement and the write is dropped; a stale
+  // ID, by contrast, silently resolves to a DIFFERENT track (the corruption).
+  const applyToStripAt = React.useCallback(
+    (anchor: number, mutate: (fresh: ChunkInfo, wb: Writeback, doc: string) => void): void => {
+      const ed = editorRef.current
+      const wb = writebackRef.current
+      if (!ed || !wb) return
+      const model = ed.getModel?.()
+      if (!model) return
+      const doc = model.getValue()
+      const fresh = detectAllChunks(doc).find((c) => c.statementRange[0] === anchor)
+      if (!fresh) return
+      mutate(fresh, wb, doc)
+      jumpCursorToTrack(ed, model, anchor, lastJumpRef)
+    },
+    [],
+  )
+
   const applyToMaster = React.useCallback(
     (mutate: (doc: string, wb: Writeback) => void): void => {
       const ed = editorRef.current
@@ -394,6 +431,7 @@ export function useMixerModel(): MixerModel {
     strips: derived.strips,
     chunks: derived.chunks,
     applyToStrip,
+    applyToStripAt,
     masterGain: derived.masterGain,
     masterPan: derived.masterPan,
     masterMuted: derived.masterMuted,

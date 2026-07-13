@@ -222,10 +222,26 @@ export function ChannelStrip({
   const bareLabel = strip.label?.replace(/^_/, '') ?? ''
   const renameSeed = bareLabel !== '' && bareLabel !== '$' ? bareLabel : ''
   const renameEnabled = onRename !== undefined
+  // ONE write per rename gesture (#877). Committing on Enter unmounts the input,
+  // and the write itself focuses the editor (the cursor follows the track) — so
+  // the field ALSO blurs, and the blur handler fired a SECOND rename. Both wrote,
+  // and the second landed on the wrong track. The gesture is settled exactly once:
+  // whichever of Enter / blur / Escape happens first closes it, the rest no-op.
+  const settledRef = React.useRef(false)
+  const openRename = (): void => {
+    settledRef.current = false
+    setRenaming(true)
+  }
   const commitRename = (raw: string): void => {
+    if (settledRef.current) return
+    settledRef.current = true
     setRenaming(false)
     const v = raw.trim()
     if (v) onRename?.(v) // renameEdit validates + no-ops; invalid → silent revert
+  }
+  const cancelRename = (): void => {
+    settledRef.current = true
+    setRenaming(false)
   }
   const gain = faderGain(strip)
   const pos = gain === null ? 0 : gainToFaderPos(gain)
@@ -534,8 +550,17 @@ export function ChannelStrip({
               spellCheck={false}
               onFocus={(e) => e.currentTarget.select()}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') commitRename(e.currentTarget.value)
-                else if (e.key === 'Escape') setRenaming(false)
+                // preventDefault BEFORE committing (#877): the commit unmounts this
+                // input, so the browser finishes delivering the keystroke to
+                // whatever holds focus next — the editor — and typed the Enter
+                // (and the rest of the gesture) straight into the user's code.
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  commitRename(e.currentTarget.value)
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  cancelRename()
+                }
                 e.stopPropagation() // don't let the editor swallow the keystrokes
               }}
               onBlur={(e) => commitRename(e.currentTarget.value)}
@@ -557,7 +582,7 @@ export function ChannelStrip({
             <span
               data-mixer-strip-name
               title={renameEnabled ? `${strip.name} — double-click to rename` : strip.name}
-              onDoubleClick={renameEnabled ? () => setRenaming(true) : undefined}
+              onDoubleClick={renameEnabled ? openRename : undefined}
               style={{
                 flex: 1,
                 fontSize: 11,

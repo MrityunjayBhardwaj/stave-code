@@ -23,7 +23,7 @@
 'use client'
 
 import * as React from 'react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SongAnalysis, PatternIR, HapStream, IREvent } from '@stave/editor'
 import {
   collectCycles,
@@ -702,6 +702,31 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // #610 — select a lane → reveal its code in the editor (no expand/bind).
   const { onSelectLane } = props
   const [renamingLane, setRenamingLane] = useState<string | null>(null)
+  // ONE write per rename gesture (#877). Enter commits and unmounts the input, and
+  // the write moves focus to the editor — so the field ALSO blurs and the blur
+  // handler ran a SECOND rename. The Mixer's identical pair corrupted the document
+  // (the second write resolved onto a different track); here the second write is
+  // a no-op only by luck of the re-anchoring. Settle the gesture exactly once:
+  // whichever of Enter / blur / Escape lands first closes it, the rest no-op.
+  const renameSettledRef = useRef(false)
+  const openLaneRename = useCallback((laneKey: string) => {
+    renameSettledRef.current = false
+    setRenamingLane(laneKey)
+  }, [])
+  const commitLaneRename = useCallback(
+    (anchor: number, raw: string, displayName: string) => {
+      if (renameSettledRef.current) return
+      renameSettledRef.current = true
+      setRenamingLane(null)
+      const v = raw.trim()
+      if (v) onRenameLane?.(anchor, v, displayName)
+    },
+    [onRenameLane],
+  )
+  const cancelLaneRename = useCallback(() => {
+    renameSettledRef.current = true
+    setRenamingLane(null)
+  }, [])
   // Which lane's colour swatch is open (Phase D, #581), by laneKey + the anchor
   // rect of its dot. Picking writes to the per-file TrackMeta store via the
   // parent; the lane recolours through the ref-stable `customColorByName` map.
@@ -1607,25 +1632,29 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                         // blurring the input and committing the half-typed name.
                         onClick={(e) => e.stopPropagation()}
                         onKeyDown={(e) => {
+                          // preventDefault BEFORE committing (#877): the commit
+                          // unmounts this input, so the browser delivers the
+                          // keystroke's default action to whatever takes focus
+                          // next — the editor — typing it into the user's code.
                           if (e.key === 'Enter') {
-                            const v = e.currentTarget.value.trim()
-                            setRenamingLane(null)
-                            if (v) onRenameLane?.(renameAnchor, v, displayName)
-                          } else if (e.key === 'Escape') setRenamingLane(null)
+                            e.preventDefault()
+                            commitLaneRename(renameAnchor, e.currentTarget.value, displayName)
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault()
+                            cancelLaneRename()
+                          }
                           e.stopPropagation() // keep the grid's key handlers out
                         }}
-                        onBlur={(e) => {
-                          const v = e.currentTarget.value.trim()
-                          setRenamingLane(null)
-                          if (v) onRenameLane?.(renameAnchor, v, displayName)
-                        }}
+                        onBlur={(e) =>
+                          commitLaneRename(renameAnchor, e.currentTarget.value, displayName)
+                        }
                         style={styles.laneRenameInput}
                       />
                     ) : (
                       <span
                         style={{ ...styles.laneName, cursor: renameEnabled ? 'text' : 'default' }}
                         title={renameEnabled ? `${displayName} — double-click to rename` : undefined}
-                        onDoubleClick={renameEnabled ? () => setRenamingLane(box.laneKey) : undefined}
+                        onDoubleClick={renameEnabled ? () => openLaneRename(box.laneKey) : undefined}
                       >
                         {headerName}
                       </span>

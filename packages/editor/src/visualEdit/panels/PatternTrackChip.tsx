@@ -18,7 +18,7 @@ import * as React from 'react'
 
 import { useActiveChunk } from './useActiveChunk'
 import { useMixerModel } from '../mixer/useMixerModel'
-import { stripContainingOffset } from '../mixer/stripModel'
+import { stripContainingOffset, otherTrackNames } from '../mixer/stripModel'
 import { StripColorPopover } from '../mixer/StripColorPopover'
 import { renameEdit } from '../mixer/writeStrip'
 import { trackIdentity } from '../trackColor'
@@ -28,7 +28,7 @@ import { useTrackMetaMap } from '../../workspace/useTrackMeta'
 
 export function PatternTrackChip(): React.ReactElement | null {
   const { chunk } = useActiveChunk()
-  const { strips, applyToStrip } = useMixerModel()
+  const { strips, applyToStripAt } = useMixerModel()
   // Active file for the per-file colour override (same source as the Mixer).
   const [fileId, setFileId] = React.useState<string | null>(() => getActiveFileId())
   React.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), [])
@@ -36,6 +36,15 @@ export function PatternTrackChip(): React.ReactElement | null {
 
   const [colorAnchor, setColorAnchor] = React.useState<DOMRect | null>(null)
   const [renaming, setRenaming] = React.useState(false)
+  const settledRef = React.useRef(false)
+  const openRename = (): void => {
+    settledRef.current = false
+    setRenaming(true)
+  }
+  const cancelRename = (): void => {
+    settledRef.current = true
+    setRenaming(false)
+  }
 
   // Match the cursor's chunk to its OWNING strip — the top-level statement whose
   // range contains the chunk anchor — so the d{N} numbering matches the Mixer
@@ -55,13 +64,23 @@ export function PatternTrackChip(): React.ReactElement | null {
   const bareLabel = strip.label?.replace(/^_/, '') ?? ''
   const renameSeed = bareLabel !== '' && bareLabel !== '$' ? bareLabel : ''
 
+  // ONE write per rename gesture, addressed by the STATEMENT (#877) — the same
+  // contract as the Mixer strip and the Timeline lane. Committing unmounts the
+  // field and the write focuses the editor, so it also blurs → the blur handler
+  // committed a second time; and a rename CHANGES the strip's id (naming a track
+  // renumbers every later anonymous `#k`), so that second write resolved onto a
+  // DIFFERENT track and renamed it too. Settle once, and anchor the write to the
+  // statement's start — the one address a rename cannot move.
   const commitRename = (raw: string): void => {
+    if (settledRef.current) return
+    settledRef.current = true
     setRenaming(false)
     const v = raw.trim()
     if (!v) return
-    applyToStrip(strip.id, (fresh, wb) => {
-      // Reject a rename that would duplicate another track's display name (#585).
-      const taken = new Set(strips.filter((s) => s.id !== strip.id).map((s) => s.name))
+    applyToStripAt(strip.statementRange[0], (fresh, wb, doc) => {
+      // Reject a rename that would duplicate another track's display name (#585) —
+      // read from the FRESH document, the same projection the other views use.
+      const taken = new Set(otherTrackNames(doc, fresh.statementRange[0]))
       const e = renameEdit(fresh, v, taken)
       if (!e) return // renameEdit validates + no-ops + dup-rejects; → silent revert
       wb.replaceRange(e.range, e.text, 'rename')
@@ -141,8 +160,16 @@ export function PatternTrackChip(): React.ReactElement | null {
           spellCheck={false}
           onFocus={(e) => e.currentTarget.select()}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') commitRename(e.currentTarget.value)
-            else if (e.key === 'Escape') setRenaming(false)
+            // preventDefault BEFORE committing (#877): the commit unmounts this
+            // input, so the browser delivers the keystroke's default action to
+            // whatever takes focus next — the editor — typing it into the code.
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitRename(e.currentTarget.value)
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              cancelRename()
+            }
             e.stopPropagation() // don't let the editor swallow the keystrokes
           }}
           onBlur={(e) => commitRename(e.currentTarget.value)}
@@ -164,7 +191,7 @@ export function PatternTrackChip(): React.ReactElement | null {
         <span
           data-pattern-track-name
           title={`${strip.name} — double-click to rename`}
-          onDoubleClick={() => setRenaming(true)}
+          onDoubleClick={openRename}
           style={{
             fontSize: 11,
             fontWeight: 600,

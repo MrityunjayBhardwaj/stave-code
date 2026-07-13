@@ -157,8 +157,41 @@ test('renaming from the chip writes the name: label into the code', async ({ pag
   await input.press('Enter')
   await page.waitForTimeout(400)
 
-  expect(await strudelValue(page)).toContain('kick:')
+  // Whole document (#877): `toContain('kick:')` is satisfied by a document that
+  // ALSO duplicated this statement or relabelled the sibling.
+  expect(await strudelValue(page)).toBe('kick: s("bd sd hh")\nlead: note("c e g")')
   await expect(chip(page).locator('[data-pattern-track-name]')).toHaveText('kick')
+})
+
+test('renaming an ANONYMOUS track from the chip renames only that track (#877)', async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  await bootPattern(page)
+  // Two ANONYMOUS tracks — the case that corrupted the document. A strip's id is
+  // `#k` among the anonymous ones, so naming the first RENUMBERS the second; a
+  // repeated write addressed by the stale id landed on the sibling and renamed it
+  // too. Named tracks (the cases above) hid this: their id is the label, so a
+  // stale id simply finds nothing.
+  await setStrudelCode(page, '$: s("bd*4")\n$: s("hh*8")')
+  await placeCursorOn(page, 'bd*4')
+
+  await chip(page).locator('[data-pattern-track-name]').dblclick()
+  const input = chip(page).locator('[data-pattern-track-rename]')
+  await input.waitFor({ timeout: 5000 })
+  await input.fill('drums')
+  await input.press('Enter')
+  // Click away too — Enter already settled the gesture, so this must not write again.
+  await page.locator('.monaco-editor').first().click()
+  await page.waitForTimeout(600)
+
+  expect(await strudelValue(page)).toBe('drums: s("bd*4")\n$: s("hh*8")')
+  expect(errors, errors.join('\n')).toEqual([])
 })
 
 test('renaming from the chip works in the pianoroll too (grid focus-capture must not blur the input)', async ({ page }) => {
@@ -174,7 +207,7 @@ test('renaming from the chip works in the pianoroll too (grid focus-capture must
   await input.press('Enter')
   await page.waitForTimeout(400)
 
-  expect(await strudelValue(page)).toContain('melody:')
+  expect(await strudelValue(page)).toBe('bass: s("bd sd hh")\nmelody: note("c e g")')
   await expect(chip(page).locator('[data-pattern-track-name]')).toHaveText('melody')
 })
 
