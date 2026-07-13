@@ -55,6 +55,9 @@ import type {
 } from '../worker/workerMessages'
 
 let workerPerfSeq = 0
+/** Tie-break counter for options bags that can't be serialized to a change key.
+ *  Its own counter, NOT the perfId sequence — that one names renderers. */
+let optionsKeySeq = 0
 
 /** Order-independent serialization of an options bag — the change key `update()`
  *  compares against (#875). Key order varies between evaluates for an identical
@@ -69,7 +72,7 @@ function stableKey(options: VizOptions): string {
   } catch {
     // Cyclic value survived the per-key clone check (a self-referencing object is
     // structured-cloneable but NOT JSON-serializable) — treat as always-changed.
-    return `unserializable:${++workerPerfSeq}`
+    return `unserializable:${++optionsKeySeq}`
   }
 }
 

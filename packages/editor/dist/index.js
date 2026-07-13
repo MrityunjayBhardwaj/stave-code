@@ -8542,13 +8542,14 @@ var vizFramePump = new VizFramePump();
 
 // src/visualizers/renderers/WorkerVizRenderer.ts
 var workerPerfSeq = 0;
+var optionsKeySeq = 0;
 function stableKey(options) {
   try {
     return JSON.stringify(
       Object.keys(options).sort().map((k) => [k, options[k]])
     );
   } catch {
-    return `unserializable:${++workerPerfSeq}`;
+    return `unserializable:${++optionsKeySeq}`;
   }
 }
 __name(stableKey, "stableKey");
