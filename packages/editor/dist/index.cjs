@@ -8568,6 +8568,16 @@ var vizFramePump = new VizFramePump();
 
 // src/visualizers/renderers/WorkerVizRenderer.ts
 var workerPerfSeq = 0;
+function stableKey(options) {
+  try {
+    return JSON.stringify(
+      Object.keys(options).sort().map((k) => [k, options[k]])
+    );
+  } catch {
+    return `unserializable:${++workerPerfSeq}`;
+  }
+}
+__name(stableKey, "stableKey");
 var MAX_FRAMES_IN_FLIGHT = 2;
 function effectiveDpr() {
   const raw = typeof devicePixelRatio === "number" && devicePixelRatio > 0 ? devicePixelRatio : 1;
@@ -8638,6 +8648,10 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
      *  destroy() can decrement the `viz.glctx` gauge reliably (the worker's release
      *  happens after we've detached its listener, so we account it main-side). */
     this.glAccounted = false;
+    /** Serialized options last posted to the worker (#875) — `update()` only re-posts
+     *  when the bag actually changed, so a re-publish with identical options costs
+     *  nothing. `null` until mount. */
+    this.lastOptionsKey = null;
   }
   /** Register a callback fired once when the worker reports its first successful
    *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
@@ -8707,6 +8721,7 @@ ${d.stack}` : "");
       worker.addEventListener("message", this.diagHandler);
       this.bindSampler(components);
       const aliases = resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE);
+      const mountOptions = this.postOptions(components);
       const mountMsg = {
         type: "mount",
         kind: this.kind,
@@ -8720,8 +8735,12 @@ ${d.stack}` : "");
         // singleton reflects the user's quality/LOD settings, not the bundle default.
         config: pickWorkerVizConfig(),
         // #325 Tier A — p5 renders direct into `canvas` (default ON); hydra/glsl already do.
-        p5DirectCanvas: this.kind === "p5" && isP5DirectCanvasEnabled()
+        p5DirectCanvas: this.kind === "p5" && isP5DirectCanvasEnabled(),
+        // #875 — the sketch's `stave.options`. The main-thread renderer hands the
+        // bag straight to the compiler; the worker can only get it by value.
+        options: mountOptions
       };
+      this.lastOptionsKey = stableKey(mountOptions);
       worker.postMessage(mountMsg, [offscreen]);
       this.configUnsub = onVizConfigChange(() => {
         this.worker?.postMessage({ type: "config", patch: pickWorkerVizConfig() });
@@ -8734,6 +8753,35 @@ ${d.stack}` : "");
   update(components) {
     if (!this.worker) return;
     this.bindSampler(components);
+    const next = this.postOptions(components);
+    const key2 = stableKey(next);
+    if (key2 !== this.lastOptionsKey) {
+      this.lastOptionsKey = key2;
+      this.worker.postMessage({ type: "options", options: next });
+    }
+  }
+  /** The options bag as the worker can receive it: structured-CLONED, not shared.
+   *  A non-cloneable value (a function passed to `.viz(name, {…})`) would throw
+   *  DataCloneError from `postMessage` and take the whole mount down — so drop
+   *  those keys instead. They could never have reached a worker sketch anyway, and
+   *  dropping one key degrades exactly as far as the pre-fix behaviour did.
+   *
+   *  PURE — it must not touch `lastOptionsKey`. (It did, briefly: `update()` then
+   *  compared the fresh key against the one this call had just written, so it saw
+   *  "no change" every time and never posted. A silent no-op fix for a silent
+   *  no-op bug.) */
+  postOptions(components) {
+    const src = components.options;
+    if (!src) return {};
+    const out = {};
+    for (const [k, v] of Object.entries(src)) {
+      try {
+        structuredClone(v);
+        out[k] = v;
+      } catch {
+      }
+    }
+    return out;
   }
   resize(w, h) {
     this.size = { w, h };

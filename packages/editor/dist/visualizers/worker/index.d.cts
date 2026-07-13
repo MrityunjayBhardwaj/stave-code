@@ -1,4 +1,6 @@
-import { W as WorkerVizConfig } from '../../vizConfig-Dpw8jb9R.cjs';
+import { W as WorkerVizConfig, v as VizOptions } from '../../vizConfig-BT7o95QM.cjs';
+import 'p5';
+import 'react';
 
 /**
  * hostVizWorker — the bundler-AGNOSTIC worker host that runs a viz sketch in a
@@ -92,6 +94,22 @@ interface MountMessage {
      *  The main side sets this from `isP5DirectCanvasEnabled()` (default ON; escape
      *  hatch `localStorage['stave.viz.p5direct']='0'` reverts to the blit path). */
     p5DirectCanvas?: boolean;
+    /** Per-render viz options — the `.viz(name, {…})` / `._pianoroll({…})` /
+     *  `.pianoroll({…})` argument, read by the sketch as `stave.options` (#875).
+     *  The main-thread `P5VizRenderer` hands these to the compiler via an
+     *  `optionsRef`; the worker host must receive them the same way or every option
+     *  is silently dropped — which it was, on the DEFAULT path, from #245 until this
+     *  was threaded. Structured-cloned, so non-cloneable values are dropped on main
+     *  before posting (`cloneableOptions`). */
+    options?: VizOptions;
+}
+/** MAIN → WORKER: live update of the per-render viz options (#875). Posted when a
+ *  re-evaluate changes the options bag, mirroring the main-thread renderer, whose
+ *  `update()` re-assigns `optionsRef.current` (P5VizRenderer:220) — so editing
+ *  `{background:'#cc1133'}` re-paints WITHOUT a remount. */
+interface OptionsMessage {
+    type: 'options';
+    options: VizOptions;
 }
 /** MAIN → WORKER: the preview pane resized / DPR changed. */
 interface ResizeMessage {
@@ -119,7 +137,7 @@ interface ConfigMessage {
     type: 'config';
     patch: Partial<WorkerVizConfig>;
 }
-type WorkerControlMessage = MountMessage | ResizeMessage | PauseMessage | ResumeMessage | DestroyMessage | ConfigMessage;
+type WorkerControlMessage = MountMessage | ResizeMessage | PauseMessage | ResumeMessage | DestroyMessage | ConfigMessage | OptionsMessage;
 /** WORKER → MAIN: diagnostics (sketch compile/runtime error, first-frame ready).
  *  B-3 forwards worker errors to the main console; richer engineLog bridging is
  *  Phase B-7 (#230 profiler-in-worker). */

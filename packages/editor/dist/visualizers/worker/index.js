@@ -6108,6 +6108,9 @@ function hostVizWorker(scope) {
       case "config":
         updateVizConfig(msg.patch);
         break;
+      case "options":
+        state?.setOptions?.(msg.options);
+        break;
     }
   }
   __name(handleControl, "handleControl");
@@ -6150,7 +6153,7 @@ function hostVizWorker(scope) {
     const analyserRef = { current: rawAnalyser };
     const schedulerRef = { current: rawScheduler };
     const hapStreamRef = { current: null };
-    const optionsRef = { current: {} };
+    const optionsRef = { current: msg.options ?? {} };
     const staveUniformsRef = { current: staveUniforms };
     const factory = compileP5Code(msg.code, msg.name);
     const userSketchFn = factory(
@@ -6205,6 +6208,11 @@ function hostVizWorker(scope) {
       // #266 — p5's WEBGL context lives on its internal render canvas (drawingContext);
       // 2D sketches return a CanvasRenderingContext2D whose getExtension yields null.
       gl: /* @__PURE__ */ __name(() => inst?.drawingContext ?? null, "gl"),
+      // #875 — the compiler closed over THIS ref, so the next draw() reads the new
+      // bag; no remount, exactly like the main-thread renderer's ref re-assign.
+      setOptions: /* @__PURE__ */ __name((options) => {
+        optionsRef.current = options;
+      }, "setOptions"),
       draw: /* @__PURE__ */ __name(() => {
         inst.redraw();
         if (directCanvas && adopted) return;

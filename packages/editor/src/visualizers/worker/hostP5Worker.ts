@@ -85,6 +85,10 @@ interface RendererStrategy {
    *  warm worker doesn't retain the context past Chrome's ~16-context cap. p5:
    *  `inst.drawingContext`; hydra: the presenting canvas context. */
   gl?: () => GLLoseCtx | null
+  /** Swap the live `stave.options` bag without a remount (#875) — p5 only (it is
+   *  the only kind whose compiler exposes `stave.options`). Mirrors the main-thread
+   *  `P5VizRenderer.update`, which re-assigns its `optionsRef` on every re-publish. */
+  setOptions?: (options: Record<string, unknown>) => void
 }
 
 interface MountState extends RendererStrategy {
@@ -277,6 +281,12 @@ export function hostVizWorker(scope: WorkerScope): void {
         // singleton so the next draw reads it (e.g. `u.density`) without remount.
         updateVizConfig(msg.patch)
         break
+      case 'options':
+        // Live per-render options (#875) — REPLACE (the bag is the whole `{…}`
+        // argument, so a removed key must disappear, unlike the config MERGE).
+        // No-op for hydra/glsl, whose sketches have no `stave.options`.
+        state?.setOptions?.(msg.options)
+        break
     }
   }
 
@@ -349,7 +359,10 @@ export function hostVizWorker(scope: WorkerScope): void {
     const analyserRef = { current: rawAnalyser as unknown as AnalyserNode }
     const schedulerRef = { current: rawScheduler }
     const hapStreamRef = { current: null }
-    const optionsRef = { current: {} as Record<string, unknown> }
+    // #875 — the sketch's `stave.options`, marshalled from main. This was an empty
+    // literal (options never crossed the boundary), so every `.viz(name, {…})` /
+    // `._pianoroll({…})` option was silently dropped on the DEFAULT worker path.
+    const optionsRef = { current: (msg.options ?? {}) as Record<string, unknown> }
     const staveUniformsRef = { current: staveUniforms }
 
     const factory = compileP5Code(msg.code, msg.name)
@@ -451,6 +464,11 @@ export function hostVizWorker(scope: WorkerScope): void {
       // #266 — p5's WEBGL context lives on its internal render canvas (drawingContext);
       // 2D sketches return a CanvasRenderingContext2D whose getExtension yields null.
       gl: () => (inst?.drawingContext as GLLoseCtx | undefined) ?? null,
+      // #875 — the compiler closed over THIS ref, so the next draw() reads the new
+      // bag; no remount, exactly like the main-thread renderer's ref re-assign.
+      setOptions: (options: Record<string, unknown>) => {
+        optionsRef.current = options
+      },
       draw: () => {
         inst.redraw() // 1:1 with this frame. User-draw throws are swallowed by
         // p5Compiler's lifecycle wrap → forwarded via the engineLog subscription (#257).
