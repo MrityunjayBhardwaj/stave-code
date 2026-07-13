@@ -27875,6 +27875,21 @@ function useMixerModel() {
     },
     []
   );
+  const applyToStripAt = React36__namespace.useCallback(
+    (anchor, mutate) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      if (!ed || !wb) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      const doc = model.getValue();
+      const fresh = detectAllChunks(doc).find((c) => c.statementRange[0] === anchor);
+      if (!fresh) return;
+      mutate(fresh, wb, doc);
+      jumpCursorToTrack(ed, model, anchor, lastJumpRef);
+    },
+    []
+  );
   const applyToMaster = React36__namespace.useCallback(
     (mutate) => {
       const ed = editorRef.current;
@@ -27956,6 +27971,7 @@ function useMixerModel() {
     strips: derived.strips,
     chunks: derived.chunks,
     applyToStrip,
+    applyToStripAt,
     masterGain: derived.masterGain,
     masterPan: derived.masterPan,
     masterMuted: derived.masterMuted,
@@ -31902,11 +31918,22 @@ function ChannelStrip({
   const bareLabel2 = strip.label?.replace(/^_/, "") ?? "";
   const renameSeed = bareLabel2 !== "" && bareLabel2 !== "$" ? bareLabel2 : "";
   const renameEnabled = onRename !== void 0;
+  const settledRef = React36__namespace.useRef(false);
+  const openRename = /* @__PURE__ */ __name(() => {
+    settledRef.current = false;
+    setRenaming(true);
+  }, "openRename");
   const commitRename = /* @__PURE__ */ __name((raw) => {
+    if (settledRef.current) return;
+    settledRef.current = true;
     setRenaming(false);
     const v = raw.trim();
     if (v) onRename?.(v);
   }, "commitRename");
+  const cancelRename = /* @__PURE__ */ __name(() => {
+    settledRef.current = true;
+    setRenaming(false);
+  }, "cancelRename");
   const gain = faderGain(strip);
   const pos = gain === null ? 0 : gainToFaderPos(gain);
   const faderEnabled = gain !== null && onGainChange !== void 0;
@@ -32196,8 +32223,13 @@ function ChannelStrip({
                 spellCheck: false,
                 onFocus: (e) => e.currentTarget.select(),
                 onKeyDown: (e) => {
-                  if (e.key === "Enter") commitRename(e.currentTarget.value);
-                  else if (e.key === "Escape") setRenaming(false);
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitRename(e.currentTarget.value);
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    cancelRename();
+                  }
                   e.stopPropagation();
                 },
                 onBlur: (e) => commitRename(e.currentTarget.value),
@@ -32220,7 +32252,7 @@ function ChannelStrip({
               {
                 "data-mixer-strip-name": true,
                 title: renameEnabled ? `${strip.name} \u2014 double-click to rename` : strip.name,
-                onDoubleClick: renameEnabled ? () => setRenaming(true) : void 0,
+                onDoubleClick: renameEnabled ? openRename : void 0,
                 style: {
                   flex: 1,
                   fontSize: 11,
@@ -33225,6 +33257,7 @@ function MixerStrips({
     strips,
     chunks,
     applyToStrip,
+    applyToStripAt,
     masterGain,
     masterPan,
     masterMuted,
@@ -33313,21 +33346,27 @@ function MixerStrips({
                         const e = muteEdit(fresh, !strip.muted);
                         if (e) wb.replaceRange(e.range, e.text, "mixer");
                       }),
-                      onRename: (newLabel) => applyToStrip(strip.id, (fresh, wb) => {
-                        const taken = new Set(
-                          strips.filter((s) => s.id !== strip.id).map((s) => s.name)
-                        );
-                        const e = renameEdit(fresh, newLabel, taken);
-                        if (!e) return;
-                        wb.replaceRange(e.range, e.text, "mixer");
-                        if (fileId) {
-                          const prevColor = getTrackMeta(fileId, strip.name).color;
-                          if (prevColor && strip.name !== newLabel) {
-                            setTrackMeta(fileId, newLabel, { color: prevColor });
-                            setTrackMeta(fileId, strip.name, { color: void 0 });
+                      onRename: (newLabel) => (
+                        // Anchored, NOT id-addressed (#877). A rename changes the strip's
+                        // own id — naming an anonymous track turns `#0` into `drums` AND
+                        // renumbers every later anonymous strip — so `applyToStrip(id)`
+                        // would resolve a repeated write onto a DIFFERENT track and rename
+                        // that one too. The statement's start offset is invariant under the
+                        // rename, so the write addresses the track by it.
+                        applyToStripAt(chunks[i].statementRange[0], (fresh, wb, doc) => {
+                          const taken = new Set(otherTrackNames(doc, fresh.statementRange[0]));
+                          const e = renameEdit(fresh, newLabel, taken);
+                          if (!e) return;
+                          wb.replaceRange(e.range, e.text, "mixer");
+                          if (fileId) {
+                            const prevColor = getTrackMeta(fileId, strip.name).color;
+                            if (prevColor && strip.name !== newLabel) {
+                              setTrackMeta(fileId, newLabel, { color: prevColor });
+                              setTrackMeta(fileId, strip.name, { color: void 0 });
+                            }
                           }
-                        }
-                      }),
+                        })
+                      ),
                       dotColor,
                       onPickColor: fileId ? (color) => setTrackMeta(fileId, strip.name, { color }) : void 0,
                       onResetColor: fileId ? () => setTrackMeta(fileId, strip.name, { color: void 0 }) : void 0,
