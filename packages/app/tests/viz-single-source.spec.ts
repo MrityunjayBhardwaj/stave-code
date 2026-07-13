@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { vizPixelStats } from './_vizFrames'
 
 // Model B — viz single source of truth (#183, P73 / PV56).
 //
@@ -33,27 +34,16 @@ async function runCode(page: Page): Promise<void> {
 }
 
 /**
- * Count distinct RGBA colors in a 2D canvas. A blank viz paints one (the
- * background); a rendering viz paints many. Returns 0 if the element isn't a
- * 2D canvas we can read.
+ * Count distinct colors on the viz surface. A blank viz composites to one flat
+ * color; a rendering viz paints many.
+ *
+ * Read through the COMPOSITOR, not `canvas.getContext('2d')`: the viz renders in
+ * a worker to a `transferControlToOffscreen()` canvas (the default since #245),
+ * and asking a transferred canvas for a 2D context THROWS InvalidStateError —
+ * which is exactly what silently disabled both probes in this file (#875).
  */
 async function distinctColors(page: Page, selector: string): Promise<number> {
-  return page.evaluate((sel) => {
-    const canvas = document.querySelector<HTMLCanvasElement>(sel)
-    if (!canvas) return -1
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return -2 // WEBGL / unreadable
-    const { width, height } = canvas
-    if (width === 0 || height === 0) return -3
-    const data = ctx.getImageData(0, 0, width, height).data
-    const seen = new Set<number>()
-    // Sample every 40th pixel — enough to distinguish blank from drawn.
-    for (let i = 0; i < data.length; i += 4 * 40) {
-      seen.add((data[i] << 24) | (data[i + 1] << 16) | (data[i + 2] << 8) | data[i + 3])
-      if (seen.size > 8) break
-    }
-    return seen.size
-  }, selector)
+  return (await vizPixelStats(page, selector)).distinctColors
 }
 
 test.beforeEach(async ({ page }) => {

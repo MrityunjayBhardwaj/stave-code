@@ -1,10 +1,19 @@
 import { test, expect, type Page } from '@playwright/test'
+import { vizPixelStats } from './_vizFrames'
 
 // Strudel-official viz methods (#174). Pasted Strudel viz code must work
 // out of the gate, mirroring Strudel's inline-vs-fullscreen semantic:
 //   - `._name()` (underscore) → inline viz zone
 //   - `.name()`  (non-underscore) → Stave backdrop ("set bg") + UI update
 // and NEVER strudel's own fullscreen `#test-canvas` (which Stave doesn't load).
+//
+// PIXELS ARE READ THROUGH THE COMPOSITOR (`vizPixelStats`), never
+// `canvas.getContext('2d')` (#875). The viz renders in a worker to a
+// `transferControlToOffscreen()` canvas (the default since #245), and a
+// transferred canvas THROWS InvalidStateError on getContext — so every
+// pixel probe in this file was dead from that day until it was re-pointed,
+// and the dead probes hid a real bug (viz OPTIONS never crossed the worker
+// boundary, so `{background:'#cc1133'}` below silently did nothing).
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
@@ -62,15 +71,10 @@ test('backdrop .pianoroll({ opts }) threads options to the backdrop sketch (#214
   // inlineViz.backdropRequest.options and must reach the renderer's component
   // bag → stave.options. A custom `background` only paints if they do —
   // frame-independent, like the inline #215 check.
+  // #cc1133 → strongly red-dominant, low green/blue.
   const redFrac = async () =>
-    page.locator('[data-workspace-background] canvas').first().evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const ctx = c.getContext('2d'); if (!ctx) return -1
-      const d = ctx.getImageData(0, 0, c.width, c.height).data
-      let red = 0, total = 0
-      for (let i = 0; i < d.length; i += 4) { total++; if (d[i] > 120 && d[i + 1] < 80 && d[i + 2] < 90) red++ }
-      return total ? red / total : -1
-    })
+    (await vizPixelStats(page, '[data-workspace-background] canvas',
+      { rMin: 121, gMax: 79, bMax: 89 })).frac
 
   await setCode(page, `$: note("c4 e4 g4 c5").s("sawtooth").pianoroll({ background: '#cc1133' })`)
   await runCode(page)
@@ -208,25 +212,37 @@ test('inline pianoroll mounts at a wide/short 6:1 native to match @strudel/draw 
   expect(aspect).toBeLessThan(7)
 })
 
-test('preset p5 viz draw on a transparent background (clear(), not opaque fill)', async ({ page }) => {
+test('preset p5 viz draws on a TRANSPARENT surface — a backdrop shows through the inline zone', async ({ page }) => {
   // Each bundled p5 sketch uses clear() instead of background(9,9,18) so the
-  // inline viz blends into the editor (and any backdrop) rather than sitting in
-  // a dark box. Empty canvas areas must therefore have alpha 0.
-  await setCode(page, `$: note("c4 e4 g4").s("sawtooth")._pianoroll()`)
+  // inline viz blends into the editor (and any backdrop) rather than sitting in a
+  // dark box.
+  //
+  // The old probe read canvas ALPHA (`data[i+3] === 0`). Two reasons that oracle
+  // is gone: the canvas is worker-transferred (unreadable), and the compositor —
+  // the only legal readback — is OPAQUE, so alpha is always 255. Worse, the
+  // fallback "empty pixels == the editor background" cannot falsify ANYTHING
+  // here: the editor background is rgb(9,9,18), the exact colour an opaque fill
+  // would paint. Both hypotheses predict the same pixels.
+  //
+  // So observe the property the user actually cares about — the viz BLENDS —
+  // by putting something unmistakable behind it: pin a RED backdrop and require
+  // it to show through the inline zone's empty areas. An opaque background(9,9,18)
+  // fill would hide it (red ≈ 0). Falsifiable, on the default (worker) path.
+  await setCode(
+    page,
+    `$: note("c4 e4").s("sawtooth").pianoroll({ background: '#cc1133' })\n` +
+      `$: note("c3 e3 g3").s("sawtooth")._pianoroll()`,
+  )
   await runCode(page)
   const canvas = page.locator('[data-viz-zone-track] canvas').first()
   await expect(canvas).toBeVisible({ timeout: 6000 })
-  const fracTransparent = await canvas.evaluate((el) => {
-    const c = el as HTMLCanvasElement
-    const ctx = c.getContext('2d')
-    if (!ctx) return 0
-    const { data } = ctx.getImageData(0, 0, c.width, c.height)
-    let clearPx = 0, total = 0
-    for (let i = 3; i < data.length; i += 4) { total++; if (data[i] === 0) clearPx++ }
-    return total ? clearPx / total : 0
-  })
-  // sparse notes on a transparent surface → most pixels fully transparent.
-  expect(fracTransparent).toBeGreaterThan(0.4)
+  await expect(page.locator('[data-workspace-background] canvas')).toHaveCount(1, { timeout: 8000 })
+  await page.waitForTimeout(1200)
+
+  const red = await vizPixelStats(page, '[data-viz-zone-track] canvas',
+    { rMin: 121, gMax: 79, bMax: 89 })
+  // Sparse notes over a transparent surface → most of the zone is backdrop red.
+  expect(red.frac).toBeGreaterThan(0.2)
 })
 
 test('pitchwheel tracks pitch (reactive) — note-name haps decode, not freeze on c4 (#216)', async ({ page }) => {
@@ -237,16 +253,12 @@ test('pitchwheel tracks pitch (reactive) — note-name haps decode, not freeze o
   await runCode(page)
   const canvas = page.locator('[data-viz-zone-track] canvas').first()
   await expect(canvas).toBeVisible({ timeout: 6000 })
-  const sampleX = () => canvas.evaluate((el) => {
-    const c = el as HTMLCanvasElement
-    const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-    let sx = 0, n = 0
-    for (let i = 0; i < d.length; i += 4) {
-      // bright, fully-opaque blue = the active line/dot (static dots are alpha 64)
-      if (d[i + 2] > 180 && d[i + 3] > 200) { sx += (i / 4) % c.width; n++ }
-    }
-    return n ? sx / n : -1
-  })
+  // The BRIGHT blue active line/dot. The old probe separated it from the static
+  // dots by alpha (they are drawn at alpha 64); the compositor has no alpha, but
+  // those dots composite against the near-black editor bg to a DIM blue — so
+  // brightness separates them just as cleanly.
+  const sampleX = async () =>
+    (await vizPixelStats(page, '[data-viz-zone-track] canvas', { bMin: 181 })).meanX
   const xs: number[] = []
   for (let k = 0; k < 7; k++) { xs.push(await sampleX()); await page.waitForTimeout(380) }
   const valid = xs.filter(x => x >= 0)
@@ -284,20 +296,10 @@ test('.viz("name", { opts }) threads options to the sketch — not just ._pianor
   await runCode(page)
   const canvas = page.locator('[data-viz-zone-track] canvas').first()
   await expect(canvas).toBeVisible({ timeout: 6000 })
-  const reddish = await canvas.evaluate((el) => {
-    const c = el as HTMLCanvasElement
-    const ctx = c.getContext('2d')
-    if (!ctx) return false
-    const { data } = ctx.getImageData(0, 0, c.width, c.height)
-    let red = 0, total = 0
-    for (let i = 0; i < data.length; i += 4) {
-      total++
-      // background #cc1133 → strongly red-dominant, low green/blue
-      if (data[i] > 120 && data[i + 1] < 80 && data[i + 2] < 90) red++
-    }
-    return total > 0 && red / total > 0.3 // ≥30% of pixels are the red bg
-  })
-  expect(reddish).toBe(true)
+  // background #cc1133 → strongly red-dominant, low green/blue. ≥30% of the zone.
+  const red = await vizPixelStats(page, '[data-viz-zone-track] canvas',
+    { rMin: 121, gMax: 79, bMax: 89 })
+  expect(red.frac).toBeGreaterThan(0.3)
 })
 
 test('pianoroll folds drum patterns so sounds spread across lanes, not one (#214)', async ({ page }) => {
@@ -309,36 +311,41 @@ test('pianoroll folds drum patterns so sounds spread across lanes, not one (#214
   await runCode(page)
   const canvas = page.locator('[data-viz-zone-track] canvas').first()
   await expect(canvas).toBeVisible({ timeout: 6000 })
-  const span = await canvas.evaluate((el) => {
-    const c = el as HTMLCanvasElement
-    const ctx = c.getContext('2d')
-    if (!ctx) return 0
-    const { data } = ctx.getImageData(0, 0, c.width, c.height)
-    let minY = c.height, maxY = 0
-    for (let y = 0; y < c.height; y++) {
-      for (let x = 0; x < c.width; x++) {
-        const i = (y * c.width + x) * 4
-        // any non-background pixel (bg is ~#09090f) that's clearly painted
-        if (data[i] > 60 || data[i + 1] > 60 || data[i + 2] > 60) {
-          if (y < minY) minY = y
-          if (y > maxY) maxY = y
-          break
-        }
-      }
-    }
-    return (maxY - minY) / c.height // fraction of height the notes occupy
-  })
+  // Vertical extent of the PAINTED pixels (any channel clearly above the ~#09090f
+  // background), as a fraction of the zone height.
+  const painted = await vizPixelStats(page, '[data-viz-zone-track] canvas', { anyChannelMin: 60 })
+  expect(painted.count, 'the sketch painted something').toBeGreaterThan(0)
+  const span = (painted.maxY - painted.minY) / painted.h
   // collapsed-to-one-lane would be a sliver (<0.2); multiple lanes span ≥0.4.
   expect(span).toBeGreaterThan(0.4)
 })
 
-test('inline ._pianoroll(options) — the options object reaches the sketch and renders (no error) (#214)', async ({ page }) => {
+test('inline ._pianoroll(options) — the options object REACHES the sketch (#214)', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(String(e)))
 
-  // labels / vertical / absolute-axis options all evaluate cleanly and produce
-  // an inline viz-zone canvas. Asserts the engine→bag→stave.options plumbing,
-  // not the pixels (those are observed manually).
+  // This test used to claim it "asserts the engine→bag→stave.options plumbing"
+  // while only checking that a canvas existed and nothing threw. It therefore
+  // could not fail when that plumbing was DEAD — and it duly stayed green for the
+  // six weeks that worker-rendered sketches received `stave.options = {}` (#875).
+  // An assertion that cannot fail is not coverage, it is a claim of coverage.
+  //
+  // So: prove the bag ARRIVED, with an option whose effect is visible. `background`
+  // is the falsifiable one — it paints, frame-independently. This is the UNDERSCORE
+  // inline form; the sibling tests cover `.viz(name, {…})` (#215) and the
+  // `.pianoroll({…})` backdrop (#214), so all three option syntaxes are observed.
+  await setCode(page, `$: note("c3 e3 g3 c4").s("sawtooth")._pianoroll({ background: '#cc1133' })`)
+  await runCode(page)
+  await expect(page.locator('[data-viz-zone-track] canvas').first()).toBeVisible({ timeout: 6000 })
+  const red = await vizPixelStats(page, '[data-viz-zone-track] canvas',
+    { rMin: 121, gMax: 79, bMax: 89 })
+  expect(red.frac, 'the { background } option reached the sketch').toBeGreaterThan(0.3)
+  await page.keyboard.press(`${MOD}+.`)
+  await page.waitForTimeout(300)
+
+  // The remaining shapes (labels / vertical / absolute-axis) must evaluate cleanly
+  // and produce a zone — a weaker claim, but a real one, and now clearly labelled
+  // as such rather than dressed up as option-plumbing coverage.
   for (const opts of ['{ labels: 1 }', '{ vertical: 1 }', '{ fold: 0, minMidi: 36, maxMidi: 84 }']) {
     await setCode(page, `$: note("c3 e3 g3 c4").s("sawtooth")._pianoroll(${opts})`)
     await runCode(page)
@@ -435,23 +442,18 @@ function draw() {
     const canvas = page.locator('[data-viz-zone-track] canvas').first()
     await canvas.waitFor({ timeout: 8000 })
 
-    const brightCount = () => canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let n = 0
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i] > 140 && d[i + 1] < 110 && d[i + 2] < 110 && d[i + 3] > 180) n++
-      }
-      return n
-    })
+    // Fraction of the zone covered by the red circle, per frame (compositor).
+    const brightFrac = async () =>
+      (await vizPixelStats(page, '[data-viz-zone-track] canvas',
+        { rMin: 141, gMax: 109, bMax: 109 })).frac
     const samples: number[] = []
-    for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
+    for (let k = 0; k < 8; k++) { samples.push(await brightFrac()); await page.waitForTimeout(180) }
 
     const range = Math.max(...samples) - Math.min(...samples)
     // The kick swings the radius across most of the canvas; a frozen sig.kick is
-    // a constant circle (range 0). 5000 px is far above measurement noise and
-    // far below the observed range (~40k).
-    expect(range).toBeGreaterThan(5000)
+    // a constant circle (range 0). 5% of the zone is far above measurement noise
+    // and far below the observed swing (~30% of the zone).
+    expect(range).toBeGreaterThan(0.05)
   })
 
   test('T5-B — sig.kick is reactive in a hydra inline sketch, with the analyser LIVE (FLAG-2)', async ({ page }) => {
@@ -534,25 +536,18 @@ function draw() {
     await bd.waitFor({ timeout: 8000 })
     await page.waitForTimeout(1500)
 
-    const counts = () => bd.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let red = 0, cyan = 0
-      for (let i = 0; i < d.length; i += 4) {
-        const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3]
-        if (a < 20) continue
-        if (r > 140 && g < 110 && b < 110) red++
-        else if (r < 110 && g > 110 && b > 110) cyan++
-      }
-      return { red, cyan, total: d.length / 4 }
+    const SEL = '[data-workspace-background] canvas'
+    const counts = async () => ({
+      red: (await vizPixelStats(page, SEL, { rMin: 141, gMax: 109, bMax: 109 })).frac,
+      cyan: (await vizPixelStats(page, SEL, { rMax: 109, gMin: 111, bMin: 111 })).frac,
     })
 
-    const { red, cyan, total } = await counts()
+    const { red, cyan } = await counts()
     // BOTH tints present — the two .color() codeblocks each paint their own
     // backdrop band. Each band is ~half the canvas; require a clear fraction
     // of each so neither tint is a stray antialias pixel.
-    expect(red / total).toBeGreaterThan(0.2)
-    expect(cyan / total).toBeGreaterThan(0.2)
+    expect(red).toBeGreaterThan(0.2)
+    expect(cyan).toBeGreaterThan(0.2)
 
     // P74 — capture a screenshot as a test artifact so the per-codeblock
     // colors can be eyeballed (a pixel count alone doesn't confirm the colors
@@ -567,8 +562,8 @@ function draw() {
     await runCode(page)
     await page.waitForTimeout(1500)
     const ctrl = await counts()
-    expect(ctrl.red / ctrl.total).toBeLessThan(0.05)
-    expect(ctrl.cyan / ctrl.total).toBeLessThan(0.05)
+    expect(ctrl.red).toBeLessThan(0.05)
+    expect(ctrl.cyan).toBeLessThan(0.05)
   })
 
   test('T5-D — backdrop sig.tracks refreshes on re-evaluate (adding a 2nd codeblock)', async ({ page }) => {
@@ -577,12 +572,18 @@ function draw() {
     // identity guard re-binds trackSchedulers on re-eval (T4 deliberately left
     // engineComponents OUT of the memo guard — this OBSERVES that the scheduler
     // re-publish refreshes the per-track map anyway).
+    //
+    // The old oracle had the sketch write `window.__p21bdTracks` for the spec to
+    // read back. That channel does not exist off-main: in the worker `window` is
+    // the DOM SHIM, so the assignment lands in the worker and the page reads
+    // `undefined` forever (#875). Observe the BANDS the sketch paints instead —
+    // one track paints red only; two paint red AND cyan. Same claim, and it holds
+    // on whichever thread the sketch is running.
     const sketch = `
 function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
 function draw() {
   clear(); noStroke()
   const tracks = sig.tracks || []
-  window.__p21bdTracks = JSON.stringify(tracks)
   const n = tracks.length || 1
   for (let i = 0; i < tracks.length; i++) {
     const col = sig.track(tracks[i]).color
@@ -596,15 +597,20 @@ function draw() {
     }, sketch)
     await page.waitForTimeout(400)
 
-    const readTracks = () =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      page.evaluate(() => (window as any).__p21bdTracks ?? 'unset')
+    const SEL = '[data-workspace-background] canvas'
+    const tints = async () => ({
+      red: (await vizPixelStats(page, SEL, { rMin: 141, gMax: 109, bMax: 109 })).frac,
+      cyan: (await vizPixelStats(page, SEL, { rMax: 109, gMin: 111, bMin: 111 })).frac,
+    })
 
     await setCode(page, `$: s("bd*4").color('red').spectrum()`)
     await runCode(page)
+    await page.locator(SEL).first().waitFor({ timeout: 8000 })
     await page.waitForTimeout(1800)
-    const one = JSON.parse(await readTracks())
-    expect(one.length).toBe(1)
+    const one = await tints()
+    // ONE track → its red band fills the backdrop; no second tint exists yet.
+    expect(one.red).toBeGreaterThan(0.2)
+    expect(one.cyan).toBeLessThan(0.05)
 
     await setCode(
       page,
@@ -614,8 +620,10 @@ function draw() {
     await page.waitForTimeout(600)
     await runCode(page)
     await page.waitForTimeout(1800)
-    const two = JSON.parse(await readTracks())
-    expect(two.length).toBe(2)
+    const two = await tints()
+    // TWO tracks → the map refreshed, so the new track's band appears alongside.
+    expect(two.red).toBeGreaterThan(0.2)
+    expect(two.cyan).toBeGreaterThan(0.2)
   })
 
   // ───────────────────────────────────────────────────────────────────────
@@ -689,24 +697,18 @@ function draw() {
     // silent signal.
     await assertAudioLive(page)
 
-    const brightCount = () => canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let n = 0
-      for (let i = 0; i < d.length; i += 4) {
-        // the cyan circle: blue-dominant, fully opaque
-        if (d[i + 2] > 180 && d[i + 1] > 120 && d[i] < 140 && d[i + 3] > 180) n++
-      }
-      return n
-    })
+    // the cyan circle: blue-dominant, bright.
+    const brightFrac = async () =>
+      (await vizPixelStats(page, '[data-viz-zone-track] canvas',
+        { bMin: 181, gMin: 121, rMax: 139 })).frac
     const samples: number[] = []
-    for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
+    for (let k = 0; k < 8; k++) { samples.push(await brightFrac()); await page.waitForTimeout(180) }
 
     const range = Math.max(...samples) - Math.min(...samples)
     // The kick's bass energy swings the circle radius; a frozen/silent analyser
-    // is a constant circle (range ≈ 0). 800 px clears measurement noise and is
-    // far below the observed swing on a live kick.
-    expect(range).toBeGreaterThan(800)
+    // is a constant circle (range ≈ 0). 1% of the zone clears measurement noise
+    // and is far below the observed swing on a live kick.
+    expect(range).toBeGreaterThan(0.01)
   })
 
   test('T4-B — sig("bd").fft renders as bars and the spectrum VARIES over frames (+ screenshot, P74)', async ({ page }, testInfo) => {
@@ -746,21 +748,23 @@ function draw() {
     await assertAudioLive(page)
 
     // total green energy = Σ bar heights; a moving spectrum makes this vary.
-    const barEnergy = () => canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let n = 0
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i + 1] > 180 && d[i] < 160 && d[i + 2] < 160 && d[i + 3] > 180) n++
-      }
-      return n
-    })
+    const barEnergy = async () =>
+      (await vizPixelStats(page, '[data-viz-zone-track] canvas',
+        { gMin: 181, rMax: 159, bMax: 159 })).frac
     const samples: number[] = []
     for (let k = 0; k < 9; k++) { samples.push(await barEnergy()); await page.waitForTimeout(170) }
 
-    // P74 — attach the fft-bars canvas so the spectrum is eyeball-verifiable.
-    const shot = await canvas.screenshot()
-    await testInfo.attach('fft-bars-sketch', { body: shot, contentType: 'image/png' })
+    // P74 — attach the fft-bars zone so the spectrum is eyeball-verifiable. The
+    // COMPOSITOR shot (page.screenshot over the zone's box), not the element's —
+    // an element screenshot of a worker canvas forces a drawing-buffer readback
+    // and is exactly the artifact that ghost-bugged P121.
+    const box = await canvas.boundingBox()
+    if (box) {
+      await testInfo.attach('fft-bars-sketch', {
+        body: await page.screenshot({ clip: box }),
+        contentType: 'image/png',
+      })
+    }
 
     const nonEmpty = samples.filter((s) => s > 0)
     // at least some frames painted bars (fft was non-empty — the array reached
@@ -768,8 +772,8 @@ function draw() {
     expect(nonEmpty.length).toBeGreaterThan(2)
     const range = Math.max(...samples) - Math.min(...samples)
     // the spectrum moves → bar energy varies. A static/empty fft is flat
-    // (range 0). 500 px clears noise; observed swings are several thousand.
-    expect(range).toBeGreaterThan(500)
+    // (range 0). 1% of the zone clears noise; observed swings are far larger.
+    expect(range).toBeGreaterThan(0.01)
   })
 
   test('T4-C — master sig.rms / sig.fft are reactive to the overall mix (variance over frames)', async ({ page }) => {
@@ -807,27 +811,21 @@ function draw() {
 
     await assertAudioLive(page)
 
-    const brightCount = () => canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let n = 0
-      for (let i = 0; i < d.length; i += 4) {
-        // the orange/red circle: red-dominant, fully opaque
-        if (d[i] > 180 && d[i + 2] < 120 && d[i + 3] > 180) n++
-      }
-      return n
-    })
+    // the orange/red circle: red-dominant.
+    const brightFrac = async () =>
+      (await vizPixelStats(page, '[data-viz-zone-track] canvas',
+        { rMin: 181, bMax: 119 })).frac
     // Sample more frames (12) than the per-band probes: the master mix is the
     // sum of several sources, so its peak/trough phase relative to the probe
     // clock is less predictable — more samples reliably catch both extremes.
     const samples: number[] = []
-    for (let k = 0; k < 12; k++) { samples.push(await brightCount()); await page.waitForTimeout(150) }
+    for (let k = 0; k < 12; k++) { samples.push(await brightFrac()); await page.waitForTimeout(150) }
 
     const range = Math.max(...samples) - Math.min(...samples)
     // the master mix (kick + hats) drives rms + fft energy; a frozen master
-    // analyser is a constant circle (range 0). 800 px clears measurement noise
-    // and sits well below the observed swing once both master signals drive it.
-    expect(range).toBeGreaterThan(800)
+    // analyser is a constant circle (range 0). 1% of the zone clears measurement
+    // noise and sits well below the observed swing once both signals drive it.
+    expect(range).toBeGreaterThan(0.01)
   })
 })
 
@@ -954,18 +952,12 @@ function draw() {
     const canvas = page.locator('[data-viz-zone-track] canvas').first()
     await canvas.waitFor({ timeout: 8000 })
 
-    const brightCount = () => canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let n = 0
-      for (let i = 0; i < d.length; i += 4) {
-        // the warm circle: red-dominant, fully opaque
-        if (d[i] > 180 && d[i + 2] < 120 && d[i + 3] > 180) n++
-      }
-      return n
-    })
+    // the warm circle: red-dominant.
+    const brightFrac = async () =>
+      (await vizPixelStats(page, '[data-viz-zone-track] canvas',
+        { rMin: 181, bMax: 119 })).frac
     const samples: number[] = []
-    for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
+    for (let k = 0; k < 8; k++) { samples.push(await brightFrac()); await page.waitForTimeout(180) }
 
     // A ReferenceError on `sig.kick` would surface here (the sketch never
     // painted → all-zero samples AND a pageerror). Fail loud if so.
@@ -973,9 +965,9 @@ function draw() {
 
     const range = Math.max(...samples) - Math.min(...samples)
     // The custom `sig.kick` alias swings the radius across most of the canvas; a
-    // frozen/unresolved alias is a constant circle (range 0). 5000 px clears
-    // measurement noise (mirror T5-A's threshold; observed range ~tens of k).
-    expect(range).toBeGreaterThan(5000)
+    // frozen/unresolved alias is a constant circle (range 0). 5% of the zone
+    // clears measurement noise (mirrors T5-A's threshold).
+    expect(range).toBeGreaterThan(0.05)
   })
 
   test('T4-B — custom `stave.sig.kick()` thunk drives a hydra sketch reactively (analyser LIVE)', async ({ page }) => {
@@ -1055,23 +1047,17 @@ function draw() {
     const canvas = page.locator('[data-viz-zone-track] canvas').first()
     await canvas.waitFor({ timeout: 8000 })
 
-    const brightCount = () => canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let n = 0
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i] > 140 && d[i + 1] < 110 && d[i + 2] < 110 && d[i + 3] > 180) n++
-      }
-      return n
-    })
+    const brightFrac = async () =>
+      (await vizPixelStats(page, '[data-viz-zone-track] canvas',
+        { rMin: 141, gMax: 109, bMax: 109 })).frac
     const samples: number[] = []
-    for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
+    for (let k = 0; k < 8; k++) { samples.push(await brightFrac()); await page.waitForTimeout(180) }
 
     expect(errors, `sketch errors with custom alias seeded: ${errors.join(' | ')}`).toEqual([])
     const range = Math.max(...samples) - Math.min(...samples)
     // Built-in sig.kick still swings the radius despite the custom map. A clobbered
-    // built-in would freeze it (range 0). 5000 px mirror T5-A.
-    expect(range).toBeGreaterThan(5000)
+    // built-in would freeze it (range 0). 5% of the zone mirrors T5-A.
+    expect(range).toBeGreaterThan(0.05)
   })
 })
 

@@ -29,7 +29,7 @@
  */
 
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
-import type { VizRenderer } from '../types'
+import type { VizRenderer, VizOptions } from '../types'
 import type { BusAnalyser } from '../signals/SignalBus'
 import type { IRPattern } from '../../ir/IRPattern'
 import { MainSignalSampler } from '../worker/signalSampler'
@@ -55,6 +55,26 @@ import type {
 } from '../worker/workerMessages'
 
 let workerPerfSeq = 0
+/** Tie-break counter for options bags that can't be serialized to a change key.
+ *  Its own counter, NOT the perfId sequence — that one names renderers. */
+let optionsKeySeq = 0
+
+/** Order-independent serialization of an options bag — the change key `update()`
+ *  compares against (#875). Key order varies between evaluates for an identical
+ *  bag, so sort before stringifying or every re-publish would look like a change. */
+function stableKey(options: VizOptions): string {
+  try {
+    return JSON.stringify(
+      Object.keys(options)
+        .sort()
+        .map((k) => [k, options[k]]),
+    )
+  } catch {
+    // Cyclic value survived the per-key clone check (a self-referencing object is
+    // structured-cloneable but NOT JSON-serializable) — treat as always-changed.
+    return `unserializable:${++optionsKeySeq}`
+  }
+}
 
 /**
  * Max SignalFrames allowed in flight (written but not yet acked by the worker)
@@ -135,6 +155,10 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
    *  destroy() can decrement the `viz.glctx` gauge reliably (the worker's release
    *  happens after we've detached its listener, so we account it main-side). */
   private glAccounted = false
+  /** Serialized options last posted to the worker (#875) — `update()` only re-posts
+   *  when the bag actually changed, so a re-publish with identical options costs
+   *  nothing. `null` until mount. */
+  private lastOptionsKey: string | null = null
 
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5 / `'glsl'` #281).
    *  @param code raw sketch source. @param name workspace path (error attribution). */
@@ -254,6 +278,7 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
       // Bind the live signal feed, then ship the mount with the transferred canvas.
       this.bindSampler(components)
       const aliases = resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE)
+      const mountOptions = this.postOptions(components)
       const mountMsg: MountMessage = {
         type: 'mount',
         kind: this.kind,
@@ -268,7 +293,11 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
         config: pickWorkerVizConfig(),
         // #325 Tier A — p5 renders direct into `canvas` (default ON); hydra/glsl already do.
         p5DirectCanvas: this.kind === 'p5' && isP5DirectCanvasEnabled(),
+        // #875 — the sketch's `stave.options`. The main-thread renderer hands the
+        // bag straight to the compiler; the worker can only get it by value.
+        options: mountOptions,
       }
+      this.lastOptionsKey = stableKey(mountOptions)
       worker.postMessage(mountMsg, [offscreen])
 
       // Re-marshal on any later quality/LOD change so the worker sketch updates
@@ -286,6 +315,41 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
   update(components: Partial<EngineComponents>): void {
     if (!this.worker) return
     this.bindSampler(components)
+    // #875 — a re-evaluate can change the options bag (editing the `{…}` argument).
+    // The main-thread renderer just re-assigns its ref; the worker needs a message.
+    // Post only on an actual CHANGE: update() runs on every component re-publish,
+    // and the bag is unchanged in the overwhelming majority of them.
+    const next = this.postOptions(components)
+    const key = stableKey(next)
+    if (key !== this.lastOptionsKey) {
+      this.lastOptionsKey = key
+      this.worker.postMessage({ type: 'options', options: next })
+    }
+  }
+
+  /** The options bag as the worker can receive it: structured-CLONED, not shared.
+   *  A non-cloneable value (a function passed to `.viz(name, {…})`) would throw
+   *  DataCloneError from `postMessage` and take the whole mount down — so drop
+   *  those keys instead. They could never have reached a worker sketch anyway, and
+   *  dropping one key degrades exactly as far as the pre-fix behaviour did.
+   *
+   *  PURE — it must not touch `lastOptionsKey`. (It did, briefly: `update()` then
+   *  compared the fresh key against the one this call had just written, so it saw
+   *  "no change" every time and never posted. A silent no-op fix for a silent
+   *  no-op bug.) */
+  private postOptions(components: Partial<EngineComponents>): VizOptions {
+    const src = components.options
+    if (!src) return {}
+    const out: VizOptions = {}
+    for (const [k, v] of Object.entries(src)) {
+      try {
+        structuredClone(v)
+        out[k] = v
+      } catch {
+        /* non-cloneable (function / DOM node) — drop the key, keep the viz */
+      }
+    }
+    return out
   }
 
   resize(w: number, h: number): void {
