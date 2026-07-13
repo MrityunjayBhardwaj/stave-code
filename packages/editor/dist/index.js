@@ -28212,12 +28212,21 @@ function renameEdit(fresh, newLabel, takenNames) {
 __name(renameEdit, "renameEdit");
 function PatternTrackChip() {
   const { chunk } = useActiveChunk();
-  const { strips, applyToStrip } = useMixerModel();
+  const { strips, applyToStripAt } = useMixerModel();
   const [fileId, setFileId] = React36.useState(() => getActiveFileId());
   React36.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
   const [colorAnchor, setColorAnchor] = React36.useState(null);
   const [renaming, setRenaming] = React36.useState(false);
+  const settledRef = React36.useRef(false);
+  const openRename = /* @__PURE__ */ __name(() => {
+    settledRef.current = false;
+    setRenaming(true);
+  }, "openRename");
+  const cancelRename = /* @__PURE__ */ __name(() => {
+    settledRef.current = true;
+    setRenaming(false);
+  }, "cancelRename");
   const anchor = chunk ? chunk.statementRange[0] : null;
   const strip = anchor != null ? stripContainingOffset(strips, anchor) : void 0;
   if (!strip) return null;
@@ -28226,11 +28235,13 @@ function PatternTrackChip() {
   const bareLabel2 = strip.label?.replace(/^_/, "") ?? "";
   const renameSeed = bareLabel2 !== "" && bareLabel2 !== "$" ? bareLabel2 : "";
   const commitRename = /* @__PURE__ */ __name((raw) => {
+    if (settledRef.current) return;
+    settledRef.current = true;
     setRenaming(false);
     const v = raw.trim();
     if (!v) return;
-    applyToStrip(strip.id, (fresh, wb) => {
-      const taken = new Set(strips.filter((s) => s.id !== strip.id).map((s) => s.name));
+    applyToStripAt(strip.statementRange[0], (fresh, wb, doc) => {
+      const taken = new Set(otherTrackNames(doc, fresh.statementRange[0]));
       const e = renameEdit(fresh, v, taken);
       if (!e) return;
       wb.replaceRange(e.range, e.text, "rename");
@@ -28306,8 +28317,13 @@ function PatternTrackChip() {
             spellCheck: false,
             onFocus: (e) => e.currentTarget.select(),
             onKeyDown: (e) => {
-              if (e.key === "Enter") commitRename(e.currentTarget.value);
-              else if (e.key === "Escape") setRenaming(false);
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitRename(e.currentTarget.value);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelRename();
+              }
               e.stopPropagation();
             },
             onBlur: (e) => commitRename(e.currentTarget.value),
@@ -28330,7 +28346,7 @@ function PatternTrackChip() {
           {
             "data-pattern-track-name": true,
             title: `${strip.name} \u2014 double-click to rename`,
-            onDoubleClick: () => setRenaming(true),
+            onDoubleClick: openRename,
             style: {
               fontSize: 11,
               fontWeight: 600,
