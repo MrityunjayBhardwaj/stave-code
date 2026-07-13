@@ -18,6 +18,17 @@
 
 import { test, expect, type Page } from '@playwright/test'
 
+// QUARANTINED (#680). The IR Inspector's tab registration is deliberately
+// commented out in StaveApp (`// unregs.push(registerPanel({ id: "ir-inspector" …`)
+// — "hidden from the left activity bar until the full breakpoint-driven music
+// debugger flow lands". The panel, the engine capture and the breakpoint wiring
+// are all intentionally KEPT intact; only the way to OPEN it is gone, so every
+// test here times out waiting for a panel no user can reach. These specs are not
+// stale and must NOT be deleted: they are the acceptance tests for #680. Un-skip
+// them in the same change that re-registers the tab.
+test.skip(true, 'IR Inspector UI is unreachable until #680 re-enables its tab')
+
+
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 async function setStrudelCode(page: Page, code: string): Promise<void> {

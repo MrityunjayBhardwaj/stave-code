@@ -1,5 +1,19 @@
 import { test, expect, type Page } from '@playwright/test'
 
+// QUARANTINED (#874). These drive `[data-musical-timeline-note="…"]` — per-note
+// DOM blocks of the LIVE-VIEW timeline, which the #497/U5 DOM-view retirement
+// deleted (the timeline is a canvas now). Unlike the sibling musical-timeline
+// specs (retired outright — their row model is gone and the canvas has its own
+// stability coverage), this one guards a CAPABILITY whose fate is unresolved:
+// clicking an individual NOTE and landing on ITS source line. The canvas has
+// lane-header jump (#610) but no note-level jump, so this may be a capability
+// that quietly disappeared rather than one deliberately dropped. Skipped — not
+// deleted — so the question stays on the record. Resolve in #874: either restore
+// note-level click-to-source on the canvas and rewrite this against it, or
+// retire it deliberately.
+test.skip(true, 'note-level click-to-source: capability unresolved — see #874')
+
+
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 async function bootWithDrawer(page: Page): Promise<void> {
