@@ -10,6 +10,14 @@ import { test, expect, Page } from '@playwright/test'
  * Zones mount from the engine's capture (vizRequests), not audio playback, so
  * this runs headless with no audio/WebGL dependency — it asserts only that the
  * `[data-viz-zone]` containers exist with the right `data-viz-zone-id`.
+ *
+ * The viz NAMES here must be ones the default workspace actually seeds. These
+ * specs used to say `.viz('Prism')`, and Prism stopped being pre-seeded when the
+ * Asset Library landed (#834 — viz packages are now ADDED to the workspace from
+ * the library). An unknown name resolves to no zone at all, so all three lines
+ * rendered nothing and the spec read as "#571 is broken" when #571 was fine:
+ * the same three chain shapes with `pianoroll` render 3/3. The spec's PREMISE
+ * had rotted, not the product (#875).
  */
 async function evalZones(page: Page, code: string) {
   await page.evaluate((c) => {
@@ -33,25 +41,29 @@ test('inline .viz() renders whether or not it is the terminal chain call (#571)'
   await page.goto('/')
   await page.locator('.monaco-editor').waitFor({ timeout: 15000 })
   const code = [
-    `$: note("c e g").s("sawtooth").viz('Prism')`,            // terminal
-    `$: note("c e g").viz('Prism').gain(0.3)`,                // .viz() + 1 trailing method
-    `$: note("c e g").viz('Prism').s("sawtooth").gain(0.3)`,  // .viz() + 2 trailing methods
+    `$: note("c e g").s("sawtooth").viz('spectrum')`,            // terminal
+    `$: note("c e g").viz('spectrum').gain(0.3)`,                // .viz() + 1 trailing method
+    `$: note("c e g").viz('spectrum').s("sawtooth").gain(0.3)`,  // .viz() + 2 trailing methods
   ].join('\n') + '\n'
   const zones = await evalZones(page, code)
   // Pre-#571 only the terminal line rendered → 1 zone. All three must render now.
   expect(zones.length).toBe(3)
+  // ...and every one of them resolved the name — a zone that mounted for an
+  // UNKNOWN viz would be a different (and worse) bug than the one this guards.
+  expect(zones.map((z) => z.viz)).toEqual(['spectrum', 'spectrum', 'spectrum'])
 })
 
 test('a mid-chain track recovers the LATEST .viz() name in its chain (#571)', async ({ page }) => {
   await page.goto('/')
   await page.locator('.monaco-editor').waitFor({ timeout: 15000 })
   const code = [
-    `$: note("c e g").viz("Prism").lpf(178).viz("pianoroll").gain(0.8).sound('sin')`, // mid-chain, two viz → latest
-    `$: note("c4 e4").s("sawtooth").viz('Prism')`,                                     // terminal control
+    `$: note("c e g").viz("spectrum").lpf(178).viz("pianoroll").gain(0.8).sound('sin')`, // mid-chain, two viz → latest
+    `$: note("c4 e4").s("sawtooth").viz('spectrum')`,                                    // terminal control
   ].join('\n') + '\n'
   const zones = await evalZones(page, code)
   expect(zones.length).toBe(2)
-  // "last viz in the chain wins" — the mid-chain track resolves to pianoroll, not Prism.
+  // "last viz in the chain wins" — the mid-chain track resolves to pianoroll, not spectrum.
   expect(zones.map((z) => z.viz)).toContain('pianoroll')
-  expect(zones.map((z) => z.viz)).toContain('Prism')
+  // and the control line still resolves its own (different) viz.
+  expect(zones.map((z) => z.viz)).toContain('spectrum')
 })
