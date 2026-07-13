@@ -70,15 +70,18 @@ test('the editor caret selects the matching Song Timeline lane', async ({ page }
   await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
 
-  // Caret in each track's line selects exactly that one lane. Named tracks keep
-  // the positional laneKey d{N} (#579 STEP 2): bass=d1, lead=d2, hh=d3.
+  // Caret in each track's line selects exactly that one lane. A track's laneKey is
+  // its IDENTITY — the label when it has one, `d{N}` (its position) when it doesn't
+  // (#138): bass=bass, lead=lead, and the anonymous third track=d3. (This spec used
+  // to expect `d1`/`d2` for the named tracks — the pre-#138 model, where a named
+  // track carried a positional id as well as its label.)
   await caretToLine(page, 1)
   expect(await page.locator('[data-full-song-lane-selected]').count()).toBe(1)
-  expect(await selectedLaneKey(page)).toBe('d1')
+  expect(await selectedLaneKey(page)).toBe('bass')
 
   await caretToLine(page, 2)
   expect(await page.locator('[data-full-song-lane-selected]').count()).toBe(1)
-  expect(await selectedLaneKey(page)).toBe('d2')
+  expect(await selectedLaneKey(page)).toBe('lead')
 
   await caretToLine(page, 3)
   expect(await selectedLaneKey(page)).toBe('d3')
@@ -98,15 +101,15 @@ test('clicking a timeline lane moves the caret, which selects that lane (bidirec
   await typeSongAndEval(page, SONG)
   await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
 
-  // Start with the caret on line 1 → d1 selected.
+  // Start with the caret on line 1 → the `bass` lane selected.
   await caretToLine(page, 1)
-  expect(await selectedLaneKey(page)).toBe('d1')
+  expect(await selectedLaneKey(page)).toBe('bass')
 
   // Selecting a DIFFERENT track's header must MOVE the selection (not leave the
   // original stuck): each header click reveals its code (moves the caret) and the
   // header click also sets the selection directly. Exactly one lane stays
   // selected, and it's the clicked one.
-  for (const key of ['d2', 'd3', 'd1', 'd2']) {
+  for (const key of ['lead', 'd3', 'bass', 'lead']) {
     await page.locator(`[data-full-song-lane-select="${key}"]`).click()
     await page.waitForTimeout(150)
     expect(await page.locator('[data-full-song-lane-selected]').count()).toBe(1)

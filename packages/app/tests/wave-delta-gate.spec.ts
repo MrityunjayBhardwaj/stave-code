@@ -83,47 +83,41 @@ interface PageState {
   rowCount: number
   labels: string[]
   dotColors: string[]
-  noteColorsByRow: Record<string, string[]>
   consoleErrors: string[]
 }
 
+/**
+ * Read the Song Timeline's LANES.
+ *
+ * This used to read `[data-musical-timeline-track-row]` / `-track-label` / `-note` —
+ * the DOM live-view that was RETIRED when the timeline became a canvas. Every one of
+ * those selectors matched nothing, which is why the file had rotted into a gate that
+ * guards nothing: two fixtures failed on the dead selectors, and three could not fail
+ * at ALL (two had no `expect` — they `console.error`/`console.log`ed a mismatch and
+ * passed anyway; the third asserted `rowCount <= 1`, which `0` satisfies).
+ *
+ * A lane's KEY is the track's identity — its label when it has one, `d{N}` when it
+ * doesn't — which is exactly what the old `track-label` carried, so the fixtures'
+ * claims survive the move. What does NOT survive is per-NOTE colour: notes are canvas
+ * pixels now, with no DOM to read (see FIXTURE D).
+ */
 async function snapshotState(
   page: Page,
   consoleErrors: string[],
 ): Promise<PageState> {
   return await page.evaluate(
     (errors) => {
-      const labels = Array.from(
-        document.querySelectorAll('[data-musical-timeline-track-label]'),
-      ).map((el) => el.getAttribute('data-musical-timeline-track-label') ?? '')
-
-      // 20-11 DOM used `track-dot`; 20-12 chrome refactor (header rail +
-      // swatch popover) renamed it to `track-swatch`. Probe both so the
-      // spec runs against either branch state.
-      const dotEls = document.querySelectorAll(
-        '[data-musical-timeline="track-dot"], [data-musical-timeline="track-swatch"]',
-      )
-      const dotColors = Array.from(dotEls).map((el) => {
-        const inline = (el as HTMLElement).style.background
-        if (inline) return inline
-        const computed = window.getComputedStyle(el as HTMLElement)
-        return computed.background || computed.backgroundColor || ''
-      })
-
-      const rows = document.querySelectorAll('[data-musical-timeline-track-row]')
-      const noteColorsByRow: Record<string, string[]> = {}
-      rows.forEach((row) => {
-        const id = row.getAttribute('data-musical-timeline-track-row') ?? '?'
-        noteColorsByRow[id] = Array.from(
-          row.querySelectorAll('[data-musical-timeline-note]'),
-        ).map((n) => (n as HTMLElement).style.background)
+      const lanes = Array.from(document.querySelectorAll('[data-full-song-lane]'))
+      const labels = lanes.map((el) => el.getAttribute('data-full-song-lane') ?? '')
+      const dotColors = lanes.map((el) => {
+        const d = el.querySelector('[data-full-song-lane-dot]') as HTMLElement | null
+        return d ? window.getComputedStyle(d).backgroundColor : ''
       })
 
       return {
-        rowCount: rows.length,
+        rowCount: lanes.length,
         labels,
         dotColors,
-        noteColorsByRow,
         consoleErrors: errors.slice(),
       }
     },
@@ -214,11 +208,9 @@ test.describe('Phase 20-11 wave-δ — γ-7 gate', () => {
       consoleMessages.filter((m) => m.type === 'warning' || m.type === 'error' || m.type === 'pageerror'),
     )
 
-    if (state.labels.length !== 1 || state.labels[0] !== 'kick') {
-      console.error(
-        `WAVE-δ FIXTURE B FAILED: expected ['kick'], got ${JSON.stringify(state.labels)}`,
-      )
-    }
+    // This used to `console.error` a mismatch and PASS regardless — there was no
+    // assertion here at all, so the fixture could not fail.
+    expect(state.labels).toEqual(['kick'])
 
     await stopStrudel(page)
   })
@@ -244,11 +236,12 @@ test.describe('Phase 20-11 wave-δ — γ-7 gate', () => {
     const state = await snapshotState(page, consoleErrors)
     console.log('FIXTURE C state (Trap G probe):', JSON.stringify(state, null, 2))
 
-    // Trap G blocking condition: rows > 1 for single-expression input.
-    expect(state.rowCount).toBeLessThanOrEqual(1)
-    if (state.rowCount === 1) {
-      expect(state.labels).toEqual(['d1'])
-    }
+    // Trap G blocking condition: a single bare expression must produce exactly ONE
+    // lane, never more. (This asserted `rowCount <= 1` — which the dead selector
+    // satisfied with 0, so it passed while measuring nothing. A bare expression is
+    // wrapped as a track, so the honest expectation is exactly one lane, named `d1`.)
+    expect(state.rowCount).toBe(1)
+    expect(state.labels).toEqual(['d1'])
 
     await stopStrudel(page)
   })
@@ -291,36 +284,16 @@ test.describe('Phase 20-11 wave-δ — γ-7 gate', () => {
     await stopStrudel(page)
   })
 
-  test('FIXTURE D — .color("red") preserved over palette', async ({
-    page,
-  }) => {
-    const consoleErrors: string[] = []
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') consoleErrors.push(msg.text())
-    })
-    page.on('pageerror', (err) => {
-      consoleErrors.push(`pageerror: ${err.message}`)
-    })
-
+  // FIXTURE D asserted that `.color("red")` beats the palette by reading each NOTE's
+  // background off the DOM. Notes are canvas pixels now — there is no per-note DOM to
+  // read, and no equivalent oracle short of pixel-sampling the canvas. Rather than
+  // leave it "passing" (it computed `hasRed` and only console.logged it — it had no
+  // assertion and could never fail), it is SKIPPED with its reason recorded: the
+  // capability it guards is unverified, not proven. Same class as the note-level
+  // click-to-source gap (#874) — a canvas view that lost its DOM oracle.
+  test.skip('FIXTURE D — .color("red") preserved over palette', async ({ page }) => {
     await setStrudelCode(page, 's("c d e g").note().color("red")')
     await evalStrudel(page)
-    await page.waitForTimeout(1500)
-
-    await page.screenshot({
-      path: path.join(SCREENSHOT_DIR, 'fixtureD.png'),
-      fullPage: true,
-    })
-
-    const state = await snapshotState(page, consoleErrors)
-    console.log('FIXTURE D state:', JSON.stringify(state, null, 2))
-
-    // Look for red color in note backgrounds.
-    const allNoteColors = Object.values(state.noteColorsByRow).flat()
-    const hasRed = allNoteColors.some(
-      (c) => /red|#ff0000|rgb\(255, ?0, ?0\)/i.test(c),
-    )
-    console.log(`FIXTURE D — note colors: ${JSON.stringify(allNoteColors)}; hasRed: ${hasRed}`)
-
     await stopStrudel(page)
   })
 })
