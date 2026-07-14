@@ -49,12 +49,32 @@ describe('guardrails — unsupported code stays inert (#847)', () => {
     expect(k.rangeEditable).toBe(false)
   })
 
-  it('a value outside its custom range widens the range so the dial stays accurate', () => {
+  it('a value ABOVE its custom range widens the max so the dial stays accurate', () => {
     const [k] = knobsFor('$: s("bd").room(150, 0, 100)')
     expect(k.customRange).toEqual({ min: 0, max: 100 })
     // the render widens to include the authored value
     const r = customRange(k.customRange!.min, k.customRange!.max, k.value)
     expect(r.max).toBeGreaterThanOrEqual(150)
+    expect(r.min).toBe(0) // the bound it did NOT violate is left alone
+  })
+
+  it('a value BELOW its custom range widens the min — the dial floor is the value, not the authored min', () => {
+    // The mirror of the case above, and the one that reads as a bug if you only
+    // know the authored text: `.room(0.4, 10, 90)` declares a floor of 10, but 0.4
+    // sits under it, so the dial's floor is 0.4. Pinning to 10 would make the dial
+    // misreport the code — and the first drag would silently rewrite the value.
+    const [k] = knobsFor('$: s("bd").room(0.4, 10, 90)')
+    expect(k.customRange).toEqual({ min: 10, max: 90 })
+    const r = customRange(k.customRange!.min, k.customRange!.max, k.value)
+    expect(r.min).toBe(0.4)
+    expect(r.max).toBe(90) // the bound it did NOT violate is left alone
+  })
+
+  it('a value INSIDE its custom range leaves both bounds exactly as authored', () => {
+    const [k] = knobsFor('$: s("bd").room(50, 10, 90)')
+    const r = customRange(k.customRange!.min, k.customRange!.max, k.value)
+    expect(r.min).toBe(10)
+    expect(r.max).toBe(90)
   })
 
   it('a genuinely multi-arg NON-control keeps its dials and is not range-editable', () => {
