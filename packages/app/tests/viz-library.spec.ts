@@ -44,6 +44,33 @@ async function showVizType(page: Page, panel: ReturnType<Page['locator']>) {
   await page.waitForTimeout(100)
 }
 
+/** Drag the viz card PREVIEW HEIGHT slider (#838) to its minimum through the real
+ *  gesture: File ▸ Editor Settings… → the Visualization section → focus the range
+ *  input → Home (the native "go to min" key) → Close.
+ *
+ *  `exact` on the File button — the name match is a case-insensitive substring, so
+ *  a bare 'File' also hits the "New file" (+) button. And the unified settings
+ *  shell (#739) renders ONE section at a time behind a nav: the slider is not in
+ *  the DOM until "Visualization" is selected. */
+async function setVizPreviewHeightToMin(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'File', exact: true }).click()
+  await page.getByText('Editor Settings...').click()
+  await page.getByTestId('settings-shell').waitFor({ timeout: 5000 })
+  await page.getByTestId('settings-nav-viz').click()
+  const slider = page.getByTestId('setting-vizPreviewHeight')
+  await slider.waitFor({ timeout: 5000 })
+  await slider.focus()
+  await page.keyboard.press('Home')
+  // Scoped + exact: the Library panel's own close is labelled "Close Library",
+  // which an unscoped substring match on 'Close' would also hit. Same trap as the
+  // File button above — the accessible name is a substring match, not an id.
+  await page
+    .getByTestId('settings-shell')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click()
+  await page.waitForTimeout(200)
+}
+
 /** Whether a viz-language workspace file with the given basename exists (the
  *  same predicate the named-viz bridge registers on). Returns the file id. */
 async function vizFileId(page: Page, basename: string): Promise<string | null> {
@@ -89,16 +116,52 @@ test.describe('Asset Library — Viz library (#834)', () => {
       await expect(thumb).toHaveAttribute('src', /^data:image\/png/)
     }
 
-    // The cards flow in a grid — the two sit side by side (same row top), not
-    // stacked in a single column.
-    const prismBox = await panel.locator('[data-asset-row="viz:prism"]').boundingBox()
-    const pulseBox = await panel.locator('[data-asset-row="viz:pulse-grid"]').boundingBox()
-    expect(prismBox && pulseBox).toBeTruthy()
-    expect(Math.abs(prismBox!.y - pulseBox!.y)).toBeLessThan(8) // same row
-    expect(pulseBox!.x).toBeGreaterThan(prismBox!.x + prismBox!.width - 8) // to the right
-
     // Visual observation of the whole shelf with thumbnails.
     await panel.screenshot({ path: 'test-results/viz-library-thumbs.png' })
+  })
+
+  test('the cards are aspect-true and REFLOW — one column when they are big, two when small (#836/#838)', async ({
+    page,
+  }) => {
+    // The shelf is a wrapping flex grid whose cards are sized by each shader's
+    // aspect at the Settings preview height (#838). So the column count is not a
+    // fixed layout choice — it FALLS OUT of card width vs the 260px sidebar:
+    // a 2:1 shader at the default 96px is ~192px wide and only one fits across
+    // 236px of content; at the 48px minimum it is ~96px and two fit.
+    //
+    // This asserts the reflow itself, driven by the real Settings gesture. The
+    // spec used to assert "side by side" unconditionally — true when the cards
+    // were small, false since #838 gave them a bigger default height.
+    await boot(page)
+    const panel = await openLibrary(page)
+    await showVizType(page, panel)
+
+    const prism = panel.locator('[data-asset-row="viz:prism"]')
+    const pulse = panel.locator('[data-asset-row="viz:pulse-grid"]')
+    await expect(prism).toBeVisible()
+    await expect(pulse).toBeVisible()
+
+    // At the default height the cards are too wide to share a row → stacked.
+    const bigPrism = (await prism.boundingBox())!
+    const bigPulse = (await pulse.boundingBox())!
+    expect(bigPulse.y).toBeGreaterThan(bigPrism.y + bigPrism.height - 8) // below, not beside
+
+    // Shrink the preview height to its minimum via Settings → the cards narrow
+    // (aspect-true — the shape is preserved, only the scale changes)…
+    await setVizPreviewHeightToMin(page)
+    await expect
+      .poll(async () => (await prism.boundingBox())!.width)
+      .toBeLessThan(bigPrism.width)
+    const smallPrism = (await prism.boundingBox())!
+    const smallPulse = (await pulse.boundingBox())!
+    const ratio = (b: { width: number; height: number }) => b.width / b.height
+    expect(Math.abs(ratio(smallPrism) - ratio(bigPrism))).toBeLessThan(0.35) // same shape
+
+    // …and the grid reflows them onto ONE row, side by side.
+    expect(Math.abs(smallPrism.y - smallPulse.y)).toBeLessThan(8) // same row
+    expect(smallPulse.x).toBeGreaterThan(smallPrism.x + smallPrism.width - 8) // to the right
+
+    await panel.screenshot({ path: 'test-results/viz-library-reflow.png' })
   })
 
   test('the row action is "Add to workspace", not "Insert"', async ({ page }) => {
