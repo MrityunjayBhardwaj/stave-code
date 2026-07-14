@@ -1,10 +1,17 @@
 /**
- * Visual-editing tab scaffold — #380, collapsed to one adaptive tab in #398.
+ * Visual-editing tab scaffold — #380, collapsed to one adaptive tab in #398,
+ * rejoined by a peer Mixer console in #540.
  *
- * Observes that a SINGLE "Pattern" tab is seeded alongside "Timeline" (the old
- * Sequencer / Mixer / Piano Roll trio is gone), that activating it reveals the
- * adaptive panel (grid area + pinned Mixer), and that its copy carries no IR
- * jargon.
+ * Observes that the CURSOR-SCOPED grids (Sequencer / Piano Roll) are gone as
+ * separate tabs — collapsed into the one adaptive "Pattern" tab — that
+ * activating Pattern reveals the adaptive panel (grid area + pinned Mixer), and
+ * that its copy carries no IR jargon.
+ *
+ * "Mixer" is deliberately NOT in the gone list: #540 re-added it as a top-level
+ * PEER of Pattern (`tabs.ts:52`), and it is a different surface from the trio's
+ * old mixer. Pattern is cursor-scoped (one track — its grid + knobs); the Mixer
+ * console is cursor-INDEPENDENT (every track as a channel strip). Asserting it
+ * absent would demand we delete a shipped feature.
  */
 import { test, expect, type Page } from '@playwright/test'
 
@@ -26,15 +33,18 @@ async function bootShell(page: Page): Promise<void> {
 }
 
 test.describe('Visual-editing tab scaffold (#398)', () => {
-  test('seeds a single Pattern tab alongside Timeline (old trio gone)', async ({ page }) => {
+  test('seeds one Pattern tab + a peer Mixer alongside Timeline (the grids are gone)', async ({
+    page,
+  }) => {
     await clearDrawerStorage(page)
     await bootShell(page)
     const tablist = page.locator('[role="tablist"][aria-label="Bottom panel tabs"]')
-    for (const name of ['Timeline', 'Pattern']) {
+    // Timeline, the one adaptive grid tab (#398), and the peer Mixer console (#540).
+    for (const name of ['Timeline', 'Pattern', 'Mixer']) {
       await expect(tablist.locator(`role=tab[name="${name}"]`)).toHaveCount(1)
     }
-    // the three separate tabs were collapsed into "Pattern"
-    for (const gone of ['Sequencer', 'Mixer', 'Piano Roll']) {
+    // the two separate GRID tabs were collapsed into "Pattern"
+    for (const gone of ['Sequencer', 'Piano Roll']) {
       await expect(tablist.locator(`role=tab[name="${gone}"]`)).toHaveCount(0)
     }
   })
