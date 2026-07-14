@@ -70,7 +70,12 @@ async function setNoteColor(page: Page, mode: 'off' | 'velocity'): Promise<void>
   const select = page.getByTestId('setting-noteColor')
   await select.waitFor({ timeout: 5000 })
   await select.selectOption(mode)
-  await page.getByRole('button', { name: 'Close' }).click() // don't cover the grid
+  // scoped + exact for the same reason as the File button: an accessible name is
+  // a substring match, and other surfaces carry a "Close …" label.
+  await page
+    .getByTestId('settings-shell')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click() // don't cover the grid
   await page.waitForTimeout(150)
 }
 

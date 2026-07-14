@@ -138,24 +138,35 @@ test.describe('Asset Library — Viz library (#834)', () => {
 
     const prism = panel.locator('[data-asset-row="viz:prism"]')
     const pulse = panel.locator('[data-asset-row="viz:pulse-grid"]')
+    // Aspect-true is a claim about the shader FRAME, not the card: the card box
+    // also contains the name + renderer text, and that chrome is a fixed height
+    // that does NOT scale with the preview. Measuring the card would compare a
+    // ratio polluted by non-scaling chrome — it happens to come out close, which
+    // is worse than failing, so measure the thumbnail.
+    const prismThumb = panel.locator('img[data-asset-thumb="viz:prism"]')
     await expect(prism).toBeVisible()
     await expect(pulse).toBeVisible()
+    await expect(prismThumb).toBeVisible()
 
     // At the default height the cards are too wide to share a row → stacked.
     const bigPrism = (await prism.boundingBox())!
     const bigPulse = (await pulse.boundingBox())!
+    const bigThumb = (await prismThumb.boundingBox())!
     expect(bigPulse.y).toBeGreaterThan(bigPrism.y + bigPrism.height - 8) // below, not beside
 
-    // Shrink the preview height to its minimum via Settings → the cards narrow
-    // (aspect-true — the shape is preserved, only the scale changes)…
+    // Shrink the preview height to its minimum via Settings → the cards narrow…
     await setVizPreviewHeightToMin(page)
     await expect
       .poll(async () => (await prism.boundingBox())!.width)
       .toBeLessThan(bigPrism.width)
     const smallPrism = (await prism.boundingBox())!
     const smallPulse = (await pulse.boundingBox())!
-    const ratio = (b: { width: number; height: number }) => b.width / b.height
-    expect(Math.abs(ratio(smallPrism) - ratio(bigPrism))).toBeLessThan(0.35) // same shape
+    const smallThumb = (await prismThumb.boundingBox())!
+
+    // …the frame really did shrink, and it kept its aspect (scale, not distort).
+    expect(smallThumb.height).toBeLessThan(bigThumb.height)
+    const aspect = (b: { width: number; height: number }) => b.width / b.height
+    expect(Math.abs(aspect(smallThumb) - aspect(bigThumb))).toBeLessThan(0.05)
 
     // …and the grid reflows them onto ONE row, side by side.
     expect(Math.abs(smallPrism.y - smallPulse.y)).toBeLessThan(8) // same row
