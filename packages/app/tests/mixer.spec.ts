@@ -233,10 +233,23 @@ test.describe('Mixer (#381)', () => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd").cutoff(900)')
     const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+
+    // Wait for the strip to have BOUND to our code before opening the menu.
+    // `openMixer` only clicks the tab — it does not wait for the strip to bind,
+    // so a click issued too early opens nothing and the item assertion then fails
+    // with a bare "element not found". The knob carries the method the CODE used
+    // (`cutoff`); the menu is what maps it to its canonical Low-pass entry — which
+    // is the aliasing this test is actually about.
+    await expect(drawer.locator('[data-knob="cutoff"]')).toHaveCount(1)
+
     await drawer.locator('[data-mixer-add-effect]').click()
-    await expect(
-      page.locator('[data-mixer-add-effect-menu] [data-mixer-add-effect-item="lpf"]'),
-    ).toHaveAttribute('aria-pressed', 'true')
+    const menu = page.locator('[data-mixer-add-effect-menu]')
+    await expect(menu).toBeVisible()
+    await expect(menu.locator('[data-mixer-add-effect-item="lpf"]')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
   })
 
   test('the × on a knob removes that effect; sibling byte-identical (#575)', async ({ page }) => {
