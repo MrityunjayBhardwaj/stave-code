@@ -54,16 +54,23 @@ async function bootShell(page: Page): Promise<void> {
   )
 }
 
+/**
+ * Focus the editor the way a USER does — by clicking it — then press play.
+ *
+ * This used to call `editor.focus()` through `page.evaluate`, and that is what made
+ * this spec "flaky" (#885). A programmatic focus carries no user gesture, and the
+ * app then reaches a state where the transport says PLAY but reports NO POSITION:
+ * the LCD prints `— —` and the playhead never renders, so the wait below times out.
+ * Observed, interleaved so both arms share the same machine load: real click →
+ * playhead 5/5 with the LCD position advancing; programmatic focus → playhead 0/5
+ * with the position frozen. A later click does not revive it.
+ *
+ * A real user cannot take the programmatic path: with no click at all the shortcut
+ * does nothing (the editor is not autofocused — LCD stays STOP), so focus always
+ * arrives by gesture. Drive it as a user does.
+ */
 async function evalStrudel(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const monaco = (window as unknown as { monaco?: { editor?: { getEditors?: () => unknown[] } } }).monaco
-    const editors = (monaco?.editor?.getEditors?.() ?? []) as Array<{
-      getModel: () => { getLanguageId?: () => string } | null
-      focus: () => void
-    }>
-    const target = editors.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? editors[0]
-    target?.focus()
-  })
+  await page.locator('.monaco-editor').first().click()
   await page.keyboard.press(`${MOD}+Enter`)
   await page.waitForTimeout(1800)
 }
