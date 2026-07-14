@@ -68,12 +68,10 @@ test('live overlay lights scene marks while playing, clears when stopped', async
   await boot(page)
 
   // Evaluate + play the starter song (multi-track $: synths + drum stack).
-  await page.evaluate(() => {
-    const monaco = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string } | null; focus: () => void }> } } }).monaco
-    const eds = monaco?.editor?.getEditors?.() ?? []
-    const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
-    t?.focus()
-  })
+  // CLICK to focus — a programmatic `editor.focus()` carries no user gesture, and
+  // the app then reaches a transport that says PLAY but reports NO POSITION (LCD
+  // `— —`, no playhead), so nothing ever lights and this spec "flakes" (#885).
+  await page.locator('.monaco-editor').first().click()
   await page.keyboard.press(`${MOD}+Enter`)
 
   // Switch to the full-song view; the base + overlay canvases mount.
@@ -95,15 +93,10 @@ test('live overlay lights scene marks while playing, clears when stopped', async
   // marks under the playhead, overlay included.
   await page.screenshot({ path: 'test-results/full-song-live-overlay.png' })
 
-  // (3) Stopping clears the overlay — no playhead → nothing lit. Focus the
-  //     editor first so the transport stop shortcut lands (the timeline grid
-  //     had focus from the toggle/seek gestures).
-  await page.evaluate(() => {
-    const monaco = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string } | null; focus: () => void }> } } }).monaco
-    const eds = monaco?.editor?.getEditors?.() ?? []
-    const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
-    t?.focus()
-  })
+  // (3) Stopping clears the overlay — no playhead → nothing lit. Click back into
+  //     the editor so the transport stop shortcut lands (the timeline grid had
+  //     focus from the toggle/seek gestures).
+  await page.locator('.monaco-editor').first().click()
   await page.keyboard.press(`${MOD}+Period`)
   await expect
     .poll(() => litPixelCount(page), {
