@@ -193,7 +193,8 @@ test.describe('Phase D — density LOD moves the line-mesh cost curve (#269 / #2
     await page.waitForTimeout(1000)
 
     // Open File menu → Editor Settings… (#347 moved it off the removed gear).
-    await page.getByRole('button', { name: 'File' }).click()
+    // `exact` — a bare 'File' also substring-matches the "New file" (+) button.
+    await page.getByRole('button', { name: 'File', exact: true }).click()
     await page.getByText('Editor Settings...').click()
 
     const select = page.getByLabel('Viz quality (performance mode)')

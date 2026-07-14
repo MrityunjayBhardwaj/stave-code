@@ -52,15 +52,25 @@ async function openPattern(page: Page) {
   return drawer
 }
 
-/** Set Note Color via the editor Settings modal (#602 — moved off the grid
- *  header). Opens File ▸ Editor Settings…, picks the mode, closes the modal. */
+/** Set Note Colour through the real Settings gesture (#602 moved it off the grid
+ *  header; #739 then moved Settings itself into the unified shell).
+ *
+ *  Two premises here are load-bearing and both used to be wrong:
+ *   - `exact` on the File button — getByRole's name match is a case-insensitive
+ *     SUBSTRING, so a bare 'File' ALSO matches the "New file" (+) button in the
+ *     file-tree header, and the click dies on a strict-mode violation.
+ *   - the shell renders ONE section at a time behind a nav, and closes with a
+ *     Close button (not Escape). Note colour lives under "Pattern & Timeline",
+ *     so the field simply is not in the DOM until that nav item is clicked. */
 async function setNoteColor(page: Page, mode: 'off' | 'velocity'): Promise<void> {
-  await page.getByRole('button', { name: 'File' }).click()
+  await page.getByRole('button', { name: 'File', exact: true }).click()
   await page.getByText('Editor Settings...').click()
-  const select = page.locator('[data-setting-note-color]')
+  await page.getByTestId('settings-shell').waitFor({ timeout: 5000 })
+  await page.getByTestId('settings-nav-pattern').click()
+  const select = page.getByTestId('setting-noteColor')
   await select.waitFor({ timeout: 5000 })
   await select.selectOption(mode)
-  await page.keyboard.press('Escape') // close the modal so it doesn't cover the grid
+  await page.getByRole('button', { name: 'Close' }).click() // don't cover the grid
   await page.waitForTimeout(150)
 }
 
