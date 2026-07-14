@@ -10,13 +10,21 @@
  *   4. Clicking the song ruler fires a seek (runtime.seekTo) with NO console
  *      error and the view stays coherent (the DV-10 relaxation).
  *
- * INPUT NOTE: this harness evaluates the starter file's content — programmatic
- * Monaco `setValue` updates the model but does NOT drive the eval pipeline
- * (the eval reads the file store), so the analyzed song is the starter example,
- * not an injected pattern. Period CORRECTNESS for specific patterns is covered
- * by songAnalysis.test.ts (isolated); this spec verifies the integration wiring
- * on whatever real multi-track song is playing. Assertions are deliberately
- * generic (lane count, a detected period) rather than a fixed period value.
+ * INPUT NOTE: the seeded code IS what gets analyzed. The old note here claimed the
+ * opposite — that `setValue` never reaches the eval pipeline, so the starter file
+ * was always the analyzed song — and the spec leaned on that: its fixture was a
+ * bare `stack(s("bd hh bd hh"), s("~ cp"))`, which is ONE track (a single
+ * anonymous statement whose voices become sub-rows), yet it asserted 2+ LANES.
+ * It only ever passed because the async file load raced ahead of the seed and the
+ * app evaluated the 3-track STARTER instead (#872). It was green for a song it
+ * never chose. Observed: seeded bare stack → 1 lane (`d1`), stable; the same music
+ * as two `$:` statements → 2 lanes.
+ *
+ * So the fixture is now two explicit `$:` TRACKS — lanes are per-track, and that
+ * is the thing under test. Period CORRECTNESS for specific patterns is covered by
+ * songAnalysis.test.ts (isolated); this spec verifies the integration wiring on a
+ * real multi-track song. Assertions stay generic (lane count, a detected period)
+ * rather than a fixed period value.
  *
  * AUDIO NOTE: the audible jump is NOT observable in this harness (no audio
  * capture). This spec observes structure + no-error; the audio half is a
@@ -102,11 +110,10 @@ test('full-song view: analysis renders, loop detected, ruler seek fires without 
   await preOpenDrawer(page)
   await bootShell(page)
 
-  // Evaluate the starter file (a multi-track example). We also push a pattern
-  // into the model for good measure, but the eval pipeline reads the file
-  // store, so the analyzed song is the starter content regardless (see INPUT
-  // NOTE). Either way a real multi-track song is what the song view analyzes.
-  await setStrudelCode(page, 'stack(s("bd hh bd hh"), s("~ cp"))')
+  // Two explicit `$:` TRACKS — lanes are per-track, so this is a genuinely
+  // multi-track song. (A bare `stack(a, b)` is a single anonymous track whose
+  // voices render as sub-rows, not as lanes — see INPUT NOTE.)
+  await setStrudelCode(page, '$: s("bd hh bd hh")\n$: s("~ cp")')
   await evalStrudel(page)
 
   // The full-song canvas is the only timeline view now (#497/U5).

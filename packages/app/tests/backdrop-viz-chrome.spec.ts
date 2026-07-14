@@ -322,14 +322,42 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
     const originalGroupId = await backdrop
       .first()
       .getAttribute('data-workspace-background')
-    const runningCtxs = () =>
-      page.evaluate(
-        () =>
-          (window as unknown as { __ctxs: AudioContext[] }).__ctxs.filter(
-            (c) => c.state === 'running',
-          ).length,
-      )
-    expect(await runningCtxs()).toBeGreaterThan(0)
+    // Count the running contexts the VIZ owns — i.e. every context EXCEPT the
+    // app's shared one (`getAudioContext()`, superdough's).
+    //
+    // This used to count every running AudioContext and require ZERO after the
+    // close. That is the wrong requirement: sample audition now runs through the
+    // SHARED context, so opening the preview lazily creates it, and an
+    // AudioContext can never be reopened once closed — tearing it down on a tab
+    // close would permanently kill all app audio. Observed: the viz's own context
+    // IS closed on close (state "closed"); the survivor is `getAudioContext()`
+    // itself, still ticking, exactly as it should. The old assertion turned that
+    // correct behaviour into a red (#875).
+    const runningVizCtxs = () =>
+      page.evaluate(() => {
+        const w = window as unknown as {
+          __ctxs: AudioContext[]
+          getAudioContext?: () => AudioContext
+        }
+        let shared: AudioContext | null = null
+        try {
+          shared = w.getAudioContext?.() ?? null
+        } catch {
+          shared = null
+        }
+        return w.__ctxs.filter((c) => c !== shared && c.state === 'running').length
+      })
+    /** The shared context must SURVIVE the close — the opposite regression. */
+    const sharedAlive = () =>
+      page.evaluate(() => {
+        const w = window as unknown as { getAudioContext?: () => AudioContext }
+        try {
+          return w.getAudioContext?.()?.state !== 'closed'
+        } catch {
+          return false
+        }
+      })
+    expect(await runningVizCtxs()).toBeGreaterThan(0)
 
     // Drag the hydra EDITOR tab to the east quadrant of its group → new pane.
     const editorTab = page
@@ -363,14 +391,19 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
       page.locator('[data-testid="viz-chrome-open-preview"]').first(),
     ).toHaveAttribute('data-button-state', 'running')
     // The move itself never interrupted the audio.
-    expect(await runningCtxs()).toBeGreaterThan(0)
+    expect(await runningVizCtxs()).toBeGreaterThan(0)
 
-    // Bug2: closing the moved tab clears the backdrop AND stops the audio.
+    // Bug2: closing the moved tab clears the backdrop AND stops the VIZ's audio.
     const tabId = await editorTab.getAttribute('data-workspace-tab')
     await page.locator(`[data-testid="tab-close-${tabId}"]`).click()
     await expect(backdrop).toHaveCount(0)
     await expect
-      .poll(runningCtxs, { timeout: 3000 })
+      .poll(runningVizCtxs, { timeout: 3000 })
       .toBe(0)
+    // ...and it did NOT take the app's shared audio context down with it. That
+    // context can never be reopened, so tearing it down on a tab close would kill
+    // all audio for the rest of the session — the regression in the other
+    // direction, which the previous assertion would have DEMANDED.
+    expect(await sharedAlive()).toBe(true)
   })
 })

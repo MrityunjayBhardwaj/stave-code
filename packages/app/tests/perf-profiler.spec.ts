@@ -99,15 +99,34 @@ test.describe('Phase perf — profiler produces real per-frame data (#228)', () 
     const anyFps = frameIds.some((id) => snap.frames[id].fps > 0)
     expect(anyFps).toBe(true)
 
-    // The bus per-frame work was timed for the mounted renderer.
+    // The renderer's per-frame work was timed.
+    //
+    // `*.bus` is the MAIN-THREAD renderer's section name. Viz renders in a worker
+    // by default (#245), where the per-frame cost comes back as `viz.worker.draw`
+    // (the frameAck bridge — the worker bundle never imports `perf`, so this is
+    // how it is not a profiler blind spot). Observed on the default path:
+    // sections are viz.worker.{sample,write,draw} and there is no `.bus` at all,
+    // so the spec was demanding a name only the fallback path emits and reading
+    // "the profiler yields no data" when it was yielding plenty (#875).
+    // Accept EITHER vocabulary — the claim is that the mounted renderer's
+    // per-frame work is timed, whichever thread it runs on.
     const sectionNames = Object.keys(snap.sections)
-    const hasBusSection = sectionNames.some((n) => n.endsWith('.bus'))
-    expect(hasBusSection).toBe(true)
+    const hasFrameWorkSection = sectionNames.some(
+      (n) => n.endsWith('.bus') || n === 'viz.worker.draw',
+    )
+    expect(
+      hasFrameWorkSection,
+      `no per-frame renderer section; got: ${sectionNames.join(', ')}`,
+    ).toBe(true)
 
     // Live viz-instance GAUGE reflects ≥1 mounted renderer (gauges survive the
-    // reset() that clears cumulative counters — they're current state).
+    // reset() that clears cumulative counters — they're current state). Same
+    // split: `viz.p5`/`viz.hydra` are main-thread; a worker renderer gauges
+    // `viz.worker`.
     const liveViz =
-      (snap.gauges['viz.p5'] ?? 0) + (snap.gauges['viz.hydra'] ?? 0)
+      (snap.gauges['viz.p5'] ?? 0) +
+      (snap.gauges['viz.hydra'] ?? 0) +
+      (snap.gauges['viz.worker'] ?? 0)
     expect(liveViz).toBeGreaterThanOrEqual(1)
 
     // longtask block is present (count may legitimately be 0 on a fast machine

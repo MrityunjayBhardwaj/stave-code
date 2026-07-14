@@ -92,9 +92,40 @@ test.describe('Mixer custom dial range (#844/#845)', () => {
     await expect(slider).toHaveAttribute('aria-valuemin', '0')
     await expect(slider).toHaveAttribute('aria-valuemax', '100')
 
-    // Bidirectional: editing the range in code moves the dial's bounds.
-    await setStrudelCode(page, '$: s("bd").room(0.4, 10, 90)')
+    // Bidirectional: editing the range in code moves the dial's bounds. The
+    // value must sit INSIDE the authored range — see the widening test below for
+    // why `.room(0.4, 10, 90)` does not have the bounds it appears to.
+    await setStrudelCode(page, '$: s("bd").room(50, 10, 90)')
     await expect(slider).toHaveAttribute('aria-valuemin', '10')
     await expect(slider).toHaveAttribute('aria-valuemax', '90')
+  })
+
+  test('a value outside its own range WIDENS the dial rather than pinning it (#848)', async ({
+    page,
+  }) => {
+    // The guardrail (`customRange`, knobRanges.ts:134): a hand-typed literal that
+    // falls outside the range it declares stays REPRESENTABLE — the dial widens to
+    // include it. Pinning would make the dial lie about the code, and the first
+    // drag would silently rewrite the user's value.
+    //
+    // This is exactly the behaviour that made a `.room(0.4, 10, 90)` fixture look
+    // like a bug: 0.4 is below the authored min, so the dial's floor is 0.4, NOT 10.
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd").room(0.4, 10, 90)')
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+
+    const slider = drawer.locator('[data-knob="room"] [role="slider"]')
+    await expect(slider).toHaveCount(1)
+    // widened DOWN to the authored value; the max it declared is untouched.
+    await expect(slider).toHaveAttribute('aria-valuemin', '0.4')
+    await expect(slider).toHaveAttribute('aria-valuemax', '90')
+    // and the dial still reads the value the code actually carries.
+    await expect(slider).toHaveAttribute('aria-valuenow', '0.4')
+
+    // The other direction: a value above the declared ceiling widens the max.
+    await setStrudelCode(page, '$: s("bd").room(150, 0, 100)')
+    await expect(slider).toHaveAttribute('aria-valuemin', '0')
+    await expect(slider).toHaveAttribute('aria-valuemax', '150')
   })
 })

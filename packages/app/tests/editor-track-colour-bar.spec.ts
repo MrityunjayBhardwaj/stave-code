@@ -117,15 +117,22 @@ test('the colour bar stays continuous across a word-wrapped track', async ({ pag
     const monaco = (window as any).monaco
     const ed = monaco.editor.getEditors().find((e: any) => e.getModel()?.getLanguageId?.() === 'strudel')
     const lineHeight = ed.getOption(monaco.editor.EditorOption.lineHeight)
-    // visual rows = sum of wrap counts across the 3 model lines
-    let visualRows = 0
-    for (let l = 1; l <= ed.getModel().getLineCount(); l++) {
-      visualRows += ed.getBottomForLineNumber(l) - ed.getTopForLineNumber(l)
-    }
+    // The block's true visual height, wrap included: the bottom of the LAST model
+    // line minus the top of the first.
+    //
+    // This used to sum `getBottomForLineNumber(l) - getTopForLineNumber(l)` over
+    // the model lines, which is NOT wrap-aware PER LINE: for the long wrapped
+    // line it returns a single line-height. Observed here — tops/bottoms come back
+    // [8,30] [74,96] [96,118], so line 1 reports 22px while actually running 8→74
+    // (three wrapped rows). The sum was 66px (3 unwrapped lines) against a 110px
+    // bar, and the spec blamed the BAR for the 44px it had failed to measure. The
+    // bar is right: 110px is exactly the wrapped block (#875).
+    const lastLine = ed.getModel().getLineCount()
+    const blockSpan = ed.getBottomForLineNumber(lastLine) - ed.getTopForLineNumber(1)
     const segs = Array.from(document.querySelectorAll('[data-track-colour-bar]')) as HTMLElement[]
     return {
       lineHeight,
-      contentSpanPx: Math.round(visualRows),
+      contentSpanPx: Math.round(blockSpan),
       segCount: segs.length,
       segHeight: segs.length ? Math.round(segs[0].getBoundingClientRect().height) : 0,
     }

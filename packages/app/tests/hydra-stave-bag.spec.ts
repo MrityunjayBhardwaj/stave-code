@@ -9,15 +9,28 @@
  */
 
 import { test, expect } from '@playwright/test'
+import { vizPixelStats } from './_vizFrames'
 
-const HYDRA_STAVE_CODE = `// E2E probe — reach both stave.scheduler and stave.H.
-globalThis.__stave_probe = {
-  hasStave: typeof stave !== 'undefined',
-  hasScheduler: stave && 'scheduler' in stave,
-  hasH: stave && typeof stave.H === 'function',
-  hSampleZero: stave && stave.H('nonexistent')(),
-}
-s.osc(30, 0.1, 0.5).out()`
+// The probe PAINTS its answer instead of handing it back on a global.
+//
+// It used to set `globalThis.__stave_probe` for the spec to read off `window`.
+// That channel does not exist: hydra renders in the viz WORKER (the default since
+// #245), where `globalThis` is the worker scope — so the page waited on a global
+// that could never appear, and timed out having proven nothing (#875). Same dead
+// channel as the backdrop `sig.tracks` probe.
+//
+// So encode each check in a colour channel and read the pixels the only way a
+// transferred canvas can be read — the compositor. All four checks holding paints
+// WHITE; any failure drops a channel, which is directly falsifiable.
+//   R = stave present AND stave.scheduler reachable
+//   G = stave.H is callable
+//   B = stave.H('nonexistent')() === 0  (no throw, no NaN — demo-mode default)
+const HYDRA_STAVE_CODE = `// E2E probe — reach both stave.scheduler and stave.H, and PAINT the result.
+const hasStave = typeof stave !== 'undefined'
+const hasScheduler = hasStave && 'scheduler' in stave
+const hasH = hasStave && typeof stave.H === 'function'
+const hZero = hasH && stave.H('nonexistent')() === 0
+s.solid(hasStave && hasScheduler ? 1 : 0, hasH ? 1 : 0, hZero ? 1 : 0).out()`
 
 async function openHydraTab(page: import('@playwright/test').Page) {
   await page.goto('/')
@@ -32,7 +45,19 @@ async function openHydraTab(page: import('@playwright/test').Page) {
       return
     }
   }
-  throw new Error('no hydra tab found in default project')
+  // Issue #175 — the default workspace opens a SINGLE Strudel tab, not the old
+  // 11-tab wall, so there is no pre-opened hydra tab to click: at boot the tabs
+  // are exactly ["pattern.strudel"]. The hydra presets still ship (they sit in
+  // the file tree), so open one the way a user would. Without this the spec
+  // threw "no hydra tab found" and never exercised the stave-bag wiring it
+  // guards — the product was fine, the spec's premise had rotted (#875).
+  // Same fallback backdrop-viz-chrome.spec.ts already uses.
+  const hydraItem = page.locator('[data-file-tree-item*="hydra"]').first()
+  if ((await hydraItem.count()) === 0) {
+    throw new Error('no hydra tab AND no hydra preset file in default project')
+  }
+  await hydraItem.dblclick()
+  await page.waitForTimeout(500)
 }
 
 async function openPreviewToSide(page: import('@playwright/test').Page) {
@@ -68,17 +93,22 @@ async function replaceMonacoContent(
   page: import('@playwright/test').Page,
   newContent: string,
 ) {
-  // Focus the active editor, select all, type. Monaco's Cmd+A then
-  // typing is the most portable path — avoids coupling to any
-  // Monaco-specific globals.
-  const editor = page.locator('.monaco-editor').first()
-  await editor.click()
-  // Use Meta on Mac, Control elsewhere. Playwright's Mac detection is
-  // accurate since the test is running on the dev's machine.
-  const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
-  await page.keyboard.press(`${mod}+A`)
-  await page.keyboard.press('Delete')
-  await page.keyboard.type(newContent, { delay: 0 })
+  // Write the model directly. The previous approach — click, Cmd+A, Delete, then
+  // `keyboard.type` the whole sketch — MANGLED multi-line content: the select-all
+  // raced the typing, so the first newline was swallowed and a stray "a" leaked
+  // in, giving `…PAINT the result.aconst hasStave = …`. That folded the sketch's
+  // first statement into its leading comment, so the sketch threw and painted
+  // nothing. The single-line sibling test never noticed (no newline to lose).
+  // setValue drives the same onDidChangeContent path the provider listens on.
+  await page.evaluate((code) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const eds = (window as any).monaco?.editor?.getEditors?.() ?? []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const target = eds.find((e: any) => e.getModel()?.getLanguageId?.() === 'hydra') ?? eds[0]
+    target?.getModel()?.setValue(code)
+    target?.focus()
+  }, newContent)
+  await page.waitForTimeout(300)
 }
 
 test.describe('Hydra .hydra file — stave bag wiring', () => {
@@ -101,29 +131,17 @@ test.describe('Hydra .hydra file — stave bag wiring', () => {
     await expect(mount).toBeVisible({ timeout: 5000 })
     await expect(mount).toHaveAttribute('data-renderer', 'hydra')
 
-    // Inspect the probe — proves stave is in scope with the right shape.
-    // The pattern fn runs once per mount (inside initHydra, after lazy
-    // `import('hydra-synth')`); give it a beat to resolve.
-    await page.waitForFunction(
-      () => (window as unknown as { __stave_probe?: unknown }).__stave_probe,
-      { timeout: 10000 },
-    )
-    const probe = await page.evaluate(
-      () =>
-        (window as unknown as {
-          __stave_probe: {
-            hasStave: boolean
-            hasScheduler: boolean
-            hasH: boolean
-            hSampleZero: number
-          }
-        }).__stave_probe,
-    )
-    expect(probe.hasStave).toBe(true)
-    expect(probe.hasScheduler).toBe(true)
-    expect(probe.hasH).toBe(true)
-    // H('nonexistent')() returns 0 in demo mode — no throw, no NaN.
-    expect(probe.hSampleZero).toBe(0)
+    // Read the painted answer. The pattern fn runs once per mount (inside
+    // initHydra, after the lazy `import('hydra-synth')`), so give it a beat.
+    await page.waitForTimeout(1500)
+    const white = await vizPixelStats(page, '[data-compiled-viz-mount="true"] canvas', {
+      rMin: 200, gMin: 200, bMin: 200,
+    })
+    // WHITE ⇒ stave + stave.scheduler reachable (R), stave.H callable (G), and
+    // H('nonexistent')() === 0 — no throw, no NaN (B). A missing channel would
+    // paint red/yellow/etc, so this fails loudly on any one of the four.
+    expect(white.frac, 'stave bag reachable inside the hydra sketch (white = all checks)')
+      .toBeGreaterThan(0.9)
   })
 
   test('legacy hydra (no stave reference) still compiles', async ({ page }) => {
