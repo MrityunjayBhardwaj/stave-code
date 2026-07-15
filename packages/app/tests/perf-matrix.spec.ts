@@ -203,9 +203,11 @@ async function runCode(page: Page): Promise<void> {
   await page.waitForTimeout(2500)
 }
 
-// Ctrl/Cmd+. = stop (EditorView.tsx:356). MUST stop before re-evaluating —
-// Ctrl+Enter WHILE PLAYING is a no-op (#180), so without a stop every other
-// rung's eval is swallowed and measures the previous scene.
+// Ctrl/Cmd+. = stop (EditorView.tsx:356). Each rung stops before re-evaluating
+// so every measurement starts from a torn-down scene — instances gone, GPU
+// quiet — rather than on top of the previous rung's still-running sketches.
+// (Ctrl+Enter itself re-evaluates while playing since #180; the stop here is
+// the clean-scene protocol of PK19, not a workaround for the old toggle.)
 async function stopCode(page: Page): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await page.evaluate(() => (window as any).monaco?.editor?.getEditors?.()?.[0]?.focus())

@@ -24282,7 +24282,7 @@ function EditorView({
     if (monaco.KeyMod && monaco.KeyCode && editor.addAction) {
       editor.addAction({
         id: "stave.play",
-        label: "Play / Stop",
+        label: "Play / Evaluate",
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
         run: /* @__PURE__ */ __name(() => onPlayRef.current?.(), "run")
       });
