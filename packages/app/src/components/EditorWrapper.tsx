@@ -71,7 +71,12 @@ function IdbBlockedScreen({
         fontFamily: 'var(--font-mono), ui-monospace, monospace',
       }}
     >
-      <h1
+      {/* A div, not an <h1>: this is the transient BOOT SPLASH, not the document's
+          heading. The shell owns the one <h1> now (StaveApp, #889). It used to be
+          the only h1 in the whole product, and it disappears the second the editor
+          mounts — so the loaded app had no heading at all, and the a11y spec passed
+          only by racing this element's ~1s on screen. */}
+      <div
         style={{
           fontSize: 32,
           fontWeight: 700,
@@ -81,7 +86,7 @@ function IdbBlockedScreen({
         }}
       >
         Stave
-      </h1>
+      </div>
       <p
         style={{
           color: "var(--text-primary, #eee)",

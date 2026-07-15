@@ -1244,6 +1244,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   return (
     <div style={styles.root}>
+      {/* The document's one top-level heading (#889). It is visually hidden: the
+          brand is drawn by the MenuBar, and with the Transport LCD on by default
+          (#857) that brand is not rendered at all. Before this, the ONLY <h1> in
+          the product lived on the boot splash (EditorWrapper) and vanished the
+          moment the editor mounted — so a screen reader landing on Stave found a
+          document with no heading. Keep it here, in the shell, where it cannot be
+          swapped out by a setting. */}
+      <h1 style={styles.srOnly}>Stave</h1>
       <MenuBar
         // Backdrop selection moved to the per-tab pattern-bar dropdown (#347);
         // the menubar no longer owns it.
@@ -1604,6 +1612,20 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
     height: "100%",
     minHeight: 0,
+  },
+  /** Available to assistive tech, invisible on screen, and takes no layout space —
+   *  the standard clip-rect pattern. NOT `display:none`/`visibility:hidden`, which
+   *  would remove it from the accessibility tree and defeat the point (#889). */
+  srOnly: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: "hidden",
+    clip: "rect(0, 0, 0, 0)",
+    whiteSpace: "nowrap",
+    border: 0,
   },
   main: {
     flex: 1,

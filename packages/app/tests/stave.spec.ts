@@ -129,6 +129,12 @@ test.describe('Stave — Viz Tabs', () => {
 test.describe('Stave — Accessibility', () => {
   test('page has single H1 heading "Stave"', async ({ page }) => {
     await page.goto('/')
+    // Wait for the app to have actually RENDERED before counting headings — the
+    // sibling test below already does this. Without it the assertion races boot:
+    // it only had the 5s auto-retry window, and under a loaded machine the app
+    // takes longer than that, so `h1` was found 0 times and this read as a flake.
+    // It is not contention — it is an assertion that never waited.
+    await page.locator('.monaco-editor').waitFor({ timeout: 15_000 })
     const h1 = page.locator('h1')
     await expect(h1).toHaveCount(1)
     await expect(h1).toHaveText('Stave')
