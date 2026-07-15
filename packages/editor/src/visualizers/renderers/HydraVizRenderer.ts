@@ -9,6 +9,7 @@ import { buildHydraStaveBag } from './hydraStaveBag'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { perf } from '../../perf/profiler'
+import { VizRendererBase } from './VizRendererBase'
 
 /** Monotone id source so each hydra instance gets a stable profiler key
  *  (`hydra#1`, …) for per-instance frame/fps tracking (#228). */
@@ -27,6 +28,19 @@ let hydraPerfSeq = 0
  * demo-mode path in `compiledVizProvider`).
  */
 export interface HydraStaveBag {
+  /**
+   * The viz call's options bag — `.viz('mysketch', { intensity: 0.8 })` reads as
+   * `stave.options.intensity` (#883). Mirrors p5's `stave.options`.
+   *
+   * A GETTER over the renderer's live slot, not a captured value: the slot is
+   * REPLACED on every re-publish (so a removed key stops applying), and this bag
+   * is built once per mount and mutated in place. Capturing the bag here would
+   * pin the first evaluate's options forever.
+   *
+   * Empty object when the viz was called with no argument — never undefined, so
+   * `stave.options.foo` is always a safe read from a sketch.
+   */
+  readonly options: Record<string, unknown>
   /** Combined pattern scheduler. Has `now()` and `query(begin, end)`. */
   scheduler: IRPattern | null
   /** Per-track schedulers keyed by trackId (e.g. "$0", "drums"). */
@@ -231,7 +245,7 @@ class HapEnergyEnvelope {
  * us to own the loop. The flag is left in `vizConfig.ts` for now and
  * will be removed in a follow-up cleanup.
  */
-export class HydraVizRenderer implements VizRenderer {
+export class HydraVizRenderer extends VizRendererBase {
   private hydra: any = null
   private canvas: HTMLCanvasElement | null = null
   private analyser: AnalyserNode | null = null
@@ -275,14 +289,15 @@ export class HydraVizRenderer implements VizRenderer {
    */
   private staveBag: HydraStaveBag
   constructor(private pattern?: HydraPatternFn) {
+    super()
     // The bag's signal thunks read `this.bus` LIVE each call (the bus instance is
     // stable for the renderer's life; only its scheduler refs swap, in-place, on
     // `update()`). Built by the shared pure builder so the worker host (kind
     // 'hydra') produces the identical bag from its own bus — no fork (B-5).
-    this.staveBag = buildHydraStaveBag(this.bus as SignalBus)
+    this.staveBag = buildHydraStaveBag(this.bus as SignalBus, this.optionsRef)
   }
 
-  mount(
+  protected onMount(
     container: HTMLDivElement,
     components: Partial<EngineComponents>,
     size: { w: number; h: number },
@@ -525,7 +540,7 @@ export class HydraVizRenderer implements VizRenderer {
     this.rafId = requestAnimationFrame(this.pumpAudio)
   }
 
-  update(components: Partial<EngineComponents>): void {
+  protected onUpdate(components: Partial<EngineComponents>): void {
     const newAnalyser = components.audio?.analyser ?? null
     if (newAnalyser !== this.analyser) {
       this.analyser = newAnalyser

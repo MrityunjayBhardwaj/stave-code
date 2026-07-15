@@ -1,5 +1,5 @@
-import { I as IREvent, a as IRPattern, P as PatternIR, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as P5SketchFactory, f as VizQualityLevel, S as StreamingComponent, A as AudioComponent, Q as QueryableComponent, g as InlineVizComponent, h as VizRendererSource } from './vizConfig-BT7o95QM.js';
-export { D as DEFAULT_VIZ_CONFIG, i as DEFAULT_VIZ_QUALITY, j as IR, k as IRComponent, l as PlayParams, m as SourceLocation, n as VizConfig, o as VizQualitySettings, p as VizRefs, W as WorkerVizConfig, q as createVizConfig, r as deriveVizQuality, s as getVizConfig, t as setVizConfig, u as updateVizConfig } from './vizConfig-BT7o95QM.js';
+import { I as IREvent, a as IRPattern, P as PatternIR, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, S as StreamingComponent, A as AudioComponent, Q as QueryableComponent, h as InlineVizComponent, i as VizRendererSource } from './vizConfig-P09Bvoxp.js';
+export { D as DEFAULT_VIZ_CONFIG, j as DEFAULT_VIZ_QUALITY, k as IR, l as IRComponent, m as PlayParams, n as SourceLocation, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-P09Bvoxp.js';
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
 import React__default, { ReactNode } from 'react';
@@ -1024,6 +1024,73 @@ declare class LiveRecorder {
 declare function noteToMidi(note: unknown): number | null;
 
 /**
+ * The one place `components.options` is captured (#883).
+ *
+ * ## Why this class exists
+ *
+ * `VizRenderer` is an interface, so "expose the options bag to the sketch" was a
+ * rule every renderer had to remember independently — in TWO places each, since
+ * the bag arrives on `mount()` AND is re-published on every `update()`. Six
+ * implementations, twelve chances to forget.
+ *
+ * Three forgot. And forgetting is INVISIBLE: a dropped option is pixel-for-pixel
+ * identical to a sketch drawing its default, so nothing errors, nothing warns,
+ * and the viz just looks like it always did. #880 is what that costs — the worker
+ * renderer omitted this exact field and every viz option was silently dead on the
+ * DEFAULT path for six weeks, while the main-thread path kept working and hid it.
+ *
+ * So the invariant gets a home instead of a convention. `mount`/`update` are
+ * sealed here and capture the bag before delegating to `onMount`/`onUpdate`. A
+ * renderer cannot silently drop options, because it never handles the raw
+ * lifecycle call that carries them — including the next renderer someone adds,
+ * which is the case a code review would never catch.
+ *
+ * ## What subclasses still own
+ *
+ * EXPOSURE, which is irreducibly per-engine and cannot live here: p5 and hydra
+ * hand the sketch a JS object (`stave.options`); a fragment shader cannot read
+ * one at all and needs generated uniforms (#894). The base guarantees the bag
+ * ARRIVES and stays live; how a language surfaces it is the leaf's business.
+ *
+ * ## The slot is a live ref, deliberately
+ *
+ * `optionsRef.current` is REPLACED (never mutated) on each publish, so sketch
+ * scopes must read THROUGH the ref — a getter, not a captured value — or they
+ * pin the first bag forever. The replace is what makes a removed key stop
+ * applying, which merging would silently break (#881).
+ *
+ * Decorators (`FallbackVizRenderer`, `TeardownOnPauseRenderer`) deliberately do
+ * NOT extend this: they forward `components` verbatim to an inner renderer whose
+ * own base captures it. Extending here would capture a bag they never expose.
+ */
+declare abstract class VizRendererBase implements VizRenderer {
+    /**
+     * Live options bag from the viz call's argument (`.pianoroll({ labels: 1 })`).
+     * Populated before `onMount`/`onUpdate` run, so subclasses may read it in
+     * either. Read `.current` at USE time, never capture it.
+     */
+    protected readonly optionsRef: {
+        current: VizOptions;
+    };
+    mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
+        w: number;
+        h: number;
+    }, onError: (e: Error) => void): void;
+    update(components: Partial<EngineComponents>): void;
+    /** As {@link VizRenderer.mount}; the options bag is already captured. */
+    protected abstract onMount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
+        w: number;
+        h: number;
+    }, onError: (e: Error) => void): void;
+    /** As {@link VizRenderer.update}; the options bag is already captured. */
+    protected abstract onUpdate(components: Partial<EngineComponents>): void;
+    abstract resize(w: number, h: number): void;
+    abstract pause(): void;
+    abstract resume(): void;
+    abstract destroy(): void;
+}
+
+/**
  * Adapter that wraps an existing p5 SketchFactory into the VizRenderer interface.
  * Each P5VizRenderer instance manages one p5 instance lifecycle.
  *
@@ -1039,14 +1106,13 @@ declare function noteToMidi(note: unknown): number | null;
  * mismatches with `windowWidth` / `windowHeight` which track the
  * browser window rather than the container.
  */
-declare class P5VizRenderer implements VizRenderer {
+declare class P5VizRenderer extends VizRendererBase {
     private sketch;
     private instance;
     private hapStreamRef;
     private analyserRef;
     private schedulerRef;
     private containerSizeRef;
-    private optionsRef;
     /**
      * Per-renderer named-signal bus (Phase 21). PURE (P12) — owned here, fed
      * UNCONDITIONALLY from the HapStream + scheduler (NOT analyser-gated; the bus
@@ -1077,11 +1143,11 @@ declare class P5VizRenderer implements VizRenderer {
      */
     private staveUniformsRef;
     constructor(sketch: P5SketchFactory);
-    mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
+    protected onMount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
         w: number;
         h: number;
     }, onError: (e: Error) => void): void;
-    update(components: Partial<EngineComponents>): void;
+    protected onUpdate(components: Partial<EngineComponents>): void;
     resize(w: number, h: number): void;
     pause(): void;
     resume(): void;
@@ -1101,6 +1167,19 @@ declare class P5VizRenderer implements VizRenderer {
  * demo-mode path in `compiledVizProvider`).
  */
 interface HydraStaveBag {
+    /**
+     * The viz call's options bag — `.viz('mysketch', { intensity: 0.8 })` reads as
+     * `stave.options.intensity` (#883). Mirrors p5's `stave.options`.
+     *
+     * A GETTER over the renderer's live slot, not a captured value: the slot is
+     * REPLACED on every re-publish (so a removed key stops applying), and this bag
+     * is built once per mount and mutated in place. Capturing the bag here would
+     * pin the first evaluate's options forever.
+     *
+     * Empty object when the viz was called with no argument — never undefined, so
+     * `stave.options.foo` is always a safe read from a sketch.
+     */
+    readonly options: Record<string, unknown>;
     /** Combined pattern scheduler. Has `now()` and `query(begin, end)`. */
     scheduler: IRPattern | null;
     /** Per-track schedulers keyed by trackId (e.g. "$0", "drums"). */
@@ -1237,7 +1316,7 @@ type HydraPatternFn = (synth: any, stave: HydraStaveBag) => void;
  * us to own the loop. The flag is left in `vizConfig.ts` for now and
  * will be removed in a follow-up cleanup.
  */
-declare class HydraVizRenderer implements VizRenderer {
+declare class HydraVizRenderer extends VizRendererBase {
     private pattern?;
     private hydra;
     private canvas;
@@ -1282,14 +1361,14 @@ declare class HydraVizRenderer implements VizRenderer {
      */
     private staveBag;
     constructor(pattern?: HydraPatternFn | undefined);
-    mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
+    protected onMount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
         w: number;
         h: number;
     }, onError: (e: Error) => void): void;
     private initHydra;
     private defaultPattern;
     private pumpAudio;
-    update(components: Partial<EngineComponents>): void;
+    protected onUpdate(components: Partial<EngineComponents>): void;
     resize(w: number, h: number): void;
     pause(): void;
     resume(): void;
@@ -1816,7 +1895,7 @@ interface PumpDriven {
  *      P5VizRenderer.ts (the lifecycle + alias contract mirrored here), PK22.
  */
 
-declare class WorkerVizRenderer implements VizRenderer, PumpDriven {
+declare class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
     private readonly kind;
     private readonly code;
     private readonly name;
@@ -1886,11 +1965,11 @@ declare class WorkerVizRenderer implements VizRenderer, PumpDriven {
      *  analyser/scheduler (viz PREVIEWS, #838). Set before/after mount; null
      *  restores the live path. The pump reads `next(ts)` each produced frame. */
     setDemoSource(src: SignalFrameSource | null): void;
-    mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
+    protected onMount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
         w: number;
         h: number;
     }, onError: (e: Error) => void): void;
-    update(components: Partial<EngineComponents>): void;
+    protected onUpdate(components: Partial<EngineComponents>): void;
     /** The options bag as the worker can receive it: structured-CLONED, not shared.
      *  A non-cloneable value (a function passed to `.viz(name, {…})`) would throw
      *  DataCloneError from `postMessage` and take the whole mount down — so drop

@@ -1056,7 +1056,7 @@ function buildStaveUniforms(bus, onTick) {
 __name(buildStaveUniforms, "buildStaveUniforms");
 
 // src/visualizers/renderers/hydraStaveBag.ts
-function buildHydraStaveBag(bus) {
+function buildHydraStaveBag(bus, optionsRef = { current: {} }) {
   const soundThunks = /* @__PURE__ */ __name((sound) => {
     const t = {
       env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
@@ -1112,6 +1112,14 @@ function buildHydraStaveBag(bus) {
   Object.defineProperty(sig, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
   Object.defineProperty(sig, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
   const bag = {
+    // Read THROUGH the slot on every access (#883). The renderer REPLACES
+    // `optionsRef.current` on each re-publish, and this bag is built once per
+    // mount — so a captured value would pin the first evaluate's options and a
+    // removed key would keep applying forever. Same live-ref idiom as `sig.fft`
+    // above and p5's `stave.options` getter.
+    get options() {
+      return optionsRef.current;
+    },
     scheduler: null,
     tracks: /* @__PURE__ */ new Map(),
     sig,
@@ -6267,7 +6275,8 @@ function hostVizWorker(scope) {
       const mod = await import('hydra-synth');
       Hydractor = mod.default || mod;
     }
-    const bag = buildHydraStaveBag(feed.bus);
+    const optionsRef = { current: msg.options ?? {} };
+    const bag = buildHydraStaveBag(feed.bus, optionsRef);
     bag.scheduler = rawScheduler;
     const bins = getVizConfig().hydraAudioBins;
     msg.canvas.width = Math.max(1, Math.round(msg.size.w));
@@ -6305,6 +6314,12 @@ function hostVizWorker(scope) {
       // #266 — hydra renders directly into the presenting canvas (regl owns its
       // WebGL context); re-getContext returns that same context for release.
       gl: /* @__PURE__ */ __name(() => msg.canvas.getContext("webgl2") ?? msg.canvas.getContext("webgl"), "gl"),
+      // #883 — the bag closed over `optionsRef`, so the next frame reads the new
+      // options with no remount; mirrors mountP5's setOptions and the main-thread
+      // renderer's ref re-assign.
+      setOptions: /* @__PURE__ */ __name((options) => {
+        optionsRef.current = options;
+      }, "setOptions"),
       draw: /* @__PURE__ */ __name(() => {
         const a = hydra?.synth?.a;
         if (a?.fft) {

@@ -27,11 +27,12 @@ import { createGLSLProgram, type GLSLProgram, type AudioByteSource, type GL2 } f
 import { glslFragmentErrorUserLine } from './glslShaderSource'
 import { readGLSLEvents, readGLSLTracks } from './glslEvents'
 import { emitLog } from '../../engine/engineLog'
+import { VizRendererBase } from './VizRendererBase'
 
 /** Monotone id source for a stable per-instance profiler key (`glsl#N`). */
 let glslPerfSeq = 0
 
-export class GLSLVizRenderer implements VizRenderer {
+export class GLSLVizRenderer extends VizRendererBase {
   private canvas: HTMLCanvasElement | null = null
   private gl: GL2 | null = null
   private program: GLSLProgram | null = null
@@ -53,9 +54,11 @@ export class GLSLVizRenderer implements VizRenderer {
   constructor(
     private readonly code: string,
     private readonly name = '',
-  ) {}
+  ) {
+    super()
+  }
 
-  mount(
+  protected onMount(
     container: HTMLDivElement,
     components: Partial<EngineComponents>,
     size: { w: number; h: number },
@@ -148,7 +151,7 @@ export class GLSLVizRenderer implements VizRenderer {
     this.rafId = requestAnimationFrame(this.loop)
   }
 
-  update(components: Partial<EngineComponents>): void {
+  protected onUpdate(components: Partial<EngineComponents>): void {
     // Rebind the analyser (iChannel0) AND the bus's live scheduler/analyser refs
     // in place (the u* events) so a re-evaluate keeps the shader reactive — same
     // live-ref discipline as HydraVizRenderer.

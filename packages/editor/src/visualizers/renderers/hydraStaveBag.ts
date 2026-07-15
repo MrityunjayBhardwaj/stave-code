@@ -32,7 +32,12 @@ import type {
 
 /** Build the live `stave` bag for a hydra sketch from a (pure) `SignalBus`. The
  *  bus is ticked elsewhere once per frame; every thunk here is a pure read. */
-export function buildHydraStaveBag(bus: SignalBus): HydraStaveBag {
+export function buildHydraStaveBag(
+  bus: SignalBus,
+  /** Live options slot (#883). Read THROUGH on every access — see `options` below.
+   *  Optional so existing callers/tests that don't care still build a bag. */
+  optionsRef: { current: Record<string, unknown> } = { current: {} },
+): HydraStaveBag {
   // Per-sound thunks — DSP scalars are `() => number`; `fft`/`wave` are live
   // getter-backed arrays so hydra indexes them natively (`() => u('bd').fft[i]`).
   const soundThunks = (sound: string): HydraSignalThunks => {
@@ -96,6 +101,14 @@ export function buildHydraStaveBag(bus: SignalBus): HydraStaveBag {
   Object.defineProperty(sig, 'wave', { get: () => bus.master().wave, enumerable: true })
 
   const bag: HydraStaveBag = {
+    // Read THROUGH the slot on every access (#883). The renderer REPLACES
+    // `optionsRef.current` on each re-publish, and this bag is built once per
+    // mount — so a captured value would pin the first evaluate's options and a
+    // removed key would keep applying forever. Same live-ref idiom as `sig.fft`
+    // above and p5's `stave.options` getter.
+    get options() {
+      return optionsRef.current
+    },
     scheduler: null,
     tracks: new Map(),
     sig,

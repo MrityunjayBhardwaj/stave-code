@@ -547,7 +547,13 @@ export function hostVizWorker(scope: WorkerScope): void {
       Hydractor = mod.default || mod
     }
 
-    const bag = buildHydraStaveBag(feed.bus)
+    // #883 — the SAME live options slot idiom as mountP5 below: the bag reads
+    // THROUGH this ref, and `setOptions` replaces `.current` on every re-publish.
+    // Without this the worker builds an options-less bag, and since the worker is
+    // the DEFAULT renderer (#245) hydra options would work inline and be dead
+    // full-screen — which is exactly how #880 hid for six weeks.
+    const optionsRef = { current: (msg.options ?? {}) as Record<string, unknown> }
+    const bag = buildHydraStaveBag(feed.bus, optionsRef)
     // Combined raw scheduler shim → `stave.scheduler` + the `H()` fallback. Per-
     // track raw isn't marshalled (signalFrame ships combined only); per-track
     // signal still works via the bus-backed `u.track(id)` (fed by activeByTrack).
@@ -598,6 +604,12 @@ export function hostVizWorker(scope: WorkerScope): void {
       gl: () =>
         ((msg.canvas.getContext('webgl2') as GLLoseCtx | null) ??
           (msg.canvas.getContext('webgl') as GLLoseCtx | null)),
+      // #883 — the bag closed over `optionsRef`, so the next frame reads the new
+      // options with no remount; mirrors mountP5's setOptions and the main-thread
+      // renderer's ref re-assign.
+      setOptions: (options: Record<string, unknown>) => {
+        optionsRef.current = options
+      },
       draw: () => {
         // Feed s.a.fft[] from the master analyser bytes (mirror pumpAudio 590-600).
         const a = hydra?.synth?.a
