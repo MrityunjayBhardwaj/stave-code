@@ -1305,10 +1305,12 @@ export default function StrudelEditorClient({
       isPlaying: false, error: null, autoRefresh: false,
     };
     return {
-      onPlay: () => {
-        if (state.isPlaying) handleStop(tab.fileId);
-        else handlePlay(tab.fileId);
-      },
+      // Ctrl+Enter EVALUATES, including while playing — it must not toggle
+      // (#180). `runtime.play()` re-evaluates the current file on every call,
+      // applying the edit at the next cycle boundary. Stop stays on Ctrl+.;
+      // the transport BUTTON is unaffected because it selects onStop itself
+      // when playing.
+      onPlay: () => handlePlay(tab.fileId),
       onStop: () => handleStop(tab.fileId),
       error: state.error,
     };

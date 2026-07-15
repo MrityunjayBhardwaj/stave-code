@@ -83,8 +83,6 @@ test('backdrop .pianoroll({ opts }) threads options to the backdrop sketch (#214
 
   // Control: no option → the (transparent) default backdrop is not red.
   await setCode(page, `$: note("c4 e4 g4 c5").s("sawtooth").pianoroll()`)
-  await page.keyboard.press(`${MOD}+.`)
-  await page.waitForTimeout(500)
   await runCode(page)
   await expect.poll(redFrac, { timeout: 6000 }).toBeLessThan(0.05)
 })
@@ -94,13 +92,11 @@ test('removing the non-underscore method clears the backdrop (code is source of 
   await runCode(page)
   await expect(page.locator('[data-workspace-background]')).toHaveCount(1, { timeout: 6000 })
 
-  // Remove the .scope() call. Manual Ctrl+Enter while playing is a no-op
-  // in this codebase (re-eval comes from live mode or stop+play), so force
-  // a fresh evaluate via stop+play to verify the clear semantic.
+  // Remove the .scope() call and re-evaluate. Ctrl+Enter evaluates while
+  // playing (#180), so runCode() alone is a fresh eval — this used to need an
+  // explicit stop+play only because the keybinding was wired as a toggle.
   await setCode(page, `$: note("c e g").s("sawtooth")`)
-  await page.keyboard.press(`${MOD}+.`) // stop
-  await page.waitForTimeout(500)
-  await runCode(page) // play → fresh eval
+  await runCode(page)
   await expect(page.locator('[data-workspace-background]')).toHaveCount(0, { timeout: 6000 })
 })
 
