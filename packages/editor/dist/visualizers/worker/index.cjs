@@ -6317,8 +6317,15 @@ function hostVizWorker(scope) {
       // WebGL context); re-getContext returns that same context for release.
       gl: /* @__PURE__ */ __name(() => msg.canvas.getContext("webgl2") ?? msg.canvas.getContext("webgl"), "gl"),
       // #883 — the bag closed over `optionsRef`, so the next frame reads the new
-      // options with no remount; mirrors mountP5's setOptions and the main-thread
-      // renderer's ref re-assign.
+      // options with no remount; mirrors mountP5's setOptions.
+      //
+      // DEFENSIVE, not currently exercised: `WorkerVizRenderer.update` posts an
+      // `options` message for EVERY kind, and the dispatcher does
+      // `state?.setOptions?.(msg.options)` — so without this, a hydra options
+      // message is silently swallowed, which is the exact failure class #883
+      // exists to kill. Verified by neutering it: the e2e stays green, because an
+      // inline re-eval REMOUNTS and the new bag rides in on MountMessage.options.
+      // So this covers the no-remount path only, and no test reaches it yet.
       setOptions: /* @__PURE__ */ __name((options) => {
         optionsRef.current = options;
       }, "setOptions"),
