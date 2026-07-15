@@ -204,8 +204,9 @@ async function runCode(page: Page): Promise<void> {
 }
 
 // Ctrl/Cmd+. = stop (EditorView.tsx:356). MUST stop before re-evaluating —
-// Ctrl+Enter WHILE PLAYING is a no-op (#180), so without a stop every other
-// rung's eval is swallowed and measures the previous scene.
+// Ctrl+Enter WHILE PLAYING stops instead of evaluating (it is a Play/Stop
+// toggle, StrudelEditorClient.tsx:1316, #180). Without a stop, presses just
+// alternate play/stop and every other rung measures the previous scene.
 async function stopCode(page: Page): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await page.evaluate(() => (window as any).monaco?.editor?.getEditors?.()?.[0]?.focus())

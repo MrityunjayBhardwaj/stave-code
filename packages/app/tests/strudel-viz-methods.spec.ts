@@ -94,9 +94,10 @@ test('removing the non-underscore method clears the backdrop (code is source of 
   await runCode(page)
   await expect(page.locator('[data-workspace-background]')).toHaveCount(1, { timeout: 6000 })
 
-  // Remove the .scope() call. Manual Ctrl+Enter while playing is a no-op
-  // in this codebase (re-eval comes from live mode or stop+play), so force
-  // a fresh evaluate via stop+play to verify the clear semantic.
+  // Remove the .scope() call, then force a fresh evaluate via stop+play. The
+  // stop is load-bearing: Ctrl+Enter while playing STOPS rather than
+  // re-evaluates — it is wired as a Play/Stop toggle (StrudelEditorClient.tsx
+  // :1316, #180). Re-eval while playing comes from live mode.
   await setCode(page, `$: note("c e g").s("sawtooth")`)
   await page.keyboard.press(`${MOD}+.`) // stop
   await page.waitForTimeout(500)
