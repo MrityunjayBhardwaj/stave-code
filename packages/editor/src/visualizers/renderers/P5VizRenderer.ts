@@ -10,6 +10,7 @@ import type {
 } from '../types'
 import type { StaveUniforms } from '../p5Compiler'
 import { installP5FesBridgeWith } from '../p5FesBridge'
+import { VizRendererBase } from './VizRendererBase'
 import { SignalBus } from '../signals/SignalBus'
 import { buildStaveUniforms } from '../signals/staveUniforms'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
@@ -36,7 +37,7 @@ let p5PerfSeq = 0
  * mismatches with `windowWidth` / `windowHeight` which track the
  * browser window rather than the container.
  */
-export class P5VizRenderer implements VizRenderer {
+export class P5VizRenderer extends VizRendererBase {
   private instance: p5 | null = null
   private hapStreamRef = { current: null as HapStream | null }
   private analyserRef = { current: null as AnalyserNode | null }
@@ -44,8 +45,6 @@ export class P5VizRenderer implements VizRenderer {
   private containerSizeRef: { current: ContainerSize } = {
     current: { w: 400, h: 300 },
   }
-  // Per-render viz options (#214) → exposed to the sketch as `stave.options`.
-  private optionsRef = { current: {} as Record<string, unknown> }
 
   /**
    * Per-renderer named-signal bus (Phase 21). PURE (P12) — owned here, fed
@@ -78,6 +77,7 @@ export class P5VizRenderer implements VizRenderer {
   private staveUniformsRef: { current: StaveUniforms }
 
   constructor(private sketch: P5SketchFactory) {
+    super()
     const bus = this.bus as SignalBus
     // `__tick` (MAIN) — fires ONCE per p5 draw frame (the draw wrapper calls it):
     // profiler beat + the bus's per-frame drive. readAudio MUST run AFTER
@@ -103,7 +103,7 @@ export class P5VizRenderer implements VizRenderer {
     }
   }
 
-  mount(
+  protected onMount(
     container: HTMLDivElement,
     components: Partial<EngineComponents>,
     size: { w: number; h: number },
@@ -122,7 +122,6 @@ export class P5VizRenderer implements VizRenderer {
       this.hapStreamRef.current = components.streaming?.hapStream ?? null
       this.analyserRef.current = components.audio?.analyser ?? null
       this.schedulerRef.current = components.queryable?.scheduler ?? null
-      this.optionsRef.current = components.options ?? {}
 
       // ── Named signal bus feed (Phase 21) — UNCONDITIONAL ─────────────────
       // Bind the live scheduler + per-track schedulers, then subscribe the
@@ -212,12 +211,11 @@ export class P5VizRenderer implements VizRenderer {
     }
   }
 
-  update(components: Partial<EngineComponents>): void {
+  protected onUpdate(components: Partial<EngineComponents>): void {
     if (!this.instance) return
     this.hapStreamRef.current = components.streaming?.hapStream ?? null
     this.analyserRef.current = components.audio?.analyser ?? null
     this.schedulerRef.current = components.queryable?.scheduler ?? null
-    this.optionsRef.current = components.options ?? {}
 
     // Re-bind the bus's live scheduler refs in place (Phase 21) so the SAME
     // staveUniforms getters captured by the sketch observe the swapped

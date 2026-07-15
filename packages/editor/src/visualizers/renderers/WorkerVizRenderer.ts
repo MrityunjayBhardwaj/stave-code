@@ -53,6 +53,7 @@ import type {
   WorkerFrameAckMessage,
   WorkerVizLogMessage,
 } from '../worker/workerMessages'
+import { VizRendererBase } from './VizRendererBase'
 
 let workerPerfSeq = 0
 /** Tie-break counter for options bags that can't be serialized to a change key.
@@ -103,7 +104,7 @@ function minFrameMs(): number {
   return fps > 0 ? 1000 / fps : 0
 }
 
-export class WorkerVizRenderer implements VizRenderer, PumpDriven {
+export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
   private worker: Worker | null = null
   private writer: SignalTransportWriter | null = null
   private readonly sampler = new MainSignalSampler()
@@ -166,7 +167,9 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
     private readonly kind: 'p5' | 'hydra' | 'glsl',
     private readonly code: string,
     private readonly name: string,
-  ) {}
+  ) {
+    super()
+  }
 
   /** Register a callback fired once when the worker reports its first successful
    *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
@@ -182,7 +185,7 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
     this.demoSource = src
   }
 
-  mount(
+  protected onMount(
     container: HTMLDivElement,
     components: Partial<EngineComponents>,
     size: { w: number; h: number },
@@ -312,7 +315,7 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
     }
   }
 
-  update(components: Partial<EngineComponents>): void {
+  protected onUpdate(components: Partial<EngineComponents>): void {
     if (!this.worker) return
     this.bindSampler(components)
     // #875 — a re-evaluate can change the options bag (editing the `{…}` argument).

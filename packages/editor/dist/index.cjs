@@ -5988,6 +5988,28 @@ function setCurrentP5Source(source, lineOffset = 0) {
 }
 __name(setCurrentP5Source, "setCurrentP5Source");
 
+// src/visualizers/renderers/VizRendererBase.ts
+var _VizRendererBase = class _VizRendererBase {
+  constructor() {
+    /**
+     * Live options bag from the viz call's argument (`.pianoroll({ labels: 1 })`).
+     * Populated before `onMount`/`onUpdate` run, so subclasses may read it in
+     * either. Read `.current` at USE time, never capture it.
+     */
+    this.optionsRef = { current: {} };
+  }
+  mount(container, components, size, onError) {
+    this.optionsRef.current = components.options ?? {};
+    this.onMount(container, components, size, onError);
+  }
+  update(components) {
+    this.optionsRef.current = components.options ?? {};
+    this.onUpdate(components);
+  }
+};
+__name(_VizRendererBase, "VizRendererBase");
+var VizRendererBase = _VizRendererBase;
+
 // src/visualizers/signals/aliasMap.ts
 var DEFAULT_VIZ_ENGINE = "strudel";
 var BUILTIN_ALIASES = {
@@ -8032,8 +8054,9 @@ __name(applyPersistedAdaptivePerf, "applyPersistedAdaptivePerf");
 
 // src/visualizers/renderers/P5VizRenderer.ts
 var p5PerfSeq = 0;
-var _P5VizRenderer = class _P5VizRenderer {
+var _P5VizRenderer = class _P5VizRenderer extends VizRendererBase {
   constructor(sketch) {
+    super();
     this.sketch = sketch;
     this.instance = null;
     this.hapStreamRef = { current: null };
@@ -8042,8 +8065,6 @@ var _P5VizRenderer = class _P5VizRenderer {
     this.containerSizeRef = {
       current: { w: 400, h: 300 }
     };
-    // Per-render viz options (#214) → exposed to the sketch as `stave.options`.
-    this.optionsRef = { current: {} };
     /**
      * Per-renderer named-signal bus (Phase 21). PURE (P12) — owned here, fed
      * UNCONDITIONALLY from the HapStream + scheduler (NOT analyser-gated; the bus
@@ -8079,14 +8100,13 @@ var _P5VizRenderer = class _P5VizRenderer {
       })
     };
   }
-  mount(container, components, size, onError) {
+  onMount(container, components, size, onError) {
     perf.gauge("viz.p5", 1);
     installP5FesBridgeWith(p5__default.default);
     try {
       this.hapStreamRef.current = components.streaming?.hapStream ?? null;
       this.analyserRef.current = components.audio?.analyser ?? null;
       this.schedulerRef.current = components.queryable?.scheduler ?? null;
-      this.optionsRef.current = components.options ?? {};
       this.bus?.bindScheduler(
         components.queryable?.scheduler,
         components.queryable?.trackSchedulers
@@ -8133,12 +8153,11 @@ var _P5VizRenderer = class _P5VizRenderer {
       onError(e);
     }
   }
-  update(components) {
+  onUpdate(components) {
     if (!this.instance) return;
     this.hapStreamRef.current = components.streaming?.hapStream ?? null;
     this.analyserRef.current = components.audio?.analyser ?? null;
     this.schedulerRef.current = components.queryable?.scheduler ?? null;
-    this.optionsRef.current = components.options ?? {};
     this.bus?.bindScheduler(
       components.queryable?.scheduler ?? null,
       components.queryable?.trackSchedulers
@@ -8591,10 +8610,11 @@ function minFrameMs() {
   return fps > 0 ? 1e3 / fps : 0;
 }
 __name(minFrameMs, "minFrameMs");
-var _WorkerVizRenderer = class _WorkerVizRenderer {
+var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5 / `'glsl'` #281).
    *  @param code raw sketch source. @param name workspace path (error attribution). */
   constructor(kind, code, name) {
+    super();
     this.kind = kind;
     this.code = code;
     this.name = name;
@@ -8666,7 +8686,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
   setDemoSource(src) {
     this.demoSource = src;
   }
-  mount(container, components, size, onError) {
+  onMount(container, components, size, onError) {
     this.onError = onError;
     this.size = { w: size.w, h: size.h };
     perf.gauge("viz.worker", 1);
@@ -8751,7 +8771,7 @@ ${d.stack}` : "");
       onError(e);
     }
   }
-  update(components) {
+  onUpdate(components) {
     if (!this.worker) return;
     this.bindSampler(components);
     const next = this.postOptions(components);
@@ -13376,7 +13396,7 @@ function makeP5Renderer(code, name) {
 __name(makeP5Renderer, "makeP5Renderer");
 
 // src/visualizers/renderers/hydraStaveBag.ts
-function buildHydraStaveBag(bus) {
+function buildHydraStaveBag(bus, optionsRef = { current: {} }) {
   const soundThunks = /* @__PURE__ */ __name((sound) => {
     const t = {
       env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
@@ -13432,6 +13452,14 @@ function buildHydraStaveBag(bus) {
   Object.defineProperty(sig, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
   Object.defineProperty(sig, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
   const bag = {
+    // Read THROUGH the slot on every access (#883). The renderer REPLACES
+    // `optionsRef.current` on each re-publish, and this bag is built once per
+    // mount — so a captured value would pin the first evaluate's options and a
+    // removed key would keep applying forever. Same live-ref idiom as `sig.fft`
+    // above and p5's `stave.options` getter.
+    get options() {
+      return optionsRef.current;
+    },
     scheduler: null,
     tracks: /* @__PURE__ */ new Map(),
     sig,
@@ -13483,8 +13511,9 @@ var _HapEnergyEnvelope = class _HapEnergyEnvelope {
 };
 __name(_HapEnergyEnvelope, "HapEnergyEnvelope");
 var HapEnergyEnvelope = _HapEnergyEnvelope;
-var _HydraVizRenderer = class _HydraVizRenderer {
+var _HydraVizRenderer = class _HydraVizRenderer extends VizRendererBase {
   constructor(pattern) {
+    super();
     this.pattern = pattern;
     this.hydra = null;
     this.canvas = null;
@@ -13560,9 +13589,9 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       }
       this.rafId = requestAnimationFrame(this.pumpAudio);
     }, "pumpAudio");
-    this.staveBag = buildHydraStaveBag(this.bus);
+    this.staveBag = buildHydraStaveBag(this.bus, this.optionsRef);
   }
-  mount(container, components, size, onError) {
+  onMount(container, components, size, onError) {
     perf.gauge("viz.hydra", 1);
     try {
       const config = getVizConfig();
@@ -13653,7 +13682,7 @@ var _HydraVizRenderer = class _HydraVizRenderer {
   defaultPattern(s) {
     s.osc(10, 0.1, () => s.a.fft[0] * 4).color(1, 0.5, () => s.a.fft[1] * 2).rotate(() => s.a.fft[2] * 6.28).modulate(s.noise(3, () => s.a.fft[3] * 0.5), 0.02).out();
   }
-  update(components) {
+  onUpdate(components) {
     const newAnalyser = components.audio?.analyser ?? null;
     if (newAnalyser !== this.analyser) {
       this.analyser = newAnalyser;
@@ -14748,10 +14777,11 @@ __name(readGLSLTracks, "readGLSLTracks");
 
 // src/visualizers/renderers/GLSLVizRenderer.ts
 var glslPerfSeq = 0;
-var _GLSLVizRenderer = class _GLSLVizRenderer {
+var _GLSLVizRenderer = class _GLSLVizRenderer extends VizRendererBase {
   /** `code` = the user's GLSL source; `name` = the workspace path, used to
    *  attribute a compile error to its file in the Console (#331). */
   constructor(code, name = "") {
+    super();
     this.code = code;
     this.name = name;
     this.canvas = null;
@@ -14798,7 +14828,7 @@ var _GLSLVizRenderer = class _GLSLVizRenderer {
       this.rafId = requestAnimationFrame(this.loop);
     }, "loop");
   }
-  mount(container, components, size, onError) {
+  onMount(container, components, size, onError) {
     perf.gauge("viz.glsl", 1);
     try {
       this.size = { w: size.w, h: size.h };
@@ -14839,7 +14869,7 @@ var _GLSLVizRenderer = class _GLSLVizRenderer {
       onError(err);
     }
   }
-  update(components) {
+  onUpdate(components) {
     this.analyser = components.audio?.analyser ?? null;
     this.bus?.bindScheduler(components.queryable?.scheduler ?? null, components.queryable?.trackSchedulers);
     this.bus?.bindAnalysers(components.audio?.analyser ?? null, components.audio?.trackAnalysers);
