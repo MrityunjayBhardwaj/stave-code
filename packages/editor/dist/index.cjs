@@ -2722,11 +2722,11 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
   }
   const stackMatch = trimmed.match(/^stack\s*\(/);
   if (stackMatch) {
-    const inner = extractParenContent(trimmed, "stack(");
-    if (inner !== null) {
-      const stackKwIdx = trimmed.indexOf("stack(");
-      const innerStartInTrimmed = stackKwIdx + "stack(".length;
-      const innerAbsOffset = baseOffset + leadingWs + innerStartInTrimmed;
+    const openIdx = trimmed.indexOf("(", stackMatch[0].length - 1);
+    const closeIdx = openIdx >= 0 ? findMatchingParen(trimmed, openIdx) : -1;
+    if (closeIdx > openIdx) {
+      const inner = trimmed.slice(openIdx + 1, closeIdx);
+      const innerAbsOffset = baseOffset + leadingWs + openIdx + 1;
       const argsWithOffsets = splitArgsWithOffsets(inner);
       const tracks = argsWithOffsets.map(
         (a) => parseExpression(a.value, innerAbsOffset + a.offset, void 0, bindings, opts)
@@ -2734,13 +2734,10 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
       if (tracks.length === 0) return IR.pure();
       if (tracks.length === 1) return tracks[0];
       const trimmedAbs = baseOffset + leadingWs;
-      const openIdx = trimmed.indexOf("(");
-      const closeIdx = openIdx >= 0 ? findMatchingParen(trimmed, openIdx) : -1;
-      const fullMatchLen = closeIdx >= 0 ? closeIdx + 1 : trimmed.length;
       return {
         tag: "Stack",
         tracks,
-        loc: [{ start: trimmedAbs, end: trimmedAbs + fullMatchLen }],
+        loc: [{ start: trimmedAbs, end: trimmedAbs + closeIdx + 1 }],
         userMethod: "stack"
       };
     }
@@ -3302,15 +3299,6 @@ function findMatchingParen(str, startIdx) {
   return -1;
 }
 __name(findMatchingParen, "findMatchingParen");
-function extractParenContent(expr, prefix) {
-  const start = expr.indexOf(prefix);
-  if (start === -1) return null;
-  const parenStart = start + prefix.length - 1;
-  const closeIdx = findMatchingParen(expr, parenStart);
-  if (closeIdx === -1) return null;
-  return expr.slice(parenStart + 1, closeIdx);
-}
-__name(extractParenContent, "extractParenContent");
 function splitArgs(argsStr) {
   return splitArgsWithOffsets(argsStr).map((a) => a.value);
 }

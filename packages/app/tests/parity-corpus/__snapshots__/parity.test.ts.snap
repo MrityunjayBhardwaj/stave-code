@@ -3371,6 +3371,270 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-159-tokenizer
 }
 `;
 
+exports[`strudel.cc parity corpus — structural IR shape > bakery-901-stack-newline-paren parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "tag": "Stack",
+    "tracks": [
+      {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "".35"",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": "0.95",
+              "inner": {
+                "body": {
+                  "duration": 1,
+                  "note": "loopamen02",
+                  "params": {
+                    "gain": 1,
+                    "s": "loopamen02",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
+                },
+                "n": 8,
+                "tag": "Chop",
+                "userMethod": "chop",
+              },
+              "method": "legato",
+            },
+          },
+          "method": "degradeBy",
+        },
+      },
+      {
+        "children": [
+          {
+            "duration": 1,
+            "note": "bd",
+            "params": {
+              "gain": 1,
+              "s": "bd",
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+          {
+            "duration": 1,
+            "tag": "Sleep",
+          },
+          {
+            "duration": 1,
+            "tag": "Sleep",
+          },
+          {
+            "duration": 1,
+            "note": "bd",
+            "params": {
+              "gain": 1,
+              "s": "bd",
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+          {
+            "duration": 1,
+            "tag": "Sleep",
+          },
+          {
+            "duration": 1,
+            "tag": "Sleep",
+          },
+          {
+            "duration": 1,
+            "note": "bd",
+            "params": {
+              "gain": 1,
+              "s": "bd",
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+          {
+            "duration": 1,
+            "tag": "Sleep",
+          },
+        ],
+        "tag": "Seq",
+      },
+      {
+        "body": {
+          "duration": 1,
+          "note": "hh",
+          "params": {
+            "gain": 1,
+            "s": "hh",
+            "velocity": 1,
+          },
+          "tag": "Play",
+        },
+        "factor": 8,
+        "tag": "Fast",
+      },
+    ],
+    "userMethod": "stack",
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-901-stack-space-paren parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "tag": "Stack",
+    "tracks": [
+      {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": ""800 1200"",
+          "inner": {
+            "body": {
+              "children": [
+                {
+                  "duration": 1,
+                  "note": "bd",
+                  "params": {
+                    "gain": 1,
+                    "s": "bd",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
+                },
+                {
+                  "duration": 1,
+                  "note": "bd",
+                  "params": {
+                    "gain": 1,
+                    "s": "bd",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
+                },
+                {
+                  "duration": 1,
+                  "note": "bd",
+                  "params": {
+                    "gain": 1,
+                    "s": "bd",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
+                },
+                {
+                  "duration": 1,
+                  "note": "bd",
+                  "params": {
+                    "gain": 1,
+                    "s": "bd",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
+                },
+              ],
+              "tag": "Seq",
+            },
+            "key": "bank",
+            "rawArgs": ""AJKPercusyn"",
+            "tag": "Param",
+            "userMethod": "bank",
+            "value": "AJKPercusyn",
+          },
+          "method": "lpf",
+        },
+      },
+      {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": ""600 1400"",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""gm_agogo"",
+              "inner": {
+                "children": [
+                  {
+                    "duration": 1,
+                    "tag": "Sleep",
+                  },
+                  {
+                    "duration": 0.25,
+                    "note": "6",
+                    "params": {
+                      "gain": 1,
+                      "velocity": 1,
+                    },
+                    "tag": "Play",
+                  },
+                  {
+                    "duration": 1,
+                    "tag": "Sleep",
+                  },
+                  {
+                    "duration": 0.25,
+                    "note": "6",
+                    "params": {
+                      "gain": 1,
+                      "velocity": 1,
+                    },
+                    "tag": "Play",
+                  },
+                  {
+                    "duration": 1,
+                    "tag": "Sleep",
+                  },
+                  {
+                    "duration": 0.25,
+                    "note": "6",
+                    "params": {
+                      "gain": 1,
+                      "velocity": 1,
+                    },
+                    "tag": "Play",
+                  },
+                  {
+                    "duration": 1,
+                    "tag": "Sleep",
+                  },
+                  {
+                    "duration": 0.25,
+                    "note": "6",
+                    "params": {
+                      "gain": 1,
+                      "velocity": 1,
+                    },
+                    "tag": "Play",
+                  },
+                ],
+                "tag": "Seq",
+              },
+              "method": "sound",
+            },
+          },
+          "method": "lpf",
+        },
+      },
+    ],
+    "userMethod": "stack",
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
 exports[`strudel.cc parity corpus — structural IR shape > bakery-G1-let-binding parses to a stable IR shape 1`] = `
 {
   "body": {

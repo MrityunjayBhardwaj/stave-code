@@ -81,3 +81,68 @@ describe('#107 — stack-arg loc threads through to inner atoms', () => {
     expect(events[1].loc?.[0].start).toBe(24)
   })
 })
+
+/**
+ * Issue #901 — whitespace between the `stack` keyword and its `(`.
+ *
+ * `stack (…)` and `stack\n(…)` dropped the WHOLE program to the opaque
+ * Code fallback → a blank timeline. The arm matched with `/^stack\s*\(/`
+ * (which tolerates the gap) and then located the paren by re-searching
+ * for a LITERAL `stack(` — the two disagreed the moment a gap appeared,
+ * and the arm fell through. stack was the only root arm doing this;
+ * arrange/cat, the curated arm and the loose arm all derive the paren
+ * from their own match, which is why `cat (…)` and `note (…)` were fine.
+ *
+ * Offsets are asserted (not just the node tag) because the gap shifts
+ * every inner atom: a fix that recognised `stack (` but mis-attributed
+ * its args would still break click-to-source and lane attribution.
+ */
+describe('#901 — stack tolerates whitespace before its paren', () => {
+  it('stack (…) with a SPACE — parses to Stack, atoms keep absolute offsets', () => {
+    const code = 'stack (s("a"), s("b"))'
+    //            0....5^gap 6='('     ^a=10        ^b=18
+    const ir = parseStrudel(code)
+    const body = ir.tag === 'Track' ? ir.body : ir
+    expect(body.tag).toBe('Stack')
+
+    const events = collect(ir)
+    expect(events.length).toBe(2)
+    // One space ⇒ every atom sits exactly 1 char later than the tight case.
+    expect(events[0].loc?.[0]).toEqual({ start: 10, end: 11 })
+    expect(events[1].loc?.[0]).toEqual({ start: 18, end: 19 })
+  })
+
+  it('stack\\n(…) with a NEWLINE — parses to Stack, atoms keep absolute offsets', () => {
+    const code = 'stack\n(s("a"), s("b"))'
+    const ir = parseStrudel(code)
+    const body = ir.tag === 'Track' ? ir.body : ir
+    expect(body.tag).toBe('Stack')
+
+    const events = collect(ir)
+    expect(events.length).toBe(2)
+    // '\n' is one char, so the layout matches the SPACE case exactly.
+    expect(events[0].loc?.[0]).toEqual({ start: 10, end: 11 })
+    expect(events[1].loc?.[0]).toEqual({ start: 18, end: 19 })
+  })
+
+  it('the Stack node loc spans the whole call INCLUDING the gap', () => {
+    const code = 'stack  (s("a"), s("b"))'
+    const ir = parseStrudel(code)
+    const body = ir.tag === 'Track' ? ir.body : ir
+    expect(body.tag).toBe('Stack')
+    // Slicing the source at the reported loc must read back as the
+    // entire expression — the gap included, closing paren included.
+    const loc = body.loc![0]
+    expect(code.slice(loc.start, loc.end)).toBe('stack  (s("a"), s("b"))')
+  })
+
+  it('gap + leading whitespace — the track offset still compounds', () => {
+    const code = '$: stack (s("a"), s("b"))'
+    //            0.. '$: ' ends at 3; stack at 3, '(' at 9, 'a' at 13, 'b' at 21
+    const ir = parseStrudel(code)
+    const events = collect(ir)
+    expect(events.length).toBe(2)
+    expect(events[0].loc?.[0]).toEqual({ start: 13, end: 14 })
+    expect(events[1].loc?.[0]).toEqual({ start: 21, end: 22 })
+  })
+})
