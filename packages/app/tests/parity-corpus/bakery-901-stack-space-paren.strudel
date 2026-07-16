@@ -1,0 +1,4 @@
+stack (
+sound("bd bd bd bd").bank("AJKPercusyn").lpf("800 1200"),
+n("~ 6 ~ 6 ~ 6 ~ 6").sound("gm_agogo").lpf("600 1400")
+)

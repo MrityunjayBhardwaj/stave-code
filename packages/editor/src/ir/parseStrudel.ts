@@ -1680,16 +1680,18 @@ export function parseRoot(
   // collapsing click-to-source for any sample-track event.
   const stackMatch = trimmed.match(/^stack\s*\(/)
   if (stackMatch) {
-    const inner = extractParenContent(trimmed, 'stack(')
-    if (inner !== null) {
-      // Position of `inner` within `trimmed`: `extractParenContent`
-      // returns content from after `stack(` up to the matching `)`.
-      // The `(` lives at `trimmed.indexOf('stack(') + 'stack('.length - 1`,
-      // so inner[0] sits at openIdx+1 within trimmed. Absolute file
-      // offset of inner[0] = baseOffset + leadingWs + (openIdx + 1).
-      const stackKwIdx = trimmed.indexOf('stack(')
-      const innerStartInTrimmed = stackKwIdx + 'stack('.length
-      const innerAbsOffset = baseOffset + leadingWs + innerStartInTrimmed
+    // #901 — locate the `(` from the MATCH (whose `\s*` already consumed
+    // any gap), never by re-searching for a literal `stack(`. A literal
+    // disagrees with the regex the moment the source reads `stack (` or
+    // `stack\n(`, and the arm then falls through to the opaque Code
+    // fallback — a blank timeline for the whole program. Same idiom as
+    // the arrange/cat, curated and loose arms.
+    const openIdx = trimmed.indexOf('(', stackMatch[0].length - 1)
+    const closeIdx = openIdx >= 0 ? findMatchingParen(trimmed, openIdx) : -1
+    if (closeIdx > openIdx) {
+      const inner = trimmed.slice(openIdx + 1, closeIdx)
+      // Absolute file offset of inner[0] = baseOffset + leadingWs + openIdx + 1.
+      const innerAbsOffset = baseOffset + leadingWs + openIdx + 1
       const argsWithOffsets = splitArgsWithOffsets(inner)
       // 20-15 G1 (#134 / D-02) — thread the binding map so a bare-ident
       // arg (`stack(p1, p2)`) substitutes the bound subtree at THIS
@@ -1709,15 +1711,12 @@ export function parseRoot(
       // construction — IR.stack is rest-spread (RESEARCH §11 Q1).
       // The whole `stack(...)` substring spans from `trimmed[0]` (whose
       // absolute position is `baseOffset + leadingWs`) through the closing
-      // paren matched by extractParenContent.
+      // paren at `closeIdx`.
       const trimmedAbs = baseOffset + leadingWs
-      const openIdx = trimmed.indexOf('(')
-      const closeIdx = openIdx >= 0 ? findMatchingParen(trimmed, openIdx) : -1
-      const fullMatchLen = closeIdx >= 0 ? closeIdx + 1 : trimmed.length
       return {
         tag: 'Stack' as const,
         tracks,
-        loc: [{ start: trimmedAbs, end: trimmedAbs + fullMatchLen }],
+        loc: [{ start: trimmedAbs, end: trimmedAbs + closeIdx + 1 }],
         userMethod: 'stack',
       }
     }
@@ -3022,19 +3021,6 @@ function findMatchingParen(str: string, startIdx: number): number {
   }
 
   return -1
-}
-
-/**
- * Extract the content inside the first balanced parens of a function call.
- * e.g. 'stack(a, b)' with prefix 'stack(' → 'a, b'
- */
-function extractParenContent(expr: string, prefix: string): string | null {
-  const start = expr.indexOf(prefix)
-  if (start === -1) return null
-  const parenStart = start + prefix.length - 1
-  const closeIdx = findMatchingParen(expr, parenStart)
-  if (closeIdx === -1) return null
-  return expr.slice(parenStart + 1, closeIdx)
 }
 
 /**

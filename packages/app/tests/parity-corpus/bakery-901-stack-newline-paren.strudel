@@ -1,0 +1,8 @@
+samples({ loopAmen02: 'https://cdn.freesound.org/previews/736/736476_16019844-hq.mp3' })
+setcps(120/60/4)
+stack
+ (
+s("loopamen02").chop(8).legato(0.95).degradeBy(".35"),
+s("bd(3,8)"),
+s("hh*8")
+)
