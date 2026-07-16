@@ -7893,23 +7893,6 @@ type ParseResult<M> = {
     reason: string;
 };
 
-/**
- * Mini-notation (strict editable subset) → notation models.
- *
- * Self-contained tokenizer rather than `@strudel/mini` or Stave's `parseMini`:
- * the full parser builds an IR that only round-trips through `toStrudel`'s
- * canonical regenerator (the very reformatting text-writeback exists to
- * avoid), and it accepts idioms the visual grids can't represent. A narrow
- * tokenizer that rejects everything outside the subset is exactly what the
- * round-trip guarantee needs.
- *
- * Supported: flat sequences of atoms (`bd`, `bd:3`, `c3`), rests (`~`),
- * `[bd,hh]` simultaneous stacks, `[hh hh]` sub-sequences (expanded onto a
- * uniform finer grid), `@n` elongation (roll), a whole-string `<...>`
- * alternation with one slot per bar, and top-level `,` stacks (grid only,
- * parts preserved). Everything else → `{ ok: false }`.
- */
-
 declare function parseStepGrid(mini: string): ParseResult<StepGridModel>;
 declare function parsePianoRoll(mini: string): ParseResult<PianoRollModel>;
 

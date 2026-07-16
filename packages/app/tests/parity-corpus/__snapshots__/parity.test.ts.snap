@@ -3635,6 +3635,269 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-901-stack-spa
 }
 `;
 
+exports[`strudel.cc parity corpus — structural IR shape > bakery-903-chord-multiplier parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "tag": "Stack",
+    "tracks": [
+      {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": "2",
+              "inner": {
+                "body": {
+                  "code": "",
+                  "lang": "strudel",
+                  "tag": "Code",
+                  "via": {
+                    "args": ""sine"",
+                    "inner": {
+                      "body": {
+                        "tag": "Stack",
+                        "tracks": [
+                          {
+                            "duration": 0.25,
+                            "note": "c4",
+                            "params": {
+                              "gain": 1,
+                              "velocity": 1,
+                            },
+                            "tag": "Play",
+                          },
+                          {
+                            "duration": 0.25,
+                            "note": "e4",
+                            "params": {
+                              "gain": 1,
+                              "velocity": 1,
+                            },
+                            "tag": "Play",
+                          },
+                          {
+                            "duration": 0.25,
+                            "note": "g4",
+                            "params": {
+                              "gain": 1,
+                              "velocity": 1,
+                            },
+                            "tag": "Play",
+                          },
+                          {
+                            "duration": 0.25,
+                            "note": "c5",
+                            "params": {
+                              "gain": 1,
+                              "velocity": 1,
+                            },
+                            "tag": "Play",
+                          },
+                        ],
+                      },
+                      "factor": 2,
+                      "tag": "Fast",
+                    },
+                    "method": "sound",
+                  },
+                },
+                "name": "lpf",
+                "params": {
+                  "lpf": 2000,
+                },
+                "tag": "FX",
+                "userMethod": "lpf",
+              },
+              "method": "attack",
+            },
+          },
+          "method": "decay",
+        },
+      },
+      {
+        "children": [
+          {
+            "body": {
+              "tag": "Stack",
+              "tracks": [
+                {
+                  "duration": 1,
+                  "note": "bd",
+                  "params": {
+                    "gain": 1,
+                    "s": "bd",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
+                },
+                {
+                  "duration": 1,
+                  "note": "hh",
+                  "params": {
+                    "gain": 1,
+                    "s": "hh",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
+                },
+              ],
+            },
+            "factor": 2,
+            "tag": "Fast",
+          },
+          {
+            "duration": 1,
+            "note": "sd",
+            "params": {
+              "gain": 1,
+              "s": "sd",
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+        ],
+        "tag": "Seq",
+      },
+    ],
+    "userMethod": "stack",
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-903-patterned-variant parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "tag": "Stack",
+    "tracks": [
+      {
+        "children": [
+          {
+            "duration": 1,
+            "note": "rd",
+            "params": {
+              "gain": 1,
+              "s": "rd",
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+          {
+            "body": {
+              "items": [
+                {
+                  "duration": 1,
+                  "note": "1",
+                  "params": {
+                    "gain": 1,
+                    "s": "1",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
+                },
+                {
+                  "duration": 1,
+                  "note": "3",
+                  "params": {
+                    "gain": 1,
+                    "s": "3",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
+                },
+                {
+                  "duration": 1,
+                  "note": "2",
+                  "params": {
+                    "gain": 1,
+                    "s": "2",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
+                },
+              ],
+              "tag": "Cycle",
+            },
+            "factor": 2,
+            "tag": "Fast",
+          },
+        ],
+        "tag": "Seq",
+      },
+      {
+        "children": [
+          {
+            "duration": 1,
+            "tag": "Sleep",
+          },
+          {
+            "duration": 1,
+            "note": "sd",
+            "params": {
+              "gain": 1,
+              "s": "sd",
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+          {
+            "children": [
+              {
+                "items": [
+                  {
+                    "duration": 1,
+                    "note": "1",
+                    "params": {
+                      "gain": 1,
+                      "s": "1",
+                      "velocity": 1,
+                    },
+                    "tag": "Play",
+                  },
+                  {
+                    "duration": 1,
+                    "note": "3",
+                    "params": {
+                      "gain": 1,
+                      "s": "3",
+                      "velocity": 1,
+                    },
+                    "tag": "Play",
+                  },
+                ],
+                "tag": "Cycle",
+              },
+              {
+                "duration": 1,
+                "note": "16",
+                "params": {
+                  "gain": 1,
+                  "s": "16",
+                  "velocity": 1,
+                },
+                "tag": "Play",
+              },
+            ],
+            "tag": "Seq",
+          },
+        ],
+        "tag": "Seq",
+      },
+    ],
+    "userMethod": "stack",
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
 exports[`strudel.cc parity corpus — structural IR shape > bakery-G1-let-binding parses to a stable IR shape 1`] = `
 {
   "body": {

@@ -7,6 +7,8 @@ var acorn = require('acorn');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
 var Y3 = require('yjs');
+var krillParser_js = require('@strudel/mini/krill-parser.js');
+var euclid_mjs = require('@strudel/core/euclid.mjs');
 var reactDom = require('react-dom');
 var webaudio = require('@strudel/webaudio');
 
@@ -26210,30 +26212,12 @@ function cLabel(midi) {
 __name(cLabel, "cLabel");
 
 // src/visualEdit/notation/parse.ts
-var ATOM = /^[a-zA-Z][a-zA-Z0-9#_]*(:\d+)?$/;
-var isBareRest = /* @__PURE__ */ __name((s, i) => s[i] === "-" && (i + 1 >= s.length || /[\s[\]@,*(!]/.test(s[i + 1])), "isBareRest");
 var NUMERIC = /^-?\d+$/;
-var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => ATOM.test(t) || allowNumeric && NUMERIC.test(t), "isAtomToken");
+var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => allowNumeric || !NUMERIC.test(t), "isAtomToken");
 var MAX_STEPS = 64;
 var gcd = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcd(b, a % b), "gcd");
 var lcm = /* @__PURE__ */ __name((a, b) => a / gcd(a, b) * b, "lcm");
-function bjorklund2(k, n) {
-  if (k <= 0) return Array(n).fill(false);
-  if (k >= n) return Array(n).fill(true);
-  let a = Array.from({ length: k }, () => [true]);
-  let b = Array.from({ length: n - k }, () => [false]);
-  while (b.length > 1) {
-    const count = Math.min(a.length, b.length);
-    const merged = [];
-    for (let i = 0; i < count; i++) merged.push([...a[i], ...b[i]]);
-    const restA = a.slice(count);
-    const restB = b.slice(count);
-    a = merged;
-    b = restA.length ? restA : restB;
-  }
-  return [...a, ...b].flat();
-}
-__name(bjorklund2, "bjorklund");
+var bjorklund2 = /* @__PURE__ */ __name((k, n) => k <= 0 ? Array(n).fill(false) : k >= n ? Array(n).fill(true) : euclid_mjs.bjorklund(k, n).map((x) => x === 1), "bjorklund");
 var rotateEuclid = /* @__PURE__ */ __name((pattern, rot) => {
   const n = pattern.length;
   if (n === 0) return pattern;
@@ -26242,15 +26226,6 @@ var rotateEuclid = /* @__PURE__ */ __name((pattern, rot) => {
 }, "rotateEuclid");
 var stepUnits = /* @__PURE__ */ __name((s) => s.sub ? s.sub.reduce((n, slot) => n + slot.units, 0) : 1, "stepUnits");
 var division = /* @__PURE__ */ __name((steps) => steps.reduce((d, s) => lcm(d, stepUnits(s)), 1), "division");
-function closeBracket(src, open) {
-  let depth = 0;
-  for (let i = open; i < src.length; i++) {
-    if (src[i] === "[") depth++;
-    else if (src[i] === "]" && --depth === 0) return i;
-  }
-  return -1;
-}
-__name(closeBracket, "closeBracket");
 function splitTopLevel(src) {
   const out = [];
   let depth = 0;
@@ -26273,198 +26248,244 @@ function unwrapAlternation(mini) {
   return t.length >= 2 && t.startsWith("<") && t.endsWith(">") ? t.slice(1, -1) : null;
 }
 __name(unwrapAlternation, "unwrapAlternation");
-function readElongation(src, i) {
-  if (src[i] !== "@") return { ok: true, value: 1, next: i };
-  const digits = src.slice(i + 1).match(/^\d+/);
-  if (!digits) return { ok: false, reason: "invalid @ elongation" };
-  return { ok: true, value: parseInt(digits[0], 10), next: i + 1 + digits[0].length };
-}
-__name(readElongation, "readElongation");
-function readMultiplier(src, i) {
-  if (src[i] !== "*") return { ok: true, value: 1, next: i };
-  const digits = src.slice(i + 1).match(/^\d+/);
-  if (!digits) return { ok: false, reason: "invalid * multiplier" };
-  const value = parseInt(digits[0], 10);
-  if (value < 1) return { ok: false, reason: "invalid * multiplier" };
-  return { ok: true, value, next: i + 1 + digits[0].length };
-}
-__name(readMultiplier, "readMultiplier");
-function readReplicate(src, i) {
-  if (src[i] !== "!") return { ok: true, value: 1, next: i };
-  const digits = src.slice(i + 1).match(/^\d+/);
-  if (!digits) return { ok: false, reason: "invalid ! replicate" };
-  const value = parseInt(digits[0], 10);
-  if (value < 1) return { ok: false, reason: "invalid ! replicate" };
-  return { ok: true, value, next: i + 1 + digits[0].length };
-}
-__name(readReplicate, "readReplicate");
-function readEuclid(src, i) {
-  if (src[i] !== "(") return { ok: true, spec: null, next: i };
-  const close = src.indexOf(")", i);
-  if (close === -1) return { ok: false, reason: "unbalanced euclid parens" };
-  const inner = src.slice(i + 1, close);
-  const m = inner.match(/^\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*(\d+)\s*)?$/);
-  if (!m) return { ok: false, reason: "invalid euclid (k,n) arguments" };
-  const k = parseInt(m[1], 10);
-  const n = parseInt(m[2], 10);
-  if (n < 1) return { ok: false, reason: "invalid euclid step count" };
-  const rot = m[3] !== void 0 ? parseInt(m[3], 10) : 0;
-  return { ok: true, spec: { k, n, rot }, next: close + 1 };
-}
-__name(readEuclid, "readEuclid");
-function parseGroup(inner, elongation, allowNumeric = false) {
-  const commaParts = splitTopLevel(inner);
-  if (commaParts.length > 1) {
-    const atoms = [];
-    for (const raw of commaParts) {
-      const token = raw.trim();
-      if (/[\s[\]]/.test(token) || !isAtomToken(token, allowNumeric)) {
-        return { reason: "stacked sub-sequences are beyond the editable subset" };
-      }
-      atoms.push(token);
-    }
-    return { atoms, elongation, sub: null };
+var isAtom = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
+var isRestAtom = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
+var tokenOf = /* @__PURE__ */ __name((atom, ops) => {
+  let t = atom.source_;
+  for (const op of ops) {
+    if (op.type_ !== "tail") continue;
+    const node = op.arguments_?.element;
+    if (!node || node.type_ !== "atom" || typeof node.source_ !== "string") return null;
+    t += ":" + node.source_;
   }
+  return t;
+}, "tokenOf");
+var numArg = /* @__PURE__ */ __name((node) => {
+  const n = node;
+  if (!n || typeof n !== "object") return null;
+  const inner = n.type_ === "element" ? n.source_ : n;
+  if (!inner || inner.type_ !== "atom") return null;
+  const v = Number(inner.source_);
+  return Number.isFinite(v) ? v : null;
+}, "numArg");
+function readOps(ops) {
+  let mult = 1;
+  let euclid = null;
+  for (const op of ops) {
+    switch (op.type_) {
+      case "tail":
+      case "replicate":
+        break;
+      case "stretch": {
+        const type = op.arguments_?.type;
+        if (type !== "fast") {
+          return { reason: `"${String(type)}" stretch is beyond the editable subset` };
+        }
+        const amount = numArg(op.arguments_?.amount);
+        if (amount === null || !Number.isInteger(amount) || amount < 1) {
+          return { reason: "invalid * multiplier" };
+        }
+        mult *= amount;
+        break;
+      }
+      case "bjorklund": {
+        const k = numArg(op.arguments_?.pulse);
+        const n = numArg(op.arguments_?.step);
+        const rot = op.arguments_?.rotation == null ? 0 : numArg(op.arguments_.rotation);
+        if (k === null || n === null || rot === null) {
+          return { reason: "invalid euclid (k,n) arguments" };
+        }
+        if (n < 1) return { reason: "invalid euclid step count" };
+        euclid = { k, n, rot };
+        break;
+      }
+      case "degradeBy":
+        return { reason: '"?" random degrade is beyond the editable subset' };
+      default:
+        return { reason: `"${op.type_}" is beyond the editable subset` };
+    }
+  }
+  return { mult, euclid };
+}
+__name(readOps, "readOps");
+function groupSlots(pat, allowNumeric) {
   const slots = [];
-  let i = 0;
-  while (i < inner.length) {
-    const ch = inner[i];
-    if (/\s/.test(ch)) {
-      i++;
-      continue;
+  for (const el of pat.source_) {
+    const opts = el.options_ ?? {};
+    const ops = opts.ops ?? [];
+    const units = opts.weight ?? 1;
+    if ((opts.reps ?? 1) > 1) {
+      return { reason: "! inside a group is beyond the editable subset" };
     }
-    if (ch === "~" || isBareRest(inner, i)) {
-      slots.push({ atoms: [], units: 1 });
-      i++;
-      continue;
+    if (ops.some((o) => o.type_ !== "tail")) {
+      return { reason: "operators inside a group are beyond the editable subset" };
     }
-    if (ch === "[") {
-      const close = closeBracket(inner, i);
-      if (close === -1) return { reason: "unbalanced brackets" };
-      const chord = inner.slice(i + 1, close);
-      if (/[[\]]/.test(chord) || !chord.includes(",")) {
-        return { reason: "nested groups are beyond the editable subset" };
+    if (isAtom(el.source_)) {
+      if (isRestAtom(el.source_)) {
+        if (ops.length) return { reason: 'a ":" variant on a rest has nothing to name' };
+        slots.push({ atoms: [], units });
+        continue;
       }
-      i = close + 1;
-      const elong2 = readElongation(inner, i);
-      if (!elong2.ok) return { reason: elong2.reason };
-      i = elong2.next;
-      const atoms = [];
-      for (const raw of chord.split(",")) {
-        const token = raw.trim();
-        if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
-        atoms.push(token);
+      const token = tokenOf(el.source_, ops);
+      if (token === null) {
+        return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
       }
-      slots.push({ atoms, units: elong2.value });
+      if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
+      slots.push({ atoms: [token], units });
       continue;
     }
-    const match = inner.slice(i).match(/^[^\s[\]@,*(!]+/);
-    if (!match || !isAtomToken(match[0], allowNumeric)) {
-      return { reason: `unsupported token "${match?.[0] ?? ch}"` };
-    }
-    i += match[0].length;
-    const elong = readElongation(inner, i);
-    if (!elong.ok) return { reason: elong.reason };
-    i = elong.next;
-    slots.push({ atoms: [match[0]], units: elong.value });
+    const chord = chordAtoms(el.source_, allowNumeric);
+    if (!Array.isArray(chord)) return chord;
+    slots.push({ atoms: chord, units });
   }
   if (slots.length === 0) return { reason: "empty group" };
-  if (slots.length === 1 && slots[0].units === 1) {
-    return { atoms: slots[0].atoms, elongation, sub: null };
-  }
-  return { atoms: [], elongation, sub: slots };
+  return slots;
 }
-__name(parseGroup, "parseGroup");
+__name(groupSlots, "groupSlots");
+function chordAtoms(pat, allowNumeric) {
+  if (pat.arguments_?.alignment !== "stack") {
+    return { reason: "nested groups are beyond the editable subset" };
+  }
+  const atoms = [];
+  for (const voice of pat.source_) {
+    if (isAtom(voice)) {
+      return { reason: "stacked sub-sequences are beyond the editable subset" };
+    }
+    const vp = voice;
+    if (vp.arguments_?.alignment !== "fastcat" || vp.source_.length !== 1) {
+      return { reason: "stacked sub-sequences are beyond the editable subset" };
+    }
+    const el = vp.source_[0];
+    const ops = el.options_?.ops ?? [];
+    if (!isAtom(el.source_) || (el.options_?.reps ?? 1) > 1 || ops.some((o) => o.type_ !== "tail")) {
+      return { reason: "stacked sub-sequences are beyond the editable subset" };
+    }
+    const token = tokenOf(el.source_, ops);
+    if (token === null) {
+      return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
+    }
+    if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
+    atoms.push(token);
+  }
+  return atoms;
+}
+__name(chordAtoms, "chordAtoms");
+function elementToSteps(el, allowNumeric) {
+  const opts = el.options_ ?? {};
+  const ops = opts.ops ?? [];
+  const reps = opts.reps ?? 1;
+  const rawWeight = opts.weight ?? 1;
+  const read5 = readOps(ops);
+  if (!("mult" in read5)) return read5;
+  const { mult, euclid } = read5;
+  if (reps > 1 && rawWeight !== reps) {
+    return { reason: "! combined with * or @ is beyond the editable subset" };
+  }
+  if (reps < 1) return { reason: "a zero replicate has nothing to show" };
+  if (rawWeight <= 0) return { reason: "a zero-width step has nothing to show" };
+  const weight = reps > 1 ? 1 : rawWeight;
+  if (!isAtom(el.source_)) {
+    const alignment = el.source_.arguments_?.alignment;
+    if (alignment === "stack") {
+      const chord = chordAtoms(el.source_, allowNumeric);
+      if (!Array.isArray(chord)) return chord;
+      if (euclid) return { reason: "euclid on a chord is beyond the editable subset" };
+      if (reps > 1) return { reason: "! on a chord is beyond the editable subset" };
+      if (mult > 1) {
+        if (weight > 1) return { reason: "* combined with @ is beyond the editable subset" };
+        return [
+          {
+            atoms: [],
+            elongation: weight,
+            sub: Array.from({ length: mult }, () => ({ atoms: [...chord], units: 1 }))
+          }
+        ];
+      }
+      return [{ atoms: chord, elongation: weight, sub: null }];
+    }
+    if (alignment !== "fastcat") {
+      return { reason: `"${String(alignment)}" is beyond the editable subset` };
+    }
+    if (euclid) return { reason: "euclid on a group is beyond the editable subset" };
+    if (reps > 1) return { reason: "! on a group is beyond the editable subset" };
+    if (mult > 1 && weight > 1) {
+      return { reason: "* combined with @ is beyond the editable subset" };
+    }
+    const slots = groupSlots(el.source_, allowNumeric);
+    if (!Array.isArray(slots)) return slots;
+    if (mult > 1) {
+      const sub = [];
+      for (let r = 0; r < mult; r++) {
+        for (const s of slots) sub.push({ atoms: [...s.atoms], units: s.units });
+      }
+      return [{ atoms: [], elongation: weight, sub }];
+    }
+    if (slots.length === 1 && slots[0].units === 1) {
+      return [{ atoms: slots[0].atoms, elongation: weight, sub: null }];
+    }
+    return [{ atoms: [], elongation: weight, sub: slots }];
+  }
+  const atom = el.source_;
+  const rest = isRestAtom(atom);
+  if (rest && ops.some((o) => o.type_ === "tail")) {
+    return { reason: 'a ":" variant on a rest has nothing to name' };
+  }
+  const token = rest ? "" : tokenOf(atom, ops);
+  if (token === null) {
+    return { reason: `a patterned ":" variant on "${atom.source_}" is beyond the editable subset` };
+  }
+  if (!rest && !isAtomToken(token, allowNumeric)) {
+    return { reason: `unsupported token "${token}"` };
+  }
+  const atoms = rest ? [] : [token];
+  if (euclid) {
+    if (mult > 1 || reps > 1 || weight > 1) {
+      return { reason: "euclid combined with * / ! / @ is beyond the editable subset" };
+    }
+    const hits = rotateEuclid(bjorklund2(euclid.k, euclid.n), euclid.rot);
+    return [{ atoms: [], elongation: 1, sub: hits.map((on) => ({ atoms: on ? [...atoms] : [], units: 1 })) }];
+  }
+  if (reps > 1) {
+    if (mult > 1) return { reason: "! combined with * or @ is beyond the editable subset" };
+    return Array.from({ length: reps }, () => ({ atoms: [...atoms], elongation: 1, sub: null }));
+  }
+  if (mult > 1) {
+    if (weight > 1) return { reason: "* combined with @ is beyond the editable subset" };
+    return [
+      {
+        atoms: [],
+        elongation: 1,
+        sub: Array.from({ length: mult }, () => ({ atoms: [...atoms], units: 1 }))
+      }
+    ];
+  }
+  return [{ atoms, elongation: weight, sub: null }];
+}
+__name(elementToSteps, "elementToSteps");
 function tokenize2(mini, allowNumeric = false) {
   const src = mini.trim();
   if (src === "") return { ok: true, steps: [] };
-  if (/[<>{}/?%.|]/.test(src) || /(^|\s)_(\s|$)/.test(src)) {
-    return { ok: false, reason: "uses mini-notation features beyond the editable subset" };
+  let ast;
+  try {
+    ast = krillParser_js.parse('"' + src + '"');
+  } catch {
+    return { ok: false, reason: "unsupported mini-notation syntax" };
+  }
+  if (!ast || ast.type_ !== "pattern" || !Array.isArray(ast.source_)) {
+    return { ok: false, reason: "unsupported mini-notation syntax" };
+  }
+  const alignment = ast.arguments_?.alignment;
+  if (alignment !== "fastcat") {
+    return {
+      ok: false,
+      reason: alignment === "stack" ? 'unsupported token ","' : `"${String(alignment)}" is beyond the editable subset`
+    };
   }
   const steps = [];
-  let i = 0;
-  while (i < src.length) {
-    const ch = src[i];
-    if (/\s/.test(ch)) {
-      i++;
-      continue;
-    }
-    if (ch === "~" || isBareRest(src, i)) {
-      steps.push({ atoms: [], elongation: 1, sub: null });
-      i++;
-      continue;
-    }
-    if (ch === "[") {
-      const close = closeBracket(src, i);
-      if (close === -1) return { ok: false, reason: "unbalanced brackets" };
-      const inner = src.slice(i + 1, close);
-      i = close + 1;
-      const mult2 = readMultiplier(src, i);
-      if (!mult2.ok) return { ok: false, reason: mult2.reason };
-      i = mult2.next;
-      const elong2 = readElongation(src, i);
-      if (!elong2.ok) return { ok: false, reason: elong2.reason };
-      i = elong2.next;
-      if (mult2.value > 1 && elong2.value > 1) {
-        return { ok: false, reason: "* combined with @ is beyond the editable subset" };
-      }
-      const group = parseGroup(inner, elong2.value, allowNumeric);
-      if ("reason" in group) return { ok: false, reason: group.reason };
-      if (mult2.value > 1) {
-        const base = group.sub ?? [{ atoms: group.atoms, units: 1 }];
-        const sub = [];
-        for (let r = 0; r < mult2.value; r++) {
-          for (const slot of base) sub.push({ atoms: [...slot.atoms], units: slot.units });
-        }
-        steps.push({ atoms: [], elongation: group.elongation, sub });
-        continue;
-      }
-      steps.push(group);
-      continue;
-    }
-    const match = src.slice(i).match(/^[^\s[\]@,*(!]+/);
-    if (!match || !isAtomToken(match[0], allowNumeric)) {
-      return { ok: false, reason: `unsupported token "${match?.[0] ?? ch}"` };
-    }
-    i += match[0].length;
-    const euclid = readEuclid(src, i);
-    if (!euclid.ok) return { ok: false, reason: euclid.reason };
-    i = euclid.next;
-    const bang = readReplicate(src, i);
-    if (!bang.ok) return { ok: false, reason: bang.reason };
-    i = bang.next;
-    const mult = readMultiplier(src, i);
-    if (!mult.ok) return { ok: false, reason: mult.reason };
-    i = mult.next;
-    const elong = readElongation(src, i);
-    if (!elong.ok) return { ok: false, reason: elong.reason };
-    i = elong.next;
-    if (euclid.spec) {
-      if (mult.value > 1 || bang.value > 1 || elong.value > 1) {
-        return { ok: false, reason: "euclid combined with * / ! / @ is beyond the editable subset" };
-      }
-      const hits = rotateEuclid(bjorklund2(euclid.spec.k, euclid.spec.n), euclid.spec.rot);
-      const slots = hits.map((on) => ({ atoms: on ? [match[0]] : [], units: 1 }));
-      steps.push({ atoms: [], elongation: 1, sub: slots });
-    } else if (bang.value > 1) {
-      if (mult.value > 1 || elong.value > 1) {
-        return { ok: false, reason: "! combined with * or @ is beyond the editable subset" };
-      }
-      for (let r = 0; r < bang.value; r++) {
-        steps.push({ atoms: [match[0]], elongation: 1, sub: null });
-      }
-    } else if (mult.value > 1) {
-      if (elong.value > 1) {
-        return { ok: false, reason: "* combined with @ is beyond the editable subset" };
-      }
-      const slots = Array.from({ length: mult.value }, () => ({
-        atoms: [match[0]],
-        units: 1
-      }));
-      steps.push({ atoms: [], elongation: 1, sub: slots });
-    } else {
-      steps.push({ atoms: [match[0]], elongation: elong.value, sub: null });
-    }
+  for (const el of ast.source_) {
+    const mapped = elementToSteps(el, allowNumeric);
+    if (!Array.isArray(mapped)) return { ok: false, reason: mapped.reason };
+    steps.push(...mapped);
   }
   return { ok: true, steps };
 }

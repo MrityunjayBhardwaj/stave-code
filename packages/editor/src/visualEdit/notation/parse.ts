@@ -1,19 +1,29 @@
 /**
- * Mini-notation (strict editable subset) → notation models.
+ * Mini-notation → notation models.
  *
- * Self-contained tokenizer rather than `@strudel/mini` or Stave's `parseMini`:
- * the full parser builds an IR that only round-trips through `toStrudel`'s
- * canonical regenerator (the very reformatting text-writeback exists to
- * avoid), and it accepts idioms the visual grids can't represent. A narrow
- * tokenizer that rejects everything outside the subset is exactly what the
- * round-trip guarantee needs.
+ * The grammar is STRUDEL'S, so we ask Strudel for it. `@strudel/mini`'s krill
+ * parser — the same parser the transpiler runs — answers "what IS this syntax",
+ * and this file maps its AST onto the view models below.
  *
- * Supported: flat sequences of atoms (`bd`, `bd:3`, `c3`), rests (`~`),
- * `[bd,hh]` simultaneous stacks, `[hh hh]` sub-sequences (expanded onto a
- * uniform finer grid), `@n` elongation (roll), a whole-string `<...>`
- * alternation with one slot per bar, and top-level `,` stacks (grid only,
- * parts preserved). Everything else → `{ ok: false }`.
+ * This file used to hand-roll that grammar. Every real-world "gap" the copy
+ * reported turned out to be DRIFT from the original rather than a missing
+ * feature: krill parses 623 of the 625 real-world units the copy rejected
+ * (99.7%; the 2 residuals are a truncated source and a floatbeat DSP
+ * expression that is not mini-notation at all). The copy is gone.
+ *
+ * THE RULE AT THIS BOUNDARY: if you need to know what a character MEANS, ask
+ * krill — and do not write its answer back down here as a regex. A transcribed
+ * rule is a second oracle: correct the day it is written, silently divergent
+ * after, and the divergence surfaces as a user-visible bug rather than an
+ * error. That is how `gm_agogo` became uneditable (an `_` in a char-class read
+ * a NAME as syntax) and how `stack (` blanked a whole timeline.
+ *
+ * What stays OURS is the VIEW. krill yields an unbounded recursive tree;
+ * `Step[]` is two levels (steps → slots), so deeper nesting is refused as a
+ * MODEL limit — an honest "a grid can't show this", not a fake parse failure.
  */
+import { parse as krillParse } from '@strudel/mini/krill-parser.js'
+import { bjorklund as strudelBjorklund } from '@strudel/core/euclid.mjs'
 import type {
   ChunkGain,
   ParseResult,
@@ -24,33 +34,25 @@ import type {
 } from './model'
 import { pitchToMidi } from './pitch'
 
-/** an atom token allowed in a grid lane (sound, optional :variant) */
-const ATOM = /^[a-zA-Z][a-zA-Z0-9#_]*(:\d+)?$/
-/** a melodic note token for the roll */
-// Note-name validity is owned by `pitchToMidi` (the row-math authority) — a
-// separate NOTE regex here drifted out of sync (it required an octave, so bare
-// `c` was rejected even though pitchToMidi maps it to C3). Single source = no
-// drift (P189). `note`/`n` row tokens are validated via pitchToMidi below.
-
 /**
- * A bare `-` is a rest, identical to `~` — grounded against real `@strudel`
- * haps: `s("bd - bd")` and `s("bd ~ bd")` produce byte-identical events (the
- * `-` slots are silent; the tie/sustain token is `_`, handled elsewhere).
- * It is a rest ONLY as a STANDALONE token: `-7` is a negative melodic value,
- * so a `-` that continues into an atom is left for the atom/note path.
+ * A bare integer (`60`, `0`, `-7`) — a numeric note value for the roll (#469).
+ * This is a VIEW question (does this lane carry pitches or sounds?), not a
+ * grammar one, so it stays here: krill is happy to call `909` an atom, but a
+ * bare number is not a sound name.
  */
-const isBareRest = (s: string, i: number): boolean =>
-  s[i] === '-' && (i + 1 >= s.length || /[\s[\]@,*(!]/.test(s[i + 1]))
-
-/** a bare integer (`60`, `0`, `-7`) — a numeric note value for the roll (#469) */
 const NUMERIC = /^-?\d+$/
 /**
- * A token allowed in a lane. Sounds/notes always pass; bare integers pass only
- * where the consumer opts in (`allowNumeric`) — the Piano Roll (`note`/`n`),
- * never the step grid (numeric `s` isn't a sound).
+ * A token this lane can SHOW. krill has already ruled on what is a valid atom,
+ * so there is no syntax check here — only the view's own question. Sounds pass
+ * everywhere; bare integers pass only where the consumer opts in
+ * (`allowNumeric`) — the Piano Roll (`note`/`n`), never the step grid.
+ * Note-name validity is owned by `pitchToMidi` (the row-math authority) — a
+ * second NOTE regex here drifted out of sync once already (it required an
+ * octave, so bare `c` was rejected even though pitchToMidi maps it to C3);
+ * single source = no drift (P189).
  */
 const isAtomToken = (t: string, allowNumeric: boolean): boolean =>
-  ATOM.test(t) || (allowNumeric && NUMERIC.test(t))
+  allowNumeric || !NUMERIC.test(t)
 
 /** ceiling on expanded columns so `[7 hits][11 hits]` can't blow up the grid */
 const MAX_STEPS = 64
@@ -59,30 +61,25 @@ const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
 const lcm = (a: number, b: number): number => (a / gcd(a, b)) * b
 
 /**
- * Bjørklund's algorithm: distribute `k` pulses over `n` steps as evenly as
- * possible, returning the on/off pattern as a boolean array of length `n`.
- * Degenerate cases: `k <= 0` → all rests, `k >= n` → all pulses. This is the
- * deterministic distribution behind euclidean rhythms — `bjorklund(3, 8)` is
- * `[1,0,0,1,0,0,1,0]` (`bd ~ ~ bd ~ ~ bd ~`).
+ * Distribute `k` pulses over `n` steps — the euclidean rhythm behind
+ * `bd(3,8)`. The distribution itself is Strudel's (`@strudel/core`'s
+ * `bjorklund`, the same function `.euclid()` runs), so the grid shows exactly
+ * the cells the audio triggers; we only adapt the shape (`0|1` → booleans) and
+ * hold the degenerate ends, which are a VIEW decision rather than a grammar
+ * one: `k >= n` fills every step (upstream would compute a negative remainder
+ * and throw), `k <= 0` empties it.
+ *
+ * This was a 56-line transcription of upstream's algorithm until #903. It
+ * agreed with the original on all 152 (k,n) pairs up to n=16 — which is the
+ * point: a copy is correct the day it is written and free to drift forever
+ * after, and nothing would have told us.
  */
-export function bjorklund(k: number, n: number): boolean[] {
-  if (k <= 0) return Array(n).fill(false)
-  if (k >= n) return Array(n).fill(true)
-  // seed: k groups of [pulse], (n-k) groups of [rest]; merge the smaller run
-  // into the larger until the remainder is at most one group.
-  let a: boolean[][] = Array.from({ length: k }, () => [true])
-  let b: boolean[][] = Array.from({ length: n - k }, () => [false])
-  while (b.length > 1) {
-    const count = Math.min(a.length, b.length)
-    const merged: boolean[][] = []
-    for (let i = 0; i < count; i++) merged.push([...a[i], ...b[i]])
-    const restA = a.slice(count)
-    const restB = b.slice(count)
-    a = merged
-    b = restA.length ? restA : restB
-  }
-  return [...a, ...b].flat()
-}
+export const bjorklund = (k: number, n: number): boolean[] =>
+  k <= 0
+    ? (Array(n).fill(false) as boolean[])
+    : k >= n
+      ? (Array(n).fill(true) as boolean[])
+      : strudelBjorklund(k, n).map((x) => x === 1)
 
 /**
  * Rotate a euclid pattern to match Strudel's `euclidRot`, so an unedited
@@ -120,16 +117,6 @@ const stepUnits = (s: Step): number =>
 /** finest subdivision so every sub-sequence slot lands on a whole column */
 const division = (steps: Step[]): number => steps.reduce((d, s) => lcm(d, stepUnits(s)), 1)
 
-/** index of the `]` closing the `[` at `open`, or -1 if unbalanced */
-function closeBracket(src: string, open: number): number {
-  let depth = 0
-  for (let i = open; i < src.length; i++) {
-    if (src[i] === '[') depth++
-    else if (src[i] === ']' && --depth === 0) return i
-  }
-  return -1
-}
-
 /** split on commas that sit outside every bracket and euclid `(k,n)` paren */
 function splitTopLevel(src: string): string[] {
   const out: string[] = []
@@ -154,257 +141,364 @@ function unwrapAlternation(mini: string): string | null {
   return t.length >= 2 && t.startsWith('<') && t.endsWith('>') ? t.slice(1, -1) : null
 }
 
+/* ── the krill adapter ─────────────────────────────────────────── */
+
+/**
+ * The krill AST nodes this file consumes — dumped from `@strudel/mini@1.2.6`,
+ * not read off the grammar. The accessors are easy to get wrong: `bd:3` is NOT
+ * an atom named `"bd:3"`, it is atom `bd` carrying a `tail` op.
+ *
+ * The tree is uniformly recursive — `pattern > element > (atom | pattern)` —
+ * and `weight`/`reps`/`ops` are fields on EVERY element. That uniformity is
+ * why this adapter is short and the parser it replaced was not: the copy made
+ * position-specific (one reader per place a token could appear) what Strudel
+ * makes uniform, which is why all of its gaps read "works on an atom, fails on
+ * a group".
+ */
+interface KAtom {
+  type_: 'atom'
+  source_: string
+}
+interface KPattern {
+  type_: 'pattern'
+  arguments_?: { alignment?: string }
+  source_: KElement[]
+}
+interface KOp {
+  type_: string
+  arguments_?: Record<string, unknown>
+}
+interface KElement {
+  type_: 'element'
+  source_: KAtom | KPattern
+  options_?: { weight?: number; reps?: number; ops?: KOp[] }
+}
+
 type Tokenized = { ok: true; steps: Step[] } | { ok: false; reason: string }
 
-/** read an optional `@n` weight at `i`; value defaults to 1 */
-function readElongation(
-  src: string,
-  i: number,
-): { ok: true; value: number; next: number } | { ok: false; reason: string } {
-  if (src[i] !== '@') return { ok: true, value: 1, next: i }
-  const digits = src.slice(i + 1).match(/^\d+/)
-  if (!digits) return { ok: false, reason: 'invalid @ elongation' }
-  return { ok: true, value: parseInt(digits[0], 10), next: i + 1 + digits[0].length }
-}
+/** a refusal — always the VIEW's ("a grid can't show this"), never the grammar's */
+type Refused = { reason: string }
+
+const isAtom = (n: KAtom | KPattern): n is KAtom => n.type_ === 'atom'
 
 /**
- * Read an optional `*n` multiplier at `i`; value defaults to 1. `atom*n` is
- * pure input sugar for `n` repeats of the atom packed into one step — it lowers
- * onto the existing sub-sequence machinery (see the atom branch in `tokenize`)
- * and serializes back as the expanded sequence, so there is no `*` on output.
+ * `~` and `-` are both silence — literally one branch upstream:
+ * `if (ast.source_ === '~' || ast.source_ === '-') return silence` (mini.mjs:157).
+ * Both are atoms occupying a slot. (`_` is NOT silence — it is sustain, and
+ * krill has already folded it into the previous element's weight by now.)
  */
-function readMultiplier(
-  src: string,
-  i: number,
-): { ok: true; value: number; next: number } | { ok: false; reason: string } {
-  if (src[i] !== '*') return { ok: true, value: 1, next: i }
-  const digits = src.slice(i + 1).match(/^\d+/)
-  if (!digits) return { ok: false, reason: 'invalid * multiplier' }
-  const value = parseInt(digits[0], 10)
-  if (value < 1) return { ok: false, reason: 'invalid * multiplier' }
-  return { ok: true, value, next: i + 1 + digits[0].length }
-}
+const isRestAtom = (a: KAtom): boolean => a.source_ === '~' || a.source_ === '-'
 
 /**
- * Read an optional `!n` replicate at `i`; value defaults to 1. `atom!n` is pure
- * input sugar for `n` SEPARATE copies of the atom as their own steps (unlike
- * `*n`, which subdivides a single step) — it expands in the atom branch of
- * `tokenize` and serializes back as the expanded sequence, so there is no `!`
- * on output.
+ * The token a lane displays. krill splits `bd:3` into an atom plus a `tail` op
+ * (upstream turns that pair into superdough's `s` + `n`); the views show — and
+ * round-trip — the written form, so re-join it.
+ *
+ * A tail is not always an atom: `rd:<1 3 2>` selects the sample by an
+ * ALTERNATION, and `sd:[1|0]` by a random choice. Those are patterns, and this
+ * flat token cannot hold one — so the answer is `null` (the caller refuses the
+ * unit) and never a truncated `"rd"`. Dropping the tail would render a cell
+ * that looks editable and then write `rd` back over the user's `rd:<1 3 2>`:
+ * silent data loss, which is strictly worse than declining to show it.
  */
-function readReplicate(
-  src: string,
-  i: number,
-): { ok: true; value: number; next: number } | { ok: false; reason: string } {
-  if (src[i] !== '!') return { ok: true, value: 1, next: i }
-  const digits = src.slice(i + 1).match(/^\d+/)
-  if (!digits) return { ok: false, reason: 'invalid ! replicate' }
-  const value = parseInt(digits[0], 10)
-  if (value < 1) return { ok: false, reason: 'invalid ! replicate' }
-  return { ok: true, value, next: i + 1 + digits[0].length }
-}
-
-/**
- * Read an optional euclid spec `(k,n)` or `(k,n,rot)` at `i`; absent → null.
- * Like `*n`, `atom(k,n)` is pure input sugar: it lowers onto the existing
- * sub-sequence machinery (see the atom branch in `tokenize`) — one step whose
- * `n` single-unit slots carry the atom at the `k` Bjørklund pulse positions —
- * and serializes back as the expanded sequence, so there is no `(` on output.
- */
-function readEuclid(
-  src: string,
-  i: number,
-):
-  | { ok: true; spec: { k: number; n: number; rot: number } | null; next: number }
-  | { ok: false; reason: string } {
-  if (src[i] !== '(') return { ok: true, spec: null, next: i }
-  const close = src.indexOf(')', i)
-  if (close === -1) return { ok: false, reason: 'unbalanced euclid parens' }
-  const inner = src.slice(i + 1, close)
-  const m = inner.match(/^\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*(\d+)\s*)?$/)
-  if (!m) return { ok: false, reason: 'invalid euclid (k,n) arguments' }
-  const k = parseInt(m[1], 10)
-  const n = parseInt(m[2], 10)
-  if (n < 1) return { ok: false, reason: 'invalid euclid step count' }
-  const rot = m[3] !== undefined ? parseInt(m[3], 10) : 0
-  return { ok: true, spec: { k, n, rot }, next: close + 1 }
-}
-
-/** parse the contents of one `[...]`: a `[a,b]` chord, or a sub-sequence */
-function parseGroup(
-  inner: string,
-  elongation: number,
-  allowNumeric = false,
-): Step | { reason: string } {
-  const commaParts = splitTopLevel(inner)
-  if (commaParts.length > 1) {
-    // `[bd,hh]` — atoms that sound together; no nesting inside
-    const atoms: string[] = []
-    for (const raw of commaParts) {
-      const token = raw.trim()
-      if (/[\s[\]]/.test(token) || !isAtomToken(token, allowNumeric)) {
-        return { reason: 'stacked sub-sequences are beyond the editable subset' }
-      }
-      atoms.push(token)
-    }
-    return { atoms, elongation, sub: null }
+const tokenOf = (atom: KAtom, ops: KOp[]): string | null => {
+  let t = atom.source_
+  for (const op of ops) {
+    if (op.type_ !== 'tail') continue
+    // the tail's `element` IS the node — an atom for `bd:3`, a pattern for `rd:<1 3 2>`
+    const node = op.arguments_?.element as KAtom | KPattern | undefined
+    if (!node || node.type_ !== 'atom' || typeof node.source_ !== 'string') return null
+    t += ':' + node.source_
   }
+  return t
+}
 
+/**
+ * A number krill parsed as a node. `*2`'s amount arrives as a bare atom;
+ * `(3,8)`'s pulse/step arrive wrapped in an element. Observed, not assumed.
+ */
+const numArg = (node: unknown): number | null => {
+  const n = node as { type_?: string; source_?: unknown } | undefined
+  if (!n || typeof n !== 'object') return null
+  const inner = (n.type_ === 'element' ? n.source_ : n) as KAtom | undefined
+  if (!inner || inner.type_ !== 'atom') return null
+  const v = Number(inner.source_)
+  return Number.isFinite(v) ? v : null
+}
+
+interface Euclid {
+  k: number
+  n: number
+  rot: number
+}
+
+/**
+ * Fold an element's ops into the two the views can render. `tail` is already in
+ * the token and `replicate` is already in `reps`, so both are no-ops here.
+ * Everything else — `?` degrade, `bd/2` slow — is a real Strudel feature this
+ * view has no way to draw, and says so.
+ */
+function readOps(ops: KOp[]): { mult: number; euclid: Euclid | null } | Refused {
+  let mult = 1
+  let euclid: Euclid | null = null
+  for (const op of ops) {
+    switch (op.type_) {
+      case 'tail':
+      case 'replicate':
+        break
+      case 'stretch': {
+        const type = op.arguments_?.type
+        if (type !== 'fast') {
+          return { reason: `"${String(type)}" stretch is beyond the editable subset` }
+        }
+        const amount = numArg(op.arguments_?.amount)
+        if (amount === null || !Number.isInteger(amount) || amount < 1) {
+          return { reason: 'invalid * multiplier' }
+        }
+        mult *= amount
+        break
+      }
+      case 'bjorklund': {
+        const k = numArg(op.arguments_?.pulse)
+        const n = numArg(op.arguments_?.step)
+        // absent rotation arrives as an explicit `null`, not `undefined`
+        const rot = op.arguments_?.rotation == null ? 0 : numArg(op.arguments_.rotation)
+        if (k === null || n === null || rot === null) {
+          return { reason: 'invalid euclid (k,n) arguments' }
+        }
+        if (n < 1) return { reason: 'invalid euclid step count' }
+        euclid = { k, n, rot }
+        break
+      }
+      case 'degradeBy':
+        return { reason: '"?" random degrade is beyond the editable subset' }
+      default:
+        return { reason: `"${op.type_}" is beyond the editable subset` }
+    }
+  }
+  return { mult, euclid }
+}
+
+/** the slots of a `[...]` group — one nesting level, a `[a,b]` chord per slot */
+function groupSlots(pat: KPattern, allowNumeric: boolean): Slot[] | Refused {
   const slots: Slot[] = []
-  let i = 0
-  while (i < inner.length) {
-    const ch = inner[i]
-    if (/\s/.test(ch)) {
-      i++
-      continue
+  for (const el of pat.source_) {
+    const opts = el.options_ ?? {}
+    const ops = opts.ops ?? []
+    const units = opts.weight ?? 1
+    if ((opts.reps ?? 1) > 1) {
+      return { reason: '! inside a group is beyond the editable subset' }
     }
-    if (ch === '~' || isBareRest(inner, i)) {
-      slots.push({ atoms: [], units: 1 })
-      i++
-      continue
+    // A slot renders as a flat token (or a chord); it has nowhere to put an
+    // operator. Refuse rather than drop one — `[[0,1]*<1!3 2> [2,3]]` would
+    // otherwise show as a plain `[0,1]` chord and write the `*<1!3 2>` away.
+    // `tail` is the exception: it belongs to the atom and `tokenOf` folds it in.
+    if (ops.some((o) => o.type_ !== 'tail')) {
+      return { reason: 'operators inside a group are beyond the editable subset' }
     }
-    if (ch === '[') {
-      // one nesting level: a `[a,b]` chord used as a single slot
-      const close = closeBracket(inner, i)
-      if (close === -1) return { reason: 'unbalanced brackets' }
-      const chord = inner.slice(i + 1, close)
-      if (/[[\]]/.test(chord) || !chord.includes(',')) {
-        return { reason: 'nested groups are beyond the editable subset' }
+    if (isAtom(el.source_)) {
+      if (isRestAtom(el.source_)) {
+        // a `:` variant on silence (`~:3`) has no cell to name — refuse rather
+        // than drop it, same rule as a patterned tail
+        if (ops.length) return { reason: 'a ":" variant on a rest has nothing to name' }
+        slots.push({ atoms: [], units })
+        continue
       }
-      i = close + 1
-      const elong = readElongation(inner, i)
-      if (!elong.ok) return { reason: elong.reason }
-      i = elong.next
-      const atoms: string[] = []
-      for (const raw of chord.split(',')) {
-        const token = raw.trim()
-        if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` }
-        atoms.push(token)
+      const token = tokenOf(el.source_, ops)
+      if (token === null) {
+        return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` }
       }
-      slots.push({ atoms, units: elong.value })
+      if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` }
+      slots.push({ atoms: [token], units })
       continue
     }
-    const match = inner.slice(i).match(/^[^\s[\]@,*(!]+/)
-    if (!match || !isAtomToken(match[0], allowNumeric)) {
-      return { reason: `unsupported token "${match?.[0] ?? ch}"` }
-    }
-    i += match[0].length
-    const elong = readElongation(inner, i)
-    if (!elong.ok) return { reason: elong.reason }
-    i = elong.next
-    slots.push({ atoms: [match[0]], units: elong.value })
+    // a nested pattern is showable only as a `[a,b]` chord in one slot
+    const chord = chordAtoms(el.source_, allowNumeric)
+    if (!Array.isArray(chord)) return chord
+    slots.push({ atoms: chord, units })
   }
   if (slots.length === 0) return { reason: 'empty group' }
-  if (slots.length === 1 && slots[0].units === 1) {
-    // `[bd]` collapses to a bare atom
-    return { atoms: slots[0].atoms, elongation, sub: null }
-  }
-  return { atoms: [], elongation, sub: slots }
+  return slots
 }
 
-/** tokenize a flat sequence (one cycle / one stack part / one alternation slot) */
+/** the atoms of a `[a,b]` chord — parallel single-atom voices, no nesting */
+function chordAtoms(pat: KPattern, allowNumeric: boolean): string[] | Refused {
+  if (pat.arguments_?.alignment !== 'stack') {
+    return { reason: 'nested groups are beyond the editable subset' }
+  }
+  const atoms: string[] = []
+  for (const voice of pat.source_) {
+    // krill wraps each `,`-separated voice in its own fastcat pattern
+    if (isAtom(voice as unknown as KAtom | KPattern)) {
+      return { reason: 'stacked sub-sequences are beyond the editable subset' }
+    }
+    const vp = voice as unknown as KPattern
+    if (vp.arguments_?.alignment !== 'fastcat' || vp.source_.length !== 1) {
+      return { reason: 'stacked sub-sequences are beyond the editable subset' }
+    }
+    const el = vp.source_[0]
+    const ops = el.options_?.ops ?? []
+    if (!isAtom(el.source_) || (el.options_?.reps ?? 1) > 1 || ops.some((o) => o.type_ !== 'tail')) {
+      return { reason: 'stacked sub-sequences are beyond the editable subset' }
+    }
+    const token = tokenOf(el.source_, ops)
+    if (token === null) {
+      return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` }
+    }
+    if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` }
+    atoms.push(token)
+  }
+  return atoms
+}
+
+/**
+ * One krill element → the step(s) it occupies. `!n` yields n SEPARATE steps
+ * (unlike `*n`, which subdivides one), so this returns a list.
+ */
+function elementToSteps(el: KElement, allowNumeric: boolean): Step[] | Refused {
+  const opts = el.options_ ?? {}
+  const ops = opts.ops ?? []
+  const reps = opts.reps ?? 1
+  const rawWeight = opts.weight ?? 1
+  const read = readOps(ops)
+  if (!('mult' in read)) return read
+  const { mult, euclid } = read
+
+  // Upstream sets `weight = reps` for a replicate, so a replicated element's
+  // weight carries no `@`. When the two disagree, an `@` was written next to a
+  // `!` (`bd!3@2` → weight 4, reps 3) — a combination no view models.
+  if (reps > 1 && rawWeight !== reps) {
+    return { reason: '! combined with * or @ is beyond the editable subset' }
+  }
+  // Degenerate spans: `bd!0` queries to ZERO haps and `bd@0` to a zero-width
+  // step (observed). Both are legal mini and both are silence — there is simply
+  // no cell to draw, so the view declines rather than inventing one.
+  if (reps < 1) return { reason: 'a zero replicate has nothing to show' }
+  if (rawWeight <= 0) return { reason: 'a zero-width step has nothing to show' }
+  const weight = reps > 1 ? 1 : rawWeight
+
+  if (!isAtom(el.source_)) {
+    const alignment = el.source_.arguments_?.alignment
+    if (alignment === 'stack') {
+      const chord = chordAtoms(el.source_, allowNumeric)
+      if (!Array.isArray(chord)) return chord
+      if (euclid) return { reason: 'euclid on a chord is beyond the editable subset' }
+      if (reps > 1) return { reason: '! on a chord is beyond the editable subset' }
+      if (mult > 1) {
+        if (weight > 1) return { reason: '* combined with @ is beyond the editable subset' }
+        // `[a,b]*n` ≡ the chord struck n times inside the one step
+        return [
+          {
+            atoms: [],
+            elongation: weight,
+            sub: Array.from({ length: mult }, () => ({ atoms: [...chord], units: 1 })),
+          },
+        ]
+      }
+      return [{ atoms: chord, elongation: weight, sub: null }]
+    }
+    if (alignment !== 'fastcat') {
+      return { reason: `"${String(alignment)}" is beyond the editable subset` }
+    }
+    // ── the view's own limits on a `[...]` group ──
+    if (euclid) return { reason: 'euclid on a group is beyond the editable subset' }
+    if (reps > 1) return { reason: '! on a group is beyond the editable subset' }
+    if (mult > 1 && weight > 1) {
+      return { reason: '* combined with @ is beyond the editable subset' }
+    }
+    const slots = groupSlots(el.source_, allowNumeric)
+    if (!Array.isArray(slots)) return slots
+    if (mult > 1) {
+      // `[…]*n` ≡ the group's slots played n times within the step (n× faster)
+      const sub: Slot[] = []
+      for (let r = 0; r < mult; r++) {
+        for (const s of slots) sub.push({ atoms: [...s.atoms], units: s.units })
+      }
+      return [{ atoms: [], elongation: weight, sub }]
+    }
+    if (slots.length === 1 && slots[0].units === 1) {
+      // `[bd]` collapses to a bare atom
+      return [{ atoms: slots[0].atoms, elongation: weight, sub: null }]
+    }
+    return [{ atoms: [], elongation: weight, sub: slots }]
+  }
+
+  const atom = el.source_
+  const rest = isRestAtom(atom)
+  if (rest && ops.some((o) => o.type_ === 'tail')) {
+    return { reason: 'a ":" variant on a rest has nothing to name' }
+  }
+  const token = rest ? '' : tokenOf(atom, ops)
+  if (token === null) {
+    return { reason: `a patterned ":" variant on "${atom.source_}" is beyond the editable subset` }
+  }
+  if (!rest && !isAtomToken(token, allowNumeric)) {
+    return { reason: `unsupported token "${token}"` }
+  }
+  const atoms = rest ? [] : [token]
+
+  if (euclid) {
+    if (mult > 1 || reps > 1 || weight > 1) {
+      return { reason: 'euclid combined with * / ! / @ is beyond the editable subset' }
+    }
+    // `atom(k,n[,rot])` ≡ a sub-sequence of n single-unit slots: the atom at the
+    // Bjørklund pulse positions (rotated by `rot`), rests everywhere else.
+    const hits = rotateEuclid(bjorklund(euclid.k, euclid.n), euclid.rot)
+    return [{ atoms: [], elongation: 1, sub: hits.map((on) => ({ atoms: on ? [...atoms] : [], units: 1 })) }]
+  }
+  if (reps > 1) {
+    if (mult > 1) return { reason: '! combined with * or @ is beyond the editable subset' }
+    // `atom!n` ≡ n SEPARATE plain steps of the atom (vs `*n`, one sub-step)
+    return Array.from({ length: reps }, () => ({ atoms: [...atoms], elongation: 1, sub: null }))
+  }
+  if (mult > 1) {
+    if (weight > 1) return { reason: '* combined with @ is beyond the editable subset' }
+    // `atom*n` ≡ a sub-sequence of n single-unit slots of the atom
+    return [
+      {
+        atoms: [],
+        elongation: 1,
+        sub: Array.from({ length: mult }, () => ({ atoms: [...atoms], units: 1 })),
+      },
+    ]
+  }
+  return [{ atoms, elongation: weight, sub: null }]
+}
+
+/**
+ * Tokenize a flat sequence (one cycle / one stack part / one alternation slot).
+ * The grammar is krill's; every refusal below is the VIEW's own.
+ */
 function tokenize(mini: string, allowNumeric = false): Tokenized {
   const src = mini.trim()
   if (src === '') return { ok: true, steps: [] }
-  // `(` / `)` (euclid) and `!` (replicate) are NOT rejected here — both are
-  // handled in the atom branch below; a stray one still rejects via the
-  // atom-match exclusion.
-  if (/[<>{}/?%.|]/.test(src) || /(^|\s)_(\s|$)/.test(src)) {
-    return { ok: false, reason: 'uses mini-notation features beyond the editable subset' }
+  let ast: KPattern
+  try {
+    // krill wants the mini string QUOTED — the transpiler's own call shape.
+    ast = krillParse('"' + src + '"') as KPattern
+  } catch {
+    return { ok: false, reason: 'unsupported mini-notation syntax' }
+  }
+  if (!ast || ast.type_ !== 'pattern' || !Array.isArray(ast.source_)) {
+    return { ok: false, reason: 'unsupported mini-notation syntax' }
+  }
+  const alignment = ast.arguments_?.alignment
+  if (alignment !== 'fastcat') {
+    // Callers split a top-level `,` before this; reaching one means it sits
+    // where the view cannot place it.
+    return {
+      ok: false,
+      reason:
+        alignment === 'stack'
+          ? 'unsupported token ","'
+          : `"${String(alignment)}" is beyond the editable subset`,
+    }
   }
   const steps: Step[] = []
-  let i = 0
-  while (i < src.length) {
-    const ch = src[i]
-    if (/\s/.test(ch)) {
-      i++
-      continue
-    }
-    if (ch === '~' || isBareRest(src, i)) {
-      steps.push({ atoms: [], elongation: 1, sub: null })
-      i++
-      continue
-    }
-    if (ch === '[') {
-      const close = closeBracket(src, i)
-      if (close === -1) return { ok: false, reason: 'unbalanced brackets' }
-      const inner = src.slice(i + 1, close)
-      i = close + 1
-      // A group can carry a `*n` multiplier (`[sd hh]*2`) the same way an atom
-      // can — read it before the elongation (Strudel writes `[…]*2`). euclid /
-      // `!` on a group stay out of the editable subset for now (#467 follow-up).
-      const mult = readMultiplier(src, i)
-      if (!mult.ok) return { ok: false, reason: mult.reason }
-      i = mult.next
-      const elong = readElongation(src, i)
-      if (!elong.ok) return { ok: false, reason: elong.reason }
-      i = elong.next
-      if (mult.value > 1 && elong.value > 1) {
-        return { ok: false, reason: '* combined with @ is beyond the editable subset' }
-      }
-      const group = parseGroup(inner, elong.value, allowNumeric)
-      if ('reason' in group) return { ok: false, reason: group.reason }
-      if (mult.value > 1) {
-        // `[…]*n` ≡ the group's slots played n times within the step (n× faster).
-        // A collapsed group (bare atom / chord, no sub) seeds a single slot.
-        const base: Slot[] = group.sub ?? [{ atoms: group.atoms, units: 1 }]
-        const sub: Slot[] = []
-        for (let r = 0; r < mult.value; r++) {
-          for (const slot of base) sub.push({ atoms: [...slot.atoms], units: slot.units })
-        }
-        steps.push({ atoms: [], elongation: group.elongation, sub })
-        continue
-      }
-      steps.push(group)
-      continue
-    }
-    const match = src.slice(i).match(/^[^\s[\]@,*(!]+/)
-    if (!match || !isAtomToken(match[0], allowNumeric)) {
-      return { ok: false, reason: `unsupported token "${match?.[0] ?? ch}"` }
-    }
-    i += match[0].length
-    const euclid = readEuclid(src, i)
-    if (!euclid.ok) return { ok: false, reason: euclid.reason }
-    i = euclid.next
-    const bang = readReplicate(src, i)
-    if (!bang.ok) return { ok: false, reason: bang.reason }
-    i = bang.next
-    const mult = readMultiplier(src, i)
-    if (!mult.ok) return { ok: false, reason: mult.reason }
-    i = mult.next
-    const elong = readElongation(src, i)
-    if (!elong.ok) return { ok: false, reason: elong.reason }
-    i = elong.next
-    if (euclid.spec) {
-      if (mult.value > 1 || bang.value > 1 || elong.value > 1) {
-        return { ok: false, reason: 'euclid combined with * / ! / @ is beyond the editable subset' }
-      }
-      // `atom(k,n[,rot])` ≡ a sub-sequence of n single-unit slots: the atom at
-      // the Bjørklund pulse positions (rotated by `rot`), rests everywhere else.
-      const hits = rotateEuclid(bjorklund(euclid.spec.k, euclid.spec.n), euclid.spec.rot)
-      const slots: Slot[] = hits.map((on) => ({ atoms: on ? [match[0]] : [], units: 1 }))
-      steps.push({ atoms: [], elongation: 1, sub: slots })
-    } else if (bang.value > 1) {
-      if (mult.value > 1 || elong.value > 1) {
-        return { ok: false, reason: '! combined with * or @ is beyond the editable subset' }
-      }
-      // `atom!n` ≡ n SEPARATE plain steps of the atom (vs `*n`, one sub-step)
-      for (let r = 0; r < bang.value; r++) {
-        steps.push({ atoms: [match[0]], elongation: 1, sub: null })
-      }
-    } else if (mult.value > 1) {
-      if (elong.value > 1) {
-        return { ok: false, reason: '* combined with @ is beyond the editable subset' }
-      }
-      // `atom*n` ≡ a sub-sequence of n single-unit slots of the atom
-      const slots: Slot[] = Array.from({ length: mult.value }, () => ({
-        atoms: [match[0]],
-        units: 1,
-      }))
-      steps.push({ atoms: [], elongation: 1, sub: slots })
-    } else {
-      steps.push({ atoms: [match[0]], elongation: elong.value, sub: null })
-    }
+  for (const el of ast.source_) {
+    const mapped = elementToSteps(el, allowNumeric)
+    if (!Array.isArray(mapped)) return { ok: false, reason: mapped.reason }
+    steps.push(...mapped)
   }
   return { ok: true, steps }
 }

@@ -214,8 +214,25 @@ describe('step grid — parse', () => {
     expect(parseStepGrid('bd!3*2').ok).toBe(false) // ! with *
     expect(parseStepGrid('bd!3@2').ok).toBe(false) // ! with @
     expect(parseStepGrid('[bd hh]!2').ok).toBe(false) // group replicate
-    expect(parseStepGrid('bd!0').ok).toBe(false) // zero replicate
-    expect(parseStepGrid('bd!').ok).toBe(false) // missing count
+    expect(parseStepGrid('bd!0').ok).toBe(false) // zero replicate — 0 haps, nothing to draw
+  })
+
+  /**
+   * A bare `!` is `!2`, not a syntax error. The hand-rolled tokenizer required
+   * digits after `!` and refused this, and that refusal was asserted here as if
+   * it were the subset's edge — it was drift. OBSERVED through real Strudel:
+   * `mini('bd!')`, `mini('bd bd')` and `mini('bd!2')` each query to the SAME two
+   * haps (`bd`@0-0.5, `bd`@0.5-1). Refusing to show a pattern Strudel plays is
+   * the bug this file's krill adapter exists to end (#903).
+   */
+  it('reads a bare `!` as `!2` — the form Strudel actually plays', () => {
+    const bare = parseStepGrid('bd!')
+    const explicit = parseStepGrid('bd!2')
+    const spelled = parseStepGrid('bd bd')
+    expect(bare.ok).toBe(true)
+    if (!bare.ok || !explicit.ok || !spelled.ok) return
+    expect(bare.model).toEqual(explicit.model)
+    expect(bare.model).toEqual(spelled.model)
   })
 
   it('rejects `atom!n` that expands past the step ceiling', () => {
@@ -387,6 +404,52 @@ describe('piano roll — parse', () => {
     expect(r.model.notes).toEqual([
       { pitch: 'c3', start: 0, duration: 2 },
       { pitch: 'e3', start: 2, duration: 1 },
+    ])
+  })
+
+  /**
+   * `rd:<1 3 2>` picks the sample by an ALTERNATION; `sd:[1|0]` by a random
+   * choice. Both are real bakery shapes. The flat lane token cannot hold a
+   * pattern, so the unit is REFUSED — never shown as a truncated `rd`, which
+   * would look editable and then write `rd` back over the user's `rd:<1 3 2>`.
+   * A refusal is recoverable; silent data loss is not.
+   */
+  it('refuses a patterned `:` variant rather than truncating the token', () => {
+    expect(parseStepGrid('rd:<1 3 2>').ok).toBe(false)
+    expect(parseStepGrid('sd hh:[1|0]').ok).toBe(false)
+    expect(parseStepGrid('pulse:[0.3 0.5]').ok).toBe(false)
+    // same class one level in: a slot has nowhere to put `*<1!3 2>` either, and
+    // dropping it would show a bare `[0,1]` chord and write the operator away
+    expect(parsePianoRoll('[[0, 1]*<1!3 2> [2, 3]]*2').ok).toBe(false)
+    // and on silence: `~:3` parses (rest atom + tail), and a rest cell has no
+    // name to carry the variant — refuse instead of dropping it
+    expect(parseStepGrid('bd ~:3').ok).toBe(false)
+    expect(parseStepGrid('[bd ~:3] sd').ok).toBe(false)
+    // the plain `:variant` it must NOT over-refuse
+    const ok = parseStepGrid('bd:3 sn')
+    expect(ok.ok).toBe(true)
+    if (!ok.ok) return
+    expect(ok.model.lanes.map((l) => l.sound)).toContain('bd:3')
+  })
+
+  /**
+   * `[c4,e4,g4,c5]*2` — a chord struck twice inside its step. Real-world shape
+   * (bakery `4C5TNvel0-qB`), and the ONE regression the krill swap introduced:
+   * the adapter first refused every operator on a chord, which silently took an
+   * editable roll away. Caught by diffing per-tune editability over the pinned
+   * corpus — the swept aggregate NETTED it away (+33 gained, −1 lost = "+32",
+   * which reads as a clean win). Pinned here so it costs a unit test, not a
+   * corpus run, to catch again.
+   */
+  it('strikes a `[chord]*n` n times inside its step', () => {
+    const r = parsePianoRoll('[c3,e3]*2')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.notes).toEqual([
+      { pitch: 'c3', start: 0, duration: 1 },
+      { pitch: 'e3', start: 0, duration: 1 },
+      { pitch: 'c3', start: 1, duration: 1 },
+      { pitch: 'e3', start: 1, duration: 1 },
     ])
   })
 

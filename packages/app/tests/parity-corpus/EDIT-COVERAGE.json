@@ -1,29 +1,32 @@
 {
-  "tunes": 55,
+  "tunes": 57,
   "tuneLevel": {
-    "fully": 19,
+    "fully": 20,
     "partial": 9,
-    "anyEditable": 28,
+    "anyEditable": 29,
     "knobsOnly": 20,
-    "codeOnly": 6,
+    "codeOnly": 7,
     "unparseable": 1,
     "anyEditablePct": 50.9
   },
   "unitLevel": {
-    "totalUnits": 98,
-    "note": 48,
+    "totalUnits": 102,
+    "note": 50,
     "clip": 0,
-    "structurallyEditable": 48,
-    "noteBroken": 6,
+    "structurallyEditable": 50,
+    "noteBroken": 8,
     "knobs": 31,
     "codeOnly": 13,
     "setup": 36,
     "structurallyEditablePct": 49
   },
   "brokenReasons": {
-    "step: uses mini-notation features beyond the editable subset": 4,
-    "roll: unsupported token \"(\"": 1,
-    "roll: multi-bar parallel note lanes are beyond the editable subset": 1
+    "step: \"polymeter_slowcat\" is beyond the editable subset": 3,
+    "step: a patterned \":\" variant on \"rd\" is beyond the editable subset": 1,
+    "step: a patterned \":\" variant on \"sd\" is beyond the editable subset": 1,
+    "roll: euclid on a group is beyond the editable subset": 1,
+    "roll: multi-bar parallel note lanes are beyond the editable subset": 1,
+    "step: nested groups are beyond the editable subset": 1
   },
   "codeOnlyHeads": {
     "chord": 3,
@@ -418,6 +421,30 @@
       "codeOnly": 0,
       "structurallyEditable": 2,
       "tuneClass": "fully"
+    },
+    {
+      "file": "bakery-903-chord-multiplier.strudel",
+      "units": 2,
+      "setup": 0,
+      "noteEditable": 2,
+      "clip": 0,
+      "noteBroken": 0,
+      "knobs": 0,
+      "codeOnly": 0,
+      "structurallyEditable": 2,
+      "tuneClass": "fully"
+    },
+    {
+      "file": "bakery-903-patterned-variant.strudel",
+      "units": 2,
+      "setup": 0,
+      "noteEditable": 0,
+      "clip": 0,
+      "noteBroken": 2,
+      "knobs": 0,
+      "codeOnly": 0,
+      "structurallyEditable": 0,
+      "tuneClass": "code-only"
     },
     {
       "file": "bakery-G1-let-binding.strudel",
