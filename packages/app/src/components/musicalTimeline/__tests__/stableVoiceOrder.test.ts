@@ -33,6 +33,8 @@ const note = (cycle: number, voice: string): SceneNote => ({
   pitch: null,
   gain: 1,
   voice,
+  // Voice ORDER is what's under test; a note's source link is irrelevant here.
+  sourceOffset: null,
 })
 
 // The #480 repro: `arrange([2, s('bd*4')], [2, s('hh*8')], …)`. bd's first mark

@@ -131,3 +131,142 @@ describe('collectNoteMarks — eval-backed marks (#861)', () => {
     expect(marks.labelOffsetByLane.get('d2')).toBe(30)
   })
 })
+
+/**
+ * `sourceOffset` — the note's link back to its own source token (#874 phase 1).
+ *
+ * A `SceneNote` is a PROJECTION of an `IREvent`. In the retired DOM live view a
+ * drawn note WAS its event, so `evt.loc[0].start` was always in hand and
+ * click-to-source came free from identity; the canvas projection kept geometry
+ * and dropped the link, which is how the gesture vanished with no commit that
+ * removed it. These tests hold the link that restores it.
+ *
+ * Phase 1 is DATA ONLY — nothing renders or clicks differently yet. What is
+ * asserted here is exactly what phase 2's hit-test will read.
+ */
+describe('collectNoteMarks — sourceOffset (#874)', () => {
+  it('carries each IR mark’s own source offset (pre-eval fallback)', () => {
+    // No eval events → IR path. d1's event is located at char 10, d2's at 40.
+    const marks = collectNoteMarks(null, { fake: true } as never, 4)
+
+    expect(marks.marksByLane.get('d1')![0].sourceOffset).toBe(10)
+    expect(marks.marksByLane.get('d2')![0].sourceOffset).toBe(40)
+  })
+
+  it('carries each eval hap’s own source offset', () => {
+    const haps = [
+      { begin: 0, end: 0.5, trackId: '$0', note: 'C3', gain: 1, loc: [{ start: 12, end: 14 }] },
+      { begin: 0.5, end: 1, trackId: '$1', note: 'E3', gain: 1, loc: [{ start: 42, end: 44 }] },
+    ] as unknown as Parameters<typeof collectNoteMarks>[0]
+
+    const marks = collectNoteMarks(haps, { fake: true } as never, 4)
+
+    expect(marks.marksByLane.get('d1')![0].sourceOffset).toBe(12)
+    expect(marks.marksByLane.get('d2')![0].sourceOffset).toBe(42)
+  })
+
+  it('gives each note its OWN offset, not its lane’s shared anchor', () => {
+    // The discriminating case, and the reason the feature exists: two haps on
+    // ONE lane, at DIFFERENT source tokens. A per-LANE offset (which already
+    // exists as `sourceByLane`, anchored at char 10 for d1) would collapse both
+    // notes to one destination — clicking either note would jump to the same
+    // place, which is the lane-level behaviour we already have. Per-NOTE offsets
+    // are the whole point of #874, so assert they DIVERGE from the anchor and
+    // from each other.
+    const haps = [
+      { begin: 0, end: 0.5, trackId: '$0', note: 'C3', gain: 1, loc: [{ start: 12, end: 14 }] },
+      { begin: 0.5, end: 1, trackId: '$0', note: 'E3', gain: 1, loc: [{ start: 16, end: 18 }] },
+    ] as unknown as Parameters<typeof collectNoteMarks>[0]
+
+    const marks = collectNoteMarks(haps, { fake: true } as never, 4)
+
+    const d1 = marks.marksByLane.get('d1')!
+    expect(d1.map((n) => n.sourceOffset)).toEqual([12, 16])
+    // Both notes live on the lane whose anchor is 10 — neither reports it.
+    expect(marks.sourceByLane.get('d1')).toBe(10)
+  })
+
+  it('takes loc[0] when the leaf token leads — `s("bd*2")` shape', () => {
+    // A REAL shape, observed through the transpiler: one mini string contributes
+    // its locations in SOURCE order, so the note's token leads and its operator
+    // (`*2`) follows. loc[0] is the token — the case phase 1 targets.
+    //   s("bd*2") → locations: [ "bd"[3,5], "2"[6,7] ]
+    const haps = [
+      {
+        begin: 0,
+        end: 0.5,
+        trackId: '$0',
+        s: 'bd',
+        gain: 1,
+        loc: [{ start: 3, end: 5 }, { start: 6, end: 7 }],
+      },
+    ] as unknown as Parameters<typeof collectNoteMarks>[0]
+
+    const marks = collectNoteMarks(haps, { fake: true } as never, 4)
+
+    expect(marks.marksByLane.get('d1')![0].sourceOffset).toBe(3)
+  })
+
+  it('KNOWN RESIDUAL: a mini-string transform arg displaces the note token off loc[0]', () => {
+    // Pins OBSERVED reality so phase 2 inherits a fact, not an assumption. A
+    // transform whose arg is a MINI STRING contributes its locations FIRST, so
+    // the note's own token lands LAST:
+    //   n("0 2 4").scale("C:major") → [ "major"[20,25], "C"[18,19], "0"[3,4] ]
+    // Carrying loc[0] therefore gives every note on the track the SAME offset —
+    // the scale argument — while each note's degree token sits at the end.
+    //
+    // This test asserts what the code DOES, not what #874 ultimately wants: it
+    // documents the gap rather than hiding it. Phase 2 must decide which element
+    // to read, and when it changes this expectation SHOULD flip — that is the
+    // point. (The degrees below differ per note, so a correct phase-2 rule yields
+    // 3 DISTINCT offsets where today all three are 20.)
+    const scaleHap = (note: string, degreeStart: number) => ({
+      begin: 0,
+      end: 0.5,
+      trackId: '$0',
+      note,
+      gain: 1,
+      loc: [
+        { start: 20, end: 25 }, // "major" — the transform's own mini-string arg
+        { start: 18, end: 19 }, // "C"
+        { start: degreeStart, end: degreeStart + 1 }, // the note's OWN degree token
+      ],
+    })
+    const haps = [
+      scaleHap('C3', 3),
+      scaleHap('E3', 5),
+      scaleHap('G3', 7),
+    ] as unknown as Parameters<typeof collectNoteMarks>[0]
+
+    const marks = collectNoteMarks(haps, { fake: true } as never, 4)
+
+    // All three collapse onto the scale arg — the residual, made visible.
+    expect(marks.marksByLane.get('d1')!.map((n) => n.sourceOffset)).toEqual([20, 20, 20])
+  })
+
+  it('reports null for a loc-less hap rather than inventing an offset', () => {
+    // A sampled/continuous signal hap carries no `loc` (P274/#864) — there is no
+    // source token to point at. null is a PRINCIPLED residual: phase 3 falls back
+    // to the existing lane-level jump. Guessing the lane's anchor here would send
+    // a click somewhere the note did not come from.
+    const haps = [
+      { begin: 0, end: 1, trackId: '$1', note: 'C3', gain: 1 },
+    ] as unknown as Parameters<typeof collectNoteMarks>[0]
+
+    const marks = collectNoteMarks(haps, { fake: true } as never, 4)
+
+    expect(marks.marksByLane.get('d2')![0].sourceOffset).toBeNull()
+  })
+
+  it('reports null for a non-finite offset rather than passing it through', () => {
+    // A garbage `loc` must not become a NaN cursor position downstream.
+    const haps = [
+      { begin: 0, end: 1, trackId: '$0', note: 'C3', gain: 1, loc: [{ start: NaN, end: 14 }] },
+    ] as unknown as Parameters<typeof collectNoteMarks>[0]
+
+    const marks = collectNoteMarks(haps, { fake: true } as never, 4)
+
+    // Un-attributable by containment (NaN) → its own eval lane, offset null.
+    expect(marks.marksByLane.get('d1')![0].sourceOffset).toBeNull()
+  })
+})

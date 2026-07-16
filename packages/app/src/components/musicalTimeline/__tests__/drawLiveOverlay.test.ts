@@ -38,8 +38,8 @@ const THEME: LiveOverlayTheme = { lit: '#fff', litGlow: '#88f' }
 /** One lane, one melodic voice with two pitched notes. */
 function sceneFixture(): TimelineScene {
   const notes: SceneNote[] = [
-    { cycle: 1, end: 1.5, pitch: 60, gain: 1, voice: 'saw' },
-    { cycle: 2, end: 2.5, pitch: 67, gain: 0.5, voice: 'saw' },
+    { cycle: 1, end: 1.5, pitch: 60, gain: 1, voice: 'saw', sourceOffset: null },
+    { cycle: 2, end: 2.5, pitch: 67, gain: 0.5, voice: 'saw', sourceOffset: null },
   ]
   return {
     lanes: [
@@ -83,7 +83,7 @@ describe('markSig', () => {
 })
 
 describe('pickLitNotes (#507 nearest-occurrence)', () => {
-  const note: SceneNote = { cycle: 1, end: 1.5, pitch: 60, gain: 1, voice: 'saw' }
+  const note: SceneNote = { cycle: 1, end: 1.5, pitch: 60, gain: 1, voice: 'saw', sourceOffset: null }
   const active = new Set(['saw|60'])
 
   it('lights a note inside its window when the sig is firing', () => {
@@ -100,26 +100,26 @@ describe('pickLitNotes (#507 nearest-occurrence)', () => {
     expect(pickLitNotes([note], 1.2, new Set(['bd|'])).size).toBe(0)
   })
   it('picks the occurrence of a sig NEAREST the playhead (disambiguates repeats)', () => {
-    const near: SceneNote = { cycle: 4, end: 4.06, pitch: 60, gain: 1, voice: 'saw' }
-    const far: SceneNote = { cycle: 0, end: 0.06, pitch: 60, gain: 1, voice: 'saw' }
+    const near: SceneNote = { cycle: 4, end: 4.06, pitch: 60, gain: 1, voice: 'saw', sourceOffset: null }
+    const far: SceneNote = { cycle: 0, end: 0.06, pitch: 60, gain: 1, voice: 'saw', sourceOffset: null }
     const lit = pickLitNotes([far, near], 4.0, active)
     expect(lit.has(near)).toBe(true)
     expect(lit.has(far)).toBe(false)
     expect(lit.size).toBe(1)
   })
   it('does not light a stale occurrence beyond MAX_LIT_DISTANCE_CYCLES', () => {
-    const far: SceneNote = { cycle: 0, end: 0.06, pitch: 60, gain: 1, voice: 'saw' }
+    const far: SceneNote = { cycle: 0, end: 0.06, pitch: 60, gain: 1, voice: 'saw', sourceOffset: null }
     expect(pickLitNotes([far], far.cycle + MAX_LIT_DISTANCE_CYCLES + 0.2, active).size).toBe(0)
   })
   it('a zero-duration trigger still lights near its onset', () => {
-    const hit: SceneNote = { cycle: 2, end: 2, pitch: null, gain: 1, voice: 'bd' }
+    const hit: SceneNote = { cycle: 2, end: 2, pitch: null, gain: 1, voice: 'bd', sourceOffset: null }
     const drums = new Set(['bd|'])
     expect(pickLitNotes([hit], 2, drums).has(hit)).toBe(true)
     expect(pickLitNotes([hit], 2 + MIN_LIT_CYCLES / 2, drums).has(hit)).toBe(true)
   })
   it('lights one occurrence per active sig (distinct sigs each light)', () => {
-    const a: SceneNote = { cycle: 1, end: 1.5, pitch: 60, gain: 1, voice: 'saw' }
-    const b: SceneNote = { cycle: 1.1, end: 1.6, pitch: 67, gain: 1, voice: 'saw' }
+    const a: SceneNote = { cycle: 1, end: 1.5, pitch: 60, gain: 1, voice: 'saw', sourceOffset: null }
+    const b: SceneNote = { cycle: 1.1, end: 1.6, pitch: 67, gain: 1, voice: 'saw', sourceOffset: null }
     const lit = pickLitNotes([a, b], 1.2, new Set(['saw|60', 'saw|67']))
     expect(lit.size).toBe(2)
   })

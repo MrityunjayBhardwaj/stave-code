@@ -43,9 +43,9 @@ const scene: TimelineScene = {
       color: '#0af',
       density: [1, 0, 2, 0], // onsets at integer cycles 0 and 2
       notes: [
-        { cycle: 0, end: 0.25, pitch: 60, gain: 1 },
-        { cycle: 2, end: 2.25, pitch: 72, gain: 0.5 },
-        { cycle: 2.5, end: 2.75, pitch: 64, gain: 0.8 }, // fractional → only marks render here
+        { cycle: 0, end: 0.25, pitch: 60, gain: 1, sourceOffset: null },
+        { cycle: 2, end: 2.25, pitch: 72, gain: 0.5, sourceOffset: null },
+        { cycle: 2.5, end: 2.75, pitch: 64, gain: 0.8, sourceOffset: null }, // fractional → only marks render here
       ],
       pitchMin: 60,
       pitchMax: 72,
@@ -150,8 +150,8 @@ describe('drawTimeline', () => {
         {
           ...scene.lanes[0],
           notes: [
-            { cycle: 0, end: 0, pitch: 60, gain: 1 }, // zero-duration trigger → MIN_MARK_W
-            { cycle: 1, end: 2, pitch: 64, gain: 1 }, // a whole cycle long
+            { cycle: 0, end: 0, pitch: 60, gain: 1, sourceOffset: null }, // zero-duration trigger → MIN_MARK_W
+            { cycle: 1, end: 2, pitch: 64, gain: 1, sourceOffset: null }, // a whole cycle long
           ],
         },
       ],
@@ -180,8 +180,8 @@ describe('drawTimeline', () => {
           color: '#fa0',
           density: [2, 0, 0, 0],
           notes: [
-            { cycle: 0, end: 0.25, pitch: null, gain: 1, voice: 'bd' },
-            { cycle: 0, end: 0.25, pitch: null, gain: 1, voice: 'sd' },
+            { cycle: 0, end: 0.25, pitch: null, gain: 1, voice: 'bd', sourceOffset: null },
+            { cycle: 0, end: 0.25, pitch: null, gain: 1, voice: 'sd', sourceOffset: null },
           ],
           pitchMin: null,
           pitchMax: null,

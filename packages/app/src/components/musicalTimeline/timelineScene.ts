@@ -45,6 +45,29 @@ export interface SceneNote {
    *  in the runtime walk (`timelineMarks`), so this pure module never reads the
    *  editor IR. Optional so hand-built fixtures stay terse (treated as null). */
   readonly voice?: string | null
+  /** Char offset of this note's onset token in the evaluated source (`ev.loc[0]
+   *  .start`), or null when the event carries no location.
+   *
+   *  This is the note's link back to the code that produced it (#874). In the
+   *  retired DOM live view a drawn note WAS its `IREvent`, so `evt.loc[0].start`
+   *  was always in hand and click-to-source came free from identity. A
+   *  `SceneNote` is a PROJECTION — geometry kept, identity discarded — so the
+   *  link only exists if it is carried here ON PURPOSE. The offset is already in
+   *  scope at both push sites (the eval path reads the very same expression for
+   *  lane attribution), so this costs one field and nothing else.
+   *
+   *  REQUIRED, not optional like `voice`, and the difference is deliberate. A
+   *  missing `voice` has a benign meaning (group under `NO_VOICE`); a missing
+   *  `sourceOffset` silently re-drops the capability this field exists to
+   *  restore, which is precisely how it was lost the first time. Requiring it
+   *  means a future mark source CANNOT omit it without the compiler objecting —
+   *  the guarantee is structural rather than a convention that fails by absence.
+   *  Fixtures that don't care state `null`, which honestly says "no source".
+   *
+   *  null is a PRINCIPLED residual, not a gap: continuous/sampled signal haps
+   *  carry no `loc` (P274/#864), so they have no source token to point at and
+   *  fall back to lane-level jump. */
+  readonly sourceOffset: number | null
 }
 
 /**

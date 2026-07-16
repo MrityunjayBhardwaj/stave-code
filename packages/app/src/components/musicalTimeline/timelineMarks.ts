@@ -30,6 +30,47 @@ function clamp01(n: number): number {
 }
 
 /**
+ * The note's link back to its source: a char offset into the evaluated source
+ * (#874). Phase 1 carries `loc[0].start` — the same expression and finite-guard
+ * as the per-lane `sourceByLane` anchor below, deliberately: both answer "where
+ * in the source is this?", and reading the offset two different ways would be
+ * two sources of truth for one question. Absent/garbage `loc` → null (a loc-less
+ * signal hap — P274/#864), a principled residual, not a gap.
+ *
+ * `[0]` IS NOT UNIVERSALLY THE NOTE'S OWN TOKEN, and the difference is not
+ * theoretical. OBSERVED against the real transpiler (evaluate(code, transpiler),
+ * the engine's own call shape — StrudelEngine.ts:329/608), reading
+ * `hap.context.locations` in order:
+ *
+ *   note("c3 e3 g3")            → ["c3"]                    [0] = the token ✓
+ *   s("bd*2")                   → ["bd", "2"]               [0] = the token ✓
+ *   .add(12) / .fast(2) / .rev()→ ["c3"]                    [0] = the token ✓
+ *   note("c3 e3").add("<12 7>") → ["12", "c3"]              [0] = the ARG ✗
+ *   n("0 2 4").scale("C:major") → ["major", "C", "0"]       [0] = the ARG ✗
+ *
+ * A transform whose argument is a MINI STRING contributes its own locations and
+ * they land FIRST; the note's own token is then LAST. Within a single mini string
+ * the order is source order (`bd` before its `*2`). So for `.scale(…)`/`.add("…")`
+ * chains every note on the track reports the SAME offset — the transform's arg —
+ * and the per-note token, though present at the end of the array, is not what is
+ * carried here.
+ *
+ * This is deliberate for phase 1 and MUST be revisited in phase 2 (#874), where
+ * the hit-test makes the choice observable end-to-end: picking the wrong element
+ * means clicking any note of `n("0 2 4").scale("C:major")` reveals `major`. It is
+ * kept at `[0]` for now because that is what the filed plan specifies, it is
+ * correct for that plan's three acceptance cases, and it matches what
+ * `sourceByLane` already ships — which also means `sourceByLane` anchors a scaled
+ * track at its scale argument today (a pre-existing latent bug in expand-to-bind,
+ * #422, with this same root). Phase 1 changes no behaviour either way: nothing
+ * reads this field yet.
+ */
+function sourceOffsetOf(ev: IREvent): number | null {
+  const start = ev.loc?.[0]?.start
+  return typeof start === 'number' && Number.isFinite(start) ? start : null
+}
+
+/**
  * Collect read-only mini-note marks for the display span by querying the IR
  * directly (`collectCycles`), grouped by the SAME `laneKeyOf` identity the
  * analysis lanes use, capped per lane. `null` IR / non-positive span → empty.
@@ -165,6 +206,7 @@ export function collectNoteMarks(
         pitch: extractPitch(ev)?.midi ?? null,
         gain: clamp01(ev.gain ?? 1),
         voice: ev.s ?? null,
+        sourceOffset: sourceOffsetOf(ev),
       })
     }
   }
@@ -268,7 +310,7 @@ function collectHapMarks(
   const anchors = [...labelOffsetByLane].sort((a, b) => a[1] - b[1])
   // Containment hit (an IR lane), or undefined when the hap's source start lands
   // before every lane's statement (or it has no `loc`).
-  const irLaneFor = (start: number | undefined): string | undefined => {
+  const irLaneFor = (start: number | null | undefined): string | undefined => {
     if (typeof start !== 'number' || !Number.isFinite(start)) return undefined
     let hit: string | undefined
     for (const [key, pos] of anchors) {
@@ -280,9 +322,15 @@ function collectHapMarks(
   for (const ev of events) {
     const cycle = ev.begin
     if (!Number.isFinite(cycle) || cycle < 0 || cycle >= displayCycles) continue
+    // The hap's source offset, read ONCE and used for both of the questions it
+    // answers: which lane owns this note (containment, below) and where its
+    // source token is (`sourceOffset`, #874). This path already computed the
+    // very same expression for attribution and dropped it on the floor — the
+    // note's link to its code was in hand at the push site all along.
+    const sourceOffset = sourceOffsetOf(ev)
     // Containment first (keeps a hap on its named/positional IR lane); else an
     // eval-backed lane keyed by the hap's own producer id (#864 / P1b).
-    const key = irLaneFor(ev.loc?.[0]?.start) ?? evalTrackIdToLaneKey(ev.trackId)
+    const key = irLaneFor(sourceOffset) ?? evalTrackIdToLaneKey(ev.trackId)
     let arr = out.get(key)
     if (!arr) {
       arr = []
@@ -295,6 +343,7 @@ function collectHapMarks(
       pitch: extractPitch(ev)?.midi ?? null,
       gain: clamp01(ev.gain ?? 1),
       voice: ev.s ?? null,
+      sourceOffset,
     })
   }
   return out

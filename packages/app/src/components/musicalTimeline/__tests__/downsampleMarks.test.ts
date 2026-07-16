@@ -7,7 +7,7 @@ function denseLane(cycles: number, perCycle: number): SceneNote[] {
   const out: SceneNote[] = []
   for (let c = 0; c < cycles; c++) {
     for (let k = 0; k < perCycle; k++) {
-      out.push({ cycle: c + k / perCycle, end: c + k / perCycle, pitch: null, gain: 1 })
+      out.push({ cycle: c + k / perCycle, end: c + k / perCycle, pitch: null, gain: 1, sourceOffset: null })
     }
   }
   return out
@@ -49,7 +49,7 @@ describe('downsampleMarksToCap — span-preserving note-mark cap (#714)', () => 
   test('output length never exceeds cap across a range of sizes', () => {
     for (const len of [1999, 2000, 2001, 4000, 4001, 8960, 100000]) {
       const marks = Array.from({ length: len }, (_, i) => ({
-        cycle: i, end: i, pitch: null, gain: 1,
+        cycle: i, end: i, pitch: null, gain: 1, sourceOffset: null,
       })) as SceneNote[]
       const { marks: out } = downsampleMarksToCap(marks, 2000)
       expect(out.length).toBeLessThanOrEqual(2000)

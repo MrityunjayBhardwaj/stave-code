@@ -68,11 +68,11 @@ describe('buildTimelineScene', () => {
     const scene = buildTimelineScene(
       analysisFixture,
       marks({
-        bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }], // percussive → no pitch range
+        bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1, sourceOffset: null }], // percussive → no pitch range
         lead: [
-          { cycle: 0, end: 0.5, pitch: 60, gain: 0.5 },
-          { cycle: 1, end: 1.5, pitch: 72, gain: 1 },
-          { cycle: 2, end: 2.5, pitch: 64, gain: 0.8 },
+          { cycle: 0, end: 0.5, pitch: 60, gain: 0.5, sourceOffset: null },
+          { cycle: 1, end: 1.5, pitch: 72, gain: 1, sourceOffset: null },
+          { cycle: 2, end: 2.5, pitch: 64, gain: 0.8, sourceOffset: null },
         ],
       }),
     )
@@ -87,7 +87,7 @@ describe('buildTimelineScene', () => {
   })
 
   it('assigns a stable color per lane and leaves note-less lanes empty', () => {
-    const scene = buildTimelineScene(analysisFixture, marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] }))
+    const scene = buildTimelineScene(analysisFixture, marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1, sourceOffset: null }] }))
     expect(typeof scene.lanes[0].color).toBe('string')
     expect(scene.lanes[0].color.length).toBeGreaterThan(0)
     const lead = scene.lanes.find((l) => l.laneKey === 'lead')!
@@ -207,10 +207,10 @@ describe('buildTimelineScene', () => {
       marks({
         // 'bd' lane carries a $: drum stack: distinct s per voice, percussive.
         bd: [
-          { cycle: 0, end: 0.25, pitch: null, gain: 1, voice: 'bd' },
-          { cycle: 0.5, end: 0.75, pitch: null, gain: 1, voice: 'hh' },
-          { cycle: 1, end: 1.25, pitch: null, gain: 1, voice: 'bd' }, // bd again
-          { cycle: 1.5, end: 1.75, pitch: null, gain: 1, voice: 'sd' },
+          { cycle: 0, end: 0.25, pitch: null, gain: 1, voice: 'bd', sourceOffset: null },
+          { cycle: 0.5, end: 0.75, pitch: null, gain: 1, voice: 'hh', sourceOffset: null },
+          { cycle: 1, end: 1.25, pitch: null, gain: 1, voice: 'bd', sourceOffset: null }, // bd again
+          { cycle: 1.5, end: 1.75, pitch: null, gain: 1, voice: 'sd', sourceOffset: null },
         ],
       }),
     )
@@ -226,8 +226,8 @@ describe('buildTimelineScene', () => {
       analysisFixture,
       marks({
         lead: [
-          { cycle: 0, end: 0.5, pitch: 60, gain: 1, voice: 'square' },
-          { cycle: 1, end: 1.5, pitch: 67, gain: 1, voice: 'square' },
+          { cycle: 0, end: 0.5, pitch: 60, gain: 1, voice: 'square', sourceOffset: null },
+          { cycle: 1, end: 1.5, pitch: 67, gain: 1, voice: 'square', sourceOffset: null },
         ],
       }),
     )
@@ -241,8 +241,8 @@ describe('buildTimelineScene', () => {
       analysisFixture,
       marks({
         lead: [
-          { cycle: 0, end: 0.5, pitch: 60, gain: 1 }, // no voice → NO_VOICE group
-          { cycle: 1, end: 1.5, pitch: 64, gain: 1 },
+          { cycle: 0, end: 0.5, pitch: 60, gain: 1, sourceOffset: null }, // no voice → NO_VOICE group
+          { cycle: 1, end: 1.5, pitch: 64, gain: 1, sourceOffset: null },
         ],
       }),
     )
@@ -313,11 +313,11 @@ describe('eval-backed lanes (#864 / P1b)', () => {
     const scene = buildTimelineScene(
       analysisFixture,
       marks({
-        bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }],
+        bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1, sourceOffset: null }],
         d2: [
-          { cycle: 0, end: 0.5, pitch: 48, gain: 1 },
-          { cycle: 0, end: 0.5, pitch: 52, gain: 1 },
-          { cycle: 2, end: 2.5, pitch: 55, gain: 1 },
+          { cycle: 0, end: 0.5, pitch: 48, gain: 1, sourceOffset: null },
+          { cycle: 0, end: 0.5, pitch: 52, gain: 1, sourceOffset: null },
+          { cycle: 2, end: 2.5, pitch: 55, gain: 1, sourceOffset: null },
         ],
       }),
     )
@@ -339,10 +339,10 @@ describe('eval-backed lanes (#864 / P1b)', () => {
       analysisFixture, // IR peak is 3 (bd cell)
       marks({
         d2: [
-          { cycle: 1, end: 1.5, pitch: 60, gain: 1 },
-          { cycle: 1, end: 1.5, pitch: 62, gain: 1 },
-          { cycle: 1, end: 1.5, pitch: 64, gain: 1 },
-          { cycle: 1, end: 1.5, pitch: 65, gain: 1 }, // 4 onsets in cycle 1
+          { cycle: 1, end: 1.5, pitch: 60, gain: 1, sourceOffset: null },
+          { cycle: 1, end: 1.5, pitch: 62, gain: 1, sourceOffset: null },
+          { cycle: 1, end: 1.5, pitch: 64, gain: 1, sourceOffset: null },
+          { cycle: 1, end: 1.5, pitch: 65, gain: 1, sourceOffset: null }, // 4 onsets in cycle 1
         ],
       }),
     )
@@ -352,7 +352,7 @@ describe('eval-backed lanes (#864 / P1b)', () => {
   it('adds no lanes when every marks key is an IR lane (no regression)', () => {
     const scene = buildTimelineScene(
       analysisFixture,
-      marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] }),
+      marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1, sourceOffset: null }] }),
     )
     expect(scene.lanes.map((l) => l.laneKey)).toEqual(['bd', 'lead'])
   })
@@ -363,9 +363,9 @@ describe('source lane order (#871)', () => {
   // source order the scene can only append it after them (the default above).
   const evalFirst = () =>
     marks({
-      sig: [{ cycle: 0, end: 0.5, pitch: 48, gain: 1 }],
-      bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }],
-      lead: [{ cycle: 0, end: 0.5, pitch: 60, gain: 1 }],
+      sig: [{ cycle: 0, end: 0.5, pitch: 48, gain: 1, sourceOffset: null }],
+      bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1, sourceOffset: null }],
+      lead: [{ cycle: 0, end: 0.5, pitch: 60, gain: 1, sourceOffset: null }],
     })
 
   const keys = (analysis: SongAnalysis, order?: readonly string[]) =>
@@ -382,7 +382,7 @@ describe('source lane order (#871)', () => {
   })
 
   it('leaves an IR-only song untouched (its analysis order already follows the IR)', () => {
-    const irOnly = marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] })
+    const irOnly = marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1, sourceOffset: null }] })
     const scene = buildTimelineScene(analysisFixture, irOnly, undefined, undefined, undefined, [
       'bd',
       'lead',

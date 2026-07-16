@@ -40,7 +40,7 @@ function scene(): TimelineScene {
   return {
     lanes: [{
       laneKey: 'd1', displayName: 'd1', color: '#7af', density: [1],
-      notes: [{ cycle: 0.1, end: 0.2, pitch: null, gain: 1 }],
+      notes: [{ cycle: 0.1, end: 0.2, pitch: null, gain: 1, sourceOffset: null }],
       pitchMin: null, pitchMax: null, voices: [],
       clips: [{ armIndex: -1, startCycle: 0, endCycle: 1, label: null }],
       sourceOffset: null, arrangeOffset: null, labelOffset: null,
