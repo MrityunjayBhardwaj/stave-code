@@ -17,6 +17,7 @@
 import { describe, it } from 'vitest'
 import fs from 'node:fs'
 import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
+import { classifyFallback } from './classifyFallback'
 
 const SAMPLES = process.env.BAKERY_SAMPLES
 const RESULT = process.env.BAKERY_RESULT
@@ -40,26 +41,12 @@ function isCodeFallback(ir: unknown): boolean {
   return body.tag === 'Code' && (body as { via?: unknown }).via === undefined
 }
 
-/**
- * Coarse class label for a Code-fallback sample so NEW classes (beyond the
- * 6 just closed) surface for the backlog (D-03). Heuristic on the raw
- * source — deliberately shallow; the maintainer triages the printed list.
- */
-function classifyFallback(code: string): string {
-  const c = code
-  // Strip line comments so a class signature in a comment doesn't mis-bin.
-  const live = c.replace(/^\s*\/\/.*$/gm, '').trim()
-  if (/\$\{/.test(live)) return 'KNOWN ${} template-interpolation — D-04 correct Code-fallback (not a gap)'
-  if (/\btypeof\s+\w+\s*!==?\s*['"]undefined['"]\s*&&/.test(live)) return 'BACKLOG #143: guarded boot expr typeof X && X(...)'
-  if (/\bsamples\s*\(\s*\{/.test(live)) return 'BACKLOG #142: samples({...}) object-literal boot arg'
-  if (/^\s*\(\s*["'`]/.test(live) && /^\s*\./m.test(live)) return 'BACKLOG #144: parenthesized-root + leading-dot chain'
-  if (/\b(let|const|var)\s+[A-Za-z_$][\w$]*\s*=/.test(live)) return 'BACKLOG #141 (→#140): binding ref outside stack()-bare-arg'
-  if (/^\s*(import|export)\b/m.test(live)) return 'BACKLOG: ES module import/export at top level'
-  if (/=>/.test(live)) return 'KNOWN D-02: arrow-fn / functional shape — correct Code-fallback'
-  if (/\b(function|class)\b/.test(live)) return 'BACKLOG: function/class declaration'
-  if (live === '') return 'comment-only / empty program'
-  return 'NEW: uncategorised — needs manual triage (file an issue per AnviDev)'
-}
+// Cause attribution for a Code-fallback sample lives in `./classifyFallback`
+// (extracted + unit-tested in `classifyFallback.test.ts`). It previously
+// mis-attributed every binding-containing fallback to a phantom "#141 binding
+// ref" gap; the honest version detects the real causes (Hydra/DSP/lambda/def)
+// first and never claims binding resolution is the cause, because parseStrudel
+// resolves bindings. See that module's header for the full rationale.
 
 describe('bakery real-world classification (V-1, maintainer-driven)', () => {
   it(SAMPLES && RESULT ? 'classifies the fresh Supabase pull' : 'skipped (no BAKERY_SAMPLES env — CI inert)', () => {
