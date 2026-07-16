@@ -141,6 +141,27 @@ test.describe('Sequencer (#382)', () => {
     await expect(drawer.locator('[data-bottom-panel-tab="sequencer-standby"]')).toHaveCount(1)
   })
 
+  // #904 — an underscore inside a sound NAME is not mini-notation syntax.
+  // Every General MIDI sound is `gm_*`, so this whole family used to land in
+  // standby, reported as "uses mini-notation features beyond the editable
+  // subset" though no such feature is present.
+  test('binds a General MIDI sound whose name contains an underscore (#904)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("gm_agogo ~ LinnDrum_bd ~")')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await expect(grid).toHaveCount(1) // bound, NOT standby (was standby pre-#904)
+    await expect(drawer.locator('[data-bottom-panel-tab="sequencer-standby"]')).toHaveCount(0)
+    // one lane per underscore-named sound, cells read from the mini
+    await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'false')
+
+    // The write-back keeps the underscore names intact — toggle gm_agogo into
+    // the empty column 2; only the mini is rewritten.
+    await grid.locator('[data-seq-cell="0:1"]').click()
+    expect(await strudelValue(page)).toBe('$: s("gm_agogo gm_agogo LinnDrum_bd ~")')
+  })
+
   test('binds a drum track nested inside stack(...) and round-trips it (#395)', async ({
     page,
   }) => {

@@ -1,24 +1,24 @@
 {
-  "tunes": 53,
+  "tunes": 55,
   "tuneLevel": {
-    "fully": 17,
+    "fully": 19,
     "partial": 9,
-    "anyEditable": 26,
+    "anyEditable": 28,
     "knobsOnly": 20,
     "codeOnly": 6,
     "unparseable": 1,
-    "anyEditablePct": 49.1
+    "anyEditablePct": 50.9
   },
   "unitLevel": {
-    "totalUnits": 93,
-    "note": 43,
+    "totalUnits": 98,
+    "note": 48,
     "clip": 0,
-    "structurallyEditable": 43,
+    "structurallyEditable": 48,
     "noteBroken": 6,
     "knobs": 31,
     "codeOnly": 13,
-    "setup": 34,
-    "structurallyEditablePct": 46.2
+    "setup": 36,
+    "structurallyEditablePct": 49
   },
   "brokenReasons": {
     "step: uses mini-notation features beyond the editable subset": 4,
@@ -385,6 +385,30 @@
     },
     {
       "file": "bakery-159-tokenizer-whitespace.strudel",
+      "units": 2,
+      "setup": 0,
+      "noteEditable": 2,
+      "clip": 0,
+      "noteBroken": 0,
+      "knobs": 0,
+      "codeOnly": 0,
+      "structurallyEditable": 2,
+      "tuneClass": "fully"
+    },
+    {
+      "file": "bakery-901-stack-newline-paren.strudel",
+      "units": 3,
+      "setup": 2,
+      "noteEditable": 3,
+      "clip": 0,
+      "noteBroken": 0,
+      "knobs": 0,
+      "codeOnly": 0,
+      "structurallyEditable": 3,
+      "tuneClass": "fully"
+    },
+    {
+      "file": "bakery-901-stack-space-paren.strudel",
       "units": 2,
       "setup": 0,
       "noteEditable": 2,

@@ -25,7 +25,7 @@ import type {
 import { pitchToMidi } from './pitch'
 
 /** an atom token allowed in a grid lane (sound, optional :variant) */
-const ATOM = /^[a-zA-Z][a-zA-Z0-9#]*(:\d+)?$/
+const ATOM = /^[a-zA-Z][a-zA-Z0-9#_]*(:\d+)?$/
 /** a melodic note token for the roll */
 // Note-name validity is owned by `pitchToMidi` (the row-math authority) — a
 // separate NOTE regex here drifted out of sync (it required an octave, so bare
@@ -309,7 +309,7 @@ function tokenize(mini: string, allowNumeric = false): Tokenized {
   // `(` / `)` (euclid) and `!` (replicate) are NOT rejected here — both are
   // handled in the atom branch below; a stray one still rejects via the
   // atom-match exclusion.
-  if (/[<>{}/?%._|]/.test(src)) {
+  if (/[<>{}/?%.|]/.test(src) || /(^|\s)_(\s|$)/.test(src)) {
     return { ok: false, reason: 'uses mini-notation features beyond the editable subset' }
   }
   const steps: Step[] = []

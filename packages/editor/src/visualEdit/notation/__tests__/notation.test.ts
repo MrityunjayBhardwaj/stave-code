@@ -977,3 +977,62 @@ describe('#628 parallel note lanes', () => {
     expect(r.ok).toBe(false)
   })
 })
+
+/**
+ * #904 — an underscore inside a sound name is a NAME character, not syntax.
+ *
+ * `_` means elongation only as a STANDALONE token (`bd _` = `bd@2`). Attached
+ * to a word it belongs to the name — which is how Strudel itself reads it
+ * (verified against `@strudel/mini/krill-parser.js`):
+ *
+ *   "gm_agogo" -> atom "gm_agogo"   "bd _"   -> "bd" weight=2
+ *   "bd_"      -> atom "bd_"        "bd _ _" -> "bd" weight=3
+ *
+ * A blanket char-class in `tokenize` treated every `_` as a mini-notation
+ * feature, so EVERY General MIDI sound (`gm_*`) and every underscore-named
+ * bank (`LinnDrum_bd`) was refused from the grid — reported as "uses
+ * mini-notation features beyond the editable subset", though no such feature
+ * was present. Same class of bug as the decimal point in `@0.5` (#903).
+ */
+describe('#904 — underscores in sound names vs `_` elongation', () => {
+  it('opens a General MIDI sound (gm_*) — the whole family was refused', () => {
+    const r = parseStepGrid('gm_agogo bd')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.lanes.map((l) => l.sound)).toEqual(['gm_agogo', 'bd'])
+  })
+
+  it('opens an underscore-named bank sample, with its :variant intact', () => {
+    const r = parseStepGrid('LinnDrum_bd passerine_snare:1')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.lanes.map((l) => l.sound)).toEqual(['LinnDrum_bd', 'passerine_snare:1'])
+  })
+
+  it('round-trips an underscore name unchanged', () => {
+    const r = parseStepGrid('gm_agogo ~ gm_agogo ~')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializeStepGrid(r.model)).toBe('gm_agogo ~ gm_agogo ~')
+  })
+
+  it('a trailing underscore is still a name (Strudel reads `bd_` as one atom)', () => {
+    const r = parseStepGrid('bd_ sd')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.lanes.map((l) => l.sound)).toEqual(['bd_', 'sd'])
+  })
+
+  // The boundary: these must STAY rejected. A standalone `_` is real
+  // elongation sugar, which the drum grid does not model — declining is
+  // correct. Widening the ATOM rule must not swallow it.
+  it('STILL rejects a standalone `_` (elongation sugar, not a name)', () => {
+    expect(parseStepGrid('bd _').ok).toBe(false)
+    expect(parseStepGrid('bd _ _').ok).toBe(false)
+    expect(parseStepGrid('_ bd').ok).toBe(false)
+  })
+
+  it('STILL rejects `_sd` (Strudel reads it as `bd@2 sd`; we decline, never guess)', () => {
+    expect(parseStepGrid('bd _sd').ok).toBe(false)
+  })
+})
