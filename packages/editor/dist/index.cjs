@@ -26210,7 +26210,7 @@ function cLabel(midi) {
 __name(cLabel, "cLabel");
 
 // src/visualEdit/notation/parse.ts
-var ATOM = /^[a-zA-Z][a-zA-Z0-9#]*(:\d+)?$/;
+var ATOM = /^[a-zA-Z][a-zA-Z0-9#_]*(:\d+)?$/;
 var isBareRest = /* @__PURE__ */ __name((s, i) => s[i] === "-" && (i + 1 >= s.length || /[\s[\]@,*(!]/.test(s[i + 1])), "isBareRest");
 var NUMERIC = /^-?\d+$/;
 var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => ATOM.test(t) || allowNumeric && NUMERIC.test(t), "isAtomToken");
@@ -26378,7 +26378,7 @@ __name(parseGroup, "parseGroup");
 function tokenize2(mini, allowNumeric = false) {
   const src = mini.trim();
   if (src === "") return { ok: true, steps: [] };
-  if (/[<>{}/?%._|]/.test(src)) {
+  if (/[<>{}/?%.|]/.test(src) || /(^|\s)_(\s|$)/.test(src)) {
     return { ok: false, reason: "uses mini-notation features beyond the editable subset" };
   }
   const steps = [];
