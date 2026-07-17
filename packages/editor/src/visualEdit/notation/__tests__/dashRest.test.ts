@@ -70,13 +70,14 @@ describe('#468 — bare `-` rest', () => {
     if (r.ok) expect(serializeStepGrid(r.model)).toBe('bd - bd')
   })
 
-  it('piano roll: STILL normalizes `-` to `~` — span surgery has not reached it (#913)', () => {
-    // Pinned rather than left to be discovered: the grid keeps the user's bytes
-    // and the roll does not yet, and that difference is a scope line, not a
-    // decision. The roll's 160 rewrites are the follow-up.
+  it('piano roll: writes a `-` rest back as the `-` the user typed (#916)', () => {
+    // This was the scope line #913 left: the grid kept the user's `-` and the
+    // roll still normalized it to `~`. #916 brought span surgery to the roll, so
+    // the difference is gone — an unedited region emits its own bytes, and `-`
+    // is one of them.
     const roll = parsePianoRoll('c3 - e3')
     expect(roll.ok).toBe(true)
-    if (roll.ok) expect(serializePianoRoll(roll.model)).toBe('c3 ~ e3')
+    if (roll.ok) expect(serializePianoRoll(roll.model)).toBe('c3 - e3')
   })
 
   it('DISCRIMINATOR: `-7` is NOT a rest — a `-` glued to a digit is left unsupported (→ #469)', () => {

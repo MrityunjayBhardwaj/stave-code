@@ -26457,7 +26457,13 @@ function tokenize2(mini, allowNumeric = false) {
     const mapped = elementToSteps(el, allowNumeric);
     if (!Array.isArray(mapped)) return { ok: false, reason: mapped.reason };
     const loc = el.location_;
-    if (loc) elements.push({ start: loc.start.offset - 1, end: loc.end.offset - 1, steps: mapped.length });
+    if (loc) {
+      elements.push({
+        start: loc.start.offset - 1,
+        end: loc.end.offset - 1,
+        weight: mapped.reduce((w, s) => w + s.elongation, 0)
+      });
+    }
     steps.push(...mapped);
   }
   const tiled = elements.length === ast.source_.length;
@@ -26491,7 +26497,7 @@ function lanesFromCells(cells, part) {
   }));
 }
 __name(lanesFromCells, "lanesFromCells");
-function buildRegions(src, elements, div, cells) {
+function buildRegions(src, elements, div, total, content) {
   if (elements.length === 0) return null;
   const regions = [];
   let col = 0;
@@ -26499,24 +26505,19 @@ function buildRegions(src, elements, div, cells) {
     const raw = src.slice(el.start, el.end);
     const leading = /^\s*/.exec(raw)?.[0] ?? "";
     const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const to = col + el.steps * div;
-    regions.push({
-      raw,
-      leading,
-      trailing,
-      from: col,
-      to,
-      // the grid's view of these columns, not the raw atoms — see SourceRegion
-      cells: cells.slice(col, to).map((c) => [...new Set(c)])
-    });
+    const to = col + el.weight * div;
+    regions.push({ raw, leading, trailing, from: col, to, content: content(col, to) });
     col = to;
   }
+  if (col !== total) return null;
   if (regions.map((r) => r.raw).join("") !== src) return null;
   return regions;
 }
 __name(buildRegions, "buildRegions");
-function singlePart(src, elements, div, cells) {
-  const regions = buildRegions(src, elements, div, cells);
+var gridContent = /* @__PURE__ */ __name((cells) => (from, to) => cells.slice(from, to).map((c) => [...new Set(c)]), "gridContent");
+var rollContent = /* @__PURE__ */ __name((notes) => (from, to) => notes.filter((n) => n.start >= from && n.start < to).map((n) => ({ pitch: n.pitch, start: n.start, duration: n.duration })), "rollContent");
+function singlePart(src, elements, div, total, content) {
+  const regions = buildRegions(src, elements, div, total, content);
   return regions ? [{ part: 0, div, factor: 1, before: "", after: "", regions }] : null;
 }
 __name(singlePart, "singlePart");
@@ -26536,7 +26537,7 @@ function parseStepGrid(mini) {
   }
   const cells = toCells(tok.steps, div);
   const src = mini.trim();
-  const sourceParts = singlePart(src, tok.elements, div, cells);
+  const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(cells));
   return {
     ok: true,
     model: {
@@ -26560,7 +26561,7 @@ function gridFromAlternation(inner) {
   }
   const cells = toCells(tok.steps, div);
   const src = inner.trim();
-  const parts = singlePart(src, tok.elements, div, cells);
+  const parts = singlePart(src, tok.elements, div, cells.length, gridContent(cells));
   return {
     ok: true,
     model: {
@@ -26619,7 +26620,13 @@ function stackSource(parts, divs, elements, partCells, total) {
     const raw = parts[i];
     const leading = /^\s*/.exec(raw)?.[0] ?? "";
     const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const regions = buildRegions(raw.trim(), elements[i], divs[i], partCells[i]);
+    const regions = buildRegions(
+      raw.trim(),
+      elements[i],
+      divs[i],
+      partCells[i].length,
+      gridContent(partCells[i])
+    );
     if (!regions) return null;
     out.push({
       part: i,
@@ -26703,8 +26710,8 @@ __name(applyRollGain, "applyRollGain");
 function parsePianoRoll(mini) {
   const alt = unwrapAlternation(mini);
   if (alt === null) {
-    const parts = splitTopLevel(mini);
-    if (parts.length > 1) return parseRollLanes(parts);
+    const parts2 = splitTopLevel(mini);
+    if (parts2.length > 1) return parseRollLanes(parts2);
   }
   const tok = tokenize2(
     alt ?? mini,
@@ -26742,13 +26749,22 @@ function parsePianoRoll(mini) {
   if (sawNumeric && sawNamed) {
     return { ok: false, reason: "mixed numeric and note-name tokens are beyond the editable subset" };
   }
+  const src = (alt ?? mini).trim();
+  const parts = singlePart(src, tok.elements, div, col, rollContent(notes));
   return {
     ok: true,
     model: {
       steps: col,
       ...alt !== null ? { bars } : {},
       notes,
-      ...sawNumeric ? { numeric: true } : {}
+      ...sawNumeric ? { numeric: true } : {},
+      ...parts ? {
+        source: {
+          parts,
+          prefix: alt !== null ? "<" + (/^\s*/.exec(alt)?.[0] ?? "") : "",
+          suffix: alt !== null ? (/\s*$/.exec(alt)?.[0] ?? "") + ">" : ""
+        }
+      } : {}
     }
   };
 }
@@ -26772,9 +26788,34 @@ function parseRollLanes(parts) {
     return { ok: false, reason: "mixed numeric and note-name lanes are beyond the editable subset" };
   }
   const notes = models.flatMap((m) => m.notes);
-  return { ok: true, model: { steps, notes, ...numeric ? { numeric: true } : {} } };
+  return {
+    ok: true,
+    model: { steps, notes, ...numeric ? { numeric: true } : {}, ...rollStackSource(parts, models) ?? {} }
+  };
 }
 __name(parseRollLanes, "parseRollLanes");
+function rollStackSource(parts, models) {
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    const raw = parts[i];
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const own = models[i].source;
+    if (!own || own.parts.length !== 1 || own.prefix !== "" || own.suffix !== "") return null;
+    out.push({
+      part: i,
+      div: own.parts[0].div,
+      factor: 1,
+      before: (i > 0 ? "," : "") + leading,
+      after,
+      regions: own.parts[0].regions
+    });
+  }
+  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
+  if (rebuilt !== parts.join(",")) return null;
+  return { source: { prefix: "", suffix: "", parts: out } };
+}
+__name(rollStackSource, "rollStackSource");
 
 // src/visualEdit/notation/serialize.ts
 function fmtGain(v) {
@@ -26816,7 +26857,7 @@ function spliceGrid(model) {
     const sole = src.parts.length === 1 && src.prefix === "" && p.regions.length === 1;
     for (const r of p.regions) {
       const now2 = cols.slice(r.from, r.to);
-      out += sameCells(now2, r.cells) ? r.raw : r.leading + (sole ? now2.map(cellToken).join(" ") : reemitRegion(now2, p.div)) + r.trailing;
+      out += sameCells(now2, r.content) ? r.raw : r.leading + (sole ? now2.map(cellToken).join(" ") : reemitRegion(now2, p.div)) + r.trailing;
     }
     out += p.after;
   }
@@ -26906,6 +26947,8 @@ function buildGroups(model) {
 }
 __name(buildGroups, "buildGroups");
 function serializePianoRoll(model) {
+  const spliced = spliceRoll(model);
+  if (spliced !== null) return spliced;
   const bars = model.bars ?? 1;
   if (bars > 1) {
     const groups = buildGroups(model);
@@ -26915,6 +26958,162 @@ function serializePianoRoll(model) {
   return serializeRollLanes(model);
 }
 __name(serializePianoRoll, "serializePianoRoll");
+var noteKey = /* @__PURE__ */ __name((n) => `${n.pitch}:${n.start}:${n.duration}`, "noteKey");
+function assignNotes(model, src) {
+  if (src.parts.length === 1) return /* @__PURE__ */ new Map([[src.parts[0].part, model.notes]]);
+  const taken = /* @__PURE__ */ new Set();
+  const mine = /* @__PURE__ */ new Map();
+  const lost = [];
+  for (const p of src.parts) {
+    const kept = [];
+    let missing = false;
+    for (const was of p.regions.flatMap((r) => r.content)) {
+      const hit = model.notes.find((n) => !taken.has(n) && noteKey(n) === noteKey(was));
+      if (hit) {
+        taken.add(hit);
+        kept.push(hit);
+      } else missing = true;
+    }
+    if (missing) lost.push(p.part);
+    mine.set(p.part, kept);
+  }
+  const strays = model.notes.filter((n) => !taken.has(n));
+  if (strays.length === 0) return mine;
+  if (lost.length !== 1) return null;
+  mine.set(lost[0], [...mine.get(lost[0]) ?? [], ...strays]);
+  return mine;
+}
+__name(assignNotes, "assignNotes");
+function spliceRoll(model) {
+  const src = model.source;
+  if (!src || src.parts.length === 0) return null;
+  const gain = serializeRollGain(model);
+  if (gain.kind === "write" && gain.quoted) return null;
+  const covers = src.parts.every((p) => {
+    const last = p.regions[p.regions.length - 1];
+    return last !== void 0 && last.to === model.steps;
+  });
+  if (!covers) return null;
+  const assigned = assignNotes(model, src);
+  if (assigned === null) return null;
+  const integral = model.notes.every(
+    (n) => Number.isInteger(n.start) && Number.isInteger(n.duration)
+  );
+  let out = src.prefix;
+  for (const p of src.parts) {
+    const notes = assigned.get(p.part) ?? [];
+    if (notes.some((n) => n.start < 0 || n.duration < 1 || n.start + n.duration > model.steps)) {
+      return null;
+    }
+    out += p.before;
+    const last = p.regions[p.regions.length - 1];
+    let body = last === void 0 ? null : "";
+    for (const r of p.regions) {
+      if (body === null) break;
+      const now2 = notes.filter((n) => n.start >= r.from && n.start < r.to);
+      if (sameNotes(now2, r.content)) {
+        body += r.raw;
+        continue;
+      }
+      if (!integral) return null;
+      const re = reemitRollRegion(now2, r.from, r.to, p.div);
+      body = re === null ? null : body + r.leading + re + r.trailing;
+    }
+    if (body === null) {
+      const placed = toPlaced(notes);
+      const rebuilt = placed && laneString(placed, model.steps);
+      if (!rebuilt) return null;
+      out += rebuilt + p.after;
+      continue;
+    }
+    out += body + p.after;
+  }
+  return out + src.suffix;
+}
+__name(spliceRoll, "spliceRoll");
+function sameNotes(a, b) {
+  if (a.length !== b.length) return false;
+  const left = a.map(noteKey).sort();
+  const right = b.map(noteKey).sort();
+  return left.every((k, i) => k === right[i]);
+}
+__name(sameNotes, "sameNotes");
+function toPlaced(notes) {
+  const byStart = /* @__PURE__ */ new Map();
+  for (const n of [...notes].sort((x, y) => x.start - y.start)) {
+    const g = byStart.get(n.start);
+    if (!g) byStart.set(n.start, { pitches: [n.pitch], start: n.start, duration: n.duration });
+    else if (g.duration !== n.duration) return null;
+    else g.pitches.push(n.pitch);
+  }
+  return [...byStart.values()];
+}
+__name(toPlaced, "toPlaced");
+function reemitRollRegion(notes, from, to, div) {
+  const groups = toPlaced(notes);
+  if (groups === null) return null;
+  const at = new Map(groups.map((g) => [g.start, g]));
+  const starts = groups.map((g) => g.start).sort((a, b) => a - b);
+  const tokens = [];
+  let c = from;
+  let crossed = false;
+  while (c < to) {
+    const g = at.get(c);
+    if (g && g.duration % div === 0) {
+      const end2 = c + g.duration;
+      if (end2 > to) return null;
+      if (starts.some((s) => s > c && s < end2)) return null;
+      tokens.push(groupToken({ pitches: g.pitches, duration: g.duration / div }));
+      c = end2;
+      continue;
+    }
+    const end = c + div;
+    const slots = [];
+    let k = c;
+    while (k < end) {
+      const gg = at.get(k);
+      if (!gg) {
+        slots.push("~");
+        k++;
+        continue;
+      }
+      if (k + gg.duration > end) {
+        crossed = true;
+        break;
+      }
+      slots.push(groupToken({ pitches: gg.pitches, duration: gg.duration }));
+      k += gg.duration;
+    }
+    if (crossed) break;
+    tokens.push(
+      slots.every((s) => s === "~") ? "~" : slots.length === 1 ? slots[0] : `[${slots.join(" ")}]`
+    );
+    c = end;
+  }
+  if (crossed) return groupWrapRegion(at, starts, from, to, div);
+  return tokens.join(" ");
+}
+__name(reemitRollRegion, "reemitRollRegion");
+function groupWrapRegion(at, starts, from, to, div) {
+  const inner = [];
+  let c = from;
+  while (c < to) {
+    const g = at.get(c);
+    if (!g) {
+      inner.push("~");
+      c++;
+      continue;
+    }
+    if (c + g.duration > to) return null;
+    if (starts.some((s) => s > c && s < c + g.duration)) return null;
+    inner.push(groupToken({ pitches: g.pitches, duration: g.duration }));
+    c += g.duration;
+  }
+  const steps = (to - from) / div;
+  const body = `[${inner.join(" ")}]`;
+  return steps === 1 ? body : `${body}@${steps}`;
+}
+__name(groupWrapRegion, "groupWrapRegion");
 function placedGroups(model) {
   const byKey = /* @__PURE__ */ new Map();
   for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
