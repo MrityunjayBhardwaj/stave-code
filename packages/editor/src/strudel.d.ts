@@ -108,6 +108,27 @@ declare module '@strudel/core/evaluate.mjs' {
 declare module '@strudel/core/pattern.mjs'
 declare module '@strudel/core/signal.mjs'
 declare module '@strudel/core/controls.mjs'
+declare module '@strudel/core/euclid.mjs' {
+  /**
+   * Bjørklund's algorithm — the euclidean onset distribution Strudel itself
+   * plays. `bjorklund(3, 8)` → `[1,0,0,1,0,0,1,0]`. Imported rather than
+   * re-implemented: the notation view must show the cells the audio triggers,
+   * and a copy of this is only correct until upstream changes it.
+   */
+  export function bjorklund(ons: number, steps: number): number[]
+}
+/**
+ * The krill parser — the mini-notation grammar Strudel actually runs (the
+ * transpiler calls this same parser). Self-contained: it deep-imports without
+ * dragging `@strudel/core`'s barrel (which pulls `@kabelsalat/web`) in.
+ * `parse` wants the mini string QUOTED — `parse('"' + mini + '"')` — which is
+ * the transpiler's own call shape. Returns the krill AST; the notation parser
+ * declares the node shapes it consumes and casts at the use site (the loose
+ * convention above).
+ */
+declare module '@strudel/mini/krill-parser.js' {
+  export function parse(src: string): unknown
+}
 declare module '@strudel/mini/mini.mjs' {
   export const mini: (...args: unknown[]) => unknown
   export function miniAllStrings(): void
