@@ -6,11 +6,11 @@
  * rewrites the document is data loss, and it is loss the user never asked for
  * and cannot see coming.
  *
- * THE LAW HOLDS FOR THE GRID, AND NOT YET FOR THE ROLL. Measured over the 1500
- * real-world strings in `mini-corpus.json`:
+ * THE LAW HOLDS FOR BOTH VIEWS NOW. Measured over the 1500 real-world strings
+ * in `mini-corpus.json`:
  *
  *     GRID   opens 781   round-trips 781 (100%)    rewrites 0      <- #913 (A2)
- *     ROLL   opens 392   round-trips 230 (58.7%)   REWRITES 160
+ *     ROLL   opens 392   round-trips 392 (100%)    rewrites 0      <- #916 (A2)
  *
  * Before #913 the grid round-tripped 512 of 781 (65.6%) and rewrote 269: open
  * `bd hh*2 sd cp`, nudge one cell, and the user's line came back as
@@ -26,10 +26,11 @@
  * could open. A design note that reads reasonably as "sugar expands" reads
  * differently as "32% of real content is rewritten on touch".
  *
- * The grid's writer now performs span surgery: it copies the user's own bytes
- * back for every region they did not edit, so identity FALLS OUT instead of
- * being a case someone maintains. The ROLL still rebuilds from its model —
- * which is what the 160 entries below are, and they are the same defect.
+ * Both writers now perform span surgery: they copy the user's own bytes back
+ * for every region they did not edit, so identity FALLS OUT instead of being a
+ * case someone maintains. The grid's 269 (#913) and the roll's 160 (#916) were
+ * the same defect and left the same way; the residual snapshots below are now
+ * empty and are kept as the tripwire that catches either creeping back.
  *
  * THE OTHER HALF — `edit-locality.test.ts`, and it is the half with teeth. This
  * file measures the UNEDITED path, which is necessary and NOT sufficient: an
@@ -169,13 +170,12 @@ describe('round-trip — an unedited open→write must not change the text', () 
     )
     // MEASURED by running it, over 1500 real strings:
     //   grid  269 of 781 (65.6% round-trip) -> 0 of 781 (100%)   #913 span surgery
-    //   roll  160 of 392 (58.7% round-trip) -> unchanged, the follow-up
-    // The grid's ceiling is 0 and stays 0: it is a LAW there now, not a budget.
-    // Ratcheting these down as they fall is what keeps the snapshot honest —
-    // a ceiling left at its old value would let the loss creep back silently
-    // while every test stayed green.
+    //   roll  160 of 392 (58.7% round-trip) -> 0 of 392 (100%)   #916 span surgery
+    // Both ceilings are 0 and stay 0: it is a LAW in both views now, not a
+    // budget. A ceiling left at its old value would let the loss creep back
+    // silently while every test stayed green.
     expect(counts.grid).toBe(0)
-    expect(counts.roll).toBeLessThanOrEqual(160)
+    expect(counts.roll).toBe(0)
   })
 
   /**

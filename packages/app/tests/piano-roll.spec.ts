@@ -132,6 +132,20 @@ test.describe('Piano Roll (#383)', () => {
     expect(await strudelValue(page)).toBe('$: note("c3 ~ e3 ~")')
   })
 
+  test('placing a note keeps the `-` rest the user typed elsewhere (#916)', async ({ page }) => {
+    // Span surgery for the roll: editing one step must not rewrite the others.
+    // Before #916 this placed note rebuilt the whole mini and normalized the
+    // user's `-` to `~` — `c3 - e3 ~` came back `c3 ~ e3 e3`. Now the untouched
+    // `- ` region emits its own bytes and only step 3 changes.
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 - e3 ~")')
+    const drawer = await openRoll(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await grid.locator('[data-roll-cell="52:3"]').click() // place e3 at step 3
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: note("c3 - e3 e3")')
+  })
+
   test('clicking a note deletes it (click-toggle)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c3 ~ ~ ~")')

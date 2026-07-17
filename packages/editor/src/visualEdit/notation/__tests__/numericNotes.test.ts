@@ -46,7 +46,9 @@ describe('#469 — numeric note/degree patterns', () => {
   it('composes with `-` rests (#468) and `@n` elongation', () => {
     const rest = parsePianoRoll('60 - 62')
     expect(rest.ok).toBe(true)
-    if (rest.ok) expect(serializePianoRoll(rest.model)).toBe('60 ~ 62')
+    // the user's `-` survives an unedited open now (#916 span surgery); it used
+    // to normalize to `~`, the roll's half of the #468/#913 rest-preservation
+    if (rest.ok) expect(serializePianoRoll(rest.model)).toBe('60 - 62')
     const held = parsePianoRoll('60@2 62')
     expect(held.ok).toBe(true)
     if (held.ok) expect(serializePianoRoll(held.model)).toBe('60@2 62')
