@@ -142,6 +142,28 @@ test.describe('Sequencer (#382)', () => {
     expect(await strudelValue(page)).toBe('$: s("[bd bd] hh*2 sd cp")')
   })
 
+  /**
+   * #920 — a `<...>` alternation used as a sequence element. `bd <sd hh>` opens as
+   * a 2-bar grid: `bd` static across both bars, the `<sd hh>` slot alternating.
+   * Editing the alternation's bar-1 slot writes back `bd <sd ~>` — the leading
+   * `bd` untouched — never a whole-cycle `<[bd sd] [bd ~]>` rebuild.
+   */
+  test('opens and edits a <...>-as-element pattern (#920)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd <sd hh>")')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await expect(grid).toHaveCount(1)
+    // 2 bars × 2 columns; bd (lane 0) on cols 0 & 2, sd (lane 1) col 1, hh (lane 2) col 3
+    await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-seq-cell="0:2"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-seq-cell="2:3"]')).toHaveAttribute('aria-pressed', 'true')
+    // turn off hh in bar 1 → the alternation's second slot empties
+    await grid.locator('[data-seq-cell="2:3"]').click()
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: s("bd <sd ~>")')
+  })
+
   /** #913 — opening a pattern and clicking nothing must not touch the document. */
   test('opening a euclid pattern leaves the source alone (#913)', async ({ page }) => {
     await boot(page)
