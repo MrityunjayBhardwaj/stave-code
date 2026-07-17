@@ -657,7 +657,7 @@ export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
       steps: cells.length,
       lanes: lanesFromCells(cells),
       ...(sourceParts
-        ? { source: { text: src, prefix: '', suffix: '', parts: sourceParts } }
+        ? { source: { prefix: '', suffix: '', parts: sourceParts } }
         : {}),
     },
   }
@@ -694,7 +694,6 @@ function gridFromAlternation(inner: string): ParseResult<StepGridModel> {
       ...(parts
         ? {
             source: {
-              text: src,
               parts,
               prefix: '<' + (/^\s*/.exec(inner)?.[0] ?? ''),
               suffix: (/\s*$/.exec(inner)?.[0] ?? '') + '>',
@@ -774,12 +773,11 @@ function stackSource(
       regions,
     })
   }
-  const text = parts.join(',')
   // the parts must reassemble the line exactly, or we are not putting back what
   // we read — same check as the per-part tiling, one level up
   const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join('') + p.after).join('')
-  if (rebuilt !== text) return null
-  return { source: { text, prefix: '', suffix: '', parts: out } }
+  if (rebuilt !== parts.join(',')) return null
+  return { source: { prefix: '', suffix: '', parts: out } }
 }
 
 /* ── velocity (.gain) read-back ────────────────────────────────── */

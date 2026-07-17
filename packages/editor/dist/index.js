@@ -26516,7 +26516,7 @@ function parseStepGrid(mini) {
     model: {
       steps: cells.length,
       lanes: lanesFromCells(cells),
-      ...sourceParts ? { source: { text: src, prefix: "", suffix: "", parts: sourceParts } } : {}
+      ...sourceParts ? { source: { prefix: "", suffix: "", parts: sourceParts } } : {}
     }
   };
 }
@@ -26543,7 +26543,6 @@ function gridFromAlternation(inner) {
       lanes: lanesFromCells(cells),
       ...parts ? {
         source: {
-          text: src,
           parts,
           prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
           suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
@@ -26605,10 +26604,9 @@ function stackSource(parts, divs, elements, partCells, total) {
       regions
     });
   }
-  const text = parts.join(",");
   const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
-  if (rebuilt !== text) return null;
-  return { source: { text, prefix: "", suffix: "", parts: out } };
+  if (rebuilt !== parts.join(",")) return null;
+  return { source: { prefix: "", suffix: "", parts: out } };
 }
 __name(stackSource, "stackSource");
 var GAIN_TOKEN2 = /^\d+(\.\d+)?$/;

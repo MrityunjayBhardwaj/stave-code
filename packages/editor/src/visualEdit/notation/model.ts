@@ -2,15 +2,24 @@
  * Notation models — the structured shapes the Sequencer and Piano Roll panels
  * own, parsed from and serialized back to mini-notation.
  *
- * These are deliberately a STRICT SUBSET of Strudel mini-notation: only the
- * idioms that survive a lossless text round-trip live here. `*n` speed, `!n`
- * replicate, and euclid `(k,n[,rot])` are accepted as input sugar — expanded
- * onto the grid and serialized back in expanded form (so they round-trip as
- * the expansion, not the source token). Anything richer (`{}` polymeter, `/`
- * slow, `?` degrade, deep nesting) parses to `{ ok: false }` and the panel
- * falls back to code-only editing rather than guess and corrupt the source.
- * This is the conservatism the whole text-writeback substrate depends on
- * (design doc §4, §5.3).
+ * These are deliberately a STRICT SUBSET of Strudel mini-notation: `*n` speed,
+ * `!n` replicate, and euclid `(k,n[,rot])` EXPAND onto the grid, because a grid
+ * of cells is what these panels can draw. Anything richer (`{}` polymeter, `/`
+ * slow, `?` degrade, deep nesting) parses to `{ ok: false }` and the panel falls
+ * back to code-only editing rather than guess and corrupt the source. This is
+ * the conservatism the whole text-writeback substrate depends on (design doc
+ * §4, §5.3).
+ *
+ * THE EXPANSION IS A FACT ABOUT THE VIEW, NOT ABOUT THE USER'S FILE. It used to
+ * be both: `*n` was documented as sugar that "serializes back as the expanded
+ * sequence", so opening `bd hh*2 sd cp` and nudging any cell rewrote the line as
+ * `bd bd hh hh sd ~ cp ~`. That cost a third of everything the grid could open
+ * (#913). The StepGridModel now carries the spans it was read from and the
+ * writer puts unedited ones back verbatim, so the subset bounds what the panel
+ * can SHOW and edit — never what survives being looked at.
+ *
+ * The roll has no provenance yet and still rebuilds from its model; its 160
+ * rewrites are pinned in `round-trip.test.ts` and are the follow-up.
  */
 
 /**
@@ -47,12 +56,6 @@ export interface SourceRegion {
 }
 
 /**
- * Where a model's text came from. Present only when the model was parsed from
- * source and has not been restructured since; absent on models built from
- * scratch, and ignored the moment the column count stops matching (a
- * resolution change re-lays the whole grid, so no region means anything).
- */
-/**
  * One `,`-separated part of the source, and the columns it produced.
  *
  * A flat sequence and a `<…>` alternation are the one-part case; a `,`-stack
@@ -76,9 +79,15 @@ export interface SourcePart {
   regions: SourceRegion[]
 }
 
+/**
+ * The bytes a model was read from, in the pieces the writer puts back.
+ *
+ * Present only on a model parsed from source and not restructured since —
+ * `resize` drops it, because a re-laid grid makes every region a lie. Absent on
+ * models built from scratch, and then the writer rebuilds from the grid, which
+ * is lossy and always was.
+ */
 export interface GridSource {
-  /** the exact mini text this source reconstructs */
-  text: string
   /**
    * The wrapper the parts sit inside, written back around them verbatim: `<`
    * and `>` (with the user's padding) for a multi-bar alternation, empty for a
