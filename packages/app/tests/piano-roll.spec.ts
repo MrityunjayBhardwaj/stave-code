@@ -146,6 +146,27 @@ test.describe('Piano Roll (#383)', () => {
     expect(await strudelValue(page)).toBe('$: note("c3 - e3 e3")')
   })
 
+  /**
+   * #920 — a `<...>` alternation used as a sequence element. `note("c3 <e3 g3>")`
+   * opens as a 2-bar roll: c3 static across both bars, the `<e3 g3>` slot
+   * alternating. Deleting the bar-1 note empties that slot → `note("c3 <e3 ~>")`,
+   * the leading c3 untouched — never a whole-cycle `<[c3 e3] [c3 ~]>` rebuild.
+   */
+  test('opens and edits a <...>-as-element roll pattern (#920)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 <e3 g3>")')
+    const drawer = await openRoll(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    // c3 in both bars (steps 0 & 2), e3 in bar 0 (step 1), g3 in bar 1 (step 3)
+    await expect(grid.locator('[data-roll-cell="48:0"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-roll-cell="48:2"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-roll-cell="52:1"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-roll-cell="55:3"]')).toHaveAttribute('aria-pressed', 'true')
+    await grid.locator('[data-roll-cell="55:3"]').click() // delete g3 in bar 1
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: note("c3 <e3 ~>")')
+  })
+
   test('clicking a note deletes it (click-toggle)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c3 ~ ~ ~")')

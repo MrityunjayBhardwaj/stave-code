@@ -57,6 +57,40 @@ export interface SourceRegion<C> {
   content: C
 }
 
+/**
+ * Source for a `<...>` alternation used as a sequence ELEMENT (`bd <sd hh>`),
+ * not around the whole cycle (#920). The model bar-expands — one alternative per
+ * bar, so `bd <sd hh>` is a 2-bar grid — but the SOURCE stays a single cycle:
+ * the elements the user actually wrote (`bd`, `<sd hh>`). Each region owns a
+ * within-bar column span and remembers what it showed IN EACH BAR, so the writer
+ * copies an unchanged element's bytes through verbatim and re-emits only the one
+ * edited — as `<...>` when its bars now differ, plain when they agree, promoting
+ * a static cell to an alternation when an edit makes it vary.
+ *
+ * Distinct from `source`: there a region's `[from,to)` are the model's own
+ * columns; here they are SINGLE-CYCLE columns, gathered strided across `bars`.
+ * A model carries `altSource` XOR `source`, never both.
+ */
+export interface AltRegion<C> {
+  raw: string
+  leading: string
+  trailing: string
+  /** `[from, to)` columns WITHIN one bar (single-cycle space) */
+  from: number
+  to: number
+  /** what the view showed for this element in each of `bars` cycles, at parse */
+  perBar: C[]
+}
+export interface AltSource<C> {
+  /** columns per bar (one cycle) */
+  perBar: number
+  bars: number
+  /** finest subdivision, so a re-emitted region splits on whole columns */
+  div: number
+  /** the single-cycle top-level elements, tiling the source in order */
+  regions: AltRegion<C>[]
+}
+
 /** what a step grid shows for a span of columns: the sounds in each */
 export type GridCells = string[][]
 
@@ -124,6 +158,12 @@ export interface StepGridModel {
    * whole string from the grid, which is lossy and always was.
    */
   source?: NotationSource<GridCells>
+  /**
+   * Set when the alternation sits INSIDE the sequence (`bd <sd hh>`, #920) rather
+   * than around the whole cycle. The writer uses this instead of `source`; the
+   * two are mutually exclusive.
+   */
+  altSource?: AltSource<GridCells>
   /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
   bars?: number
   /**
@@ -189,6 +229,12 @@ export interface PianoRollModel {
    * writer rebuilds from the model, which is lossy and always was.
    */
   source?: NotationSource<RollNote[]>
+  /**
+   * Set when the alternation sits INSIDE the sequence (`0 <2 3> 5`, #920) rather
+   * than around the whole cycle. The writer uses this instead of `source`; the
+   * two are mutually exclusive.
+   */
+  altSource?: AltSource<RollNote[]>
   /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
   bars?: number
   notes: RollNote[]

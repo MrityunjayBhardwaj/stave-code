@@ -1,29 +1,29 @@
 {
   "tunes": 57,
   "tuneLevel": {
-    "fully": 20,
-    "partial": 9,
-    "anyEditable": 29,
+    "fully": 22,
+    "partial": 8,
+    "anyEditable": 30,
     "knobsOnly": 20,
-    "codeOnly": 7,
+    "codeOnly": 6,
     "unparseable": 1,
-    "anyEditablePct": 50.9
+    "anyEditablePct": 52.6
   },
   "unitLevel": {
     "totalUnits": 102,
-    "note": 50,
+    "note": 52,
     "clip": 0,
-    "structurallyEditable": 50,
-    "noteBroken": 8,
+    "structurallyEditable": 52,
+    "noteBroken": 6,
     "knobs": 31,
     "codeOnly": 13,
     "setup": 36,
-    "structurallyEditablePct": 49
+    "structurallyEditablePct": 51
   },
   "brokenReasons": {
-    "step: \"polymeter_slowcat\" is beyond the editable subset": 3,
     "step: a patterned \":\" variant on \"rd\" is beyond the editable subset": 1,
     "step: a patterned \":\" variant on \"sd\" is beyond the editable subset": 1,
+    "step: \"polymeter_slowcat\" is beyond the editable subset": 1,
     "roll: euclid on a group is beyond the editable subset": 1,
     "roll: multi-bar parallel note lanes are beyond the editable subset": 1,
     "step: nested groups are beyond the editable subset": 1
@@ -606,13 +606,13 @@
       "file": "delay.strudel",
       "units": 1,
       "setup": 0,
-      "noteEditable": 0,
+      "noteEditable": 1,
       "clip": 0,
-      "noteBroken": 1,
+      "noteBroken": 0,
       "knobs": 0,
       "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "structurallyEditable": 1,
+      "tuneClass": "fully"
     },
     {
       "file": "dinofunk.strudel",
@@ -690,13 +690,13 @@
       "file": "orbit.strudel",
       "units": 2,
       "setup": 0,
-      "noteEditable": 1,
+      "noteEditable": 2,
       "clip": 0,
-      "noteBroken": 1,
+      "noteBroken": 0,
       "knobs": 0,
       "codeOnly": 0,
-      "structurallyEditable": 1,
-      "tuneClass": "partial"
+      "structurallyEditable": 2,
+      "tuneClass": "fully"
     },
     {
       "file": "randomBells.strudel",
