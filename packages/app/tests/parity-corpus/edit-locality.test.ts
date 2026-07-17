@@ -451,4 +451,41 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
     const note = r.model.notes.find((n) => n.pitch === '4')!
     expect(serializePianoRoll(dragPitch(r.model, note, '5'))).toBe('0,2,5')
   })
+
+  /**
+   * A note sustaining ACROSS an internal step boundary of an elongated group
+   * (`[0 1@2]@2`, the `1` runs into the next step) has no per-step token — the
+   * writer wraps the whole region as one weighted group `[..]@2` rather than
+   * flattening the line. Found by the audit that swept a pitch-drag over EVERY
+   * note of every roll mini: this was the last shape where one edit touched more
+   * than one top-level element.
+   */
+  it('roll: editing inside an elongated group stays local (group-wrap, no flatten)', () => {
+    const src = '[1@2 2] [3@2 4] 2 [0 1@2]@2 - - -'
+    const r = parsePianoRoll(src)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const note = r.model.notes.find((n) => n.start === 9)! // the `0` in [0 1@2]@2
+    const out = serializePianoRoll(dragPitch(r.model, note, '7'))
+    // only the edited element changes; every other element byte-identical
+    expect(out).toBe('[1@2 2] [3@2 4] 2 [7@2 1@4]@2 - - -')
+  })
+
+  /**
+   * Fractional columns (`@2.5` / `@3.5`, #628) don't sit on the integer grid the
+   * writer re-emits onto. An UNEDITED such pattern still round-trips by copying
+   * its own bytes; an EDITED one must decline to `null` — the panel then keeps
+   * the document untouched (the #628 no-op), NEVER a rebuild that drops the note.
+   * Before this guard, deleting a note wrote `<~ ~>` and lost the other.
+   */
+  it('roll: an edit on a fractional-weight pattern no-ops (null), never drops a note', () => {
+    const src = '<~ [~@3.5 d2@2 c#2@2.5]>'
+    const r = parsePianoRoll(src)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializePianoRoll(r.model)).toBe(src) // unedited: round-trips
+    const last = r.model.notes[r.model.notes.length - 1]
+    const deleted = { ...r.model, notes: r.model.notes.filter((n) => n !== last) }
+    expect(serializePianoRoll(deleted)).toBeNull() // edited: safe no-op
+  })
 })

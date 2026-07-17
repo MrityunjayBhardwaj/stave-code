@@ -362,6 +362,17 @@ function spliceRoll(model: PianoRollModel): string | null {
   const assigned = assignNotes(model, src)
   if (assigned === null) return null
 
+  // Fractional columns (from `@2.5` / `@3.5` weights, #628) don't sit on the
+  // integer grid this writer re-emits onto — the column walk would step past a
+  // note at 11.5 and drop it. An UNEDITED such pattern still round-trips (its
+  // regions match and copy their own bytes below); an EDITED one must NOT be
+  // spliced. Declining here returns null, and the caller keeps the document
+  // untouched — the safe no-op #628 always had — instead of writing a rebuild
+  // that silently loses the note.
+  const integral = model.notes.every(
+    (n) => Number.isInteger(n.start) && Number.isInteger(n.duration),
+  )
+
   let out = src.prefix
   for (const p of src.parts) {
     const notes = assigned.get(p.part) ?? []
@@ -383,6 +394,9 @@ function spliceRoll(model: PianoRollModel): string | null {
         body += r.raw
         continue
       }
+      // an edited region on a fractional grid can't be re-emitted safely — decline
+      // the whole splice so the caller no-ops rather than dropping the note
+      if (!integral) return null
       const re = reemitRollRegion(now, r.from, r.to, p.div)
       body = re === null ? null : body + r.leading + re + r.trailing
     }
@@ -434,9 +448,9 @@ function toPlaced(notes: RollNote[]): PlacedGroup[] | null {
  * timing. So a region owning `w` columns must come back as exactly `w / div`
  * steps' worth of weight, or not at all.
  *
- * Returns null when these notes can't be said in that space — a chord whose
- * members have different lengths (that needs parallel lanes, a restructure of
- * the whole line), notes overlapping, or a note crossing a step boundary.
+ * Returns null only when these notes truly can't be said in that space — a chord
+ * whose members have different lengths (that needs parallel lanes, a restructure
+ * of the whole line) or notes that overlap in time.
  */
 function reemitRollRegion(
   notes: RollNote[],
@@ -450,6 +464,7 @@ function reemitRollRegion(
   const starts = groups.map((g) => g.start).sort((a, b) => a - b)
   const tokens: string[] = []
   let c = from
+  let crossed = false
   while (c < to) {
     const g = at.get(c)
     // a group filling whole steps from a step boundary is one `@k` token — the
@@ -474,17 +489,60 @@ function reemitRollRegion(
         k++
         continue
       }
-      if (k + gg.duration > end) return null // crosses the step boundary
+      // a note sustaining PAST this step's boundary can't be a per-step token —
+      // splitting it would make two onsets. The whole region re-emits as one
+      // weighted group instead, which holds a crossing note faithfully.
+      if (k + gg.duration > end) {
+        crossed = true
+        break
+      }
       slots.push(groupToken({ pitches: gg.pitches, duration: gg.duration }))
       k += gg.duration
     }
+    if (crossed) break
     // a step nobody plays is `~`, not `[~ ~]`
     tokens.push(
       slots.every((s) => s === '~') ? '~' : slots.length === 1 ? slots[0] : `[${slots.join(' ')}]`,
     )
     c = end
   }
+  if (crossed) return groupWrapRegion(at, starts, from, to, div)
   return tokens.join(' ')
+}
+
+/**
+ * Re-emit a whole region as ONE weighted group: `[a@2 b@4]@2`. A bracket
+ * normalizes its contents across its own slots, so a note sustaining across an
+ * internal step boundary — which no per-step form can hold without splitting it
+ * into two onsets — comes back faithfully. The column durations go straight in
+ * (they sum to the region's width), and `@steps` gives the bracket the region's
+ * weight so its neighbours keep their timing. Hap-equivalent to the per-step
+ * form where both apply; used only where the per-step form can't.
+ */
+function groupWrapRegion(
+  at: Map<number, PlacedGroup>,
+  starts: number[],
+  from: number,
+  to: number,
+  div: number,
+): string | null {
+  const inner: string[] = []
+  let c = from
+  while (c < to) {
+    const g = at.get(c)
+    if (!g) {
+      inner.push('~')
+      c++
+      continue
+    }
+    if (c + g.duration > to) return null // sustains past the region itself
+    if (starts.some((s) => s > c && s < c + g.duration)) return null // overlap
+    inner.push(groupToken({ pitches: g.pitches, duration: g.duration }))
+    c += g.duration
+  }
+  const steps = (to - from) / div
+  const body = `[${inner.join(' ')}]`
+  return steps === 1 ? body : `${body}@${steps}`
 }
 
 /** A chord group: notes sharing BOTH a start and a duration → one `[..]@d` token. */

@@ -26996,6 +26996,9 @@ function spliceRoll(model) {
   if (!covers) return null;
   const assigned = assignNotes(model, src);
   if (assigned === null) return null;
+  const integral = model.notes.every(
+    (n) => Number.isInteger(n.start) && Number.isInteger(n.duration)
+  );
   let out = src.prefix;
   for (const p of src.parts) {
     const notes = assigned.get(p.part) ?? [];
@@ -27012,6 +27015,7 @@ function spliceRoll(model) {
         body += r.raw;
         continue;
       }
+      if (!integral) return null;
       const re = reemitRollRegion(now2, r.from, r.to, p.div);
       body = re === null ? null : body + r.leading + re + r.trailing;
     }
@@ -27052,6 +27056,7 @@ function reemitRollRegion(notes, from, to, div) {
   const starts = groups.map((g) => g.start).sort((a, b) => a - b);
   const tokens = [];
   let c = from;
+  let crossed = false;
   while (c < to) {
     const g = at.get(c);
     if (g && g.duration % div === 0) {
@@ -27072,18 +27077,43 @@ function reemitRollRegion(notes, from, to, div) {
         k++;
         continue;
       }
-      if (k + gg.duration > end) return null;
+      if (k + gg.duration > end) {
+        crossed = true;
+        break;
+      }
       slots.push(groupToken({ pitches: gg.pitches, duration: gg.duration }));
       k += gg.duration;
     }
+    if (crossed) break;
     tokens.push(
       slots.every((s) => s === "~") ? "~" : slots.length === 1 ? slots[0] : `[${slots.join(" ")}]`
     );
     c = end;
   }
+  if (crossed) return groupWrapRegion(at, starts, from, to, div);
   return tokens.join(" ");
 }
 __name(reemitRollRegion, "reemitRollRegion");
+function groupWrapRegion(at, starts, from, to, div) {
+  const inner = [];
+  let c = from;
+  while (c < to) {
+    const g = at.get(c);
+    if (!g) {
+      inner.push("~");
+      c++;
+      continue;
+    }
+    if (c + g.duration > to) return null;
+    if (starts.some((s) => s > c && s < c + g.duration)) return null;
+    inner.push(groupToken({ pitches: g.pitches, duration: g.duration }));
+    c += g.duration;
+  }
+  const steps = (to - from) / div;
+  const body = `[${inner.join(" ")}]`;
+  return steps === 1 ? body : `${body}@${steps}`;
+}
+__name(groupWrapRegion, "groupWrapRegion");
 function placedGroups(model) {
   const byKey = /* @__PURE__ */ new Map();
   for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
