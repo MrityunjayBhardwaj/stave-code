@@ -2,21 +2,116 @@
  * Notation models — the structured shapes the Sequencer and Piano Roll panels
  * own, parsed from and serialized back to mini-notation.
  *
- * These are deliberately a STRICT SUBSET of Strudel mini-notation: only the
- * idioms that survive a lossless text round-trip live here. `*n` speed, `!n`
- * replicate, and euclid `(k,n[,rot])` are accepted as input sugar — expanded
- * onto the grid and serialized back in expanded form (so they round-trip as
- * the expansion, not the source token). Anything richer (`{}` polymeter, `/`
- * slow, `?` degrade, deep nesting) parses to `{ ok: false }` and the panel
- * falls back to code-only editing rather than guess and corrupt the source.
- * This is the conservatism the whole text-writeback substrate depends on
- * (design doc §4, §5.3).
+ * These are deliberately a STRICT SUBSET of Strudel mini-notation: `*n` speed,
+ * `!n` replicate, and euclid `(k,n[,rot])` EXPAND onto the grid, because a grid
+ * of cells is what these panels can draw. Anything richer (`{}` polymeter, `/`
+ * slow, `?` degrade, deep nesting) parses to `{ ok: false }` and the panel falls
+ * back to code-only editing rather than guess and corrupt the source. This is
+ * the conservatism the whole text-writeback substrate depends on (design doc
+ * §4, §5.3).
+ *
+ * THE EXPANSION IS A FACT ABOUT THE VIEW, NOT ABOUT THE USER'S FILE. It used to
+ * be both: `*n` was documented as sugar that "serializes back as the expanded
+ * sequence", so opening `bd hh*2 sd cp` and nudging any cell rewrote the line as
+ * `bd bd hh hh sd ~ cp ~`. That cost a third of everything the grid could open
+ * (#913). The StepGridModel now carries the spans it was read from and the
+ * writer puts unedited ones back verbatim, so the subset bounds what the panel
+ * can SHOW and edit — never what survives being looked at.
+ *
+ * The roll has no provenance yet and still rebuilds from its model; its 160
+ * rewrites are pinned in `round-trip.test.ts` and are the follow-up.
  */
+
+/**
+ * One top-level element of the source, and the columns it produced.
+ *
+ * krill's element spans TILE the mini: concatenating them reconstructs the
+ * input byte-for-byte, whitespace and all. Verified over the 1352 flat minis in
+ * the real corpus, and re-checked per parse — that tiling is the whole basis for
+ * putting back exactly what we read.
+ *
+ * Where the whitespace LANDS inside a span is not something to have beliefs
+ * about: `bd sd` spans as `"bd "` + `"sd"` (trailing) while `bd!3 sd` spans as
+ * `"bd!3"` + `" sd"` (leading). So an untouched region is written back as its
+ * whole `raw` span and no rule is needed; only a region we re-emit has to know
+ * which side its padding sits on.
+ */
+export interface SourceRegion {
+  /** the element's bytes exactly as written, whitespace included */
+  raw: string
+  /** `raw`'s padding, split out so a re-emit keeps the spacing around it */
+  leading: string
+  trailing: string
+  /** `[from, to)` — the columns this element expanded to */
+  from: number
+  to: number
+  /**
+   * What the GRID showed for these columns at parse time — the basis for "did
+   * the user change this region?". Deliberately the model's own view rather
+   * than the raw atoms: `[sd,sd]` is one lane to a grid that has one lane per
+   * distinct sound, so comparing against the raw pair would report a change
+   * nobody made and rewrite the region for nothing.
+   */
+  cells: string[][]
+}
+
+/**
+ * One `,`-separated part of the source, and the columns it produced.
+ *
+ * A flat sequence and a `<…>` alternation are the one-part case; a `,`-stack
+ * has several, each with its OWN resolution. `bd sd, hh*4` lays two columns
+ * against four, and the grid shows both on the finer of the two — so a part's
+ * regions are indexed in its own column space and `factor` maps them onto the
+ * shared grid.
+ */
+export interface SourcePart {
+  /** the lane `part` index these regions describe */
+  part: number
+  /** columns per top-level step INSIDE this part */
+  div: number
+  /** shared-grid columns spanned by each of this part's own columns */
+  factor: number
+  /** the bytes before this part's content — its `,` and padding — verbatim */
+  before: string
+  /** the bytes after it */
+  after: string
+  /** one entry per top-level element, in source order, tiling the part */
+  regions: SourceRegion[]
+}
+
+/**
+ * The bytes a model was read from, in the pieces the writer puts back.
+ *
+ * Present only on a model parsed from source and not restructured since —
+ * `resize` drops it, because a re-laid grid makes every region a lie. Absent on
+ * models built from scratch, and then the writer rebuilds from the grid, which
+ * is lossy and always was.
+ */
+export interface GridSource {
+  /**
+   * The wrapper the parts sit inside, written back around them verbatim: `<`
+   * and `>` (with the user's padding) for a multi-bar alternation, empty for a
+   * flat sequence. Kept as bytes rather than a flag so `< a b >` keeps its
+   * spaces.
+   */
+  prefix: string
+  suffix: string
+  parts: SourcePart[]
+}
 
 /** Drum/step grid: lanes (sounds) × steps (columns). */
 export interface StepGridModel {
   /** total columns across all bars */
   steps: number
+  /**
+   * The source this model was read from, for span surgery on write (#913).
+   * The writer re-emits ONLY the regions whose content the user actually
+   * changed and copies every other region's bytes through untouched, so an
+   * edit cannot destroy notation it never touched (`bd hh*2 sd cp`, nudge a
+   * cell in the `bd`, and the `*2` survives). Absent → the writer rebuilds the
+   * whole string from the grid, which is lossy and always was.
+   */
+  source?: GridSource
   /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
   bars?: number
   /**

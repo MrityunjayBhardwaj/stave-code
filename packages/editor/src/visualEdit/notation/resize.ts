@@ -15,6 +15,18 @@ import type { PianoRollModel, StepGridModel } from './model'
 
 export type ResizeMode = 'spread' | 'pad'
 
+/**
+ * Drop the source provenance (#913). A resize re-lays every column, so the
+ * regions no longer describe anything: their notation was written for a grid
+ * that no longer exists, and the writer must rebuild the line from the model.
+ *
+ * `serializeStepGrid` would also catch this — a resized grid's column count
+ * stops matching its regions' — but a length check is a coincidence to lean on
+ * for a path whose failure mode is pasting the WRONG bytes into someone's file.
+ * The function that invalidates the regions is the one that should say so.
+ */
+const restructured = ({ source: _drop, ...rest }: StepGridModel): StepGridModel => rest
+
 export function resizeGrid(
   model: StepGridModel,
   nextSteps: number,
@@ -23,14 +35,14 @@ export function resizeGrid(
   if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model
   if (mode === 'pad' || model.steps === 0) {
     return {
-      ...model,
+      ...restructured(model),
       steps: nextSteps,
       lanes: model.lanes.map((l) => ({ ...l, cells: padCells(l.cells, nextSteps) })),
     }
   }
   const from = model.steps
   return {
-    ...model,
+    ...restructured(model),
     steps: nextSteps,
     lanes: model.lanes.map((l) => ({
       ...l,

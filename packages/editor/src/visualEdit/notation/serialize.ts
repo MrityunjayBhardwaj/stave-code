@@ -26,6 +26,12 @@ function fmtGain(v: number): string {
 /* ── drum grid ─────────────────────────────────────────────────── */
 
 export function serializeStepGrid(model: StepGridModel): string {
+  // Span surgery first: it puts back what the user wrote wherever they didn't
+  // edit. It declines (null) whenever the regions no longer describe the grid,
+  // and the rebuilds below take over — the way this always worked.
+  const spliced = spliceGrid(model)
+  if (spliced !== null) return spliced
+
   const bars = model.bars ?? 1
   if (bars > 1) return gridBars(model, bars)
 
@@ -41,16 +47,128 @@ export function serializeStepGrid(model: StepGridModel): string {
     .join(', ')
 }
 
-/** one token per column: `~`, a sound, or `[a,b]` when several sound together */
-function gridColumns(lanes: StepLane[], steps: number): string[] {
-  const cols: string[] = []
-  for (let i = 0; i < steps; i++) {
-    const active = lanes.filter((l) => l.cells[i]).map((l) => l.sound)
-    if (active.length === 0) cols.push('~')
-    else if (active.length === 1) cols.push(active[0])
-    else cols.push(`[${active.join(',')}]`)
+/* ── span surgery (#913) ───────────────────────────────────────── */
+
+/**
+ * Write back by editing the user's own bytes: every source region whose content
+ * the user did not change is copied through VERBATIM, and only the regions they
+ * did change are re-emitted from the grid.
+ *
+ * This is what stops an edit from being collateral. The model is a flat boolean
+ * grid — it never knew the `*2` in `bd hh*2 sd cp` existed — so rebuilding the
+ * whole string from it destroys every notation the grid can't express, whether
+ * or not the edit went anywhere near it. Rebuilding only the touched region
+ * bounds the damage to what was actually touched, and the unedited round-trip
+ * (`serialize(parse(m)) === m`) falls out as a consequence rather than being a
+ * case anyone has to special-case.
+ *
+ * Returns null when the regions no longer describe this grid — then the caller
+ * rebuilds from the model, which is lossy and always was.
+ */
+function spliceGrid(model: StepGridModel): string | null {
+  const src = model.source
+  if (!src || src.parts.length === 0) return null
+  // A per-column `.gain("…")` runs 1:1 against the FLAT column sequence, so a
+  // grid carrying one has to keep emitting that sequence or the velocities
+  // land on the wrong notes. Asked rather than re-derived, so the two writers
+  // cannot drift apart.
+  const gain = serializeStepGain(model)
+  if (gain.kind === 'write' && gain.quoted) return null
+
+  let out = src.prefix
+  for (const p of src.parts) {
+    const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part)
+    const cols = partColumns(lanes, model.steps, p.factor)
+    // The regions index the grid they were parsed from. If this part can no
+    // longer be written at its own width — the user painted a hit finer than
+    // its notation holds — then ITS regions are void, and ONLY its own: the
+    // parts beside it were not touched and keep what the user wrote. Strudel
+    // normalizes every `,`-part to its own weight, so re-emitting one of them
+    // at the shared resolution leaves the others sounding exactly as written.
+    const last = p.regions[p.regions.length - 1]
+    out += p.before
+    if (cols === null || last === undefined || last.to !== cols.length) {
+      out += gridColumns(lanes, model.steps).join(' ') + p.after
+      continue
+    }
+    // A lone element owning the whole line has nothing to stay aligned WITH, so
+    // a re-emit can spread across the line as plain steps instead of holding
+    // its one step's worth of brackets: rewriting `hh*8` reads `hh ~ hh …`, not
+    // `[hh ~ hh …]`. Identical to Strudel either way — a bracket around the
+    // whole cycle IS the cycle — so this is only about not handing back noise.
+    const sole = src.parts.length === 1 && src.prefix === '' && p.regions.length === 1
+    for (const r of p.regions) {
+      const now = cols.slice(r.from, r.to)
+      // untouched → the span's own bytes, verbatim; touched → re-emit, keeping
+      // whatever padding the span carried around it
+      out += sameCells(now, r.cells)
+        ? r.raw
+        : r.leading + (sole ? now.map(cellToken).join(' ') : reemitRegion(now, p.div)) + r.trailing
+    }
+    out += p.after
+  }
+  return out + src.suffix
+}
+
+/**
+ * A part's own columns, read back off the shared grid it was stretched onto.
+ *
+ * `bd sd, hh*4` shows two columns against four, so part 0 lives on every second
+ * shared column. Returns null when the part can no longer be written at its own
+ * width — a hit landing BETWEEN its columns means the user asked for a finer
+ * rhythm than the part's notation can hold, and the caller falls back to
+ * rebuilding the whole line (lossy, and the only honest answer here).
+ */
+function partColumns(lanes: StepLane[], steps: number, factor: number): string[][] | null {
+  if (factor < 1 || steps % factor !== 0) return null
+  const all = columnAtoms(lanes, steps)
+  const cols: string[][] = []
+  for (let c = 0; c < steps; c++) {
+    if (c % factor === 0) cols.push(all[c])
+    else if (all[c].length > 0) return null
   }
   return cols
+}
+
+/** the sounds sitting in each column — lane order is presentational, so compare as sets */
+function columnAtoms(lanes: StepLane[], steps: number): string[][] {
+  const cols: string[][] = []
+  for (let i = 0; i < steps; i++) cols.push(lanes.filter((l) => l.cells[i]).map((l) => l.sound))
+  return cols
+}
+
+const sameCell = (a: string[], b: string[]): boolean =>
+  a.length === b.length && a.every((x) => b.includes(x))
+
+const sameCells = (a: string[][], b: string[][]): boolean =>
+  a.length === b.length && a.every((c, i) => sameCell(c, b[i]))
+
+/**
+ * Re-emit one changed region as the SAME number of steps it owned, so its
+ * neighbours keep their timing. Each step owns `div` columns: at `div === 1`
+ * that is a bare token, and above it a `[…]` group — never `div` separate
+ * top-level steps, which is exactly the flattening that pushed `hh*2`'s
+ * neighbours out of position.
+ */
+function reemitRegion(cols: string[][], div: number): string {
+  const steps: string[] = []
+  for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(cols.slice(i, i + div)))
+  return steps.join(' ')
+}
+
+function reemitStep(cols: string[][]): string {
+  if (cols.length === 1) return cellToken(cols[0])
+  // a step nobody plays is `~`, not `[~ ~]`
+  if (cols.every((c) => c.length === 0)) return '~'
+  return `[${cols.map(cellToken).join(' ')}]`
+}
+
+const cellToken = (atoms: string[]): string =>
+  atoms.length === 0 ? '~' : atoms.length === 1 ? atoms[0] : `[${atoms.join(',')}]`
+
+/** one token per column: `~`, a sound, or `[a,b]` when several sound together */
+function gridColumns(lanes: StepLane[], steps: number): string[] {
+  return columnAtoms(lanes, steps).map(cellToken)
 }
 
 /**

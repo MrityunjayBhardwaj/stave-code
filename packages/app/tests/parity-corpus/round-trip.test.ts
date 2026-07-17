@@ -6,25 +6,36 @@
  * rewrites the document is data loss, and it is loss the user never asked for
  * and cannot see coming.
  *
- * THE LAW DOES NOT HOLD TODAY. That is why this file exists and why most of it
- * is a pinned residual rather than a green assertion. Measured over the 1500
+ * THE LAW HOLDS FOR THE GRID, AND NOT YET FOR THE ROLL. Measured over the 1500
  * real-world strings in `mini-corpus.json`:
  *
- *     GRID   opens 781   round-trips 512 (65.6%)   REWRITES 269
+ *     GRID   opens 781   round-trips 781 (100%)    rewrites 0      <- #913 (A2)
  *     ROLL   opens 392   round-trips 230 (58.7%)   REWRITES 160
  *
- * Concretely, today: open `bd hh*2 sd cp` in the grid, nudge one cell, and the
- * user's line becomes `bd ~ hh hh sd ~ cp ~`. Their `*2` is gone. Reading the
- * grid rewrites of the corpus and classifying them by hand rather than trusting
- * the total: 2 are whitespace, 16 swap the user's `-` rests for `~`, and 251
- * are STRUCTURAL — sugar expanded, groups flattened, the grid padded to a
- * uniform resolution. 93% of the rewrites destroy notation.
+ * Before #913 the grid round-tripped 512 of 781 (65.6%) and rewrote 269: open
+ * `bd hh*2 sd cp`, nudge one cell, and the user's line came back as
+ * `bd ~ hh hh sd ~ cp ~` — the `*2` gone, though the edit was over in the `bd`.
+ * Reading those 269 and classifying them by hand rather than trusting the
+ * total: 2 were whitespace, 16 swapped the user's `-` rests for `~`, and 251
+ * were STRUCTURAL — sugar expanded, groups flattened, the grid padded to a
+ * uniform resolution. 93% of them destroyed notation.
  *
- * This is not news to the catalogue — `atom*n` is documented as parse-only
- * sugar that "serializes back as the EXPANDED sequence". It was a deliberate
- * choice. What was never recorded is the BLAST RADIUS: a third of everything
- * the grid can open. A design note that reads reasonably as "sugar expands"
- * reads differently as "32% of real content is rewritten on touch".
+ * That was not news to the catalogue — `atom*n` was documented as parse-only
+ * sugar that "serializes back as the EXPANDED sequence", a deliberate choice.
+ * What was never recorded is the BLAST RADIUS: a third of everything the grid
+ * could open. A design note that reads reasonably as "sugar expands" reads
+ * differently as "32% of real content is rewritten on touch".
+ *
+ * The grid's writer now performs span surgery: it copies the user's own bytes
+ * back for every region they did not edit, so identity FALLS OUT instead of
+ * being a case someone maintains. The ROLL still rebuilds from its model —
+ * which is what the 160 entries below are, and they are the same defect.
+ *
+ * THE OTHER HALF — `edit-locality.test.ts`, and it is the half with teeth. This
+ * file measures the UNEDITED path, which is necessary and NOT sufficient: an
+ * implementation that stashed the source text and handed it back whenever the
+ * model was untouched would score a perfect 100% here and still destroy the
+ * line on the first click. Locality is what makes this number mean anything.
  *
  * WHAT THIS FILE IS FOR — three jobs, and the middle one is the point:
  *
@@ -156,10 +167,14 @@ describe('round-trip — an unedited open→write must not change the text', () 
     const counts = Object.fromEntries(
       outcomes.map((o) => [o.view, o.rows.filter((x) => x.r.kind === 'rewritten').length]),
     )
-    // MEASURED 2026-07-17 by running it, over 1500 real strings:
-    //   grid 269 of 781 opened (65.6% round-trip) — of these, 251 STRUCTURAL
-    //   roll 160 of 392 opened (58.7% round-trip)
-    expect(counts.grid).toBeLessThanOrEqual(269)
+    // MEASURED by running it, over 1500 real strings:
+    //   grid  269 of 781 (65.6% round-trip) -> 0 of 781 (100%)   #913 span surgery
+    //   roll  160 of 392 (58.7% round-trip) -> unchanged, the follow-up
+    // The grid's ceiling is 0 and stays 0: it is a LAW there now, not a budget.
+    // Ratcheting these down as they fall is what keeps the snapshot honest —
+    // a ceiling left at its old value would let the loss creep back silently
+    // while every test stayed green.
+    expect(counts.grid).toBe(0)
     expect(counts.roll).toBeLessThanOrEqual(160)
   })
 

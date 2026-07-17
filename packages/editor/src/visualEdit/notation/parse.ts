@@ -26,9 +26,12 @@ import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import { bjorklund as strudelBjorklund } from '@strudel/core/euclid.mjs'
 import type {
   ChunkGain,
+  GridSource,
   ParseResult,
   PianoRollModel,
   RollNote,
+  SourcePart,
+  SourceRegion,
   StepGridModel,
   StepLane,
 } from './model'
@@ -168,13 +171,37 @@ interface KOp {
   type_: string
   arguments_?: Record<string, unknown>
 }
+interface KLocation {
+  start: { offset: number }
+  end: { offset: number }
+}
 interface KElement {
   type_: 'element'
   source_: KAtom | KPattern
   options_?: { weight?: number; reps?: number; ops?: KOp[] }
+  /**
+   * Every krill node carries one, and the element spans TILE the source
+   * (`bd hh*2 sd cp` → `"bd "`, `"hh*2 "`, `"sd "`, `"cp"` — contiguous,
+   * reconstructing the input byte-for-byte). That tiling is what makes span
+   * surgery possible: the writer copies unedited regions through verbatim.
+   */
+  location_?: KLocation
 }
 
-type Tokenized = { ok: true; steps: Step[] } | { ok: false; reason: string }
+/**
+ * One top-level krill element: where its bytes are, and how many steps it
+ * expanded to. `!n` is why the count is needed — one element, n steps.
+ * Offsets are into the string handed to `tokenize` (already trimmed).
+ */
+interface ElementSpan {
+  start: number
+  end: number
+  steps: number
+}
+
+type Tokenized =
+  | { ok: true; steps: Step[]; elements: ElementSpan[] }
+  | { ok: false; reason: string }
 
 /** a refusal — always the VIEW's ("a grid can't show this"), never the grammar's */
 type Refused = { reason: string }
@@ -471,7 +498,7 @@ function elementToSteps(el: KElement, allowNumeric: boolean): Step[] | Refused {
  */
 function tokenize(mini: string, allowNumeric = false): Tokenized {
   const src = mini.trim()
-  if (src === '') return { ok: true, steps: [] }
+  if (src === '') return { ok: true, steps: [], elements: [] }
   let ast: KPattern
   try {
     // krill wants the mini string QUOTED — the transpiler's own call shape.
@@ -495,12 +522,20 @@ function tokenize(mini: string, allowNumeric = false): Tokenized {
     }
   }
   const steps: Step[] = []
+  const elements: ElementSpan[] = []
   for (const el of ast.source_) {
     const mapped = elementToSteps(el, allowNumeric)
     if (!Array.isArray(mapped)) return { ok: false, reason: mapped.reason }
+    const loc = el.location_
+    // krill was handed a QUOTED string, so its offsets carry the opening quote.
+    if (loc) elements.push({ start: loc.start.offset - 1, end: loc.end.offset - 1, steps: mapped.length })
     steps.push(...mapped)
   }
-  return { ok: true, steps }
+  // A span we can't place is a span we can't put back: if any element lacks a
+  // location the tiling has a hole, and a partial tiling would copy the wrong
+  // bytes through. All or nothing.
+  const tiled = elements.length === ast.source_.length
+  return { ok: true, steps, elements: tiled ? elements : [] }
 }
 
 /* ── drum grid ─────────────────────────────────────────────────── */
@@ -537,6 +572,66 @@ function lanesFromCells(cells: string[][], part?: number): StepLane[] {
   }))
 }
 
+/**
+ * Pair each source element with the columns it produced, so the writer can put
+ * unedited ones back verbatim (#913).
+ *
+ * In a step grid every top-level step occupies exactly `div` columns — the grid
+ * refuses elongation, so each step's slots each span `div/total` and sum to
+ * `div`. An element that expanded to `n` steps therefore owns `n * div`
+ * columns, in source order.
+ *
+ * Returns null unless the spans TILE — i.e. concatenating them reproduces the
+ * source exactly. That holds for all 1352 flat minis in the real corpus, but it
+ * is checked rather than trusted: the whole mechanism is "copy the bytes we did
+ * not touch", so a hole in the tiling would copy the WRONG bytes, silently.
+ * Cheaper to verify than to debug, and a failure here just means the caller
+ * writes the way it always did.
+ */
+function buildRegions(
+  src: string,
+  elements: ElementSpan[],
+  div: number,
+  cells: string[][],
+): SourceRegion[] | null {
+  if (elements.length === 0) return null
+  const regions: SourceRegion[] = []
+  let col = 0
+  for (const el of elements) {
+    const raw = src.slice(el.start, el.end)
+    const leading = /^\s*/.exec(raw)?.[0] ?? ''
+    const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? ''
+    const to = col + el.steps * div
+    regions.push({
+      raw,
+      leading,
+      trailing,
+      from: col,
+      to,
+      // the grid's view of these columns, not the raw atoms — see SourceRegion
+      cells: cells.slice(col, to).map((c) => [...new Set(c)]),
+    })
+    col = to
+  }
+  if (regions.map((r) => r.raw).join('') !== src) return null
+  return regions
+}
+
+/**
+ * The one-part source shared by the flat and alternation paths: the whole mini
+ * is a single part on the shared grid, so its columns ARE the grid's columns
+ * (`factor` 1) and it carries no separator.
+ */
+function singlePart(
+  src: string,
+  elements: ElementSpan[],
+  div: number,
+  cells: string[][],
+): SourcePart[] | null {
+  const regions = buildRegions(src, elements, div, cells)
+  return regions ? [{ part: 0, div, factor: 1, before: '', after: '', regions }] : null
+}
+
 export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
   const alt = unwrapAlternation(mini)
   if (alt !== null) return gridFromAlternation(alt)
@@ -554,10 +649,28 @@ export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
     return { ok: false, reason: `sub-sequences expand the grid past ${MAX_STEPS} steps` }
   }
   const cells = toCells(tok.steps, div)
-  return { ok: true, model: { steps: cells.length, lanes: lanesFromCells(cells) } }
+  const src = mini.trim()
+  const sourceParts = singlePart(src, tok.elements, div, cells)
+  return {
+    ok: true,
+    model: {
+      steps: cells.length,
+      lanes: lanesFromCells(cells),
+      ...(sourceParts
+        ? { source: { prefix: '', suffix: '', parts: sourceParts } }
+        : {}),
+    },
+  }
 }
 
-/** `<[bd ~ sd ~] [bd bd sd ~]>` — one slot per bar */
+/**
+ * `<[bd ~ sd ~] [bd bd sd ~]>` — one slot per bar.
+ *
+ * `inner` is the text between the angle brackets, so the regions tile it and
+ * the brackets (plus whatever padding the user left inside them) are carried as
+ * the wrapper. Each element is a bar and owns `div` columns, exactly as in the
+ * flat case — the alternation is the same tiling with `<`…`>` around it.
+ */
 function gridFromAlternation(inner: string): ParseResult<StepGridModel> {
   const tok = tokenize(inner)
   if (!tok.ok) return tok
@@ -570,15 +683,39 @@ function gridFromAlternation(inner: string): ParseResult<StepGridModel> {
     return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` }
   }
   const cells = toCells(tok.steps, div)
+  const src = inner.trim()
+  const parts = singlePart(src, tok.elements, div, cells)
   return {
     ok: true,
-    model: { steps: cells.length, bars: tok.steps.length, lanes: lanesFromCells(cells) },
+    model: {
+      steps: cells.length,
+      bars: tok.steps.length,
+      lanes: lanesFromCells(cells),
+      ...(parts
+        ? {
+            source: {
+              parts,
+              prefix: '<' + (/^\s*/.exec(inner)?.[0] ?? ''),
+              suffix: (/\s*$/.exec(inner)?.[0] ?? '') + '>',
+            },
+          }
+        : {}),
+    },
   }
 }
 
-/** `bd ~ sd ~, hh hh hh hh` — parallel parts on a shared grid, part preserved */
+/**
+ * `bd ~ sd ~, hh hh hh hh` — parallel parts on a shared grid, part preserved.
+ *
+ * Each part keeps its OWN resolution: the shared grid is the finest of them, so
+ * a part's columns map onto it every `factor` columns. The regions stay in the
+ * part's own column space and the `,` (with whatever padding the user put
+ * around it) is carried verbatim as the part's `before`.
+ */
 function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
   const partCells: string[][][] = []
+  const divs: number[] = []
+  const elements: ElementSpan[][] = []
   for (const part of parts) {
     if (part.trim() === '') return { ok: false, reason: 'empty stack part' }
     const tok = tokenize(part)
@@ -586,7 +723,10 @@ function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
     if (gridHasElongation(tok.steps)) {
       return { ok: false, reason: 'elongation is beyond the drum-grid subset' }
     }
-    partCells.push(toCells(tok.steps, division(tok.steps)))
+    const div = division(tok.steps)
+    divs.push(div)
+    elements.push(tok.elements)
+    partCells.push(toCells(tok.steps, div))
   }
   const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1)
   if (total > MAX_STEPS) {
@@ -596,11 +736,48 @@ function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
   partCells.forEach((cells, part) => {
     const factor = total / (cells.length || 1)
     const stretched: string[][] = Array.from({ length: total }, (_, c) =>
-      c % factor === 0 ? cells[c / factor] ?? [] : [],
+      c % factor === 0 ? (cells[c / factor] ?? []) : [],
     )
     lanes.push(...lanesFromCells(stretched, part))
   })
-  return { ok: true, model: { steps: total, lanes } }
+  return {
+    ok: true,
+    model: { steps: total, lanes, ...(stackSource(parts, divs, elements, partCells, total) ?? {}) },
+  }
+}
+
+/**
+ * The per-part source for a `,`-stack. All or nothing: one part we can't tile
+ * means the writer can't reassemble the line, so none of it is used.
+ */
+function stackSource(
+  parts: string[],
+  divs: number[],
+  elements: ElementSpan[][],
+  partCells: string[][][],
+  total: number,
+): { source: GridSource } | null {
+  const out: SourcePart[] = []
+  for (let i = 0; i < parts.length; i++) {
+    const raw = parts[i]
+    const leading = /^\s*/.exec(raw)?.[0] ?? ''
+    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? ''
+    const regions = buildRegions(raw.trim(), elements[i], divs[i], partCells[i])
+    if (!regions) return null
+    out.push({
+      part: i,
+      div: divs[i],
+      factor: total / (partCells[i].length || 1),
+      before: (i > 0 ? ',' : '') + leading,
+      after,
+      regions,
+    })
+  }
+  // the parts must reassemble the line exactly, or we are not putting back what
+  // we read — same check as the per-part tiling, one level up
+  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join('') + p.after).join('')
+  if (rebuilt !== parts.join(',')) return null
+  return { source: { prefix: '', suffix: '', parts: out } }
 }
 
 /* ── velocity (.gain) read-back ────────────────────────────────── */
