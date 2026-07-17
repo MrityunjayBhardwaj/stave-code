@@ -7320,6 +7320,10 @@ exports[`strudel.cc parity corpus — structural IR shape > flatrave parses to a
             {
               "children": [
                 {
+                  "duration": 1,
+                  "tag": "Sleep",
+                },
+                {
                   "duration": 0.25,
                   "note": "0.4",
                   "params": {
@@ -7349,10 +7353,6 @@ exports[`strudel.cc parity corpus — structural IR shape > flatrave parses to a
                     "velocity": 1,
                   },
                   "tag": "Play",
-                },
-                {
-                  "duration": 1,
-                  "tag": "Sleep",
                 },
                 {
                   "duration": 0.25,
@@ -8674,29 +8674,29 @@ exports[`strudel.cc parity corpus — structural IR shape > meltingsubmarine par
                           "children": [
                             {
                               "duration": 1,
+                              "note": "sd",
+                              "params": {
+                                "gain": 1,
+                                "s": "sd",
+                                "slice": 1,
+                                "velocity": 1,
+                              },
+                              "tag": "Play",
+                            },
+                            {
+                              "duration": 1,
+                              "note": "sd",
+                              "params": {
+                                "gain": 1,
+                                "s": "sd",
+                                "slice": 1,
+                                "velocity": 1,
+                              },
+                              "tag": "Play",
+                            },
+                            {
+                              "duration": 1,
                               "tag": "Sleep",
-                            },
-                            {
-                              "duration": 1,
-                              "note": "sd",
-                              "params": {
-                                "gain": 1,
-                                "s": "sd",
-                                "slice": 1,
-                                "velocity": 1,
-                              },
-                              "tag": "Play",
-                            },
-                            {
-                              "duration": 1,
-                              "note": "sd",
-                              "params": {
-                                "gain": 1,
-                                "s": "sd",
-                                "slice": 1,
-                                "velocity": 1,
-                              },
-                              "tag": "Play",
                             },
                             {
                               "duration": 1,
@@ -8722,27 +8722,27 @@ exports[`strudel.cc parity corpus — structural IR shape > meltingsubmarine par
                   "children": [
                     {
                       "duration": 1,
-                      "note": "hh27",
-                      "params": {
-                        "gain": 1,
-                        "s": "hh27",
-                        "velocity": 1,
-                      },
-                      "tag": "Play",
-                    },
-                    {
-                      "duration": 1,
-                      "note": "hh27",
-                      "params": {
-                        "gain": 1,
-                        "s": "hh27",
-                        "velocity": 1,
-                      },
-                      "tag": "Play",
-                    },
-                    {
-                      "duration": 1,
                       "tag": "Sleep",
+                    },
+                    {
+                      "duration": 1,
+                      "note": "hh27",
+                      "params": {
+                        "gain": 1,
+                        "s": "hh27",
+                        "velocity": 1,
+                      },
+                      "tag": "Play",
+                    },
+                    {
+                      "duration": 1,
+                      "note": "hh27",
+                      "params": {
+                        "gain": 1,
+                        "s": "hh27",
+                        "velocity": 1,
+                      },
+                      "tag": "Play",
                     },
                     {
                       "duration": 1,
@@ -9756,26 +9756,26 @@ exports[`strudel.cc parity corpus — structural IR shape > sampleDrums parses t
                     {
                       "children": [
                         {
+                          "duration": 0.25,
+                          "note": "bd",
+                          "params": {
+                            "gain": 1,
+                            "velocity": 1,
+                          },
+                          "tag": "Play",
+                        },
+                        {
+                          "duration": 0.25,
+                          "note": "bd",
+                          "params": {
+                            "gain": 1,
+                            "velocity": 1,
+                          },
+                          "tag": "Play",
+                        },
+                        {
                           "duration": 1,
                           "tag": "Sleep",
-                        },
-                        {
-                          "duration": 0.25,
-                          "note": "bd",
-                          "params": {
-                            "gain": 1,
-                            "velocity": 1,
-                          },
-                          "tag": "Play",
-                        },
-                        {
-                          "duration": 0.25,
-                          "note": "bd",
-                          "params": {
-                            "gain": 1,
-                            "velocity": 1,
-                          },
-                          "tag": "Play",
                         },
                         {
                           "duration": 0.25,
