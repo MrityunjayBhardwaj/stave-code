@@ -26561,7 +26561,7 @@ function expandAltElements(mini, allowNumeric) {
     }
   }
   const perBarSteps = [];
-  const elemStepCount = [];
+  const elemWeight = [];
   for (let b = 0; b < bars; b++) {
     const barSteps = [];
     for (let i = 0; i < topEls.length; i++) {
@@ -26569,8 +26569,9 @@ function expandAltElements(mini, allowNumeric) {
       const node = alts ? alts[b % alts.length] : topEls[i];
       const st = elementToSteps(node, allowNumeric);
       if (!Array.isArray(st)) return { reason: st.reason };
-      if (b === 0) elemStepCount[i] = st.length;
-      else if (st.length !== elemStepCount[i]) {
+      const w = st.reduce((s, step) => s + step.elongation, 0);
+      if (b === 0) elemWeight[i] = w;
+      else if (w !== elemWeight[i]) {
         return { reason: "alternation branches of different lengths are beyond the editable subset" };
       }
       barSteps.push(...st);
@@ -26579,14 +26580,14 @@ function expandAltElements(mini, allowNumeric) {
   }
   if (topEls.some((el) => !el.location_)) return { reason: "unsupported mini-notation syntax" };
   const div = perBarSteps.reduce((d, steps) => lcm(d, division(steps)), 1);
-  const perBarCols = elemStepCount.reduce((n, c) => n + c, 0) * div;
+  const perBarCols = elemWeight.reduce((n, c) => n + c, 0) * div;
   if (perBarCols * bars > MAX_STEPS) {
     return { reason: `the alternation expands past ${MAX_STEPS} steps` };
   }
   const elemSpans = topEls.map((el, i) => ({
     start: el.location_.start.offset - 1,
     end: el.location_.end.offset - 1,
-    stepCount: elemStepCount[i]
+    weight: elemWeight[i]
   }));
   return { bars, div, perBarCols, perBarSteps, elemSpans };
 }
@@ -26598,7 +26599,7 @@ function buildAltRegions(src, elemSpans, div, perBarCols, content) {
     const raw = src.slice(es.start, es.end);
     const leading = /^\s*/.exec(raw)?.[0] ?? "";
     const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const to = col + es.stepCount * div;
+    const to = col + es.weight * div;
     regions.push({ raw, leading, trailing, from: col, to, perBar: content(col, to) });
     col = to;
   }
@@ -26821,11 +26822,69 @@ function applyRollGain(model, gain) {
   };
 }
 __name(applyRollGain, "applyRollGain");
+function rollFromAltElements(mini) {
+  const exp = expandAltElements(mini, true);
+  if (exp === null) return null;
+  if ("reason" in exp) return { ok: false, reason: exp.reason };
+  const { bars, div, perBarCols, perBarSteps, elemSpans } = exp;
+  const notes = [];
+  let col = 0;
+  let sawNumeric = false;
+  let sawNamed = false;
+  for (const barSteps of perBarSteps) {
+    for (const step of barSteps) {
+      const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+      const total = stepUnits(step);
+      for (const slot of slots) {
+        const span = step.elongation * div * slot.units / total;
+        for (const token of slot.atoms) {
+          const isNum = /^-?\d+$/.test(token);
+          if (!isNum && pitchToMidi(token) === null) {
+            return { ok: false, reason: `"${token}" is not a note name` };
+          }
+          if (isNum) sawNumeric = true;
+          else sawNamed = true;
+          notes.push({ pitch: isNum ? token : token.toLowerCase(), start: col, duration: span });
+        }
+        col += span;
+      }
+    }
+  }
+  if (sawNumeric && sawNamed) {
+    return { ok: false, reason: "mixed numeric and note-name tokens are beyond the editable subset" };
+  }
+  const src = mini.trim();
+  const regions = buildAltRegions(src, elemSpans, div, perBarCols, (from, to) => {
+    const perBar2 = [];
+    for (let b = 0; b < bars; b++) {
+      const lo = from + b * perBarCols;
+      const hi = to + b * perBarCols;
+      perBar2.push(
+        notes.filter((n) => n.start >= lo && n.start < hi).map((n) => ({ pitch: n.pitch, start: n.start - b * perBarCols, duration: n.duration }))
+      );
+    }
+    return perBar2;
+  });
+  if (!regions) return { ok: false, reason: "unsupported mini-notation syntax" };
+  return {
+    ok: true,
+    model: {
+      steps: col,
+      bars,
+      notes,
+      ...sawNumeric ? { numeric: true } : {},
+      altSource: { perBar: perBarCols, bars, div, regions }
+    }
+  };
+}
+__name(rollFromAltElements, "rollFromAltElements");
 function parsePianoRoll(mini) {
   const alt = unwrapAlternation(mini);
   if (alt === null) {
     const parts2 = splitTopLevel(mini);
     if (parts2.length > 1) return parseRollLanes(parts2);
+    const altEl = rollFromAltElements(mini);
+    if (altEl !== null) return altEl;
   }
   const tok = tokenize2(
     alt ?? mini,
@@ -27082,6 +27141,7 @@ function buildGroups(model) {
 }
 __name(buildGroups, "buildGroups");
 function serializePianoRoll(model) {
+  if (model.altSource) return spliceAltRoll(model);
   const spliced = spliceRoll(model);
   if (spliced !== null) return spliced;
   const bars = model.bars ?? 1;
@@ -27166,6 +27226,46 @@ function spliceRoll(model) {
   return out + src.suffix;
 }
 __name(spliceRoll, "spliceRoll");
+function spliceAltRoll(model) {
+  const a = model.altSource;
+  if (!a) return null;
+  const gain = serializeRollGain(model);
+  if (gain.kind === "write" && gain.quoted) return null;
+  const integral = model.notes.every(
+    (n) => Number.isInteger(n.start) && Number.isInteger(n.duration)
+  );
+  let out = "";
+  for (const r of a.regions) {
+    const perBarNow = [];
+    for (let b = 0; b < a.bars; b++) {
+      const lo = r.from + b * a.perBar;
+      const hi = r.to + b * a.perBar;
+      perBarNow.push(
+        model.notes.filter((n) => n.start >= lo && n.start < hi).map((n) => ({ pitch: n.pitch, start: n.start - b * a.perBar, duration: n.duration }))
+      );
+    }
+    if (perBarNow.every((bar2, b) => sameNotes(bar2, r.perBar[b]))) {
+      out += r.raw;
+      continue;
+    }
+    if (!integral) return null;
+    const re = reemitAltRoll(perBarNow, r.from, r.to, a.div);
+    if (re === null) return null;
+    out += r.leading + re + r.trailing;
+  }
+  return out;
+}
+__name(spliceAltRoll, "spliceAltRoll");
+function reemitAltRoll(perBar2, from, to, div) {
+  const barTokens = [];
+  for (const notes of perBar2) {
+    const re = reemitRollRegion(notes, from, to, div);
+    if (re === null) return null;
+    barTokens.push(re);
+  }
+  return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(" ")}>`;
+}
+__name(reemitAltRoll, "reemitAltRoll");
 function sameNotes(a, b) {
   if (a.length !== b.length) return false;
   const left = a.map(noteKey).sort();

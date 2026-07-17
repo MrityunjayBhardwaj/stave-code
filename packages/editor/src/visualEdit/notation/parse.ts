@@ -706,7 +706,8 @@ interface AltExpansion {
   div: number
   perBarCols: number
   perBarSteps: Step[][]
-  elemSpans: { start: number; end: number; stepCount: number }[]
+  /** each single-cycle top-level element: its bytes and its width (`weight * div` columns) */
+  elemSpans: { start: number; end: number; weight: number }[]
 }
 
 /**
@@ -746,7 +747,7 @@ function expandAltElements(mini: string, allowNumeric: boolean): AltExpansion | 
   }
 
   const perBarSteps: Step[][] = []
-  const elemStepCount: number[] = []
+  const elemWeight: number[] = []
   for (let b = 0; b < bars; b++) {
     const barSteps: Step[] = []
     for (let i = 0; i < topEls.length; i++) {
@@ -754,11 +755,15 @@ function expandAltElements(mini: string, allowNumeric: boolean): AltExpansion | 
       const node = alts ? alts[b % alts.length] : topEls[i]
       const st = elementToSteps(node, allowNumeric)
       if (!Array.isArray(st)) return { reason: st.reason }
-      // Every bar must lay the same element down at the same width, or its
-      // columns won't line up bar-to-bar. A branch that expands differently
-      // (`!n`, a wider group) is the reconciliation case — declined here.
-      if (b === 0) elemStepCount[i] = st.length
-      else if (st.length !== elemStepCount[i]) {
+      // Every bar must lay the same element down at the same WIDTH, or its
+      // columns won't line up bar-to-bar. Width is the summed elongation (a step
+      // count is only that when nothing carries `@n` — right for the grid, wrong
+      // for the roll where `c4@2` is one step spanning two columns). A branch that
+      // expands to a different width (`!n`, `@n`, a wider group) is the
+      // reconciliation case — declined here, deferred to phase 1b.
+      const w = st.reduce((s, step) => s + step.elongation, 0)
+      if (b === 0) elemWeight[i] = w
+      else if (w !== elemWeight[i]) {
         return { reason: 'alternation branches of different lengths are beyond the editable subset' }
       }
       barSteps.push(...st)
@@ -770,14 +775,14 @@ function expandAltElements(mini: string, allowNumeric: boolean): AltExpansion | 
   // wrong bytes back, so refuse rather than guess.
   if (topEls.some((el) => !el.location_)) return { reason: 'unsupported mini-notation syntax' }
   const div = perBarSteps.reduce((d, steps) => lcm(d, division(steps)), 1)
-  const perBarCols = elemStepCount.reduce((n, c) => n + c, 0) * div
+  const perBarCols = elemWeight.reduce((n, c) => n + c, 0) * div
   if (perBarCols * bars > MAX_STEPS) {
     return { reason: `the alternation expands past ${MAX_STEPS} steps` }
   }
   const elemSpans = topEls.map((el, i) => ({
     start: el.location_!.start.offset - 1,
     end: el.location_!.end.offset - 1,
-    stepCount: elemStepCount[i],
+    weight: elemWeight[i],
   }))
   return { bars, div, perBarCols, perBarSteps, elemSpans }
 }
@@ -790,7 +795,7 @@ function expandAltElements(mini: string, allowNumeric: boolean): AltExpansion | 
  */
 function buildAltRegions<C>(
   src: string,
-  elemSpans: { start: number; end: number; stepCount: number }[],
+  elemSpans: { start: number; end: number; weight: number }[],
   div: number,
   perBarCols: number,
   content: (from: number, to: number) => C[],
@@ -801,7 +806,7 @@ function buildAltRegions<C>(
     const raw = src.slice(es.start, es.end)
     const leading = /^\s*/.exec(raw)?.[0] ?? ''
     const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? ''
-    const to = col + es.stepCount * div
+    const to = col + es.weight * div
     regions.push({ raw, leading, trailing, from: col, to, perBar: content(col, to) })
     col = to
   }
@@ -1105,6 +1110,70 @@ export function applyRollGain(model: PianoRollModel, gain: ChunkGain): PianoRoll
 
 /* ── piano roll ────────────────────────────────────────────────── */
 
+/**
+ * `0 <2 3> 5` in the piano roll — the roll's half of the grid's alt-element path.
+ * The shared bar-expansion is reused verbatim; only "what a column shows" (notes,
+ * not cells) and the numeric/named check are the roll's own. null → not this
+ * shape (the flat path handles it).
+ */
+function rollFromAltElements(mini: string): ParseResult<PianoRollModel> | null {
+  const exp = expandAltElements(mini, true)
+  if (exp === null) return null
+  if ('reason' in exp) return { ok: false, reason: exp.reason }
+  const { bars, div, perBarCols, perBarSteps, elemSpans } = exp
+  const notes: RollNote[] = []
+  let col = 0
+  let sawNumeric = false
+  let sawNamed = false
+  for (const barSteps of perBarSteps) {
+    for (const step of barSteps) {
+      const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }]
+      const total = stepUnits(step)
+      for (const slot of slots) {
+        const span = (step.elongation * div * slot.units) / total
+        for (const token of slot.atoms) {
+          const isNum = /^-?\d+$/.test(token)
+          if (!isNum && pitchToMidi(token) === null) {
+            return { ok: false, reason: `"${token}" is not a note name` }
+          }
+          if (isNum) sawNumeric = true
+          else sawNamed = true
+          notes.push({ pitch: isNum ? token : token.toLowerCase(), start: col, duration: span })
+        }
+        col += span
+      }
+    }
+  }
+  if (sawNumeric && sawNamed) {
+    return { ok: false, reason: 'mixed numeric and note-name tokens are beyond the editable subset' }
+  }
+  const src = mini.trim()
+  const regions = buildAltRegions<RollNote[]>(src, elemSpans, div, perBarCols, (from, to) => {
+    const perBar: RollNote[][] = []
+    for (let b = 0; b < bars; b++) {
+      const lo = from + b * perBarCols
+      const hi = to + b * perBarCols
+      perBar.push(
+        notes
+          .filter((n) => n.start >= lo && n.start < hi)
+          .map((n) => ({ pitch: n.pitch, start: n.start - b * perBarCols, duration: n.duration })),
+      )
+    }
+    return perBar
+  })
+  if (!regions) return { ok: false, reason: 'unsupported mini-notation syntax' }
+  return {
+    ok: true,
+    model: {
+      steps: col,
+      bars,
+      notes,
+      ...(sawNumeric ? { numeric: true } : {}),
+      altSource: { perBar: perBarCols, bars, div, regions },
+    },
+  }
+}
+
 export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
   const alt = unwrapAlternation(mini)
   // A top-level `,`-stack = parallel note lanes (independent durations / overlap,
@@ -1112,6 +1181,8 @@ export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
   if (alt === null) {
     const parts = splitTopLevel(mini)
     if (parts.length > 1) return parseRollLanes(parts)
+    const altEl = rollFromAltElements(mini)
+    if (altEl !== null) return altEl
   }
   const tok = tokenize(alt ?? mini, /* allowNumeric */ true)
   if (!tok.ok) return tok

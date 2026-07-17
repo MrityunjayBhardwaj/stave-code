@@ -295,6 +295,12 @@ function buildGroups(model: PianoRollModel): Map<number, Group> | null {
 }
 
 export function serializePianoRoll(model: PianoRollModel): string | null {
+  // A `<...>`-as-element pattern (`0 <2 3> 5`, #920) uses its own span surgery and
+  // NEVER the rebuilds below — a rebuild would reshape it into the whole-cycle
+  // `<[0 2 5] [0 3 5]>`. It returns null (keep the document) for an edit it can't
+  // express, never wrong bytes.
+  if (model.altSource) return spliceAltRoll(model)
+
   // Span surgery first — same rule as the grid: put back what the user wrote
   // wherever they didn't edit. It declines (null) whenever the regions no longer
   // describe the notes, and the rebuilds below take over, the way this always
@@ -455,6 +461,67 @@ function spliceRoll(model: PianoRollModel): string | null {
     out += body + p.after
   }
   return out + src.suffix
+}
+
+/* ── span surgery for `<...>`-as-element, the roll (#920) ──────── */
+
+/**
+ * The roll's half of `spliceAltGrid`. Each single-cycle element whose per-bar
+ * notes are unchanged is copied through verbatim; an edited one re-emits per bar
+ * (weight-preserving, chords and `@n` intact, crossing notes group-wrapped — all
+ * via `reemitRollRegion`) and combines the bars as `<b0 b1 …>`, or plain when they
+ * agree. Declines (null → keep the document) on a fractional grid or a note that
+ * can't be said in its span — never a whole-cycle rebuild.
+ */
+function spliceAltRoll(model: PianoRollModel): string | null {
+  const a = model.altSource
+  if (!a) return null
+  // a per-note `.gain("…")` can't ride an alternation yet → hands off (#915 class)
+  const gain = serializeRollGain(model)
+  if (gain.kind === 'write' && gain.quoted) return null
+  // fractional columns don't sit on the integer grid the re-emit walks — an
+  // unedited pattern still round-trips (raw copy), an edited one declines.
+  const integral = model.notes.every(
+    (n) => Number.isInteger(n.start) && Number.isInteger(n.duration),
+  )
+  let out = ''
+  for (const r of a.regions) {
+    const perBarNow: RollNote[][] = []
+    for (let b = 0; b < a.bars; b++) {
+      const lo = r.from + b * a.perBar
+      const hi = r.to + b * a.perBar
+      perBarNow.push(
+        model.notes
+          .filter((n) => n.start >= lo && n.start < hi)
+          .map((n) => ({ pitch: n.pitch, start: n.start - b * a.perBar, duration: n.duration })),
+      )
+    }
+    if (perBarNow.every((bar, b) => sameNotes(bar, r.perBar[b]))) {
+      out += r.raw
+      continue
+    }
+    if (!integral) return null
+    const re = reemitAltRoll(perBarNow, r.from, r.to, a.div)
+    if (re === null) return null
+    out += r.leading + re + r.trailing
+  }
+  return out
+}
+
+/** re-emit an edited roll alt element per bar, then `<b0 b1 …>` (plain when equal) */
+function reemitAltRoll(
+  perBar: RollNote[][],
+  from: number,
+  to: number,
+  div: number,
+): string | null {
+  const barTokens: string[] = []
+  for (const notes of perBar) {
+    const re = reemitRollRegion(notes, from, to, div)
+    if (re === null) return null
+    barTokens.push(re)
+  }
+  return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(' ')}>`
 }
 
 /** same notes, in any order — a multiset compare on (pitch, start, duration) */

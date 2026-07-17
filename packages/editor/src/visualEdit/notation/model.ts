@@ -229,6 +229,12 @@ export interface PianoRollModel {
    * writer rebuilds from the model, which is lossy and always was.
    */
   source?: NotationSource<RollNote[]>
+  /**
+   * Set when the alternation sits INSIDE the sequence (`0 <2 3> 5`, #920) rather
+   * than around the whole cycle. The writer uses this instead of `source`; the
+   * two are mutually exclusive.
+   */
+  altSource?: AltSource<RollNote[]>
   /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
   bars?: number
   notes: RollNote[]

@@ -270,12 +270,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "0"",
     "mini": "0 1 2 3 <4 5 6><8 7 9><9 8 5 3><5 2 3 7 4 >",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "the alternation expands past 64 steps",
   },
   {
     "grid": "unsupported token "0"",
     "mini": "0 1 2 <4 6 3 [6 7]> <- - - 6> - <- 8> <- - - [2 1]> ",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
@@ -290,12 +290,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "0"",
     "mini": "0 1 <2!3 2> <5 6> 4 5 6 7",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "alternation branches of different lengths are beyond the editable subset",
   },
   {
     "grid": "unsupported token "0"",
     "mini": "0 1 <3 2> <5 4>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
@@ -355,27 +355,27 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "0"",
     "mini": "0 < 1 [1@4 1]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
     "mini": "0 <2 3> <5 7 5>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
     "mini": "0 <2 3> <5 7 5> 9",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
     "mini": "0 <2 3> <5 7 5> [9|8]",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""rand" is beyond the editable subset",
   },
   {
     "grid": "unsupported token "0"",
     "mini": "0 <3 4> 7, - - [- <5 4>]",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "multi-bar parallel note lanes are beyond the editable subset",
   },
   {
     "grid": "unsupported token "0"",
@@ -405,12 +405,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "0"",
     "mini": "0 ~ <2 -1> ~ ~ ~",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
     "mini": "0 ~ ~ ~ ~ <~ 0> <~ [~ 0]> <[0 0] [~ 0]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
@@ -770,7 +770,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "4"",
     "mini": "4 ~ ~ <6!3 [6,8 9 10 12]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "stacked sub-sequences are beyond the editable subset",
   },
   {
     "grid": "unsupported token "4"",
@@ -860,7 +860,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "52"",
     "mini": "52 50 54 60 <58 [64 62]> 65*2",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "53"",
@@ -1230,7 +1230,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": ""polymeter_slowcat" is beyond the editable subset",
     "mini": "<0 [2 3]> ~ [-2 4] , ~ 4 <3 6 3 11> ~",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "multi-bar parallel note lanes are beyond the editable subset",
   },
   {
     "grid": ""polymeter_slowcat" is beyond the editable subset",
@@ -1310,12 +1310,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "1"",
     "mini": "<1 1 -3 -3> <1 1 -1 -1>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "1"",
     "mini": "<1 2 1 2> <1 6 1 1>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": ""slow" stretch is beyond the editable subset",
@@ -1325,7 +1325,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "1"",
     "mini": "<1 2 4 2> <1 4 1 1>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": ""polymeter_slowcat" is beyond the editable subset",
@@ -1340,7 +1340,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "1"",
     "mini": "<1 [7 1]> [2 7] 3 [<5 [6 2]> 8]",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "nested groups are beyond the editable subset",
   },
   {
     "grid": "unsupported mini-notation syntax",
@@ -1400,7 +1400,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "3"",
     "mini": "<3 2> <5 4> 0 -2",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": ""polymeter_slowcat" is beyond the editable subset",
@@ -1465,7 +1465,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "62"",
     "mini": "<62 71 72 74 80 74 71 60 53 52 30> [36]",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "invalid * multiplier",
@@ -1530,7 +1530,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<C2 ~> D2 Eb2 ~ G1 ~ ~ Bb2 C2 ~ F1 ~",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "euclid combined with * / ! / @ is beyond the editable subset",
@@ -1841,7 +1841,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<[hh hh hh -][hh - hh -][hh - hh -][hh - hh -]> <[hh - hh -][hh - hh -][hh - hh -][hh - hh -]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""hh" is not a note name",
   },
   {
     "grid": "! inside a group is beyond the editable subset",
@@ -1896,7 +1896,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "2"",
     "mini": "<a3 c4 e4>[1.5] <d4 g4>[0.5] <e4 d4 c4>[2]",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""1.5" is not a note name",
   },
   {
     "grid": "ok",
@@ -1931,7 +1931,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<bd [bd bd]> <bd ~> bd bd",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""bd" is not a note name",
   },
   {
     "grid": ""polymeter_slowcat" is beyond the editable subset",
@@ -2021,7 +2021,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""bd" is not a note name",
   },
   {
     "grid": "ok",
@@ -2036,7 +2036,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<c2 c#2 b1> <- [e2] [g#1]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": ""polymeter_slowcat" is beyond the editable subset",
@@ -2056,7 +2056,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<c3 c3 d3 d3 c4 c4 d4 d4> <e3 e3 d3 d3 e4 e4 d4 d4> <f3 f3 A3 B3> <g3 g3 B3 d4> ~ ~ ~ ~",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -2081,7 +2081,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": ""slow" stretch is beyond the editable subset",
     "mini": "<c6 e6 g6 b6> [d6, e6] [-]/2",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""slow" stretch is beyond the editable subset",
   },
   {
     "grid": ""polymeter_slowcat" is beyond the editable subset",
@@ -2181,7 +2181,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<f3 a3 e3 g3 c3 g3 e3 g3> c4",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token ","",
@@ -2236,7 +2236,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<gm_distortion_guitar:4> <pipe_organ_loud:1>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""gm_distortion_guitar:4" is not a note name",
   },
   {
     "grid": "invalid * multiplier",
@@ -2331,7 +2331,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": ""polymeter_slowcat" is beyond the editable subset",
     "mini": "<rd:1 -@3> -@3, bd:1 bd:1 sd:1 bd:0 sd:1 stick:<2 3> bd:0 hh:1",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "alternation branches of different lengths are beyond the editable subset",
   },
   {
     "grid": "ok",
@@ -2556,12 +2556,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "C A ~ <E F C>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
     "mini": "C E F F D A <C C4>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -3001,7 +3001,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "3"",
     "mini": "[3 10] <[~ 5][~[5 12]]> <[6 [~ 3]][6 13]> <[0 7][2b 9b]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "nested groups are beyond the editable subset",
   },
   {
     "grid": "unsupported token "3"",
@@ -3231,7 +3231,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[bass ] ~ <bass ~>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""bass" is not a note name",
   },
   {
     "grid": "ok",
@@ -3261,12 +3261,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[bd hh sd] <sd oh>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""bd" is not a note name",
   },
   {
     "grid": "ok",
     "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""bd" is not a note name",
   },
   {
     "grid": ""polymeter_slowcat" is beyond the editable subset",
@@ -3291,7 +3291,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": ""polymeter_slowcat" is beyond the editable subset",
     "mini": "[bd ~] <~ bd>, [~ rim, [~ ~ ~ ~ ~ rim]]",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""bd" is not a note name",
   },
   {
     "grid": "ok",
@@ -3691,7 +3691,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -3911,12 +3911,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the alternation expands past 64 steps",
     "mini": "bd [hh hh] sd [hh hh] [bd rim] [hh hh] rim <hh*4 hh*8 bd*8 bd*8>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "the alternation expands past 64 steps",
   },
   {
     "grid": "the alternation expands past 64 steps",
     "mini": "bd [hh hh] sd [hh hh] [bd rim] [hh hh] rim <hh*4 sd*8 rim*8 bd*8>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "the alternation expands past 64 steps",
   },
   {
     "grid": "operators inside a group are beyond the editable subset",
@@ -3931,7 +3931,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "stacked sub-sequences are beyond the editable subset",
     "mini": "bd bd - <- - - [- bd, sd]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "stacked sub-sequences are beyond the editable subset",
   },
   {
     "grid": "ok",
@@ -3941,7 +3941,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "! inside a group is beyond the editable subset",
     "mini": "bd bd bd <bd [bd!3 bd*2]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "! inside a group is beyond the editable subset",
   },
   {
     "grid": "ok",
@@ -4096,7 +4096,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "bd sd <[bd ~] [~ bd]> sd",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""bd" is not a note name",
   },
   {
     "grid": "ok",
@@ -4176,7 +4176,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "bd ~ hh oh bd <hh sd> ~ oh",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""bd" is not a note name",
   },
   {
     "grid": "ok",
@@ -4366,7 +4366,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "bd:1 <~ ~ bd:1> ~ ~ ~ ~ ~ ~",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""bd:1" is not a note name",
   },
   {
     "grid": "ok",
@@ -4426,7 +4426,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "elongation is beyond the drum-grid subset",
     "mini": "bd@3 <bd [~ bd]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""bd" is not a note name",
   },
   {
     "grid": "elongation is beyond the drum-grid subset",
@@ -4506,7 +4506,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "nested groups are beyond the editable subset",
     "mini": "c <d c> - [c <d c>]",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "nested groups are beyond the editable subset",
   },
   {
     "grid": "nested groups are beyond the editable subset",
@@ -4896,7 +4896,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "d# f <a#  b>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -4906,7 +4906,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -5942,7 +5942,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the alternation expands past 64 steps",
     "mini": "hh <hh hh*3 oh hh*2> <hh*2 hh [~ hh]> hh",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": "the alternation expands past 64 steps",
   },
   {
     "grid": ""polymeter_slowcat" is beyond the editable subset",
@@ -6067,7 +6067,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "hh*5 <bd bd> ~ sd",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""hh" is not a note name",
   },
   {
     "grid": "ok",
@@ -7307,7 +7307,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "elongation is beyond the drum-grid subset",
     "mini": "~ <sd [sd sd:1@15]>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""sd" is not a note name",
   },
   {
     "grid": "ok",
@@ -7357,7 +7357,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "~ cp ~ <oh cp>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""cp" is not a note name",
   },
   {
     "grid": "ok",
@@ -7442,7 +7442,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "~ ~ [~ sd] ~ ~ ~ ~ <~ sd>",
-    "roll": ""polymeter_slowcat" is beyond the editable subset",
+    "roll": ""sd" is not a note name",
   },
   {
     "grid": "operators inside a group are beyond the editable subset",

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { parseStepGrid } from '../parse'
-import { serializeStepGrid } from '../serialize'
-import type { StepGridModel } from '../model'
+import { parseStepGrid, parsePianoRoll } from '../parse'
+import { serializeStepGrid, serializePianoRoll } from '../serialize'
+import type { PianoRollModel, StepGridModel } from '../model'
 
 /**
  * #920 — a `<...>` alternation used as a sequence ELEMENT (`bd <sd hh>`), not
@@ -97,6 +97,78 @@ describe('#920 grid — <...> as a sequence element', () => {
     for (const s of ['<bd!3 sd> hh', 'bd <sd hh!2>']) {
       it(`${s} stays refused`, () => {
         expect(parseStepGrid(s).ok).toBe(false)
+      })
+    }
+  })
+})
+
+const rtRoll = (s: string): string | null => {
+  const r = parsePianoRoll(s)
+  if (!r.ok) return `REFUSED: ${r.reason}`
+  return serializePianoRoll(r.model)
+}
+
+describe('#920 roll — <...> as a sequence element', () => {
+  describe('parses (was refused)', () => {
+    for (const s of ['0 <2 3> 5', 'c3 <e3 g3>', '<0 2> 4 <5 7>']) {
+      it(`opens ${s}`, () => {
+        const r = parsePianoRoll(s)
+        expect(r.ok).toBe(true)
+        if (r.ok) expect(r.model.bars ?? 1).toBeGreaterThan(1)
+      })
+    }
+  })
+
+  describe('unedited round-trip = identity', () => {
+    for (const s of [
+      '0 <2 3> 5',
+      'c3 <e3 g3>',
+      '<0 2> 4 <5 7>',
+      '0 <2 3 4> 5', // 3-cycle
+      '0 <2 [3 4]> 5', // a group in a branch (same weight, finer div)
+      '0 <2 3>@1 5', // explicit trailing where padding varies
+      '<[c3,e3] [d3,f3]> g3', // chords in the branches
+      '<0 2 5> <0 3 5>', // whole-cycle non-regression (single alternation each)
+      '0 2 5', // flat non-regression
+    ]) {
+      it(`${s}`, () => {
+        expect(rtRoll(s)).toBe(s)
+      })
+    }
+  })
+
+  describe('edit localizes to one element', () => {
+    it('editing the alternation slot in one bar touches only that element', () => {
+      const r = parsePianoRoll('0 <2 3> 5')
+      expect(r.ok).toBe(true)
+      if (!r.ok) return
+      const m = r.model
+      // bar1's alternation note is `3` at column 4 (cols: bar0=0,1,2 · bar1=3,4,5)
+      const edited: PianoRollModel = {
+        ...m,
+        notes: m.notes.map((n) => (n.start === 4 ? { ...n, pitch: '4' } : n)),
+      }
+      expect(serializePianoRoll(edited)).toBe('0 <2 4> 5')
+    })
+
+    it('editing a static note in one bar promotes it to an alternation', () => {
+      const r = parsePianoRoll('0 <2 3> 5')
+      expect(r.ok).toBe(true)
+      if (!r.ok) return
+      const m = r.model
+      // the leading `0` is static (col 0 and col 3); change bar1's to `7`
+      const edited: PianoRollModel = {
+        ...m,
+        notes: m.notes.map((n) => (n.start === 3 ? { ...n, pitch: '7' } : n)),
+      }
+      expect(serializePianoRoll(edited)).toBe('<0 7> <2 3> 5')
+    })
+  })
+
+  describe('reconciliation declines at parse (phase 1b)', () => {
+    for (const s of ['0 <2!3 3> 5', '0 <2@2 3> 5']) {
+      it(`${s} stays refused`, () => {
+        expect(parsePianoRoll(s).ok).toBe(false)
       })
     }
   })
