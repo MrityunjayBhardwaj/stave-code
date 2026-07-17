@@ -1,4 +1,5 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
+import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
 import * as React36 from 'react';
 import React36__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
@@ -7,7 +8,6 @@ import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw, { loader, DiffEditor as DiffEditor$1 } from '@monaco-editor/react';
 import * as Y3 from 'yjs';
 import { parse as parse$1 } from '@strudel/mini/krill-parser.js';
-import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
 import { createPortal } from 'react-dom';
 import { getAudioContext, superdough } from '@strudel/webaudio';
 
@@ -1657,8 +1657,6 @@ function requireObject(node, key2, path) {
   }
 }
 __name(requireObject, "requireObject");
-
-// src/ir/parseMini.ts
 function parseMini(input, isSample = false, baseOffset = 0) {
   if (!input.trim()) return IR.pure();
   try {
@@ -1811,35 +1809,7 @@ __name(tokenize, "tokenize");
 function bjorklund(hits, steps) {
   if (hits <= 0 || steps <= 0) return new Array(Math.max(steps, 0)).fill(false);
   if (hits >= steps) return new Array(steps).fill(true);
-  let groups = [
-    ...Array.from({ length: hits }, () => [true]),
-    ...Array.from({ length: steps - hits }, () => [false])
-  ];
-  while (true) {
-    let firstTail = -1;
-    for (let i = 1; i < groups.length; i++) {
-      if (groups[i][0] !== groups[0][0]) {
-        firstTail = i;
-        break;
-      }
-    }
-    if (firstTail === -1) break;
-    const tailCount = groups.length - firstTail;
-    if (tailCount <= 1) break;
-    const merged = [];
-    const headCount = firstTail;
-    const pairs = Math.min(headCount, tailCount);
-    for (let i = 0; i < pairs; i++) {
-      merged.push([...groups[i], ...groups[firstTail + i]]);
-    }
-    if (headCount > tailCount) {
-      for (let i = tailCount; i < headCount; i++) merged.push(groups[i]);
-    } else if (tailCount > headCount) {
-      for (let i = headCount; i < tailCount; i++) merged.push(groups[firstTail + i]);
-    }
-    groups = merged;
-  }
-  return groups.flat();
+  return bjorklund$1(hits, steps).map((x) => x === 1);
 }
 __name(bjorklund, "bjorklund");
 function rotate(arr, by) {
@@ -1882,7 +1852,7 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
         const e = tokens[i];
         i++;
         let pattern = bjorklund(e.hits, e.steps);
-        if (e.rotation) pattern = rotate(pattern, e.rotation);
+        if (e.rotation) pattern = rotate(pattern, -e.rotation);
         const restSlot = IR.sleep(1);
         const slots = pattern.map((onset) => onset ? node : restSlot);
         if (slots.length === 1) {

@@ -20,6 +20,7 @@
  * expands to a flat Seq via Bjorklund, polymetric becomes Stack.
  */
 
+import { bjorklund as strudelBjorklund } from '@strudel/core/euclid.mjs'
 import { IR, type PatternIR } from './PatternIR'
 
 /**
@@ -219,45 +220,27 @@ function tokenize(input: string): Token[] {
 // ---------------------------------------------------------------------------
 // Bjorklund — distribute `hits` evenly across `steps` slots.
 // Returns a boolean array of length `steps`; true = onset, false = rest.
+//
+// The distribution is STRUDEL'S (`@strudel/core`'s `bjorklund` — the same
+// function `.euclid()` runs), so what the timeline draws cannot disagree with
+// what the audio plays. It is not ours to compute.
+//
+// This was a hand-rolled transcription until #907, and it was WRONG: it
+// disagreed with the original on 44 of 152 (k,n) pairs to n=16 (29%), so the
+// timeline drew a rhythm the audio never played — `bd(5,8)` plays 10110110,
+// the IR drew 10101011. It survived three months because `bd(3,8)` — the
+// canonical example, the one in the docs and in our own tests — is one of the
+// cases it got right. The drift begins at k=4, n=6. Nothing ever threw; two
+// representations of the same rhythm were simply never compared.
 // ---------------------------------------------------------------------------
 
 export function bjorklund(hits: number, steps: number): boolean[] {
+  // Degenerate ends stay ours: upstream computes `steps - hits` as the
+  // zero-run length, so hits > steps builds a negative-length array and
+  // throws. Callers here expect a `steps`-long mask, so hold both ends.
   if (hits <= 0 || steps <= 0) return new Array(Math.max(steps, 0)).fill(false)
   if (hits >= steps) return new Array(steps).fill(true)
-
-  // Iterative Bjorklund: build groups [[true],[true],...,[false],[false],...],
-  // then merge from the tail until at most one "remainder" group remains.
-  let groups: boolean[][] = [
-    ...Array.from({ length: hits }, () => [true]),
-    ...Array.from({ length: steps - hits }, () => [false]),
-  ]
-
-  while (true) {
-    let firstTail = -1
-    for (let i = 1; i < groups.length; i++) {
-      if (groups[i][0] !== groups[0][0]) {
-        firstTail = i
-        break
-      }
-    }
-    if (firstTail === -1) break
-    const tailCount = groups.length - firstTail
-    if (tailCount <= 1) break
-    const merged: boolean[][] = []
-    const headCount = firstTail
-    const pairs = Math.min(headCount, tailCount)
-    for (let i = 0; i < pairs; i++) {
-      merged.push([...groups[i], ...groups[firstTail + i]])
-    }
-    if (headCount > tailCount) {
-      for (let i = tailCount; i < headCount; i++) merged.push(groups[i])
-    } else if (tailCount > headCount) {
-      for (let i = headCount; i < tailCount; i++) merged.push(groups[firstTail + i])
-    }
-    groups = merged
-  }
-
-  return groups.flat()
+  return strudelBjorklund(hits, steps).map((x) => x === 1)
 }
 
 function rotate<T>(arr: T[], by: number): T[] {
@@ -329,7 +312,14 @@ function parseTokens(tokens: Token[], isSample: boolean, baseOffset = 0): Patter
         }
         i++
         let pattern = bjorklund(e.hits, e.steps)
-        if (e.rotation) pattern = rotate(pattern, e.rotation)
+        // Strudel's `_euclidRot` applies `rotate(b, -rotation)` — a RIGHT
+        // rotation by `rotation`, not a left one (euclid.mjs:130-134). Passing
+        // `+rotation` to a left-rotating helper spun every `(k,n,rot)` the
+        // wrong way: `bd(3,8,1)` plays 01001001, the IR drew 00100101 (#907).
+        // `rot=0` is a no-op either way, which is why the default case looked
+        // fine. `rotate` itself is correct and generic — only this caller's
+        // sign was wrong.
+        if (e.rotation) pattern = rotate(pattern, -e.rotation)
         const restSlot: PatternIR = IR.sleep(1)
         const slots = pattern.map(onset => (onset ? node : restSlot))
         // Synthetic Seq from euclid spans the atom + `(h,s,r)`.

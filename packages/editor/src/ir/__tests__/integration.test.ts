@@ -199,12 +199,20 @@ describe('parseMini', () => {
     it('canonical 3 over 8 = [1 0 0 1 0 0 1 0]', () => {
       expect(bjorklund(3, 8)).toEqual([true, false, false, true, false, false, true, false])
     })
+    /**
+     * This test's TITLE has been correct since it was written, and its BODY
+     * checked none of it — it asserted only "5 onsets somewhere in 8 slots",
+     * which the broken distribution satisfied. The old code returned
+     * 10101011; the title says 10110110, and 10110110 is what Strudel plays.
+     * The title was right for three months while the body held no constraint.
+     *
+     * The comment that did it: "the exact distribution depends on the
+     * Bjorklund variant used". There is no variant freedom here — the grid is
+     * a VIEW of what Strudel triggers, so exactly one distribution is correct,
+     * and it is upstream's. Asserting the title (#907).
+     */
     it('5 over 8 = [1 0 1 1 0 1 1 0]', () => {
-      // The exact distribution depends on the Bjorklund variant used —
-      // we only assert the count + length.
-      const r = bjorklund(5, 8)
-      expect(r.length).toBe(8)
-      expect(r.filter(Boolean)).toHaveLength(5)
+      expect(bjorklund(5, 8)).toEqual([true, false, true, true, false, true, true, false])
     })
     it('hits >= steps fills with onsets', () => {
       expect(bjorklund(8, 8)).toEqual(new Array(8).fill(true))
