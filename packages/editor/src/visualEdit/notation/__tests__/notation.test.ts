@@ -17,6 +17,9 @@ import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '.
 import { placeNote, resizeNote } from '../place'
 import { resizeGrid, resizeRoll } from '../resize'
 import type { StepGridModel, PianoRollModel } from '../model'
+// the authority our bjorklund adapts — imported so the euclid test can A/B
+// against it rather than a hand-written table of our own beliefs (#917).
+import { bjorklund as strudelEuclid } from '@strudel/core/euclid.mjs'
 
 /** the round-trip law: serialize(parse(s)) === s */
 function gridRoundTrips(s: string) {
@@ -161,6 +164,33 @@ describe('step grid — parse', () => {
     if (seven.ok) {
       expect(seven.model.steps).toBe(16)
       expect(seven.model.lanes[0].cells.filter(Boolean).length).toBe(7)
+    }
+  })
+
+  it('a NEGATIVE pulse count inverts the euclid — it is not empty (#917)', () => {
+    // `(-10,16)` = the 6 steps a euclidean 10 leaves out. Before #917 a guard
+    // (`k <= 0 → all-false`) stood in front of the authority and drew an empty
+    // grid for a pattern Strudel plays 6 notes of.
+    const r = parseStepGrid('bd(-10,16)')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.steps).toBe(16)
+    // exact cells, verified against Strudel's queryArc onset columns 1,4,6,9,12,14
+    expect(
+      r.model.lanes[0].cells.flatMap((on, i) => (on ? [i] : [])),
+    ).toEqual([1, 4, 6, 9, 12, 14])
+  })
+
+  it('our bjorklund agrees with @strudel/core across signs (#917, reference-independent)', () => {
+    // The reference is Strudel's own bjorklund, not a table of our beliefs — only
+    // an independent oracle can disagree with us. Where upstream throws (|k| >= n)
+    // the view holds it (all / none), which is a VIEW decision, not a mismatch.
+    for (const [k, n] of [
+      [3, 8], [5, 8], [7, 16], [1, 4], [-1, 4], [-3, 8], [-10, 16], [-2, 5], [-7, 16],
+    ] as const) {
+      const oursCount = bjorklund(k, n).filter(Boolean).length
+      const theirs = strudelEuclid(k, n).filter((x) => x === 1).length
+      expect(oursCount, `bjorklund(${k},${n})`).toBe(theirs)
     }
   })
 

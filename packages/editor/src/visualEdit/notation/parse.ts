@@ -68,22 +68,26 @@ const lcm = (a: number, b: number): number => (a / gcd(a, b)) * b
  * Distribute `k` pulses over `n` steps — the euclidean rhythm behind
  * `bd(3,8)`. The distribution itself is Strudel's (`@strudel/core`'s
  * `bjorklund`, the same function `.euclid()` runs), so the grid shows exactly
- * the cells the audio triggers; we only adapt the shape (`0|1` → booleans) and
- * hold the degenerate ends, which are a VIEW decision rather than a grammar
- * one: `k >= n` fills every step (upstream would compute a negative remainder
- * and throw), `k <= 0` empties it.
+ * the cells the audio triggers. We only hold the degenerate ends it CANNOT
+ * compute — `|k| >= n`, where upstream's `n - |k|` goes negative and it throws:
+ * `k >= n` fills every step, `-k` (all but a euclid of `n` pulses) leaves none.
  *
- * This was a 56-line transcription of upstream's algorithm until #903. It
- * agreed with the original on all 152 (k,n) pairs up to n=16 — which is the
- * point: a copy is correct the day it is written and free to drift forever
- * after, and nothing would have told us.
+ * A NEGATIVE `k` IS NOT EMPTY — it is Strudel's INVERSION (`euclid.mjs:44`
+ * `inverted = ons < 0`, `:51` `pattern.map(x => 1 - x)`): `(-10,16)` plays the
+ * 6 steps a euclidean 10 leaves out. It must reach the authority, not a guard
+ * standing in front of it (#917). Only `k === 0` is truly empty.
+ *
+ * This was a 56-line transcription of upstream's algorithm until #903, and the
+ * guard that shadowed inversion outlived it: a copy — or a guard over the
+ * copy — is correct the day it is written and free to drift forever after.
  */
-export const bjorklund = (k: number, n: number): boolean[] =>
-  k <= 0
-    ? (Array(n).fill(false) as boolean[])
-    : k >= n
-      ? (Array(n).fill(true) as boolean[])
-      : strudelBjorklund(k, n).map((x) => x === 1)
+export const bjorklund = (k: number, n: number): boolean[] => {
+  if (k === 0) return Array(n).fill(false) as boolean[]
+  // |k| >= n: the only ends upstream can't compute (it throws). k >= n → all on;
+  // -k with |k| >= n → all off (invert "every step").
+  if (Math.abs(k) >= n) return Array(n).fill(k > 0) as boolean[]
+  return strudelBjorklund(k, n).map((x) => x === 1)
+}
 
 /**
  * Rotate a euclid pattern to match Strudel's `euclidRot`, so an unedited

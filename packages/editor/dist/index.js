@@ -26161,7 +26161,11 @@ var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => allowNumeric || !N
 var MAX_STEPS = 64;
 var gcd = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcd(b, a % b), "gcd");
 var lcm = /* @__PURE__ */ __name((a, b) => a / gcd(a, b) * b, "lcm");
-var bjorklund2 = /* @__PURE__ */ __name((k, n) => k <= 0 ? Array(n).fill(false) : k >= n ? Array(n).fill(true) : bjorklund$1(k, n).map((x) => x === 1), "bjorklund");
+var bjorklund2 = /* @__PURE__ */ __name((k, n) => {
+  if (k === 0) return Array(n).fill(false);
+  if (Math.abs(k) >= n) return Array(n).fill(k > 0);
+  return bjorklund$1(k, n).map((x) => x === 1);
+}, "bjorklund");
 var rotateEuclid = /* @__PURE__ */ __name((pattern, rot) => {
   const n = pattern.length;
   if (n === 0) return pattern;

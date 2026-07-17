@@ -91,6 +91,24 @@ test.describe('Piano Roll (#383)', () => {
     await expect(grid.locator('[data-roll-cell="48:1"]')).toHaveAttribute('aria-pressed', 'false')
   })
 
+  test('a negative euclid renders the notes it inverts, not an empty grid (#917)', async ({
+    page,
+  }) => {
+    // `(-5,8)` = the 3 steps a euclidean 5 leaves out (cols 1, 4, 7 — matches
+    // Strudel's queryArc). Before #917 a guard drew an empty grid for a pattern
+    // that plays.
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3(-5,8)")')
+    const drawer = await openRoll(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(grid).toHaveCount(1)
+    for (const step of [1, 4, 7]) {
+      await expect(grid.locator(`[data-roll-cell="48:${step}"]`)).toHaveAttribute('aria-pressed', 'true')
+    }
+    // and a step it does NOT play stays empty
+    await expect(grid.locator('[data-roll-cell="48:0"]')).toHaveAttribute('aria-pressed', 'false')
+  })
+
   test('shows the note name inside each note bar (#605)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c3 ~ e3 g3")')
