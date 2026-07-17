@@ -264,6 +264,44 @@ describe('step grid — round-trip identity', () => {
   for (const s of canonical) it(`"${s}"`, () => gridRoundTrips(s))
 })
 
+describe('step grid — velocity still defeats span surgery (#913 known gap)', () => {
+  /**
+   * PINNED, NOT HIDDEN. A per-column `.gain("v v v v")` runs 1:1 against the
+   * FLAT column sequence, so a grid carrying one must keep emitting that flat
+   * sequence or the velocities land on the wrong notes — and the notation goes
+   * with it, even on an UNEDITED write.
+   *
+   * This is a strict non-regression (it is what every grid did before #913),
+   * and it is the same defect surviving in the one shape the corpus gates
+   * cannot see: `round-trip.test.ts` sweeps bare mini strings, which never
+   * carry a `.gain`. Closing it means giving the gain mini the same structure
+   * as the notes (`0.5 [1 1] 0.8 1`, not `0.5 ~ 1 1 0.8 ~ 1 ~`) — its own
+   * piece of work, so it is asserted here rather than left to be discovered.
+   */
+  it('a per-column .gain forces the flat rebuild, `*2` and all', () => {
+    const r = parseStepGrid('bd hh*2 sd cp')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    // no gain → the notation survives
+    expect(serializeStepGrid(r.model)).toBe('bd hh*2 sd cp')
+    // per-column velocity → back to the flat rebuild
+    const withGain = applyStepGain(r.model, {
+      mini: '0.5 ~ 1 1 0.8 ~ 1 ~',
+      numeric: null,
+      foreign: false,
+    })
+    expect(serializeStepGrid(withGain)).toBe('bd ~ hh hh sd ~ cp ~')
+  })
+
+  it('a SCALAR .gain does not — it needs no column alignment', () => {
+    const r = parseStepGrid('bd hh*2 sd cp')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const withGain = applyStepGain(r.model, { mini: null, numeric: 0.4, foreign: false })
+    expect(serializeStepGrid(withGain)).toBe('bd hh*2 sd cp')
+  })
+})
+
 describe('step grid — `*` survives an unedited write (#913)', () => {
   // `*` expands onto the grid to be SHOWN, and used to expand on the way out
   // too — opening `hh*8` and writing it back rewrote the user's line as eight
