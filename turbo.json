@@ -5,6 +5,41 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
+    // The app's build is the one Vercel hooks, and it must NOT be cached.
+    //
+    // Vercel's Next.js integration injects `onBuildComplete` into the running
+    // `next build` to collect output into /vercel/output. Our deploy runs
+    // `turbo run build --filter=@stave/app` (packages/app/vercel.json), and on
+    // a cache hit Turbo REPLAYS the recorded log text instead of executing the
+    // task — so `Running onBuildComplete from Vercel` is PRINTED while the hook
+    // never fires. No output is collected and the deploy errors, after emitting
+    // a log that reads, end to end, like a success (#909).
+    //
+    // Measured here, same inputs, twice in a row:
+    //   run 1  cache miss, executing  -> 33s
+    //   run 2  cache hit, replaying   -> 25ms >>> FULL TURBO
+    // A 33-second build does not happen in 25ms. Nothing ran.
+    //
+    // It bites MERGES specifically: a squash-merge lands content Vercel already
+    // built on the PR branch, so the hash matches, the cache hits, and the
+    // deploy dies — which is why studio went red about half the time while the
+    // code was fine.
+    //
+    // `dependsOn` is REPEATED here on purpose. A package-specific task REPLACES
+    // the base config rather than merging into it — verified: a bare
+    // `{ "cache": false }` runs "Tasks: 1 successful, 1 total" (the editor never
+    // builds) instead of 2, which would quietly ship the app against a stale
+    // @stave/editor dist. Do not drop this line.
+    //
+    // `outputs` is intentionally absent: with caching off there is nothing to
+    // save or restore, so listing them would only imply otherwise.
+    //
+    // The cost is the ~1m this cache was "saving" while producing broken
+    // deploys. The editor's build stays cached — it is not what Vercel hooks.
+    "@stave/app#build": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
     "dev": {
       "cache": false,
       "persistent": true
