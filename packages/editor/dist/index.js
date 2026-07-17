@@ -26968,6 +26968,10 @@ function rollStackSource(parts, models) {
 __name(rollStackSource, "rollStackSource");
 
 // src/visualEdit/notation/serialize.ts
+function altSourceFits(a, steps) {
+  return !!a && a.perBar * a.bars === steps;
+}
+__name(altSourceFits, "altSourceFits");
 function fmtGain(v) {
   if (!Number.isFinite(v)) return "1";
   if (Number.isInteger(v)) return String(v);
@@ -26975,7 +26979,7 @@ function fmtGain(v) {
 }
 __name(fmtGain, "fmtGain");
 function serializeStepGrid(model) {
-  if (model.altSource) return spliceAltGrid(model);
+  if (altSourceFits(model.altSource, model.steps)) return spliceAltGrid(model);
   const spliced = spliceGrid(model);
   if (spliced !== null) return spliced;
   const bars = model.bars ?? 1;
@@ -27118,7 +27122,7 @@ function buildGroups(model) {
 }
 __name(buildGroups, "buildGroups");
 function serializePianoRoll(model) {
-  if (model.altSource) return spliceAltRoll(model);
+  if (altSourceFits(model.altSource, model.steps)) return spliceAltRoll(model);
   const spliced = spliceRoll(model);
   if (spliced !== null) return spliced;
   const bars = model.bars ?? 1;

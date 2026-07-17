@@ -10,6 +10,7 @@
  * null and the panel keeps the document untouched.
  */
 import type {
+  AltSource,
   GainWrite,
   NotationSource,
   PianoRollModel,
@@ -17,6 +18,17 @@ import type {
   StepGridModel,
   StepLane,
 } from './model'
+
+/**
+ * An `altSource` still describes a model only while its single-cycle width times
+ * its bar count equals the model's columns. A restructure (resolution scale,
+ * quantize) that moved the width out from under it leaves it stale — splicing
+ * against stale spans would emit wrong bytes, so the caller falls back to the
+ * whole-cycle rebuild instead (the #916 covers-check, for the alt writers).
+ */
+function altSourceFits<C>(a: AltSource<C> | undefined, steps: number): a is AltSource<C> {
+  return !!a && a.perBar * a.bars === steps
+}
 
 /**
  * Format a velocity for a `.gain("…")` token: 2 decimals, trailing zeros and
@@ -37,7 +49,10 @@ export function serializeStepGrid(model: StepGridModel): string {
   // and NEVER the rebuilds below — a rebuild would reshape it into the
   // whole-cycle `<[bd sd] [bd hh]>`. Every grid edit is a cell toggle, always
   // expressible, so this path is total (unlike the roll's, which can decline).
-  if (model.altSource) return spliceAltGrid(model)
+  // The guard is the #916 covers-check: if a restructure moved the width out from
+  // under the source, it no longer describes this grid — fall to the rebuild
+  // (reshaped notation, correct haps) rather than splice against stale spans.
+  if (altSourceFits(model.altSource, model.steps)) return spliceAltGrid(model)
 
   // Span surgery first: it puts back what the user wrote wherever they didn't
   // edit. It declines (null) whenever the regions no longer describe the grid,
@@ -299,7 +314,7 @@ export function serializePianoRoll(model: PianoRollModel): string | null {
   // NEVER the rebuilds below — a rebuild would reshape it into the whole-cycle
   // `<[0 2 5] [0 3 5]>`. It returns null (keep the document) for an edit it can't
   // express, never wrong bytes.
-  if (model.altSource) return spliceAltRoll(model)
+  if (altSourceFits(model.altSource, model.steps)) return spliceAltRoll(model)
 
   // Span surgery first — same rule as the grid: put back what the user wrote
   // wherever they didn't edit. It declines (null) whenever the regions no longer
