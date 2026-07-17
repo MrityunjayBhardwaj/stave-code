@@ -14,12 +14,10 @@
  * be both: `*n` was documented as sugar that "serializes back as the expanded
  * sequence", so opening `bd hh*2 sd cp` and nudging any cell rewrote the line as
  * `bd bd hh hh sd ~ cp ~`. That cost a third of everything the grid could open
- * (#913). The StepGridModel now carries the spans it was read from and the
- * writer puts unedited ones back verbatim, so the subset bounds what the panel
- * can SHOW and edit — never what survives being looked at.
- *
- * The roll has no provenance yet and still rebuilds from its model; its 160
- * rewrites are pinned in `round-trip.test.ts` and are the follow-up.
+ * (#913), and a third of what the roll could open for the same reason (#916).
+ * Both models now carry the spans they were read from and both writers put
+ * unedited ones back verbatim, so the subset bounds what a panel can SHOW and
+ * edit — never what survives being looked at.
  */
 
 /**
@@ -27,16 +25,20 @@
  *
  * krill's element spans TILE the mini: concatenating them reconstructs the
  * input byte-for-byte, whitespace and all. Verified over the 1352 flat minis in
- * the real corpus, and re-checked per parse — that tiling is the whole basis for
- * putting back exactly what we read.
+ * the real corpus (and all 380 the roll opens), and re-checked per parse — that
+ * tiling is the whole basis for putting back exactly what we read.
  *
  * Where the whitespace LANDS inside a span is not something to have beliefs
  * about: `bd sd` spans as `"bd "` + `"sd"` (trailing) while `bd!3 sd` spans as
  * `"bd!3"` + `" sd"` (leading). So an untouched region is written back as its
  * whole `raw` span and no rule is needed; only a region we re-emit has to know
  * which side its padding sits on.
+ *
+ * `C` is what the element produced IN THE VIEW'S OWN TERMS — cells for the grid,
+ * notes for the roll. The spans are the same fact about the source either way;
+ * only the answer to "did the user change this?" is the view's.
  */
-export interface SourceRegion {
+export interface SourceRegion<C> {
   /** the element's bytes exactly as written, whitespace included */
   raw: string
   /** `raw`'s padding, split out so a re-emit keeps the spacing around it */
@@ -46,14 +48,17 @@ export interface SourceRegion {
   from: number
   to: number
   /**
-   * What the GRID showed for these columns at parse time — the basis for "did
+   * What the VIEW showed for these columns at parse time — the basis for "did
    * the user change this region?". Deliberately the model's own view rather
    * than the raw atoms: `[sd,sd]` is one lane to a grid that has one lane per
    * distinct sound, so comparing against the raw pair would report a change
    * nobody made and rewrite the region for nothing.
    */
-  cells: string[][]
+  content: C
 }
+
+/** what a step grid shows for a span of columns: the sounds in each */
+export type GridCells = string[][]
 
 /**
  * One `,`-separated part of the source, and the columns it produced.
@@ -64,19 +69,26 @@ export interface SourceRegion {
  * regions are indexed in its own column space and `factor` maps them onto the
  * shared grid.
  */
-export interface SourcePart {
+export interface SourcePart<C> {
   /** the lane `part` index these regions describe */
   part: number
   /** columns per top-level step INSIDE this part */
   div: number
-  /** shared-grid columns spanned by each of this part's own columns */
+  /**
+   * Shared-grid columns spanned by each of this part's own columns.
+   *
+   * Always 1 for the roll: `parseRollLanes` requires every part to report the
+   * same step count and refuses the pattern otherwise, so a roll's parts share
+   * one column space by construction. The grid is the view that stretches
+   * (`bd sd, hh*4` lays two columns against four).
+   */
   factor: number
   /** the bytes before this part's content — its `,` and padding — verbatim */
   before: string
   /** the bytes after it */
   after: string
   /** one entry per top-level element, in source order, tiling the part */
-  regions: SourceRegion[]
+  regions: SourceRegion<C>[]
 }
 
 /**
@@ -87,7 +99,7 @@ export interface SourcePart {
  * models built from scratch, and then the writer rebuilds from the grid, which
  * is lossy and always was.
  */
-export interface GridSource {
+export interface NotationSource<C> {
   /**
    * The wrapper the parts sit inside, written back around them verbatim: `<`
    * and `>` (with the user's padding) for a multi-bar alternation, empty for a
@@ -96,7 +108,7 @@ export interface GridSource {
    */
   prefix: string
   suffix: string
-  parts: SourcePart[]
+  parts: SourcePart<C>[]
 }
 
 /** Drum/step grid: lanes (sounds) × steps (columns). */
@@ -111,7 +123,7 @@ export interface StepGridModel {
    * cell in the `bd`, and the `*2` survives). Absent → the writer rebuilds the
    * whole string from the grid, which is lossy and always was.
    */
-  source?: GridSource
+  source?: NotationSource<GridCells>
   /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
   bars?: number
   /**
@@ -168,6 +180,15 @@ export interface RollNote {
 export interface PianoRollModel {
   /** total columns across all bars */
   steps: number
+  /**
+   * The source this model was read from, for span surgery on write (#916) —
+   * the roll's half of what `StepGridModel.source` does for the grid. A region
+   * owns columns `[from, to)` and the notes STARTING in that range are its own;
+   * unchanged ones write their bytes back, so `C D` stays `C D` rather than
+   * coming back lowercased for the crime of being looked at. Absent → the
+   * writer rebuilds from the model, which is lossy and always was.
+   */
+  source?: NotationSource<RollNote[]>
   /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
   bars?: number
   notes: RollNote[]

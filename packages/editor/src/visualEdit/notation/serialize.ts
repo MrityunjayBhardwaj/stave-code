@@ -9,7 +9,14 @@
  * can't express (overlapping roll notes, a note straddling a bar line) returns
  * null and the panel keeps the document untouched.
  */
-import type { GainWrite, PianoRollModel, RollNote, StepGridModel, StepLane } from './model'
+import type {
+  GainWrite,
+  NotationSource,
+  PianoRollModel,
+  RollNote,
+  StepGridModel,
+  StepLane,
+} from './model'
 
 /**
  * Format a velocity for a `.gain("…")` token: 2 decimals, trailing zeros and
@@ -101,7 +108,7 @@ function spliceGrid(model: StepGridModel): string | null {
       const now = cols.slice(r.from, r.to)
       // untouched → the span's own bytes, verbatim; touched → re-emit, keeping
       // whatever padding the span carried around it
-      out += sameCells(now, r.cells)
+      out += sameCells(now, r.content)
         ? r.raw
         : r.leading + (sole ? now.map(cellToken).join(' ') : reemitRegion(now, p.div)) + r.trailing
     }
@@ -247,6 +254,13 @@ function buildGroups(model: PianoRollModel): Map<number, Group> | null {
 }
 
 export function serializePianoRoll(model: PianoRollModel): string | null {
+  // Span surgery first — same rule as the grid: put back what the user wrote
+  // wherever they didn't edit. It declines (null) whenever the regions no longer
+  // describe the notes, and the rebuilds below take over, the way this always
+  // worked.
+  const spliced = spliceRoll(model)
+  if (spliced !== null) return spliced
+
   const bars = model.bars ?? 1
   if (bars > 1) {
     // Multi-bar `<...>` keeps the shared-duration chord path (parallel lanes are
@@ -256,6 +270,220 @@ export function serializePianoRoll(model: PianoRollModel): string | null {
     return rollBars(groups, model.steps, bars)
   }
   return serializeRollLanes(model)
+}
+
+/* ── span surgery, the roll (#916) ─────────────────────────────── */
+
+const noteKey = (n: RollNote): string => `${n.pitch}:${n.start}:${n.duration}`
+
+/**
+ * Which `,`-part does each note belong to now?
+ *
+ * The roll's notes carry no part tag and a drag builds a FRESH note
+ * (`[...baseNotes, { pitch, start, duration }]`), so a note cannot be followed
+ * by identity through an edit — only matched by value. Notes that still match
+ * one the part produced stay in it; a note that matches nothing is new or moved,
+ * and the only part it can honestly be given to is the one that LOST a note.
+ *
+ * That is a rule about the common gesture, not about every gesture, so it is
+ * held narrowly: if no part lost a note (a plain insert) or several did, there
+ * is no non-arbitrary answer and we hand back null — the whole line rebuilds
+ * from the model, which is what it did before this existed. Guessing here would
+ * put the user's note in a voice they didn't touch.
+ *
+ * The single-part case has nothing to decide: every note is that part's.
+ */
+function assignNotes(
+  model: PianoRollModel,
+  src: NotationSource<RollNote[]>,
+): Map<number, RollNote[]> | null {
+  if (src.parts.length === 1) return new Map([[src.parts[0].part, model.notes]])
+
+  const taken = new Set<RollNote>()
+  const mine = new Map<number, RollNote[]>()
+  const lost: number[] = []
+  for (const p of src.parts) {
+    const kept: RollNote[] = []
+    let missing = false
+    for (const was of p.regions.flatMap((r) => r.content)) {
+      // by value, and each current note claimed once — two parts can hold the
+      // same pitch at the same column (`0,0`), and both must stay theirs
+      const hit = model.notes.find((n) => !taken.has(n) && noteKey(n) === noteKey(was))
+      if (hit) {
+        taken.add(hit)
+        kept.push(hit)
+      } else missing = true
+    }
+    if (missing) lost.push(p.part)
+    mine.set(p.part, kept)
+  }
+  const strays = model.notes.filter((n) => !taken.has(n))
+  if (strays.length === 0) return mine
+  if (lost.length !== 1) return null
+  mine.set(lost[0], [...(mine.get(lost[0]) ?? []), ...strays])
+  return mine
+}
+
+/**
+ * Write back by editing the user's own bytes — the roll's half of #913.
+ *
+ * A region owns columns `[from, to)` and the notes starting in it are its own.
+ * Where those notes are what it produced, its bytes go back verbatim; only the
+ * regions whose notes changed are re-emitted. So `C D` stays `C D` (the model
+ * lowercases pitches for the row math, and that convention has no business
+ * riding back out into the document), `c4*2 e4` keeps its `*2` when the drag
+ * lands on the `e4`, and the unedited round-trip falls out rather than being a
+ * case anyone maintains.
+ *
+ * Returns null when the regions no longer describe these notes — then the caller
+ * rebuilds from the model, which is lossy and always was.
+ */
+function spliceRoll(model: PianoRollModel): string | null {
+  const src = model.source
+  if (!src || src.parts.length === 0) return null
+  // A per-note `.gain("…")` mini runs 1:1 against the sequence THIS writer
+  // emits, so a roll carrying one has to keep emitting that sequence or the
+  // velocities land on the wrong notes (#915, the grid's identical case). Asked
+  // rather than re-derived, so the two writers cannot drift apart.
+  const gain = serializeRollGain(model)
+  if (gain.kind === 'write' && gain.quoted) return null
+  // The regions were built to tile a grid of some width. If the model's width
+  // has moved since — a resolution ×2, a quantize to a new slot count — the
+  // source is describing a layout that no longer exists, and splicing against it
+  // would silently drop every note past the old end. Decline and let the model
+  // rebuild, exactly as the grid's `last.to !== cols.length` check does. (The
+  // restructuring ops could also drop `source`; this is the backstop that means
+  // the writer's failure mode is a clean rebuild, never wrong bytes.)
+  const covers = src.parts.every((p) => {
+    const last = p.regions[p.regions.length - 1]
+    return last !== undefined && last.to === model.steps
+  })
+  if (!covers) return null
+  const assigned = assignNotes(model, src)
+  if (assigned === null) return null
+
+  let out = src.prefix
+  for (const p of src.parts) {
+    const notes = assigned.get(p.part) ?? []
+    if (notes.some((n) => n.start < 0 || n.duration < 1 || n.start + n.duration > model.steps)) {
+      return null
+    }
+    out += p.before
+    const last = p.regions[p.regions.length - 1]
+    // The regions index the notes they were parsed from. A part whose notes no
+    // longer fit its own columns can't be spliced — and that is not the other
+    // parts' business, so only ITS regions go. Every roll part shares one column
+    // space (see `SourcePart.factor`), so re-emitting one leaves the others
+    // sounding exactly as written.
+    let body: string | null = last === undefined ? null : ''
+    for (const r of p.regions) {
+      if (body === null) break
+      const now = notes.filter((n) => n.start >= r.from && n.start < r.to)
+      if (sameNotes(now, r.content)) {
+        body += r.raw
+        continue
+      }
+      const re = reemitRollRegion(now, r.from, r.to, p.div)
+      body = re === null ? null : body + r.leading + re + r.trailing
+    }
+    if (body === null) {
+      // this part alone falls back to a rebuild from the model
+      const rebuilt = laneString(
+        toPlaced(notes) ?? [],
+        model.steps,
+      )
+      if (rebuilt === null || toPlaced(notes) === null) return null
+      out += rebuilt + p.after
+      continue
+    }
+    out += body + p.after
+  }
+  return out + src.suffix
+}
+
+/** same notes, in any order — a multiset compare on (pitch, start, duration) */
+function sameNotes(a: RollNote[], b: RollNote[]): boolean {
+  if (a.length !== b.length) return false
+  const left = a.map(noteKey).sort()
+  const right = b.map(noteKey).sort()
+  return left.every((k, i) => k === right[i])
+}
+
+/** notes → chord groups keyed by start; same start with different lengths can't share a lane */
+function toPlaced(notes: RollNote[]): PlacedGroup[] | null {
+  const byStart = new Map<number, PlacedGroup>()
+  for (const n of [...notes].sort((x, y) => x.start - y.start)) {
+    const g = byStart.get(n.start)
+    if (!g) byStart.set(n.start, { pitches: [n.pitch], start: n.start, duration: n.duration })
+    else if (g.duration !== n.duration) return null
+    else g.pitches.push(n.pitch)
+  }
+  return [...byStart.values()]
+}
+
+/**
+ * Re-emit one changed region over its own columns — and, above all, at its own
+ * WEIGHT.
+ *
+ * This is where the roll differs from the grid. The grid refuses elongation, so
+ * every step is one `div`-wide column and re-emitting `n` columns as `n` steps
+ * is automatically the same length. Here `c4@2` is ONE step spanning two
+ * columns: emit it as two steps and the region's weight goes 1 → 2, Strudel
+ * re-divides the cycle, and every neighbour the edit never touched changes
+ * timing. So a region owning `w` columns must come back as exactly `w / div`
+ * steps' worth of weight, or not at all.
+ *
+ * Returns null when these notes can't be said in that space — a chord whose
+ * members have different lengths (that needs parallel lanes, a restructure of
+ * the whole line), notes overlapping, or a note crossing a step boundary.
+ */
+function reemitRollRegion(
+  notes: RollNote[],
+  from: number,
+  to: number,
+  div: number,
+): string | null {
+  const groups = toPlaced(notes)
+  if (groups === null) return null
+  const at = new Map(groups.map((g) => [g.start, g]))
+  const starts = groups.map((g) => g.start).sort((a, b) => a - b)
+  const tokens: string[] = []
+  let c = from
+  while (c < to) {
+    const g = at.get(c)
+    // a group filling whole steps from a step boundary is one `@k` token — the
+    // shape the user most likely wrote, and the one that keeps the weight
+    if (g && g.duration % div === 0) {
+      const end = c + g.duration
+      if (end > to) return null
+      if (starts.some((s) => s > c && s < end)) return null // overlap
+      tokens.push(groupToken({ pitches: g.pitches, duration: g.duration / div }))
+      c = end
+      continue
+    }
+    // otherwise this step has structure inside it: `div` columns' worth of slots
+    // whose weights sum to `div`, i.e. one step
+    const end = c + div
+    const slots: string[] = []
+    let k = c
+    while (k < end) {
+      const gg = at.get(k)
+      if (!gg) {
+        slots.push('~')
+        k++
+        continue
+      }
+      if (k + gg.duration > end) return null // crosses the step boundary
+      slots.push(groupToken({ pitches: gg.pitches, duration: gg.duration }))
+      k += gg.duration
+    }
+    // a step nobody plays is `~`, not `[~ ~]`
+    tokens.push(
+      slots.every((s) => s === '~') ? '~' : slots.length === 1 ? slots[0] : `[${slots.join(' ')}]`,
+    )
+    c = end
+  }
+  return tokens.join(' ')
 }
 
 /** A chord group: notes sharing BOTH a start and a duration → one `[..]@d` token. */

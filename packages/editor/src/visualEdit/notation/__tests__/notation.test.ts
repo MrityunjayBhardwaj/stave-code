@@ -744,7 +744,13 @@ describe('resizeNote (single-note `@n` duration)', () => {
     const text = serializePianoRoll(resized)!
     const reparsed = parsePianoRoll(text)
     expect(reparsed.ok).toBe(true)
-    if (reparsed.ok) expect(reparsed.model).toEqual(resized)
+    // compare the VIEW, not the bytes: a re-parse carries the `source` it read
+    // (#916 span surgery), which a from-scratch model has no reason to hold —
+    // "same notes, different provenance" is the same view.
+    if (reparsed.ok) {
+      const { source: _s, ...view } = reparsed.model
+      expect(view).toEqual(resized)
+    }
   })
 })
 

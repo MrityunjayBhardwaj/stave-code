@@ -26,7 +26,8 @@ import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import { bjorklund as strudelBjorklund } from '@strudel/core/euclid.mjs'
 import type {
   ChunkGain,
-  GridSource,
+  GridCells,
+  NotationSource,
   ParseResult,
   PianoRollModel,
   RollNote,
@@ -196,7 +197,15 @@ interface KElement {
 interface ElementSpan {
   start: number
   end: number
-  steps: number
+  /**
+   * The element's total WEIGHT — its steps' elongations summed (`bd` 1, `bd@3`
+   * 3, `bd!3` 3, `[a b]` 1). Columns are `weight * div` in both views, which is
+   * why the region builder is shared: the grid refuses elongation, so there
+   * weight is just the step count, while the roll's `c4@2` is one element owning
+   * two columns. Counting STEPS instead would be right for the grid and quietly
+   * wrong for the roll.
+   */
+  weight: number
 }
 
 type Tokenized =
@@ -528,7 +537,13 @@ function tokenize(mini: string, allowNumeric = false): Tokenized {
     if (!Array.isArray(mapped)) return { ok: false, reason: mapped.reason }
     const loc = el.location_
     // krill was handed a QUOTED string, so its offsets carry the opening quote.
-    if (loc) elements.push({ start: loc.start.offset - 1, end: loc.end.offset - 1, steps: mapped.length })
+    if (loc) {
+      elements.push({
+        start: loc.start.offset - 1,
+        end: loc.end.offset - 1,
+        weight: mapped.reduce((w, s) => w + s.elongation, 0),
+      })
+    }
     steps.push(...mapped)
   }
   // A span we can't place is a span we can't put back: if any element lacks a
@@ -574,61 +589,76 @@ function lanesFromCells(cells: string[][], part?: number): StepLane[] {
 
 /**
  * Pair each source element with the columns it produced, so the writer can put
- * unedited ones back verbatim (#913).
+ * unedited ones back verbatim (#913 for the grid, #916 for the roll).
  *
- * In a step grid every top-level step occupies exactly `div` columns — the grid
- * refuses elongation, so each step's slots each span `div/total` and sum to
- * `div`. An element that expanded to `n` steps therefore owns `n * div`
- * columns, in source order.
+ * An element owns `weight * div` columns, in source order — see
+ * `ElementSpan.weight`. `content` answers what the view showed there; that is
+ * the only part of this that is a view's business.
  *
- * Returns null unless the spans TILE — i.e. concatenating them reproduces the
- * source exactly. That holds for all 1352 flat minis in the real corpus, but it
- * is checked rather than trusted: the whole mechanism is "copy the bytes we did
- * not touch", so a hole in the tiling would copy the WRONG bytes, silently.
- * Cheaper to verify than to debug, and a failure here just means the caller
- * writes the way it always did.
+ * Returns null unless the spans TILE — concatenating them reproduces the source
+ * exactly — AND the columns add up to the grid the model reports. Both hold for
+ * every flat mini in the real corpus, and both are checked rather than trusted:
+ * the whole mechanism is "copy the bytes we did not touch", so a hole in the
+ * tiling would copy the WRONG bytes, silently. Cheaper to verify than to debug,
+ * and a failure here just means the caller writes the way it always did.
  */
-function buildRegions(
+function buildRegions<C>(
   src: string,
   elements: ElementSpan[],
   div: number,
-  cells: string[][],
-): SourceRegion[] | null {
+  total: number,
+  content: (from: number, to: number) => C,
+): SourceRegion<C>[] | null {
   if (elements.length === 0) return null
-  const regions: SourceRegion[] = []
+  const regions: SourceRegion<C>[] = []
   let col = 0
   for (const el of elements) {
     const raw = src.slice(el.start, el.end)
     const leading = /^\s*/.exec(raw)?.[0] ?? ''
     const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? ''
-    const to = col + el.steps * div
-    regions.push({
-      raw,
-      leading,
-      trailing,
-      from: col,
-      to,
-      // the grid's view of these columns, not the raw atoms — see SourceRegion
-      cells: cells.slice(col, to).map((c) => [...new Set(c)]),
-    })
+    const to = col + el.weight * div
+    regions.push({ raw, leading, trailing, from: col, to, content: content(col, to) })
     col = to
   }
+  if (col !== total) return null
   if (regions.map((r) => r.raw).join('') !== src) return null
   return regions
 }
+
+/** the grid's view of a span of columns — the sounds in each, deduped (see `SourceRegion`) */
+const gridContent =
+  (cells: GridCells) =>
+  (from: number, to: number): GridCells =>
+    cells.slice(from, to).map((c) => [...new Set(c)])
+
+/**
+ * The roll's view of a span of columns: the notes STARTING in it.
+ *
+ * Start decides ownership, so a held `c4@2` belongs to the element that wrote
+ * it and not also to the one it sustains over. `gain` is deliberately dropped —
+ * velocity lives in a separate `.gain(…)` argument, so nudging it must not make
+ * the notation look edited.
+ */
+const rollContent =
+  (notes: RollNote[]) =>
+  (from: number, to: number): RollNote[] =>
+    notes
+      .filter((n) => n.start >= from && n.start < to)
+      .map((n) => ({ pitch: n.pitch, start: n.start, duration: n.duration }))
 
 /**
  * The one-part source shared by the flat and alternation paths: the whole mini
  * is a single part on the shared grid, so its columns ARE the grid's columns
  * (`factor` 1) and it carries no separator.
  */
-function singlePart(
+function singlePart<C>(
   src: string,
   elements: ElementSpan[],
   div: number,
-  cells: string[][],
-): SourcePart[] | null {
-  const regions = buildRegions(src, elements, div, cells)
+  total: number,
+  content: (from: number, to: number) => C,
+): SourcePart<C>[] | null {
+  const regions = buildRegions(src, elements, div, total, content)
   return regions ? [{ part: 0, div, factor: 1, before: '', after: '', regions }] : null
 }
 
@@ -650,7 +680,7 @@ export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
   }
   const cells = toCells(tok.steps, div)
   const src = mini.trim()
-  const sourceParts = singlePart(src, tok.elements, div, cells)
+  const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(cells))
   return {
     ok: true,
     model: {
@@ -684,7 +714,7 @@ function gridFromAlternation(inner: string): ParseResult<StepGridModel> {
   }
   const cells = toCells(tok.steps, div)
   const src = inner.trim()
-  const parts = singlePart(src, tok.elements, div, cells)
+  const parts = singlePart(src, tok.elements, div, cells.length, gridContent(cells))
   return {
     ok: true,
     model: {
@@ -756,13 +786,19 @@ function stackSource(
   elements: ElementSpan[][],
   partCells: string[][][],
   total: number,
-): { source: GridSource } | null {
-  const out: SourcePart[] = []
+): { source: NotationSource<GridCells> } | null {
+  const out: SourcePart<GridCells>[] = []
   for (let i = 0; i < parts.length; i++) {
     const raw = parts[i]
     const leading = /^\s*/.exec(raw)?.[0] ?? ''
     const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? ''
-    const regions = buildRegions(raw.trim(), elements[i], divs[i], partCells[i])
+    const regions = buildRegions(
+      raw.trim(),
+      elements[i],
+      divs[i],
+      partCells[i].length,
+      gridContent(partCells[i]),
+    )
     if (!regions) return null
     out.push({
       part: i,
@@ -932,6 +968,11 @@ export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
   if (sawNumeric && sawNamed) {
     return { ok: false, reason: 'mixed numeric and note-name tokens are beyond the editable subset' }
   }
+  // An alternation's regions tile the text INSIDE the brackets, so the brackets
+  // (and whatever padding the user left in them) ride along as the wrapper —
+  // exactly as in the grid's `<...>` path.
+  const src = (alt ?? mini).trim()
+  const parts = singlePart(src, tok.elements, div, col, rollContent(notes))
   return {
     ok: true,
     model: {
@@ -939,6 +980,15 @@ export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
       ...(alt !== null ? { bars } : {}),
       notes,
       ...(sawNumeric ? { numeric: true } : {}),
+      ...(parts
+        ? {
+            source: {
+              parts,
+              prefix: alt !== null ? '<' + (/^\s*/.exec(alt)?.[0] ?? '') : '',
+              suffix: alt !== null ? (/\s*$/.exec(alt)?.[0] ?? '') + '>' : '',
+            },
+          }
+        : {}),
     },
   }
 }
@@ -969,5 +1019,50 @@ function parseRollLanes(parts: string[]): ParseResult<PianoRollModel> {
     return { ok: false, reason: 'mixed numeric and note-name lanes are beyond the editable subset' }
   }
   const notes = models.flatMap((m) => m.notes)
-  return { ok: true, model: { steps, notes, ...(numeric ? { numeric: true } : {}) } }
+  return {
+    ok: true,
+    model: { steps, notes, ...(numeric ? { numeric: true } : {}), ...(rollStackSource(parts, models) ?? {}) },
+  }
+}
+
+/**
+ * The per-part source for a roll `,`-stack, reassembled from each part's own —
+ * every part was parsed by `parsePianoRoll` above and already carries the
+ * regions tiling its own text, so this only has to re-index them and carry the
+ * `,` (with the user's padding) as the part's `before`.
+ *
+ * `factor` is 1 throughout, and structurally so: the caller has already refused
+ * the pattern unless every part reports the same step count, so a roll's parts
+ * cannot be at different resolutions the way `bd sd, hh*4` is in the grid.
+ *
+ * All or nothing, like the grid's: one part we can't tile means the writer can't
+ * reassemble the line, so none of it is used.
+ */
+function rollStackSource(
+  parts: string[],
+  models: PianoRollModel[],
+): { source: NotationSource<RollNote[]> } | null {
+  const out: SourcePart<RollNote[]>[] = []
+  for (let i = 0; i < parts.length; i++) {
+    const raw = parts[i]
+    const leading = /^\s*/.exec(raw)?.[0] ?? ''
+    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? ''
+    const own = models[i].source
+    // a part is a flat sequence — an alternation part is refused upstream, and
+    // a wrapper here would mean these regions don't tile what we think they do
+    if (!own || own.parts.length !== 1 || own.prefix !== '' || own.suffix !== '') return null
+    out.push({
+      part: i,
+      div: own.parts[0].div,
+      factor: 1,
+      before: (i > 0 ? ',' : '') + leading,
+      after,
+      regions: own.parts[0].regions,
+    })
+  }
+  // the parts must reassemble the line exactly, or we are not putting back what
+  // we read — same check as the per-part tiling, one level up
+  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join('') + p.after).join('')
+  if (rebuilt !== parts.join(',')) return null
+  return { source: { prefix: '', suffix: '', parts: out } }
 }

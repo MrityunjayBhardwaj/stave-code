@@ -169,13 +169,12 @@ describe('round-trip — an unedited open→write must not change the text', () 
     )
     // MEASURED by running it, over 1500 real strings:
     //   grid  269 of 781 (65.6% round-trip) -> 0 of 781 (100%)   #913 span surgery
-    //   roll  160 of 392 (58.7% round-trip) -> unchanged, the follow-up
-    // The grid's ceiling is 0 and stays 0: it is a LAW there now, not a budget.
-    // Ratcheting these down as they fall is what keeps the snapshot honest —
-    // a ceiling left at its old value would let the loss creep back silently
-    // while every test stayed green.
+    //   roll  160 of 392 (58.7% round-trip) -> 0 of 392 (100%)   #916 span surgery
+    // Both ceilings are 0 and stay 0: it is a LAW in both views now, not a
+    // budget. A ceiling left at its old value would let the loss creep back
+    // silently while every test stayed green.
     expect(counts.grid).toBe(0)
-    expect(counts.roll).toBeLessThanOrEqual(160)
+    expect(counts.roll).toBe(0)
   })
 
   /**
