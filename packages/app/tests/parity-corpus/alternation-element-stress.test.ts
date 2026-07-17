@@ -82,6 +82,37 @@ describe('#920 — <...>-as-element writeback holds under every edit', () => {
     expect(bad, bad.join('\n')).toEqual([])
   })
 
+  it('roll: delete every note — output re-parses, ≤1 element touched', () => {
+    // Deletes exercise a dimension pitch-drags cannot: emptying a region. A note
+    // whose removal makes the bars identical legitimately collapses the pattern to
+    // a single cycle (fewer model notes, but hap-equivalent), so the invariant here
+    // is "re-parses cleanly and stays local", not "note count − 1".
+    let edits = 0
+    const bad: string[] = []
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok || !r.model.altSource) continue
+      const spans = topSpans(mini.trim())
+      for (let i = 0; i < r.model.notes.length; i++) {
+        const edited = { ...r.model, notes: r.model.notes.filter((_, j) => j !== i) }
+        const out = serializePianoRoll(edited)
+        edits++
+        if (out === null) continue
+        const re = parsePianoRoll(out)
+        if (!re.ok) {
+          if (bad.length < 8) bad.push(`REPARSE ${JSON.stringify(mini.trim())} #${i} -> ${JSON.stringify(out)}`)
+          continue
+        }
+        const ch = changedSpan(mini.trim(), out)
+        if (ch && spans.length && touches(spans, ch) > 1 && bad.length < 8) {
+          bad.push(`LOCAL ${JSON.stringify(mini.trim())} #${i} -> ${JSON.stringify(out)}`)
+        }
+      }
+    }
+    expect(edits, 'the sweep must actually exercise roll alt-element deletes').toBeGreaterThan(50)
+    expect(bad, bad.join('\n')).toEqual([])
+  })
+
   it('grid: toggle every cell — no data loss, ≤1 element touched', () => {
     let edits = 0
     const bad: string[] = []

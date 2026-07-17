@@ -26553,6 +26553,9 @@ function expandAltElements(mini, allowNumeric) {
     perBarSteps.push(barSteps);
   }
   if (topEls.some((el) => !el.location_)) return { reason: "unsupported mini-notation syntax" };
+  if (elemWeight.some((w) => w > 1)) {
+    return { reason: "an elongated element in an alternation pattern is beyond the editable subset" };
+  }
   const div = perBarSteps.reduce((d, steps) => lcm(d, division(steps)), 1);
   const perBarCols = elemWeight.reduce((n, c) => n + c, 0) * div;
   if (perBarCols * bars > MAX_STEPS) {

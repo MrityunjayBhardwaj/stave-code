@@ -774,6 +774,15 @@ function expandAltElements(mini: string, allowNumeric: boolean): AltExpansion | 
   // No location on an element means a hole in the tiling — a hole would copy the
   // wrong bytes back, so refuse rather than guess.
   if (topEls.some((el) => !el.location_)) return { reason: 'unsupported mini-notation syntax' }
+  // An element wider than one step (`c4@2`, `[a b]@2`) can't be re-emitted through
+  // the per-bar `<...>` wrapper without changing its weight — `c4@2` edited would
+  // come back `<d4@2 c4@2>`, which is weight 1, re-dividing the cycle and shifting
+  // every neighbour. Preserving the weight (`<d4 c4>@2`) is the reconciliation case
+  // (phase 1b); until then, an alt pattern carrying any elongated element stays
+  // code-only rather than risk wrong bytes on edit.
+  if (elemWeight.some((w) => w > 1)) {
+    return { reason: 'an elongated element in an alternation pattern is beyond the editable subset' }
+  }
   const div = perBarSteps.reduce((d, steps) => lcm(d, division(steps)), 1)
   const perBarCols = elemWeight.reduce((n, c) => n + c, 0) * div
   if (perBarCols * bars > MAX_STEPS) {

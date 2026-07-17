@@ -4424,9 +4424,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""?" random degrade is beyond the editable subset",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "an elongated element in an alternation pattern is beyond the editable subset",
     "mini": "bd@3 <bd [~ bd]>",
-    "roll": ""bd" is not a note name",
+    "roll": "an elongated element in an alternation pattern is beyond the editable subset",
   },
   {
     "grid": "elongation is beyond the drum-grid subset",
