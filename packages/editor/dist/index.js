@@ -26990,11 +26990,9 @@ function spliceRoll(model) {
       body = re === null ? null : body + r.leading + re + r.trailing;
     }
     if (body === null) {
-      const rebuilt = laneString(
-        toPlaced(notes) ?? [],
-        model.steps
-      );
-      if (rebuilt === null || toPlaced(notes) === null) return null;
+      const placed = toPlaced(notes);
+      const rebuilt = placed && laneString(placed, model.steps);
+      if (!rebuilt) return null;
       out += rebuilt + p.after;
       continue;
     }

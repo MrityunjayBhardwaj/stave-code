@@ -387,12 +387,13 @@ function spliceRoll(model: PianoRollModel): string | null {
       body = re === null ? null : body + r.leading + re + r.trailing
     }
     if (body === null) {
-      // this part alone falls back to a rebuild from the model
-      const rebuilt = laneString(
-        toPlaced(notes) ?? [],
-        model.steps,
-      )
-      if (rebuilt === null || toPlaced(notes) === null) return null
+      // A region couldn't be re-emitted in its own span (an edit made it
+      // inexpressible). This part rebuilds from the model as one flat lane —
+      // and if its notes now overlap, that isn't a lane, so we decline the whole
+      // splice and the caller's `serializeRollLanes` lays it across comma-lanes.
+      const placed = toPlaced(notes)
+      const rebuilt = placed && laneString(placed, model.steps)
+      if (!rebuilt) return null
       out += rebuilt + p.after
       continue
     }
