@@ -33,6 +33,12 @@ function fmtGain(v: number): string {
 /* ── drum grid ─────────────────────────────────────────────────── */
 
 export function serializeStepGrid(model: StepGridModel): string {
+  // A `<...>`-as-element pattern (`bd <sd hh>`, #920) uses its own span surgery
+  // and NEVER the rebuilds below — a rebuild would reshape it into the
+  // whole-cycle `<[bd sd] [bd hh]>`. Every grid edit is a cell toggle, always
+  // expressible, so this path is total (unlike the roll's, which can decline).
+  if (model.altSource) return spliceAltGrid(model)
+
   // Span surgery first: it puts back what the user wrote wherever they didn't
   // edit. It declines (null) whenever the regions no longer describe the grid,
   // and the rebuilds below take over — the way this always worked.
@@ -115,6 +121,41 @@ function spliceGrid(model: StepGridModel): string | null {
     out += p.after
   }
   return out + src.suffix
+}
+
+/* ── span surgery for `<...>`-as-element (#920) ────────────────── */
+
+/**
+ * Write back a `bd <sd hh>` pattern by editing the user's own bytes. Each
+ * single-cycle element whose per-bar content is unchanged is copied through
+ * verbatim; an edited one re-emits as `<b0 b1 …>` when its bars now differ,
+ * plain when they agree — so editing a static cell in one bar PROMOTES it to an
+ * alternation, and editing an alternation slot rewrites only that slot.
+ *
+ * Never rebuilds: an alt model that reached the whole-cycle `gridBars` path
+ * would come back as `<[bd sd] [bd hh]>`, destroying the notation the user wrote.
+ */
+function spliceAltGrid(model: StepGridModel): string {
+  const a = model.altSource
+  if (!a) return '' // unreachable: caller gates on altSource
+  const cols = columnAtoms(model.lanes, model.steps)
+  let out = ''
+  for (const r of a.regions) {
+    const now: string[][][] = []
+    for (let b = 0; b < a.bars; b++) {
+      now.push(cols.slice(r.from + b * a.perBar, r.to + b * a.perBar).map((c) => [...new Set(c)]))
+    }
+    out += now.every((bar, b) => sameCells(bar, r.perBar[b]))
+      ? r.raw
+      : r.leading + reemitAltRegion(now, a.div) + r.trailing
+  }
+  return out
+}
+
+/** re-emit an edited alt element: `<b0 b1 …>` when its bars differ, plain when equal */
+function reemitAltRegion(perBar: string[][][], div: number): string {
+  const barTokens = perBar.map((bar) => reemitRegion(bar, div))
+  return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(' ')}>`
 }
 
 /**

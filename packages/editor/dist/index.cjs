@@ -26219,7 +26219,13 @@ function splitTopLevel(src) {
 __name(splitTopLevel, "splitTopLevel");
 function unwrapAlternation(mini) {
   const t = mini.trim();
-  return t.length >= 2 && t.startsWith("<") && t.endsWith(">") ? t.slice(1, -1) : null;
+  if (t.length < 2 || !t.startsWith("<") || !t.endsWith(">")) return null;
+  let depth = 0;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === "<") depth++;
+    else if (t[i] === ">" && --depth === 0 && i !== t.length - 1) return null;
+  }
+  return t.slice(1, -1);
 }
 __name(unwrapAlternation, "unwrapAlternation");
 var isAtom = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
@@ -26525,11 +26531,115 @@ function singlePart(src, elements, div, total, content) {
   return regions ? [{ part: 0, div, factor: 1, before: "", after: "", regions }] : null;
 }
 __name(singlePart, "singlePart");
+function altAlternatives(el) {
+  const p = el.source_;
+  if (isAtom(p) || p.arguments_?.alignment !== "polymeter_slowcat") return null;
+  const o = el.options_;
+  if (o && ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0)) return null;
+  const inner = p.source_[0];
+  if (!inner || inner.type_ !== "pattern" || inner.arguments_?.alignment !== "fastcat") return null;
+  return inner.source_;
+}
+__name(altAlternatives, "altAlternatives");
+function expandAltElements(mini, allowNumeric) {
+  const src = mini.trim();
+  let ast;
+  try {
+    ast = krillParser_js.parse('"' + src + '"');
+  } catch {
+    return null;
+  }
+  if (!ast || ast.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return null;
+  const topEls = ast.source_;
+  if (!topEls.some((el) => altAlternatives(el) !== null)) return null;
+  let bars = 1;
+  for (const el of topEls) {
+    const alts = altAlternatives(el);
+    if (alts) {
+      if (alts.length === 0) return { reason: "empty alternation" };
+      bars = lcm(bars, alts.length);
+    }
+  }
+  const perBarSteps = [];
+  const elemStepCount = [];
+  for (let b = 0; b < bars; b++) {
+    const barSteps = [];
+    for (let i = 0; i < topEls.length; i++) {
+      const alts = altAlternatives(topEls[i]);
+      const node = alts ? alts[b % alts.length] : topEls[i];
+      const st = elementToSteps(node, allowNumeric);
+      if (!Array.isArray(st)) return { reason: st.reason };
+      if (b === 0) elemStepCount[i] = st.length;
+      else if (st.length !== elemStepCount[i]) {
+        return { reason: "alternation branches of different lengths are beyond the editable subset" };
+      }
+      barSteps.push(...st);
+    }
+    perBarSteps.push(barSteps);
+  }
+  if (topEls.some((el) => !el.location_)) return { reason: "unsupported mini-notation syntax" };
+  const div = perBarSteps.reduce((d, steps) => lcm(d, division(steps)), 1);
+  const perBarCols = elemStepCount.reduce((n, c) => n + c, 0) * div;
+  if (perBarCols * bars > MAX_STEPS) {
+    return { reason: `the alternation expands past ${MAX_STEPS} steps` };
+  }
+  const elemSpans = topEls.map((el, i) => ({
+    start: el.location_.start.offset - 1,
+    end: el.location_.end.offset - 1,
+    stepCount: elemStepCount[i]
+  }));
+  return { bars, div, perBarCols, perBarSteps, elemSpans };
+}
+__name(expandAltElements, "expandAltElements");
+function buildAltRegions(src, elemSpans, div, perBarCols, content) {
+  const regions = [];
+  let col = 0;
+  for (const es of elemSpans) {
+    const raw = src.slice(es.start, es.end);
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const to = col + es.stepCount * div;
+    regions.push({ raw, leading, trailing, from: col, to, perBar: content(col, to) });
+    col = to;
+  }
+  if (col !== perBarCols) return null;
+  if (regions.map((r) => r.raw).join("") !== src) return null;
+  return regions;
+}
+__name(buildAltRegions, "buildAltRegions");
+function gridFromAltElements(mini) {
+  const exp = expandAltElements(mini, false);
+  if (exp === null) return null;
+  if ("reason" in exp) return { ok: false, reason: exp.reason };
+  const { bars, div, perBarCols, perBarSteps, elemSpans } = exp;
+  if (perBarSteps.some(gridHasElongation)) {
+    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
+  }
+  const cells = [];
+  for (const steps of perBarSteps) cells.push(...toCells(steps, div));
+  const lanes = lanesFromCells(cells);
+  const src = mini.trim();
+  const regions = buildAltRegions(src, elemSpans, div, perBarCols, (from, to) => {
+    const perBar2 = [];
+    for (let b = 0; b < bars; b++) {
+      perBar2.push(cells.slice(from + b * perBarCols, to + b * perBarCols).map((c) => [...new Set(c)]));
+    }
+    return perBar2;
+  });
+  if (!regions) return { ok: false, reason: "unsupported mini-notation syntax" };
+  return {
+    ok: true,
+    model: { steps: cells.length, bars, lanes, altSource: { perBar: perBarCols, bars, div, regions } }
+  };
+}
+__name(gridFromAltElements, "gridFromAltElements");
 function parseStepGrid(mini) {
   const alt = unwrapAlternation(mini);
   if (alt !== null) return gridFromAlternation(alt);
   const parts = splitTopLevel(mini);
   if (parts.length > 1) return gridFromStack(parts);
+  const altEl = gridFromAltElements(mini);
+  if (altEl !== null) return altEl;
   const tok = tokenize2(mini);
   if (!tok.ok) return tok;
   if (gridHasElongation(tok.steps)) {
@@ -26829,6 +26939,7 @@ function fmtGain(v) {
 }
 __name(fmtGain, "fmtGain");
 function serializeStepGrid(model) {
+  if (model.altSource) return spliceAltGrid(model);
   const spliced = spliceGrid(model);
   if (spliced !== null) return spliced;
   const bars = model.bars ?? 1;
@@ -26868,6 +26979,26 @@ function spliceGrid(model) {
   return out + src.suffix;
 }
 __name(spliceGrid, "spliceGrid");
+function spliceAltGrid(model) {
+  const a = model.altSource;
+  if (!a) return "";
+  const cols = columnAtoms(model.lanes, model.steps);
+  let out = "";
+  for (const r of a.regions) {
+    const now2 = [];
+    for (let b = 0; b < a.bars; b++) {
+      now2.push(cols.slice(r.from + b * a.perBar, r.to + b * a.perBar).map((c) => [...new Set(c)]));
+    }
+    out += now2.every((bar2, b) => sameCells(bar2, r.perBar[b])) ? r.raw : r.leading + reemitAltRegion(now2, a.div) + r.trailing;
+  }
+  return out;
+}
+__name(spliceAltGrid, "spliceAltGrid");
+function reemitAltRegion(perBar2, div) {
+  const barTokens = perBar2.map((bar2) => reemitRegion(bar2, div));
+  return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(" ")}>`;
+}
+__name(reemitAltRegion, "reemitAltRegion");
 function partColumns(lanes, steps, factor) {
   if (factor < 1 || steps % factor !== 0) return null;
   const all = columnAtoms(lanes, steps);

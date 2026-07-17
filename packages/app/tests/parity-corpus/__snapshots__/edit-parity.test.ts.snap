@@ -332,9 +332,9 @@ exports[`edit-parity — view-editability over the vendored corpus > pins per-fi
     "units": 1,
   },
   {
-    "broken": 1,
-    "class": "code-only",
-    "editable": 0,
+    "broken": 0,
+    "class": "fully",
+    "editable": 1,
     "file": "delay.strudel",
     "units": 1,
   },
@@ -381,9 +381,9 @@ exports[`edit-parity — view-editability over the vendored corpus > pins per-fi
     "units": 4,
   },
   {
-    "broken": 1,
-    "class": "partial",
-    "editable": 1,
+    "broken": 0,
+    "class": "fully",
+    "editable": 2,
     "file": "orbit.strudel",
     "units": 2,
   },
@@ -416,7 +416,7 @@ exports[`edit-parity — view-editability over the vendored corpus > pins per-fi
   ],
   [
     "step: "polymeter_slowcat" is beyond the editable subset",
-    3,
+    1,
   ],
   [
     "step: a patterned ":" variant on "rd" is beyond the editable subset",

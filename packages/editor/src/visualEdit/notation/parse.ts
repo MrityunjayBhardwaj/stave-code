@@ -25,6 +25,8 @@
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import { bjorklund as strudelBjorklund } from '@strudel/core/euclid.mjs'
 import type {
+  AltRegion,
+  AltSource,
   ChunkGain,
   GridCells,
   NotationSource,
@@ -146,7 +148,17 @@ function splitTopLevel(src: string): string[] {
 /** inner text when the trimmed string is exactly one `<...>` alternation */
 function unwrapAlternation(mini: string): string | null {
   const t = mini.trim()
-  return t.length >= 2 && t.startsWith('<') && t.endsWith('>') ? t.slice(1, -1) : null
+  if (t.length < 2 || !t.startsWith('<') || !t.endsWith('>')) return null
+  // The opening `<` must close only at the FINAL `>`: `<a> <b>` is TWO
+  // alternations, not one, and stripping its ends yields `a> <b` — garbage that
+  // then refuses downstream. Depth returning to 0 before the end means the outer
+  // brackets don't enclose the whole string.
+  let depth = 0
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === '<') depth++
+    else if (t[i] === '>' && --depth === 0 && i !== t.length - 1) return null
+  }
+  return t.slice(1, -1)
 }
 
 /* ── the krill adapter ─────────────────────────────────────────── */
@@ -666,12 +678,178 @@ function singlePart<C>(
   return regions ? [{ part: 0, div, factor: 1, before: '', after: '', regions }] : null
 }
 
+/* ── `<...>` as a sequence element (#920) ──────────────────────── */
+
+/**
+ * The per-cycle alternatives of a `<...>` element — the elements of the single
+ * inner fastcat krill nests under `polymeter_slowcat` (`<a b>` parses as
+ * slowcat[ fastcat[a, b] ], one slot per cycle). null when `el` is not a plain
+ * `<...>` alternation (an atom, or a `.`/`|` variant we don't bar-expand).
+ */
+function altAlternatives(el: KElement): KElement[] | null {
+  const p = el.source_
+  if (isAtom(p) || p.arguments_?.alignment !== 'polymeter_slowcat') return null
+  // An op on the alternation ITSELF — `<a b>*2`, `<a b>/2`, `<a b>@2`, `<a b>!2` —
+  // changes the column math (a stretch speeds the whole alternation, an elongation
+  // holds it across bars) and is beyond phase 1. Decline so it refuses cleanly
+  // rather than dropping the op and reshaping the line.
+  const o = el.options_
+  if (o && ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0)) return null
+  const inner = p.source_[0] as unknown as KPattern | undefined
+  if (!inner || inner.type_ !== 'pattern' || inner.arguments_?.alignment !== 'fastcat') return null
+  return inner.source_
+}
+
+/** the bar-expansion of a fastcat that contains `<...>` alternation elements */
+interface AltExpansion {
+  bars: number
+  div: number
+  perBarCols: number
+  perBarSteps: Step[][]
+  elemSpans: { start: number; end: number; stepCount: number }[]
+}
+
+/**
+ * Expand `bd <sd hh>` into one cycle per alternation slot: `bars` = LCM of the
+ * alternation lengths, and bar b takes each alternation's (b mod n)-th slot. The
+ * source stays a single cycle — its top-level elements tiling it — so the writer
+ * puts unchanged ones back verbatim (see AltSource).
+ *
+ * A single global `div` (LCM across every bar) keeps all bars on one column grid,
+ * so a clean rectangle is exactly "every bar the same step count". Returns:
+ *   null    → not this shape (no alternation element, or not a fastcat) — the
+ *             caller's flat path takes over;
+ *   Refused → a real limit: a branch of a different expanded length (the
+ *             reconciliation case, deferred to phase 1b), a nested `<...>` inside
+ *             a branch, or a blow-up past MAX_STEPS. The panel stays closed
+ *             rather than open a grid the writer can't put back.
+ */
+function expandAltElements(mini: string, allowNumeric: boolean): AltExpansion | Refused | null {
+  const src = mini.trim()
+  let ast: KPattern
+  try {
+    ast = krillParse('"' + src + '"') as KPattern
+  } catch {
+    return null
+  }
+  if (!ast || ast.type_ !== 'pattern' || ast.arguments_?.alignment !== 'fastcat') return null
+  const topEls = ast.source_
+  if (!topEls.some((el) => altAlternatives(el) !== null)) return null
+
+  let bars = 1
+  for (const el of topEls) {
+    const alts = altAlternatives(el)
+    if (alts) {
+      if (alts.length === 0) return { reason: 'empty alternation' }
+      bars = lcm(bars, alts.length)
+    }
+  }
+
+  const perBarSteps: Step[][] = []
+  const elemStepCount: number[] = []
+  for (let b = 0; b < bars; b++) {
+    const barSteps: Step[] = []
+    for (let i = 0; i < topEls.length; i++) {
+      const alts = altAlternatives(topEls[i])
+      const node = alts ? alts[b % alts.length] : topEls[i]
+      const st = elementToSteps(node, allowNumeric)
+      if (!Array.isArray(st)) return { reason: st.reason }
+      // Every bar must lay the same element down at the same width, or its
+      // columns won't line up bar-to-bar. A branch that expands differently
+      // (`!n`, a wider group) is the reconciliation case — declined here.
+      if (b === 0) elemStepCount[i] = st.length
+      else if (st.length !== elemStepCount[i]) {
+        return { reason: 'alternation branches of different lengths are beyond the editable subset' }
+      }
+      barSteps.push(...st)
+    }
+    perBarSteps.push(barSteps)
+  }
+
+  // No location on an element means a hole in the tiling — a hole would copy the
+  // wrong bytes back, so refuse rather than guess.
+  if (topEls.some((el) => !el.location_)) return { reason: 'unsupported mini-notation syntax' }
+  const div = perBarSteps.reduce((d, steps) => lcm(d, division(steps)), 1)
+  const perBarCols = elemStepCount.reduce((n, c) => n + c, 0) * div
+  if (perBarCols * bars > MAX_STEPS) {
+    return { reason: `the alternation expands past ${MAX_STEPS} steps` }
+  }
+  const elemSpans = topEls.map((el, i) => ({
+    start: el.location_!.start.offset - 1,
+    end: el.location_!.end.offset - 1,
+    stepCount: elemStepCount[i],
+  }))
+  return { bars, div, perBarCols, perBarSteps, elemSpans }
+}
+
+/**
+ * Regions for an alt-element source: one per single-cycle top-level element,
+ * tiling the source, each carrying its per-bar view content. Returns null if the
+ * spans don't reconstruct the source or the columns don't add up — then the
+ * caller declines rather than open a grid it cannot put back.
+ */
+function buildAltRegions<C>(
+  src: string,
+  elemSpans: { start: number; end: number; stepCount: number }[],
+  div: number,
+  perBarCols: number,
+  content: (from: number, to: number) => C[],
+): AltRegion<C>[] | null {
+  const regions: AltRegion<C>[] = []
+  let col = 0
+  for (const es of elemSpans) {
+    const raw = src.slice(es.start, es.end)
+    const leading = /^\s*/.exec(raw)?.[0] ?? ''
+    const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? ''
+    const to = col + es.stepCount * div
+    regions.push({ raw, leading, trailing, from: col, to, perBar: content(col, to) })
+    col = to
+  }
+  if (col !== perBarCols) return null
+  if (regions.map((r) => r.raw).join('') !== src) return null
+  return regions
+}
+
+/**
+ * `bd <sd hh>` — a `<...>` alternation sitting inside the sequence. Each bar is
+ * one cycle of the expansion; the source stays the single cycle the user wrote.
+ * null → not this shape (the flat path handles it).
+ */
+function gridFromAltElements(mini: string): ParseResult<StepGridModel> | null {
+  const exp = expandAltElements(mini, false)
+  if (exp === null) return null
+  if ('reason' in exp) return { ok: false, reason: exp.reason }
+  const { bars, div, perBarCols, perBarSteps, elemSpans } = exp
+  if (perBarSteps.some(gridHasElongation)) {
+    return { ok: false, reason: 'elongation is beyond the drum-grid subset' }
+  }
+  const cells: string[][] = []
+  for (const steps of perBarSteps) cells.push(...toCells(steps, div))
+  const lanes = lanesFromCells(cells)
+  const src = mini.trim()
+  const regions = buildAltRegions<GridCells>(src, elemSpans, div, perBarCols, (from, to) => {
+    const perBar: GridCells[] = []
+    for (let b = 0; b < bars; b++) {
+      perBar.push(cells.slice(from + b * perBarCols, to + b * perBarCols).map((c) => [...new Set(c)]))
+    }
+    return perBar
+  })
+  if (!regions) return { ok: false, reason: 'unsupported mini-notation syntax' }
+  return {
+    ok: true,
+    model: { steps: cells.length, bars, lanes, altSource: { perBar: perBarCols, bars, div, regions } },
+  }
+}
+
 export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
   const alt = unwrapAlternation(mini)
   if (alt !== null) return gridFromAlternation(alt)
 
   const parts = splitTopLevel(mini)
   if (parts.length > 1) return gridFromStack(parts)
+
+  const altEl = gridFromAltElements(mini)
+  if (altEl !== null) return altEl
 
   const tok = tokenize(mini)
   if (!tok.ok) return tok
