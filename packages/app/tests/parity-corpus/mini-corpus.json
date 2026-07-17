@@ -1,0 +1,7552 @@
+{
+  "_readme": "Distinct mini-notation strings harvested from real public Bakery tunes. Committed so the notation parsers are gated against what people actually write, not only against the curated .strudel fixtures. Regenerate with scripts/harvest-mini-corpus.mjs; a refresh is its own PR and its snapshot diff must be read, never -u past.",
+  "harvestedFrom": [
+    {
+      "file": "edit-samples-2026-07-04T00-09-09-841Z.json",
+      "upstreamSha": "f73b395648645aabe699f91ba0989f35a6fd8a3c",
+      "offset": 0,
+      "tunes": 50
+    },
+    {
+      "file": "edit-samples-2026-07-16T14-01-50-693Z.json",
+      "upstreamSha": "f73b395648645aabe699f91ba0989f35a6fd8a3c",
+      "offset": 0,
+      "tunes": 120
+    },
+    {
+      "file": "edit-samples-2026-07-16T23-04-08-040Z.json",
+      "upstreamSha": "f73b395648645aabe699f91ba0989f35a6fd8a3c",
+      "offset": 0,
+      "tunes": 120
+    },
+    {
+      "file": "edit-samples-offset250-2026-07-16T14-01-55-132Z.json",
+      "upstreamSha": "f73b395648645aabe699f91ba0989f35a6fd8a3c",
+      "offset": 250,
+      "tunes": 120
+    },
+    {
+      "file": "edit-samples-offset250-2026-07-16T23-04-11-528Z.json",
+      "upstreamSha": "f73b395648645aabe699f91ba0989f35a6fd8a3c",
+      "offset": 250,
+      "tunes": 120
+    },
+    {
+      "file": "edit-samples-offset500-2026-07-16T14-01-58-870Z.json",
+      "upstreamSha": "f73b395648645aabe699f91ba0989f35a6fd8a3c",
+      "offset": 500,
+      "tunes": 120
+    },
+    {
+      "file": "edit-samples-offset500-2026-07-16T23-04-15-324Z.json",
+      "upstreamSha": "f73b395648645aabe699f91ba0989f35a6fd8a3c",
+      "offset": 500,
+      "tunes": 120
+    }
+  ],
+  "distinctTunes": 360,
+  "pattern": "\\b(?:s|sound|note|n)\\(\\s*\"([^\"\\\\]*)\"",
+  "distinct": 1500,
+  "minis": [
+    {
+      "mini": "  [ a4 ~ ~ a4] [ a4 ~ a4 ~]  [ a4 ~ ~ a4 ]  [ a4 ~ a4 a4 ]*2 ",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": " <[[ korgddm110_sd - -  dr550_lt]/2 - - hh - hh]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " <c2*2 g2*5 [a g]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " C D ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " [3 3 4 , 5 5]/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " [3 3 4 , 5 7]/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " bd hh*2 sd cp ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " bd mt  bd [lt lt] lt lt lt@2 ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " bd@2 cp bd@3 cp@3 bd cp@2 bd bd cp@2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " c - c [a a] a a c@2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " c4 a e c1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " d - d e f - d - d e f - a - a b c4 - a - c4 b ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " g c g c g c g c",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " gm_distortion_guitar",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " gm_electric_bass_finger",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " gm_slap_bass_2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": " hh hh [hh hh] hh [hh hh hh] hh hh [hh hh hh hh]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- - - - - - - oh - oh - - - - - - ",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "- - - [timp timp]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- - d4 - - d4 - - d4 - - d4 - - d4 - - d4 - d4 - - d4@3 - d4 - - d4 - - e4 - - f4 - - f#4 - - g4 - a4 - - d5@3 - d5 - - d5 - - d5 - - d5 - - d5 - - d5 - d5  - - d5@3  - d5 - - d5 - - c5 - - b4 - - a4 - - g4 - f#4 - - d4@2 ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- - f*2 - -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- <<16 [16 13*2]> <7 - ->>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- [0,3,7], [- [-2,1]] -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- [<0 2 0 0> .. <7 9 7 <12 24>>]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- [misc:5*2 -]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- c3 - g#2 - g2 - [c2 [g2 d3]]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- cp",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "- e2 [e3, e4] [e3, e4] [e3, e4]@2 -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- hh - sd",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "- move",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- move*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- rim - rim",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- sd - sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "- sd:2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "- you_can_say_anything_you_want",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "-!6 [bd [sd]@6]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "-!7 [- [sd*12]@3]",
+      "uses": 10,
+      "tunes": 4
+    },
+    {
+      "mini": "-!7 [- [sd*8]@3]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "-!7 [sd*16]",
+      "uses": 9,
+      "tunes": 4
+    },
+    {
+      "mini": "-12 | 0",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "-12, -24.2, <.1 [.1, 12.1]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "-7",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "-7*3, [<0 3 4 6 5 3 4 2 1> ~!4]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0",
+      "uses": 20,
+      "tunes": 10
+    },
+    {
+      "mini": "0 0 0 0",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 0 0 0 0 0 -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 0 0 1",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "0 1 -2 -1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 1 2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 1 2 3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 1 2 3 0 1 2 3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 1 2 3 4 5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 1 2 3 <4 5 6><8 7 9><9 8 5 3><5 2 3 7 4 >",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 1 2 <4 6 3 [6 7]> <- - - 6> - <- 8> <- - - [2 1]> ",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "0 1 2 [3 4] 5 6 7 6 5 4 3 2 1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 1 4 2 0 6 3 2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 1 <2!3 2> <5 6> 4 5 6 7",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "0 1 <3 2> <5 4>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "0 1 [4 3] 2 0 2 [~ 3] 4",
+      "uses": 10,
+      "tunes": 2
+    },
+    {
+      "mini": "0 12*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 2 1 4 3 2 6 7",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "0 2 3 4 7@5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 2 4 5 6 5 4 2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 2 4 7",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "0 2 4 [4|5]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 4 [0 2] -4 -2 -2 [~ 6] 4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 7 - [9 4 9]/2 - 2 1 7 - 0 1 1 - -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 8 4 7",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "0 8 [0 8] -2 4 2 [~ 3] 4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 < 1 [1@4 1]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 <2 3> <5 7 5>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 <2 3> <5 7 5> 9",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 <2 3> <5 7 5> [9|8]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 <3 4> 7, - - [- <5 4>]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 [- <-@6 4>]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 [14,<16 17 18 17>] - 7@2 - <-1 1>@2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 [2 4] 3 [4 [~ <2 5>]]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 [~ <0 0 6 7> ~ <4 6>] 0 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 ~ 1 ~ 2 ~ 3 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 ~ <2 -1> ~ ~ ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0 ~ ~ ~ ~ <~ 0> <~ [~ 0]> <[0 0] [~ 0]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0(-10,16)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0(11,16)/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0*4",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "0, -12.1",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "0, 4, <[8 7]!4 [7 6]!4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0, 4, <[8 7]!4 [7 6]!4>/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0, [24.1|12]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "0,-12",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0,-12.2, <5 7>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "0,.1",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "0,.1,7, 6.9",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0,12.1",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "0,2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0,2,4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0,2,<1 3 6>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0,3,5",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "0,3,<4 6 5>/2,8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "0,4,7",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "1",
+      "uses": 14,
+      "tunes": 5
+    },
+    {
+      "mini": "1 2 3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "1 2 3 4 5 [6 7], 14 15 16 17",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "1 2 6 [[-2 | 12] 2]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "1 3 4 6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "1 3 5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "1 3 5 4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "1 5 6 [7 8 9]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "1,3,5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "1,5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "10",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "10 8 4 2 [10 8] 6 2 0",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "11",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "12",
+      "uses": 23,
+      "tunes": 10
+    },
+    {
+      "mini": "12, -12.1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "13",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "14",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "15",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "16",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "16 44 55 66 77 16 ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "17",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "18",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "19",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "2",
+      "uses": 14,
+      "tunes": 7
+    },
+    {
+      "mini": "2 9 5 5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "2(3,8),2*2,3*3,4*4,5*5,6,7,8",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "2*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "20",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "21",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "22",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "23",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "24",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "25",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "26",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "27",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "28",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "29",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "3",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "3 - 2 - 6 7 5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "3 1 - 1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "3 5 8 10",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "30",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "31",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "32",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "33",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "33 44 56",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "34",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "35",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "36",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "37",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "38",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "39",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "4",
+      "uses": 12,
+      "tunes": 6
+    },
+    {
+      "mini": "4 ~ ~ <6!3 [6,8 9 10 12]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "4,6",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "4,6,1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "40",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "41",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "42",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "43",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "44",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "45",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "46",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "47",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "48",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "48 67 63 [62, 58]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "49",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "5",
+      "uses": 12,
+      "tunes": 6
+    },
+    {
+      "mini": "50",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "51",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "52",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "52 50 54 60 <58 [64 62]> 65*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "53",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "54",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "55",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "56",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "57",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "58",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "59",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "6",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "60",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "60 62 64 67 69 67 64 62",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "60 89 53 71",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "61",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "62",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "63",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "64 67 55 90 89",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "69 67 65 64 65 64 64 65 67 65 64 64 62 62 60 62",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "69 71 73 76 76 74 76 74 76 74",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "6@8, 4!, 7, 13@2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "7",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "72 60, 40 48 50 64",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "72 69 72 69 72 69 69 70 72 67 67 65 67 65 67 67",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "77 76 74 72 76 74 76 74 76 74 77 79 72 76 74 76 74 76 74",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "79 93 7 32 ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "8",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "9",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "< -@16 oh!15 cr >",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "< -@30 ht [ht mt lt lt] >",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "< <~ [0 0 0]>*8 <~ [-2 -2 -2]>*8>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "< [g6, e6] [f6, d6] [e6, c6] [a5, b5] >",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "< [~ ~ passerine_snare:1 ~] [~ ~ passerine_snare:1 [~ ~ passerine_rimshot:4 passerine_rimshot:3]] >",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "< passerine_basse:2 [~ passerine_basse:2 passerine_basse:2 ~ ~ ~ passerine_basse:3 ~] >",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "< passerine_kick [~ passerine_kick passerine_kick ~ ~ ~ passerine_kick ~] >",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "< sawtooth square sawtooth triangle >",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<- - <g4 [d4 c5]> [- [[bb4,d4] [- [g4,d3]]]]>*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<- - dog - -!24>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<- 1>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<- 2>*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<- [0 .. 16]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<- [0,3,7]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<- c5>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<- cp:1>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<- hh>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<- sd - sd [- sd]>*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<- sd:10>*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<- sd>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<- white - [- white]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<-!4 [sd - sd*2 -]!8 [sd - sd*2 - ]!4 -!14>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<-16@7 [-15 -17 -14]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<-18 -18 -18 -18 -15 -17 -18 -18 -15 -17 -20 -22>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<-2, 0 3 2 1,[7 <9 8>]/6>*1.5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<-7!2 [-7@3 [-10 ~]*2]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<-@64 0@8 1@8 0@16 2@16 -@64>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<-@7 [- - [sd:0:0.5(5,8,<0!2 1!2>)]@2]>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 - - - - <- 0>>*6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 -@7>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 0 0 0>, 0 0 [0 -1] <[0 4] [0 4] [0 7] 0,[- 9] [- 10][- 11] 12,- - - 10>",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 0 0 0>, 0 0 [0 -1] <[0 4] [0 4] [0 7] 0,[- 9] [- 10][- 11] 9,- - - 7>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 0 0 <2 2 2 3>>*<8 [4 16]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 1 2 1 4 5 [4 3 4 5 6 7] 0>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 1 2 3 4 3@4 <2 4 7> -@50>*16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 1 2 3 4 5 6 7 8 0 0>",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "<0 1 2 3 4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 1 5 3 3 7 3>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 1>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 2 0 4>*4, <4 6 4 8>*2, -4*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 2 5 3>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 3 5 7 3 5 0 2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 3 <4 7 5>>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 4 2>*[<3 2>/32]",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "<0 4 3 3 1>*<3 5>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 7 12>*<1!4 <2 3>>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 [0 1 2]>",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "<0 [0 1] 0 [0 1 0]>",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "<0 [2 3]> ~ [-2 4] , ~ 4 <3 6 3 11> ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0 [2 6]>, < 2 [2 4]>, < 4 [4 2]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0(3,8) [~ 1*2]>*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0*16 hh*4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0*16 shk*16>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0*2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0*32 cp*2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0,.0125>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0>",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "<0@2 - - - - <- 0>>*6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0@4 -@25>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0@7 -@29>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0@7 <1 [1 2]> >, <-4@4 -2@4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<0@9 -@22>*8",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "<1 0>",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "<1 0>(5,8,<0 1>/2) <2*4 3*4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<1 1 -3 -3> <1 1 -1 -1>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<1 2 1 2> <1 6 1 1>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<1 2 3 4 5 6 7 8 9 10>/2",
+      "uses": 9,
+      "tunes": 1
+    },
+    {
+      "mini": "<1 2 4 2> <1 4 1 1>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<1 3 5 7>*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<1 3 5 7>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<1 [7 1]> [2 7] 3 [<5 [6 2]> 8]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<1,2>*2, 1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<11 - [12 13] [14 - - [13 12]]>*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<11 - [12 13] [14 - - [13 12]]>,[-7 2,<4 5 6>]*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<11 [12 11 10 9] 11 [10 9 10 8] 7 [6 7 8 6] 7 7>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<12 ~ 12 ~ 12 ~ 12>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<12!8 7!8>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<13 12 13 12>*6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<14 16 [18 15]>(5,16)/8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<2 3 <0 [0 -1]@2>!2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<2 7 8>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<24@4 26@2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<3 2> <5 4> 0 -2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<3 4 5 6>*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<3 4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<3 5>/16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<33 ~ 33 ~ 33 ~ 31 ~>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<4 3 5 1>",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "<4 5 6 7 8 7 6 5 4>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<4 [7 -@2 4 -@2 <2 0>]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<5 4 3>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<5 7>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<5 8 6 2 [6 8]>/.5 <[2 4 6]> <<8 9 7>*2 2 4>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<5 ~>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<6 4 6 [5 4 ] ->*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<62 71 72 74 80 74 71 60 53 52 30> [36]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<<4!9 5 4!2> 3 <1!5 1b> 0 0 1 <2 2 2 1> 3>*<4!5 5>",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "<<a5 c6> <[g#5 e5] b5 e6>>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<<birds <trees leaves> forever together> ~>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<<f#1 g1!3>*4!3 [[c2 -] [b1 -]] [-@3 [d4,f4]] - [- d2] [- <g2 d1>]>*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<<g5!4 e5!4 >[a5 <e4 <d4 c5> <b5 f5>>]>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<<strudel hydra bad_code> - - [- under_the_influence_of]>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<<trees <green_skies blue_skies red_skies>> -@3>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<A1@4 D2@4 C#2@1>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<A1@8 D2@8 C#2@2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<ABET ABLE ABLY ABUT ACAI ACED ACES ACHE ACHY ACID ACME ACNE ACRE ACTS ADDS AEON AFAR AFRO AGED AGES AGOG AHEM AIDE AILS AIMS AIRS AIRY AJAR AKIN ALAS ALLY ALMS ALOE ALSO ALTO ALUM AMEN AMID AMMO AMOK AMPS ANDS ANEW ANKH ANON ANTI ANTS APES APEX APPS AQUA ARCH ARCS AREA ARIA ARID ARKS ARMS ARMY ARSE ARTS ARTY ASHY ASKS ATOM ATOP AUNT AURA AUTO AVID AVOW AWAY AWED AWES AWLS AWRY AXED AXES AXIS AXLE BABA BABE BABY BACH BACK BADS BAGS BAIL BAIT BAKE BALD BALE BALK BALL BALM BAND BANE BANG BANK BANS BARB BARD BARE BARF BARK BARN BARS BASE BASH BASK BASS BAST BATH BATS BAUD BAWL BAYS BEAD BEAK BEAM BEAN BEAR BEAT BEAU BECK BEDS BEEF BEEN BEEP BEER BEES BEET BEGS BELL BELT BEND BENT BERG BERM BEST BETA BETS BEVY BEYS BIAS BIBS BIDE BIDS BIFF BIKE BILE BILK BILL BIND BIOS BIRD BITE BITS BLAB BLAH BLEB BLED BLEW BLIP BLOB BLOC BLOG BLOT BLOW BLUE BLUR BOAR BOAS BOAT BOBS BODE BODS BODY BOGS BOGY BOIL BOLA BOLD BOLO BOLT BOMB BOND BONE BONG BONK BONY BOOK BOOM BOON BOOR BOOS BOOT BORE BORN BOSS BOTH BOTS BOUT BOWL BOWS BOXY BOYO BOYS BOZO BRAG BRAN BRAS BRAT BRAY BRED BREW BRIE BRIG BRIM BRIS BRIT BROS BROW BUCK BUDS BUFF BUGS BULB BULK BULL BUMP BUMS BUND BUNG BUNK BUNS BUNT BUOY BURB BURG BURL BURN BURP BURR BURY BUSH BUSK BUST BUSY BUTT BUYS BUZZ BYES BYTE CABS CAFE CAFF CAGE CAKE CALF CALL CALM CAME CAMO CAMP CANE CANS CAPE CAPO CAPS CARB CARD CARE CARP CARS CART CASE CASH CASK CAST CATS CAVE CAWS CAYS CEDE CELL CELS CELT CENT CESS CHAD CHAI CHAP CHAR CHAT CHEF CHEW CHIC CHIN CHIP CHIT CHOP CHOW CHUB CHUG CHUM CIAO CITE CITY CLAD CLAM CLAN CLAP CLAW CLAY CLEF CLIP CLOD CLOG CLOP CLOT CLUB CLUE COAL COAT COAX COBS COCA COCO CODA CODE CODS COED COGS COIL COIN COKE COLA COLD COLE COLT COMA COMB COME COMP CONE CONS COOK COOL COOP COOS COPE COPS COPY CORD CORE CORK CORN COST COSY COTS COUP COVE COWL COWS COZY CRAB CRAG CRAM CRAP CRAW CREW CRIB CRIT CROC CROP CROW CRUD CRUX CUBE44444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444 CUBS CUDS CUED CUES CUFF CULL CULT CUPS CURB CURD CURE CURL CURT CUSP CUSS CUTE CUTS CYAN CYST CZAR DABS DADA DADS DAFT DAME DAMN DAMP DAMS DANK DARE DARK DARN DART DASH DATA DATE DAWN DAYS DAZE DEAD DEAF DEAL DEAN DEAR DEBT DECK DEED DEEM DEEP DEER DEFT DEFY DELI DELL DELT DEMO DENS DENT DERM DESK DEWS DEWY DIAL DICE DIED DIES DIET DIGS DILL DIME DIMS DINE DING DINK DINO DINT DIPS DIRE DIRT DISC DISH DISK DISS DIVA DIVE DOCK DOCS DODO DOER DOES DOFF DOGS DOJO DOLE DOLL DOLT DOME DONE DONG DOOM DOOR DOPE DORK DORM DORY DOSE DOTE DOTH DOTS DOUR DOVE DOWN DOXY DOZE DOZY DRAB DRAG DRAM DRAW DRAY DREW DRIP DROP DRUG DRUM DRYS DUAL DUBS DUCK DUCT DUDE DUDS DUEL DUES DUET DUFF DUKE DULL DULY DUMB DUMP DUNE DUNG DUNK DUNS DUOS DUPE DUSK DUST DUTY DYAD DYED DYER DYES EACH EARL EARN EARS EASE EAST EASY EATS EAVE EBBS ECHO EDDY EDGE EDGY EDIT EELS EGGS EGGY EGOS ELKS ELMS ELSE EMIT EMMY EMUS ENDS ENVY EONS EPEE EPIC ERAS ERRS ETCH EURO EVEN EVER EVES EVIL EWES EXAM EXEC EXIT EXON EXPO EYED EYES FABS FACE FACT FADE FADS FAIL FAIR FAKE FALL FAME FANG FANS FARE FARM FART FAST FATE FATS FAUN FAVA FAVE FAWN FAZE FEAR FEAT FEED FEEL FEES FEET FELL FELT FEND FENS FERN FESS FEST FETA FETE FEUD FIAT FIBS FIFE FIGS FILE FILL FILM FILO FIND FINE FINK FINS FIRE FIRM FIRS FISH FIST FITS FIVE FIZZ FLAB FLAG FLAK FLAM FLAN FLAP FLAT FLAW FLAX FLAY FLEA FLED FLEE FLEW FLEX FLIP FLIT FLOC FLOE FLOG FLOP FLOW FLUB FLUE FLUS FLUX FOAL FOAM FOBS FOCI FOES FOGS FOGY FOIL FOLD FOLK FOND FONT FOOD FOOL FOOT FOPS FORD FORE FORK FORM FORT FOUL FOUR FOWL FOXY FRAG FRAT FRAY FREE FRET FRIG FROG FROM FUEL FUCK FUGU FULL FUME FUND FUNK FURL FURS FURY FUSE FUSS FUTZ FUZZ GAFF GAGS GAIN GAIT GALA GALE GALL GALS GAME GANG GAPE GAPS GARB GASH GASP GATE GAVE GAWK GAYS GAZE GEAR GEEK GEES GELS GEMS GENE GENS GENT GERM GETS GHAT GHEE GIFT GIGS GILD GILL GILT GINS GIRD GIRL GIST GITS GIVE GLAD GLAM GLEE GLEN GLIB GLOB GLOM GLOP GLOW GLUE GLUG GLUM GLUT GNAR GNAT GNAW GOAD GOAL GOAT GOBS GOBY GODS GOER GOES GOLD GOLF GONE GONG GOOD GOOF GOON GOOP GOOS GORE GORY GOSH GOTH GOUT GOWN GRAB GRAD GRAM GRAN GRAY GREW GREY GRID GRIM GRIN GRIP GRIT GROG GROW GRUB GUFF GULF GULL GULP GUMS GUNK GUNS GURU GUSH GUST GUTS GUYS GYMS GYRE GYRO HACK HAGS HAIL HAIR HALF HALL HALO HALT HAMS HAND HANG HANK HAPS HARD HARE HARK HARM HARP HART HASH HATE HATH HATS HAUL HAVE HAWK HAWS HAYS HAZE HAZY HEAD HEAL HEAP HEAR HEAT HECK HEED HEEL HEFT HEIR HELD HELL HELM HELP HEMP HEMS HENS HERB HERD HERE HERO HERS HEST HEWN HEWS HICK HIDE HIGH HIKE HILL HILT HIND HINT HIPS HIRE HISS HITS HIVE HIYA HOAR HOAX HOBO HOCK HOED HOES HOGS HOLD HOLE HOLO HOLT HOLY HOME HONE HONK HOOD HOOF HOOK HOOP HOOT HOPE HOPS HORN HOSE HOST HOUR HOVE HOWL HUBS HUCK HUED HUES HUFF HUGE HUGS HULA HULK HULL HUMP HUMS HUNG HUNK HUNT HURL HURT HUSH HUSK HUTS HYMN HYPE HYPO ICED ICES ICKY ICON IDEA IDLE IDLY IDOL IFFY ILLS IMPS INCH INFO INKS INKY INNS INTO IONS IOTA IRIS IRKS IRON ISLE ISMS ITCH ITEM JABS JACK JADE JAIL JAKE JAMB JAMS JAPE JARS JAVA JAWA JAWS JAYS JAZZ JEAN JEEP JEER JEEZ JELL JERK JEST JETS JIBE JIBS JIGS JILT JINK JINX JIVE JOBS JOCK JOGS JOIN JOKE JOLT JOTS JOWL JOYS JUDO JUGS JUJU JUKE JUMP JUNK JURY JUST JUTE JUTS KALE KEEL KEEN KEEP KEGS KELP KEPT KETO KEYS KHAN KHAT KICK KIDS KILL KILN KILO KILT KIND KING KIPS KISS KITE KITS KIWI KNEE KNEW KNIT KNOB KNOT KNOW KOAN KOOK KOTO LABS LACE LACK LACY LADS LADY LAGS LAID LAIN LAIR LAKE LAMA LAMB LAME LAMP LAND LANE LAPS LARD LARK LASH LASS LAST LATE LAUD LAVA LAWN LAWS LAYS LAZE LAZY LEAD LEAF LEAK LEAN LEAP LEAS LEEK LEER LEET LEFT LEGS LEND LENS LENT LESS LEST LEWD LIAR LIBS LICE LICK LIDS LIED LIEN LIER LIES LIEU LIFE LIFT LIKE LILT LILY LIMA LIMB LIME LIMO LIMP LINE LING LINK LINT LION LIPS LISP LIST LITE LIVE LOAD LOAF LOAM LOAN LOBE LOBS LOCH LOCK LOCO LODE LOFT LOGE LOGO LOGS LOIN LONE LONG LOOK LOOM LOON LOOP LOOS LOOT LOPS LORD LORE LOSE LOSS LOST LOTH LOTS LOUD LOUT LOVE LOWS LUBE LUCK LUFF LUGS LULL LUMP LUNE LUNG LURE LURK LUSH LUST LUTE LUVS LYNX LYRE MACE MACH MACK MACS MADE MAGE MAGI MAGS MAID MAIL MAIM MAIN MAKE MAKI MALE MALL MALT MAMA MANE MANS MANY MAPS MARE MARK MARS MART MASH MASK MASS MAST MATE MATH MATS MAUL MAWS MAXI MAYO MAZE MAZY MEAD MEAL MEAN MEAT MEEK MEET MEGA MELD MELT MEMO MEND MENU MEOW MERE MESA MESH MESS META METE MEWL MEWS MICA MICE MICS MIDS MILD MILE MILK MILL MIME MIND MINE MINI MINK MINT MINX MIRE MISO MISS MIST MITE MOAN MOAT MOBS MOCK MODE MODS MOJO MOLD MOLE MOLT MOMS MONK MONO MOOD MOON MOOR MOOS MOOT MOPE MOPS MORE MORN MOSH MOSS MOST MOTE MOTH MOVE MOWS MUCH MUCK MUDS MUFF MUGS MULE MULL MUMS MUON MURK MUSE MUSH MUSK MUST MUTE MUTT MYTH NAAN NABS NAGS NAIL NAME NANA NANS NAPE NAPS NARC NARD NARY NAVY NAYS NEAR NEAT NECK NEED NEEM NEON NERD NESS NEST NETS NEWS NEWT NEXT NIBS NICE NICK NIGH NINE NITE NOBS NODE NODS NOEL NOIR NONE NOOK NOON NOPE NORI NORM NOSE NOSH NOSY NOTE NOUN NOVA NUBS NUDE NUKE NULL NUMB NUNS NUTS OAFS OAKS OAKY OARS OATH OATS OBEY OBIT OBOE ODDS ODES ODOR OGLE OGRE OILS OILY OINK OKAY OKRA OLDS OMEN OMIT ONCE ONES ONLY ONTO ONUS ONYX OOPS OOZE OOZY OPAL OPEN OPTS OPUS ORAL ORBS ORCA ORES ORGY ORZO OUCH OURS OUST OUTS OVAL OVEN OVER OVUM OWED OWES OWLS OWNS PACE PACK PACT PADS PAGE PAID PAIL PAIN PAIR PALE PALL PALM PALP PALS PANE PANG PANS PANT PAPA PAPS PARA PARE PARK PARS PART PASS PAST PATE PATH PATS PAVE PAWN PAWS PAYS PEAK PEAL PEAR PEAS PEAT PECK PECS PEED PEEK PEEL PEEP PEER PEES PEGS PELT PENS PENT PEON PERK PERM PERP PESO PEST PETS PEWS PHEW PICK PICS PIED PIER PIES PIGS PIKA PIKE PILE PILL PINE PING PINK PINS PINT PIPE PISS PITA PITH PITS PITY PLAN PLAT PLAY PLEA PLEB PLED PLEX PLOD PLOP PLOT PLOW PLOY PLUG PLUM PLUS POCK PODS POEM POET POKE POKY POLE POLL POLO POLY POMP POND PONG PONY POOF POOL POOP POOR POPE POPS PORE PORK PORT POSE POSH POSY POTS POUF POUR POUT PRAM PRAY PREP PREY PREZ PRIG PRIM PROB PROD PROF PROG PROM PROP PROS PROW PUBS PUCK PUDS PUFF PUGS PUKE PULL PULP PUMA PUMP PUNK PUNS PUNT PUNY PUPA PUPS PURE PURL PURR PUSH PUSS PUTS PUTT PUTZ PYRE PYRO QUAD QUID QUIP QUIT QUIZ RACE RACK RACY RADS RAFT RAGA RAGE RAGS RAID RAIL RAIN RAJA RAKE RAKU RALE RAMP RAMS RANG RANK RANT RAPS RAPT RARE RASH RASP RATE RATH RATS RAVE RAYS RAZE RAZZ READ REAL REAM REAP REAR REDO REED REEF REEK REEL REFS REIN RELY REMS REND RENT REPO REPP REPS REST RIBS RICE RICH RIDE RIDS RIFE RIFF RIFT RIGS RILE RILL RIME RIMS RIND RING RINK RIOT RIPE RIPS RISE RISK RITE RITZ ROAD ROAM ROAN ROAR ROBE ROBS ROCK RODE RODS ROES ROIL ROLE ROLL ROMP ROMS ROOF ROOK ROOM ROOS ROOT ROPE ROPY ROSE ROSY ROTE ROTI ROTO ROTS ROUT ROUX ROVE ROWS RUBE RUBS RUBY RUCK RUDE RUED RUES RUFF RUGS RUIN RULE RUMP RUMS RUNE RUNG RUNS RUNT RUSE RUSH RUST RUTS SACK SACS SAFE SAGA SAGE SAGO SAGS SAID SAIL SAKE SAKI SALE SALT SAME SAND SANE SANG SANK SAPS SARI SASH SASS SATE SAVE SAWN SAWS SAYS SCAB SCAD SCAM SCAN SCAR SCAT SCOT SCUD SCUM SEAL SEAM SEAR SEAS SEAT SECT SEED SEEK SEEM SEEN SEEP SEER SEES SELF SELL SEMI SEND SENT SEPT SETS SEWN SEWS SHAM SHED SHEW SHIM SHIN SHIP SHIT SHIV SHOD SHOE SHOO SHOP SHOT SHOW SHUN SHUT SIBS SICK SIDE SIFT SIGH SIGN SILK SILL SILO SILT SINE SING SINK SINS SIPS SIRE SIRS SITE SITS SIZE SKEW SKID SKIM SKIN SKIP SKIS SKIT SLAB SLAG SLAM SLAP SLAT SLAW SLAY SLED SLEW SLID SLIM SLIP SLIT SLOB SLOE SLOG SLOP SLOT SLOW SLUG SLUM SMOG SMUG SNAG SNAP SNIP SNIT SNOB SNOT SNOW SNUB SNUG SOAK SOAP SOAR SOBA SOBS SOCK SODA SODS SOFA SOFT SOIL SOLD SOLE SOLO SOME SONG SONS SOON SOOT SOPS SORE SORT SOUL SOUP SOUR SOWN SOWS SOYA SPAM SPAN SPAR SPAS SPAT SPAY SPEC SPED SPEW SPIN SPIT SPOT SPRY SPUD SPUN SPUR STAB STAG STAR STAT STAY STEM STEP STEW STIR STOP STOW STUB STUD STUN STYE SUBS SUCH SUCK SUED SUES SUET SUIT SULK SUMO SUMP SUMS SUNG SUNK SUNS SUPS SURE SURF SUSS SWAB SWAG SWAM SWAN SWAP SWAT SWAY SWIG SWIM SWUM SYNC TABS TACH TACK TACO TACT TAGS TAIL TAKE TALC TALE TALK TALL TAME TAMP TANG TANK TANS TAPE TAPS TARE TARN TARO TARP TARS TART TASK TAUT TAXI TEAK TEAL TEAM TEAR TEAS TEAT TECH TEEM TEEN TEES TEFF TELE TELL TEMP TEND TENT TERM TERN TEST TEXT THAN THAT THAW THEE THEM THEN THEY THIN THIS THOU THRU THUD THUG THUS TICK TIDE TIDY TIED TIER TIES TIFF TIKI TILE TILL TILT TIME TINE TING TINS TINT TINY TIPS TIRE TITS TOAD TODE TOED TOES TOFU TOGA TOIL TOKE TOLD TOLE TOLL TOMB TOME TONE TONG TOOK TOOL TOON TOOT TOPS TORE TORN TORT TORY TOSS TOTE TOTS TOUR TOUT TOWN TOWS TOYS TRAM TRAP TRAY TREE TREK TREY TRIG TRIM TRIO TRIP TROD TROT TSAR TUBA TUBE TUBS TUCK TUFF TUFT TUGS TUMS TUNA TUNE TURD TURF TURK TURN TUSH TUSK TUTS TUTU TWEE TWIG TWIN TWIT TWOS TYKE TYPE TYPO UDON UGLY UMPS UNDO UNIT UNTO UPON URGE URNS USED USER USES VAIL VAIN VAMP VANE VANS VARY VASE VAST VATS VEAL VEER VEIL VEIN VEND VENT VERB VERT VERY VEST VETO VETS VIAL VIBE VICE VIDS VIED VIES VIEW VILE VIMS VINE VINO VISA VISE VITA VIVA VOID VOLE VOLT VOTE VOWS WACK WADE WADS WAFT WAGE WAGS WAIF WAIL WAIT WAKE WALK WALL WAND WANE WANT WARD WARE WARM WARN WARP WARS WART WARY WASH WASP WATT WAVE WAVY WAXY WAYS WEAK WEAN WEAR WEBS WEDS WEED WEEK WEEN WEEP WELL WENT WERE WEST WHAT WHEN WHOM WIDE WIFE WILD WILL WILT WIND WINE WING WINS WIPE WIRE WISE WISH WITH WOLF WOOD WOOL WORD WORE WORK WORM WORN WRAP YARD YARN YEAH YEAR YOGA YOUR ZERO ZINC ZONE ZOOM>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<ABLE ABLY ABUT ACAI ACED ACES ACHE ACHY ACID ACME ACNE ACRE ACTS ADDS AEON AFAR AFRO AGED AGES AGOG AHEM AIDE AILS AIMS AIRS AIRY AJAR AKIN ALAS ALLY ALMS ALOE ALSO ALTO ALUM AMEN AMID AMMO AMOK AMPS ANDS ANEW ANKH ANON ANTI ANTS APES APEX APPS AQUA ARCH ARCS AREA ARIA ARID ARKS ARMS ARMY ARSE ARTS ARTY ASHY ASKS ATOM ATOP AUNT AURA AUTO AVID AVOW AWAY AWED AWES AWLS AWRY AXED AXES AXIS AXLE BABA BABE BABY BACH BACK BADS BAGS BAIL BAIT BAKE BALD BALE BALK BALL BALM BAND BANE BANG BANK BANS BARB BARD BARE BARF BARK BARN BARS BASE BASH BASK BASS BAST BATH BATS BAUD BAWL BAYS BEAD BEAK BEAM BEAN BEAR BEAT BEAU BECK BEDS BEEF BEEN BEEP BEER BEES BEET BEGS BELL BELT BEND BENT BERG BERM BEST BETA BETS BEVY BEYS BIAS BIBS BIDE BIDS BIFF BIKE BILE BILK BILL BIND BIOS BIRD BITE BITS BLAB BLAH BLEB BLED BLEW BLIP BLOB BLOC BLOG BLOT BLOW BLUE BLUR BOAR BOAS BOAT BOBS BODE BODS BODY BOGS BOGY BOIL BOLA BOLD BOLO BOLT BOMB BOND BONE BONG BONK BONY BOOK BOOM BOON BOOR BOOS BOOT BORE BORN BOSS BOTH BOTS BOUT BOWL BOWS BOXY BOYO BOYS BOZO BRAG BRAN BRAS BRAT BRAY BRED BREW BRIE BRIG BRIM BRIS BRIT BROS BROW BUCK BUDS BUFF BUGS BULB BULK BULL BUMP BUMS BUND BUNG BUNK BUNS BUNT BUOY BURB BURG BURL BURN BURP BURR BURY BUSH BUSK BUST BUSY BUTT BUYS BUZZ BYES BYTE CABS CAFE CAFF CAGE CAKE CALF CALL CALM CAME CAMO CAMP CANE CANS CAPE CAPO CAPS CARB CARD CARE CARP CARS CART CASE CASH CASK CAST CATS CAVE CAWS CAYS CEDE CELL CELS CELT CENT CESS CHAD CHAI CHAP CHAR CHAT CHEF CHEW CHIC CHIN CHIP CHIT CHOP CHOW CHUB CHUG CHUM CIAO CITE CITY CLAD CLAM CLAN CLAP CLAW CLAY CLEF CLIP CLOD CLOG CLOP CLOT CLUB CLUE COAL COAT COAX COBS COCA COCO CODA CODE CODS COED COGS COIL COIN COKE COLA COLD COLE COLT COMA COMB COME COMP CONE CONS COOK COOL COOP COOS COPE COPS COPY CORD CORE CORK CORN COST COSY COTS COUP COVE COWL COWS COZY CRAB CRAG CRAM CRAP CRAW CREW CRIB CRIT CROC CROP CROW CRUD CRUX CUBE44444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444 CUBS CUDS CUED CUES CUFF CULL CULT CUPS CURB CURD CURE CURL CURT CUSP CUSS CUTE CUTS CYAN CYST CZAR DABS DADA DADS DAFT DAME DAMN DAMP DAMS DANK DARE DARK DARN DART DASH DATA DATE DAWN DAYS DAZE DEAD DEAF DEAL DEAN DEAR DEBT DECK DEED DEEM DEEP DEER DEFT DEFY DELI DELL DELT DEMO DENS DENT DERM DESK DEWS DEWY DIAL DICE DIED DIES DIET DIGS DILL DIME DIMS DINE DING DINK DINO DINT DIPS DIRE DIRT DISC DISH DISK DISS DIVA DIVE DOCK DOCS DODO DOER DOES DOFF DOGS DOJO DOLE DOLL DOLT DOME DONE DONG DOOM DOOR DOPE DORK DORM DORY DOSE DOTE DOTH DOTS DOUR DOVE DOWN DOXY DOZE DOZY DRAB DRAG DRAM DRAW DRAY DREW DRIP DROP DRUG DRUM DRYS DUAL DUBS DUCK DUCT DUDE DUDS DUEL DUES DUET DUFF DUKE DULL DULY DUMB DUMP DUNE DUNG DUNK DUNS DUOS DUPE DUSK DUST DUTY DYAD DYED DYER DYES EACH EARL EARN EARS EASE EAST EASY EATS EAVE EBBS ECHO EDDY EDGE EDGY EDIT EELS EGGS EGGY EGOS ELKS ELMS ELSE EMIT EMMY EMUS ENDS ENVY EONS EPEE EPIC ERAS ERRS ETCH EURO EVEN EVER EVES EVIL EWES EXAM EXEC EXIT EXON EXPO EYED EYES FABS FACE FACT FADE FADS FAIL FAIR FAKE FALL FAME FANG FANS FARE FARM FART FAST FATE FATS FAUN FAVA FAVE FAWN FAZE FEAR FEAT FEED FEEL FEES FEET FELL FELT FEND FENS FERN FESS FEST FETA FETE FEUD FIAT FIBS FIFE FIGS FILE FILL FILM FILO FIND FINE FINK FINS FIRE FIRM FIRS FISH FIST FITS FIVE FIZZ FLAB FLAG FLAK FLAM FLAN FLAP FLAT FLAW FLAX FLAY FLEA FLED FLEE FLEW FLEX FLIP FLIT FLOC FLOE FLOG FLOP FLOW FLUB FLUE FLUS FLUX FOAL FOAM FOBS FOCI FOES FOGS FOGY FOIL FOLD FOLK FOND FONT FOOD FOOL FOOT FOPS FORD FORE FORK FORM FORT FOUL FOUR FOWL FOXY FRAG FRAT FRAY FREE FRET FRIG FROG FROM FUEL FUCK FUGU FULL FUME FUND FUNK FURL FURS FURY FUSE FUSS FUTZ FUZZ GAFF GAGS GAIN GAIT GALA GALE GALL GALS GAME GANG GAPE GAPS GARB GASH GASP GATE GAVE GAWK GAYS GAZE GEAR GEEK GEES GELS GEMS GENE GENS GENT GERM GETS GHAT GHEE GIFT GIGS GILD GILL GILT GINS GIRD GIRL GIST GITS GIVE GLAD GLAM GLEE GLEN GLIB GLOB GLOM GLOP GLOW GLUE GLUG GLUM GLUT GNAR GNAT GNAW GOAD GOAL GOAT GOBS GOBY GODS GOER GOES GOLD GOLF GONE GONG GOOD GOOF GOON GOOP GOOS GORE GORY GOSH GOTH GOUT GOWN GRAB GRAD GRAM GRAN GRAY GREW GREY GRID GRIM GRIN GRIP GRIT GROG GROW GRUB GUFF GULF GULL GULP GUMS GUNK GUNS GURU GUSH GUST GUTS GUYS GYMS GYRE GYRO HACK HAGS HAIL HAIR HALF HALL HALO HALT HAMS HAND HANG HANK HAPS HARD HARE HARK HARM HARP HART HASH HATE HATH HATS HAUL HAVE HAWK HAWS HAYS HAZE HAZY HEAD HEAL HEAP HEAR HEAT HECK HEED HEEL HEFT HEIR HELD HELL HELM HELP HEMP HEMS HENS HERB HERD HERE HERO HERS HEST HEWN HEWS HICK HIDE HIGH HIKE HILL HILT HIND HINT HIPS HIRE HISS HITS HIVE HIYA HOAR HOAX HOBO HOCK HOED HOES HOGS HOLD HOLE HOLO HOLT HOLY HOME HONE HONK HOOD HOOF HOOK HOOP HOOT HOPE HOPS HORN HOSE HOST HOUR HOVE HOWL HUBS HUCK HUED HUES HUFF HUGE HUGS HULA HULK HULL HUMP HUMS HUNG HUNK HUNT HURL HURT HUSH HUSK HUTS HYMN HYPE HYPO ICED ICES ICKY ICON IDEA IDLE IDLY IDOL IFFY ILLS IMPS INCH INFO INKS INKY INNS INTO IONS IOTA IRIS IRKS IRON ISLE ISMS ITCH ITEM JABS JACK JADE JAIL JAKE JAMB JAMS JAPE JARS JAVA JAWA JAWS JAYS JAZZ JEAN JEEP JEER JEEZ JELL JERK JEST JETS JIBE JIBS JIGS JILT JINK JINX JIVE JOBS JOCK JOGS JOIN JOKE JOLT JOTS JOWL JOYS JUDO JUGS JUJU JUKE JUMP JUNK JURY JUST JUTE JUTS KALE KEEL KEEN KEEP KEGS KELP KEPT KETO KEYS KHAN KHAT KICK KIDS KILL KILN KILO KILT KIND KING KIPS KISS KITE KITS KIWI KNEE KNEW KNIT KNOB KNOT KNOW KOAN KOOK KOTO LABS LACE LACK LACY LADS LADY LAGS LAID LAIN LAIR LAKE LAMA LAMB LAME LAMP LAND LANE LAPS LARD LARK LASH LASS LAST LATE LAUD LAVA LAWN LAWS LAYS LAZE LAZY LEAD LEAF LEAK LEAN LEAP LEAS LEEK LEER LEET LEFT LEGS LEND LENS LENT LESS LEST LEWD LIAR LIBS LICE LICK LIDS LIED LIEN LIER LIES LIEU LIFE LIFT LIKE LILT LILY LIMA LIMB LIME LIMO LIMP LINE LING LINK LINT LION LIPS LISP LIST LITE LIVE LOAD LOAF LOAM LOAN LOBE LOBS LOCH LOCK LOCO LODE LOFT LOGE LOGO LOGS LOIN LONE LONG LOOK LOOM LOON LOOP LOOS LOOT LOPS LORD LORE LOSE LOSS LOST LOTH LOTS LOUD LOUT LOVE LOWS LUBE LUCK LUFF LUGS LULL LUMP LUNE LUNG LURE LURK LUSH LUST LUTE LUVS LYNX LYRE MACE MACH MACK MACS MADE MAGE MAGI MAGS MAID MAIL MAIM MAIN MAKE MAKI MALE MALL MALT MAMA MANE MANS MANY MAPS MARE MARK MARS MART MASH MASK MASS MAST MATE MATH MATS MAUL MAWS MAXI MAYO MAZE MAZY MEAD MEAL MEAN MEAT MEEK MEET MEGA MELD MELT MEMO MEND MENU MEOW MERE MESA MESH MESS META METE MEWL MEWS MICA MICE MICS MIDS MILD MILE MILK MILL MIME MIND MINE MINI MINK MINT MINX MIRE MISO MISS MIST MITE MOAN MOAT MOBS MOCK MODE MODS MOJO MOLD MOLE MOLT MOMS MONK MONO MOOD MOON MOOR MOOS MOOT MOPE MOPS MORE MORN MOSH MOSS MOST MOTE MOTH MOVE MOWS MUCH MUCK MUDS MUFF MUGS MULE MULL MUMS MUON MURK MUSE MUSH MUSK MUST MUTE MUTT MYTH NAAN NABS NAGS NAIL NAME NANA NANS NAPE NAPS NARC NARD NARY NAVY NAYS NEAR NEAT NECK NEED NEEM NEON NERD NESS NEST NETS NEWS NEWT NEXT NIBS NICE NICK NIGH NINE NITE NOBS NODE NODS NOEL NOIR NONE NOOK NOON NOPE NORI NORM NOSE NOSH NOSY NOTE NOUN NOVA NUBS NUDE NUKE NULL NUMB NUNS NUTS OAFS OAKS OAKY OARS OATH OATS OBEY OBIT OBOE ODDS ODES ODOR OGLE OGRE OILS OILY OINK OKAY OKRA OLDS OMEN OMIT ONCE ONES ONLY ONTO ONUS ONYX OOPS OOZE OOZY OPAL OPEN OPTS OPUS ORAL ORBS ORCA ORES ORGY ORZO OUCH OURS OUST OUTS OVAL OVEN OVER OVUM OWED OWES OWLS OWNS PACE PACK PACT PADS PAGE PAID PAIL PAIN PAIR PALE PALL PALM PALP PALS PANE PANG PANS PANT PAPA PAPS PARA PARE PARK PARS PART PASS PAST PATE PATH PATS PAVE PAWN PAWS PAYS PEAK PEAL PEAR PEAS PEAT PECK PECS PEED PEEK PEEL PEEP PEER PEES PEGS PELT PENS PENT PEON PERK PERM PERP PESO PEST PETS PEWS PHEW PICK PICS PIED PIER PIES PIGS PIKA PIKE PILE PILL PINE PING PINK PINS PINT PIPE PISS PITA PITH PITS PITY PLAN PLAT PLAY PLEA PLEB PLED PLEX PLOD PLOP PLOT PLOW PLOY PLUG PLUM PLUS POCK PODS POEM POET POKE POKY POLE POLL POLO POLY POMP POND PONG PONY POOF POOL POOP POOR POPE POPS PORE PORK PORT POSE POSH POSY POTS POUF POUR POUT PRAM PRAY PREP PREY PREZ PRIG PRIM PROB PROD PROF PROG PROM PROP PROS PROW PUBS PUCK PUDS PUFF PUGS PUKE PULL PULP PUMA PUMP PUNK PUNS PUNT PUNY PUPA PUPS PURE PURL PURR PUSH PUSS PUTS PUTT PUTZ PYRE PYRO QUAD QUID QUIP QUIT QUIZ RACE RACK RACY RADS RAFT RAGA RAGE RAGS RAID RAIL RAIN RAJA RAKE RAKU RALE RAMP RAMS RANG RANK RANT RAPS RAPT RARE RASH RASP RATE RATH RATS RAVE RAYS RAZE RAZZ READ REAL REAM REAP REAR REDO REED REEF REEK REEL REFS REIN RELY REMS REND RENT REPO REPP REPS REST RIBS RICE RICH RIDE RIDS RIFE RIFF RIFT RIGS RILE RILL RIME RIMS RIND RING RINK RIOT RIPE RIPS RISE RISK RITE RITZ ROAD ROAM ROAN ROAR ROBE ROBS ROCK RODE RODS ROES ROIL ROLE ROLL ROMP ROMS ROOF ROOK ROOM ROOS ROOT ROPE ROPY ROSE ROSY ROTE ROTI ROTO ROTS ROUT ROUX ROVE ROWS RUBE RUBS RUBY RUCK RUDE RUED RUES RUFF RUGS RUIN RULE RUMP RUMS RUNE RUNG RUNS RUNT RUSE RUSH RUST RUTS SACK SACS SAFE SAGA SAGE SAGO SAGS SAID SAIL SAKE SAKI SALE SALT SAME SAND SANE SANG SANK SAPS SARI SASH SASS SATE SAVE SAWN SAWS SAYS SCAB SCAD SCAM SCAN SCAR SCAT SCOT SCUD SCUM SEAL SEAM SEAR SEAS SEAT SECT SEED SEEK SEEM SEEN SEEP SEER SEES SELF SELL SEMI SEND SENT SEPT SETS SEWN SEWS SHAM SHED SHEW SHIM SHIN SHIP SHIT SHIV SHOD SHOE SHOO SHOP SHOT SHOW SHUN SHUT SIBS SICK SIDE SIFT SIGH SIGN SILK SILL SILO SILT SINE SING SINK SINS SIPS SIRE SIRS SITE SITS SIZE SKEW SKID SKIM SKIN SKIP SKIS SKIT SLAB SLAG SLAM SLAP SLAT SLAW SLAY SLED SLEW SLID SLIM SLIP SLIT SLOB SLOE SLOG SLOP SLOT SLOW SLUG SLUM SMOG SMUG SNAG SNAP SNIP SNIT SNOB SNOT SNOW SNUB SNUG SOAK SOAP SOAR SOBA SOBS SOCK SODA SODS SOFA SOFT SOIL SOLD SOLE SOLO SOME SONG SONS SOON SOOT SOPS SORE SORT SOUL SOUP SOUR SOWN SOWS SOYA SPAM SPAN SPAR SPAS SPAT SPAY SPEC SPED SPEW SPIN SPIT SPOT SPRY SPUD SPUN SPUR STAB STAG STAR STAT STAY STEM STEP STEW STIR STOP STOW STUB STUD STUN STYE SUBS SUCH SUCK SUED SUES SUET SUIT SULK SUMO SUMP SUMS SUNG SUNK SUNS SUPS SURE SURF SUSS SWAB SWAG SWAM SWAN SWAP SWAT SWAY SWIG SWIM SWUM SYNC TABS TACH TACK TACO TACT TAGS TAIL TAKE TALC TALE TALK TALL TAME TAMP TANG TANK TANS TAPE TAPS TARE TARN TARO TARP TARS TART TASK TAUT TAXI TEAK TEAL TEAM TEAR TEAS TEAT TECH TEEM TEEN TEES TEFF TELE TELL TEMP TEND TENT TERM TERN TEST TEXT THAN THAT THAW THEE THEM THEN THEY THIN THIS THOU THRU THUD THUG THUS TICK TIDE TIDY TIED TIER TIES TIFF TIKI TILE TILL TILT TIME TINE TING TINS TINT TINY TIPS TIRE TITS TOAD TODE TOED TOES TOFU TOGA TOIL TOKE TOLD TOLE TOLL TOMB TOME TONE TONG TOOK TOOL TOON TOOT TOPS TORE TORN TORT TORY TOSS TOTE TOTS TOUR TOUT TOWN TOWS TOYS TRAM TRAP TRAY TREE TREK TREY TRIG TRIM TRIO TRIP TROD TROT TSAR TUBA TUBE TUBS TUCK TUFF TUFT TUGS TUMS TUNA TUNE TURD TURF TURK TURN TUSH TUSK TUTS TUTU TWEE TWIG TWIN TWIT TWOS TYKE TYPE TYPO UDON UGLY UMPS UNDO UNIT UNTO UPON URGE URNS USED USER USES VAIL VAIN VAMP VANE VANS VARY VASE VAST VATS VEAL VEER VEIL VEIN VEND VENT VERB VERT VERY VEST VETO VETS VIAL VIBE VICE VIDS VIED VIES VIEW VILE VIMS VINE VINO VISA VISE VITA VIVA VOID VOLE VOLT VOTE VOWS WACK WADE WADS WAFT WAGE WAGS WAIF WAIL WAIT WAKE WALK WALL WAND WANE WANT WARD WARE WARM WARN WARP WARS WART WARY WASH WASP WATT WAVE WAVY WAXY WAYS WEAK WEAN WEAR WEBS WEDS WEED WEEK WEEN WEEP WELL WENT WERE WEST WHAT WHEN WHOM WIDE WIFE WILD WILL WILT WIND WINE WING WINS WIPE WIRE WISE WISH WITH WOLF WOOD WOOL WORD WORE WORK WORM WORN WRAP YARD YARN YEAH YEAR YOGA YOUR ZERO ZINC ZONE ZOOM>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<C#2!2 G#2 <A2 D2>>",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "<C2 ~> D2 Eb2 ~ G1 ~ ~ Bb2 C2 ~ F1 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<C2(3,8)!3 Db2(3,8)>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<F2 G2>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<G#2!3 C2>",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "<G1 D1 <D1 D1 D1 A1>>",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "<G1[0,4,7,11]>*1 <A3[0,4,7,11] F3[0,4,7,11] C3[0,4,7,11] G3[0,4,7,11]>*20<G2[0,4,8] A5[0,4,8] E2[0,4,8] C2[0,4,8]>*50 <F3[0,4,8] G5[0,4,7,11]>*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<G4 A4 Bb4 A4>,Bb3,D3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<G6[0,4,7,11]>*5 <A3[0,4,7,11] F3[0,4,7,11] C3[0,4,7,11] G3[0,4,7,11]>*2<G[0,4,8] A5[0,4,8] E3[0,4,8] C[0,4,8]>*25 <F3[0,4,8] G5[0,4,7,11]>*20",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[ - - a2 c3  [e - d2 - - c2 - -]]>/6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[- [0,2,4]]*4!4 [- [5,7,9]]*4!2 [- [3,5,7]]*4!2>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<[- hh*2 - - ]!14 [- oh@2 -]!4 -!8>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[-!4 0 20 30 44] [-!4 0 [5 10] 15 22] [0] [0]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[-.125, 0, .125, .25]  [ -.25, -.08333, .08333, 0.25]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[-14 -12 -10 -8]!4 [-9 -7 -5 -3]!2 [-11 -9 -7 -7]!2>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<[-3@1 -2@1 -1@1 0@1]*2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[0 0 0 0] [4 4 4 4] [7 7 7 7] [4 4 4 4]>",
+      "uses": 14,
+      "tunes": 1
+    },
+    {
+      "mini": "<[0 1 2 3 4 5 6 7]!4 [5 6 7 8 9 10 11 12]!2 [3 4 5 6 7 8 9 10]!2>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<[0 4 7] [~ ~ ~] [0 4 7] [~ ~ ~]>",
+      "uses": 16,
+      "tunes": 1
+    },
+    {
+      "mini": "<[0 5]*4 [5 10]*4>",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "<[0 [~ ~ 4 7]] [0 [~ ~ 4 7]] [0 [~ ~ 4 7]] [0 9 7 4]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[0, 10, 15] [3, 14, 19] [5, 13, 15] [7, 14, 17]>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[0, 3, 5]!2 [0, 2]!1 [-3, 0, 2]!1 [0, 3, 5]!2 [0, 2, 7, 9]!2 [0, 3, 5]!2 [0, 2]!1 [-3, 0, 2]!1 [0, 3, 5]!2 [0, 2, 7, 9]!1 [-3, 0, 2, 7, 11@3 12@1]!1>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[0,-24,12] [0,-24.1, <5 7>]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[0@6 -3@1 -2@1]!1 [-1]!1 [4]!1 <[6]!1 [6@3 7@1]!1>>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[1 1]*4 [1 3]*4 [5 4]*4 [3 <6 ~>]*4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[2 4 6 8] [2 4, 1] [5 7]>*3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[2@3 -2@3 -2@2] [-2@3 -2@3 -3@2] [2@3 -3@3 -3@2] [-3@3 -3@3 -5@2]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[3@3 3@3 3@2]!2 [2@3 2@3 2@2]!2 [3@3 3@3 3@2]!2 [0@3 0@3 0@2]!1 [7@3 7@3 8@2]!1>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[3]!2 [2]!2 [3]!1 [3@3 4@1]!1 [0]!1 [7]!1>",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "<[6 [5 4] 5 [6 7 8]] 0 -1 2 0 0>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[<[b,g] b> a] e>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<[A2, C#3, E3] A3 G#3 G3 [D3, F#3] B3 C#3 E3 D#3>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[A2, C#3, E3]@4 [D3, F#3, A3]@5>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[C4,D,F,A] [F,A,C,D4] [D,F,A,E4]  [D,G,A,D4] >/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[C4,D,F,A] [F,A,C,D4] [D,F,A,E4]  [D,G,A,D4] >/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[C4,D,F,A] [F,A,C,D4] [D,F,A,E4] [D,G,A,D4]>/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[[2 ~] [2 ~] 2 3] [[3 ~] [3 ~] 3 3]>@4 [-1 ~] -1 -1 [0 ~] 0 0 [0 ~] 0 0 [0 ~] 0 0",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[[bd:2 bd:2] - [sd:2, sd:1] [bd bd] <-> <[bd, oh] bd!5> <- [sd:2, sd:1]> <sd:2*<1 1 2> ->]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[b2 b3]*4 [a2 a3]*4 >",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "<[bb4 ~ c5 ~] [d5 ~ bb4 ~] [c5 ~ ab4 ~] [bb4 ~ g4 ~]>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<[bd [- [- hh]]]!16 bd!12>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[bd*4 . bd*2 . bd . bd*4]\n  [bd*4 . bd@2 . bd . bd*4]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[c2 c3]*4 [bb1 bb2]*2 [f2 f3]*4 [eb2 eb3]*2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[c2 c3]*4 [bb1 bb2]*4 [f2 f3]*4 [eb2 eb3]*2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[c2 c3]*4 [bb1 bb2]*4 [f2 f3]*4 [eb2 eb3]*4>",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "<[c2,c1] [ab0,ab1] [f0,f1] [g0,g1]>",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "<[c2,e2] [a1,d2] [g1,c2] [f1,a1]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[c3, [eb5, eb6, f7] [bb6 d7]] [f3, [ab5, eb6, bb7] [bb6 d7]]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[c3,eb3,g3] [g2,bb2,d3] [ab2,c3,eb3] [f2,ab2,c3]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[c3,g3,e4] [bb2,f3,d4] [a2,f3,c4] [bb2,g3,eb4]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[c3@2 [e3 f3]*2] <[c3@2 [e3 f3]*2] [c3@2 [b3 a3]*2]> [c3@2 [e3 f3]*2] <[[f3 e3]*2 c3@2] [[f3@0.5 e3@0.5]*2 c3]*2>>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[c4,e4,g4] [a3,d4,f4] [g3,c4,e4] [f3,a3,c4]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[c5, e5] [d5, f5] [e5, g5] [f5, a5]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[d4,f4,bb4] [f4,bb4,d5] [c4,f4,ab4] [eb4,ab4,c5]>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<[f#4]@2.75 <e4 a4>>@2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[f2 f3]*4 [e2 e3]*4 [[a2 a3]*2 [ab2 ab3]*2] [[g2 g3]*2 [c2 c3]*2] [d2 d3]*4 [a#2 a#3]*4 [[a2 a3]*2 [ab2 ab3]*2] [[g2 g3]*2 [c2 c3]*2]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[g3,b3,e4] [a3,c3,e4] [b3,d3,f#4] [b3,e4,g4]@0.75 [b3,d3,f#4]@0.25>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[g3,b3,e4]!2 [a3,c3, e4] [b3,d3,f#4]>",
+      "uses": 12,
+      "tunes": 1
+    },
+    {
+      "mini": "<[g3,b3,e4]!2 [a3,c3,e4] [b3,d3,f#4]>",
+      "uses": 27,
+      "tunes": 1
+    },
+    {
+      "mini": "<[g3,bb3,d4,f4] [bb3,d4,f4] [f3,ab3,c4] [ab3,c4,eb4]>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<[g5 bb5] ~ [f5 ab5] ~>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<[hh hh hh -][hh - hh -][hh - hh -][hh - hh -]> <[hh - hh -][hh - hh -][hh - hh -][hh - hh -]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[hh!16] [hh ~ hh!14]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[hh*2] hh*4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[hh*2]!2 [<rim hh@2> hh]*2>*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[ht bd~][ht bd~][ht bd~]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[sport sport]>/2",
+      "uses": 20,
+      "tunes": 5
+    },
+    {
+      "mini": "<[~ c4 e4 c4]!3 [~ [c4,d4] g4 [c4,d4]]>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[~ c4 e4 c4]!3 [~ d4 g4 d4]>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<[~ ~ sd ~] [~ ~ sd ~] [~ ~ [sd sd sd]@2] ~>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<a1 c2>/2",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "<a2 ~ ~ f2 ~ ~ g2 ~ ~ e2 ~ ~ a2 ~ ~ f2 ~ ~ g2 ~ ~ c3 ~ ~>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<a3 c4 e4>[1.5] <d4 g4>[0.5] <e4 d4 c4>[2]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<a4 ~ ~ c5 ~ e5 ~ c5 ~ ~ g4 ~ b4 ~ g4 ~ ~ e5 ~ a5 ~>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<a4,c#4,e4,g#4>@10",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd - - -> *2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd - [- bd] - bd>*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd <-@4 bd> -@5 bd cp:2@6 <bd - -> <- bd>>*16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd <-@6 bd> -@5 bd cp:2@6 <bd - -> <- bd>>*16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd [bd bd]> <bd ~> bd bd",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "<bd [bd perc]>*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd [hh hh] [rim rim] [hh hh] bd [hh bd] rim [hh hh], jazz jazz - jazz, [casio:1 casio:4] - - casio:1 casio:2 - [casio:1 casio:3], casio:5 -- casio:5 casio:5 -,- - - east - - - [east east] >*10",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd [~ bd]>@2 hh@2 bd <bd ~> [hh bd] [~ hh]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd bd [bd bd] bd>*4, <sd ~ sd ~>*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd bd [bd ~ east:1] [bd bd]> * 4, <~ sd ~ sd> * 4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd bd hh bd rim bd hh bd>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd hh sd [hh oh]>*2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd hh sd hh>*2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd sd bd sd bd sd [bd bd] sd>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd sd>",
+      "uses": 13,
+      "tunes": 6
+    },
+    {
+      "mini": "<bd ~@3 bd ~@4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd*4 [bd cp]*4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd*4, sd:3(2,4)>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd*6!2, <cp, [hh sd ] <rim oh!2>>>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd:0*<<4 1!8 4> 4 1!4 4>>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd:1*<1 2 2 [2 4]> ->, [- sd:1:.5]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd>*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<bigb:2 bigb:1>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<c1 ab1 d1 g1>",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "<c2 c#2 b1> <- [e2] [g#1]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<c2 eb2 f2 g2>*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<c2*32 d2*32 eb1*32 d1*32>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<c2>,<g3@7 f#3 g#3>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<c3 c3 d3 d3 c4 c4 d4 d4> <e3 e3 d3 d3 e4 e4 d4 d4> <f3 f3 A3 B3> <g3 g3 B3 d4> ~ ~ ~ ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<c4 ->",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<c4 d#4 g3>?0.7 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<c4 ~ ~ e4 ~ g4 ~ ~ b4 ~ g4 ~ e4 ~>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<c5 e5>?0.8 ~ ~ <g5 b5>?0.7 ~ ~ <c6 g5>?0.6 ~ e5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<c6 e6 g6 b6> [d6, e6] [-]/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<clap clap>*8",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<cr@4 ~@5>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<crow -@3>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<d d d a a# d3 f4>*15",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "<d d d d5 c# c3 c4 c5>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<d1 g1 a1 d2 g2 a2 d3 g3 a3 g3 d3 a2 g2 d2 a1 g1>*16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<d2 e2 c#2 a1>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<eb*3 c*3>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<eb, gb, bb, a, c> <c, eb, gb, a> <eb, gb, bb, a, c> ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<eb1 f1 gb1 [ab1@3 bb1]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<eb2*3 a2*3 c2*3 a2*3 >",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<eb4 f4 g4 d4>",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "<eb@12, gb@10, bb@8> <a@6, c@4, e@2>, eb g [c a]!2 <bb>!2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<eeloil [sport sport]>/2",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "<eeloil>/2",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "<ethnic_st:2!3 ethnic_st:1>",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "<f1!3 [e1 c2]>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<f2 c2 f2 a1 f2 g1 f2 c2>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<f2 f1 [c2!2 <d2 ->] a#1 <[g#1 g1!2] g1!2>>*<1!4 1 8>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<f3 a3 e3 g3 c3 g3 e3 g3> c4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<fm2,e2[bm2,d#2:3],am2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<from_the_grooves_in_the_tree the_grooves_of_the_bass the_wrinkles_on_my_hand arent_too_different>*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<fx:1*<1>>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<fx:1>/4",
+      "uses": 8,
+      "tunes": 2
+    },
+    {
+      "mini": "<g g g g eb bb c#4>*16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<g# f c d# [f2@7 g2] g#2 c a#2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<g1!3 e1!3>/4",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "<g2 bb2 f2 ab2>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<g3 bb3 f3 ab3>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<gm_bird_tweet:<0 1 2 3>>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<gm_distortion_guitar:4> <pipe_organ_loud:1>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<gm_epiano2 gm_epiano1>*0.25",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<gm_orchestral_harp>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<gm_reed_organ@10 gm_church_organ:1@4 ~@2>",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "<gm_sitar>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<gm_slap_bass_1 gm_fx_crystal gm_marimba>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<gtr_cru:<0 1 2 3 4 <5 6>>>/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<gtr_vib:<0 1 2 3 0 <5 6>>>/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<hh bd hh <[sd*2 -] [sd*3 -]> ->",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<hh*2 <sd clap bd>> bd bd <hh sd sd*2> bd bd clap ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<hh*4 [[<hh oh> hh] hh hh hh]>",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "<i_came_here_for_rizz i_stayed_for_something_more>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<i_got_a_pocket_full_of_dough they_see_me_baking_they_hating>/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<kalimba piano folkharp square>/3",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "<lp:1!8 - lp:11!8>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<o1>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<o3 o4!8>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<oompf umami>/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<piano sine>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<rd:1 -@3> -@3, bd:1 bd:1 sd:1 bd:0 sd:1 stick:<2 3> bd:0 hh:1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<rim>",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "<sawtooth!16 pulse!8>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<sawtooth(3,8)  sine(5,8)>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<sawtooth, folkharp>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<sawtooth>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<sawtooth>/64",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<sh>*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<sine, folkharp>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<sine>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<sine>/64",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<square supersaw>*2",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "<square>/64",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<st:4 st:6>/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<triangle sawtooth square sawtooth triangle>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<triangle square>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "<triangle>",
+      "uses": 7,
+      "tunes": 3
+    },
+    {
+      "mini": "<vox1 - [vox2] ->/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<water>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<white>*<8 16>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<yoda>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<z_sawtooth z_triangle z_sawtooth z_square z_tan>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<~ 2 1 2 0 1 -1 0 0 ~ 2 [2 3] [2 1] [0 -1] 1 2 1 0/3 ~ -3 [-1 0] 0 [0 1] 1 2 1 0/3 ~ ~ ~ ~ ~ >*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<~ [~@3.5 d2@2 c#2@2.5]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<~ oh ~@2 oh ~@3 oh>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<~ sd ~ sd ~ sd ~ sd ~>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<~ ~ [~ cp]*2 [~ cp]*2 cp*4 [~ cp]*2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<~ ~ hh ~ hh*2 hh*4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<~ ~ ~ ~ ~ ~ ~ ~ c5 ~ e5 g5 ~ ~ e5 g5>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<~!12 [sd [sd sd] [sd sd] [sd sd sd]]>/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "<~@33 ht mt lt>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "A",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "A1 A1 A1 E3",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "A1 A1 [A1 ~ ~ A1] [~ ~ A1 ~]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "A1 ~ A1 ~ ~ A1 A1 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "A1!4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "A1!8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "A2 A2, A1 A1, E2, E1",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "A3 C4 -",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "AkaiLinn_bd",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "AkaiMPC60_cp",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "AkaiMPC60_rim",
+      "uses": 6,
+      "tunes": 2
+    },
+    {
+      "mini": "AlesisSR16_hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "BossDR110_rd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "C A ~ <E F C>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "C E F F D A <C C4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "C Em",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "C2 D2 E2",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "C3",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "C4 D4 [A5 Bb5@15] A5 C4 D4 Eb4 D4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "C5 A4 F5 E4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "E2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "E2@3 E2@3 E2@3 E2@3 E2@2 E2@2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "E3 E3 [E3 f3] E3 ",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "EmuDrumulator_cr",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "Evermore",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "F",
+      "uses": 8,
+      "tunes": 3
+    },
+    {
+      "mini": "F [D F A] [C E A]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "F# E D C# C Bm1 Am1 G",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "Fearless",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "G1 [G1 D2] C1 C1 G1 G1 A1 [D1 F#1]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "G2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "G3 Bb4 D4 G4 D4 Bb4 D4 F#3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "KorgDDM110_cp",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "LinnDrum_bd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "LinnDrum_hh:0:.3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "LinnDrum_rim",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "Metadata",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "Nineteen",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "Purple",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "Red",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "Reputation",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "RolandTR909_bd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "RolandTR909_oh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "Rolandd110_bd*4, <~ rolandcompurhythm8000_cp>*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "YamahaRY30_bd:2*4",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "[ 0 3 -2 5 4 8 2 ] * 1.001",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[ 0 3 -2 5 4 8 2 ] * 1.003",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[ 0 3 2 5 4 8 -2 ]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[ 0 3 2 5 4 8 -2 ] * 1.002",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[ ~  ~ [a4,c5,e5] ~ ] [ ~  ~ [a4,c5,e5] ~ ] [ ~  ~ [a4,c5,e5] ~ ]  [ ~ ~ ~ [g4,c5,e5]]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[ ~ ~ [a4,c5,e5] ~]  [ ~ ~ [a4,c5,e5] ~]  [ ~ ~ [a4,c5,e5] ~] [ ~ ~ ~ [g4,c5,e5]]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[-  -  -@1.1667  sd@0.8333] [-  -  -  sd]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[- - - - - - - 16 17 16 14@ 16 - 14 15 13 12 6 7 10@3 8 - 9! 10 7 11! 12! 11 10 8 0! 1 6 4 5 2@3 3 2 - ]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[- - - - - - - 17 16 15 - - - - - 14 14 5 10 11 - - - 10 - 10 10 9 11 8 9 9 7 6 9 4 1 1 5 1 1 6 9 3 4 2 3 - ]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[- - - - - - - 17 16 15 - - - - - 14@2 5 10 11 - - - 10 - 10@2 9 11 8 9@2 7 6 9 4 1@2 5 1@2 6 9 3 4 2 3 - ]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[- - sd -]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[- <hh!4 oh>]*5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[- G4 G4 G4@2*4 - E4 <G4!3 g3>] [E4@2*4 - G4@2 - E4@2*2] [- - - - E4@2 - E4] [<C4*9!3 C5*9> -]",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "[- cp]*2",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "[- crate_hh]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[- hh]!4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[- oh:4]*4",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[- sd]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[-7 2,<4 5 6>]*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[-7,-2]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 - - 4] [- - 8 -] [0 - - 4] [- - 8 -]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 .. 11]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 1 2 3 3 2 1 0]!2 [0 1 2 3]*2 [0 1 2 3 0 3 0 2]!5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 1 2 3]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 1 3 1 5 4]/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 1 3 [~ 4] 5 6 [~ 7] 8]",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "[0 1 <- 2> [3 <7 4>]]*2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 12]*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 2]*<3!2 5>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 4 9 14]*4 ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 5 12 [5|2]]*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 <1 3>]*<2!3 4>",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "[0 <12 -12>]*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 <2 3>] <5 7 5>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 [[4 5]] [1 -] <2 2 [9 2]> [5 4] [2] [- 1] [<- - 8> <[1] 0>]]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 [[6 7]] <[1] [1]> <2 2 [9 2]> [4 3] [2] [<6 6 3>] [<[1][8]> <0 0 0 10>]]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0 ~ 2 ~] | [~ 1 ] | [~ 0] | [2 ~ 0 ~ 0] ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0, 1, 2, 3, 4]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0, 1, 2, 3, 4](3,8,3)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0, 1, 2, 3]!2 [0, 1, 2, 3]*2 [0, 1, 2, 3]!5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0, 12]",
+      "uses": 20,
+      "tunes": 5
+    },
+    {
+      "mini": "[0, 5, <10 12 10!2>]@2 <[3, 5][3 <[7, 5][6,5]>@2]>@3 3@2 [3, <6 7 6>]/2",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "[0,3,<7 ~>] [~ [0]] 7 <[6 0][3 4 5][6 1b][2b 1b 0]>",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "[0,7,0] [2 -] [[0,3] 4]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0,9,2,5]! | [~ [4,3,1,12]] | [[0,9,2,5] [7,2,0,4]]",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "[0,<3 4>,<5@2 7@2>]<- 1> -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[0,<5@2 7@2>] -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[1 1,2*3,3,4]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[1 2 1]*<4 [2 8]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[1 2 3 4 5 6]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[1 2 4 7]",
+      "uses": 13,
+      "tunes": 5
+    },
+    {
+      "mini": "[1 2 4 7] [1 3 8]",
+      "uses": 13,
+      "tunes": 5
+    },
+    {
+      "mini": "[1 2], <5 8 6 2 [6 8]>/.5 <[2 4 6]> <<8 9 7>*2 2 4>/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[12 [<17 5> 7]]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[13 - - 15@4 16 17 16 14@2 16 14@2 15 13 12 6 7 10@3 8 9@3 10 7 11@2 12@2 11 10 8 0 0 1 6 4 5 2@3 3 2 - ]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[1@2 2] [3@2 4] 2 [0 1@2]@2 - - -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[2 0], ~,  [4 2 6 ~ 8], [~ , 7, 6 ~, 3]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[3 10] <[~ 5][~[5 12]]> <[6 [~ 3]][6 13]> <[0 7][2b 9b]>",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "[3 4 2 4]*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[4 11] [<7 ~ > <0 [-3][~ 0]>] <7 [1 8]> 0",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[4 | 3 | 0 | 8]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[6 | 9 | 11 | 14 | 17 | 21]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[7 6 2 ~], [~ 1 ~ 4 6], [~ 2 4] ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[9, 8 7, 6]*[3 | 6 | 5]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[<6 0> [ ~ 1] 0 1]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[<[c3 c2] [e2,c2] g2 [eb2,eb1] <f2 bb2>>*4](7,16)/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[<a3 c4 e4> <d3 g3 b3>]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[A0 E0] [C1 E0] [D1 E1] ~",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[A1 E1] [C2 E1] [D2 E2] [Cb2 C2]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[B3] [E3] [B3] [A3], ~ E2 ~ E2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[C Eb] [G Bb] [D2 F A]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[C G], <D Fb B C A>*[0.5,2]",
+      "uses": 7,
+      "tunes": 3
+    },
+    {
+      "mini": "[C2 ~ ~ G1]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[C3 G3], <D Fb B C A>*[0.5,2]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[C3*3 -] [A2*3 -] [G3*3 -]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[G4, C4] [G4, Eb4] [F4, A3, Eb4]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[SakataDPM48_hh | RolandTR626_hh | RolandTR505_hh]*16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[[0 -] [0 -] [0 0] [- 0]]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[[0 7 14 7 14 13 7 14 ]]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[[0, 1]*<1!3 2> [2, 3]]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[[0, 2, 4, 6][ ~ [0, 2, 4, 6]][~] [~]]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[[0, 3] ~ ~ <0 7>] [<4 4 3 3> 0] [<6 ~> 0 ~ 2] <3 [5b 7] 3 [2b 1b 0]>",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "[[1 2 4 7] [1 3 8]] [[1 2 4 5 7] [1 3 8]]",
+      "uses": 13,
+      "tunes": 5
+    },
+    {
+      "mini": "[[5, <<1 0> 2 3>, 0], <10 10 <12 9 10>>]@2 <[3, 5, 2][3 <[7 5][6 5]>@2]>@3 3@2 [3, <6 7 6>]",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "[[5, <<1 0> 2 3>, 0], <10 10 <12 9 10>>]@2 <[3, 5, 2][3 <[7, 5][6, 5]>@2]>@3 3@2 [3, <6 7 6>]",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "[[bd bd cp hh*2] | [bd:2 ~ hh lt:2] | [[hh,bd:3] hh:2 hh cp]]",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "[[bd, <0!24 1!4 0!20 1!4 0!20>] - hh <sd [sd, cp] sd [cb, sd]> <hh!11 [bd, oh]> -]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[[c2 ~ ~ c2 ~ ~ c2 ~] [~ c2!3 f2!2 e2 ~]] [[c2 ~ ~ c2 ~ ~ c2 ~] [~ c2!3 d2!3 ~]] [[a2 ~ ~ a2 ~ ~ a2 ~] [~ a2!3 b2!2 b2 ~]] [[g2 ~ ~ g2 ~ ~ g2 ~] [~]] ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[[hh*<2!2 [2|[8 4]] 2>,<- sd:1>] <oh!2 hh*2 oh>]*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[[sh hh*2 [<~ oh>] rim]]",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "[a1][a1][e1][fs1] [d1][fs1][d1][e1]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[a2, e3, cs3][a2, e3, c3][e2, g3, b3][fs2, cs3, as3]  [d2, f3, a3][fs2, cs3, as3][d2, f3, a3][e2, gs3, b3, d3]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[a3:0.7 a3:0.3] ~ [a3:0.7 a3:0.3] ~",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[a4, f#4, d4, b3, g3][b4, g#4, e4, c#4, a3][c5, a4, f4, d4, bb3][b4, g#4, e4, c#4, a3, e3]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[a4,c#4,e4,g#4,c#5],[~ f#6 e6]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[a4,c#4,e4,g#4,c#5],c#6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[a4,c#4,e4],[a5@2 b5 c#6@3]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[a4@3] [b4] [b4] [a4]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[b4,d4,f#4],b4@4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[b4,d4,f#4],b5*3 c#6*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[b4,d4,f#4],d6*2@2 f#6 e6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bass ] ~ <bass ~>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd -  -  bd -  -  bd -  ]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd <[oh hh] [hh hh]> sd hh]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd <bd ~> hh ~ cp ~ bd ~  hh:4 bd <cp oh> ~ sd ~ hh:3 hh], [hh oh:2]*1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd <bd ~> hh ~ cp ~ bd ~  hh:4 bd <cp oh> ~ sd ~ hh:3 hh], [hh oh:2]*4",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd bd] [bd bd] [bd bd] [bd bd]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd hh sd] <sd oh>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd hh] hh sd hh [bd bd] - hh hh - <sd hh>*4",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd hh] hh sd hh bd bd - hh <sd hh>*4",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd hh]*4",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "[bd rim:1 [~ bd] rim:2]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd ~] <~ bd>, [~ rim, [~ ~ ~ ~ ~ rim]]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd ~]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd ~]*2, [~ hh]*2, ~ sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd*2 -] <- [~@2 bd bd - bd - sd]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd*4, ~!3 cp]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd*<1 3> -@3] bd,- [rim@0.02 cp], [- hh:<0 1>:.9]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd,fx]*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd:<1 0!3> hh rim bd hh rim rim*[2|4] bd],[hh hh oh -]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd@0.5  - - -  - - bd@0.5  - bd@0.5  - - bd@0.25  - - - -]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[bd@4 bd] cp:3:1, hh*8:.1:0.6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[c eb g <f bb>](3,8,<0 1>)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[c#4 d4 d4 c#4]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[c#5 [f#5 e5] b4] [b4 b4 c#5 d5] [d5 f#5 e5] [[a4 b4] c#4]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[c1 ds1*2]*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[c2 ds2*2]*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[c2 ~ d3 e2] [c2 d3?0.5 ~ e2?0.5] [c2 d3?0.5 e2 f2?0.5]?0.5 g2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[c2(3,6,<0 1>)]@3 cs2 [d2(3,6, 1)]@3 cs2",
+      "uses": 7,
+      "tunes": 3
+    },
+    {
+      "mini": "[c2, ds3, as3, d4]@3 [ds2, g3, as3, e4] [d3, f3, c4, e3]@3[cs2, g3, b3, f4]",
+      "uses": 16,
+      "tunes": 4
+    },
+    {
+      "mini": "[c2@6 c2 d2@0.75]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[c3@3 e3] [~ g2@2 b2]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[c4,e4,g4,b4][g#4,c4,d#4,g4][g4,b4,d4,f4][c4,e4,g4,c4]",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "[c4,e4,g4,c5]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[c5 d5 e5 g5]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[c5 d5 f5 g#5 a5 g#5 f5]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[c5 f#5 a5 g5]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[cp(<0 0 0 3>,8)]",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "[cp, <->]",
+      "uses": 7,
+      "tunes": 3
+    },
+    {
+      "mini": "[d3@ a1 a2][a1 e1@2 d1][- cs2 a1 ds1 ][a2 c1@3]",
+      "uses": 7,
+      "tunes": 3
+    },
+    {
+      "mini": "[d4 g3](7,16)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[drumloop_170:2 drumloop_170:6 drumloop_170:2 drumloop_170:6 ]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[e f]*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[e1 f2 [e3 f1]] [f2 f3] [g2 g2]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[e2, g3, b3, d4]@3 [g2, b3, d4, e4] [a2, c3, e3, g3]@3 [b1, d3, f#3, a3]",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "[e3(3,8)] [g3!5 ~ g3!2][[a3(3,4,2)] [as3(3,8,5)]] [b3!8]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[e4 f#4 f#4 e4]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[g#2][f2][c#2][c2]",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "[g#4 -] [g#4 - ] c# d# - g#3 g#5 - - - - - - - - -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[g#4 ~ ~ ~]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[g, c4, e4]@3 [b, d4, g4] [g, c4, e4]@3 [a, c4, f4] [g, c4, e4]@4 [[g, b, d4] ~ ~ [g, b, d4] ~ ~ [g, b, d]~]@2 [~]@2 ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[g,b,d]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[g2 d2 e2][d2 b1@2 a1][- a2 f#2 g2 ][d2 b1@3]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[g4 d4 b3][f#4 c4 a3][e4 b3 g3][d4 a3 f#3]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[g4 f#4 g4 e4 d4 e4 c4 d4]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[g4,g#4,c5,d5,d#5][f4,a4,b4,c5,e5][c#4,f4,g4,g#4,c5][c4,e4,g4,b4]",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "[g5 c4] [d5 fb4] [gm4 c5] [a4]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[g5 ~ ~ f5 ~ ~ e5 ~ c5 ~@7]!2 [c6 ~ ~ b5 ~ ~ g5 ~ ~@8] [b5 ~ ~ g5 ~ ~ d5 ~ ~@8]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[hh [hh hh]]!4",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[hh ~]!16",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[hh(5,18)] [^hh]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[hh*8]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[oberheimdmx_tb@0.6  oberheimdmx_tb@0.5 oberheimdmx_tb@0.6  oberheimdmx_tb@0.5]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[oh hh hh] oh hh sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[oh hh oh hh hh hh oh hh ]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[oh]/8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[rd [- - rd?]]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[rd:<0 1> [[hh,rd:<1 2>:.5] - rd:0:.4?]]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[rim x] ~ sd@2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[square, sawtooth]",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "[triangle, sine]",
+      "uses": 20,
+      "tunes": 5
+    },
+    {
+      "mini": "[triangle]",
+      "uses": 8,
+      "tunes": 2
+    },
+    {
+      "mini": "[~ [<[d3,a3,f4]!2 [d3,bb3,g4]!2> ~]]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[~ a1]*2 [~ d2]*2",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "[~ bd*2] hh [~ cp] hh*3 bd,hh cp hh*5 cp hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[~ cp]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[~ cp]*2",
+      "uses": 11,
+      "tunes": 4
+    },
+    {
+      "mini": "[~ hh] [~ hh] [~ hh] [~ hh]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[~ hh]*4",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "[~ noise] ~ [noise] ~ [~ noise] ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[~ sd:16]*2",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "[~ sd]*2",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "[~ white]*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "[~ ~ ~ [a3 c3]]",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "a a a a b b a ~ ~ ~ a ~ [c c] [b b]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a b c2 d1 e3 f4 g5 f4 a a b b b c c d d e e e e f f f f g g g g a a a",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a b g",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a c [e g]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a e b1 c d1 f g",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a!4 b!2 a@4 a@2 c*2 b*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a#4 d#5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a2 gs2 g2 fs2 f2 a2 gs2 as2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a3 [c4@3 e4] g3 b4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a3 [f3@3 d4] b4 g3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a3 c3 e3 f3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a3 c4 f4 e4 d4 c4 bb3 a3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a3 f3 bb3 c4 d4 c4 bb3 a3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a3 ~ ~ ~",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "a4 - bb5 c3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a4 [a4 bb4] c5 [d5 e5] f5 [e5 d5] c5 [bb4 a4]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a4 a4 a4 a4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a4 a4 a4 a4  ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a4 c5 f5 a5 g5 e5 c5 g4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a5*16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "a6!3 as6   a6 as6 a6!2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "ace_hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "ace_ht",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "amen",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "amen/4",
+      "uses": 9,
+      "tunes": 4
+    },
+    {
+      "mini": "amen:1/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "apache/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "b3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "balafon",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "balafon balafon:4 - clap - clap -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "balingba",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bass",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "bassdrum*16 basedrum*88 bassdrum basedrum*99, hihat*16",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bassdrum1:3",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bassloop2:4/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bb1 ~ f2 ~ bb1 ~ f2 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bb2 ~ f2 ~ bb2 ~ f2 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bb3 ~ f3 ~ bb3 ~ f3 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bb4 [bb4 d5] bb4 ~ f5 [f5 g5] f5 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd",
+      "uses": 68,
+      "tunes": 22
+    },
+    {
+      "mini": "bd !2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd - [- bd] -",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "bd - sd - bd [- bd] sd [- bd]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd -!15",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd 3 [2 2] bd 2 [2 2] 3 2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd [bd - bd], sd(2,4,1), hh*6",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "bd [bd bd - bd], sd(2,4,1), hh*8",
+      "uses": 10,
+      "tunes": 4
+    },
+    {
+      "mini": "bd [bd bd - bd], sd(4,4,1), hh*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd [hh hh] sd [hh hh] [bd rim] [hh hh] rim <hh*4 hh*8 bd*8 bd*8>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd [hh hh] sd [hh hh] [bd rim] [hh hh] rim <hh*4 sd*8 rim*8 bd*8>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd [~@3 bd:0:.5?],~@1.02 [sd,rim],hh*4",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "bd bd  ~ bd*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd bd - <- - - [- bd, sd]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd bd - bd,hh,sd,cp",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd bd bd <bd [bd!3 bd*2]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd bd bd bd",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "bd bd bd bd bd bd bd bd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd bd bd bd, - hh - hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd bd bd bd, - sd - sd, <[cr oh hh oh hh oh hh oh] [hh oh]*4!3>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bd bd bd bd, hh ~ hh ~, ~ ~ sd:3 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd bd bd sd sd[cp cp cp]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd bd bd*4 [hh hh*2]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd bd sd hh,oh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd cd sd lt bd bd bd sd hh cr",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bd cp bd cp bd cp bd cp, hh*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd hh bd - [sd,sd] bd hh*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd hh bd hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd hh bd sd bd rim bd hh ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd hh hh rim",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd hh hh sd hh hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd hh sd [hh sd] [hh sd] bd sd oh",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bd hh sd bd hh bd hh sd bd hh bd bd hh bd hh sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd hh sd hh",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "bd hh sd oh",
+      "uses": 7,
+      "tunes": 3
+    },
+    {
+      "mini": "bd hh*2 sd bd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd hh*2 sd hh*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd hh*32 rim hh*16",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bd hh*32 rim hh*16 siren:1 <clap clap>*8",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bd hh:<1 2>:.5 - bd - - bd -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd ht lt*2 - hh sd -rim",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd lt cb cb",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bd oh hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd rim",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd rim rim hh hh sd oh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd sd",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "bd sd <[bd ~] [~ bd]> sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd sd bd bd hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd sd bd sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd sd bd sd,hh*16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd sd cp hh oh cp, cr hh bd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd sd hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd sd hh oh lt ht mt rd cr",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "bd sd hh, gm_overdriven_guitar",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd sd oh hh hh [oh hh oh], hh ht bd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd sn",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd ~",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "bd ~ [sd:1, rim] [bd rim] [~ rim] bd [sd:1, rim] ~",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bd ~ [~ bd*2] ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd ~ [~ bd?],~ hh*<1!2 2> ~, ~ rim*<0!5 1> rim",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd ~ [~ bd] ~, ~ [~ sd] ~ sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd ~ bd ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd ~ hh oh bd <hh sd> ~ oh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd ~ sd ~ bd ~ ~ sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd ~ ~ bd ~ ~ ~ ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd!10?",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bd!2 [bd*4]!2 bd!4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd!4",
+      "uses": 9,
+      "tunes": 4
+    },
+    {
+      "mini": "bd(1,16)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd(10,16)/2, hh(6,8)*2:0:[[.25 .75]*4],[- sd]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd(11,16)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd(3, 8), hh(4, 8, 1)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd(3,4,<0 2>)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd(3,8)",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "bd(3,8,0)",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bd(<2 2 3 5>/4,8)",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bd(<2 3>,8)",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bd(<2 4 5>,9)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*2",
+      "uses": 10,
+      "tunes": 4
+    },
+    {
+      "mini": "bd*2 sd bd*2 sd bd oh bd sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*2,[- sd]*2,[- hh]*4, <-!7 oh>, <-!12 bd*4 bd*8 bd*16!2>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*2,~ [cp,sd]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*3!2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*4",
+      "uses": 51,
+      "tunes": 20
+    },
+    {
+      "mini": "bd*4 . bd*2 . bd . bd*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*4, [- cp]*2, [- hh]*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*4, [~ <sd cp>]*2, [~ hh]*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*4, cp(7, 16,14)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*4, sd(2,4,1), hh*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*4,- [sd*<1 2> -], - oh:<0 1>:.3, [- cp:0:.4?]*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*4,[clap:0:0.5 clap:0:0.9](7,16), hh(4,8,1), [- [- sd:0:0.5] -]*4, -!3 sd(2,4,1)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*5",
+      "uses": 12,
+      "tunes": 6
+    },
+    {
+      "mini": "bd*5 ~*5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd*8",
+      "uses": 18,
+      "tunes": 3
+    },
+    {
+      "mini": "bd*<4!7 [4 8]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd, [- - [sd:1]]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd- bd oh - bd bd mt bd cp hh bd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd808 ~ ~ ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd:1 -, - [sd:1:.6 -]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd:1 <~ ~ bd:1> ~ ~ ~ ~ ~ ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd:1 sd:1 bd:1 sax:1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd:15*2  ~ alesishr16_perc:<1 2 6 8>*<2 4 >@4 ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd:2",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "bd:2*<4!7 8>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "bd:3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd:3(<4!7 <3 6>>,12)",
+      "uses": 11,
+      "tunes": 5
+    },
+    {
+      "mini": "bd:4 [sd . ~ bd:4] [~ cp] hh(3,8)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd:6(3,8) -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "bd:<20 ~ 11> tambourine:<1 2 3 4> agogo:<1 2 3 4>< [5 6 7 8 9]>*4  east:<1 4>< 2 4>< 5 6> space:<1 2 3 4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd? ~ <bd*2? [~ bd]> ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd@3 <bd [~ bd]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd@7 bd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bd_kick",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bdbd hh sd oh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bfoley",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bh sd bh hh rain",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bigb:5",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "blue-velvet",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "bossdr55_hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "brazil",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "break",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "breaks165",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "breaks:2/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "breaks:5/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "breaks:8/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "breaks:[[0|1|2|3|4|5|6|7]*8]/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c <d c> - [c <d c>]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c [a <bb ab>] <b g>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c [c e!2] [b,c] a",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "c a f f e",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c a g",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c d f e",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c eb g bb",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c!3 [eb,<g a bb a>]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c#4,<<g#4!3 g4> <f#4 [d#4 f4] f#4 [f#4 d#4]>>",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "c#4@3 f#4@1.5 e4@1.5 b3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c(<3@3 [3*2 5 ~]@1>,8)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c1 f1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c1 ~ ~ ~ c1 ~ g1 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c2",
+      "uses": 8,
+      "tunes": 3
+    },
+    {
+      "mini": "c2 c2 c2 c2 , < [~ g1 ~ ~] [~ ~ ~ g1] >",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "c2 e3 g4 b5 c6 b5 g4 e3 c2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c2 f2 c2 g2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c2 ~ a2 g2 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c2 ~ ~ g1 ~ ~ a1 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c2, eb3 g3 [bb3 c4 c3]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c2, eb3 g3 [bb3 c4]",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "c2@2 e2 c2 f2 c2 g2 e2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c3",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "c3 bb2 f3 eb3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c3 c2 c2 c2 c3 c2 d3 d#3 c2 c3 c3 c2 c3 c2 d3 d#2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c3 c3 c3 c3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c3 e3 f3 g3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c3 g3 a3 f3 d3 e3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c3 ~ g3 ~ a3 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c3*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c4 - c4 - [c4 d4] - c4 -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c4 [e4@3 g4] b4 d4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c4 a4 f4 e4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c4 f4 a4 c5 a4 f4 a4 c4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c4 f4 a4 g4 f4 e4 d4 c4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c4 g4 c5 g5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c4 ~ eb4 ~ g4 ~ bb4 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c4 ~ g4 a4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c4,g4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c5 [c5 bb4] a4 g4 f4 [g4 a4] bb4 c5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c5 b4 a4 g4 f#4 g4 e4 f#4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c5 e5 g5 a5 b5 a5 g5 e5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c5 e5 g5 b5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c5 f5 a5 f5 c5 ~ f5 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c5 f5 g5 c5 c5 f5 g5 g5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c5 ~ ~ ~ g5 ~ ~ ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c5@8 b4@8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "c6 f6 a6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "casio",
+      "uses": 7,
+      "tunes": 3
+    },
+    {
+      "mini": "casio,balafon,compurhythm78_misc",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "casio:1",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "casio:3",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "cb eb gb bb bb bb bb",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "cb*4",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "chap:1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "charli:1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "charli:2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "church_organ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "cicbird",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "clap",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "clap:1, clap:7",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "claus",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "cocaina",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "cowbell",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "cp",
+      "uses": 11,
+      "tunes": 5
+    },
+    {
+      "mini": "cp rim sd db",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "cp(5,<8 16>,2)",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "cp*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "cp*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "cp?0.8*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "crackle",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "crackle*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "crow",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "crowd/16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "crowd/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "crystal*8",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "d e g b a g a b b a g g g a b a",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "d# f <a#  b>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "d#1*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "d2 a2 d2 d2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "d3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "d4 d4  d e2 d2 d2 e2 c2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "d4 d4 d d2 d2 e2 c2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "d4 d4 d3 e2 d2 d2 e2 c2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "d4 f4 d4 c4 bb3 d4 c4 bb3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "d5 [d5 eb5] f5 ~ bb5 [bb5 a5] g5 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "dancing",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "dantranh_tremolo",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "delight/2",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "distkick",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "dkick",
+      "uses": 6,
+      "tunes": 2
+    },
+    {
+      "mini": "drm/9",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "drumloop/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "duck",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e [c [a b]] b [c,a]",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "e c c# a*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e c c# a*2 ~ e c",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e f f a c",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e1 g1 e3 [g1 e3 g1]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e1 ~ ~ ~ ~ b0 ~ ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e1*10",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e2 e2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e2 e2 d3 e3 d3 c3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e3 d2 g4 a3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e4 [c#5@3 d5] [d4, g4, b4] [d4, g4, b4] [d4, g4, b4]@2 [d5, f#5]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "e4 f4 e4 g4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "east",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "eb1*8 ~ , eb3 g3 [c3 a3]!2 <bb3>!2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "eb2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "electric_piano",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "f#3 b3 e4",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "f2 a2 c3 f3 c3 a2 g2 c2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "f2 c3 a2 c3 f2 c3 g2 c3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "f2 c3 d3 bb2 a2 f2 c3 f2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "f2 c3 f2 c3 f2 c3 f2 c3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "f2 c3 g3 ab3 bb3 eb4 a2 gb3 a3 db4 f4 eb4 bb2 f3 ab3 c4",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "f2 ~ c3 ~ f2 ~ c3 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "f3 a3 c4 a3 f3 a3 c4 f3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "f3 ~ a3 ~ e3 ~ d3 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "f3 ~ a3 ~ g3 ~ d3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "f4 [f4 a4] c5 f5 e5 [d5 c5] bb4 [a4 g4]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "f4 c4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "f5 [f5 a5] c6 a5 f5 [e5 d5] c5 f4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "f5 [f5 e5] d5 [c5 bb4] a4 [bb4 c5] d5 f5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "finance",
+      "uses": 18,
+      "tunes": 5
+    },
+    {
+      "mini": "fmpiano",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "folkharp",
+      "uses": 7,
+      "tunes": 3
+    },
+    {
+      "mini": "fs1 fs1 ~ fs1 d1 ~ a1 ~ e1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "fs5 fs5 e5 fs5 a5 g#5 fs5 e5 d5 d5 cs5 b4 a4 b4 cs5 e5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "fungi:<6!2 <1 <1 2>> <3 5>>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "fx, square",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "fx_revcrash",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "g g g f e g a g g f f f f e d b b a a g g g g g f e 50 51 52 53 54 55 41 42 43 44 45 46 47 48 49",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "g1",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "g2 d2 g3 d2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "g3 f#3 e3 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "g3 g4 g5 g6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "g4\n     !4 g#2 f2 g2!2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "g4 d4 e4 d4 b3 a3 f#4 g4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gardbird",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "glasstap:2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "glitch:7",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_accordion",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_accordion:1",
+      "uses": 13,
+      "tunes": 6
+    },
+    {
+      "mini": "gm_accordion:2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_acoustic_bass",
+      "uses": 41,
+      "tunes": 16
+    },
+    {
+      "mini": "gm_acoustic_bass:1",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_acoustic_bass:5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_acoustic_guitar_nylon",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "gm_acoustic_guitar_steel",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_agogo",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_alto_sax",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_banjo",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_bassoon:0",
+      "uses": 13,
+      "tunes": 6
+    },
+    {
+      "mini": "gm_brass_section",
+      "uses": 8,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_celesta:3",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_celesta:4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_cello",
+      "uses": 8,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_choir_aahs",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_choir_aahs,gm_choir_aahs",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_church_organ",
+      "uses": 10,
+      "tunes": 3
+    },
+    {
+      "mini": "gm_church_organ:2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_clavinet",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_contrabass",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "gm_distortion_guitar",
+      "uses": 10,
+      "tunes": 3
+    },
+    {
+      "mini": "gm_distortion_guitar:2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_drawbar_organ",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_drawbar_organ:4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_dulcimer",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_electric_bass_finger",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "gm_electric_bass_finger:2",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_electric_bass_finger:3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_electric_bass_pick",
+      "uses": 14,
+      "tunes": 4
+    },
+    {
+      "mini": "gm_electric_bass_pick:2",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "gm_electric_guitar_clean",
+      "uses": 10,
+      "tunes": 4
+    },
+    {
+      "mini": "gm_electric_guitar_clean, gm_kalimba",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_electric_guitar_clean:4",
+      "uses": 23,
+      "tunes": 7
+    },
+    {
+      "mini": "gm_electric_guitar_jazz",
+      "uses": 9,
+      "tunes": 4
+    },
+    {
+      "mini": "gm_electric_guitar_jazz,supersaw",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_electric_guitar_muted",
+      "uses": 13,
+      "tunes": 3
+    },
+    {
+      "mini": "gm_electric_guitar_muted,sawtooth,pulse,z_tan",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_eletric_guitar_clean",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_epiano1",
+      "uses": 16,
+      "tunes": 5
+    },
+    {
+      "mini": "gm_epiano1 piano:x:.5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_epiano1:1",
+      "uses": 9,
+      "tunes": 4
+    },
+    {
+      "mini": "gm_epiano1:4",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_epiano2",
+      "uses": 11,
+      "tunes": 5
+    },
+    {
+      "mini": "gm_fiddle",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_fingered_bass",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_flute",
+      "uses": 18,
+      "tunes": 8
+    },
+    {
+      "mini": "gm_french_horn",
+      "uses": 12,
+      "tunes": 3
+    },
+    {
+      "mini": "gm_fretless_bass",
+      "uses": 17,
+      "tunes": 8
+    },
+    {
+      "mini": "gm_fretless_bass,square",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_fx_atmosphere",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_fx_brightness",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_fx_crystal",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_fx_crystal:5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_fx_goblins",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_fx_soundtrack",
+      "uses": 8,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_guitar_fret_noise",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_harpsichord, sine",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_harpsichord:3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_helicopter",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_kalimba",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_lead_1_square",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_lead_2_sawtooth",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_lead_6_voice",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_lead_7_fifths",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_lead_8_bass_lead",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_marimba",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_music_box",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_oboe",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_oboe:4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_ocarina",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "gm_orchestra_hit",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_overdriven_guitar",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "gm_pad_bowed",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_pad_bowed:1",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_pad_choir",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_pad_halo",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_pad_metallic",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_pad_poly",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_pad_sweep",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_pad_warm",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_pan_flute",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_piano",
+      "uses": 9,
+      "tunes": 4
+    },
+    {
+      "mini": "gm_piano gm_electric_guitar_jazz",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_piano:1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_pizzicato_strings",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_reed_organ",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_rock_organ:1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_rock_organ:2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_shamisen",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_shanai",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_sitar",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_slap_bass_1:1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_slap_bass_2",
+      "uses": 8,
+      "tunes": 3
+    },
+    {
+      "mini": "gm_string_ensemble_2",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "gm_synth_bass_1",
+      "uses": 18,
+      "tunes": 6
+    },
+    {
+      "mini": "gm_synth_bass_1:6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_synth_bass_2",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_synth_bass_2:0",
+      "uses": 20,
+      "tunes": 9
+    },
+    {
+      "mini": "gm_synth_bass_2:1",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "gm_synth_brass_1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_synth_brass_1:3",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "gm_synth_brass_2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_synth_choir",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_synth_strings_1",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_synth_strings_1 piano",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_synth_strings_1, gm_pad_new_age",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_synth_strings_1:1",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_synth_strings_1:2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_synth_strings_2:1",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_synth_strings_2:2",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_taiko_drum:1*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_tenor_sax",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_timpani",
+      "uses": 8,
+      "tunes": 3
+    },
+    {
+      "mini": "gm_tinkle_bell",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_trombone",
+      "uses": 8,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_trumpet",
+      "uses": 20,
+      "tunes": 3
+    },
+    {
+      "mini": "gm_tuba",
+      "uses": 8,
+      "tunes": 2
+    },
+    {
+      "mini": "gm_tubular_bells",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_vibraphone",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_viola",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_violin",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "gm_violin:6",
+      "uses": 13,
+      "tunes": 6
+    },
+    {
+      "mini": "gm_voice_oohs",
+      "uses": 7,
+      "tunes": 3
+    },
+    {
+      "mini": "gm_whistle",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gm_xylophone ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "golosa/32",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "gong:1 agogo:2 marktrees:1 bassdrum1:3",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "gravel/1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "great:8",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "gretsch",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "guiro",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hacking/8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "handchimes",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "harp",
+      "uses": 7,
+      "tunes": 2
+    },
+    {
+      "mini": "hats:12",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "haunted",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "hh",
+      "uses": 33,
+      "tunes": 12
+    },
+    {
+      "mini": "hh ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh !8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh <hh hh*3 oh hh*2> <hh*2 hh [~ hh]> hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh hh <oh <hh ~>> hh oh",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "hh hh [hh hh] hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh hh cp - ",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "hh hh hh hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh sd bd [hh oh] db",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh ~ [oh hh]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh!4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh!5 hh!5 hh!6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh(1,16,0)",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "hh(15,16,1)",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "hh(7,8,1)",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "hh(9,16)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh(<3, 7>, 16)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh*10",
+      "uses": 12,
+      "tunes": 6
+    },
+    {
+      "mini": "hh*16",
+      "uses": 21,
+      "tunes": 7
+    },
+    {
+      "mini": "hh*16?",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh*16?, bd*4, cp(7, 16, 14)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh*2",
+      "uses": 19,
+      "tunes": 7
+    },
+    {
+      "mini": "hh*2 [~ bd*3] hh*2 bd*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh*20",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh*3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh*4",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "hh*4 - - -",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh*4(5,8,2)",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "hh*5 <bd bd> ~ sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh*8",
+      "uses": 25,
+      "tunes": 10
+    },
+    {
+      "mini": "hh*8?",
+      "uses": 6,
+      "tunes": 2
+    },
+    {
+      "mini": "hh*<4!7 8!2>",
+      "uses": 10,
+      "tunes": 5
+    },
+    {
+      "mini": "hh*[<4 8>/16]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh,hh oh sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh:1 ~ sd:1 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh:1*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hh:1*8",
+      "uses": 7,
+      "tunes": 3
+    },
+    {
+      "mini": "hh:3(2,3,1)*4",
+      "uses": 11,
+      "tunes": 5
+    },
+    {
+      "mini": "hh:3:.2*<8!24 16!16>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "hihat",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "ht lt",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "ihatebirds",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "industrial",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "insect",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "insect:2 [insect:2]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "jazz",
+      "uses": 15,
+      "tunes": 7
+    },
+    {
+      "mini": "jazz:<[8 2 ][<8 9>][<  3>][<2 21>]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "kalimba",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "kawa",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "kawai",
+      "uses": 18,
+      "tunes": 6
+    },
+    {
+      "mini": "laugh:7",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "long",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "loop4/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "loopAmen02",
+      "uses": 19,
+      "tunes": 8
+    },
+    {
+      "mini": "loopAmen03",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "loopamen02",
+      "uses": 8,
+      "tunes": 2
+    },
+    {
+      "mini": "lp:6/4",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "lt cp",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "lt ht mt cp",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "lt mt [ht ht lt]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "lt mt ht ht",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "lt mt lt cr",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "message3",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "metal",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "misc misc [~ cb]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "misc(3, 8)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "movement",
+      "uses": 11,
+      "tunes": 5
+    },
+    {
+      "mini": "movement/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "noise",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "noise:4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "nudel_like_you_just_dont_care/1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "numbers",
+      "uses": 12,
+      "tunes": 6
+    },
+    {
+      "mini": "numbers*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "numbers, - piano",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "ny",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "o1",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "oberheimdmx_rim",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "ocarina/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "ocarina_small",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "ocarina_vib",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "oceandrum",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "odia",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "oh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "oh hh rd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "oh oh oh oh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "oh(1,16,15)",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "oh*16",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "oh*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "ohohno",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "oneshots",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "pad",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "pad/16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "passerine_acc:2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "passerine_acc:4",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "passerine_acc:5",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "passerine_hihat:4*16",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "passerine_kick:5, passerine_basse:5 ",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "perc",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "perc:0(3,12,3)",
+      "uses": 11,
+      "tunes": 5
+    },
+    {
+      "mini": "perc:2(7,12,3)",
+      "uses": 11,
+      "tunes": 5
+    },
+    {
+      "mini": "pfiff/8",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "piano",
+      "uses": 179,
+      "tunes": 60
+    },
+    {
+      "mini": "piano, gm_synth_bass_2",
+      "uses": 8,
+      "tunes": 1
+    },
+    {
+      "mini": "piano, handchimes",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "piano, square",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "piano,sine",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "piano1,jazz",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "pigeon",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "pink",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "pno",
+      "uses": 8,
+      "tunes": 1
+    },
+    {
+      "mini": "psaltery_pluck",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "pulse",
+      "uses": 7,
+      "tunes": 3
+    },
+    {
+      "mini": "pulse:.3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "pulse:[0.3 0.5 0.7 0.2]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "rams_head_1/8",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "rams_head_2/8",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "rave",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "rd:<0 1 2 3 4>*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "rd:<1 3 2>*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "rd:<1!3 2>*2",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "rd:<2 3 1>*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "recorder_alto_sus, piano",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "rhodes",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "ride",
+      "uses": 6,
+      "tunes": 2
+    },
+    {
+      "mini": "riffin",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "riffin/2",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "rim it it rim ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "rim rim rim rim",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "rim | cp | [<rim*3> cp <hh*3>]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "rim | ~  | cp | ~ |[<rim*3> cp <hh*3>] | ~ ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "rim(1,3,2)*4",
+      "uses": 11,
+      "tunes": 5
+    },
+    {
+      "mini": "rim(3,32)?0.2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "rim(3,<16 8>)",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "rs ~ ~ ~ ~ rs ~ rs",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sawbass",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sawtooth",
+      "uses": 227,
+      "tunes": 78
+    },
+    {
+      "mini": "sawtooth ",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "sawtooth, triangle",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sawtooth,pink",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "sawtooth,square:0:.2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sawtooth,supersaw",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sawtooth,triangle",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sawtooth:0:.8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sawtooth:<1 3 5 7 9 13>, brown:<2 4 6 7 2>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "sawtooth:<13 17 19>,<1 3 5 7>, <11 7 4>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "sax:2 sax:3 sax:1 saxello:1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sax_stacc",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "saxello_stacc",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "scream",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sd",
+      "uses": 19,
+      "tunes": 7
+    },
+    {
+      "mini": "sd bd bd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sd hh:[1|0]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sd sd*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sd!15(10,30)",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "sd*2 sd*4 sd*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sd:3(<2!3 3>,12,3)",
+      "uses": 11,
+      "tunes": 5
+    },
+    {
+      "mini": "sd:4/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "senegal",
+      "uses": 6,
+      "tunes": 1
+    },
+    {
+      "mini": "sh:1!4 sh:0!2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "shaker_large",
+      "uses": 7,
+      "tunes": 3
+    },
+    {
+      "mini": "short:[[0|1|2|3|4|5|6|7]*160]/4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "shortahh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sine",
+      "uses": 180,
+      "tunes": 62
+    },
+    {
+      "mini": "sine ",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "sine pink",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sine sine sine sine sawtooth",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sine, triangle",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sine,sawtooth",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "sine,square",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "siren",
+      "uses": 6,
+      "tunes": 3
+    },
+    {
+      "mini": "siren:1*4 - siren:2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "something_in_return",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "space:1*[1|3|5|7|9|11|13|15|17|19] hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "spacedrum",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "square",
+      "uses": 77,
+      "tunes": 28
+    },
+    {
+      "mini": "square ",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "square gm_pizzicato_strings <gm_kalimba:<1 2 3 4 5 6>>*4 gm_pad_bowed:<1 2 3 4>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "square, sine",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "square, triangle, sawtooth",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "square,sawtooth",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "sri",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "steinway",
+      "uses": 12,
+      "tunes": 1
+    },
+    {
+      "mini": "supersaw",
+      "uses": 91,
+      "tunes": 38
+    },
+    {
+      "mini": "supersaw(11, 16)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "supersaw(9, 16)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "supersaw*12",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "supersaw*4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "supersaw,gm_accordion",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "supersaw,white:0:.1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "supersaw:4 ~ supersaw:7 supersaw:11",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "swpad",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "swpad:0",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "swpad:1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "swpad:<0@2 8@2 6@2 7@2 4@2>",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "synth",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "tabla2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "tech:5",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "temporality end",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "thailand",
+      "uses": 8,
+      "tunes": 1
+    },
+    {
+      "mini": "theslayestcapybaraaonearth",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "think",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "think/1",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "todo",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "tom",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "tr909_bd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "tr909_oh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "tr909_sd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "tri",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "trial",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "trial:0:.4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "triangle",
+      "uses": 42,
+      "tunes": 17
+    },
+    {
+      "mini": "triangle, sawtooth",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "triangle,<-!2 gm_sitar!4>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "triangle:<1 2 3 4 5>,<6 4 2 1 2 7>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "tubularbells",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "tubularbells/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "useme/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "uuh/8",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "vib*2 ",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "vibraphone",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "vibraphone_bowed",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "violin",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "viscospacedrum_misc:3",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "vox",
+      "uses": 8,
+      "tunes": 2
+    },
+    {
+      "mini": "vox*1/2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "vox1 ~ vox2 ~ vox3 ~ vox1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "warm_pad",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "white",
+      "uses": 10,
+      "tunes": 4
+    },
+    {
+      "mini": "white!8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "white*10",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "white*16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "white*8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "white?0.8*2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "wind",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "wind:1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "wind:2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "woodblock",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "x",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "x x x",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "x(3,8)",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "xylophone_hard_ff",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "xylophone_medium_ff",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "z_noise",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "z_sawtooth",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "z_sine",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "z_square",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "z_tan",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "z_triangle",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "zilpzalp",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{0 - 0 -  -1 - 0 -  1 2 - <1 0 -1 -2>  - - <- - - 2> <- - - 1>}%16",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "{0 0 7 0 0 4 0 0 0 7 7 7 0 0}%8",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "{0 1 3 5 2 }%16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{0 1 4 5 10 12}%16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{0 [4 5] 1 4}%4, 8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{0@2 0.25 0@4 0.5 .3 .5}%8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{6@3 4@3 2@3 0@3  0@3 <0 7>}%16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{7 6@2 4 4@2 2 2@2 0 0@2  0@3 <0 2>}%16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{8 4 - 2}%<16>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{B4!10 B4 A4 F#3 B4 A4 F#3 B4 A4 F#3 B4 A4 F#3}%5*2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "{E3 D4 F#4 D4}%5*2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "{E3 G3 D4 E3 D4 D4}%5*2",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "{[B2,E2]@6 [F#2,D3]@3 [C#2,F#2]@2}%5",
+      "uses": 9,
+      "tunes": 1
+    },
+    {
+      "mini": "{[E3,D4,F#4] ~ ~ ~ ~ ~ [D3,C#4,F#4] ~ ~ [B2,C#4,F#4] ~}%5",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "{bd hh oh sd bd sd sd hh }%8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{c [f g] d# d}%2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{c2!32 a#1!32}%8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{f1}%8",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{g d c b a}%16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "{~ perc ~}%16",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "~  bd  ~ bd",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ 1 ~  3 ~ ~ 3 1",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "~ 3 [8 0] 4 ~ 8 [~ 5] -3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ 6 ~ 6 ~ 6 ~ 6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ <a3 b3 d4>?0.5 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ <c4 e4>?0.4 ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ <sd [sd sd:1@15]>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ G4 ~ D4 ~ C4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ [rim, sd:<1 3>]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ [rim, sd:<2 3>]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ [~ ~ perc perc:2] [perc:4 perc:4 ~ perc:1] perc:4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ a4 ~ a4 ~ g4 ~ g4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ bd ~ ~, ~ ~ ~ rim",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "~ c5 ~ ~ ,~ f5 ~ ~ ,~ c6*2 ~ ~ ",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ cp",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "~ cp | ~ | [rim hh] ~ [mt | ~ ] ~ [  ~ | ~ lt | ~ ]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ cp ~ <oh cp>",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "~ cp ~ cp",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "~ cp ~ ~ cp",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ f4 ~ f4 ~ f4 ~ f4",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ hh",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "~ hh ~ [hh hh] ~ hh ~ hh",
+      "uses": 9,
+      "tunes": 4
+    },
+    {
+      "mini": "~ hh ~ hh",
+      "uses": 4,
+      "tunes": 2
+    },
+    {
+      "mini": "~ hh ~ hh ~ hh ~ hh",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ hh*12",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ sd",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "~ sd ~ [sd ~ ~ sd]",
+      "uses": 9,
+      "tunes": 4
+    },
+    {
+      "mini": "~ sd ~ sd",
+      "uses": 8,
+      "tunes": 4
+    },
+    {
+      "mini": "~ sd ~[sd[~ <~~~ sd>]]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ sd:[<1 3>/16]",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ siren",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "~ ~  ~ ~ <~ <~ jazz:4>>",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "~ ~ 0 ~ 0 ~ ~ 0",
+      "uses": 5,
+      "tunes": 2
+    },
+    {
+      "mini": "~ ~ [~ sd] ~ ~ ~ ~ <~ sd>",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ ~ [~ ~ ~ hh*3 ~] ~ hh*3 ~ ~ ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ ~ sd ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ ~ sd ~ ~ ~ sd ~",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ ~ ~ A1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ ~ ~ bd(<2 4!2>, 8)",
+      "uses": 3,
+      "tunes": 1
+    },
+    {
+      "mini": "~ ~ ~ cp:1",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ ~ ~ ~ ~ ~  F2!2",
+      "uses": 4,
+      "tunes": 1
+    },
+    {
+      "mini": "~ ~ ~ ~ ~ ~ F2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ ~ ~ ~ ~ ~ ~ A3",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~ ~ ~ ~ ~ ~ ~ C2",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~@2 c6 d#5@2 c6 ~@6",
+      "uses": 2,
+      "tunes": 1
+    },
+    {
+      "mini": "~[cp*8]",
+      "uses": 2,
+      "tunes": 1
+    }
+  ]
+}
