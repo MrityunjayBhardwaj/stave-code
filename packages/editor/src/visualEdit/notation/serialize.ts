@@ -79,19 +79,24 @@ function spliceGrid(model: StepGridModel): string | null {
   for (const p of src.parts) {
     const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part)
     const cols = partColumns(lanes, model.steps, p.factor)
-    if (cols === null) return null
-    // The regions index the grid they were parsed from. A resolution change
-    // re-lays every column, so the moment the totals disagree no region means
-    // anything and copying one through would paste the wrong bytes.
+    // The regions index the grid they were parsed from. If this part can no
+    // longer be written at its own width — the user painted a hit finer than
+    // its notation holds — then ITS regions are void, and ONLY its own: the
+    // parts beside it were not touched and keep what the user wrote. Strudel
+    // normalizes every `,`-part to its own weight, so re-emitting one of them
+    // at the shared resolution leaves the others sounding exactly as written.
     const last = p.regions[p.regions.length - 1]
-    if (!last || last.to !== cols.length) return null
+    out += p.before
+    if (cols === null || last === undefined || last.to !== cols.length) {
+      out += gridColumns(lanes, model.steps).join(' ') + p.after
+      continue
+    }
     // A lone element owning the whole line has nothing to stay aligned WITH, so
     // a re-emit can spread across the line as plain steps instead of holding
     // its one step's worth of brackets: rewriting `hh*8` reads `hh ~ hh …`, not
     // `[hh ~ hh …]`. Identical to Strudel either way — a bracket around the
     // whole cycle IS the cycle — so this is only about not handing back noise.
     const sole = src.parts.length === 1 && src.prefix === '' && p.regions.length === 1
-    out += p.before
     for (const r of p.regions) {
       const now = cols.slice(r.from, r.to)
       // untouched → the span's own bytes, verbatim; touched → re-emit, keeping

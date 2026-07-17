@@ -26781,11 +26781,13 @@ function spliceGrid(model) {
   for (const p of src.parts) {
     const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part);
     const cols = partColumns(lanes, model.steps, p.factor);
-    if (cols === null) return null;
     const last = p.regions[p.regions.length - 1];
-    if (!last || last.to !== cols.length) return null;
-    const sole = src.parts.length === 1 && src.prefix === "" && p.regions.length === 1;
     out += p.before;
+    if (cols === null || last === void 0 || last.to !== cols.length) {
+      out += gridColumns(lanes, model.steps).join(" ") + p.after;
+      continue;
+    }
+    const sole = src.parts.length === 1 && src.prefix === "" && p.regions.length === 1;
     for (const r of p.regions) {
       const now2 = cols.slice(r.from, r.to);
       out += sameCells(now2, r.cells) ? r.raw : r.leading + (sole ? now2.map(cellToken).join(" ") : reemitRegion(now2, p.div)) + r.trailing;
