@@ -1,6 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import { parseStepGrid, parsePianoRoll } from '../parse'
 import { serializeStepGrid, serializePianoRoll } from '../serialize'
+import type { StepGridModel, PianoRollModel } from '../model'
+
+/**
+ * The view a model shows, without its provenance. `-` and `~` are the same rest
+ * to the grid and different bytes in the file — since #913 the model carries
+ * both, so "parses identically" has to mean the view or it would be asserting
+ * that we forgot which one the user typed.
+ */
+const gridView = (m: StepGridModel) => ({ steps: m.steps, bars: m.bars, lanes: m.lanes })
+const rollView = (m: PianoRollModel) => ({ steps: m.steps, bars: m.bars, notes: m.notes })
 
 /**
  * #468 — a bare `-` is a rest, identical to `~`.
@@ -19,7 +29,7 @@ describe('#468 — bare `-` rest', () => {
     const tilde = parseStepGrid('bd ~ bd ~')
     expect(dash.ok).toBe(true)
     expect(tilde.ok).toBe(true)
-    if (dash.ok && tilde.ok) expect(dash.model).toEqual(tilde.model)
+    if (dash.ok && tilde.ok) expect(gridView(dash.model)).toEqual(gridView(tilde.model))
   })
 
   it('step grid: a `-` occupies its own silent slot', () => {
@@ -35,14 +45,14 @@ describe('#468 — bare `-` rest', () => {
     const tilde = parsePianoRoll('c3 ~ e3 ~')
     expect(dash.ok).toBe(true)
     expect(tilde.ok).toBe(true)
-    if (dash.ok && tilde.ok) expect(dash.model).toEqual(tilde.model)
+    if (dash.ok && tilde.ok) expect(rollView(dash.model)).toEqual(rollView(tilde.model))
   })
 
   it('nested group: `bd [hh -]` treats the `-` as a rest in the sub-sequence', () => {
     const dash = parseStepGrid('bd [hh -]')
     const tilde = parseStepGrid('bd [hh ~]')
     expect(dash.ok).toBe(true)
-    if (dash.ok && tilde.ok) expect(dash.model).toEqual(tilde.model)
+    if (dash.ok && tilde.ok) expect(gridView(dash.model)).toEqual(gridView(tilde.model))
   })
 
   it('a trailing `-` is a rest', () => {
@@ -51,10 +61,19 @@ describe('#468 — bare `-` rest', () => {
     if (r.ok) expect(r.model.lanes[0].cells).toEqual([true, false])
   })
 
-  it('serializes a `-` rest back as the canonical `~` (write-back normalizes)', () => {
+  it('writes a `-` rest back as the `-` the user typed (#913)', () => {
+    // This used to normalize to `~`. `-` and `~` are the same rest to Strudel,
+    // so rewriting one as the other is a change with no purpose the user asked
+    // for — and it landed on their line the moment they touched a cell.
     const r = parseStepGrid('bd - bd')
     expect(r.ok).toBe(true)
-    if (r.ok) expect(serializeStepGrid(r.model)).toBe('bd ~ bd')
+    if (r.ok) expect(serializeStepGrid(r.model)).toBe('bd - bd')
+  })
+
+  it('piano roll: STILL normalizes `-` to `~` — span surgery has not reached it (#913)', () => {
+    // Pinned rather than left to be discovered: the grid keeps the user's bytes
+    // and the roll does not yet, and that difference is a scope line, not a
+    // decision. The roll's 160 rewrites are the follow-up.
     const roll = parsePianoRoll('c3 - e3')
     expect(roll.ok).toBe(true)
     if (roll.ok) expect(serializePianoRoll(roll.model)).toBe('c3 ~ e3')

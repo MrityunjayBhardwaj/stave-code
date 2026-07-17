@@ -121,6 +121,38 @@ test.describe('Sequencer (#382)', () => {
     await expect(grid.locator('[data-seq-cell="0:2"]')).toHaveAttribute('aria-pressed', 'true')
   })
 
+  /**
+   * #913 — an edit must not be collateral. `bd hh*2 sd cp` shows an 8-column
+   * grid; the cell clicked here is in the `bd`'s own half, nowhere near the
+   * `hh*2`. Before span surgery the whole line came back rebuilt from the grid
+   * as `bd bd hh hh sd ~ cp ~` and the `*2` was simply gone.
+   *
+   * Driven through the real gesture on the real document rather than a forced
+   * model: the writer's caller replaces the WHOLE mini range, so a unit test on
+   * the serializer alone cannot see what actually lands in the user's file.
+   */
+  test('an edit keeps the notation it did not touch (#913)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd hh*2 sd cp")')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    // the bd lane spans columns 0-1; turn on column 1 — inside `bd`, not `hh*2`
+    await grid.locator('[data-seq-cell="0:1"]').click()
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: s("[bd bd] hh*2 sd cp")')
+  })
+
+  /** #913 — opening a pattern and clicking nothing must not touch the document. */
+  test('opening a euclid pattern leaves the source alone (#913)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd(3,8)")')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveAttribute('aria-pressed', 'true')
+    expect(await strudelValue(page)).toBe('$: s("bd(3,8)")')
+  })
+
   test('highlights the playing step during playback (#391)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd hh sn hh")') // focuses the editor

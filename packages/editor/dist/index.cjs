@@ -26434,7 +26434,7 @@ function elementToSteps(el, allowNumeric) {
 __name(elementToSteps, "elementToSteps");
 function tokenize2(mini, allowNumeric = false) {
   const src = mini.trim();
-  if (src === "") return { ok: true, steps: [] };
+  if (src === "") return { ok: true, steps: [], elements: [] };
   let ast;
   try {
     ast = krillParser_js.parse('"' + src + '"');
@@ -26452,12 +26452,16 @@ function tokenize2(mini, allowNumeric = false) {
     };
   }
   const steps = [];
+  const elements = [];
   for (const el of ast.source_) {
     const mapped = elementToSteps(el, allowNumeric);
     if (!Array.isArray(mapped)) return { ok: false, reason: mapped.reason };
+    const loc = el.location_;
+    if (loc) elements.push({ start: loc.start.offset - 1, end: loc.end.offset - 1, steps: mapped.length });
     steps.push(...mapped);
   }
-  return { ok: true, steps };
+  const tiled = elements.length === ast.source_.length;
+  return { ok: true, steps, elements: tiled ? elements : [] };
 }
 __name(tokenize2, "tokenize");
 var gridHasElongation = /* @__PURE__ */ __name((steps) => steps.some((s) => s.elongation !== 1 || (s.sub?.some((slot) => slot.units !== 1) ?? false)), "gridHasElongation");
@@ -26487,6 +26491,35 @@ function lanesFromCells(cells, part) {
   }));
 }
 __name(lanesFromCells, "lanesFromCells");
+function buildRegions(src, elements, div, cells) {
+  if (elements.length === 0) return null;
+  const regions = [];
+  let col = 0;
+  for (const el of elements) {
+    const raw = src.slice(el.start, el.end);
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const to = col + el.steps * div;
+    regions.push({
+      raw,
+      leading,
+      trailing,
+      from: col,
+      to,
+      // the grid's view of these columns, not the raw atoms — see SourceRegion
+      cells: cells.slice(col, to).map((c) => [...new Set(c)])
+    });
+    col = to;
+  }
+  if (regions.map((r) => r.raw).join("") !== src) return null;
+  return regions;
+}
+__name(buildRegions, "buildRegions");
+function singlePart(src, elements, div, cells) {
+  const regions = buildRegions(src, elements, div, cells);
+  return regions ? [{ part: 0, div, factor: 1, before: "", after: "", regions }] : null;
+}
+__name(singlePart, "singlePart");
 function parseStepGrid(mini) {
   const alt = unwrapAlternation(mini);
   if (alt !== null) return gridFromAlternation(alt);
@@ -26502,7 +26535,16 @@ function parseStepGrid(mini) {
     return { ok: false, reason: `sub-sequences expand the grid past ${MAX_STEPS} steps` };
   }
   const cells = toCells(tok.steps, div);
-  return { ok: true, model: { steps: cells.length, lanes: lanesFromCells(cells) } };
+  const src = mini.trim();
+  const sourceParts = singlePart(src, tok.elements, div, cells);
+  return {
+    ok: true,
+    model: {
+      steps: cells.length,
+      lanes: lanesFromCells(cells),
+      ...sourceParts ? { source: { text: src, prefix: "", suffix: "", parts: sourceParts } } : {}
+    }
+  };
 }
 __name(parseStepGrid, "parseStepGrid");
 function gridFromAlternation(inner) {
@@ -26517,14 +26559,30 @@ function gridFromAlternation(inner) {
     return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` };
   }
   const cells = toCells(tok.steps, div);
+  const src = inner.trim();
+  const parts = singlePart(src, tok.elements, div, cells);
   return {
     ok: true,
-    model: { steps: cells.length, bars: tok.steps.length, lanes: lanesFromCells(cells) }
+    model: {
+      steps: cells.length,
+      bars: tok.steps.length,
+      lanes: lanesFromCells(cells),
+      ...parts ? {
+        source: {
+          text: src,
+          parts,
+          prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
+          suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
+        }
+      } : {}
+    }
   };
 }
 __name(gridFromAlternation, "gridFromAlternation");
 function gridFromStack(parts) {
   const partCells = [];
+  const divs = [];
+  const elements = [];
   for (const part of parts) {
     if (part.trim() === "") return { ok: false, reason: "empty stack part" };
     const tok = tokenize2(part);
@@ -26532,7 +26590,10 @@ function gridFromStack(parts) {
     if (gridHasElongation(tok.steps)) {
       return { ok: false, reason: "elongation is beyond the drum-grid subset" };
     }
-    partCells.push(toCells(tok.steps, division(tok.steps)));
+    const div = division(tok.steps);
+    divs.push(div);
+    elements.push(tok.elements);
+    partCells.push(toCells(tok.steps, div));
   }
   const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1);
   if (total > MAX_STEPS) {
@@ -26547,9 +26608,35 @@ function gridFromStack(parts) {
     );
     lanes.push(...lanesFromCells(stretched, part));
   });
-  return { ok: true, model: { steps: total, lanes } };
+  return {
+    ok: true,
+    model: { steps: total, lanes, ...stackSource(parts, divs, elements, partCells, total) ?? {} }
+  };
 }
 __name(gridFromStack, "gridFromStack");
+function stackSource(parts, divs, elements, partCells, total) {
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    const raw = parts[i];
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const regions = buildRegions(raw.trim(), elements[i], divs[i], partCells[i]);
+    if (!regions) return null;
+    out.push({
+      part: i,
+      div: divs[i],
+      factor: total / (partCells[i].length || 1),
+      before: (i > 0 ? "," : "") + leading,
+      after,
+      regions
+    });
+  }
+  const text = parts.join(",");
+  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
+  if (rebuilt !== text) return null;
+  return { source: { text, prefix: "", suffix: "", parts: out } };
+}
+__name(stackSource, "stackSource");
 var GAIN_TOKEN2 = /^\d+(\.\d+)?$/;
 function parseGainMini(mini, count) {
   const tokens = mini.trim().split(/\s+/).filter((t) => t !== "");
@@ -26699,6 +26786,8 @@ function fmtGain(v) {
 }
 __name(fmtGain, "fmtGain");
 function serializeStepGrid(model) {
+  const spliced = spliceGrid(model);
+  if (spliced !== null) return spliced;
   const bars = model.bars ?? 1;
   if (bars > 1) return gridBars(model, bars);
   const parts = [...new Set(model.lanes.map((l) => l.part ?? 0))].sort((a, b) => a - b);
@@ -26711,15 +26800,63 @@ function serializeStepGrid(model) {
   ).join(", ");
 }
 __name(serializeStepGrid, "serializeStepGrid");
-function gridColumns(lanes, steps) {
+function spliceGrid(model) {
+  const src = model.source;
+  if (!src || src.parts.length === 0) return null;
+  const gain = serializeStepGain(model);
+  if (gain.kind === "write" && gain.quoted) return null;
+  let out = src.prefix;
+  for (const p of src.parts) {
+    const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part);
+    const cols = partColumns(lanes, model.steps, p.factor);
+    if (cols === null) return null;
+    const last = p.regions[p.regions.length - 1];
+    if (!last || last.to !== cols.length) return null;
+    const sole = src.parts.length === 1 && src.prefix === "" && p.regions.length === 1;
+    out += p.before;
+    for (const r of p.regions) {
+      const now2 = cols.slice(r.from, r.to);
+      out += sameCells(now2, r.cells) ? r.raw : r.leading + (sole ? now2.map(cellToken).join(" ") : reemitRegion(now2, p.div)) + r.trailing;
+    }
+    out += p.after;
+  }
+  return out + src.suffix;
+}
+__name(spliceGrid, "spliceGrid");
+function partColumns(lanes, steps, factor) {
+  if (factor < 1 || steps % factor !== 0) return null;
+  const all = columnAtoms(lanes, steps);
   const cols = [];
-  for (let i = 0; i < steps; i++) {
-    const active2 = lanes.filter((l) => l.cells[i]).map((l) => l.sound);
-    if (active2.length === 0) cols.push("~");
-    else if (active2.length === 1) cols.push(active2[0]);
-    else cols.push(`[${active2.join(",")}]`);
+  for (let c = 0; c < steps; c++) {
+    if (c % factor === 0) cols.push(all[c]);
+    else if (all[c].length > 0) return null;
   }
   return cols;
+}
+__name(partColumns, "partColumns");
+function columnAtoms(lanes, steps) {
+  const cols = [];
+  for (let i = 0; i < steps; i++) cols.push(lanes.filter((l) => l.cells[i]).map((l) => l.sound));
+  return cols;
+}
+__name(columnAtoms, "columnAtoms");
+var sameCell = /* @__PURE__ */ __name((a, b) => a.length === b.length && a.every((x) => b.includes(x)), "sameCell");
+var sameCells = /* @__PURE__ */ __name((a, b) => a.length === b.length && a.every((c, i) => sameCell(c, b[i])), "sameCells");
+function reemitRegion(cols, div) {
+  const steps = [];
+  for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(cols.slice(i, i + div)));
+  return steps.join(" ");
+}
+__name(reemitRegion, "reemitRegion");
+function reemitStep(cols) {
+  if (cols.length === 1) return cellToken(cols[0]);
+  if (cols.every((c) => c.length === 0)) return "~";
+  return `[${cols.map(cellToken).join(" ")}]`;
+}
+__name(reemitStep, "reemitStep");
+var cellToken = /* @__PURE__ */ __name((atoms) => atoms.length === 0 ? "~" : atoms.length === 1 ? atoms[0] : `[${atoms.join(",")}]`, "cellToken");
+function gridColumns(lanes, steps) {
+  return columnAtoms(lanes, steps).map(cellToken);
 }
 __name(gridColumns, "gridColumns");
 function serializeStepGain(model) {
@@ -41036,18 +41173,19 @@ function duplicateArm(doc, control, i) {
 __name(duplicateArm, "duplicateArm");
 
 // src/visualEdit/notation/resize.ts
+var restructured = /* @__PURE__ */ __name(({ source: _drop, ...rest }) => rest, "restructured");
 function resizeGrid(model, nextSteps, mode) {
   if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
   if (mode === "pad" || model.steps === 0) {
     return {
-      ...model,
+      ...restructured(model),
       steps: nextSteps,
       lanes: model.lanes.map((l) => ({ ...l, cells: padCells(l.cells, nextSteps) }))
     };
   }
   const from = model.steps;
   return {
-    ...model,
+    ...restructured(model),
     steps: nextSteps,
     lanes: model.lanes.map((l) => ({
       ...l,

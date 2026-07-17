@@ -18,12 +18,22 @@ import { placeNote, resizeNote } from '../place'
 import { resizeGrid, resizeRoll } from '../resize'
 import type { StepGridModel, PianoRollModel } from '../model'
 
-/** the round-trip law for canonical strings: serialize(parse(s)) === s */
+/** the round-trip law: serialize(parse(s)) === s */
 function gridRoundTrips(s: string) {
   const r = parseStepGrid(s)
   expect(r.ok, `expected ${s} to parse`).toBe(true)
   if (r.ok) expect(serializeStepGrid(r.model)).toBe(s)
 }
+
+/**
+ * The GRID a model shows, without its provenance.
+ *
+ * Two spellings of one rhythm (`bd!2` / `bd bd`, `bd -` / `bd ~`) show the same
+ * grid and keep their own bytes — that is the point of span surgery (#913), so
+ * comparing whole models would now compare the bytes too and report a
+ * difference that is the feature. What these tests mean is "the same grid".
+ */
+const view = (m: StepGridModel) => ({ steps: m.steps, bars: m.bars, lanes: m.lanes })
 function rollRoundTrips(s: string) {
   const r = parsePianoRoll(s)
   expect(r.ok, `expected ${s} to parse`).toBe(true)
@@ -231,8 +241,8 @@ describe('step grid — parse', () => {
     const spelled = parseStepGrid('bd bd')
     expect(bare.ok).toBe(true)
     if (!bare.ok || !explicit.ok || !spelled.ok) return
-    expect(bare.model).toEqual(explicit.model)
-    expect(bare.model).toEqual(spelled.model)
+    expect(view(bare.model)).toEqual(view(explicit.model))
+    expect(view(bare.model)).toEqual(view(spelled.model))
   })
 
   it('rejects `atom!n` that expands past the step ceiling', () => {
@@ -254,43 +264,42 @@ describe('step grid — round-trip identity', () => {
   for (const s of canonical) it(`"${s}"`, () => gridRoundTrips(s))
 })
 
-describe('step grid — `*` is parse-only sugar', () => {
-  // `*` is INPUT sugar: it expands on parse and serializes back as the
-  // expanded sequence (no `*` on output). So the round-trip is parse → expand,
-  // not the identity law that holds for canonical strings.
-  it('serializes `hh*8` as the expanded sequence', () => {
-    const r = parseStepGrid('hh*8')
-    expect(r.ok).toBe(true)
-    if (!r.ok) return
-    expect(serializeStepGrid(r.model)).toBe('hh hh hh hh hh hh hh hh')
+describe('step grid — `*` survives an unedited write (#913)', () => {
+  // `*` expands onto the grid to be SHOWN, and used to expand on the way out
+  // too — opening `hh*8` and writing it back rewrote the user's line as eight
+  // `hh`s. The expansion is now a fact about the view, not about their file.
+  it('writes `hh*8` back as `hh*8`', () => {
+    gridRoundTrips('hh*8')
   })
 
-  it('the expanded form re-parses to the same model (stable, no reseed loop)', () => {
+  it('shows the same grid as the spelled-out form (and keeps its own bytes)', () => {
     const sugar = parseStepGrid('hh*4')
     const expanded = parseStepGrid('hh hh hh hh')
     expect(sugar.ok && expanded.ok).toBe(true)
     if (!sugar.ok || !expanded.ok) return
-    expect(sugar.model).toEqual(expanded.model)
-    expect(serializeStepGrid(sugar.model)).toBe(serializeStepGrid(expanded.model))
+    expect(view(sugar.model)).toEqual(view(expanded.model))
+    expect(serializeStepGrid(sugar.model)).toBe('hh*4')
+    expect(serializeStepGrid(expanded.model)).toBe('hh hh hh hh')
   })
 })
 
-describe('step grid — `[group]*n` (#467 nested-group multiplier, parse-only sugar)', () => {
+describe('step grid — `[group]*n` (#467 nested-group multiplier)', () => {
   // `[sd hh]*2` ≡ the group played n× within its slot → the group's slots
-  // repeated n times. Serializes to the expanded sequence (same sugar law as
-  // atom `*n`); the onsets are identical to the original.
-  it('binds `[sd hh]*2` (previously rejected) and expands it', () => {
+  // repeated n times on the grid, and the user's `[sd hh]*2` back on write.
+  it('binds `[sd hh]*2` (previously rejected) and expands it onto the grid', () => {
     const r = parseStepGrid('[sd hh]*2')
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(serializeStepGrid(r.model)).toBe('sd hh sd hh')
+    expect(r.model.steps).toBe(4)
+    expect(serializeStepGrid(r.model)).toBe('[sd hh]*2')
   })
 
   it('handles a rest in the group and a higher count', () => {
     const r = parseStepGrid('[~ sd]*2')
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(serializeStepGrid(r.model)).toBe('~ sd ~ sd')
+    expect(r.model.lanes).toEqual([{ sound: 'sd', cells: [false, true, false, true] }])
+    expect(serializeStepGrid(r.model)).toBe('[~ sd]*2')
     expect(parseStepGrid('[sd hh]*3').ok).toBe(true)
   })
 
@@ -298,15 +307,16 @@ describe('step grid — `[group]*n` (#467 nested-group multiplier, parse-only su
     const r = parseStepGrid('bd [sd hh]*2')
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(serializeStepGrid(r.model)).toBe('bd ~ ~ ~ sd hh sd hh')
+    expect(r.model.steps).toBe(8)
+    expect(serializeStepGrid(r.model)).toBe('bd [sd hh]*2')
   })
 
-  it('the expanded form re-parses to the same model (stable)', () => {
+  it('shows the same grid as the spelled-out form', () => {
     const sugar = parseStepGrid('[sd hh]*2')
     const expanded = parseStepGrid('sd hh sd hh')
     expect(sugar.ok && expanded.ok).toBe(true)
     if (!sugar.ok || !expanded.ok) return
-    expect(sugar.model).toEqual(expanded.model)
+    expect(view(sugar.model)).toEqual(view(expanded.model))
   })
 
   it('applies to the piano roll too (`[60 62]*2`)', () => {
@@ -315,41 +325,35 @@ describe('step grid — `[group]*n` (#467 nested-group multiplier, parse-only su
   })
 })
 
-describe('step grid — euclid is parse-only sugar', () => {
-  // `(k,n[,rot])` is INPUT sugar like `*`: it expands on parse and serializes
-  // back as the expanded sequence (no `(` on output). The round-trip is
-  // parse → expand, not the identity law that holds for canonical strings.
-  it('serializes `bd(3,8)` as the expanded sequence', () => {
-    const r = parseStepGrid('bd(3,8)')
-    expect(r.ok).toBe(true)
-    if (!r.ok) return
-    expect(serializeStepGrid(r.model)).toBe('bd ~ ~ bd ~ ~ bd ~')
+describe('step grid — euclid survives an unedited write (#913)', () => {
+  // `(k,n[,rot])` expands onto the grid the same way `*` does, and used to be
+  // written back expanded — a euclid is a rhythm the user reasons about as a
+  // euclid, and opening the panel destroyed it.
+  it('writes `bd(3,8)` back as `bd(3,8)`', () => {
+    gridRoundTrips('bd(3,8)')
   })
 
-  it('the expanded form re-parses to the same model (stable, no reseed loop)', () => {
+  it('shows the same grid as the spelled-out form', () => {
     const sugar = parseStepGrid('bd(3,8)')
     const expanded = parseStepGrid('bd ~ ~ bd ~ ~ bd ~')
     expect(sugar.ok && expanded.ok).toBe(true)
     if (!sugar.ok || !expanded.ok) return
-    expect(sugar.model).toEqual(expanded.model)
-    expect(serializeStepGrid(sugar.model)).toBe(serializeStepGrid(expanded.model))
+    expect(view(sugar.model)).toEqual(view(expanded.model))
+    expect(serializeStepGrid(sugar.model)).toBe('bd(3,8)')
   })
 })
 
-describe('step grid — `!` is parse-only sugar', () => {
-  it('serializes `bd!3` as the expanded sequence', () => {
-    const r = parseStepGrid('bd!3')
-    expect(r.ok).toBe(true)
-    if (!r.ok) return
-    expect(serializeStepGrid(r.model)).toBe('bd bd bd')
+describe('step grid — `!` survives an unedited write (#913)', () => {
+  it('writes `bd!3` back as `bd!3`', () => {
+    gridRoundTrips('bd!3')
   })
 
-  it('the expanded form re-parses to the same model (stable, no reseed loop)', () => {
+  it('shows the same grid as the spelled-out form', () => {
     const sugar = parseStepGrid('bd!3')
     const expanded = parseStepGrid('bd bd bd')
     expect(sugar.ok && expanded.ok).toBe(true)
     if (!sugar.ok || !expanded.ok) return
-    expect(sugar.model).toEqual(expanded.model)
+    expect(view(sugar.model)).toEqual(view(expanded.model))
   })
 })
 
@@ -613,6 +617,23 @@ describe('resize', () => {
   it('does not resize multi-bar patterns', () => {
     const model: StepGridModel = { steps: 4, bars: 2, lanes: [] }
     expect(resizeGrid(model, 8, 'spread')).toBe(model)
+  })
+  it('drops the source provenance — a resize re-lays every column (#913)', () => {
+    // The regions describe the grid they were read from. Resizing replaces that
+    // grid, so carrying them forward would let the writer paste bytes written
+    // for a layout that no longer exists.
+    const r = parseStepGrid('bd hh*2 sd cp')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.source).toBeDefined()
+    for (const mode of ['spread', 'pad'] as const) {
+      const next = resizeGrid(r.model, 4, mode)
+      expect(next.source, `${mode} must not carry stale regions`).toBeUndefined()
+    }
+    // and the writer REBUILDS from the resized grid — the `*2` is gone because
+    // the user asked for a different grid, which is the one case where losing it
+    // is the answer rather than the bug. (8→4 spread folds each column pair.)
+    expect(serializeStepGrid(resizeGrid(r.model, 4, 'spread'))).toBe('bd hh sd cp')
   })
   it('resizeRoll spread scales note starts', () => {
     const model: PianoRollModel = { steps: 2, notes: [{ pitch: 'c3', start: 1, duration: 1 }] }
