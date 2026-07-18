@@ -428,3 +428,56 @@ test.describe('Piano Roll (#383)', () => {
     expect(errors).toEqual([])
   })
 })
+
+/**
+ * #924 — the behaviour projection for the Piano Roll. A melody whose note string
+ * the two-level model can't represent (a group nested inside a group) still plays
+ * an ordinary pitch×time grid; the projection reads what it PLAYS — pitch, onset
+ * AND duration — and shows it, copying unedited notation back verbatim on write.
+ */
+test.describe('Piano Roll behaviour-projection (#924)', () => {
+  test('a nested-group melody opens an editable roll and edits copy the group back verbatim', async ({
+    page,
+  }) => {
+    // `c3 [e3 [g3 g3]] c4` is two levels deep — refused by the syntactic model, but
+    // plays a plain 12-step roll: c3@0(×4), e3@4(×2), g3@6, g3@7, c4@8(×4).
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 [e3 [g3 g3]] c4")')
+    const drawer = await openRoll(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(grid).toHaveCount(1)
+    await expect(grid.locator('[data-roll-cell="48:0"]')).toHaveAttribute('aria-pressed', 'true') // c3
+    await expect(grid.locator('[data-roll-cell="52:4"]')).toHaveAttribute('aria-pressed', 'true') // e3
+    await expect(grid.locator('[data-roll-cell="55:6"]')).toHaveAttribute('aria-pressed', 'true') // g3
+    await expect(grid.locator('[data-roll-cell="55:7"]')).toHaveAttribute('aria-pressed', 'true') // g3
+    await expect(grid.locator('[data-roll-cell="60:8"]')).toHaveAttribute('aria-pressed', 'true') // c4
+    // delete the leading c3; the nested group + c4 ride back byte-for-byte
+    await grid.locator('[data-roll-cell="48:0"]').click()
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: note("~ [e3 [g3 g3]] c4")')
+  })
+
+  test('a numeric nested melody projects and edits locally', async ({ page }) => {
+    // `n("0 [2 [4 4]] 7")` — degrees, nested. The projection carries the numeric
+    // convention, and deleting the first degree leaves the nested group untouched.
+    await boot(page)
+    await setStrudelCode(page, '$: n("0 [2 [4 4]] 7")')
+    const drawer = await openRoll(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(grid).toHaveCount(1)
+    await grid.locator('[data-roll-cell="0:0"]').click() // delete degree 0
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: n("~ [2 [4 4]] 7")')
+  })
+
+  test('a per-cycle-varying melody falls back to code (projection declines)', async ({ page }) => {
+    // `c3?` degrades per cycle — not a static grid. The projection declines and the
+    // Piano Roll shows standby, not a false grid.
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3? e3 g3 a3")')
+    const drawer = await openRoll(page)
+    await expect(
+      drawer.locator('[data-bottom-panel-tab="piano-roll"] [data-roll-cell]'),
+    ).toHaveCount(0)
+  })
+})
