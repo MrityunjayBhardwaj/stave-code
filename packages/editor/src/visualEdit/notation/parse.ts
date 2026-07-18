@@ -1079,7 +1079,7 @@ export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
   return projectStepGrid(mini) ?? core
 }
 
-function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
+export function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
   const alt = unwrapAlternation(mini)
   if (alt !== null) return gridFromAlternation(alt)
 
