@@ -28,6 +28,20 @@ function gridRoundTrips(s: string) {
   if (r.ok) expect(serializeStepGrid(r.model)).toBe(s)
 }
 
+/** an edit through the writer: toggle one column's `sound`, then serialize */
+function gridEdit(src: string, col: number, sound: string): string | null {
+  const r = parseStepGrid(src)
+  if (!r.ok) return null
+  const lanes = r.model.lanes.map((l) => ({ ...l, cells: [...l.cells] }))
+  let lane = lanes.find((l) => l.sound === sound)
+  if (!lane) {
+    lane = { sound, cells: Array<boolean>(r.model.steps).fill(false) }
+    lanes.push(lane)
+  }
+  lane.cells[col] = !lane.cells[col]
+  return serializeStepGrid({ ...r.model, lanes })
+}
+
 /**
  * The GRID a model shows, without its provenance.
  *
@@ -41,6 +55,14 @@ function rollRoundTrips(s: string) {
   const r = parsePianoRoll(s)
   expect(r.ok, `expected ${s} to parse`).toBe(true)
   if (r.ok) expect(serializePianoRoll(r.model)).toBe(s)
+}
+
+/** an edit through the writer: retune the note at index `i`, then serialize */
+function rollEdit(src: string, i: number, pitch: string): string | null {
+  const r = parsePianoRoll(src)
+  if (!r.ok) return null
+  const notes = r.model.notes.map((n, j) => (j === i ? { ...n, pitch } : n))
+  return serializePianoRoll({ ...r.model, notes })
 }
 
 describe('step grid — parse', () => {
@@ -103,9 +125,18 @@ describe('step grid — parse', () => {
     expect(r.model.steps).toBe(4)
   })
 
-  it('rejects features outside the subset', () => {
-    expect(parseStepGrid('{bd hh}%4').ok).toBe(false)
-    expect(parseStepGrid('bd@2 hh').ok).toBe(false) // elongation not a grid concept
+  it('projects shapes the two-level model cannot represent (#922)', () => {
+    // Polymeter and `@n` elongation have no place in the syntactic grid model,
+    // but both PLAY a stable single-cycle grid — so the behaviour projection shows
+    // what they play and copies the source back verbatim.
+    gridRoundTrips('{bd hh}%4') // plays [bd hh bd hh]
+    gridRoundTrips('bd@2 hh') // the held bd reads as a hit + rest: [bd ~ hh]
+    // an edit re-emits locally and stays hap-faithful — the source's own bytes
+    // ride back around the one touched region
+    expect(gridEdit('bd@2 hh', 1, 'cp')).toBe('bd cp hh')
+    // still refused: a pattern that does NOT play a static rational grid
+    expect(parseStepGrid('bd?').ok).toBe(false) // `?` degrade varies per cycle
+    expect(parseStepGrid('bd*<1 2>').ok).toBe(false) // a patterned operator varies per cycle
   })
 
   it('expands `atom*n` into n columns of the atom', () => {
@@ -130,9 +161,12 @@ describe('step grid — parse', () => {
     ])
   })
 
-  it('rejects `*` combined with other modifiers (conservative scope)', () => {
-    expect(parseStepGrid('bd*2@2').ok).toBe(false) // * with @
-    expect(parseStepGrid('[bd hh]*2@2').ok).toBe(false) // group * with @
+  it('projects `*` combined with `@`, still refuses invalid multipliers (#922)', () => {
+    // `*` with `@` has no representation in the two-level model, but plays a static
+    // grid — the projection shows and round-trips it.
+    gridRoundTrips('bd*2@2') // [bd bd]
+    gridRoundTrips('[bd hh]*2@2') // [bd hh bd hh]
+    // genuinely nothing to show:
     expect(parseStepGrid('bd*0').ok).toBe(false) // zero multiplier
     expect(parseStepGrid('bd*').ok).toBe(false) // missing count
   })
@@ -214,10 +248,13 @@ describe('step grid — parse', () => {
     expect(r.model.lanes.find((l) => l.sound === 'sn')!.cells.filter(Boolean).length).toBe(3)
   })
 
-  it('rejects euclid combined with other modifiers / groups (conservative scope)', () => {
-    expect(parseStepGrid('bd(3,8)*2').ok).toBe(false) // euclid with *
-    expect(parseStepGrid('bd(3,8)@2').ok).toBe(false) // euclid with @
-    expect(parseStepGrid('[bd hh](3,8)').ok).toBe(false) // group euclid
+  it('projects euclid combined with `*`/`@`/groups, still refuses malformed euclid (#922)', () => {
+    // euclid on top of `*`/`@`, or on a group, plays a static grid the projection
+    // shows and round-trips (plain `atom(k,n)` already expanded in the core).
+    gridRoundTrips('bd(3,8)*2') // the 8-step euclid, twice
+    gridRoundTrips('bd(3,8)@2') // the 8-step euclid held over two units
+    gridRoundTrips('[bd hh](3,8)') // group euclid: [bd ~ ~ bd ~ ~ hh ~]
+    // malformed euclid still refuses — nothing plays:
     expect(parseStepGrid('bd(3)').ok).toBe(false) // missing step count
     expect(parseStepGrid('bd(3,8').ok).toBe(false) // unbalanced
     expect(parseStepGrid('bd()').ok).toBe(false) // empty args
@@ -250,10 +287,10 @@ describe('step grid — parse', () => {
     ])
   })
 
-  it('rejects `!` combined with other modifiers / groups (conservative scope)', () => {
-    expect(parseStepGrid('bd!3*2').ok).toBe(false) // ! with *
-    expect(parseStepGrid('bd!3@2').ok).toBe(false) // ! with @
-    expect(parseStepGrid('[bd hh]!2').ok).toBe(false) // group replicate
+  it('projects `!` combined with `*`/`@`/groups, still refuses a zero replicate (#922)', () => {
+    gridRoundTrips('bd!3*2') // [bd bd bd bd bd bd]
+    gridRoundTrips('bd!3@2') // [bd bd bd]
+    gridRoundTrips('[bd hh]!2') // [bd hh bd hh]
     expect(parseStepGrid('bd!0').ok).toBe(false) // zero replicate — 0 haps, nothing to draw
   })
 
@@ -493,10 +530,12 @@ describe('piano roll — parse', () => {
     // same class one level in: a slot has nowhere to put `*<1!3 2>` either, and
     // dropping it would show a bare `[0,1]` chord and write the operator away
     expect(parsePianoRoll('[[0, 1]*<1!3 2> [2, 3]]*2').ok).toBe(false)
-    // and on silence: `~:3` parses (rest atom + tail), and a rest cell has no
-    // name to carry the variant — refuse instead of dropping it
+    // and on silence: `~:3` parses (rest atom + tail). A bare `bd ~:3` still
+    // refuses — the projection can't reproduce a `:3` on a rest, so it declines
+    // rather than drop it. But `[bd ~:3] sd` PLAYS only bd + sd (the variant rides
+    // on silence), so it projects to [bd sd] and the source rides back verbatim (#922).
     expect(parseStepGrid('bd ~:3').ok).toBe(false)
-    expect(parseStepGrid('[bd ~:3] sd').ok).toBe(false)
+    gridRoundTrips('[bd ~:3] sd')
     // the plain `:variant` it must NOT over-refuse
     const ok = parseStepGrid('bd:3 sn')
     expect(ok.ok).toBe(true)
@@ -572,6 +611,25 @@ describe('piano roll — parse', () => {
 
   it('rejects a non-note token', () => {
     expect(parsePianoRoll('bd c3').ok).toBe(false)
+  })
+
+  it('projects melodies the two-level model cannot represent (#924)', () => {
+    // A group nested inside a group (depth 3) has no place in the roll's Step→Slot
+    // model, but plays an ordinary pitch×time grid — the behaviour projection shows
+    // what it plays and copies the source back verbatim.
+    rollRoundTrips('c3 [e3 [g3 g3]] c4')
+    rollRoundTrips('0 [2 [4 4]] 7') // numeric, nested
+    rollRoundTrips('[c3 e3]*2@2') // a group carrying `*` and `@`
+    // an edit re-emits only the touched element; the nested group rides back
+    // byte-for-byte (span surgery), and durations inside it are preserved
+    expect(rollEdit('c3 [e3 [g3 g3]] c4', 0, 'a5')).toBe('a5 [e3 [g3 g3]] c4')
+    expect(rollEdit('0 [2 [4 4]] 7', 0, '5')).toBe('5 [2 [4 4]] 7')
+    // the numeric convention is carried through (new pitches emit numbers, #469)
+    const num = parsePianoRoll('0 [2 [4 4]] 7')
+    expect(num.ok && num.model.numeric).toBe(true)
+    // still refused: a melody that does not play a static rational grid
+    expect(parsePianoRoll('c3? e3 g3').ok).toBe(false) // `?` degrade varies per cycle
+    expect(parsePianoRoll('c3 e3*<1 2>').ok).toBe(false) // a patterned operator varies per cycle
   })
 })
 

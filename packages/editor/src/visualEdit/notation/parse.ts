@@ -23,7 +23,9 @@
  * MODEL limit — an honest "a grid can't show this", not a fake parse failure.
  */
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
+import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { bjorklund as strudelBjorklund } from '@strudel/core/euclid.mjs'
+import { serializeStepGrid, serializePianoRoll } from './serialize'
 import type {
   AltRegion,
   AltSource,
@@ -855,7 +857,229 @@ function gridFromAltElements(mini: string): ParseResult<StepGridModel> | null {
   }
 }
 
+/* ── behaviour projection: the inherited fallback (#922) ────────── */
+
+/** smallest denominator `d` (≤ cap) with `x·d` integral, or 0 if none */
+function denom(x: number, cap = MAX_STEPS): number {
+  for (let d = 1; d <= cap; d++) if (Math.abs(x * d - Math.round(x * d)) < 1e-9) return d
+  return 0
+}
+
+/**
+ * True when the whole pattern is a single `<…>` alternation element (`<a b>*8`,
+ * `<a b c>`). Those belong to the alternation path (bars, #920) — one region per
+ * bar so an edit stays byte-local — not to the flat projection, which owns the
+ * whole `<…>` as one span and would FLATTEN it on edit, losing the compact form
+ * (caught by the edit-locality gate). Decline and leave it to the alternation
+ * work rather than offer a grid that isn't byte-local per bar.
+ */
+function isWholeAlternation(src: string): boolean {
+  let ast: KPattern
+  try {
+    ast = krillParse('"' + src + '"') as KPattern
+  } catch {
+    return false
+  }
+  if (ast?.type_ !== 'pattern' || ast.arguments_?.alignment !== 'fastcat') return false
+  if (ast.source_.length !== 1) return false
+  const inner = ast.source_[0]?.source_ as KPattern | undefined
+  return inner?.type_ === 'pattern' && inner.arguments_?.alignment === 'polymeter_slowcat'
+}
+
+/** top-level fastcat elements from krill: byte span + unit weight, or null */
+function topLevelSpans(src: string): ElementSpan[] | null {
+  let ast: KPattern
+  try {
+    ast = krillParse('"' + src + '"') as KPattern
+  } catch {
+    return null
+  }
+  if (!ast || ast.type_ !== 'pattern' || ast.arguments_?.alignment !== 'fastcat') return null
+  const out: ElementSpan[] = []
+  for (const el of ast.source_) {
+    const loc = el.location_
+    if (!loc) return null
+    const reps = el.options_?.reps ?? 1
+    const weight = reps > 1 ? reps : el.options_?.weight ?? 1
+    if (!Number.isInteger(weight) || weight < 1) return null
+    out.push({ start: loc.start.offset - 1, end: loc.end.offset - 1, weight })
+  }
+  return out
+}
+
+interface Onset {
+  pos: number
+  atoms: string[]
+}
+
+/**
+ * Read what a step-grid pattern PLAYS, one cycle, as onset columns — inherited
+ * from Strudel (`reifyMini(...).queryArc`), never re-derived here. The value the
+ * engine yields IS the ground truth for "what sound fires when"; the display
+ * token is `s` (+`:n` when a sample index rides along). Returns null when the
+ * pattern isn't a plain sound grid the view can show — a numeric value (that is
+ * the roll's, not the grid's), a `.gain`/signal-only hap, or a query that throws.
+ */
+function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
+  let haps: Array<{
+    hasOnset?: () => boolean
+    whole?: { begin: { valueOf(): number } }
+    value: unknown
+  }>
+  try {
+    haps = (pat as { queryArc(a: number, b: number): typeof haps }).queryArc(cyc, cyc + 1)
+  } catch {
+    return null
+  }
+  const byCol = new Map<number, string[]>()
+  for (const h of haps) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue
+    // A bare mini string reifies to raw token VALUES (`"bd"`), not superdough
+    // params — that is what `parseStepGrid` receives (the inner string of
+    // `s("…")`). Accept both: a string token, or an `{s,n}` object if a caller
+    // ever reifies in sound context.
+    const v = h.value as string | { s?: unknown; n?: unknown } | null
+    let token: string
+    if (typeof v === 'string') token = v
+    else if (v && typeof v === 'object' && typeof v.s === 'string') {
+      token = v.s + (v.n != null ? ':' + String(v.n) : '')
+    } else return null
+    if (NUMERIC.test(token)) return null // a bare number is the roll's, not the grid's
+    const pos = h.whole.begin.valueOf() - cyc
+    const key = Math.round(pos * 720720)
+    const cell = byCol.get(key) ?? []
+    if (!cell.includes(token)) cell.push(token)
+    byCol.set(key, cell)
+  }
+  return [...byCol.entries()].map(([k, atoms]) => ({ pos: k / 720720, atoms }))
+}
+
+const onsetKey = (o: Onset[]): string =>
+  JSON.stringify(o.map((x) => [Math.round(x.pos * 720720), [...x.atoms].sort()]).sort())
+
+/**
+ * The inherited fallback for the step grid (#922): when the syntactic parse
+ * refuses, PROJECT the pattern's haps onto a cell grid instead of modelling its
+ * syntax. Any pattern that plays a stable, rational, single-cycle grid becomes
+ * editable — nested groups, `[…]`-with-ops, a static `<…>*n` — regardless of how
+ * the syntax nests, because the grid shows what it PLAYS.
+ *
+ * The write-back is unchanged: the top-level element spans (krill) tile the
+ * source, so `serializeStepGrid`'s span surgery copies unedited elements verbatim
+ * and re-emits only the edited one. Returns null (keep the caller's refusal) when
+ * the pattern isn't a static single-cycle sound grid — a `,`-stack, a per-cycle
+ * alternation (that is the bars path, and projecting cycle 0 would DROP the other
+ * cycles), a blow-up past the step ceiling, or spans that don't tile.
+ */
+function projectStepGrid(src0: string): ParseResult<StepGridModel> | null {
+  const src = src0.trim()
+  if (src === '') return null
+  // A whole-cycle `<…>` alternation is the alternation path's (bars, #920), not the
+  // flat projection's — projecting it as one region would flatten it on edit.
+  if (isWholeAlternation(src)) return null
+  let pat: unknown
+  try {
+    pat = reifyMini(src)
+  } catch {
+    return null
+  }
+  const cyc0 = gridOnsets(pat, 0)
+  if (cyc0 === null || cyc0.length === 0) return null
+  // Truly static? A single-cycle grid must play identically every cycle over the
+  // pattern's period; a pattern that varies is a multi-cycle alternation (the
+  // bars path), and projecting cycle 0 would silently drop the rest on write-back.
+  const sig0 = onsetKey(cyc0)
+  for (let c = 1; c < 8; c++) {
+    const cc = gridOnsets(pat, c)
+    if (cc === null || onsetKey(cc) !== sig0) return null
+  }
+  const spans = topLevelSpans(src)
+  if (!spans) return null
+  const totalWeight = spans.reduce((s, e) => s + e.weight, 0)
+  // element boundaries (cumulative weight) must land on integer columns too, or
+  // the regions can't tile the grid
+  const bounds: number[] = []
+  let accW = 0
+  for (const e of spans) {
+    bounds.push(accW / totalWeight)
+    accW += e.weight
+  }
+  let cols = 1
+  for (const x of [...cyc0.map((o) => o.pos), ...bounds]) {
+    const d = denom(x)
+    if (d === 0) return null
+    cols = lcm(cols, d)
+  }
+  if (cols > MAX_STEPS || cols % totalWeight !== 0) return null
+  const divPerUnit = cols / totalWeight
+  const cells: GridCells = Array.from({ length: cols }, () => [])
+  for (const o of cyc0) {
+    const c = Math.round(o.pos * cols)
+    if (c < 0 || c >= cols) return null
+    cells[c] = [...new Set(o.atoms)]
+  }
+  const parts = singlePart(src, spans, divPerUnit, cols, gridContent(cells))
+  if (!parts) return null
+  const model: StepGridModel = {
+    steps: cols,
+    lanes: lanesFromCells(cells),
+    source: { prefix: '', suffix: '', parts },
+  }
+  if (!projectionEditSafe(model, cols, cyc0)) return null
+  return { ok: true, model }
+}
+
+/** an improbable sound token used to probe an edit; won't collide with real content */
+const PROBE_SOUND = '__stave_probe__'
+
+/**
+ * The projection may only OFFER a grid the writer can reproduce under edit. Probe
+ * every source region — overlay a marker in its first column, serialize, re-query
+ * — and require the haps to be exactly the originals plus that marker. Declines
+ * the patterns whose span re-emit breaks (a `_` sustain whose span ate the
+ * separator merges tokens on edit — the #904 class), so the projection never
+ * shows a grid that would corrupt on the first click. Uses the REAL writer and
+ * the REAL engine, so it can't drift from either.
+ */
+function projectionEditSafe(model: StepGridModel, cols: number, base: Onset[]): boolean {
+  const t = (col: number) => col / cols
+  for (const r of model.source!.parts[0].regions) {
+    const col = r.from
+    const lanes = model.lanes.map((l) => ({ ...l, cells: [...l.cells] }))
+    let probe = lanes.find((l) => l.sound === PROBE_SOUND)
+    if (!probe) {
+      probe = { sound: PROBE_SOUND, cells: Array<boolean>(cols).fill(false) }
+      lanes.push(probe)
+    }
+    probe.cells[col] = true
+    const out = serializeStepGrid({ ...model, lanes })
+    if (out == null) return false
+    let got: Onset[] | null
+    try {
+      got = gridOnsets(reifyMini(out), 0)
+    } catch {
+      return false
+    }
+    if (got === null) return false
+    const hit = base.find((o) => Math.abs(o.pos - t(col)) < 1e-9)
+    const expected: Onset[] = base.map((o) =>
+      o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND] } : o,
+    )
+    if (!hit) expected.push({ pos: t(col), atoms: [PROBE_SOUND] })
+    if (onsetKey(got) !== onsetKey(expected)) return false
+  }
+  return true
+}
+
 export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
+  const core = parseStepGridCore(mini)
+  if (core.ok) return core
+  // syntactic model refused → try the inherited behaviour projection (#922),
+  // keeping the original refusal if the projection doesn't apply
+  return projectStepGrid(mini) ?? core
+}
+
+export function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
   const alt = unwrapAlternation(mini)
   if (alt !== null) return gridFromAlternation(alt)
 
@@ -1183,7 +1407,196 @@ function rollFromAltElements(mini: string): ParseResult<PianoRollModel> | null {
   }
 }
 
+/* ── behaviour projection: the roll's inherited fallback (#924) ── */
+
+interface RollOnset {
+  pos: number
+  dur: number
+  pitch: string
+  numeric: boolean
+}
+
+/**
+ * Read what a melodic pattern PLAYS, one cycle, as pitched onsets with DURATION —
+ * inherited from Strudel (`reifyMini(...).queryArc`), never re-derived. Unlike the
+ * grid's `gridOnsets`, the roll keeps each hap's length (`whole.end - whole.begin`):
+ * a note's `@n` hold is part of what it plays and the writer must put it back. The
+ * value the engine yields is the ground truth — a number is a numeric pitch
+ * (`note("60")` MIDI / `n("0")` degree), a string is a note name. Returns null when
+ * a hap isn't a placeable pitch (a sound token, a signal/params value, a zero-length
+ * hap) or the query throws.
+ */
+function rollOnsets(pat: unknown, cyc: number): RollOnset[] | null {
+  let haps: Array<{
+    hasOnset?: () => boolean
+    whole?: { begin: { valueOf(): number }; end: { valueOf(): number } }
+    value: unknown
+  }>
+  try {
+    haps = (pat as { queryArc(a: number, b: number): typeof haps }).queryArc(cyc, cyc + 1)
+  } catch {
+    return null
+  }
+  const out: RollOnset[] = []
+  for (const h of haps) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue
+    const v = h.value
+    let pitch: string
+    let numeric: boolean
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      pitch = String(v)
+      numeric = true
+    } else if (typeof v === 'string') {
+      if (NUMERIC.test(v)) {
+        pitch = v
+        numeric = true
+      } else if (pitchToMidi(v.toLowerCase()) !== null) {
+        // fold case like the core does — the row math is case-blind, and the
+        // convention has no business riding back out into the document
+        pitch = v.toLowerCase()
+        numeric = false
+      } else return null // a sound token / non-pitch — the grid's, not the roll's
+    } else return null // an object (params) or signal value has no note to place
+    const pos = h.whole.begin.valueOf() - cyc
+    const dur = h.whole.end.valueOf() - h.whole.begin.valueOf()
+    if (dur <= 0) return null
+    out.push({ pos, dur, pitch, numeric })
+  }
+  return out
+}
+
+const rollKey = (o: Array<{ pos: number; dur: number; pitch: string }>): string =>
+  JSON.stringify(
+    o.map((x) => [Math.round(x.pos * 720720), Math.round(x.dur * 720720), x.pitch]).sort(),
+  )
+
+/** probe pitches for the edit self-verify — valid tokens improbable in real content */
+const PROBE_NOTE = 'c9'
+const PROBE_NUM = '999'
+
+/**
+ * The roll's `projectionEditSafe`. The projection may only offer a roll the writer
+ * can reproduce under edit — and for the roll that must include DURATION, the axis
+ * the grid doesn't have and the one the 71→44 writer-reach gap loses on. Probe
+ * every region by swapping its first note's pitch (an overlap-free edit — a placed
+ * note could land under a sustain, which the grid never has), serialize through the
+ * REAL writer, re-query the REAL engine, and require the haps to be the model's
+ * notes with that one pitch changed: same onsets, same durations. A region whose
+ * re-emit drops an `@n` hold fails here and the projection declines, never corrupts.
+ */
+function projectionRollEditSafe(model: PianoRollModel, cols: number, numeric: boolean): boolean {
+  const probePitch = numeric ? PROBE_NUM : PROBE_NOTE
+  for (const r of model.source!.parts[0].regions) {
+    const idx = model.notes.findIndex((n) => n.start >= r.from && n.start < r.to)
+    if (idx < 0) continue // an all-rest region has nothing to re-emit; identity covers it
+    const edited: PianoRollModel = {
+      ...model,
+      notes: model.notes.map((n, i) => (i === idx ? { ...n, pitch: probePitch } : n)),
+    }
+    const out = serializePianoRoll(edited)
+    if (out == null) return false
+    let got: RollOnset[] | null
+    try {
+      got = rollOnsets(reifyMini(out), 0)
+    } catch {
+      return false
+    }
+    if (got === null) return false
+    const expected = edited.notes.map((n) => ({
+      pos: n.start / cols,
+      dur: n.duration / cols,
+      pitch: n.pitch,
+    }))
+    if (rollKey(got) !== rollKey(expected)) return false
+  }
+  return true
+}
+
+/**
+ * The inherited fallback for the piano roll (#924): when the syntactic parse
+ * refuses, PROJECT the pattern's pitched haps — pitch, onset AND duration — onto a
+ * roll instead of modelling its syntax. Any melodic pattern that plays a stable,
+ * rational, single-cycle grid becomes editable regardless of how it nests, because
+ * the roll shows what it PLAYS. The write-back tiles krill's top-level element spans
+ * (`serializePianoRoll`'s span surgery), so unedited elements ride back verbatim and
+ * only the edited one is re-emitted, at its own weight.
+ *
+ * Returns null (keep the caller's refusal) when the pattern isn't a static
+ * single-cycle melodic grid — a sound pattern (that is the grid's), a `,`-stack or
+ * per-cycle `<…>` (their own paths; projecting cycle 0 would drop the rest), mixed
+ * numeric/named tokens, a blow-up past the step ceiling, or spans that don't tile.
+ */
+function projectPianoRoll(src0: string): ParseResult<PianoRollModel> | null {
+  const src = src0.trim()
+  if (src === '') return null
+  if (isWholeAlternation(src)) return null // the bars path (#920), not the flat projection
+  let pat: unknown
+  try {
+    pat = reifyMini(src)
+  } catch {
+    return null
+  }
+  const cyc0 = rollOnsets(pat, 0)
+  if (cyc0 === null || cyc0.length === 0) return null
+  const numeric = cyc0.some((o) => o.numeric)
+  if (numeric && cyc0.some((o) => !o.numeric)) return null // mixed tokens — rejected like the core
+  // Truly static? A single-cycle roll must play identically every cycle over the
+  // pattern's period; a varying pattern is a multi-cycle alternation (the bars
+  // path), and projecting cycle 0 would silently drop the rest on write-back.
+  const sig0 = rollKey(cyc0)
+  for (let c = 1; c < 8; c++) {
+    const cc = rollOnsets(pat, c)
+    if (cc === null || rollKey(cc) !== sig0) return null
+  }
+  const spans = topLevelSpans(src)
+  if (!spans) return null
+  const totalWeight = spans.reduce((s, e) => s + e.weight, 0)
+  const bounds: number[] = []
+  let accW = 0
+  for (const e of spans) {
+    bounds.push(accW / totalWeight)
+    accW += e.weight
+  }
+  // onsets, DURATIONS and element boundaries must all land on integer columns —
+  // the duration is the roll's extra term the grid's projection omits
+  let cols = 1
+  for (const x of [...cyc0.map((o) => o.pos), ...cyc0.map((o) => o.dur), ...bounds]) {
+    const d = denom(x)
+    if (d === 0) return null
+    cols = lcm(cols, d)
+  }
+  if (cols > MAX_STEPS || cols % totalWeight !== 0) return null
+  const divPerUnit = cols / totalWeight
+  const notes: RollNote[] = []
+  for (const o of cyc0) {
+    const start = Math.round(o.pos * cols)
+    const duration = Math.round(o.dur * cols)
+    if (start < 0 || duration < 1 || start + duration > cols) return null
+    notes.push({ pitch: o.pitch, start, duration })
+  }
+  const parts = singlePart(src, spans, divPerUnit, cols, rollContent(notes))
+  if (!parts) return null
+  const model: PianoRollModel = {
+    steps: cols,
+    notes,
+    ...(numeric ? { numeric: true } : {}),
+    source: { prefix: '', suffix: '', parts },
+  }
+  if (!projectionRollEditSafe(model, cols, numeric)) return null
+  return { ok: true, model }
+}
+
 export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
+  const core = parsePianoRollCore(mini)
+  if (core.ok) return core
+  // syntactic model refused → try the inherited behaviour projection (#924),
+  // keeping the original refusal if the projection doesn't apply
+  return projectPianoRoll(mini) ?? core
+}
+
+// exported for the projection stress gate — it sweeps only patterns the CORE
+// refuses, so it must be able to ask which those are (a projected-only filter)
+export function parsePianoRollCore(mini: string): ParseResult<PianoRollModel> {
   const alt = unwrapAlternation(mini)
   // A top-level `,`-stack = parallel note lanes (independent durations / overlap,
   // #628). Only when NOT an alternation — multi-bar `<...>` lanes are out of scope.
@@ -1265,7 +1678,9 @@ export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
 function parseRollLanes(parts: string[]): ParseResult<PianoRollModel> {
   const models: PianoRollModel[] = []
   for (const part of parts) {
-    const r = parsePianoRoll(part.trim())
+    // a comma-part stays on the core path — projecting individual lanes is out of
+    // scope, the same way `projectStepGrid`/`projectPianoRoll` decline `,`-stacks
+    const r = parsePianoRollCore(part.trim())
     if (!r.ok) return r
     if (r.model.bars != null) {
       return { ok: false, reason: 'multi-bar parallel note lanes are beyond the editable subset' }

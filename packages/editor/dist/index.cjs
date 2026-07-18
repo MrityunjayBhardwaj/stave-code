@@ -9,6 +9,7 @@ var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
 var Y3 = require('yjs');
 var krillParser_js = require('@strudel/mini/krill-parser.js');
+var mini_mjs = require('@strudel/mini/mini.mjs');
 var reactDom = require('react-dom');
 var webaudio = require('@strudel/webaudio');
 
@@ -26145,854 +26146,6 @@ function useActiveChunk() {
 }
 __name(useActiveChunk, "useActiveChunk");
 
-// src/visualEdit/notation/pitch.ts
-var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
-var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
-var DEFAULT_OCTAVE = 3;
-function pitchToMidi(token) {
-  if (/^-?\d+$/.test(token)) return parseInt(token, 10);
-  const m = token.toLowerCase().match(/^([a-g])(s|#|b)?(-?\d+)?$/);
-  if (!m) return null;
-  const [, letter, accidental, octave] = m;
-  let semitone = SEMITONE_OF[letter];
-  if (accidental === "s" || accidental === "#") semitone += 1;
-  else if (accidental === "b") semitone -= 1;
-  const oct = octave !== void 0 ? parseInt(octave, 10) : DEFAULT_OCTAVE;
-  return (oct + 1) * 12 + semitone;
-}
-__name(pitchToMidi, "pitchToMidi");
-function midiToPitch(midi) {
-  const octave = Math.floor(midi / 12) - 1;
-  return `${SHARP_NAMES[(midi % 12 + 12) % 12]}${octave}`;
-}
-__name(midiToPitch, "midiToPitch");
-function noteDisplayName(midi) {
-  const token = midiToPitch(midi);
-  return token.charAt(0).toUpperCase() + token.slice(1);
-}
-__name(noteDisplayName, "noteDisplayName");
-function isBlackKey(midi) {
-  return SHARP_NAMES[(midi % 12 + 12) % 12].includes("#");
-}
-__name(isBlackKey, "isBlackKey");
-function cLabel(midi) {
-  if ((midi % 12 + 12) % 12 !== 0) return null;
-  return `C${Math.floor(midi / 12) - 1}`;
-}
-__name(cLabel, "cLabel");
-
-// src/visualEdit/notation/parse.ts
-var NUMERIC = /^-?\d+$/;
-var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => allowNumeric || !NUMERIC.test(t), "isAtomToken");
-var MAX_STEPS = 64;
-var gcd = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcd(b, a % b), "gcd");
-var lcm = /* @__PURE__ */ __name((a, b) => a / gcd(a, b) * b, "lcm");
-var bjorklund2 = /* @__PURE__ */ __name((k, n) => {
-  if (k === 0) return Array(n).fill(false);
-  if (Math.abs(k) >= n) return Array(n).fill(k > 0);
-  return euclid_mjs.bjorklund(k, n).map((x) => x === 1);
-}, "bjorklund");
-var rotateEuclid = /* @__PURE__ */ __name((pattern, rot) => {
-  const n = pattern.length;
-  if (n === 0) return pattern;
-  const k = (-rot % n + n) % n;
-  return pattern.slice(k).concat(pattern.slice(0, k));
-}, "rotateEuclid");
-var stepUnits = /* @__PURE__ */ __name((s) => s.sub ? s.sub.reduce((n, slot) => n + slot.units, 0) : 1, "stepUnits");
-var division = /* @__PURE__ */ __name((steps) => steps.reduce((d, s) => lcm(d, stepUnits(s)), 1), "division");
-function splitTopLevel(src) {
-  const out = [];
-  let depth = 0;
-  let from = 0;
-  for (let i = 0; i < src.length; i++) {
-    const c = src[i];
-    if (c === "[" || c === "(") depth++;
-    else if (c === "]" || c === ")") depth--;
-    else if (c === "," && depth === 0) {
-      out.push(src.slice(from, i));
-      from = i + 1;
-    }
-  }
-  out.push(src.slice(from));
-  return out;
-}
-__name(splitTopLevel, "splitTopLevel");
-function unwrapAlternation(mini) {
-  const t = mini.trim();
-  if (t.length < 2 || !t.startsWith("<") || !t.endsWith(">")) return null;
-  let depth = 0;
-  for (let i = 0; i < t.length; i++) {
-    if (t[i] === "<") depth++;
-    else if (t[i] === ">" && --depth === 0 && i !== t.length - 1) return null;
-  }
-  return t.slice(1, -1);
-}
-__name(unwrapAlternation, "unwrapAlternation");
-var isAtom = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
-var isRestAtom = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
-var tokenOf = /* @__PURE__ */ __name((atom, ops) => {
-  let t = atom.source_;
-  for (const op of ops) {
-    if (op.type_ !== "tail") continue;
-    const node = op.arguments_?.element;
-    if (!node || node.type_ !== "atom" || typeof node.source_ !== "string") return null;
-    t += ":" + node.source_;
-  }
-  return t;
-}, "tokenOf");
-var numArg = /* @__PURE__ */ __name((node) => {
-  const n = node;
-  if (!n || typeof n !== "object") return null;
-  const inner = n.type_ === "element" ? n.source_ : n;
-  if (!inner || inner.type_ !== "atom") return null;
-  const v = Number(inner.source_);
-  return Number.isFinite(v) ? v : null;
-}, "numArg");
-function readOps(ops) {
-  let mult = 1;
-  let euclid = null;
-  for (const op of ops) {
-    switch (op.type_) {
-      case "tail":
-      case "replicate":
-        break;
-      case "stretch": {
-        const type = op.arguments_?.type;
-        if (type !== "fast") {
-          return { reason: `"${String(type)}" stretch is beyond the editable subset` };
-        }
-        const amount = numArg(op.arguments_?.amount);
-        if (amount === null || !Number.isInteger(amount) || amount < 1) {
-          return { reason: "invalid * multiplier" };
-        }
-        mult *= amount;
-        break;
-      }
-      case "bjorklund": {
-        const k = numArg(op.arguments_?.pulse);
-        const n = numArg(op.arguments_?.step);
-        const rot = op.arguments_?.rotation == null ? 0 : numArg(op.arguments_.rotation);
-        if (k === null || n === null || rot === null) {
-          return { reason: "invalid euclid (k,n) arguments" };
-        }
-        if (n < 1) return { reason: "invalid euclid step count" };
-        euclid = { k, n, rot };
-        break;
-      }
-      case "degradeBy":
-        return { reason: '"?" random degrade is beyond the editable subset' };
-      default:
-        return { reason: `"${op.type_}" is beyond the editable subset` };
-    }
-  }
-  return { mult, euclid };
-}
-__name(readOps, "readOps");
-function groupSlots(pat, allowNumeric) {
-  const slots = [];
-  for (const el of pat.source_) {
-    const opts = el.options_ ?? {};
-    const ops = opts.ops ?? [];
-    const units = opts.weight ?? 1;
-    if ((opts.reps ?? 1) > 1) {
-      return { reason: "! inside a group is beyond the editable subset" };
-    }
-    if (ops.some((o) => o.type_ !== "tail")) {
-      return { reason: "operators inside a group are beyond the editable subset" };
-    }
-    if (isAtom(el.source_)) {
-      if (isRestAtom(el.source_)) {
-        if (ops.length) return { reason: 'a ":" variant on a rest has nothing to name' };
-        slots.push({ atoms: [], units });
-        continue;
-      }
-      const token = tokenOf(el.source_, ops);
-      if (token === null) {
-        return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
-      }
-      if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
-      slots.push({ atoms: [token], units });
-      continue;
-    }
-    const chord = chordAtoms(el.source_, allowNumeric);
-    if (!Array.isArray(chord)) return chord;
-    slots.push({ atoms: chord, units });
-  }
-  if (slots.length === 0) return { reason: "empty group" };
-  return slots;
-}
-__name(groupSlots, "groupSlots");
-function chordAtoms(pat, allowNumeric) {
-  if (pat.arguments_?.alignment !== "stack") {
-    return { reason: "nested groups are beyond the editable subset" };
-  }
-  const atoms = [];
-  for (const voice of pat.source_) {
-    if (isAtom(voice)) {
-      return { reason: "stacked sub-sequences are beyond the editable subset" };
-    }
-    const vp = voice;
-    if (vp.arguments_?.alignment !== "fastcat" || vp.source_.length !== 1) {
-      return { reason: "stacked sub-sequences are beyond the editable subset" };
-    }
-    const el = vp.source_[0];
-    const ops = el.options_?.ops ?? [];
-    if (!isAtom(el.source_) || (el.options_?.reps ?? 1) > 1 || ops.some((o) => o.type_ !== "tail")) {
-      return { reason: "stacked sub-sequences are beyond the editable subset" };
-    }
-    const token = tokenOf(el.source_, ops);
-    if (token === null) {
-      return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
-    }
-    if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
-    atoms.push(token);
-  }
-  return atoms;
-}
-__name(chordAtoms, "chordAtoms");
-function elementToSteps(el, allowNumeric) {
-  const opts = el.options_ ?? {};
-  const ops = opts.ops ?? [];
-  const reps = opts.reps ?? 1;
-  const rawWeight = opts.weight ?? 1;
-  const read5 = readOps(ops);
-  if (!("mult" in read5)) return read5;
-  const { mult, euclid } = read5;
-  if (reps > 1 && rawWeight !== reps) {
-    return { reason: "! combined with * or @ is beyond the editable subset" };
-  }
-  if (reps < 1) return { reason: "a zero replicate has nothing to show" };
-  if (rawWeight <= 0) return { reason: "a zero-width step has nothing to show" };
-  const weight = reps > 1 ? 1 : rawWeight;
-  if (!isAtom(el.source_)) {
-    const alignment = el.source_.arguments_?.alignment;
-    if (alignment === "stack") {
-      const chord = chordAtoms(el.source_, allowNumeric);
-      if (!Array.isArray(chord)) return chord;
-      if (euclid) return { reason: "euclid on a chord is beyond the editable subset" };
-      if (reps > 1) return { reason: "! on a chord is beyond the editable subset" };
-      if (mult > 1) {
-        if (weight > 1) return { reason: "* combined with @ is beyond the editable subset" };
-        return [
-          {
-            atoms: [],
-            elongation: weight,
-            sub: Array.from({ length: mult }, () => ({ atoms: [...chord], units: 1 }))
-          }
-        ];
-      }
-      return [{ atoms: chord, elongation: weight, sub: null }];
-    }
-    if (alignment !== "fastcat") {
-      return { reason: `"${String(alignment)}" is beyond the editable subset` };
-    }
-    if (euclid) return { reason: "euclid on a group is beyond the editable subset" };
-    if (reps > 1) return { reason: "! on a group is beyond the editable subset" };
-    if (mult > 1 && weight > 1) {
-      return { reason: "* combined with @ is beyond the editable subset" };
-    }
-    const slots = groupSlots(el.source_, allowNumeric);
-    if (!Array.isArray(slots)) return slots;
-    if (mult > 1) {
-      const sub = [];
-      for (let r = 0; r < mult; r++) {
-        for (const s of slots) sub.push({ atoms: [...s.atoms], units: s.units });
-      }
-      return [{ atoms: [], elongation: weight, sub }];
-    }
-    if (slots.length === 1 && slots[0].units === 1) {
-      return [{ atoms: slots[0].atoms, elongation: weight, sub: null }];
-    }
-    return [{ atoms: [], elongation: weight, sub: slots }];
-  }
-  const atom = el.source_;
-  const rest = isRestAtom(atom);
-  if (rest && ops.some((o) => o.type_ === "tail")) {
-    return { reason: 'a ":" variant on a rest has nothing to name' };
-  }
-  const token = rest ? "" : tokenOf(atom, ops);
-  if (token === null) {
-    return { reason: `a patterned ":" variant on "${atom.source_}" is beyond the editable subset` };
-  }
-  if (!rest && !isAtomToken(token, allowNumeric)) {
-    return { reason: `unsupported token "${token}"` };
-  }
-  const atoms = rest ? [] : [token];
-  if (euclid) {
-    if (mult > 1 || reps > 1 || weight > 1) {
-      return { reason: "euclid combined with * / ! / @ is beyond the editable subset" };
-    }
-    const hits = rotateEuclid(bjorklund2(euclid.k, euclid.n), euclid.rot);
-    return [{ atoms: [], elongation: 1, sub: hits.map((on) => ({ atoms: on ? [...atoms] : [], units: 1 })) }];
-  }
-  if (reps > 1) {
-    if (mult > 1) return { reason: "! combined with * or @ is beyond the editable subset" };
-    return Array.from({ length: reps }, () => ({ atoms: [...atoms], elongation: 1, sub: null }));
-  }
-  if (mult > 1) {
-    if (weight > 1) return { reason: "* combined with @ is beyond the editable subset" };
-    return [
-      {
-        atoms: [],
-        elongation: 1,
-        sub: Array.from({ length: mult }, () => ({ atoms: [...atoms], units: 1 }))
-      }
-    ];
-  }
-  return [{ atoms, elongation: weight, sub: null }];
-}
-__name(elementToSteps, "elementToSteps");
-function tokenize2(mini, allowNumeric = false) {
-  const src = mini.trim();
-  if (src === "") return { ok: true, steps: [], elements: [] };
-  let ast;
-  try {
-    ast = krillParser_js.parse('"' + src + '"');
-  } catch {
-    return { ok: false, reason: "unsupported mini-notation syntax" };
-  }
-  if (!ast || ast.type_ !== "pattern" || !Array.isArray(ast.source_)) {
-    return { ok: false, reason: "unsupported mini-notation syntax" };
-  }
-  const alignment = ast.arguments_?.alignment;
-  if (alignment !== "fastcat") {
-    return {
-      ok: false,
-      reason: alignment === "stack" ? 'unsupported token ","' : `"${String(alignment)}" is beyond the editable subset`
-    };
-  }
-  const steps = [];
-  const elements = [];
-  for (const el of ast.source_) {
-    const mapped = elementToSteps(el, allowNumeric);
-    if (!Array.isArray(mapped)) return { ok: false, reason: mapped.reason };
-    const loc = el.location_;
-    if (loc) {
-      elements.push({
-        start: loc.start.offset - 1,
-        end: loc.end.offset - 1,
-        weight: mapped.reduce((w, s) => w + s.elongation, 0)
-      });
-    }
-    steps.push(...mapped);
-  }
-  const tiled = elements.length === ast.source_.length;
-  return { ok: true, steps, elements: tiled ? elements : [] };
-}
-__name(tokenize2, "tokenize");
-var gridHasElongation = /* @__PURE__ */ __name((steps) => steps.some((s) => s.elongation !== 1 || (s.sub?.some((slot) => slot.units !== 1) ?? false)), "gridHasElongation");
-function toCells(steps, div) {
-  const cells = [];
-  for (const step of steps) {
-    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
-    const total = stepUnits(step);
-    for (const slot of slots) {
-      const span = div / total * slot.units;
-      cells.push(slot.atoms);
-      for (let j = 1; j < span; j++) cells.push([]);
-    }
-  }
-  return cells;
-}
-__name(toCells, "toCells");
-function lanesFromCells(cells, part) {
-  const order = [];
-  for (const cell of cells) {
-    for (const sound of cell) if (!order.includes(sound)) order.push(sound);
-  }
-  return order.map((sound) => ({
-    sound,
-    ...part !== void 0 ? { part } : {},
-    cells: cells.map((cell) => cell.includes(sound))
-  }));
-}
-__name(lanesFromCells, "lanesFromCells");
-function buildRegions(src, elements, div, total, content) {
-  if (elements.length === 0) return null;
-  const regions = [];
-  let col = 0;
-  for (const el of elements) {
-    const raw = src.slice(el.start, el.end);
-    const leading = /^\s*/.exec(raw)?.[0] ?? "";
-    const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const to = col + el.weight * div;
-    regions.push({ raw, leading, trailing, from: col, to, content: content(col, to) });
-    col = to;
-  }
-  if (col !== total) return null;
-  if (regions.map((r) => r.raw).join("") !== src) return null;
-  return regions;
-}
-__name(buildRegions, "buildRegions");
-var gridContent = /* @__PURE__ */ __name((cells) => (from, to) => cells.slice(from, to).map((c) => [...new Set(c)]), "gridContent");
-var rollContent = /* @__PURE__ */ __name((notes) => (from, to) => notes.filter((n) => n.start >= from && n.start < to).map((n) => ({ pitch: n.pitch, start: n.start, duration: n.duration })), "rollContent");
-function singlePart(src, elements, div, total, content) {
-  const regions = buildRegions(src, elements, div, total, content);
-  return regions ? [{ part: 0, div, factor: 1, before: "", after: "", regions }] : null;
-}
-__name(singlePart, "singlePart");
-function altAlternatives(el) {
-  const p = el.source_;
-  if (isAtom(p) || p.arguments_?.alignment !== "polymeter_slowcat") return null;
-  const o = el.options_;
-  if (o && ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0)) return null;
-  const inner = p.source_[0];
-  if (!inner || inner.type_ !== "pattern" || inner.arguments_?.alignment !== "fastcat") return null;
-  return inner.source_;
-}
-__name(altAlternatives, "altAlternatives");
-function expandAltElements(mini, allowNumeric) {
-  const src = mini.trim();
-  let ast;
-  try {
-    ast = krillParser_js.parse('"' + src + '"');
-  } catch {
-    return null;
-  }
-  if (!ast || ast.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return null;
-  const topEls = ast.source_;
-  if (!topEls.some((el) => altAlternatives(el) !== null)) return null;
-  let bars = 1;
-  for (const el of topEls) {
-    const alts = altAlternatives(el);
-    if (alts) {
-      if (alts.length === 0) return { reason: "empty alternation" };
-      bars = lcm(bars, alts.length);
-    }
-  }
-  const perBarSteps = [];
-  const elemWeight = [];
-  for (let b = 0; b < bars; b++) {
-    const barSteps = [];
-    for (let i = 0; i < topEls.length; i++) {
-      const alts = altAlternatives(topEls[i]);
-      const node = alts ? alts[b % alts.length] : topEls[i];
-      const st = elementToSteps(node, allowNumeric);
-      if (!Array.isArray(st)) return { reason: st.reason };
-      const w = st.reduce((s, step) => s + step.elongation, 0);
-      if (b === 0) elemWeight[i] = w;
-      else if (w !== elemWeight[i]) {
-        return { reason: "alternation branches of different lengths are beyond the editable subset" };
-      }
-      barSteps.push(...st);
-    }
-    perBarSteps.push(barSteps);
-  }
-  if (topEls.some((el) => !el.location_)) return { reason: "unsupported mini-notation syntax" };
-  if (elemWeight.some((w) => w > 1)) {
-    return { reason: "an elongated element in an alternation pattern is beyond the editable subset" };
-  }
-  const div = perBarSteps.reduce((d, steps) => lcm(d, division(steps)), 1);
-  const perBarCols = elemWeight.reduce((n, c) => n + c, 0) * div;
-  if (perBarCols * bars > MAX_STEPS) {
-    return { reason: `the alternation expands past ${MAX_STEPS} steps` };
-  }
-  const elemSpans = topEls.map((el, i) => ({
-    start: el.location_.start.offset - 1,
-    end: el.location_.end.offset - 1,
-    weight: elemWeight[i]
-  }));
-  return { bars, div, perBarCols, perBarSteps, elemSpans };
-}
-__name(expandAltElements, "expandAltElements");
-function buildAltRegions(src, elemSpans, div, perBarCols, content) {
-  const regions = [];
-  let col = 0;
-  for (const es of elemSpans) {
-    const raw = src.slice(es.start, es.end);
-    const leading = /^\s*/.exec(raw)?.[0] ?? "";
-    const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const to = col + es.weight * div;
-    regions.push({ raw, leading, trailing, from: col, to, perBar: content(col, to) });
-    col = to;
-  }
-  if (col !== perBarCols) return null;
-  if (regions.map((r) => r.raw).join("") !== src) return null;
-  return regions;
-}
-__name(buildAltRegions, "buildAltRegions");
-function gridFromAltElements(mini) {
-  const exp = expandAltElements(mini, false);
-  if (exp === null) return null;
-  if ("reason" in exp) return { ok: false, reason: exp.reason };
-  const { bars, div, perBarCols, perBarSteps, elemSpans } = exp;
-  if (perBarSteps.some(gridHasElongation)) {
-    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
-  }
-  const cells = [];
-  for (const steps of perBarSteps) cells.push(...toCells(steps, div));
-  const lanes = lanesFromCells(cells);
-  const src = mini.trim();
-  const regions = buildAltRegions(src, elemSpans, div, perBarCols, (from, to) => {
-    const perBar2 = [];
-    for (let b = 0; b < bars; b++) {
-      perBar2.push(cells.slice(from + b * perBarCols, to + b * perBarCols).map((c) => [...new Set(c)]));
-    }
-    return perBar2;
-  });
-  if (!regions) return { ok: false, reason: "unsupported mini-notation syntax" };
-  return {
-    ok: true,
-    model: { steps: cells.length, bars, lanes, altSource: { perBar: perBarCols, bars, div, regions } }
-  };
-}
-__name(gridFromAltElements, "gridFromAltElements");
-function parseStepGrid(mini) {
-  const alt = unwrapAlternation(mini);
-  if (alt !== null) return gridFromAlternation(alt);
-  const parts = splitTopLevel(mini);
-  if (parts.length > 1) return gridFromStack(parts);
-  const altEl = gridFromAltElements(mini);
-  if (altEl !== null) return altEl;
-  const tok = tokenize2(mini);
-  if (!tok.ok) return tok;
-  if (gridHasElongation(tok.steps)) {
-    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
-  }
-  const div = division(tok.steps);
-  if (tok.steps.length * div > MAX_STEPS) {
-    return { ok: false, reason: `sub-sequences expand the grid past ${MAX_STEPS} steps` };
-  }
-  const cells = toCells(tok.steps, div);
-  const src = mini.trim();
-  const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(cells));
-  return {
-    ok: true,
-    model: {
-      steps: cells.length,
-      lanes: lanesFromCells(cells),
-      ...sourceParts ? { source: { prefix: "", suffix: "", parts: sourceParts } } : {}
-    }
-  };
-}
-__name(parseStepGrid, "parseStepGrid");
-function gridFromAlternation(inner) {
-  const tok = tokenize2(inner);
-  if (!tok.ok) return tok;
-  if (tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
-  if (gridHasElongation(tok.steps)) {
-    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
-  }
-  const div = division(tok.steps);
-  if (tok.steps.length * div > MAX_STEPS) {
-    return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` };
-  }
-  const cells = toCells(tok.steps, div);
-  const src = inner.trim();
-  const parts = singlePart(src, tok.elements, div, cells.length, gridContent(cells));
-  return {
-    ok: true,
-    model: {
-      steps: cells.length,
-      bars: tok.steps.length,
-      lanes: lanesFromCells(cells),
-      ...parts ? {
-        source: {
-          parts,
-          prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
-          suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
-        }
-      } : {}
-    }
-  };
-}
-__name(gridFromAlternation, "gridFromAlternation");
-function gridFromStack(parts) {
-  const partCells = [];
-  const divs = [];
-  const elements = [];
-  for (const part of parts) {
-    if (part.trim() === "") return { ok: false, reason: "empty stack part" };
-    const tok = tokenize2(part);
-    if (!tok.ok) return tok;
-    if (gridHasElongation(tok.steps)) {
-      return { ok: false, reason: "elongation is beyond the drum-grid subset" };
-    }
-    const div = division(tok.steps);
-    divs.push(div);
-    elements.push(tok.elements);
-    partCells.push(toCells(tok.steps, div));
-  }
-  const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1);
-  if (total > MAX_STEPS) {
-    return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` };
-  }
-  const lanes = [];
-  partCells.forEach((cells, part) => {
-    const factor = total / (cells.length || 1);
-    const stretched = Array.from(
-      { length: total },
-      (_, c) => c % factor === 0 ? cells[c / factor] ?? [] : []
-    );
-    lanes.push(...lanesFromCells(stretched, part));
-  });
-  return {
-    ok: true,
-    model: { steps: total, lanes, ...stackSource(parts, divs, elements, partCells, total) ?? {} }
-  };
-}
-__name(gridFromStack, "gridFromStack");
-function stackSource(parts, divs, elements, partCells, total) {
-  const out = [];
-  for (let i = 0; i < parts.length; i++) {
-    const raw = parts[i];
-    const leading = /^\s*/.exec(raw)?.[0] ?? "";
-    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const regions = buildRegions(
-      raw.trim(),
-      elements[i],
-      divs[i],
-      partCells[i].length,
-      gridContent(partCells[i])
-    );
-    if (!regions) return null;
-    out.push({
-      part: i,
-      div: divs[i],
-      factor: total / (partCells[i].length || 1),
-      before: (i > 0 ? "," : "") + leading,
-      after,
-      regions
-    });
-  }
-  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
-  if (rebuilt !== parts.join(",")) return null;
-  return { source: { prefix: "", suffix: "", parts: out } };
-}
-__name(stackSource, "stackSource");
-var GAIN_TOKEN2 = /^\d+(\.\d+)?$/;
-function parseGainMini(mini, count) {
-  const tokens = mini.trim().split(/\s+/).filter((t) => t !== "");
-  if (tokens.length !== count) return null;
-  const out = [];
-  for (const t of tokens) {
-    if (t === "~") {
-      out.push(1);
-      continue;
-    }
-    if (!GAIN_TOKEN2.test(t)) return null;
-    out.push(parseFloat(t));
-  }
-  return out;
-}
-__name(parseGainMini, "parseGainMini");
-function applyStepGain(model, gain) {
-  if (gain.foreign) return { ...model, gainForeign: true };
-  if (gain.numeric !== null) {
-    return gain.numeric === 1 ? model : { ...model, gains: Array(model.steps).fill(gain.numeric) };
-  }
-  if (gain.mini === null) return model;
-  const gains = parseGainMini(gain.mini, model.steps);
-  if (gains === null) return { ...model, gainForeign: true };
-  return { ...model, gains };
-}
-__name(applyStepGain, "applyStepGain");
-function applyRollGain(model, gain) {
-  if (gain.foreign) return { ...model, gainForeign: true };
-  if (gain.numeric !== null) {
-    return gain.numeric === 1 ? model : { ...model, notes: model.notes.map((n) => ({ ...n, gain: gain.numeric })) };
-  }
-  if (gain.mini === null) return model;
-  let mini = gain.mini;
-  if (model.bars != null) {
-    const inner = model.steps === model.bars ? unwrapAlternation(mini) : null;
-    if (inner === null) return { ...model, gainForeign: true };
-    mini = inner;
-  }
-  const byStart = /* @__PURE__ */ new Map();
-  let col = 0;
-  for (const t of mini.trim().split(/\s+/).filter((s) => s !== "")) {
-    if (t === "~") {
-      col += 1;
-      continue;
-    }
-    const m = t.match(/^(\d+(?:\.\d+)?)(?:@(\d+))?$/);
-    if (!m) return { ...model, gainForeign: true };
-    byStart.set(col, parseFloat(m[1]));
-    col += m[2] ? parseInt(m[2], 10) : 1;
-  }
-  if (col !== model.steps) return { ...model, gainForeign: true };
-  const noteStarts = new Set(model.notes.map((n) => n.start));
-  for (const [c, v] of byStart) {
-    if (v !== 1 && !noteStarts.has(c)) return { ...model, gainForeign: true };
-  }
-  return {
-    ...model,
-    notes: model.notes.map((n) => {
-      const v = byStart.get(n.start);
-      return v != null && v !== 1 ? { ...n, gain: v } : n;
-    })
-  };
-}
-__name(applyRollGain, "applyRollGain");
-function rollFromAltElements(mini) {
-  const exp = expandAltElements(mini, true);
-  if (exp === null) return null;
-  if ("reason" in exp) return { ok: false, reason: exp.reason };
-  const { bars, div, perBarCols, perBarSteps, elemSpans } = exp;
-  const notes = [];
-  let col = 0;
-  let sawNumeric = false;
-  let sawNamed = false;
-  for (const barSteps of perBarSteps) {
-    for (const step of barSteps) {
-      const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
-      const total = stepUnits(step);
-      for (const slot of slots) {
-        const span = step.elongation * div * slot.units / total;
-        for (const token of slot.atoms) {
-          const isNum = /^-?\d+$/.test(token);
-          if (!isNum && pitchToMidi(token) === null) {
-            return { ok: false, reason: `"${token}" is not a note name` };
-          }
-          if (isNum) sawNumeric = true;
-          else sawNamed = true;
-          notes.push({ pitch: isNum ? token : token.toLowerCase(), start: col, duration: span });
-        }
-        col += span;
-      }
-    }
-  }
-  if (sawNumeric && sawNamed) {
-    return { ok: false, reason: "mixed numeric and note-name tokens are beyond the editable subset" };
-  }
-  const src = mini.trim();
-  const regions = buildAltRegions(src, elemSpans, div, perBarCols, (from, to) => {
-    const perBar2 = [];
-    for (let b = 0; b < bars; b++) {
-      const lo = from + b * perBarCols;
-      const hi = to + b * perBarCols;
-      perBar2.push(
-        notes.filter((n) => n.start >= lo && n.start < hi).map((n) => ({ pitch: n.pitch, start: n.start - b * perBarCols, duration: n.duration }))
-      );
-    }
-    return perBar2;
-  });
-  if (!regions) return { ok: false, reason: "unsupported mini-notation syntax" };
-  return {
-    ok: true,
-    model: {
-      steps: col,
-      bars,
-      notes,
-      ...sawNumeric ? { numeric: true } : {},
-      altSource: { perBar: perBarCols, bars, div, regions }
-    }
-  };
-}
-__name(rollFromAltElements, "rollFromAltElements");
-function parsePianoRoll(mini) {
-  const alt = unwrapAlternation(mini);
-  if (alt === null) {
-    const parts2 = splitTopLevel(mini);
-    if (parts2.length > 1) return parseRollLanes(parts2);
-    const altEl = rollFromAltElements(mini);
-    if (altEl !== null) return altEl;
-  }
-  const tok = tokenize2(
-    alt ?? mini,
-    /* allowNumeric */
-    true
-  );
-  if (!tok.ok) return tok;
-  if (alt !== null && tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
-  const div = division(tok.steps);
-  const bars = tok.steps.reduce((b, s) => b + s.elongation, 0);
-  if ((div > 1 || alt !== null) && bars * div > MAX_STEPS) {
-    return { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` };
-  }
-  const notes = [];
-  let col = 0;
-  let sawNumeric = false;
-  let sawNamed = false;
-  for (const step of tok.steps) {
-    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
-    const total = stepUnits(step);
-    for (const slot of slots) {
-      const span = step.elongation * div * slot.units / total;
-      for (const token of slot.atoms) {
-        const isNum = /^-?\d+$/.test(token);
-        if (!isNum && pitchToMidi(token) === null) {
-          return { ok: false, reason: `"${token}" is not a note name` };
-        }
-        if (isNum) sawNumeric = true;
-        else sawNamed = true;
-        notes.push({ pitch: isNum ? token : token.toLowerCase(), start: col, duration: span });
-      }
-      col += span;
-    }
-  }
-  if (sawNumeric && sawNamed) {
-    return { ok: false, reason: "mixed numeric and note-name tokens are beyond the editable subset" };
-  }
-  const src = (alt ?? mini).trim();
-  const parts = singlePart(src, tok.elements, div, col, rollContent(notes));
-  return {
-    ok: true,
-    model: {
-      steps: col,
-      ...alt !== null ? { bars } : {},
-      notes,
-      ...sawNumeric ? { numeric: true } : {},
-      ...parts ? {
-        source: {
-          parts,
-          prefix: alt !== null ? "<" + (/^\s*/.exec(alt)?.[0] ?? "") : "",
-          suffix: alt !== null ? (/\s*$/.exec(alt)?.[0] ?? "") + ">" : ""
-        }
-      } : {}
-    }
-  };
-}
-__name(parsePianoRoll, "parsePianoRoll");
-function parseRollLanes(parts) {
-  const models = [];
-  for (const part of parts) {
-    const r = parsePianoRoll(part.trim());
-    if (!r.ok) return r;
-    if (r.model.bars != null) {
-      return { ok: false, reason: "multi-bar parallel note lanes are beyond the editable subset" };
-    }
-    models.push(r.model);
-  }
-  const steps = models[0].steps;
-  if (!models.every((m) => m.steps === steps)) {
-    return { ok: false, reason: "parallel note lanes must share a step grid" };
-  }
-  const numeric = models.some((m) => m.numeric);
-  if (numeric && models.some((m) => !m.numeric && m.notes.length > 0)) {
-    return { ok: false, reason: "mixed numeric and note-name lanes are beyond the editable subset" };
-  }
-  const notes = models.flatMap((m) => m.notes);
-  return {
-    ok: true,
-    model: { steps, notes, ...numeric ? { numeric: true } : {}, ...rollStackSource(parts, models) ?? {} }
-  };
-}
-__name(parseRollLanes, "parseRollLanes");
-function rollStackSource(parts, models) {
-  const out = [];
-  for (let i = 0; i < parts.length; i++) {
-    const raw = parts[i];
-    const leading = /^\s*/.exec(raw)?.[0] ?? "";
-    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const own = models[i].source;
-    if (!own || own.parts.length !== 1 || own.prefix !== "" || own.suffix !== "") return null;
-    out.push({
-      part: i,
-      div: own.parts[0].div,
-      factor: 1,
-      before: (i > 0 ? "," : "") + leading,
-      after,
-      regions: own.parts[0].regions
-    });
-  }
-  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
-  if (rebuilt !== parts.join(",")) return null;
-  return { source: { prefix: "", suffix: "", parts: out } };
-}
-__name(rollStackSource, "rollStackSource");
-
 // src/visualEdit/notation/serialize.ts
 function altSourceFits(a, steps) {
   return !!a && a.perBar * a.bars === steps;
@@ -27504,6 +26657,1134 @@ function serializeRollGain(model) {
   return { kind: "write", value: bars > 1 ? `<${seq}>` : seq, quoted: true };
 }
 __name(serializeRollGain, "serializeRollGain");
+
+// src/visualEdit/notation/pitch.ts
+var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
+var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
+var DEFAULT_OCTAVE = 3;
+function pitchToMidi(token) {
+  if (/^-?\d+$/.test(token)) return parseInt(token, 10);
+  const m = token.toLowerCase().match(/^([a-g])(s|#|b)?(-?\d+)?$/);
+  if (!m) return null;
+  const [, letter, accidental, octave] = m;
+  let semitone = SEMITONE_OF[letter];
+  if (accidental === "s" || accidental === "#") semitone += 1;
+  else if (accidental === "b") semitone -= 1;
+  const oct = octave !== void 0 ? parseInt(octave, 10) : DEFAULT_OCTAVE;
+  return (oct + 1) * 12 + semitone;
+}
+__name(pitchToMidi, "pitchToMidi");
+function midiToPitch(midi) {
+  const octave = Math.floor(midi / 12) - 1;
+  return `${SHARP_NAMES[(midi % 12 + 12) % 12]}${octave}`;
+}
+__name(midiToPitch, "midiToPitch");
+function noteDisplayName(midi) {
+  const token = midiToPitch(midi);
+  return token.charAt(0).toUpperCase() + token.slice(1);
+}
+__name(noteDisplayName, "noteDisplayName");
+function isBlackKey(midi) {
+  return SHARP_NAMES[(midi % 12 + 12) % 12].includes("#");
+}
+__name(isBlackKey, "isBlackKey");
+function cLabel(midi) {
+  if ((midi % 12 + 12) % 12 !== 0) return null;
+  return `C${Math.floor(midi / 12) - 1}`;
+}
+__name(cLabel, "cLabel");
+
+// src/visualEdit/notation/parse.ts
+var NUMERIC = /^-?\d+$/;
+var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => allowNumeric || !NUMERIC.test(t), "isAtomToken");
+var MAX_STEPS = 64;
+var gcd = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcd(b, a % b), "gcd");
+var lcm = /* @__PURE__ */ __name((a, b) => a / gcd(a, b) * b, "lcm");
+var bjorklund2 = /* @__PURE__ */ __name((k, n) => {
+  if (k === 0) return Array(n).fill(false);
+  if (Math.abs(k) >= n) return Array(n).fill(k > 0);
+  return euclid_mjs.bjorklund(k, n).map((x) => x === 1);
+}, "bjorklund");
+var rotateEuclid = /* @__PURE__ */ __name((pattern, rot) => {
+  const n = pattern.length;
+  if (n === 0) return pattern;
+  const k = (-rot % n + n) % n;
+  return pattern.slice(k).concat(pattern.slice(0, k));
+}, "rotateEuclid");
+var stepUnits = /* @__PURE__ */ __name((s) => s.sub ? s.sub.reduce((n, slot) => n + slot.units, 0) : 1, "stepUnits");
+var division = /* @__PURE__ */ __name((steps) => steps.reduce((d, s) => lcm(d, stepUnits(s)), 1), "division");
+function splitTopLevel(src) {
+  const out = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === "[" || c === "(") depth++;
+    else if (c === "]" || c === ")") depth--;
+    else if (c === "," && depth === 0) {
+      out.push(src.slice(from, i));
+      from = i + 1;
+    }
+  }
+  out.push(src.slice(from));
+  return out;
+}
+__name(splitTopLevel, "splitTopLevel");
+function unwrapAlternation(mini) {
+  const t = mini.trim();
+  if (t.length < 2 || !t.startsWith("<") || !t.endsWith(">")) return null;
+  let depth = 0;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === "<") depth++;
+    else if (t[i] === ">" && --depth === 0 && i !== t.length - 1) return null;
+  }
+  return t.slice(1, -1);
+}
+__name(unwrapAlternation, "unwrapAlternation");
+var isAtom = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
+var isRestAtom = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
+var tokenOf = /* @__PURE__ */ __name((atom, ops) => {
+  let t = atom.source_;
+  for (const op of ops) {
+    if (op.type_ !== "tail") continue;
+    const node = op.arguments_?.element;
+    if (!node || node.type_ !== "atom" || typeof node.source_ !== "string") return null;
+    t += ":" + node.source_;
+  }
+  return t;
+}, "tokenOf");
+var numArg = /* @__PURE__ */ __name((node) => {
+  const n = node;
+  if (!n || typeof n !== "object") return null;
+  const inner = n.type_ === "element" ? n.source_ : n;
+  if (!inner || inner.type_ !== "atom") return null;
+  const v = Number(inner.source_);
+  return Number.isFinite(v) ? v : null;
+}, "numArg");
+function readOps(ops) {
+  let mult = 1;
+  let euclid = null;
+  for (const op of ops) {
+    switch (op.type_) {
+      case "tail":
+      case "replicate":
+        break;
+      case "stretch": {
+        const type = op.arguments_?.type;
+        if (type !== "fast") {
+          return { reason: `"${String(type)}" stretch is beyond the editable subset` };
+        }
+        const amount = numArg(op.arguments_?.amount);
+        if (amount === null || !Number.isInteger(amount) || amount < 1) {
+          return { reason: "invalid * multiplier" };
+        }
+        mult *= amount;
+        break;
+      }
+      case "bjorklund": {
+        const k = numArg(op.arguments_?.pulse);
+        const n = numArg(op.arguments_?.step);
+        const rot = op.arguments_?.rotation == null ? 0 : numArg(op.arguments_.rotation);
+        if (k === null || n === null || rot === null) {
+          return { reason: "invalid euclid (k,n) arguments" };
+        }
+        if (n < 1) return { reason: "invalid euclid step count" };
+        euclid = { k, n, rot };
+        break;
+      }
+      case "degradeBy":
+        return { reason: '"?" random degrade is beyond the editable subset' };
+      default:
+        return { reason: `"${op.type_}" is beyond the editable subset` };
+    }
+  }
+  return { mult, euclid };
+}
+__name(readOps, "readOps");
+function groupSlots(pat, allowNumeric) {
+  const slots = [];
+  for (const el of pat.source_) {
+    const opts = el.options_ ?? {};
+    const ops = opts.ops ?? [];
+    const units = opts.weight ?? 1;
+    if ((opts.reps ?? 1) > 1) {
+      return { reason: "! inside a group is beyond the editable subset" };
+    }
+    if (ops.some((o) => o.type_ !== "tail")) {
+      return { reason: "operators inside a group are beyond the editable subset" };
+    }
+    if (isAtom(el.source_)) {
+      if (isRestAtom(el.source_)) {
+        if (ops.length) return { reason: 'a ":" variant on a rest has nothing to name' };
+        slots.push({ atoms: [], units });
+        continue;
+      }
+      const token = tokenOf(el.source_, ops);
+      if (token === null) {
+        return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
+      }
+      if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
+      slots.push({ atoms: [token], units });
+      continue;
+    }
+    const chord = chordAtoms(el.source_, allowNumeric);
+    if (!Array.isArray(chord)) return chord;
+    slots.push({ atoms: chord, units });
+  }
+  if (slots.length === 0) return { reason: "empty group" };
+  return slots;
+}
+__name(groupSlots, "groupSlots");
+function chordAtoms(pat, allowNumeric) {
+  if (pat.arguments_?.alignment !== "stack") {
+    return { reason: "nested groups are beyond the editable subset" };
+  }
+  const atoms = [];
+  for (const voice of pat.source_) {
+    if (isAtom(voice)) {
+      return { reason: "stacked sub-sequences are beyond the editable subset" };
+    }
+    const vp = voice;
+    if (vp.arguments_?.alignment !== "fastcat" || vp.source_.length !== 1) {
+      return { reason: "stacked sub-sequences are beyond the editable subset" };
+    }
+    const el = vp.source_[0];
+    const ops = el.options_?.ops ?? [];
+    if (!isAtom(el.source_) || (el.options_?.reps ?? 1) > 1 || ops.some((o) => o.type_ !== "tail")) {
+      return { reason: "stacked sub-sequences are beyond the editable subset" };
+    }
+    const token = tokenOf(el.source_, ops);
+    if (token === null) {
+      return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
+    }
+    if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
+    atoms.push(token);
+  }
+  return atoms;
+}
+__name(chordAtoms, "chordAtoms");
+function elementToSteps(el, allowNumeric) {
+  const opts = el.options_ ?? {};
+  const ops = opts.ops ?? [];
+  const reps = opts.reps ?? 1;
+  const rawWeight = opts.weight ?? 1;
+  const read5 = readOps(ops);
+  if (!("mult" in read5)) return read5;
+  const { mult, euclid } = read5;
+  if (reps > 1 && rawWeight !== reps) {
+    return { reason: "! combined with * or @ is beyond the editable subset" };
+  }
+  if (reps < 1) return { reason: "a zero replicate has nothing to show" };
+  if (rawWeight <= 0) return { reason: "a zero-width step has nothing to show" };
+  const weight = reps > 1 ? 1 : rawWeight;
+  if (!isAtom(el.source_)) {
+    const alignment = el.source_.arguments_?.alignment;
+    if (alignment === "stack") {
+      const chord = chordAtoms(el.source_, allowNumeric);
+      if (!Array.isArray(chord)) return chord;
+      if (euclid) return { reason: "euclid on a chord is beyond the editable subset" };
+      if (reps > 1) return { reason: "! on a chord is beyond the editable subset" };
+      if (mult > 1) {
+        if (weight > 1) return { reason: "* combined with @ is beyond the editable subset" };
+        return [
+          {
+            atoms: [],
+            elongation: weight,
+            sub: Array.from({ length: mult }, () => ({ atoms: [...chord], units: 1 }))
+          }
+        ];
+      }
+      return [{ atoms: chord, elongation: weight, sub: null }];
+    }
+    if (alignment !== "fastcat") {
+      return { reason: `"${String(alignment)}" is beyond the editable subset` };
+    }
+    if (euclid) return { reason: "euclid on a group is beyond the editable subset" };
+    if (reps > 1) return { reason: "! on a group is beyond the editable subset" };
+    if (mult > 1 && weight > 1) {
+      return { reason: "* combined with @ is beyond the editable subset" };
+    }
+    const slots = groupSlots(el.source_, allowNumeric);
+    if (!Array.isArray(slots)) return slots;
+    if (mult > 1) {
+      const sub = [];
+      for (let r = 0; r < mult; r++) {
+        for (const s of slots) sub.push({ atoms: [...s.atoms], units: s.units });
+      }
+      return [{ atoms: [], elongation: weight, sub }];
+    }
+    if (slots.length === 1 && slots[0].units === 1) {
+      return [{ atoms: slots[0].atoms, elongation: weight, sub: null }];
+    }
+    return [{ atoms: [], elongation: weight, sub: slots }];
+  }
+  const atom = el.source_;
+  const rest = isRestAtom(atom);
+  if (rest && ops.some((o) => o.type_ === "tail")) {
+    return { reason: 'a ":" variant on a rest has nothing to name' };
+  }
+  const token = rest ? "" : tokenOf(atom, ops);
+  if (token === null) {
+    return { reason: `a patterned ":" variant on "${atom.source_}" is beyond the editable subset` };
+  }
+  if (!rest && !isAtomToken(token, allowNumeric)) {
+    return { reason: `unsupported token "${token}"` };
+  }
+  const atoms = rest ? [] : [token];
+  if (euclid) {
+    if (mult > 1 || reps > 1 || weight > 1) {
+      return { reason: "euclid combined with * / ! / @ is beyond the editable subset" };
+    }
+    const hits = rotateEuclid(bjorklund2(euclid.k, euclid.n), euclid.rot);
+    return [{ atoms: [], elongation: 1, sub: hits.map((on) => ({ atoms: on ? [...atoms] : [], units: 1 })) }];
+  }
+  if (reps > 1) {
+    if (mult > 1) return { reason: "! combined with * or @ is beyond the editable subset" };
+    return Array.from({ length: reps }, () => ({ atoms: [...atoms], elongation: 1, sub: null }));
+  }
+  if (mult > 1) {
+    if (weight > 1) return { reason: "* combined with @ is beyond the editable subset" };
+    return [
+      {
+        atoms: [],
+        elongation: 1,
+        sub: Array.from({ length: mult }, () => ({ atoms: [...atoms], units: 1 }))
+      }
+    ];
+  }
+  return [{ atoms, elongation: weight, sub: null }];
+}
+__name(elementToSteps, "elementToSteps");
+function tokenize2(mini, allowNumeric = false) {
+  const src = mini.trim();
+  if (src === "") return { ok: true, steps: [], elements: [] };
+  let ast;
+  try {
+    ast = krillParser_js.parse('"' + src + '"');
+  } catch {
+    return { ok: false, reason: "unsupported mini-notation syntax" };
+  }
+  if (!ast || ast.type_ !== "pattern" || !Array.isArray(ast.source_)) {
+    return { ok: false, reason: "unsupported mini-notation syntax" };
+  }
+  const alignment = ast.arguments_?.alignment;
+  if (alignment !== "fastcat") {
+    return {
+      ok: false,
+      reason: alignment === "stack" ? 'unsupported token ","' : `"${String(alignment)}" is beyond the editable subset`
+    };
+  }
+  const steps = [];
+  const elements = [];
+  for (const el of ast.source_) {
+    const mapped = elementToSteps(el, allowNumeric);
+    if (!Array.isArray(mapped)) return { ok: false, reason: mapped.reason };
+    const loc = el.location_;
+    if (loc) {
+      elements.push({
+        start: loc.start.offset - 1,
+        end: loc.end.offset - 1,
+        weight: mapped.reduce((w, s) => w + s.elongation, 0)
+      });
+    }
+    steps.push(...mapped);
+  }
+  const tiled = elements.length === ast.source_.length;
+  return { ok: true, steps, elements: tiled ? elements : [] };
+}
+__name(tokenize2, "tokenize");
+var gridHasElongation = /* @__PURE__ */ __name((steps) => steps.some((s) => s.elongation !== 1 || (s.sub?.some((slot) => slot.units !== 1) ?? false)), "gridHasElongation");
+function toCells(steps, div) {
+  const cells = [];
+  for (const step of steps) {
+    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const total = stepUnits(step);
+    for (const slot of slots) {
+      const span = div / total * slot.units;
+      cells.push(slot.atoms);
+      for (let j = 1; j < span; j++) cells.push([]);
+    }
+  }
+  return cells;
+}
+__name(toCells, "toCells");
+function lanesFromCells(cells, part) {
+  const order = [];
+  for (const cell of cells) {
+    for (const sound of cell) if (!order.includes(sound)) order.push(sound);
+  }
+  return order.map((sound) => ({
+    sound,
+    ...part !== void 0 ? { part } : {},
+    cells: cells.map((cell) => cell.includes(sound))
+  }));
+}
+__name(lanesFromCells, "lanesFromCells");
+function buildRegions(src, elements, div, total, content) {
+  if (elements.length === 0) return null;
+  const regions = [];
+  let col = 0;
+  for (const el of elements) {
+    const raw = src.slice(el.start, el.end);
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const to = col + el.weight * div;
+    regions.push({ raw, leading, trailing, from: col, to, content: content(col, to) });
+    col = to;
+  }
+  if (col !== total) return null;
+  if (regions.map((r) => r.raw).join("") !== src) return null;
+  return regions;
+}
+__name(buildRegions, "buildRegions");
+var gridContent = /* @__PURE__ */ __name((cells) => (from, to) => cells.slice(from, to).map((c) => [...new Set(c)]), "gridContent");
+var rollContent = /* @__PURE__ */ __name((notes) => (from, to) => notes.filter((n) => n.start >= from && n.start < to).map((n) => ({ pitch: n.pitch, start: n.start, duration: n.duration })), "rollContent");
+function singlePart(src, elements, div, total, content) {
+  const regions = buildRegions(src, elements, div, total, content);
+  return regions ? [{ part: 0, div, factor: 1, before: "", after: "", regions }] : null;
+}
+__name(singlePart, "singlePart");
+function altAlternatives(el) {
+  const p = el.source_;
+  if (isAtom(p) || p.arguments_?.alignment !== "polymeter_slowcat") return null;
+  const o = el.options_;
+  if (o && ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0)) return null;
+  const inner = p.source_[0];
+  if (!inner || inner.type_ !== "pattern" || inner.arguments_?.alignment !== "fastcat") return null;
+  return inner.source_;
+}
+__name(altAlternatives, "altAlternatives");
+function expandAltElements(mini, allowNumeric) {
+  const src = mini.trim();
+  let ast;
+  try {
+    ast = krillParser_js.parse('"' + src + '"');
+  } catch {
+    return null;
+  }
+  if (!ast || ast.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return null;
+  const topEls = ast.source_;
+  if (!topEls.some((el) => altAlternatives(el) !== null)) return null;
+  let bars = 1;
+  for (const el of topEls) {
+    const alts = altAlternatives(el);
+    if (alts) {
+      if (alts.length === 0) return { reason: "empty alternation" };
+      bars = lcm(bars, alts.length);
+    }
+  }
+  const perBarSteps = [];
+  const elemWeight = [];
+  for (let b = 0; b < bars; b++) {
+    const barSteps = [];
+    for (let i = 0; i < topEls.length; i++) {
+      const alts = altAlternatives(topEls[i]);
+      const node = alts ? alts[b % alts.length] : topEls[i];
+      const st = elementToSteps(node, allowNumeric);
+      if (!Array.isArray(st)) return { reason: st.reason };
+      const w = st.reduce((s, step) => s + step.elongation, 0);
+      if (b === 0) elemWeight[i] = w;
+      else if (w !== elemWeight[i]) {
+        return { reason: "alternation branches of different lengths are beyond the editable subset" };
+      }
+      barSteps.push(...st);
+    }
+    perBarSteps.push(barSteps);
+  }
+  if (topEls.some((el) => !el.location_)) return { reason: "unsupported mini-notation syntax" };
+  if (elemWeight.some((w) => w > 1)) {
+    return { reason: "an elongated element in an alternation pattern is beyond the editable subset" };
+  }
+  const div = perBarSteps.reduce((d, steps) => lcm(d, division(steps)), 1);
+  const perBarCols = elemWeight.reduce((n, c) => n + c, 0) * div;
+  if (perBarCols * bars > MAX_STEPS) {
+    return { reason: `the alternation expands past ${MAX_STEPS} steps` };
+  }
+  const elemSpans = topEls.map((el, i) => ({
+    start: el.location_.start.offset - 1,
+    end: el.location_.end.offset - 1,
+    weight: elemWeight[i]
+  }));
+  return { bars, div, perBarCols, perBarSteps, elemSpans };
+}
+__name(expandAltElements, "expandAltElements");
+function buildAltRegions(src, elemSpans, div, perBarCols, content) {
+  const regions = [];
+  let col = 0;
+  for (const es of elemSpans) {
+    const raw = src.slice(es.start, es.end);
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const to = col + es.weight * div;
+    regions.push({ raw, leading, trailing, from: col, to, perBar: content(col, to) });
+    col = to;
+  }
+  if (col !== perBarCols) return null;
+  if (regions.map((r) => r.raw).join("") !== src) return null;
+  return regions;
+}
+__name(buildAltRegions, "buildAltRegions");
+function gridFromAltElements(mini) {
+  const exp = expandAltElements(mini, false);
+  if (exp === null) return null;
+  if ("reason" in exp) return { ok: false, reason: exp.reason };
+  const { bars, div, perBarCols, perBarSteps, elemSpans } = exp;
+  if (perBarSteps.some(gridHasElongation)) {
+    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
+  }
+  const cells = [];
+  for (const steps of perBarSteps) cells.push(...toCells(steps, div));
+  const lanes = lanesFromCells(cells);
+  const src = mini.trim();
+  const regions = buildAltRegions(src, elemSpans, div, perBarCols, (from, to) => {
+    const perBar2 = [];
+    for (let b = 0; b < bars; b++) {
+      perBar2.push(cells.slice(from + b * perBarCols, to + b * perBarCols).map((c) => [...new Set(c)]));
+    }
+    return perBar2;
+  });
+  if (!regions) return { ok: false, reason: "unsupported mini-notation syntax" };
+  return {
+    ok: true,
+    model: { steps: cells.length, bars, lanes, altSource: { perBar: perBarCols, bars, div, regions } }
+  };
+}
+__name(gridFromAltElements, "gridFromAltElements");
+function denom(x, cap = MAX_STEPS) {
+  for (let d = 1; d <= cap; d++) if (Math.abs(x * d - Math.round(x * d)) < 1e-9) return d;
+  return 0;
+}
+__name(denom, "denom");
+function isWholeAlternation(src) {
+  let ast;
+  try {
+    ast = krillParser_js.parse('"' + src + '"');
+  } catch {
+    return false;
+  }
+  if (ast?.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return false;
+  if (ast.source_.length !== 1) return false;
+  const inner = ast.source_[0]?.source_;
+  return inner?.type_ === "pattern" && inner.arguments_?.alignment === "polymeter_slowcat";
+}
+__name(isWholeAlternation, "isWholeAlternation");
+function topLevelSpans(src) {
+  let ast;
+  try {
+    ast = krillParser_js.parse('"' + src + '"');
+  } catch {
+    return null;
+  }
+  if (!ast || ast.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return null;
+  const out = [];
+  for (const el of ast.source_) {
+    const loc = el.location_;
+    if (!loc) return null;
+    const reps = el.options_?.reps ?? 1;
+    const weight = reps > 1 ? reps : el.options_?.weight ?? 1;
+    if (!Number.isInteger(weight) || weight < 1) return null;
+    out.push({ start: loc.start.offset - 1, end: loc.end.offset - 1, weight });
+  }
+  return out;
+}
+__name(topLevelSpans, "topLevelSpans");
+function gridOnsets(pat, cyc) {
+  let haps;
+  try {
+    haps = pat.queryArc(cyc, cyc + 1);
+  } catch {
+    return null;
+  }
+  const byCol = /* @__PURE__ */ new Map();
+  for (const h of haps) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
+    const v = h.value;
+    let token;
+    if (typeof v === "string") token = v;
+    else if (v && typeof v === "object" && typeof v.s === "string") {
+      token = v.s + (v.n != null ? ":" + String(v.n) : "");
+    } else return null;
+    if (NUMERIC.test(token)) return null;
+    const pos = h.whole.begin.valueOf() - cyc;
+    const key2 = Math.round(pos * 720720);
+    const cell = byCol.get(key2) ?? [];
+    if (!cell.includes(token)) cell.push(token);
+    byCol.set(key2, cell);
+  }
+  return [...byCol.entries()].map(([k, atoms]) => ({ pos: k / 720720, atoms }));
+}
+__name(gridOnsets, "gridOnsets");
+var onsetKey = /* @__PURE__ */ __name((o) => JSON.stringify(o.map((x) => [Math.round(x.pos * 720720), [...x.atoms].sort()]).sort()), "onsetKey");
+function projectStepGrid(src0) {
+  const src = src0.trim();
+  if (src === "") return null;
+  if (isWholeAlternation(src)) return null;
+  let pat;
+  try {
+    pat = mini_mjs.mini(src);
+  } catch {
+    return null;
+  }
+  const cyc0 = gridOnsets(pat, 0);
+  if (cyc0 === null || cyc0.length === 0) return null;
+  const sig0 = onsetKey(cyc0);
+  for (let c = 1; c < 8; c++) {
+    const cc = gridOnsets(pat, c);
+    if (cc === null || onsetKey(cc) !== sig0) return null;
+  }
+  const spans = topLevelSpans(src);
+  if (!spans) return null;
+  const totalWeight = spans.reduce((s, e) => s + e.weight, 0);
+  const bounds = [];
+  let accW = 0;
+  for (const e of spans) {
+    bounds.push(accW / totalWeight);
+    accW += e.weight;
+  }
+  let cols = 1;
+  for (const x of [...cyc0.map((o) => o.pos), ...bounds]) {
+    const d = denom(x);
+    if (d === 0) return null;
+    cols = lcm(cols, d);
+  }
+  if (cols > MAX_STEPS || cols % totalWeight !== 0) return null;
+  const divPerUnit = cols / totalWeight;
+  const cells = Array.from({ length: cols }, () => []);
+  for (const o of cyc0) {
+    const c = Math.round(o.pos * cols);
+    if (c < 0 || c >= cols) return null;
+    cells[c] = [...new Set(o.atoms)];
+  }
+  const parts = singlePart(src, spans, divPerUnit, cols, gridContent(cells));
+  if (!parts) return null;
+  const model = {
+    steps: cols,
+    lanes: lanesFromCells(cells),
+    source: { prefix: "", suffix: "", parts }
+  };
+  if (!projectionEditSafe(model, cols, cyc0)) return null;
+  return { ok: true, model };
+}
+__name(projectStepGrid, "projectStepGrid");
+var PROBE_SOUND = "__stave_probe__";
+function projectionEditSafe(model, cols, base) {
+  const t = /* @__PURE__ */ __name((col) => col / cols, "t");
+  for (const r of model.source.parts[0].regions) {
+    const col = r.from;
+    const lanes = model.lanes.map((l) => ({ ...l, cells: [...l.cells] }));
+    let probe = lanes.find((l) => l.sound === PROBE_SOUND);
+    if (!probe) {
+      probe = { sound: PROBE_SOUND, cells: Array(cols).fill(false) };
+      lanes.push(probe);
+    }
+    probe.cells[col] = true;
+    const out = serializeStepGrid({ ...model, lanes });
+    if (out == null) return false;
+    let got;
+    try {
+      got = gridOnsets(mini_mjs.mini(out), 0);
+    } catch {
+      return false;
+    }
+    if (got === null) return false;
+    const hit = base.find((o) => Math.abs(o.pos - t(col)) < 1e-9);
+    const expected = base.map(
+      (o) => o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND] } : o
+    );
+    if (!hit) expected.push({ pos: t(col), atoms: [PROBE_SOUND] });
+    if (onsetKey(got) !== onsetKey(expected)) return false;
+  }
+  return true;
+}
+__name(projectionEditSafe, "projectionEditSafe");
+function parseStepGrid(mini) {
+  const core = parseStepGridCore(mini);
+  if (core.ok) return core;
+  return projectStepGrid(mini) ?? core;
+}
+__name(parseStepGrid, "parseStepGrid");
+function parseStepGridCore(mini) {
+  const alt = unwrapAlternation(mini);
+  if (alt !== null) return gridFromAlternation(alt);
+  const parts = splitTopLevel(mini);
+  if (parts.length > 1) return gridFromStack(parts);
+  const altEl = gridFromAltElements(mini);
+  if (altEl !== null) return altEl;
+  const tok = tokenize2(mini);
+  if (!tok.ok) return tok;
+  if (gridHasElongation(tok.steps)) {
+    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
+  }
+  const div = division(tok.steps);
+  if (tok.steps.length * div > MAX_STEPS) {
+    return { ok: false, reason: `sub-sequences expand the grid past ${MAX_STEPS} steps` };
+  }
+  const cells = toCells(tok.steps, div);
+  const src = mini.trim();
+  const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(cells));
+  return {
+    ok: true,
+    model: {
+      steps: cells.length,
+      lanes: lanesFromCells(cells),
+      ...sourceParts ? { source: { prefix: "", suffix: "", parts: sourceParts } } : {}
+    }
+  };
+}
+__name(parseStepGridCore, "parseStepGridCore");
+function gridFromAlternation(inner) {
+  const tok = tokenize2(inner);
+  if (!tok.ok) return tok;
+  if (tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
+  if (gridHasElongation(tok.steps)) {
+    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
+  }
+  const div = division(tok.steps);
+  if (tok.steps.length * div > MAX_STEPS) {
+    return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` };
+  }
+  const cells = toCells(tok.steps, div);
+  const src = inner.trim();
+  const parts = singlePart(src, tok.elements, div, cells.length, gridContent(cells));
+  return {
+    ok: true,
+    model: {
+      steps: cells.length,
+      bars: tok.steps.length,
+      lanes: lanesFromCells(cells),
+      ...parts ? {
+        source: {
+          parts,
+          prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
+          suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
+        }
+      } : {}
+    }
+  };
+}
+__name(gridFromAlternation, "gridFromAlternation");
+function gridFromStack(parts) {
+  const partCells = [];
+  const divs = [];
+  const elements = [];
+  for (const part of parts) {
+    if (part.trim() === "") return { ok: false, reason: "empty stack part" };
+    const tok = tokenize2(part);
+    if (!tok.ok) return tok;
+    if (gridHasElongation(tok.steps)) {
+      return { ok: false, reason: "elongation is beyond the drum-grid subset" };
+    }
+    const div = division(tok.steps);
+    divs.push(div);
+    elements.push(tok.elements);
+    partCells.push(toCells(tok.steps, div));
+  }
+  const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1);
+  if (total > MAX_STEPS) {
+    return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` };
+  }
+  const lanes = [];
+  partCells.forEach((cells, part) => {
+    const factor = total / (cells.length || 1);
+    const stretched = Array.from(
+      { length: total },
+      (_, c) => c % factor === 0 ? cells[c / factor] ?? [] : []
+    );
+    lanes.push(...lanesFromCells(stretched, part));
+  });
+  return {
+    ok: true,
+    model: { steps: total, lanes, ...stackSource(parts, divs, elements, partCells, total) ?? {} }
+  };
+}
+__name(gridFromStack, "gridFromStack");
+function stackSource(parts, divs, elements, partCells, total) {
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    const raw = parts[i];
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const regions = buildRegions(
+      raw.trim(),
+      elements[i],
+      divs[i],
+      partCells[i].length,
+      gridContent(partCells[i])
+    );
+    if (!regions) return null;
+    out.push({
+      part: i,
+      div: divs[i],
+      factor: total / (partCells[i].length || 1),
+      before: (i > 0 ? "," : "") + leading,
+      after,
+      regions
+    });
+  }
+  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
+  if (rebuilt !== parts.join(",")) return null;
+  return { source: { prefix: "", suffix: "", parts: out } };
+}
+__name(stackSource, "stackSource");
+var GAIN_TOKEN2 = /^\d+(\.\d+)?$/;
+function parseGainMini(mini, count) {
+  const tokens = mini.trim().split(/\s+/).filter((t) => t !== "");
+  if (tokens.length !== count) return null;
+  const out = [];
+  for (const t of tokens) {
+    if (t === "~") {
+      out.push(1);
+      continue;
+    }
+    if (!GAIN_TOKEN2.test(t)) return null;
+    out.push(parseFloat(t));
+  }
+  return out;
+}
+__name(parseGainMini, "parseGainMini");
+function applyStepGain(model, gain) {
+  if (gain.foreign) return { ...model, gainForeign: true };
+  if (gain.numeric !== null) {
+    return gain.numeric === 1 ? model : { ...model, gains: Array(model.steps).fill(gain.numeric) };
+  }
+  if (gain.mini === null) return model;
+  const gains = parseGainMini(gain.mini, model.steps);
+  if (gains === null) return { ...model, gainForeign: true };
+  return { ...model, gains };
+}
+__name(applyStepGain, "applyStepGain");
+function applyRollGain(model, gain) {
+  if (gain.foreign) return { ...model, gainForeign: true };
+  if (gain.numeric !== null) {
+    return gain.numeric === 1 ? model : { ...model, notes: model.notes.map((n) => ({ ...n, gain: gain.numeric })) };
+  }
+  if (gain.mini === null) return model;
+  let mini = gain.mini;
+  if (model.bars != null) {
+    const inner = model.steps === model.bars ? unwrapAlternation(mini) : null;
+    if (inner === null) return { ...model, gainForeign: true };
+    mini = inner;
+  }
+  const byStart = /* @__PURE__ */ new Map();
+  let col = 0;
+  for (const t of mini.trim().split(/\s+/).filter((s) => s !== "")) {
+    if (t === "~") {
+      col += 1;
+      continue;
+    }
+    const m = t.match(/^(\d+(?:\.\d+)?)(?:@(\d+))?$/);
+    if (!m) return { ...model, gainForeign: true };
+    byStart.set(col, parseFloat(m[1]));
+    col += m[2] ? parseInt(m[2], 10) : 1;
+  }
+  if (col !== model.steps) return { ...model, gainForeign: true };
+  const noteStarts = new Set(model.notes.map((n) => n.start));
+  for (const [c, v] of byStart) {
+    if (v !== 1 && !noteStarts.has(c)) return { ...model, gainForeign: true };
+  }
+  return {
+    ...model,
+    notes: model.notes.map((n) => {
+      const v = byStart.get(n.start);
+      return v != null && v !== 1 ? { ...n, gain: v } : n;
+    })
+  };
+}
+__name(applyRollGain, "applyRollGain");
+function rollFromAltElements(mini) {
+  const exp = expandAltElements(mini, true);
+  if (exp === null) return null;
+  if ("reason" in exp) return { ok: false, reason: exp.reason };
+  const { bars, div, perBarCols, perBarSteps, elemSpans } = exp;
+  const notes = [];
+  let col = 0;
+  let sawNumeric = false;
+  let sawNamed = false;
+  for (const barSteps of perBarSteps) {
+    for (const step of barSteps) {
+      const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+      const total = stepUnits(step);
+      for (const slot of slots) {
+        const span = step.elongation * div * slot.units / total;
+        for (const token of slot.atoms) {
+          const isNum = /^-?\d+$/.test(token);
+          if (!isNum && pitchToMidi(token) === null) {
+            return { ok: false, reason: `"${token}" is not a note name` };
+          }
+          if (isNum) sawNumeric = true;
+          else sawNamed = true;
+          notes.push({ pitch: isNum ? token : token.toLowerCase(), start: col, duration: span });
+        }
+        col += span;
+      }
+    }
+  }
+  if (sawNumeric && sawNamed) {
+    return { ok: false, reason: "mixed numeric and note-name tokens are beyond the editable subset" };
+  }
+  const src = mini.trim();
+  const regions = buildAltRegions(src, elemSpans, div, perBarCols, (from, to) => {
+    const perBar2 = [];
+    for (let b = 0; b < bars; b++) {
+      const lo = from + b * perBarCols;
+      const hi = to + b * perBarCols;
+      perBar2.push(
+        notes.filter((n) => n.start >= lo && n.start < hi).map((n) => ({ pitch: n.pitch, start: n.start - b * perBarCols, duration: n.duration }))
+      );
+    }
+    return perBar2;
+  });
+  if (!regions) return { ok: false, reason: "unsupported mini-notation syntax" };
+  return {
+    ok: true,
+    model: {
+      steps: col,
+      bars,
+      notes,
+      ...sawNumeric ? { numeric: true } : {},
+      altSource: { perBar: perBarCols, bars, div, regions }
+    }
+  };
+}
+__name(rollFromAltElements, "rollFromAltElements");
+function rollOnsets(pat, cyc) {
+  let haps;
+  try {
+    haps = pat.queryArc(cyc, cyc + 1);
+  } catch {
+    return null;
+  }
+  const out = [];
+  for (const h of haps) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
+    const v = h.value;
+    let pitch;
+    let numeric;
+    if (typeof v === "number" && Number.isFinite(v)) {
+      pitch = String(v);
+      numeric = true;
+    } else if (typeof v === "string") {
+      if (NUMERIC.test(v)) {
+        pitch = v;
+        numeric = true;
+      } else if (pitchToMidi(v.toLowerCase()) !== null) {
+        pitch = v.toLowerCase();
+        numeric = false;
+      } else return null;
+    } else return null;
+    const pos = h.whole.begin.valueOf() - cyc;
+    const dur = h.whole.end.valueOf() - h.whole.begin.valueOf();
+    if (dur <= 0) return null;
+    out.push({ pos, dur, pitch, numeric });
+  }
+  return out;
+}
+__name(rollOnsets, "rollOnsets");
+var rollKey = /* @__PURE__ */ __name((o) => JSON.stringify(
+  o.map((x) => [Math.round(x.pos * 720720), Math.round(x.dur * 720720), x.pitch]).sort()
+), "rollKey");
+var PROBE_NOTE = "c9";
+var PROBE_NUM = "999";
+function projectionRollEditSafe(model, cols, numeric) {
+  const probePitch = numeric ? PROBE_NUM : PROBE_NOTE;
+  for (const r of model.source.parts[0].regions) {
+    const idx = model.notes.findIndex((n) => n.start >= r.from && n.start < r.to);
+    if (idx < 0) continue;
+    const edited = {
+      ...model,
+      notes: model.notes.map((n, i) => i === idx ? { ...n, pitch: probePitch } : n)
+    };
+    const out = serializePianoRoll(edited);
+    if (out == null) return false;
+    let got;
+    try {
+      got = rollOnsets(mini_mjs.mini(out), 0);
+    } catch {
+      return false;
+    }
+    if (got === null) return false;
+    const expected = edited.notes.map((n) => ({
+      pos: n.start / cols,
+      dur: n.duration / cols,
+      pitch: n.pitch
+    }));
+    if (rollKey(got) !== rollKey(expected)) return false;
+  }
+  return true;
+}
+__name(projectionRollEditSafe, "projectionRollEditSafe");
+function projectPianoRoll(src0) {
+  const src = src0.trim();
+  if (src === "") return null;
+  if (isWholeAlternation(src)) return null;
+  let pat;
+  try {
+    pat = mini_mjs.mini(src);
+  } catch {
+    return null;
+  }
+  const cyc0 = rollOnsets(pat, 0);
+  if (cyc0 === null || cyc0.length === 0) return null;
+  const numeric = cyc0.some((o) => o.numeric);
+  if (numeric && cyc0.some((o) => !o.numeric)) return null;
+  const sig0 = rollKey(cyc0);
+  for (let c = 1; c < 8; c++) {
+    const cc = rollOnsets(pat, c);
+    if (cc === null || rollKey(cc) !== sig0) return null;
+  }
+  const spans = topLevelSpans(src);
+  if (!spans) return null;
+  const totalWeight = spans.reduce((s, e) => s + e.weight, 0);
+  const bounds = [];
+  let accW = 0;
+  for (const e of spans) {
+    bounds.push(accW / totalWeight);
+    accW += e.weight;
+  }
+  let cols = 1;
+  for (const x of [...cyc0.map((o) => o.pos), ...cyc0.map((o) => o.dur), ...bounds]) {
+    const d = denom(x);
+    if (d === 0) return null;
+    cols = lcm(cols, d);
+  }
+  if (cols > MAX_STEPS || cols % totalWeight !== 0) return null;
+  const divPerUnit = cols / totalWeight;
+  const notes = [];
+  for (const o of cyc0) {
+    const start = Math.round(o.pos * cols);
+    const duration = Math.round(o.dur * cols);
+    if (start < 0 || duration < 1 || start + duration > cols) return null;
+    notes.push({ pitch: o.pitch, start, duration });
+  }
+  const parts = singlePart(src, spans, divPerUnit, cols, rollContent(notes));
+  if (!parts) return null;
+  const model = {
+    steps: cols,
+    notes,
+    ...numeric ? { numeric: true } : {},
+    source: { prefix: "", suffix: "", parts }
+  };
+  if (!projectionRollEditSafe(model, cols, numeric)) return null;
+  return { ok: true, model };
+}
+__name(projectPianoRoll, "projectPianoRoll");
+function parsePianoRoll(mini) {
+  const core = parsePianoRollCore(mini);
+  if (core.ok) return core;
+  return projectPianoRoll(mini) ?? core;
+}
+__name(parsePianoRoll, "parsePianoRoll");
+function parsePianoRollCore(mini) {
+  const alt = unwrapAlternation(mini);
+  if (alt === null) {
+    const parts2 = splitTopLevel(mini);
+    if (parts2.length > 1) return parseRollLanes(parts2);
+    const altEl = rollFromAltElements(mini);
+    if (altEl !== null) return altEl;
+  }
+  const tok = tokenize2(
+    alt ?? mini,
+    /* allowNumeric */
+    true
+  );
+  if (!tok.ok) return tok;
+  if (alt !== null && tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
+  const div = division(tok.steps);
+  const bars = tok.steps.reduce((b, s) => b + s.elongation, 0);
+  if ((div > 1 || alt !== null) && bars * div > MAX_STEPS) {
+    return { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` };
+  }
+  const notes = [];
+  let col = 0;
+  let sawNumeric = false;
+  let sawNamed = false;
+  for (const step of tok.steps) {
+    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const total = stepUnits(step);
+    for (const slot of slots) {
+      const span = step.elongation * div * slot.units / total;
+      for (const token of slot.atoms) {
+        const isNum = /^-?\d+$/.test(token);
+        if (!isNum && pitchToMidi(token) === null) {
+          return { ok: false, reason: `"${token}" is not a note name` };
+        }
+        if (isNum) sawNumeric = true;
+        else sawNamed = true;
+        notes.push({ pitch: isNum ? token : token.toLowerCase(), start: col, duration: span });
+      }
+      col += span;
+    }
+  }
+  if (sawNumeric && sawNamed) {
+    return { ok: false, reason: "mixed numeric and note-name tokens are beyond the editable subset" };
+  }
+  const src = (alt ?? mini).trim();
+  const parts = singlePart(src, tok.elements, div, col, rollContent(notes));
+  return {
+    ok: true,
+    model: {
+      steps: col,
+      ...alt !== null ? { bars } : {},
+      notes,
+      ...sawNumeric ? { numeric: true } : {},
+      ...parts ? {
+        source: {
+          parts,
+          prefix: alt !== null ? "<" + (/^\s*/.exec(alt)?.[0] ?? "") : "",
+          suffix: alt !== null ? (/\s*$/.exec(alt)?.[0] ?? "") + ">" : ""
+        }
+      } : {}
+    }
+  };
+}
+__name(parsePianoRollCore, "parsePianoRollCore");
+function parseRollLanes(parts) {
+  const models = [];
+  for (const part of parts) {
+    const r = parsePianoRollCore(part.trim());
+    if (!r.ok) return r;
+    if (r.model.bars != null) {
+      return { ok: false, reason: "multi-bar parallel note lanes are beyond the editable subset" };
+    }
+    models.push(r.model);
+  }
+  const steps = models[0].steps;
+  if (!models.every((m) => m.steps === steps)) {
+    return { ok: false, reason: "parallel note lanes must share a step grid" };
+  }
+  const numeric = models.some((m) => m.numeric);
+  if (numeric && models.some((m) => !m.numeric && m.notes.length > 0)) {
+    return { ok: false, reason: "mixed numeric and note-name lanes are beyond the editable subset" };
+  }
+  const notes = models.flatMap((m) => m.notes);
+  return {
+    ok: true,
+    model: { steps, notes, ...numeric ? { numeric: true } : {}, ...rollStackSource(parts, models) ?? {} }
+  };
+}
+__name(parseRollLanes, "parseRollLanes");
+function rollStackSource(parts, models) {
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    const raw = parts[i];
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const own = models[i].source;
+    if (!own || own.parts.length !== 1 || own.prefix !== "" || own.suffix !== "") return null;
+    out.push({
+      part: i,
+      div: own.parts[0].div,
+      factor: 1,
+      before: (i > 0 ? "," : "") + leading,
+      after,
+      regions: own.parts[0].regions
+    });
+  }
+  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
+  if (rebuilt !== parts.join(",")) return null;
+  return { source: { prefix: "", suffix: "", parts: out } };
+}
+__name(rollStackSource, "rollStackSource");
 function VisualEditStandby({
   panel,
   hint,

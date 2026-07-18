@@ -38,17 +38,17 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": " bd mt  bd [lt lt] lt lt lt@2 ",
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": " bd@2 cp bd@3 cp@3 bd cp@2 bd bd cp@2",
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": " c - c [a a] a a c@2",
     "roll": "ok",
   },
@@ -130,7 +130,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "nested groups are beyond the editable subset",
     "mini": "- c3 - g#2 - g2 - [c2 [g2 d3]]",
-    "roll": "nested groups are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -2124,9 +2124,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "unsupported mini-notation syntax",
+    "grid": "ok",
     "mini": "<eb, gb, bb, a, c> <c, eb, gb, a> <eb, gb, bb, a, c> ",
-    "roll": "unsupported mini-notation syntax",
+    "roll": "ok",
   },
   {
     "grid": "elongation is beyond the drum-grid subset",
@@ -2594,7 +2594,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "E2@3 E2@3 E2@3 E2@3 E2@2 E2@2",
     "roll": "ok",
   },
@@ -2751,7 +2751,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "16"",
     "mini": "[- - - - - - - 16 17 16 14@ 16 - 14 15 13 12 6 7 10@3 8 - 9! 10 7 11! 12! 11 10 8 0! 1 6 4 5 2@3 3 2 - ]",
-    "roll": "! inside a group is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "17"",
@@ -2769,7 +2769,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""sd" is not a note name",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "[- <hh!4 oh>]*5",
     "roll": "nested groups are beyond the editable subset",
   },
@@ -2789,7 +2789,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""crate_hh" is not a note name",
   },
   {
-    "grid": "! on a group is beyond the editable subset",
+    "grid": "ok",
     "mini": "[- hh]!4",
     "roll": "! on a group is beyond the editable subset",
   },
@@ -2821,12 +2821,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "operators inside a group are beyond the editable subset",
     "mini": "[0 .. 11]",
-    "roll": "operators inside a group are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "! on a group is beyond the editable subset",
     "mini": "[0 1 2 3 3 2 1 0]!2 [0 1 2 3]*2 [0 1 2 3 0 3 0 2]!5",
-    "roll": "! on a group is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
@@ -2841,12 +2841,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "0"",
     "mini": "[0 1 3 [~ 4] 5 6 [~ 7] 8]",
-    "roll": "nested groups are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
     "mini": "[0 1 <- 2> [3 <7 4>]]*2",
-    "roll": "nested groups are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
@@ -2876,7 +2876,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "0"",
     "mini": "[0 <12 -12>]*4",
-    "roll": "nested groups are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
@@ -2906,12 +2906,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "0"",
     "mini": "[0, 1, 2, 3, 4](3,8,3)",
-    "roll": "euclid on a chord is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
     "mini": "[0, 1, 2, 3]!2 [0, 1, 2, 3]*2 [0, 1, 2, 3]!5",
-    "roll": "! on a chord is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
@@ -2951,7 +2951,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "stacked sub-sequences are beyond the editable subset",
     "mini": "[1 1,2*3,3,4]",
-    "roll": "stacked sub-sequences are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "invalid * multiplier",
@@ -3094,9 +3094,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "invalid * multiplier",
   },
   {
-    "grid": "operators inside a group are beyond the editable subset",
+    "grid": "ok",
     "mini": "[C3*3 -] [A2*3 -] [G3*3 -]",
-    "roll": "operators inside a group are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -3111,12 +3111,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "nested groups are beyond the editable subset",
     "mini": "[[0 -] [0 -] [0 0] [- 0]]",
-    "roll": "nested groups are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "nested groups are beyond the editable subset",
     "mini": "[[0 7 14 7 14 13 7 14 ]]",
-    "roll": "nested groups are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "operators inside a group are beyond the editable subset",
@@ -3126,7 +3126,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "unsupported token "0"",
     "mini": "[[0, 2, 4, 6][ ~ [0, 2, 4, 6]][~] [~]]",
-    "roll": "nested groups are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "unsupported token "0"",
@@ -3161,7 +3161,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "nested groups are beyond the editable subset",
     "mini": "[[c2 ~ ~ c2 ~ ~ c2 ~] [~ c2!3 f2!2 e2 ~]] [[c2 ~ ~ c2 ~ ~ c2 ~] [~ c2!3 d2!3 ~]] [[a2 ~ ~ a2 ~ ~ a2 ~] [~ a2!3 b2!2 b2 ~]] [[g2 ~ ~ g2 ~ ~ g2 ~] [~]] ",
-    "roll": "nested groups are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "stacked sub-sequences are beyond the editable subset",
@@ -3209,7 +3209,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "parallel note lanes must share a step grid",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "[a4@3] [b4] [b4] [a4]",
     "roll": "ok",
   },
@@ -3269,12 +3269,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": ""polymeter_slowcat" is beyond the editable subset",
+    "grid": "ok",
     "mini": "[bd hh] hh sd hh [bd bd] - hh hh - <sd hh>*4",
     "roll": ""polymeter_slowcat" is beyond the editable subset",
   },
   {
-    "grid": ""polymeter_slowcat" is beyond the editable subset",
+    "grid": "ok",
     "mini": "[bd hh] hh sd hh bd bd - hh <sd hh>*4",
     "roll": ""polymeter_slowcat" is beyond the editable subset",
   },
@@ -3309,7 +3309,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "operators inside a group are beyond the editable subset",
   },
   {
-    "grid": "stacked sub-sequences are beyond the editable subset",
+    "grid": "ok",
     "mini": "[bd*4, ~!3 cp]",
     "roll": "stacked sub-sequences are beyond the editable subset",
   },
@@ -3329,7 +3329,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "a patterned ":" variant on "bd" is beyond the editable subset",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "[bd@0.5  - - -  - - bd@0.5  - bd@0.5  - - bd@0.25  - - - -]",
     "roll": ""bd" is not a note name",
   },
@@ -3349,19 +3349,19 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "[c#5 [f#5 e5] b4] [b4 b4 c#5 d5] [d5 f#5 e5] [[a4 b4] c#4]",
-    "roll": "nested groups are beyond the editable subset",
+    "roll": "ok",
   },
   {
-    "grid": "operators inside a group are beyond the editable subset",
+    "grid": "ok",
     "mini": "[c1 ds1*2]*4",
-    "roll": "operators inside a group are beyond the editable subset",
+    "roll": "ok",
   },
   {
-    "grid": "operators inside a group are beyond the editable subset",
+    "grid": "ok",
     "mini": "[c2 ds2*2]*4",
-    "roll": "operators inside a group are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "operators inside a group are beyond the editable subset",
@@ -3374,7 +3374,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "operators inside a group are beyond the editable subset",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "[c2, ds3, as3, d4]@3 [ds2, g3, as3, e4] [d3, f3, c4, e3]@3[cs2, g3, b3, f4]",
     "roll": "ok",
   },
@@ -3384,7 +3384,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "[c3@3 e3] [~ g2@2 b2]",
     "roll": "ok",
   },
@@ -3424,19 +3424,19 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "operators inside a group are beyond the editable subset",
   },
   {
-    "grid": "stacked sub-sequences are beyond the editable subset",
+    "grid": "ok",
     "mini": "[cp, <->]",
     "roll": "stacked sub-sequences are beyond the editable subset",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "[d3@ a1 a2][a1 e1@2 d1][- cs2 a1 ds1 ][a2 c1@3]",
     "roll": "ok",
   },
   {
-    "grid": "euclid on a group is beyond the editable subset",
+    "grid": "ok",
     "mini": "[d4 g3](7,16)",
-    "roll": "euclid on a group is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -3449,19 +3449,19 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "[e1 f2 [e3 f1]] [f2 f3] [g2 g2]",
-    "roll": "nested groups are beyond the editable subset",
+    "roll": "ok",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "[e2, g3, b3, d4]@3 [g2, b3, d4, e4] [a2, c3, e3, g3]@3 [b1, d3, f#3, a3]",
     "roll": "ok",
   },
   {
     "grid": "operators inside a group are beyond the editable subset",
     "mini": "[e3(3,8)] [g3!5 ~ g3!2][[a3(3,4,2)] [as3(3,8,5)]] [b3!8]",
-    "roll": "operators inside a group are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -3486,7 +3486,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "elongation is beyond the drum-grid subset",
     "mini": "[g, c4, e4]@3 [b, d4, g4] [g, c4, e4]@3 [a, c4, f4] [g, c4, e4]@4 [[g, b, d4] ~ ~ [g, b, d4] ~ ~ [g, b, d]~]@2 [~]@2 ",
-    "roll": "sub-sequences expand the roll past 64 steps",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -3494,7 +3494,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "[g2 d2 e2][d2 b1@2 a1][- a2 f#2 g2 ][d2 b1@3]",
     "roll": "ok",
   },
@@ -3521,30 +3521,30 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "! on a group is beyond the editable subset",
     "mini": "[g5 ~ ~ f5 ~ ~ e5 ~ c5 ~@7]!2 [c6 ~ ~ b5 ~ ~ g5 ~ ~@8] [b5 ~ ~ g5 ~ ~ d5 ~ ~@8]",
-    "roll": "! on a group is beyond the editable subset",
+    "roll": "ok",
   },
   {
-    "grid": "! on a group is beyond the editable subset",
+    "grid": "ok",
     "mini": "[hh [hh hh]]!4",
     "roll": "! on a group is beyond the editable subset",
   },
   {
-    "grid": "! on a group is beyond the editable subset",
+    "grid": "ok",
     "mini": "[hh ~]!16",
     "roll": "! on a group is beyond the editable subset",
   },
   {
-    "grid": "operators inside a group are beyond the editable subset",
+    "grid": "ok",
     "mini": "[hh(5,18)] [^hh]",
     "roll": "operators inside a group are beyond the editable subset",
   },
   {
-    "grid": "operators inside a group are beyond the editable subset",
+    "grid": "ok",
     "mini": "[hh*8]",
     "roll": "operators inside a group are beyond the editable subset",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "[oberheimdmx_tb@0.6  oberheimdmx_tb@0.5 oberheimdmx_tb@0.6  oberheimdmx_tb@0.5]*2",
     "roll": "sub-sequences expand the roll past 64 steps",
   },
@@ -3574,7 +3574,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "a patterned ":" variant on "rd" is beyond the editable subset",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "[rim x] ~ sd@2",
     "roll": ""rim" is not a note name",
   },
@@ -3649,9 +3649,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""white" is not a note name",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "[~ ~ ~ [a3 c3]]",
-    "roll": "nested groups are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -3679,7 +3679,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "a!4 b!2 a@4 a@2 c*2 b*2",
     "roll": "ok",
   },
@@ -3709,12 +3709,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "a3 [c4@3 e4] g3 b4",
     "roll": "ok",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "a3 [f3@3 d4] b4 g3",
     "roll": "ok",
   },
@@ -3974,7 +3974,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": "operators inside a group are beyond the editable subset",
+    "grid": "ok",
     "mini": "bd bd bd*4 [hh hh*2]",
     "roll": "operators inside a group are beyond the editable subset",
   },
@@ -4154,7 +4154,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": "operators inside a group are beyond the editable subset",
+    "grid": "ok",
     "mini": "bd ~ [~ bd*2] ~",
     "roll": "operators inside a group are beyond the editable subset",
   },
@@ -4279,7 +4279,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": "! combined with * or @ is beyond the editable subset",
+    "grid": "ok",
     "mini": "bd*3!2",
     "roll": "! combined with * or @ is beyond the editable subset",
   },
@@ -4429,7 +4429,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "an elongated element in an alternation pattern is beyond the editable subset",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "bd@7 bd",
     "roll": ""bd" is not a note name",
   },
@@ -4514,9 +4514,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "nested groups are beyond the editable subset",
   },
   {
-    "grid": "! inside a group is beyond the editable subset",
+    "grid": "ok",
     "mini": "c [c e!2] [b,c] a",
-    "roll": "! inside a group is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -4614,7 +4614,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "parallel note lanes must share a step grid",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "c2@2 e2 c2 f2 c2 g2 e2",
     "roll": "ok",
   },
@@ -4664,7 +4664,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "c4 [e4@3 g4] b4 d4",
     "roll": "ok",
   },
@@ -4989,9 +4989,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "e [c [a b]] b [c,a]",
-    "roll": "nested groups are beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -5044,7 +5044,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "e4 [c#5@3 d5] [d4, g4, b4] [d4, g4, b4] [d4, g4, b4]@2 [d5, f#5]",
     "roll": "ok",
   },
@@ -5880,7 +5880,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""gong:1" is not a note name",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "gravel/1",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -6005,7 +6005,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""hh" is not a note name",
   },
   {
-    "grid": "invalid euclid (k,n) arguments",
+    "grid": "ok",
     "mini": "hh(<3, 7>, 16)",
     "roll": "invalid euclid (k,n) arguments",
   },
@@ -6060,7 +6060,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""hh" is not a note name",
   },
   {
-    "grid": "euclid combined with * / ! / @ is beyond the editable subset",
+    "grid": "ok",
     "mini": "hh*4(5,8,2)",
     "roll": "euclid combined with * / ! / @ is beyond the editable subset",
   },
@@ -6085,7 +6085,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "invalid * multiplier",
   },
   {
-    "grid": "invalid * multiplier",
+    "grid": "ok",
     "mini": "hh*[<4 8>/16]",
     "roll": "invalid * multiplier",
   },
@@ -6275,7 +6275,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""noise:4" is not a note name",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "nudel_like_you_just_dont_care/1",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -6575,7 +6575,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""rand" is beyond the editable subset",
   },
   {
-    "grid": "euclid combined with * / ! / @ is beyond the editable subset",
+    "grid": "ok",
     "mini": "rim(1,3,2)*4",
     "roll": "euclid combined with * / ! / @ is beyond the editable subset",
   },
@@ -6930,7 +6930,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""think" is not a note name",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "think/1",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -7212,7 +7212,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": ""polymeter" is beyond the editable subset",
     "mini": "{8 4 - 2}%<16>",
-    "roll": ""polymeter" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": ""polymeter" is beyond the editable subset",
@@ -7240,7 +7240,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""polymeter" is beyond the editable subset",
   },
   {
-    "grid": ""polymeter" is beyond the editable subset",
+    "grid": "ok",
     "mini": "{bd hh oh sd bd sd sd hh }%8",
     "roll": ""polymeter" is beyond the editable subset",
   },
@@ -7255,9 +7255,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""polymeter" is beyond the editable subset",
   },
   {
-    "grid": ""polymeter" is beyond the editable subset",
+    "grid": "ok",
     "mini": "{f1}%8",
-    "roll": ""polymeter" is beyond the editable subset",
+    "roll": "ok",
   },
   {
     "grid": ""polymeter" is beyond the editable subset",
@@ -7500,7 +7500,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "operators inside a group are beyond the editable subset",
+    "grid": "ok",
     "mini": "~[cp*8]",
     "roll": "operators inside a group are beyond the editable subset",
   },
