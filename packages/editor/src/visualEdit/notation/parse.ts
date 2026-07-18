@@ -23,7 +23,9 @@
  * MODEL limit — an honest "a grid can't show this", not a fake parse failure.
  */
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
+import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { bjorklund as strudelBjorklund } from '@strudel/core/euclid.mjs'
+import { serializeStepGrid } from './serialize'
 import type {
   AltRegion,
   AltSource,
@@ -855,7 +857,229 @@ function gridFromAltElements(mini: string): ParseResult<StepGridModel> | null {
   }
 }
 
+/* ── behaviour projection: the inherited fallback (#922) ────────── */
+
+/** smallest denominator `d` (≤ cap) with `x·d` integral, or 0 if none */
+function denom(x: number, cap = MAX_STEPS): number {
+  for (let d = 1; d <= cap; d++) if (Math.abs(x * d - Math.round(x * d)) < 1e-9) return d
+  return 0
+}
+
+/**
+ * True when the whole pattern is a single `<…>` alternation element (`<a b>*8`,
+ * `<a b c>`). Those belong to the alternation path (bars, #920) — one region per
+ * bar so an edit stays byte-local — not to the flat projection, which owns the
+ * whole `<…>` as one span and would FLATTEN it on edit, losing the compact form
+ * (caught by the edit-locality gate). Decline and leave it to the alternation
+ * work rather than offer a grid that isn't byte-local per bar.
+ */
+function isWholeAlternation(src: string): boolean {
+  let ast: KPattern
+  try {
+    ast = krillParse('"' + src + '"') as KPattern
+  } catch {
+    return false
+  }
+  if (ast?.type_ !== 'pattern' || ast.arguments_?.alignment !== 'fastcat') return false
+  if (ast.source_.length !== 1) return false
+  const inner = ast.source_[0]?.source_ as KPattern | undefined
+  return inner?.type_ === 'pattern' && inner.arguments_?.alignment === 'polymeter_slowcat'
+}
+
+/** top-level fastcat elements from krill: byte span + unit weight, or null */
+function topLevelSpans(src: string): ElementSpan[] | null {
+  let ast: KPattern
+  try {
+    ast = krillParse('"' + src + '"') as KPattern
+  } catch {
+    return null
+  }
+  if (!ast || ast.type_ !== 'pattern' || ast.arguments_?.alignment !== 'fastcat') return null
+  const out: ElementSpan[] = []
+  for (const el of ast.source_) {
+    const loc = el.location_
+    if (!loc) return null
+    const reps = el.options_?.reps ?? 1
+    const weight = reps > 1 ? reps : el.options_?.weight ?? 1
+    if (!Number.isInteger(weight) || weight < 1) return null
+    out.push({ start: loc.start.offset - 1, end: loc.end.offset - 1, weight })
+  }
+  return out
+}
+
+interface Onset {
+  pos: number
+  atoms: string[]
+}
+
+/**
+ * Read what a step-grid pattern PLAYS, one cycle, as onset columns — inherited
+ * from Strudel (`reifyMini(...).queryArc`), never re-derived here. The value the
+ * engine yields IS the ground truth for "what sound fires when"; the display
+ * token is `s` (+`:n` when a sample index rides along). Returns null when the
+ * pattern isn't a plain sound grid the view can show — a numeric value (that is
+ * the roll's, not the grid's), a `.gain`/signal-only hap, or a query that throws.
+ */
+function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
+  let haps: Array<{
+    hasOnset?: () => boolean
+    whole?: { begin: { valueOf(): number } }
+    value: unknown
+  }>
+  try {
+    haps = (pat as { queryArc(a: number, b: number): typeof haps }).queryArc(cyc, cyc + 1)
+  } catch {
+    return null
+  }
+  const byCol = new Map<number, string[]>()
+  for (const h of haps) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue
+    // A bare mini string reifies to raw token VALUES (`"bd"`), not superdough
+    // params — that is what `parseStepGrid` receives (the inner string of
+    // `s("…")`). Accept both: a string token, or an `{s,n}` object if a caller
+    // ever reifies in sound context.
+    const v = h.value as string | { s?: unknown; n?: unknown } | null
+    let token: string
+    if (typeof v === 'string') token = v
+    else if (v && typeof v === 'object' && typeof v.s === 'string') {
+      token = v.s + (v.n != null ? ':' + String(v.n) : '')
+    } else return null
+    if (NUMERIC.test(token)) return null // a bare number is the roll's, not the grid's
+    const pos = h.whole.begin.valueOf() - cyc
+    const key = Math.round(pos * 720720)
+    const cell = byCol.get(key) ?? []
+    if (!cell.includes(token)) cell.push(token)
+    byCol.set(key, cell)
+  }
+  return [...byCol.entries()].map(([k, atoms]) => ({ pos: k / 720720, atoms }))
+}
+
+const onsetKey = (o: Onset[]): string =>
+  JSON.stringify(o.map((x) => [Math.round(x.pos * 720720), [...x.atoms].sort()]).sort())
+
+/**
+ * The inherited fallback for the step grid (#922): when the syntactic parse
+ * refuses, PROJECT the pattern's haps onto a cell grid instead of modelling its
+ * syntax. Any pattern that plays a stable, rational, single-cycle grid becomes
+ * editable — nested groups, `[…]`-with-ops, a static `<…>*n` — regardless of how
+ * the syntax nests, because the grid shows what it PLAYS.
+ *
+ * The write-back is unchanged: the top-level element spans (krill) tile the
+ * source, so `serializeStepGrid`'s span surgery copies unedited elements verbatim
+ * and re-emits only the edited one. Returns null (keep the caller's refusal) when
+ * the pattern isn't a static single-cycle sound grid — a `,`-stack, a per-cycle
+ * alternation (that is the bars path, and projecting cycle 0 would DROP the other
+ * cycles), a blow-up past the step ceiling, or spans that don't tile.
+ */
+function projectStepGrid(src0: string): ParseResult<StepGridModel> | null {
+  const src = src0.trim()
+  if (src === '') return null
+  // A whole-cycle `<…>` alternation is the alternation path's (bars, #920), not the
+  // flat projection's — projecting it as one region would flatten it on edit.
+  if (isWholeAlternation(src)) return null
+  let pat: unknown
+  try {
+    pat = reifyMini(src)
+  } catch {
+    return null
+  }
+  const cyc0 = gridOnsets(pat, 0)
+  if (cyc0 === null || cyc0.length === 0) return null
+  // Truly static? A single-cycle grid must play identically every cycle over the
+  // pattern's period; a pattern that varies is a multi-cycle alternation (the
+  // bars path), and projecting cycle 0 would silently drop the rest on write-back.
+  const sig0 = onsetKey(cyc0)
+  for (let c = 1; c < 8; c++) {
+    const cc = gridOnsets(pat, c)
+    if (cc === null || onsetKey(cc) !== sig0) return null
+  }
+  const spans = topLevelSpans(src)
+  if (!spans) return null
+  const totalWeight = spans.reduce((s, e) => s + e.weight, 0)
+  // element boundaries (cumulative weight) must land on integer columns too, or
+  // the regions can't tile the grid
+  const bounds: number[] = []
+  let accW = 0
+  for (const e of spans) {
+    bounds.push(accW / totalWeight)
+    accW += e.weight
+  }
+  let cols = 1
+  for (const x of [...cyc0.map((o) => o.pos), ...bounds]) {
+    const d = denom(x)
+    if (d === 0) return null
+    cols = lcm(cols, d)
+  }
+  if (cols > MAX_STEPS || cols % totalWeight !== 0) return null
+  const divPerUnit = cols / totalWeight
+  const cells: GridCells = Array.from({ length: cols }, () => [])
+  for (const o of cyc0) {
+    const c = Math.round(o.pos * cols)
+    if (c < 0 || c >= cols) return null
+    cells[c] = [...new Set(o.atoms)]
+  }
+  const parts = singlePart(src, spans, divPerUnit, cols, gridContent(cells))
+  if (!parts) return null
+  const model: StepGridModel = {
+    steps: cols,
+    lanes: lanesFromCells(cells),
+    source: { prefix: '', suffix: '', parts },
+  }
+  if (!projectionEditSafe(model, cols, cyc0)) return null
+  return { ok: true, model }
+}
+
+/** an improbable sound token used to probe an edit; won't collide with real content */
+const PROBE_SOUND = '__stave_probe__'
+
+/**
+ * The projection may only OFFER a grid the writer can reproduce under edit. Probe
+ * every source region — overlay a marker in its first column, serialize, re-query
+ * — and require the haps to be exactly the originals plus that marker. Declines
+ * the patterns whose span re-emit breaks (a `_` sustain whose span ate the
+ * separator merges tokens on edit — the #904 class), so the projection never
+ * shows a grid that would corrupt on the first click. Uses the REAL writer and
+ * the REAL engine, so it can't drift from either.
+ */
+function projectionEditSafe(model: StepGridModel, cols: number, base: Onset[]): boolean {
+  const t = (col: number) => col / cols
+  for (const r of model.source!.parts[0].regions) {
+    const col = r.from
+    const lanes = model.lanes.map((l) => ({ ...l, cells: [...l.cells] }))
+    let probe = lanes.find((l) => l.sound === PROBE_SOUND)
+    if (!probe) {
+      probe = { sound: PROBE_SOUND, cells: Array<boolean>(cols).fill(false) }
+      lanes.push(probe)
+    }
+    probe.cells[col] = true
+    const out = serializeStepGrid({ ...model, lanes })
+    if (out == null) return false
+    let got: Onset[] | null
+    try {
+      got = gridOnsets(reifyMini(out), 0)
+    } catch {
+      return false
+    }
+    if (got === null) return false
+    const hit = base.find((o) => Math.abs(o.pos - t(col)) < 1e-9)
+    const expected: Onset[] = base.map((o) =>
+      o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND] } : o,
+    )
+    if (!hit) expected.push({ pos: t(col), atoms: [PROBE_SOUND] })
+    if (onsetKey(got) !== onsetKey(expected)) return false
+  }
+  return true
+}
+
 export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
+  const core = parseStepGridCore(mini)
+  if (core.ok) return core
+  // syntactic model refused → try the inherited behaviour projection (#922),
+  // keeping the original refusal if the projection doesn't apply
+  return projectStepGrid(mini) ?? core
+}
+
+function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
   const alt = unwrapAlternation(mini)
   if (alt !== null) return gridFromAlternation(alt)
 
