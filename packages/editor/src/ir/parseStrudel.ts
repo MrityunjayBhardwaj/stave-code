@@ -18,6 +18,12 @@ import { IR, type PatternIR, type ArrangeArm } from './PatternIR'
 import type { SourceLocation } from './IREvent'
 import { parseMini } from './parseMini'
 import { trackIdFromLabel } from './trackId'
+// #928 (Tier 2) — the deny-list authority. `isControlName(m)` is Strudel's OWN
+// control-registry membership predicate (main names + aliases), queried LIVE so
+// the classifier never drifts from the running @strudel/core version. NEVER
+// transcribe the registry into a local array — that is a second oracle (PV192,
+// the class that shipped #904) and it defeats the single-authority point (PV200).
+import { isControlName } from '@strudel/core/controls.mjs'
 
 /**
  * Build the optional `meta` payload for a non-Play smart constructor or
@@ -2552,12 +2558,42 @@ function applyMethod(
       return IR.param(method, parsed.value, args, ir, tagMeta(method, callSiteRange))
     }
 
-    default:
-      // Phase 20-04 T-04 / DV-06 (D-03 / P33 / PV37): unrecognised method —
-      // wrap as opaque Code carrying the call site. PV37 wrap-never-drop;
-      // round-trip via toStrudel (D-02); collect walks via.inner via
-      // withWrapperLoc (20-03 wave ε / D-01).
+    default: {
+      // #928 (Tier 2 — deny-list) — before opaquing, ask Strudel's OWN control
+      // registry whether this method is a control. The curated arms above stay
+      // the authority for the ~24 controls whose FX/Param routing + arg gating
+      // (freq numeric-only, sample-key s/bank/scale) we already trust; this
+      // fallback catches the ~250 REMAINING core controls (clip, sustain,
+      // attack, release, lpenv, rlp→roomlp, …) that the whitelist omitted and
+      // that were opaquing — starving the mixer + structural views.
+      //
+      // Routing = Param (carries key+value+rawArgs; the shape the mixer/chrome
+      // read via `evt.params[key]`). The user-typed token is preserved (`key`
+      // = method, `userMethod` via tagMeta), NOT the canonical alias, so
+      // round-trip stays byte-identical (`.rlp(0.5)` re-emits `.rlp(0.5)`,
+      // never `.roomlp(...)`). Universal args via parseParamArg (number |
+      // ident-string | mini). Any shape it can't model (a lambda / signal /
+      // nested expression) → null → the opaque fallback below (PV37
+      // wrap-never-drop; P50 single-decision — no third path).
+      //
+      // NOTE isControlName is DISJOINT from every structural transform above
+      // (verified — 0 collisions), so reaching here with a control name is
+      // unambiguous. `scale` (@strudel/tonal) + `reverb` (webaudio, not a core
+      // control) are isControlName=false but stay handled by their curated
+      // arms above → they never regress to opaque through this path.
+      if (isControlName(method)) {
+        const parsed = parseParamArg(args, false, baseOffset)
+        if (parsed) {
+          return IR.param(method, parsed.value, args, ir, tagMeta(method, callSiteRange))
+        }
+        // fall through — unmodellable control arg, opaque per PV37
+      }
+      // Phase 20-04 T-04 / DV-06 (D-03 / P33 / PV37): unrecognised method (or a
+      // control with an unmodellable arg) — wrap as opaque Code carrying the
+      // call site. PV37 wrap-never-drop; round-trip via toStrudel (D-02);
+      // collect walks via.inner via withWrapperLoc (20-03 wave ε / D-01).
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)
+    }
   }
 }
 

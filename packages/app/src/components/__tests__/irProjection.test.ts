@@ -255,12 +255,14 @@ describe('projectedLabel — Code whitelist (RESEARCH NEW pre-mortem #8)', () =>
 // Phase 20-04 wave δ — opaque-fragment wrapper chrome (D-05 / PV35 / PV32 / Trap 6).
 describe('20-04 — wrapper chrome (PV35 audience split)', () => {
   it('musician projectedLabel for Code-with-via returns "unmodelled" (label-only — PV32 / Trap 6)', () => {
-    const ir = parseStrudel('note("c").release(0.3)')
+    // #928: `.release` now classifies as a control (Param); a genuinely
+    // unrecognised method (`.notreal`) exercises the opaque-wrapper chrome.
+    const ir = parseStrudel('note("c").notreal(0.3)')
     expect(ir.tag).toBe('Code')
     // PV32 / Trap 6: musician chrome MUST NOT leak the method name.
     expect(projectedLabel(ir)).toBe('unmodelled')
     // The literal method name must NOT appear in the musician label.
-    expect(projectedLabel(ir)).not.toContain('release')
+    expect(projectedLabel(ir)).not.toContain('notreal')
   })
 
   it('musician projectedLabel for Code WITHOUT via stays "Code" (parse-failure path unchanged)', () => {
@@ -270,7 +272,7 @@ describe('20-04 — wrapper chrome (PV35 audience split)', () => {
   })
 
   it('musician projectedChildren for wrapper exposes via.inner (D-05 — tree expansion)', () => {
-    const ir = parseStrudel('note("c").release(0.3)')
+    const ir = parseStrudel('note("c").notreal(0.3)')  // #928: unrecognised → opaque wrapper
     expect(ir.tag).toBe('Code')
     const children = projectedChildren(ir)
     expect(children.length).toBe(1)

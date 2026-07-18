@@ -865,12 +865,15 @@ describe('patternToJSON / patternFromJSON', () => {
     // Note: loc on inner Play is stripped by the existing serialize Play
     // arm (pre-20-04 behaviour, out of scope for this phase) — assertion
     // narrows to via fidelity + outer wrapper loc + inner tag.
-    const tree = parseStrudel('note("c").release(0.3)')
+    // #928 note: `.release` became a registry-classified control (Param); this
+    // wrapper-fidelity probe needs a genuinely-unrecognised method, so
+    // `.notreal` (same 7-char length → same callSiteRange) stands in.
+    const tree = parseStrudel('note("c").notreal(0.3)')
     expect(tree.tag).toBe('Code')
     const round = patternFromJSON(patternToJSON(tree))
     expect(round.tag).toBe('Code')
     if (round.tag === 'Code') {
-      expect(round.via?.method).toBe('release')
+      expect(round.via?.method).toBe('notreal')
       expect(round.via?.args).toBe('0.3')
       expect(round.via?.callSiteRange).toEqual([9, 22])
       expect(round.via?.inner.tag).toBe('Play')
@@ -900,7 +903,10 @@ describe('patternToJSON / patternFromJSON', () => {
     // produces the same source as toStrudel(parseStrudel(code)). via is
     // sufficient to reconstruct the source even if inner-Play.loc is
     // stripped by serialize (loc isn't read on the round-trip path).
-    const code = 'note("c").release(0.3)'
+    // #928: `.notreal` (unrecognised) keeps this a genuine Code-with-via path;
+    // `.release` now classifies as a control (Param) and would no longer
+    // exercise the wrapper this test is named for.
+    const code = 'note("c").notreal(0.3)'
     const tree = parseStrudel(code)
     const round = patternFromJSON(patternToJSON(tree))
     expect(toStrudel(round)).toBe(code)

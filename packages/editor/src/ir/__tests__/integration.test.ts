@@ -1368,9 +1368,12 @@ describe('20-10 wave γ — Param sub-IR slot-table semantics', () => {
     expect(evs[0].s).toBe('b')
   })
 
-  // 9. No regression for opaque (PV37 preservation).
-  it('note("c").release(0.3) still produces a Code-with-via wrapper, NOT a Param', () => {
-    const ir = parseStrudel('note("c").release(0.3)')
+  // 9. No regression for opaque (PV37 preservation). #928 note: `release` is
+  //    now a registry-classified control (Param), so a GENUINELY unrecognised
+  //    method (`.notreal` — not a structural transform, not isControlName) is
+  //    used here to keep exercising the opaque-wrap path.
+  it('note("c").notreal(0.3) still produces a Code-with-via wrapper, NOT a Param', () => {
+    const ir = parseStrudel('note("c").notreal(0.3)')
     expect(ir.tag).toBe('Code')
     expect((ir as { via?: object }).via).toBeDefined()
   })

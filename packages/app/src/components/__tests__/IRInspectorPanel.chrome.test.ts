@@ -2,7 +2,7 @@
  * Phase 20-04 wave δ — IR Inspector developer chrome tests (D-05 / PV35).
  *
  * Covers summarize() and children() for Code-with-via wrappers.
- * Developer chrome shows the FULL call site (`[opaque: .release(0.3)]`);
+ * Developer chrome shows the FULL call site (`[opaque: .notreal(0.3)]`);
  * musician-view chrome (irProjection.ts) shows label-only `unmodelled`
  * — see irProjection.test.ts.
  */
@@ -21,15 +21,17 @@ import { unwrapD1 } from '../../../../editor/src/ir/__tests__/helpers/unwrapD1'
 const parseStrudel = (code: string): PatternIR => unwrapD1(_parseStrudel(code))
 
 describe('20-04 — IR Inspector developer chrome (PV35 / D-05)', () => {
+  // #928: `.release` became a registry-classified control (Param). The opaque
+  // chrome is exercised with a genuinely-unrecognised method (`.notreal`).
   it('summarize for Code-with-via returns "[opaque: .method(args)]"', () => {
-    const ir = parseStrudel('note("c").release(0.3)')
+    const ir = parseStrudel('note("c").notreal(0.3)')
     expect(ir.tag).toBe('Code')
-    expect(summarize(ir)).toBe('[opaque: .release(0.3)]')
+    expect(summarize(ir)).toBe('[opaque: .notreal(0.3)]')
   })
 
   it('summarize preserves raw whitespace in args (D-02 byte-fidelity)', () => {
-    const ir = parseStrudel('note("c").release( 0.5 )')
-    expect(summarize(ir)).toBe('[opaque: .release( 0.5 )]')
+    const ir = parseStrudel('note("c").notreal( 0.5 )')
+    expect(summarize(ir)).toBe('[opaque: .notreal( 0.5 )]')
   })
 
   it('summarize for typed-arm parse-failure wrapper shows method + raw arg', () => {
