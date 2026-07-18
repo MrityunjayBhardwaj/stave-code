@@ -200,7 +200,6 @@ interface Tally {
   refusedReasons: Map<string, number>
   reachByReason: Map<string, number>
   losses: string[]
-  wins: string[]
 }
 const blank = (): Tally => ({
   refused: 0,
@@ -209,27 +208,22 @@ const blank = (): Tally => ({
   refusedReasons: new Map(),
   reachByReason: new Map(),
   losses: [],
-  wins: [],
 })
 
 function sweep(s: Surface): Tally {
   const t = blank()
   for (const mini of minis) {
-    if (s.core(mini).ok) continue // the core writer's surface — tested elsewhere
+    const core = s.core(mini)
+    if (core.ok) continue // the core writer's surface — tested elsewhere
+    const reason = core.reason
     const r = s.full(mini)
-    if (!r.ok) {
-      const reason = (s.core(mini) as { reason: string }).reason
-      t.refused++
-      t.refusedReasons.set(reason, (t.refusedReasons.get(reason) ?? 0) + 1)
-      continue
-    }
-    // the FLAT single-cycle projection this gate owns; the alt/bars paths are the
-    // syntactic model's, not the projection's (mirror the stress gate's flatRoll)
-    const m = r.model as StepGridModel & PianoRollModel
-    if (m.altSource || m.bars) continue
-    const reason = (s.core(mini) as { reason: string }).reason
+    const m = r.ok ? (r.model as StepGridModel & PianoRollModel) : null
+    // the FLAT single-cycle projection this gate owns; the alt/bars paths belong to
+    // the syntactic model, not the projection (mirror the stress gate's flatRoll)
+    if (m && (m.altSource || m.bars)) continue
     t.refused++
     t.refusedReasons.set(reason, (t.refusedReasons.get(reason) ?? 0) + 1)
+    if (m === null) continue // projection did not open it
     t.projected++
 
     // edit round-trip verified through the real engine on both sides
@@ -244,7 +238,6 @@ function sweep(s: Surface): Tally {
     if (got !== null && sig(got, s.durAware) === sig(expected, s.durAware)) {
       t.editOk++
       t.reachByReason.set(reason, (t.reachByReason.get(reason) ?? 0) + 1)
-      if (t.wins.length < 40) t.wins.push(`${JSON.stringify(mini)}  [${reason}]`)
     } else if (t.losses.length < 20) {
       t.losses.push(`${JSON.stringify(mini)}  edit→${JSON.stringify(out)}`)
     }
