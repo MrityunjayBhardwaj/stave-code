@@ -46,8 +46,27 @@ Open an issue describing the feature, its motivation, and how it fits into Stave
 3. Make your changes
 4. Run the test suite: `cd packages/editor && npx vitest run`
 5. Run type checking: `cd packages/editor && npx tsc --noEmit`
-6. Sign off all commits (see DCO section above)
-7. Open a PR against `main` with a clear description
+6. If you touched pattern parsing, the notation model, or the visual-edit write-back path, also
+   run the editing fidelity gate from the repo root: `pnpm gate:editing` (see below)
+7. Sign off all commits (see DCO section above)
+8. Open a PR against `main` with a clear description
+
+#### The editing fidelity gate
+
+The editing suites span two packages: the notation model's own tests in `packages/editor`, and the
+corpus-wide reach, round-trip, locality and stress sweeps in `packages/app` — which deep-import the
+editor's notation *source*. Because the app's pinned snapshots sit downstream of the editor's
+model, a parsing or reach change can leave `packages/editor` fully green while flipping app
+snapshots. Per-package green is not suite green, so run both together:
+
+```bash
+pnpm gate:editing          # both packages, one verdict (~6s)
+pnpm gate:editing:editor   # notation model only, for a fast inner loop
+pnpm gate:editing:app      # corpus reach/round-trip only
+```
+
+`pnpm gate:editing` runs both halves unconditionally — it deliberately does not stop at the first
+failure, so one package's breakage can never hide the other's. It exits non-zero if either fails.
 
 ### Commit Style
 
