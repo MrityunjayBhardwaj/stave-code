@@ -1,5 +1,6 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
 import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
+import { isControlName } from '@strudel/core/controls.mjs';
 import * as React36 from 'react';
 import React36__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
@@ -2000,8 +2001,6 @@ function trackIdFromLabel(label, index) {
   return bare && bare !== "$" ? bare : `d${index + 1}`;
 }
 __name(trackIdFromLabel, "trackIdFromLabel");
-
-// src/ir/parseStrudel.ts
 function tagMeta(method, callSiteRange) {
   const [start, end] = callSiteRange;
   return {
@@ -3015,8 +3014,15 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
       }
       return IR.param(method, parsed.value, args, ir, tagMeta(method, callSiteRange));
     }
-    default:
+    default: {
+      if (isControlName(method)) {
+        const parsed = parseParamArg(args, false, baseOffset);
+        if (parsed) {
+          return IR.param(method, parsed.value, args, ir, tagMeta(method, callSiteRange));
+        }
+      }
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
+    }
   }
 }
 __name(applyMethod, "applyMethod");
