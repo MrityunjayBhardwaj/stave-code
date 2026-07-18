@@ -57,10 +57,36 @@ describe('#928 — classify off-list controls from the registry (deny-list, Tier
   })
 
   it('an aliased control keeps the USER token (round-trip fidelity, not canonical)', () => {
-    // rlp → roomlp canonically, but the node + round-trip must preserve `rlp`.
-    const p = paramNode('s("bd").rlp(0.5)', 'rlp')
+    // rlp → roomlp canonically: the node is KEYED canonically (so downstream
+    // reads one field per control), but userMethod + round-trip must preserve
+    // the user's own `rlp` spelling — never rewrite it to `.roomlp(...)`.
+    const p = paramNode('s("bd").rlp(0.5)', 'roomlp')
     expect(p).toBeDefined()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((p as any).userMethod).toBe('rlp')
     expect(toStrudel(parseStrudel('s("bd").rlp(0.5)'))).toContain('.rlp(0.5)')
+  })
+
+  it('an ALIAS classifies under its CANONICAL key so downstream reads it', () => {
+    // `sound` is an alias of `s`. collect maps params.s → evt.s; keying the
+    // node by the alias would leave every `evt.s` consumer blind (a modelled
+    // control the views cannot read — a false affordance). Key = canonical,
+    // userMethod = the user's token.
+    const p = paramNode('note("c").sound("bd sd")', 's')
+    expect(p).toBeDefined()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((p as any).userMethod).toBe('sound')
+    // …and the alias still round-trips to the user's own bytes.
+    expect(toStrudel(parseStrudel('note("c").sound("bd sd")'))).toContain('.sound("bd sd")')
+  })
+
+  it('an aliased sample-key control parses its mini as SAMPLES, not notes', () => {
+    // isSampleKey must follow the CANONICAL name (sound→s), else `bd sd`
+    // parses as note names with the wrong per-event duration.
+    const p = paramNode('note("c").sound("bd sd")', 's')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = (p as any).value
+    expect(typeof v === 'object' ? JSON.stringify(v) : v).toContain('bd')
   })
 
   it('a pattern-arg control classifies via the universal parser', () => {

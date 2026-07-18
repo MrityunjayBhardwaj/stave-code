@@ -23,7 +23,7 @@ import { trackIdFromLabel } from './trackId'
 // the classifier never drifts from the running @strudel/core version. NEVER
 // transcribe the registry into a local array — that is a second oracle (PV192,
 // the class that shipped #904) and it defeats the single-authority point (PV200).
-import { isControlName } from '@strudel/core/controls.mjs'
+import { isControlName, getControlName } from '@strudel/core/controls.mjs'
 
 /**
  * Build the optional `meta` payload for a non-Play smart constructor or
@@ -2582,9 +2582,22 @@ function applyMethod(
       // control) are isControlName=false but stay handled by their curated
       // arms above → they never regress to opaque through this path.
       if (isControlName(method)) {
-        const parsed = parseParamArg(args, false, baseOffset)
+        // Key by the CANONICAL control name, not the token the user typed.
+        // collect maps a param key onto its event field (params.s → evt.s), so
+        // keying an alias by its own spelling (`.sound(...)` → key 'sound')
+        // would leave every `evt.s` consumer blind — a control that LOOKS
+        // modelled in the view but reads as absent downstream (the false-
+        // affordance class). Round-trip is unaffected: toStrudel emits
+        // `userMethod ?? key` (toStrudel.ts:89) and tagMeta carries the user's
+        // token, so `.sound("bd")` re-emits `.sound("bd")`, never `.s("bd")`.
+        const canonical = getControlName(method)
+        // isSampleKey must follow the CANONICAL name too — `sound`'s mini is
+        // sample names, and parseMini keys the wrong field (and the wrong
+        // per-event duration) if it thinks they are note names.
+        const isSampleKey = canonical === 's' || canonical === 'bank'
+        const parsed = parseParamArg(args, isSampleKey, baseOffset)
         if (parsed) {
-          return IR.param(method, parsed.value, args, ir, tagMeta(method, callSiteRange))
+          return IR.param(canonical, parsed.value, args, ir, tagMeta(method, callSiteRange))
         }
         // fall through — unmodellable control arg, opaque per PV37
       }

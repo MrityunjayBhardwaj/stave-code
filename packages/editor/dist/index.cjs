@@ -3042,9 +3042,11 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
     }
     default: {
       if (controls_mjs.isControlName(method)) {
-        const parsed = parseParamArg(args, false, baseOffset);
+        const canonical = controls_mjs.getControlName(method);
+        const isSampleKey = canonical === "s" || canonical === "bank";
+        const parsed = parseParamArg(args, isSampleKey, baseOffset);
         if (parsed) {
-          return IR.param(method, parsed.value, args, ir, tagMeta(method, callSiteRange));
+          return IR.param(canonical, parsed.value, args, ir, tagMeta(method, callSiteRange));
         }
       }
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);

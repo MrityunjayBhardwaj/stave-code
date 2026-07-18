@@ -1,6 +1,6 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
 import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
-import { isControlName } from '@strudel/core/controls.mjs';
+import { isControlName, getControlName } from '@strudel/core/controls.mjs';
 import * as React36 from 'react';
 import React36__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
@@ -3016,9 +3016,11 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
     }
     default: {
       if (isControlName(method)) {
-        const parsed = parseParamArg(args, false, baseOffset);
+        const canonical = getControlName(method);
+        const isSampleKey = canonical === "s" || canonical === "bank";
+        const parsed = parseParamArg(args, isSampleKey, baseOffset);
         if (parsed) {
-          return IR.param(method, parsed.value, args, ir, tagMeta(method, callSiteRange));
+          return IR.param(canonical, parsed.value, args, ir, tagMeta(method, callSiteRange));
         }
       }
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
