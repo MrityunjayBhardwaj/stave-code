@@ -27547,7 +27547,134 @@ function rollFromAltElements(mini) {
   };
 }
 __name(rollFromAltElements, "rollFromAltElements");
+function rollOnsets(pat, cyc) {
+  let haps;
+  try {
+    haps = pat.queryArc(cyc, cyc + 1);
+  } catch {
+    return null;
+  }
+  const out = [];
+  for (const h of haps) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
+    const v = h.value;
+    let pitch;
+    let numeric;
+    if (typeof v === "number" && Number.isFinite(v)) {
+      pitch = String(v);
+      numeric = true;
+    } else if (typeof v === "string") {
+      if (NUMERIC.test(v)) {
+        pitch = v;
+        numeric = true;
+      } else if (pitchToMidi(v.toLowerCase()) !== null) {
+        pitch = v.toLowerCase();
+        numeric = false;
+      } else return null;
+    } else return null;
+    const pos = h.whole.begin.valueOf() - cyc;
+    const dur = h.whole.end.valueOf() - h.whole.begin.valueOf();
+    if (dur <= 0) return null;
+    out.push({ pos, dur, pitch, numeric });
+  }
+  return out;
+}
+__name(rollOnsets, "rollOnsets");
+var rollKey = /* @__PURE__ */ __name((o) => JSON.stringify(
+  o.map((x) => [Math.round(x.pos * 720720), Math.round(x.dur * 720720), x.pitch]).sort()
+), "rollKey");
+var PROBE_NOTE = "c9";
+var PROBE_NUM = "999";
+function projectionRollEditSafe(model, cols, numeric) {
+  const probePitch = numeric ? PROBE_NUM : PROBE_NOTE;
+  for (const r of model.source.parts[0].regions) {
+    const idx = model.notes.findIndex((n) => n.start >= r.from && n.start < r.to);
+    if (idx < 0) continue;
+    const edited = {
+      ...model,
+      notes: model.notes.map((n, i) => i === idx ? { ...n, pitch: probePitch } : n)
+    };
+    const out = serializePianoRoll(edited);
+    if (out == null) return false;
+    let got;
+    try {
+      got = rollOnsets(mini_mjs.mini(out), 0);
+    } catch {
+      return false;
+    }
+    if (got === null) return false;
+    const expected = edited.notes.map((n) => ({
+      pos: n.start / cols,
+      dur: n.duration / cols,
+      pitch: n.pitch
+    }));
+    if (rollKey(got) !== rollKey(expected)) return false;
+  }
+  return true;
+}
+__name(projectionRollEditSafe, "projectionRollEditSafe");
+function projectPianoRoll(src0) {
+  const src = src0.trim();
+  if (src === "") return null;
+  if (isWholeAlternation(src)) return null;
+  let pat;
+  try {
+    pat = mini_mjs.mini(src);
+  } catch {
+    return null;
+  }
+  const cyc0 = rollOnsets(pat, 0);
+  if (cyc0 === null || cyc0.length === 0) return null;
+  const numeric = cyc0.some((o) => o.numeric);
+  if (numeric && cyc0.some((o) => !o.numeric)) return null;
+  const sig0 = rollKey(cyc0);
+  for (let c = 1; c < 8; c++) {
+    const cc = rollOnsets(pat, c);
+    if (cc === null || rollKey(cc) !== sig0) return null;
+  }
+  const spans = topLevelSpans(src);
+  if (!spans) return null;
+  const totalWeight = spans.reduce((s, e) => s + e.weight, 0);
+  const bounds = [];
+  let accW = 0;
+  for (const e of spans) {
+    bounds.push(accW / totalWeight);
+    accW += e.weight;
+  }
+  let cols = 1;
+  for (const x of [...cyc0.map((o) => o.pos), ...cyc0.map((o) => o.dur), ...bounds]) {
+    const d = denom(x);
+    if (d === 0) return null;
+    cols = lcm(cols, d);
+  }
+  if (cols > MAX_STEPS || cols % totalWeight !== 0) return null;
+  const divPerUnit = cols / totalWeight;
+  const notes = [];
+  for (const o of cyc0) {
+    const start = Math.round(o.pos * cols);
+    const duration = Math.round(o.dur * cols);
+    if (start < 0 || duration < 1 || start + duration > cols) return null;
+    notes.push({ pitch: o.pitch, start, duration });
+  }
+  const parts = singlePart(src, spans, divPerUnit, cols, rollContent(notes));
+  if (!parts) return null;
+  const model = {
+    steps: cols,
+    notes,
+    ...numeric ? { numeric: true } : {},
+    source: { prefix: "", suffix: "", parts }
+  };
+  if (!projectionRollEditSafe(model, cols, numeric)) return null;
+  return { ok: true, model };
+}
+__name(projectPianoRoll, "projectPianoRoll");
 function parsePianoRoll(mini) {
+  const core = parsePianoRollCore(mini);
+  if (core.ok) return core;
+  return projectPianoRoll(mini) ?? core;
+}
+__name(parsePianoRoll, "parsePianoRoll");
+function parsePianoRollCore(mini) {
   const alt = unwrapAlternation(mini);
   if (alt === null) {
     const parts2 = splitTopLevel(mini);
@@ -27610,11 +27737,11 @@ function parsePianoRoll(mini) {
     }
   };
 }
-__name(parsePianoRoll, "parsePianoRoll");
+__name(parsePianoRollCore, "parsePianoRollCore");
 function parseRollLanes(parts) {
   const models = [];
   for (const part of parts) {
-    const r = parsePianoRoll(part.trim());
+    const r = parsePianoRollCore(part.trim());
     if (!r.ok) return r;
     if (r.model.bars != null) {
       return { ok: false, reason: "multi-bar parallel note lanes are beyond the editable subset" };
