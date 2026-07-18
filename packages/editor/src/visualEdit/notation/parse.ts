@@ -25,7 +25,7 @@
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { bjorklund as strudelBjorklund } from '@strudel/core/euclid.mjs'
-import { serializeStepGrid } from './serialize'
+import { serializeStepGrid, serializePianoRoll } from './serialize'
 import type {
   AltRegion,
   AltSource,
@@ -1407,7 +1407,196 @@ function rollFromAltElements(mini: string): ParseResult<PianoRollModel> | null {
   }
 }
 
+/* ── behaviour projection: the roll's inherited fallback (#924) ── */
+
+interface RollOnset {
+  pos: number
+  dur: number
+  pitch: string
+  numeric: boolean
+}
+
+/**
+ * Read what a melodic pattern PLAYS, one cycle, as pitched onsets with DURATION —
+ * inherited from Strudel (`reifyMini(...).queryArc`), never re-derived. Unlike the
+ * grid's `gridOnsets`, the roll keeps each hap's length (`whole.end - whole.begin`):
+ * a note's `@n` hold is part of what it plays and the writer must put it back. The
+ * value the engine yields is the ground truth — a number is a numeric pitch
+ * (`note("60")` MIDI / `n("0")` degree), a string is a note name. Returns null when
+ * a hap isn't a placeable pitch (a sound token, a signal/params value, a zero-length
+ * hap) or the query throws.
+ */
+function rollOnsets(pat: unknown, cyc: number): RollOnset[] | null {
+  let haps: Array<{
+    hasOnset?: () => boolean
+    whole?: { begin: { valueOf(): number }; end: { valueOf(): number } }
+    value: unknown
+  }>
+  try {
+    haps = (pat as { queryArc(a: number, b: number): typeof haps }).queryArc(cyc, cyc + 1)
+  } catch {
+    return null
+  }
+  const out: RollOnset[] = []
+  for (const h of haps) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue
+    const v = h.value
+    let pitch: string
+    let numeric: boolean
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      pitch = String(v)
+      numeric = true
+    } else if (typeof v === 'string') {
+      if (NUMERIC.test(v)) {
+        pitch = v
+        numeric = true
+      } else if (pitchToMidi(v.toLowerCase()) !== null) {
+        // fold case like the core does — the row math is case-blind, and the
+        // convention has no business riding back out into the document
+        pitch = v.toLowerCase()
+        numeric = false
+      } else return null // a sound token / non-pitch — the grid's, not the roll's
+    } else return null // an object (params) or signal value has no note to place
+    const pos = h.whole.begin.valueOf() - cyc
+    const dur = h.whole.end.valueOf() - h.whole.begin.valueOf()
+    if (dur <= 0) return null
+    out.push({ pos, dur, pitch, numeric })
+  }
+  return out
+}
+
+const rollKey = (o: Array<{ pos: number; dur: number; pitch: string }>): string =>
+  JSON.stringify(
+    o.map((x) => [Math.round(x.pos * 720720), Math.round(x.dur * 720720), x.pitch]).sort(),
+  )
+
+/** probe pitches for the edit self-verify — valid tokens improbable in real content */
+const PROBE_NOTE = 'c9'
+const PROBE_NUM = '999'
+
+/**
+ * The roll's `projectionEditSafe`. The projection may only offer a roll the writer
+ * can reproduce under edit — and for the roll that must include DURATION, the axis
+ * the grid doesn't have and the one the 71→44 writer-reach gap loses on. Probe
+ * every region by swapping its first note's pitch (an overlap-free edit — a placed
+ * note could land under a sustain, which the grid never has), serialize through the
+ * REAL writer, re-query the REAL engine, and require the haps to be the model's
+ * notes with that one pitch changed: same onsets, same durations. A region whose
+ * re-emit drops an `@n` hold fails here and the projection declines, never corrupts.
+ */
+function projectionRollEditSafe(model: PianoRollModel, cols: number, numeric: boolean): boolean {
+  const probePitch = numeric ? PROBE_NUM : PROBE_NOTE
+  for (const r of model.source!.parts[0].regions) {
+    const idx = model.notes.findIndex((n) => n.start >= r.from && n.start < r.to)
+    if (idx < 0) continue // an all-rest region has nothing to re-emit; identity covers it
+    const edited: PianoRollModel = {
+      ...model,
+      notes: model.notes.map((n, i) => (i === idx ? { ...n, pitch: probePitch } : n)),
+    }
+    const out = serializePianoRoll(edited)
+    if (out == null) return false
+    let got: RollOnset[] | null
+    try {
+      got = rollOnsets(reifyMini(out), 0)
+    } catch {
+      return false
+    }
+    if (got === null) return false
+    const expected = edited.notes.map((n) => ({
+      pos: n.start / cols,
+      dur: n.duration / cols,
+      pitch: n.pitch,
+    }))
+    if (rollKey(got) !== rollKey(expected)) return false
+  }
+  return true
+}
+
+/**
+ * The inherited fallback for the piano roll (#924): when the syntactic parse
+ * refuses, PROJECT the pattern's pitched haps — pitch, onset AND duration — onto a
+ * roll instead of modelling its syntax. Any melodic pattern that plays a stable,
+ * rational, single-cycle grid becomes editable regardless of how it nests, because
+ * the roll shows what it PLAYS. The write-back tiles krill's top-level element spans
+ * (`serializePianoRoll`'s span surgery), so unedited elements ride back verbatim and
+ * only the edited one is re-emitted, at its own weight.
+ *
+ * Returns null (keep the caller's refusal) when the pattern isn't a static
+ * single-cycle melodic grid — a sound pattern (that is the grid's), a `,`-stack or
+ * per-cycle `<…>` (their own paths; projecting cycle 0 would drop the rest), mixed
+ * numeric/named tokens, a blow-up past the step ceiling, or spans that don't tile.
+ */
+function projectPianoRoll(src0: string): ParseResult<PianoRollModel> | null {
+  const src = src0.trim()
+  if (src === '') return null
+  if (isWholeAlternation(src)) return null // the bars path (#920), not the flat projection
+  let pat: unknown
+  try {
+    pat = reifyMini(src)
+  } catch {
+    return null
+  }
+  const cyc0 = rollOnsets(pat, 0)
+  if (cyc0 === null || cyc0.length === 0) return null
+  const numeric = cyc0.some((o) => o.numeric)
+  if (numeric && cyc0.some((o) => !o.numeric)) return null // mixed tokens — rejected like the core
+  // Truly static? A single-cycle roll must play identically every cycle over the
+  // pattern's period; a varying pattern is a multi-cycle alternation (the bars
+  // path), and projecting cycle 0 would silently drop the rest on write-back.
+  const sig0 = rollKey(cyc0)
+  for (let c = 1; c < 8; c++) {
+    const cc = rollOnsets(pat, c)
+    if (cc === null || rollKey(cc) !== sig0) return null
+  }
+  const spans = topLevelSpans(src)
+  if (!spans) return null
+  const totalWeight = spans.reduce((s, e) => s + e.weight, 0)
+  const bounds: number[] = []
+  let accW = 0
+  for (const e of spans) {
+    bounds.push(accW / totalWeight)
+    accW += e.weight
+  }
+  // onsets, DURATIONS and element boundaries must all land on integer columns —
+  // the duration is the roll's extra term the grid's projection omits
+  let cols = 1
+  for (const x of [...cyc0.map((o) => o.pos), ...cyc0.map((o) => o.dur), ...bounds]) {
+    const d = denom(x)
+    if (d === 0) return null
+    cols = lcm(cols, d)
+  }
+  if (cols > MAX_STEPS || cols % totalWeight !== 0) return null
+  const divPerUnit = cols / totalWeight
+  const notes: RollNote[] = []
+  for (const o of cyc0) {
+    const start = Math.round(o.pos * cols)
+    const duration = Math.round(o.dur * cols)
+    if (start < 0 || duration < 1 || start + duration > cols) return null
+    notes.push({ pitch: o.pitch, start, duration })
+  }
+  const parts = singlePart(src, spans, divPerUnit, cols, rollContent(notes))
+  if (!parts) return null
+  const model: PianoRollModel = {
+    steps: cols,
+    notes,
+    ...(numeric ? { numeric: true } : {}),
+    source: { prefix: '', suffix: '', parts },
+  }
+  if (!projectionRollEditSafe(model, cols, numeric)) return null
+  return { ok: true, model }
+}
+
 export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
+  const core = parsePianoRollCore(mini)
+  if (core.ok) return core
+  // syntactic model refused → try the inherited behaviour projection (#924),
+  // keeping the original refusal if the projection doesn't apply
+  return projectPianoRoll(mini) ?? core
+}
+
+// exported for the projection stress gate — it sweeps only patterns the CORE
+// refuses, so it must be able to ask which those are (a projected-only filter)
+export function parsePianoRollCore(mini: string): ParseResult<PianoRollModel> {
   const alt = unwrapAlternation(mini)
   // A top-level `,`-stack = parallel note lanes (independent durations / overlap,
   // #628). Only when NOT an alternation — multi-bar `<...>` lanes are out of scope.
@@ -1489,7 +1678,9 @@ export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
 function parseRollLanes(parts: string[]): ParseResult<PianoRollModel> {
   const models: PianoRollModel[] = []
   for (const part of parts) {
-    const r = parsePianoRoll(part.trim())
+    // a comma-part stays on the core path — projecting individual lanes is out of
+    // scope, the same way `projectStepGrid`/`projectPianoRoll` decline `,`-stacks
+    const r = parsePianoRollCore(part.trim())
     if (!r.ok) return r
     if (r.model.bars != null) {
       return { ok: false, reason: 'multi-bar parallel note lanes are beyond the editable subset' }

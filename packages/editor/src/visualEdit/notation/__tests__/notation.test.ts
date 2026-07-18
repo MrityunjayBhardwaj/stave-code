@@ -57,6 +57,14 @@ function rollRoundTrips(s: string) {
   if (r.ok) expect(serializePianoRoll(r.model)).toBe(s)
 }
 
+/** an edit through the writer: retune the note at index `i`, then serialize */
+function rollEdit(src: string, i: number, pitch: string): string | null {
+  const r = parsePianoRoll(src)
+  if (!r.ok) return null
+  const notes = r.model.notes.map((n, j) => (j === i ? { ...n, pitch } : n))
+  return serializePianoRoll({ ...r.model, notes })
+}
+
 describe('step grid — parse', () => {
   it('reads a single-lane sequence with rests', () => {
     const r = parseStepGrid('bd ~ bd ~')
@@ -603,6 +611,25 @@ describe('piano roll — parse', () => {
 
   it('rejects a non-note token', () => {
     expect(parsePianoRoll('bd c3').ok).toBe(false)
+  })
+
+  it('projects melodies the two-level model cannot represent (#924)', () => {
+    // A group nested inside a group (depth 3) has no place in the roll's Step→Slot
+    // model, but plays an ordinary pitch×time grid — the behaviour projection shows
+    // what it plays and copies the source back verbatim.
+    rollRoundTrips('c3 [e3 [g3 g3]] c4')
+    rollRoundTrips('0 [2 [4 4]] 7') // numeric, nested
+    rollRoundTrips('[c3 e3]*2@2') // a group carrying `*` and `@`
+    // an edit re-emits only the touched element; the nested group rides back
+    // byte-for-byte (span surgery), and durations inside it are preserved
+    expect(rollEdit('c3 [e3 [g3 g3]] c4', 0, 'a5')).toBe('a5 [e3 [g3 g3]] c4')
+    expect(rollEdit('0 [2 [4 4]] 7', 0, '5')).toBe('5 [2 [4 4]] 7')
+    // the numeric convention is carried through (new pitches emit numbers, #469)
+    const num = parsePianoRoll('0 [2 [4 4]] 7')
+    expect(num.ok && num.model.numeric).toBe(true)
+    // still refused: a melody that does not play a static rational grid
+    expect(parsePianoRoll('c3? e3 g3').ok).toBe(false) // `?` degrade varies per cycle
+    expect(parsePianoRoll('c3 e3*<1 2>').ok).toBe(false) // a patterned operator varies per cycle
   })
 })
 
