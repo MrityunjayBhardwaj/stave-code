@@ -1858,11 +1858,15 @@ describe('20-04 wave β — parser wrap probes (D-03 / P33 / PV37)', () => {
 
   // --- Default-arm wrap (T-04 / DV-06 primary site) --------------------------
 
-  it('default arm wraps unrecognised method (.release)', () => {
-    const ir = parseStrudel('note("c").release(0.3)')
+  it('default arm wraps unrecognised method (.notreal)', () => {
+    // #928 note: this probe used `.release` until `release` became a
+    // registry-classified control (Param). It must exercise a GENUINELY
+    // unrecognised method — neither a structural transform nor an
+    // isControlName control — so `.notreal` now stands in. PV37 unchanged.
+    const ir = parseStrudel('note("c").notreal(0.3)')
     expect(ir.tag).toBe('Code')
     if (ir.tag !== 'Code') return
-    expect(ir.via?.method).toBe('release')
+    expect(ir.via?.method).toBe('notreal')
     expect(ir.via?.args).toBe('0.3')           // raw, untrimmed (D-02)
     expect(ir.via?.inner.tag).toBe('Play')
   })
@@ -1873,7 +1877,7 @@ describe('20-04 wave β — parser wrap probes (D-03 / P33 / PV37)', () => {
     // asserted Code-with-via for default-arm wrapping; with the Param arm
     // present, the byte-fidelity contract carries through Param.rawArgs
     // instead. Replace the probe with the (analogous) Param contract;
-    // the default-arm release(0.3) test above still pins PV37 wrap
+    // the default-arm notreal(0.3) test above still pins PV37 wrap
     // semantics for unrecognised methods.
     const ir = parseStrudel('note("c").s("sawtooth")')
     expect(ir.tag).toBe('Param')

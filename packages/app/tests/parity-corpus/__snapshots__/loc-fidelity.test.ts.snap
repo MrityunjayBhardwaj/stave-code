@@ -241,11 +241,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".cutoff(perlin.range(300,3000).slow(8))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpq(10)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(-4)",
   },
   {
@@ -253,7 +253,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpa(.1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0)",
   },
   {
@@ -448,7 +448,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".delay(.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.5)",
   },
   {
@@ -492,19 +492,91 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".voicing()",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".dict('lefthand')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".chord("<<Am7 C^7> C7 F^7 [Fm7 E7b9]>")",
   },
   {
-    "tag": "Code",
+    "tag": "Cycle",
+    "text": "<<Am7 C^7> C7 F^7 [Fm7 E7b9]>",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<Am7 C^7>",
+  },
+  {
+    "tag": "Play",
+    "text": "Am7",
+  },
+  {
+    "tag": "Play",
+    "text": "C",
+  },
+  {
+    "tag": "Play",
+    "text": "7",
+  },
+  {
+    "tag": "Play",
+    "text": "C7",
+  },
+  {
+    "tag": "Play",
+    "text": "F",
+  },
+  {
+    "tag": "Play",
+    "text": "7",
+  },
+  {
+    "tag": "Seq",
+    "text": "[Fm7 E7b9]",
+  },
+  {
+    "tag": "Play",
+    "text": "Fm7",
+  },
+  {
+    "tag": "Play",
+    "text": "E7b9",
+  },
+  {
+    "tag": "Param",
     "text": ".offset("<<1 2> 2 1 1>")",
   },
   {
-    "tag": "Code",
+    "tag": "Cycle",
+    "text": "<<1 2> 2 1 1>",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<1 2>",
+  },
+  {
+    "tag": "Play",
+    "text": "1",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Play",
+    "text": "1",
+  },
+  {
+    "tag": "Play",
+    "text": "1",
+  },
+  {
+    "tag": "Param",
     "text": ".clip(2)",
   },
   {
@@ -557,7 +629,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-132-recursive-args — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".clip(2)",
   },
   {
@@ -706,7 +778,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".degradeBy(perlin.range(0,1))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".clip(1)",
   },
   {
@@ -857,7 +929,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   )",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".dict("ireal")",
   },
   {
@@ -865,7 +937,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "chord",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".dict("ireal")",
   },
   {
@@ -911,7 +983,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   )",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".dict("ireal")",
   },
   {
@@ -919,7 +991,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "chord",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".dict("ireal")",
   },
   {
@@ -949,11 +1021,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".pianoroll()",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".rel(0.02)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound("kawai")",
   },
   {
@@ -1006,7 +1078,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-148-leading-dot-chain — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".clip(1)",
   },
   {
@@ -1149,11 +1221,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-158-NEGATIVE-no-sideeffect — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpattack(0.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(4)",
   },
   {
@@ -1161,7 +1233,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf("500 200")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".size(4)",
   },
   {
@@ -1169,15 +1241,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(0.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(0.03)",
   },
   {
@@ -1185,7 +1257,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".color('blue')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound('gm_celesta:3')",
   },
   {
@@ -1202,11 +1274,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-158-aliasBank-shape-fence — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpattack(0.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(4)",
   },
   {
@@ -1214,7 +1286,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf("500 200")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".size(4)",
   },
   {
@@ -1222,15 +1294,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(0.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(0.03)",
   },
   {
@@ -1238,7 +1310,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".color('blue')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound('gm_celesta:3')",
   },
   {
@@ -1255,11 +1327,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-158-all-shape-fence — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpattack(0.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(4)",
   },
   {
@@ -1267,7 +1339,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf("500 200")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".size(4)",
   },
   {
@@ -1275,15 +1347,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(0.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(0.03)",
   },
   {
@@ -1291,7 +1363,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".color('blue')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound('gm_celesta:3')",
   },
   {
@@ -1308,11 +1380,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-158-initAudio-shape-fence — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpattack(0.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(4)",
   },
   {
@@ -1320,7 +1392,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf("500 200")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".size(4)",
   },
   {
@@ -1328,15 +1400,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(0.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(0.03)",
   },
   {
@@ -1344,7 +1416,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".color('blue')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound('gm_celesta:3')",
   },
   {
@@ -1361,11 +1433,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-158-samples-shape-fence — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpattack(0.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(4)",
   },
   {
@@ -1373,7 +1445,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf("500 200")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".size(4)",
   },
   {
@@ -1381,15 +1453,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(0.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(0.03)",
   },
   {
@@ -1397,7 +1469,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".color('blue')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound('gm_celesta:3')",
   },
   {
@@ -1414,11 +1486,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-158-setCpm-camel-shape-fence — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpattack(0.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(4)",
   },
   {
@@ -1426,7 +1498,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf("500 200")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".size(4)",
   },
   {
@@ -1434,15 +1506,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(0.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(0.03)",
   },
   {
@@ -1450,7 +1522,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".color('blue')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound('gm_celesta:3')",
   },
   {
@@ -1467,11 +1539,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-158-setCps-camel-shape-fence — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpattack(0.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(4)",
   },
   {
@@ -1479,7 +1551,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf("500 200")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".size(4)",
   },
   {
@@ -1487,15 +1559,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(0.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(0.03)",
   },
   {
@@ -1503,7 +1575,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".color('blue')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound('gm_celesta:3')",
   },
   {
@@ -1520,11 +1592,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-158-setVoicingRange-shape-fence — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpattack(0.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(4)",
   },
   {
@@ -1532,7 +1604,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf("500 200")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".size(4)",
   },
   {
@@ -1540,15 +1612,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(0.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(0.03)",
   },
   {
@@ -1556,7 +1628,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".color('blue')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound('gm_celesta:3')",
   },
   {
@@ -1573,11 +1645,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-158-setcpm-shape-fence — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpattack(0.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(4)",
   },
   {
@@ -1585,7 +1657,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf("500 200")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".size(4)",
   },
   {
@@ -1593,15 +1665,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(0.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(0.03)",
   },
   {
@@ -1609,7 +1681,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".color('blue')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound('gm_celesta:3')",
   },
   {
@@ -1626,11 +1698,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-158-setcps-shape-fence — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpattack(0.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(4)",
   },
   {
@@ -1638,7 +1710,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf("500 200")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".size(4)",
   },
   {
@@ -1646,15 +1718,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(0.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(0.03)",
   },
   {
@@ -1662,7 +1734,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".color('blue')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound('gm_celesta:3')",
   },
   {
@@ -1679,11 +1751,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-158-useRNG-shape-fence — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpattack(0.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(4)",
   },
   {
@@ -1691,7 +1763,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf("500 200")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".size(4)",
   },
   {
@@ -1699,15 +1771,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(0.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(0.03)",
   },
   {
@@ -1715,7 +1787,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".color('blue')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound('gm_celesta:3')",
   },
   {
@@ -1795,7 +1867,7 @@ s("hh*8")
     "text": ".degradeBy(".35")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".legato(0.95)",
   },
   {
@@ -1875,7 +1947,7 @@ n("~ 6 ~ 6 ~ 6 ~ 6").sound("gm_agogo").lpf("600 1400")
     "text": ".lpf("600 1400")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound("gm_agogo")",
   },
   {
@@ -1927,11 +1999,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 )",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".decay(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(2)",
   },
   {
@@ -1939,7 +2011,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf(2000)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound("sine")",
   },
   {
@@ -2375,11 +2447,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-chord-voicing-root — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpattack(0.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(4)",
   },
   {
@@ -2387,7 +2459,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf("500 200")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".size(4)",
   },
   {
@@ -2395,15 +2467,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(0.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(0.03)",
   },
   {
@@ -2411,7 +2483,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".color('blue')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sound('gm_celesta:3')",
   },
   {
@@ -2509,7 +2581,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".stack(s("bd:1*2,~ sd:0,[~ hh:0]*2"))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".clip(1)",
   },
   {
@@ -2984,7 +3056,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".delay(.9)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0)",
   },
   {
@@ -3012,7 +3084,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".voicing()",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".dict('lefthand')",
   },
   {
@@ -3032,15 +3104,35 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delaytime(".33 | .6 | .166 | .25")",
+  },
+  {
+    "tag": "Seq",
+    "text": ".33 | .6 | .166 | .25",
+  },
+  {
+    "tag": "Play",
+    "text": "33",
+  },
+  {
+    "tag": "Play",
+    "text": "6",
+  },
+  {
+    "tag": "Play",
+    "text": "166",
+  },
+  {
+    "tag": "Play",
+    "text": "25",
   },
   {
     "tag": "FX",
     "text": ".delay(.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".orbit(2)",
   },
   {
@@ -3048,7 +3140,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".degradeBy(.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0)",
   },
   {
@@ -3250,12 +3342,36 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".speed("-1")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delayfeedback(".6 | .8")",
   },
   {
-    "tag": "Code",
+    "tag": "Seq",
+    "text": ".6 | .8",
+  },
+  {
+    "tag": "Play",
+    "text": "6",
+  },
+  {
+    "tag": "Play",
+    "text": "8",
+  },
+  {
+    "tag": "Param",
     "text": ".delaytime(".16 | .33")",
+  },
+  {
+    "tag": "Seq",
+    "text": ".16 | .33",
+  },
+  {
+    "tag": "Play",
+    "text": "16",
+  },
+  {
+    "tag": "Play",
+    "text": "33",
   },
   {
     "tag": "Code",
@@ -3282,12 +3398,36 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "cp",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delayfeedback(".6 | .8")",
   },
   {
-    "tag": "Code",
+    "tag": "Seq",
+    "text": ".6 | .8",
+  },
+  {
+    "tag": "Play",
+    "text": "6",
+  },
+  {
+    "tag": "Play",
+    "text": "8",
+  },
+  {
+    "tag": "Param",
     "text": ".delaytime(".16 | .33")",
+  },
+  {
+    "tag": "Seq",
+    "text": ".16 | .33",
+  },
+  {
+    "tag": "Play",
+    "text": "16",
+  },
+  {
+    "tag": "Play",
+    "text": "33",
   },
   {
     "tag": "Code",
@@ -3340,7 +3480,7 @@ note("<b4 eb4>").s('dino').delay(.8).slow(8).room(.5)
 )",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".clip(1)",
   },
   {
@@ -3388,11 +3528,11 @@ note("<b4 eb4>").s('dino').delay(.8).slow(8).room(.5)
     "text": ".voicing()",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".dict('lefthand')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".mode("below:G4")",
   },
   {
@@ -3412,7 +3552,7 @@ note("<b4 eb4>").s('dino').delay(.8).slow(8).room(.5)
     "text": ".delay(sine.range(0,.5).slow(32))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0)",
   },
   {
@@ -3970,7 +4110,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "hh",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpq(8)",
   },
   {
@@ -3978,7 +4118,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpf(800)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(-4)",
   },
   {
@@ -3986,7 +4126,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpa(.1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0)",
   },
   {
@@ -4054,7 +4194,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(.5)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0)",
   },
   {
@@ -4070,7 +4210,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".cutoff(sine.range(500,4000).slow(16))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".clip(1)",
   },
   {
@@ -4126,7 +4266,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".delay(.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0)",
   },
   {
@@ -4299,7 +4439,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".release(.1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".clip(1)",
   },
   {
@@ -4387,7 +4527,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0)",
   },
   {
@@ -4395,7 +4535,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".decay(.05)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(-2)",
   },
   {
@@ -4685,7 +4825,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "hh27",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpenv(-2)",
   },
   {
@@ -4705,7 +4845,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".s('sawtooth')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0)",
   },
   {
@@ -4813,7 +4953,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "e2",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".attack(1)",
   },
   {
@@ -4841,7 +4981,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".voicing()",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".dict('lefthand')",
   },
   {
@@ -4861,7 +5001,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".s('triangle')",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(0)",
   },
   {
@@ -4968,7 +5108,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "cp",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".orbit(2)",
   },
   {
@@ -5038,7 +5178,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "cp",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".orbit(2)",
   },
   {
@@ -5137,7 +5277,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".gain(.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".clip(1)",
   },
   {

@@ -2,6 +2,7 @@
 
 var core = require('@strudel/core');
 var euclid_mjs = require('@strudel/core/euclid.mjs');
+var controls_mjs = require('@strudel/core/controls.mjs');
 var React36 = require('react');
 var p5 = require('p5');
 var acorn = require('acorn');
@@ -2026,8 +2027,6 @@ function trackIdFromLabel(label, index) {
   return bare && bare !== "$" ? bare : `d${index + 1}`;
 }
 __name(trackIdFromLabel, "trackIdFromLabel");
-
-// src/ir/parseStrudel.ts
 function tagMeta(method, callSiteRange) {
   const [start, end] = callSiteRange;
   return {
@@ -3041,8 +3040,17 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
       }
       return IR.param(method, parsed.value, args, ir, tagMeta(method, callSiteRange));
     }
-    default:
+    default: {
+      if (controls_mjs.isControlName(method)) {
+        const canonical = controls_mjs.getControlName(method);
+        const isSampleKey = canonical === "s" || canonical === "bank";
+        const parsed = parseParamArg(args, isSampleKey, baseOffset);
+        if (parsed) {
+          return IR.param(canonical, parsed.value, args, ir, tagMeta(method, callSiteRange));
+        }
+      }
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
+    }
   }
 }
 __name(applyMethod, "applyMethod");
