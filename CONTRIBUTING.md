@@ -53,15 +53,16 @@ Open an issue describing the feature, its motivation, and how it fits into Stave
 
 #### The editing fidelity gate
 
-The editing suites span two packages: the notation model's own tests in `packages/editor`, and the
-corpus-wide reach, round-trip, locality and stress sweeps in `packages/app` — which deep-import the
-editor's notation *source*. Because the app's pinned snapshots sit downstream of the editor's
-model, a parsing or reach change can leave `packages/editor` fully green while flipping app
-snapshots. Per-package green is not suite green, so run both together:
+The editing suites span two packages: the whole visual-editing subsystem in
+`packages/editor/src/visualEdit` (notation model, write-back, chunk detection, panels), and the
+corpus-wide reach, round-trip, locality and stress sweeps in `packages/app/tests/parity-corpus` —
+which deep-import the editor's notation *source*. Because the app's pinned snapshots sit
+downstream of the editor's model, a parsing or reach change can leave `packages/editor` fully green
+while flipping app snapshots. Per-package green is not suite green, so run both together:
 
 ```bash
-pnpm gate:editing          # both packages, one verdict (~6s)
-pnpm gate:editing:editor   # notation model only, for a fast inner loop
+pnpm gate:editing          # both packages, one verdict (~8s)
+pnpm gate:editing:editor   # visual-editing subsystem only, for a fast inner loop
 pnpm gate:editing:app      # corpus reach/round-trip only
 ```
 

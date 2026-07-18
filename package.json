@@ -12,7 +12,7 @@
     "edit:coverage": "pnpm --filter @stave/app exec vitest run --config vitest.edit-coverage.config.ts",
     "edit:coverage:bakery": "node packages/app/scripts/edit-coverage-bakery.mjs",
     "gate:editing": "pnpm gate:editing:editor; e=$?; pnpm gate:editing:app; a=$?; exit $((e|a))",
-    "gate:editing:editor": "pnpm --filter @stave/editor exec vitest run src/visualEdit/notation",
+    "gate:editing:editor": "pnpm --filter @stave/editor exec vitest run src/visualEdit",
     "gate:editing:app": "pnpm --filter @stave/app exec vitest run tests/parity-corpus"
   },
   "devDependencies": {
