@@ -346,9 +346,9 @@ exports[`edit-parity — view-editability over the vendored corpus > pins per-fi
     "units": 5,
   },
   {
-    "broken": 1,
-    "class": "code-only",
-    "editable": 0,
+    "broken": 0,
+    "class": "fully",
+    "editable": 1,
     "file": "echoPiano.strudel",
     "units": 1,
   },
@@ -406,10 +406,6 @@ exports[`edit-parity — view-editability over the vendored corpus > pins per-fi
 
 exports[`edit-parity — view-editability over the vendored corpus > pins per-fixture editability + the reason for every refusal > refusal-reasons 1`] = `
 [
-  [
-    "roll: euclid on a group is beyond the editable subset",
-    1,
-  ],
   [
     "roll: multi-bar parallel note lanes are beyond the editable subset",
     1,

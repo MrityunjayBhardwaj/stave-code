@@ -27665,10 +27665,10 @@ var rollKey = /* @__PURE__ */ __name((o) => JSON.stringify(
 ), "rollKey");
 var PROBE_NOTE = "c9";
 var PROBE_NUM = "999";
-function projectionRollEditSafe(model, cols, numeric) {
+function projectionRollEditSafe(model, perBar2, bars, numeric, probes) {
   const probePitch = numeric ? PROBE_NUM : PROBE_NOTE;
-  for (const r of model.source.parts[0].regions) {
-    const idx = model.notes.findIndex((n) => n.start >= r.from && n.start < r.to);
+  for (const { from, to } of probes) {
+    const idx = model.notes.findIndex((n) => n.start >= from && n.start < to);
     if (idx < 0) continue;
     const edited = {
       ...model,
@@ -27676,19 +27676,26 @@ function projectionRollEditSafe(model, cols, numeric) {
     };
     const out = serializePianoRoll(edited);
     if (out == null) return false;
-    let got;
+    let pat;
     try {
-      got = rollOnsets(mini(out), 0);
+      pat = mini(out);
     } catch {
       return false;
     }
-    if (got === null) return false;
-    const expected = edited.notes.map((n) => ({
-      pos: n.start / cols,
-      dur: n.duration / cols,
-      pitch: n.pitch
-    }));
-    if (rollKey(got) !== rollKey(expected)) return false;
+    for (let bb = 0; bb < bars; bb++) {
+      const got = rollOnsets(pat, bb);
+      if (got === null) return false;
+      const expected = edited.notes.filter((n) => n.start >= bb * perBar2 && n.start < (bb + 1) * perBar2).map((n) => ({
+        pos: (n.start - bb * perBar2) / perBar2,
+        dur: n.duration / perBar2,
+        pitch: n.pitch
+      }));
+      if (rollKey(got) !== rollKey(expected)) return false;
+    }
+    const wrap5 = rollOnsets(pat, bars);
+    if (wrap5 === null) return false;
+    const wrap0 = edited.notes.filter((n) => n.start < perBar2).map((n) => ({ pos: n.start / perBar2, dur: n.duration / perBar2, pitch: n.pitch }));
+    if (rollKey(wrap5) !== rollKey(wrap0)) return false;
   }
   return true;
 }
@@ -27696,22 +27703,28 @@ __name(projectionRollEditSafe, "projectionRollEditSafe");
 function projectPianoRoll(src0) {
   const src = src0.trim();
   if (src === "") return null;
-  if (isWholeAlternation(src)) return null;
   let pat;
   try {
     pat = mini(src);
   } catch {
     return null;
   }
-  const cyc0 = rollOnsets(pat, 0);
-  if (cyc0 === null || cyc0.length === 0) return null;
-  const numeric = cyc0.some((o) => o.numeric);
-  if (numeric && cyc0.some((o) => !o.numeric)) return null;
-  const sig0 = rollKey(cyc0);
-  for (let c = 1; c < 8; c++) {
+  const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null;
+  if (isWholeAlternation(src) && whole === null) return null;
+  const cycles = [];
+  for (let c = 0; c < PERIOD_PROBE; c++) {
     const cc = rollOnsets(pat, c);
-    if (cc === null || rollKey(cc) !== sig0) return null;
+    if (cc === null) return null;
+    cycles.push(cc);
   }
+  const bars = detectPeriod2(cycles.map(rollKey), MAX_PROJECT_BARS);
+  if (bars === 0) return null;
+  const perCycle = cycles.slice(0, bars);
+  const all = perCycle.flat();
+  if (all.length === 0) return null;
+  const numeric = all.some((o) => o.numeric);
+  if (numeric && all.some((o) => !o.numeric)) return null;
+  if (whole !== null) return bars > 1 ? projectAltRollBars(src, whole, perCycle, numeric) : null;
   const spans = topLevelSpans(src);
   if (!spans) return null;
   const totalWeight = spans.reduce((s, e) => s + e.weight, 0);
@@ -27721,33 +27734,105 @@ function projectPianoRoll(src0) {
     bounds.push(accW / totalWeight);
     accW += e.weight;
   }
-  let cols = 1;
-  for (const x of [...cyc0.map((o) => o.pos), ...cyc0.map((o) => o.dur), ...bounds]) {
+  let perBar2 = 1;
+  for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur), ...bounds]) {
     const d = denom(x);
     if (d === 0) return null;
-    cols = lcm(cols, d);
+    perBar2 = lcm(perBar2, d);
   }
-  if (cols > MAX_STEPS || cols % totalWeight !== 0) return null;
-  const divPerUnit = cols / totalWeight;
-  const notes = [];
-  for (const o of cyc0) {
-    const start = Math.round(o.pos * cols);
-    const duration = Math.round(o.dur * cols);
-    if (start < 0 || duration < 1 || start + duration > cols) return null;
-    notes.push({ pitch: o.pitch, start, duration });
+  if (perBar2 * bars > MAX_STEPS || perBar2 % totalWeight !== 0) return null;
+  const divPerUnit = perBar2 / totalWeight;
+  const notes = barNotes(perCycle, perBar2);
+  if (notes === null) return null;
+  if (bars === 1) {
+    const parts = singlePart(src, spans, divPerUnit, perBar2, rollContent(notes));
+    if (!parts) return null;
+    const model2 = {
+      steps: perBar2,
+      notes,
+      ...numeric ? { numeric: true } : {},
+      source: { prefix: "", suffix: "", parts }
+    };
+    const probes0 = parts[0].regions.map((r) => ({ from: r.from, to: r.to }));
+    if (!projectionRollEditSafe(model2, perBar2, 1, numeric, probes0)) return null;
+    return { ok: true, model: model2 };
   }
-  const parts = singlePart(src, spans, divPerUnit, cols, rollContent(notes));
-  if (!parts) return null;
+  const regions = buildAltRegions(
+    src,
+    spans,
+    divPerUnit,
+    perBar2,
+    (from, to) => Array.from(
+      { length: bars },
+      (_, b) => notes.filter((n) => n.start >= from + b * perBar2 && n.start < to + b * perBar2).map((n) => ({ pitch: n.pitch, start: n.start - b * perBar2, duration: n.duration }))
+    )
+  );
+  if (!regions) return null;
   const model = {
-    steps: cols,
+    steps: perBar2 * bars,
+    bars,
     notes,
     ...numeric ? { numeric: true } : {},
-    source: { prefix: "", suffix: "", parts }
+    altSource: { perBar: perBar2, bars, div: divPerUnit, regions }
   };
-  if (!projectionRollEditSafe(model, cols, numeric)) return null;
+  const probes = regions.flatMap(
+    (r) => Array.from({ length: bars }, (_, b) => ({
+      from: b * perBar2 + r.from,
+      to: b * perBar2 + r.to
+    }))
+  );
+  if (!projectionRollEditSafe(model, perBar2, bars, numeric, probes)) return null;
   return { ok: true, model };
 }
 __name(projectPianoRoll, "projectPianoRoll");
+function barNotes(perCycle, perBar2) {
+  const notes = [];
+  for (let b = 0; b < perCycle.length; b++) {
+    for (const o of perCycle[b]) {
+      const start = Math.round(o.pos * perBar2);
+      const duration = Math.round(o.dur * perBar2);
+      if (start < 0 || duration < 1 || start + duration > perBar2) return null;
+      notes.push({ pitch: o.pitch, start: b * perBar2 + start, duration });
+    }
+  }
+  return notes;
+}
+__name(barNotes, "barNotes");
+function projectAltRollBars(src, inner, perCycle, numeric) {
+  const bars = perCycle.length;
+  const innerSrc = inner.trim();
+  const spans = topLevelSpans(innerSrc);
+  if (!spans) return null;
+  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return null;
+  const all = perCycle.flat();
+  let perBar2 = 1;
+  for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
+    const d = denom(x);
+    if (d === 0) return null;
+    perBar2 = lcm(perBar2, d);
+  }
+  if (perBar2 * bars > MAX_STEPS) return null;
+  const notes = barNotes(perCycle, perBar2);
+  if (notes === null) return null;
+  const parts = singlePart(innerSrc, spans, perBar2, perBar2 * bars, rollContent(notes));
+  if (!parts) return null;
+  const model = {
+    steps: perBar2 * bars,
+    bars,
+    notes,
+    ...numeric ? { numeric: true } : {},
+    source: {
+      parts,
+      prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
+      suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
+    }
+  };
+  const probes = parts[0].regions.map((r) => ({ from: r.from, to: r.to }));
+  if (!projectionRollEditSafe(model, perBar2, bars, numeric, probes)) return null;
+  if (serializePianoRoll(model) !== src.trim()) return null;
+  return { ok: true, model };
+}
+__name(projectAltRollBars, "projectAltRollBars");
 function parsePianoRoll(mini) {
   const core = parsePianoRollCore(mini);
   if (core.ok) return core;

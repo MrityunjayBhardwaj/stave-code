@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { parseStepGrid, parseStepGridCore, parsePianoRoll } from '../parse'
+import {
+  parseStepGrid,
+  parseStepGridCore,
+  parsePianoRoll,
+  parsePianoRollCore,
+} from '../parse'
 import { serializeStepGrid, serializePianoRoll } from '../serialize'
 import type { PianoRollModel, StepGridModel } from '../model'
 
@@ -195,11 +200,33 @@ describe('#920 roll — <...> as a sequence element', () => {
     })
   })
 
-  describe('reconciliation declines at parse (phase 1b)', () => {
-    for (const s of ['0 <2!3 3> 5', '0 <2@2 3> 5']) {
-      it(`${s} stays refused`, () => {
-        expect(parsePianoRoll(s).ok).toBe(false)
-      })
-    }
+  describe('reconciliation: the SYNTACTIC path declines (#938)', () => {
+    it('0 <2!3 3> 5: syntax declined, behaviour projected, edits stay byte-local', () => {
+      // `!3` makes the branches expand to different lengths, so the syntactic alt
+      // model still declines — but the projection bar-expands what it plays.
+      expect(parsePianoRollCore('0 <2!3 3> 5').ok).toBe(false)
+      const r = parsePianoRoll('0 <2!3 3> 5')
+      expect(r.ok).toBe(true)
+      if (!r.ok) return
+      expect(r.model.bars).toBe(4)
+      expect(serializePianoRoll(r.model)).toBe('0 <2!3 3> 5') // untouched = identity
+      // repitch the note in the LAST bar: only the first element re-emits, and the
+      // `<2!3 3>` the model could not parse rides back byte-for-byte
+      const perBar = r.model.steps / 4
+      const idx = r.model.notes.findIndex((n) => n.start === 3 * perBar)
+      expect(idx).toBeGreaterThanOrEqual(0)
+      const edited: PianoRollModel = {
+        ...r.model,
+        notes: r.model.notes.map((n, i) => (i === idx ? { ...n, pitch: '9' } : n)),
+      }
+      expect(serializePianoRoll(edited)).toBe('<0 0 0 9> <2!3 3> 5')
+    })
+
+    it('0 <2@2 3> 5 stays refused — an elongated branch would change weight', () => {
+      // `@2` is the case bar expansion does NOT rescue: re-emitting the element
+      // per bar cannot preserve its weight, so writing it back would re-divide the
+      // cycle and shift every neighbour. Refusing is still the honest answer.
+      expect(parsePianoRoll('0 <2@2 3> 5').ok).toBe(false)
+    })
   })
 })
