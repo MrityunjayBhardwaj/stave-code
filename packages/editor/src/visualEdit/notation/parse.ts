@@ -1659,10 +1659,19 @@ const PROBE_NUM = '999'
  * notes with that one pitch changed: same onsets, same durations. A region whose
  * re-emit drops an `@n` hold fails here and the projection declines, never corrupts.
  */
-function projectionRollEditSafe(model: PianoRollModel, cols: number, numeric: boolean): boolean {
+function projectionRollEditSafe(
+  model: PianoRollModel,
+  perBar: number,
+  bars: number,
+  numeric: boolean,
+  probes: Array<{ from: number; to: number }>,
+): boolean {
   const probePitch = numeric ? PROBE_NUM : PROBE_NOTE
-  for (const r of model.source!.parts[0].regions) {
-    const idx = model.notes.findIndex((n) => n.start >= r.from && n.start < r.to)
+  // Spans are ABSOLUTE model columns from the caller, for the same reason as the
+  // grid's: an alt-element source repeats a within-bar span across bars, while a
+  // whole-alternation's regions already sit one per bar.
+  for (const { from, to } of probes) {
+    const idx = model.notes.findIndex((n) => n.start >= from && n.start < to)
     if (idx < 0) continue // an all-rest region has nothing to re-emit; identity covers it
     const edited: PianoRollModel = {
       ...model,
@@ -1670,19 +1679,34 @@ function projectionRollEditSafe(model: PianoRollModel, cols: number, numeric: bo
     }
     const out = serializePianoRoll(edited)
     if (out == null) return false
-    let got: RollOnset[] | null
+    let pat: unknown
     try {
-      got = rollOnsets(reifyMini(out), 0)
+      pat = reifyMini(out)
     } catch {
       return false
     }
-    if (got === null) return false
-    const expected = edited.notes.map((n) => ({
-      pos: n.start / cols,
-      dur: n.duration / cols,
-      pitch: n.pitch,
-    }))
-    if (rollKey(got) !== rollKey(expected)) return false
+    // every bar must come back with its own notes — onsets AND durations — and only
+    // the probed pitch changed. Comparing cycle 0 alone would miss an edit that
+    // rewrites a later bar, which is the multi-cycle loss this has to refuse.
+    for (let bb = 0; bb < bars; bb++) {
+      const got = rollOnsets(pat, bb)
+      if (got === null) return false
+      const expected = edited.notes
+        .filter((n) => n.start >= bb * perBar && n.start < (bb + 1) * perBar)
+        .map((n) => ({
+          pos: (n.start - bb * perBar) / perBar,
+          dur: n.duration / perBar,
+          pitch: n.pitch,
+        }))
+      if (rollKey(got) !== rollKey(expected)) return false
+    }
+    // …and it must still repeat at `bars`
+    const wrap = rollOnsets(pat, bars)
+    if (wrap === null) return false
+    const wrap0 = edited.notes
+      .filter((n) => n.start < perBar)
+      .map((n) => ({ pos: n.start / perBar, dur: n.duration / perBar, pitch: n.pitch }))
+    if (rollKey(wrap) !== rollKey(wrap0)) return false
   }
   return true
 }
@@ -1704,25 +1728,35 @@ function projectionRollEditSafe(model: PianoRollModel, cols: number, numeric: bo
 function projectPianoRoll(src0: string): ParseResult<PianoRollModel> | null {
   const src = src0.trim()
   if (src === '') return null
-  if (isWholeAlternation(src)) return null // the bars path (#920), not the flat projection
   let pat: unknown
   try {
     pat = reifyMini(src)
   } catch {
     return null
   }
-  const cyc0 = rollOnsets(pat, 0)
-  if (cyc0 === null || cyc0.length === 0) return null
-  const numeric = cyc0.some((o) => o.numeric)
-  if (numeric && cyc0.some((o) => !o.numeric)) return null // mixed tokens — rejected like the core
-  // Truly static? A single-cycle roll must play identically every cycle over the
-  // pattern's period; a varying pattern is a multi-cycle alternation (the bars
-  // path), and projecting cycle 0 would silently drop the rest on write-back.
-  const sig0 = rollKey(cyc0)
-  for (let c = 1; c < 8; c++) {
+  // A whole-cycle `<…>` is projected bar-wise with its branches as regions (#938),
+  // never flat — owning the whole `<…>` as one region would re-spell all of it on
+  // the first edit. One carrying trailing ops has no branch tiling to write through.
+  const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null
+  if (isWholeAlternation(src) && whole === null) return null
+  // What it PLAYS each cycle, and the period it repeats at (#938). A melodic pattern
+  // that varies is bar-expanded rather than refused.
+  const cycles: RollOnset[][] = []
+  for (let c = 0; c < PERIOD_PROBE; c++) {
     const cc = rollOnsets(pat, c)
-    if (cc === null || rollKey(cc) !== sig0) return null
+    if (cc === null) return null
+    cycles.push(cc)
   }
+  const bars = detectPeriod(cycles.map(rollKey), MAX_PROJECT_BARS)
+  if (bars === 0) return null
+  const perCycle = cycles.slice(0, bars)
+  const all = perCycle.flat()
+  if (all.length === 0) return null
+  // mixed numeric/named tokens are rejected like the core — checked across EVERY
+  // bar, since a later bar can introduce the token that breaks the convention
+  const numeric = all.some((o) => o.numeric)
+  if (numeric && all.some((o) => !o.numeric)) return null
+  if (whole !== null) return bars > 1 ? projectAltRollBars(src, whole, perCycle, numeric) : null
   const spans = topLevelSpans(src)
   if (!spans) return null
   const totalWeight = spans.reduce((s, e) => s + e.weight, 0)
@@ -1734,30 +1768,120 @@ function projectPianoRoll(src0: string): ParseResult<PianoRollModel> | null {
   }
   // onsets, DURATIONS and element boundaries must all land on integer columns —
   // the duration is the roll's extra term the grid's projection omits
-  let cols = 1
-  for (const x of [...cyc0.map((o) => o.pos), ...cyc0.map((o) => o.dur), ...bounds]) {
+  let perBar = 1
+  for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur), ...bounds]) {
     const d = denom(x)
     if (d === 0) return null
-    cols = lcm(cols, d)
+    perBar = lcm(perBar, d)
   }
-  if (cols > MAX_STEPS || cols % totalWeight !== 0) return null
-  const divPerUnit = cols / totalWeight
-  const notes: RollNote[] = []
-  for (const o of cyc0) {
-    const start = Math.round(o.pos * cols)
-    const duration = Math.round(o.dur * cols)
-    if (start < 0 || duration < 1 || start + duration > cols) return null
-    notes.push({ pitch: o.pitch, start, duration })
+  if (perBar * bars > MAX_STEPS || perBar % totalWeight !== 0) return null
+  const divPerUnit = perBar / totalWeight
+  const notes = barNotes(perCycle, perBar)
+  if (notes === null) return null
+
+  if (bars === 1) {
+    // the single-cycle projection, unchanged (#924)
+    const parts = singlePart(src, spans, divPerUnit, perBar, rollContent(notes))
+    if (!parts) return null
+    const model: PianoRollModel = {
+      steps: perBar,
+      notes,
+      ...(numeric ? { numeric: true } : {}),
+      source: { prefix: '', suffix: '', parts },
+    }
+    const probes0 = parts[0].regions.map((r) => ({ from: r.from, to: r.to }))
+    if (!projectionRollEditSafe(model, perBar, 1, numeric, probes0)) return null
+    return { ok: true, model }
   }
-  const parts = singlePart(src, spans, divPerUnit, cols, rollContent(notes))
-  if (!parts) return null
+
+  // bar-expanded: the alt-element source shape, written back by `spliceAltRoll`
+  const regions = buildAltRegions<RollNote[]>(src, spans, divPerUnit, perBar, (from, to) =>
+    Array.from({ length: bars }, (_, b) =>
+      notes
+        .filter((n) => n.start >= from + b * perBar && n.start < to + b * perBar)
+        .map((n) => ({ pitch: n.pitch, start: n.start - b * perBar, duration: n.duration })),
+    ),
+  )
+  if (!regions) return null
   const model: PianoRollModel = {
-    steps: cols,
+    steps: perBar * bars,
+    bars,
     notes,
     ...(numeric ? { numeric: true } : {}),
-    source: { prefix: '', suffix: '', parts },
+    altSource: { perBar, bars, div: divPerUnit, regions },
   }
-  if (!projectionRollEditSafe(model, cols, numeric)) return null
+  const probes = regions.flatMap((r) =>
+    Array.from({ length: bars }, (_, b) => ({
+      from: b * perBar + r.from,
+      to: b * perBar + r.to,
+    })),
+  )
+  if (!projectionRollEditSafe(model, perBar, bars, numeric, probes)) return null
+  return { ok: true, model }
+}
+
+/**
+ * Lay each bar's played onsets onto `perBar` columns, offset into that bar.
+ *
+ * A note must FIT inside its own bar: the alt writer filters a region's notes by
+ * start and rebases them per bar, so a note sustaining across the bar line has no
+ * single bar to belong to. Refusing here keeps that ambiguity out of the writer.
+ */
+function barNotes(perCycle: RollOnset[][], perBar: number): RollNote[] | null {
+  const notes: RollNote[] = []
+  for (let b = 0; b < perCycle.length; b++) {
+    for (const o of perCycle[b]) {
+      const start = Math.round(o.pos * perBar)
+      const duration = Math.round(o.dur * perBar)
+      if (start < 0 || duration < 1 || start + duration > perBar) return null
+      notes.push({ pitch: o.pitch, start: b * perBar + start, duration })
+    }
+  }
+  return notes
+}
+
+/**
+ * The roll's `projectAltBars` — a whole-cycle `<…>` the syntactic path refused,
+ * projected bar-wise with the alternation's own BRANCHES as regions so an edit
+ * rewrites one branch and the others ride back byte-for-byte.
+ */
+function projectAltRollBars(
+  src: string,
+  inner: string,
+  perCycle: RollOnset[][],
+  numeric: boolean,
+): ParseResult<PianoRollModel> | null {
+  const bars = perCycle.length
+  const innerSrc = inner.trim()
+  const spans = topLevelSpans(innerSrc)
+  if (!spans) return null
+  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return null
+  const all = perCycle.flat()
+  let perBar = 1
+  for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
+    const d = denom(x)
+    if (d === 0) return null
+    perBar = lcm(perBar, d)
+  }
+  if (perBar * bars > MAX_STEPS) return null
+  const notes = barNotes(perCycle, perBar)
+  if (notes === null) return null
+  const parts = singlePart(innerSrc, spans, perBar, perBar * bars, rollContent(notes))
+  if (!parts) return null
+  const model: PianoRollModel = {
+    steps: perBar * bars,
+    bars,
+    notes,
+    ...(numeric ? { numeric: true } : {}),
+    source: {
+      parts,
+      prefix: '<' + (/^\s*/.exec(inner)?.[0] ?? ''),
+      suffix: (/\s*$/.exec(inner)?.[0] ?? '') + '>',
+    },
+  }
+  const probes = parts[0].regions.map((r) => ({ from: r.from, to: r.to }))
+  if (!projectionRollEditSafe(model, perBar, bars, numeric, probes)) return null
+  if (serializePianoRoll(model) !== src.trim()) return null
   return { ok: true, model }
 }
 

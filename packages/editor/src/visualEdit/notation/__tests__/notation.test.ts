@@ -550,9 +550,11 @@ describe('piano roll — parse', () => {
     expect(parseStepGrid('rd:<1 3 2>').ok).toBe(false)
     expect(parseStepGrid('sd hh:[1|0]').ok).toBe(false)
     expect(parseStepGrid('pulse:[0.3 0.5]').ok).toBe(false)
-    // same class one level in: a slot has nowhere to put `*<1!3 2>` either, and
-    // dropping it would show a bare `[0,1]` chord and write the operator away
-    expect(parsePianoRoll('[[0, 1]*<1!3 2> [2, 3]]*2').ok).toBe(false)
+    // The `*<1!3 2>` case USED to refuse here for a display reason: the single-cycle
+    // projection would have shown a bare `[0,1]` chord, silently dropping the notes
+    // the operator adds in the second cycle. Bar expansion (#938) shows both cycles
+    // truthfully, so that reason is gone and it now opens — see the #938 test below
+    // for what its write-back does and does not preserve.
     // and on silence: `~:3` parses (rest atom + tail). A bare `bd ~:3` still
     // refuses — the projection can't reproduce a `:3` on a rest, so it declines
     // rather than drop it. But `[bd ~:3] sd` PLAYS only bd + sd (the variant rides
@@ -652,7 +654,35 @@ describe('piano roll — parse', () => {
     expect(num.ok && num.model.numeric).toBe(true)
     // still refused: a melody that does not play a static rational grid
     expect(parsePianoRoll('c3? e3 g3').ok).toBe(false) // `?` degrade varies per cycle
-    expect(parsePianoRoll('c3 e3*<1 2>').ok).toBe(false) // a patterned operator varies per cycle
+  })
+
+  it('bar-expands a melody that varies per cycle (#938)', () => {
+    // `e3*<1 2>` plays one note, then two. #924 refused it for not being static;
+    // the roll now shows the period as bars, durations and all.
+    const r = parsePianoRoll('c3 e3*<1 2>')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.bars).toBe(2)
+    expect(serializePianoRoll(r.model)).toBe('c3 e3*<1 2>') // untouched = identity
+    // an edit rewrites only the element it touched — the `e3*<1 2>` operator the
+    // model cannot represent rides back byte-for-byte
+    const perBar = r.model.steps / 2
+    const idx = r.model.notes.findIndex((n) => n.start === perBar)
+    const edited: PianoRollModel = {
+      ...r.model,
+      notes: r.model.notes.map((n, i) => (i === idx ? { ...n, pitch: 'a5' } : n)),
+    }
+    expect(serializePianoRoll(edited)).toBe('<c3 a5> e3*<1 2>')
+
+    // HONEST LIMIT: when the whole pattern is ONE top-level element there is no
+    // untouched neighbour to preserve, so an edit re-spells all of it and writes the
+    // operator away. That is the projection's standing contract (`[c3 e3]*2@2`
+    // behaves the same in #924), not something bar expansion introduced — but it is
+    // why "opens" is not the same claim as "edits losslessly".
+    const one = parsePianoRoll('[[0, 1]*<1!3 2> [2, 3]]*2')
+    expect(one.ok).toBe(true)
+    if (!one.ok) return
+    expect(serializePianoRoll(one.model)).toBe('[[0, 1]*<1!3 2> [2, 3]]*2') // identity holds
   })
 })
 
