@@ -1912,8 +1912,23 @@ describe('20-04 wave β — parser wrap probes (D-03 / P33 / PV37)', () => {
     expect(ir.rawArgs).toBe('"0.3 0.7"')
   })
 
-  it('lpf wraps on parseFloat NaN (FX group line 618)', () => {
+  it('lpf with a PATTERN arg classifies as Param, not opaque (#935)', () => {
+    // Was: parseFloat("<500 1000>") is NaN, so the FX arm wrapped it as Code.
+    // Now the FX arms fall through to the control registry, so a pattern arg
+    // models — keyed CANONICALLY (`lpf` is an alias of `cutoff`) while the
+    // user's own token round-trips.
     const ir = parseStrudel('note("c").lpf("<500 1000>")')
+    expect(ir.tag).toBe('Param')
+    if (ir.tag !== 'Param') return
+    expect(ir.key).toBe('cutoff')
+    expect(typeof ir.value).toBe('object') // sub-IR, not a number
+    expect(toStrudel(ir)).toBe('note("c").lpf("<500 1000>")')
+  })
+
+  it('an FX arm still wraps when the arg cannot be modelled at all (PV37)', () => {
+    // The fallthrough is not a blanket accept: a lambda has no param shape, so
+    // wrap-never-drop still applies.
+    const ir = parseStrudel('note("c").lpf(x => x)')
     expect(ir.tag).toBe('Code')
     if (ir.tag !== 'Code') return
     expect(ir.via?.method).toBe('lpf')

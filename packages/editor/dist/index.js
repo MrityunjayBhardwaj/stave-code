@@ -2934,6 +2934,8 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
     case "hpf": {
       const val = parseFloat(subbedArgs.trim());
       if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange));
+      const asParam = asControlParam(method, args, baseOffset, ir, callSiteRange);
+      if (asParam) return asParam;
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "pickRestart":
@@ -3015,19 +3017,22 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
       return IR.param(method, parsed.value, args, ir, tagMeta(method, callSiteRange));
     }
     default: {
-      if (isControlName(method)) {
-        const canonical = getControlName(method);
-        const isSampleKey = canonical === "s" || canonical === "bank";
-        const parsed = parseParamArg(args, isSampleKey, baseOffset);
-        if (parsed) {
-          return IR.param(canonical, parsed.value, args, ir, tagMeta(method, callSiteRange));
-        }
-      }
+      const asParam = asControlParam(method, args, baseOffset, ir, callSiteRange);
+      if (asParam) return asParam;
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
   }
 }
 __name(applyMethod, "applyMethod");
+function asControlParam(method, args, baseOffset, ir, callSiteRange) {
+  if (!isControlName(method)) return null;
+  const canonical = getControlName(method);
+  const isSampleKey = canonical === "s" || canonical === "bank";
+  const parsed = parseParamArg(args, isSampleKey, baseOffset);
+  if (!parsed) return null;
+  return IR.param(canonical, parsed.value, args, ir, tagMeta(method, callSiteRange));
+}
+__name(asControlParam, "asControlParam");
 function parseTransform(transformStr, defaultIr, baseOffset = 0, bindings) {
   const str = transformStr.trim();
   const trimmedStart = baseOffset + (transformStr.length - transformStr.trimStart().length);

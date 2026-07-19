@@ -113,4 +113,39 @@ describe('#928 — classify off-list controls from the registry (deny-list, Tier
     // parseParamArg returns null for a non-number/string/mini shape → opaque.
     expect(opaqueNode('s("bd").clip(x => x)', 'clip')).toBeDefined()
   })
+
+  // --- #935: a CURATED FX control must not be narrower than an off-list one ---
+  describe('#935 — pattern args on the curated FX arms', () => {
+    it('a pattern arg on a curated FX control classifies instead of opaquing', () => {
+      // Before #935 the FX arms parsed with `parseFloat` only, so the COMMON
+      // control was the more limited one: `.roomsize("0.3 0.5")` modelled while
+      // `.room("0.3 0.5")` went opaque. Both are controls; both must classify.
+      expect(paramNode('note("c").room("0.3 0.5")', 'room')).toBeDefined()
+      expect(paramNode('note("c").roomsize("0.3 0.5")', 'roomsize')).toBeDefined()
+      expect(opaqueNode('note("c").room("0.3 0.5")', 'room')).toBeUndefined()
+    })
+
+    it('a NUMERIC arg on the same control still classifies as FX', () => {
+      // The tag differs by arg shape on purpose — FX params are typed
+      // Record<string, number|string>, so only the pattern case needs Param.
+      // Every existing FX consumer keeps working untouched.
+      expect(fxNode('note("c").room(0.3)', 'room')).toBeDefined()
+      expect(fxNode('note("c").crush(4)', 'crush')).toBeDefined()
+    })
+
+    it('keys by the canonical control name but round-trips the user token', () => {
+      // `lpf` is an alias of `cutoff`; collect reads the canonical key, while
+      // toStrudel re-emits what the user actually typed.
+      expect(paramNode('note("c").lpf("400 800")', 'cutoff')).toBeDefined()
+      expect(toStrudel(parseStrudel('note("c").lpf("400 800")'))).toBe(
+        'note("c").lpf("400 800")',
+      )
+    })
+
+    it('reverb, not a core control, still opaques on a pattern arg', () => {
+      // isControlName('reverb') is false — there is no registry entry to model
+      // it, so PV37 wrap-never-drop still applies rather than a guess.
+      expect(opaqueNode('note("c").reverb("0.3 0.5")', 'reverb')).toBeDefined()
+    })
+  })
 })
