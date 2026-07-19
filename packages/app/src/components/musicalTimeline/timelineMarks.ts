@@ -30,6 +30,36 @@ function clamp01(n: number): number {
 }
 
 /**
+ * Every DECLARED top-level track's containment anchor `(laneKey → $:-line start)`,
+ * read straight from the IR Track wrappers — NOT from `collectCycles` events.
+ *
+ * #927 (P1b): a track whose note value is a signal (`n(run(8)).s(…)`,
+ * `n(irand(8))…`) emits NO static-IR events, so the event-driven anchor build
+ * below never registers its lane. Its eval haps, however, DO carry a `loc` (the
+ * `.s("piano")` mini-string), so `irLaneFor` resolves them to the largest anchor
+ * ≤ that offset — the PREVIOUS track's lane — and the signal track silently folds
+ * into its neighbour (one lane where there should be two). Seeding the anchor map
+ * from the declared Track wrappers (which exist and carry `trackId` + a `$:`-line
+ * `loc` even with zero events) gives every declared track its own anchor, so a
+ * located hap lands on its OWN lane and the eval-lane append (timelineScene) then
+ * renders it. Loc-less haps (`note(sine…)`) are unaffected — they still fall
+ * through to `evalTrackIdToLaneKey`. Only the TOP-LEVEL wrappers matter: a stack's
+ * inner voices share their track's `trackId` (one lane), so no recursion.
+ */
+function declaredTrackAnchors(ir: PatternIR): Array<[string, number]> {
+  const tracks = ir.tag === 'Stack' ? ir.tracks : [ir]
+  const out: Array<[string, number]> = []
+  for (const t of tracks) {
+    if (t.tag !== 'Track') continue
+    const start = t.loc?.[0]?.start
+    if (typeof t.trackId === 'string' && typeof start === 'number' && Number.isFinite(start)) {
+      out.push([t.trackId, start])
+    }
+  }
+  return out
+}
+
+/**
  * Collect read-only mini-note marks for the display span by querying the IR
  * directly (`collectCycles`), grouped by the SAME `laneKeyOf` identity the
  * analysis lanes use, capped per lane. `null` IR / non-positive span → empty.
@@ -166,6 +196,17 @@ export function collectNoteMarks(
         gain: clamp01(ev.gain ?? 1),
         voice: ev.s ?? null,
       })
+    }
+  }
+  // #927 — seed containment anchors for DECLARED tracks the event walk missed
+  // (a signal-valued track emits zero static-IR events, so it never appeared
+  // above). Additive + `!has`-guarded: event-producing tracks keep their
+  // event-derived `dollarPos`; only zero-event tracks gain an anchor, so a
+  // located hap in their span lands on their OWN lane instead of folding into
+  // the previous one. Only meaningful for the eval path (haps carry `loc`).
+  if (useEval && ir.tag === 'Stack') {
+    for (const [key, start] of declaredTrackAnchors(ir)) {
+      if (!labelOffsetByLane.has(key)) labelOffsetByLane.set(key, start)
     }
   }
   // When eval events are present, derive the marks from them instead of the IR
