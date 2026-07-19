@@ -134,9 +134,32 @@ describe('step grid — parse', () => {
     // an edit re-emits locally and stays hap-faithful — the source's own bytes
     // ride back around the one touched region
     expect(gridEdit('bd@2 hh', 1, 'cp')).toBe('bd cp hh')
-    // still refused: a pattern that does NOT play a static rational grid
-    expect(parseStepGrid('bd?').ok).toBe(false) // `?` degrade varies per cycle
-    expect(parseStepGrid('bd*<1 2>').ok).toBe(false) // a patterned operator varies per cycle
+    // still refused: a pattern with no period at all. `?` degrades at random, so it
+    // never repeats and there are no bars to show — an honest refusal, not a lie.
+    expect(parseStepGrid('bd?').ok).toBe(false)
+  })
+
+  it('refuses a pattern whose period is longer than the probe window (#930)', () => {
+    // `<4 8>/16` holds each alternative for SIXTEEN cycles, so a pattern that only
+    // looked at the first eight would conclude "static" and show a grid that quietly
+    // becomes a lie at cycle 16 — and would drop the `<4 8>/16` on the first edit.
+    // Refusing is the honest answer: the period is real but beyond what we expand.
+    expect(parseStepGrid('hh*[<4 8>/16]').ok).toBe(false)
+  })
+
+  it('bar-expands a pattern that varies per cycle (#930)', () => {
+    // A patterned operator plays a DIFFERENT cycle each time: `bd*<1 2>` is one hit,
+    // then two. #922 refused it for not being static; the projection now shows the
+    // period as bars instead, which is what the pattern actually plays.
+    const r = parseStepGrid('bd*<1 2>')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.bars).toBe(2)
+    expect(r.model.steps).toBe(4) // 2 columns per bar × 2 bars
+    // bar 0 fires once, bar 1 twice — exactly the two cycles it plays
+    expect(r.model.lanes).toEqual([{ sound: 'bd', cells: [true, false, true, true] }])
+    // and an untouched open→write still returns the user's own bytes
+    expect(serializeStepGrid(r.model)).toBe('bd*<1 2>')
   })
 
   it('expands `atom*n` into n columns of the atom', () => {

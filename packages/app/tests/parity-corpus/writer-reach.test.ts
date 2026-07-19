@@ -69,7 +69,7 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
  * it used to open turns this red. Raise it (never lower it silently) when a genuine
  * reach gain is shipped and re-observed.
  */
-const FLOOR_STEP = 50
+const FLOOR_STEP = 80
 const FLOOR_ROLL = 24
 
 /* ── the engine oracle: what a mini PLAYS in cycle 0 (onset, duration, atom) ── */
@@ -118,9 +118,20 @@ interface Hap {
 
 /** the onset notes a mini plays in cycle 0, or null if it won't reify / has an atom we can't name */
 function enginePlayed(src: string): Note[] | null {
+  return enginePlayedCycle(src, 0)
+}
+
+/**
+ * The onsets a mini plays in ONE given cycle, positions normalised into `[0,1)`.
+ *
+ * A bar-expanded projection (#930) shows several cycles at once, so verifying an
+ * edit against cycle 0 alone would miss a write-back that corrupts a LATER bar —
+ * the exact silent multi-cycle loss the projection has to be trusted not to do.
+ */
+function enginePlayedCycle(src: string, cyc: number): Note[] | null {
   let haps: Hap[]
   try {
-    haps = (reifyMini(src) as { queryArc(a: number, b: number): Hap[] }).queryArc(0, 1)
+    haps = (reifyMini(src) as { queryArc(a: number, b: number): Hap[] }).queryArc(cyc, cyc + 1)
   } catch {
     return null
   }
@@ -145,18 +156,23 @@ function singletonPos(base: Note[]): number | null {
 
 /* ── the modeled delete, per surface — the real UI edit through the real writer ── */
 
-/** delete the single note sounding at `pos`; null if not a clean single-note target */
-function deleteFromRoll(model: PianoRollModel, pos: number): string | null {
-  const col = Math.round(pos * model.steps)
+/**
+ * Delete the single note sounding at model column `col`; null if not a clean
+ * single-note target.
+ *
+ * The COLUMN is passed in rather than derived from a cycle-0 position, because on
+ * a bar-expanded model `steps` spans every bar — `pos * steps` would stretch a
+ * cycle-0 onset across the whole grid and probe the wrong column.
+ */
+function deleteFromRoll(model: PianoRollModel, col: number): string | null {
   const here = model.notes.filter((n) => n.start === col)
   if (here.length !== 1) return null // chord / no note starts here — not our clean target
   const edited: PianoRollModel = { ...model, notes: model.notes.filter((n) => n !== here[0]) }
   return serializePianoRoll(edited)
 }
 
-/** clear the single lane on at `pos`'s column; null if not a clean single-lane target */
-function deleteFromGrid(model: StepGridModel, pos: number): string | null {
-  const col = Math.round(pos * model.steps)
+/** clear the single lane on at model column `col`; null if not a clean single-lane target */
+function deleteFromGrid(model: StepGridModel, col: number): string | null {
   const on = model.lanes.filter((l) => l.cells[col])
   if (on.length !== 1) return null
   const edited: StepGridModel = {
@@ -218,24 +234,43 @@ function sweep(s: Surface): Tally {
     const reason = core.reason
     const r = s.full(mini)
     const m = r.ok ? (r.model as StepGridModel & PianoRollModel) : null
-    // the FLAT single-cycle projection this gate owns; the alt/bars paths belong to
-    // the syntactic model, not the projection (mirror the stress gate's flatRoll)
-    if (m && (m.altSource || m.bars)) continue
     t.refused++
     t.refusedReasons.set(reason, (t.refusedReasons.get(reason) ?? 0) + 1)
     if (m === null) continue // projection did not open it
     t.projected++
+
+    // Bar-expanded projections (#930) show `bars` cycles at once. `steps` then spans
+    // every bar, so the probe column comes from the PER-BAR width, and the edit is
+    // checked against every bar — a delete in bar 0 that quietly rewrites bar 1 is
+    // the multi-cycle loss this gate exists to catch, and comparing cycle 0 alone
+    // would call it a pass.
+    const bars = m.bars ?? 1
+    const perBar = m.steps / bars
+    if (!Number.isInteger(perBar)) continue
 
     // edit round-trip verified through the real engine on both sides
     const base = enginePlayed(mini)
     if (base === null || base.length === 0) continue
     const pos = singletonPos(base)
     if (pos === null) continue // fully chorded — no clean single-note delete probe
-    const out = s.del(m, pos)
+    const out = s.del(m, Math.round(pos * perBar))
     if (out === null) continue // the writer declined (a safe no-op) — not counted as reach
-    const got = enginePlayed(out)
-    const expected = base.filter((n) => Math.round(n.pos * HRES) !== Math.round(pos * HRES))
-    if (got !== null && sig(got, s.durAware) === sig(expected, s.durAware)) {
+    let ok = true
+    for (let b = 0; b < bars && ok; b++) {
+      const want = enginePlayedCycle(mini, b)
+      const got = enginePlayedCycle(out, b)
+      if (want === null || got === null) {
+        ok = false
+        break
+      }
+      // the deleted note is gone from bar 0; every other bar is untouched
+      const expected =
+        b === 0
+          ? want.filter((n) => Math.round(n.pos * HRES) !== Math.round(pos * HRES))
+          : want
+      ok = sig(got, s.durAware) === sig(expected, s.durAware)
+    }
+    if (ok) {
       t.editOk++
       t.reachByReason.set(reason, (t.reachByReason.get(reason) ?? 0) + 1)
     } else if (t.losses.length < 20) {

@@ -27163,6 +27163,22 @@ function denom(x, cap = MAX_STEPS) {
   return 0;
 }
 __name(denom, "denom");
+var PERIOD_PROBE = 24;
+var MAX_PROJECT_BARS = 4;
+function detectPeriod2(keys, cap) {
+  for (let p = 1; p <= cap; p++) {
+    let ok = true;
+    for (let c = p; c < keys.length; c++) {
+      if (keys[c] !== keys[c % p]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return p;
+  }
+  return 0;
+}
+__name(detectPeriod2, "detectPeriod");
 function isWholeAlternation(src) {
   let ast;
   try {
@@ -27226,20 +27242,25 @@ var onsetKey = /* @__PURE__ */ __name((o) => JSON.stringify(o.map((x) => [Math.r
 function projectStepGrid(src0) {
   const src = src0.trim();
   if (src === "") return null;
-  if (isWholeAlternation(src)) return null;
   let pat;
   try {
     pat = mini_mjs.mini(src);
   } catch {
     return null;
   }
-  const cyc0 = gridOnsets(pat, 0);
-  if (cyc0 === null || cyc0.length === 0) return null;
-  const sig0 = onsetKey(cyc0);
-  for (let c = 1; c < 8; c++) {
+  const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null;
+  if (isWholeAlternation(src) && whole === null) return null;
+  const cycles = [];
+  for (let c = 0; c < PERIOD_PROBE; c++) {
     const cc = gridOnsets(pat, c);
-    if (cc === null || onsetKey(cc) !== sig0) return null;
+    if (cc === null) return null;
+    cycles.push(cc);
   }
+  const bars = detectPeriod2(cycles.map(onsetKey), MAX_PROJECT_BARS);
+  if (bars === 0) return null;
+  const perCycle = cycles.slice(0, bars);
+  if (perCycle.every((c) => c.length === 0)) return null;
+  if (whole !== null) return bars > 1 ? projectAltBars(src, whole, perCycle, bars) : null;
   const spans = topLevelSpans(src);
   if (!spans) return null;
   const totalWeight = spans.reduce((s, e) => s + e.weight, 0);
@@ -27249,58 +27270,135 @@ function projectStepGrid(src0) {
     bounds.push(accW / totalWeight);
     accW += e.weight;
   }
-  let cols = 1;
-  for (const x of [...cyc0.map((o) => o.pos), ...bounds]) {
+  let perBar2 = 1;
+  for (const x of [...perCycle.flat().map((o) => o.pos), ...bounds]) {
     const d = denom(x);
     if (d === 0) return null;
-    cols = lcm(cols, d);
+    perBar2 = lcm(perBar2, d);
   }
-  if (cols > MAX_STEPS || cols % totalWeight !== 0) return null;
-  const divPerUnit = cols / totalWeight;
-  const cells = Array.from({ length: cols }, () => []);
-  for (const o of cyc0) {
-    const c = Math.round(o.pos * cols);
-    if (c < 0 || c >= cols) return null;
-    cells[c] = [...new Set(o.atoms)];
+  if (perBar2 * bars > MAX_STEPS || perBar2 % totalWeight !== 0) return null;
+  const divPerUnit = perBar2 / totalWeight;
+  const cells = Array.from({ length: perBar2 * bars }, () => []);
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const c = Math.round(o.pos * perBar2);
+      if (c < 0 || c >= perBar2) return null;
+      cells[b * perBar2 + c] = [...new Set(o.atoms)];
+    }
   }
-  const parts = singlePart(src, spans, divPerUnit, cols, gridContent(cells));
-  if (!parts) return null;
+  const lanes = lanesFromCells(cells);
+  if (bars === 1) {
+    const parts = singlePart(src, spans, divPerUnit, perBar2, gridContent(cells));
+    if (!parts) return null;
+    const model2 = {
+      steps: perBar2,
+      lanes,
+      source: { prefix: "", suffix: "", parts }
+    };
+    const cols0 = parts[0].regions.map((r) => r.from);
+    if (!projectionEditSafe(model2, perBar2, 1, perCycle, cols0)) return null;
+    return { ok: true, model: model2 };
+  }
+  const regions = buildAltRegions(
+    src,
+    spans,
+    divPerUnit,
+    perBar2,
+    (from, to) => Array.from(
+      { length: bars },
+      (_, b) => cells.slice(from + b * perBar2, to + b * perBar2).map((c) => [...new Set(c)])
+    )
+  );
+  if (!regions) return null;
   const model = {
-    steps: cols,
-    lanes: lanesFromCells(cells),
-    source: { prefix: "", suffix: "", parts }
+    steps: perBar2 * bars,
+    bars,
+    lanes,
+    altSource: { perBar: perBar2, bars, div: divPerUnit, regions }
   };
-  if (!projectionEditSafe(model, cols, cyc0)) return null;
+  const cols = regions.flatMap(
+    (r) => Array.from({ length: bars }, (_, b) => b * perBar2 + r.from)
+  );
+  if (!projectionEditSafe(model, perBar2, bars, perCycle, cols)) return null;
   return { ok: true, model };
 }
 __name(projectStepGrid, "projectStepGrid");
+function projectAltBars(src, inner, perCycle, bars) {
+  const innerSrc = inner.trim();
+  const spans = topLevelSpans(innerSrc);
+  if (!spans) return null;
+  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return null;
+  let perBar2 = 1;
+  for (const o of perCycle.flat()) {
+    const d = denom(o.pos);
+    if (d === 0) return null;
+    perBar2 = lcm(perBar2, d);
+  }
+  if (perBar2 * bars > MAX_STEPS) return null;
+  const cells = Array.from({ length: perBar2 * bars }, () => []);
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const c = Math.round(o.pos * perBar2);
+      if (c < 0 || c >= perBar2) return null;
+      cells[b * perBar2 + c] = [...new Set(o.atoms)];
+    }
+  }
+  const parts = singlePart(innerSrc, spans, perBar2, perBar2 * bars, gridContent(cells));
+  if (!parts) return null;
+  const model = {
+    steps: perBar2 * bars,
+    bars,
+    lanes: lanesFromCells(cells),
+    source: {
+      parts,
+      prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
+      suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
+    }
+  };
+  const cols = parts[0].regions.map((r) => r.from);
+  if (!projectionEditSafe(model, perBar2, bars, perCycle, cols)) return null;
+  if (serializeStepGrid(model) !== src.trim()) return null;
+  return { ok: true, model };
+}
+__name(projectAltBars, "projectAltBars");
 var PROBE_SOUND = "__stave_probe__";
-function projectionEditSafe(model, cols, base) {
-  const t = /* @__PURE__ */ __name((col) => col / cols, "t");
-  for (const r of model.source.parts[0].regions) {
-    const col = r.from;
+function projectionEditSafe(model, perBar2, bars, base, probeCols) {
+  for (const col of probeCols) {
+    const b = Math.floor(col / perBar2);
+    const t = col % perBar2 / perBar2;
     const lanes = model.lanes.map((l) => ({ ...l, cells: [...l.cells] }));
     let probe = lanes.find((l) => l.sound === PROBE_SOUND);
     if (!probe) {
-      probe = { sound: PROBE_SOUND, cells: Array(cols).fill(false) };
+      probe = { sound: PROBE_SOUND, cells: Array(perBar2 * bars).fill(false) };
       lanes.push(probe);
     }
     probe.cells[col] = true;
     const out = serializeStepGrid({ ...model, lanes });
     if (out == null) return false;
-    let got;
+    let edited;
     try {
-      got = gridOnsets(mini_mjs.mini(out), 0);
+      edited = mini_mjs.mini(out);
     } catch {
       return false;
     }
-    if (got === null) return false;
-    const hit = base.find((o) => Math.abs(o.pos - t(col)) < 1e-9);
-    const expected = base.map(
-      (o) => o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND] } : o
-    );
-    if (!hit) expected.push({ pos: t(col), atoms: [PROBE_SOUND] });
-    if (onsetKey(got) !== onsetKey(expected)) return false;
+    const expectedFor = /* @__PURE__ */ __name((bb) => {
+      const want = base[bb];
+      if (bb !== b) return want;
+      const hit = want.find((o) => Math.abs(o.pos - t) < 1e-9);
+      const out2 = want.map(
+        (o) => o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND] } : o
+      );
+      if (!hit) out2.push({ pos: t, atoms: [PROBE_SOUND] });
+      return out2;
+    }, "expectedFor");
+    for (let bb = 0; bb < bars; bb++) {
+      const got = gridOnsets(edited, bb);
+      if (got === null) return false;
+      if (onsetKey(got) !== onsetKey(expectedFor(bb))) return false;
+    }
+    const wrap5 = gridOnsets(edited, bars);
+    if (wrap5 === null) return false;
+    if (onsetKey(wrap5) !== onsetKey(expectedFor(0))) return false;
   }
   return true;
 }

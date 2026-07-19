@@ -866,6 +866,48 @@ function denom(x: number, cap = MAX_STEPS): number {
 }
 
 /**
+ * Cycles probed when establishing a pattern's period (#930).
+ *
+ * A pattern that has not repeated by here is treated as non-repeating — `irand`,
+ * `shuffle`, a `/n` slower than the window — and refused. Projecting a prefix of
+ * it would show a grid that stops being true on the very next cycle, which is
+ * worse than an honest refusal.
+ */
+const PERIOD_PROBE = 24
+
+/**
+ * The most bars the projection will bar-expand across.
+ *
+ * Bounded by re-emit READABILITY, not by the column arithmetic: `spliceAltGrid`
+ * writes an edited element as `<b0 b1 …>`, one slot per bar, so a large period
+ * turns a single cell toggle into a wall of alternation. `MAX_STEPS` still caps
+ * the `perBar × bars` product independently, and is the binding constraint for
+ * anything but a coarse bar.
+ */
+const MAX_PROJECT_BARS = 4
+
+/**
+ * The smallest `p ≤ cap` at which the probed cycles repeat, or 0 if none does.
+ *
+ * Checks EVERY probed cycle against its representative (`keys[c % p]`), not just
+ * the first repeat — a pattern that happens to match at cycle p but diverges at
+ * 2p is not period-p, and bar-expanding it would silently drop the divergence.
+ */
+function detectPeriod(keys: string[], cap: number): number {
+  for (let p = 1; p <= cap; p++) {
+    let ok = true
+    for (let c = p; c < keys.length; c++) {
+      if (keys[c] !== keys[c % p]) {
+        ok = false
+        break
+      }
+    }
+    if (ok) return p
+  }
+  return 0
+}
+
+/**
  * True when the whole pattern is a single `<…>` alternation element (`<a b>*8`,
  * `<a b c>`). Those belong to the alternation path (bars, #920) — one region per
  * bar so an edit stays byte-local — not to the flat projection, which owns the
@@ -974,25 +1016,37 @@ const onsetKey = (o: Onset[]): string =>
 function projectStepGrid(src0: string): ParseResult<StepGridModel> | null {
   const src = src0.trim()
   if (src === '') return null
-  // A whole-cycle `<…>` alternation is the alternation path's (bars, #920), not the
-  // flat projection's — projecting it as one region would flatten it on edit.
-  if (isWholeAlternation(src)) return null
   let pat: unknown
   try {
     pat = reifyMini(src)
   } catch {
     return null
   }
-  const cyc0 = gridOnsets(pat, 0)
-  if (cyc0 === null || cyc0.length === 0) return null
-  // Truly static? A single-cycle grid must play identically every cycle over the
-  // pattern's period; a pattern that varies is a multi-cycle alternation (the
-  // bars path), and projecting cycle 0 would silently drop the rest on write-back.
-  const sig0 = onsetKey(cyc0)
-  for (let c = 1; c < 8; c++) {
+  // A whole-cycle `<…>` is not the FLAT projection's to take — owning it as one
+  // region would re-spell the whole pattern on the first edit. It is still worth
+  // projecting, just bar-wise, with the branches as regions (#930 phase B). A
+  // `<…>` carrying trailing ops (`<a b>*2`) has no branch tiling to write back
+  // through, so it stays refused.
+  const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null
+  if (isWholeAlternation(src) && whole === null) return null
+  // What it PLAYS, cycle by cycle, and the period it repeats at. A pattern that
+  // varies across cycles is no longer refused (#930): each cycle becomes a bar and
+  // the source stays the single cycle the user wrote, so an edit re-emits one
+  // element as `<b0 b1 …>` and leaves every other byte alone.
+  const cycles: Onset[][] = []
+  for (let c = 0; c < PERIOD_PROBE; c++) {
     const cc = gridOnsets(pat, c)
-    if (cc === null || onsetKey(cc) !== sig0) return null
+    if (cc === null) return null
+    cycles.push(cc)
   }
+  const bars = detectPeriod(cycles.map(onsetKey), MAX_PROJECT_BARS)
+  if (bars === 0) return null
+  const perCycle = cycles.slice(0, bars)
+  // A pattern that plays nothing at all is not a grid to offer. Identical to the
+  // old `cyc0.length === 0` refusal when the period is 1.
+  if (perCycle.every((c) => c.length === 0)) return null
+  // a whole-cycle `<…>`: bars are its branches, not a flat sequence's columns
+  if (whole !== null) return bars > 1 ? projectAltBars(src, whole, perCycle, bars) : null
   const spans = topLevelSpans(src)
   if (!spans) return null
   const totalWeight = spans.reduce((s, e) => s + e.weight, 0)
@@ -1004,28 +1058,122 @@ function projectStepGrid(src0: string): ParseResult<StepGridModel> | null {
     bounds.push(accW / totalWeight)
     accW += e.weight
   }
-  let cols = 1
-  for (const x of [...cyc0.map((o) => o.pos), ...bounds]) {
+  // One column resolution shared by every bar: the alt writer indexes a region as
+  // `from + b * perBar`, so bars that disagreed on width could not be strided.
+  let perBar = 1
+  for (const x of [...perCycle.flat().map((o) => o.pos), ...bounds]) {
     const d = denom(x)
     if (d === 0) return null
-    cols = lcm(cols, d)
+    perBar = lcm(perBar, d)
   }
-  if (cols > MAX_STEPS || cols % totalWeight !== 0) return null
-  const divPerUnit = cols / totalWeight
-  const cells: GridCells = Array.from({ length: cols }, () => [])
-  for (const o of cyc0) {
-    const c = Math.round(o.pos * cols)
-    if (c < 0 || c >= cols) return null
-    cells[c] = [...new Set(o.atoms)]
+  if (perBar * bars > MAX_STEPS || perBar % totalWeight !== 0) return null
+  const divPerUnit = perBar / totalWeight
+  const cells: GridCells = Array.from({ length: perBar * bars }, () => [])
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const c = Math.round(o.pos * perBar)
+      if (c < 0 || c >= perBar) return null
+      cells[b * perBar + c] = [...new Set(o.atoms)]
+    }
   }
-  const parts = singlePart(src, spans, divPerUnit, cols, gridContent(cells))
+  const lanes = lanesFromCells(cells)
+
+  if (bars === 1) {
+    // The single-cycle projection, unchanged: a flat `source` the span writer
+    // splices. Kept as its own branch so #930 cannot move what #922 already ships.
+    const parts = singlePart(src, spans, divPerUnit, perBar, gridContent(cells))
+    if (!parts) return null
+    const model: StepGridModel = {
+      steps: perBar,
+      lanes,
+      source: { prefix: '', suffix: '', parts },
+    }
+    const cols0 = parts[0].regions.map((r) => r.from)
+    if (!projectionEditSafe(model, perBar, 1, perCycle, cols0)) return null
+    return { ok: true, model }
+  }
+
+  // Bar-expanded: the SAME source shape the `<…>`-as-element path builds (#920), so
+  // `spliceAltGrid` writes it back with no writer change — each single-cycle element
+  // owns a within-bar column span and remembers what it showed in each bar.
+  const regions = buildAltRegions<GridCells>(src, spans, divPerUnit, perBar, (from, to) =>
+    Array.from({ length: bars }, (_, b) =>
+      cells.slice(from + b * perBar, to + b * perBar).map((c) => [...new Set(c)]),
+    ),
+  )
+  if (!regions) return null
+  const model: StepGridModel = {
+    steps: perBar * bars,
+    bars,
+    lanes,
+    altSource: { perBar, bars, div: divPerUnit, regions },
+  }
+  // each region is a within-bar span, so it is probed once per bar
+  const cols = regions.flatMap((r) =>
+    Array.from({ length: bars }, (_, b) => b * perBar + r.from),
+  )
+  if (!projectionEditSafe(model, perBar, bars, perCycle, cols)) return null
+  return { ok: true, model }
+}
+
+/**
+ * A whole-cycle `<…>` the syntactic alternation path refused (#930 phase B).
+ *
+ * The flat projection declines these because it would own the entire `<…>` as ONE
+ * region and re-spell all of it on the first edit. Projected as BARS the shape is
+ * right: the alternation's own branches are the regions, one per bar, exactly as
+ * `gridFromAlternation` lays them out — so an edit rewrites the branch it touched
+ * and every other branch rides back byte-for-byte.
+ *
+ * Content still comes from what the pattern PLAYS, which is the point: the branch
+ * bytes may be syntax the model cannot parse (a nested group, a euclid with ops),
+ * and they never have to be parsed — only preserved.
+ */
+function projectAltBars(
+  src: string,
+  inner: string,
+  perCycle: Onset[][],
+  bars: number,
+): ParseResult<StepGridModel> | null {
+  const innerSrc = inner.trim()
+  const spans = topLevelSpans(innerSrc)
+  if (!spans) return null
+  // one top-level element per BAR — a branch repeated `!n` claims n of them, and
+  // the bar count has to come out exactly or the branches don't line up with cycles
+  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return null
+  let perBar = 1
+  for (const o of perCycle.flat()) {
+    const d = denom(o.pos)
+    if (d === 0) return null
+    perBar = lcm(perBar, d)
+  }
+  if (perBar * bars > MAX_STEPS) return null
+  const cells: GridCells = Array.from({ length: perBar * bars }, () => [])
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const c = Math.round(o.pos * perBar)
+      if (c < 0 || c >= perBar) return null
+      cells[b * perBar + c] = [...new Set(o.atoms)]
+    }
+  }
+  // a branch spans one bar's worth of columns, so the per-unit division IS perBar
+  const parts = singlePart(innerSrc, spans, perBar, perBar * bars, gridContent(cells))
   if (!parts) return null
   const model: StepGridModel = {
-    steps: cols,
+    steps: perBar * bars,
+    bars,
     lanes: lanesFromCells(cells),
-    source: { prefix: '', suffix: '', parts },
+    source: {
+      parts,
+      prefix: '<' + (/^\s*/.exec(inner)?.[0] ?? ''),
+      suffix: (/\s*$/.exec(inner)?.[0] ?? '') + '>',
+    },
   }
-  if (!projectionEditSafe(model, cols, cyc0)) return null
+  // regions already sit one per bar, so each is probed once, at its own start
+  const cols = parts[0].regions.map((r) => r.from)
+  if (!projectionEditSafe(model, perBar, bars, perCycle, cols)) return null
+  // the writer must reproduce the user's bytes before we offer the view at all
+  if (serializeStepGrid(model) !== src.trim()) return null
   return { ok: true, model }
 }
 
@@ -1041,32 +1189,59 @@ const PROBE_SOUND = '__stave_probe__'
  * shows a grid that would corrupt on the first click. Uses the REAL writer and
  * the REAL engine, so it can't drift from either.
  */
-function projectionEditSafe(model: StepGridModel, cols: number, base: Onset[]): boolean {
-  const t = (col: number) => col / cols
-  for (const r of model.source!.parts[0].regions) {
-    const col = r.from
+function projectionEditSafe(
+  model: StepGridModel,
+  perBar: number,
+  bars: number,
+  base: Onset[][],
+  probeCols: number[],
+): boolean {
+  // Columns are ABSOLUTE model columns, supplied by the caller, because the two
+  // bar-expanded shapes index differently: an alt-element source's regions are
+  // within-bar spans repeated across bars, a whole-alternation's regions are the
+  // branches and already sit one per bar.
+  for (const col of probeCols) {
+    const b = Math.floor(col / perBar)
+    const t = (col % perBar) / perBar
     const lanes = model.lanes.map((l) => ({ ...l, cells: [...l.cells] }))
     let probe = lanes.find((l) => l.sound === PROBE_SOUND)
     if (!probe) {
-      probe = { sound: PROBE_SOUND, cells: Array<boolean>(cols).fill(false) }
+      probe = { sound: PROBE_SOUND, cells: Array<boolean>(perBar * bars).fill(false) }
       lanes.push(probe)
     }
     probe.cells[col] = true
     const out = serializeStepGrid({ ...model, lanes })
     if (out == null) return false
-    let got: Onset[] | null
+    let edited: unknown
     try {
-      got = gridOnsets(reifyMini(out), 0)
+      edited = reifyMini(out)
     } catch {
       return false
     }
-    if (got === null) return false
-    const hit = base.find((o) => Math.abs(o.pos - t(col)) < 1e-9)
-    const expected: Onset[] = base.map((o) =>
-      o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND] } : o,
-    )
-    if (!hit) expected.push({ pos: t(col), atoms: [PROBE_SOUND] })
-    if (onsetKey(got) !== onsetKey(expected)) return false
+    // Every bar must come back unchanged except the probed one — an edit that
+    // leaks into a neighbouring bar is exactly the silent multi-cycle data loss
+    // this projection exists to avoid.
+    const expectedFor = (bb: number): Onset[] => {
+      const want = base[bb]
+      if (bb !== b) return want
+      const hit = want.find((o) => Math.abs(o.pos - t) < 1e-9)
+      const out2 = want.map((o) =>
+        o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND] } : o,
+      )
+      if (!hit) out2.push({ pos: t, atoms: [PROBE_SOUND] })
+      return out2
+    }
+    for (let bb = 0; bb < bars; bb++) {
+      const got = gridOnsets(edited, bb)
+      if (got === null) return false
+      if (onsetKey(got) !== onsetKey(expectedFor(bb))) return false
+    }
+    // …and it must still REPEAT at `bars`, or the grid the view shows stops being
+    // true one cycle past its own width. Cycle `bars` is cycle 0 again, probe and
+    // all, so it is checked against bar 0's expectation rather than its base.
+    const wrap = gridOnsets(edited, bars)
+    if (wrap === null) return false
+    if (onsetKey(wrap) !== onsetKey(expectedFor(0))) return false
   }
   return true
 }
