@@ -24,7 +24,7 @@
  */
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { bjorklund as strudelBjorklund } from '@strudel/core/euclid.mjs'
+import { bjorklund, rotateEuclid } from '../../ir/euclid'
 import { serializeStepGrid, serializePianoRoll } from './serialize'
 import type {
   AltRegion,
@@ -69,42 +69,15 @@ const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
 const lcm = (a: number, b: number): number => (a / gcd(a, b)) * b
 
 /**
- * Distribute `k` pulses over `n` steps — the euclidean rhythm behind
- * `bd(3,8)`. The distribution itself is Strudel's (`@strudel/core`'s
- * `bjorklund`, the same function `.euclid()` runs), so the grid shows exactly
- * the cells the audio triggers. We only hold the degenerate ends it CANNOT
- * compute — `|k| >= n`, where upstream's `n - |k|` goes negative and it throws:
- * `k >= n` fills every step, `-k` (all but a euclid of `n` pulses) leaves none.
- *
- * A NEGATIVE `k` IS NOT EMPTY — it is Strudel's INVERSION (`euclid.mjs:44`
- * `inverted = ons < 0`, `:51` `pattern.map(x => 1 - x)`): `(-10,16)` plays the
- * 6 steps a euclidean 10 leaves out. It must reach the authority, not a guard
- * standing in front of it (#917). Only `k === 0` is truly empty.
- *
- * This was a 56-line transcription of upstream's algorithm until #903, and the
- * guard that shadowed inversion outlived it: a copy — or a guard over the
- * copy — is correct the day it is written and free to drift forever after.
+ * The euclid distribution + rotation now live in ONE place (`ir/euclid.ts`) —
+ * this file and `ir/parseMini.ts` each carried their own copy until #943, and
+ * they had already drifted: this one inverts a negative `k` (Strudel's real
+ * behaviour, #917) while the IR's returned empty. Re-exported because the
+ * notation tests import `bjorklund` from here.
  */
-export const bjorklund = (k: number, n: number): boolean[] => {
-  if (k === 0) return Array(n).fill(false) as boolean[]
-  // |k| >= n: the only ends upstream can't compute (it throws). k >= n → all on;
-  // -k with |k| >= n → all off (invert "every step").
-  if (Math.abs(k) >= n) return Array(n).fill(k > 0) as boolean[]
-  return strudelBjorklund(k, n).map((x) => x === 1)
-}
-
-/**
- * Rotate a euclid pattern to match Strudel's `euclidRot`, so an unedited
- * `atom(k,n,rot)` shows exactly the cells the audio plays. Strudel applies
- * `rotate(b, -rot)` where `rotate` left-rotates — i.e. a *right* rotation by
- * `rot`. (Source: @strudel/core euclid.mjs `_euclidRot` → util.mjs `rotate`.)
- */
-const rotateEuclid = (pattern: boolean[], rot: number): boolean[] => {
-  const n = pattern.length
-  if (n === 0) return pattern
-  const k = (((-rot) % n) + n) % n
-  return pattern.slice(k).concat(pattern.slice(0, k))
-}
+// Imported (not just re-exported) — this file calls both below, and a bare
+// `export … from` would re-export them without binding them in module scope.
+export { bjorklund, rotateEuclid }
 
 /** one slot inside a `[...]` sub-sequence */
 interface Slot {

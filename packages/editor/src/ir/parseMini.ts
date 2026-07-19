@@ -1,37 +1,102 @@
 /**
- * parseMini — mini-notation string → PatternIR.
+ * parseMini — mini-notation string → PatternIR, via the krill grammar.
  *
- * Parses Strudel's mini-notation DSL (the string inside note("...") or s("...")).
- * Recursive descent parser that handles the Phase F subset plus the
- * Tier 2 mini-notation features (Phase 19-02):
- *   - Sequences: "c4 e4 g4"
- *   - Rests: "c4 ~ e4"
- *   - Cycles (alternation): "<c4 e4 g4>"
- *   - Sub-sequences: "[c4 e4] g4"
- *   - Repeat: "c4*2"
- *   - Sometimes: "c4?"
- *   - Slice (sample index): "bd:2"             — Tier 2
- *   - Elongation (step weight): "c4@2 e4"      — Tier 2
- *   - Euclidean: "bd(3,8)" / "bd(3,8,2)"        — Tier 2
- *   - Polymetric: "{c4 e4, bd hh sd}"          — Tier 2
+ * The mini-notation grammar is STRUDEL'S, so we ask Strudel for it: this file
+ * lowers `@strudel/mini`'s krill AST into PatternIR instead of re-tokenizing
+ * the string ourselves. The hand-rolled tokenizer + byte-position operator
+ * scanner it replaced (#943) was a second oracle of a grammar Strudel ships
+ * complete and located — every "gap" in it was drift, never a missing feature,
+ * and it shipped real bugs (a wrong bjorklund distribution, #907; `!`/`/`/`_`
+ * silently mis-parsed). The notation layer (`visualEdit/notation/parse.ts`)
+ * already parses the same mini via krill; this brings the IR world up to it.
  *
- * Tier 2 features lower into existing IR nodes — no new tags. Slice
- * lands in Play.params, elongation scales Play.duration, Euclidean
- * expands to a flat Seq via Bjorklund, polymetric becomes Stack.
+ * WHAT STAYS OURS is the LOWERING — krill's uniform ops model (`weight`/`reps`/
+ * `ops[]` on every element) is lowered into PatternIR's structural tags:
+ *   - `bd(3,8)`  → a flat Seq of Play/Sleep (euclid expanded via `bjorklund`)
+ *   - `a*2`/`a/2`→ Fast / Slow      · `a?` → Choice      · `a@2` → Elongate
+ *   - `a!3`      → three sibling Plays (replicate)        · `a:3` → slice param
+ *   - `[a b]`    → Seq   · `[a,b]` → Stack (chord)
+ *   - `<a b>`    → Cycle · `{a,b}` → Stack (polymeter)
+ * Transform SEMANTICS are never modeled here — they run in Strudel; we only
+ * shape the note tree and thread source `loc` back to it.
+ *
+ * loc: krill's element spans TILE the source (they include padding), so we
+ * DERIVE tight per-token spans from the reliable anchors — an atom's
+ * `location_.start` plus its `source_.length`, an op amount atom's start — never
+ * copy krill's tiling `location_` end. `loc-fidelity.test.ts` (which slices each
+ * node's `[start,end]` out of the source) is the gate that pins this.
  */
 
-import { bjorklund as strudelBjorklund } from '@strudel/core/euclid.mjs'
-import { IR, type PatternIR } from './PatternIR'
+import { parse as krillParse } from '@strudel/mini/krill-parser.js'
+import { IR, type PatternIR, type PlayParams } from './PatternIR'
+import { bjorklund, rotateEuclid } from './euclid'
+
+// The `bjorklund` distribution is re-exported for the euclid-authority + the
+// integration tests that import it from here (its home is now `./euclid`).
+export { bjorklund } from './euclid'
+
+// ---------------------------------------------------------------------------
+// The krill AST this adapter consumes — dumped from `@strudel/mini@1.2.6`, not
+// read off the grammar (the accessors are easy to get wrong: `bd:3` is NOT an
+// atom named "bd:3", it is atom `bd` carrying a `tail` op). The tree is
+// uniformly recursive — `pattern > element > (atom | pattern)` — and
+// `weight`/`reps`/`ops` are fields on EVERY element.
+// ---------------------------------------------------------------------------
+interface KLoc { start: { offset: number }; end: { offset: number } }
+interface KAtom { type_: 'atom'; source_: string; location_?: KLoc }
+interface KOp { type_: string; arguments_?: Record<string, unknown> }
+interface KElement {
+  type_: 'element'
+  source_: KAtom | KPattern
+  options_?: { weight?: number; reps?: number; ops?: KOp[] }
+  location_?: KLoc
+}
+interface KPattern {
+  type_: 'pattern'
+  arguments_?: { alignment?: string }
+  source_: KElement[]
+}
+
+const isAtom = (n: KAtom | KPattern): n is KAtom => n.type_ === 'atom'
+
+/**
+ * `~` and `-` are both silence — literally one branch upstream (mini.mjs:157:
+ * `if (ast.source_ === '~' || ast.source_ === '-') return silence`). Each is an
+ * atom occupying a slot. (`_` is NOT silence — it is sustain, and krill has
+ * already folded it into the previous element's `weight` by now.)
+ */
+const isRestAtom = (a: KAtom): boolean => a.source_ === '~' || a.source_ === '-'
+
+/**
+ * The tight source span of a krill atom. krill's spans TILE the source, and the
+ * padding lands on EITHER side depending on the element's syntax (`bd sd` puts
+ * it trailing on the first; `a@2 b@2` puts it LEADING on the second) — so the
+ * start is skipped past whitespace onto the token, and the end comes from the
+ * atom's own `source_.length`, never from krill's tiling `location_.end`.
+ */
+const atomSpan = (a: KAtom, input: string): { start: number; end: number } => {
+  const start = firstNonWs(input, (a.location_?.start.offset ?? 1) - 1)
+  return { start, end: start + a.source_.length }
+}
+
+/** a euclid arg (`3`/`8`/`-1`) — arrives as an element-wrapped atom, or bare. */
+const argAtom = (arg: unknown): KAtom | null => {
+  const n = arg as { type_?: string; source_?: unknown } | undefined
+  if (!n || typeof n !== 'object') return null
+  const inner = (n.type_ === 'element' ? n.source_ : n) as KAtom | undefined
+  return inner && inner.type_ === 'atom' ? inner : null
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
 
 /**
  * Parse a mini-notation string. Returns Pure for empty input. Never throws.
  *
- * `baseOffset` — character offset of `input[0]` within the user's full
- * source code. Lets the parser attach `loc` to Play nodes so downstream
- * consumers (Inspector click-to-source, Monaco highlighting) can map
- * an event back to the exact span of code that produced it. Caller is
- * responsible for the offset; parseStrudel computes it from the
- * regex match index of the quoted-string content.
+ * `baseOffset` — character offset of `input[0]` within the user's full source
+ * code. Lets nodes carry `loc` so downstream consumers (Inspector
+ * click-to-source, Monaco highlighting) map an event back to its source span.
  */
 export function parseMini(
   input: string,
@@ -40,473 +105,293 @@ export function parseMini(
 ): PatternIR {
   if (!input.trim()) return IR.pure()
 
+  let ast: KPattern
   try {
-    // Tokenize the raw input — NOT a trimmed copy — so atom offsets
-    // line up with the actual character positions the caller's
-    // baseOffset describes. Internal whitespace is still skipped.
-    const tokens = tokenize(input)
-    if (tokens.length === 0) return IR.pure()
-    const nodes = parseTokens(tokens, isSample, baseOffset)
-    if (nodes.length === 0) return IR.pure()
-    if (nodes.length === 1) return nodes[0]
-    // Top-level implicit Seq spans the entire mini-notation source.
-    // 19-05 T-07: literal construction (rest-spread `IR.seq` can't take
-    // trailing `meta?`). RESEARCH §11 Q1.
-    return {
-      tag: 'Seq',
-      children: nodes,
-      loc: [{ start: baseOffset, end: baseOffset + input.length }],
-    }
+    // The mini string is QUOTED — the transpiler's own call shape. krill throws
+    // on a few inputs (e.g. a lone `_` has nothing to extend); fall back opaque.
+    ast = krillParse('"' + input + '"') as KPattern
   } catch {
-    // Graceful fallback: return opaque Code node
+    return IR.code(input)
+  }
+
+  try {
+    // The top level is a pattern like any other — it carries an alignment too.
+    // A top-level `,` is a STACK and a top-level `|` a random choice; the hand
+    // parser only ever split commas INSIDE brackets, so it flattened both into
+    // one sequence (playing a chord's notes one after another).
+    const node = patternToNode(
+      ast,
+      [{ start: baseOffset, end: baseOffset + input.length }],
+      isSample,
+      baseOffset,
+      input,
+    )
+    return node ?? IR.pure()
+  } catch {
     return IR.code(input)
   }
 }
 
-// ---------------------------------------------------------------------------
-// Tokenizer
-// ---------------------------------------------------------------------------
+/**
+ * Any krill pattern → one PatternIR node, dispatched on its ALIGNMENT. Shared by
+ * the top level and by every bracketed group, so `a,b` means the same thing
+ * wherever it appears — the uniformity that the position-specific hand parser
+ * could not have (it split commas only inside brackets).
+ *
+ * `loc` is the wrapper's span (the `[...]` bracket range, or the whole input at
+ * top level); it is dropped when a single-child container unwraps.
+ */
+function patternToNode(
+  pat: KPattern,
+  loc: { start: number; end: number }[],
+  isSample: boolean,
+  baseOffset: number,
+  input: string,
+): PatternIR | null {
+  const align = pat.arguments_?.alignment
+  // A container's children are PATTERNS (one per arm/voice), not elements.
+  const voices = pat.source_ as unknown as KPattern[]
 
-// 19-05 T-07: every non-atom Token variant carries `start`/`end` cursor
-// positions (relative to the parseMini input string). The parser composes
-// `start + baseOffset`, `end + baseOffset` into `SourceLocation` arrays and
-// attaches them as `loc` on synthetic tags (Sleep/Choice/Elongate/Fast/
-// Stack/Cycle/Seq), giving D-09 per-component-loc precision down to the
-// mini-notation level. Bracket / curly / angle delimiters carry the
-// position of their opening char; the closing position is recovered when
-// the matching `r{bracket,curly,angle}` is consumed (so the wrapper tag
-// gets the full `[...]` / `{...}` / `<...>` span). RESEARCH §11 Q2.
-type Token =
-  | { type: 'atom';   value: string; start: number; end: number }
-  | { type: 'rest';   start: number; end: number }
-  | { type: 'lbracket'; start: number; end: number }
-  | { type: 'rbracket'; start: number; end: number }
-  | { type: 'langle';   start: number; end: number }
-  | { type: 'rangle';   start: number; end: number }
-  | { type: 'repeat';  factor: number; start: number; end: number }
-  | { type: 'sometimes'; start: number; end: number }
-  | { type: 'slice';   index: number; start: number; end: number }
-  | { type: 'elongate'; factor: number; start: number; end: number }
-  | { type: 'euclid';   hits: number; steps: number; rotation: number; start: number; end: number }
-  | { type: 'lcurly';   start: number; end: number }
-  | { type: 'rcurly';   start: number; end: number }
-  | { type: 'comma';    start: number; end: number }
-
-// Read at most one trailing modifier at `input[i]` — `*n` (repeat), `?`
-// (sometimes), or `@n` (elongate) — and push its token. Returns the advanced
-// index. Shared by the atom AND rest paths so a rest weights/repeats exactly
-// like an atom: `~@4` is a 4-cycle rest, not a rest followed by a bogus atom
-// `4` (the `@`/digits would otherwise fall through as "unknown" + an atom).
-function readTrailingModifier(input: string, i: number, tokens: Token[]): number {
-  if (i < input.length && input[i] === '*') {
-    const start = i
-    i++ // skip *
-    let numStr = ''
-    while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++]
-    const factor = parseFloat(numStr)
-    if (!isNaN(factor) && factor > 0) tokens.push({ type: 'repeat', factor, start, end: i })
-  } else if (i < input.length && input[i] === '?') {
-    const start = i
-    i++
-    tokens.push({ type: 'sometimes', start, end: i })
-  } else if (i < input.length && input[i] === '@') {
-    const start = i
-    i++ // skip @
-    let numStr = ''
-    while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++]
-    const factor = parseFloat(numStr)
-    if (!isNaN(factor) && factor > 0) tokens.push({ type: 'elongate', factor, start, end: i })
+  if (align === 'polymeter_slowcat' || align === 'rand') {
+    // `<a b>` alternation, and `a|b` random choice. Both play exactly ONE arm
+    // per cycle, so Cycle carries the right cardinality; the SELECTION rule
+    // (rotate vs random) runs in Strudel and is never modeled here.
+    const items: PatternIR[] = []
+    for (const v of voices) items.push(...buildSeq(v?.source_ ?? [], isSample, baseOffset, input))
+    return items.length === 0 ? null : { tag: 'Cycle', items, loc }
   }
+
+  if (align === 'stack' || align === 'polymeter') {
+    // `[a,b]` chord / `{a,b}` polymeter — parallel voices.
+    const tracks = voices
+      .map((v) => buildSeq(v?.source_ ?? [], isSample, baseOffset, input))
+      .filter((s) => s.length > 0)
+      .map((s) => (s.length === 1 ? s[0] : IR.seq(...s)))
+    if (tracks.length === 0) return null
+    // A single voice degrades to that voice (no Stack wrapper), matching the
+    // hand parser — which produced a bare `IR.seq` here, carrying no loc.
+    return tracks.length === 1 ? tracks[0] : { tag: 'Stack', tracks, loc }
+  }
+
+  // fastcat — a plain sequence. A single child unwraps (`[a]` ≡ `a`).
+  const children = buildSeq(pat.source_, isSample, baseOffset, input)
+  if (children.length === 0) return null
+  return children.length === 1 ? children[0] : { tag: 'Seq', children, loc }
+}
+
+// ---------------------------------------------------------------------------
+// Lowering
+// ---------------------------------------------------------------------------
+
+/**
+ * A krill element list → the sibling nodes it produces. `!n` (replicate) is why
+ * this is not a 1:1 map — one element yields `reps` sibling steps.
+ */
+function buildSeq(
+  elements: KElement[],
+  isSample: boolean,
+  baseOffset: number,
+  input: string,
+): PatternIR[] {
+  const out: PatternIR[] = []
+  for (const el of elements) {
+    const node = buildElement(el, isSample, baseOffset, input)
+    if (!node) continue
+    const reps = el.options_?.reps ?? 1
+    if (reps > 1) for (let r = 0; r < reps; r++) out.push(node)
+    else out.push(node)
+  }
+  return out
+}
+
+/**
+ * One krill element → one PatternIR node (the caller replicates it for `!n`).
+ * Builds the base (atom → Play/Sleep, pattern → Seq/Stack/Cycle), expands a
+ * euclid, then wraps the single trailing modifier (`*`/`/` → Fast/Slow, `?` →
+ * Choice, `@n` → Elongate).
+ */
+function buildElement(
+  el: KElement,
+  isSample: boolean,
+  baseOffset: number,
+  input: string,
+): PatternIR | null {
+  const src = el.source_
+  const ops = el.options_?.ops ?? []
+  const weight = el.options_?.weight ?? 1
+  const reps = el.options_?.reps ?? 1
+
+  let node: PatternIR
+  let contentStart: number
+  // byte position just after the base content (atom + `:slice`, or the closing
+  // bracket of a group) — where a `?`/`@n` modifier begins.
+  let afterContent: number
+
+  if (isAtom(src)) {
+    const span = atomSpan(src, input)
+    contentStart = span.start
+    afterContent = span.end
+    const loc = [{ start: baseOffset + span.start, end: baseOffset + span.end }]
+
+    if (isRestAtom(src)) {
+      node = IR.sleep(1, { loc })
+    } else {
+      const params: Partial<PlayParams> = isSample ? { s: src.source_ } : {}
+      // `bd:2` — krill splits the sample index into a `tail` op. Land the
+      // numeric index in `params.slice`; advance past the tail token either way
+      // (a word tail like `G:dominant` has no numeric slice but still consumes
+      // those bytes, so a following `@n` is located correctly).
+      const tail = ops.find((o) => o.type_ === 'tail')
+      const tailAtom = tail ? argAtom(tail.arguments_?.element) : null
+      if (tailAtom) {
+        const idx = parseInt(tailAtom.source_, 10)
+        if (!isNaN(idx) && idx >= 0) params.slice = idx
+        afterContent = atomSpan(tailAtom, input).end
+      }
+      node = IR.play(src.source_, isSample ? 1 : 0.25, params, loc)
+    }
+  } else {
+    const group = buildGroup(src, isSample, baseOffset, input, el)
+    if (!group) return null
+    node = group.node
+    contentStart = group.openPos
+    afterContent = group.closePos + 1
+  }
+
+  // Euclid — expand the atom to a flat Seq of Play/Sleep slots (atom-scoped in
+  // parseMini, matching Strudel's `atom(k,n)`). Comes before the modifiers.
+  const euclid = ops.find((o) => o.type_ === 'bjorklund')
+  if (euclid && isAtom(src) && !isRestAtom(src)) {
+    const expanded = expandEuclid(node, euclid, baseOffset, contentStart, input)
+    if (expanded) {
+      node = expanded.node
+      afterContent = expanded.closeParen
+    }
+  }
+
+  // A single trailing modifier. krill can carry several ops; parseMini's grid
+  // only ever produced one per element, so the corpus never stacks them.
+  const stretch = ops.find((o) => o.type_ === 'stretch')
+  if (stretch) {
+    const amt = argAtom(stretch.arguments_?.amount)
+    const factor = amt ? Number(amt.source_) : NaN
+    if (amt && !isNaN(factor) && factor > 0) {
+      const s = atomSpan(amt, input)
+      // the operator char (`*`/`/`) sits exactly one byte before the amount.
+      const modLoc = [{ start: baseOffset + s.start - 1, end: baseOffset + s.end }]
+      node =
+        stretch.arguments_?.type === 'slow'
+          ? IR.slow(factor, node, { loc: modLoc })
+          : IR.fast(factor, node, { loc: modLoc })
+    }
+  }
+
+  if (ops.some((o) => o.type_ === 'degradeBy')) {
+    // `?` has no located amount; it sits at the end of the base content.
+    const modLoc = [{ start: baseOffset + afterContent, end: baseOffset + afterContent + 1 }]
+    node = IR.choice(0.5, node, IR.pure(), { loc: modLoc })
+  }
+
+  // Weight from `@n` → Elongate. `weight` also rises from `_` sustain and from
+  // `!n` replicate (reps), which parseMini never lowered to Elongate — so only
+  // an explicit `@` at the modifier position produces one. Reading the `@n`
+  // extent from the source locates a token krill discarded the position of; it
+  // does not re-decide the grammar (krill already ruled this a weight).
+  if (reps <= 1 && weight > 1 && input[afterContent] === '@') {
+    let j = afterContent + 1
+    while (j < input.length && /[0-9.]/.test(input[j])) j++
+    const modLoc = [{ start: baseOffset + afterContent, end: baseOffset + j }]
+    node = IR.elongate(weight, node, { loc: modLoc })
+  }
+
+  return node
+}
+
+/**
+ * A pattern element — `[...]` sub-sequence, `[a,b]` chord, `<...>` alternation,
+ * or `{...}` polymeter. Returns the node plus the byte positions of its opening
+ * and closing delimiters (so a trailing modifier lands correctly).
+ */
+function buildGroup(
+  pat: KPattern,
+  isSample: boolean,
+  baseOffset: number,
+  input: string,
+  el: KElement,
+): { node: PatternIR; openPos: number; closePos: number } | null {
+  const openPos = firstNonWs(input, (el.location_?.start.offset ?? 1) - 1)
+  const closePos = matchBracket(input, openPos)
+  const loc = [{ start: baseOffset + openPos, end: baseOffset + closePos + 1 }]
+  const node = patternToNode(pat, loc, isSample, baseOffset, input)
+  return node ? { node, openPos, closePos } : null
+}
+
+/**
+ * Expand `atom(k,n,rot)` into a flat Seq of Play (onset) / Sleep (rest) slots —
+ * the same distribution `.euclid()` runs, so the timeline draws what plays. The
+ * onset Plays reuse the atom's node; rest slots are loc-less Sleeps. Returns the
+ * Seq plus the byte position just after the closing `)`.
+ */
+function expandEuclid(
+  play: PatternIR,
+  op: KOp,
+  baseOffset: number,
+  contentStart: number,
+  input: string,
+): { node: PatternIR; closeParen: number } | null {
+  const pulse = argAtom(op.arguments_?.pulse)
+  const step = argAtom(op.arguments_?.step)
+  if (!pulse || !step) return null
+  const k = Number(pulse.source_)
+  const n = Number(step.source_)
+  if (isNaN(k) || isNaN(n)) return null
+  const rotArg = op.arguments_?.rotation == null ? null : argAtom(op.arguments_?.rotation)
+  const rot = rotArg ? Number(rotArg.source_) : 0
+
+  let mask = bjorklund(k, n)
+  if (rot) mask = rotateEuclid(mask, rot)
+
+  const restSlot = IR.sleep(1)
+  const slots = mask.map((on) => (on ? play : restSlot))
+  // `)` sits one byte after the last present arg (rotation, else step).
+  const closeParen = atomSpan(rotArg ?? step, input).end + 1
+
+  if (slots.length === 1) return { node: slots[0], closeParen }
+  return {
+    node: {
+      tag: 'Seq',
+      children: slots,
+      loc: [{ start: baseOffset + contentStart, end: baseOffset + closeParen }],
+    },
+    closeParen,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Source helpers — byte positions only, never grammar (krill owns the grammar).
+// ---------------------------------------------------------------------------
+
+/** first non-whitespace byte at or after `from`. */
+function firstNonWs(input: string, from: number): number {
+  let i = from
+  while (i < input.length && /\s/.test(input[i])) i++
   return i
 }
 
-function tokenize(input: string): Token[] {
-  const tokens: Token[] = []
-  let i = 0
-
-  while (i < input.length) {
-    const ch = input[i]
-
-    if (/\s/.test(ch)) { i++; continue }
-
-    if (ch === '[') { tokens.push({ type: 'lbracket', start: i, end: i + 1 }); i++; continue }
-    // A closing delimiter can carry a trailing weight/modifier on the whole
-    // group: `[a b]@2`, `<a b>@2`, `{a b}@2`. Read it here so it doesn't fall
-    // through as "unknown" + a bogus atom (`<a b>@2` → … + Play("2")).
-    if (ch === ']') { tokens.push({ type: 'rbracket', start: i, end: i + 1 }); i++; i = readTrailingModifier(input, i, tokens); continue }
-    if (ch === '<') { tokens.push({ type: 'langle',   start: i, end: i + 1 }); i++; continue }
-    if (ch === '>') { tokens.push({ type: 'rangle',   start: i, end: i + 1 }); i++; i = readTrailingModifier(input, i, tokens); continue }
-    if (ch === '{') { tokens.push({ type: 'lcurly',   start: i, end: i + 1 }); i++; continue }
-    if (ch === '}') { tokens.push({ type: 'rcurly',   start: i, end: i + 1 }); i++; i = readTrailingModifier(input, i, tokens); continue }
-    if (ch === ',') { tokens.push({ type: 'comma',    start: i, end: i + 1 }); i++; continue }
-
-    if (ch === '~') {
-      tokens.push({ type: 'rest', start: i, end: i + 1 })
-      i++
-      // A rest carries a trailing weight/modifier just like an atom (`~@4` =
-      // a 4-cycle rest arm in a slowcat). Without this the `@4` would be
-      // dropped and `4` re-read as a bogus atom.
-      i = readTrailingModifier(input, i, tokens)
-      continue
-    }
-
-    // Read atom (note name or sample name)
-    if (/[a-zA-Z0-9#-]/.test(ch)) {
-      const atomStart = i
-      let atom = ''
-      while (i < input.length && /[a-zA-Z0-9#\-_.]/.test(input[i])) {
-        atom += input[i++]
-      }
-      tokens.push({ type: 'atom', value: atom, start: atomStart, end: i })
-
-      // Slice (`a:N`) is parsed as a per-atom modifier so it composes
-      // naturally with repeat/sometimes that follow it.
-      if (i < input.length && input[i] === ':') {
-        const sliceStart = i
-        i++ // skip :
-        let numStr = ''
-        while (i < input.length && /[0-9]/.test(input[i])) numStr += input[i++]
-        const idx = parseInt(numStr, 10)
-        if (!isNaN(idx) && idx >= 0) tokens.push({ type: 'slice', index: idx, start: sliceStart, end: i })
-      }
-
-      // Euclidean rhythm `a(hits, steps, rotation?)` — must come
-      // before the *n / @n / ? checks because `(` is the marker.
-      if (i < input.length && input[i] === '(') {
-        const euclidStart = i
-        i++ // skip (
-        const args: number[] = []
-        let buf = ''
-        while (i < input.length && input[i] !== ')') {
-          const c = input[i]
-          if (c === ',') {
-            const n = parseInt(buf.trim(), 10)
-            if (!isNaN(n)) args.push(n)
-            buf = ''
-          } else {
-            buf += c
-          }
-          i++
-        }
-        if (buf.trim().length > 0) {
-          const n = parseInt(buf.trim(), 10)
-          if (!isNaN(n)) args.push(n)
-        }
-        if (i < input.length && input[i] === ')') i++ // skip )
-        if (args.length >= 2 && args[0] >= 0 && args[1] > 0) {
-          tokens.push({
-            type: 'euclid',
-            hits: args[0],
-            steps: args[1],
-            rotation: args.length >= 3 ? args[2] : 0,
-            start: euclidStart,
-            end: i,
-          })
-        }
-      }
-
-      // Check for trailing *n (repeat), ? (sometimes), or @n (elongate)
-      i = readTrailingModifier(input, i, tokens)
-      continue
-    }
-
-    // Unknown character — skip
-    i++
-  }
-
-  return tokens
-}
-
-// ---------------------------------------------------------------------------
-// Bjorklund — distribute `hits` evenly across `steps` slots.
-// Returns a boolean array of length `steps`; true = onset, false = rest.
-//
-// The distribution is STRUDEL'S (`@strudel/core`'s `bjorklund` — the same
-// function `.euclid()` runs), so what the timeline draws cannot disagree with
-// what the audio plays. It is not ours to compute.
-//
-// This was a hand-rolled transcription until #907, and it was WRONG: it
-// disagreed with the original on 44 of 152 (k,n) pairs to n=16 (29%), so the
-// timeline drew a rhythm the audio never played — `bd(5,8)` plays 10110110,
-// the IR drew 10101011. It survived three months because `bd(3,8)` — the
-// canonical example, the one in the docs and in our own tests — is one of the
-// cases it got right. The drift begins at k=4, n=6. Nothing ever threw; two
-// representations of the same rhythm were simply never compared.
-// ---------------------------------------------------------------------------
-
-export function bjorklund(hits: number, steps: number): boolean[] {
-  // Degenerate ends stay ours: upstream computes `steps - hits` as the
-  // zero-run length, so hits > steps builds a negative-length array and
-  // throws. Callers here expect a `steps`-long mask, so hold both ends.
-  if (hits <= 0 || steps <= 0) return new Array(Math.max(steps, 0)).fill(false)
-  if (hits >= steps) return new Array(steps).fill(true)
-  return strudelBjorklund(hits, steps).map((x) => x === 1)
-}
-
-function rotate<T>(arr: T[], by: number): T[] {
-  if (arr.length === 0) return arr
-  const n = ((by % arr.length) + arr.length) % arr.length
-  return [...arr.slice(n), ...arr.slice(0, n)]
-}
-
-// Wrap `node` in the structural tag a trailing modifier token implies — Fast
-// for `*n`, Choice for `?`, Elongate for `@n` — consuming that token. Each
-// wrapper's loc spans just the modifier token (the body keeps its own loc).
-// Shared by the atom and rest paths so `~@4` elongates the Sleep the same way
-// `a@4` elongates a Play (without it, `<~@4 …>` would lose the rest's weight).
-function applyTrailingModifier(
-  node: PatternIR,
-  tokens: Token[],
-  i: number,
-  baseOffset: number,
-): { node: PatternIR; i: number } {
-  if (i >= tokens.length) return { node, i }
-  const next = tokens[i]
-  const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }]
-  if (next.type === 'repeat') return { node: IR.fast(next.factor, node, { loc: modLoc }), i: i + 1 }
-  if (next.type === 'sometimes') return { node: IR.choice(0.5, node, IR.pure(), { loc: modLoc }), i: i + 1 }
-  if (next.type === 'elongate') return { node: IR.elongate(next.factor, node, { loc: modLoc }), i: i + 1 }
-  return { node, i }
-}
-
-// ---------------------------------------------------------------------------
-// Parser
-// ---------------------------------------------------------------------------
-
-function parseTokens(tokens: Token[], isSample: boolean, baseOffset = 0): PatternIR[] {
-  const nodes: PatternIR[] = []
-  let i = 0
-
-  while (i < tokens.length) {
-    const tok = tokens[i]
-
-    if (tok.type === 'atom') {
-      const note = tok.value
-      const atomStart = tok.start
-      const atomLoc = [{ start: baseOffset + tok.start, end: baseOffset + tok.end }]
-      i++
-
-      // Slice modifier (`a:N`) — applies before repeat/sometimes since
-      // it changes the Play's params shape, not its structural wrapper.
-      let sliceIndex: number | undefined
-      if (i < tokens.length && tokens[i].type === 'slice') {
-        const sliceTok = tokens[i] as { type: 'slice'; index: number }
-        sliceIndex = sliceTok.index
-        i++
-      }
-
-      const params: Partial<import('./PatternIR').PlayParams> = isSample
-        ? { s: note }
-        : {}
-      if (sliceIndex !== undefined) params.slice = sliceIndex
-      const baseDuration = isSample ? 1 : 0.25
-      let node: PatternIR = IR.play(note, baseDuration, params, atomLoc)
-
-      // Euclidean modifier — applies to the just-parsed atom and
-      // expands to a Seq of Play / Sleep slots. Must come before
-      // repeat/sometimes/elongate so those wrap the expanded Seq.
-      if (i < tokens.length && tokens[i].type === 'euclid') {
-        const e = tokens[i] as {
-          type: 'euclid'; hits: number; steps: number; rotation: number;
-          start: number; end: number
-        }
-        i++
-        let pattern = bjorklund(e.hits, e.steps)
-        // Strudel's `_euclidRot` applies `rotate(b, -rotation)` — a RIGHT
-        // rotation by `rotation`, not a left one (euclid.mjs:130-134). Passing
-        // `+rotation` to a left-rotating helper spun every `(k,n,rot)` the
-        // wrong way: `bd(3,8,1)` plays 01001001, the IR drew 00100101 (#907).
-        // `rot=0` is a no-op either way, which is why the default case looked
-        // fine. `rotate` itself is correct and generic — only this caller's
-        // sign was wrong.
-        if (e.rotation) pattern = rotate(pattern, -e.rotation)
-        const restSlot: PatternIR = IR.sleep(1)
-        const slots = pattern.map(onset => (onset ? node : restSlot))
-        // Synthetic Seq from euclid spans the atom + `(h,s,r)`.
-        // 19-05 T-07: literal construction for rest-spread `IR.seq`.
-        if (slots.length === 1) {
-          node = slots[0]
-        } else {
-          node = {
-            tag: 'Seq',
-            children: slots,
-            loc: [{ start: baseOffset + atomStart, end: baseOffset + e.end }],
-          }
-        }
-      }
-
-      // Check for repeat / sometimes / elongate modifier following this atom.
-      // 19-05 T-07: each wrapper tag's loc spans just the modifier token
-      // (e.g. `*N` for Fast, `?` for Choice, `@N` for Elongate). The wrapped
-      // body keeps its own atomLoc — distinct components, distinct ranges.
-      ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
-
-      nodes.push(node)
-    } else if (tok.type === 'rest') {
-      // 19-05 T-07: Sleep from `~` carries the `~`'s position.
-      const restLoc = [{ start: baseOffset + tok.start, end: baseOffset + tok.end }]
-      let node: PatternIR = IR.sleep(1, { loc: restLoc })
-      i++
-      // A trailing `@n`/`*n`/`?` weights/repeats the rest — `~@4` is a
-      // 4-cycle rest arm in a slowcat (mirrors the atom path above).
-      ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
-      nodes.push(node)
-    } else if (tok.type === 'lbracket') {
-      // Sub-sequence OR chord: collect tokens until matching `]`, splitting on
-      // TOP-LEVEL commas. `[a b c]` (no comma) is a Seq; `[a,b,c]` is a Stack —
-      // parallel notes each spanning the full cycle (a chord), mirroring Strudel
-      // mini-notation. Without this split a comma-chord parsed identically to a
-      // space-sequence, so the structural IR ARPEGGIATED chords (#508). The
-      // `{...}` polymeter arm below splits the same way; brackets just never did.
-      const openStart = tok.start
-      let closeEnd = tok.end // fallback if `]` is missing
-      i++ // skip [
-      const segments: Token[][] = [[]]
-      let depth = 1 // matches the outer `]`
-      let group = 0 // nesting inside [] {} <> — split commas only at the top level
-      while (i < tokens.length && depth > 0) {
-        const t = tokens[i]
-        if (t.type === 'lbracket') {
-          depth++
-          group++
-        } else if (t.type === 'rbracket') {
-          depth--
-          if (depth === 0) {
-            closeEnd = t.end
-            i++
-            break
-          }
-          group--
-        } else if (t.type === 'lcurly' || t.type === 'langle') {
-          group++
-        } else if (t.type === 'rcurly' || t.type === 'rangle') {
-          group--
-        }
-        if (group === 0 && t.type === 'comma') {
-          segments.push([])
-        } else {
-          segments[segments.length - 1].push(t)
-        }
-        i++
-      }
-      // 19-05 T-07: synthetic Seq/Stack from `[...]` spans `[` to `]`.
-      const loc = [{ start: baseOffset + openStart, end: baseOffset + closeEnd }]
-      if (segments.length > 1) {
-        // Chord — each comma segment is a full-cycle sub-sequence; stack them.
-        const tracks = segments
-          .map(seg => parseTokens(seg, isSample, baseOffset))
-          .filter(s => s.length > 0)
-          .map(s => (s.length === 1 ? s[0] : IR.seq(...s)))
-        if (tracks.length > 0) {
-          // Single non-empty segment (e.g. `[a,]`) degrades to that segment.
-          let node: PatternIR =
-            tracks.length === 1 ? tracks[0] : { tag: 'Stack', tracks, loc }
-          // A trailing `@n`/`*n`/`?` weights/repeats the whole chord.
-          ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
-          nodes.push(node)
-        }
-      } else {
-        const subNodes = parseTokens(segments[0], isSample, baseOffset)
-        if (subNodes.length > 0) {
-          // Single-child sub-sequences keep the child node — `[a]` is
-          // equivalent to `a`. Don't synthesize a wrapper Seq.
-          // Literal construction (rest-spread `IR.seq` can't take meta).
-          let node: PatternIR =
-            subNodes.length === 1 ? subNodes[0] : { tag: 'Seq', children: subNodes, loc }
-          // A trailing `@n`/`*n`/`?` weights/repeats the whole group (`[a b]@2`).
-          ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
-          nodes.push(node)
-        }
-      }
-    } else if (tok.type === 'lcurly') {
-      // Polymetric: collect tokens until matching `}`, splitting on
-      // top-level commas. Each segment becomes a parallel track in a
-      // Stack — Strudel's polymeter semantics (each track stretches /
-      // compresses to fit one cycle, regardless of step count).
-      const openStart = tok.start
-      let closeEnd = tok.end // fallback if `}` is missing
-      i++ // skip {
-      const segments: Token[][] = [[]]
-      let depth = 1
-      while (i < tokens.length && depth > 0) {
-        const t = tokens[i]
-        if (t.type === 'lcurly') depth++
-        if (t.type === 'rcurly') {
-          depth--
-          if (depth === 0) {
-            closeEnd = t.end
-            i++
-            break
-          }
-        }
-        if (depth === 1 && t.type === 'comma') {
-          segments.push([])
-        } else {
-          segments[segments.length - 1].push(t)
-        }
-        i++
-      }
-      const trackNodes = segments
-        .map(seg => parseTokens(seg, isSample, baseOffset))
-        .filter(s => s.length > 0)
-        .map(s => (s.length === 1 ? s[0] : IR.seq(...s)))
-      if (trackNodes.length === 0) {
-        // {} — nothing to play
-      } else {
-        // Single segment is just a sub-sequence; multi-segment is a Stack.
-        // 19-05 T-07: synthetic Stack from `{...}` spans `{` to `}`.
-        // Literal construction (rest-spread `IR.stack` can't take meta).
-        let node: PatternIR =
-          trackNodes.length === 1
-            ? trackNodes[0]
-            : {
-                tag: 'Stack',
-                tracks: trackNodes,
-                loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }],
-              }
-        ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
-        nodes.push(node)
-      }
-    } else if (tok.type === 'langle') {
-      // Cycle (alternation): collect until matching >
-      const openStart = tok.start
-      let closeEnd = tok.end
-      i++ // skip <
-      const cycleTokens: Token[] = []
-      let depth = 1
-      while (i < tokens.length && depth > 0) {
-        const t = tokens[i]
-        if (t.type === 'langle') depth++
-        if (t.type === 'rangle') {
-          depth--
-          if (depth === 0) {
-            closeEnd = t.end
-            i++
-            break
-          }
-        }
-        cycleTokens.push(t)
-        i++
-      }
-      const cycleNodes = parseTokens(cycleTokens, isSample, baseOffset)
-      if (cycleNodes.length > 0) {
-        // 19-05 T-07: synthetic Cycle from `<...>` spans `<` to `>`.
-        // Literal construction (rest-spread `IR.cycle` can't take meta).
-        let node: PatternIR = {
-          tag: 'Cycle',
-          items: cycleNodes,
-          loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }],
-        }
-        // A trailing `@n` weights the whole alternation as one slowcat arm
-        // (`<<a b>@2 c>` — the inner `<a b>` occupies 2 cycles per period).
-        ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
-        nodes.push(node)
-      }
-    } else {
-      // Skip unknown tokens (rbracket, rangle without matching open, etc.)
-      i++
+/**
+ * The matching close for the delimiter at `openPos`, by bracket-depth counting
+ * over `[] {} <>`. krill has already validated the nesting, so this only locates
+ * the byte — it does not parse.
+ */
+function matchBracket(input: string, openPos: number): number {
+  let depth = 0
+  for (let i = openPos; i < input.length; i++) {
+    const c = input[i]
+    if (c === '[' || c === '{' || c === '<') depth++
+    else if (c === ']' || c === '}' || c === '>') {
+      depth--
+      if (depth === 0) return i
     }
   }
-
-  return nodes
+  return input.length - 1
 }

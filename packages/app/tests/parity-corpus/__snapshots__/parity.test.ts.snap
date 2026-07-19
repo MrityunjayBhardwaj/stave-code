@@ -583,7 +583,8 @@ exports[`strudel.cc parity corpus — structural IR shape > amensister parses to
                                   "via": {
                                     "args": "x=>x.add(.2)",
                                     "inner": {
-                                      "children": [
+                                      "tag": "Stack",
+                                      "tracks": [
                                         {
                                           "duration": 0.25,
                                           "note": "Bb3",
@@ -603,7 +604,6 @@ exports[`strudel.cc parity corpus — structural IR shape > amensister parses to
                                           "tag": "Play",
                                         },
                                       ],
-                                      "tag": "Seq",
                                     },
                                     "method": "superimpose",
                                   },
@@ -986,16 +986,7 @@ exports[`strudel.cc parity corpus — structural IR shape > arpoon parses to a s
                                                         },
                                                         {
                                                           "duration": 0.25,
-                                                          "note": "C",
-                                                          "params": {
-                                                            "gain": 1,
-                                                            "velocity": 1,
-                                                          },
-                                                          "tag": "Play",
-                                                        },
-                                                        {
-                                                          "duration": 0.25,
-                                                          "note": "7",
+                                                          "note": "C^7",
                                                           "params": {
                                                             "gain": 1,
                                                             "velocity": 1,
@@ -1016,16 +1007,7 @@ exports[`strudel.cc parity corpus — structural IR shape > arpoon parses to a s
                                                     },
                                                     {
                                                       "duration": 0.25,
-                                                      "note": "F",
-                                                      "params": {
-                                                        "gain": 1,
-                                                        "velocity": 1,
-                                                      },
-                                                      "tag": "Play",
-                                                    },
-                                                    {
-                                                      "duration": 0.25,
-                                                      "note": "7",
+                                                      "note": "F^7",
                                                       "params": {
                                                         "gain": 1,
                                                         "velocity": 1,
@@ -1090,7 +1072,7 @@ exports[`strudel.cc parity corpus — structural IR shape > arpoon parses to a s
                                   "items": [
                                     {
                                       "duration": 0.25,
-                                      "note": "5",
+                                      "note": ".5",
                                       "params": {
                                         "gain": 1,
                                         "velocity": 1,
@@ -1099,7 +1081,7 @@ exports[`strudel.cc parity corpus — structural IR shape > arpoon parses to a s
                                     },
                                     {
                                       "duration": 0.25,
-                                      "note": "8",
+                                      "note": ".8",
                                       "params": {
                                         "gain": 1,
                                         "velocity": 1,
@@ -1496,22 +1478,12 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-141-irand-cha
                           "value": {
                             "items": [
                               {
-                                "duration": 1,
-                                "note": "G",
-                                "params": {
-                                  "gain": 1,
-                                  "s": "G",
-                                  "velocity": 1,
-                                },
-                                "tag": "Play",
-                              },
-                              {
                                 "body": {
                                   "duration": 1,
-                                  "note": "dominant",
+                                  "note": "G",
                                   "params": {
                                     "gain": 1,
-                                    "s": "dominant",
+                                    "s": "G",
                                     "velocity": 1,
                                   },
                                   "tag": "Play",
@@ -1531,30 +1503,10 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-141-irand-cha
                               },
                               {
                                 "duration": 1,
-                                "note": "major",
-                                "params": {
-                                  "gain": 1,
-                                  "s": "major",
-                                  "velocity": 1,
-                                },
-                                "tag": "Play",
-                              },
-                              {
-                                "duration": 1,
                                 "note": "D",
                                 "params": {
                                   "gain": 1,
                                   "s": "D",
-                                  "velocity": 1,
-                                },
-                                "tag": "Play",
-                              },
-                              {
-                                "duration": 1,
-                                "note": "major",
-                                "params": {
-                                  "gain": 1,
-                                  "s": "major",
                                   "velocity": 1,
                                 },
                                 "tag": "Play",
@@ -1839,7 +1791,8 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-144-paren-roo
                     "via": {
                       "args": "60",
                       "inner": {
-                        "children": [
+                        "tag": "Stack",
+                        "tracks": [
                           {
                             "body": {
                               "duration": 0.25,
@@ -1880,20 +1833,33 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-144-paren-roo
                             "tag": "Fast",
                           },
                           {
-                            "body": {
-                              "duration": 0.25,
-                              "note": "16",
-                              "params": {
-                                "gain": 1,
-                                "velocity": 1,
+                            "children": [
+                              {
+                                "duration": 0.25,
+                                "note": "...",
+                                "params": {
+                                  "gain": 1,
+                                  "velocity": 1,
+                                },
+                                "tag": "Play",
                               },
-                              "tag": "Play",
-                            },
-                            "factor": 16,
-                            "tag": "Fast",
+                              {
+                                "body": {
+                                  "duration": 0.25,
+                                  "note": "16",
+                                  "params": {
+                                    "gain": 1,
+                                    "velocity": 1,
+                                  },
+                                  "tag": "Play",
+                                },
+                                "factor": 16,
+                                "tag": "Fast",
+                              },
+                            ],
+                            "tag": "Seq",
                           },
                         ],
-                        "tag": "Seq",
                       },
                       "method": "mul",
                     },
@@ -2149,25 +2115,7 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-152-block-com
           },
           {
             "duration": 0.25,
-            "note": "major",
-            "params": {
-              "gain": 1,
-              "velocity": 1,
-            },
-            "tag": "Play",
-          },
-          {
-            "duration": 0.25,
             "note": "D",
-            "params": {
-              "gain": 1,
-              "velocity": 1,
-            },
-            "tag": "Play",
-          },
-          {
-            "duration": 0.25,
-            "note": "minor",
             "params": {
               "gain": 1,
               "velocity": 1,
@@ -3720,58 +3668,18 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-903-patterned
     "tag": "Stack",
     "tracks": [
       {
-        "children": [
-          {
-            "duration": 1,
-            "note": "rd",
-            "params": {
-              "gain": 1,
-              "s": "rd",
-              "velocity": 1,
-            },
-            "tag": "Play",
+        "body": {
+          "duration": 1,
+          "note": "rd",
+          "params": {
+            "gain": 1,
+            "s": "rd",
+            "velocity": 1,
           },
-          {
-            "body": {
-              "items": [
-                {
-                  "duration": 1,
-                  "note": "1",
-                  "params": {
-                    "gain": 1,
-                    "s": "1",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
-                },
-                {
-                  "duration": 1,
-                  "note": "3",
-                  "params": {
-                    "gain": 1,
-                    "s": "3",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
-                },
-                {
-                  "duration": 1,
-                  "note": "2",
-                  "params": {
-                    "gain": 1,
-                    "s": "2",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
-                },
-              ],
-              "tag": "Cycle",
-            },
-            "factor": 2,
-            "tag": "Fast",
-          },
-        ],
-        "tag": "Seq",
+          "tag": "Play",
+        },
+        "factor": 2,
+        "tag": "Fast",
       },
       {
         "children": [
@@ -3788,46 +3696,6 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-903-patterned
               "velocity": 1,
             },
             "tag": "Play",
-          },
-          {
-            "children": [
-              {
-                "items": [
-                  {
-                    "duration": 1,
-                    "note": "1",
-                    "params": {
-                      "gain": 1,
-                      "s": "1",
-                      "velocity": 1,
-                    },
-                    "tag": "Play",
-                  },
-                  {
-                    "duration": 1,
-                    "note": "3",
-                    "params": {
-                      "gain": 1,
-                      "s": "3",
-                      "velocity": 1,
-                    },
-                    "tag": "Play",
-                  },
-                ],
-                "tag": "Cycle",
-              },
-              {
-                "duration": 1,
-                "note": "16",
-                "params": {
-                  "gain": 1,
-                  "s": "16",
-                  "velocity": 1,
-                },
-                "tag": "Play",
-              },
-            ],
-            "tag": "Seq",
           },
         ],
         "tag": "Seq",
@@ -4051,7 +3919,8 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-G3-backtick p
     "via": {
       "args": "213/7",
       "inner": {
-        "children": [
+        "tag": "Stack",
+        "tracks": [
           {
             "body": {
               "items": [
@@ -4124,13 +3993,7 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-G3-backtick p
                 },
                 {
                   "duration": 1,
-                  "note": "-",
-                  "params": {
-                    "gain": 1,
-                    "s": "-",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+                  "tag": "Sleep",
                 },
                 {
                   "duration": 1,
@@ -4154,33 +4017,15 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-G3-backtick p
               "items": [
                 {
                   "duration": 1,
-                  "note": "-",
-                  "params": {
-                    "gain": 1,
-                    "s": "-",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+                  "tag": "Sleep",
                 },
                 {
                   "duration": 1,
-                  "note": "-",
-                  "params": {
-                    "gain": 1,
-                    "s": "-",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+                  "tag": "Sleep",
                 },
                 {
                   "duration": 1,
-                  "note": "-",
-                  "params": {
-                    "gain": 1,
-                    "s": "-",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+                  "tag": "Sleep",
                 },
                 {
                   "duration": 1,
@@ -4195,13 +4040,7 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-G3-backtick p
                 },
                 {
                   "duration": 1,
-                  "note": "-",
-                  "params": {
-                    "gain": 1,
-                    "s": "-",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+                  "tag": "Sleep",
                 },
               ],
               "tag": "Cycle",
@@ -4210,7 +4049,6 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-G3-backtick p
             "tag": "Fast",
           },
         ],
-        "tag": "Seq",
       },
       "method": "cpm",
     },
@@ -4485,7 +4323,8 @@ exports[`strudel.cc parity corpus — structural IR shape > barryHarris parses t
                       "via": {
                         "args": ""<0 1 2 3 4 5 7 8>"",
                         "inner": {
-                          "children": [
+                          "tag": "Stack",
+                          "tracks": [
                             {
                               "duration": 0.25,
                               "note": "0",
@@ -4528,7 +4367,6 @@ exports[`strudel.cc parity corpus — structural IR shape > barryHarris parses t
                               "tag": "Seq",
                             },
                           ],
-                          "tag": "Seq",
                         },
                         "method": "add",
                       },
@@ -5385,7 +5223,7 @@ exports[`strudel.cc parity corpus — structural IR shape > belldub parses to a 
             "userMethod": "speed",
             "value": {
               "duration": 0.25,
-              "note": "5",
+              "note": ".5",
               "params": {
                 "gain": 1,
                 "velocity": 1,
@@ -5732,10 +5570,10 @@ exports[`strudel.cc parity corpus — structural IR shape > belldub parses to a 
                   "tag": "Param",
                   "userMethod": "delaytime",
                   "value": {
-                    "children": [
+                    "items": [
                       {
                         "duration": 0.25,
-                        "note": "33",
+                        "note": ".33",
                         "params": {
                           "gain": 1,
                           "velocity": 1,
@@ -5744,7 +5582,7 @@ exports[`strudel.cc parity corpus — structural IR shape > belldub parses to a 
                       },
                       {
                         "duration": 0.25,
-                        "note": "6",
+                        "note": ".6",
                         "params": {
                           "gain": 1,
                           "velocity": 1,
@@ -5753,7 +5591,7 @@ exports[`strudel.cc parity corpus — structural IR shape > belldub parses to a 
                       },
                       {
                         "duration": 0.25,
-                        "note": "166",
+                        "note": ".166",
                         "params": {
                           "gain": 1,
                           "velocity": 1,
@@ -5762,7 +5600,7 @@ exports[`strudel.cc parity corpus — structural IR shape > belldub parses to a 
                       },
                       {
                         "duration": 0.25,
-                        "note": "25",
+                        "note": ".25",
                         "params": {
                           "gain": 1,
                           "velocity": 1,
@@ -5770,7 +5608,7 @@ exports[`strudel.cc parity corpus — structural IR shape > belldub parses to a 
                         "tag": "Play",
                       },
                     ],
-                    "tag": "Seq",
+                    "tag": "Cycle",
                   },
                 },
                 "name": "room",
@@ -6061,10 +5899,10 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
         "tag": "Param",
         "userMethod": "delaytime",
         "value": {
-          "children": [
+          "items": [
             {
               "duration": 0.25,
-              "note": "16",
+              "note": ".16",
               "params": {
                 "gain": 1,
                 "velocity": 1,
@@ -6073,7 +5911,7 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
             },
             {
               "duration": 0.25,
-              "note": "33",
+              "note": ".33",
               "params": {
                 "gain": 1,
                 "velocity": 1,
@@ -6081,7 +5919,7 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
               "tag": "Play",
             },
           ],
-          "tag": "Seq",
+          "tag": "Cycle",
         },
       },
       "key": "delayfeedback",
@@ -6089,10 +5927,10 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
       "tag": "Param",
       "userMethod": "delayfeedback",
       "value": {
-        "children": [
+        "items": [
           {
             "duration": 0.25,
-            "note": "6",
+            "note": ".6",
             "params": {
               "gain": 1,
               "velocity": 1,
@@ -6101,7 +5939,7 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
           },
           {
             "duration": 0.25,
-            "note": "8",
+            "note": ".8",
             "params": {
               "gain": 1,
               "velocity": 1,
@@ -6109,7 +5947,7 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
             "tag": "Play",
           },
         ],
-        "tag": "Seq",
+        "tag": "Cycle",
       },
     },
     "p": 0.5,
@@ -6171,10 +6009,10 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
           "tag": "Param",
           "userMethod": "delaytime",
           "value": {
-            "children": [
+            "items": [
               {
                 "duration": 0.25,
-                "note": "16",
+                "note": ".16",
                 "params": {
                   "gain": 1,
                   "velocity": 1,
@@ -6183,7 +6021,7 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
               },
               {
                 "duration": 0.25,
-                "note": "33",
+                "note": ".33",
                 "params": {
                   "gain": 1,
                   "velocity": 1,
@@ -6191,7 +6029,7 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
                 "tag": "Play",
               },
             ],
-            "tag": "Seq",
+            "tag": "Cycle",
           },
         },
         "key": "delayfeedback",
@@ -6199,10 +6037,10 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
         "tag": "Param",
         "userMethod": "delayfeedback",
         "value": {
-          "children": [
+          "items": [
             {
               "duration": 0.25,
-              "note": "6",
+              "note": ".6",
               "params": {
                 "gain": 1,
                 "velocity": 1,
@@ -6211,7 +6049,7 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
             },
             {
               "duration": 0.25,
-              "note": "8",
+              "note": ".8",
               "params": {
                 "gain": 1,
                 "velocity": 1,
@@ -6219,7 +6057,7 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
               "tag": "Play",
             },
           ],
-          "tag": "Seq",
+          "tag": "Cycle",
         },
       },
       "key": "speed",
@@ -6267,7 +6105,8 @@ exports[`strudel.cc parity corpus — structural IR shape > dinofunk parses to a
         "value": 1,
       },
       {
-        "children": [
+        "tag": "Stack",
+        "tracks": [
           {
             "body": {
               "duration": 1,
@@ -6283,18 +6122,23 @@ exports[`strudel.cc parity corpus — structural IR shape > dinofunk parses to a
             "tag": "Fast",
           },
           {
-            "duration": 1,
-            "tag": "Sleep",
-          },
-          {
-            "duration": 1,
-            "note": "sd",
-            "params": {
-              "gain": 1,
-              "s": "sd",
-              "velocity": 1,
-            },
-            "tag": "Play",
+            "children": [
+              {
+                "duration": 1,
+                "tag": "Sleep",
+              },
+              {
+                "duration": 1,
+                "note": "sd",
+                "params": {
+                  "gain": 1,
+                  "s": "sd",
+                  "velocity": 1,
+                },
+                "tag": "Play",
+              },
+            ],
+            "tag": "Seq",
           },
           {
             "body": {
@@ -6311,7 +6155,6 @@ exports[`strudel.cc parity corpus — structural IR shape > dinofunk parses to a
             "tag": "Fast",
           },
         ],
-        "tag": "Seq",
       },
       {
         "code": "",
@@ -6755,33 +6598,6 @@ exports[`strudel.cc parity corpus — structural IR shape > echoPiano parses to 
                                     "tag": "Seq",
                                   },
                                   {
-                                    "duration": 0.25,
-                                    "note": "3",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
-                                    "duration": 0.25,
-                                    "note": "4",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
-                                    "duration": 0.25,
-                                    "note": "2",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
                                     "body": {
                                       "duration": 0.25,
                                       "note": "3",
@@ -6854,33 +6670,6 @@ exports[`strudel.cc parity corpus — structural IR shape > echoPiano parses to 
                                               },
                                             ],
                                             "tag": "Seq",
-                                          },
-                                          {
-                                            "duration": 0.25,
-                                            "note": "3",
-                                            "params": {
-                                              "gain": 1,
-                                              "velocity": 1,
-                                            },
-                                            "tag": "Play",
-                                          },
-                                          {
-                                            "duration": 0.25,
-                                            "note": "4",
-                                            "params": {
-                                              "gain": 1,
-                                              "velocity": 1,
-                                            },
-                                            "tag": "Play",
-                                          },
-                                          {
-                                            "duration": 0.25,
-                                            "note": "2",
-                                            "params": {
-                                              "gain": 1,
-                                              "velocity": 1,
-                                            },
-                                            "tag": "Play",
                                           },
                                           {
                                             "body": {
@@ -6975,33 +6764,6 @@ exports[`strudel.cc parity corpus — structural IR shape > echoPiano parses to 
                                             "tag": "Seq",
                                           },
                                           {
-                                            "duration": 0.25,
-                                            "note": "3",
-                                            "params": {
-                                              "gain": 1,
-                                              "velocity": 1,
-                                            },
-                                            "tag": "Play",
-                                          },
-                                          {
-                                            "duration": 0.25,
-                                            "note": "4",
-                                            "params": {
-                                              "gain": 1,
-                                              "velocity": 1,
-                                            },
-                                            "tag": "Play",
-                                          },
-                                          {
-                                            "duration": 0.25,
-                                            "note": "2",
-                                            "params": {
-                                              "gain": 1,
-                                              "velocity": 1,
-                                            },
-                                            "tag": "Play",
-                                          },
-                                          {
                                             "body": {
                                               "duration": 0.25,
                                               "note": "3",
@@ -7074,33 +6836,6 @@ exports[`strudel.cc parity corpus — structural IR shape > echoPiano parses to 
                                                       },
                                                     ],
                                                     "tag": "Seq",
-                                                  },
-                                                  {
-                                                    "duration": 0.25,
-                                                    "note": "3",
-                                                    "params": {
-                                                      "gain": 1,
-                                                      "velocity": 1,
-                                                    },
-                                                    "tag": "Play",
-                                                  },
-                                                  {
-                                                    "duration": 0.25,
-                                                    "note": "4",
-                                                    "params": {
-                                                      "gain": 1,
-                                                      "velocity": 1,
-                                                    },
-                                                    "tag": "Play",
-                                                  },
-                                                  {
-                                                    "duration": 0.25,
-                                                    "note": "2",
-                                                    "params": {
-                                                      "gain": 1,
-                                                      "velocity": 1,
-                                                    },
-                                                    "tag": "Play",
                                                   },
                                                   {
                                                     "body": {
@@ -7208,7 +6943,8 @@ exports[`strudel.cc parity corpus — structural IR shape > flatrave parses to a
     "tracks": [
       {
         "body": {
-          "children": [
+          "tag": "Stack",
+          "tracks": [
             {
               "body": {
                 "duration": 1,
@@ -7224,36 +6960,40 @@ exports[`strudel.cc parity corpus — structural IR shape > flatrave parses to a
               "tag": "Fast",
             },
             {
-              "duration": 1,
-              "tag": "Sleep",
-            },
-            {
-              "tag": "Stack",
-              "tracks": [
+              "children": [
                 {
                   "duration": 1,
-                  "note": "cp",
-                  "params": {
-                    "gain": 1,
-                    "s": "cp",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+                  "tag": "Sleep",
                 },
                 {
-                  "duration": 1,
-                  "note": "sd",
-                  "params": {
-                    "gain": 1,
-                    "s": "sd",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+                  "tag": "Stack",
+                  "tracks": [
+                    {
+                      "duration": 1,
+                      "note": "cp",
+                      "params": {
+                        "gain": 1,
+                        "s": "cp",
+                        "velocity": 1,
+                      },
+                      "tag": "Play",
+                    },
+                    {
+                      "duration": 1,
+                      "note": "sd",
+                      "params": {
+                        "gain": 1,
+                        "s": "sd",
+                        "velocity": 1,
+                      },
+                      "tag": "Play",
+                    },
+                  ],
                 },
               ],
+              "tag": "Seq",
             },
           ],
-          "tag": "Seq",
         },
         "key": "bank",
         "rawArgs": "'RolandTR909'",
@@ -7335,7 +7075,8 @@ exports[`strudel.cc parity corpus — structural IR shape > flatrave parses to a
         "tag": "Param",
         "userMethod": "gain",
         "value": {
-          "children": [
+          "tag": "Stack",
+          "tracks": [
             {
               "duration": 0.25,
               "note": "0.4",
@@ -7408,7 +7149,6 @@ exports[`strudel.cc parity corpus — structural IR shape > flatrave parses to a
               "tag": "Seq",
             },
           ],
-          "tag": "Seq",
         },
       },
       {
@@ -7569,7 +7309,8 @@ exports[`strudel.cc parity corpus — structural IR shape > flatrave parses to a
                               "body": {
                                 "body": {
                                   "body": {
-                                    "children": [
+                                    "tag": "Stack",
+                                    "tracks": [
                                       {
                                         "items": [
                                           {
@@ -7630,7 +7371,6 @@ exports[`strudel.cc parity corpus — structural IR shape > flatrave parses to a
                                         "tag": "Play",
                                       },
                                     ],
-                                    "tag": "Seq",
                                   },
                                   "mask": "~ x*2",
                                   "tag": "Struct",
@@ -8073,22 +7813,17 @@ exports[`strudel.cc parity corpus — structural IR shape > holyflute parses to 
                                         "tag": "Seq",
                                       },
                                       {
-                                        "duration": 0.25,
-                                        "note": "c4",
-                                        "params": {
-                                          "gain": 1,
-                                          "velocity": 1,
+                                        "body": {
+                                          "duration": 0.25,
+                                          "note": "c4",
+                                          "params": {
+                                            "gain": 1,
+                                            "velocity": 1,
+                                          },
+                                          "tag": "Play",
                                         },
-                                        "tag": "Play",
-                                      },
-                                      {
-                                        "duration": 0.25,
-                                        "note": "2",
-                                        "params": {
-                                          "gain": 1,
-                                          "velocity": 1,
-                                        },
-                                        "tag": "Play",
+                                        "factor": 2,
+                                        "tag": "Slow",
                                       },
                                       {
                                         "body": {
@@ -8145,7 +7880,7 @@ exports[`strudel.cc parity corpus — structural IR shape > holyflute parses to 
         "tag": "Param",
         "userMethod": "color",
         "value": {
-          "children": [
+          "items": [
             {
               "duration": 0.25,
               "note": "salmon",
@@ -8174,7 +7909,7 @@ exports[`strudel.cc parity corpus — structural IR shape > holyflute parses to 
               "tag": "Play",
             },
           ],
-          "tag": "Seq",
+          "tag": "Cycle",
         },
       },
       "method": "pianoroll",
@@ -8639,7 +8374,8 @@ exports[`strudel.cc parity corpus — structural IR shape > meltingsubmarine par
           "via": {
             "args": "perlin.range(.7,.9)",
             "inner": {
-              "children": [
+              "tag": "Stack",
+              "tracks": [
                 {
                   "duration": 1,
                   "note": "bd",
@@ -8672,10 +8408,22 @@ exports[`strudel.cc parity corpus — structural IR shape > meltingsubmarine par
                         },
                         {
                           "duration": 1,
-                          "note": "3",
+                          "note": "sd",
                           "params": {
                             "gain": 1,
-                            "s": "3",
+                            "s": "sd",
+                            "slice": 1,
+                            "velocity": 1,
+                          },
+                          "tag": "Play",
+                        },
+                        {
+                          "duration": 1,
+                          "note": "sd",
+                          "params": {
+                            "gain": 1,
+                            "s": "sd",
+                            "slice": 1,
                             "velocity": 1,
                           },
                           "tag": "Play",
@@ -8768,7 +8516,6 @@ exports[`strudel.cc parity corpus — structural IR shape > meltingsubmarine par
                   "tag": "Seq",
                 },
               ],
-              "tag": "Seq",
             },
             "method": "speed",
           },
@@ -9740,7 +9487,16 @@ exports[`strudel.cc parity corpus — structural IR shape > sampleDrums parses t
                     },
                     {
                       "duration": 0.25,
-                      "note": "3",
+                      "note": "bd",
+                      "params": {
+                        "gain": 1,
+                        "velocity": 1,
+                      },
+                      "tag": "Play",
+                    },
+                    {
+                      "duration": 0.25,
+                      "note": "bd",
                       "params": {
                         "gain": 1,
                         "velocity": 1,
@@ -9832,7 +9588,16 @@ exports[`strudel.cc parity corpus — structural IR shape > sampleDrums parses t
                         },
                         {
                           "duration": 0.25,
-                          "note": "3",
+                          "note": "sn",
+                          "params": {
+                            "gain": 1,
+                            "velocity": 1,
+                          },
+                          "tag": "Play",
+                        },
+                        {
+                          "duration": 0.25,
+                          "note": "sn",
                           "params": {
                             "gain": 1,
                             "velocity": 1,
