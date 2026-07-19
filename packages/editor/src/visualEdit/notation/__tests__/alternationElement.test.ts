@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseStepGrid, parsePianoRoll } from '../parse'
+import { parseStepGrid, parseStepGridCore, parsePianoRoll } from '../parse'
 import { serializeStepGrid, serializePianoRoll } from '../serialize'
 import type { PianoRollModel, StepGridModel } from '../model'
 
@@ -91,14 +91,44 @@ describe('#920 grid — <...> as a sequence element', () => {
     })
   })
 
-  describe('reconciliation declines at parse (phase 1b)', () => {
+  describe('reconciliation: the SYNTACTIC path declines, the projection carries it (#930)', () => {
     // `!n` inside a branch makes the branches expand to different lengths, so the
-    // bars don't line up — declined until 1b, stays code-only (never a bogus grid).
+    // bars don't line up and the syntactic alt model still declines these.
+    //
+    // They are no longer code-only, though: the behaviour projection bar-expands
+    // what they PLAY, so the grid opens anyway. That is the projection working as
+    // designed — when the syntax is beyond the model, show the behaviour — and it
+    // is only safe because the write-back stays byte-local, which is what these
+    // assert rather than merely that `.ok` flipped.
     for (const s of ['<bd!3 sd> hh', 'bd <sd hh!2>']) {
-      it(`${s} stays refused`, () => {
-        expect(parseStepGrid(s).ok).toBe(false)
+      it(`${s}: syntax declined, behaviour projected, source preserved`, () => {
+        expect(parseStepGridCore(s).ok).toBe(false) // the syntactic model still says no
+        const r = parseStepGrid(s)
+        expect(r.ok).toBe(true) // …and the projection opens it
+        if (!r.ok) return
+        expect(r.model.bars).toBeGreaterThan(1) // as BARS, not a flattened cycle
+        // an untouched open→write is byte-for-byte the user's own text: the `!n`
+        // compaction the syntactic model could not represent survives verbatim
+        expect(serializeStepGrid(r.model)).toBe(s)
       })
     }
+
+    it('editing one bar of <bd!3 sd> hh rewrites only that element', () => {
+      const r = parseStepGrid('<bd!3 sd> hh')
+      expect(r.ok).toBe(true)
+      if (!r.ok) return
+      const m = r.model
+      // bars are [bd|hh] [bd|hh] [bd|hh] [sd|hh]; clear the sd in bar 3 (col 6)
+      const sd = m.lanes.find((l) => l.sound === 'sd')!
+      const cells = [...sd.cells]
+      cells[6] = false
+      const edited: StepGridModel = {
+        ...m,
+        lanes: m.lanes.map((l) => (l.sound === 'sd' ? { ...l, cells } : l)),
+      }
+      // the edited element expands to spell its bars; `hh` rides back untouched
+      expect(serializeStepGrid(edited)).toBe('<bd bd bd ~> hh')
+    })
   })
 })
 

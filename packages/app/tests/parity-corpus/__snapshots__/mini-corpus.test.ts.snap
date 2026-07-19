@@ -1533,7 +1533,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "euclid combined with * / ! / @ is beyond the editable subset",
+    "grid": "ok",
     "mini": "<C2(3,8)!3 Db2(3,8)>",
     "roll": "euclid combined with * / ! / @ is beyond the editable subset",
   },
@@ -1738,7 +1738,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "! on a group is beyond the editable subset",
   },
   {
-    "grid": ""feet" is beyond the editable subset",
+    "grid": "ok",
     "mini": "<[bd*4 . bd*2 . bd . bd*4]
   [bd*4 . bd@2 . bd . bd*4]>",
     "roll": ""feet" is beyond the editable subset",
@@ -1769,7 +1769,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "stacked sub-sequences are beyond the editable subset",
+    "grid": "ok",
     "mini": "<[c3, [eb5, eb6, f7] [bb6 d7]] [f3, [ab5, eb6, bb7] [bb6 d7]]>",
     "roll": "stacked sub-sequences are beyond the editable subset",
   },
@@ -1819,12 +1819,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "! on a chord is beyond the editable subset",
+    "grid": "ok",
     "mini": "<[g3,b3,e4]!2 [a3,c3, e4] [b3,d3,f#4]>",
     "roll": "! on a chord is beyond the editable subset",
   },
   {
-    "grid": "! on a chord is beyond the editable subset",
+    "grid": "ok",
     "mini": "<[g3,b3,e4]!2 [a3,c3,e4] [b3,d3,f#4]>",
     "roll": "! on a chord is beyond the editable subset",
   },
@@ -1844,12 +1844,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""hh" is not a note name",
   },
   {
-    "grid": "! inside a group is beyond the editable subset",
+    "grid": "ok",
     "mini": "<[hh!16] [hh ~ hh!14]>",
     "roll": "! inside a group is beyond the editable subset",
   },
   {
-    "grid": "operators inside a group are beyond the editable subset",
+    "grid": "ok",
     "mini": "<[hh*2] hh*4>",
     "roll": "operators inside a group are beyond the editable subset",
   },
@@ -1879,7 +1879,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""slow" stretch is beyond the editable subset",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "<[~ ~ sd ~] [~ ~ sd ~] [~ ~ [sd sd sd]@2] ~>",
     "roll": "nested groups are beyond the editable subset",
   },
@@ -2129,7 +2129,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "<eb1 f1 gb1 [ab1@3 bb1]>",
     "roll": "ok",
   },
@@ -2444,7 +2444,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""polymeter_slowcat" is beyond the editable subset",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "<~ [~@3.5 d2@2 c#2@2.5]>",
     "roll": "ok",
   },
@@ -3044,17 +3044,17 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""slow" stretch is beyond the editable subset",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "[<a3 c4 e4> <d3 g3 b3>]",
     "roll": "nested groups are beyond the editable subset",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
     "roll": "nested groups are beyond the editable subset",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
     "roll": "nested groups are beyond the editable subset",
   },
@@ -3169,7 +3169,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "stacked sub-sequences are beyond the editable subset",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "[[sh hh*2 [<~ oh>] rim]]",
     "roll": "nested groups are beyond the editable subset",
   },
@@ -3239,7 +3239,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "[bd <[oh hh] [hh hh]> sd hh]",
     "roll": "nested groups are beyond the editable subset",
   },
@@ -3304,7 +3304,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": "operators inside a group are beyond the editable subset",
+    "grid": "ok",
     "mini": "[bd*2 -] <- [~@2 bd bd - bd - sd]>",
     "roll": "operators inside a group are beyond the editable subset",
   },
@@ -3339,7 +3339,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": "invalid euclid (k,n) arguments",
+    "grid": "ok",
     "mini": "[c eb g <f bb>](3,8,<0 1>)",
     "roll": "invalid euclid (k,n) arguments",
   },
@@ -3389,7 +3389,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
     "roll": "nested groups are beyond the editable subset",
   },
@@ -3419,7 +3419,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "operators inside a group are beyond the editable subset",
+    "grid": "ok",
     "mini": "[cp(<0 0 0 3>,8)]",
     "roll": "operators inside a group are beyond the editable subset",
   },
@@ -3594,7 +3594,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""triangle" is not a note name",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "[~ [<[d3,a3,f4]!2 [d3,bb3,g4]!2> ~]]*2",
     "roll": "nested groups are beyond the editable subset",
   },
@@ -3929,7 +3929,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": "stacked sub-sequences are beyond the editable subset",
+    "grid": "ok",
     "mini": "bd bd - <- - - [- bd, sd]>",
     "roll": "stacked sub-sequences are beyond the editable subset",
   },
@@ -4224,7 +4224,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": "invalid euclid (k,n) arguments",
+    "grid": "ok",
     "mini": "bd(3,4,<0 2>)",
     "roll": "invalid euclid (k,n) arguments",
   },
@@ -4239,17 +4239,17 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": "invalid euclid (k,n) arguments",
+    "grid": "ok",
     "mini": "bd(<2 2 3 5>/4,8)",
     "roll": "invalid euclid (k,n) arguments",
   },
   {
-    "grid": "invalid euclid (k,n) arguments",
+    "grid": "ok",
     "mini": "bd(<2 3>,8)",
     "roll": "invalid euclid (k,n) arguments",
   },
   {
-    "grid": "invalid euclid (k,n) arguments",
+    "grid": "ok",
     "mini": "bd(<2 4 5>,9)",
     "roll": "invalid euclid (k,n) arguments",
   },
@@ -4504,12 +4504,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""slow" stretch is beyond the editable subset",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "c <d c> - [c <d c>]",
     "roll": "nested groups are beyond the editable subset",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "c [a <bb ab>] <b g>",
     "roll": "nested groups are beyond the editable subset",
   },
@@ -4554,7 +4554,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "invalid euclid (k,n) arguments",
+    "grid": "ok",
     "mini": "c(<3@3 [3*2 5 ~]@1>,8)",
     "roll": "invalid euclid (k,n) arguments",
   },
@@ -4839,7 +4839,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""cp" is not a note name",
   },
   {
-    "grid": "invalid euclid (k,n) arguments",
+    "grid": "ok",
     "mini": "cp(5,<8 16>,2)",
     "roll": "invalid euclid (k,n) arguments",
   },
@@ -6085,7 +6085,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "invalid * multiplier",
   },
   {
-    "grid": "ok",
+    "grid": "invalid * multiplier",
     "mini": "hh*[<4 8>/16]",
     "roll": "invalid * multiplier",
   },
@@ -6585,7 +6585,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""?" random degrade is beyond the editable subset",
   },
   {
-    "grid": "invalid euclid (k,n) arguments",
+    "grid": "ok",
     "mini": "rim(3,<16 8>)",
     "roll": "invalid euclid (k,n) arguments",
   },
@@ -7220,12 +7220,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""polymeter" is beyond the editable subset",
   },
   {
-    "grid": ""polymeter" is beyond the editable subset",
+    "grid": "ok",
     "mini": "{E3 D4 F#4 D4}%5*2",
     "roll": ""polymeter" is beyond the editable subset",
   },
   {
-    "grid": ""polymeter" is beyond the editable subset",
+    "grid": "ok",
     "mini": "{E3 G3 D4 E3 D4 D4}%5*2",
     "roll": ""polymeter" is beyond the editable subset",
   },
@@ -7245,7 +7245,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""polymeter" is beyond the editable subset",
   },
   {
-    "grid": ""polymeter" is beyond the editable subset",
+    "grid": "ok",
     "mini": "{c [f g] d# d}%2",
     "roll": ""polymeter" is beyond the editable subset",
   },
@@ -7265,7 +7265,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""polymeter" is beyond the editable subset",
   },
   {
-    "grid": ""polymeter" is beyond the editable subset",
+    "grid": "ok",
     "mini": "{~ perc ~}%16",
     "roll": ""polymeter" is beyond the editable subset",
   },
@@ -7415,7 +7415,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""sd" is not a note name",
   },
   {
-    "grid": "nested groups are beyond the editable subset",
+    "grid": "ok",
     "mini": "~ sd ~[sd[~ <~~~ sd>]]",
     "roll": "nested groups are beyond the editable subset",
   },
@@ -7465,7 +7465,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "invalid euclid (k,n) arguments",
+    "grid": "ok",
     "mini": "~ ~ ~ bd(<2 4!2>, 8)",
     "roll": "invalid euclid (k,n) arguments",
   },
