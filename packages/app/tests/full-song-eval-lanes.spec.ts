@@ -93,3 +93,44 @@ test('a sampled-signal track (no static-IR events) gets its own eval-backed lane
 
   expect(errors).toEqual([])
 })
+
+// #927 — the LOCATED-hap fold (distinct from the #865 case above, which is a
+// LOC-LESS signal that already fell through to the eval lane). A signal-INDEXED
+// SAMPLE track (`n(run(8)).s('piano')`) emits zero static-IR events, so its lane
+// never entered the containment-anchor map — but its haps DO carry a `loc` (the
+// `.s('piano')` mini-string), so they folded into the PREVIOUS track's lane
+// instead of getting their own (one lane where there should be two). The fix
+// seeds the anchor map from the declared Track wrappers.
+const P1B_CASES: Array<[string, string, string[]]> = [
+  // run(): 8 discrete located haps, no IR events. The primary regression.
+  ['run() index melody', '$: s("bd sd")\n$: n(run(8)).s("piano")', ['d1', 'd2']],
+  // a segmented signal fed through `n(...).s(...)` — discrete + located.
+  ['segmented signal index', '$: s("bd sd")\n$: n(irand(8).segment(8)).s("piano")', ['d1', 'd2']],
+  // NAMED tracks — the anchor is keyed by the track name, not a positional d{N}.
+  ['named signal track', 'drums: s("bd sd")\nlead: n(run(8)).s("piano")', ['drums', 'lead']],
+  // The zero-event track sits BETWEEN two event tracks — its anchor must not let
+  // its haps fold up into d1 NOR steal d3's; all three lanes must survive.
+  ['middle zero-event track', '$: s("bd sd")\n$: n(run(8)).s("piano")\n$: s("hh*4")', ['d1', 'd2', 'd3']],
+]
+
+for (const [label, code, keys] of P1B_CASES) {
+  test(`#927 signal-indexed sample track gets its own lane: ${label}`, async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+    })
+
+    await boot(page)
+    await evalCode(page, code)
+    await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
+
+    // One lane per track — the sample track is NOT folded into a neighbour.
+    await expect(page.locator('[data-full-song-lane]')).toHaveCount(keys.length, { timeout: 10_000 })
+    for (const k of keys) {
+      await expect(page.locator(`[data-full-song-lane="${k}"]`)).toHaveCount(1)
+    }
+
+    expect(errors).toEqual([])
+  })
+}
