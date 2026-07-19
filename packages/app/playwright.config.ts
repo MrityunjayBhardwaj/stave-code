@@ -71,7 +71,16 @@ export default defineConfig({
       // is SKIPPED ENTIRELY — its 29 tests do not run and are not even reported as
       // skipped. The gate then prints a plausible-looking "375 passed" that is
       // simply a smaller suite. So ALWAYS reconcile the total: a complete run is
-      // 505 + 29 = 534. If the count is short, tests were dropped, not passed.
+      // 531 + 29 = 560 (2026-07-20). If the count is short, tests were dropped,
+      // not passed — and re-check this number when specs are added, because a
+      // stale total makes a dropped-test run look like a normal one.
+      //
+      // Also budget for contention: a full parallel run reproducibly reports
+      // ~15 failures that pass on a serial re-run of the same files (measured
+      // 2026-07-20: 15 failed parallel → 1 failed serial). Most carry the same
+      // signature — `[data-bottom-panel="root"]` never appearing, i.e. the app
+      // never loaded, several workers deep. Re-run failures serially before
+      // treating any of them as a product defect.
       dependencies: ['chromium'],
     },
   ],
