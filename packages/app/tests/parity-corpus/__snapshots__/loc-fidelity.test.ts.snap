@@ -57,8 +57,12 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".sometimesBy(.4, x=>x.delay(".5"))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delay(".5")",
+  },
+  {
+    "tag": "Play",
+    "text": ".5",
   },
   {
     "tag": "Code",
@@ -1205,8 +1209,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "500 200",
+  },
+  {
+    "tag": "Play",
+    "text": "500",
+  },
+  {
+    "tag": "Play",
+    "text": "200",
   },
   {
     "tag": "Param",
@@ -1258,8 +1274,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "500 200",
+  },
+  {
+    "tag": "Play",
+    "text": "500",
+  },
+  {
+    "tag": "Play",
+    "text": "200",
   },
   {
     "tag": "Param",
@@ -1311,8 +1339,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "500 200",
+  },
+  {
+    "tag": "Play",
+    "text": "500",
+  },
+  {
+    "tag": "Play",
+    "text": "200",
   },
   {
     "tag": "Param",
@@ -1364,8 +1404,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "500 200",
+  },
+  {
+    "tag": "Play",
+    "text": "500",
+  },
+  {
+    "tag": "Play",
+    "text": "200",
   },
   {
     "tag": "Param",
@@ -1417,8 +1469,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "500 200",
+  },
+  {
+    "tag": "Play",
+    "text": "500",
+  },
+  {
+    "tag": "Play",
+    "text": "200",
   },
   {
     "tag": "Param",
@@ -1470,8 +1534,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "500 200",
+  },
+  {
+    "tag": "Play",
+    "text": "500",
+  },
+  {
+    "tag": "Play",
+    "text": "200",
   },
   {
     "tag": "Param",
@@ -1523,8 +1599,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "500 200",
+  },
+  {
+    "tag": "Play",
+    "text": "500",
+  },
+  {
+    "tag": "Play",
+    "text": "200",
   },
   {
     "tag": "Param",
@@ -1576,8 +1664,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "500 200",
+  },
+  {
+    "tag": "Play",
+    "text": "500",
+  },
+  {
+    "tag": "Play",
+    "text": "200",
   },
   {
     "tag": "Param",
@@ -1629,8 +1729,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "500 200",
+  },
+  {
+    "tag": "Play",
+    "text": "500",
+  },
+  {
+    "tag": "Play",
+    "text": "200",
   },
   {
     "tag": "Param",
@@ -1682,8 +1794,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "500 200",
+  },
+  {
+    "tag": "Play",
+    "text": "500",
+  },
+  {
+    "tag": "Play",
+    "text": "200",
   },
   {
     "tag": "Param",
@@ -1735,8 +1859,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "500 200",
+  },
+  {
+    "tag": "Play",
+    "text": "500",
+  },
+  {
+    "tag": "Play",
+    "text": "200",
   },
   {
     "tag": "Param",
@@ -1891,8 +2027,20 @@ n("~ 6 ~ 6 ~ 6 ~ 6").sound("gm_agogo").lpf("600 1400")
 )",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("800 1200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "800 1200",
+  },
+  {
+    "tag": "Play",
+    "text": "800",
+  },
+  {
+    "tag": "Play",
+    "text": "1200",
   },
   {
     "tag": "Param",
@@ -1919,8 +2067,20 @@ n("~ 6 ~ 6 ~ 6 ~ 6").sound("gm_agogo").lpf("600 1400")
     "text": "bd",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("600 1400")",
+  },
+  {
+    "tag": "Seq",
+    "text": "600 1400",
+  },
+  {
+    "tag": "Play",
+    "text": "600",
+  },
+  {
+    "tag": "Play",
+    "text": "1400",
   },
   {
     "tag": "Param",
@@ -2391,8 +2551,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Seq",
+    "text": "500 200",
+  },
+  {
+    "tag": "Play",
+    "text": "500",
+  },
+  {
+    "tag": "Play",
+    "text": "200",
   },
   {
     "tag": "Param",
@@ -3310,8 +3482,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".33",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delay("<0 .5>")",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<0 .5>",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": ".5",
   },
   {
     "tag": "Seq",
@@ -3366,8 +3550,20 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".33",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delay("<0 .5>")",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<0 .5>",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": ".5",
   },
   {
     "tag": "Seq",

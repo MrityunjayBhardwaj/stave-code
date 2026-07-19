@@ -191,19 +191,94 @@ exports[`strudel.cc parity corpus — structural IR shape > amensister parses to
                   "p": 0.4,
                   "tag": "Choice",
                   "then": {
-                    "code": "",
-                    "lang": "strudel",
-                    "tag": "Code",
-                    "via": {
-                      "args": "".5"",
-                      "inner": {
-                        "code": "",
-                        "lang": "strudel",
-                        "tag": "Code",
-                        "via": {
-                          "args": "x=>x.speed("2 | -2")",
-                          "inner": {
-                            "else_": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "x=>x.speed("2 | -2")",
+                        "inner": {
+                          "else_": {
+                            "children": [
+                              {
+                                "duration": 0.25,
+                                "note": "0",
+                                "params": {
+                                  "gain": 1,
+                                  "velocity": 1,
+                                },
+                                "tag": "Play",
+                              },
+                              {
+                                "duration": 0.25,
+                                "note": "1",
+                                "params": {
+                                  "gain": 1,
+                                  "velocity": 1,
+                                },
+                                "tag": "Play",
+                              },
+                              {
+                                "duration": 0.25,
+                                "note": "2",
+                                "params": {
+                                  "gain": 1,
+                                  "velocity": 1,
+                                },
+                                "tag": "Play",
+                              },
+                              {
+                                "duration": 0.25,
+                                "note": "3",
+                                "params": {
+                                  "gain": 1,
+                                  "velocity": 1,
+                                },
+                                "tag": "Play",
+                              },
+                              {
+                                "duration": 0.25,
+                                "note": "4",
+                                "params": {
+                                  "gain": 1,
+                                  "velocity": 1,
+                                },
+                                "tag": "Play",
+                              },
+                              {
+                                "duration": 0.25,
+                                "note": "5",
+                                "params": {
+                                  "gain": 1,
+                                  "velocity": 1,
+                                },
+                                "tag": "Play",
+                              },
+                              {
+                                "duration": 0.25,
+                                "note": "6",
+                                "params": {
+                                  "gain": 1,
+                                  "velocity": 1,
+                                },
+                                "tag": "Play",
+                              },
+                              {
+                                "duration": 0.25,
+                                "note": "7",
+                                "params": {
+                                  "gain": 1,
+                                  "velocity": 1,
+                                },
+                                "tag": "Play",
+                              },
+                            ],
+                            "tag": "Seq",
+                          },
+                          "p": 0.5,
+                          "tag": "Choice",
+                          "then": {
+                            "body": {
                               "children": [
                                 {
                                   "duration": 0.25,
@@ -280,96 +355,27 @@ exports[`strudel.cc parity corpus — structural IR shape > amensister parses to
                               ],
                               "tag": "Seq",
                             },
-                            "p": 0.5,
-                            "tag": "Choice",
-                            "then": {
-                              "body": {
-                                "children": [
-                                  {
-                                    "duration": 0.25,
-                                    "note": "0",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
-                                    "duration": 0.25,
-                                    "note": "1",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
-                                    "duration": 0.25,
-                                    "note": "2",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
-                                    "duration": 0.25,
-                                    "note": "3",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
-                                    "duration": 0.25,
-                                    "note": "4",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
-                                    "duration": 0.25,
-                                    "note": "5",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
-                                    "duration": 0.25,
-                                    "note": "6",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
-                                    "duration": 0.25,
-                                    "note": "7",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                ],
-                                "tag": "Seq",
-                              },
-                              "n": 2,
-                              "tag": "Ply",
-                              "userMethod": "ply",
-                            },
-                            "userMethod": "sometimes",
+                            "n": 2,
+                            "tag": "Ply",
+                            "userMethod": "ply",
                           },
-                          "method": "rarely",
+                          "userMethod": "sometimes",
                         },
+                        "method": "rarely",
                       },
-                      "method": "delay",
+                    },
+                    "key": "delay",
+                    "rawArgs": "".5"",
+                    "tag": "Param",
+                    "userMethod": "delay",
+                    "value": {
+                      "duration": 0.25,
+                      "note": ".5",
+                      "params": {
+                        "gain": 1,
+                        "velocity": 1,
+                      },
+                      "tag": "Play",
                     },
                   },
                   "userMethod": "sometimesBy",
@@ -2138,76 +2144,96 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-158-NEGATIVE-
   "body": {
     "body": {
       "body": {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""500 200"",
-          "inner": {
+        "body": {
+          "body": {
             "body": {
               "body": {
                 "body": {
                   "body": {
                     "body": {
                       "body": {
-                        "body": {
-                          "code": "",
-                          "lang": "strudel",
-                          "tag": "Code",
-                          "via": {
-                            "args": "",
-                            "inner": {
-                              "args": ""Am Am"",
-                              "kind": "chord",
-                              "tag": "Builder",
-                            },
-                            "method": "voicing",
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "args": ""Am Am"",
+                            "kind": "chord",
+                            "tag": "Builder",
                           },
+                          "method": "voicing",
                         },
-                        "key": "s",
-                        "rawArgs": "'gm_celesta:3'",
-                        "tag": "Param",
-                        "userMethod": "sound",
-                        "value": "gm_celesta:3",
                       },
-                      "key": "color",
-                      "rawArgs": "'blue'",
+                      "key": "s",
+                      "rawArgs": "'gm_celesta:3'",
                       "tag": "Param",
-                      "userMethod": "color",
-                      "value": "blue",
+                      "userMethod": "sound",
+                      "value": "gm_celesta:3",
                     },
-                    "key": "attack",
-                    "rawArgs": "0.03",
+                    "key": "color",
+                    "rawArgs": "'blue'",
                     "tag": "Param",
-                    "userMethod": "attack",
-                    "value": 0.03,
+                    "userMethod": "color",
+                    "value": "blue",
                   },
-                  "key": "sustain",
-                  "rawArgs": "0.6",
+                  "key": "attack",
+                  "rawArgs": "0.03",
                   "tag": "Param",
-                  "userMethod": "sustain",
-                  "value": 0.6,
+                  "userMethod": "attack",
+                  "value": 0.03,
                 },
-                "key": "release",
-                "rawArgs": "0.8",
+                "key": "sustain",
+                "rawArgs": "0.6",
                 "tag": "Param",
-                "userMethod": "release",
-                "value": 0.8,
+                "userMethod": "sustain",
+                "value": 0.6,
               },
-              "name": "room",
-              "params": {
-                "room": 1,
-              },
-              "tag": "FX",
-              "userMethod": "room",
+              "key": "release",
+              "rawArgs": "0.8",
+              "tag": "Param",
+              "userMethod": "release",
+              "value": 0.8,
             },
-            "key": "roomsize",
-            "rawArgs": "4",
-            "tag": "Param",
-            "userMethod": "size",
-            "value": 4,
+            "name": "room",
+            "params": {
+              "room": 1,
+            },
+            "tag": "FX",
+            "userMethod": "room",
           },
-          "method": "lpf",
+          "key": "roomsize",
+          "rawArgs": "4",
+          "tag": "Param",
+          "userMethod": "size",
+          "value": 4,
+        },
+        "key": "cutoff",
+        "rawArgs": ""500 200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "500",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       "key": "lpenv",
@@ -2232,76 +2258,96 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-158-aliasBank
   "body": {
     "body": {
       "body": {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""500 200"",
-          "inner": {
+        "body": {
+          "body": {
             "body": {
               "body": {
                 "body": {
                   "body": {
                     "body": {
                       "body": {
-                        "body": {
-                          "code": "",
-                          "lang": "strudel",
-                          "tag": "Code",
-                          "via": {
-                            "args": "",
-                            "inner": {
-                              "args": ""Am Am"",
-                              "kind": "chord",
-                              "tag": "Builder",
-                            },
-                            "method": "voicing",
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "args": ""Am Am"",
+                            "kind": "chord",
+                            "tag": "Builder",
                           },
+                          "method": "voicing",
                         },
-                        "key": "s",
-                        "rawArgs": "'gm_celesta:3'",
-                        "tag": "Param",
-                        "userMethod": "sound",
-                        "value": "gm_celesta:3",
                       },
-                      "key": "color",
-                      "rawArgs": "'blue'",
+                      "key": "s",
+                      "rawArgs": "'gm_celesta:3'",
                       "tag": "Param",
-                      "userMethod": "color",
-                      "value": "blue",
+                      "userMethod": "sound",
+                      "value": "gm_celesta:3",
                     },
-                    "key": "attack",
-                    "rawArgs": "0.03",
+                    "key": "color",
+                    "rawArgs": "'blue'",
                     "tag": "Param",
-                    "userMethod": "attack",
-                    "value": 0.03,
+                    "userMethod": "color",
+                    "value": "blue",
                   },
-                  "key": "sustain",
-                  "rawArgs": "0.6",
+                  "key": "attack",
+                  "rawArgs": "0.03",
                   "tag": "Param",
-                  "userMethod": "sustain",
-                  "value": 0.6,
+                  "userMethod": "attack",
+                  "value": 0.03,
                 },
-                "key": "release",
-                "rawArgs": "0.8",
+                "key": "sustain",
+                "rawArgs": "0.6",
                 "tag": "Param",
-                "userMethod": "release",
-                "value": 0.8,
+                "userMethod": "sustain",
+                "value": 0.6,
               },
-              "name": "room",
-              "params": {
-                "room": 1,
-              },
-              "tag": "FX",
-              "userMethod": "room",
+              "key": "release",
+              "rawArgs": "0.8",
+              "tag": "Param",
+              "userMethod": "release",
+              "value": 0.8,
             },
-            "key": "roomsize",
-            "rawArgs": "4",
-            "tag": "Param",
-            "userMethod": "size",
-            "value": 4,
+            "name": "room",
+            "params": {
+              "room": 1,
+            },
+            "tag": "FX",
+            "userMethod": "room",
           },
-          "method": "lpf",
+          "key": "roomsize",
+          "rawArgs": "4",
+          "tag": "Param",
+          "userMethod": "size",
+          "value": 4,
+        },
+        "key": "cutoff",
+        "rawArgs": ""500 200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "500",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       "key": "lpenv",
@@ -2326,76 +2372,96 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-158-all-shape
   "body": {
     "body": {
       "body": {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""500 200"",
-          "inner": {
+        "body": {
+          "body": {
             "body": {
               "body": {
                 "body": {
                   "body": {
                     "body": {
                       "body": {
-                        "body": {
-                          "code": "",
-                          "lang": "strudel",
-                          "tag": "Code",
-                          "via": {
-                            "args": "",
-                            "inner": {
-                              "args": ""Am Am"",
-                              "kind": "chord",
-                              "tag": "Builder",
-                            },
-                            "method": "voicing",
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "args": ""Am Am"",
+                            "kind": "chord",
+                            "tag": "Builder",
                           },
+                          "method": "voicing",
                         },
-                        "key": "s",
-                        "rawArgs": "'gm_celesta:3'",
-                        "tag": "Param",
-                        "userMethod": "sound",
-                        "value": "gm_celesta:3",
                       },
-                      "key": "color",
-                      "rawArgs": "'blue'",
+                      "key": "s",
+                      "rawArgs": "'gm_celesta:3'",
                       "tag": "Param",
-                      "userMethod": "color",
-                      "value": "blue",
+                      "userMethod": "sound",
+                      "value": "gm_celesta:3",
                     },
-                    "key": "attack",
-                    "rawArgs": "0.03",
+                    "key": "color",
+                    "rawArgs": "'blue'",
                     "tag": "Param",
-                    "userMethod": "attack",
-                    "value": 0.03,
+                    "userMethod": "color",
+                    "value": "blue",
                   },
-                  "key": "sustain",
-                  "rawArgs": "0.6",
+                  "key": "attack",
+                  "rawArgs": "0.03",
                   "tag": "Param",
-                  "userMethod": "sustain",
-                  "value": 0.6,
+                  "userMethod": "attack",
+                  "value": 0.03,
                 },
-                "key": "release",
-                "rawArgs": "0.8",
+                "key": "sustain",
+                "rawArgs": "0.6",
                 "tag": "Param",
-                "userMethod": "release",
-                "value": 0.8,
+                "userMethod": "sustain",
+                "value": 0.6,
               },
-              "name": "room",
-              "params": {
-                "room": 1,
-              },
-              "tag": "FX",
-              "userMethod": "room",
+              "key": "release",
+              "rawArgs": "0.8",
+              "tag": "Param",
+              "userMethod": "release",
+              "value": 0.8,
             },
-            "key": "roomsize",
-            "rawArgs": "4",
-            "tag": "Param",
-            "userMethod": "size",
-            "value": 4,
+            "name": "room",
+            "params": {
+              "room": 1,
+            },
+            "tag": "FX",
+            "userMethod": "room",
           },
-          "method": "lpf",
+          "key": "roomsize",
+          "rawArgs": "4",
+          "tag": "Param",
+          "userMethod": "size",
+          "value": 4,
+        },
+        "key": "cutoff",
+        "rawArgs": ""500 200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "500",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       "key": "lpenv",
@@ -2420,76 +2486,96 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-158-initAudio
   "body": {
     "body": {
       "body": {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""500 200"",
-          "inner": {
+        "body": {
+          "body": {
             "body": {
               "body": {
                 "body": {
                   "body": {
                     "body": {
                       "body": {
-                        "body": {
-                          "code": "",
-                          "lang": "strudel",
-                          "tag": "Code",
-                          "via": {
-                            "args": "",
-                            "inner": {
-                              "args": ""Am Am"",
-                              "kind": "chord",
-                              "tag": "Builder",
-                            },
-                            "method": "voicing",
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "args": ""Am Am"",
+                            "kind": "chord",
+                            "tag": "Builder",
                           },
+                          "method": "voicing",
                         },
-                        "key": "s",
-                        "rawArgs": "'gm_celesta:3'",
-                        "tag": "Param",
-                        "userMethod": "sound",
-                        "value": "gm_celesta:3",
                       },
-                      "key": "color",
-                      "rawArgs": "'blue'",
+                      "key": "s",
+                      "rawArgs": "'gm_celesta:3'",
                       "tag": "Param",
-                      "userMethod": "color",
-                      "value": "blue",
+                      "userMethod": "sound",
+                      "value": "gm_celesta:3",
                     },
-                    "key": "attack",
-                    "rawArgs": "0.03",
+                    "key": "color",
+                    "rawArgs": "'blue'",
                     "tag": "Param",
-                    "userMethod": "attack",
-                    "value": 0.03,
+                    "userMethod": "color",
+                    "value": "blue",
                   },
-                  "key": "sustain",
-                  "rawArgs": "0.6",
+                  "key": "attack",
+                  "rawArgs": "0.03",
                   "tag": "Param",
-                  "userMethod": "sustain",
-                  "value": 0.6,
+                  "userMethod": "attack",
+                  "value": 0.03,
                 },
-                "key": "release",
-                "rawArgs": "0.8",
+                "key": "sustain",
+                "rawArgs": "0.6",
                 "tag": "Param",
-                "userMethod": "release",
-                "value": 0.8,
+                "userMethod": "sustain",
+                "value": 0.6,
               },
-              "name": "room",
-              "params": {
-                "room": 1,
-              },
-              "tag": "FX",
-              "userMethod": "room",
+              "key": "release",
+              "rawArgs": "0.8",
+              "tag": "Param",
+              "userMethod": "release",
+              "value": 0.8,
             },
-            "key": "roomsize",
-            "rawArgs": "4",
-            "tag": "Param",
-            "userMethod": "size",
-            "value": 4,
+            "name": "room",
+            "params": {
+              "room": 1,
+            },
+            "tag": "FX",
+            "userMethod": "room",
           },
-          "method": "lpf",
+          "key": "roomsize",
+          "rawArgs": "4",
+          "tag": "Param",
+          "userMethod": "size",
+          "value": 4,
+        },
+        "key": "cutoff",
+        "rawArgs": ""500 200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "500",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       "key": "lpenv",
@@ -2514,76 +2600,96 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-158-samples-s
   "body": {
     "body": {
       "body": {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""500 200"",
-          "inner": {
+        "body": {
+          "body": {
             "body": {
               "body": {
                 "body": {
                   "body": {
                     "body": {
                       "body": {
-                        "body": {
-                          "code": "",
-                          "lang": "strudel",
-                          "tag": "Code",
-                          "via": {
-                            "args": "",
-                            "inner": {
-                              "args": ""Am Am"",
-                              "kind": "chord",
-                              "tag": "Builder",
-                            },
-                            "method": "voicing",
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "args": ""Am Am"",
+                            "kind": "chord",
+                            "tag": "Builder",
                           },
+                          "method": "voicing",
                         },
-                        "key": "s",
-                        "rawArgs": "'gm_celesta:3'",
-                        "tag": "Param",
-                        "userMethod": "sound",
-                        "value": "gm_celesta:3",
                       },
-                      "key": "color",
-                      "rawArgs": "'blue'",
+                      "key": "s",
+                      "rawArgs": "'gm_celesta:3'",
                       "tag": "Param",
-                      "userMethod": "color",
-                      "value": "blue",
+                      "userMethod": "sound",
+                      "value": "gm_celesta:3",
                     },
-                    "key": "attack",
-                    "rawArgs": "0.03",
+                    "key": "color",
+                    "rawArgs": "'blue'",
                     "tag": "Param",
-                    "userMethod": "attack",
-                    "value": 0.03,
+                    "userMethod": "color",
+                    "value": "blue",
                   },
-                  "key": "sustain",
-                  "rawArgs": "0.6",
+                  "key": "attack",
+                  "rawArgs": "0.03",
                   "tag": "Param",
-                  "userMethod": "sustain",
-                  "value": 0.6,
+                  "userMethod": "attack",
+                  "value": 0.03,
                 },
-                "key": "release",
-                "rawArgs": "0.8",
+                "key": "sustain",
+                "rawArgs": "0.6",
                 "tag": "Param",
-                "userMethod": "release",
-                "value": 0.8,
+                "userMethod": "sustain",
+                "value": 0.6,
               },
-              "name": "room",
-              "params": {
-                "room": 1,
-              },
-              "tag": "FX",
-              "userMethod": "room",
+              "key": "release",
+              "rawArgs": "0.8",
+              "tag": "Param",
+              "userMethod": "release",
+              "value": 0.8,
             },
-            "key": "roomsize",
-            "rawArgs": "4",
-            "tag": "Param",
-            "userMethod": "size",
-            "value": 4,
+            "name": "room",
+            "params": {
+              "room": 1,
+            },
+            "tag": "FX",
+            "userMethod": "room",
           },
-          "method": "lpf",
+          "key": "roomsize",
+          "rawArgs": "4",
+          "tag": "Param",
+          "userMethod": "size",
+          "value": 4,
+        },
+        "key": "cutoff",
+        "rawArgs": ""500 200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "500",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       "key": "lpenv",
@@ -2608,76 +2714,96 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-158-setCpm-ca
   "body": {
     "body": {
       "body": {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""500 200"",
-          "inner": {
+        "body": {
+          "body": {
             "body": {
               "body": {
                 "body": {
                   "body": {
                     "body": {
                       "body": {
-                        "body": {
-                          "code": "",
-                          "lang": "strudel",
-                          "tag": "Code",
-                          "via": {
-                            "args": "",
-                            "inner": {
-                              "args": ""Am Am"",
-                              "kind": "chord",
-                              "tag": "Builder",
-                            },
-                            "method": "voicing",
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "args": ""Am Am"",
+                            "kind": "chord",
+                            "tag": "Builder",
                           },
+                          "method": "voicing",
                         },
-                        "key": "s",
-                        "rawArgs": "'gm_celesta:3'",
-                        "tag": "Param",
-                        "userMethod": "sound",
-                        "value": "gm_celesta:3",
                       },
-                      "key": "color",
-                      "rawArgs": "'blue'",
+                      "key": "s",
+                      "rawArgs": "'gm_celesta:3'",
                       "tag": "Param",
-                      "userMethod": "color",
-                      "value": "blue",
+                      "userMethod": "sound",
+                      "value": "gm_celesta:3",
                     },
-                    "key": "attack",
-                    "rawArgs": "0.03",
+                    "key": "color",
+                    "rawArgs": "'blue'",
                     "tag": "Param",
-                    "userMethod": "attack",
-                    "value": 0.03,
+                    "userMethod": "color",
+                    "value": "blue",
                   },
-                  "key": "sustain",
-                  "rawArgs": "0.6",
+                  "key": "attack",
+                  "rawArgs": "0.03",
                   "tag": "Param",
-                  "userMethod": "sustain",
-                  "value": 0.6,
+                  "userMethod": "attack",
+                  "value": 0.03,
                 },
-                "key": "release",
-                "rawArgs": "0.8",
+                "key": "sustain",
+                "rawArgs": "0.6",
                 "tag": "Param",
-                "userMethod": "release",
-                "value": 0.8,
+                "userMethod": "sustain",
+                "value": 0.6,
               },
-              "name": "room",
-              "params": {
-                "room": 1,
-              },
-              "tag": "FX",
-              "userMethod": "room",
+              "key": "release",
+              "rawArgs": "0.8",
+              "tag": "Param",
+              "userMethod": "release",
+              "value": 0.8,
             },
-            "key": "roomsize",
-            "rawArgs": "4",
-            "tag": "Param",
-            "userMethod": "size",
-            "value": 4,
+            "name": "room",
+            "params": {
+              "room": 1,
+            },
+            "tag": "FX",
+            "userMethod": "room",
           },
-          "method": "lpf",
+          "key": "roomsize",
+          "rawArgs": "4",
+          "tag": "Param",
+          "userMethod": "size",
+          "value": 4,
+        },
+        "key": "cutoff",
+        "rawArgs": ""500 200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "500",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       "key": "lpenv",
@@ -2702,76 +2828,96 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-158-setCps-ca
   "body": {
     "body": {
       "body": {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""500 200"",
-          "inner": {
+        "body": {
+          "body": {
             "body": {
               "body": {
                 "body": {
                   "body": {
                     "body": {
                       "body": {
-                        "body": {
-                          "code": "",
-                          "lang": "strudel",
-                          "tag": "Code",
-                          "via": {
-                            "args": "",
-                            "inner": {
-                              "args": ""Am Am"",
-                              "kind": "chord",
-                              "tag": "Builder",
-                            },
-                            "method": "voicing",
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "args": ""Am Am"",
+                            "kind": "chord",
+                            "tag": "Builder",
                           },
+                          "method": "voicing",
                         },
-                        "key": "s",
-                        "rawArgs": "'gm_celesta:3'",
-                        "tag": "Param",
-                        "userMethod": "sound",
-                        "value": "gm_celesta:3",
                       },
-                      "key": "color",
-                      "rawArgs": "'blue'",
+                      "key": "s",
+                      "rawArgs": "'gm_celesta:3'",
                       "tag": "Param",
-                      "userMethod": "color",
-                      "value": "blue",
+                      "userMethod": "sound",
+                      "value": "gm_celesta:3",
                     },
-                    "key": "attack",
-                    "rawArgs": "0.03",
+                    "key": "color",
+                    "rawArgs": "'blue'",
                     "tag": "Param",
-                    "userMethod": "attack",
-                    "value": 0.03,
+                    "userMethod": "color",
+                    "value": "blue",
                   },
-                  "key": "sustain",
-                  "rawArgs": "0.6",
+                  "key": "attack",
+                  "rawArgs": "0.03",
                   "tag": "Param",
-                  "userMethod": "sustain",
-                  "value": 0.6,
+                  "userMethod": "attack",
+                  "value": 0.03,
                 },
-                "key": "release",
-                "rawArgs": "0.8",
+                "key": "sustain",
+                "rawArgs": "0.6",
                 "tag": "Param",
-                "userMethod": "release",
-                "value": 0.8,
+                "userMethod": "sustain",
+                "value": 0.6,
               },
-              "name": "room",
-              "params": {
-                "room": 1,
-              },
-              "tag": "FX",
-              "userMethod": "room",
+              "key": "release",
+              "rawArgs": "0.8",
+              "tag": "Param",
+              "userMethod": "release",
+              "value": 0.8,
             },
-            "key": "roomsize",
-            "rawArgs": "4",
-            "tag": "Param",
-            "userMethod": "size",
-            "value": 4,
+            "name": "room",
+            "params": {
+              "room": 1,
+            },
+            "tag": "FX",
+            "userMethod": "room",
           },
-          "method": "lpf",
+          "key": "roomsize",
+          "rawArgs": "4",
+          "tag": "Param",
+          "userMethod": "size",
+          "value": 4,
+        },
+        "key": "cutoff",
+        "rawArgs": ""500 200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "500",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       "key": "lpenv",
@@ -2796,76 +2942,96 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-158-setVoicin
   "body": {
     "body": {
       "body": {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""500 200"",
-          "inner": {
+        "body": {
+          "body": {
             "body": {
               "body": {
                 "body": {
                   "body": {
                     "body": {
                       "body": {
-                        "body": {
-                          "code": "",
-                          "lang": "strudel",
-                          "tag": "Code",
-                          "via": {
-                            "args": "",
-                            "inner": {
-                              "args": ""Am Am"",
-                              "kind": "chord",
-                              "tag": "Builder",
-                            },
-                            "method": "voicing",
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "args": ""Am Am"",
+                            "kind": "chord",
+                            "tag": "Builder",
                           },
+                          "method": "voicing",
                         },
-                        "key": "s",
-                        "rawArgs": "'gm_celesta:3'",
-                        "tag": "Param",
-                        "userMethod": "sound",
-                        "value": "gm_celesta:3",
                       },
-                      "key": "color",
-                      "rawArgs": "'blue'",
+                      "key": "s",
+                      "rawArgs": "'gm_celesta:3'",
                       "tag": "Param",
-                      "userMethod": "color",
-                      "value": "blue",
+                      "userMethod": "sound",
+                      "value": "gm_celesta:3",
                     },
-                    "key": "attack",
-                    "rawArgs": "0.03",
+                    "key": "color",
+                    "rawArgs": "'blue'",
                     "tag": "Param",
-                    "userMethod": "attack",
-                    "value": 0.03,
+                    "userMethod": "color",
+                    "value": "blue",
                   },
-                  "key": "sustain",
-                  "rawArgs": "0.6",
+                  "key": "attack",
+                  "rawArgs": "0.03",
                   "tag": "Param",
-                  "userMethod": "sustain",
-                  "value": 0.6,
+                  "userMethod": "attack",
+                  "value": 0.03,
                 },
-                "key": "release",
-                "rawArgs": "0.8",
+                "key": "sustain",
+                "rawArgs": "0.6",
                 "tag": "Param",
-                "userMethod": "release",
-                "value": 0.8,
+                "userMethod": "sustain",
+                "value": 0.6,
               },
-              "name": "room",
-              "params": {
-                "room": 1,
-              },
-              "tag": "FX",
-              "userMethod": "room",
+              "key": "release",
+              "rawArgs": "0.8",
+              "tag": "Param",
+              "userMethod": "release",
+              "value": 0.8,
             },
-            "key": "roomsize",
-            "rawArgs": "4",
-            "tag": "Param",
-            "userMethod": "size",
-            "value": 4,
+            "name": "room",
+            "params": {
+              "room": 1,
+            },
+            "tag": "FX",
+            "userMethod": "room",
           },
-          "method": "lpf",
+          "key": "roomsize",
+          "rawArgs": "4",
+          "tag": "Param",
+          "userMethod": "size",
+          "value": 4,
+        },
+        "key": "cutoff",
+        "rawArgs": ""500 200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "500",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       "key": "lpenv",
@@ -2890,76 +3056,96 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-158-setcpm-sh
   "body": {
     "body": {
       "body": {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""500 200"",
-          "inner": {
+        "body": {
+          "body": {
             "body": {
               "body": {
                 "body": {
                   "body": {
                     "body": {
                       "body": {
-                        "body": {
-                          "code": "",
-                          "lang": "strudel",
-                          "tag": "Code",
-                          "via": {
-                            "args": "",
-                            "inner": {
-                              "args": ""Am Am"",
-                              "kind": "chord",
-                              "tag": "Builder",
-                            },
-                            "method": "voicing",
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "args": ""Am Am"",
+                            "kind": "chord",
+                            "tag": "Builder",
                           },
+                          "method": "voicing",
                         },
-                        "key": "s",
-                        "rawArgs": "'gm_celesta:3'",
-                        "tag": "Param",
-                        "userMethod": "sound",
-                        "value": "gm_celesta:3",
                       },
-                      "key": "color",
-                      "rawArgs": "'blue'",
+                      "key": "s",
+                      "rawArgs": "'gm_celesta:3'",
                       "tag": "Param",
-                      "userMethod": "color",
-                      "value": "blue",
+                      "userMethod": "sound",
+                      "value": "gm_celesta:3",
                     },
-                    "key": "attack",
-                    "rawArgs": "0.03",
+                    "key": "color",
+                    "rawArgs": "'blue'",
                     "tag": "Param",
-                    "userMethod": "attack",
-                    "value": 0.03,
+                    "userMethod": "color",
+                    "value": "blue",
                   },
-                  "key": "sustain",
-                  "rawArgs": "0.6",
+                  "key": "attack",
+                  "rawArgs": "0.03",
                   "tag": "Param",
-                  "userMethod": "sustain",
-                  "value": 0.6,
+                  "userMethod": "attack",
+                  "value": 0.03,
                 },
-                "key": "release",
-                "rawArgs": "0.8",
+                "key": "sustain",
+                "rawArgs": "0.6",
                 "tag": "Param",
-                "userMethod": "release",
-                "value": 0.8,
+                "userMethod": "sustain",
+                "value": 0.6,
               },
-              "name": "room",
-              "params": {
-                "room": 1,
-              },
-              "tag": "FX",
-              "userMethod": "room",
+              "key": "release",
+              "rawArgs": "0.8",
+              "tag": "Param",
+              "userMethod": "release",
+              "value": 0.8,
             },
-            "key": "roomsize",
-            "rawArgs": "4",
-            "tag": "Param",
-            "userMethod": "size",
-            "value": 4,
+            "name": "room",
+            "params": {
+              "room": 1,
+            },
+            "tag": "FX",
+            "userMethod": "room",
           },
-          "method": "lpf",
+          "key": "roomsize",
+          "rawArgs": "4",
+          "tag": "Param",
+          "userMethod": "size",
+          "value": 4,
+        },
+        "key": "cutoff",
+        "rawArgs": ""500 200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "500",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       "key": "lpenv",
@@ -2984,76 +3170,96 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-158-setcps-sh
   "body": {
     "body": {
       "body": {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""500 200"",
-          "inner": {
+        "body": {
+          "body": {
             "body": {
               "body": {
                 "body": {
                   "body": {
                     "body": {
                       "body": {
-                        "body": {
-                          "code": "",
-                          "lang": "strudel",
-                          "tag": "Code",
-                          "via": {
-                            "args": "",
-                            "inner": {
-                              "args": ""Am Am"",
-                              "kind": "chord",
-                              "tag": "Builder",
-                            },
-                            "method": "voicing",
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "args": ""Am Am"",
+                            "kind": "chord",
+                            "tag": "Builder",
                           },
+                          "method": "voicing",
                         },
-                        "key": "s",
-                        "rawArgs": "'gm_celesta:3'",
-                        "tag": "Param",
-                        "userMethod": "sound",
-                        "value": "gm_celesta:3",
                       },
-                      "key": "color",
-                      "rawArgs": "'blue'",
+                      "key": "s",
+                      "rawArgs": "'gm_celesta:3'",
                       "tag": "Param",
-                      "userMethod": "color",
-                      "value": "blue",
+                      "userMethod": "sound",
+                      "value": "gm_celesta:3",
                     },
-                    "key": "attack",
-                    "rawArgs": "0.03",
+                    "key": "color",
+                    "rawArgs": "'blue'",
                     "tag": "Param",
-                    "userMethod": "attack",
-                    "value": 0.03,
+                    "userMethod": "color",
+                    "value": "blue",
                   },
-                  "key": "sustain",
-                  "rawArgs": "0.6",
+                  "key": "attack",
+                  "rawArgs": "0.03",
                   "tag": "Param",
-                  "userMethod": "sustain",
-                  "value": 0.6,
+                  "userMethod": "attack",
+                  "value": 0.03,
                 },
-                "key": "release",
-                "rawArgs": "0.8",
+                "key": "sustain",
+                "rawArgs": "0.6",
                 "tag": "Param",
-                "userMethod": "release",
-                "value": 0.8,
+                "userMethod": "sustain",
+                "value": 0.6,
               },
-              "name": "room",
-              "params": {
-                "room": 1,
-              },
-              "tag": "FX",
-              "userMethod": "room",
+              "key": "release",
+              "rawArgs": "0.8",
+              "tag": "Param",
+              "userMethod": "release",
+              "value": 0.8,
             },
-            "key": "roomsize",
-            "rawArgs": "4",
-            "tag": "Param",
-            "userMethod": "size",
-            "value": 4,
+            "name": "room",
+            "params": {
+              "room": 1,
+            },
+            "tag": "FX",
+            "userMethod": "room",
           },
-          "method": "lpf",
+          "key": "roomsize",
+          "rawArgs": "4",
+          "tag": "Param",
+          "userMethod": "size",
+          "value": 4,
+        },
+        "key": "cutoff",
+        "rawArgs": ""500 200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "500",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       "key": "lpenv",
@@ -3078,76 +3284,96 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-158-useRNG-sh
   "body": {
     "body": {
       "body": {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""500 200"",
-          "inner": {
+        "body": {
+          "body": {
             "body": {
               "body": {
                 "body": {
                   "body": {
                     "body": {
                       "body": {
-                        "body": {
-                          "code": "",
-                          "lang": "strudel",
-                          "tag": "Code",
-                          "via": {
-                            "args": "",
-                            "inner": {
-                              "args": ""Am Am"",
-                              "kind": "chord",
-                              "tag": "Builder",
-                            },
-                            "method": "voicing",
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "args": ""Am Am"",
+                            "kind": "chord",
+                            "tag": "Builder",
                           },
+                          "method": "voicing",
                         },
-                        "key": "s",
-                        "rawArgs": "'gm_celesta:3'",
-                        "tag": "Param",
-                        "userMethod": "sound",
-                        "value": "gm_celesta:3",
                       },
-                      "key": "color",
-                      "rawArgs": "'blue'",
+                      "key": "s",
+                      "rawArgs": "'gm_celesta:3'",
                       "tag": "Param",
-                      "userMethod": "color",
-                      "value": "blue",
+                      "userMethod": "sound",
+                      "value": "gm_celesta:3",
                     },
-                    "key": "attack",
-                    "rawArgs": "0.03",
+                    "key": "color",
+                    "rawArgs": "'blue'",
                     "tag": "Param",
-                    "userMethod": "attack",
-                    "value": 0.03,
+                    "userMethod": "color",
+                    "value": "blue",
                   },
-                  "key": "sustain",
-                  "rawArgs": "0.6",
+                  "key": "attack",
+                  "rawArgs": "0.03",
                   "tag": "Param",
-                  "userMethod": "sustain",
-                  "value": 0.6,
+                  "userMethod": "attack",
+                  "value": 0.03,
                 },
-                "key": "release",
-                "rawArgs": "0.8",
+                "key": "sustain",
+                "rawArgs": "0.6",
                 "tag": "Param",
-                "userMethod": "release",
-                "value": 0.8,
+                "userMethod": "sustain",
+                "value": 0.6,
               },
-              "name": "room",
-              "params": {
-                "room": 1,
-              },
-              "tag": "FX",
-              "userMethod": "room",
+              "key": "release",
+              "rawArgs": "0.8",
+              "tag": "Param",
+              "userMethod": "release",
+              "value": 0.8,
             },
-            "key": "roomsize",
-            "rawArgs": "4",
-            "tag": "Param",
-            "userMethod": "size",
-            "value": 4,
+            "name": "room",
+            "params": {
+              "room": 1,
+            },
+            "tag": "FX",
+            "userMethod": "room",
           },
-          "method": "lpf",
+          "key": "roomsize",
+          "rawArgs": "4",
+          "tag": "Param",
+          "userMethod": "size",
+          "value": 4,
+        },
+        "key": "cutoff",
+        "rawArgs": ""500 200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "500",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       "key": "lpenv",
@@ -3390,137 +3616,177 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-901-stack-spa
     "tag": "Stack",
     "tracks": [
       {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""800 1200"",
-          "inner": {
-            "body": {
-              "children": [
-                {
-                  "duration": 1,
-                  "note": "bd",
-                  "params": {
-                    "gain": 1,
-                    "s": "bd",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+        "body": {
+          "body": {
+            "children": [
+              {
+                "duration": 1,
+                "note": "bd",
+                "params": {
+                  "gain": 1,
+                  "s": "bd",
+                  "velocity": 1,
                 },
-                {
-                  "duration": 1,
-                  "note": "bd",
-                  "params": {
-                    "gain": 1,
-                    "s": "bd",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+                "tag": "Play",
+              },
+              {
+                "duration": 1,
+                "note": "bd",
+                "params": {
+                  "gain": 1,
+                  "s": "bd",
+                  "velocity": 1,
                 },
-                {
-                  "duration": 1,
-                  "note": "bd",
-                  "params": {
-                    "gain": 1,
-                    "s": "bd",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+                "tag": "Play",
+              },
+              {
+                "duration": 1,
+                "note": "bd",
+                "params": {
+                  "gain": 1,
+                  "s": "bd",
+                  "velocity": 1,
                 },
-                {
-                  "duration": 1,
-                  "note": "bd",
-                  "params": {
-                    "gain": 1,
-                    "s": "bd",
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+                "tag": "Play",
+              },
+              {
+                "duration": 1,
+                "note": "bd",
+                "params": {
+                  "gain": 1,
+                  "s": "bd",
+                  "velocity": 1,
                 },
-              ],
-              "tag": "Seq",
-            },
-            "key": "bank",
-            "rawArgs": ""AJKPercusyn"",
-            "tag": "Param",
-            "userMethod": "bank",
-            "value": "AJKPercusyn",
+                "tag": "Play",
+              },
+            ],
+            "tag": "Seq",
           },
-          "method": "lpf",
+          "key": "bank",
+          "rawArgs": ""AJKPercusyn"",
+          "tag": "Param",
+          "userMethod": "bank",
+          "value": "AJKPercusyn",
+        },
+        "key": "cutoff",
+        "rawArgs": ""800 1200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "800",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "1200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""600 1400"",
-          "inner": {
-            "body": {
-              "children": [
-                {
-                  "duration": 1,
-                  "tag": "Sleep",
+        "body": {
+          "body": {
+            "children": [
+              {
+                "duration": 1,
+                "tag": "Sleep",
+              },
+              {
+                "duration": 0.25,
+                "note": "6",
+                "params": {
+                  "gain": 1,
+                  "velocity": 1,
                 },
-                {
-                  "duration": 0.25,
-                  "note": "6",
-                  "params": {
-                    "gain": 1,
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+                "tag": "Play",
+              },
+              {
+                "duration": 1,
+                "tag": "Sleep",
+              },
+              {
+                "duration": 0.25,
+                "note": "6",
+                "params": {
+                  "gain": 1,
+                  "velocity": 1,
                 },
-                {
-                  "duration": 1,
-                  "tag": "Sleep",
+                "tag": "Play",
+              },
+              {
+                "duration": 1,
+                "tag": "Sleep",
+              },
+              {
+                "duration": 0.25,
+                "note": "6",
+                "params": {
+                  "gain": 1,
+                  "velocity": 1,
                 },
-                {
-                  "duration": 0.25,
-                  "note": "6",
-                  "params": {
-                    "gain": 1,
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
+                "tag": "Play",
+              },
+              {
+                "duration": 1,
+                "tag": "Sleep",
+              },
+              {
+                "duration": 0.25,
+                "note": "6",
+                "params": {
+                  "gain": 1,
+                  "velocity": 1,
                 },
-                {
-                  "duration": 1,
-                  "tag": "Sleep",
-                },
-                {
-                  "duration": 0.25,
-                  "note": "6",
-                  "params": {
-                    "gain": 1,
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
-                },
-                {
-                  "duration": 1,
-                  "tag": "Sleep",
-                },
-                {
-                  "duration": 0.25,
-                  "note": "6",
-                  "params": {
-                    "gain": 1,
-                    "velocity": 1,
-                  },
-                  "tag": "Play",
-                },
-              ],
-              "tag": "Seq",
-            },
-            "key": "s",
-            "rawArgs": ""gm_agogo"",
-            "tag": "Param",
-            "userMethod": "sound",
-            "value": "gm_agogo",
+                "tag": "Play",
+              },
+            ],
+            "tag": "Seq",
           },
-          "method": "lpf",
+          "key": "s",
+          "rawArgs": ""gm_agogo"",
+          "tag": "Param",
+          "userMethod": "sound",
+          "value": "gm_agogo",
+        },
+        "key": "cutoff",
+        "rawArgs": ""600 1400"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "600",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "1400",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
     ],
@@ -4204,76 +4470,96 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-chord-voicing
   "body": {
     "body": {
       "body": {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": ""500 200"",
-          "inner": {
+        "body": {
+          "body": {
             "body": {
               "body": {
                 "body": {
                   "body": {
                     "body": {
                       "body": {
-                        "body": {
-                          "code": "",
-                          "lang": "strudel",
-                          "tag": "Code",
-                          "via": {
-                            "args": "",
-                            "inner": {
-                              "args": ""Am Am"",
-                              "kind": "chord",
-                              "tag": "Builder",
-                            },
-                            "method": "voicing",
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "args": ""Am Am"",
+                            "kind": "chord",
+                            "tag": "Builder",
                           },
+                          "method": "voicing",
                         },
-                        "key": "s",
-                        "rawArgs": "'gm_celesta:3'",
-                        "tag": "Param",
-                        "userMethod": "sound",
-                        "value": "gm_celesta:3",
                       },
-                      "key": "color",
-                      "rawArgs": "'blue'",
+                      "key": "s",
+                      "rawArgs": "'gm_celesta:3'",
                       "tag": "Param",
-                      "userMethod": "color",
-                      "value": "blue",
+                      "userMethod": "sound",
+                      "value": "gm_celesta:3",
                     },
-                    "key": "attack",
-                    "rawArgs": "0.03",
+                    "key": "color",
+                    "rawArgs": "'blue'",
                     "tag": "Param",
-                    "userMethod": "attack",
-                    "value": 0.03,
+                    "userMethod": "color",
+                    "value": "blue",
                   },
-                  "key": "sustain",
-                  "rawArgs": "0.6",
+                  "key": "attack",
+                  "rawArgs": "0.03",
                   "tag": "Param",
-                  "userMethod": "sustain",
-                  "value": 0.6,
+                  "userMethod": "attack",
+                  "value": 0.03,
                 },
-                "key": "release",
-                "rawArgs": "0.8",
+                "key": "sustain",
+                "rawArgs": "0.6",
                 "tag": "Param",
-                "userMethod": "release",
-                "value": 0.8,
+                "userMethod": "sustain",
+                "value": 0.6,
               },
-              "name": "room",
-              "params": {
-                "room": 1,
-              },
-              "tag": "FX",
-              "userMethod": "room",
+              "key": "release",
+              "rawArgs": "0.8",
+              "tag": "Param",
+              "userMethod": "release",
+              "value": 0.8,
             },
-            "key": "roomsize",
-            "rawArgs": "4",
-            "tag": "Param",
-            "userMethod": "size",
-            "value": 4,
+            "name": "room",
+            "params": {
+              "room": 1,
+            },
+            "tag": "FX",
+            "userMethod": "room",
           },
-          "method": "lpf",
+          "key": "roomsize",
+          "rawArgs": "4",
+          "tag": "Param",
+          "userMethod": "size",
+          "value": 4,
+        },
+        "key": "cutoff",
+        "rawArgs": ""500 200"",
+        "tag": "Param",
+        "userMethod": "lpf",
+        "value": {
+          "children": [
+            {
+              "duration": 0.25,
+              "note": "500",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            {
+              "duration": 0.25,
+              "note": "200",
+              "params": {
+                "gain": 1,
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+          ],
+          "tag": "Seq",
         },
       },
       "key": "lpenv",
@@ -5846,52 +6132,72 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
     "else_": {
       "body": {
         "body": {
-          "code": "",
-          "lang": "strudel",
-          "tag": "Code",
-          "via": {
-            "args": ""<0 .5>"",
-            "inner": {
-              "children": [
-                {
-                  "duration": 1,
-                  "note": "bd",
-                  "params": {
-                    "gain": 1,
-                    "s": "bd",
-                    "velocity": 1,
+          "body": {
+            "children": [
+              {
+                "duration": 1,
+                "note": "bd",
+                "params": {
+                  "gain": 1,
+                  "s": "bd",
+                  "velocity": 1,
+                },
+                "tag": "Play",
+              },
+              {
+                "items": [
+                  {
+                    "duration": 1,
+                    "note": "sd",
+                    "params": {
+                      "gain": 1,
+                      "s": "sd",
+                      "velocity": 1,
+                    },
+                    "tag": "Play",
                   },
-                  "tag": "Play",
-                },
-                {
-                  "items": [
-                    {
-                      "duration": 1,
-                      "note": "sd",
-                      "params": {
-                        "gain": 1,
-                        "s": "sd",
-                        "velocity": 1,
-                      },
-                      "tag": "Play",
+                  {
+                    "duration": 1,
+                    "note": "cp",
+                    "params": {
+                      "gain": 1,
+                      "s": "cp",
+                      "velocity": 1,
                     },
-                    {
-                      "duration": 1,
-                      "note": "cp",
-                      "params": {
-                        "gain": 1,
-                        "s": "cp",
-                        "velocity": 1,
-                      },
-                      "tag": "Play",
-                    },
-                  ],
-                  "tag": "Cycle",
+                    "tag": "Play",
+                  },
+                ],
+                "tag": "Cycle",
+              },
+            ],
+            "tag": "Seq",
+          },
+          "key": "delay",
+          "rawArgs": ""<0 .5>"",
+          "tag": "Param",
+          "userMethod": "delay",
+          "value": {
+            "items": [
+              {
+                "duration": 0.25,
+                "note": "0",
+                "params": {
+                  "gain": 1,
+                  "velocity": 1,
                 },
-              ],
-              "tag": "Seq",
-            },
-            "method": "delay",
+                "tag": "Play",
+              },
+              {
+                "duration": 0.25,
+                "note": ".5",
+                "params": {
+                  "gain": 1,
+                  "velocity": 1,
+                },
+                "tag": "Play",
+              },
+            ],
+            "tag": "Cycle",
           },
         },
         "key": "delaytime",
@@ -5956,52 +6262,72 @@ exports[`strudel.cc parity corpus — structural IR shape > delay parses to a st
       "body": {
         "body": {
           "body": {
-            "code": "",
-            "lang": "strudel",
-            "tag": "Code",
-            "via": {
-              "args": ""<0 .5>"",
-              "inner": {
-                "children": [
-                  {
-                    "duration": 1,
-                    "note": "bd",
-                    "params": {
-                      "gain": 1,
-                      "s": "bd",
-                      "velocity": 1,
+            "body": {
+              "children": [
+                {
+                  "duration": 1,
+                  "note": "bd",
+                  "params": {
+                    "gain": 1,
+                    "s": "bd",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
+                },
+                {
+                  "items": [
+                    {
+                      "duration": 1,
+                      "note": "sd",
+                      "params": {
+                        "gain": 1,
+                        "s": "sd",
+                        "velocity": 1,
+                      },
+                      "tag": "Play",
                     },
-                    "tag": "Play",
-                  },
-                  {
-                    "items": [
-                      {
-                        "duration": 1,
-                        "note": "sd",
-                        "params": {
-                          "gain": 1,
-                          "s": "sd",
-                          "velocity": 1,
-                        },
-                        "tag": "Play",
+                    {
+                      "duration": 1,
+                      "note": "cp",
+                      "params": {
+                        "gain": 1,
+                        "s": "cp",
+                        "velocity": 1,
                       },
-                      {
-                        "duration": 1,
-                        "note": "cp",
-                        "params": {
-                          "gain": 1,
-                          "s": "cp",
-                          "velocity": 1,
-                        },
-                        "tag": "Play",
-                      },
-                    ],
-                    "tag": "Cycle",
+                      "tag": "Play",
+                    },
+                  ],
+                  "tag": "Cycle",
+                },
+              ],
+              "tag": "Seq",
+            },
+            "key": "delay",
+            "rawArgs": ""<0 .5>"",
+            "tag": "Param",
+            "userMethod": "delay",
+            "value": {
+              "items": [
+                {
+                  "duration": 0.25,
+                  "note": "0",
+                  "params": {
+                    "gain": 1,
+                    "velocity": 1,
                   },
-                ],
-                "tag": "Seq",
-              },
-              "method": "delay",
+                  "tag": "Play",
+                },
+                {
+                  "duration": 0.25,
+                  "note": ".5",
+                  "params": {
+                    "gain": 1,
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
+                },
+              ],
+              "tag": "Cycle",
             },
           },
           "key": "delaytime",

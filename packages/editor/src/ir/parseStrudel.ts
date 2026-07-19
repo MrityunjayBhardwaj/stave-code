@@ -2353,6 +2353,20 @@ function applyMethod(
       // FX group — 13 arms after Phase 20-10 migrated `speed` to Param.
       const val = parseFloat(subbedArgs.trim())
       if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange))
+      // #935 — a PATTERN arg (`.room("0.3 0.5")`) is not a number, but most of
+      // these ARE real controls, so hand them to the same registry path an
+      // off-list control takes instead of opaquing. Without this the CURATED
+      // control is the narrower one: `.roomsize("0.3 0.5")` classified while
+      // `.room("0.3 0.5")` went opaque. `reverb` is not a core control
+      // (isControlName=false) so it still opaques here, which is correct.
+      //
+      // The tag differs by ARG SHAPE on purpose: a numeric arg stays FX (its
+      // params are Record<string, number|string> and every FX consumer keeps
+      // working untouched), while a pattern arg becomes Param, the shape that
+      // can actually carry a sub-IR value. Widening FX's value type instead
+      // would move every existing FX node for no gain.
+      const asParam = asControlParam(method, args, baseOffset, ir, callSiteRange)
+      if (asParam) return asParam
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)
     }
 
@@ -2581,26 +2595,8 @@ function applyMethod(
       // unambiguous. `scale` (@strudel/tonal) + `reverb` (webaudio, not a core
       // control) are isControlName=false but stay handled by their curated
       // arms above → they never regress to opaque through this path.
-      if (isControlName(method)) {
-        // Key by the CANONICAL control name, not the token the user typed.
-        // collect maps a param key onto its event field (params.s → evt.s), so
-        // keying an alias by its own spelling (`.sound(...)` → key 'sound')
-        // would leave every `evt.s` consumer blind — a control that LOOKS
-        // modelled in the view but reads as absent downstream (the false-
-        // affordance class). Round-trip is unaffected: toStrudel emits
-        // `userMethod ?? key` (toStrudel.ts:89) and tagMeta carries the user's
-        // token, so `.sound("bd")` re-emits `.sound("bd")`, never `.s("bd")`.
-        const canonical = getControlName(method)
-        // isSampleKey must follow the CANONICAL name too — `sound`'s mini is
-        // sample names, and parseMini keys the wrong field (and the wrong
-        // per-event duration) if it thinks they are note names.
-        const isSampleKey = canonical === 's' || canonical === 'bank'
-        const parsed = parseParamArg(args, isSampleKey, baseOffset)
-        if (parsed) {
-          return IR.param(canonical, parsed.value, args, ir, tagMeta(method, callSiteRange))
-        }
-        // fall through — unmodellable control arg, opaque per PV37
-      }
+      const asParam = asControlParam(method, args, baseOffset, ir, callSiteRange)
+      if (asParam) return asParam
       // Phase 20-04 T-04 / DV-06 (D-03 / P33 / PV37): unrecognised method (or a
       // control with an unmodellable arg) — wrap as opaque Code carrying the
       // call site. PV37 wrap-never-drop; round-trip via toStrudel (D-02);
@@ -2637,6 +2633,44 @@ export function __getParseTransformCallCount(): number {
  * user's full code (PRE-01 precursor — signature-level threading; loc
  * attribution to non-Play nodes is deferred per RESEARCH §2 Subtlety C).
  */
+/**
+ * Classify a chain method as a Param by asking Strudel's OWN control registry
+ * (#928), or null when it is not a control / its arg cannot be modelled.
+ *
+ * Key by the CANONICAL control name, not the token the user typed. `collect`
+ * maps a param key onto its event field (params.s → evt.s), so keying an alias
+ * by its own spelling (`.sound(...)` → key 'sound') would leave every `evt.s`
+ * consumer blind — a control that LOOKS modelled in the view but reads as
+ * absent downstream (the false-affordance class). Round-trip is unaffected:
+ * toStrudel emits `userMethod ?? key` (toStrudel.ts:89) and tagMeta carries the
+ * user's token, so `.sound("bd")` re-emits `.sound("bd")`, never `.s("bd")`.
+ *
+ * isControlName is DISJOINT from every structural transform (verified — 0
+ * collisions), so reaching here with a control name is unambiguous. `scale`
+ * (@strudel/tonal) and `reverb` (webaudio, not a core control) are
+ * isControlName=false and stay with their curated arms.
+ *
+ * Shared by the FX arms and the default arm so the two cannot drift: before
+ * #935 they disagreed about what a pattern argument means.
+ */
+function asControlParam(
+  method: string,
+  args: string,
+  baseOffset: number,
+  ir: PatternIR,
+  callSiteRange: [number, number],
+): PatternIR | null {
+  if (!isControlName(method)) return null
+  const canonical = getControlName(method)
+  // isSampleKey must follow the CANONICAL name too — `sound`'s mini is sample
+  // names, and parseMini keys the wrong field (and the wrong per-event
+  // duration) if it thinks they are note names.
+  const isSampleKey = canonical === 's' || canonical === 'bank'
+  const parsed = parseParamArg(args, isSampleKey, baseOffset)
+  if (!parsed) return null // unmodellable control arg → caller opaques (PV37)
+  return IR.param(canonical, parsed.value, args, ir, tagMeta(method, callSiteRange))
+}
+
 function parseTransform(
   transformStr: string,
   defaultIr: PatternIR,
