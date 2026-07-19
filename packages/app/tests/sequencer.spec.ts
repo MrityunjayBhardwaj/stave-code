@@ -188,11 +188,34 @@ test.describe('Sequencer (#382)', () => {
     ).toBeVisible({ timeout: 5000 })
   })
 
-  test('non-grid pattern falls back to standby', async ({ page }) => {
+  // The standby element is `data-bottom-panel-tab={`${panel}-standby`}` (a
+  // template literal in VisualEditStandby), and the panel is now `pattern`, not
+  // `sequencer`. The old id never matched, so this assertion was 0-vs-1 for ANY
+  // input — it had stopped testing the fallback and was only testing itself.
+  //
+  // The example moved too. `s("bd*<2 3>")` used to be non-griddable; behaviour
+  // projection now bar-expands it into a correct 12-cell grid (2 bars × LCM(2,3):
+  // hits at 0,3 then 6,8,10). What still reaches standby is a pattern with no
+  // discrete onsets at all — a continuous signal has nothing to put in a cell.
+  test('a pattern with no discrete onsets falls back to standby', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note(sine.range(40,80))')
+    const drawer = await openSequencer(page)
+    await expect(drawer.locator('[data-bottom-panel-tab="pattern-standby"]')).toHaveCount(1)
+    await expect(drawer.locator('[data-seq-cell]')).toHaveCount(0)
+  })
+
+  // The other half of the pair: the pattern the case above used to cover is now
+  // editable, and that is the behaviour worth pinning. Without this, a
+  // regression that re-broke bar expansion would only show up as the standby
+  // test going green again — which reads like a pass.
+  test('a bar-varying multiplier bar-expands into a grid (#930)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd*<2 3>")')
     const drawer = await openSequencer(page)
-    await expect(drawer.locator('[data-bottom-panel-tab="sequencer-standby"]')).toHaveCount(1)
+    await expect(drawer.locator('[data-bottom-panel-tab="pattern-standby"]')).toHaveCount(0)
+    // 2 bars × LCM(2,3) = 12 columns; bar 1 fires twice, bar 2 three times.
+    await expect(drawer.locator('[data-seq-cell]')).toHaveCount(12)
   })
 
   // #904 — an underscore inside a sound NAME is not mini-notation syntax.
