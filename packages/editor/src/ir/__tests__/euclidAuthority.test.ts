@@ -100,7 +100,13 @@ describe('bjorklund: the exported distribution IS Strudel"s', () => {
     expect(bjorklund(5, 4)).toEqual([true, true, true, true])
     expect(bjorklund(4, 4)).toEqual([true, true, true, true])
     expect(bjorklund(0, 4)).toEqual([false, false, false, false])
-    expect(bjorklund(-1, 3)).toEqual([false, false, false])
+    // A NEGATIVE k with |k| < n is NOT empty — it is Strudel's INVERSION
+    // (euclid.mjs): (-1,3) plays the 2 steps a euclid 1 leaves out. This line
+    // pinned all-false while the hand parser's tokenizer refused negative
+    // pulses outright, so the case was never exercised; #943 unified the two
+    // euclid helpers onto the authority, which inverts. Asserting all-false
+    // here contradicted this file's own thesis (draw what Strudel plays).
+    expect(bjorklund(-1, 3)).toEqual([false, true, true])
     expect(bjorklund(3, 0)).toEqual([])
     expect(bjorklund(3, -2)).toEqual([])
   })
