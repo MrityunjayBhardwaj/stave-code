@@ -258,10 +258,13 @@ describe('parseMini', () => {
       }
     })
 
-    it('malformed (only one arg) falls through to plain atom', () => {
+    it('malformed (only one arg) is opaque, not a fabricated atom', () => {
       const tree = parseMini('bd(3)', true)
-      // The euclid token is rejected (needs 2+ args), atom stays as-is.
-      expect(tree.tag).toBe('Play')
+      // krill — the grammar authority — REJECTS a euclid with one arg, so
+      // `s("bd(3)")` throws in Strudel too: it never plays. The hand parser
+      // dropped the euclid token and kept a `Play bd` that no audio matched;
+      // #943 degrades to the opaque Code fallback instead of inventing a note.
+      expect(tree.tag).toBe('Code')
     })
 
     it('combines with repeat: bd(3,8)*2 wraps in Fast', () => {
@@ -298,10 +301,12 @@ describe('parseMini', () => {
       expect(tree.tag).toBe('Seq') // not Stack
     })
 
-    it('empty polymeter is a no-op', () => {
+    it('empty polymeter is opaque (krill rejects it)', () => {
       const tree = parseMini('{}')
-      // Implementation may emit Pure or omit nodes entirely.
-      expect(['Pure']).toContain(tree.tag)
+      // krill rejects an empty polymeter, so this is not valid mini at all.
+      // The hand parser emitted Pure (a silent no-op); #943 keeps the source
+      // visible as opaque Code rather than swallowing syntax Strudel refuses.
+      expect(['Pure', 'Code']).toContain(tree.tag)
     })
 
     it('polymetric inside a sequence parses as one element', () => {

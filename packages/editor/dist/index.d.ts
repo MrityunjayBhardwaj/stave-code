@@ -281,36 +281,40 @@ declare function patternToJSON(ir: PatternIR, pretty?: boolean): string;
 declare function patternFromJSON(json: string): PatternIR;
 
 /**
- * parseMini — mini-notation string → PatternIR.
+ * parseMini — mini-notation string → PatternIR, via the krill grammar.
  *
- * Parses Strudel's mini-notation DSL (the string inside note("...") or s("...")).
- * Recursive descent parser that handles the Phase F subset plus the
- * Tier 2 mini-notation features (Phase 19-02):
- *   - Sequences: "c4 e4 g4"
- *   - Rests: "c4 ~ e4"
- *   - Cycles (alternation): "<c4 e4 g4>"
- *   - Sub-sequences: "[c4 e4] g4"
- *   - Repeat: "c4*2"
- *   - Sometimes: "c4?"
- *   - Slice (sample index): "bd:2"             — Tier 2
- *   - Elongation (step weight): "c4@2 e4"      — Tier 2
- *   - Euclidean: "bd(3,8)" / "bd(3,8,2)"        — Tier 2
- *   - Polymetric: "{c4 e4, bd hh sd}"          — Tier 2
+ * The mini-notation grammar is STRUDEL'S, so we ask Strudel for it: this file
+ * lowers `@strudel/mini`'s krill AST into PatternIR instead of re-tokenizing
+ * the string ourselves. The hand-rolled tokenizer + byte-position operator
+ * scanner it replaced (#943) was a second oracle of a grammar Strudel ships
+ * complete and located — every "gap" in it was drift, never a missing feature,
+ * and it shipped real bugs (a wrong bjorklund distribution, #907; `!`/`/`/`_`
+ * silently mis-parsed). The notation layer (`visualEdit/notation/parse.ts`)
+ * already parses the same mini via krill; this brings the IR world up to it.
  *
- * Tier 2 features lower into existing IR nodes — no new tags. Slice
- * lands in Play.params, elongation scales Play.duration, Euclidean
- * expands to a flat Seq via Bjorklund, polymetric becomes Stack.
+ * WHAT STAYS OURS is the LOWERING — krill's uniform ops model (`weight`/`reps`/
+ * `ops[]` on every element) is lowered into PatternIR's structural tags:
+ *   - `bd(3,8)`  → a flat Seq of Play/Sleep (euclid expanded via `bjorklund`)
+ *   - `a*2`/`a/2`→ Fast / Slow      · `a?` → Choice      · `a@2` → Elongate
+ *   - `a!3`      → three sibling Plays (replicate)        · `a:3` → slice param
+ *   - `[a b]`    → Seq   · `[a,b]` → Stack (chord)
+ *   - `<a b>`    → Cycle · `{a,b}` → Stack (polymeter)
+ * Transform SEMANTICS are never modeled here — they run in Strudel; we only
+ * shape the note tree and thread source `loc` back to it.
+ *
+ * loc: krill's element spans TILE the source (they include padding), so we
+ * DERIVE tight per-token spans from the reliable anchors — an atom's
+ * `location_.start` plus its `source_.length`, an op amount atom's start — never
+ * copy krill's tiling `location_` end. `loc-fidelity.test.ts` (which slices each
+ * node's `[start,end]` out of the source) is the gate that pins this.
  */
 
 /**
  * Parse a mini-notation string. Returns Pure for empty input. Never throws.
  *
- * `baseOffset` — character offset of `input[0]` within the user's full
- * source code. Lets the parser attach `loc` to Play nodes so downstream
- * consumers (Inspector click-to-source, Monaco highlighting) can map
- * an event back to the exact span of code that produced it. Caller is
- * responsible for the offset; parseStrudel computes it from the
- * regex match index of the quoted-string content.
+ * `baseOffset` — character offset of `input[0]` within the user's full source
+ * code. Lets nodes carry `loc` so downstream consumers (Inspector
+ * click-to-source, Monaco highlighting) map an event back to its source span.
  */
 declare function parseMini(input: string, isSample?: boolean, baseOffset?: number): PatternIR;
 
