@@ -16,14 +16,42 @@
  *      arrow; a change there alters the emitted STRING while leaving every tag
  *      count identical. Counting nodes cannot see a change in how a node is
  *      spelled.
- *   3. SEMANTICS DO NOT MOVE EITHER. The degraded arrow form is hap-equivalent
- *      to the idiomatic one (pinned below with the eval oracle), so even a
- *      behavioural test would stay green. Only the emitted string shows it.
+ *   3. SEMANTICS DO NOT MOVE EITHER. The two arrow forms are hap-equivalent
+ *      (pinned below with the eval oracle), so even a behavioural test would
+ *      stay green. Only the emitted string shows a change.
  *
  * So the assertions here are deliberately on the EMITTED STRING and the
  * COLLECTED EVENT PARAMS, not on tags. Each pin says whether the collapse is
  * expected to PRESERVE it or deliberately FLIP it — a pin whose intent is
  * unstated is just a tripwire, and the next person deletes it.
+ *
+ * ---------------------------------------------------------------------------
+ * SCOPE — what these pins are, and what they are NOT
+ * ---------------------------------------------------------------------------
+ * Read before treating a failure here as a user-facing bug. It is not one.
+ * Both surfaces this file pins are INTERNAL:
+ *
+ *   - `toStrudel` has ZERO production callers. The two modules that could call
+ *     it document that they deliberately do not (`visualEdit/writeback.ts:11`,
+ *     `visualEdit/arrange/serialize.ts:7`): write-back does span surgery on
+ *     TEXT precisely to avoid this whole-statement regenerator, and
+ *     `dist/index.d.ts:156` states the reason outright — "NEVER calls
+ *     `toStrudel` (no fidelity tax)". So neither arrow spelling ever reaches a
+ *     user's document. `toStrudel` IS the oracle for several test suites, and
+ *     that is the reason to pin it.
+ *   - The split param keys (`params.lpf` vs `params.cutoff`) are read in
+ *     production by NOTHING except the IR Inspector's `Object.keys()` debug
+ *     views (`IRInspectorPanel.tsx:469`, `IRInspectorChrome.ts:29`). Pitch
+ *     resolution reads only `note`/`n`/`freq` (`musicalTimeline/pitch.ts`).
+ *     Audio gets its `room`/`cutoff`/`delay` from Strudel's own eval, never
+ *     from our IR.
+ *
+ * The collapse these pins guard is therefore INTERNAL COHERENCE and drift
+ * removal — retiring the last hand-maintained mirror of Strudel's control
+ * vocabulary — not a fix for anything a user can currently observe. That is a
+ * good reason to do it, and a bad reason to rush it ahead of defects that ARE
+ * user-visible. Stating the scope here so the next reader prices it correctly
+ * rather than inferring urgency from the density of assertions.
  *
  * Everything asserted here was verified against unmodified `f6c5049f` before
  * being written down. Nothing here is transcribed from a design document.
@@ -92,21 +120,23 @@ async function haps(code: string, cycles = 4): Promise<string[]> {
 // ---------------------------------------------------------------------------
 // 1. extractTransform — the FX-only privileged path (toStrudel.ts:347)
 // ---------------------------------------------------------------------------
-describe('extractTransform: FX is the exception, not the rule', () => {
+describe('extractTransform: the FX arrow form is the minority path', () => {
   // COLLAPSE WILL FLIP THIS. `x => x.room(0.8)` is reachable ONLY because a
   // numeric-arg control still tags FX. Once room/delay/lpf become Param, this
   // branch has no real users left and the emission becomes the `() =>` form
   // below. That flip is EXPECTED and correct-to-make; it must be DECLARED.
-  it('an FX body emits the idiomatic single-argument arrow', () => {
+  it('an FX body emits the single-argument arrow form', () => {
     expect(emit('s("bd hh").every(4, x => x.room(0.8))'))
       .toBe('s("bd hh").every(4, x => x.room(0.8))')
   })
 
   // COLLAPSE PRESERVES THESE. They already take the generic fallback today —
-  // which is the point: the degraded form is the MAJORITY behaviour, covering
+  // which is the point: the `() =>` form is the MAJORITY behaviour, covering
   // all 18 transform-arrow bodies in the corpus (add 12, speed 5, rev 1, ply 1).
   // The fallback emits a ZERO-ARGUMENT arrow that inlines a duplicate copy of
-  // the receiver. It discards its input entirely.
+  // the receiver, discarding its input entirely — which is verbose but, per the
+  // hap pins below, plays identically. Calling it "the norm" is not a value
+  // judgement either way; it is simply which path most bodies take.
   it.each([
     // Every corpus transform-arrow shape, with the tag it carries. The tag is
     // ASSERTED, not just documented — otherwise this table would keep passing
@@ -115,16 +145,16 @@ describe('extractTransform: FX is the exception, not the rule', () => {
     ['s("bd hh").every(4, x => x.add(12))',  's("bd hh").every(4, () => s("bd hh").add(12))',  'Code'],
     ['s("bd hh").every(4, x => x.rev())',    's("bd hh").every(4, () => s("bd hh").rev())',    'Code'],
     ['s("bd hh").every(4, x => x.ply(2))',   's("bd hh").every(4, () => s("bd hh").ply(2))',   'Ply'],
-  ])('a non-FX body (%s) degrades to a 0-arg arrow duplicating the receiver', (src, expected, tag) => {
+  ])('a non-FX body (%s) emits a 0-arg arrow duplicating the receiver', (src, expected, tag) => {
     expect(emit(src)).toBe(expected)
     expect(nodesWithTag(src, tag)).not.toHaveLength(0)
   })
 
   // The #935 path: a PATTERN arg on a curated control already tags Param, so a
-  // control that emits the idiomatic form with a number emits the degraded form
+  // control that emits the `x =>` form with a number emits the `() =>` form
   // with a pattern. Same control, same position — two spellings, decided purely
-  // by arg shape. This is the defect the collapse resolves by making BOTH take
-  // the same path.
+  // by arg shape. This is the incoherence the collapse resolves by making BOTH
+  // take the same path.
   it('one control emits two different arrow forms depending on arg shape', () => {
     expect(emit('s("bd hh").every(4, x => x.room(0.8))'))
       .toBe('s("bd hh").every(4, x => x.room(0.8))')
@@ -141,14 +171,15 @@ describe('extractTransform: FX is the exception, not the rule', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 2. The degraded arrow is hap-equivalent — why no behavioural test catches it
+// 2. Both arrow forms are hap-equivalent — why no behavioural test catches it
 // ---------------------------------------------------------------------------
-describe('the degraded arrow plays identically (so only the string shows it)', () => {
-  // This pin is the REASON the string assertions above must exist. The 0-arg
-  // arrow ignores its argument and rebuilds the receiver — and the receiver is
-  // exactly what it rebuilds, so the music is unchanged. Stating this stops the
-  // defect being over-claimed as "broken code": it is a FIDELITY defect, not a
-  // correctness one.
+describe('both arrow forms play identically (so only the string shows a change)', () => {
+  // This pin is the REASON the string assertions above must exist, and the
+  // reason not to over-claim them. The 0-arg arrow ignores its argument and
+  // rebuilds the receiver — and the receiver is exactly what it rebuilds, so
+  // the music is unchanged. The two forms are verbosely different and
+  // semantically identical. Since `toStrudel` has no production callers
+  // (see SCOPE above), neither spelling reaches a user's file either.
   //
   // COLLAPSE MUST PRESERVE THIS. If a later change makes these diverge, the
   // duplication has turned into wrong music and this test is the alarm.
@@ -158,7 +189,7 @@ describe('the degraded arrow plays identically (so only the string shows it)', (
     's("bd hh").fast(2).every(4, x => x.room("0.3 0.5"))',
   ])('%s round-trips to hap-identical code', async (src) => {
     const out = emit(src)
-    expect(out).not.toBe(src)          // it really did degrade
+    expect(out).not.toBe(src)          // the spelling really did change
     expect(await haps(out)).toEqual(await haps(src))
   })
 })
@@ -214,11 +245,17 @@ describe('controls the corpus cannot see', () => {
 // 4. One control, two param keys — the defect at the consumer-facing level
 // ---------------------------------------------------------------------------
 describe('the same control files under different keys by arg shape', () => {
-  // The sharpest statement of what the collapse fixes. Tag counts show a node
-  // moving between tags; THIS shows a downstream reader of `params.lpf` finding
-  // nothing when the user wrote a pattern. The canonical key (`cutoff`) is the
-  // one #928 established, so the pattern arm is already correct and the NUMERIC
-  // arm is the one out of step.
+  // Tag counts show a node moving between tags; THIS shows a reader of
+  // `params.lpf` finding nothing when the user wrote a pattern. The canonical
+  // key (`cutoff`) is the one #928 established, so the pattern arm is already
+  // correct and the NUMERIC arm is the one out of step.
+  //
+  // Scope, so this is not read as bigger than it is: the only production
+  // readers of these keys are the IR Inspector's `Object.keys()` debug views.
+  // Audio never reads them — Strudel's own eval supplies the real values. So
+  // this is an internal-coherence defect, and the honest reason to fix it is
+  // that ONE control answering to TWO keys will mislead the next person who
+  // reasons about the IR, not that anything currently sounds or looks wrong.
   //
   // COLLAPSE WILL FLIP THE NUMERIC ROW: after it, both spellings should file
   // under the canonical key. That is the whole point — declare it here.
