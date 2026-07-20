@@ -88,6 +88,16 @@ describe('stack arms are addressable (#950)', () => {
     expect([...starts].sort((a, b) => (a as number) - (b as number))).toEqual(starts)
   })
 
+  it('a chain on the stack does not widen an arm into its neighbour', () => {
+    // `.gain(...)` applies to the whole stack, so its `loc` must not enter any
+    // arm's subtree — if it did, both arms would extend to the chain call and
+    // their spans would overlap, breaking the ordering containment relies on.
+    for (const code of ['$: s("bd, cp").gain(0.5)', '$: s("bd, cp").slow(2).room(0.3)']) {
+      const spans = trackAnchors(pipeline(code)).map(([, start]) => start)
+      expect(spans).toEqual([6, 10])
+    }
+  })
+
   it('real `$:` statements still anchor on the STATEMENT, byte-identically', () => {
     // The pre-existing path: two statements, anchored at their `$:` offsets
     // (0 and 11), NOT at their minis (6 and 17). Unchanged by the fix.
