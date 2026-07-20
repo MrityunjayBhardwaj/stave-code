@@ -1,7 +1,8 @@
 # Predicate audit — `ir/parseStrudel.ts`
 
-Every anchored regular expression in `parseStrudel.ts`, the question it answers, and the
-system that owns the right answer.
+Every regular expression in `parseStrudel.ts`, the question it answers, and the system that
+owns the right answer. 42 are anchored predicates (categories A and B); 7 are unanchored
+(category D), two of which are predicates as well.
 
 This file is a **census, not a plan**. It exists so that "find the next parser bug" becomes
 "close a finite list". Nothing here changes behaviour, and no entry is an instruction to
@@ -32,9 +33,13 @@ the controlled before/after: 512 lines with a hand-rolled tokenizer, 397 lines a
 regexes after it was rebuilt on krill.
 
 (The five zeroes are a negative result, so they carry a control arm: the same query finds
-anchored regexes in fifteen other `.ts` files in this package, and `parseMini.ts` retains two
-*unanchored* single-character scans — `/[0-9.]/` and `/\s/` at `parseMini.ts:302,377` — which
-locate a boundary rather than decide what a token means.)
+anchored regexes in 42 other `.ts` files under `packages/editor/src`, and `parseMini.ts`
+retains two *unanchored* single-character scans — `/[0-9.]/` and `/\s/` at
+`parseMini.ts:302,377` — which locate a boundary rather than decide what a token means.)
+
+**Line numbers throughout this file are indicative and drift.** They are navigation aids as of
+the commit that added this document; the gate deliberately keys on regex *source*, never on
+position, so a moved predicate does not read as a new one.
 
 ### The failure mode is silence
 
@@ -303,19 +308,59 @@ Known-incomplete: **observed** — a setup head absent from the list opaques the
 
 ---
 
-## Category C — transcriptions that are not regexes
+## Category D — unanchored regexes
 
-Out of the gate's scope (it only sees anchored regular expressions), recorded here so the
+An anchored regex decides what a whole token *means*; an unanchored one usually just locates a
+boundary. That distinction is real, but it is a judgement, and leaving it to the gate would
+mean the gate quietly deciding what counts as a predicate. So the census covers **every** regex
+literal in the file and this category holds the seven that are not anchored — five of them
+genuinely scans, two of them predicates that the anchored-only reading would have missed.
+
+**D1 · "which characters are JavaScript's arithmetic operators?" — 1 site** (`ARITH_SPLIT:194`)
+
+Owner: acorn (`BinaryExpression`); the operands already delegate to `Number` via
+`isNumericLiteral`. **Transcribed.** This one is a predicate despite being unanchored — it
+decides the operator set for the enumerated-arithmetic arm.
+
+Known-incomplete: **reasoned** — the four operators `/ * + -` only, so `%`, `**`, `<<` and
+parenthesised sub-expressions are not this grammar. The surrounding comment states that as a
+deliberate closed grammar rather than an oversight, which is the right way to record it.
+
+**D2 · "where does a block comment end?" — 1 site** (`splitTopLevelStatements:535`)
+
+Owner: acorn (comment ranges). **Transcribed.** Pairs with A7; same known-incomplete shape —
+`/*` inside a string literal is treated as a comment opener.
+
+**D3 · character scans — 5 sites** (`:615`, `:859`, `:1261`, `:3072`, `:3121`)
+
+`/\s/`, `/\S/`, `/[a-zA-Z0-9_$]/`. These locate a boundary rather than decide what a token
+means, which is the same role the two survivors in `parseMini.ts` play after its rebuild. No
+owner, nothing to delegate — listed only so that "seven unanchored" is accounted for rather
+than waved past.
+
+```regex
+1x  /(?<=[\d.])[ \t]*[/*+\-][ \t]*/
+1x  /\/\*[\s\S]*?\*\//g
+2x  /\s/
+1x  /\S/
+2x  /[a-zA-Z0-9_$]/
+```
+
+---
+
+## Category E — transcriptions that are not regexes at all
+
+Outside the gate's reach entirely — it can only see regex literals. Recorded here so this
 audit is not read as complete when it is only complete for one syntactic form. These are the
-five curated sets already enumerated in the issue:
+curated sets enumerated in the issue, with their sites verified rather than quoted:
 
 | set | site | owner | status |
 |---|---|---|---|
-| curated FX arms | `applyMethod` switch, ~`:2376` | `controls.mjs` | partly routed via `asControlParam` (#935) |
-| curated Param arms | `applyMethod` switch, ~`:2566` | `controls.mjs` | partly routed (#928 fallback) |
+| curated FX arms | `applyMethod` switch, from `:2417` | `controls.mjs` | partly routed via `asControlParam:2733` (#935) |
+| curated Param arms | `applyMethod` switch, from `:2614` | `controls.mjs` | partly routed via the registry fallback (#928) |
+| `CHAIN_ROOT_RECOGNISER` | `:1039` | `signal.mjs` | transcribed, but re-derived by a drift gate (#953) |
 | `SIDE_EFFECT_CALL_RE` list | `:676` | `repl.mjs` | transcribed (also B5) |
-| `CHAIN_ROOT_RECOGNISER` | module scope | `signal.mjs` | re-derived by a drift gate (#953) |
-| `RESERVED_LABEL_IDENTS` | module scope | — | ours; no external owner |
+| `RESERVED_LABEL_IDENTS` | `:1016` | — | ours; no external owner, so nothing to delegate |
 
 `classifyLiteralRhs`'s numeric arm is **closed**: all three copies of `/^-?\d+(\.\d+)?$/` were
 replaced by `isNumericLiteral`, which asks `Number` (#958). Confirmed still closed by
@@ -330,7 +375,10 @@ observation — `const n = .5` and `const n = 4` now produce the same IR shape.
 | A — JavaScript syntax | acorn | 26 |
 | B — Strudel vocabulary | `controls.mjs` / `signal.mjs` / krill | 16 |
 | **total anchored regexes** | | **42** |
-| distinct sources | | 33 |
+| D — unanchored (2 predicates + 5 scans) | acorn / — | 7 |
+| **total regex literals** | | **49** |
+| distinct sources | | 38 |
 
-Of the 42, **zero** currently delegate. Eleven of the incompleteness claims above are observed
-against a control arm; the rest are reasoned from the expression and marked as such.
+Of the 42 anchored predicates, **zero** currently delegate. Eleven of the incompleteness claims
+above are observed against a control arm; the rest are reasoned from the expression and marked
+as such.

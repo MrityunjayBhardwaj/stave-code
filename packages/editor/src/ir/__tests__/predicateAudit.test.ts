@@ -5,7 +5,8 @@
  * `parseStrudel.ts` decides things about JavaScript syntax and about Strudel's
  * vocabulary by hand, in anchored regular expressions. Every other module in
  * the parse path asks an authority instead and has zero. The audit document
- * lists all 42, what each one decides, and who owns the right answer — so that
+ * lists all 49 regex literals in the file — the 42 anchored predicates grouped by
+ * the question each decides and who owns the answer, plus the 7 unanchored — so that
  * "find the next parser bug" is a finite list rather than a search.
  *
  * A document like that decays the moment someone adds a regex, and a decayed
@@ -31,30 +32,33 @@ const IR_DIR = join(__dirname, '..')
 const SOURCE = join(IR_DIR, 'parseStrudel.ts')
 const AUDIT = join(IR_DIR, 'PREDICATE-AUDIT.md')
 
-/** A regex is "anchored" when it decides the shape of a WHOLE token — `^` at
- *  the start or `$` at the end. Unanchored expressions (a `/\s/` scan, a
- *  `.replace` over free text) locate a boundary rather than decide what
- *  something means, which is the distinction the audit turns on. */
-function isAnchored(source: string): boolean {
-  const body = source.replace(/^\//, '').replace(/\/[gimsuy]*$/, '')
-  return body.startsWith('^') || body.endsWith('$')
-}
-
-/** Every anchored regex literal in the source, in file order, duplicates kept. */
-function censusFromSource(): string[] {
-  const text = readFileSync(SOURCE, 'utf8')
-  const sf = ts.createSourceFile(SOURCE, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+/**
+ * Every regex literal in a file, in order, duplicates kept.
+ *
+ * The census is deliberately NOT filtered to anchored expressions. An anchored
+ * regex decides what a whole token means and an unanchored one usually only
+ * locates a boundary — a real distinction, and the one the audit is organised
+ * around — but it is a judgement, and a gate that applied it would be deciding
+ * for itself what counts as a predicate. It missed `ARITH_SPLIT` (which
+ * transcribes JavaScript's operator set without an anchor) on the first pass
+ * here, which is the argument. So the gate counts everything and the document
+ * does the classifying, in the open, where it can be disagreed with.
+ */
+function regexLiteralsIn(path: string): string[] {
+  const text = readFileSync(path, 'utf8')
+  const sf = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
   const found: string[] = []
   const walk = (node: ts.Node): void => {
     if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
-      const src = (node as ts.RegularExpressionLiteral).getText(sf)
-      if (isAnchored(src)) found.push(src)
+      found.push((node as ts.RegularExpressionLiteral).getText(sf))
     }
     ts.forEachChild(node, walk)
   }
   walk(sf)
   return found
 }
+
+const censusFromSource = (): string[] => regexLiteralsIn(SOURCE)
 
 /** Every `<count>x  <regex>` line inside a ```regex fence in the audit. */
 function censusFromAudit(): string[] {
@@ -84,7 +88,7 @@ describe('predicate audit (#959)', () => {
   const actual = censusFromSource()
   const declared = censusFromAudit()
 
-  it('every anchored regex in parseStrudel.ts has an audit entry', () => {
+  it('every regex literal in parseStrudel.ts has an audit entry', () => {
     const have = tally(declared)
     const missing: string[] = []
     for (const [source, count] of tally(actual)) {
@@ -116,8 +120,8 @@ describe('predicate audit (#959)', () => {
 
   it('the audit states the total it actually lists', () => {
     const text = readFileSync(AUDIT, 'utf8')
-    const stated = text.match(/\*\*total anchored regexes\*\*\s*\|\s*\|\s*\*\*(\d+)\*\*/)
-    expect(stated, 'the totals table lost its **total anchored regexes** row').toBeTruthy()
+    const stated = text.match(/\*\*total regex literals\*\*\s*\|\s*\|\s*\*\*(\d+)\*\*/)
+    expect(stated, 'the totals table lost its **total regex literals** row').toBeTruthy()
     expect(Number((stated as RegExpMatchArray)[1])).toBe(actual.length)
   })
 
@@ -135,25 +139,16 @@ describe('predicate audit (#959)', () => {
       '../visualEdit/chunkDetect.ts',
       '../visualEdit/arrange/parse.ts',
     ]
-    const scan = (rel: string): number => {
-      const path = join(IR_DIR, rel)
-      const text = readFileSync(path, 'utf8')
-      const sf = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-      let n = 0
-      const walk = (node: ts.Node): void => {
-        if (
-          node.kind === ts.SyntaxKind.RegularExpressionLiteral &&
-          isAnchored((node as ts.RegularExpressionLiteral).getText(sf))
-        )
-          n += 1
-        ts.forEachChild(node, walk)
-      }
-      walk(sf)
-      return n
+    /** ANCHORED only here: the claim is about predicates, and `parseMini.ts`
+     *  legitimately keeps two unanchored character scans after its rebuild. */
+    const isAnchored = (source: string): boolean => {
+      const body = source.replace(/^\//, '').replace(/\/[gimsuy]*$/, '')
+      return body.startsWith('^') || body.endsWith('$')
     }
-    expect(scan('parseStrudel.ts'), 'control arm: the scan must find the known 42').toBe(
-      actual.length,
-    )
+    const scan = (rel: string): number =>
+      regexLiteralsIn(join(IR_DIR, rel)).filter(isAnchored).length
+
+    expect(scan('parseStrudel.ts'), 'control arm: the scan must find the known 42').toBe(42)
     for (const rel of delegating) expect(`${rel}: ${scan(rel)}`).toBe(`${rel}: 0`)
   })
 })
