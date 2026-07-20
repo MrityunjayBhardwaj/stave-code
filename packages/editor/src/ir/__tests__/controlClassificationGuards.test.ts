@@ -108,13 +108,16 @@ describe('extractTransform: FX is the exception, not the rule', () => {
   // The fallback emits a ZERO-ARGUMENT arrow that inlines a duplicate copy of
   // the receiver. It discards its input entirely.
   it.each([
-    // arg shape → tag, all four already degraded on f6c5049f
-    ['s("bd hh").every(4, x => x.speed(2))',  's("bd hh").every(4, () => s("bd hh").speed(2))',  'Param'],
-    ['s("bd hh").every(4, x => x.add(12))',   's("bd hh").every(4, () => s("bd hh").add(12))',   'Code'],
-    ['s("bd hh").every(4, x => x.rev())',     's("bd hh").every(4, () => s("bd hh").rev())',     'Code'],
-    ['s("bd hh").every(4, x => x.ply(2))',    's("bd hh").every(4, () => s("bd hh").ply(2))',    'Ply'],
-  ])('a non-FX body (%s) degrades to a 0-arg arrow duplicating the receiver', (src, expected) => {
+    // Every corpus transform-arrow shape, with the tag it carries. The tag is
+    // ASSERTED, not just documented — otherwise this table would keep passing
+    // if a body silently changed tag while its emission happened to match.
+    ['s("bd hh").every(4, x => x.speed(2))', 's("bd hh").every(4, () => s("bd hh").speed(2))', 'Param'],
+    ['s("bd hh").every(4, x => x.add(12))',  's("bd hh").every(4, () => s("bd hh").add(12))',  'Code'],
+    ['s("bd hh").every(4, x => x.rev())',    's("bd hh").every(4, () => s("bd hh").rev())',    'Code'],
+    ['s("bd hh").every(4, x => x.ply(2))',   's("bd hh").every(4, () => s("bd hh").ply(2))',   'Ply'],
+  ])('a non-FX body (%s) degrades to a 0-arg arrow duplicating the receiver', (src, expected, tag) => {
     expect(emit(src)).toBe(expected)
+    expect(nodesWithTag(src, tag)).not.toHaveLength(0)
   })
 
   // The #935 path: a PATTERN arg on a curated control already tags Param, so a
@@ -191,6 +194,20 @@ describe('controls the corpus cannot see', () => {
     expect(nodesWithTag('s("bd").hpf(400)', 'FX')).toHaveLength(1)
     expect(nodesWithTag('s("bd").hpf("200 400")', 'Param')).toHaveLength(1)
   })
+
+  // `scale` is the OTHER non-registry control (#944 names it beside `reverb`),
+  // and the two do NOT behave alike — which is the reason to pin both rather
+  // than treat "non-core" as one case. `reverb` is a curated FX arm, so its
+  // pattern form opaques; `scale` is a curated Param arm, so it classifies.
+  // A collapse that reasons about "the non-core controls" as a single group
+  // gets one of them wrong, and neither is in the corpus to catch it.
+  it('scale is also non-core, but curated as Param rather than FX', () => {
+    expect(isControlName('scale')).toBe(false)
+    expect(nodesWithTag('s("bd").scale("C:major")', 'FX')).toHaveLength(0)
+    const [node] = nodesWithTag('s("bd").scale("C:major")', 'Param')
+    expect(node.key).toBe('scale')
+    expect(firstEventParams('s("bd").scale("C:major")')).toMatchObject({ scale: 'C:major' })
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -213,6 +230,33 @@ describe('the same control files under different keys by arg shape', () => {
   it('hpf: numeric files under hpf, pattern files under the canonical hcutoff', () => {
     expect(firstEventParams('s("bd").hpf(400)')).toMatchObject({ hpf: 400 })
     expect(nodesWithTag('s("bd").hpf("200 400")', 'Param')[0].key).toBe('hcutoff')
+  })
+
+  // `delay` is the flagship case and a DIFFERENT shape from lpf/hpf: it splits
+  // the TAG without splitting the KEY, because `getControlName('delay')` is
+  // already `delay`. In the corpus it appears as 16 FX plus 3 Param — one
+  // control, two tags, decided purely by how the user wrote the argument.
+  //
+  // This is why the collapse is worth doing and also why "did the key move?"
+  // is not a sufficient check: for delay the key never moves, so only the tag
+  // shows the defect, while for lpf only the key shows it. Pin both shapes.
+  it('delay splits the tag but not the key', () => {
+    expect(nodesWithTag('s("bd").delay(0.5)', 'FX')).toHaveLength(1)
+    expect(nodesWithTag('s("bd").delay("0.3 0.5")', 'Param')).toHaveLength(1)
+    expect(firstEventParams('s("bd").delay(0.5)')).toMatchObject({ delay: 0.5 })
+    expect(firstEventParams('s("bd").delay("0.3 0.5")')).toMatchObject({ delay: '0.3' })
+  })
+
+  // The remaining curated arms, pinned as a set so the collapse cannot quietly
+  // drop one. All four are real registry controls that key to themselves, so a
+  // correct collapse leaves every assertion here untouched.
+  it.each([
+    ['crush', 4], ['begin', 0.2], ['resonance', 10], ['cut', 1],
+  ])('%s classifies numerically and keys to itself', (method, value) => {
+    const src = `s("bd").${method}(${value})`
+    expect(nodesWithTag(src, 'FX')).toHaveLength(1)
+    expect(isControlName(method)).toBe(true)
+    expect(firstEventParams(src)).toMatchObject({ [method]: value })
   })
 
   // `userMethod` is what keeps the round-trip byte-identical while the key is
