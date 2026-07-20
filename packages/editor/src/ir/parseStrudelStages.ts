@@ -256,6 +256,51 @@ function parseRootWithChainMeta(expr: string, baseOffset: number): PatternIR {
  *
  * D-06.c: output has NO orphan unresolvedChain/chainOffset on any node.
  */
+/**
+ * The source span an arm of a mini-expanded stack occupies (#950).
+ *
+ * Used as the arm's `Track` anchor when it has no `$:` statement of its own.
+ * It is the MINIMUM start and MAXIMUM end over the arm's whole subtree, not the
+ * top node's own `loc` — two shapes make the top node the wrong answer:
+ *
+ *   - a combinator's `loc` covers its OPERATOR, not its content: `bd*2` gives
+ *     `Fast` at [8,10] while the `bd` it plays is at [6,8]. Anchoring on 8 puts
+ *     the anchor AFTER the haps it must catch, so they fall through to the
+ *     previous arm — the very fold this fixes.
+ *   - a multi-element arm has no `loc` at all: `~ sd` is a `Seq` with
+ *     `loc: undefined` over located children.
+ *
+ * Taking the extremes of the subtree is the same reasoning `timelineMarks.ts`
+ * already applies when it picks the minimum start for the outer combinator.
+ * Returns `undefined` when nothing in the subtree is located, so a genuinely
+ * unlocated arm stays unanchored rather than claiming a wrong span.
+ */
+function armSourceSpan(node: PatternIR): { start: number; end: number } | undefined {
+  let start: number | undefined
+  let end: number | undefined
+  const visit = (n: unknown): void => {
+    if (!n || typeof n !== 'object') return
+    const rec = n as Record<string, unknown>
+    const locs = rec.loc as Array<{ start?: number; end?: number }> | undefined
+    if (Array.isArray(locs)) {
+      for (const l of locs) {
+        if (typeof l?.start === 'number' && Number.isFinite(l.start) && (start === undefined || l.start < start)) {
+          start = l.start
+        }
+        if (typeof l?.end === 'number' && Number.isFinite(l.end) && (end === undefined || l.end > end)) {
+          end = l.end
+        }
+      }
+    }
+    for (const v of Object.values(rec)) {
+      if (Array.isArray(v)) v.forEach(visit)
+      else if (v && typeof v === 'object') visit(v)
+    }
+  }
+  visit(node)
+  return start !== undefined && end !== undefined ? { start, end } : undefined
+}
+
 export function runChainAppliedStage(input: PatternIR): PatternIR {
   if (input.tag === 'Stack' && input.userMethod === undefined) {
     // Multi-track from MINI-EXPANDED — applyChain per track, then
@@ -277,10 +322,33 @@ export function runChainAppliedStage(input: PatternIR): PatternIR {
       ...input.tracks.map((t, i) => {
         const tMeta = t as unknown as { dollarStart?: number; dollarEnd?: number; trackLabel?: string }
         const applied = applyOnTrack(t)
+        // #950 — the Track wrapper's `loc` is what makes the arm ADDRESSABLE
+        // downstream: the song timeline builds its containment-anchor map from
+        // these wrappers (`declaredTrackAnchors`) and attributes every evaluated
+        // hap to the lane whose anchor is the largest one ≤ the hap's own `loc`.
+        //
+        // `dollarStart`/`dollarEnd` only exist for arms that came from a real
+        // `$:`/`name:` STATEMENT. Arms produced by expanding a top-level comma
+        // inside ONE statement (`$: s("bd, cp")`) have neither, so they used to
+        // get NO loc at all — the anchor map came out EMPTY, every hap fell back
+        // to the engine trackId (identical for all arms of one statement), and
+        // all marks piled onto the first arm while every later arm rendered as an
+        // empty lane. The lanes were partitioned by IR structure and the marks by
+        // statement, and for this shape the two disagree.
+        //
+        // The arm's OWN source span is the missing key, and it is already on the
+        // applied node: `bd` at 6 and `cp` at 10 for `s("bd, cp")`. Anchoring on
+        // it makes "largest anchor ≤ hap start" partition the mini string BY ARM,
+        // which is the same containment rule the statement case already uses —
+        // one granularity finer. Statement locs still win when present, so the
+        // real-`$:` path is byte-identical.
+        const armLoc = armSourceSpan(applied)
         const meta =
           tMeta.dollarStart !== undefined && tMeta.dollarEnd !== undefined
             ? { loc: [{ start: tMeta.dollarStart, end: tMeta.dollarEnd }] }
-            : undefined
+            : armLoc !== undefined
+              ? { loc: [armLoc] }
+              : undefined
         // #671/#737 — a real `name:` label becomes the trackId (mirrors
         // parseStrudel.ts:876); `$:` (bare label '$', incl. a muted `_$:`)
         // keeps the synthetic `d{i+1}`. The `_` mute marker is stripped so

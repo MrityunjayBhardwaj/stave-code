@@ -3374,13 +3374,40 @@ function parseRootWithChainMeta(expr, baseOffset) {
   return rootIR;
 }
 __name(parseRootWithChainMeta, "parseRootWithChainMeta");
+function armSourceSpan(node) {
+  let start;
+  let end;
+  const visit = /* @__PURE__ */ __name((n) => {
+    if (!n || typeof n !== "object") return;
+    const rec = n;
+    const locs = rec.loc;
+    if (Array.isArray(locs)) {
+      for (const l of locs) {
+        if (typeof l?.start === "number" && Number.isFinite(l.start) && (start === void 0 || l.start < start)) {
+          start = l.start;
+        }
+        if (typeof l?.end === "number" && Number.isFinite(l.end) && (end === void 0 || l.end > end)) {
+          end = l.end;
+        }
+      }
+    }
+    for (const v of Object.values(rec)) {
+      if (Array.isArray(v)) v.forEach(visit);
+      else if (v && typeof v === "object") visit(v);
+    }
+  }, "visit");
+  visit(node);
+  return start !== void 0 && end !== void 0 ? { start, end } : void 0;
+}
+__name(armSourceSpan, "armSourceSpan");
 function runChainAppliedStage(input) {
   if (input.tag === "Stack" && input.userMethod === void 0) {
     return IR.stack(
       ...input.tracks.map((t, i) => {
         const tMeta = t;
         const applied = applyOnTrack(t);
-        const meta = tMeta.dollarStart !== void 0 && tMeta.dollarEnd !== void 0 ? { loc: [{ start: tMeta.dollarStart, end: tMeta.dollarEnd }] } : void 0;
+        const armLoc = armSourceSpan(applied);
+        const meta = tMeta.dollarStart !== void 0 && tMeta.dollarEnd !== void 0 ? { loc: [{ start: tMeta.dollarStart, end: tMeta.dollarEnd }] } : armLoc !== void 0 ? { loc: [armLoc] } : void 0;
         const trackId = trackIdFromLabel(tMeta.trackLabel, i);
         return IR.track(trackId, applied, meta);
       })
