@@ -160,16 +160,34 @@ export type PatternIR =
   // via === undefined` opaque fence above is byte-IDENTICAL (these are
   // NEW members — zero edit to any existing member or the fence).
   | { tag: 'Signal'
-      kind: 'sine' | 'cosine' | 'saw' | 'isaw' | 'tri' | 'square' | 'pulse'
+      // #953 — every kind here is an export of @strudel/core/signal.mjs that is
+      // a `Pattern` INSTANCE, verified by `chainRootDrift.test.ts` rather than
+      // transcribed. `pulse` was removed: it is not a Strudel identifier at all
+      // (it is a superdough oscillator waveform, reachable only as `s("pulse")`),
+      // so recognising it drew a structured lane for code that would throw.
+      kind: 'sine' | 'cosine' | 'saw' | 'isaw' | 'tri' | 'square'
           | 'perlin' | 'berlin' | 'time'
           | 'rand' | 'rand2' | 'brand'
           | 'sine2' | 'cosine2' | 'saw2' | 'isaw2' | 'tri2' | 'square2'
           | 'mousex' | 'mousey'
+          // #953 — Strudel exports BOTH spellings of the mouse signals; we had
+          // only the lowercase pair, so `mouseX` opaqued.
+          | 'mouseX' | 'mouseY'
+          | 'itri' | 'itri2'
+          | 'cyclesPer' | 'per' | 'perCycle' | 'perx'
       args?: string                                // RAW source slice for arg-taking signals — round-trip byte-fidelity; absent for 0-arity signals
       loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
   | { tag: 'Builder'
+      // #953 — each kind below (except the two Wave-C entries noted) is a
+      // signal.mjs export that is root-capable (`fn(1) instanceof Pattern`) AND
+      // absent from `Pattern.prototype`. That second condition is load-bearing:
+      // `choose`, `degrade`, `keyDown` and `undegrade` are ALSO root-capable but
+      // are chain METHODS, and admitting them as roots would be a new bug. The
+      // export list over-approximates; the prototype check is the filter.
       kind: 'run' | 'irand' | 'binary' | 'binaryN' | 'binaryL' | 'binaryNL'
-          | 'chord' | 'arrange'                    // 20-18 Wave C — `chord`/`arrange` GROUNDED at @strudel/core@1.2.6 controls.mjs:2130 + pattern.mjs:1469-1473 (ref/GROUND_TRUTH_SIGNAL_MJS.md §2/§3). args-RAW-only; `body` ABSENT (OPAQUE sublanguage / JS-tuple-array; recursion outside matcher competence — never inferred).
+          | 'brandBy' | 'chooseCycles' | 'chooseIn' | 'chooseOut'
+          | 'randL' | 'randcat' | 'randrun' | 'signal' | 'steady'
+          | 'chord' | 'arrange'                  // 20-18 Wave C — `chord`/`arrange` GROUNDED at @strudel/core@1.2.6 controls.mjs:2130 + pattern.mjs:1469-1473 (ref/GROUND_TRUTH_SIGNAL_MJS.md §2/§3). args-RAW-only; `body` ABSENT (OPAQUE sublanguage / JS-tuple-array; recursion outside matcher competence — never inferred).
       args: string                                 // RAW (untrimmed) arg slice — code-invariance (the Code.via.args convention)
       body?: PatternIR                             // OPTIONAL — only for builders whose arg is a recursable pattern (no current kind populates this — `chord`/`arrange` are grounded args-RAW-only per Ground Truth §5)
       loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
