@@ -347,15 +347,17 @@ describe('jux pan nodes are not a control classification', () => {
   })
 
   // The contrast that gives the discriminator its meaning — and it is sharper
-  // than `userMethod` alone. `pan` is NOT one of the curated arms, so a
-  // user-written `.pan(0.5)` already takes the registry path and tags Param.
-  // User pan and synthetic pan are therefore already on DIFFERENT TAGS today.
+  // than `userMethod` alone. The curated method switch has TWO groups, and
+  // `pan` sits in the Param one (`parseStrudel.ts:2575`, beside s/n/note/scale/
+  // speed), not the FX one (`:2376`, room/delay/lpf…). So a user-written
+  // `.pan(0.5)` tags Param while jux's synthetic pan tags FX: the two are
+  // already on DIFFERENT TAGS today, by construction rather than by accident.
   //
   // This is what makes the eventual tag deletion tractable: once the collapse
   // empties FX of real controls, `FX` denotes ONLY jux's internal marker — it
   // stops being a classification and becomes a private flag, which is the
   // honest thing to rename it to.
-  it('a user-written pan is not FX at all — it takes the registry path', () => {
+  it('a user-written pan is not FX — it is a curated Param arm', () => {
     expect(nodesWithTag('s("bd").pan(0.5)', 'FX')).toHaveLength(0)
     const [userPan] = nodesWithTag('s("bd").pan(0.5)', 'Param')
     expect(userPan.key).toBe('pan')
