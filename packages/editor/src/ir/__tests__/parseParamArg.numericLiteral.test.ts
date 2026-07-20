@@ -26,7 +26,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import type { PatternIR } from '../PatternIR'
-import { parseStrudel } from '../parseStrudel'
+import { parseStrudel, classifyLiteralRhs, isNumericLiteral } from '../parseStrudel'
 import { toStrudel } from '../toStrudel'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -110,6 +110,55 @@ describe('a non-number is still refused', () => {
     const params = nodes(`s("bd").gain(${arg})`, 'Param')
     expect(params.filter((p) => typeof p.value === 'number')).toHaveLength(0)
   })
+})
+
+describe('all THREE sites of the transcribed token, not just the reported one', () => {
+  // The report was `.gain(.8)`. The same regex was transcribed in three places,
+  // so fixing only the reported site would have left two identical bugs in the
+  // same file — which is exactly what the first pass of this fix did. These
+  // pins exist so the class stays closed, not just the instance.
+
+  // SITE 2 — classifyLiteralRhs (`:205`). A binding whose RHS is a literal is
+  // substitutable; one that is not bails the WHOLE binding map, so the entire
+  // program falls back to bare Code even when the binding is unreferenced.
+  // `const beat = .5` hit that.
+  it.each(['0.5', '.5', '-.5', '5.', '1e-3', '+.5'])
+    ('classifyLiteralRhs accepts the numeric literal %s', (rhs) => {
+      expect(classifyLiteralRhs(rhs)).not.toBeNull()
+    })
+
+  it.each(['bpm/2', 'foo(2)', '(1+2)/3', '2**3', 'x', ''])
+    ('classifyLiteralRhs still refuses %s', (rhs) => {
+      expect(classifyLiteralRhs(rhs)).toBeNull()
+    })
+
+  // The arithmetic arm now validates OPERANDS through the shared helper rather
+  // than embedding a second copy of the number token, so leading decimals work
+  // there too — and the grammar stays closed for the same reason as before.
+  it.each(['172/4', '.5*2', '-0.5 + 1', '1/8', '2 * .5 * 4'])
+    ('classifyLiteralRhs accepts the enumerated arithmetic %s', (rhs) => {
+      expect(classifyLiteralRhs(rhs)).not.toBeNull()
+    })
+
+  // `raw` is spliced byte-verbatim — a matcher, never an interpreter.
+  it('arithmetic is spliced verbatim, never computed', () => {
+    expect(classifyLiteralRhs('172/4')?.via.raw).toBe('172/4')
+  })
+
+  // SITE 3 — the bare numeric element of a `.pick([...])` list (`:2910`).
+  it('a leading-decimal element in a pick list becomes a Play, not a drop', () => {
+    const ir = parseStrudel('note("0 1").pick([.5, 1])')
+    const plays = walk(ir).filter((n: any) => n.tag === 'Play')
+    expect(plays.some((p: any) => String(p.note) === '.5')).toBe(true)
+  })
+})
+
+describe('the helper is the single answer', () => {
+  it.each(['.5', '5.', '+5', '-.5', '1e-3', '0x10', '0', '-0'])
+    ('%s is a numeric literal', (t) => expect(isNumericLiteral(t)).toBe(true))
+
+  it.each(['', '   ', '5abc', '1/8', '1 2', 'vol', 'Infinity', 'NaN', '.', '-'])
+    ('%s is not', (t) => expect(isNumericLiteral(t)).toBe(false))
 })
 
 describe('the quoted forms are unaffected', () => {

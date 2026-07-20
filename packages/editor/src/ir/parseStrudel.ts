@@ -103,7 +103,7 @@ export const __test_wrapAsOpaque = wrapAsOpaque
  *
  * STRICT scope (the matcher line — LOCKED per CONTEXT D-02 CORRECTION
  * 2026-05-19): ONLY bare literals match:
- *   - number:               `^-?\d+(\.\d+)?$`
+ *   - number:               any JS numeric literal (`isNumericLiteral`)
  *   - plain double-quoted:  `^"[^"]*"$`
  *   - plain single-quoted:  `^'[^']*'$`
  *   - enumerated arithmetic: `^NUM(WS op WS NUM)+$` where op ∈ {/ * + -}
@@ -150,25 +150,66 @@ export const __test_wrapAsOpaque = wrapAsOpaque
  * Module-level consts so they compile once AND give the P68 dist/ grep a
  * stable literal anchor (`ARITH_RHS`). NUM is the existing number token;
  * ARITH_RHS requires AT LEAST ONE operator (a lone number already matches
- * the existing `^-?\d+(\.\d+)?$` arm). Operators are EXACTLY `/ * + -`;
+ * the existing bare-number arm). Operators are EXACTLY `/ * + -`;
  * parens / calls / idents are structurally impossible to match (no `(`,
  * no letters) → graceful `null`.
  */
-const NUM = String.raw`-?\d+(?:\.\d+)?`
-const ARITH_RHS = new RegExp(`^${NUM}(?:[ \\t]*[/*+\\-][ \\t]*${NUM})+$`)
+/**
+ * Is this token a JS numeric literal? (#957)
+ *
+ * THE SINGLE ANSWER. This question was transcribed as `/^-?\d+(\.\d+)?$/` in
+ * THREE separate places, and that transcription rejects `.5` — so `.gain(.8)`
+ * opaqued, `const beat = .5` never classified as a literal binding, and a bare
+ * `.5` in a `.pick([...])` list failed to wrap. Fixing one site left the other
+ * two live; the duplication IS the bug, so the fix is one function.
+ *
+ * We do not describe JS's number grammar, we ask JS. `Number` accepts every
+ * literal form (`.5`, `5.`, `+5`, `1e-3`, `0x10`) and returns NaN for anything
+ * that is not one — expressions, identifiers, `5abc`. Two guards: `Number('')`
+ * and `Number(' ')` are 0 rather than NaN, and `isFinite` keeps `Infinity`/
+ * `NaN` spellings out of fields the IR serialises as JSON.
+ */
+export function isNumericLiteral(token: string): boolean {
+  const t = token.trim()
+  return t !== '' && Number.isFinite(Number(t))
+}
+
+/**
+ * Phase 20-22 D-02 — the enumerated-arithmetic grammar, operand-delegated.
+ *
+ * Splits on the four operators and asks `isNumericLiteral` about each operand,
+ * instead of embedding a second copy of the number token in a bigger regex.
+ * The lookbehind is what keeps a SIGN attached to its operand: a `-` or `+`
+ * only ends an operand when a digit or `.` precedes it, so `-0.5` and the
+ * exponent in `1e-3` stay whole while `0.5-2` splits.
+ *
+ * The grammar stays CLOSED, which is the point of this arm (the P70 / #140
+ * γ-4 interpreter trap): no parens, no calls, no identifiers. Those now fail
+ * because an operand fails `isNumericLiteral`, not because a regex could not
+ * spell them — `(1+2)/3` splits to `(1`, `2)/3`; `bpm/2` never splits at all
+ * and is rejected as a single non-numeric operand; `2**3` splits to `2`, `*3`.
+ * Still a matcher, never an interpreter: `via.raw` is spliced byte-verbatim
+ * and `172/4` is never computed to `43`.
+ */
+const ARITH_SPLIT = /(?<=[\d.])[ \t]*[/*+\-][ \t]*/
+
+function isEnumeratedArithmetic(token: string): boolean {
+  const parts = token.split(ARITH_SPLIT)
+  return parts.length > 1 && parts.every(isNumericLiteral)
+}
 
 export function classifyLiteralRhs(
   rhs: string,
 ): { tag: 'Code'; code: string; lang: 'strudel'; via: { literal: true; raw: string } } | null {
   const t = rhs.trim()
-  const isNum = /^-?\d+(\.\d+)?$/.test(t)
+  const isNum = isNumericLiteral(t)
   const isDq = /^"[^"]*"$/.test(t)
   const isSq = /^'[^']*'$/.test(t)
   // Phase 20-22 D-02: the enumerated-arithmetic arm. Same `{literal:true;
   // raw}` node shape (no new union arm → PV52 obligation not newly
   // triggered). `raw` = the trimmed source VERBATIM (matcher, not
   // interpreter — we never evaluate `172/4` to `43`).
-  const isArith = ARITH_RHS.test(t)
+  const isArith = isEnumeratedArithmetic(t)
   if (!(isNum || isDq || isSq || isArith)) return null
   return { tag: 'Code', code: t, lang: 'strudel', via: { literal: true, raw: t } }
 }
@@ -2783,34 +2824,14 @@ function parseParamArg(
   argsOffsetAbs: number,
 ): { value: string | number | PatternIR } | null {
   const trimmed = args.trim()
-  // 1. literal-number — ASK JAVASCRIPT, never transcribe its grammar (#957).
-  //
-  // This was `/^-?\d+(\.\d+)?$/`, which requires a digit BEFORE the decimal
-  // point. `.5` did not match, so `.gain(.8)` — ordinary Strudel shorthand —
-  // failed to classify and the whole call wrapped as opaque Code. It reached
-  // every control routed through here, curated or registry; the 13 curated FX
-  // arms only looked healthy because their `parseFloat` fallback happened to
-  // accept `.5` and re-tagged the node FX, masking the defect for exactly the
-  // controls most often written that way. 91 leading-decimal args across 13
-  // corpus files were affected.
-  //
-  // Same lexical blind spot #943 fixed one layer down (a leading decimal in
-  // MINI-notation read `.5` as `5`). Two independently hand-rolled parsers,
-  // the same wrong assumption about how a number may be spelled — so the fix
-  // is to stop hand-rolling and delegate to the language that owns the
-  // grammar. `Number` accepts every JS numeric literal form (`.5`, `5.`, `+5`,
-  // `1e-3`, `0x10`) and rejects everything else.
-  //
-  // Still a strict LITERAL test, deliberately: `Number` returns NaN for
-  // `"5abc"`, `"1/8"`, `"1 2"` and bare identifiers, so an expression or a
-  // bound name still falls through to the paths that handle it. The two
-  // guards matter — `Number('')` and `Number(' ')` are 0, not NaN, and
-  // `isFinite` keeps `Infinity`/`NaN` spellings out of a field the IR
-  // serialises as JSON.
-  if (trimmed !== '') {
-    const asNumber = Number(trimmed)
-    if (Number.isFinite(asNumber)) return { value: asNumber }
-  }
+  // 1. literal-number — via the shared `isNumericLiteral` (#957), which is the
+  //    ONE place this question is answered. The transcribed regex that used to
+  //    live here rejected `.5`, so `.gain(.8)` — ordinary Strudel shorthand —
+  //    opaqued. It reached every control routed through here, curated or
+  //    registry; the curated FX arms only looked healthy because their
+  //    `parseFloat` fallback accepted `.5` and re-tagged the node FX, masking
+  //    the defect for exactly the controls most often written that way.
+  if (isNumericLiteral(trimmed)) return { value: Number(trimmed) }
   // 2. literal-string (identifier-only — no spaces, no mini-syntax).
   //     #659 — single quotes accepted alongside double (`.s('square')`).
   const strMatch =
@@ -2883,8 +2904,10 @@ function parseArrayLiteralElement(
     return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix, undefined, bindings)
   }
 
-  // Bare numeric literal: wrap in note(...) so it parses as a Play.
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+  // Bare numeric literal: wrap in note(...) so it parses as a Play. Third and
+  // last site of the transcribed number token (#957) — `.pick([.5, 1])` used
+  // to drop the `.5` element here for the same reason `.gain(.8)` opaqued.
+  if (isNumericLiteral(trimmed)) {
     const wrapped = `${receiverContext}("${trimmed}")`
     const wrapperPrefix = receiverContext.length + 1 + 1  // note( + opening quote
     return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix, undefined, bindings)
