@@ -2249,7 +2249,11 @@ var CHAIN_ROOT_RECOGNISER = /* @__PURE__ */ new Map([
   ["isaw", { tag: "Signal", kind: "isaw" }],
   ["tri", { tag: "Signal", kind: "tri" }],
   ["square", { tag: "Signal", kind: "square" }],
-  ["pulse", { tag: "Signal", kind: "pulse" }],
+  // #953 — `pulse` was here and is GONE. It is not exported by signal.mjs, not
+  // in pattern.mjs, and not a control: it does not exist in Strudel as an
+  // identifier. It is a superdough oscillator WAVEFORM, reachable only as
+  // `s("pulse")`. Recognising it drew a structured lane for code Strudel would
+  // refuse to run. Do not re-add without an export to point at.
   ["perlin", { tag: "Signal", kind: "perlin" }],
   ["berlin", { tag: "Signal", kind: "berlin" }],
   ["time", { tag: "Signal", kind: "time" }],
@@ -2264,6 +2268,18 @@ var CHAIN_ROOT_RECOGNISER = /* @__PURE__ */ new Map([
   ["square2", { tag: "Signal", kind: "square2" }],
   ["mousex", { tag: "Signal", kind: "mousex" }],
   ["mousey", { tag: "Signal", kind: "mousey" }],
+  // #953 — Signal roots the map had drifted past. Each is a signal.mjs export
+  // that is a `Pattern` INSTANCE; `chainRootDrift.test.ts` re-derives this set
+  // from the module, so a future Strudel release cannot silently outgrow it.
+  // Strudel exports BOTH mouse spellings — we had only the lowercase pair.
+  ["mouseX", { tag: "Signal", kind: "mouseX" }],
+  ["mouseY", { tag: "Signal", kind: "mouseY" }],
+  ["itri", { tag: "Signal", kind: "itri" }],
+  ["itri2", { tag: "Signal", kind: "itri2" }],
+  ["cyclesPer", { tag: "Signal", kind: "cyclesPer" }],
+  ["per", { tag: "Signal", kind: "per" }],
+  ["perCycle", { tag: "Signal", kind: "perCycle" }],
+  ["perx", { tag: "Signal", kind: "perx" }],
   // Discrete Builder roots (6 Wave-B closed-set + 2 Wave-C GROUNDED additions)
   ["run", { tag: "Builder", kind: "run" }],
   ["irand", { tag: "Builder", kind: "irand" }],
@@ -2271,6 +2287,23 @@ var CHAIN_ROOT_RECOGNISER = /* @__PURE__ */ new Map([
   ["binaryN", { tag: "Builder", kind: "binaryN" }],
   ["binaryL", { tag: "Builder", kind: "binaryL" }],
   ["binaryNL", { tag: "Builder", kind: "binaryNL" }],
+  // #953 — Builder roots the map had drifted past: signal.mjs exports that are
+  // root-capable (`fn(1) instanceof Pattern`) AND absent from
+  // `Pattern.prototype`. That second condition is what keeps `choose`,
+  // `degrade`, `keyDown` and `undegrade` OUT — they are root-capable too, but
+  // they are chain METHODS, and admitting them as roots would be a new bug.
+  // Args ride the existing raw-slice path (the `chord`/`arrange` contract):
+  // args RAW, no `body` — so a lambda-taking root like `signal` stays opaque
+  // inside while still getting a lane instead of vanishing.
+  ["brandBy", { tag: "Builder", kind: "brandBy" }],
+  ["chooseCycles", { tag: "Builder", kind: "chooseCycles" }],
+  ["chooseIn", { tag: "Builder", kind: "chooseIn" }],
+  ["chooseOut", { tag: "Builder", kind: "chooseOut" }],
+  ["randL", { tag: "Builder", kind: "randL" }],
+  ["randcat", { tag: "Builder", kind: "randcat" }],
+  ["randrun", { tag: "Builder", kind: "randrun" }],
+  ["signal", { tag: "Builder", kind: "signal" }],
+  ["steady", { tag: "Builder", kind: "steady" }],
   // 20-18 Wave C — `chord`/`arrange` GROUNDED against real source
   // (~/.anvideck/projects/struCode/ref/GROUND_TRUTH_SIGNAL_MJS.md §2/§3):
   //   `chord` → @strudel/core@1.2.6 controls.mjs:2130 (registerControl) →

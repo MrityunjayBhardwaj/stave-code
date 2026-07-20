@@ -357,7 +357,7 @@ type PatternIR = {
     };
 } | {
     tag: 'Signal';
-    kind: 'sine' | 'cosine' | 'saw' | 'isaw' | 'tri' | 'square' | 'pulse' | 'perlin' | 'berlin' | 'time' | 'rand' | 'rand2' | 'brand' | 'sine2' | 'cosine2' | 'saw2' | 'isaw2' | 'tri2' | 'square2' | 'mousex' | 'mousey';
+    kind: 'sine' | 'cosine' | 'saw' | 'isaw' | 'tri' | 'square' | 'perlin' | 'berlin' | 'time' | 'rand' | 'rand2' | 'brand' | 'sine2' | 'cosine2' | 'saw2' | 'isaw2' | 'tri2' | 'square2' | 'mousex' | 'mousey' | 'mouseX' | 'mouseY' | 'itri' | 'itri2' | 'cyclesPer' | 'per' | 'perCycle' | 'perx';
     args?: string;
     loc?: SourceLocation[];
     userMethod?: string;
@@ -365,7 +365,7 @@ type PatternIR = {
     chainOffset?: number;
 } | {
     tag: 'Builder';
-    kind: 'run' | 'irand' | 'binary' | 'binaryN' | 'binaryL' | 'binaryNL' | 'chord' | 'arrange';
+    kind: 'run' | 'irand' | 'binary' | 'binaryN' | 'binaryL' | 'binaryNL' | 'brandBy' | 'chooseCycles' | 'chooseIn' | 'chooseOut' | 'randL' | 'randcat' | 'randrun' | 'signal' | 'steady' | 'chord' | 'arrange';
     args: string;
     body?: PatternIR;
     loc?: SourceLocation[];
