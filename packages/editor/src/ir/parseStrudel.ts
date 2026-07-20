@@ -2783,9 +2783,33 @@ function parseParamArg(
   argsOffsetAbs: number,
 ): { value: string | number | PatternIR } | null {
   const trimmed = args.trim()
-  // 1. literal-number
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
-    return { value: parseFloat(trimmed) }
+  // 1. literal-number — ASK JAVASCRIPT, never transcribe its grammar (#957).
+  //
+  // This was `/^-?\d+(\.\d+)?$/`, which requires a digit BEFORE the decimal
+  // point. `.5` did not match, so `.gain(.8)` — ordinary Strudel shorthand —
+  // failed to classify and the whole call wrapped as opaque Code. It reached
+  // every control routed through here, curated or registry; the 13 curated FX
+  // arms only looked healthy because their `parseFloat` fallback happened to
+  // accept `.5` and re-tagged the node FX, masking the defect for exactly the
+  // controls most often written that way. 91 leading-decimal args across 13
+  // corpus files were affected.
+  //
+  // Same lexical blind spot #943 fixed one layer down (a leading decimal in
+  // MINI-notation read `.5` as `5`). Two independently hand-rolled parsers,
+  // the same wrong assumption about how a number may be spelled — so the fix
+  // is to stop hand-rolling and delegate to the language that owns the
+  // grammar. `Number` accepts every JS numeric literal form (`.5`, `5.`, `+5`,
+  // `1e-3`, `0x10`) and rejects everything else.
+  //
+  // Still a strict LITERAL test, deliberately: `Number` returns NaN for
+  // `"5abc"`, `"1/8"`, `"1 2"` and bare identifiers, so an expression or a
+  // bound name still falls through to the paths that handle it. The two
+  // guards matter — `Number('')` and `Number(' ')` are 0, not NaN, and
+  // `isFinite` keeps `Infinity`/`NaN` spellings out of a field the IR
+  // serialises as JSON.
+  if (trimmed !== '') {
+    const asNumber = Number(trimmed)
+    if (Number.isFinite(asNumber)) return { value: asNumber }
   }
   // 2. literal-string (identifier-only — no spaces, no mini-syntax).
   //     #659 — single quotes accepted alongside double (`.s('square')`).

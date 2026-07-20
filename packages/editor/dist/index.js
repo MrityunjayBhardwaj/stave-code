@@ -2952,8 +2952,9 @@ function parseTransform(transformStr, defaultIr, baseOffset = 0, bindings) {
 __name(parseTransform, "parseTransform");
 function parseParamArg(args, isSampleKey, argsOffsetAbs) {
   const trimmed = args.trim();
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
-    return { value: parseFloat(trimmed) };
+  if (trimmed !== "") {
+    const asNumber = Number(trimmed);
+    if (Number.isFinite(asNumber)) return { value: asNumber };
   }
   const strMatch = trimmed.match(/^"([a-zA-Z0-9#_:-]*?)"$/) ?? trimmed.match(/^'([a-zA-Z0-9#_:-]*?)'$/);
   if (strMatch) return { value: strMatch[1] };
