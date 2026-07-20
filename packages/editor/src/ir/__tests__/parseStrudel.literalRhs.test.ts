@@ -32,11 +32,25 @@ import { classifyLiteralRhs } from '../parseStrudel'
 describe('classifyLiteralRhs — STRICT literal recognition (20-17 G3 / D-02 CORRECTION)', () => {
   describe('positives — bare literals classify and round-trip via.raw byte-equal', () => {
     const positives: Array<{ rhs: string; expectedRaw: string }> = [
-      // Numbers — `^-?\d+(\.\d+)?$`
+      // Numbers — ANY JS numeric literal (`isNumericLiteral`, #957). The token
+      // is no longer transcribed as a regex, so every spelling JS allows is
+      // admitted and `via.raw` still splices byte-verbatim.
       { rhs: '4', expectedRaw: '4' },
       { rhs: '-3', expectedRaw: '-3' },
       { rhs: '0.5', expectedRaw: '0.5' },
       { rhs: '-12.75', expectedRaw: '-12.75' },
+      // Leading decimal — the #957 regression. `const beat = .5` previously
+      // returned null, which bails the WHOLE binding map and bare-Codes the
+      // program even when the binding is unreferenced.
+      { rhs: '.5', expectedRaw: '.5' },
+      { rhs: '-.5', expectedRaw: '-.5' },
+      { rhs: '5.', expectedRaw: '5.' },
+      // Hex / exponent — moved up from the negatives list, where they were
+      // described as cases "the strict regex rejects". That described the
+      // implementation, not a requirement.
+      { rhs: '0x10', expectedRaw: '0x10' },
+      { rhs: '1e3', expectedRaw: '1e3' },
+      { rhs: '1e-3', expectedRaw: '1e-3' },
       // Plain double-quoted — `^"[^"]*"$`
       { rhs: '"bd"', expectedRaw: '"bd"' },
       // Plain single-quoted — `^'[^']*'$`
@@ -123,9 +137,15 @@ describe('classifyLiteralRhs — STRICT literal recognition (20-17 G3 / D-02 COR
       '   ',
       // Object literal
       '{a:1}',
-      // Hex / binary / float-notation edge cases that the strict regex rejects
-      '0x10',
-      '1e3',
+      // NOTE (#957): `0x10` and `1e3` used to be listed here, described as
+      // "edge cases that the strict regex rejects". That was a statement about
+      // the IMPLEMENTATION, not a requirement — and it was the transcribed
+      // number token's blind spot, the same one that made `.gain(.8)` opaque.
+      // They are genuine JS numeric literals, `via.raw` is spliced BYTE-VERBATIM
+      // (never evaluated), and Strudel evaluates the spliced text natively:
+      // `const n = 0x10 … .slow(n)` now yields a structured Slow node where it
+      // previously bailed the whole binding map and bare-Coded the program.
+      // They moved to the positives list. Verified end-to-end, not assumed.
       // Concatenated strings that LOOK plain but contain interior unescaped quotes
       '"a"b"',
       // Single-quote with interior unescaped single quote

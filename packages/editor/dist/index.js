@@ -1879,14 +1879,23 @@ function wrapAsOpaque(inner, method, args, callSiteRange) {
   };
 }
 __name(wrapAsOpaque, "wrapAsOpaque");
-var NUM = String.raw`-?\d+(?:\.\d+)?`;
-var ARITH_RHS = new RegExp(`^${NUM}(?:[ \\t]*[/*+\\-][ \\t]*${NUM})+$`);
+function isNumericLiteral(token) {
+  const t = token.trim();
+  return t !== "" && Number.isFinite(Number(t));
+}
+__name(isNumericLiteral, "isNumericLiteral");
+var ARITH_SPLIT = /(?<=[\d.])[ \t]*[/*+\-][ \t]*/;
+function isEnumeratedArithmetic(token) {
+  const parts = token.split(ARITH_SPLIT);
+  return parts.length > 1 && parts.every(isNumericLiteral);
+}
+__name(isEnumeratedArithmetic, "isEnumeratedArithmetic");
 function classifyLiteralRhs(rhs) {
   const t = rhs.trim();
-  const isNum = /^-?\d+(\.\d+)?$/.test(t);
+  const isNum = isNumericLiteral(t);
   const isDq = /^"[^"]*"$/.test(t);
   const isSq = /^'[^']*'$/.test(t);
-  const isArith = ARITH_RHS.test(t);
+  const isArith = isEnumeratedArithmetic(t);
   if (!(isNum || isDq || isSq || isArith)) return null;
   return { tag: "Code", code: t, lang: "strudel", via: { literal: true, raw: t } };
 }
@@ -2952,9 +2961,7 @@ function parseTransform(transformStr, defaultIr, baseOffset = 0, bindings) {
 __name(parseTransform, "parseTransform");
 function parseParamArg(args, isSampleKey, argsOffsetAbs) {
   const trimmed = args.trim();
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
-    return { value: parseFloat(trimmed) };
-  }
+  if (isNumericLiteral(trimmed)) return { value: Number(trimmed) };
   const strMatch = trimmed.match(/^"([a-zA-Z0-9#_:-]*?)"$/) ?? trimmed.match(/^'([a-zA-Z0-9#_:-]*?)'$/);
   if (strMatch) return { value: strMatch[1] };
   const miniMatch = trimmed.match(/^"([^"]*)"$/) ?? trimmed.match(/^'([^']*)'$/);
@@ -2977,7 +2984,7 @@ function parseArrayLiteralElement(elem, receiverContext, baseOffset = 0, binding
     const wrapperPrefix = receiverContext.length + 1;
     return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix, void 0, bindings);
   }
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+  if (isNumericLiteral(trimmed)) {
     const wrapped = `${receiverContext}("${trimmed}")`;
     const wrapperPrefix = receiverContext.length + 1 + 1;
     return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix, void 0, bindings);

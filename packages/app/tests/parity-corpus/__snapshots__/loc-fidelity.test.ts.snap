@@ -253,7 +253,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(-4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpa(.1)",
   },
   {
@@ -261,11 +261,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".sustain(0)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".decay(.1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.4)",
   },
   {
@@ -317,7 +317,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delaytime(.125)",
   },
   {
@@ -325,11 +325,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".delay(.8)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(.0)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".decay(.05)",
   },
   {
@@ -373,7 +373,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".chop(16)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".shape(.6)",
   },
   {
@@ -456,7 +456,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".sustain(0.5)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".decay(.16)",
   },
   {
@@ -2904,15 +2904,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 )",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(.05)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".shape(.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.15)",
   },
   {
@@ -3076,7 +3076,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(.5)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.5)",
   },
   {
@@ -3108,7 +3108,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(.5)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.5)",
   },
   {
@@ -3136,7 +3136,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "ht",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.4)",
   },
   {
@@ -3176,7 +3176,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".cutoff(perlin.range(400,3000).slow(8))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.8)",
   },
   {
@@ -3204,7 +3204,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".mask("<0 1>/8")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.5)",
   },
   {
@@ -3252,7 +3252,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".sustain(0)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".decay(.03)",
   },
   {
@@ -3340,7 +3340,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".mask("<1 0>/8")",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.4)",
   },
   {
@@ -3397,15 +3397,15 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > chop — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".sustain(.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".decay(.1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".shape(.4)",
   },
   {
@@ -3692,7 +3692,7 @@ note("<b4 eb4>").s('dino').delay(.8).slow(8).room(.5)
     "text": ".decay(perlin.range(.05,.2))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.8)",
   },
   {
@@ -3845,7 +3845,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".piano()",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".clip(.5)",
   },
   {
@@ -4206,7 +4206,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(-4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpa(.1)",
   },
   {
@@ -4214,7 +4214,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".sustain(0)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".decay(.1)",
   },
   {
@@ -4270,7 +4270,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".delay(.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.3)",
   },
   {
@@ -4354,7 +4354,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".sustain(0)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".decay(.05)",
   },
   {
@@ -4511,7 +4511,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "darkseagreen",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.2)",
   },
   {
@@ -4519,7 +4519,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room(1)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".release(.1)",
   },
   {
@@ -4595,11 +4595,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".pianoroll()",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delayfeedback(.4)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delaytime(.1)",
   },
   {
@@ -4615,7 +4615,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".sustain(0)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".decay(.05)",
   },
   {
@@ -4623,7 +4623,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(-2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpa(.2)",
   },
   {
@@ -4917,7 +4917,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".lpenv(-2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".lpa(.1)",
   },
   {
@@ -4925,7 +4925,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".cutoff(sine.slow(7).range(300,5000))",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.4)",
   },
   {
@@ -4937,7 +4937,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".sustain(0)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".decay(.15)",
   },
   {
@@ -5049,7 +5049,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".cutoff(500)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.16)",
   },
   {
@@ -5093,7 +5093,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".sustain(0)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".decay(.1)",
   },
   {
@@ -5164,11 +5164,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   )",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delayfeedback(.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delaytime(.33)",
   },
   {
@@ -5200,11 +5200,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".orbit(2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delayfeedback(.7)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delaytime(.08)",
   },
   {
@@ -5234,11 +5234,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   )",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delayfeedback(.6)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delaytime(.33)",
   },
   {
@@ -5270,11 +5270,11 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".orbit(2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delayfeedback(.7)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delaytime(.08)",
   },
   {
@@ -5317,7 +5317,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 )",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".delayfeedback(.8)",
   },
   {
@@ -5329,7 +5329,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".delay(.2)",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.6)",
   },
   {
@@ -5361,7 +5361,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "0",
   },
   {
-    "tag": "Code",
+    "tag": "Param",
     "text": ".gain(.8)",
   },
   {
