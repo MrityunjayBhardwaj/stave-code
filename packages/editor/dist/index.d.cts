@@ -396,19 +396,6 @@ declare function runRawStage(input: PatternIR): PatternIR;
  * directly so this is preserved by construction.
  */
 declare function runMiniExpandedStage(input: PatternIR): PatternIR;
-/**
- * CHAIN-APPLIED — reads `unresolvedChain` + `chainOffset` metadata from
- * each track root; calls applyChain with the chainOffset as baseOffset
- * (PK12 dot-inclusive convention preserved); drops metadata from output.
- *
- * Per RESEARCH §6 D-05 alternative: PR-A ships the REAL implementation
- * here (not a no-op stub), tested as identity-equivalent-to-today's-
- * parseStrudel-output via T-05.c regression sentinel. PR-B's split is
- * about splitting FINAL out as a polish stage, not about replacing this
- * logic.
- *
- * D-06.c: output has NO orphan unresolvedChain/chainOffset on any node.
- */
 declare function runChainAppliedStage(input: PatternIR): PatternIR;
 /**
  * FINAL — identity today; reserved for future normalization passes
