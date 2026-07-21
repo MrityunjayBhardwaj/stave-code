@@ -6,7 +6,7 @@
  * mode and the raw IR mode (toggle pressed). The projected mode asserts
  * user-method vocabulary (`'layer'`, `'jux'`, `'off'`, `'late'`,
  * `'degradeBy'`, etc.); the raw IR mode asserts the structural IR tag
- * names (`'Stack'`, `'FX'`, `'Late'`, `'Degrade'`, etc.).
+ * names (`'Stack'`, `'Param'`, `'Late'`, `'Degrade'`, etc.).
  *
  * Companion to the editor-side parity harness (parity.test.ts) — that
  * proves the IR matches Strudel's evaluator event-for-event; this proves
@@ -124,13 +124,14 @@ const TIER4_PROBES: Array<{
     projectedTagInTree: ['off', 'gain'],
     rawTagInTree: ['Stack', 'Late'],
   },
-  // jux desugars to Stack(FX(pan,-1, body), FX(pan,+1, transform(body))).
-  // Projected hides the FX(pan) wrappers; raw shows them all.
+  // jux desugars to Stack(Param(pan,-1, body), Param(pan,+1, transform(body))).
+  // (#967 — the synthetic pans were FX before the FX tag was deleted.)
+  // Projected hides the pan wrappers; raw shows them all (`pan=-1` / `pan=1`).
   {
     method: 'jux',
     code: '$: s("bd hh sd cp").jux(x => x.gain(0.5))',
     projectedTagInTree: ['jux', 'gain'],
-    rawTagInTree: ['Stack', 'FX', 'pan'],
+    rawTagInTree: ['Stack', 'Param', 'pan'],
   },
   // .degrade() — Degrade tag with p=0.5. Uses an 8-event body so the
   // 50%-retention sample reliably keeps at least one event under the

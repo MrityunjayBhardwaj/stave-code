@@ -2314,7 +2314,7 @@ function applyMethod(
       // Strudel side before diff so both sides land in [-1, 1].
       //
       // Round-trip: no Jux tag exists by design — the desugar is exact.
-      // toStrudel emits the structural Stack(FX(pan,…), FX(pan,…))
+      // toStrudel emits the structural Stack(Param(pan,…), Param(pan,…))
       // form (no `.jux(...)` recovery in this wave). Accepted soft target
       // per CONTEXT round-trip discipline.
       //
@@ -2325,13 +2325,14 @@ function applyMethod(
         ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length), bindings)
         : ir
       // 19-05 / #74: outer Stack carries .jux(...)'s call-site range +
-      // userMethod: 'jux' (D-09). Inner FX(pan, ±1) nodes are SYNTHETIC —
-      // no metadata (setting loc would mislead click-to-source into thinking
-      // the user typed `.pan(...)`; RESEARCH §7). The `transformed` body
+      // userMethod: 'jux' (D-09). Inner Param(pan, ±1) nodes are SYNTHETIC —
+      // no metadata (a missing userMethod is the marker irProjection strips on,
+      // and setting loc would mislead click-to-source into thinking the user
+      // typed `.pan(...)`; RESEARCH §7). The `transformed` body
       // keeps its own Play.loc and inherited tag-level locs from the inner
       // applyChain recursion.
-      const leftPan = IR.fx('pan', { pan: -1 }, ir)
-      const rightPan = IR.fx('pan', { pan: 1 }, transformed)
+      const leftPan = IR.param('pan', -1, '-1', ir)
+      const rightPan = IR.param('pan', 1, '1', transformed)
       const [juxStart, juxEnd] = callSiteRange
       return {
         tag: 'Stack' as const,
@@ -2436,26 +2437,24 @@ function applyMethod(
     case 'resonance':
     case 'lpf':
     case 'hpf': {
-      // #944 — the FX→Param collapse. Route through the single control
-      // authority FIRST. Every name in this group except `reverb` is a real
-      // @strudel/core control, so asControlParam classifies BOTH numeric and
-      // pattern args as Param under the canonical key (lpf→cutoff,
-      // hpf→hcutoff), retiring the arg-shape split that #935 left behind
-      // (numeric→FX, pattern→Param — one control filed under two tags).
-      //
-      // The two names the registry does not know keep the curated fallback
-      // below, so neither regresses classified→opaque (PV201):
-      //   - `reverb` (webaudio effect; the core control is `room`) — a numeric
-      //     arg keeps its FX tag; a pattern arg has no registry rescue and
-      //     opaques, exactly as before.
-      // A signal/expression arg (`.cutoff(perlin.range(...))`) is not numeric
-      // and not a pattern the registry can model, so asControlParam returns
-      // null and it opaques via the fallback — identical to the pre-collapse
-      // path, which reached the same wrapAsOpaque after parseFloat failed.
+      // #944 + #967 — every name in this group classifies as Param. Route
+      // through the single control authority FIRST: each name except `reverb`
+      // is a real @strudel/core control, so asControlParam classifies BOTH
+      // numeric and pattern args as Param under the canonical key (lpf→cutoff,
+      // hpf→hcutoff), retiring the arg-shape split #935 left behind (numeric→FX,
+      // pattern→Param — one control filed under two tags).
       const asParam = asControlParam(method, args, baseOffset, ir, callSiteRange)
       if (asParam) return asParam
+      // #967 — the two names the registry does not know keep the fallback so
+      // neither regresses classified→opaque (PV201). `reverb` (the core control
+      // is `room`) and a bound-scalar arg the registry cannot resolve file as a
+      // Param under the user's OWN token — since #967 deleted the FX tag, there
+      // is no bucket to fall back to. `.reverb(0.5)` files `evt.params.reverb`
+      // and round-trips `.reverb(0.5)`. A signal/expression arg
+      // (`.cutoff(perlin.range(...))`) is neither numeric nor a modellable
+      // pattern, so both branches decline and it opaques — as it did before.
       const val = parseFloat(subbedArgs.trim())
-      if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange))
+      if (!isNaN(val)) return IR.param(method, val, args, ir, tagMeta(method, callSiteRange))
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)
     }
 

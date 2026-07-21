@@ -28,9 +28,6 @@ function findNode(
 const paramNode = (code: string, key: string) =>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findNode(parseStrudel(code), (n) => n.tag === 'Param' && (n as any).key === key)
-const fxNode = (code: string, name: string) =>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  findNode(parseStrudel(code), (n) => n.tag === 'FX' && (n as any).name === name)
 const opaqueNode = (code: string, method: string) =>
   findNode(
     parseStrudel(code),
@@ -99,8 +96,11 @@ describe('#928 — classify off-list controls from the registry (deny-list, Tier
     expect(paramNode('s("bd").scale("major")', 'scale')).toBeDefined()
   })
 
-  it('reverb (not a core control) STILL classifies as FX', () => {
-    expect(fxNode('s("bd").reverb(0.5)', 'reverb')).toBeDefined()
+  it('reverb (not a core control) STILL classifies as Param under its own key', () => {
+    // #967 — reverb is not in the registry; the FX-tag deletion rehomed its
+    // numeric arm to Param (key 'reverb', userMethod 'reverb'), not opaque
+    // (PV201). Pre-#967 it tagged FX.
+    expect(paramNode('s("bd").reverb(0.5)', 'reverb')).toBeDefined()
   })
 
   // --- PV37 wrap-never-drop: the genuine residual STILL opaques ---

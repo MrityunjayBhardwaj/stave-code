@@ -176,7 +176,7 @@ export interface CollectContext {
   duration: number
   /** Accumulated speed factor (Fast multiplies, Slow divides) */
   speed: number
-  /** Inherited parameters from enclosing FX/Ramp nodes */
+  /** Inherited parameters from enclosing Param/Ramp nodes */
   params: Record<string, number | string>
   /**
    * Phase 20-11 — populated by Track wrapper arm (β-1). Outer-then-inner
@@ -236,7 +236,7 @@ const DEFAULT_CONTEXT: CollectContext = {
  * Count voice-leaves contributed by an IR subtree to its enclosing Track.
  * Mirrors `flattenLeafVoices` in irProjection.ts (app package): voice-
  * defining Stack (`userMethod ∈ {undefined, 'stack'}`) recurses; single-
- * body uniform-modifier wrappers (Code-with-via, Param, FX, Fast, Slow,
+ * body uniform-modifier wrappers (Code-with-via, Param, Fast, Slow,
  * Elongate, Late, Degrade, Ply, Struct, Swing, Shuffle, Scramble, Chop,
  * When, Every, Loop, Ramp) are peeled; everything else terminates as 1
  * leaf. Used by the Stack arm to advance the leaf counter past a child
@@ -264,7 +264,6 @@ function countLeavesInIR(node: PatternIR): number {
   }
   switch (node.tag) {
     case 'Param':
-    case 'FX':
     case 'Fast':
     case 'Slow':
     case 'Elongate':
@@ -317,7 +316,7 @@ function noteToFreq(note: string | number): number | null {
 
 function makeEvent(ctx: CollectContext, note: string | number, params: Record<string, unknown>): IREvent {
   const duration = ctx.duration / ctx.speed
-  // ctx.params (from FX/Ramp) override Play's own params — Ramp/FX are intentional overrides
+  // ctx.params (from Param/Ramp) override Play's own params — Ramp/Param are intentional overrides
   const merged = { ...params, ...ctx.params }
   return {
     begin: ctx.time,
@@ -516,8 +515,9 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       //
       // Two branches:
       //   (a) Literal value (string | number) — last-typed-wins per α-1
-      //       (D-05). Diverges from FX merge convention (which is
-      //       first-typed-wins; FX bug, follow-up issue).
+      //       (D-05), matching what Strudel's own eval plays. The FX tag once
+      //       merged first-typed-wins (the outlier); #944/#967 removed it, so
+      //       last-wins is now the only convention.
       //   (b) Pattern-arg value (PatternIR sub-IR) — slot-table pre-walk
       //       (RESEARCH G2.2 Option A). Sub-IR events consumed LOCALLY for
       //       lookup; NEVER pushed onto out (PV36 + RESEARCH G2.3 #5).
@@ -775,16 +775,6 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       // entire .mask(...) / .struct(...) call site is sufficient for v1.
       if (active) return withWrapperLoc(walk(ir.body, ctx), ir.loc)
       return []
-    }
-
-    case 'FX': {
-      // FX adds params metadata — does not affect timing
-      const childCtx: CollectContext = {
-        ...ctx,
-        params: { ...ctx.params, ...ir.params },
-      }
-      // PV36 — .gain(N) / .pan(N) / .lpf(N) etc. call-site as wrapper.
-      return withWrapperLoc(walk(ir.body, childCtx), ir.loc)
     }
 
     case 'Ramp': {

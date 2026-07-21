@@ -217,13 +217,6 @@ type PatternIR = {
     loc?: SourceLocation[];
     userMethod?: string;
 } | {
-    tag: 'FX';
-    name: string;
-    params: Record<string, number | string>;
-    body: PatternIR;
-    loc?: SourceLocation[];
-    userMethod?: string;
-} | {
     tag: 'Ramp';
     param: string;
     from: number;
@@ -409,7 +402,6 @@ declare const IR: {
     readonly every: (n: number, body: PatternIR, default_?: PatternIR, meta?: TagMeta) => PatternIR;
     readonly cycle: (...items: PatternIR[]) => PatternIR;
     readonly when: (gate: string, body: PatternIR, meta?: TagMeta) => PatternIR;
-    readonly fx: (name: string, params: Record<string, number | string>, body: PatternIR, meta?: TagMeta) => PatternIR;
     readonly param: (key: string, value: string | number | PatternIR, rawArgs: string, body: PatternIR, meta?: TagMeta) => PatternIR;
     readonly track: (trackId: string, body: PatternIR, meta?: TagMeta) => PatternIR;
     readonly ramp: (param: string, from: number, to: number, cycles: number, body: PatternIR, meta?: TagMeta) => PatternIR;

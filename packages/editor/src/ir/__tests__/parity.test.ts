@@ -398,7 +398,7 @@ describe('parity harness', () => {
   // Input: s("bd hh sd cp").jux(x => x.gain(0.5))
   //   Strudel emits 8 haps: 4 panned 0.0 (gain default ~1) + 4 panned
   //   1.0 with gain=0.5. After normalisation: pans ∈ {-1, +1}.
-  //   Our desugar produces Stack(FX(pan,-1, body), FX(pan,+1, gain(0.5)(body))) — also 8.
+  //   Our desugar produces Stack(Param(pan,-1, body), Param(pan,+1, gain(0.5)(body))) — also 8.
   //
   // Diff: count + (begin, s) set + per-event pan dimension matches.
   // ------------------------------------------------------------------
@@ -1722,7 +1722,7 @@ describe('20-03 — PV36 loc-completeness across collect arms', () => {
     }
   })
 
-  it('Jux (synthetic Stack with pan FX) — left + right tracks all carry loc', () => {
+  it('Jux (synthetic Stack with pan Param) — left + right tracks all carry loc', () => {
     const code = 'note("c d").jux(rev)'
     const events = collect(parseStrudel(code))
     expect(events.length).toBe(4) // 2 events × 2 pan tracks
@@ -2211,7 +2211,7 @@ describe('20-10 wave β — Param round-trip byte-fidelity', () => {
 
   it('round-trips note("c").s("sawtooth").lpf(2400) byte-equal (Param wrapping FX-wrapping body)', () => {
     // Param's body can be any IR — here it wraps the Param(s) which wraps
-    // the FX(lpf). Recursion through gen() must compose correctly.
+    // the Param(cutoff) from lpf(2400). Recursion through gen() must compose.
     const code = 'note("c").s("sawtooth").lpf(2400)'
     expect(toStrudel(parseStrudel(code))).toBe(code)
   })

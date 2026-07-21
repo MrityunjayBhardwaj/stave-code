@@ -26,7 +26,6 @@ export function summarize(node: PatternIR): string {
     case 'Choice': return `p=${node.p}`
     case 'Every':  return `n=${node.n}`
     case 'When':   return `gate=${node.gate}`
-    case 'FX':     return `${node.name}(${Object.keys(node.params).join(', ')})`
     case 'Ramp':   return `${node.param} ${node.from}→${node.to} over ${node.cycles}c`
     case 'Fast':
     case 'Slow':
@@ -114,7 +113,6 @@ export function children(node: PatternIR): readonly PatternIR[] {
     case 'Choice': return [node.then, node.else_]
     case 'Every': return node.default_ ? [node.body, node.default_] : [node.body]
     case 'When':  return [node.body]
-    case 'FX':
     case 'Ramp':
     case 'Fast':
     case 'Slow':

@@ -26,7 +26,7 @@
  * is treated as a LEAF and the projection does not lose it.
  *
  * Test strategy: construct a Track whose body is a single-body wrapper
- * (FX) whose body is a Code-with-literal-via. The walk descends into
+ * (Param) whose body is a Code-with-literal-via. The walk descends into
  * `body` (and through `body` into the wrapped child), and would have
  * incorrectly recursed into `via.inner` on the literal arm pre-D-1c. We
  * also place a second Track sibling whose presence (or absence) in the
@@ -72,14 +72,15 @@ function makeLiteralCode(raw: string): PatternIR {
 describe('MusicalTimeline.collectTrackBodies — literal Code.via projection (20-17 D-1c HIGH-SEVERITY)', () => {
   it('does NOT throw when walking a Track whose body contains a literal Code.via', () => {
     const literal = makeLiteralCode('4')
-    // Track('a') { body: FX(literal) }
+    // Track('a') { body: Param(literal) }
     const ir: PatternIR = {
       tag: 'Track',
       trackId: 'a',
       body: {
-        tag: 'FX',
-        name: 'fast',
-        params: {},
+        tag: 'Param',
+        key: 'gain',
+        value: 1,
+        rawArgs: '1',
         body: literal,
       },
     } as PatternIR
@@ -98,9 +99,10 @@ describe('MusicalTimeline.collectTrackBodies — literal Code.via projection (20
           tag: 'Track',
           trackId: 'a',
           body: {
-            tag: 'FX',
-            name: 'fast',
-            params: {},
+            tag: 'Param',
+            key: 'gain',
+            value: 1,
+            rawArgs: '1',
             body: literal,
           },
         } as PatternIR,
@@ -115,7 +117,7 @@ describe('MusicalTimeline.collectTrackBodies — literal Code.via projection (20
     const bodies = __test_collectTrackBodies(ir)
     expect(bodies.has('a')).toBe(true)
     expect(bodies.has('b')).toBe(true)
-    // Track('a') must reach the projection — the literal node under FX
+    // Track('a') must reach the projection — the literal node under the Param
     // body is a LEAF and does not block traversal.
     expect(bodies.size).toBe(2)
   })

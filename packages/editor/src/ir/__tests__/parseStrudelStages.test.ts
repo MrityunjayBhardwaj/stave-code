@@ -108,7 +108,6 @@ export function assertNoStageMeta(node: PatternIR): void {
         if (n.default_) visit(n.default_)
         break
       case 'When':
-      case 'FX':
       case 'Ramp':
       case 'Fast':
       case 'Slow':
@@ -196,7 +195,6 @@ function stripStageMeta(node: PatternIR): PatternIR {
       if (node.default_) cloned.default_ = stripStageMeta(node.default_)
       break
     case 'When':
-    case 'FX':
     case 'Ramp':
     case 'Fast':
     case 'Slow':
@@ -515,11 +513,20 @@ function collectLocEntries(
       collectLocEntries(node.body, `${path}.body`, acc)
       if (node.default_) collectLocEntries(node.default_, `${path}.default_`, acc)
       break
-    case 'When': case 'FX': case 'Ramp': case 'Fast': case 'Slow':
+    case 'When': case 'Ramp': case 'Fast': case 'Slow':
     case 'Elongate': case 'Late': case 'Degrade': case 'Ply': case 'Struct':
     case 'Swing': case 'Shuffle': case 'Scramble': case 'Chop': case 'Loop':
     case 'Track':
       collectLocEntries(node.body, `${path}.body`, acc)
+      break
+    case 'Param':
+      // #967 — jux pans are now Param('pan', ±1) wrapping the arm, so this
+      // walker must recurse into the body (the old FX(pan) case did). A
+      // pattern-arg Param also carries a sub-IR value; recurse it too.
+      collectLocEntries(node.body, `${path}.body`, acc)
+      if (typeof node.value === 'object' && node.value !== null) {
+        collectLocEntries(node.value as PatternIR, `${path}.value`, acc)
+      }
       break
     case 'Chunk':
       collectLocEntries(node.transform, `${path}.transform`, acc)
