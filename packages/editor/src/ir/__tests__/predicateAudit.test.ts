@@ -148,7 +148,7 @@ describe('predicate audit (#959)', () => {
     const scan = (rel: string): number =>
       regexLiteralsIn(join(IR_DIR, rel)).filter(isAnchored).length
 
-    expect(scan('parseStrudel.ts'), 'control arm: the scan must find the known 42').toBe(42)
+    expect(scan('parseStrudel.ts'), 'control arm: the scan must find the known anchored predicates').toBe(34)
     for (const rel of delegating) expect(`${rel}: ${scan(rel)}`).toBe(`${rel}: 0`)
   })
 })

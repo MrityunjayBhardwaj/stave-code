@@ -26,9 +26,9 @@ the parse path asks somebody who already knows:
 | `ir/parseStrudelStages.ts` | — | **0** | 377 |
 | `visualEdit/chunkDetect.ts` | acorn | **0** | 496 |
 | `visualEdit/arrange/parse.ts` | acorn | **0** | 223 |
-| **`ir/parseStrudel.ts`** | **nobody** | **42** | **3335** |
+| **`ir/parseStrudel.ts`** | **nobody** | **34** | **3335** |
 
-Every module that delegates has zero. The one that does not has forty-two. `parseMini.ts` is
+Every module that delegates has zero. The one that does not has thirty-four (was 42 before #965 delegated the pattern-source grid). `parseMini.ts` is
 the controlled before/after: 512 lines with a hand-rolled tokenizer, 397 lines and no anchored
 regexes after it was rebuilt on krill.
 
@@ -68,7 +68,7 @@ the regex alone without saying so.
 
 ## Category A — JavaScript syntax · owner: **acorn**
 
-26 of the 42. `acorn` is already a dependency and is already used to parse this same source
+26 of the 34. `acorn` is already a dependency and is already used to parse this same source
 text, three times, in `visualEdit/`. The package parses one document two different ways.
 
 ### A1 · "is this token a bare identifier?" — 4 sites
@@ -212,35 +212,32 @@ adjacency the guard's bracket/string tracking does not model.
 
 ## Category B — Strudel vocabulary · owner: **`controls.mjs` / `signal.mjs` / krill**
 
-16 of the 42. These ask "is this name one of Strudel's?" — the same question #928 routed
+8 of the 34. These ask "is this name one of Strudel's?" — the same question #928 routed
 through `controls.mjs` for controls and #953 re-derived from `signal.mjs` for chain roots.
 The remaining sixteen have not had that treatment.
 
-### B1 · "is this call a pattern source, and what is its mini string?" — 10 sites
+### B1 · "is this call a pattern source, and what is its mini string?" — 2 sites
 
-`parseRoot:1607,1614,1625` (`note`/`n`) · `1639,1645,1653` (`s`/`sound`) · `1666,1672,1679` (`mini`) ·
-`1701` (the loose fallback)
+`PATTERN_SOURCE_CALL_RE:1465` (the acorn gate) · `parseRoot` (the loose fallback)
 
-Owner: `@strudel/core` `controls.mjs` for the names, krill for the string. **Transcribed** — and
-transcribed as a 3×3 grid, because each of three name-groups is spelled once per quote style.
-The count is a product of two independent transcriptions, which is why it is the largest
-cluster in the file.
+Owner: `@strudel/core` `controls.mjs` for the names, krill for the string.
 
-Known-incomplete: **reasoned** — the name list is a hand-picked five (`note`, `n`, `s`,
-`sound`, `mini`) out of ~270 controls, so every other control reaching this position takes the
-fallback path; and the argument must be a single bare string literal, so `note("c3" + x)` or
-`note(seq)` does not match.
+**The quote×name grid is gone (#965).** This was the largest cluster in the file — nine
+regexes, three name-groups (`note`/`n`, `s`/`sound`, `mini`) each spelled once per quote style,
+a product of two independent transcriptions. The extraction ("is the argument a string literal,
+where does it start") is now delegated to acorn in `extractPatternSourceCall`; the offset it
+returns reproduces the old `indexOf(quote)` byte-for-byte, and the parity corpus moved no
+snapshot. What remains is the **vocabulary gate** — is the callee one of the five source
+names — kept as a cheap regex so a non-source root is not handed to acorn just to be declined,
+and the **loose fallback** for a chained inner (`n("0".fast(2))`), a different question that
+#132 owns.
+
+Known-incomplete: **reasoned** — the name list is still a hand-picked five out of ~270 controls
+(the vocabulary delegation is #944's job, not this collapse). The two survivors decide only "is
+this plausibly a source call"; the string/offset question they used to answer is now acorn's.
 
 ```regex
-1x  /^(?:note|n)\s*\(\s*"([^"]*)"\s*\)/
-1x  /^(?:note|n)\s*\(\s*`([^`]*)`\s*\)/
-1x  /^(?:note|n)\s*\(\s*'([^']*)'\s*\)/
-1x  /^(?:s|sound)\s*\(\s*"([^"]*)"\s*\)/
-1x  /^(?:s|sound)\s*\(\s*`([^`]*)`\s*\)/
-1x  /^(?:s|sound)\s*\(\s*'([^']*)'\s*\)/
-1x  /^mini\s*\(\s*"([^"]*)"\s*\)/
-1x  /^mini\s*\(\s*`([^`]*)`\s*\)/
-1x  /^mini\s*\(\s*'([^']*)'\s*\)/
+1x  /^(?:note|n|s|sound|mini)\s*\(/
 1x  /^(note|n|s|sound|mini)\s*\(/
 ```
 
@@ -373,12 +370,12 @@ observation — `const n = .5` and `const n = 4` now produce the same IR shape.
 | category | owner | sites |
 |---|---|---|
 | A — JavaScript syntax | acorn | 26 |
-| B — Strudel vocabulary | `controls.mjs` / `signal.mjs` / krill | 16 |
-| **total anchored regexes** | | **42** |
+| B — Strudel vocabulary | `controls.mjs` / `signal.mjs` / krill | 8 |
+| **total anchored regexes** | | **34** |
 | D — unanchored (2 predicates + 5 scans) | acorn / — | 7 |
-| **total regex literals** | | **49** |
-| distinct sources | | 38 |
+| **total regex literals** | | **41** |
+| distinct sources | | 30 |
 
-Of the 42 anchored predicates, **zero** currently delegate. Eleven of the incompleteness claims
+Of the 34 anchored predicates, **zero** currently delegate (the pattern-source extraction that #965 removed DID delegate — to acorn — which is why it is no longer a regex). Eleven of the incompleteness claims
 above are observed against a control arm; the rest are reasoned from the expression and marked
 as such.
