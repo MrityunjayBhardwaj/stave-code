@@ -576,7 +576,7 @@ describe('parseStrudel', () => {
     }
   })
 
-  it('parses .jux(x => x.gain(0.5)) into Stack(FX(pan,-1, body), FX(pan,+1, transform(body))) (Tier 4)', () => {
+  it('parses .jux(x => x.gain(0.5)) into Stack(Param(pan,-1, body), Param(pan,+1, transform(body))) (Tier 4)', () => {
     // Ground truth: pattern.mjs:2379-2381 (jux) + 2356-2368 (juxBy):
     //   jux(f)(pat) = juxBy(1, f, pat)
     //   juxBy(1, …) halves to by=0.5, splits onto two pans:
@@ -590,18 +590,20 @@ describe('parseStrudel', () => {
     if (tree.tag === 'Stack') {
       expect(tree.tracks.length).toBe(2)
       const [left, right] = tree.tracks
-      expect(left.tag).toBe('FX')
-      if (left.tag === 'FX') {
-        expect(left.name).toBe('pan')
-        expect(left.params.pan).toBe(-1)
+      expect(left.tag).toBe('Param')
+      if (left.tag === 'Param') {
+        expect(left.key).toBe('pan')
+        expect(left.value).toBe(-1)
+        expect(left.userMethod).toBeUndefined()   // the synthetic-marker flag
       }
-      expect(right.tag).toBe('FX')
-      if (right.tag === 'FX') {
-        expect(right.name).toBe('pan')
-        expect(right.params.pan).toBe(1)
+      expect(right.tag).toBe('Param')
+      if (right.tag === 'Param') {
+        expect(right.key).toBe('pan')
+        expect(right.value).toBe(1)
+        expect(right.userMethod).toBeUndefined()
         // Right body is the transformed body — Phase 20-10 promoted gain to
-        // the Param tag. Inner pan(±1) tracks stay FX because .jux's
-        // desugar constructs them via IR.fx() directly (not via applyMethod).
+        // the Param tag. #967 deleted the FX tag; jux's synthetic pans are now
+        // Param('pan', ±1) with no userMethod (was FX(pan,±1)).
         expect(right.body.tag).toBe('Param')
         if (right.body.tag === 'Param') {
           expect(right.body.key).toBe('gain')

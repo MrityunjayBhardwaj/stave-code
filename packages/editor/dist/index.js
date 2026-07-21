@@ -112,7 +112,6 @@ var IR = {
   // literal construction `{ tag: 'Cycle', items, loc, userMethod }`.
   cycle: /* @__PURE__ */ __name((...items) => ({ tag: "Cycle", items }), "cycle"),
   when: /* @__PURE__ */ __name((gate, body, meta) => attachMeta({ tag: "When", gate, body }, meta), "when"),
-  fx: /* @__PURE__ */ __name((name, params, body, meta) => attachMeta({ tag: "FX", name, params, body }, meta), "fx"),
   param: /* @__PURE__ */ __name((key2, value, rawArgs, body, meta) => attachMeta({ tag: "Param", key: key2, value, rawArgs, body }, meta), "param"),
   track: /* @__PURE__ */ __name((trackId, body, meta) => attachMeta({ tag: "Track", trackId, body }, meta), "track"),
   ramp: /* @__PURE__ */ __name((param, from, to, cycles, body, meta) => attachMeta({ tag: "Ramp", param, from, to, cycles, body }, meta), "ramp"),
@@ -233,7 +232,6 @@ function countLeavesInIR(node) {
   }
   switch (node.tag) {
     case "Param":
-    case "FX":
     case "Fast":
     case "Slow":
     case "Elongate":
@@ -541,13 +539,6 @@ function walk(ir, ctx) {
       const active2 = slot !== "0" && slot !== "" && slot !== "~";
       if (active2) return withWrapperLoc(walk(ir.body, ctx), ir.loc);
       return [];
-    }
-    case "FX": {
-      const childCtx = {
-        ...ctx,
-        params: { ...ctx.params, ...ir.params }
-      };
-      return withWrapperLoc(walk(ir.body, childCtx), ir.loc);
     }
     case "Ramp": {
       const progress = ir.cycles > 0 ? Math.min(ctx.cycle / ir.cycles, 1) : 1;
@@ -977,17 +968,6 @@ function gen(ir) {
       const body = gen(ir.body);
       return `${body}.mask("${ir.gate}")`;
     }
-    case "FX": {
-      const body = gen(ir.body);
-      if (Object.keys(ir.params).length > 0) {
-        let result = body;
-        for (const [k, v] of Object.entries(ir.params)) {
-          result = `${result}.${k}(${v})`;
-        }
-        return result;
-      }
-      return `${body}.${ir.name}()`;
-    }
     case "Ramp": {
       const body = gen(ir.body);
       return `${body}.${ir.param}(slow(${ir.cycles}, saw))`;
@@ -1052,10 +1032,6 @@ __name(nodesEqual, "nodesEqual");
 function extractTransform(body, base) {
   if (body.tag === "Fast" && nodesEqual(body.body, base)) return `fast(${body.factor})`;
   if (body.tag === "Slow" && nodesEqual(body.body, base)) return `slow(${body.factor})`;
-  if (body.tag === "FX" && nodesEqual(body.body, base)) {
-    const params = Object.entries(body.params).map(([k, v]) => `.${k}(${v})`).join("");
-    return `x => x${params}`;
-  }
   return `() => ${gen(body)}`;
 }
 __name(extractTransform, "extractTransform");
@@ -1337,7 +1313,6 @@ var VALID_TAGS = /* @__PURE__ */ new Set([
   "Every",
   "Cycle",
   "When",
-  "FX",
   "Ramp",
   "Fast",
   "Slow",
@@ -1438,17 +1413,6 @@ function validateNode(raw, path) {
       return {
         tag: "When",
         gate: node.gate,
-        body: validateNode(node.body, `${path}.body`)
-      };
-    }
-    case "FX": {
-      requireField(node, "name", ["string"], path);
-      requireObject(node, "params", path);
-      requireField(node, "body", ["object"], path);
-      return {
-        tag: "FX",
-        name: node.name,
-        params: node.params,
         body: validateNode(node.body, `${path}.body`)
       };
     }
@@ -2759,8 +2723,8 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
     }
     case "jux": {
       const transformed = args.trim() ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length), bindings) : ir;
-      const leftPan = IR.fx("pan", { pan: -1 }, ir);
-      const rightPan = IR.fx("pan", { pan: 1 }, transformed);
+      const leftPan = IR.param("pan", -1, "-1", ir);
+      const rightPan = IR.param("pan", 1, "1", transformed);
       const [juxStart, juxEnd] = callSiteRange;
       return {
         tag: "Stack",
@@ -2814,7 +2778,7 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
       const asParam = asControlParam(method, args, baseOffset, ir, callSiteRange);
       if (asParam) return asParam;
       const val = parseFloat(subbedArgs.trim());
-      if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange));
+      if (!isNaN(val)) return IR.param(method, val, args, ir, tagMeta(method, callSiteRange));
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "pickRestart":

@@ -80,7 +80,6 @@ export type PatternIR =
   | { tag: 'Every';  n: number; body: PatternIR; default_?: PatternIR; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'Cycle';  items: PatternIR[]; loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
   | { tag: 'When';   gate: string; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
-  | { tag: 'FX';     name: string; params: Record<string, number | string>; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'Ramp';   param: string; from: number; to: number; cycles: number; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'Fast';   factor: number; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'Slow';   factor: number; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
@@ -270,8 +269,6 @@ export const IR = {
   cycle: (...items: PatternIR[]): PatternIR => ({ tag: 'Cycle', items }),
   when: (gate: string, body: PatternIR, meta?: TagMeta): PatternIR =>
     attachMeta({ tag: 'When', gate, body }, meta),
-  fx: (name: string, params: Record<string, number | string>, body: PatternIR, meta?: TagMeta): PatternIR =>
-    attachMeta({ tag: 'FX', name, params, body }, meta),
   param: (
     key: string,
     value: string | number | PatternIR,

@@ -90,14 +90,6 @@ describe('PatternIR smart constructors', () => {
     if (node.tag === 'When') expect(node.gate).toBe('1 0 1 1')
   })
 
-  it('IR.fx() constructs FX', () => {
-    const node = IR.fx('reverb', { room: 0.8 }, IR.play('c4'))
-    expect(node.tag).toBe('FX')
-    if (node.tag === 'FX') {
-      expect(node.name).toBe('reverb')
-      expect(node.params.room).toBe(0.8)
-    }
-  })
 
   it('IR.ramp() constructs Ramp', () => {
     const node = IR.ramp('gain', 0, 1, 4, IR.play('c4'))
@@ -283,8 +275,8 @@ describe('collect', () => {
     expect(events[5].begin).toBeCloseTo(5 / 6)
   })
 
-  it('FX passes params to IREvent', () => {
-    const tree = IR.fx('reverb', { room: 0.8 }, IR.play('c4'))
+  it('Param passes params to IREvent', () => {
+    const tree = IR.param('room', 0.8, '0.8', IR.play('c4'))
     const events = collect(tree)
     expect(events[0].params?.room).toBe(0.8)
   })
@@ -489,8 +481,8 @@ describe('toStrudel', () => {
     expect(toStrudel(IR.code('const x = 42'))).toBe('const x = 42')
   })
 
-  it('FX generates method chain', () => {
-    const tree = IR.fx('reverb', { room: 0.8 }, IR.play('c4'))
+  it('Param generates method chain', () => {
+    const tree = IR.param('room', 0.8, '0.8', IR.play('c4'))
     const result = toStrudel(tree)
     expect(result).toContain('note("c4")')
     expect(result).toContain('.room(0.8)')
@@ -535,10 +527,12 @@ describe('toStrudel', () => {
     expect(toStrudel(tree)).toBe('note("c4").every(4, slow(3))')
   })
 
-  it('Every with FX body → arrow function extracted', () => {
+  it('Every with a Param body → 0-arg arrow fallback (#967, FX tag deleted)', () => {
     const base = IR.play('c4')
-    const tree = IR.every(4, IR.fx('reverb', { room: 0.8 }, base), base)
-    expect(toStrudel(tree)).toContain('.every(4, x => x.room(0.8))')
+    const tree = IR.every(4, IR.param('room', 0.8, '0.8', base), base)
+    // The FX-only `x => x.room(0.8)` form is gone; a Param body takes the
+    // generic `() =>` fallback (hap-identical — see controlClassificationGuards).
+    expect(toStrudel(tree)).toContain('.every(4, () => note("c4").room(0.8))')
   })
 
   it('Every without default_ uses generic fallback', () => {
@@ -716,7 +710,7 @@ describe('Chunk tag (Tier 4)', () => {
     // against pattern.mjs:2569-2578 + repeatCycles which repeats —
     // does not slow). Transform here is gain(0.5) on the body.
     const body = IR.seq(IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'))
-    const transform = IR.fx('gain', { gain: 0.5 }, body)
+    const transform = IR.param('gain', 0.5, '0.5', body)
     const tree = IR.chunk(4, transform, body)
     const allEvents: ReturnType<typeof collect> = []
     for (let c = 0; c < 4; c++) {
@@ -742,7 +736,7 @@ describe('Chunk tag (Tier 4)', () => {
 
   it('applies transform params to slot events on cycle 0', () => {
     const body = IR.seq(IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'))
-    const transform = IR.fx('gain', { gain: 0.5 }, body)
+    const transform = IR.param('gain', 0.5, '0.5', body)
     const tree = IR.chunk(4, transform, body)
     const events = collect(tree, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
     expect(events.length).toBe(4)
@@ -758,7 +752,7 @@ describe('Chunk tag (Tier 4)', () => {
     // n=1 ⇒ slot 0 is the whole cycle ⇒ transform applies to all events.
     const loc = [{ start: 1, end: 2 }]
     const body = IR.play('a', 0.25, {}, loc)
-    const transform = IR.fx('gain', { gain: 0.5 }, body)
+    const transform = IR.param('gain', 0.5, '0.5', body)
     const tree = IR.chunk(1, transform, body)
     const events = collect(tree, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
     expect(events.length).toBe(1)
@@ -767,7 +761,7 @@ describe('Chunk tag (Tier 4)', () => {
 
   it('toStrudel(Chunk) emits .chunk(n, transform)', () => {
     const body = IR.play('c4')
-    const transform = IR.fx('gain', { gain: 0.5 }, body)
+    const transform = IR.param('gain', 0.5, '0.5', body)
     const result = toStrudel(IR.chunk(4, transform, body))
     expect(result).toContain('.chunk(4,')
     expect(result).toContain('gain(0.5)')
@@ -829,8 +823,8 @@ describe('patternToJSON / patternFromJSON', () => {
     expect(patternFromJSON(patternToJSON(tree))).toEqual(tree)
   })
 
-  it('round-trips FX', () => {
-    const tree = IR.fx('reverb', { room: 0.8 }, IR.play('c4'))
+  it('round-trips a single-body Param wrapper', () => {
+    const tree = IR.param('room', 0.8, '0.8', IR.play('c4'))
     expect(patternFromJSON(patternToJSON(tree))).toEqual(tree)
   })
 

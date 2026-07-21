@@ -120,12 +120,12 @@ async function haps(code: string, cycles = 4): Promise<string[]> {
 // ---------------------------------------------------------------------------
 // 1. extractTransform — the FX-only privileged path (toStrudel.ts:347)
 // ---------------------------------------------------------------------------
-describe('extractTransform: the FX arrow form is now unreachable for controls', () => {
+describe('extractTransform: the FX arrow form is gone', () => {
   // COLLAPSE FLIPPED THIS (#944). `x => x.room(0.8)` was reachable ONLY because
-  // a numeric-arg control still tagged FX. Now that room/delay/lpf are Param,
-  // extractTransform's `tag === 'FX'` branch has no real users left (only jux's
-  // synthetic pans carry FX, and those never appear as a transform body), and
-  // the emission takes the `() =>` fallback — hap-identical per section 2.
+  // a numeric-arg control still tagged FX. Once room/delay/lpf became Param the
+  // `tag === 'FX'` branch had no real users, and #967 deleted the FX tag (and
+  // that branch) entirely. Every control body now takes the `() =>` fallback —
+  // hap-identical for every AND chunk (pinned in section 2).
   it('a collapsed control body emits the 0-arg arrow form (room is Param now)', () => {
     expect(emit('s("bd hh").every(4, x => x.room(0.8))'))
       .toBe('s("bd hh").every(4, () => s("bd hh").room(0.8))')
@@ -209,19 +209,21 @@ describe('controls the corpus cannot see', () => {
     expect(isControlName('room')).toBe(true)
   })
 
-  // COLLAPSE MUST PRESERVE. A wholesale delete of the curated arms regresses
-  // this from classified to opaque, and no count would ever show it.
-  it('reverb with a numeric arg classifies today', () => {
-    expect(nodesWithTag('s("bd").reverb(0.5)', 'FX')).toHaveLength(1)
+  // #967 MUST PRESERVE classification. reverb is not a registry control, so
+  // when the FX tag was deleted its numeric arm was rehomed to Param under the
+  // user's own token — NOT opaqued. Regressing to Code would be a silent
+  // classified→opaque loss no count shows (PV201).
+  it('reverb with a numeric arg classifies as Param under its own key', () => {
+    expect(nodesWithTag('s("bd").reverb(0.5)', 'Param')).toHaveLength(1)
     expect(firstEventParams('s("bd").reverb(0.5)')).toMatchObject({ reverb: 0.5 })
   })
 
-  // Faithful to TODAY, and deliberately so: reverb is not in the registry, so
-  // the #935 pattern-arg rescue does not apply and it opaques. Pinned as the
-  // asymmetry it is — NOT as an endorsement.
+  // Faithful and deliberate: reverb is not in the registry, so the #935
+  // pattern-arg rescue does not apply and it opaques. Pinned as the asymmetry
+  // it is — NOT as an endorsement.
   it('reverb with a pattern arg opaques, unlike every registry control', () => {
     expect(nodesWithTag('s("bd").reverb("0.3 0.5")', 'Code')).not.toHaveLength(0)
-    expect(nodesWithTag('s("bd").reverb("0.3 0.5")', 'FX')).toHaveLength(0)
+    expect(nodesWithTag('s("bd").reverb("0.3 0.5")', 'Param')).toHaveLength(0)
   })
 
   it('hpf classifies as Param in both arg shapes though the corpus contains none', () => {
@@ -233,14 +235,13 @@ describe('controls the corpus cannot see', () => {
   })
 
   // `scale` is the OTHER non-registry control (#944 names it beside `reverb`),
-  // and the two do NOT behave alike — which is the reason to pin both rather
-  // than treat "non-core" as one case. `reverb` is a curated FX arm, so its
-  // pattern form opaques; `scale` is a curated Param arm, so it classifies.
-  // A collapse that reasons about "the non-core controls" as a single group
-  // gets one of them wrong, and neither is in the corpus to catch it.
-  it('scale is also non-core, but curated as Param rather than FX', () => {
+  // and the two do NOT behave alike — the reason to pin both rather than treat
+  // "non-core" as one case. `reverb`'s pattern form opaques; `scale` is a
+  // curated Param arm, so it classifies. A change that reasons about "the
+  // non-core controls" as one group gets one wrong, and neither is in the
+  // corpus to catch it.
+  it('scale is also non-core, but classifies as Param where reverb opaques', () => {
     expect(isControlName('scale')).toBe(false)
-    expect(nodesWithTag('s("bd").scale("C:major")', 'FX')).toHaveLength(0)
     const [node] = nodesWithTag('s("bd").scale("C:major")', 'Param')
     expect(node.key).toBe('scale')
     expect(firstEventParams('s("bd").scale("C:major")')).toMatchObject({ scale: 'C:major' })
@@ -342,41 +343,34 @@ describe('repeated control calls merge last-wins (matching Strudel eval)', () =>
 })
 
 // ---------------------------------------------------------------------------
-// 6. Synthetic jux pans — an internal marker wearing the FX tag
+// 6. Synthetic jux pans — a private marker, since #967 a Param not an FX
 // ---------------------------------------------------------------------------
 describe('jux pan nodes are not a control classification', () => {
-  // These are the 6 nodes that SURVIVE the collapse with tag FX, and they are
-  // not user-written controls at all — `jux` synthesises them to pan its two
-  // arms. `userMethod === undefined` is the discriminator, and
-  // `irProjection.ts:236` strips on exactly that predicate.
-  //
-  // COLLAPSE PRESERVES. Rehoming them off the FX tag is a SEPARATE change
-  // (the tag deletion), and this pin is what makes that change safe to attempt.
-  it('jux synthesises one pan FX node per arm, neither with a userMethod', () => {
-    const pans = nodesWithTag('s("bd hh").jux(x => x.rev())', 'FX')
+  // `jux` synthesises one pan node per arm to spread its two copies L/R. These
+  // are NOT user-written controls. Since #967 deleted the FX tag they are
+  // Param('pan', ±1) with NO userMethod — the discriminator that `irProjection`
+  // strips on (`tag === 'Param' && key === 'pan' && userMethod === undefined`).
+  it('jux synthesises one pan Param node per arm, neither with a userMethod', () => {
+    const pans = nodesWithTag('s("bd hh").jux(x => x.rev())', 'Param')
     expect(pans).toHaveLength(2)                        // one per stacked arm
-    expect(pans.map((p) => p.params.pan).sort()).toEqual([-1, 1])
+    expect(pans.map((p) => p.value).sort()).toEqual([-1, 1])
     for (const p of pans) {
-      expect(p.name).toBe('pan')
+      expect(p.key).toBe('pan')
       expect(p.userMethod).toBeUndefined()              // the strip predicate
     }
   })
 
-  // The contrast that gives the discriminator its meaning — and it is sharper
-  // than `userMethod` alone. The curated method switch has TWO groups, and
-  // `pan` sits in the Param one (`parseStrudel.ts:2575`, beside s/n/note/scale/
-  // speed), not the FX one (`:2376`, room/delay/lpf…). So a user-written
-  // `.pan(0.5)` tags Param while jux's synthetic pan tags FX: the two are
-  // already on DIFFERENT TAGS today, by construction rather than by accident.
-  //
-  // This is what makes the eventual tag deletion tractable: once the collapse
-  // empties FX of real controls, `FX` denotes ONLY jux's internal marker — it
-  // stops being a classification and becomes a private flag, which is the
-  // honest thing to rename it to.
-  it('a user-written pan is not FX — it is a curated Param arm', () => {
-    expect(nodesWithTag('s("bd").pan(0.5)', 'FX')).toHaveLength(0)
+  // The contrast that gives the discriminator its meaning. Both a user pan and
+  // a jux pan are now Param('pan', …) — same tag, same key. What separates them
+  // is `userMethod`: a user-written `.pan(0.5)` carries the token 'pan'
+  // (tagMeta), while jux's synthetic pan carries none. `userMethod` alone is
+  // the private-marker flag now that FX is gone; the strip predicate keys on it
+  // plus the 'pan' key so an ordinary `.pan(...)` is never folded away.
+  it('a user-written pan carries userMethod, the jux marker does not', () => {
     const [userPan] = nodesWithTag('s("bd").pan(0.5)', 'Param')
     expect(userPan.key).toBe('pan')
     expect(userPan.userMethod).toBe('pan')
+    const juxPans = nodesWithTag('s("bd hh").jux(x => x.rev())', 'Param')
+    expect(juxPans.every((p) => p.key === 'pan' && p.userMethod === undefined)).toBe(true)
   })
 })

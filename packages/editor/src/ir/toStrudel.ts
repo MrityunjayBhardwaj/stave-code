@@ -208,19 +208,6 @@ function gen(ir: PatternIR): string {
       return `${body}.mask("${ir.gate}")`
     }
 
-    case 'FX': {
-      const body = gen(ir.body)
-      if (Object.keys(ir.params).length > 0) {
-        // Each param key becomes a method call: .room(0.8), .delay(0.5), etc.
-        let result = body
-        for (const [k, v] of Object.entries(ir.params)) {
-          result = `${result}.${k}(${v})`
-        }
-        return result
-      }
-      return `${body}.${ir.name}()`
-    }
-
     case 'Ramp': {
       const body = gen(ir.body)
       return `${body}.${ir.param}(slow(${ir.cycles}, saw))`
@@ -344,11 +331,10 @@ function nodesEqual(a: PatternIR, b: PatternIR): boolean {
 function extractTransform(body: PatternIR, base: PatternIR): string {
   if (body.tag === 'Fast' && nodesEqual(body.body, base)) return `fast(${body.factor})`
   if (body.tag === 'Slow' && nodesEqual(body.body, base)) return `slow(${body.factor})`
-  if (body.tag === 'FX' && nodesEqual(body.body, base)) {
-    const params = Object.entries(body.params).map(([k, v]) => `.${k}(${v})`).join('')
-    return `x => x${params}`
-  }
-  // Generic fallback: inline arrow returning the body expression
+  // Generic fallback: inline arrow returning the body expression. Since #944 a
+  // control body is a Param, which takes this path (its `x => x.f()` form is
+  // gone); the 0-arg arrow is hap-identical for every AND chunk (pinned in
+  // controlClassificationGuards.test.ts with the eval oracle).
   return `() => ${gen(body)}`
 }
 

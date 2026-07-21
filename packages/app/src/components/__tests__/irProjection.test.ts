@@ -61,7 +61,6 @@ function rawChildren(node: PatternIR): readonly PatternIR[] {
     case 'Choice': return [node.then, node.else_]
     case 'Every': return node.default_ ? [node.body, node.default_] : [node.body]
     case 'When':  return [node.body]
-    case 'FX':
     case 'Ramp':
     case 'Fast':
     case 'Slow':
@@ -370,14 +369,15 @@ describe('projectedLabel — synthetic intermediates hidden (D-02)', () => {
     expect(projectedLabel(late!)).toBeUndefined()
   })
 
-  it('FX(pan,-1) inside .jux() (userMethod undefined) returns undefined', () => {
+  it('the jux pan (Param pan, userMethod undefined) returns undefined', () => {
     const ir = parseRoot('s("bd").jux(x => x.gain(0.5))')
-    const fx = find(
+    const pan = find(
       ir,
-      (n) => n.tag === 'FX' && n.userMethod === undefined,
+      // #967 — jux pans are Param('pan', ±1) with no userMethod (was FX).
+      (n) => n.tag === 'Param' && (n as { key?: string }).key === 'pan' && n.userMethod === undefined,
     )
-    expect(fx).not.toBeNull()
-    expect(projectedLabel(fx!)).toBeUndefined()
+    expect(pan).not.toBeNull()
+    expect(projectedLabel(pan!)).toBeUndefined()
   })
 
   it('Pure node (synthetic, userMethod undefined) returns undefined', () => {
@@ -419,9 +419,12 @@ describe('projectedChildren — jux (strip the FX(pan,±1) wrappers)', () => {
     expect(kids.length).toBe(2)
     const t0 = kids[0]
     const t1 = kids[1]
-    // Neither side should be a synthetic FX(pan) at the top.
-    expect(!(t0.tag === 'FX' && t0.userMethod === undefined)).toBe(true)
-    expect(!(t1.tag === 'FX' && t1.userMethod === undefined)).toBe(true)
+    // Neither side should be a synthetic pan wrapper at the top (#967: the
+    // jux pan is Param('pan', ±1) with no userMethod, was FX(pan)).
+    const isSyntheticPan = (n: PatternIR) =>
+      n.tag === 'Param' && (n as { key?: string }).key === 'pan' && n.userMethod === undefined
+    expect(isSyntheticPan(t0)).toBe(false)
+    expect(isSyntheticPan(t1)).toBe(false)
   })
 })
 
@@ -542,42 +545,44 @@ describe('stripInnerLate', () => {
       offset: 0.125,
       body: inner,
     }
-    const fx: PatternIR = {
-      tag: 'FX',
-      name: 'gain',
-      params: { gain: 0.5 },
+    const param: PatternIR = {
+      tag: 'Param',
+      key: 'gain',
+      value: 0.5,
+      rawArgs: '0.5',
       body: synthLate,
       userMethod: 'gain',
     }
-    const stripped = stripInnerLate(fx)
-    expect(stripped.tag).toBe('FX')
+    const stripped = stripInnerLate(param)
+    expect(stripped.tag).toBe('Param')
     expect((stripped as { body: PatternIR }).body).toBe(inner)
   })
 
-  it('descends two single-body wrappers (Fast > FX > synthetic Late case)', () => {
+  it('descends two single-body wrappers (Fast > Param > synthetic Late case)', () => {
     const inner = parseRoot('s("bd")')
     const synthLate: PatternIR = {
       tag: 'Late',
       offset: 0.125,
       body: inner,
     }
-    const fx: PatternIR = {
-      tag: 'FX',
-      name: 'gain',
-      params: { gain: 0.5 },
+    const param: PatternIR = {
+      tag: 'Param',
+      key: 'gain',
+      value: 0.5,
+      rawArgs: '0.5',
       body: synthLate,
       userMethod: 'gain',
     }
     const fast: PatternIR = {
       tag: 'Fast',
       factor: 2,
-      body: fx,
+      body: param,
       userMethod: 'fast',
     }
     const stripped = stripInnerLate(fast)
     expect(stripped.tag).toBe('Fast')
     const fastBody = (stripped as { body: PatternIR }).body
-    expect(fastBody.tag).toBe('FX')
+    expect(fastBody.tag).toBe('Param')
     expect((fastBody as { body: PatternIR }).body).toBe(inner)
   })
 

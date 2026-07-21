@@ -96,7 +96,6 @@ const TAG_COLOR: Record<PatternIR["tag"], string> = {
   Every:    "var(--ir-every, #f97316)",
   Cycle:    "var(--ir-cycle, #06b6d4)",
   When:     "var(--ir-when, #14b8a6)",
-  FX:       "var(--ir-fx, #ec4899)",
   Ramp:     "var(--ir-ramp, #f97316)",
   Fast:     "var(--ir-fast, #f97316)",
   Slow:     "var(--ir-slow, #f97316)",

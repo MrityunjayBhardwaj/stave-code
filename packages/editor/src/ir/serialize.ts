@@ -53,7 +53,7 @@ export function patternFromJSON(json: string): PatternIR {
 
 const VALID_TAGS = new Set([
   'Pure', 'Seq', 'Stack', 'Play', 'Sleep', 'Choice', 'Every',
-  'Cycle', 'When', 'FX', 'Ramp', 'Fast', 'Slow', 'Loop', 'Code',
+  'Cycle', 'When', 'Ramp', 'Fast', 'Slow', 'Loop', 'Code',
   'Param', 'Track',
   // Phase 20-18 Wave A — Signal/Builder chain-ROOT family (additive).
   // Every existing entry above stays byte-UNCHANGED; these are appended
@@ -165,18 +165,6 @@ function validateNode(raw: unknown, path: string): PatternIR {
       return {
         tag: 'When',
         gate: node.gate as string,
-        body: validateNode(node.body, `${path}.body`),
-      }
-    }
-
-    case 'FX': {
-      requireField(node, 'name', ['string'], path)
-      requireObject(node, 'params', path)
-      requireField(node, 'body', ['object'], path)
-      return {
-        tag: 'FX',
-        name: node.name as string,
-        params: node.params as Record<string, number | string>,
         body: validateNode(node.body, `${path}.body`),
       }
     }

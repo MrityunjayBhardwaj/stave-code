@@ -1,5 +1,5 @@
-import { I as IREvent, a as IRPattern, P as PatternIR, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, S as StreamingComponent, A as AudioComponent, Q as QueryableComponent, h as InlineVizComponent, i as VizRendererSource } from './vizConfig-BOz3Hmii.js';
-export { D as DEFAULT_VIZ_CONFIG, j as DEFAULT_VIZ_QUALITY, k as IR, l as IRComponent, m as PlayParams, n as SourceLocation, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-BOz3Hmii.js';
+import { I as IREvent, a as IRPattern, P as PatternIR, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, S as StreamingComponent, A as AudioComponent, Q as QueryableComponent, h as InlineVizComponent, i as VizRendererSource } from './vizConfig-mtfzdM0W.js';
+export { D as DEFAULT_VIZ_CONFIG, j as DEFAULT_VIZ_QUALITY, k as IR, l as IRComponent, m as PlayParams, n as SourceLocation, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-mtfzdM0W.js';
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
 import React__default, { ReactNode } from 'react';
@@ -64,7 +64,7 @@ interface CollectContext {
     duration: number;
     /** Accumulated speed factor (Fast multiplies, Slow divides) */
     speed: number;
-    /** Inherited parameters from enclosing FX/Ramp nodes */
+    /** Inherited parameters from enclosing Param/Ramp nodes */
     params: Record<string, number | string>;
     /**
      * Phase 20-11 — populated by Track wrapper arm (β-1). Outer-then-inner

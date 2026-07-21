@@ -113,11 +113,11 @@ export function projectedLabel(node: PatternIR): string | undefined {
       return undefined
     // Synthetic intermediates that should fold into parent (D-02):
     // - Late from .off() (parseStrudel.ts:585-588)
-    // - FX(pan,±1) from .jux() (parseStrudel.ts:514-515)
+    // - Param(pan,±1) from .jux() — handled in the Param case below (#967;
+    //   was FX(pan,±1) before the FX tag was deleted)
     // - Ramp (no parser path; defensive)
     // - Loop (no parser path; defensive)
     case 'Late':
-    case 'FX':
     case 'Ramp':
     case 'Loop':
       return undefined
@@ -137,7 +137,14 @@ export function projectedLabel(node: PatternIR): string | undefined {
     case 'Shuffle':
     case 'Scramble':
     case 'Chop':
+      return node.tag
     case 'Param':
+      // #967 — a synthetic jux pan is now Param(pan, ±1) with no userMethod
+      // (it was FX(pan) before the FX tag was deleted). It folds into the
+      // parent exactly as the old FX case did: it is stripped structurally at
+      // the jux projection (see `m === 'jux'` below), and folded here for any
+      // path that labels it directly.
+      if (node.key === 'pan' && node.userMethod === undefined) return undefined
       // Phase 20-10 wave β-2 (PV35 / PV32 — musician chrome).
       //
       // Defensive fallthrough only. The userMethod-first short-circuit at
@@ -230,10 +237,13 @@ export function projectedChildren(node: PatternIR): readonly PatternIR[] {
         return node.tracks
       }
       if (m === 'jux') {
-        // Raw IR: Stack(FX(pan=-1, body), FX(pan=+1, transformed))
-        // Strip the FX(pan, ±1) wrappers; surface [body, transformed].
+        // Raw IR: Stack(Param(pan=-1, body), Param(pan=+1, transformed))
+        // Strip the synthetic pan wrappers; surface [body, transformed].
+        // #967 — these were FX(pan,±1) before the FX tag was deleted; the
+        // discriminator is now (key 'pan' + no userMethod), since a
+        // user-written .pan(...) is Param('pan', userMethod: 'pan').
         return node.tracks.map((t) => {
-          if (t.tag === 'FX' && t.userMethod === undefined) {
+          if (t.tag === 'Param' && t.key === 'pan' && t.userMethod === undefined) {
             return t.body
           }
           return t
@@ -267,7 +277,6 @@ export function projectedChildren(node: PatternIR): readonly PatternIR[] {
       return node.default_ ? [node.body, node.default_] : [node.body]
     case 'When':
       return [node.body]
-    case 'FX':
     case 'Ramp':
     case 'Fast':
     case 'Slow':
@@ -292,7 +301,7 @@ export function projectedChildren(node: PatternIR): readonly PatternIR[] {
       // (musician chrome reveals `via.inner` for the same reason).
       //
       // Literal-value Params (string | number) have no sub-IR — return
-      // [body] only, matching FX's single-body shape.
+      // [body] only, matching the single-body wrapper shape.
       //
       // Order: [value, body] places the sub-IR first because it is the
       // structural child the user typed; body is the receiver chain.
@@ -362,7 +371,7 @@ export function projectedChildren(node: PatternIR): readonly PatternIR[] {
  * The Late lives at some `body` position inside the transformed sub-IR
  * (parseStrudel.ts:585-588 places it at the leaf-most body of
  * parseTransform's result; chain `.gain(0.5).fast(2)` wraps it in
- * Fast{body: FX{body: lateBody}}).
+ * Fast{body: Param{body: lateBody}}).
  *
  * Strategy: traverse single-body chains; replace the synthetic Late
  * (tag === 'Late' && userMethod === undefined) with its body. Stop at
@@ -380,8 +389,7 @@ export function stripInnerLate(node: PatternIR): PatternIR {
   }
   // Single-body wrappers: recurse into body.
   switch (node.tag) {
-    case 'FX':
-    case 'Param':         // Phase 20-10 — same single-body shape as FX.
+    case 'Param':         // single-body wrapper
     case 'Ramp':
     case 'Fast':
     case 'Slow':
@@ -396,7 +404,7 @@ export function stripInnerLate(node: PatternIR): PatternIR {
     case 'Chop':
     case 'When':
     case 'Loop':
-    case 'Track':         // Phase 20-11 — single-body wrapper; same shape as FX/Param.
+    case 'Track':         // Phase 20-11 — single-body wrapper; same shape as Param.
       return { ...node, body: stripInnerLate(node.body) }
     // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
     // LEAF — stripInnerLate never recurses through these. parseTransform
@@ -427,7 +435,7 @@ export function stripInnerLate(node: PatternIR): PatternIR {
  *   - `'stack'` covers user-typed `stack(...)`.
  *   - Layer / jux / off Stacks are SINGLE leaves — they're transformations
  *     attached to one voice, not parallel composition.
- *   - Everything else (Seq, Cycle, Cat, FX, Param, Fast, Slow, Late, Choice,
+ *   - Everything else (Seq, Cycle, Cat, Param, Fast, Slow, Late, Choice,
  *     Code, Play, …) is a leaf — wrappers/modifiers attached to ONE voice.
  *
  * Inputs: typically `track.body` (NOT the Track itself; Track is the
@@ -486,7 +494,6 @@ function peelSingleBodyWrapper(n: PatternIR): PatternIR | null {
   if (n.tag === 'Code' && n.via && !('literal' in n.via) && n.via.inner) return n.via.inner
   switch (n.tag) {
     case 'Param':
-    case 'FX':
     case 'Fast':
     case 'Slow':
     case 'Elongate':
