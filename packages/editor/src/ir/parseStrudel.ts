@@ -2436,23 +2436,26 @@ function applyMethod(
     case 'resonance':
     case 'lpf':
     case 'hpf': {
-      // FX group — 13 arms after Phase 20-10 migrated `speed` to Param.
-      const val = parseFloat(subbedArgs.trim())
-      if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange))
-      // #935 — a PATTERN arg (`.room("0.3 0.5")`) is not a number, but most of
-      // these ARE real controls, so hand them to the same registry path an
-      // off-list control takes instead of opaquing. Without this the CURATED
-      // control is the narrower one: `.roomsize("0.3 0.5")` classified while
-      // `.room("0.3 0.5")` went opaque. `reverb` is not a core control
-      // (isControlName=false) so it still opaques here, which is correct.
+      // #944 — the FX→Param collapse. Route through the single control
+      // authority FIRST. Every name in this group except `reverb` is a real
+      // @strudel/core control, so asControlParam classifies BOTH numeric and
+      // pattern args as Param under the canonical key (lpf→cutoff,
+      // hpf→hcutoff), retiring the arg-shape split that #935 left behind
+      // (numeric→FX, pattern→Param — one control filed under two tags).
       //
-      // The tag differs by ARG SHAPE on purpose: a numeric arg stays FX (its
-      // params are Record<string, number|string> and every FX consumer keeps
-      // working untouched), while a pattern arg becomes Param, the shape that
-      // can actually carry a sub-IR value. Widening FX's value type instead
-      // would move every existing FX node for no gain.
+      // The two names the registry does not know keep the curated fallback
+      // below, so neither regresses classified→opaque (PV201):
+      //   - `reverb` (webaudio effect; the core control is `room`) — a numeric
+      //     arg keeps its FX tag; a pattern arg has no registry rescue and
+      //     opaques, exactly as before.
+      // A signal/expression arg (`.cutoff(perlin.range(...))`) is not numeric
+      // and not a pattern the registry can model, so asControlParam returns
+      // null and it opaques via the fallback — identical to the pre-collapse
+      // path, which reached the same wrapAsOpaque after parseFloat failed.
       const asParam = asControlParam(method, args, baseOffset, ir, callSiteRange)
       if (asParam) return asParam
+      const val = parseFloat(subbedArgs.trim())
+      if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange))
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)
     }
 

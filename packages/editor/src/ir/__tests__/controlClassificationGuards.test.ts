@@ -120,14 +120,15 @@ async function haps(code: string, cycles = 4): Promise<string[]> {
 // ---------------------------------------------------------------------------
 // 1. extractTransform — the FX-only privileged path (toStrudel.ts:347)
 // ---------------------------------------------------------------------------
-describe('extractTransform: the FX arrow form is the minority path', () => {
-  // COLLAPSE WILL FLIP THIS. `x => x.room(0.8)` is reachable ONLY because a
-  // numeric-arg control still tags FX. Once room/delay/lpf become Param, this
-  // branch has no real users left and the emission becomes the `() =>` form
-  // below. That flip is EXPECTED and correct-to-make; it must be DECLARED.
-  it('an FX body emits the single-argument arrow form', () => {
+describe('extractTransform: the FX arrow form is now unreachable for controls', () => {
+  // COLLAPSE FLIPPED THIS (#944). `x => x.room(0.8)` was reachable ONLY because
+  // a numeric-arg control still tagged FX. Now that room/delay/lpf are Param,
+  // extractTransform's `tag === 'FX'` branch has no real users left (only jux's
+  // synthetic pans carry FX, and those never appear as a transform body), and
+  // the emission takes the `() =>` fallback — hap-identical per section 2.
+  it('a collapsed control body emits the 0-arg arrow form (room is Param now)', () => {
     expect(emit('s("bd hh").every(4, x => x.room(0.8))'))
-      .toBe('s("bd hh").every(4, x => x.room(0.8))')
+      .toBe('s("bd hh").every(4, () => s("bd hh").room(0.8))')
   })
 
   // COLLAPSE PRESERVES THESE. They already take the generic fallback today —
@@ -150,14 +151,14 @@ describe('extractTransform: the FX arrow form is the minority path', () => {
     expect(nodesWithTag(src, tag)).not.toHaveLength(0)
   })
 
-  // The #935 path: a PATTERN arg on a curated control already tags Param, so a
-  // control that emits the `x =>` form with a number emits the `() =>` form
-  // with a pattern. Same control, same position — two spellings, decided purely
-  // by arg shape. This is the incoherence the collapse resolves by making BOTH
-  // take the same path.
-  it('one control emits two different arrow forms depending on arg shape', () => {
+  // The incoherence the collapse RESOLVES. Before #944 a numeric arg tagged FX
+  // and emitted `x => x.room(0.8)` while a pattern arg tagged Param and emitted
+  // `() => …room("0.3 0.5")` — same control, same position, two spellings
+  // decided purely by arg shape. Now both are Param, so both take the `() =>`
+  // form: one control, one arrow form.
+  it('one control now emits the same arrow form regardless of arg shape', () => {
     expect(emit('s("bd hh").every(4, x => x.room(0.8))'))
-      .toBe('s("bd hh").every(4, x => x.room(0.8))')
+      .toBe('s("bd hh").every(4, () => s("bd hh").room(0.8))')
     expect(emit('s("bd hh").every(4, x => x.room("0.3 0.5"))'))
       .toBe('s("bd hh").every(4, () => s("bd hh").room("0.3 0.5"))')
   })
@@ -184,9 +185,11 @@ describe('both arrow forms play identically (so only the string shows a change)'
   // COLLAPSE MUST PRESERVE THIS. If a later change makes these diverge, the
   // duplication has turned into wrong music and this test is the alarm.
   it.each([
+    's("bd hh").every(4, x => x.room(0.8))',        // #944 — the newly-flipped NUMERIC case
     's("bd hh").every(4, x => x.room("0.3 0.5"))',
     's("bd hh").every(4, x => x.lpf("400 800"))',
     's("bd hh").fast(2).every(4, x => x.room("0.3 0.5"))',
+    's("bd sd hh cp").chunk(2, x => x.room(0.5))',  // #944 — chunk, not just every: the 0-arg arrow is equivalent here too
   ])('%s round-trips to hap-identical code', async (src) => {
     const out = emit(src)
     expect(out).not.toBe(src)          // the spelling really did change
@@ -221,8 +224,11 @@ describe('controls the corpus cannot see', () => {
     expect(nodesWithTag('s("bd").reverb("0.3 0.5")', 'FX')).toHaveLength(0)
   })
 
-  it('hpf classifies in both arg shapes though the corpus contains none', () => {
-    expect(nodesWithTag('s("bd").hpf(400)', 'FX')).toHaveLength(1)
+  it('hpf classifies as Param in both arg shapes though the corpus contains none', () => {
+    // #944 — hpf is a real control, so numeric now takes the registry path too;
+    // both arg shapes are Param (canonical hcutoff). Pre-collapse the numeric
+    // arm tagged FX.
+    expect(nodesWithTag('s("bd").hpf(400)', 'Param')).toHaveLength(1)
     expect(nodesWithTag('s("bd").hpf("200 400")', 'Param')).toHaveLength(1)
   })
 
@@ -257,15 +263,17 @@ describe('the same control files under different keys by arg shape', () => {
   // that ONE control answering to TWO keys will mislead the next person who
   // reasons about the IR, not that anything currently sounds or looks wrong.
   //
-  // COLLAPSE WILL FLIP THE NUMERIC ROW: after it, both spellings should file
-  // under the canonical key. That is the whole point — declare it here.
-  it('lpf: numeric files under lpf, pattern files under the canonical cutoff', () => {
-    expect(firstEventParams('s("bd").lpf(800)')).toMatchObject({ lpf: 800 })
+  // #944 FLIPPED THE NUMERIC ROW: both spellings now file under the canonical
+  // key. Pre-collapse the numeric arm filed under the raw name (`lpf`/`hpf`, an
+  // FX params Record) while only the pattern arm canonicalised (`cutoff`/
+  // `hcutoff`, #928). One control, one key — the whole point.
+  it('lpf: both arg shapes now file under the canonical cutoff', () => {
+    expect(firstEventParams('s("bd").lpf(800)')).toMatchObject({ cutoff: 800 })
     expect(firstEventParams('s("bd").lpf("400 800")')).toMatchObject({ cutoff: '400' })
   })
 
-  it('hpf: numeric files under hpf, pattern files under the canonical hcutoff', () => {
-    expect(firstEventParams('s("bd").hpf(400)')).toMatchObject({ hpf: 400 })
+  it('hpf: both arg shapes now file under the canonical hcutoff', () => {
+    expect(firstEventParams('s("bd").hpf(400)')).toMatchObject({ hcutoff: 400 })
     expect(nodesWithTag('s("bd").hpf("200 400")', 'Param')[0].key).toBe('hcutoff')
   })
 
@@ -277,8 +285,11 @@ describe('the same control files under different keys by arg shape', () => {
   // This is why the collapse is worth doing and also why "did the key move?"
   // is not a sufficient check: for delay the key never moves, so only the tag
   // shows the defect, while for lpf only the key shows it. Pin both shapes.
-  it('delay splits the tag but not the key', () => {
-    expect(nodesWithTag('s("bd").delay(0.5)', 'FX')).toHaveLength(1)
+  it('delay no longer splits the tag — both arg shapes are Param under delay', () => {
+    // #944 resolved the flagship split (16 FX + 3 Param in the corpus): one
+    // control, two tags decided by arg shape. Both are Param now. The key never
+    // split (getControlName('delay') === 'delay'), so only the tag showed it.
+    expect(nodesWithTag('s("bd").delay(0.5)', 'Param')).toHaveLength(1)
     expect(nodesWithTag('s("bd").delay("0.3 0.5")', 'Param')).toHaveLength(1)
     expect(firstEventParams('s("bd").delay(0.5)')).toMatchObject({ delay: 0.5 })
     expect(firstEventParams('s("bd").delay("0.3 0.5")')).toMatchObject({ delay: '0.3' })
@@ -289,9 +300,9 @@ describe('the same control files under different keys by arg shape', () => {
   // correct collapse leaves every assertion here untouched.
   it.each([
     ['crush', 4], ['begin', 0.2], ['resonance', 10], ['cut', 1],
-  ])('%s classifies numerically and keys to itself', (method, value) => {
+  ])('%s classifies numerically as Param and keys to itself', (method, value) => {
     const src = `s("bd").${method}(${value})`
-    expect(nodesWithTag(src, 'FX')).toHaveLength(1)
+    expect(nodesWithTag(src, 'Param')).toHaveLength(1)  // #944 — FX pre-collapse
     expect(isControlName(method)).toBe(true)
     expect(firstEventParams(src)).toMatchObject({ [method]: value })
   })
@@ -308,20 +319,25 @@ describe('the same control files under different keys by arg shape', () => {
 // ---------------------------------------------------------------------------
 // 5. Stacked same-control calls — first-wins at the merge
 // ---------------------------------------------------------------------------
-describe('repeated control calls merge first-wins', () => {
-  // Two nested FX nodes both survive in the tree; the merge in `collect` is
-  // what picks a winner, and the INNER (first-written) one takes it.
-  //
-  // The collapse changes the merge path (FX carries a params Record, Param
-  // carries key/value), so this is exactly the kind of behaviour that can flip
-  // silently. Pinned BEFORE, so a flip has to be argued for.
-  it('.room(0.3).room(0.5) collects the first value', () => {
-    expect(nodesWithTag('s("bd").room(0.3).room(0.5)', 'FX')).toHaveLength(2)
-    expect(firstEventParams('s("bd").room(0.3).room(0.5)')).toMatchObject({ room: 0.3 })
+describe('repeated control calls merge last-wins (matching Strudel eval)', () => {
+  // The merge order FLIPPED with #944, and the original pin here required any
+  // flip to be ARGUED, not just accepted. Here is the argument: pre-collapse
+  // two nested FX nodes merged in `collect` to the INNER (first-written) value;
+  // the Param path takes the OUTER (last-written) value — and last-wins is what
+  // Strudel itself plays (verified below with the eval oracle, not our own
+  // re-parse). So the collapse did not introduce a divergence; it removed one —
+  // the FX first-wins merge was the outlier all along. See #944.
+  it('.room(0.3).room(0.5) collects the last value, matching Strudel', async () => {
+    expect(nodesWithTag('s("bd").room(0.3).room(0.5)', 'Param')).toHaveLength(2)
+    expect(firstEventParams('s("bd").room(0.3).room(0.5)')).toMatchObject({ room: 0.5 })
+    const [hap] = await haps('s("bd").room(0.3).room(0.5)', 1)   // second oracle
+    expect(hap).toContain('"room":0.5')
   })
 
-  it('holds for a control that canonicalises, too', () => {
-    expect(firstEventParams('s("bd").lpf(400).lpf(900)')).toMatchObject({ lpf: 400 })
+  it('holds for a control that canonicalises, too', async () => {
+    expect(firstEventParams('s("bd").lpf(400).lpf(900)')).toMatchObject({ cutoff: 900 })
+    const [hap] = await haps('s("bd").lpf(400).lpf(900)', 1)
+    expect(hap).toContain('"cutoff":900')
   })
 })
 

@@ -125,12 +125,14 @@ describe('#928 — classify off-list controls from the registry (deny-list, Tier
       expect(opaqueNode('note("c").room("0.3 0.5")', 'room')).toBeUndefined()
     })
 
-    it('a NUMERIC arg on the same control still classifies as FX', () => {
-      // The tag differs by arg shape on purpose — FX params are typed
-      // Record<string, number|string>, so only the pattern case needs Param.
-      // Every existing FX consumer keeps working untouched.
-      expect(fxNode('note("c").room(0.3)', 'room')).toBeDefined()
-      expect(fxNode('note("c").crush(4)', 'crush')).toBeDefined()
+    it('a NUMERIC arg on the same control now also classifies as Param (#944)', () => {
+      // #944 (the FX→Param collapse) retired the arg-shape split #935 left
+      // behind: both numeric and pattern args on a curated control take the
+      // registry path and classify as Param under the canonical key. Pre-#944
+      // the numeric arm tagged FX (a typed Record), which filed one control
+      // under two tags — see controlClassificationGuards.test.ts.
+      expect(paramNode('note("c").room(0.3)', 'room')).toBeDefined()
+      expect(paramNode('note("c").crush(4)', 'crush')).toBeDefined()
     })
 
     it('keys by the canonical control name but round-trips the user token', () => {
