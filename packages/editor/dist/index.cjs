@@ -3,10 +3,10 @@
 var core = require('@strudel/core');
 var krillParser_js = require('@strudel/mini/krill-parser.js');
 var euclid_mjs = require('@strudel/core/euclid.mjs');
+var acorn = require('acorn');
 var controls_mjs = require('@strudel/core/controls.mjs');
 var React36 = require('react');
 var p5 = require('p5');
-var acorn = require('acorn');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
 var Y3 = require('yjs');
@@ -2466,6 +2466,33 @@ function parseTimeSequenceRoot(trimmed, baseOffset, leadingWs, bindings, opts) {
   return { tag: "Arrange", mode: fn, arms, loc: [nodeLoc], userMethod: fn };
 }
 __name(parseTimeSequenceRoot, "parseTimeSequenceRoot");
+var PATTERN_SOURCE_NAMES = /* @__PURE__ */ new Set(["note", "n", "s", "sound", "mini"]);
+var PATTERN_SOURCE_CALL_RE = /^(?:note|n|s|sound|mini)\s*\(/;
+function extractPatternSourceCall(trimmed) {
+  if (!PATTERN_SOURCE_CALL_RE.test(trimmed)) return null;
+  let program;
+  try {
+    program = acorn.parse(trimmed, { ecmaVersion: "latest" });
+  } catch {
+    return null;
+  }
+  const body = program.body;
+  if (body.length !== 1 || body[0].type !== "ExpressionStatement") return null;
+  const expr = body[0].expression;
+  if (!expr || expr.type !== "CallExpression" || expr.callee.type !== "Identifier" || !PATTERN_SOURCE_NAMES.has(expr.callee.name) || expr.arguments.length !== 1) {
+    return null;
+  }
+  const arg = expr.arguments[0];
+  const isSample = expr.callee.name === "s" || expr.callee.name === "sound";
+  if (arg.type === "Literal" && typeof arg.value === "string") {
+    return { isSample, isBacktick: false, inner: trimmed.slice(arg.start + 1, arg.end - 1), delimOffset: arg.start };
+  }
+  if (arg.type === "TemplateLiteral" && arg.expressions.length === 0) {
+    return { isSample, isBacktick: true, inner: trimmed.slice(arg.start + 1, arg.end - 1), delimOffset: arg.start };
+  }
+  return null;
+}
+__name(extractPatternSourceCall, "extractPatternSourceCall");
 function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
   const trimmed = root.trim();
   const leadingWs = root.length - root.trimStart().length;
@@ -2511,59 +2538,10 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
       }
     }
   }
-  const noteMatch = trimmed.match(/^(?:note|n)\s*\(\s*"([^"]*)"\s*\)/);
-  if (noteMatch) {
-    const quoteIdx = noteMatch[0].indexOf('"');
-    const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
-    return parseMini(noteMatch[1], false, innerOffset);
-  }
-  const noteBtMatch = trimmed.match(/^(?:note|n)\s*\(\s*`([^`]*)`\s*\)/);
-  if (noteBtMatch) {
-    const btIdx = noteBtMatch[0].indexOf("`");
-    const innerOffset = baseOffset + leadingWs + btIdx + 1;
-    return backtickInnerToIR(noteBtMatch[1], false, innerOffset);
-  }
-  const noteSqMatch = trimmed.match(/^(?:note|n)\s*\(\s*'([^']*)'\s*\)/);
-  if (noteSqMatch) {
-    const quoteIdx = noteSqMatch[0].indexOf("'");
-    const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
-    return parseMini(noteSqMatch[1], false, innerOffset);
-  }
-  const sMatch = trimmed.match(/^(?:s|sound)\s*\(\s*"([^"]*)"\s*\)/);
-  if (sMatch) {
-    const quoteIdx = sMatch[0].indexOf('"');
-    const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
-    return parseMini(sMatch[1], true, innerOffset);
-  }
-  const sBtMatch = trimmed.match(/^(?:s|sound)\s*\(\s*`([^`]*)`\s*\)/);
-  if (sBtMatch) {
-    const btIdx = sBtMatch[0].indexOf("`");
-    const innerOffset = baseOffset + leadingWs + btIdx + 1;
-    return backtickInnerToIR(sBtMatch[1], true, innerOffset);
-  }
-  const sSqMatch = trimmed.match(/^(?:s|sound)\s*\(\s*'([^']*)'\s*\)/);
-  if (sSqMatch) {
-    const quoteIdx = sSqMatch[0].indexOf("'");
-    const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
-    return parseMini(sSqMatch[1], true, innerOffset);
-  }
-  const miniMatch = trimmed.match(/^mini\s*\(\s*"([^"]*)"\s*\)/);
-  if (miniMatch) {
-    const quoteIdx = miniMatch[0].indexOf('"');
-    const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
-    return parseMini(miniMatch[1], false, innerOffset);
-  }
-  const miniBtMatch = trimmed.match(/^mini\s*\(\s*`([^`]*)`\s*\)/);
-  if (miniBtMatch) {
-    const btIdx = miniBtMatch[0].indexOf("`");
-    const innerOffset = baseOffset + leadingWs + btIdx + 1;
-    return backtickInnerToIR(miniBtMatch[1], false, innerOffset);
-  }
-  const miniSqMatch = trimmed.match(/^mini\s*\(\s*'([^']*)'\s*\)/);
-  if (miniSqMatch) {
-    const quoteIdx = miniSqMatch[0].indexOf("'");
-    const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
-    return parseMini(miniSqMatch[1], false, innerOffset);
+  const sourceCall = extractPatternSourceCall(trimmed);
+  if (sourceCall) {
+    const innerOffset = baseOffset + leadingWs + sourceCall.delimOffset + 1;
+    return sourceCall.isBacktick ? backtickInnerToIR(sourceCall.inner, sourceCall.isSample, innerOffset) : parseMini(sourceCall.inner, sourceCall.isSample, innerOffset);
   }
   const looseMatch = trimmed.match(/^(note|n|s|sound|mini)\s*\(/);
   if (looseMatch) {

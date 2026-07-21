@@ -14,6 +14,7 @@
  * Unsupported fragments fall back to Code nodes (never throws).
  */
 
+import { parse as acornParse } from 'acorn'
 import { IR, type PatternIR, type ArrangeArm } from './PatternIR'
 import type { SourceLocation } from './IREvent'
 import { parseMini } from './parseMini'
@@ -1455,6 +1456,77 @@ function parseTimeSequenceRoot(
 // Root parser
 // ---------------------------------------------------------------------------
 
+/** The pattern-source root forms: a call to one of these applied to a single
+ *  mini-notation string is a leaf pattern. `sound` is Strudel's alias of `s`
+ *  and `n`/`note` share note semantics; `s`/`sound` carry SAMPLE semantics. */
+const PATTERN_SOURCE_NAMES = new Set(['note', 'n', 's', 'sound', 'mini'])
+/** Quick gate so a non-source root (`stack(...)`, a bare ident) is not handed
+ *  to acorn just to be declined. Same 5-name vocabulary as the loose arm. */
+const PATTERN_SOURCE_CALL_RE = /^(?:note|n|s|sound|mini)\s*\(/
+
+/**
+ * A pattern-source root call — `note`/`n`/`s`/`sound`/`mini` applied to exactly
+ * one string or backtick-template literal (#959 category B).
+ *
+ * This replaces the 3×3 grid of hand-rolled regexes (three name-groups × three
+ * quote styles) with one delegation to acorn, which owns "what is a string
+ * literal, and where does it start". The nine regexes answered the same two
+ * orthogonal questions each — the NAME decides sample-vs-note semantics, the
+ * DELIMITER decides `parseMini` vs `backtickInnerToIR` (only a backtick spans
+ * newlines; `"` and `'` are identical for mini-notation) — so they were a
+ * product, not nine distinct decisions.
+ *
+ * `delimOffset` is the position of the OPENING delimiter within `trimmed`,
+ * identical to the regexes' `m[0].indexOf(quote)`; the caller adds
+ * `baseOffset + leadingWs` and `+1` to reach the inner, so loc fidelity (PV49)
+ * is byte-preserved — verified over the corpus, the collapse moves no snapshot.
+ *
+ * Returns null (→ the caller falls through to the loose recursive arm and then
+ * bareCode, exactly as before) for anything that is not precisely one such call
+ * with one plain literal argument: a chained inner (`n("0".fast(2))`), extra
+ * arguments, a member/computed callee, or a `${…}` template (whose expression
+ * the loose arm and `backtickInnerToIR` already route to opaque Code). A
+ * chained ROOT (`note("c3").fast(2)`) never reaches here — `parseExpression`
+ * splits the chain before `parseRoot`, so `trimmed` is always chain-free.
+ */
+function extractPatternSourceCall(
+  trimmed: string,
+): { isSample: boolean; isBacktick: boolean; inner: string; delimOffset: number } | null {
+  if (!PATTERN_SOURCE_CALL_RE.test(trimmed)) return null
+  let program: ReturnType<typeof acornParse>
+  try {
+    program = acornParse(trimmed, { ecmaVersion: 'latest' })
+  } catch {
+    return null
+  }
+  const body = program.body
+  if (body.length !== 1 || body[0].type !== 'ExpressionStatement') return null
+  // acorn's node shapes are structurally checked below; typed as `any` to avoid
+  // pulling in `@types/estree` for a handful of discriminated reads.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const expr = (body[0] as any).expression
+  if (
+    !expr ||
+    expr.type !== 'CallExpression' ||
+    expr.callee.type !== 'Identifier' ||
+    !PATTERN_SOURCE_NAMES.has(expr.callee.name) ||
+    expr.arguments.length !== 1
+  ) {
+    return null
+  }
+  const arg = expr.arguments[0]
+  const isSample = expr.callee.name === 's' || expr.callee.name === 'sound'
+  if (arg.type === 'Literal' && typeof arg.value === 'string') {
+    return { isSample, isBacktick: false, inner: trimmed.slice(arg.start + 1, arg.end - 1), delimOffset: arg.start }
+  }
+  // A `${…}` template carries expressions → declined here so it reaches the
+  // same opaque-Code path the old backtick arm's `${` guard produced.
+  if (arg.type === 'TemplateLiteral' && arg.expressions.length === 0) {
+    return { isSample, isBacktick: true, inner: trimmed.slice(arg.start + 1, arg.end - 1), delimOffset: arg.start }
+  }
+  return null
+}
+
 /**
  * Parse the root function call: note("..."), s("..."), stack(...), or bare expression.
  * `baseOffset` is the absolute char offset of `root[0]` within the user's code.
@@ -1603,84 +1675,21 @@ export function parseRoot(
     }
   }
 
-  // note("...") or n("...") — plus G3 backtick `` `…` `` (multi-line ok).
-  const noteMatch = trimmed.match(/^(?:note|n)\s*\(\s*"([^"]*)"\s*\)/)
-  if (noteMatch) {
-    // Position of the opening quote within `trimmed`, then +1 to skip it.
-    const quoteIdx = noteMatch[0].indexOf('"')
-    const innerOffset = baseOffset + leadingWs + quoteIdx + 1
-    return parseMini(noteMatch[1], false, innerOffset)
-  }
-  const noteBtMatch = trimmed.match(/^(?:note|n)\s*\(\s*`([^`]*)`\s*\)/)
-  if (noteBtMatch) {
-    const btIdx = noteBtMatch[0].indexOf('`')
-    const innerOffset = baseOffset + leadingWs + btIdx + 1
-    return backtickInnerToIR(noteBtMatch[1], false, innerOffset)
-  }
-  // #659 — single-quoted arg `note('…')`. A single-quoted JS string is
-  // semantically identical to a double-quoted one for mini-notation (only
-  // backticks differ, by spanning newlines), so it routes to parseMini like
-  // the `"…"` arm. innerOffset is computed from the ACTUAL opening-quote
-  // position (range discipline — never a hardcoded indexOf('"')).
-  const noteSqMatch = trimmed.match(/^(?:note|n)\s*\(\s*'([^']*)'\s*\)/)
-  if (noteSqMatch) {
-    const quoteIdx = noteSqMatch[0].indexOf("'")
-    const innerOffset = baseOffset + leadingWs + quoteIdx + 1
-    return parseMini(noteSqMatch[1], false, innerOffset)
-  }
-
-  // s("...") / sound("...") — sample pattern — plus G3 backtick.
-  // `sound` is Strudel's documented alias of `s` (upstream controls.mjs
-  // registers `sound` as an alias of the `s` control). 20-15 V-2 surfaced
-  // it: issue #136's literal repro is `sound(`…`)`, and `sound` was never
-  // a recognised root form (every `sound(...)` shape — dq, bare, backtick
-  // — fell to bare Code while the `s(...)` equivalents parsed). It threads
-  // isSampleKey=true identically to `s` (sets params.s + duration:1).
-  const sMatch = trimmed.match(/^(?:s|sound)\s*\(\s*"([^"]*)"\s*\)/)
-  if (sMatch) {
-    const quoteIdx = sMatch[0].indexOf('"')
-    const innerOffset = baseOffset + leadingWs + quoteIdx + 1
-    return parseMini(sMatch[1], true, innerOffset)
-  }
-  const sBtMatch = trimmed.match(/^(?:s|sound)\s*\(\s*`([^`]*)`\s*\)/)
-  if (sBtMatch) {
-    const btIdx = sBtMatch[0].indexOf('`')
-    const innerOffset = baseOffset + leadingWs + btIdx + 1
-    return backtickInnerToIR(sBtMatch[1], true, innerOffset)
-  }
-  // #659 — single-quoted arg `s('…')` / `sound('…')` (sample key). Mirrors
-  // the `"…"` arm (isSampleKey=true); offset from the actual quote position.
-  const sSqMatch = trimmed.match(/^(?:s|sound)\s*\(\s*'([^']*)'\s*\)/)
-  if (sSqMatch) {
-    const quoteIdx = sSqMatch[0].indexOf("'")
-    const innerOffset = baseOffset + leadingWs + quoteIdx + 1
-    return parseMini(sSqMatch[1], true, innerOffset)
-  }
-
-  // mini("...") — raw mini-notation pattern producing values (not notes/samples).
-  // Added for Phase 19-04 T-02 (Pick) — the only Strudel form that produces a
-  // numeric-index Pattern usable as a pick selector in our test environment
-  // (String.prototype.pick is not registered server-side; note("<0 1 2>")
-  // converts numeric strings to MIDI notes which pick can't index by).
-  // RESEARCH §1.4 (pre-mortem #10).
-  const miniMatch = trimmed.match(/^mini\s*\(\s*"([^"]*)"\s*\)/)
-  if (miniMatch) {
-    const quoteIdx = miniMatch[0].indexOf('"')
-    const innerOffset = baseOffset + leadingWs + quoteIdx + 1
-    return parseMini(miniMatch[1], false, innerOffset)
-  }
-  const miniBtMatch = trimmed.match(/^mini\s*\(\s*`([^`]*)`\s*\)/)
-  if (miniBtMatch) {
-    const btIdx = miniBtMatch[0].indexOf('`')
-    const innerOffset = baseOffset + leadingWs + btIdx + 1
-    return backtickInnerToIR(miniBtMatch[1], false, innerOffset)
-  }
-  // #659 — single-quoted arg `mini('…')`. Mirrors the `"…"` arm.
-  const miniSqMatch = trimmed.match(/^mini\s*\(\s*'([^']*)'\s*\)/)
-  if (miniSqMatch) {
-    const quoteIdx = miniSqMatch[0].indexOf("'")
-    const innerOffset = baseOffset + leadingWs + quoteIdx + 1
-    return parseMini(miniSqMatch[1], false, innerOffset)
+  // note/n/s/sound/mini("…") — a pattern-source root applied to ONE string or
+  // backtick literal. #959 category B: the nine name×quote regexes that used to
+  // live here (`note`/`n`, `s`/`sound`, `mini`, each × `"`/`'`/`` ` ``) are one
+  // acorn extraction. The NAME chooses sample-vs-note semantics, the DELIMITER
+  // chooses `backtickInnerToIR` (spans newlines) vs `parseMini`. `sound` is
+  // Strudel's alias of `s` (#136); single and double quotes are identical for
+  // mini-notation (#659); `mini(...)` produces a value pattern for `pick`
+  // (19-04 T-02). All three histories now flow through one delegated read;
+  // `delimOffset` reproduces the old `indexOf(quote)` so loc fidelity holds.
+  const sourceCall = extractPatternSourceCall(trimmed)
+  if (sourceCall) {
+    const innerOffset = baseOffset + leadingWs + sourceCall.delimOffset + 1
+    return sourceCall.isBacktick
+      ? backtickInnerToIR(sourceCall.inner, sourceCall.isSample, innerOffset)
+      : parseMini(sourceCall.inner, sourceCall.isSample, innerOffset)
   }
 
   // #132 (β-2) — LOOSE recursive arm for note/n/s/mini args that carry
