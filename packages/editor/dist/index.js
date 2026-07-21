@@ -2811,10 +2811,10 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
     case "resonance":
     case "lpf":
     case "hpf": {
-      const val = parseFloat(subbedArgs.trim());
-      if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange));
       const asParam = asControlParam(method, args, baseOffset, ir, callSiteRange);
       if (asParam) return asParam;
+      const val = parseFloat(subbedArgs.trim());
+      if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange));
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "pickRestart":

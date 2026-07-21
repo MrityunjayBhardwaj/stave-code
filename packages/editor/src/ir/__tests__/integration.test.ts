@@ -544,11 +544,14 @@ describe('parseStrudel', () => {
     }
   })
 
-  it('parses .room(0.8) as FX', () => {
+  it('parses .room(0.8) as Param (#944 — the FX→Param collapse)', () => {
+    // Pre-#944 a numeric-arg control tagged FX; now it routes through the
+    // control registry and classifies as Param under the canonical key.
     const tree = parseStrudel('note("c4").room(0.8)')
-    expect(tree.tag).toBe('FX')
-    if (tree.tag === 'FX') {
-      expect(tree.params.room).toBe(0.8)
+    expect(tree.tag).toBe('Param')
+    if (tree.tag === 'Param') {
+      expect(tree.key).toBe('room')
+      expect(tree.value).toBe(0.8)
     }
   })
 
