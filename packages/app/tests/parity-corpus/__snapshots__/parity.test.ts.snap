@@ -1616,9 +1616,17 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-143-NEGATIVE-
             "value": "R",
           },
           {
-            "tag": "Stack",
-            "tracks": [
-              {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": "
+    x=>n("a").set(x),
+    x=>n("b").set(x)
+        // maam
+        .mode("c4"),
+  ",
+              "inner": {
                 "body": {
                   "args": ""<G#m>"",
                   "kind": "chord",
@@ -1630,20 +1638,8 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-143-NEGATIVE-
                 "userMethod": "dict",
                 "value": "ireal",
               },
-              {
-                "body": {
-                  "args": ""<G#m>"",
-                  "kind": "chord",
-                  "tag": "Builder",
-                },
-                "key": "dictionary",
-                "rawArgs": ""ireal"",
-                "tag": "Param",
-                "userMethod": "dict",
-                "value": "ireal",
-              },
-            ],
-            "userMethod": "layer",
+              "method": "layer",
+            },
           },
         ],
         "userMethod": "stack",
@@ -1685,9 +1681,17 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-143-apostroph
             "value": "R",
           },
           {
-            "tag": "Stack",
-            "tracks": [
-              {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": "
+    x=>n("a").set(x),
+    x=>n("b").set(x)
+        // ma'am
+        .mode("c4"),
+  ",
+              "inner": {
                 "body": {
                   "args": ""<G#m>"",
                   "kind": "chord",
@@ -1699,20 +1703,8 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-143-apostroph
                 "userMethod": "dict",
                 "value": "ireal",
               },
-              {
-                "body": {
-                  "args": ""<G#m>"",
-                  "kind": "chord",
-                  "tag": "Builder",
-                },
-                "key": "dictionary",
-                "rawArgs": ""ireal"",
-                "tag": "Param",
-                "userMethod": "dict",
-                "value": "ireal",
-              },
-            ],
-            "userMethod": "layer",
+              "method": "layer",
+            },
           },
         ],
         "userMethod": "stack",
@@ -4720,9 +4712,17 @@ exports[`strudel.cc parity corpus — structural IR shape > bassFuge parses to a
                               "via": {
                                 "args": "",
                                 "inner": {
-                                  "tag": "Stack",
-                                  "tracks": [
-                                    {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "
+x=>x,
+x=>x.add(7)
+.off(1/8,x=>x.add("2,4").off(1/8,x=>x.add(5).echo(4,.125,.5)))
+.slow(2),
+",
+                                    "inner": {
                                       "code": "",
                                       "lang": "strudel",
                                       "tag": "Code",
@@ -4851,137 +4851,8 @@ exports[`strudel.cc parity corpus — structural IR shape > bassFuge parses to a
                                         "method": "sub",
                                       },
                                     },
-                                    {
-                                      "code": "",
-                                      "lang": "strudel",
-                                      "tag": "Code",
-                                      "via": {
-                                        "args": "1",
-                                        "inner": {
-                                          "items": [
-                                            {
-                                              "children": [
-                                                {
-                                                  "duration": 0.25,
-                                                  "note": "8",
-                                                  "params": {
-                                                    "gain": 1,
-                                                    "velocity": 1,
-                                                  },
-                                                  "tag": "Play",
-                                                },
-                                                {
-                                                  "duration": 1,
-                                                  "tag": "Sleep",
-                                                },
-                                                {
-                                                  "duration": 1,
-                                                  "tag": "Sleep",
-                                                },
-                                                {
-                                                  "duration": 0.25,
-                                                  "note": "8",
-                                                  "params": {
-                                                    "gain": 1,
-                                                    "velocity": 1,
-                                                  },
-                                                  "tag": "Play",
-                                                },
-                                                {
-                                                  "duration": 1,
-                                                  "tag": "Sleep",
-                                                },
-                                                {
-                                                  "duration": 1,
-                                                  "tag": "Sleep",
-                                                },
-                                                {
-                                                  "duration": 0.25,
-                                                  "note": "8",
-                                                  "params": {
-                                                    "gain": 1,
-                                                    "velocity": 1,
-                                                  },
-                                                  "tag": "Play",
-                                                },
-                                                {
-                                                  "duration": 1,
-                                                  "tag": "Sleep",
-                                                },
-                                              ],
-                                              "tag": "Seq",
-                                            },
-                                            {
-                                              "items": [
-                                                {
-                                                  "duration": 0.25,
-                                                  "note": "7",
-                                                  "params": {
-                                                    "gain": 1,
-                                                    "velocity": 1,
-                                                  },
-                                                  "tag": "Play",
-                                                },
-                                                {
-                                                  "body": {
-                                                    "duration": 0.25,
-                                                    "note": "7",
-                                                    "params": {
-                                                      "gain": 1,
-                                                      "velocity": 1,
-                                                    },
-                                                    "tag": "Play",
-                                                  },
-                                                  "factor": 2,
-                                                  "tag": "Fast",
-                                                },
-                                              ],
-                                              "tag": "Cycle",
-                                            },
-                                            {
-                                              "children": [
-                                                {
-                                                  "duration": 0.25,
-                                                  "note": "4",
-                                                  "params": {
-                                                    "gain": 1,
-                                                    "velocity": 1,
-                                                  },
-                                                  "tag": "Play",
-                                                },
-                                                {
-                                                  "body": {
-                                                    "duration": 0.25,
-                                                    "note": "5",
-                                                    "params": {
-                                                      "gain": 1,
-                                                      "velocity": 1,
-                                                    },
-                                                    "tag": "Play",
-                                                  },
-                                                  "factor": 3,
-                                                  "tag": "Elongate",
-                                                },
-                                              ],
-                                              "tag": "Seq",
-                                            },
-                                            {
-                                              "duration": 0.25,
-                                              "note": "8",
-                                              "params": {
-                                                "gain": 1,
-                                                "velocity": 1,
-                                              },
-                                              "tag": "Play",
-                                            },
-                                          ],
-                                          "tag": "Cycle",
-                                        },
-                                        "method": "sub",
-                                      },
-                                    },
-                                  ],
-                                  "userMethod": "layer",
+                                    "method": "layer",
+                                  },
                                 },
                                 "method": "n",
                               },

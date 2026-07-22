@@ -1,7 +1,7 @@
 # Predicate audit — `ir/parseStrudel.ts`
 
 Every regular expression in `parseStrudel.ts`, the question it answers, and the system that
-owns the right answer. 35 are anchored predicates (categories A and B); 7 are unanchored
+owns the right answer. 36 are anchored predicates (categories A and B); 7 are unanchored
 (category D), two of which are predicates as well.
 
 This file is a **census, not a plan**. It exists so that "find the next parser bug" becomes
@@ -26,9 +26,9 @@ the parse path asks somebody who already knows:
 | `ir/parseStrudelStages.ts` | — | **0** | 377 |
 | `visualEdit/chunkDetect.ts` | acorn | **0** | 496 |
 | `visualEdit/arrange/parse.ts` | acorn | **0** | 223 |
-| **`ir/parseStrudel.ts`** | **nobody** | **35** | **3368** |
+| **`ir/parseStrudel.ts`** | **nobody** | **36** | **3398** |
 
-Every module that delegates has zero. The one that does not has thirty-four (was 42 before #965 delegated the pattern-source grid). `parseMini.ts` is
+Every module that delegates has zero. The one that does not has thirty-six (was 42 before #965 delegated the pattern-source grid). `parseMini.ts` is
 the controlled before/after: 512 lines with a hand-rolled tokenizer, 397 lines and no anchored
 regexes after it was rebuilt on krill.
 
@@ -68,7 +68,7 @@ the regex alone without saying so.
 
 ## Category A — JavaScript syntax · owner: **acorn**
 
-26 of the 34. `acorn` is already a dependency and is already used to parse this same source
+28 of the 36. `acorn` is already a dependency and is already used to parse this same source
 text, three times, in `visualEdit/`. The package parses one document two different ways.
 
 ### A1 · "is this token a bare identifier?" — 4 sites
@@ -112,20 +112,20 @@ the rest of the line as its initialiser), no destructuring, no `=` inside a prec
 1x  /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/
 ```
 
-### A4 · "is this an arrow function, and what is its body?" — 1 site
+### A4 · "is this a `param => bodyvar.chain` arrow, and what is the chain?" — 1 site
 
-`parseTransform:2806`
+`parseTransform:2823`
 
 Owner: acorn (`ArrowFunctionExpression`). **Transcribed.**
 
 Known-incomplete: **observed** — the param and body-var may be multi-char and the param may be
 parenthesised (`pp => pp.fast(2)`, `(x) => x.fast(2)`), all reducing to the same chain applied
 to the body; the earlier `[a-z]`-only form dropped those to a silent `Fast`-less identity,
-against a control arm `x => x.fast(2)` that kept it (#963, fixed). A `param => bodyvar.chain`
-shape is required: an identity arrow (`x => x`) or a fresh-expression arrow that rebuilds the
-pattern from its arg (`x => n("a").set(x)`) still misses the match. The identity arm is correct
-as-is; the fresh-expression arm is the one remaining transform drop, tracked at #969 (a faithful
-raw-function arm needs `extractTransform` to emit the arrow verbatim).
+against a control arm `x => x.fast(2)` that kept it (#963, fixed). Only the `param =>
+bodyvar.chain` shape matches here. An identity arrow (`x => x`) is caught by A4c below; a
+fresh-expression arrow that rebuilds the pattern from its arg (`x => n("a").set(x)`) falls
+through to the residual `null`, which opaques the whole `.method(args)` call so it round-trips
+verbatim (#969) — no longer a drop.
 
 ```regex
 1x  /^\(?\s*[A-Za-z_$][\w$]*\s*\)?\s*=>\s*[A-Za-z_$][\w$]*\s*\.(.+)$/
@@ -133,7 +133,7 @@ raw-function arm needs `extractTransform` to emit the arrow verbatim).
 
 ### A4b · "is this a bare `name(args)` / `name` transform to wrap opaque?" — 1 site
 
-`parseTransform:2828`
+`parseTransform:2846`
 
 Owner: acorn (`CallExpression`). **Transcribed.**
 
@@ -147,6 +147,23 @@ argless `rev`.
 
 ```regex
 1x  /^([A-Za-z_$][\w$]*)\s*(?:\(([\s\S]*)\))?\s*$/
+```
+
+### A4c · "is this an identity arrow (`x => x`)?" — 1 site
+
+`parseTransform:2852`
+
+Owner: acorn (`ArrowFunctionExpression`). **Transcribed.**
+
+An identity arrow is `f(body) = body`, so it returns the body unchanged and keeps the method's
+structural IR (Every/Stack/…) rather than opaquing the whole call (#969). The two capture groups
+are compared for identifier equality (`x => x`, `(p) => p` match; `x => y` does not — that
+rebuilds from a free var and takes the residual). Anything that reaches this point and is neither
+this nor a partial application (A4b) returns `null`, and the caller opaques the whole
+`.method(args)` verbatim.
+
+```regex
+1x  /^\(?\s*([A-Za-z_$][\w$]*)\s*\)?\s*=>\s*([A-Za-z_$][\w$]*)\s*$/
 ```
 
 ### A5 · "is this a string literal, and what is inside it?" — 15 sites
@@ -391,13 +408,13 @@ observation — `const n = .5` and `const n = 4` now produce the same IR shape.
 
 | category | owner | sites |
 |---|---|---|
-| A — JavaScript syntax | acorn | 27 |
+| A — JavaScript syntax | acorn | 28 |
 | B — Strudel vocabulary | `controls.mjs` / `signal.mjs` / krill | 8 |
-| **total anchored regexes** | | **35** |
+| **total anchored regexes** | | **36** |
 | D — unanchored (2 predicates + 5 scans) | acorn / — | 7 |
-| **total regex literals** | | **42** |
-| distinct sources | | 31 |
+| **total regex literals** | | **43** |
+| distinct sources | | 32 |
 
-Of the 35 anchored predicates, **zero** currently delegate (the pattern-source extraction that #965 removed DID delegate — to acorn — which is why it is no longer a regex). Eleven of the incompleteness claims
+Of the 36 anchored predicates, **zero** currently delegate (the pattern-source extraction that #965 removed DID delegate — to acorn — which is why it is no longer a regex). Eleven of the incompleteness claims
 above are observed against a control arm; the rest are reasoned from the expression and marked
 as such.
