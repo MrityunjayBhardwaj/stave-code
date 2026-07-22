@@ -142,9 +142,18 @@ export function aggregateLaneItems(items: readonly LaneItem[], nCycles: number):
 }
 
 /** Structural context — the anchor-carrying subset of collect's `CollectContext` (no
- *  time/duration/speed/window). `cycle` drives Arrange/Cycle/Every arm selection. */
+ *  time/duration/speed/window).
+ *
+ *  Two distinct cycle notions, which MUST NOT be conflated (the multitrack-arrange bug #974):
+ *  - `cycle` is the SELECTION cycle — it descends into nested Arrange/Cycle arms (localCycle) so
+ *    an inner combinator picks its own arm, mirroring Strudel's slowcat-local time.
+ *  - `outputCycle` is the OUTER SONG cycle — constant for one top-level walk, and the cycle a
+ *    reached leaf is BUCKETED under (collect's `floor(begin)`). `armByCycle` indexes by this, so
+ *    an arrange arm spanning cycles 4–7 lands on 4–7, not on its arm-local 0–3.
+ */
 interface StructCtx {
   cycle: number
+  outputCycle: number
   trackId?: string
   dollarPos?: number
   leafIndex?: number
@@ -158,6 +167,17 @@ function withWrapperLoc(items: LaneItem[], wrapper?: PatternIR['loc']): LaneItem
   if (!wrapper || wrapper.length === 0) return items
   const range = wrapper[0]
   return items.map((it) => ({ ...it, loc: it.loc ? [...it.loc, range] : [range] }))
+}
+
+/** Count voice-leaves a subtree contributes to its Track, tolerating a malformed sub-node — a
+ *  best-effort 1 keeps the leafIndex counter advancing so a bad arm degrades only itself (PV212)
+ *  instead of throwing out of the Stack loop (which runs OUTSIDE `recurse`'s per-node guard). */
+function safeCountLeaves(node: PatternIR): number {
+  try {
+    return countLeavesInIR(node)
+  } catch {
+    return 1
+  }
 }
 
 /** Count voice-leaves a subtree contributes to its Track — mirror of collect.ts:246 so the
@@ -256,7 +276,9 @@ function walkCycle(ir: PatternIR, ctx: StructCtx): LaneItem[] {
       const labelValue = s ?? (ir.note != null ? String(ir.note) : undefined)
       const item: LaneItem = {
         laneKey,
-        cycle: ctx.cycle,
+        // Bucket by the OUTER song cycle, not the arm-local selection cycle (#974) — armByCycle
+        // must index an arrange arm at the song cycle it plays, mirroring collect's floor(begin).
+        cycle: ctx.outputCycle,
         ...(ctx.dollarPos !== undefined ? { dollarPos: ctx.dollarPos } : {}),
         ...(ctx.leafIndex !== undefined ? { leafIndex: ctx.leafIndex } : {}),
         ...(ctx.armIndex !== undefined ? { armIndex: ctx.armIndex } : {}),
@@ -283,7 +305,7 @@ function walkCycle(ir: PatternIR, ctx: StructCtx): LaneItem[] {
         let leafIdx = ctx.leafIndex ?? 0
         for (const track of ir.tracks) {
           out.push(...recurse(track, { ...ctx, leafIndex: leafIdx }))
-          leafIdx += countLeavesInIR(track)
+          leafIdx += safeCountLeaves(track)
         }
       } else {
         for (const track of ir.tracks) out.push(...recurse(track, ctx))
@@ -292,8 +314,18 @@ function walkCycle(ir: PatternIR, ctx: StructCtx): LaneItem[] {
     }
 
     case 'Choice': {
-      // Deterministic pick of the fired branch — the gate stubs Math.random so collect agrees.
-      return withWrapperLoc(recurse(ir.then, ctx), ir.loc)
+      // Structural completeness (#974): at runtime a Choice fires `then` OR `else_`, but the
+      // LANE skeleton must carry both — so a mid-edit break in one branch still surfaces the
+      // other's lane, and no branch's voice is invisible. Both branches usually share the body's
+      // leaves (`.sometimes(x=>f(x))` ⇒ then=f(body), else_=body), so first-wins aggregation
+      // dedups them to one lane with identical anchors; a genuinely divergent alternation
+      // contributes both lanes (allowed resilience). collect fires one branch deterministically
+      // (the gate stubs Math.random so it agrees byte-for-byte on the fired one); `then` is
+      // walked first here, so first-wins keeps its anchors and the shared lane stays identical.
+      const out: LaneItem[] = []
+      out.push(...recurse(ir.then, ctx))
+      out.push(...recurse(ir.else_, ctx))
+      return withWrapperLoc(out, ir.loc)
     }
 
     case 'Every': {
@@ -439,7 +471,7 @@ export function structuralWalk(ir: PatternIR, nCycles: number): LaneSkeleton[] {
   const items: LaneItem[] = []
   for (let c = 0; c < nCycles; c++) {
     try {
-      items.push(...walkCycle(ir, { cycle: c, params: {} }))
+      items.push(...walkCycle(ir, { cycle: c, outputCycle: c, params: {} }))
     } catch {
       // A whole-cycle failure degrades that cycle only.
     }

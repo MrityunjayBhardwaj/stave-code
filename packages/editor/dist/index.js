@@ -1119,6 +1119,326 @@ function collapseToMini(children) {
 }
 __name(collapseToMini, "collapseToMini");
 
+// src/ir/structuralWalk.ts
+function aggregateLaneItems(items, nCycles) {
+  const order = [];
+  const byKey = /* @__PURE__ */ new Map();
+  const armByCycle = /* @__PURE__ */ new Map();
+  const armLabels = /* @__PURE__ */ new Map();
+  for (const it of items) {
+    let lane = byKey.get(it.laneKey);
+    if (!lane) {
+      lane = { laneKey: it.laneKey };
+      byKey.set(it.laneKey, lane);
+      order.push(it.laneKey);
+    }
+    if (lane.dollarPos === void 0 && it.dollarPos !== void 0) lane.dollarPos = it.dollarPos;
+    if (lane.sourceOffset === void 0 && it.loc && it.loc.length > 0) {
+      const s = it.loc[0]?.start;
+      if (typeof s === "number" && Number.isFinite(s)) lane.sourceOffset = s;
+    }
+    if (lane.arrangeOffset === void 0 && it.loc && it.loc.length > 0) {
+      let outer;
+      for (const l of it.loc) {
+        const s = l?.start;
+        if (typeof s !== "number" || !Number.isFinite(s)) continue;
+        if (it.dollarPos !== void 0 && s === it.dollarPos) continue;
+        if (outer === void 0 || s < outer) outer = s;
+      }
+      if (outer !== void 0) lane.arrangeOffset = outer;
+    }
+    if (lane.leafIndex === void 0 && it.leafIndex !== void 0) lane.leafIndex = it.leafIndex;
+    if (typeof it.armIndex === "number") {
+      let byCycle = armByCycle.get(it.laneKey);
+      if (!byCycle) {
+        byCycle = new Array(nCycles);
+        armByCycle.set(it.laneKey, byCycle);
+      }
+      if (it.cycle >= 0 && it.cycle < nCycles) byCycle[it.cycle] = it.armIndex;
+      let labels = armLabels.get(it.laneKey);
+      if (!labels) {
+        labels = /* @__PURE__ */ new Map();
+        armLabels.set(it.laneKey, labels);
+      }
+      if (!labels.has(it.armIndex) && it.labelValue != null) labels.set(it.armIndex, it.labelValue);
+    }
+  }
+  return order.map((key2) => {
+    const lane = byKey.get(key2);
+    const byCycle = armByCycle.get(key2);
+    if (byCycle) lane.armByCycle = byCycle;
+    const labels = armLabels.get(key2);
+    if (labels) lane.armLabels = labels;
+    return lane;
+  });
+}
+__name(aggregateLaneItems, "aggregateLaneItems");
+function withWrapperLoc2(items, wrapper) {
+  if (!wrapper || wrapper.length === 0) return items;
+  const range2 = wrapper[0];
+  return items.map((it) => ({ ...it, loc: it.loc ? [...it.loc, range2] : [range2] }));
+}
+__name(withWrapperLoc2, "withWrapperLoc");
+function safeCountLeaves(node) {
+  try {
+    return countLeavesInIR2(node);
+  } catch {
+    return 1;
+  }
+}
+__name(safeCountLeaves, "safeCountLeaves");
+function countLeavesInIR2(node) {
+  if (node.tag === "Stack") {
+    if (node.userMethod === void 0 || node.userMethod === "stack") {
+      let n = 0;
+      for (const t of node.tracks) n += countLeavesInIR2(t);
+      return n;
+    }
+    return 1;
+  }
+  if (node.tag === "Code" && node.via && !("literal" in node.via) && node.via.inner) {
+    return countLeavesInIR2(node.via.inner);
+  }
+  switch (node.tag) {
+    case "Param":
+    case "Fast":
+    case "Slow":
+    case "Elongate":
+    case "Late":
+    case "Degrade":
+    case "Ply":
+    case "Struct":
+    case "Swing":
+    case "Shuffle":
+    case "Scramble":
+    case "Chop":
+    case "When":
+    case "Every":
+    case "Loop":
+    case "Ramp":
+      return countLeavesInIR2(node.body);
+    default:
+      return 1;
+  }
+}
+__name(countLeavesInIR2, "countLeavesInIR");
+function walkCycle(ir, ctx) {
+  const recurse = /* @__PURE__ */ __name((node, childCtx) => {
+    try {
+      return walkCycle(node, childCtx);
+    } catch {
+      return [];
+    }
+  }, "recurse");
+  switch (ir.tag) {
+    case "Pure":
+    case "Signal":
+    case "Builder":
+    case "Sleep":
+      return [];
+    case "Track": {
+      const childCtx = {
+        ...ctx,
+        trackId: ir.trackId,
+        dollarPos: ctx.dollarPos !== void 0 ? ctx.dollarPos : ir.loc?.[0]?.start,
+        leafIndex: void 0
+      };
+      return withWrapperLoc2(recurse(ir.body, childCtx), ir.loc);
+    }
+    case "Code": {
+      if (ir.via && !("literal" in ir.via)) {
+        return withWrapperLoc2(recurse(ir.via.inner, ctx), ir.loc);
+      }
+      return [];
+    }
+    case "Param": {
+      if (typeof ir.value === "string" || typeof ir.value === "number") {
+        const childCtx = { ...ctx, params: { [ir.key]: ir.value, ...ctx.params } };
+        return withWrapperLoc2(recurse(ir.body, childCtx), ir.loc);
+      }
+      return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
+    }
+    case "Play": {
+      const merged = { ...ir.params, ...ctx.params };
+      const s = merged.s ?? void 0;
+      const laneKey = ctx.trackId ?? s ?? "$default";
+      const labelValue = s ?? (ir.note != null ? String(ir.note) : void 0);
+      const item = {
+        laneKey,
+        // Bucket by the OUTER song cycle, not the arm-local selection cycle (#974) — armByCycle
+        // must index an arrange arm at the song cycle it plays, mirroring collect's floor(begin).
+        cycle: ctx.outputCycle,
+        ...ctx.dollarPos !== void 0 ? { dollarPos: ctx.dollarPos } : {},
+        ...ctx.leafIndex !== void 0 ? { leafIndex: ctx.leafIndex } : {},
+        ...ctx.armIndex !== void 0 ? { armIndex: ctx.armIndex } : {},
+        ...ir.loc && ir.loc.length > 0 ? { loc: ir.loc } : {},
+        ...labelValue !== void 0 ? { labelValue } : {}
+      };
+      return [item];
+    }
+    case "Seq": {
+      if (ir.children.length === 0) return [];
+      const out = [];
+      for (const child of ir.children) {
+        const target = child.tag === "Elongate" ? child.body : child;
+        out.push(...recurse(target, ctx));
+      }
+      return withWrapperLoc2(out, ir.loc);
+    }
+    case "Stack": {
+      const isVoiceDefining = ir.userMethod === void 0 || ir.userMethod === "stack";
+      const out = [];
+      if (isVoiceDefining) {
+        let leafIdx = ctx.leafIndex ?? 0;
+        for (const track of ir.tracks) {
+          out.push(...recurse(track, { ...ctx, leafIndex: leafIdx }));
+          leafIdx += safeCountLeaves(track);
+        }
+      } else {
+        for (const track of ir.tracks) out.push(...recurse(track, ctx));
+      }
+      return withWrapperLoc2(out, ir.loc);
+    }
+    case "Choice": {
+      const out = [];
+      out.push(...recurse(ir.then, ctx));
+      out.push(...recurse(ir.else_, ctx));
+      return withWrapperLoc2(out, ir.loc);
+    }
+    case "Every": {
+      const fires = ctx.cycle % ir.n === 0;
+      if (fires) return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
+      if (ir.default_) return withWrapperLoc2(recurse(ir.default_, ctx), ir.loc);
+      return [];
+    }
+    case "Cycle": {
+      if (ir.items.length === 0) return [];
+      const weights = ir.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
+      const period = weights.reduce((s, w) => s + w, 0);
+      if (period <= 0) return [];
+      const pos = (ctx.cycle % period + period) % period;
+      const innerCycle = Math.floor(ctx.cycle / period);
+      let acc = 0;
+      let selected = 0;
+      for (let k = 0; k < ir.items.length; k++) {
+        if (pos < acc + weights[k]) {
+          selected = k;
+          break;
+        }
+        acc += weights[k];
+      }
+      const item = ir.items[selected];
+      const target = item.tag === "Elongate" ? item.body : item;
+      return withWrapperLoc2(recurse(target, { ...ctx, cycle: innerCycle }), ir.loc);
+    }
+    case "Arrange": {
+      if (ir.arms.length === 0) return [];
+      const period = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
+      if (period <= 0) return [];
+      const pos = (ctx.cycle % period + period) % period;
+      let acc = 0;
+      let armIndex = 0;
+      let localCycle = 0;
+      for (let i = 0; i < ir.arms.length; i++) {
+        const w = ir.arms[i].weight > 0 ? ir.arms[i].weight : 0;
+        if (pos < acc + w) {
+          armIndex = i;
+          localCycle = pos - acc;
+          break;
+        }
+        acc += w;
+      }
+      const childCtx = {
+        ...ctx,
+        cycle: localCycle,
+        armIndex: ctx.armIndex ?? armIndex
+      };
+      return withWrapperLoc2(recurse(ir.arms[armIndex].pattern, childCtx), ir.loc);
+    }
+    case "When": {
+      return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
+    }
+    case "Ramp": {
+      return withWrapperLoc2(recurse(ir.body, { ...ctx, params: { ...ctx.params, [ir.param]: 0 } }), ir.loc);
+    }
+    // Single-body uniform-modifier wrappers: behaviour (timing/RNG/rearrange) drops, one
+    // walk of the body suffices for lanes + loc-layering. Duplication/rearrange nodes
+    // (Fast/Ply/Chop/Shuffle/Scramble) share the body's leaf loc[0], so first-wins is stable.
+    case "Fast":
+    case "Slow":
+    case "Loop":
+    case "Elongate":
+    case "Late":
+    case "Degrade":
+    case "Swing":
+    case "Ply":
+    case "Shuffle":
+    case "Scramble":
+    case "Chop":
+    case "Struct":
+      return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
+    case "Chunk": {
+      return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
+    }
+    case "Pick": {
+      if (ir.lookup.length === 0) return [];
+      const out = [];
+      const selectorLoc = ir.selector.loc?.[0];
+      for (const sub of ir.lookup) {
+        for (const it of recurse(sub, ctx)) {
+          const childLoc = it.loc ?? [];
+          const newLoc = [...childLoc, ...selectorLoc ? [selectorLoc] : []];
+          out.push(newLoc.length > 0 ? { ...it, loc: newLoc } : it);
+        }
+      }
+      return withWrapperLoc2(out, ir.loc);
+    }
+    case "NamedPick": {
+      if (ir.entries.length === 0) return [];
+      let selectedArm;
+      if (ir.selector.tag === "Cycle" && ir.selector.items.length > 0) {
+        const weights = ir.selector.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
+        const period = weights.reduce((s, w) => s + w, 0);
+        if (period > 0) {
+          const pos = (ctx.cycle % period + period) % period;
+          let acc = 0;
+          for (let k = 0; k < weights.length; k++) {
+            if (pos < acc + weights[k]) {
+              selectedArm = k;
+              break;
+            }
+            acc += weights[k];
+          }
+        }
+      }
+      const armIndex = ctx.armIndex ?? selectedArm;
+      const out = [];
+      const selectorLoc = ir.selector.loc?.[0];
+      for (const entry of ir.entries) {
+        const childCtx = { ...ctx, ...armIndex !== void 0 ? { armIndex } : {} };
+        for (const it of recurse(entry.pattern, childCtx)) {
+          const childLoc = it.loc ?? [];
+          const newLoc = [...childLoc, ...selectorLoc ? [selectorLoc] : []];
+          out.push(newLoc.length > 0 ? { ...it, loc: newLoc } : it);
+        }
+      }
+      return withWrapperLoc2(out, ir.loc);
+    }
+  }
+}
+__name(walkCycle, "walkCycle");
+function structuralWalk(ir, nCycles) {
+  const items = [];
+  for (let c = 0; c < nCycles; c++) {
+    try {
+      items.push(...walkCycle(ir, { cycle: c, outputCycle: c, params: {} }));
+    } catch {
+    }
+  }
+  return aggregateLaneItems(items, nCycles);
+}
+__name(structuralWalk, "structuralWalk");
+
 // src/ir/songAnalysis.ts
 function laneKeyOf(ev) {
   return ev.trackId ?? ev.s ?? "$default";
@@ -42234,6 +42554,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_CENTRE_PAN, MASTER_KEY, MASTER_UNITY_GAIN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, adaptMasterChunk, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterPanEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, readCurrentCycle, readMasterGain, readMasterMute, readMasterPan, readMasterViz, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, soundfontGroupLabel, splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_CENTRE_PAN, MASTER_KEY, MASTER_UNITY_GAIN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, adaptMasterChunk, aggregateLaneItems, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterPanEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, readCurrentCycle, readMasterGain, readMasterMute, readMasterPan, readMasterViz, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, soundfontGroupLabel, splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

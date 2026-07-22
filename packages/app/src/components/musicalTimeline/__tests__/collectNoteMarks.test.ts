@@ -27,10 +27,17 @@ const { IR_EVENTS } = vi.hoisted(() => ({
     { begin: 0, end: 1, trackId: 'd2', dollarPos: 30, note: '0', loc: [{ start: 40, end: 50 }] },
   ],
 }))
-vi.mock('@stave/editor', () => ({
-  collectCycles: () => IR_EVENTS,
-  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
-}))
+vi.mock('@stave/editor', async () => {
+  // #974 — lane STRUCTURE (incl. `labelOffsetByLane`, the containment anchors these tests
+  // exercise) now comes from `structuralWalk`, not collect events. Reduce the SAME IR_EVENTS
+  // through the REAL production reducer so d1/d2 keep their dollarPos anchors (PV192).
+  const { skeletonsFromEvents } = await import('./structuralWalkTestStub')
+  return {
+    collectCycles: () => IR_EVENTS,
+    structuralWalk: (_ir: unknown, nCycles: number) => skeletonsFromEvents(IR_EVENTS, nCycles),
+    laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
+  }
+})
 
 import { collectNoteMarks } from '../timelineMarks'
 

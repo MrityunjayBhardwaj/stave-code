@@ -1,4 +1,4 @@
-import { W as WorkerVizConfig, e as VizOptions } from '../../vizConfig-mtfzdM0W.js';
+import { W as WorkerVizConfig, e as VizOptions } from '../../vizConfig-BvNmieW7.js';
 import 'p5';
 import 'react';
 

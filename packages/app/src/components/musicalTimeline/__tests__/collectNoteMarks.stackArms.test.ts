@@ -22,10 +22,13 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 
-// No IR events → `labelOffsetByLane` cannot be seeded from `dollarPos`, which is
-// exactly the #950 situation. `laneKeyOf` keeps its real behaviour.
-vi.mock('@stave/editor', () => ({
+// No IR events → the pre-eval collect path is empty, which is exactly the #950 situation.
+// STRUCTURE now comes from the REAL `structuralWalk` on the REAL IR these tests build via the
+// staged pipeline — so this file genuinely exercises structuralWalk's comma-arm lane split
+// (#974), not a stub. `laneKeyOf` keeps its real behaviour.
+vi.mock('@stave/editor', async () => ({
   collectCycles: () => [],
+  structuralWalk: (await import('./structuralWalkTestStub')).structuralWalk,
   laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 

@@ -10,7 +10,7 @@
  */
 
 import type { IREvent, PatternIR } from '@stave/editor'
-import { collectCycles, laneKeyOf } from '@stave/editor'
+import { collectCycles, laneKeyOf, structuralWalk } from '@stave/editor'
 import { extractPitch } from './pitch'
 import {
   downsampleMarksToCap,
@@ -130,65 +130,44 @@ export function collectNoteMarks(
   const armByCycleByLane = new Map<string, Array<number | undefined>>()
   const armLabelByLane = new Map<string, Map<number, string>>()
   let capped = false
-  const irEvents = collectCycles(ir, 0, nCycles)
-  for (const ev of irEvents) {
-    const cycle = ev.begin
-    if (!Number.isFinite(cycle) || cycle < 0 || cycle >= displayCycles) continue
-    const key = laneKeyOf(ev)
-    if (!sourceByLane.has(key)) {
-      const offset = ev.loc?.[0]?.start
-      if (typeof offset === 'number' && Number.isFinite(offset)) sourceByLane.set(key, offset)
-    }
-    if (!labelOffsetByLane.has(key) && typeof ev.dollarPos === 'number' && Number.isFinite(ev.dollarPos)) {
-      labelOffsetByLane.set(key, ev.dollarPos)
-    }
-    if (!arrangeByLane.has(key) && ev.loc && ev.loc.length > 0) {
-      let outer: number | undefined
-      for (const l of ev.loc) {
-        const s = l?.start
-        if (typeof s !== 'number' || !Number.isFinite(s)) continue
-        // Skip the `$:` Track-wrapper loc (#456) — it starts before every
-        // combinator and would make `detectArrangeAt` miss.
-        if (ev.dollarPos !== undefined && s === ev.dollarPos) continue
-        if (outer === undefined || s < outer) outer = s
-      }
-      if (outer !== undefined) arrangeByLane.set(key, outer)
-    }
-    if (typeof ev.armIndex === 'number') {
-      let byCycle = armByCycleByLane.get(key)
-      if (!byCycle) {
-        byCycle = new Array<number | undefined>(nCycles)
-        armByCycleByLane.set(key, byCycle)
-      }
-      const ci = Math.floor(cycle)
-      if (ci >= 0 && ci < nCycles) byCycle[ci] = ev.armIndex
-      let labels = armLabelByLane.get(key)
-      if (!labels) {
-        labels = new Map()
-        armLabelByLane.set(key, labels)
-      }
-      if (!labels.has(ev.armIndex)) {
-        const lbl = ev.s ?? (ev.note != null ? String(ev.note) : null)
-        if (lbl != null) labels.set(ev.armIndex, lbl)
-      }
-    }
-    // IR-derived marks (the pre-eval fallback). Skipped when eval events are
-    // present — they'd be discarded in favour of the hap marks (PV174).
-    if (!useEval) {
+  // STRUCTURE — lane anchors from the resilient structural walk (#945/#974), NOT reduced from
+  // `collectCycles` events. The walk derives the SAME anchors from source structure — proven
+  // byte-identical to collect over the corpus (structuralWalk.test.ts, then the equivalence
+  // gate collectNoteMarks.structuralWalk.test.ts) — but survives mid-edit / semantically-
+  // invalid code where an eval-backed producer throws: a bad sub-node blanks only its own lane,
+  // so the timeline keeps its skeleton (PV212). Marks then JOIN to these lanes from haps
+  // (below). `sourceByLane`/`arrangeByLane`/`labelOffsetByLane`/`clipsByLane` only ANNOTATE
+  // rows by key (timelineScene builds rows from `analysis.lanes` + eval-mark keys), so an extra
+  // resilience lane the walk reaches — collect never does on valid code — cannot add a phantom
+  // row; it simply has no annotation consumer until a hap lands in it.
+  for (const lane of structuralWalk(ir, nCycles)) {
+    const key = lane.laneKey
+    if (lane.sourceOffset !== undefined) sourceByLane.set(key, lane.sourceOffset)
+    if (lane.dollarPos !== undefined) labelOffsetByLane.set(key, lane.dollarPos)
+    if (lane.arrangeOffset !== undefined) arrangeByLane.set(key, lane.arrangeOffset)
+    if (lane.armByCycle) armByCycleByLane.set(key, lane.armByCycle)
+    if (lane.armLabels) armLabelByLane.set(key, lane.armLabels)
+  }
+  // MARKS — pre-eval fallback only. Per-onset IR marks (pitch/gain/voice) are BEHAVIOUR the
+  // structural walk does not compute, so they still come from `collectCycles` — correct pre-
+  // eval for note-names + percussion, and the only source before the first eval. Skipped
+  // entirely when eval haps are present (`useEval` → `collectHapMarks` supplies display-
+  // faithful resolved marks, PV174), so the common post-play path calls neither `collectCycles`
+  // nor this loop. `voice` = the sample name (`ev.s`), the per-voice partition key that recovers
+  // a drum stack's bd/sd/hh as sub-rows (#424); reading it here keeps the pure scene module out
+  // of the editor bundle (P172). The per-lane cap is a span-preserving downsample applied AFTER
+  // the walk (capping in cycle order would truncate a dense lane's clip mid-song, #714).
+  if (!useEval) {
+    for (const ev of collectCycles(ir, 0, nCycles)) {
+      const cycle = ev.begin
+      if (!Number.isFinite(cycle) || cycle < 0 || cycle >= displayCycles) continue
+      const key = laneKeyOf(ev)
       let arr = marksByLane.get(key)
       if (!arr) {
         arr = []
         marksByLane.set(key, arr)
       }
-      // Collect ALL marks here; the per-lane cap is applied AFTER the walk as a
-      // span-preserving downsample (see below). Capping in cycle order here would
-      // drop the tail and truncate a dense lane's clip mid-song (#714).
       const end = Number.isFinite(ev.end) && ev.end > cycle ? ev.end : cycle
-      // `voice` = the sample name (`ev.s`), the per-voice partition key (#424). A
-      // `$:` drum stack shares one lane key (`trackId`) but distinct `s` per voice,
-      // so this recovers bd/sd/hh as sub-rows. `ev.s` is a native IREvent field —
-      // reading it here (the runtime consumer) keeps the pure scene module out of
-      // the editor-bundle / gifenc import (P172).
       arr.push({
         cycle,
         end,
