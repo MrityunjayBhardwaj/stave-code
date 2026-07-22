@@ -15,11 +15,19 @@
  *      unresolved binding, a mid-edit) degrades only its own lane, where `evaluate` throws and
  *      blanks everything. The timeline's lane skeleton must survive mid-edit code.
  *
- * Phase 0 (#972) DEFINES this seam. Phase 1 (#973) IMPLEMENTS it by carving the anchor
- * derivation out of `collect.ts`, and proves its anchors byte-identical to `collect`'s over the
- * 57-tune corpus. Nothing calls it yet — this file is inert until Phase 1.
+ * Phase 1 (#973) IMPLEMENTS the seam by mirroring collect's ANCHOR threading (Track → dollarPos
+ * outer-wins + leafIndex reset; voice-Stack → sequential leafIndex; Arrange/Cycle → per-cycle
+ * arm selection) and its `withWrapperLoc` loc-layering, while DROPPING the behaviour (timing,
+ * window-clip, RNG, euclid). It emits one structural item per leaf reached, then aggregates to
+ * per-lane skeletons with the SAME first-wins rules `timelineMarks.ts` applies to collect's
+ * events — so `aggregateLaneItems` is shared with the gate's oracle and the two cannot drift.
+ *
+ * A structural walk reaches leaves collect's onset/window logic would drop, so structuralWalk
+ * may report ADDITIONAL lanes (the resilience it adds). For every lane collect DOES produce,
+ * the anchors match byte-for-byte — proven over the corpus by `structuralWalk.test.ts`.
  */
 import type { PatternIR } from './PatternIR'
+import type { SourceLocation } from './IREvent'
 
 /**
  * One lane of the timeline, described purely by SOURCE STRUCTURE — no onsets, no timing.
@@ -54,15 +62,387 @@ export interface LaneSkeleton {
 }
 
 /**
+ * A single structural leaf hit — the raw input to `aggregateLaneItems`. Both structuralWalk
+ * (from the IR) and the gate's oracle (from collect's `IREvent[]`) produce these, so the
+ * per-lane reduction is byte-identical by construction.
+ */
+export interface LaneItem {
+  laneKey: string
+  /** Integer cycle this leaf was reached in (`floor(begin)` for a collect event). */
+  cycle: number
+  dollarPos?: number
+  leafIndex?: number
+  armIndex?: number
+  loc?: readonly SourceLocation[]
+  /** `s ?? String(note)` — the arm-label source (`armLabelByLane`). */
+  labelValue?: string
+}
+
+/**
+ * Reduce raw leaf items to per-lane skeletons, first-seen lane order, FIRST-WINS on every
+ * anchor — the exact reduction `timelineMarks.ts:133-200` runs over collect's events. Shared
+ * between structuralWalk and the corpus gate's oracle so neither can drift from the other.
+ */
+export function aggregateLaneItems(items: readonly LaneItem[], nCycles: number): LaneSkeleton[] {
+  const order: string[] = []
+  const byKey = new Map<string, LaneSkeleton>()
+  const armByCycle = new Map<string, Array<number | undefined>>()
+  const armLabels = new Map<string, Map<number, string>>()
+
+  for (const it of items) {
+    let lane = byKey.get(it.laneKey)
+    if (!lane) {
+      lane = { laneKey: it.laneKey }
+      byKey.set(it.laneKey, lane)
+      order.push(it.laneKey)
+    }
+    // FIRST-WINS anchors (mirrors sourceByLane / labelOffsetByLane / arrangeByLane / leafIndex).
+    if (lane.dollarPos === undefined && it.dollarPos !== undefined) lane.dollarPos = it.dollarPos
+    if (lane.sourceOffset === undefined && it.loc && it.loc.length > 0) {
+      const s = it.loc[0]?.start
+      if (typeof s === 'number' && Number.isFinite(s)) lane.sourceOffset = s
+    }
+    if (lane.arrangeOffset === undefined && it.loc && it.loc.length > 0) {
+      let outer: number | undefined
+      for (const l of it.loc) {
+        const s = l?.start
+        if (typeof s !== 'number' || !Number.isFinite(s)) continue
+        // Skip the `$:` Track-wrapper loc (#456): it starts before every combinator.
+        if (it.dollarPos !== undefined && s === it.dollarPos) continue
+        if (outer === undefined || s < outer) outer = s
+      }
+      if (outer !== undefined) lane.arrangeOffset = outer
+    }
+    if (lane.leafIndex === undefined && it.leafIndex !== undefined) lane.leafIndex = it.leafIndex
+    // Arrange clips: per-cycle arm index + per-arm label. Only lanes carrying an armIndex.
+    if (typeof it.armIndex === 'number') {
+      let byCycle = armByCycle.get(it.laneKey)
+      if (!byCycle) {
+        byCycle = new Array<number | undefined>(nCycles)
+        armByCycle.set(it.laneKey, byCycle)
+      }
+      if (it.cycle >= 0 && it.cycle < nCycles) byCycle[it.cycle] = it.armIndex
+      let labels = armLabels.get(it.laneKey)
+      if (!labels) {
+        labels = new Map()
+        armLabels.set(it.laneKey, labels)
+      }
+      if (!labels.has(it.armIndex) && it.labelValue != null) labels.set(it.armIndex, it.labelValue)
+    }
+  }
+
+  return order.map((key) => {
+    const lane = byKey.get(key) as LaneSkeleton
+    const byCycle = armByCycle.get(key)
+    if (byCycle) lane.armByCycle = byCycle
+    const labels = armLabels.get(key)
+    if (labels) lane.armLabels = labels
+    return lane
+  })
+}
+
+/** Structural context — the anchor-carrying subset of collect's `CollectContext` (no
+ *  time/duration/speed/window). `cycle` drives Arrange/Cycle/Every arm selection. */
+interface StructCtx {
+  cycle: number
+  trackId?: string
+  dollarPos?: number
+  leafIndex?: number
+  armIndex?: number
+  params: Record<string, number | string>
+}
+
+/** Append a wrapper node's loc[0] to each item's loc array, innermost-first — the structural
+ *  mirror of collect's `withWrapperLoc` (collect.ts:106). */
+function withWrapperLoc(items: LaneItem[], wrapper?: PatternIR['loc']): LaneItem[] {
+  if (!wrapper || wrapper.length === 0) return items
+  const range = wrapper[0]
+  return items.map((it) => ({ ...it, loc: it.loc ? [...it.loc, range] : [range] }))
+}
+
+/** Count voice-leaves a subtree contributes to its Track — mirror of collect.ts:246 so the
+ *  Stack leafIndex counter advances identically. */
+function countLeavesInIR(node: PatternIR): number {
+  if (node.tag === 'Stack') {
+    if (node.userMethod === undefined || node.userMethod === 'stack') {
+      let n = 0
+      for (const t of node.tracks) n += countLeavesInIR(t)
+      return n
+    }
+    return 1
+  }
+  if (node.tag === 'Code' && node.via && !('literal' in node.via) && node.via.inner) {
+    return countLeavesInIR(node.via.inner)
+  }
+  switch (node.tag) {
+    case 'Param':
+    case 'Fast':
+    case 'Slow':
+    case 'Elongate':
+    case 'Late':
+    case 'Degrade':
+    case 'Ply':
+    case 'Struct':
+    case 'Swing':
+    case 'Shuffle':
+    case 'Scramble':
+    case 'Chop':
+    case 'When':
+    case 'Every':
+    case 'Loop':
+    case 'Ramp':
+      return countLeavesInIR(node.body)
+    default:
+      return 1
+  }
+}
+
+/**
+ * Walk the IR for one cycle, emitting a structural item per leaf reached. Anchor threading
+ * mirrors collect's `walk` (collect.ts:440); timing / window-clip / RNG are dropped. Every
+ * child recursion is wrapped so a throwing sub-node degrades only its branch, never the walk.
+ */
+function walkCycle(ir: PatternIR, ctx: StructCtx): LaneItem[] {
+  const recurse = (node: PatternIR, childCtx: StructCtx): LaneItem[] => {
+    try {
+      return walkCycle(node, childCtx)
+    } catch {
+      // Per-node resilience (#945 §4): a bad sub-node blanks only itself.
+      return []
+    }
+  }
+
+  switch (ir.tag) {
+    case 'Pure':
+    case 'Signal':
+    case 'Builder':
+    case 'Sleep':
+      return []
+
+    case 'Track': {
+      const childCtx: StructCtx = {
+        ...ctx,
+        trackId: ir.trackId,
+        dollarPos: ctx.dollarPos !== undefined ? ctx.dollarPos : ir.loc?.[0]?.start,
+        leafIndex: undefined,
+      }
+      return withWrapperLoc(recurse(ir.body, childCtx), ir.loc)
+    }
+
+    case 'Code': {
+      if (ir.via && !('literal' in ir.via)) {
+        return withWrapperLoc(recurse(ir.via.inner, ctx), ir.loc)
+      }
+      return []
+    }
+
+    case 'Param': {
+      // Branch (a) — literal: inject the key so a leaf's laneKey/label sees it (last-wins:
+      // ir.params first, ctx.params second). Branch (b) — pattern-arg: the sub-IR is a VALUE
+      // provider collect never emits, and it patches non-lane fields on existing body events;
+      // walk only the body for structure (the rare chained `.s("<a b>")` per-event relabel is
+      // a behaviour concern the gate flags if the corpus hits it).
+      if (typeof ir.value === 'string' || typeof ir.value === 'number') {
+        const childCtx: StructCtx = { ...ctx, params: { [ir.key]: ir.value, ...ctx.params } }
+        return withWrapperLoc(recurse(ir.body, childCtx), ir.loc)
+      }
+      return withWrapperLoc(recurse(ir.body, ctx), ir.loc)
+    }
+
+    case 'Play': {
+      const merged = { ...ir.params, ...ctx.params }
+      const s = (merged.s as string | undefined) ?? undefined
+      const laneKey = ctx.trackId ?? s ?? '$default'
+      const labelValue = s ?? (ir.note != null ? String(ir.note) : undefined)
+      const item: LaneItem = {
+        laneKey,
+        cycle: ctx.cycle,
+        ...(ctx.dollarPos !== undefined ? { dollarPos: ctx.dollarPos } : {}),
+        ...(ctx.leafIndex !== undefined ? { leafIndex: ctx.leafIndex } : {}),
+        ...(ctx.armIndex !== undefined ? { armIndex: ctx.armIndex } : {}),
+        ...(ir.loc && ir.loc.length > 0 ? { loc: ir.loc } : {}),
+        ...(labelValue !== undefined ? { labelValue } : {}),
+      }
+      return [item]
+    }
+
+    case 'Seq': {
+      if (ir.children.length === 0) return []
+      const out: LaneItem[] = []
+      for (const child of ir.children) {
+        const target = child.tag === 'Elongate' ? child.body : child
+        out.push(...recurse(target, ctx))
+      }
+      return withWrapperLoc(out, ir.loc)
+    }
+
+    case 'Stack': {
+      const isVoiceDefining = ir.userMethod === undefined || ir.userMethod === 'stack'
+      const out: LaneItem[] = []
+      if (isVoiceDefining) {
+        let leafIdx = ctx.leafIndex ?? 0
+        for (const track of ir.tracks) {
+          out.push(...recurse(track, { ...ctx, leafIndex: leafIdx }))
+          leafIdx += countLeavesInIR(track)
+        }
+      } else {
+        for (const track of ir.tracks) out.push(...recurse(track, ctx))
+      }
+      return withWrapperLoc(out, ir.loc)
+    }
+
+    case 'Choice': {
+      // Deterministic pick of the fired branch — the gate stubs Math.random so collect agrees.
+      return withWrapperLoc(recurse(ir.then, ctx), ir.loc)
+    }
+
+    case 'Every': {
+      const fires = ctx.cycle % ir.n === 0
+      if (fires) return withWrapperLoc(recurse(ir.body, ctx), ir.loc)
+      if (ir.default_) return withWrapperLoc(recurse(ir.default_, ctx), ir.loc)
+      return []
+    }
+
+    case 'Cycle': {
+      if (ir.items.length === 0) return []
+      const weights = ir.items.map((it) => (it.tag === 'Elongate' && it.factor > 0 ? it.factor : 1))
+      const period = weights.reduce((s, w) => s + w, 0)
+      if (period <= 0) return []
+      const pos = ((ctx.cycle % period) + period) % period
+      const innerCycle = Math.floor(ctx.cycle / period)
+      let acc = 0
+      let selected = 0
+      for (let k = 0; k < ir.items.length; k++) {
+        if (pos < acc + weights[k]) {
+          selected = k
+          break
+        }
+        acc += weights[k]
+      }
+      const item = ir.items[selected]
+      const target = item.tag === 'Elongate' ? item.body : item
+      return withWrapperLoc(recurse(target, { ...ctx, cycle: innerCycle }), ir.loc)
+    }
+
+    case 'Arrange': {
+      if (ir.arms.length === 0) return []
+      const period = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0)
+      if (period <= 0) return []
+      const pos = ((ctx.cycle % period) + period) % period
+      let acc = 0
+      let armIndex = 0
+      let localCycle = 0
+      for (let i = 0; i < ir.arms.length; i++) {
+        const w = ir.arms[i].weight > 0 ? ir.arms[i].weight : 0
+        if (pos < acc + w) {
+          armIndex = i
+          localCycle = pos - acc
+          break
+        }
+        acc += w
+      }
+      const childCtx: StructCtx = {
+        ...ctx,
+        cycle: localCycle,
+        armIndex: ctx.armIndex ?? armIndex,
+      }
+      return withWrapperLoc(recurse(ir.arms[armIndex].pattern, childCtx), ir.loc)
+    }
+
+    case 'When': {
+      // Gate is behaviour; for structure walk the body (superset of gated leaves).
+      return withWrapperLoc(recurse(ir.body, ctx), ir.loc)
+    }
+
+    case 'Ramp': {
+      return withWrapperLoc(recurse(ir.body, { ...ctx, params: { ...ctx.params, [ir.param]: 0 } }), ir.loc)
+    }
+
+    // Single-body uniform-modifier wrappers: behaviour (timing/RNG/rearrange) drops, one
+    // walk of the body suffices for lanes + loc-layering. Duplication/rearrange nodes
+    // (Fast/Ply/Chop/Shuffle/Scramble) share the body's leaf loc[0], so first-wins is stable.
+    case 'Fast':
+    case 'Slow':
+    case 'Loop':
+    case 'Elongate':
+    case 'Late':
+    case 'Degrade':
+    case 'Swing':
+    case 'Ply':
+    case 'Shuffle':
+    case 'Scramble':
+    case 'Chop':
+    case 'Struct':
+      return withWrapperLoc(recurse(ir.body, ctx), ir.loc)
+
+    case 'Chunk': {
+      // Base body carries the lanes; transform is body-derived. Walk the body for structure.
+      return withWrapperLoc(recurse(ir.body, ctx), ir.loc)
+    }
+
+    case 'Pick': {
+      // Every lookup arm is a potential voice; discover all for the lane skeleton. The
+      // selector loc + call-site layer onto each (mirrors collect's Pick loc layering).
+      if (ir.lookup.length === 0) return []
+      const out: LaneItem[] = []
+      const selectorLoc = ir.selector.loc?.[0]
+      for (const sub of ir.lookup) {
+        for (const it of recurse(sub, ctx)) {
+          const childLoc = it.loc ?? []
+          const newLoc = [...childLoc, ...(selectorLoc ? [selectorLoc] : [])]
+          out.push(newLoc.length > 0 ? { ...it, loc: newLoc } : it)
+        }
+      }
+      return withWrapperLoc(out, ir.loc)
+    }
+
+    case 'NamedPick': {
+      if (ir.entries.length === 0) return []
+      // Per-cycle active arm from the weighted `<…@w>` selector (a Cycle), mirroring collect.
+      let selectedArm: number | undefined
+      if (ir.selector.tag === 'Cycle' && ir.selector.items.length > 0) {
+        const weights = ir.selector.items.map((it) => (it.tag === 'Elongate' && it.factor > 0 ? it.factor : 1))
+        const period = weights.reduce((s, w) => s + w, 0)
+        if (period > 0) {
+          const pos = ((ctx.cycle % period) + period) % period
+          let acc = 0
+          for (let k = 0; k < weights.length; k++) {
+            if (pos < acc + weights[k]) {
+              selectedArm = k
+              break
+            }
+            acc += weights[k]
+          }
+        }
+      }
+      const armIndex = ctx.armIndex ?? selectedArm
+      const out: LaneItem[] = []
+      const selectorLoc = ir.selector.loc?.[0]
+      for (const entry of ir.entries) {
+        const childCtx: StructCtx = { ...ctx, ...(armIndex !== undefined ? { armIndex } : {}) }
+        for (const it of recurse(entry.pattern, childCtx)) {
+          const childLoc = it.loc ?? []
+          const newLoc = [...childLoc, ...(selectorLoc ? [selectorLoc] : [])]
+          out.push(newLoc.length > 0 ? { ...it, loc: newLoc } : it)
+        }
+      }
+      return withWrapperLoc(out, ir.loc)
+    }
+  }
+}
+
+/**
  * Walk the IR for lane STRUCTURE over `[0, nCycles)`. Anchors only — never computes onsets.
  * Per-node resilient: a bad sub-node degrades its own lane, never the whole walk.
- *
- * NOT YET IMPLEMENTED — Phase 1 (#973) carves the body out of `collect.ts` and gates its
- * output byte-identical to `collect`'s `{dollarPos, leafIndex, armIndex}` on the corpus.
  */
-export function structuralWalk(_ir: PatternIR, _nCycles: number): LaneSkeleton[] {
-  throw new Error(
-    'structuralWalk is not implemented yet — Phase 1 (#973). ' +
-      'It defines the collect.ts split seam (#945); see COLLECT-SPLIT-AUDIT.md.',
-  )
+export function structuralWalk(ir: PatternIR, nCycles: number): LaneSkeleton[] {
+  const items: LaneItem[] = []
+  for (let c = 0; c < nCycles; c++) {
+    try {
+      items.push(...walkCycle(ir, { cycle: c, params: {} }))
+    } catch {
+      // A whole-cycle failure degrades that cycle only.
+    }
+  }
+  return aggregateLaneItems(items, nCycles)
 }
