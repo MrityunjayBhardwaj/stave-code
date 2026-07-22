@@ -1,7 +1,7 @@
 # Predicate audit — `ir/parseStrudel.ts`
 
 Every regular expression in `parseStrudel.ts`, the question it answers, and the system that
-owns the right answer. 42 are anchored predicates (categories A and B); 7 are unanchored
+owns the right answer. 35 are anchored predicates (categories A and B); 7 are unanchored
 (category D), two of which are predicates as well.
 
 This file is a **census, not a plan**. It exists so that "find the next parser bug" becomes
@@ -26,7 +26,7 @@ the parse path asks somebody who already knows:
 | `ir/parseStrudelStages.ts` | — | **0** | 377 |
 | `visualEdit/chunkDetect.ts` | acorn | **0** | 496 |
 | `visualEdit/arrange/parse.ts` | acorn | **0** | 223 |
-| **`ir/parseStrudel.ts`** | **nobody** | **34** | **3335** |
+| **`ir/parseStrudel.ts`** | **nobody** | **35** | **3368** |
 
 Every module that delegates has zero. The one that does not has thirty-four (was 42 before #965 delegated the pattern-source grid). `parseMini.ts` is
 the controlled before/after: 512 lines with a hand-rolled tokenizer, 397 lines and no anchored
@@ -114,17 +114,39 @@ the rest of the line as its initialiser), no destructuring, no `=` inside a prec
 
 ### A4 · "is this an arrow function, and what is its body?" — 1 site
 
-`parseTransform:2791`
+`parseTransform:2806`
 
 Owner: acorn (`ArrowFunctionExpression`). **Transcribed.**
 
-Known-incomplete: **observed, and this one fails silently (class 3 above)** — the parameter
-must be a *single lowercase letter*. `.every(2, pp => pp.fast(2))` and `.every(2, (x) =>
-x.fast(2))` both lose the `Fast` node entirely, against a control arm `x => x.fast(2)` that
-keeps it. No opaque marker is emitted; the transform is simply absent from the IR.
+Known-incomplete: **observed** — the param and body-var may be multi-char and the param may be
+parenthesised (`pp => pp.fast(2)`, `(x) => x.fast(2)`), all reducing to the same chain applied
+to the body; the earlier `[a-z]`-only form dropped those to a silent `Fast`-less identity,
+against a control arm `x => x.fast(2)` that kept it (#963, fixed). A `param => bodyvar.chain`
+shape is required: an identity arrow (`x => x`) or a fresh-expression arrow that rebuilds the
+pattern from its arg (`x => n("a").set(x)`) still misses the match. The identity arm is correct
+as-is; the fresh-expression arm is the one remaining transform drop, tracked at #969 (a faithful
+raw-function arm needs `extractTransform` to emit the arrow verbatim).
 
 ```regex
-1x  /^[a-z]\s*=>\s*[a-z]\s*\.(.+)$/
+1x  /^\(?\s*[A-Za-z_$][\w$]*\s*\)?\s*=>\s*[A-Za-z_$][\w$]*\s*\.(.+)$/
+```
+
+### A4b · "is this a bare `name(args)` / `name` transform to wrap opaque?" — 1 site
+
+`parseTransform:2828`
+
+Owner: acorn (`CallExpression`). **Transcribed.**
+
+A partial-application transform the typed arms did not model — `fast(2*2)`, `slow(-2)`, `add(5)`,
+a bare `rev` — is split into method + verbatim args and wrapped as an opaque `Code` node
+(wrap-never-drop), so the transform is present in the tree and round-trips as `() =>
+body.name(args)` instead of collapsing to the silent `every(n, identity)` that A4's old regex
+produced (#963). The args are kept byte-exact rather than routed through the `fast`/`slow`
+`parseFloat` arms, which would truncate `2*2` to `2`. The optional-parens group also admits the
+argless `rev`.
+
+```regex
+1x  /^([A-Za-z_$][\w$]*)\s*(?:\(([\s\S]*)\))?\s*$/
 ```
 
 ### A5 · "is this a string literal, and what is inside it?" — 15 sites
@@ -369,13 +391,13 @@ observation — `const n = .5` and `const n = 4` now produce the same IR shape.
 
 | category | owner | sites |
 |---|---|---|
-| A — JavaScript syntax | acorn | 26 |
+| A — JavaScript syntax | acorn | 27 |
 | B — Strudel vocabulary | `controls.mjs` / `signal.mjs` / krill | 8 |
-| **total anchored regexes** | | **34** |
+| **total anchored regexes** | | **35** |
 | D — unanchored (2 predicates + 5 scans) | acorn / — | 7 |
-| **total regex literals** | | **41** |
-| distinct sources | | 30 |
+| **total regex literals** | | **42** |
+| distinct sources | | 31 |
 
-Of the 34 anchored predicates, **zero** currently delegate (the pattern-source extraction that #965 removed DID delegate — to acorn — which is why it is no longer a regex). Eleven of the incompleteness claims
+Of the 35 anchored predicates, **zero** currently delegate (the pattern-source extraction that #965 removed DID delegate — to acorn — which is why it is no longer a regex). Eleven of the incompleteness claims
 above are observed against a control arm; the rest are reasoned from the expression and marked
 as such.
