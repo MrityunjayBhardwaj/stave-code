@@ -87,45 +87,49 @@ export function collectNoteMarks(
   const useEval = Array.isArray(events) && events.length > 0
   // IR-derived note marks — the pre-eval fallback. Left empty when `useEval`.
   const marksByLane = new Map<string, SceneNote[]>()
-  // Per-lane representative source offset for expand-to-bind: the FIRST event of
-  // the lane that carries a `loc` (char offsets into the evaluated source). The
-  // bind maps this → editor cursor → the Pattern panel rebinds (#422). First-
-  // wins so the anchor is stable (doesn't jump as later events stream in).
+  // Per-lane representative source offset for expand-to-bind: the innermost
+  // content anchor `structuralWalk` records (first-wins on the first leaf of the
+  // lane that carries a `loc`; char offsets into the evaluated source). The bind
+  // maps this → editor cursor → the Pattern panel rebinds (#422). First-wins so
+  // the anchor is stable. Populated from the walk's `sourceOffset` below.
   const sourceByLane = new Map<string, number>()
-  // Per-lane OUTERMOST combinator offset for clip gestures (#451). `loc` is
-  // ordered leaf→…→outermost wrappers, but the LAST entry can be a non-combinator
-  // suffix (`.p('x')`, `.gain(…)`), so we take the MINIMUM start instead: the
-  // outermost `arrange`/`cat` call begins earliest in the source, while leaves,
-  // inner combinators and suffix methods all start later. `detectArrangeAt(min)`
-  // then resolves the OUTER combinator (that offset lies only inside it, not the
-  // inner one) so a nested combinator arm edits as one outer clip. `sourceByLane`
-  // keeps the innermost (content) anchor for expand→bind. First-event-wins.
+  // Per-lane OUTERMOST combinator offset for clip gestures (#451). A lane's loc
+  // set is ordered leaf→…→outermost wrappers, but the LAST entry can be a non-
+  // combinator suffix (`.p('x')`, `.gain(…)`), so `structuralWalk` takes the
+  // MINIMUM start: the outermost `arrange`/`cat` call begins earliest in the
+  // source, while leaves, inner combinators and suffix methods all start later.
+  // `detectArrangeAt(min)` then resolves the OUTER combinator (that offset lies
+  // only inside it, not the inner one) so a nested combinator arm edits as one
+  // outer clip. `sourceByLane` keeps the innermost (content) anchor for
+  // expand→bind. This is the primary anchor the clip write-back targets (see
+  // STRUCTURE-WRITEBACK-PROVENANCE.md).
   //
-  // #456 — in a MULTI-track (`$:`) file, `collect` appends a Track-WRAPPER loc
-  // spanning the whole `$:` line (`withWrapperLoc` in collect.ts), whose start is
-  // the line start = `ev.dollarPos` — STRICTLY before the combinator (which sits
-  // after the `$: ` prefix). The raw minimum then picks that wrapper offset, which
-  // lies OUTSIDE every combinator, so `detectArrangeAt` resolves null and the clip
+  // #456 — in a MULTI-track (`$:`) file, the walk layers a Track-WRAPPER loc
+  // (`withWrapperLoc`) spanning the whole `$:` line, whose start is the line
+  // start = `dollarPos` — STRICTLY before the combinator (which sits after the
+  // `$: ` prefix). The raw minimum would pick that wrapper offset, which lies
+  // OUTSIDE every combinator, so `detectArrangeAt` would resolve null and the clip
   // op silently no-ops (selection still works — it's display-side). A single-track
-  // file has no wrapper loc, which is why standalone arranges wrote back fine. So
-  // we EXCLUDE the wrapper loc (`start === ev.dollarPos`) from the minimum; the
-  // combinator start always exceeds `dollarPos`, so this never drops a real
-  // combinator and is a no-op when `dollarPos` is absent (hand-built IR).
+  // lane has no wrapper loc, which is why standalone arranges wrote back fine. So
+  // `structuralWalk` EXCLUDES the wrapper loc (`start === dollarPos`) from the
+  // minimum; the combinator start always exceeds `dollarPos`, so this never drops
+  // a real combinator and is a no-op when `dollarPos` is absent (hand-built IR).
   const arrangeByLane = new Map<string, number>()
   // Per-lane statement (label) offset for the display NAME (#579 STEP 2). The
-  // live engine drops the JS label and keys the track positionally as `d{N}`
-  // (`ev.trackId`); `ev.dollarPos` is the `$:`/`bass:` STATEMENT offset, so the
-  // label is recoverable from the source there. First-event-wins (one Track =
-  // one dollarPos; a stack's voices share it). The pure scene builder reads the
-  // source at this offset to resolve a named track's label (`resolveLaneName`).
+  // live engine drops the JS label and keys the track positionally as `d{N}`;
+  // `dollarPos` is the `$:`/`bass:` STATEMENT offset, so the label is recoverable
+  // from the source there. First-wins (one Track = one dollarPos; a stack's
+  // voices share it). ALSO the containment index eval haps are attributed to
+  // (`collectHapMarks`). The pure scene builder reads the source at this offset
+  // to resolve a named track's label (`resolveLaneName`).
   const labelOffsetByLane = new Map<string, number>()
   // Clip derivation (#386): per lane, the active arrange-arm index for each
-  // integer cycle (events of one arm share a cycle; arms span whole cycles —
-  // grounded). Run-length-encoded into clips below. Only lanes whose events
-  // carry `armIndex` (an arrangement combinator) appear here; bare tracks get
-  // an implicit clip from the pure builder. `label` = the arm's first event's
-  // sample/note (read from the runtime event, like `voice`, so the pure module
-  // stays out of the editor bundle — P172).
+  // integer SONG cycle, from `structuralWalk`'s per-cycle arm selection (an arm
+  // spans whole cycles). Run-length-encoded into clips below. Only lanes reached
+  // under an arrangement combinator (an `armIndex`) appear here; bare tracks get
+  // an implicit clip from the pure builder. `label` = the arm's first-reached
+  // sample/note (`armLabels`), kept out of the pure scene module (editor bundle —
+  // P172). Feeds the `armIndex` clip gestures write back (provenance doc).
   const nCycles = Math.ceil(displayCycles)
   const armByCycleByLane = new Map<string, Array<number | undefined>>()
   const armLabelByLane = new Map<string, Map<number, string>>()
