@@ -155,3 +155,52 @@ describe('every() transform round-trip is hap-faithful, not identity (#963)', ()
     expect(rtHaps).not.toEqual(idHaps) // the transform actually fires (the drop did not)
   })
 })
+
+/**
+ * A transform we cannot express as a chain on the body — a fresh-expression
+ * arrow (`x => n("a").set(x)`), a `compose`, … — is signalled with `null` from
+ * `parseTransform`, and the calling method opaques the WHOLE `.method(args)`
+ * call site (its existing D-03 fallback). That round-trips the transform
+ * VERBATIM rather than embedding a broken `body.method(args)` wrapper or
+ * asserting identity (#969). An identity arrow (`x => x`) is the exception: it
+ * IS the body, so it stays a structural transform.
+ */
+describe('un-modellable transforms opaque the whole call and round-trip verbatim (#969)', () => {
+  beforeAll(async () => {
+    await evalScope(Promise.resolve(strudelCore), Promise.resolve({ mini }))
+    miniAllStrings()
+  })
+
+  // Every method that threads a transform through parseTransform, with a
+  // fresh-expression arrow it cannot model. Each must round-trip byte-for-byte.
+  const VERBATIM: string[] = [
+    'note("c3").every(2, x => n("a").set(x))',
+    'note("c3").sometimes(x => n("a").set(x))',
+    'note("c3").off(1/8, x => n("a").set(x))',
+    'note("c3").jux(x => n("a").set(x))',
+    'note("c3").chunk(4, x => n("a").set(x))',
+    'chord("<G#m>").layer(x => n("a").set(x), x => n("b").set(x))',
+  ]
+
+  for (const code of VERBATIM) {
+    it(`round-trips verbatim: ${code}`, () => {
+      const rt = toStrudel(parseStrudel(code))
+      expect(rt).toBe(code) // the whole call is opaque → byte-identical
+      // ...and it is NOT the silent identity the drop produced.
+      expect(rt).not.toContain('() =>')
+    })
+  }
+
+  it('the verbatim round-trip still evaluates (it is runnable, not just present)', async () => {
+    const code = 'note("c3").every(2, x => n("a").set(x))'
+    const evaluated = await evaluate(toStrudel(parseStrudel(code)))
+    expect(evaluated.pattern).toBeTruthy()
+  })
+
+  it('an identity arrow stays a structural transform (not opaqued)', () => {
+    const ev = findEvery(parseStrudel('note("c3").every(2, x => x)'))
+    expect(ev, 'x => x keeps its Every node').not.toBeNull()
+    // Identity: the transform arm equals the default arm — correct for `x => x`.
+    expect(JSON.stringify(ev!.body)).toEqual(JSON.stringify(ev!.default_))
+  })
+})

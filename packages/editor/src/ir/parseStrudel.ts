@@ -2158,6 +2158,7 @@ function applyMethod(
       if (isNaN(n)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)   // D-03 (P33 / PV37)
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir
+      if (transform === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)   // D-03 (#969)
       return IR.every(n, transform, ir, tagMeta(method, callSiteRange))
     }
 
@@ -2166,6 +2167,7 @@ function applyMethod(
       const transform = args.trim()
         ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length), bindings)
         : ir
+      if (transform === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)   // D-03 (#969)
       return IR.choice(0.5, transform, ir, tagMeta(method, callSiteRange))
     }
 
@@ -2176,6 +2178,7 @@ function applyMethod(
       if (isNaN(p)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)   // D-03 (P33 / PV37)
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir
+      if (transform === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)   // D-03 (#969)
       return IR.choice(p, transform, ir, tagMeta(method, callSiteRange))
     }
 
@@ -2212,7 +2215,12 @@ function applyMethod(
           continue
         }
         const transformOffset = offsetOfSubArg(args, trimmed, baseOffset)
-        tracks.push(parseTransform(trimmed, ir, transformOffset, bindings))
+        const track = parseTransform(trimmed, ir, transformOffset, bindings)
+        // Any track we cannot model as a chain on the body → opaque the whole
+        // `.layer(...)` so it round-trips verbatim (D-03, #969). One
+        // fresh-expression arrow makes the structural stack unrecoverable.
+        if (track === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)
+        tracks.push(track)
       }
       // 19-05 / #74: outer Stack carries .layer(...)'s call-site range +
       // userMethod: 'layer' (D-09 desugar metadata). Literal construction —
@@ -2258,6 +2266,7 @@ function applyMethod(
       if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)   // D-03 (P33 / PV37)
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir
+      if (transform === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)   // D-03 (#969)
       return IR.chunk(n, transform, ir, tagMeta(method, callSiteRange))
     }
 
@@ -2324,6 +2333,7 @@ function applyMethod(
       const transformed = args.trim()
         ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length), bindings)
         : ir
+      if (transformed === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)   // D-03 (#969)
       // 19-05 / #74: outer Stack carries .jux(...)'s call-site range +
       // userMethod: 'jux' (D-09). Inner Param(pan, ±1) nodes are SYNTHETIC —
       // no metadata (a missing userMethod is the marker irProjection strips on,
@@ -2413,6 +2423,9 @@ function applyMethod(
       })
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset
       const transformed = transformStr ? parseTransform(transformStr.trim(), lateBody, transformOffset, bindings) : lateBody
+      // Opaque the WHOLE `.off(t, f)` (on `ir`, the pre-`late` receiver) when
+      // the transform can't be modelled, so it round-trips verbatim (D-03, #969).
+      if (transformed === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)
       // Outer Stack carries .off(...)'s call-site range + userMethod: 'off'.
       // Literal construction — rest-spread escape hatch (RESEARCH §11 Q1).
       const [offStart, offEnd] = callSiteRange
@@ -2771,7 +2784,11 @@ function parseTransform(
   // it (the default) → behaviour identical to pre-20-17 by construction.
   // PV50-safe: the context flows on the stack, never module-level state.
   bindings?: ReadonlyMap<string, PatternIR>,
-): PatternIR {
+  // Returns `null` when the transform cannot be expressed as a chain on the
+  // body (a fresh-expression arrow, `compose`, …). The caller opaques the
+  // whole `.method(args)` call site on `null` so it round-trips verbatim
+  // (#969) rather than embedding a broken transform in its structural IR.
+): PatternIR | null {
   __lastParseTransformBaseOffset = baseOffset
   __parseTransformCallCount++
 
@@ -2829,16 +2846,21 @@ function parseTransform(
   const bareCall = str.match(/^([A-Za-z_$][\w$]*)\s*(?:\(([\s\S]*)\))?\s*$/)
   if (bareCall) return wrapAsOpaque(defaultIr, bareCall[1], bareCall[2] ?? '', callSiteRange)
 
-  // Residual: a transform with no partial-application shape and no
-  // `param => bodyvar.chain` shape — an identity arrow (`x => x`, which the
-  // body below correctly renders), or a fresh-expression arrow that builds a
-  // new pattern from the arg (`x => n("a").set(x)`). Neither can round-trip
-  // through the opaque `body.method(args)` wrapper without emitting invalid
-  // JS, so wrapping them here would be worse than the identity below. A
-  // faithful raw-function arm needs `extractTransform` to emit the arrow
-  // verbatim — tracked separately (#969). The identity arm is exactly right;
-  // the fresh-expression arm is the one remaining narrow drop.
-  return defaultIr
+  // Identity arrow (`x => x`, `(p) => p`) — the transform IS the body, so
+  // return it unchanged: that is exactly f(body) for f = identity, and it
+  // keeps the method's structural IR (Every/Stack/…) rather than opaquing it.
+  const identityArrow = str.match(/^\(?\s*([A-Za-z_$][\w$]*)\s*\)?\s*=>\s*([A-Za-z_$][\w$]*)\s*$/)
+  if (identityArrow && identityArrow[1] === identityArrow[2]) return defaultIr
+
+  // Residual: a transform we cannot express as a chain on the body — a
+  // fresh-expression arrow that rebuilds the pattern from its arg
+  // (`x => n("a").set(x)`), a `compose(...)`, etc. Signal it with `null` so
+  // the CALLER opaques the WHOLE `.method(args)` call site (its existing D-03
+  // fallback), which round-trips the transform verbatim. Embedding an opaque
+  // `body.method(args)` wrapper here instead would emit invalid JS for a
+  // function body, and returning `defaultIr` would silently assert identity
+  // (#963/#969, PV37 wrap-never-drop).
+  return null
 }
 
 /**

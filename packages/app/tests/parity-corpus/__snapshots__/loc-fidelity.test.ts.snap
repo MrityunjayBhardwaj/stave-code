@@ -904,21 +904,13 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "bd",
   },
   {
-    "tag": "Stack",
+    "tag": "Code",
     "text": ".layer(
     x=>n("a").set(x),
     x=>n("b").set(x)
         // maam
         .mode("c4"),
   )",
-  },
-  {
-    "tag": "Param",
-    "text": ".dict("ireal")",
-  },
-  {
-    "tag": "Builder",
-    "text": "chord",
   },
   {
     "tag": "Param",
@@ -958,21 +950,13 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "bd",
   },
   {
-    "tag": "Stack",
+    "tag": "Code",
     "text": ".layer(
     x=>n("a").set(x),
     x=>n("b").set(x)
         // ma'am
         .mode("c4"),
   )",
-  },
-  {
-    "tag": "Param",
-    "text": ".dict("ireal")",
-  },
-  {
-    "tag": "Builder",
-    "text": "chord",
   },
   {
     "tag": "Param",
@@ -2733,73 +2717,13 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".n()",
   },
   {
-    "tag": "Stack",
+    "tag": "Code",
     "text": ".layer(
 x=>x,
 x=>x.add(7)
 .off(1/8,x=>x.add("2,4").off(1/8,x=>x.add(5).echo(4,.125,.5)))
 .slow(2),
 )",
-  },
-  {
-    "tag": "Code",
-    "text": ".sub(1)",
-  },
-  {
-    "tag": "Cycle",
-    "text": "<8(3,8) <7 7*2> [4 5@3] 8>",
-  },
-  {
-    "tag": "Seq",
-    "text": "8(3,8)",
-  },
-  {
-    "tag": "Play",
-    "text": "8",
-  },
-  {
-    "tag": "Play",
-    "text": "8",
-  },
-  {
-    "tag": "Play",
-    "text": "8",
-  },
-  {
-    "tag": "Cycle",
-    "text": "<7 7*2>",
-  },
-  {
-    "tag": "Play",
-    "text": "7",
-  },
-  {
-    "tag": "Fast",
-    "text": "*2",
-  },
-  {
-    "tag": "Play",
-    "text": "7",
-  },
-  {
-    "tag": "Seq",
-    "text": "[4 5@3]",
-  },
-  {
-    "tag": "Play",
-    "text": "4",
-  },
-  {
-    "tag": "Elongate",
-    "text": "@3",
-  },
-  {
-    "tag": "Play",
-    "text": "5",
-  },
-  {
-    "tag": "Play",
-    "text": "8",
   },
   {
     "tag": "Code",

@@ -2979,10 +2979,12 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
       if (isNaN(n)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
+      if (transform === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.every(n, transform, ir, tagMeta(method, callSiteRange));
     }
     case "sometimes": {
       const transform = args.trim() ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length), bindings) : ir;
+      if (transform === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.choice(0.5, transform, ir, tagMeta(method, callSiteRange));
     }
     case "sometimesBy": {
@@ -2991,6 +2993,7 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
       if (isNaN(p)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
+      if (transform === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.choice(p, transform, ir, tagMeta(method, callSiteRange));
     }
     case "mask": {
@@ -3009,7 +3012,9 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
           continue;
         }
         const transformOffset = offsetOfSubArg(args, trimmed, baseOffset);
-        tracks.push(parseTransform(trimmed, ir, transformOffset, bindings));
+        const track = parseTransform(trimmed, ir, transformOffset, bindings);
+        if (track === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
+        tracks.push(track);
       }
       const [layerStart, layerEnd] = callSiteRange;
       return {
@@ -3026,6 +3031,7 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
       if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
+      if (transform === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.chunk(n, transform, ir, tagMeta(method, callSiteRange));
     }
     case "degrade": {
@@ -3043,6 +3049,7 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
     }
     case "jux": {
       const transformed = args.trim() ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length), bindings) : ir;
+      if (transformed === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const leftPan = IR.param("pan", -1, "-1", ir);
       const rightPan = IR.param("pan", 1, "1", transformed);
       const [juxStart, juxEnd] = callSiteRange;
@@ -3073,6 +3080,7 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
       });
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset;
       const transformed = transformStr ? parseTransform(transformStr.trim(), lateBody, transformOffset, bindings) : lateBody;
+      if (transformed === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const [offStart, offEnd] = callSiteRange;
       return {
         tag: "Stack",
@@ -3220,7 +3228,9 @@ function parseTransform(transformStr, defaultIr, baseOffset = 0, bindings) {
   }
   const bareCall = str.match(/^([A-Za-z_$][\w$]*)\s*(?:\(([\s\S]*)\))?\s*$/);
   if (bareCall) return wrapAsOpaque(defaultIr, bareCall[1], bareCall[2] ?? "", callSiteRange);
-  return defaultIr;
+  const identityArrow = str.match(/^\(?\s*([A-Za-z_$][\w$]*)\s*\)?\s*=>\s*([A-Za-z_$][\w$]*)\s*$/);
+  if (identityArrow && identityArrow[1] === identityArrow[2]) return defaultIr;
+  return null;
 }
 __name(parseTransform, "parseTransform");
 function parseParamArg(args, isSampleKey, argsOffsetAbs) {
