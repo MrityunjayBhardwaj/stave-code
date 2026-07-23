@@ -252,16 +252,19 @@ export function MusicalTimeline(
     // duplicates every row (PV175). Anchors are built once per analysis run
     // (cheap; dollarPos is a source offset, so the cycle count is irrelevant).
     const getEvents = getTimelineEventsRef.current
-    const anchors = buildLaneAnchors(ir, 1)
-    const collectFn = getEvents
-      ? (startCycle: number, endCycle: number): IREvent[] =>
-          getEvents(endCycle)
-            .filter((ev) => {
-              const c = Math.floor(ev.begin)
-              return c >= startCycle && c < endCycle
-            })
-            .map((ev) => ({ ...ev, trackId: laneKeyForHap(ev, anchors) }))
-      : undefined
+    let collectFn:
+      | ((startCycle: number, endCycle: number) => IREvent[])
+      | undefined
+    if (getEvents) {
+      const anchors = buildLaneAnchors(ir, 1)
+      collectFn = (startCycle, endCycle) =>
+        getEvents(endCycle)
+          .filter((ev) => {
+            const c = Math.floor(ev.begin)
+            return c >= startCycle && c < endCycle
+          })
+          .map((ev) => ({ ...ev, trackId: laneKeyForHap(ev, anchors) }))
+    }
     const signal = { aborted: false }
     analyzeSong(ir, { signal, collectFn })
       .then((result) => {
