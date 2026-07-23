@@ -68,6 +68,7 @@ import {
   type SongAnalysis,
 } from '@stave/editor'
 import { FullSongTimeline } from './FullSongTimeline'
+import { buildLaneAnchors, laneKeyForHap } from './musicalTimeline/timelineMarks'
 
 export interface MusicalTimelineProps {
   /** Current cycle (post-collect coords) from the active runtime, or
@@ -215,6 +216,17 @@ export function MusicalTimeline(
   // renderer were retired in U5.
   const [analysis, setAnalysis] = useState<SongAnalysis | null>(null)
 
+  // #980 — latest-value ref for the runtime's queryArc event accessor. The
+  // analyze effect sources onsets from EVAL haps (getTimelineEvents → queryArc)
+  // instead of the `collect` interpreter, so analysis + the eval-backed marks
+  // (#978) share one oracle. Held in a ref because props.getTimelineEvents is a
+  // fresh closure every render (StaveApp binds it inline) — reading it through a
+  // ref keeps the analyze effect keyed on `snapshot` alone, not re-running each
+  // render. The snapshot is republished AFTER eval-on-load populates
+  // songPatterns, so the accessor returns real haps by the time we query.
+  const getTimelineEventsRef = React.useRef(props.getTimelineEvents)
+  getTimelineEventsRef.current = props.getTimelineEvents
+
   // Analyze the whole song from the IR snapshot on every new snapshot
   // (re-eval). The previous run is aborted via a per-run signal so a fast edit
   // cadence can't pile up overlapping budgeted collections.
@@ -226,8 +238,32 @@ export function MusicalTimeline(
       setAnalysis(null)
       return
     }
+    // #980 — queryArc-backed collector: eval haps for the whole song, sliced to
+    // each requested [startCycle, endCycle) band. `analyzeSong` reads only
+    // {trackId, s, begin, note}, all present on hap events. When no runtime
+    // accessor is threaded (tests / non-Strudel), fall through to analyzeSong's
+    // default `collectCycles(ir)` — the collect path stays as the safety net.
+    //
+    // Eval haps carry the engine's POSITIONAL trackId (`$N`); analyzeSong groups
+    // lanes by laneKeyOf(=trackId ?? s), while the timeline scene keys rows by the
+    // IR/structural lane (`d{N}` / name). Remap each hap to its containment lane
+    // via the SAME join the marks use (buildLaneAnchors + laneKeyForHap) so
+    // analysis lanes and mark lanes share keys — else the scene renders BOTH and
+    // duplicates every row (PV175). Anchors are built once per analysis run
+    // (cheap; dollarPos is a source offset, so the cycle count is irrelevant).
+    const getEvents = getTimelineEventsRef.current
+    const anchors = buildLaneAnchors(ir, 1)
+    const collectFn = getEvents
+      ? (startCycle: number, endCycle: number): IREvent[] =>
+          getEvents(endCycle)
+            .filter((ev) => {
+              const c = Math.floor(ev.begin)
+              return c >= startCycle && c < endCycle
+            })
+            .map((ev) => ({ ...ev, trackId: laneKeyForHap(ev, anchors) }))
+      : undefined
     const signal = { aborted: false }
-    analyzeSong(ir, { signal })
+    analyzeSong(ir, { signal, collectFn })
       .then((result) => {
         if (!signal.aborted) setAnalysis(result)
       })
@@ -238,6 +274,32 @@ export function MusicalTimeline(
       signal.aborted = true
     }
   }, [snapshot])
+
+  // #980 — test-only observation of the eval-backed analysis (consumer 4).
+  // Gated on the same debug flag as the marks probe (FullSongTimeline), so
+  // production pays nothing. Lets a browser e2e adjudicate the verdict move at
+  // true fidelity: a signal-only track — which `collect` CANNOT onset — gains an
+  // analysis lane once analyzeSong reads eval haps instead of collect.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    let on = false
+    try {
+      on = !!window.localStorage.getItem('stave:debug.timelineMarks')
+    } catch {
+      on = false
+    }
+    if (!on) return
+    ;(
+      window as unknown as { __staveTimelineAnalysis?: unknown }
+    ).__staveTimelineAnalysis = {
+      periodCycles: analysis?.periodCycles ?? null,
+      horizonCycles: analysis?.horizonCycles ?? 0,
+      lanes: (analysis?.lanes ?? []).map((l) => ({
+        laneKey: l.laneKey,
+        onsets: l.onsetsByCycle.reduce((a, b) => a + b, 0),
+      })),
+    }
+  }, [analysis])
 
   // #394 — on mount the timeline may render before its IR snapshot has been
   // published (a cold eval lags ~2.5s behind the keypress); proactively ask the
