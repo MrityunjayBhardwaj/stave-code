@@ -48,7 +48,6 @@ import {
   parseMessageLocation,
   statementOffsetForSource,
   resolveAlias,
-  collectCycles,
   runPasses,
   publishIRSnapshot,
   IR,
@@ -88,6 +87,8 @@ import {
   masterVizEdit,
   readMasterViz,
   onActiveEditorChange,
+  readPersistedOpen,
+  readPersistedActiveTabId,
 } from "@stave/editor";
 import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 
@@ -112,6 +113,24 @@ const STRUDEL_PASSES: readonly Pass<PatternIR>[] = [
 // other; if WINDOW_CYCLES changes there, update this to match.
 const TIMELINE_WINDOW_CYCLES = 2;
 
+// #977 — eval-on-load is LAZY: the Song timeline's pre-play marks only switch
+// from collect-computed to eval-computed while the timeline is actually on
+// screen, so a file whose timeline is never opened never pays the evaluate
+// cost. The tab id matches FullSongTimeline's `TAB_ID` and the bottom-panel
+// tab's `data-bottom-panel-tab`. Visibility is polled localStorage (there is
+// no change event), read through the same two accessors the timeline's own
+// playhead loop uses.
+const MUSICAL_TIMELINE_TAB_ID = "musical-timeline";
+function isSongTimelineVisible(): boolean {
+  return (
+    readPersistedOpen() && readPersistedActiveTabId() === MUSICAL_TIMELINE_TAB_ID
+  );
+}
+// Cadence for the visibility EDGE poll (hidden→visible). Only the transition
+// does work — one evaluate per open, never per tick. Mirrors the timeline's
+// own ~250ms visibility poke; 500ms is imperceptible for "open tab → see marks".
+const TIMELINE_VISIBILITY_POLL_MS = 500;
+
 // #457 — debounce for republishing the IR snapshot on a stopped code edit, so
 // the Song timeline / IR Inspector track the source as the user types without
 // thrashing analyzeSong on every keystroke. ~one comfortable typing pause.
@@ -119,20 +138,29 @@ const SNAPSHOT_REFRESH_DEBOUNCE_MS = 300;
 
 /**
  * Parse the file's current source into IR and publish an IRSnapshot for the
- * Inspector + full-song timeline. parseStrudel + collect are pure and cheap on
- * the source string, so this is safe to call outside the eval lifecycle — both
- * the eval-success path AND on-demand (#394: the full-song view needs a
- * snapshot the instant it opens, but a cold eval's `onEvaluateSuccess` lags
- * ~2.5s behind the keypress, leaving the view empty in the meantime).
+ * Inspector + full-song timeline. parseStrudel is pure and cheap on the source
+ * string, so this is safe to call outside the eval lifecycle — both the
+ * eval-success path AND on-demand (#394: the full-song view needs a snapshot
+ * the instant it opens, but a cold eval's `onEvaluateSuccess` lags ~2.5s behind
+ * the keypress, leaving the view empty in the meantime).
+ *
+ * The snapshot's `events` come from the runtime's EVALUATED haps
+ * (`getTimelineEvents`, queryArc) — eval-truth, the same source the Song
+ * timeline's display marks read — NOT the collect interpreter (#982). They are
+ * `[]` until an evaluate populates the runtime's song patterns (PK57: empty
+ * pre-eval, matching the timeline baseline); the IR tree (`ir`/`passes`) stays
+ * source-fresh regardless. A null runtime (non-Strudel / not yet created)
+ * yields empty events.
  *
  * Strudel-only, total: no-op for non-Strudel runtimes / missing files, and
  * swallows parse errors (parseStrudel guarantees a graceful Code-node
- * fallback; collect is total). `source` is the workspace fileId — NOT the
- * human-visible path — because the Inspector's click-to-source keys by id.
+ * fallback). `source` is the workspace fileId — NOT the human-visible path —
+ * because the Inspector's click-to-source keys by id.
  */
 function captureAndPublishSnapshot(
   fileId: string,
   cycleCount: number | null,
+  runtime: LiveCodingRuntime | null,
 ): void {
   const fileNow = getFile(fileId);
   if (!fileNow) return;
@@ -141,12 +169,16 @@ function captureAndPublishSnapshot(
   if (runtimeId !== "strudel") return;
   try {
     // Phase 19-07 (#79) — pre-pass-0 seed: wrap raw source as a Code node so
-    // pass 0 (RAW) reads input.code and runs extractTracks. finalIR drives both
-    // `collect` and the `ir` alias — single source of truth (PV27).
+    // pass 0 (RAW) reads input.code and runs extractTracks. finalIR is the `ir`
+    // alias — the Inspector's IR tree, source-fresh (PV27).
     const seed: PatternIR = IR.code(fileNow.content);
     const passes = runPasses(seed, STRUDEL_PASSES);
     const finalIR = passes[passes.length - 1].ir;
-    const events = collectCycles(finalIR, 0, TIMELINE_WINDOW_CYCLES);
+    // #982 — events = the runtime's evaluated haps (queryArc), not collect, so
+    // the Inspector's event table shows eval-truth. `[]` until eval populates
+    // song patterns; trackId stays the raw engine key ($N / d{N}) — the table
+    // is a flat raw view, not lane-grouped, so no lane-key remap is needed.
+    const events = runtime?.getTimelineEvents(TIMELINE_WINDOW_CYCLES) ?? [];
     publishIRSnapshot(
       {
         ts: Date.now(),
@@ -837,6 +869,28 @@ export default function StrudelEditorClient({
   const runtimeStatesRef = useRef(runtimeStates);
   runtimeStatesRef.current = runtimeStates;
 
+  // #977 — eval-on-load. Populate the runtime's song patterns from a REAL
+  // evaluate before republishing the timeline snapshot, so the Song timeline's
+  // pre-play marks come from eval haps (display-faithful) instead of the collect
+  // interpreter. Gated LAZY: only when the timeline is visible AND the runtime
+  // is stopped — play() keeps song patterns fresh itself, and evaluating for an
+  // off-screen timeline is wasted work. evaluateForTimeline is itself
+  // stopped-gated and serialized with play(), so a Play pressed mid-refresh is
+  // race-safe. The snapshot publish is UNCONDITIONAL: it drives both the
+  // timeline re-query and the IR inspector, which want it regardless of eval.
+  const refreshTimelineMarks = useCallback(async (fid: string) => {
+    const rt = runtimesRef.current.get(fid);
+    const st = runtimeStatesRef.current.get(fid);
+    if (rt && !st?.isPlaying && isSongTimelineVisible()) {
+      await rt.evaluateForTimeline();
+    }
+    captureAndPublishSnapshot(
+      fid,
+      runtimesRef.current.get(fid)?.getCurrentCycle?.() ?? null,
+      rt ?? null,
+    );
+  }, []);
+
   // #457 — keep the Song timeline + IR Inspector snapshot in sync with the
   // SOURCE while the runtime isn't live-evaluating. The snapshot is otherwise
   // republished only on a successful eval (onEvaluateSuccess) or on song-view
@@ -862,27 +916,21 @@ export default function StrudelEditorClient({
     // guard skips it while live-coding (the runtime's re-eval owns the snapshot).
     const st0 = runtimeStatesRef.current.get(fid);
     if (!(st0?.isPlaying && st0.autoRefresh)) {
-      captureAndPublishSnapshot(
-        fid,
-        runtimesRef.current.get(fid)?.getCurrentCycle?.() ?? null,
-      );
+      void refreshTimelineMarks(fid);
     }
     const unsub = subscribeToWorkspaceFile(fid, () => {
       const st = runtimeStatesRef.current.get(fid);
       if (st?.isPlaying && st.autoRefresh) return; // eval-path owns it
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        captureAndPublishSnapshot(
-          fid,
-          runtimesRef.current.get(fid)?.getCurrentCycle?.() ?? null,
-        );
+        void refreshTimelineMarks(fid);
       }, SNAPSHOT_REFRESH_DEBOUNCE_MS);
     });
     return () => {
       if (timer) clearTimeout(timer);
       unsub();
     };
-  }, [watchedFileId]);
+  }, [watchedFileId, refreshTimelineMarks]);
 
   const getOrCreateRuntime = useCallback((fileId: string): LiveCodingRuntime | null => {
     if (runtimesRef.current.has(fileId)) return runtimesRef.current.get(fileId)!;
@@ -1058,7 +1106,7 @@ export default function StrudelEditorClient({
         // song-view path (#394) publishes the identical shape — no drift.
         // Phase 19-08: cycleCount lands on the timeline capture entry (not on
         // IRSnapshot) so PV27's per-snapshot alias contract stays untouched.
-        captureAndPublishSnapshot(fileId, runtime.getCurrentCycle());
+        captureAndPublishSnapshot(fileId, runtime.getCurrentCycle(), runtime);
 
         // Prune orphaned per-track colour overrides (#583): drop TrackMeta
         // records whose track no longer exists in the evaluated code, so a
@@ -1092,6 +1140,31 @@ export default function StrudelEditorClient({
     });
 
     runtimesRef.current.set(fileId, runtime);
+    // #977 — seed a default (stopped) state entry the moment the runtime exists.
+    // The runtime otherwise gains a `runtimeStates` entry only lazily, on its
+    // first play/eval/error event — so pre-play the active-runtime accessor
+    // builder saw `runtimeStates.get(fid)` undefined and wired NULL accessors,
+    // leaving the Song timeline unable to read the eval haps eval-on-load had
+    // populated. Seeding here keeps runtimeStates consistent with runtimesRef,
+    // AND the state change re-triggers the accessor builder when the runtime is
+    // created after the active file is already set.
+    //
+    // #979 — but getOrCreateRuntime is invoked DURING render (`chromeForTab`, in
+    // WorkspaceShell's render) as well as from handlers/effects, so seeding
+    // synchronously would call setState during another component's render (React
+    // cross-component update warning). Defer it to a microtask — a post-render
+    // side effect — guarded on the ref so the per-render call from chromeForTab
+    // neither loops nor schedules repeatedly, and idempotent so a race is a no-op.
+    if (!runtimeStatesRef.current.has(fileId)) {
+      queueMicrotask(() => {
+        setRuntimeStates((prev) => {
+          if (prev.has(fileId)) return prev;
+          const next = new Map(prev);
+          next.set(fileId, { isPlaying: false, error: null, autoRefresh: false });
+          return next;
+        });
+      });
+    }
     return runtime;
   }, []);
 
@@ -1400,6 +1473,30 @@ export default function StrudelEditorClient({
   // switches because `play` / `stop` / error events mutate runtimeStates
   // without changing the active tab.
   const activeFileIdRef = useRef<string | null>(null);
+
+  // #977 — visibility poll for eval-on-load. The snapshot cadence effect covers
+  // file switches + edits, and onRequestSnapshot covers a cold song-view entry —
+  // but opening the timeline on an already-active, unedited, stopped file whose
+  // collect snapshot already exists fires none of those, AND on boot the cadence
+  // effect runs BEFORE the idle warm-up has created the runtime (so it skips the
+  // eval). Visibility is polled localStorage (no change event). One interval per
+  // active file (re-created on switch via the `watchedFileId` dep); the `evaled`
+  // latch fires it exactly ONCE — the moment the file is visible + stopped + its
+  // runtime exists — then stops. Edits re-eval through the cadence effect.
+  useEffect(() => {
+    const fid = watchedFileId;
+    if (!fid) return;
+    const id = setInterval(() => {
+      if (!isSongTimelineVisible()) return;
+      const rt = runtimesRef.current.get(fid);
+      const st = runtimeStatesRef.current.get(fid);
+      if (!rt || st?.isPlaying) return; // wait for the runtime; play owns it
+      clearInterval(id); // fire exactly once, then stop the timer
+      void refreshTimelineMarks(fid);
+    }, TIMELINE_VISIBILITY_POLL_MS);
+    return () => clearInterval(id);
+  }, [refreshTimelineMarks, watchedFileId]);
+
   useEffect(() => {
     if (!onActiveRuntimeStateChange) return;
     const fid = activeFileIdRef.current;
@@ -1441,11 +1538,12 @@ export default function StrudelEditorClient({
         void runtimesRef.current.get(accessorFid)?.seekTo?.(cycle);
       },
       // #394 — publish the active file's IR for the full-song view on demand.
+      // #977 — routed through refreshTimelineMarks so a cold song-view entry (or
+      // a page that loads with the timeline already open) also populates eval
+      // haps before the snapshot publish. The timeline is visible when it makes
+      // this request, so the lazy-visibility gate inside passes.
       onRequestSnapshot: () => {
-        captureAndPublishSnapshot(
-          accessorFid,
-          runtimesRef.current.get(accessorFid)?.getCurrentCycle?.() ?? null,
-        );
+        void refreshTimelineMarks(accessorFid);
       },
       // Phase 20-07 wave γ (R-2) — Inspector accessors. Mirror getHapStream's
       // closure shape so they read through runtimesRef on every invocation.
@@ -1460,7 +1558,13 @@ export default function StrudelEditorClient({
         runtimesRef.current.get(accessorFid)?.onPausedChanged?.(cb) ??
         (() => {}),
     });
-  }, [runtimeStates, onActiveRuntimeStateChange]);
+    // #977 — also re-run when the active file is set (watchedFileId), not only
+    // on runtimeStates changes. On boot the runtime registers (runtimeStates
+    // changes) BEFORE the active tab activates, so this builder ran with a null
+    // active fid and returned early, leaving the timeline-events accessor unwired
+    // until the first Play. Keying on watchedFileId rewires the accessor the
+    // moment there's an active file — so pre-play eval marks can be read.
+  }, [runtimeStates, onActiveRuntimeStateChange, refreshTimelineMarks, watchedFileId]);
 
   // #813 — Eager engine warm-up so the instrument picker is fully populated
   // before the user presses Play. The picker reads superdough's global
@@ -1541,6 +1645,11 @@ export default function StrudelEditorClient({
           tab && (tab.kind === "editor" || tab.kind === "preview")
             ? tab.fileId
             : null;
+        // #977 — this event-time ref latch is now read by the eval-on-load
+        // visibility/accessor hooks, which makes the React-Compiler immutability
+        // rule flag this (pre-existing, safe) assignment. The write happens in a
+        // user-event callback, never during render, so it cannot break memoization.
+        // eslint-disable-next-line react-hooks/immutability
         activeFileIdRef.current = fid;
         // #347 — per-tab backdrop: swap the active group's backdrop to the new
         // active tab's stored choice (or clear when it has none). This is what
@@ -1599,12 +1708,10 @@ export default function StrudelEditorClient({
             void runtimesRef.current.get(accessorFid)?.seekTo?.(cycle);
           },
           // #394 — on-demand snapshot capture (same shape as the useEffect
-          // builder above).
+          // builder above). #977 — via refreshTimelineMarks so a cold entry
+          // populates eval haps before the publish (visibility gate passes).
           onRequestSnapshot: () => {
-            captureAndPublishSnapshot(
-              accessorFid,
-              runtimesRef.current.get(accessorFid)?.getCurrentCycle?.() ?? null,
-            );
+            void refreshTimelineMarks(accessorFid);
           },
           // Phase 20-07 wave γ (R-2) — Inspector accessors. Mirrors the
           // useEffect closure builder above; both push the same shape to

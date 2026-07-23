@@ -14,6 +14,12 @@ export { collect, collectCycles } from './collect'
 export type { CollectContext } from './collect'
 export { toStrudel } from './toStrudel'
 
+// Structural walk (#945/#974) — lane anchors from source structure alone, no onsets. The
+// "keep" half of the collect split: the timeline joins queryArc haps to these lanes by
+// source-span containment, and the walk survives mid-edit code where evaluate() throws.
+export { structuralWalk, aggregateLaneItems } from './structuralWalk'
+export type { LaneSkeleton, LaneItem } from './structuralWalk'
+
 // Full-song analysis (#385) — progressive-horizon period/section/lane analysis
 export {
   analyzeSong,

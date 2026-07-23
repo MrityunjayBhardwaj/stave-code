@@ -19,14 +19,20 @@ const DRUM_EVENTS = [
   { begin: 0.5, end: 0.75, trackId: 'drums', s: 'hh', note: null, gain: 1, loc: [{ start: 10, end: 20 }] },
   { begin: 0.5, end: 0.6, trackId: 'drums', s: 'sd', note: null, gain: 1, loc: [{ start: 10, end: 20 }] },
 ]
-vi.mock('@stave/editor', () => ({
-  collectCycles: () => DRUM_EVENTS,
-  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
-  // #459 — Song view reads the shared timeline row-height setting; mock to 22
-  // (the SUB_ROW_HEIGHT these sub-row layout assertions were written for).
-  getMusicalTimelineSubRowHeight: () => 22,
-  onMusicalTimelineSubRowHeightChange: () => () => {},
-}))
+vi.mock('@stave/editor', async () => {
+  // #974 — lane STRUCTURE comes from `structuralWalk` now; the per-voice sub-rows still come
+  // from the collect marks (DRUM_EVENTS). Reduce the SAME events through the REAL reducer (PV192).
+  const { skeletonsFromEvents } = await import('../musicalTimeline/__tests__/structuralWalkTestStub')
+  return {
+    collectCycles: () => DRUM_EVENTS,
+    structuralWalk: (_ir: unknown, nCycles: number) => skeletonsFromEvents(DRUM_EVENTS, nCycles),
+    laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
+    // #459 — Song view reads the shared timeline row-height setting; mock to 22
+    // (the SUB_ROW_HEIGHT these sub-row layout assertions were written for).
+    getMusicalTimelineSubRowHeight: () => 22,
+    onMusicalTimelineSubRowHeightChange: () => () => {},
+  }
+})
 
 import { FullSongTimeline } from '../FullSongTimeline'
 

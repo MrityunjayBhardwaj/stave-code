@@ -51,16 +51,27 @@ const { TRIM_EVENTS, BARE_EVENTS, NESTED_EVENTS } = vi.hoisted(() => ({
     { begin: 2, end: 3, s: 'hh', trackId: 'song', armIndex: 1, loc: [{ start: 0, end: 58 }] },
   ],
 }))
-vi.mock('@stave/editor', () => ({
-  collectCycles: (ir: { bare?: boolean; nested?: boolean } | null) =>
-    ir?.bare ? BARE_EVENTS : ir?.nested ? NESTED_EVENTS : ir ? TRIM_EVENTS : [],
-  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
-  // #459 — Song view now reads the shared timeline row-height setting. Mock it
-  // to 22 (the height these layout assertions were written for) + a no-op
-  // subscribe, mirroring MusicalTimeline.test's mock.
-  getMusicalTimelineSubRowHeight: () => 22,
-  onMusicalTimelineSubRowHeightChange: () => () => {},
-}))
+vi.mock('@stave/editor', async () => {
+  // #974 — the timeline derives lane STRUCTURE from `structuralWalk`, not collect events. Reduce
+  // the SAME fixture events the collect mock returns, through the REAL production reducer (from
+  // source, no gifenc), so structure + marks stay in sync and the stub can't drift (PV192).
+  // Only vi.hoisted values (the fixtures) are safe to reference here — the factory is hoisted
+  // above every top-level const, so `eventsForIr` lives inside it.
+  const { skeletonsFromEvents } = await import('../musicalTimeline/__tests__/structuralWalkTestStub')
+  const eventsForIr = (ir: { bare?: boolean; nested?: boolean } | null) =>
+    ir?.bare ? BARE_EVENTS : ir?.nested ? NESTED_EVENTS : ir ? TRIM_EVENTS : []
+  return {
+    collectCycles: (ir: { bare?: boolean; nested?: boolean } | null) => eventsForIr(ir),
+    structuralWalk: (ir: { bare?: boolean; nested?: boolean } | null, nCycles: number) =>
+      skeletonsFromEvents(eventsForIr(ir), nCycles),
+    laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
+    // #459 — Song view now reads the shared timeline row-height setting. Mock it
+    // to 22 (the height these layout assertions were written for) + a no-op
+    // subscribe, mirroring MusicalTimeline.test's mock.
+    getMusicalTimelineSubRowHeight: () => 22,
+    onMusicalTimelineSubRowHeightChange: () => () => {},
+  }
+})
 
 import { FullSongTimeline } from '../FullSongTimeline'
 
