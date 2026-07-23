@@ -26672,6 +26672,12 @@ function topLevelSpans(src) {
   return out;
 }
 __name(topLevelSpans, "topLevelSpans");
+function leafLoc(h) {
+  const l = h.context?.locations?.[0];
+  if (!l || typeof l.start !== "number" || typeof l.end !== "number") return null;
+  return { start: l.start - 1, end: l.end - 1 };
+}
+__name(leafLoc, "leafLoc");
 function gridOnsets(pat, cyc) {
   let haps;
   try {
@@ -26691,11 +26697,14 @@ function gridOnsets(pat, cyc) {
     if (NUMERIC.test(token)) return null;
     const pos = h.whole.begin.valueOf() - cyc;
     const key2 = Math.round(pos * 720720);
-    const cell = byCol.get(key2) ?? [];
-    if (!cell.includes(token)) cell.push(token);
+    const cell = byCol.get(key2) ?? { atoms: [], spans: [] };
+    if (!cell.atoms.includes(token)) {
+      cell.atoms.push(token);
+      cell.spans.push(leafLoc(h));
+    }
     byCol.set(key2, cell);
   }
-  return [...byCol.entries()].map(([k, atoms]) => ({ pos: k / 720720, atoms }));
+  return [...byCol.entries()].map(([k, c]) => ({ pos: k / 720720, atoms: c.atoms, spans: c.spans }));
 }
 __name(gridOnsets, "gridOnsets");
 var onsetKey = /* @__PURE__ */ __name((o) => JSON.stringify(o.map((x) => [Math.round(x.pos * 720720), [...x.atoms].sort()]).sort()), "onsetKey");
@@ -26846,9 +26855,9 @@ function projectionEditSafe(model, perBar2, bars, base, probeCols) {
       if (bb !== b) return want;
       const hit = want.find((o) => Math.abs(o.pos - t) < 1e-9);
       const out2 = want.map(
-        (o) => o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND] } : o
+        (o) => o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND], spans: [...o.spans, null] } : o
       );
-      if (!hit) out2.push({ pos: t, atoms: [PROBE_SOUND] });
+      if (!hit) out2.push({ pos: t, atoms: [PROBE_SOUND], spans: [null] });
       return out2;
     }, "expectedFor");
     for (let bb = 0; bb < bars; bb++) {
@@ -27141,7 +27150,7 @@ function rollOnsets(pat, cyc) {
     const pos = h.whole.begin.valueOf() - cyc;
     const dur = h.whole.end.valueOf() - h.whole.begin.valueOf();
     if (dur <= 0) return null;
-    out.push({ pos, dur, pitch, numeric });
+    out.push({ pos, dur, pitch, numeric, loc: leafLoc(h) });
   }
   return out;
 }

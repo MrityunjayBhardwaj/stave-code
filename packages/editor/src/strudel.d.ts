@@ -132,6 +132,8 @@ declare module '@strudel/mini/krill-parser.js' {
 declare module '@strudel/mini/mini.mjs' {
   export const mini: (...args: unknown[]) => unknown
   export function miniAllStrings(): void
+  /** krill's whitespace-corrected leaf spans `[from,to]` for a QUOTED mini string */
+  export function getLeafLocations(code: string, start?: number, userCode?: string): Array<[number, number]>
 }
 
 declare module '@strudel/tonal' {
