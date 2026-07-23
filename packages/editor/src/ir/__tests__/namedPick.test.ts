@@ -10,8 +10,8 @@
  * (the mini()-wrapped form, queried per cycle) during the fix.
  */
 import { describe, it, expect } from 'vitest'
-import { parseStrudel, toStrudel, collectCycles } from '../../ir'
-import type { PatternIR, IREvent } from '../../ir'
+import { parseStrudel, toStrudel } from '../../ir'
+import type { PatternIR } from '../../ir'
 import { IR } from '../PatternIR'
 import {
   runRawStage,
@@ -38,14 +38,6 @@ function bodyOf(ir: PatternIR): PatternIR {
   return ir.tag === 'Track' ? (ir as Extract<PatternIR, { tag: 'Track' }>).body : ir
 }
 
-// s-or-note value per cycle (sections are `s(...)` so `s` carries the content).
-function contentPerCycle(src: string, cycles: number): string[] {
-  const evs = collectCycles(parseStrudel(src), 0, cycles) as IREvent[]
-  const byCycle: Record<number, string[]> = {}
-  for (const e of evs) (byCycle[Math.floor(e.begin)] ||= []).push(String(e.s ?? e.note ?? ''))
-  return Array.from({ length: cycles }, (_, c) => (byCycle[c] || []).sort().join(','))
-}
-
 const SONG = `"<~@2 verse@2 chorus@2>".pickRestart({verse: s("bd sd"), chorus: s("hh hh")})`
 
 describe('#463 Stage 1 — object-form pick family → NamedPick', () => {
@@ -64,42 +56,6 @@ describe('#463 Stage 1 — object-form pick family → NamedPick', () => {
     for (const e of body.entries) {
       expect(SONG.slice(e.keyLoc!.start, e.keyLoc!.end)).toBe(e.key)
     }
-  })
-
-  it('collect plays the section CONTENT per cycle, not the control labels', () => {
-    // control `<~@2 verse@2 chorus@2>`: rest c0-1, verse c2-3, chorus c4-5.
-    expect(contentPerCycle(SONG, 6)).toEqual([
-      '', '', 'bd,sd', 'bd,sd', 'hh,hh', 'hh,hh',
-    ])
-  })
-
-  it('an unknown key / rest arm collects to silence', () => {
-    // `gone` has no entry → silence; the `~` rest arm → silence.
-    const src = `"<~ gone verse>".pickRestart({verse: s("bd")})`
-    expect(contentPerCycle(src, 3)).toEqual(['', '', 'bd'])
-  })
-
-  it('pickRestart RESTARTS the inner pattern on each section entry (restart timing)', () => {
-    // verse dwells 3 cycles with a 3-cycle inner alternation → 0,1,2 then
-    // restarts. GROUNDED vs real haps.
-    const src = `"<verse@3 chorus@2>".pickRestart({verse: s("<a b c>"), chorus: s("hh")})`
-    expect(contentPerCycle(src, 10)).toEqual([
-      'a', 'b', 'c',   // verse entry c0-2 → inner 0,1,2
-      'hh', 'hh',      // chorus c3-4
-      'a', 'b', 'c',   // verse RE-entry c5-7 → inner RESTARTS 0,1,2
-      'hh', 'hh',      // chorus c8-9
-    ])
-  })
-
-  it('pick (innerJoin) tracks the GLOBAL cycle (continuous), unlike pickRestart', () => {
-    // Same shape but `.pick`: the inner advances by global cycle, so the verse
-    // re-entry at c5 is at inner cycle 5 (5%3=2 → c), not a restart to a.
-    const src = `"<verse@3 chorus@2>".pick({verse: s("<a b c>"), chorus: s("hh")})`
-    expect(contentPerCycle(src, 8)).toEqual([
-      'a', 'b', 'c',   // c0-2 → inner 0,1,2
-      'hh', 'hh',      // c3-4
-      'c', 'a', 'b',   // c5-7 → inner 5,6,7 → c,a,b (NOT a restart)
-    ])
   })
 
   it('toStrudel round-trips byte-identically to the opaque-Code precedent', () => {

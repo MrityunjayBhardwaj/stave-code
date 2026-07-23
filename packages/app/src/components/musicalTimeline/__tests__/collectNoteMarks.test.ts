@@ -33,7 +33,6 @@ vi.mock('@stave/editor', async () => {
   // through the REAL production reducer so d1/d2 keep their dollarPos anchors (PV192).
   const { skeletonsFromEvents } = await import('./structuralWalkTestStub')
   return {
-    collectCycles: () => IR_EVENTS,
     structuralWalk: (_ir: unknown, nCycles: number) => skeletonsFromEvents(IR_EVENTS, nCycles),
     laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
   }
@@ -112,18 +111,18 @@ describe('collectNoteMarks — eval-backed marks (#861)', () => {
     expect(marks.marksByLane.get('bass')?.map((n) => n.pitch)).toEqual([E3])
   })
 
-  it('falls back to IR marks (source-lossy pitch) when there are no eval events', () => {
-    // Pre-eval: `events` is null → marks come from the IR. The IR note is a bare
-    // integer `"0"` → extractPitch returns null → a flat, pitchless mark. This is
-    // the very failure the eval path fixes; the fallback preserves today's
-    // behaviour so nothing regresses before the first eval.
+  it('produces no marks pre-eval (structure only) — the collect fallback was removed (#975)', () => {
+    // Pre-eval: `events` is null → no eval haps, and the pre-eval `collectCycles`
+    // fallback was removed with the collect interpreter (#975). So a lane draws
+    // its STRUCTURE but carries no marks until eval fills them (#978), instead of
+    // the old source-lossy IR marks.
     const marks = collectNoteMarks(null, { fake: true } as never, 4)
 
-    const d1 = marks.marksByLane.get('d1')
-    expect(d1).toHaveLength(1)
-    expect(d1![0].pitch).toBeNull()
-    // Structure is still IR-derived in both paths — both lanes present.
-    expect(marks.marksByLane.get('d2')).toHaveLength(1)
+    expect(marks.marksByLane.get('d1')).toBeUndefined()
+    expect(marks.marksByLane.get('d2')).toBeUndefined()
+    // Structure is still walk-derived — both lanes anchored by their label offset.
+    expect(marks.labelOffsetByLane.get('d1')).toBe(0)
+    expect(marks.labelOffsetByLane.get('d2')).toBe(30)
   })
 
   it('keeps structure (label offsets) IR-derived even on the eval path', () => {

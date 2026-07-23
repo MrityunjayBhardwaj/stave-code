@@ -14,15 +14,20 @@
  *      bogus atom (`~@4` → Sleep + Play("4")).
  */
 import { describe, it, expect } from 'vitest'
-import { parseStrudel, collectCycles } from '../../ir'
-import type { IREvent } from '../../ir'
+import { parseStrudel } from '../../ir'
+import { walkLeafItems } from '../structuralWalk'
 
-// Collect the `note` value per cycle for a bare mini pattern.
+// The weighted-slowcat CYCLE MODEL (which arm plays in which cycle) is a
+// structural property of the parsed `<…@w>` IR, so `walkLeafItems` — the
+// behaviour-free structural walk that mirrors the retired collect's per-cycle
+// arm selection — reproduces the note-per-cycle stream WITHOUT the behaviour
+// interpreter. `labelValue` is `s ?? String(note)`; a rest arm reaches no leaf,
+// so its cycle contributes the empty string.
 function notesPerCycle(mini: string, cycles: number): string[] {
   const ir = parseStrudel(`note("${mini}")`)
-  const evs = collectCycles(ir, 0, cycles) as IREvent[]
+  const items = walkLeafItems(ir, cycles)
   const byCycle: Record<number, string[]> = {}
-  for (const e of evs) (byCycle[Math.floor(e.begin)] ||= []).push(String(e.note ?? ''))
+  for (const it of items) (byCycle[it.cycle] ||= []).push(String(it.labelValue ?? ''))
   return Array.from({ length: cycles }, (_, c) => (byCycle[c] || []).sort().join(','))
 }
 
@@ -46,10 +51,9 @@ describe('#463 Stage 0 — weighted angle-bracket slowcat', () => {
 
   it('`~@4` does NOT leak the weight digit as a note value', () => {
     // Bug 2 discriminator: pre-fix this produced a Play("4") at cycle 1.
-    const ir = parseStrudel('note("<~@4 a>")')
-    const evs = collectCycles(ir, 0, 5) as IREvent[]
-    expect(evs.every((e) => e.note !== '4')).toBe(true)
-    // cycles 0..3 are the rest (no events), cycle 4 is `a`.
+    const items = walkLeafItems(parseStrudel('note("<~@4 a>")'), 5)
+    expect(items.every((it) => it.labelValue !== '4')).toBe(true)
+    // cycles 0..3 are the rest (no leaves), cycle 4 is `a`.
     expect(notesPerCycle('<~@4 a>', 6)).toEqual(['', '', '', '', 'a', ''])
   })
 

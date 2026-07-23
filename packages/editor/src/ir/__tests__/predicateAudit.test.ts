@@ -134,7 +134,6 @@ describe('predicate audit (#959)', () => {
   it('modules that delegate to an authority still have no anchored regexes', () => {
     const delegating = [
       'parseMini.ts',
-      'collect.ts',
       'parseStrudelStages.ts',
       '../visualEdit/chunkDetect.ts',
       '../visualEdit/arrange/parse.ts',

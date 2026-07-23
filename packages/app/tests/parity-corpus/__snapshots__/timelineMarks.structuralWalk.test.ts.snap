@@ -1,0 +1,545 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > amensister: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 176,
+    "labelOffset": null,
+    "sourceOffset": 198,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > arpoon: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 175,
+    "labelOffset": null,
+    "sourceOffset": 176,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-132-recursive-args: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 3,
+    "labelOffset": null,
+    "sourceOffset": 4,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-140-binding-transitive: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 33,
+    "labelOffset": null,
+    "sourceOffset": 34,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-141-arith-rhs: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 25,
+    "labelOffset": null,
+    "sourceOffset": 25,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-141-arith-unreferenced: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 25,
+    "labelOffset": null,
+    "sourceOffset": 25,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-141-binding-arg-text: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 13,
+    "labelOffset": null,
+    "sourceOffset": 13,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-141-irand-chain-root: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-142-samples-objlit: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 83,
+    "labelOffset": null,
+    "sourceOffset": 83,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-143-NEGATIVE-no-apostrophe-comment: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 0,
+    "labelOffset": null,
+    "sourceOffset": 22,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-143-apostrophe-in-chain-arg-comment: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 0,
+    "labelOffset": null,
+    "sourceOffset": 22,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-143-guarded-boot: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 105,
+    "labelOffset": null,
+    "sourceOffset": 105,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-144-paren-root: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 2,
+    "labelOffset": null,
+    "sourceOffset": 2,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-148-leading-dot-chain: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 20,
+    "labelOffset": null,
+    "sourceOffset": 20,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-150-eq-continuation: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 55,
+    "labelOffset": null,
+    "sourceOffset": 55,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-151-comment-only: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 26,
+    "labelOffset": null,
+    "sourceOffset": 26,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-152-block-comment: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 26,
+    "labelOffset": null,
+    "sourceOffset": 27,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-158-NEGATIVE-no-sideeffect: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-158-aliasBank-shape-fence: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-158-all-shape-fence: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-158-initAudio-shape-fence: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-158-samples-shape-fence: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-158-setCpm-camel-shape-fence: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-158-setCps-camel-shape-fence: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-158-setVoicingRange-shape-fence: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-158-setcpm-shape-fence: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-158-setcps-shape-fence: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-158-useRNG-shape-fence: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-159-NEGATIVE-no-whitespace: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 7,
+    "labelOffset": null,
+    "sourceOffset": 7,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-159-tokenizer-whitespace: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 8,
+    "labelOffset": null,
+    "sourceOffset": 8,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-901-stack-newline-paren: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 106,
+    "labelOffset": null,
+    "sourceOffset": 118,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-901-stack-space-paren: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 0,
+    "labelOffset": null,
+    "sourceOffset": 15,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-903-chord-multiplier: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 0,
+    "labelOffset": null,
+    "sourceOffset": 16,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-903-patterned-variant: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 0,
+    "labelOffset": null,
+    "sourceOffset": 16,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-G1-let-binding: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 12,
+    "labelOffset": null,
+    "sourceOffset": 12,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-G2-setCpm-camel: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 14,
+    "labelOffset": null,
+    "sourceOffset": 23,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-G2-setCps-camel: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 12,
+    "labelOffset": null,
+    "sourceOffset": 21,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-G2-setcpm: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 14,
+    "labelOffset": null,
+    "sourceOffset": 23,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-G3-backtick: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 10,
+    "labelOffset": 0,
+    "sourceOffset": 12,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-G4-comment-args: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 0,
+    "labelOffset": null,
+    "sourceOffset": 36,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-G5-named-label: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "p1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 4,
+    "labelOffset": 0,
+    "sourceOffset": 13,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-arrange-root: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bakery-chord-voicing-root: every lane's structural anchors match the committed snapshot 1`] = `{}`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > barryHarris: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 42,
+    "labelOffset": null,
+    "sourceOffset": 42,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > bassFuge: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 651,
+    "labelOffset": null,
+    "sourceOffset": 652,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > belldub: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 296,
+    "labelOffset": null,
+    "sourceOffset": 322,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > chop: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 192,
+    "labelOffset": null,
+    "sourceOffset": 192,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > delay: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 123,
+    "labelOffset": null,
+    "sourceOffset": 123,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > dinofunk: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 335,
+    "labelOffset": null,
+    "sourceOffset": 345,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > echoPiano: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 117,
+    "labelOffset": null,
+    "sourceOffset": 118,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > flatrave: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 130,
+    "labelOffset": null,
+    "sourceOffset": 142,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > holyflute: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 133,
+    "labelOffset": null,
+    "sourceOffset": 133,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > juxUndTollerei: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 126,
+    "labelOffset": null,
+    "sourceOffset": 126,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > meltingsubmarine: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 182,
+    "labelOffset": null,
+    "sourceOffset": 194,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > orbit: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 109,
+    "labelOffset": null,
+    "sourceOffset": 123,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > randomBells: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 308,
+    "labelOffset": null,
+    "sourceOffset": 331,
+  },
+}
+`;
+
+exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #974) > sampleDrums: every lane's structural anchors match the committed snapshot 1`] = `
+{
+  "d1": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 147,
+    "labelOffset": null,
+    "sourceOffset": 158,
+  },
+}
+`;

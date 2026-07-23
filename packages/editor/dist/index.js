@@ -150,6 +150,270 @@ var IR = {
   }, "builder")
 };
 
+// src/ir/toStrudel.ts
+function toStrudel(ir) {
+  return gen(ir);
+}
+__name(toStrudel, "toStrudel");
+function gen(ir) {
+  switch (ir.tag) {
+    case "Pure":
+      return '""';
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // CODE-INVARIANCE (P62): re-emit the SOURCE VERBATIM. The kind IS
+    // the user-typed token; args are RAW byte-for-byte (mirrors the
+    // Code.via.args / Param.rawArgs convention). 0-arity signals
+    // (`sine`, `perlin`) emit the bare kind; arg-taking signals
+    // (`mousex` is 0-ary in Strudel; arg-shapes belong to specific
+    // builders / sample-arg signals) emit `kind(args)`. Builders ALWAYS
+    // carry args. NEVER re-serialise / NEVER coerce. The `body?` field
+    // is Wave-C-OPAQUE-pending (chord/arrange) — absent in Wave A.
+    case "Signal":
+      return ir.args !== void 0 ? `${ir.kind}(${ir.args})` : ir.kind;
+    case "Builder":
+      return `${ir.kind}(${ir.args})`;
+    case "Arrange": {
+      if (ir.arms.length === 0) return `${ir.mode}()`;
+      const parts = ir.mode === "arrange" ? ir.arms.map((a) => `[${a.weight}, ${gen(a.pattern)}]`) : ir.arms.map((a) => gen(a.pattern));
+      return `${ir.mode}(${parts.join(", ")})`;
+    }
+    case "Track": {
+      if (ir.userMethod === "p") {
+        return `${gen(ir.body)}.p("${ir.trackId}")`;
+      }
+      return gen(ir.body);
+    }
+    case "Code":
+      if (ir.via) {
+        if ("literal" in ir.via) {
+          return ir.via.raw;
+        }
+        return `${gen(ir.via.inner)}.${ir.via.method}(${ir.via.args})`;
+      }
+      return ir.code;
+    case "Param":
+      return `${gen(ir.body)}.${ir.userMethod ?? ir.key}(${ir.rawArgs})`;
+    case "Play":
+      return genPlay(ir.note, ir.params);
+    case "Sleep":
+      return "~";
+    case "Seq": {
+      if (ir.children.length === 0) return '""';
+      if (canCollapse(ir.children)) {
+        return collapseToMini(ir.children);
+      }
+      const parts = ir.children.map(gen);
+      return `fastcat(${parts.join(", ")})`;
+    }
+    case "Stack": {
+      if (ir.tracks.length === 0) return '""';
+      if (ir.userMethod !== "stack") {
+        const useSample = hasSampleDescendant(ir);
+        const frag = miniFragment(ir, useSample);
+        if (frag !== null) return useSample ? `s("${frag}")` : `note("${frag}")`;
+      }
+      const parts = ir.tracks.map(gen);
+      return `stack(
+  ${parts.join(",\n  ")}
+)`;
+    }
+    case "Choice": {
+      const thenCode = gen(ir.then);
+      if (ir.else_.tag === "Pure") {
+        const p = +ir.p.toFixed(4);
+        return `${thenCode}.sometimesBy(${p}, x => x)`;
+      }
+      const elseCode = gen(ir.else_);
+      const pThen = +ir.p.toFixed(4);
+      const pElse = +(1 - ir.p).toFixed(4);
+      return `stack(
+  ${thenCode}.sometimesBy(${pThen}, x => x),
+  ${elseCode}.sometimesBy(${pElse}, x => x)
+)`;
+    }
+    case "Every": {
+      const base = ir.default_;
+      const baseCode = base ? gen(base) : gen(ir.body);
+      const transformStr = base ? extractTransform(ir.body, base) : "() => rev";
+      return `${baseCode}.every(${ir.n}, ${transformStr})`;
+    }
+    case "Cycle": {
+      if (ir.items.length === 0) return '""';
+      const allSimple = ir.items.every((item) => item.tag === "Play" || item.tag === "Sleep");
+      if (!allSimple) {
+        const useSample = hasSampleDescendant(ir);
+        const frag = miniFragment(ir, useSample);
+        if (frag !== null) return useSample ? `s("${frag}")` : `note("${frag}")`;
+      }
+      const notes = ir.items.map((item) => {
+        if (item.tag === "Play") return String(item.note);
+        if (item.tag === "Sleep") return "~";
+        return gen(item);
+      });
+      if (allSimple) {
+        const firstPlay = ir.items.find((i) => i.tag === "Play");
+        if (firstPlay && firstPlay.tag === "Play" && firstPlay.params.s) {
+          return `s("<${notes.join(" ")}>")`;
+        }
+        return `note("<${notes.join(" ")}>")`;
+      }
+      return `note("<${notes.join(" ")}>")`;
+    }
+    case "When": {
+      const body = gen(ir.body);
+      return `${body}.mask("${ir.gate}")`;
+    }
+    case "Ramp": {
+      const body = gen(ir.body);
+      return `${body}.${ir.param}(slow(${ir.cycles}, saw))`;
+    }
+    case "Fast": {
+      const body = gen(ir.body);
+      return `${body}.fast(${ir.factor})`;
+    }
+    case "Slow": {
+      const body = gen(ir.body);
+      return `${body}.slow(${ir.factor})`;
+    }
+    case "Loop":
+      return gen(ir.body);
+    case "Elongate":
+      return gen(ir.body);
+    case "Late":
+      return `${gen(ir.body)}.late(${ir.offset})`;
+    case "Degrade": {
+      const body = gen(ir.body);
+      if (ir.p === 0.5) return `${body}.degrade()`;
+      const dropAmount = +(1 - ir.p).toFixed(4);
+      return `${body}.degradeBy(${dropAmount})`;
+    }
+    case "Chunk": {
+      const baseCode = gen(ir.body);
+      const transformStr = extractTransform(ir.transform, ir.body);
+      return `${baseCode}.chunk(${ir.n}, ${transformStr})`;
+    }
+    case "Ply": {
+      return `${gen(ir.body)}.ply(${ir.n})`;
+    }
+    case "Pick": {
+      const sel = gen(ir.selector);
+      const elems = ir.lookup.map((p) => gen(p));
+      return `${sel}.pick([${elems.join(", ")}])`;
+    }
+    case "NamedPick":
+      return `${gen(ir.selector)}.${ir.method}(${ir.rawArgs})`;
+    case "Struct": {
+      return `${gen(ir.body)}.struct("${ir.mask}")`;
+    }
+    case "Swing": {
+      return `${gen(ir.body)}.swing(${ir.n})`;
+    }
+    case "Shuffle": {
+      return `${gen(ir.body)}.shuffle(${ir.n})`;
+    }
+    case "Scramble": {
+      return `${gen(ir.body)}.scramble(${ir.n})`;
+    }
+    case "Chop": {
+      return `${gen(ir.body)}.chop(${ir.n})`;
+    }
+  }
+}
+__name(gen, "gen");
+function nodesEqual(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+__name(nodesEqual, "nodesEqual");
+function extractTransform(body, base) {
+  if (body.tag === "Fast" && nodesEqual(body.body, base)) return `fast(${body.factor})`;
+  if (body.tag === "Slow" && nodesEqual(body.body, base)) return `slow(${body.factor})`;
+  return `() => ${gen(body)}`;
+}
+__name(extractTransform, "extractTransform");
+function genPlay(note, params) {
+  if (params.s) {
+    return `s("${params.s}")`;
+  }
+  return `note("${note}")`;
+}
+__name(genPlay, "genPlay");
+function hasSampleDescendant(ir) {
+  switch (ir.tag) {
+    case "Play":
+      return !!ir.params.s;
+    case "Seq":
+      return ir.children.some(hasSampleDescendant);
+    case "Stack":
+      return ir.tracks.some(hasSampleDescendant);
+    case "Cycle":
+      return ir.items.some(hasSampleDescendant);
+    default:
+      return false;
+  }
+}
+__name(hasSampleDescendant, "hasSampleDescendant");
+function miniFragment(ir, useSample) {
+  switch (ir.tag) {
+    case "Sleep":
+      return "~";
+    case "Play": {
+      const { gain, velocity, color, ...rest } = ir.params;
+      delete rest.s;
+      if (Object.keys(rest).length > 0) return null;
+      const isSample = !!ir.params.s;
+      if (isSample !== useSample) return null;
+      return useSample ? String(ir.params.s) : String(ir.note);
+    }
+    case "Seq": {
+      if (ir.children.length === 0) return null;
+      const parts = ir.children.map((c) => miniFragment(c, useSample));
+      if (parts.some((p) => p === null)) return null;
+      return parts.join(" ");
+    }
+    case "Stack": {
+      if (ir.tracks.length === 0) return null;
+      const parts = ir.tracks.map((t) => miniFragment(t, useSample));
+      if (parts.some((p) => p === null)) return null;
+      return `[${parts.join(",")}]`;
+    }
+    case "Cycle": {
+      if (ir.items.length === 0) return null;
+      const parts = ir.items.map((it) => miniFragment(it, useSample));
+      if (parts.some((p) => p === null)) return null;
+      return `<${parts.join(" ")}>`;
+    }
+    default:
+      return null;
+  }
+}
+__name(miniFragment, "miniFragment");
+function canCollapse(children) {
+  return children.every((child) => {
+    if (child.tag === "Sleep") return true;
+    if (child.tag === "Play") {
+      const { s, gain, velocity, color, ...rest } = child.params;
+      return Object.keys(rest).length === 0;
+    }
+    return false;
+  });
+}
+__name(canCollapse, "canCollapse");
+function collapseToMini(children) {
+  const hasSample = children.some((c) => c.tag === "Play" && c.params.s);
+  const tokens = children.map((child) => {
+    if (child.tag === "Sleep") return "~";
+    if (child.tag === "Play") {
+      if (hasSample) return String(child.params.s ?? child.note);
+      return String(child.note);
+    }
+    return "~";
+  });
+  const notation = tokens.join(" ");
+  if (hasSample) return `s("${notation}")`;
+  return `note("${notation}")`;
+}
+__name(collapseToMini, "collapseToMini");
+
 // src/ir/structuralWalk.ts
 function aggregateLaneItems(items, nCycles) {
   const order = [];
@@ -488,12 +752,6 @@ function nodeIdFor(start, end, tag, position) {
   return fnv1a(`${start}:${end}:${tag}:${position}`);
 }
 __name(nodeIdFor, "nodeIdFor");
-function assignNodeId(ir, position) {
-  const start = ir.loc?.[0]?.start ?? -1;
-  const end = ir.loc?.[0]?.end ?? -1;
-  return nodeIdFor(start, end, ir.tag, position);
-}
-__name(assignNodeId, "assignNodeId");
 function buildNodeLocIndex(ir) {
   const map = /* @__PURE__ */ new Map();
   for (const item of walkLeafItems(ir, 1)) {
@@ -522,960 +780,6 @@ function buildNodeLocIndex(ir) {
   return map;
 }
 __name(buildNodeLocIndex, "buildNodeLocIndex");
-
-// src/ir/collect.ts
-var RAND_SEED = 0;
-function xorwise(x) {
-  const a = x << 13 ^ x | 0;
-  const b = a >> 17 ^ a | 0;
-  return b << 5 ^ b | 0;
-}
-__name(xorwise, "xorwise");
-function timeToIntSeed(t) {
-  const frac = t / 300 - Math.trunc(t / 300);
-  return xorwise(Math.trunc(frac * 536870912));
-}
-__name(timeToIntSeed, "timeToIntSeed");
-function intSeedToRand(s) {
-  return s % 536870912 / 536870912;
-}
-__name(intSeedToRand, "intSeedToRand");
-function seededRand(t, seed) {
-  return Math.abs(intSeedToRand(timeToIntSeed(t + seed)));
-}
-__name(seededRand, "seededRand");
-function seededRandsAtTime(t, n, seed) {
-  if (n === 1) {
-    return [Math.abs(intSeedToRand(timeToIntSeed(t + seed)))];
-  }
-  let s = timeToIntSeed(t + seed);
-  const out = [];
-  for (let i = 0; i < n; i++) {
-    out.push(intSeedToRand(s));
-    s = xorwise(s);
-  }
-  return out;
-}
-__name(seededRandsAtTime, "seededRandsAtTime");
-function withWrapperLoc2(events, wrapper) {
-  if (!wrapper || wrapper.length === 0) return events;
-  const range2 = wrapper[0];
-  return events.map((e) => ({
-    ...e,
-    loc: e.loc ? [...e.loc, range2] : [range2]
-  }));
-}
-__name(withWrapperLoc2, "withWrapperLoc");
-var DEFAULT_CONTEXT = {
-  begin: 0,
-  end: Infinity,
-  // no window by default — all events emitted
-  time: 0,
-  cycle: 0,
-  duration: 1,
-  speed: 1,
-  params: {}
-};
-function countLeavesInIR2(node) {
-  if (node.tag === "Stack") {
-    if (node.userMethod === void 0 || node.userMethod === "stack") {
-      let n = 0;
-      for (const t of node.tracks) n += countLeavesInIR2(t);
-      return n;
-    }
-    return 1;
-  }
-  if (node.tag === "Code" && node.via && !("literal" in node.via) && node.via.inner) {
-    return countLeavesInIR2(node.via.inner);
-  }
-  switch (node.tag) {
-    case "Param":
-    case "Fast":
-    case "Slow":
-    case "Elongate":
-    case "Late":
-    case "Degrade":
-    case "Ply":
-    case "Struct":
-    case "Swing":
-    case "Shuffle":
-    case "Scramble":
-    case "Chop":
-    case "When":
-    case "Every":
-    case "Loop":
-    case "Ramp":
-      return countLeavesInIR2(node.body);
-    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
-    // LEAF — a recognised chain root contributes one leaf voice (matches
-    // default's `return 1` for Code/Play/Pure/... leaves). Made explicit
-    // per PK18 FLOOR-grep completeness rule; the default arm stays
-    // byte-unchanged (Chesterton — pre-20-18 behaviour preserved).
-    case "Signal":
-    case "Builder":
-      return 1;
-    default:
-      return 1;
-  }
-}
-__name(countLeavesInIR2, "countLeavesInIR");
-function noteToFreq(note) {
-  if (typeof note === "number") {
-    return 440 * Math.pow(2, (note - 69) / 12);
-  }
-  const noteNames = ["c", "db", "d", "eb", "e", "f", "gb", "g", "ab", "a", "bb", "b"];
-  const lower = note.toLowerCase();
-  for (let i = 0; i < noteNames.length; i++) {
-    const name = noteNames[i];
-    if (lower.startsWith(name)) {
-      const octaveStr = lower.slice(name.length);
-      const octave = parseInt(octaveStr, 10);
-      if (!isNaN(octave)) {
-        const midi = (octave + 1) * 12 + i;
-        return 440 * Math.pow(2, (midi - 69) / 12);
-      }
-    }
-  }
-  return null;
-}
-__name(noteToFreq, "noteToFreq");
-function makeEvent(ctx, note, params) {
-  const duration = ctx.duration / ctx.speed;
-  const merged = { ...params, ...ctx.params };
-  return {
-    begin: ctx.time,
-    end: ctx.time + duration,
-    endClipped: ctx.time + duration,
-    note,
-    freq: noteToFreq(note),
-    s: merged.s ?? null,
-    type: merged.s ? "sample" : "synth",
-    gain: merged.gain ?? 1,
-    velocity: merged.velocity ?? 1,
-    color: merged.color ?? null,
-    params: merged,
-    // Phase 20-11 — conditional spread: omits the field entirely when
-    // ctx.trackId is undefined (hand-built IR without Track wrapper).
-    // Avoids polluting IREvent with enumerable `trackId: undefined`
-    // (CONTEXT pre-mortem #6 — IREvent.trackId is optional).
-    ...ctx.trackId !== void 0 ? { trackId: ctx.trackId } : {},
-    // Phase 20-12.1 follow-up — conditional spread for dollarPos. Absent
-    // for hand-built IR (no `$:` Track wrapper); present for parser-
-    // produced events. MusicalTimeline uses this as the slot identity
-    // when present so `.p()` rename doesn't relocate the row.
-    ...ctx.dollarPos !== void 0 ? { dollarPos: ctx.dollarPos } : {},
-    ...ctx.leafIndex !== void 0 ? { leafIndex: ctx.leafIndex } : {},
-    // Phase 5a — conditional spread (mirrors leafIndex). Absent for tracks
-    // with no arrangement combinator → timeline treats them as one clip.
-    ...ctx.armIndex !== void 0 ? { armIndex: ctx.armIndex } : {}
-  };
-}
-__name(makeEvent, "makeEvent");
-function _collectRearrange(selector, n, body, ctx, wrapperLoc) {
-  const bodyEvents = walk(body, ctx);
-  const out = [];
-  for (let d = 0; d < n; d++) {
-    const sourceIdx = (selector[d] % n + n) % n;
-    const srcStart = sourceIdx / n;
-    const srcEnd = (sourceIdx + 1) / n;
-    const dstStart = d / n;
-    for (const e of bodyEvents) {
-      const cyclePos = e.begin - ctx.cycle;
-      if (cyclePos >= srcStart - 1e-9 && cyclePos < srcEnd - 1e-9) {
-        const offsetWithinSrc = cyclePos - srcStart;
-        const newBegin = ctx.cycle + dstStart + offsetWithinSrc;
-        const dur = e.end - e.begin;
-        out.push({
-          ...e,
-          begin: newBegin,
-          end: newBegin + dur,
-          endClipped: newBegin + dur
-        });
-      }
-    }
-  }
-  if (!wrapperLoc) return out;
-  return out.map((e) => ({
-    ...e,
-    loc: e.loc ? [...e.loc, wrapperLoc] : [wrapperLoc]
-  }));
-}
-__name(_collectRearrange, "_collectRearrange");
-function collect(ir, partialCtx) {
-  const ctx = { ...DEFAULT_CONTEXT, ...partialCtx };
-  const events = walk(ir, ctx);
-  const proc = globalThis.process;
-  if (proc?.env?.NODE_ENV !== "production") {
-    for (const e of events) {
-      if (!e.loc || e.loc.length === 0) {
-        console.warn("[PV36] event produced without loc", { ir, event: e });
-      }
-    }
-  }
-  return events;
-}
-__name(collect, "collect");
-function walk(ir, ctx) {
-  switch (ir.tag) {
-    case "Pure":
-      return [];
-    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
-    // EVENT-NEUTRAL LEAF — matches Pure's leaf-leaf shape above. A
-    // chain-root signal (`sine`, `perlin`, ...) or builder (`irand(12)`,
-    // `binary(...)`) without a recursable body contributes no IR-level
-    // events on its own; downstream chain methods (carried opaquely by
-    // `applyChain` once the root is recognised — Wave-0 ACTION 5 verdict
-    // (a)) supply the event semantics. COMPOSE-not-SUBSUME: every
-    // existing RNG/Pure/wrapper case below is byte-UNCHANGED (Chesterton —
-    // collect.ts already models the RNG chain at line 1095/1124+; we do
-    // not touch it). The `body?` field on Builder is OPAQUE-pending →
-    // Wave C (chord/arrange ground-first); absent in Wave A, so leaf-
-    // event-neutral covers every Wave-A producer output.
-    case "Signal":
-    case "Builder":
-      return [];
-    case "Track": {
-      const childCtx = {
-        ...ctx,
-        trackId: ir.trackId,
-        dollarPos: ctx.dollarPos !== void 0 ? ctx.dollarPos : ir.loc?.[0]?.start,
-        leafIndex: void 0
-      };
-      return withWrapperLoc2(walk(ir.body, childCtx), ir.loc);
-    }
-    case "Code": {
-      if (ir.via && !("literal" in ir.via)) {
-        const innerEvents = walk(ir.via.inner, ctx);
-        return withWrapperLoc2(innerEvents, ir.loc);
-      }
-      return [];
-    }
-    case "Param": {
-      if (typeof ir.value === "string" || typeof ir.value === "number") {
-        const childCtx = {
-          ...ctx,
-          params: { [ir.key]: ir.value, ...ctx.params }
-        };
-        return withWrapperLoc2(walk(ir.body, childCtx), ir.loc);
-      }
-      const slotEvents = walk(ir.value, ctx);
-      const bodyEvents = walk(ir.body, ctx);
-      const isNumericKey = ir.key === "gain" || ir.key === "velocity" || ir.key === "pan" || ir.key === "speed";
-      const out = bodyEvents.map((e) => {
-        const slot = slotEvents.find((s) => {
-          const sEnd = s.endClipped ?? s.end;
-          return s.begin <= e.begin && e.begin < sEnd;
-        });
-        if (!slot) return e;
-        const v = isNumericKey ? typeof slot.note === "number" ? slot.note : Number(slot.note ?? 0) : slot.s ?? String(slot.note ?? "");
-        return {
-          ...e,
-          params: { ...e.params, [ir.key]: v },
-          ...ir.key === "s" ? { s: v, type: "sample" } : {},
-          ...ir.key === "gain" ? { gain: v } : {},
-          ...ir.key === "velocity" ? { velocity: v } : {},
-          ...ir.key === "color" ? { color: v } : {}
-          // n / note / bank / scale / pan / speed flow through params only;
-          // they don't have top-level event shorthand fields per IREvent.
-        };
-      });
-      return withWrapperLoc2(out, ir.loc);
-    }
-    case "Play": {
-      if (ctx.time < ctx.begin || ctx.time >= ctx.end) return [];
-      const event = makeEvent(ctx, ir.note, { ...ir.params });
-      if (ir.loc && ir.loc.length > 0) event.loc = ir.loc;
-      event.irNodeId = assignNodeId(ir, 0);
-      return [event];
-    }
-    case "Sleep":
-      return [];
-    case "Seq": {
-      if (ir.children.length === 0) return [];
-      const weights = ir.children.map((c) => c.tag === "Elongate" ? c.factor : 1);
-      const total = weights.reduce((s, w) => s + w, 0);
-      if (total <= 0) return [];
-      const events = [];
-      let cursor = ctx.time;
-      for (let i = 0; i < ir.children.length; i++) {
-        const child = ir.children[i];
-        const slotDuration = ctx.duration * (weights[i] / total);
-        const target = child.tag === "Elongate" ? child.body : child;
-        const childCtx = {
-          ...ctx,
-          time: cursor,
-          duration: slotDuration
-        };
-        const childEvents = walk(target, childCtx);
-        events.push(...childEvents);
-        cursor += slotDuration / ctx.speed;
-      }
-      return withWrapperLoc2(events, ir.loc);
-    }
-    case "Stack": {
-      const isVoiceDefining = ir.userMethod === void 0 || ir.userMethod === "stack";
-      const events = [];
-      if (isVoiceDefining) {
-        let leafIdx = ctx.leafIndex ?? 0;
-        for (const track of ir.tracks) {
-          const childCtx = { ...ctx, leafIndex: leafIdx };
-          events.push(...walk(track, childCtx));
-          leafIdx += countLeavesInIR2(track);
-        }
-      } else {
-        for (const track of ir.tracks) {
-          events.push(...walk(track, ctx));
-        }
-      }
-      return withWrapperLoc2(events, ir.loc);
-    }
-    case "Choice": {
-      const chosen = Math.random() < ir.p ? ir.then : ir.else_;
-      return withWrapperLoc2(walk(chosen, ctx), ir.loc);
-    }
-    case "Every": {
-      const fires = ctx.cycle % ir.n === 0;
-      if (fires) return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
-      if (ir.default_) return withWrapperLoc2(walk(ir.default_, ctx), ir.loc);
-      return [];
-    }
-    case "Cycle": {
-      if (ir.items.length === 0) return [];
-      const weights = ir.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
-      const period = weights.reduce((s, w) => s + w, 0);
-      if (period <= 0) return [];
-      const pos = (ctx.cycle % period + period) % period;
-      const innerCycle = Math.floor(ctx.cycle / period);
-      let acc = 0;
-      let selected = 0;
-      for (let k = 0; k < ir.items.length; k++) {
-        if (pos < acc + weights[k]) {
-          selected = k;
-          break;
-        }
-        acc += weights[k];
-      }
-      const item = ir.items[selected];
-      const target = item.tag === "Elongate" ? item.body : item;
-      return withWrapperLoc2(walk(target, { ...ctx, cycle: innerCycle }), ir.loc);
-    }
-    case "Arrange": {
-      if (ir.arms.length === 0) return [];
-      const period = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
-      if (period <= 0) return [];
-      const pos = (ctx.cycle % period + period) % period;
-      let acc = 0;
-      let armIndex = 0;
-      let localCycle = 0;
-      for (let i = 0; i < ir.arms.length; i++) {
-        const w = ir.arms[i].weight > 0 ? ir.arms[i].weight : 0;
-        if (pos < acc + w) {
-          armIndex = i;
-          localCycle = pos - acc;
-          break;
-        }
-        acc += w;
-      }
-      const childCtx = {
-        ...ctx,
-        cycle: localCycle,
-        // Outermost combinator wins (#451): a nested arrange/cat inherits the
-        // OUTER arm index rather than overwriting it, so the song timeline sees
-        // the top-level arm as ONE clip (the whole nested block) and the clip
-        // gesture binds the OUTER combinator. `armIndex` is timeline-only, so
-        // this is safe; flat (non-nested) cases keep `ctx.armIndex` undefined
-        // here and so use this level's index unchanged.
-        armIndex: ctx.armIndex ?? armIndex
-      };
-      return withWrapperLoc2(walk(ir.arms[armIndex].pattern, childCtx), ir.loc);
-    }
-    case "When": {
-      const slots = ir.gate.trim().split(/\s+/);
-      if (slots.length === 0) return [];
-      const slotIndex = Math.floor(ctx.time % 1 * slots.length);
-      const slot = slots[Math.min(slotIndex, slots.length - 1)];
-      const active2 = slot !== "0" && slot !== "" && slot !== "~";
-      if (active2) return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
-      return [];
-    }
-    case "Ramp": {
-      const progress = ir.cycles > 0 ? Math.min(ctx.cycle / ir.cycles, 1) : 1;
-      const value = ir.from + (ir.to - ir.from) * progress;
-      const childCtx = {
-        ...ctx,
-        params: { ...ctx.params, [ir.param]: value }
-      };
-      return withWrapperLoc2(walk(ir.body, childCtx), ir.loc);
-    }
-    case "Fast": {
-      const factor = ir.factor;
-      if (!Number.isFinite(factor) || factor <= 0) {
-        return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
-      }
-      if (Number.isInteger(factor) && factor >= 1) {
-        const events = [];
-        const slotDuration = ctx.duration / factor;
-        for (let i = 0; i < factor; i++) {
-          const childCtx2 = {
-            ...ctx,
-            time: ctx.time + i * slotDuration,
-            duration: slotDuration
-            // Don't scale speed: the duration shrink already encodes the
-            // "twice as fast" semantic for the iterated body. Multiplying
-            // speed too would double-shrink Play durations and Seq cursor
-            // advance (`slotDuration / ctx.speed`), leaving inter-slot
-            // gaps that violate the "fill the cycle" expectation.
-          };
-          events.push(...walk(ir.body, childCtx2));
-        }
-        return withWrapperLoc2(events, ir.loc);
-      }
-      const childCtx = {
-        ...ctx,
-        speed: ctx.speed * factor,
-        duration: ctx.duration
-      };
-      return withWrapperLoc2(walk(ir.body, childCtx), ir.loc);
-    }
-    case "Slow": {
-      const factor = ir.factor;
-      if (!Number.isFinite(factor) || factor <= 0) {
-        return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
-      }
-      const childCtx = {
-        ...ctx,
-        speed: ctx.speed / factor,
-        duration: ctx.duration
-      };
-      return withWrapperLoc2(walk(ir.body, childCtx), ir.loc);
-    }
-    case "Loop": {
-      return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
-    }
-    case "Elongate": {
-      return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
-    }
-    case "Late": {
-      const events = walk(ir.body, ctx);
-      const shifted = events.map((e) => {
-        let begin = e.begin + ir.offset;
-        let end = e.end + ir.offset;
-        let endClipped = e.endClipped + ir.offset;
-        if (begin >= ctx.cycle + 1) {
-          begin -= 1;
-          end -= 1;
-          endClipped -= 1;
-        } else if (begin < ctx.cycle) {
-          begin += 1;
-          end += 1;
-          endClipped += 1;
-        }
-        return { ...e, begin, end, endClipped };
-      });
-      return withWrapperLoc2(shifted, ir.loc);
-    }
-    case "Degrade": {
-      const events = walk(ir.body, ctx);
-      const dropAmount = 1 - ir.p;
-      const survivors = events.filter(
-        (e) => seededRand(e.begin, RAND_SEED) > dropAmount
-      );
-      return withWrapperLoc2(survivors, ir.loc);
-    }
-    case "Chunk": {
-      const slot = (ctx.cycle % ir.n + ir.n) % ir.n;
-      const slotStart = slot / ir.n;
-      const slotEnd = (slot + 1) / ir.n;
-      const baseEvents = walk(ir.body, ctx);
-      const transformedEvents = walk(ir.transform, ctx);
-      const inSlot = /* @__PURE__ */ __name((e) => {
-        const cyclePos = e.begin - ctx.cycle;
-        return cyclePos >= slotStart - 1e-9 && cyclePos < slotEnd - 1e-9;
-      }, "inSlot");
-      const findTransformed = /* @__PURE__ */ __name((e) => transformedEvents.find((t) => Math.abs(t.begin - e.begin) < 1e-9), "findTransformed");
-      const composed = baseEvents.map((e) => {
-        if (inSlot(e)) {
-          const replaced = findTransformed(e);
-          return replaced ?? e;
-        }
-        return e;
-      });
-      return withWrapperLoc2(composed, ir.loc);
-    }
-    case "Pick": {
-      if (ir.lookup.length === 0) return [];
-      const selectorEvents = walk(ir.selector, ctx);
-      const out = [];
-      for (const sel of selectorEvents) {
-        const rawIdx = typeof sel.note === "number" ? sel.note : Number(sel.note ?? 0);
-        const idx = Math.max(0, Math.min(ir.lookup.length - 1, Math.round(rawIdx)));
-        const subIR = ir.lookup[idx];
-        const subDuration = sel.end - sel.begin;
-        const subCtx = {
-          ...ctx,
-          time: sel.begin,
-          cycle: 0,
-          duration: subDuration,
-          begin: sel.begin,
-          end: sel.end
-          // Inherit accumulated speed/params; the sub-pattern walks at
-          // its own cycle 0 within the selector event's slot.
-        };
-        const subEvents = walk(subIR, subCtx);
-        const selectorLoc = sel.loc?.[0];
-        const wrapperLoc = ir.loc?.[0];
-        for (const e of subEvents) {
-          const childLoc = e.loc ?? [];
-          const newLoc = [
-            ...childLoc,
-            ...selectorLoc ? [selectorLoc] : [],
-            ...wrapperLoc ? [wrapperLoc] : []
-          ];
-          out.push(newLoc.length > 0 ? { ...e, loc: newLoc } : e);
-        }
-      }
-      return out;
-    }
-    case "NamedPick": {
-      if (ir.entries.length === 0) return [];
-      const selectorEvents = walk(ir.selector, ctx);
-      if (selectorEvents.length === 0) return [];
-      let selectedArm;
-      let dwellLocal = ctx.cycle;
-      if (ir.selector.tag === "Cycle" && ir.selector.items.length > 0) {
-        const weights = ir.selector.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
-        const period = weights.reduce((s, w) => s + w, 0);
-        if (period > 0) {
-          const pos = (ctx.cycle % period + period) % period;
-          let acc = 0;
-          for (let k = 0; k < weights.length; k++) {
-            if (pos < acc + weights[k]) {
-              selectedArm = k;
-              dwellLocal = pos - acc;
-              break;
-            }
-            acc += weights[k];
-          }
-        }
-      }
-      const innerCycle = ir.method === "pickRestart" ? dwellLocal : ctx.cycle;
-      const armIndex = ctx.armIndex ?? selectedArm;
-      const out = [];
-      for (const sel of selectorEvents) {
-        const key2 = sel.note == null ? null : String(sel.note);
-        const entry = key2 == null ? void 0 : ir.entries.find((e) => e.key === key2);
-        if (!entry) continue;
-        const subCtx = {
-          ...ctx,
-          time: sel.begin,
-          cycle: innerCycle,
-          duration: sel.end - sel.begin,
-          begin: sel.begin,
-          end: sel.end,
-          ...armIndex !== void 0 ? { armIndex } : {}
-        };
-        const subEvents = walk(entry.pattern, subCtx);
-        const selectorLoc = sel.loc?.[0];
-        const wrapperLoc = ir.loc?.[0];
-        for (const e of subEvents) {
-          const childLoc = e.loc ?? [];
-          const newLoc = [
-            ...childLoc,
-            ...selectorLoc ? [selectorLoc] : [],
-            ...wrapperLoc ? [wrapperLoc] : []
-          ];
-          out.push(newLoc.length > 0 ? { ...e, loc: newLoc } : e);
-        }
-      }
-      return out;
-    }
-    case "Struct": {
-      const slots = ir.mask.trim().split(/\s+/);
-      const total = slots.length;
-      if (total === 0) return [];
-      const bodyEvents = walk(ir.body, ctx);
-      const slotWidth = 1 / total;
-      const out = [];
-      for (let i = 0; i < total; i++) {
-        const slot = slots[i];
-        if (slot === "~" || slot === "0" || slot === "") continue;
-        const onsetTime = ctx.cycle + i / total;
-        const slotLo = ctx.cycle + i / total;
-        const slotHi = ctx.cycle + (i + 1) / total;
-        for (const e of bodyEvents) {
-          if (e.begin < slotHi - 1e-9 && e.end > slotLo + 1e-9) {
-            out.push({
-              ...e,
-              begin: onsetTime,
-              end: onsetTime + slotWidth,
-              endClipped: onsetTime + slotWidth
-            });
-          }
-        }
-      }
-      return withWrapperLoc2(out, ir.loc);
-    }
-    case "Swing": {
-      const events = walk(ir.body, ctx);
-      if (ir.n < 1) return withWrapperLoc2(events, ir.loc);
-      const swingAmount = 1 / (6 * ir.n);
-      const swung = events.map((e) => {
-        const cyclePos = e.begin - ctx.cycle;
-        const slotIdx = Math.floor(cyclePos * ir.n);
-        if (slotIdx % 2 === 1) {
-          return {
-            ...e,
-            begin: e.begin + swingAmount,
-            end: e.end + swingAmount,
-            endClipped: (e.endClipped ?? e.end) + swingAmount
-          };
-        }
-        return e;
-      });
-      return withWrapperLoc2(swung, ir.loc);
-    }
-    case "Ply": {
-      const baseEvents = walk(ir.body, ctx);
-      if (ir.n <= 1) return withWrapperLoc2(baseEvents, ir.loc);
-      const out = [];
-      for (const e of baseEvents) {
-        const slotLen = (e.end - e.begin) / ir.n;
-        for (let i = 0; i < ir.n; i++) {
-          const newBegin = e.begin + i * slotLen;
-          const newEnd = newBegin + slotLen;
-          out.push({
-            ...e,
-            begin: newBegin,
-            end: newEnd,
-            endClipped: newEnd
-          });
-        }
-      }
-      return withWrapperLoc2(out, ir.loc);
-    }
-    case "Shuffle": {
-      if (ir.n < 1) return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
-      const rands = seededRandsAtTime(ctx.cycle + 0.5, ir.n, RAND_SEED);
-      const perm = rands.map((r, i) => [r, i]).sort((a, b) => a[0] > b[0] ? 1 : a[0] < b[0] ? -1 : 0).map((x) => x[1]);
-      return _collectRearrange(perm, ir.n, ir.body, ctx, ir.loc?.[0]);
-    }
-    case "Scramble": {
-      if (ir.n < 1) return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
-      const selector = [];
-      for (let slot = 0; slot < ir.n; slot++) {
-        const r = seededRand(ctx.cycle + slot / ir.n, RAND_SEED);
-        selector.push(Math.trunc(r * ir.n));
-      }
-      return _collectRearrange(selector, ir.n, ir.body, ctx, ir.loc?.[0]);
-    }
-    case "Chop": {
-      if (ir.n <= 1) return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
-      const baseEvents = walk(ir.body, ctx);
-      const out = [];
-      for (const e of baseEvents) {
-        const dur = e.end - e.begin;
-        const slotLen = dur / ir.n;
-        const b0 = e.params?.begin ?? 0;
-        const e0 = e.params?.end ?? 1;
-        const d = e0 - b0;
-        for (let i = 0; i < ir.n; i++) {
-          const subBegin = b0 + i / ir.n * d;
-          const subEnd = b0 + (i + 1) / ir.n * d;
-          const newBegin = e.begin + i * slotLen;
-          out.push({
-            ...e,
-            begin: newBegin,
-            end: newBegin + slotLen,
-            endClipped: newBegin + slotLen,
-            params: { ...e.params, begin: subBegin, end: subEnd }
-          });
-        }
-      }
-      return withWrapperLoc2(out, ir.loc);
-    }
-  }
-}
-__name(walk, "walk");
-function collectCycles(ir, startCycle, endCycle) {
-  const events = [];
-  for (let c = startCycle; c < endCycle; c++) {
-    events.push(
-      ...collect(ir, {
-        cycle: c,
-        time: c,
-        begin: c,
-        end: c + 1,
-        duration: 1
-      })
-    );
-  }
-  return events;
-}
-__name(collectCycles, "collectCycles");
-
-// src/ir/toStrudel.ts
-function toStrudel(ir) {
-  return gen(ir);
-}
-__name(toStrudel, "toStrudel");
-function gen(ir) {
-  switch (ir.tag) {
-    case "Pure":
-      return '""';
-    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
-    // CODE-INVARIANCE (P62): re-emit the SOURCE VERBATIM. The kind IS
-    // the user-typed token; args are RAW byte-for-byte (mirrors the
-    // Code.via.args / Param.rawArgs convention). 0-arity signals
-    // (`sine`, `perlin`) emit the bare kind; arg-taking signals
-    // (`mousex` is 0-ary in Strudel; arg-shapes belong to specific
-    // builders / sample-arg signals) emit `kind(args)`. Builders ALWAYS
-    // carry args. NEVER re-serialise / NEVER coerce. The `body?` field
-    // is Wave-C-OPAQUE-pending (chord/arrange) — absent in Wave A.
-    case "Signal":
-      return ir.args !== void 0 ? `${ir.kind}(${ir.args})` : ir.kind;
-    case "Builder":
-      return `${ir.kind}(${ir.args})`;
-    case "Arrange": {
-      if (ir.arms.length === 0) return `${ir.mode}()`;
-      const parts = ir.mode === "arrange" ? ir.arms.map((a) => `[${a.weight}, ${gen(a.pattern)}]`) : ir.arms.map((a) => gen(a.pattern));
-      return `${ir.mode}(${parts.join(", ")})`;
-    }
-    case "Track": {
-      if (ir.userMethod === "p") {
-        return `${gen(ir.body)}.p("${ir.trackId}")`;
-      }
-      return gen(ir.body);
-    }
-    case "Code":
-      if (ir.via) {
-        if ("literal" in ir.via) {
-          return ir.via.raw;
-        }
-        return `${gen(ir.via.inner)}.${ir.via.method}(${ir.via.args})`;
-      }
-      return ir.code;
-    case "Param":
-      return `${gen(ir.body)}.${ir.userMethod ?? ir.key}(${ir.rawArgs})`;
-    case "Play":
-      return genPlay(ir.note, ir.params);
-    case "Sleep":
-      return "~";
-    case "Seq": {
-      if (ir.children.length === 0) return '""';
-      if (canCollapse(ir.children)) {
-        return collapseToMini(ir.children);
-      }
-      const parts = ir.children.map(gen);
-      return `fastcat(${parts.join(", ")})`;
-    }
-    case "Stack": {
-      if (ir.tracks.length === 0) return '""';
-      if (ir.userMethod !== "stack") {
-        const useSample = hasSampleDescendant(ir);
-        const frag = miniFragment(ir, useSample);
-        if (frag !== null) return useSample ? `s("${frag}")` : `note("${frag}")`;
-      }
-      const parts = ir.tracks.map(gen);
-      return `stack(
-  ${parts.join(",\n  ")}
-)`;
-    }
-    case "Choice": {
-      const thenCode = gen(ir.then);
-      if (ir.else_.tag === "Pure") {
-        const p = +ir.p.toFixed(4);
-        return `${thenCode}.sometimesBy(${p}, x => x)`;
-      }
-      const elseCode = gen(ir.else_);
-      const pThen = +ir.p.toFixed(4);
-      const pElse = +(1 - ir.p).toFixed(4);
-      return `stack(
-  ${thenCode}.sometimesBy(${pThen}, x => x),
-  ${elseCode}.sometimesBy(${pElse}, x => x)
-)`;
-    }
-    case "Every": {
-      const base = ir.default_;
-      const baseCode = base ? gen(base) : gen(ir.body);
-      const transformStr = base ? extractTransform(ir.body, base) : "() => rev";
-      return `${baseCode}.every(${ir.n}, ${transformStr})`;
-    }
-    case "Cycle": {
-      if (ir.items.length === 0) return '""';
-      const allSimple = ir.items.every((item) => item.tag === "Play" || item.tag === "Sleep");
-      if (!allSimple) {
-        const useSample = hasSampleDescendant(ir);
-        const frag = miniFragment(ir, useSample);
-        if (frag !== null) return useSample ? `s("${frag}")` : `note("${frag}")`;
-      }
-      const notes = ir.items.map((item) => {
-        if (item.tag === "Play") return String(item.note);
-        if (item.tag === "Sleep") return "~";
-        return gen(item);
-      });
-      if (allSimple) {
-        const firstPlay = ir.items.find((i) => i.tag === "Play");
-        if (firstPlay && firstPlay.tag === "Play" && firstPlay.params.s) {
-          return `s("<${notes.join(" ")}>")`;
-        }
-        return `note("<${notes.join(" ")}>")`;
-      }
-      return `note("<${notes.join(" ")}>")`;
-    }
-    case "When": {
-      const body = gen(ir.body);
-      return `${body}.mask("${ir.gate}")`;
-    }
-    case "Ramp": {
-      const body = gen(ir.body);
-      return `${body}.${ir.param}(slow(${ir.cycles}, saw))`;
-    }
-    case "Fast": {
-      const body = gen(ir.body);
-      return `${body}.fast(${ir.factor})`;
-    }
-    case "Slow": {
-      const body = gen(ir.body);
-      return `${body}.slow(${ir.factor})`;
-    }
-    case "Loop":
-      return gen(ir.body);
-    case "Elongate":
-      return gen(ir.body);
-    case "Late":
-      return `${gen(ir.body)}.late(${ir.offset})`;
-    case "Degrade": {
-      const body = gen(ir.body);
-      if (ir.p === 0.5) return `${body}.degrade()`;
-      const dropAmount = +(1 - ir.p).toFixed(4);
-      return `${body}.degradeBy(${dropAmount})`;
-    }
-    case "Chunk": {
-      const baseCode = gen(ir.body);
-      const transformStr = extractTransform(ir.transform, ir.body);
-      return `${baseCode}.chunk(${ir.n}, ${transformStr})`;
-    }
-    case "Ply": {
-      return `${gen(ir.body)}.ply(${ir.n})`;
-    }
-    case "Pick": {
-      const sel = gen(ir.selector);
-      const elems = ir.lookup.map((p) => gen(p));
-      return `${sel}.pick([${elems.join(", ")}])`;
-    }
-    case "NamedPick":
-      return `${gen(ir.selector)}.${ir.method}(${ir.rawArgs})`;
-    case "Struct": {
-      return `${gen(ir.body)}.struct("${ir.mask}")`;
-    }
-    case "Swing": {
-      return `${gen(ir.body)}.swing(${ir.n})`;
-    }
-    case "Shuffle": {
-      return `${gen(ir.body)}.shuffle(${ir.n})`;
-    }
-    case "Scramble": {
-      return `${gen(ir.body)}.scramble(${ir.n})`;
-    }
-    case "Chop": {
-      return `${gen(ir.body)}.chop(${ir.n})`;
-    }
-  }
-}
-__name(gen, "gen");
-function nodesEqual(a, b) {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-__name(nodesEqual, "nodesEqual");
-function extractTransform(body, base) {
-  if (body.tag === "Fast" && nodesEqual(body.body, base)) return `fast(${body.factor})`;
-  if (body.tag === "Slow" && nodesEqual(body.body, base)) return `slow(${body.factor})`;
-  return `() => ${gen(body)}`;
-}
-__name(extractTransform, "extractTransform");
-function genPlay(note, params) {
-  if (params.s) {
-    return `s("${params.s}")`;
-  }
-  return `note("${note}")`;
-}
-__name(genPlay, "genPlay");
-function hasSampleDescendant(ir) {
-  switch (ir.tag) {
-    case "Play":
-      return !!ir.params.s;
-    case "Seq":
-      return ir.children.some(hasSampleDescendant);
-    case "Stack":
-      return ir.tracks.some(hasSampleDescendant);
-    case "Cycle":
-      return ir.items.some(hasSampleDescendant);
-    default:
-      return false;
-  }
-}
-__name(hasSampleDescendant, "hasSampleDescendant");
-function miniFragment(ir, useSample) {
-  switch (ir.tag) {
-    case "Sleep":
-      return "~";
-    case "Play": {
-      const { gain, velocity, color, ...rest } = ir.params;
-      delete rest.s;
-      if (Object.keys(rest).length > 0) return null;
-      const isSample = !!ir.params.s;
-      if (isSample !== useSample) return null;
-      return useSample ? String(ir.params.s) : String(ir.note);
-    }
-    case "Seq": {
-      if (ir.children.length === 0) return null;
-      const parts = ir.children.map((c) => miniFragment(c, useSample));
-      if (parts.some((p) => p === null)) return null;
-      return parts.join(" ");
-    }
-    case "Stack": {
-      if (ir.tracks.length === 0) return null;
-      const parts = ir.tracks.map((t) => miniFragment(t, useSample));
-      if (parts.some((p) => p === null)) return null;
-      return `[${parts.join(",")}]`;
-    }
-    case "Cycle": {
-      if (ir.items.length === 0) return null;
-      const parts = ir.items.map((it) => miniFragment(it, useSample));
-      if (parts.some((p) => p === null)) return null;
-      return `<${parts.join(" ")}>`;
-    }
-    default:
-      return null;
-  }
-}
-__name(miniFragment, "miniFragment");
-function canCollapse(children) {
-  return children.every((child) => {
-    if (child.tag === "Sleep") return true;
-    if (child.tag === "Play") {
-      const { s, gain, velocity, color, ...rest } = child.params;
-      return Object.keys(rest).length === 0;
-    }
-    return false;
-  });
-}
-__name(canCollapse, "canCollapse");
-function collapseToMini(children) {
-  const hasSample = children.some((c) => c.tag === "Play" && c.params.s);
-  const tokens = children.map((child) => {
-    if (child.tag === "Sleep") return "~";
-    if (child.tag === "Play") {
-      if (hasSample) return String(child.params.s ?? child.note);
-      return String(child.note);
-    }
-    return "~";
-  });
-  const notation = tokens.join(" ");
-  if (hasSample) return `s("${notation}")`;
-  return `note("${notation}")`;
-}
-__name(collapseToMini, "collapseToMini");
 
 // src/ir/songAnalysis.ts
 function laneKeyOf(ev) {
@@ -1594,7 +898,7 @@ async function analyzeSong(ir, opts = {}) {
   const cap = Math.max(hint, Math.floor(opts.capCycles ?? DEFAULT_CAP));
   const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE));
   const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS;
-  const collectFn = opts.collectFn ?? ((s, e) => ir ? collectCycles(ir, s, e) : []);
+  const collectFn = opts.collectFn ?? (() => []);
   const now2 = opts.now ?? defaultNow;
   const yieldFn = opts.yieldFn ?? defaultYield;
   const signal = opts.signal;
@@ -3779,41 +3083,6 @@ function runPasses(input, passes) {
   return out;
 }
 __name(runPasses, "runPasses");
-
-// src/ir/propagation.ts
-function propagate(bag, systems) {
-  const sorted = [...systems].sort((a, b) => a.stratum - b.stratum);
-  let current4 = bag;
-  for (const system of sorted) {
-    const hasAllInputs = system.inputs.every(
-      (key2) => current4[key2] !== void 0 && current4[key2] !== null
-    );
-    if (!hasAllInputs) continue;
-    current4 = system.run(current4);
-  }
-  return current4;
-}
-__name(propagate, "propagate");
-var StrudelParseSystem = {
-  name: "StrudelParseSystem",
-  stratum: 1,
-  inputs: ["strudelCode"],
-  outputs: ["patternIR"],
-  run(bag) {
-    if (!bag.strudelCode) return bag;
-    return { ...bag, patternIR: parseStrudel(bag.strudelCode) };
-  }
-};
-var IREventCollectSystem = {
-  name: "IREventCollectSystem",
-  stratum: 2,
-  inputs: ["patternIR"],
-  outputs: ["irEvents"],
-  run(bag) {
-    if (!bag.patternIR) return bag;
-    return { ...bag, irEvents: collect(bag.patternIR) };
-  }
-};
 
 // src/engine/noteToMidi.ts
 function noteToMidi(note) {
@@ -23571,14 +22840,14 @@ function headOf(h, branch = h.currentBranch) {
 }
 __name(headOf, "headOf");
 function getFileContentAt(h, fileId, commitId) {
-  let walk4 = commitId;
-  while (walk4 !== null) {
-    const c = h.commits[walk4];
+  let walk3 = commitId;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
     if (Object.prototype.hasOwnProperty.call(c.files, fileId)) {
       return c.files[fileId];
     }
-    walk4 = c.parent;
+    walk3 = c.parent;
   }
   return null;
 }
@@ -23586,15 +22855,15 @@ __name(getFileContentAt, "getFileContentAt");
 function snapshotAt(h, commitId) {
   const files = {};
   let order;
-  let walk4 = commitId;
-  while (walk4 !== null) {
-    const c = h.commits[walk4];
+  let walk3 = commitId;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
     for (const f of Object.keys(c.files)) {
       if (!Object.prototype.hasOwnProperty.call(files, f)) files[f] = c.files[f];
     }
     if (order === void 0 && c.order !== void 0) order = c.order;
-    walk4 = c.parent;
+    walk3 = c.parent;
   }
   return { files, order };
 }
@@ -23603,12 +22872,12 @@ function listCommits(h, branch = h.currentBranch) {
   const head = h.branches[branch]?.head;
   if (!head) return [];
   const out = [];
-  let walk4 = head;
-  while (walk4 !== null) {
-    const c = h.commits[walk4];
+  let walk3 = head;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
     if (!c.pinned) out.push(c);
-    walk4 = c.parent;
+    walk3 = c.parent;
   }
   return out;
 }
@@ -23628,24 +22897,24 @@ function fileHistory(h, fileId) {
 }
 __name(fileHistory, "fileHistory");
 function nearestWriter(h, fromCommit, fileId) {
-  let walk4 = fromCommit;
-  while (walk4 !== null) {
-    const c = h.commits[walk4];
+  let walk3 = fromCommit;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
-    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk4;
-    walk4 = c.parent;
+    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk3;
+    walk3 = c.parent;
   }
   return null;
 }
 __name(nearestWriter, "nearestWriter");
 function filesAliveAt(h, commitId) {
   const alive = /* @__PURE__ */ new Set();
-  let walk4 = commitId;
-  while (walk4 !== null) {
-    const c = h.commits[walk4];
+  let walk3 = commitId;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
     for (const f of Object.keys(c.files)) alive.add(f);
-    walk4 = c.parent;
+    walk3 = c.parent;
   }
   return alive;
 }
@@ -23772,9 +23041,9 @@ function prune(h, now2, opts = {}) {
   }
   const keep = /* @__PURE__ */ new Set([...display, ...needed]);
   const nearestKeptAncestor = /* @__PURE__ */ __name((start) => {
-    let walk4 = start;
-    while (walk4 !== null && !keep.has(walk4)) walk4 = h.commits[walk4]?.parent ?? null;
-    return walk4;
+    let walk3 = start;
+    while (walk3 !== null && !keep.has(walk3)) walk3 = h.commits[walk3]?.parent ?? null;
+    return walk3;
   }, "nearestKeptAncestor");
   let mutated = keep.size !== all.length;
   const commits = {};
@@ -41930,20 +41199,20 @@ function isCombinatorCall(node) {
   return node && node.type === "CallExpression" && node.callee?.type === "Identifier" && COMBINATORS.has(node.callee.name);
 }
 __name(isCombinatorCall, "isCombinatorCall");
-function walk2(node, visit) {
+function walk(node, visit) {
   if (!node || typeof node !== "object") return;
   if (typeof node.type === "string" && typeof node.start === "number") visit(node);
   for (const key2 of Object.keys(node)) {
     if (key2 === "type" || key2 === "start" || key2 === "end") continue;
     const child = node[key2];
     if (Array.isArray(child)) {
-      for (const c of child) walk2(c, visit);
+      for (const c of child) walk(c, visit);
     } else if (child && typeof child === "object") {
-      walk2(child, visit);
+      walk(child, visit);
     }
   }
 }
-__name(walk2, "walk");
+__name(walk, "walk");
 function armFromArg(mode, arg) {
   if (mode === "arrange") {
     if (arg.type !== "ArrayExpression" || arg.elements.length < 2) return null;
@@ -41987,7 +41256,7 @@ function detectArrangeAt(doc, pos) {
   const program = parseProgram(doc);
   if (!program) return null;
   let best = null;
-  walk2(program, (n) => {
+  walk(program, (n) => {
     if (!isCombinatorCall(n)) return;
     if (pos < n.start || pos > n.end) return;
     if (!best || n.start > best.start) best = n;
@@ -41999,7 +41268,7 @@ function detectAllArrangeCalls(doc) {
   const program = parseProgram(doc);
   if (!program) return [];
   const nodes = [];
-  walk2(program, (n) => {
+  walk(program, (n) => {
     if (isCombinatorCall(n)) nodes.push(n);
   });
   nodes.sort((a, b) => a.start - b.start);
@@ -42015,7 +41284,7 @@ function detectBarePattern(doc, pos) {
     const expr = exprStmt.expression;
     if (!expr || pos < expr.start || pos > expr.end) continue;
     let hasCombinator = false;
-    walk2(expr, (n) => {
+    walk(expr, (n) => {
       if (isCombinatorCall(n)) hasCombinator = true;
     });
     if (hasCombinator) return null;
@@ -42150,17 +41419,17 @@ function isPickCall(node) {
   return node && node.type === "CallExpression" && node.callee?.type === "MemberExpression" && node.callee.property?.type === "Identifier" && PICK_METHODS2.has(node.callee.property.name) && node.callee.object?.type === "Literal" && typeof node.callee.object.value === "string";
 }
 __name(isPickCall, "isPickCall");
-function walk3(node, visit) {
+function walk2(node, visit) {
   if (!node || typeof node !== "object") return;
   if (typeof node.type === "string" && typeof node.start === "number") visit(node);
   for (const key2 of Object.keys(node)) {
     if (key2 === "type" || key2 === "start" || key2 === "end") continue;
     const child = node[key2];
-    if (Array.isArray(child)) for (const c of child) walk3(c, visit);
-    else if (child && typeof child === "object") walk3(child, visit);
+    if (Array.isArray(child)) for (const c of child) walk2(c, visit);
+    else if (child && typeof child === "object") walk2(child, visit);
   }
 }
-__name(walk3, "walk");
+__name(walk2, "walk");
 function scanControlArms(raw, litStart) {
   const open = raw.indexOf("<");
   if (open < 0) return null;
@@ -42247,7 +41516,7 @@ function detectPickControlAt(doc, pos) {
   const program = parseProgram2(doc);
   if (!program) return null;
   let best = null;
-  walk3(program, (n) => {
+  walk2(program, (n) => {
     if (!isPickCall(n)) return;
     if (pos < n.start || pos > n.end) return;
     if (!best || n.start > best.start) best = n;
@@ -42259,7 +41528,7 @@ function detectAllPickControls(doc) {
   const program = parseProgram2(doc);
   if (!program) return [];
   const nodes = [];
-  walk3(program, (n) => {
+  walk2(program, (n) => {
     if (isPickCall(n)) nodes.push(n);
   });
   nodes.sort((a, b) => a.start - b.start);
@@ -42650,6 +41919,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_CENTRE_PAN, MASTER_KEY, MASTER_UNITY_GAIN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, adaptMasterChunk, aggregateLaneItems, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterPanEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, readCurrentCycle, readMasterGain, readMasterMute, readMasterPan, readMasterViz, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, soundfontGroupLabel, splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_CENTRE_PAN, MASTER_KEY, MASTER_UNITY_GAIN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, adaptMasterChunk, aggregateLaneItems, analyzeEvents, analyzeSong, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterPanEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, readCurrentCycle, readMasterGain, readMasterMute, readMasterPan, readMasterViz, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, removeArm, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setProjectBackgroundCrop, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, silenceArm, soundfontGroupLabel, splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

@@ -1,46 +1,28 @@
 /**
- * Equivalence gate for the node-identity extraction (#975/#982).
+ * Regression gate for the node-identity extraction (#975/#982).
  *
- * `buildNodeLocIndex` replaces the engine's old propagate→collect→loc-lookup as
- * the source of the loc→irNodeId map `normalizeStrudelHap` reads to enrich haps.
- * This gate PROVES the replacement is byte-equivalent to the retired path: for a
- * corpus spanning the IR's node variety, the loc→irNodeId projection of
- * `buildNodeLocIndex(ir)` must equal that of `collect(ir)` — same key set, same
- * irNodeId per key.
+ * `buildNodeLocIndex` is the source of the loc→irNodeId map `normalizeStrudelHap`
+ * reads to enrich haps (it replaced the engine's retired propagate→collect→
+ * loc-lookup). With collect now deleted, its output is FROZEN as a committed
+ * snapshot: for a corpus spanning the IR's node variety, the loc→irNodeId
+ * projection of `buildNodeLocIndex(ir)` must match the snapshot — the values are
+ * the same collect-equivalent ids the byte-identical gate used to compare
+ * against, now pinned directly.
  *
- * Why this is the full proof: `normalizeStrudelHap` reads ONLY `.irNodeId` from a
- * matched event, and `findMatchedEvent` keys on `loc[0]` then tie-breaks by
- * `begin` among candidates that all share one irNodeId — so the loc→irNodeId
- * projection is the sole observable the lookup contributes. Equal projection ⇒
- * identical hap enrichment. Both sides are pure over the parsed IR (no Strudel
- * eval), so the gate is hermetic and deterministic.
- *
- * The `collect(ir)` side reproduces StrudelEngine's exact retired build
- * (loc[0] key → event.irNodeId), so this pins the new path against the old one.
+ * Why the projection is the full observable: `normalizeStrudelHap` reads ONLY
+ * `.irNodeId` from a matched event, and `findMatchedEvent` keys on `loc[0]` then
+ * tie-breaks by `begin` among candidates that all share one irNodeId — so the
+ * loc→irNodeId projection is the sole observable the lookup contributes. The
+ * projection is pure over the parsed IR (no Strudel eval), so the gate is
+ * hermetic and deterministic.
  */
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../parseStrudel'
-import { collect } from '../collect'
 import { buildNodeLocIndex, fnv1a } from '../nodeIdentity'
 import { normalizeStrudelHap } from '../../engine/NormalizedHap'
 import type { PatternIR } from '../PatternIR'
 
-/** The lookup the engine used to build from `collect(ir)` (StrudelEngine
- *  eval block, pre-#975), projected to key → irNodeId. */
-function collectProjection(ir: PatternIR): Map<string, string> {
-  const m = new Map<string, string>()
-  for (const e of collect(ir)) {
-    if (e.loc && e.loc.length > 0 && e.irNodeId) {
-      const key = `${e.loc[0].start}:${e.loc[0].end}`
-      // FIRST-WINS mirrors the array-append + begin-nearest match: every event
-      // at one key shares an irNodeId, so any representative is correct.
-      if (!m.has(key)) m.set(key, e.irNodeId)
-    }
-  }
-  return m
-}
-
-/** The new lookup, projected to key → irNodeId. */
+/** The lookup, projected to key → irNodeId. */
 function indexProjection(ir: PatternIR): Map<string, string> {
   const m = new Map<string, string>()
   for (const [key, evs] of buildNodeLocIndex(ir)) {
@@ -81,45 +63,34 @@ const CORPUS: readonly string[] = [
   'sound("bd*4, hh*8, ~ sd ~ sd")',
 ]
 
-describe('buildNodeLocIndex ≡ collect-derived loc→irNodeId lookup (#975/#982)', () => {
+/** Canonical (key-sorted) plain-object view of the loc→irNodeId projection, for
+ *  a stable committed snapshot. */
+function canonProjection(ir: PatternIR): Record<string, string> {
+  return Object.fromEntries([...indexProjection(ir)].sort((a, b) => a[0].localeCompare(b[0])))
+}
+
+describe('buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982)', () => {
   // The load-bearing property: NO hap loses its irNodeId and NO hap's irNodeId
-  // changes. That is `collect's keys ⊆ index's keys`, with byte-identical ids on
-  // every shared key. The index may cover ADDITIONAL leaves collect's cycle-0
-  // behaviour gated out (see the degrade decoupling test below) — a strict
-  // improvement (a previously-unidentified hap gains its canonical id), never a
-  // regression — so this is ⊆, not ==. For non-probabilistic patterns the two
-  // sets coincide exactly; the equal-cardinality assertion below pins that.
+  // changes across the IR's node variety. The projection is frozen as a
+  // committed snapshot (the values are the collect-equivalent ids the retired
+  // byte-identical gate compared against); a drift in any leaf's span or the id
+  // format turns the snapshot RED.
   for (const code of CORPUS) {
-    it(`reproduces collect's node ids for: ${code.replace(/\n/g, ' \\n ')}`, () => {
-      const ir = parseStrudel(code)
-      const oldL = collectProjection(ir)
-      const newL = indexProjection(ir)
-      for (const [key, id] of oldL) {
-        expect(newL.get(key), `collect key ${key} must survive with the same id`).toBe(id)
-      }
-      // Non-probabilistic patterns (no RNG gating) must match EXACTLY — the
-      // index neither drops nor invents a leaf. Degrade/sometimes patterns are
-      // exempt (collect's RNG under-counts them at cycle 0).
-      if (!/degrade|sometimes|someCycles/.test(code)) {
-        expect([...newL.keys()].sort()).toEqual([...oldL.keys()].sort())
-      }
+    it(`freezes node ids for: ${code.replace(/\n/g, ' \\n ')}`, () => {
+      expect(canonProjection(parseStrudel(code))).toMatchSnapshot()
     })
   }
 
-  it('decouples identity from behaviour — degrade leaves gain the stable ids collect dropped', () => {
-    // The extraction removes node-identity's entanglement with the RNG: collect
-    // assigns ids while emitting onsets, so a leaf its cycle-0 RNG drops gets NO
-    // id (a latent bug — that leaf could never be breakpointed / pulsed). The
-    // structural index gives every real leaf its canonical id regardless of the
-    // RNG. This is the improvement the domain-correct home enables.
-    const ir = parseStrudel('s("bd sd").degradeBy(0.5)')
-    const oldL = collectProjection(ir)
-    const newL = indexProjection(ir)
-    // The two source leaves (bd, sd) always have stable structural ids...
-    expect(newL.size).toBeGreaterThanOrEqual(2)
-    // ...and the index is a superset of whatever collect's RNG happened to keep.
-    for (const [key, id] of oldL) expect(newL.get(key)).toBe(id)
-    expect(newL.size).toBeGreaterThanOrEqual(oldL.size)
+  it('decouples identity from behaviour — every degrade leaf gets a stable structural id', () => {
+    // The extraction removes node-identity's entanglement with the RNG: the
+    // structural index gives EVERY real leaf its canonical id regardless of any
+    // probabilistic gating, so a leaf a cycle-0 RNG would have dropped is still
+    // identifiable (breakpointable / pulsable). This is the improvement the
+    // domain-correct home enables — no behaviour interpreter, no RNG dependence.
+    const proj = indexProjection(parseStrudel('s("bd sd").degradeBy(0.5)'))
+    // Both source leaves (bd, sd) always carry a stable, distinct id.
+    expect(proj.size).toBeGreaterThanOrEqual(2)
+    expect(new Set(proj.values()).size).toBe(proj.size)
   })
 
   it('is non-vacuous — a multi-leaf pattern yields multiple distinct ids', () => {

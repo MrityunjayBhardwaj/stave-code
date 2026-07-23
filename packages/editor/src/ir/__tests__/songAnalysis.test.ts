@@ -268,21 +268,10 @@ describe('analyzeSong (budgeted progressive horizon)', () => {
     expect(a.sections).toEqual([])
   })
 
-  // Integration through the REAL default collector (collectCycles) on a parsed
-  // IR — verifies the wiring, not just the logic against injected fakes.
-  describe('integration via real collectCycles', () => {
-    it('an identical-every-cycle pattern has period 1 and one lane', async () => {
-      const ir = parseStrudel('s("bd hh bd hh")')
-      const a = await analyzeSong(ir, { hintCycles: 4, yieldFn: async () => {} })
-      expect(a.periodCycles).toBe(1)
-      expect(a.lanes.length).toBe(1)
-      expect(a.reachedCap).toBe(false)
-    })
-
-    it('an alternating <a b> pattern has period 2', async () => {
-      const ir = parseStrudel('s("<bd hh>")')
-      const a = await analyzeSong(ir, { hintCycles: 8, yieldFn: async () => {} })
-      expect(a.periodCycles).toBe(2)
-    })
-  })
+  // NOTE: the previous "integration via real collectCycles" block exercised
+  // analyzeSong's DEFAULT collector. There is no default collector any more —
+  // `collectFn` defaults to `() => []` and production injects the eval-backed
+  // queryArc hap stream (MusicalTimeline.tsx). The analysis logic is covered by
+  // the injected-collector arms above; the eval wiring is covered end-to-end by
+  // the app's `full-song-analysis-eval` e2e.
 })

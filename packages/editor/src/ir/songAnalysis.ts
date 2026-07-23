@@ -25,7 +25,6 @@
 
 import type { PatternIR } from './PatternIR'
 import type { IREvent } from './IREvent'
-import { collectCycles } from './collect'
 
 /**
  * Lane (row) key for an event. Mirrors `groupEventsByTrack`'s key so analysis
@@ -250,7 +249,8 @@ export interface AnalyzeSongOptions {
   sliceCycles?: number
   /** Wall-clock budget (ms) between yields to the event loop (default 10). */
   sliceBudgetMs?: number
-  /** Collector — defaults to `collectCycles(ir, …)`. Injected in tests. */
+  /** Collector — the onset source. Production injects an eval-backed collector
+   *  (queryArc haps); with none, analysis sees no onsets and returns empty. */
   collectFn?: (startCycle: number, endCycle: number) => IREvent[]
   /** Clock — defaults to `performance.now()`. Injected in tests. */
   now?: () => number
@@ -294,8 +294,12 @@ export async function analyzeSong(
   const cap = Math.max(hint, Math.floor(opts.capCycles ?? DEFAULT_CAP))
   const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE))
   const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS
-  const collectFn =
-    opts.collectFn ?? ((s: number, e: number) => (ir ? collectCycles(ir, s, e) : []))
+  // No default collector: production always injects an eval-backed `collectFn`
+  // (the queryArc hap stream, MusicalTimeline.tsx). With none injected (a caller
+  // that only wants lane structure, or a non-Strudel doc) analysis sees no onsets
+  // and returns the empty shape. The collect interpreter that used to back this
+  // default was removed with #975.
+  const collectFn = opts.collectFn ?? (() => [])
   const now = opts.now ?? defaultNow
   const yieldFn = opts.yieldFn ?? defaultYield
   const signal = opts.signal

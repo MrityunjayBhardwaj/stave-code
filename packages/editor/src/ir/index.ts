@@ -9,9 +9,7 @@ export { merge, transpose, timestretch, filter, scaleGain } from './transforms'
 export type { PatternIR, PlayParams } from './PatternIR'
 export { IR } from './PatternIR'
 
-// Interpreters
-export { collect, collectCycles } from './collect'
-export type { CollectContext } from './collect'
+// Serializer
 export { toStrudel } from './toStrudel'
 
 // Structural walk (#945/#974) — lane anchors from source structure alone, no onsets. The
@@ -63,7 +61,3 @@ export {
 // Pass runner — runtime-neutral IR→IR transform machinery
 export type { Pass } from './passes'
 export { runPasses } from './passes'
-
-// Propagation engine
-export { propagate, StrudelParseSystem, IREventCollectSystem } from './propagation'
-export type { ComponentBag, System } from './propagation'
