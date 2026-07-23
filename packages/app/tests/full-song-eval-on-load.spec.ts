@@ -119,7 +119,7 @@ test('ARM A — a signal-only track shows its eval marks pre-play (collect canno
   expect(probe!.evalBacked).toBe(true)
 })
 
-test('ARM B — invalid mid-edit code falls back to collect; lanes still render', async ({ page }) => {
+test('ARM B — invalid mid-edit code keeps the timeline populated, never blank', async ({ page }) => {
   await boot(page)
   await expect
     .poll(async () => (await readProbe(page))?.evalBacked ?? false, { timeout: 20_000 })
@@ -129,13 +129,16 @@ test('ARM B — invalid mid-edit code falls back to collect; lanes still render'
   await editCode(page, '$: s("bd sd")\n$: s("hh*4")')
   await expect(page.locator('[data-full-song-lane]')).toHaveCount(2, { timeout: 15_000 })
 
-  // …then break it mid-edit (unclosed string). Eval THROWS, so songPatterns
-  // stay empty and the marks fall back to collect + the structural walk — the
-  // lanes must still render (reach preserved; the walk is per-node resilient).
+  // …then break it mid-edit (unclosed string). `engine.evaluate` returns an
+  // error WITHOUT throwing and leaves songPatterns holding the last valid haps,
+  // so the marks stay eval-backed (last-valid) while the resilient structural
+  // walk keeps the lanes — the timeline must NOT go blank. (This is the reach
+  // property: eval is all-or-nothing per evaluate, but a bad keystroke never
+  // wipes the view. Pre-first-eval the same slot falls back to collect.)
   await editCode(page, '$: s("bd sd")\n$: s("hh*4"')
-  // Lanes survive the broken parse (structural skeleton still drawn).
+  // Lanes survive the broken edit (structural skeleton still drawn).
   await expect(page.locator('[data-full-song-lane]')).toHaveCount(2, { timeout: 8_000 })
-  // And marks are still present (collect fallback), not a blank timeline.
+  // And marks are still present — not a blank timeline.
   await expect
     .poll(async () => {
       const p = await readProbe(page)

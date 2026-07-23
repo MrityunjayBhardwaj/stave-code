@@ -1460,13 +1460,12 @@ export default function StrudelEditorClient({
   useEffect(() => {
     const fid = watchedFileId;
     if (!fid) return;
-    let evaled = false;
     const id = setInterval(() => {
-      if (evaled || !isSongTimelineVisible()) return;
+      if (!isSongTimelineVisible()) return;
       const rt = runtimesRef.current.get(fid);
       const st = runtimeStatesRef.current.get(fid);
       if (!rt || st?.isPlaying) return; // wait for the runtime; play owns it
-      evaled = true;
+      clearInterval(id); // fire exactly once, then stop the timer
       void refreshTimelineMarks(fid);
     }, TIMELINE_VISIBILITY_POLL_MS);
     return () => clearInterval(id);
