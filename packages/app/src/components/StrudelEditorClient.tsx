@@ -48,7 +48,6 @@ import {
   parseMessageLocation,
   statementOffsetForSource,
   resolveAlias,
-  collectCycles,
   runPasses,
   publishIRSnapshot,
   IR,
@@ -139,20 +138,29 @@ const SNAPSHOT_REFRESH_DEBOUNCE_MS = 300;
 
 /**
  * Parse the file's current source into IR and publish an IRSnapshot for the
- * Inspector + full-song timeline. parseStrudel + collect are pure and cheap on
- * the source string, so this is safe to call outside the eval lifecycle — both
- * the eval-success path AND on-demand (#394: the full-song view needs a
- * snapshot the instant it opens, but a cold eval's `onEvaluateSuccess` lags
- * ~2.5s behind the keypress, leaving the view empty in the meantime).
+ * Inspector + full-song timeline. parseStrudel is pure and cheap on the source
+ * string, so this is safe to call outside the eval lifecycle — both the
+ * eval-success path AND on-demand (#394: the full-song view needs a snapshot
+ * the instant it opens, but a cold eval's `onEvaluateSuccess` lags ~2.5s behind
+ * the keypress, leaving the view empty in the meantime).
+ *
+ * The snapshot's `events` come from the runtime's EVALUATED haps
+ * (`getTimelineEvents`, queryArc) — eval-truth, the same source the Song
+ * timeline's display marks read — NOT the collect interpreter (#982). They are
+ * `[]` until an evaluate populates the runtime's song patterns (PK57: empty
+ * pre-eval, matching the timeline baseline); the IR tree (`ir`/`passes`) stays
+ * source-fresh regardless. A null runtime (non-Strudel / not yet created)
+ * yields empty events.
  *
  * Strudel-only, total: no-op for non-Strudel runtimes / missing files, and
  * swallows parse errors (parseStrudel guarantees a graceful Code-node
- * fallback; collect is total). `source` is the workspace fileId — NOT the
- * human-visible path — because the Inspector's click-to-source keys by id.
+ * fallback). `source` is the workspace fileId — NOT the human-visible path —
+ * because the Inspector's click-to-source keys by id.
  */
 function captureAndPublishSnapshot(
   fileId: string,
   cycleCount: number | null,
+  runtime: LiveCodingRuntime | null,
 ): void {
   const fileNow = getFile(fileId);
   if (!fileNow) return;
@@ -161,12 +169,16 @@ function captureAndPublishSnapshot(
   if (runtimeId !== "strudel") return;
   try {
     // Phase 19-07 (#79) — pre-pass-0 seed: wrap raw source as a Code node so
-    // pass 0 (RAW) reads input.code and runs extractTracks. finalIR drives both
-    // `collect` and the `ir` alias — single source of truth (PV27).
+    // pass 0 (RAW) reads input.code and runs extractTracks. finalIR is the `ir`
+    // alias — the Inspector's IR tree, source-fresh (PV27).
     const seed: PatternIR = IR.code(fileNow.content);
     const passes = runPasses(seed, STRUDEL_PASSES);
     const finalIR = passes[passes.length - 1].ir;
-    const events = collectCycles(finalIR, 0, TIMELINE_WINDOW_CYCLES);
+    // #982 — events = the runtime's evaluated haps (queryArc), not collect, so
+    // the Inspector's event table shows eval-truth. `[]` until eval populates
+    // song patterns; trackId stays the raw engine key ($N / d{N}) — the table
+    // is a flat raw view, not lane-grouped, so no lane-key remap is needed.
+    const events = runtime?.getTimelineEvents(TIMELINE_WINDOW_CYCLES) ?? [];
     publishIRSnapshot(
       {
         ts: Date.now(),
@@ -875,6 +887,7 @@ export default function StrudelEditorClient({
     captureAndPublishSnapshot(
       fid,
       runtimesRef.current.get(fid)?.getCurrentCycle?.() ?? null,
+      rt ?? null,
     );
   }, []);
 
@@ -1093,7 +1106,7 @@ export default function StrudelEditorClient({
         // song-view path (#394) publishes the identical shape — no drift.
         // Phase 19-08: cycleCount lands on the timeline capture entry (not on
         // IRSnapshot) so PV27's per-snapshot alias contract stays untouched.
-        captureAndPublishSnapshot(fileId, runtime.getCurrentCycle());
+        captureAndPublishSnapshot(fileId, runtime.getCurrentCycle(), runtime);
 
         // Prune orphaned per-track colour overrides (#583): drop TrackMeta
         // records whose track no longer exists in the evaluated code, so a
