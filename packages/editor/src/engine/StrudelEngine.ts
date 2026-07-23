@@ -8,7 +8,8 @@ import type { HapEvent } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
 import { scanVizRequestLines } from './vizLineScan'
 import type { LiveCodingEngine, EngineComponents } from './LiveCodingEngine'
-import { propagate, StrudelParseSystem, IREventCollectSystem } from '../ir/propagation'
+import { parseStrudel } from '../ir/parseStrudel'
+import { buildNodeLocIndex } from '../ir/nodeIdentity'
 import type { PatternIR } from '../ir/PatternIR'
 import type { IREvent } from '../ir/IREvent'
 import { getTierFlags, type TierFlags } from './tierFlags'
@@ -158,13 +159,13 @@ export class StrudelEngine implements LiveCodingEngine {
   private trackOrbit: Map<string, number> = new Map()
   // Code from the last successful evaluate() — used by buildVizRequestsWithLines
   private lastEvaluatedCode: string = ''
-  // Pattern IR from the last successful evaluate() — derived by propagation
+  // Pattern IR from the last successful evaluate() — parsed from the user code.
   private lastPatternIR: PatternIR | null = null
-  private lastIREvents: IREvent[] = []
-  // PV38 clause 2 — loc-keyed lookup over lastIREvents; both queryArc
-  // callbacks (per-track + convenience) read this to enrich haps with
-  // `irNodeId`. Mirrors the lifecycle of lastIREvents (built on eval
-  // success, cleared on failure).
+  // PV38 clause 2 — loc-keyed lookup over the IR's Play leaves (loc → irNodeId);
+  // both queryArc callbacks (per-track + convenience) read this to enrich haps
+  // with `irNodeId`. Built from `buildNodeLocIndex(lastPatternIR)` on eval
+  // success (node identity is a structural property of the IR — #975/#982),
+  // cleared on failure.
   private lastIRNodeLocLookup: ReadonlyMap<string, IREvent[]> | null = null
 
   // Phase 20-07 (PK13 step 9) — engine-attached breakpoint registry.
@@ -936,39 +937,22 @@ export class StrudelEngine implements LiveCodingEngine {
         // persists across re-evaluates — avoids reconnect churn + flicker.
         this.rebuildTrackAnalysers(capturedPatterns)
 
-        // Run propagation pipeline: code → PatternIR → IREvent[]
-        // Uses the ORIGINAL user code string (not transpiled) so the parser
-        // sees idiomatic Strudel patterns rather than reified output.
-        const irBag = propagate(
-          { strudelCode: code },
-          [StrudelParseSystem, IREventCollectSystem],
-        )
-        this.lastPatternIR = irBag.patternIR ?? null
-        this.lastIREvents = irBag.irEvents ?? []
-        // PV38 clause 2 — build the loc lookup once per eval; queryArc
-        // callbacks read it to enrich haps with irNodeId. Mirrors how
-        // lastIREvents is stored alongside lastPatternIR. ReadonlyMap
-        // (via type) enforces PV33 immutability per snapshot lifetime.
-        // NOTE: this duplicates the loc-lookup build in irInspector.ts's
-        // `enrichWithLookups` — kept separate per phase 20-05 PLAN §7
-        // T-γ-4 "Note on duplication": two specific sites today (engine's
-        // lastIREvents from `propagate()` vs published snapshot from
-        // `collect(finalIR)` in StrudelEditorClient.tsx). DEC-NEW-1:
-        // consolidation requires a third occurrence + span-check signal.
-        const locLookup = new Map<string, IREvent[]>()
-        for (const e of this.lastIREvents) {
-          if (e.loc && e.loc.length > 0) {
-            const key = `${e.loc[0].start}:${e.loc[0].end}`
-            const arr = locLookup.get(key)
-            if (arr) arr.push(e)
-            else locLookup.set(key, [e])
-          }
-        }
-        this.lastIRNodeLocLookup = locLookup
+        // Parse the ORIGINAL user code string (not transpiled) so the parser
+        // sees idiomatic Strudel patterns rather than reified output, then
+        // build the PV38-clause-2 loc→irNodeId lookup the queryArc callbacks
+        // read to enrich haps with `irNodeId`. Node identity is a STRUCTURAL
+        // property of the IR (loc + tag), so it comes from `buildNodeLocIndex`
+        // (a pure IR walk) — NOT from running collect's behaviour interpreter.
+        // #975/#982: this replaces the old propagate→collect→lastIREvents path;
+        // `buildNodeLocIndex` reproduces the collect-derived lookup byte-for-byte
+        // (nodeIdentity.test.ts) without the onset engine.
+        this.lastPatternIR = parseStrudel(code)
+        this.lastIRNodeLocLookup = this.lastPatternIR
+          ? buildNodeLocIndex(this.lastPatternIR)
+          : null
       } else {
         // Failed evaluate — clear stale IR
         this.lastPatternIR = null
-        this.lastIREvents = []
         this.lastIRNodeLocLookup = null
         this.backdropVizRequest = null
       }
@@ -1029,11 +1013,15 @@ export class StrudelEngine implements LiveCodingEngine {
           : undefined,
       }
     }
-    // Expose Pattern IR if available
+    // Expose Pattern IR if available. `irEvents` is retained on the component
+    // type but is no longer populated by the engine: the collect onset stream it
+    // once carried has no reader (viz components read `queryable`/`streaming`),
+    // and node identity now flows via `lastIRNodeLocLookup` (#975/#982). Kept `[]`
+    // so the `IRComponent` shape is stable; the dead field is a cleanup candidate.
     if (this.lastPatternIR) {
       bag.ir = {
         patternIR: this.lastPatternIR,
-        irEvents: this.lastIREvents,
+        irEvents: [],
       }
     }
     return bag

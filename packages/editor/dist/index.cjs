@@ -176,6 +176,379 @@ var IR = {
   }, "builder")
 };
 
+// src/ir/structuralWalk.ts
+function aggregateLaneItems(items, nCycles) {
+  const order = [];
+  const byKey = /* @__PURE__ */ new Map();
+  const armByCycle = /* @__PURE__ */ new Map();
+  const armLabels = /* @__PURE__ */ new Map();
+  for (const it of items) {
+    let lane = byKey.get(it.laneKey);
+    if (!lane) {
+      lane = { laneKey: it.laneKey };
+      byKey.set(it.laneKey, lane);
+      order.push(it.laneKey);
+    }
+    if (lane.dollarPos === void 0 && it.dollarPos !== void 0) lane.dollarPos = it.dollarPos;
+    if (lane.sourceOffset === void 0 && it.loc && it.loc.length > 0) {
+      const s = it.loc[0]?.start;
+      if (typeof s === "number" && Number.isFinite(s)) lane.sourceOffset = s;
+    }
+    if (lane.arrangeOffset === void 0 && it.loc && it.loc.length > 0) {
+      let outer;
+      for (const l of it.loc) {
+        const s = l?.start;
+        if (typeof s !== "number" || !Number.isFinite(s)) continue;
+        if (it.dollarPos !== void 0 && s === it.dollarPos) continue;
+        if (outer === void 0 || s < outer) outer = s;
+      }
+      if (outer !== void 0) lane.arrangeOffset = outer;
+    }
+    if (lane.leafIndex === void 0 && it.leafIndex !== void 0) lane.leafIndex = it.leafIndex;
+    if (typeof it.armIndex === "number") {
+      let byCycle = armByCycle.get(it.laneKey);
+      if (!byCycle) {
+        byCycle = new Array(nCycles);
+        armByCycle.set(it.laneKey, byCycle);
+      }
+      if (it.cycle >= 0 && it.cycle < nCycles) byCycle[it.cycle] = it.armIndex;
+      let labels = armLabels.get(it.laneKey);
+      if (!labels) {
+        labels = /* @__PURE__ */ new Map();
+        armLabels.set(it.laneKey, labels);
+      }
+      if (!labels.has(it.armIndex) && it.labelValue != null) labels.set(it.armIndex, it.labelValue);
+    }
+  }
+  return order.map((key2) => {
+    const lane = byKey.get(key2);
+    const byCycle = armByCycle.get(key2);
+    if (byCycle) lane.armByCycle = byCycle;
+    const labels = armLabels.get(key2);
+    if (labels) lane.armLabels = labels;
+    return lane;
+  });
+}
+__name(aggregateLaneItems, "aggregateLaneItems");
+function withWrapperLoc(items, wrapper) {
+  if (!wrapper || wrapper.length === 0) return items;
+  const range2 = wrapper[0];
+  return items.map((it) => ({ ...it, loc: it.loc ? [...it.loc, range2] : [range2] }));
+}
+__name(withWrapperLoc, "withWrapperLoc");
+function safeCountLeaves(node) {
+  try {
+    return countLeavesInIR(node);
+  } catch {
+    return 1;
+  }
+}
+__name(safeCountLeaves, "safeCountLeaves");
+function countLeavesInIR(node) {
+  if (node.tag === "Stack") {
+    if (node.userMethod === void 0 || node.userMethod === "stack") {
+      let n = 0;
+      for (const t of node.tracks) n += countLeavesInIR(t);
+      return n;
+    }
+    return 1;
+  }
+  if (node.tag === "Code" && node.via && !("literal" in node.via) && node.via.inner) {
+    return countLeavesInIR(node.via.inner);
+  }
+  switch (node.tag) {
+    case "Param":
+    case "Fast":
+    case "Slow":
+    case "Elongate":
+    case "Late":
+    case "Degrade":
+    case "Ply":
+    case "Struct":
+    case "Swing":
+    case "Shuffle":
+    case "Scramble":
+    case "Chop":
+    case "When":
+    case "Every":
+    case "Loop":
+    case "Ramp":
+      return countLeavesInIR(node.body);
+    default:
+      return 1;
+  }
+}
+__name(countLeavesInIR, "countLeavesInIR");
+function walkCycle(ir, ctx) {
+  const recurse = /* @__PURE__ */ __name((node, childCtx) => {
+    try {
+      return walkCycle(node, childCtx);
+    } catch {
+      return [];
+    }
+  }, "recurse");
+  switch (ir.tag) {
+    case "Pure":
+    case "Signal":
+    case "Builder":
+    case "Sleep":
+      return [];
+    case "Track": {
+      const childCtx = {
+        ...ctx,
+        trackId: ir.trackId,
+        dollarPos: ctx.dollarPos !== void 0 ? ctx.dollarPos : ir.loc?.[0]?.start,
+        leafIndex: void 0
+      };
+      return withWrapperLoc(recurse(ir.body, childCtx), ir.loc);
+    }
+    case "Code": {
+      if (ir.via && !("literal" in ir.via)) {
+        return withWrapperLoc(recurse(ir.via.inner, ctx), ir.loc);
+      }
+      return [];
+    }
+    case "Param": {
+      if (typeof ir.value === "string" || typeof ir.value === "number") {
+        const childCtx = { ...ctx, params: { [ir.key]: ir.value, ...ctx.params } };
+        return withWrapperLoc(recurse(ir.body, childCtx), ir.loc);
+      }
+      return withWrapperLoc(recurse(ir.body, ctx), ir.loc);
+    }
+    case "Play": {
+      const merged = { ...ir.params, ...ctx.params };
+      const s = merged.s ?? void 0;
+      const laneKey = ctx.trackId ?? s ?? "$default";
+      const labelValue = s ?? (ir.note != null ? String(ir.note) : void 0);
+      const item = {
+        laneKey,
+        // Bucket by the OUTER song cycle, not the arm-local selection cycle (#974) — armByCycle
+        // must index an arrange arm at the song cycle it plays, mirroring collect's floor(begin).
+        cycle: ctx.outputCycle,
+        ...ctx.dollarPos !== void 0 ? { dollarPos: ctx.dollarPos } : {},
+        ...ctx.leafIndex !== void 0 ? { leafIndex: ctx.leafIndex } : {},
+        ...ctx.armIndex !== void 0 ? { armIndex: ctx.armIndex } : {},
+        ...ir.loc && ir.loc.length > 0 ? { loc: ir.loc } : {},
+        ...labelValue !== void 0 ? { labelValue } : {}
+      };
+      return [item];
+    }
+    case "Seq": {
+      if (ir.children.length === 0) return [];
+      const out = [];
+      for (const child of ir.children) {
+        const target = child.tag === "Elongate" ? child.body : child;
+        out.push(...recurse(target, ctx));
+      }
+      return withWrapperLoc(out, ir.loc);
+    }
+    case "Stack": {
+      const isVoiceDefining = ir.userMethod === void 0 || ir.userMethod === "stack";
+      const out = [];
+      if (isVoiceDefining) {
+        let leafIdx = ctx.leafIndex ?? 0;
+        for (const track of ir.tracks) {
+          out.push(...recurse(track, { ...ctx, leafIndex: leafIdx }));
+          leafIdx += safeCountLeaves(track);
+        }
+      } else {
+        for (const track of ir.tracks) out.push(...recurse(track, ctx));
+      }
+      return withWrapperLoc(out, ir.loc);
+    }
+    case "Choice": {
+      const out = [];
+      out.push(...recurse(ir.then, ctx));
+      out.push(...recurse(ir.else_, ctx));
+      return withWrapperLoc(out, ir.loc);
+    }
+    case "Every": {
+      const fires = ctx.cycle % ir.n === 0;
+      if (fires) return withWrapperLoc(recurse(ir.body, ctx), ir.loc);
+      if (ir.default_) return withWrapperLoc(recurse(ir.default_, ctx), ir.loc);
+      return [];
+    }
+    case "Cycle": {
+      if (ir.items.length === 0) return [];
+      const weights = ir.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
+      const period = weights.reduce((s, w) => s + w, 0);
+      if (period <= 0) return [];
+      const pos = (ctx.cycle % period + period) % period;
+      const innerCycle = Math.floor(ctx.cycle / period);
+      let acc = 0;
+      let selected = 0;
+      for (let k = 0; k < ir.items.length; k++) {
+        if (pos < acc + weights[k]) {
+          selected = k;
+          break;
+        }
+        acc += weights[k];
+      }
+      const item = ir.items[selected];
+      const target = item.tag === "Elongate" ? item.body : item;
+      return withWrapperLoc(recurse(target, { ...ctx, cycle: innerCycle }), ir.loc);
+    }
+    case "Arrange": {
+      if (ir.arms.length === 0) return [];
+      const period = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
+      if (period <= 0) return [];
+      const pos = (ctx.cycle % period + period) % period;
+      let acc = 0;
+      let armIndex = 0;
+      let localCycle = 0;
+      for (let i = 0; i < ir.arms.length; i++) {
+        const w = ir.arms[i].weight > 0 ? ir.arms[i].weight : 0;
+        if (pos < acc + w) {
+          armIndex = i;
+          localCycle = pos - acc;
+          break;
+        }
+        acc += w;
+      }
+      const childCtx = {
+        ...ctx,
+        cycle: localCycle,
+        armIndex: ctx.armIndex ?? armIndex
+      };
+      return withWrapperLoc(recurse(ir.arms[armIndex].pattern, childCtx), ir.loc);
+    }
+    case "When": {
+      return withWrapperLoc(recurse(ir.body, ctx), ir.loc);
+    }
+    case "Ramp": {
+      return withWrapperLoc(recurse(ir.body, { ...ctx, params: { ...ctx.params, [ir.param]: 0 } }), ir.loc);
+    }
+    // Single-body uniform-modifier wrappers: behaviour (timing/RNG/rearrange) drops, one
+    // walk of the body suffices for lanes + loc-layering. Duplication/rearrange nodes
+    // (Fast/Ply/Chop/Shuffle/Scramble) share the body's leaf loc[0], so first-wins is stable.
+    case "Fast":
+    case "Slow":
+    case "Loop":
+    case "Elongate":
+    case "Late":
+    case "Degrade":
+    case "Swing":
+    case "Ply":
+    case "Shuffle":
+    case "Scramble":
+    case "Chop":
+    case "Struct":
+      return withWrapperLoc(recurse(ir.body, ctx), ir.loc);
+    case "Chunk": {
+      return withWrapperLoc(recurse(ir.body, ctx), ir.loc);
+    }
+    case "Pick": {
+      if (ir.lookup.length === 0) return [];
+      const out = [];
+      const selectorLoc = ir.selector.loc?.[0];
+      for (const sub of ir.lookup) {
+        for (const it of recurse(sub, ctx)) {
+          const childLoc = it.loc ?? [];
+          const newLoc = [...childLoc, ...selectorLoc ? [selectorLoc] : []];
+          out.push(newLoc.length > 0 ? { ...it, loc: newLoc } : it);
+        }
+      }
+      return withWrapperLoc(out, ir.loc);
+    }
+    case "NamedPick": {
+      if (ir.entries.length === 0) return [];
+      let selectedArm;
+      if (ir.selector.tag === "Cycle" && ir.selector.items.length > 0) {
+        const weights = ir.selector.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
+        const period = weights.reduce((s, w) => s + w, 0);
+        if (period > 0) {
+          const pos = (ctx.cycle % period + period) % period;
+          let acc = 0;
+          for (let k = 0; k < weights.length; k++) {
+            if (pos < acc + weights[k]) {
+              selectedArm = k;
+              break;
+            }
+            acc += weights[k];
+          }
+        }
+      }
+      const armIndex = ctx.armIndex ?? selectedArm;
+      const out = [];
+      const selectorLoc = ir.selector.loc?.[0];
+      for (const entry of ir.entries) {
+        const childCtx = { ...ctx, ...armIndex !== void 0 ? { armIndex } : {} };
+        for (const it of recurse(entry.pattern, childCtx)) {
+          const childLoc = it.loc ?? [];
+          const newLoc = [...childLoc, ...selectorLoc ? [selectorLoc] : []];
+          out.push(newLoc.length > 0 ? { ...it, loc: newLoc } : it);
+        }
+      }
+      return withWrapperLoc(out, ir.loc);
+    }
+  }
+}
+__name(walkCycle, "walkCycle");
+function walkLeafItems(ir, nCycles) {
+  const items = [];
+  for (let c = 0; c < nCycles; c++) {
+    try {
+      items.push(...walkCycle(ir, { cycle: c, outputCycle: c, params: {} }));
+    } catch {
+    }
+  }
+  return items;
+}
+__name(walkLeafItems, "walkLeafItems");
+function structuralWalk(ir, nCycles) {
+  return aggregateLaneItems(walkLeafItems(ir, nCycles), nCycles);
+}
+__name(structuralWalk, "structuralWalk");
+
+// src/ir/nodeIdentity.ts
+function fnv1a(input) {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+__name(fnv1a, "fnv1a");
+function nodeIdFor(start, end, tag, position) {
+  return fnv1a(`${start}:${end}:${tag}:${position}`);
+}
+__name(nodeIdFor, "nodeIdFor");
+function assignNodeId(ir, position) {
+  const start = ir.loc?.[0]?.start ?? -1;
+  const end = ir.loc?.[0]?.end ?? -1;
+  return nodeIdFor(start, end, ir.tag, position);
+}
+__name(assignNodeId, "assignNodeId");
+function buildNodeLocIndex(ir) {
+  const map = /* @__PURE__ */ new Map();
+  for (const item of walkLeafItems(ir, 1)) {
+    const loc = item.loc;
+    if (!loc || loc.length === 0) continue;
+    const l0 = loc[0];
+    if (typeof l0.start !== "number" || typeof l0.end !== "number") continue;
+    const key2 = `${l0.start}:${l0.end}`;
+    const stub = {
+      begin: 0,
+      end: 0,
+      endClipped: 0,
+      note: null,
+      freq: null,
+      s: null,
+      gain: 1,
+      velocity: 1,
+      color: null,
+      loc: [...loc],
+      irNodeId: nodeIdFor(l0.start, l0.end, "Play", 0)
+    };
+    const arr = map.get(key2);
+    if (arr) arr.push(stub);
+    else map.set(key2, [stub]);
+  }
+  return map;
+}
+__name(buildNodeLocIndex, "buildNodeLocIndex");
+
 // src/ir/collect.ts
 var RAND_SEED = 0;
 function xorwise(x) {
@@ -210,7 +583,7 @@ function seededRandsAtTime(t, n, seed) {
   return out;
 }
 __name(seededRandsAtTime, "seededRandsAtTime");
-function withWrapperLoc(events, wrapper) {
+function withWrapperLoc2(events, wrapper) {
   if (!wrapper || wrapper.length === 0) return events;
   const range2 = wrapper[0];
   return events.map((e) => ({
@@ -218,22 +591,7 @@ function withWrapperLoc(events, wrapper) {
     loc: e.loc ? [...e.loc, range2] : [range2]
   }));
 }
-__name(withWrapperLoc, "withWrapperLoc");
-function fnv1a(input) {
-  let h = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(16).padStart(8, "0");
-}
-__name(fnv1a, "fnv1a");
-function assignNodeId(ir, position) {
-  const start = ir.loc?.[0]?.start ?? -1;
-  const end = ir.loc?.[0]?.end ?? -1;
-  return fnv1a(`${start}:${end}:${ir.tag}:${position}`);
-}
-__name(assignNodeId, "assignNodeId");
+__name(withWrapperLoc2, "withWrapperLoc");
 var DEFAULT_CONTEXT = {
   begin: 0,
   end: Infinity,
@@ -244,17 +602,17 @@ var DEFAULT_CONTEXT = {
   speed: 1,
   params: {}
 };
-function countLeavesInIR(node) {
+function countLeavesInIR2(node) {
   if (node.tag === "Stack") {
     if (node.userMethod === void 0 || node.userMethod === "stack") {
       let n = 0;
-      for (const t of node.tracks) n += countLeavesInIR(t);
+      for (const t of node.tracks) n += countLeavesInIR2(t);
       return n;
     }
     return 1;
   }
   if (node.tag === "Code" && node.via && !("literal" in node.via) && node.via.inner) {
-    return countLeavesInIR(node.via.inner);
+    return countLeavesInIR2(node.via.inner);
   }
   switch (node.tag) {
     case "Param":
@@ -273,7 +631,7 @@ function countLeavesInIR(node) {
     case "Every":
     case "Loop":
     case "Ramp":
-      return countLeavesInIR(node.body);
+      return countLeavesInIR2(node.body);
     // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
     // LEAF — a recognised chain root contributes one leaf voice (matches
     // default's `return 1` for Code/Play/Pure/... leaves). Made explicit
@@ -286,7 +644,7 @@ function countLeavesInIR(node) {
       return 1;
   }
 }
-__name(countLeavesInIR, "countLeavesInIR");
+__name(countLeavesInIR2, "countLeavesInIR");
 function noteToFreq(note) {
   if (typeof note === "number") {
     return 440 * Math.pow(2, (note - 69) / 12);
@@ -409,12 +767,12 @@ function walk(ir, ctx) {
         dollarPos: ctx.dollarPos !== void 0 ? ctx.dollarPos : ir.loc?.[0]?.start,
         leafIndex: void 0
       };
-      return withWrapperLoc(walk(ir.body, childCtx), ir.loc);
+      return withWrapperLoc2(walk(ir.body, childCtx), ir.loc);
     }
     case "Code": {
       if (ir.via && !("literal" in ir.via)) {
         const innerEvents = walk(ir.via.inner, ctx);
-        return withWrapperLoc(innerEvents, ir.loc);
+        return withWrapperLoc2(innerEvents, ir.loc);
       }
       return [];
     }
@@ -424,7 +782,7 @@ function walk(ir, ctx) {
           ...ctx,
           params: { [ir.key]: ir.value, ...ctx.params }
         };
-        return withWrapperLoc(walk(ir.body, childCtx), ir.loc);
+        return withWrapperLoc2(walk(ir.body, childCtx), ir.loc);
       }
       const slotEvents = walk(ir.value, ctx);
       const bodyEvents = walk(ir.body, ctx);
@@ -447,7 +805,7 @@ function walk(ir, ctx) {
           // they don't have top-level event shorthand fields per IREvent.
         };
       });
-      return withWrapperLoc(out, ir.loc);
+      return withWrapperLoc2(out, ir.loc);
     }
     case "Play": {
       if (ctx.time < ctx.begin || ctx.time >= ctx.end) return [];
@@ -478,7 +836,7 @@ function walk(ir, ctx) {
         events.push(...childEvents);
         cursor += slotDuration / ctx.speed;
       }
-      return withWrapperLoc(events, ir.loc);
+      return withWrapperLoc2(events, ir.loc);
     }
     case "Stack": {
       const isVoiceDefining = ir.userMethod === void 0 || ir.userMethod === "stack";
@@ -488,23 +846,23 @@ function walk(ir, ctx) {
         for (const track of ir.tracks) {
           const childCtx = { ...ctx, leafIndex: leafIdx };
           events.push(...walk(track, childCtx));
-          leafIdx += countLeavesInIR(track);
+          leafIdx += countLeavesInIR2(track);
         }
       } else {
         for (const track of ir.tracks) {
           events.push(...walk(track, ctx));
         }
       }
-      return withWrapperLoc(events, ir.loc);
+      return withWrapperLoc2(events, ir.loc);
     }
     case "Choice": {
       const chosen = Math.random() < ir.p ? ir.then : ir.else_;
-      return withWrapperLoc(walk(chosen, ctx), ir.loc);
+      return withWrapperLoc2(walk(chosen, ctx), ir.loc);
     }
     case "Every": {
       const fires = ctx.cycle % ir.n === 0;
-      if (fires) return withWrapperLoc(walk(ir.body, ctx), ir.loc);
-      if (ir.default_) return withWrapperLoc(walk(ir.default_, ctx), ir.loc);
+      if (fires) return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
+      if (ir.default_) return withWrapperLoc2(walk(ir.default_, ctx), ir.loc);
       return [];
     }
     case "Cycle": {
@@ -525,7 +883,7 @@ function walk(ir, ctx) {
       }
       const item = ir.items[selected];
       const target = item.tag === "Elongate" ? item.body : item;
-      return withWrapperLoc(walk(target, { ...ctx, cycle: innerCycle }), ir.loc);
+      return withWrapperLoc2(walk(target, { ...ctx, cycle: innerCycle }), ir.loc);
     }
     case "Arrange": {
       if (ir.arms.length === 0) return [];
@@ -555,7 +913,7 @@ function walk(ir, ctx) {
         // here and so use this level's index unchanged.
         armIndex: ctx.armIndex ?? armIndex
       };
-      return withWrapperLoc(walk(ir.arms[armIndex].pattern, childCtx), ir.loc);
+      return withWrapperLoc2(walk(ir.arms[armIndex].pattern, childCtx), ir.loc);
     }
     case "When": {
       const slots = ir.gate.trim().split(/\s+/);
@@ -563,7 +921,7 @@ function walk(ir, ctx) {
       const slotIndex = Math.floor(ctx.time % 1 * slots.length);
       const slot = slots[Math.min(slotIndex, slots.length - 1)];
       const active2 = slot !== "0" && slot !== "" && slot !== "~";
-      if (active2) return withWrapperLoc(walk(ir.body, ctx), ir.loc);
+      if (active2) return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
       return [];
     }
     case "Ramp": {
@@ -573,12 +931,12 @@ function walk(ir, ctx) {
         ...ctx,
         params: { ...ctx.params, [ir.param]: value }
       };
-      return withWrapperLoc(walk(ir.body, childCtx), ir.loc);
+      return withWrapperLoc2(walk(ir.body, childCtx), ir.loc);
     }
     case "Fast": {
       const factor = ir.factor;
       if (!Number.isFinite(factor) || factor <= 0) {
-        return withWrapperLoc(walk(ir.body, ctx), ir.loc);
+        return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
       }
       if (Number.isInteger(factor) && factor >= 1) {
         const events = [];
@@ -596,32 +954,32 @@ function walk(ir, ctx) {
           };
           events.push(...walk(ir.body, childCtx2));
         }
-        return withWrapperLoc(events, ir.loc);
+        return withWrapperLoc2(events, ir.loc);
       }
       const childCtx = {
         ...ctx,
         speed: ctx.speed * factor,
         duration: ctx.duration
       };
-      return withWrapperLoc(walk(ir.body, childCtx), ir.loc);
+      return withWrapperLoc2(walk(ir.body, childCtx), ir.loc);
     }
     case "Slow": {
       const factor = ir.factor;
       if (!Number.isFinite(factor) || factor <= 0) {
-        return withWrapperLoc(walk(ir.body, ctx), ir.loc);
+        return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
       }
       const childCtx = {
         ...ctx,
         speed: ctx.speed / factor,
         duration: ctx.duration
       };
-      return withWrapperLoc(walk(ir.body, childCtx), ir.loc);
+      return withWrapperLoc2(walk(ir.body, childCtx), ir.loc);
     }
     case "Loop": {
-      return withWrapperLoc(walk(ir.body, ctx), ir.loc);
+      return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
     }
     case "Elongate": {
-      return withWrapperLoc(walk(ir.body, ctx), ir.loc);
+      return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
     }
     case "Late": {
       const events = walk(ir.body, ctx);
@@ -640,7 +998,7 @@ function walk(ir, ctx) {
         }
         return { ...e, begin, end, endClipped };
       });
-      return withWrapperLoc(shifted, ir.loc);
+      return withWrapperLoc2(shifted, ir.loc);
     }
     case "Degrade": {
       const events = walk(ir.body, ctx);
@@ -648,7 +1006,7 @@ function walk(ir, ctx) {
       const survivors = events.filter(
         (e) => seededRand(e.begin, RAND_SEED) > dropAmount
       );
-      return withWrapperLoc(survivors, ir.loc);
+      return withWrapperLoc2(survivors, ir.loc);
     }
     case "Chunk": {
       const slot = (ctx.cycle % ir.n + ir.n) % ir.n;
@@ -668,7 +1026,7 @@ function walk(ir, ctx) {
         }
         return e;
       });
-      return withWrapperLoc(composed, ir.loc);
+      return withWrapperLoc2(composed, ir.loc);
     }
     case "Pick": {
       if (ir.lookup.length === 0) return [];
@@ -781,11 +1139,11 @@ function walk(ir, ctx) {
           }
         }
       }
-      return withWrapperLoc(out, ir.loc);
+      return withWrapperLoc2(out, ir.loc);
     }
     case "Swing": {
       const events = walk(ir.body, ctx);
-      if (ir.n < 1) return withWrapperLoc(events, ir.loc);
+      if (ir.n < 1) return withWrapperLoc2(events, ir.loc);
       const swingAmount = 1 / (6 * ir.n);
       const swung = events.map((e) => {
         const cyclePos = e.begin - ctx.cycle;
@@ -800,11 +1158,11 @@ function walk(ir, ctx) {
         }
         return e;
       });
-      return withWrapperLoc(swung, ir.loc);
+      return withWrapperLoc2(swung, ir.loc);
     }
     case "Ply": {
       const baseEvents = walk(ir.body, ctx);
-      if (ir.n <= 1) return withWrapperLoc(baseEvents, ir.loc);
+      if (ir.n <= 1) return withWrapperLoc2(baseEvents, ir.loc);
       const out = [];
       for (const e of baseEvents) {
         const slotLen = (e.end - e.begin) / ir.n;
@@ -819,16 +1177,16 @@ function walk(ir, ctx) {
           });
         }
       }
-      return withWrapperLoc(out, ir.loc);
+      return withWrapperLoc2(out, ir.loc);
     }
     case "Shuffle": {
-      if (ir.n < 1) return withWrapperLoc(walk(ir.body, ctx), ir.loc);
+      if (ir.n < 1) return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
       const rands = seededRandsAtTime(ctx.cycle + 0.5, ir.n, RAND_SEED);
       const perm = rands.map((r, i) => [r, i]).sort((a, b) => a[0] > b[0] ? 1 : a[0] < b[0] ? -1 : 0).map((x) => x[1]);
       return _collectRearrange(perm, ir.n, ir.body, ctx, ir.loc?.[0]);
     }
     case "Scramble": {
-      if (ir.n < 1) return withWrapperLoc(walk(ir.body, ctx), ir.loc);
+      if (ir.n < 1) return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
       const selector = [];
       for (let slot = 0; slot < ir.n; slot++) {
         const r = seededRand(ctx.cycle + slot / ir.n, RAND_SEED);
@@ -837,7 +1195,7 @@ function walk(ir, ctx) {
       return _collectRearrange(selector, ir.n, ir.body, ctx, ir.loc?.[0]);
     }
     case "Chop": {
-      if (ir.n <= 1) return withWrapperLoc(walk(ir.body, ctx), ir.loc);
+      if (ir.n <= 1) return withWrapperLoc2(walk(ir.body, ctx), ir.loc);
       const baseEvents = walk(ir.body, ctx);
       const out = [];
       for (const e of baseEvents) {
@@ -859,7 +1217,7 @@ function walk(ir, ctx) {
           });
         }
       }
-      return withWrapperLoc(out, ir.loc);
+      return withWrapperLoc2(out, ir.loc);
     }
   }
 }
@@ -1144,326 +1502,6 @@ function collapseToMini(children) {
   return `note("${notation}")`;
 }
 __name(collapseToMini, "collapseToMini");
-
-// src/ir/structuralWalk.ts
-function aggregateLaneItems(items, nCycles) {
-  const order = [];
-  const byKey = /* @__PURE__ */ new Map();
-  const armByCycle = /* @__PURE__ */ new Map();
-  const armLabels = /* @__PURE__ */ new Map();
-  for (const it of items) {
-    let lane = byKey.get(it.laneKey);
-    if (!lane) {
-      lane = { laneKey: it.laneKey };
-      byKey.set(it.laneKey, lane);
-      order.push(it.laneKey);
-    }
-    if (lane.dollarPos === void 0 && it.dollarPos !== void 0) lane.dollarPos = it.dollarPos;
-    if (lane.sourceOffset === void 0 && it.loc && it.loc.length > 0) {
-      const s = it.loc[0]?.start;
-      if (typeof s === "number" && Number.isFinite(s)) lane.sourceOffset = s;
-    }
-    if (lane.arrangeOffset === void 0 && it.loc && it.loc.length > 0) {
-      let outer;
-      for (const l of it.loc) {
-        const s = l?.start;
-        if (typeof s !== "number" || !Number.isFinite(s)) continue;
-        if (it.dollarPos !== void 0 && s === it.dollarPos) continue;
-        if (outer === void 0 || s < outer) outer = s;
-      }
-      if (outer !== void 0) lane.arrangeOffset = outer;
-    }
-    if (lane.leafIndex === void 0 && it.leafIndex !== void 0) lane.leafIndex = it.leafIndex;
-    if (typeof it.armIndex === "number") {
-      let byCycle = armByCycle.get(it.laneKey);
-      if (!byCycle) {
-        byCycle = new Array(nCycles);
-        armByCycle.set(it.laneKey, byCycle);
-      }
-      if (it.cycle >= 0 && it.cycle < nCycles) byCycle[it.cycle] = it.armIndex;
-      let labels = armLabels.get(it.laneKey);
-      if (!labels) {
-        labels = /* @__PURE__ */ new Map();
-        armLabels.set(it.laneKey, labels);
-      }
-      if (!labels.has(it.armIndex) && it.labelValue != null) labels.set(it.armIndex, it.labelValue);
-    }
-  }
-  return order.map((key2) => {
-    const lane = byKey.get(key2);
-    const byCycle = armByCycle.get(key2);
-    if (byCycle) lane.armByCycle = byCycle;
-    const labels = armLabels.get(key2);
-    if (labels) lane.armLabels = labels;
-    return lane;
-  });
-}
-__name(aggregateLaneItems, "aggregateLaneItems");
-function withWrapperLoc2(items, wrapper) {
-  if (!wrapper || wrapper.length === 0) return items;
-  const range2 = wrapper[0];
-  return items.map((it) => ({ ...it, loc: it.loc ? [...it.loc, range2] : [range2] }));
-}
-__name(withWrapperLoc2, "withWrapperLoc");
-function safeCountLeaves(node) {
-  try {
-    return countLeavesInIR2(node);
-  } catch {
-    return 1;
-  }
-}
-__name(safeCountLeaves, "safeCountLeaves");
-function countLeavesInIR2(node) {
-  if (node.tag === "Stack") {
-    if (node.userMethod === void 0 || node.userMethod === "stack") {
-      let n = 0;
-      for (const t of node.tracks) n += countLeavesInIR2(t);
-      return n;
-    }
-    return 1;
-  }
-  if (node.tag === "Code" && node.via && !("literal" in node.via) && node.via.inner) {
-    return countLeavesInIR2(node.via.inner);
-  }
-  switch (node.tag) {
-    case "Param":
-    case "Fast":
-    case "Slow":
-    case "Elongate":
-    case "Late":
-    case "Degrade":
-    case "Ply":
-    case "Struct":
-    case "Swing":
-    case "Shuffle":
-    case "Scramble":
-    case "Chop":
-    case "When":
-    case "Every":
-    case "Loop":
-    case "Ramp":
-      return countLeavesInIR2(node.body);
-    default:
-      return 1;
-  }
-}
-__name(countLeavesInIR2, "countLeavesInIR");
-function walkCycle(ir, ctx) {
-  const recurse = /* @__PURE__ */ __name((node, childCtx) => {
-    try {
-      return walkCycle(node, childCtx);
-    } catch {
-      return [];
-    }
-  }, "recurse");
-  switch (ir.tag) {
-    case "Pure":
-    case "Signal":
-    case "Builder":
-    case "Sleep":
-      return [];
-    case "Track": {
-      const childCtx = {
-        ...ctx,
-        trackId: ir.trackId,
-        dollarPos: ctx.dollarPos !== void 0 ? ctx.dollarPos : ir.loc?.[0]?.start,
-        leafIndex: void 0
-      };
-      return withWrapperLoc2(recurse(ir.body, childCtx), ir.loc);
-    }
-    case "Code": {
-      if (ir.via && !("literal" in ir.via)) {
-        return withWrapperLoc2(recurse(ir.via.inner, ctx), ir.loc);
-      }
-      return [];
-    }
-    case "Param": {
-      if (typeof ir.value === "string" || typeof ir.value === "number") {
-        const childCtx = { ...ctx, params: { [ir.key]: ir.value, ...ctx.params } };
-        return withWrapperLoc2(recurse(ir.body, childCtx), ir.loc);
-      }
-      return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
-    }
-    case "Play": {
-      const merged = { ...ir.params, ...ctx.params };
-      const s = merged.s ?? void 0;
-      const laneKey = ctx.trackId ?? s ?? "$default";
-      const labelValue = s ?? (ir.note != null ? String(ir.note) : void 0);
-      const item = {
-        laneKey,
-        // Bucket by the OUTER song cycle, not the arm-local selection cycle (#974) — armByCycle
-        // must index an arrange arm at the song cycle it plays, mirroring collect's floor(begin).
-        cycle: ctx.outputCycle,
-        ...ctx.dollarPos !== void 0 ? { dollarPos: ctx.dollarPos } : {},
-        ...ctx.leafIndex !== void 0 ? { leafIndex: ctx.leafIndex } : {},
-        ...ctx.armIndex !== void 0 ? { armIndex: ctx.armIndex } : {},
-        ...ir.loc && ir.loc.length > 0 ? { loc: ir.loc } : {},
-        ...labelValue !== void 0 ? { labelValue } : {}
-      };
-      return [item];
-    }
-    case "Seq": {
-      if (ir.children.length === 0) return [];
-      const out = [];
-      for (const child of ir.children) {
-        const target = child.tag === "Elongate" ? child.body : child;
-        out.push(...recurse(target, ctx));
-      }
-      return withWrapperLoc2(out, ir.loc);
-    }
-    case "Stack": {
-      const isVoiceDefining = ir.userMethod === void 0 || ir.userMethod === "stack";
-      const out = [];
-      if (isVoiceDefining) {
-        let leafIdx = ctx.leafIndex ?? 0;
-        for (const track of ir.tracks) {
-          out.push(...recurse(track, { ...ctx, leafIndex: leafIdx }));
-          leafIdx += safeCountLeaves(track);
-        }
-      } else {
-        for (const track of ir.tracks) out.push(...recurse(track, ctx));
-      }
-      return withWrapperLoc2(out, ir.loc);
-    }
-    case "Choice": {
-      const out = [];
-      out.push(...recurse(ir.then, ctx));
-      out.push(...recurse(ir.else_, ctx));
-      return withWrapperLoc2(out, ir.loc);
-    }
-    case "Every": {
-      const fires = ctx.cycle % ir.n === 0;
-      if (fires) return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
-      if (ir.default_) return withWrapperLoc2(recurse(ir.default_, ctx), ir.loc);
-      return [];
-    }
-    case "Cycle": {
-      if (ir.items.length === 0) return [];
-      const weights = ir.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
-      const period = weights.reduce((s, w) => s + w, 0);
-      if (period <= 0) return [];
-      const pos = (ctx.cycle % period + period) % period;
-      const innerCycle = Math.floor(ctx.cycle / period);
-      let acc = 0;
-      let selected = 0;
-      for (let k = 0; k < ir.items.length; k++) {
-        if (pos < acc + weights[k]) {
-          selected = k;
-          break;
-        }
-        acc += weights[k];
-      }
-      const item = ir.items[selected];
-      const target = item.tag === "Elongate" ? item.body : item;
-      return withWrapperLoc2(recurse(target, { ...ctx, cycle: innerCycle }), ir.loc);
-    }
-    case "Arrange": {
-      if (ir.arms.length === 0) return [];
-      const period = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
-      if (period <= 0) return [];
-      const pos = (ctx.cycle % period + period) % period;
-      let acc = 0;
-      let armIndex = 0;
-      let localCycle = 0;
-      for (let i = 0; i < ir.arms.length; i++) {
-        const w = ir.arms[i].weight > 0 ? ir.arms[i].weight : 0;
-        if (pos < acc + w) {
-          armIndex = i;
-          localCycle = pos - acc;
-          break;
-        }
-        acc += w;
-      }
-      const childCtx = {
-        ...ctx,
-        cycle: localCycle,
-        armIndex: ctx.armIndex ?? armIndex
-      };
-      return withWrapperLoc2(recurse(ir.arms[armIndex].pattern, childCtx), ir.loc);
-    }
-    case "When": {
-      return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
-    }
-    case "Ramp": {
-      return withWrapperLoc2(recurse(ir.body, { ...ctx, params: { ...ctx.params, [ir.param]: 0 } }), ir.loc);
-    }
-    // Single-body uniform-modifier wrappers: behaviour (timing/RNG/rearrange) drops, one
-    // walk of the body suffices for lanes + loc-layering. Duplication/rearrange nodes
-    // (Fast/Ply/Chop/Shuffle/Scramble) share the body's leaf loc[0], so first-wins is stable.
-    case "Fast":
-    case "Slow":
-    case "Loop":
-    case "Elongate":
-    case "Late":
-    case "Degrade":
-    case "Swing":
-    case "Ply":
-    case "Shuffle":
-    case "Scramble":
-    case "Chop":
-    case "Struct":
-      return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
-    case "Chunk": {
-      return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
-    }
-    case "Pick": {
-      if (ir.lookup.length === 0) return [];
-      const out = [];
-      const selectorLoc = ir.selector.loc?.[0];
-      for (const sub of ir.lookup) {
-        for (const it of recurse(sub, ctx)) {
-          const childLoc = it.loc ?? [];
-          const newLoc = [...childLoc, ...selectorLoc ? [selectorLoc] : []];
-          out.push(newLoc.length > 0 ? { ...it, loc: newLoc } : it);
-        }
-      }
-      return withWrapperLoc2(out, ir.loc);
-    }
-    case "NamedPick": {
-      if (ir.entries.length === 0) return [];
-      let selectedArm;
-      if (ir.selector.tag === "Cycle" && ir.selector.items.length > 0) {
-        const weights = ir.selector.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
-        const period = weights.reduce((s, w) => s + w, 0);
-        if (period > 0) {
-          const pos = (ctx.cycle % period + period) % period;
-          let acc = 0;
-          for (let k = 0; k < weights.length; k++) {
-            if (pos < acc + weights[k]) {
-              selectedArm = k;
-              break;
-            }
-            acc += weights[k];
-          }
-        }
-      }
-      const armIndex = ctx.armIndex ?? selectedArm;
-      const out = [];
-      const selectorLoc = ir.selector.loc?.[0];
-      for (const entry of ir.entries) {
-        const childCtx = { ...ctx, ...armIndex !== void 0 ? { armIndex } : {} };
-        for (const it of recurse(entry.pattern, childCtx)) {
-          const childLoc = it.loc ?? [];
-          const newLoc = [...childLoc, ...selectorLoc ? [selectorLoc] : []];
-          out.push(newLoc.length > 0 ? { ...it, loc: newLoc } : it);
-        }
-      }
-      return withWrapperLoc2(out, ir.loc);
-    }
-  }
-}
-__name(walkCycle, "walkCycle");
-function structuralWalk(ir, nCycles) {
-  const items = [];
-  for (let c = 0; c < nCycles; c++) {
-    try {
-      items.push(...walkCycle(ir, { cycle: c, outputCycle: c, params: {} }));
-    } catch {
-    }
-  }
-  return aggregateLaneItems(items, nCycles);
-}
-__name(structuralWalk, "structuralWalk");
 
 // src/ir/songAnalysis.ts
 function laneKeyOf(ev) {
@@ -5078,13 +5116,13 @@ var _StrudelEngine = class _StrudelEngine {
     this.trackOrbit = /* @__PURE__ */ new Map();
     // Code from the last successful evaluate() — used by buildVizRequestsWithLines
     this.lastEvaluatedCode = "";
-    // Pattern IR from the last successful evaluate() — derived by propagation
+    // Pattern IR from the last successful evaluate() — parsed from the user code.
     this.lastPatternIR = null;
-    this.lastIREvents = [];
-    // PV38 clause 2 — loc-keyed lookup over lastIREvents; both queryArc
-    // callbacks (per-track + convenience) read this to enrich haps with
-    // `irNodeId`. Mirrors the lifecycle of lastIREvents (built on eval
-    // success, cleared on failure).
+    // PV38 clause 2 — loc-keyed lookup over the IR's Play leaves (loc → irNodeId);
+    // both queryArc callbacks (per-track + convenience) read this to enrich haps
+    // with `irNodeId`. Built from `buildNodeLocIndex(lastPatternIR)` on eval
+    // success (node identity is a structural property of the IR — #975/#982),
+    // cleared on failure.
     this.lastIRNodeLocLookup = null;
     // Phase 20-07 (PK13 step 9) — engine-attached breakpoint registry.
     // Per-engine scope (PV33). The hit-check in `wrappedOutput` reads
@@ -5588,25 +5626,10 @@ var _StrudelEngine = class _StrudelEngine {
         this.backdropVizRequest = capturedBackdropViz;
         this.backdropVizOptions = capturedBackdropVizOptions;
         this.rebuildTrackAnalysers(capturedPatterns);
-        const irBag = propagate(
-          { strudelCode: code },
-          [StrudelParseSystem, IREventCollectSystem]
-        );
-        this.lastPatternIR = irBag.patternIR ?? null;
-        this.lastIREvents = irBag.irEvents ?? [];
-        const locLookup = /* @__PURE__ */ new Map();
-        for (const e of this.lastIREvents) {
-          if (e.loc && e.loc.length > 0) {
-            const key2 = `${e.loc[0].start}:${e.loc[0].end}`;
-            const arr = locLookup.get(key2);
-            if (arr) arr.push(e);
-            else locLookup.set(key2, [e]);
-          }
-        }
-        this.lastIRNodeLocLookup = locLookup;
+        this.lastPatternIR = parseStrudel(code);
+        this.lastIRNodeLocLookup = this.lastPatternIR ? buildNodeLocIndex(this.lastPatternIR) : null;
       } else {
         this.lastPatternIR = null;
-        this.lastIREvents = [];
         this.lastIRNodeLocLookup = null;
         this.backdropVizRequest = null;
       }
@@ -5656,7 +5679,7 @@ var _StrudelEngine = class _StrudelEngine {
     if (this.lastPatternIR) {
       bag.ir = {
         patternIR: this.lastPatternIR,
-        irEvents: this.lastIREvents
+        irEvents: []
       };
     }
     return bag;
