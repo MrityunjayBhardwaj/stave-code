@@ -3236,7 +3236,7 @@ function parseTransform(transformStr, defaultIr, baseOffset = 0, bindings) {
     const n = parseFloat(slowMatch[1]);
     if (!isNaN(n)) return IR.slow(n, defaultIr, tagMeta("slow", callSiteRange));
   }
-  const arrowMatch = str.match(/^[a-z]\s*=>\s*[a-z]\s*\.(.+)$/);
+  const arrowMatch = str.match(/^\(?\s*[A-Za-z_$][\w$]*\s*\)?\s*=>\s*[A-Za-z_$][\w$]*\s*\.(.+)$/);
   if (arrowMatch) {
     const dotIdx = str.indexOf(".", str.indexOf("=>"));
     const chainStartInTrimmed = dotIdx >= 0 ? dotIdx : 0;
@@ -3244,6 +3244,8 @@ function parseTransform(transformStr, defaultIr, baseOffset = 0, bindings) {
     const chainOffset = baseOffset + leadingWs + chainStartInTrimmed;
     return applyChain(defaultIr, "." + arrowMatch[1], chainOffset, bindings);
   }
+  const bareCall = str.match(/^([A-Za-z_$][\w$]*)\s*(?:\(([\s\S]*)\))?\s*$/);
+  if (bareCall) return wrapAsOpaque(defaultIr, bareCall[1], bareCall[2] ?? "", callSiteRange);
   return defaultIr;
 }
 __name(parseTransform, "parseTransform");

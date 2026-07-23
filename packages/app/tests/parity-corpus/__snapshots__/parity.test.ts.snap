@@ -5655,58 +5655,67 @@ exports[`strudel.cc parity corpus — structural IR shape > belldub parses to a 
                                       },
                                     },
                                     {
-                                      "body": {
-                                        "code": "",
-                                        "lang": "strudel",
-                                        "tag": "Code",
-                                        "via": {
-                                          "args": "4",
-                                          "inner": {
-                                            "children": [
-                                              {
-                                                "duration": 0.25,
-                                                "note": "0",
-                                                "params": {
-                                                  "gain": 1,
-                                                  "velocity": 1,
-                                                },
-                                                "tag": "Play",
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "7",
+                                        "inner": {
+                                          "body": {
+                                            "code": "",
+                                            "lang": "strudel",
+                                            "tag": "Code",
+                                            "via": {
+                                              "args": "4",
+                                              "inner": {
+                                                "children": [
+                                                  {
+                                                    "duration": 0.25,
+                                                    "note": "0",
+                                                    "params": {
+                                                      "gain": 1,
+                                                      "velocity": 1,
+                                                    },
+                                                    "tag": "Play",
+                                                  },
+                                                  {
+                                                    "duration": 0.25,
+                                                    "note": "5",
+                                                    "params": {
+                                                      "gain": 1,
+                                                      "velocity": 1,
+                                                    },
+                                                    "tag": "Play",
+                                                  },
+                                                  {
+                                                    "duration": 0.25,
+                                                    "note": "4",
+                                                    "params": {
+                                                      "gain": 1,
+                                                      "velocity": 1,
+                                                    },
+                                                    "tag": "Play",
+                                                  },
+                                                  {
+                                                    "duration": 0.25,
+                                                    "note": "2",
+                                                    "params": {
+                                                      "gain": 1,
+                                                      "velocity": 1,
+                                                    },
+                                                    "tag": "Play",
+                                                  },
+                                                ],
+                                                "tag": "Seq",
                                               },
-                                              {
-                                                "duration": 0.25,
-                                                "note": "5",
-                                                "params": {
-                                                  "gain": 1,
-                                                  "velocity": 1,
-                                                },
-                                                "tag": "Play",
-                                              },
-                                              {
-                                                "duration": 0.25,
-                                                "note": "4",
-                                                "params": {
-                                                  "gain": 1,
-                                                  "velocity": 1,
-                                                },
-                                                "tag": "Play",
-                                              },
-                                              {
-                                                "duration": 0.25,
-                                                "note": "2",
-                                                "params": {
-                                                  "gain": 1,
-                                                  "velocity": 1,
-                                                },
-                                                "tag": "Play",
-                                              },
-                                            ],
-                                            "tag": "Seq",
+                                              "method": "iter",
+                                            },
                                           },
-                                          "method": "iter",
+                                          "offset": 1,
+                                          "tag": "Late",
                                         },
+                                        "method": "add",
                                       },
-                                      "offset": 1,
-                                      "tag": "Late",
                                     },
                                   ],
                                   "userMethod": "off",
@@ -5992,28 +6001,37 @@ exports[`strudel.cc parity corpus — structural IR shape > chop parses to a sta
             },
             {
               "body": {
-                "body": {
-                  "code": "",
-                  "lang": "strudel",
-                  "tag": "Code",
-                  "via": {
-                    "args": "32",
-                    "inner": {
-                      "duration": 1,
-                      "note": "p",
-                      "params": {
-                        "gain": 1,
-                        "s": "p",
-                        "velocity": 1,
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "32",
+                        "inner": {
+                          "duration": 1,
+                          "note": "p",
+                          "params": {
+                            "gain": 1,
+                            "s": "p",
+                            "velocity": 1,
+                          },
+                          "tag": "Play",
+                        },
+                        "method": "loopAt",
                       },
-                      "tag": "Play",
                     },
-                    "method": "loopAt",
+                    "n": 128,
+                    "tag": "Chop",
+                    "userMethod": "chop",
                   },
+                  "method": "rev",
                 },
-                "n": 128,
-                "tag": "Chop",
-                "userMethod": "chop",
               },
               "key": "pan",
               "rawArgs": "1",
@@ -7274,19 +7292,28 @@ exports[`strudel.cc parity corpus — structural IR shape > flatrave parses to a
                       "p": 0.5,
                       "tag": "Choice",
                       "then": {
-                        "body": {
-                          "duration": 1,
-                          "note": "hh",
-                          "params": {
-                            "gain": 1,
-                            "s": "hh",
-                            "slice": 1,
-                            "velocity": 1,
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": ""2"",
+                          "inner": {
+                            "body": {
+                              "duration": 1,
+                              "note": "hh",
+                              "params": {
+                                "gain": 1,
+                                "s": "hh",
+                                "slice": 1,
+                                "velocity": 1,
+                              },
+                              "tag": "Play",
+                            },
+                            "factor": 4,
+                            "tag": "Fast",
                           },
-                          "tag": "Play",
+                          "method": "fast",
                         },
-                        "factor": 4,
-                        "tag": "Fast",
                       },
                       "userMethod": "sometimes",
                     },
@@ -7764,100 +7791,109 @@ exports[`strudel.cc parity corpus — structural IR shape > flatrave parses to a
                             "userMethod": "sometimes",
                           },
                           {
-                            "body": {
-                              "else_": {
-                                "children": [
-                                  {
-                                    "duration": 0.25,
-                                    "note": "0",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
-                                    "duration": 0.25,
-                                    "note": "5",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
-                                    "duration": 0.25,
-                                    "note": "3",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                  {
-                                    "duration": 0.25,
-                                    "note": "2",
-                                    "params": {
-                                      "gain": 1,
-                                      "velocity": 1,
-                                    },
-                                    "tag": "Play",
-                                  },
-                                ],
-                                "tag": "Seq",
-                              },
-                              "p": 0.5,
-                              "tag": "Choice",
-                              "then": {
+                            "code": "",
+                            "lang": "strudel",
+                            "tag": "Code",
+                            "via": {
+                              "args": "5",
+                              "inner": {
                                 "body": {
-                                  "children": [
-                                    {
-                                      "duration": 0.25,
-                                      "note": "0",
-                                      "params": {
-                                        "gain": 1,
-                                        "velocity": 1,
+                                  "else_": {
+                                    "children": [
+                                      {
+                                        "duration": 0.25,
+                                        "note": "0",
+                                        "params": {
+                                          "gain": 1,
+                                          "velocity": 1,
+                                        },
+                                        "tag": "Play",
                                       },
-                                      "tag": "Play",
-                                    },
-                                    {
-                                      "duration": 0.25,
-                                      "note": "5",
-                                      "params": {
-                                        "gain": 1,
-                                        "velocity": 1,
+                                      {
+                                        "duration": 0.25,
+                                        "note": "5",
+                                        "params": {
+                                          "gain": 1,
+                                          "velocity": 1,
+                                        },
+                                        "tag": "Play",
                                       },
-                                      "tag": "Play",
-                                    },
-                                    {
-                                      "duration": 0.25,
-                                      "note": "3",
-                                      "params": {
-                                        "gain": 1,
-                                        "velocity": 1,
+                                      {
+                                        "duration": 0.25,
+                                        "note": "3",
+                                        "params": {
+                                          "gain": 1,
+                                          "velocity": 1,
+                                        },
+                                        "tag": "Play",
                                       },
-                                      "tag": "Play",
-                                    },
-                                    {
-                                      "duration": 0.25,
-                                      "note": "2",
-                                      "params": {
-                                        "gain": 1,
-                                        "velocity": 1,
+                                      {
+                                        "duration": 0.25,
+                                        "note": "2",
+                                        "params": {
+                                          "gain": 1,
+                                          "velocity": 1,
+                                        },
+                                        "tag": "Play",
                                       },
-                                      "tag": "Play",
+                                    ],
+                                    "tag": "Seq",
+                                  },
+                                  "p": 0.5,
+                                  "tag": "Choice",
+                                  "then": {
+                                    "body": {
+                                      "children": [
+                                        {
+                                          "duration": 0.25,
+                                          "note": "0",
+                                          "params": {
+                                            "gain": 1,
+                                            "velocity": 1,
+                                          },
+                                          "tag": "Play",
+                                        },
+                                        {
+                                          "duration": 0.25,
+                                          "note": "5",
+                                          "params": {
+                                            "gain": 1,
+                                            "velocity": 1,
+                                          },
+                                          "tag": "Play",
+                                        },
+                                        {
+                                          "duration": 0.25,
+                                          "note": "3",
+                                          "params": {
+                                            "gain": 1,
+                                            "velocity": 1,
+                                          },
+                                          "tag": "Play",
+                                        },
+                                        {
+                                          "duration": 0.25,
+                                          "note": "2",
+                                          "params": {
+                                            "gain": 1,
+                                            "velocity": 1,
+                                          },
+                                          "tag": "Play",
+                                        },
+                                      ],
+                                      "tag": "Seq",
                                     },
-                                  ],
-                                  "tag": "Seq",
+                                    "factor": 2,
+                                    "tag": "Slow",
+                                    "userMethod": "slow",
+                                  },
+                                  "userMethod": "sometimes",
                                 },
-                                "factor": 2,
-                                "tag": "Slow",
-                                "userMethod": "slow",
+                                "offset": 1,
+                                "tag": "Late",
                               },
-                              "userMethod": "sometimes",
+                              "method": "add",
                             },
-                            "offset": 1,
-                            "tag": "Late",
                           },
                         ],
                         "userMethod": "off",

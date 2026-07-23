@@ -3308,6 +3308,10 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "2",
   },
   {
+    "tag": "Code",
+    "text": "add(7)",
+  },
+  {
     "tag": "Late",
     "text": "1/3",
   },
@@ -3423,6 +3427,10 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "p",
+  },
+  {
+    "tag": "Code",
+    "text": "rev",
   },
   {
     "tag": "Chop",
@@ -4178,6 +4186,10 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".sometimes(fast("2"))",
   },
   {
+    "tag": "Code",
+    "text": "fast("2")",
+  },
+  {
     "tag": "Fast",
     "text": "*4",
   },
@@ -4428,6 +4440,10 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "2",
+  },
+  {
+    "tag": "Code",
+    "text": "add(5)",
   },
   {
     "tag": "Late",

@@ -2798,8 +2798,12 @@ function parseTransform(
   }
 
   // Arrow function like "x => x.fast(2)" — recurse with the chain offset
-  // adjusted to the position of `.fast(...)` inside the arrow body.
-  const arrowMatch = str.match(/^[a-z]\s*=>\s*[a-z]\s*\.(.+)$/)
+  // adjusted to the position of `.fast(...)` inside the arrow body. The
+  // param and body-var may be multi-char, and the param may be parenthesised
+  // (`pp => pp.fast(2)`, `(x) => x.fast(2)`) — all reduce to the same chain
+  // applied to the body. A narrower `[a-z]`-only match used to drop those
+  // forms to the silent identity below (#963).
+  const arrowMatch = str.match(/^\(?\s*[A-Za-z_$][\w$]*\s*\)?\s*=>\s*[A-Za-z_$][\w$]*\s*\.(.+)$/)
   if (arrowMatch) {
     const dotIdx = str.indexOf('.', str.indexOf('=>'))
     const chainStartInTrimmed = dotIdx >= 0 ? dotIdx : 0
@@ -2808,6 +2812,32 @@ function parseTransform(
     return applyChain(defaultIr, '.' + arrowMatch[1], chainOffset, bindings)
   }
 
+  // Bare partial-application form the typed arms above did not model —
+  // `fast(2*2)`, `slow(-2)`, `add(5)`, a bare `rev`, or any `name(args)` /
+  // `name`. Returning `defaultIr` here silently asserted an IDENTITY
+  // transform: the node vanished and the timeline drew `every(n, identity)`,
+  // positively wrong music with no tag-count change to catch it (#963, PV37
+  // wrap-never-drop, north-star invariant 4 — no silent data loss). Wrap it
+  // as an opaque Code node carrying the verbatim source: the transform is
+  // then PRESENT in the tree (collect walks `via.inner`; toStrudel re-emits
+  // `() => body.name(args)`, which applies `name(args)` to the every-cycle
+  // body and is hap-identical to the partially-applied `name(args)` form).
+  // We deliberately do NOT route this through applyChain — its `fast`/`slow`
+  // arms `parseFloat` the arg, which would truncate `2*2` to `2` (a
+  // plausible-wrong value); the opaque wrap preserves `2*2` exactly and
+  // defers the semantics to Strudel's own eval.
+  const bareCall = str.match(/^([A-Za-z_$][\w$]*)\s*(?:\(([\s\S]*)\))?\s*$/)
+  if (bareCall) return wrapAsOpaque(defaultIr, bareCall[1], bareCall[2] ?? '', callSiteRange)
+
+  // Residual: a transform with no partial-application shape and no
+  // `param => bodyvar.chain` shape — an identity arrow (`x => x`, which the
+  // body below correctly renders), or a fresh-expression arrow that builds a
+  // new pattern from the arg (`x => n("a").set(x)`). Neither can round-trip
+  // through the opaque `body.method(args)` wrapper without emitting invalid
+  // JS, so wrapping them here would be worse than the identity below. A
+  // faithful raw-function arm needs `extractTransform` to emit the arrow
+  // verbatim — tracked separately (#969). The identity arm is exactly right;
+  // the fresh-expression arm is the one remaining narrow drop.
   return defaultIr
 }
 
