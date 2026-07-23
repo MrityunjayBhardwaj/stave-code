@@ -26,7 +26,7 @@ import * as React from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SongAnalysis, PatternIR, HapStream, IREvent } from '@stave/editor'
 import {
-  collectCycles,
+  structuralWalk,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
 } from '@stave/editor'
@@ -281,10 +281,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const natCycles = naturalSpan(analysis)
   const bareSong = useMemo(() => {
     if (props.ir == null) return false
-    const evs = collectCycles(props.ir, 0, Math.max(1, Math.ceil(natCycles))) as Array<{
-      armIndex?: number
-    }>
-    return !evs.some((e) => typeof e.armIndex === 'number')
+    // Structure-only probe (#974): "bare" = NO arrange/cat combinator. A lane carries
+    // `armByCycle` iff an event under it had an `armIndex` (an arrangement arm) — the
+    // structural walk sets it from the same source structure `collectCycles` did, so this is
+    // the byte-identical successor to the old `evs.some(e => armIndex)` check, without needing
+    // the behaviour engine and resilient on mid-edit code.
+    const lanes = structuralWalk(props.ir, Math.max(1, Math.ceil(natCycles)))
+    return !lanes.some((l) => l.armByCycle !== undefined)
   }, [props.ir, natCycles])
   // The user's resized display span for a pure bare loop (#662, option B). A
   // VIEW-ONLY preference — dragging the bare clip's right edge grows/shrinks the
