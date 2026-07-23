@@ -675,7 +675,6 @@ declare class StrudelEngine implements LiveCodingEngine {
     private trackOrbit;
     private lastEvaluatedCode;
     private lastPatternIR;
-    private lastIREvents;
     private lastIRNodeLocLookup;
     private breakpointStore;
     private isPausedState;

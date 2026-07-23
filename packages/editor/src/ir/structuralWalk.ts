@@ -464,10 +464,17 @@ function walkCycle(ir: PatternIR, ctx: StructCtx): LaneItem[] {
 }
 
 /**
- * Walk the IR for lane STRUCTURE over `[0, nCycles)`. Anchors only — never computes onsets.
- * Per-node resilient: a bad sub-node degrades its own lane, never the whole walk.
+ * Walk the IR over `[0, nCycles)` and return the RAW per-leaf items — one per
+ * Play leaf reached, pre-aggregation. Anchors only, never onsets; per-node
+ * resilient (a bad sub-node degrades its own branch, never the whole walk).
+ *
+ * The pre-aggregation items carry each leaf's OWN `loc` (aggregation collapses a
+ * lane to first-wins anchors and loses per-leaf spans), so this is the shared
+ * substrate for consumers that need node-level identity — `structuralWalk`
+ * aggregates it into lane skeletons; `nodeIdentity.buildNodeLocIndex` indexes it
+ * by leaf loc → irNodeId. Sharing one traversal means the two cannot drift.
  */
-export function structuralWalk(ir: PatternIR, nCycles: number): LaneSkeleton[] {
+export function walkLeafItems(ir: PatternIR, nCycles: number): LaneItem[] {
   const items: LaneItem[] = []
   for (let c = 0; c < nCycles; c++) {
     try {
@@ -476,5 +483,13 @@ export function structuralWalk(ir: PatternIR, nCycles: number): LaneSkeleton[] {
       // A whole-cycle failure degrades that cycle only.
     }
   }
-  return aggregateLaneItems(items, nCycles)
+  return items
+}
+
+/**
+ * Walk the IR for lane STRUCTURE over `[0, nCycles)`. Anchors only — never computes onsets.
+ * Per-node resilient: a bad sub-node degrades its own lane, never the whole walk.
+ */
+export function structuralWalk(ir: PatternIR, nCycles: number): LaneSkeleton[] {
+  return aggregateLaneItems(walkLeafItems(ir, nCycles), nCycles)
 }

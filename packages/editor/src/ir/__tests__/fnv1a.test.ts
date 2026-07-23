@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fnv1a } from '../collect'
+import { fnv1a } from '../nodeIdentity'
 
 describe('20-05 — fnv1a (PV38 D-02 hash)', () => {
   it('is deterministic — same input twice yields same digest', () => {

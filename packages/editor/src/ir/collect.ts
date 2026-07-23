@@ -11,6 +11,11 @@
 
 import type { PatternIR } from './PatternIR'
 import type { IREvent, SourceLocation } from './IREvent'
+// Node identity moved to its domain-correct home (nodeIdentity.ts) — it is a
+// structural property of an IR node (loc + tag), not a behavioural one. collect
+// still stamps it at the Play leaf via `assignNodeId`; the eval path now sources
+// the same ids from `buildNodeLocIndex` instead of collect's output (#975/#982).
+import { fnv1a, assignNodeId } from './nodeIdentity'
 
 // ---------------------------------------------------------------------------
 // Deterministic seeded PRNG used by the `Degrade` tag. We mirror Strudel's
@@ -113,54 +118,6 @@ function withWrapperLoc(
     ...e,
     loc: e.loc ? [...e.loc, range] : [range],
   }))
-}
-
-/**
- * FNV-1a 32-bit hash. Used by `assignNodeId` to derive content-addressed
- * irNodeIds (PV38 D-02). Inputs: `${loc.start}:${loc.end}:${tag}:${position}`.
- *
- * Determinism: pure function, same input → same output.
- * Uniqueness: 32-bit space; corpus-wide collision probability negligible
- * for snapshot-scoped event counts. The uniqueness/lookup-resolves probe
- * in parity.test.ts catches any real-world collision before ship.
- *
- * Why FNV-1a over crypto.subtle.digest: subtle is async; synchronous
- * digestSync does not exist; the entire walk is sync. Why over DJB2: FNV-1a
- * has slightly better avalanche on short keys (the str-length here is ~10).
- *
- * Exported as the documentation-grade public surface for the test harness
- * (`packages/editor/src/ir/__tests__/fnv1a.test.ts`); no other consumer
- * imports it directly — `assignNodeId` is the production caller.
- */
-export function fnv1a(input: string): string {
-  let h = 0x811c9dc5 // FNV offset basis
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i)
-    h = Math.imul(h, 0x01000193) // FNV prime, 32-bit safe via Math.imul
-  }
-  // >>> 0 forces unsigned 32-bit; toString(16) hex; padStart for stable width.
-  return (h >>> 0).toString(16).padStart(8, '0')
-}
-
-/**
- * Compute a stable content-addressed id for an IR node that produced this
- * event (PV38 clause 1 / D-02). Inputs: `loc[0].start + loc[0].end + tag +
- * position`. Hash function: FNV-1a 32-bit, hex-encoded.
- *
- * Under the leaf-only-assignment scheme (RESEARCH DEC-NEW-1), this is
- * called from the Play arm with position=0; future leaf arms (e.g. a
- * hypothetical RawHap tag) can pass meaningful positions if they emit
- * multiple events per direct return.
- *
- * If the IR node is loc-less (which violates PV36 and dev-warns at the
- * collect() boundary), this falls back to start=-1, end=-1 so the id is
- * still produced — but the dev-warn surfaces the underlying contract
- * violation. PV36 enforcement remains the loud gate.
- */
-function assignNodeId(ir: PatternIR, position: number): string {
-  const start = ir.loc?.[0]?.start ?? -1
-  const end = ir.loc?.[0]?.end ?? -1
-  return fnv1a(`${start}:${end}:${ir.tag}:${position}`)
 }
 
 export interface CollectContext {
