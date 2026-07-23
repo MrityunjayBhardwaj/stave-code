@@ -1053,4 +1053,109 @@ describe('LiveCodingRuntime', () => {
       runtime.dispose()
     })
   })
+
+  // -------------------------------------------------------------------------
+  // evaluateForTimeline (#977) — populate song patterns pre-play WITHOUT
+  // starting playback, so the Song timeline draws eval-faithful marks before
+  // Play. Must reuse the real evaluate (single oracle), never publish/play,
+  // and serialize its evaluate with play()'s (the shared `.p` capture race).
+  // -------------------------------------------------------------------------
+  describe('evaluateForTimeline (#977) — eval-on-load for pre-play marks', () => {
+    it('runs init + evaluate but never play or publish; isPlaying stays false', async () => {
+      const engine = createMockEngine()
+      engine.setComponents({
+        streaming: makeStreamingComponent(),
+        audio: makeAudioComponent(),
+      })
+      const runtime = new LiveCodingRuntime('tl-1', engine, () => 'note("c3")')
+      let published = false
+      workspaceAudioBus.subscribe({ kind: 'file', fileId: 'tl-1' }, (p) => {
+        if (p) published = true
+      })
+
+      await runtime.evaluateForTimeline()
+
+      expect(engine.callLog).toEqual(['init', 'evaluate'])
+      expect(engine.playFn.mock.calls.length).toBe(0)
+      expect(published).toBe(false)
+      expect(runtime.getIsPlaying()).toBe(false)
+      expect(workspaceAudioBus.listSources()).toHaveLength(0)
+      runtime.dispose()
+    })
+
+    it('evaluates the CURRENT file content on each call', async () => {
+      const engine = createMockEngine()
+      let content = 'note("c3")'
+      const runtime = new LiveCodingRuntime('tl-2', engine, () => content)
+      await runtime.evaluateForTimeline()
+      content = 'note("e3")'
+      await runtime.evaluateForTimeline()
+      expect(engine.evaluateCalls).toEqual(['note("c3")', 'note("e3")'])
+      runtime.dispose()
+    })
+
+    it('is a no-op while playing (play() already keeps song patterns fresh)', async () => {
+      const engine = createMockEngine()
+      engine.setComponents({
+        streaming: makeStreamingComponent(),
+        audio: makeAudioComponent(),
+      })
+      const runtime = new LiveCodingRuntime('tl-3', engine, () => 'code')
+      await runtime.play()
+      const evalsAfterPlay = engine.evaluateCalls.length
+      await runtime.evaluateForTimeline()
+      expect(engine.evaluateCalls.length).toBe(evalsAfterPlay) // no extra evaluate
+      runtime.dispose()
+    })
+
+    it('is a no-op after dispose (never inits or evaluates)', async () => {
+      const engine = createMockEngine()
+      const runtime = new LiveCodingRuntime('tl-4', engine, () => 'code')
+      runtime.dispose()
+      const afterDispose = [...engine.callLog]
+      await runtime.evaluateForTimeline()
+      // evaluateForTimeline added nothing — no init, no evaluate.
+      expect(engine.callLog).toEqual(afterDispose)
+      expect(engine.evaluateCalls).toEqual([])
+    })
+
+    it('serializes its evaluate with play() — the two never overlap', async () => {
+      const engine = createMockEngine()
+      engine.setComponents({
+        streaming: makeStreamingComponent(),
+        audio: makeAudioComponent(),
+      })
+      // Controllable evaluate: each call blocks until its deferred is released,
+      // so we can observe whether a second evaluate begins before the first
+      // ends. Without the gate the two evaluates would interleave here — that
+      // is exactly the shared `.p`-capture cross-wire the gate prevents.
+      const releases: Array<() => void> = []
+      const evalOrder: string[] = []
+      engine.evaluate = vi.fn(async (code: string) => {
+        evalOrder.push(code)
+        await new Promise<void>((res) => releases.push(res))
+        return {}
+      })
+      const runtime = new LiveCodingRuntime('tl-5', engine, () => 'code')
+
+      const pTimeline = runtime.evaluateForTimeline()
+      const pPlay = runtime.play()
+      const flush = async () => {
+        for (let i = 0; i < 10; i++) await Promise.resolve()
+      }
+      await flush()
+
+      // Gate holds: only ONE evaluate has begun though both callers are live.
+      expect(evalOrder.length).toBe(1)
+
+      releases.shift()!() // release the first evaluate
+      await flush()
+      // Now — and only now — the second evaluate begins.
+      expect(evalOrder.length).toBe(2)
+
+      releases.shift()!() // release the second so play() can finish
+      await Promise.all([pTimeline, pPlay])
+      runtime.dispose()
+    })
+  })
 })

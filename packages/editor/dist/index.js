@@ -37550,6 +37550,19 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
      * bump it; after every await, `play()` bails if its token is stale (#811).
      */
     this.playGeneration = 0;
+    /**
+     * Serializes every `engine.evaluate()` call this runtime makes — `play()`'s
+     * eval and `evaluateForTimeline()`'s eval share it (#977). The engine
+     * installs its `.p` capture wrappers on the shared Pattern prototype and
+     * closes them over the CURRENT evaluate's capture maps; two overlapping
+     * evaluates would cross-wire captured patterns (the same audio-boundary
+     * race class as the double-init in #815). A user can edit — firing a
+     * debounced eval-on-load — and press Play a beat later, so the overlap is
+     * real. Chaining through this promise guarantees one evaluate at a time;
+     * `play()`'s supersession gate (#811) still runs after the wait, so a Stop
+     * landing during the queue is honored.
+     */
+    this.evalGate = Promise.resolve();
     this.errorListeners = /* @__PURE__ */ new Set();
     this.playingChangedListeners = /* @__PURE__ */ new Set();
     this.evaluateSuccessListeners = /* @__PURE__ */ new Set();
@@ -37601,6 +37614,54 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     this.isInitialized = true;
   }
   /**
+   * Run `fn` (an `engine.evaluate()` call) exclusively, chained behind any
+   * evaluate already in flight. See `evalGate` for why serialization is
+   * mandatory. Errors are swallowed on the gate chain so one failed evaluate
+   * doesn't poison the queue; the caller still sees `fn`'s own resolution.
+   */
+  runExclusiveEval(fn) {
+    const run = this.evalGate.then(fn, fn);
+    this.evalGate = run.then(
+      () => void 0,
+      () => void 0
+    );
+    return run;
+  }
+  /**
+   * Populate the engine's timeline haps (`songPatterns`) WITHOUT starting
+   * playback, so the Song timeline draws eval-faithful marks BEFORE the user
+   * presses Play (#977). Runs init (idempotent) + `engine.evaluate` and stops
+   * there: no bus publish, no `scheduler.start()`, no playing-state flip.
+   *
+   * The AudioContext stays suspended — `evaluate()` captures patterns via the
+   * `.p` setter and queryArcs them offline; the scheduler start that produces
+   * sound lives in `play()` (step 8), which this never reaches. Reusing the
+   * real `engine.evaluate` means pre-play marks come from the SAME eval oracle
+   * as playback — there is no second interpreter to drift.
+   *
+   * Silent by design: does NOT fire `onError` / `evaluateSuccess`. A failed
+   * evaluate (mid-edit invalid code) simply leaves `songPatterns` empty and the
+   * timeline falls back to the structural walk + collect marks (the resilience
+   * path). The only observable change is that pre-play marks for VALID code
+   * become eval-computed instead of collect-computed.
+   *
+   * No-op while playing or disposed: `play()` already keeps `songPatterns`
+   * fresh, so re-evaluating mid-play would be redundant churn.
+   */
+  async evaluateForTimeline() {
+    if (this.isDisposed || this.isPlayingState) return;
+    try {
+      if (!this.isInitialized) {
+        await this.engine.init();
+        this.isInitialized = true;
+      }
+      if (this.isDisposed || this.isPlayingState) return;
+      const code = this.getFileContent();
+      await this.runExclusiveEval(() => this.engine.evaluate(code));
+    } catch {
+    }
+  }
+  /**
    * The nine-step play lifecycle (PK1). See class JSDoc above.
    *
    * Returns the evaluate error if any (also fires `onError` listeners).
@@ -37627,7 +37688,7 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     const code = this.getFileContent();
     let evalResult;
     try {
-      evalResult = await this.engine.evaluate(code);
+      evalResult = await this.runExclusiveEval(() => this.engine.evaluate(code));
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       this.fireOnError(error);
