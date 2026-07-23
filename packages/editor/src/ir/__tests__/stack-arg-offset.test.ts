@@ -14,16 +14,23 @@
  */
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../parseStrudel'
-import { collect } from '../collect'
+import { walkLeafItems } from '../structuralWalk'
+
+// The atom loc lives on the parsed IR's Play leaves; `walkLeafItems` is the
+// structural walk that carries each leaf's loc (loc[0] = innermost atom range,
+// wrapper ranges appended) — the same `.loc` the retired collect engine set on
+// its events, produced WITHOUT running the behaviour interpreter. Cycle 0
+// suffices: every leaf is reached once and loc is timing-independent.
+const leafLocs = (code: string) => walkLeafItems(parseStrudel(code), 1)
 
 describe('#107 — stack-arg loc threads through to inner atoms', () => {
   it('top-level stack(s("a"), s("b")) — atoms resolve to absolute positions', () => {
     const code = 'stack(s("a"), s("b"))'
     //                   ^=8        ^=18
-    const events = collect(parseStrudel(code))
-    expect(events.length).toBe(2)
-    expect(events[0].loc?.[0]).toEqual({ start: 9, end: 10 })
-    expect(events[1].loc?.[0]).toEqual({ start: 17, end: 18 })
+    const leaves = leafLocs(code)
+    expect(leaves.length).toBe(2)
+    expect(leaves[0].loc?.[0]).toEqual({ start: 9, end: 10 })
+    expect(leaves[1].loc?.[0]).toEqual({ start: 17, end: 18 })
   })
 
   it('multi-line stack — args carry per-line absolute offsets', () => {
@@ -33,10 +40,10 @@ describe('#107 — stack-arg loc threads through to inner atoms', () => {
     //   '  s("hh")' starts at 6, "hh" atom inside `s("` → atom at 11
     //   ',\n'       after closing paren at 14
     //   '  s("bd")' starts at 17, "bd" atom at 22
-    const events = collect(parseStrudel(code))
-    expect(events.length).toBe(2)
-    expect(events[0].loc?.[0]).toEqual({ start: 12, end: 14 })
-    expect(events[1].loc?.[0]).toEqual({ start: 23, end: 25 })
+    const leaves = leafLocs(code)
+    expect(leaves.length).toBe(2)
+    expect(leaves[0].loc?.[0]).toEqual({ start: 12, end: 14 })
+    expect(leaves[1].loc?.[0]).toEqual({ start: 23, end: 25 })
   })
 
   it('stack INSIDE a $: track — offset compounds (track offset + stack-arg offset)', () => {
@@ -50,10 +57,10 @@ describe('#107 — stack-arg loc threads through to inner atoms', () => {
     //   first arg 's("hh")' offset 0 within inner → atom 'hh' at
     //   19 + 3 = 22.  second arg ' s("bd")' starts at 9 within inner
     //   (after ', '), trimmed offset 10 → atom 'bd' at 19 + 13 = 32.
-    const events = collect(parseStrudel(code))
-    expect(events.length).toBe(2)
-    expect(events[0].loc?.[0]).toEqual({ start: 22, end: 24 })
-    expect(events[1].loc?.[0]).toEqual({ start: 31, end: 33 })
+    const leaves = leafLocs(code)
+    expect(leaves.length).toBe(2)
+    expect(leaves[0].loc?.[0]).toEqual({ start: 22, end: 24 })
+    expect(leaves[1].loc?.[0]).toEqual({ start: 31, end: 33 })
   })
 
   it('chain method on stack arg preserves inner atom as loc[0] (wrapper appended)', () => {
@@ -62,23 +69,23 @@ describe('#107 — stack-arg loc threads through to inner atoms', () => {
     // stays as the most-specific atom range.
     const code = 'stack(s("hh").gain(0.5))'
     //                   ^=8 ('h' of "hh")
-    const events = collect(parseStrudel(code))
-    expect(events.length).toBe(1)
-    expect(events[0].loc?.[0]).toEqual({ start: 9, end: 11 })
+    const leaves = leafLocs(code)
+    expect(leaves.length).toBe(1)
+    expect(leaves[0].loc?.[0]).toEqual({ start: 9, end: 11 })
     // Wrapper's range appended (gain call site)
-    expect(events[0].loc!.length).toBeGreaterThanOrEqual(2)
+    expect(leaves[0].loc!.length).toBeGreaterThanOrEqual(2)
   })
 
   it("stack arg with leading whitespace — offset skips the whitespace", () => {
     const code = 'stack(   s("hh"),    s("bd"))'
     // First arg trimmed-start at offset 9 within trimmed ('s' of 's("hh")'),
     // atom 'hh' at 9 + 3 = 12 within trimmed (= absolute since baseOffset=0).
-    const events = collect(parseStrudel(code))
-    expect(events.length).toBe(2)
-    expect(events[0].loc?.[0].start).toBe(12)
+    const leaves = leafLocs(code)
+    expect(leaves.length).toBe(2)
+    expect(leaves[0].loc?.[0].start).toBe(12)
     // Second arg: after first arg's `s("hh"),` (offset 9..16) and
     // `    ` whitespace (4 chars), trimmed-start at 21, atom 'bd' at 24.
-    expect(events[1].loc?.[0].start).toBe(24)
+    expect(leaves[1].loc?.[0].start).toBe(24)
   })
 })
 
@@ -105,11 +112,11 @@ describe('#901 — stack tolerates whitespace before its paren', () => {
     const body = ir.tag === 'Track' ? ir.body : ir
     expect(body.tag).toBe('Stack')
 
-    const events = collect(ir)
-    expect(events.length).toBe(2)
+    const leaves = leafLocs(code)
+    expect(leaves.length).toBe(2)
     // One space ⇒ every atom sits exactly 1 char later than the tight case.
-    expect(events[0].loc?.[0]).toEqual({ start: 10, end: 11 })
-    expect(events[1].loc?.[0]).toEqual({ start: 18, end: 19 })
+    expect(leaves[0].loc?.[0]).toEqual({ start: 10, end: 11 })
+    expect(leaves[1].loc?.[0]).toEqual({ start: 18, end: 19 })
   })
 
   it('stack\\n(…) with a NEWLINE — parses to Stack, atoms keep absolute offsets', () => {
@@ -118,11 +125,11 @@ describe('#901 — stack tolerates whitespace before its paren', () => {
     const body = ir.tag === 'Track' ? ir.body : ir
     expect(body.tag).toBe('Stack')
 
-    const events = collect(ir)
-    expect(events.length).toBe(2)
+    const leaves = leafLocs(code)
+    expect(leaves.length).toBe(2)
     // '\n' is one char, so the layout matches the SPACE case exactly.
-    expect(events[0].loc?.[0]).toEqual({ start: 10, end: 11 })
-    expect(events[1].loc?.[0]).toEqual({ start: 18, end: 19 })
+    expect(leaves[0].loc?.[0]).toEqual({ start: 10, end: 11 })
+    expect(leaves[1].loc?.[0]).toEqual({ start: 18, end: 19 })
   })
 
   it('the Stack node loc spans the whole call INCLUDING the gap', () => {
@@ -139,10 +146,9 @@ describe('#901 — stack tolerates whitespace before its paren', () => {
   it('gap + leading whitespace — the track offset still compounds', () => {
     const code = '$: stack (s("a"), s("b"))'
     //            0.. '$: ' ends at 3; stack at 3, '(' at 9, 'a' at 13, 'b' at 21
-    const ir = parseStrudel(code)
-    const events = collect(ir)
-    expect(events.length).toBe(2)
-    expect(events[0].loc?.[0]).toEqual({ start: 13, end: 14 })
-    expect(events[1].loc?.[0]).toEqual({ start: 21, end: 22 })
+    const leaves = leafLocs(code)
+    expect(leaves.length).toBe(2)
+    expect(leaves[0].loc?.[0]).toEqual({ start: 13, end: 14 })
+    expect(leaves[1].loc?.[0]).toEqual({ start: 21, end: 22 })
   })
 })

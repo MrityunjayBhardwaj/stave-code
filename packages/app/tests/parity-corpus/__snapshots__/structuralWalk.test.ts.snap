@@ -1,0 +1,287 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > amensister: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":198,"arrangeOffset":176,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > arpoon: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":176,"arrangeOffset":175,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-132-recursive-args: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":4,"arrangeOffset":3,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-140-binding-transitive: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":34,"arrangeOffset":33,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-141-arith-rhs: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":25,"arrangeOffset":25,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-141-arith-unreferenced: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":25,"arrangeOffset":25,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-141-binding-arg-text: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":13,"arrangeOffset":13,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-141-irand-chain-root: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-142-samples-objlit: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":83,"arrangeOffset":83,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-143-NEGATIVE-no-apostrophe-comment: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":22,"arrangeOffset":0,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-143-apostrophe-in-chain-arg-comment: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":22,"arrangeOffset":0,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-143-guarded-boot: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":105,"arrangeOffset":105,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-144-paren-root: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":2,"arrangeOffset":2,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-148-leading-dot-chain: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":20,"arrangeOffset":20,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-150-eq-continuation: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":55,"arrangeOffset":55,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-151-comment-only: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":26,"arrangeOffset":26,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-152-block-comment: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":27,"arrangeOffset":26,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-158-NEGATIVE-no-sideeffect: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-158-aliasBank-shape-fence: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-158-all-shape-fence: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-158-initAudio-shape-fence: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-158-samples-shape-fence: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-158-setCpm-camel-shape-fence: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-158-setCps-camel-shape-fence: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-158-setVoicingRange-shape-fence: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-158-setcpm-shape-fence: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-158-setcps-shape-fence: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-158-useRNG-shape-fence: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-159-NEGATIVE-no-whitespace: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":7,"arrangeOffset":7,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-159-tokenizer-whitespace: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":8,"arrangeOffset":8,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-901-stack-newline-paren: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":118,"arrangeOffset":106,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-901-stack-space-paren: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":15,"arrangeOffset":0,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-903-chord-multiplier: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":16,"arrangeOffset":0,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-903-patterned-variant: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":16,"arrangeOffset":0,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-G1-let-binding: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":12,"arrangeOffset":12,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-G2-setCpm-camel: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":23,"arrangeOffset":14,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-G2-setCps-camel: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":21,"arrangeOffset":12,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-G2-setcpm: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":23,"arrangeOffset":14,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-G3-backtick: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":0,"sourceOffset":12,"arrangeOffset":10,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-G4-comment-args: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":36,"arrangeOffset":0,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-G5-named-label: lane anchors match the committed snapshot 1`] = `
+{
+  "p1": "{"dollarPos":0,"sourceOffset":13,"arrangeOffset":4,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-arrange-root: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-chord-voicing-root: lane anchors match the committed snapshot 1`] = `{}`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > barryHarris: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":42,"arrangeOffset":42,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > bassFuge: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":652,"arrangeOffset":651,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > belldub: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":322,"arrangeOffset":296,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > chop: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":192,"arrangeOffset":192,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > delay: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":123,"arrangeOffset":123,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > dinofunk: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":345,"arrangeOffset":335,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > echoPiano: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":118,"arrangeOffset":117,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > flatrave: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":142,"arrangeOffset":130,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > holyflute: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":133,"arrangeOffset":133,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > juxUndTollerei: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":126,"arrangeOffset":126,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > meltingsubmarine: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":194,"arrangeOffset":182,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > orbit: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":123,"arrangeOffset":109,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > randomBells: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":331,"arrangeOffset":308,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;
+
+exports[`structuralWalk anchors are frozen over the corpus (#973) > sampleDrums: lane anchors match the committed snapshot 1`] = `
+{
+  "d1": "{"dollarPos":null,"sourceOffset":158,"arrangeOffset":147,"leafIndex":0,"armByCycle":null,"armLabels":null}",
+}
+`;

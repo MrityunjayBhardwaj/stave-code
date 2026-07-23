@@ -21,7 +21,7 @@
  *      stay green. Only the emitted string shows a change.
  *
  * So the assertions here are deliberately on the EMITTED STRING and the
- * COLLECTED EVENT PARAMS, not on tags. Each pin says whether the collapse is
+ * CLASSIFIED PARAM NODE (its canonical key/value on the IR), not on tags. Each pin says whether the collapse is
  * expected to PRESERVE it or deliberately FLIP it — a pin whose intent is
  * unstated is just a tripwire, and the next person deletes it.
  *
@@ -66,12 +66,11 @@ import { isControlName } from '@strudel/core/controls.mjs'
 import type { PatternIR } from '../PatternIR'
 import { parseStrudel } from '../parseStrudel'
 import { toStrudel } from '../toStrudel'
-import { collectCycles } from './helpers/collectCycles'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// One-time Strudel scope boot — same shape as parity.test.ts. Needed only by
-// the hap-equivalence pin; the string pins are pure.
+// One-time Strudel scope boot. Needed only by the hap-equivalence / merge
+// eval-oracle pins; the string + Param-node pins are pure.
 beforeAll(async () => {
   await evalScope(Promise.resolve(strudelCore), Promise.resolve({ mini }))
   miniAllStrings()
@@ -96,12 +95,16 @@ const nodesWithTag = (src: string, tag: string): any[] =>
 
 const emit = (src: string): string => toStrudel(parseStrudel(src) as never)
 
-/** Collected params for the first event of cycle 0. The consumer-facing view:
- *  what a downstream reader actually finds on the event. */
+/** The classified {key: value} of the first Param node — the structural source
+ *  the classification produces (a canonical `key` + its literal `value`), read
+ *  straight off the IR instead of off a collected event. For a numeric-arg
+ *  control the value is the scalar; a pattern-arg control carries a sub-IR value
+ *  (its per-slot resolution was the retired collect engine's job — assert its
+ *  canonical key via `nodesWithTag(...).key` instead). */
 const firstEventParams = (src: string): Record<string, unknown> => {
-  const evs = collectCycles(parseStrudel(src) as never, 0, 1) as any[]
-  expect(evs.length).toBeGreaterThan(0)
-  return evs[0].params
+  const [node] = nodesWithTag(src, 'Param')
+  expect(node).toBeTruthy()
+  return { [node.key]: node.value }
 }
 
 /** Haps as comparable strings, 4 cycles — the second oracle. Asks Strudel what
@@ -269,8 +272,10 @@ describe('the same control files under different keys by arg shape', () => {
   // FX params Record) while only the pattern arm canonicalised (`cutoff`/
   // `hcutoff`, #928). One control, one key — the whole point.
   it('lpf: both arg shapes now file under the canonical cutoff', () => {
+    // Numeric arg carries its scalar on the node; pattern arg carries a sub-IR
+    // value (per-slot resolution was collect's job), so assert its canonical key.
     expect(firstEventParams('s("bd").lpf(800)')).toMatchObject({ cutoff: 800 })
-    expect(firstEventParams('s("bd").lpf("400 800")')).toMatchObject({ cutoff: '400' })
+    expect(nodesWithTag('s("bd").lpf("400 800")', 'Param')[0].key).toBe('cutoff')
   })
 
   it('hpf: both arg shapes now file under the canonical hcutoff', () => {
@@ -293,7 +298,8 @@ describe('the same control files under different keys by arg shape', () => {
     expect(nodesWithTag('s("bd").delay(0.5)', 'Param')).toHaveLength(1)
     expect(nodesWithTag('s("bd").delay("0.3 0.5")', 'Param')).toHaveLength(1)
     expect(firstEventParams('s("bd").delay(0.5)')).toMatchObject({ delay: 0.5 })
-    expect(firstEventParams('s("bd").delay("0.3 0.5")')).toMatchObject({ delay: '0.3' })
+    // Pattern arg: the key never splits (getControlName('delay') === 'delay').
+    expect(nodesWithTag('s("bd").delay("0.3 0.5")', 'Param')[0].key).toBe('delay')
   })
 
   // The remaining curated arms, pinned as a set so the collapse cannot quietly
@@ -329,14 +335,15 @@ describe('repeated control calls merge last-wins (matching Strudel eval)', () =>
   // re-parse). So the collapse did not introduce a divergence; it removed one —
   // the FX first-wins merge was the outlier all along. See #944.
   it('.room(0.3).room(0.5) collects the last value, matching Strudel', async () => {
+    // Both calls survive as two Param nodes on the IR; which one WINS on the hap
+    // is Strudel's own last-wins merge — the eval oracle is the ground truth now
+    // that the collect merge is retired.
     expect(nodesWithTag('s("bd").room(0.3).room(0.5)', 'Param')).toHaveLength(2)
-    expect(firstEventParams('s("bd").room(0.3).room(0.5)')).toMatchObject({ room: 0.5 })
-    const [hap] = await haps('s("bd").room(0.3).room(0.5)', 1)   // second oracle
+    const [hap] = await haps('s("bd").room(0.3).room(0.5)', 1)
     expect(hap).toContain('"room":0.5')
   })
 
   it('holds for a control that canonicalises, too', async () => {
-    expect(firstEventParams('s("bd").lpf(400).lpf(900)')).toMatchObject({ cutoff: 900 })
     const [hap] = await haps('s("bd").lpf(400).lpf(900)', 1)
     expect(hap).toContain('"cutoff":900')
   })

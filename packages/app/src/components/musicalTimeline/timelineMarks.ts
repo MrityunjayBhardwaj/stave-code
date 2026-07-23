@@ -10,7 +10,7 @@
  */
 
 import type { IREvent, PatternIR } from '@stave/editor'
-import { collectCycles, laneKeyOf, structuralWalk } from '@stave/editor'
+import { structuralWalk } from '@stave/editor'
 import { extractPitch } from './pitch'
 import {
   downsampleMarksToCap,
@@ -152,35 +152,12 @@ export function collectNoteMarks(
     if (lane.armByCycle) armByCycleByLane.set(key, lane.armByCycle)
     if (lane.armLabels) armLabelByLane.set(key, lane.armLabels)
   }
-  // MARKS — pre-eval fallback only. Per-onset IR marks (pitch/gain/voice) are BEHAVIOUR the
-  // structural walk does not compute, so they still come from `collectCycles` — correct pre-
-  // eval for note-names + percussion, and the only source before the first eval. Skipped
-  // entirely when eval haps are present (`useEval` → `collectHapMarks` supplies display-
-  // faithful resolved marks, PV174), so the common post-play path calls neither `collectCycles`
-  // nor this loop. `voice` = the sample name (`ev.s`), the per-voice partition key that recovers
-  // a drum stack's bd/sd/hh as sub-rows (#424); reading it here keeps the pure scene module out
-  // of the editor bundle (P172). The per-lane cap is a span-preserving downsample applied AFTER
-  // the walk (capping in cycle order would truncate a dense lane's clip mid-song, #714).
-  if (!useEval) {
-    for (const ev of collectCycles(ir, 0, nCycles)) {
-      const cycle = ev.begin
-      if (!Number.isFinite(cycle) || cycle < 0 || cycle >= displayCycles) continue
-      const key = laneKeyOf(ev)
-      let arr = marksByLane.get(key)
-      if (!arr) {
-        arr = []
-        marksByLane.set(key, arr)
-      }
-      const end = Number.isFinite(ev.end) && ev.end > cycle ? ev.end : cycle
-      arr.push({
-        cycle,
-        end,
-        pitch: extractPitch(ev)?.midi ?? null,
-        gain: clamp01(ev.gain ?? 1),
-        voice: ev.s ?? null,
-      })
-    }
-  }
+  // MARKS come solely from eval haps now (`collectHapMarks` under `useEval`). The
+  // pre-eval `collectCycles` fallback was removed with the collect interpreter
+  // (#975): before the first eval a lane draws its structure (label/clips) but no
+  // marks, which eval fills within ~90ms–1.3s (eval-on-load, #978). Per-onset marks
+  // are BEHAVIOUR the structural walk does not compute, so `marksByLane` stays empty
+  // here and only the eval branch of `activeMarksByLane` populates it.
   // #927 — seed containment anchors for DECLARED tracks the event walk missed
   // (a signal-valued track emits zero static-IR events, so it never appeared
   // above). Additive + `!has`-guarded: event-producing tracks keep their

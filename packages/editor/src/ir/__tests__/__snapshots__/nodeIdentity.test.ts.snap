@@ -1,0 +1,184 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: $: s("bd sd") \\n $: note("c e g") 1`] = `
+{
+  "23:24": "5f2bea5c",
+  "25:26": "f4c84074",
+  "27:28": "35f06a5c",
+  "6:8": "c9fa0533",
+  "9:11": "8f87918a",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: arrange([1, s("bd*4")], [1, s("sd*2")]) 1`] = `
+{
+  "15:17": "9b0dee03",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: n("0 2 4").scale("C:major") 1`] = `
+{
+  "3:4": "589767ae",
+  "5:6": "8a303162",
+  "7:8": "fb8edeee",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: note("<c e g>") 1`] = `
+{
+  "7:8": "fb8edeee",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: note("c e g").add("12") 1`] = `
+{
+  "10:11": "0d1cccda",
+  "6:7": "0680c008",
+  "8:9": "c5f9fb08",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: note("c@3 e") 1`] = `
+{
+  "10:11": "0d1cccda",
+  "6:7": "0680c008",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: note("c3 e3 g3 a3") 1`] = `
+{
+  "12:14": "47f835e9",
+  "15:17": "9b0dee03",
+  "6:8": "c9fa0533",
+  "9:11": "8f87918a",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("[bd,hh]") 1`] = `
+{
+  "4:6": "59967d07",
+  "7:9": "15bb2b17",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("bd <sd cp> hh") 1`] = `
+{
+  "14:16": "015ff52d",
+  "3:5": "1ccbbad7",
+  "7:9": "15bb2b17",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("bd hh sd cp").degrade() 1`] = `
+{
+  "12:14": "47f835e9",
+  "3:5": "1ccbbad7",
+  "6:8": "c9fa0533",
+  "9:11": "8f87918a",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("bd hh sd hh") 1`] = `
+{
+  "12:14": "47f835e9",
+  "3:5": "1ccbbad7",
+  "6:8": "c9fa0533",
+  "9:11": "8f87918a",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("bd sd hh cp").chop(2) 1`] = `
+{
+  "12:14": "47f835e9",
+  "3:5": "1ccbbad7",
+  "6:8": "c9fa0533",
+  "9:11": "8f87918a",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("bd sd hh").off(0.125, x => x.fast(2)) 1`] = `
+{
+  "3:5": "1ccbbad7",
+  "6:8": "c9fa0533",
+  "9:11": "8f87918a",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("bd sd").degradeBy(0.5) 1`] = `
+{
+  "3:5": "1ccbbad7",
+  "6:8": "c9fa0533",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("bd sd").every(2, fast(2)) 1`] = `
+{
+  "3:5": "1ccbbad7",
+  "6:8": "c9fa0533",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("bd sd").slow(2) 1`] = `
+{
+  "3:5": "1ccbbad7",
+  "6:8": "c9fa0533",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("bd!3 sd") 1`] = `
+{
+  "3:5": "1ccbbad7",
+  "8:10": "9bbc1924",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("bd(3,8)") 1`] = `
+{
+  "3:5": "1ccbbad7",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("bd(3,8,2)") 1`] = `
+{
+  "3:5": "1ccbbad7",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("bd*2 hh") 1`] = `
+{
+  "3:5": "1ccbbad7",
+  "8:10": "9bbc1924",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: s("hh*8").jux(rev) 1`] = `
+{
+  "3:5": "1ccbbad7",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: sound("bd*4, hh*8, ~ sd ~ sd") 1`] = `
+{
+  "13:15": "aa4b5b6b",
+  "21:23": "b01c84ad",
+  "26:28": "13fd520b",
+  "7:9": "15bb2b17",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: stack(s("bd sd"), s("hh*4")) 1`] = `
+{
+  "12:14": "47f835e9",
+  "21:23": "b01c84ad",
+  "9:11": "8f87918a",
+}
+`;
+
+exports[`buildNodeLocIndex loc→irNodeId projection is frozen over the corpus (#975/#982) > freezes node ids for: stack(s("bd sd"), stack(s("hh*2"), s("oh"))) 1`] = `
+{
+  "12:14": "47f835e9",
+  "27:29": "d7e72255",
+  "38:40": "ffad3a02",
+  "9:11": "8f87918a",
+}
+`;

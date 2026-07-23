@@ -16,8 +16,8 @@ import * as strudelCore from '@strudel/core'
 import { mini, miniAllStrings } from '@strudel/mini/mini.mjs'
 
 import { parseStrudel as _parseStrudel, toStrudel, patternToJSON, patternFromJSON } from '../../ir'
-import type { PatternIR, IREvent } from '../../ir'
-import { collectCycles } from './helpers/collectCycles'
+import type { PatternIR } from '../../ir'
+import { walkLeafItems } from '../structuralWalk'
 import { unwrapD1 } from './helpers/unwrapD1'
 import { normalizeStrudelHap } from '../../engine/NormalizedHap'
 
@@ -44,10 +44,15 @@ async function strudelOnsets(code: string, cycles: number): Promise<Array<{ note
   return out.sort((a, b) => a.begin - b.begin)
 }
 
-const onsets = (evs: IREvent[]) =>
-  evs
-    .map(e => ({ note: e.note, begin: +e.begin.toFixed(4), end: +e.end.toFixed(4), arm: e.armIndex }))
-    .sort((a, b) => a.begin - b.begin)
+// Which arm (clip) plays in which cycle is a STRUCTURAL property of the parsed
+// Arrange IR — `walkLeafItems` (the behaviour-free structural walk that mirrors
+// the retired collect's per-cycle arm selection + armIndex threading) reports it
+// without the behaviour interpreter. Onset TIMING within a cycle now comes from
+// Strudel's eval; here we assert the arm bucketing + armIndex the timeline uses.
+const armOnsets = (ir: PatternIR, nCycles: number) =>
+  walkLeafItems(ir, nCycles)
+    .map(it => ({ note: it.labelValue, cycle: it.cycle, arm: it.armIndex }))
+    .sort((a, b) => a.cycle - b.cycle)
 
 // --------------------------------------------------------------------------
 describe('Phase 5a — Arrange IR structure', () => {
@@ -89,31 +94,29 @@ describe('Phase 5a — Arrange IR structure', () => {
   })
 })
 
-describe('Phase 5a — collect timing + armIndex', () => {
-  it('arrange slices arms by weight across cycles, tags armIndex', () => {
+describe('Phase 5a — structural walk: arm bucketing + armIndex', () => {
+  it('arrange buckets arms by weight across cycles, tags armIndex', () => {
     const ir = parse('arrange([2, note("c3")], [1, note("e3")])')
-    const evs = onsets(collectCycles(ir, 0, 4))
-    expect(evs).toEqual([
-      { note: 'c3', begin: 0, end: 1, arm: 0 },
-      { note: 'c3', begin: 1, end: 2, arm: 0 },
-      { note: 'e3', begin: 2, end: 3, arm: 1 },
-      { note: 'c3', begin: 3, end: 4, arm: 0 }, // loops (period 3)
+    expect(armOnsets(ir, 4)).toEqual([
+      { note: 'c3', cycle: 0, arm: 0 },
+      { note: 'c3', cycle: 1, arm: 0 },
+      { note: 'e3', cycle: 2, arm: 1 },
+      { note: 'c3', cycle: 3, arm: 0 }, // loops (period 3)
     ])
   })
 
   it("an arm's internal cycle advances across its span (alternating arm)", () => {
     const ir = parse('arrange([2, note("<c3 e3>")], [1, note("g3")])')
-    const evs = onsets(collectCycles(ir, 0, 4))
+    const evs = armOnsets(ir, 4)
     expect(evs.map(e => e.note)).toEqual(['c3', 'e3', 'g3', 'c3'])
     expect(evs.map(e => e.arm)).toEqual([0, 0, 1, 0])
   })
 
   it('cat tags armIndex 0/1 per cycle', () => {
     const ir = parse('cat(note("c3"), note("e3"))')
-    const evs = onsets(collectCycles(ir, 0, 2))
-    expect(evs).toEqual([
-      { note: 'c3', begin: 0, end: 1, arm: 0 },
-      { note: 'e3', begin: 1, end: 2, arm: 1 },
+    expect(armOnsets(ir, 2)).toEqual([
+      { note: 'c3', cycle: 0, arm: 0 },
+      { note: 'e3', cycle: 1, arm: 1 },
     ])
   })
 
@@ -123,11 +126,10 @@ describe('Phase 5a — collect timing + armIndex', () => {
     // outer arm index: both c3 and e3 belong to OUTER arm 0 (one clip), g3 to
     // outer arm 1 — so the timeline sees the cat block as a single outer clip.
     const ir = parse('arrange([2, cat(note("c3"), note("e3"))], [1, note("g3")])')
-    const evs = onsets(collectCycles(ir, 0, 3))
-    expect(evs).toEqual([
-      { note: 'c3', begin: 0, end: 1, arm: 0 },
-      { note: 'e3', begin: 1, end: 2, arm: 0 }, // inner cat arm 1, but OUTER arm 0
-      { note: 'g3', begin: 2, end: 3, arm: 1 },
+    expect(armOnsets(ir, 3)).toEqual([
+      { note: 'c3', cycle: 0, arm: 0 },
+      { note: 'e3', cycle: 1, arm: 0 }, // inner cat arm 1, but OUTER arm 0
+      { note: 'g3', cycle: 2, arm: 1 },
     ])
   })
 
@@ -136,13 +138,13 @@ describe('Phase 5a — collect timing + armIndex', () => {
     // (here a bare note) is walked from the stack's ctx, so it must carry NO
     // armIndex (else `ctx.armIndex ?? armIndex` would wrongly propagate).
     const ir = parse('stack(arrange([2, note("c3")], [1, note("e3")]), note("g3"))')
-    const evs = collectCycles(ir, 0, 3)
-    const g3 = evs.filter((e) => e.note === 'g3')
+    const items = walkLeafItems(ir, 3)
+    const g3 = items.filter((e) => e.labelValue === 'g3')
     expect(g3.length).toBeGreaterThan(0)
     expect(g3.every((e) => e.armIndex === undefined)).toBe(true)
     // the arrange track still tags its arms
-    expect(evs.find((e) => e.note === 'c3')?.armIndex).toBe(0)
-    expect(evs.find((e) => e.note === 'e3')?.armIndex).toBe(1)
+    expect(items.find((e) => e.labelValue === 'c3')?.armIndex).toBe(0)
+    expect(items.find((e) => e.labelValue === 'e3')?.armIndex).toBe(1)
   })
 
   it('a nested arm carries loc INNERMOST→OUTERMOST (loc[last] = outer combinator)', () => {
@@ -151,32 +153,13 @@ describe('Phase 5a — collect timing + armIndex', () => {
     // an interior entry. (Bind uses loc[0], the content leaf.)
     const code = 'arrange([2, cat(note("c3"), note("e3"))], [1, note("g3")])'
     const ir = parse(code)
-    const ev = collectCycles(ir, 0, 1).find((e) => e.note === 'c3')!
+    const ev = walkLeafItems(ir, 1).find((e) => e.labelValue === 'c3')!
     expect(ev.loc!.length).toBeGreaterThanOrEqual(2)
     const outer = ev.loc![ev.loc!.length - 1]!
     expect(code.slice(outer.start, outer.start + 'arrange('.length)).toBe('arrange(')
     // the inner cat is present as an interior loc entry (not the outermost)
     expect(ev.loc!.some((l) => code.slice(l.start, l.start + 'cat('.length) === 'cat(')).toBe(true)
   })
-})
-
-describe('Phase 5a — parity with real Strudel haps', () => {
-  const cases: Array<[string, number]> = [
-    ['arrange([2, note("c3")], [1, note("e3")])', 6],
-    ['arrange([2, note("c3 d3")], [1, note("e3 f3 g3")])', 6],
-    ['cat(note("c3"), note("e3"))', 4],
-    ['slowcat(note("c3"), note("e3"))', 4],
-    ['fastcat(note("c3"), note("e3"))', 2],
-  ]
-  for (const [code, cycles] of cases) {
-    it(`matches Strudel: ${code}`, async () => {
-      const expected = await strudelOnsets(code, cycles)
-      const got = collectCycles(parse(code), 0, cycles)
-        .map(e => ({ note: e.note, begin: +e.begin.toFixed(4), end: +e.end.toFixed(4) }))
-        .sort((a, b) => a.begin - b.begin)
-      expect(got).toEqual(expected.map(e => ({ note: e.note, begin: +e.begin.toFixed(4), end: +e.end.toFixed(4) })))
-    })
-  }
 })
 
 describe('Phase 5a — round-trip', () => {

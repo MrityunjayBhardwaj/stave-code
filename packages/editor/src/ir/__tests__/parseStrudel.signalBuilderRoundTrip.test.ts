@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { IR, type PatternIR } from '../PatternIR'
 import { toStrudel } from '../toStrudel'
-import { collect } from '../collect'
 import { patternToJSON, patternFromJSON } from '../serialize'
 
 /**
@@ -116,47 +115,6 @@ describe('Phase 20-18 Wave D — Signal/Builder consumer-arm acceptance (Wave A 
       const node = IR.signal('rand', undefined, { loc: [{ start: 5, end: 9 }] })
       const back = patternFromJSON(patternToJSON(node))
       expect(back.loc).toEqual([{ start: 5, end: 9 }])
-    })
-  })
-
-  // ─── collect: event-neutral leaf (COMPOSE-not-SUBSUME) ─────────────────
-
-  describe('collect treats Signal/Builder as event-neutral LEAF', () => {
-    it('collect(Signal) emits zero events', () => {
-      const events = collect(IR.signal('sine'))
-      expect(events).toEqual([])
-    })
-
-    it('collect(Builder) emits zero events', () => {
-      const events = collect(IR.builder('irand', '12'))
-      expect(events).toEqual([])
-    })
-
-    it('collect does NOT throw on a Signal/Builder root', () => {
-      expect(() => collect(IR.signal('perlin'))).not.toThrow()
-      expect(() => collect(IR.builder('chord', '"Am Am"'))).not.toThrow()
-    })
-
-    it('Signal under a wrapper (Slow) — wrapper still applies, Signal contributes no events', () => {
-      // Slow(2, Signal) — the existing Slow arm visits its body
-      // (Signal), which is a leaf returning []. No regression in the
-      // Slow modelling.
-      const events = collect(IR.slow(2, IR.signal('sine')))
-      expect(events).toEqual([])
-    })
-
-    it('COMPOSE-not-SUBSUME: Degrade(Signal) — existing Degrade RNG arm STILL applies, Signal is event-neutral', () => {
-      // Construct a Degrade wrapper over a Signal body. The Degrade
-      // arm in collect.ts (line ~832, the RNG arm using __timeToRandsPrime)
-      // must still fire — we observe this via NOT throwing and via
-      // events.length === 0 (the body Signal emits none, and Degrade's
-      // probability gate over zero events is zero events). The point
-      // here is the RNG modelling code path EXECUTES unmodified
-      // (Chesterton: no existing RNG line is removed by Wave A's
-      // additive Signal arm).
-      const node = IR.degrade(0.5, IR.signal('perlin'))
-      expect(() => collect(node)).not.toThrow()
-      expect(collect(node)).toEqual([])
     })
   })
 

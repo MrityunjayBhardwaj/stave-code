@@ -10,51 +10,61 @@
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../parseStrudel'
 import { toStrudel } from '../toStrudel'
-import { collectCycles } from './helpers/collectCycles'
+import type { PatternIR } from '../PatternIR'
 
-const begins = (code: string): Array<{ b: number; e: number; n: unknown }> =>
-  collectCycles(parseStrudel(code), 0, 1).map((ev) => ({
-    b: +ev.begin.toFixed(4),
-    e: +ev.end.toFixed(4),
-    n: ev.note,
-  }))
+// A chord (`[a,b,c]`, comma) vs a sequence (`[a b c]`, spaces) is a STRUCTURAL
+// distinction in the parsed IR — a `Stack` of parallel voices vs a `Seq` of
+// staggered ones — not a behavioural one. Onset TIMING (begin/end) now comes
+// from Strudel's own eval; this guards the structural IR the parser builds (its
+// stated subject) directly on the IR, plus the round-trip. The audio path (real
+// Strudel) was always correct.
+const bodyOf = (ir: PatternIR): PatternIR => (ir.tag === 'Track' ? ir.body : ir)
+const kidsOf = (n: PatternIR): PatternIR[] =>
+  n.tag === 'Stack' ? n.tracks : n.tag === 'Seq' ? n.children : []
+/** A Play leaf's voice value — sample name if present, else its note token. */
+const voiceOf = (n: PatternIR): unknown =>
+  n.tag === 'Play' ? (n.params.s ?? n.note) : undefined
 
 describe('square-bracket chords (#508)', () => {
-  it('`[a,b,c]` is a chord: all notes share begin=0, end=1', () => {
-    expect(begins('note("[c2,e2,g2]")')).toEqual([
-      { b: 0, e: 1, n: 'c2' },
-      { b: 0, e: 1, n: 'e2' },
-      { b: 0, e: 1, n: 'g2' },
-    ])
+  it('`[a,b,c]` is a chord: a parallel Stack of full-cycle notes', () => {
+    const body = bodyOf(parseStrudel('note("[c2,e2,g2]")'))
+    expect(body.tag).toBe('Stack')
+    expect(kidsOf(body).map((k) => k.tag)).toEqual(['Play', 'Play', 'Play'])
+    expect(kidsOf(body).map(voiceOf)).toEqual(['c2', 'e2', 'g2'])
   })
 
-  it('`[a b c]` stays a sequence: staggered begins (unchanged)', () => {
-    const seq = begins('note("[c2 e2 g2]")')
-    expect(seq.map((x) => x.b)).toEqual([0, 0.3333, 0.6667])
+  it('`[a b c]` stays a sequence: a Seq of staggered voices (unchanged)', () => {
+    const body = bodyOf(parseStrudel('note("[c2 e2 g2]")'))
+    expect(body.tag).toBe('Seq')
+    expect(kidsOf(body).map((k) => k.tag)).toEqual(['Play', 'Play', 'Play'])
+    expect(kidsOf(body).map(voiceOf)).toEqual(['c2', 'e2', 'g2'])
   })
 
   it('mixed `[a b, c]` = a stack of one sub-sequence and one full-cycle note', () => {
-    expect(begins('note("[c2 e2, g2]")')).toEqual([
-      { b: 0, e: 0.5, n: 'c2' },
-      { b: 0.5, e: 1, n: 'e2' },
-      { b: 0, e: 1, n: 'g2' },
-    ])
+    const body = bodyOf(parseStrudel('note("[c2 e2, g2]")'))
+    expect(body.tag).toBe('Stack')
+    const [sub, note] = kidsOf(body)
+    // First voice is the `c2 e2` sub-sequence; second is the standalone g2.
+    expect(sub.tag).toBe('Seq')
+    expect(kidsOf(sub).map(voiceOf)).toEqual(['c2', 'e2'])
+    expect(note.tag).toBe('Play')
+    expect(voiceOf(note)).toBe('g2')
   })
 
   it('a chord alternates per cycle inside `<...>`', () => {
-    expect(begins('note("<[c2,e2,g2] [d2,f2,a2]>")')).toEqual([
-      { b: 0, e: 1, n: 'c2' },
-      { b: 0, e: 1, n: 'e2' },
-      { b: 0, e: 1, n: 'g2' },
-    ])
+    // Outer `<…>` is a Cycle; each arm is a chord Stack.
+    const body = bodyOf(parseStrudel('note("<[c2,e2,g2] [d2,f2,a2]>")'))
+    expect(body.tag).toBe('Cycle')
+    if (body.tag !== 'Cycle') return
+    const first = body.items[0]
+    expect(first.tag).toBe('Stack')
+    expect(kidsOf(first).map(voiceOf)).toEqual(['c2', 'e2', 'g2'])
   })
 
   it('sample chords stack too: `[bd,hh]`', () => {
-    const evs = collectCycles(parseStrudel('s("[bd,hh]")'), 0, 1)
-    expect(evs.map((e) => ({ b: +e.begin.toFixed(4), s: e.s }))).toEqual([
-      { b: 0, s: 'bd' },
-      { b: 0, s: 'hh' },
-    ])
+    const body = bodyOf(parseStrudel('s("[bd,hh]")'))
+    expect(body.tag).toBe('Stack')
+    expect(kidsOf(body).map(voiceOf)).toEqual(['bd', 'hh'])
   })
 
   it('round-trips faithfully back to mini-notation', () => {

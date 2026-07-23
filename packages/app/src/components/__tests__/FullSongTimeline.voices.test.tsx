@@ -4,9 +4,11 @@
  *   distinct `s` per voice) splits it into a labelled sub-row per voice (bd/sd/hh),
  *   instead of one band where the voices overlap on a single baseline.
  *
- * This needs the collection path, so unlike FullSongTimeline.test it mocks
- * `collectCycles` to return crafted drum IREvents (same lane key, distinct `s`,
- * percussive) — the real path is covered by the Playwright spec on a real song.
+ * Per-voice marks come from the EVAL path (`collectHapMarks`, which carries
+ * `voice = ev.s`), so — mirroring production — the crafted drum IREvents (same
+ * lane key, distinct `s`, percussive) are fed through `getTimelineEvents`, not
+ * the removed pre-eval collect fallback (#975). The real path is covered by the
+ * Playwright spec on a real song.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as React from 'react'
@@ -24,7 +26,6 @@ vi.mock('@stave/editor', async () => {
   // from the collect marks (DRUM_EVENTS). Reduce the SAME events through the REAL reducer (PV192).
   const { skeletonsFromEvents } = await import('../musicalTimeline/__tests__/structuralWalkTestStub')
   return {
-    collectCycles: () => DRUM_EVENTS,
     structuralWalk: (_ir: unknown, nCycles: number) => skeletonsFromEvents(DRUM_EVENTS, nCycles),
     laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
     // #459 — Song view reads the shared timeline row-height setting; mock to 22
@@ -75,6 +76,7 @@ function renderFull() {
     <FullSongTimeline
       analysis={analysis}
       ir={{} as never}
+      getTimelineEvents={() => DRUM_EVENTS as never}
       getSongPosition={() => null}
       onSeek={vi.fn()}
       getDrawerOpen={() => true}

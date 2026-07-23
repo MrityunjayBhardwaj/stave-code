@@ -1,5 +1,8 @@
 /**
- * Integration tests: code string → parse → PatternIR → collect → IREvent[] → toStrudel
+ * Integration tests: code string → parse → PatternIR → toStrudel, plus the
+ * behaviour-free structural walk (structuralWalk / walkLeafItems) that carries
+ * lane identity + source loc off the parsed IR. Onset behaviour now comes from
+ * Strudel's eval, not from a hand-rolled interpreter.
  *
  * No Strudel runtime required — parser works on strings, not Pattern objects.
  */
@@ -7,10 +10,10 @@
 import { describe, it, expect } from 'vitest'
 import { parseMini, bjorklund } from '../parseMini'
 import { parseStrudel as _parseStrudel } from '../parseStrudel'
-import { collect } from '../collect'
 import { toStrudel } from '../toStrudel'
 import { patternToJSON, patternFromJSON } from '../serialize'
-import { propagate, StrudelParseSystem, IREventCollectSystem, type ComponentBag } from '../propagation'
+import { walkLeafItems } from '../structuralWalk'
+import { buildNodeLocIndex } from '../nodeIdentity'
 import { IR, type PatternIR } from '../PatternIR'
 import { unwrapD1 } from './helpers/unwrapD1'
 
@@ -381,21 +384,21 @@ describe('parseMini', () => {
     })
   })
 
-  // ---- collect propagates Play.loc → IREvent.loc -----------------------
+  // ---- structuralWalk carries Play.loc → LaneItem.loc ------------------
 
-  describe('collect propagates Play.loc → IREvent.loc', () => {
-    it('events carry the loc set on their producing Play node', () => {
+  describe('structuralWalk carries Play.loc → LaneItem.loc', () => {
+    it('leaf items carry the loc set on their producing Play node', () => {
       const tree = parseMini('c4 e4', false, 50)
-      const events = collect(tree)
-      expect(events.map(e => e.loc?.[0])).toEqual([
+      const items = walkLeafItems(tree, 1)
+      expect(items.map(it => it.loc?.[0])).toEqual([
         { start: 50, end: 52 },
         { start: 53, end: 55 },
       ])
     })
 
-    it('Play built without loc produces events with loc undefined', () => {
-      const events = collect(IR.play('c4'))
-      expect(events[0].loc).toBeUndefined()
+    it('Play built without loc produces items with loc undefined', () => {
+      const items = walkLeafItems(IR.play('c4'), 1)
+      expect(items[0].loc).toBeUndefined()
     })
   })
 })
@@ -697,23 +700,6 @@ describe('parseStrudel', () => {
     }
   })
 
-  it('collect(Pick) yields one event per selector event, picking from lookup by clamped int index', () => {
-    // Selector with numeric notes 0 and 1 alternating; lookup has two
-    // single-note Plays. Each cycle the selector selects the matching
-    // lookup entry — collect should walk the inner Play and emit its
-    // event at the selector event's slot.
-    const sel = IR.cycle(IR.play(0), IR.play(1))
-    const lookup = [IR.play('c'), IR.play('e')]
-    const node = IR.pick(sel, lookup)
-    // Two cycles: cycle 0 picks lookup[0]=c, cycle 1 picks lookup[1]=e.
-    const cyc0 = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    const cyc1 = collect(node, { cycle: 1, time: 1, begin: 1, end: 2, duration: 1 })
-    expect(cyc0.length).toBe(1)
-    expect(cyc1.length).toBe(1)
-    expect(cyc0[0].note).toBe('c')
-    expect(cyc1[0].note).toBe('e')
-  })
-
   it('toStrudel(Pick) round-trips to .pick([…])', () => {
     const sel = IR.cycle(IR.play(0), IR.play(1))
     const lookup = [IR.play('c'), IR.play('e')]
@@ -761,39 +747,6 @@ describe('parseStrudel', () => {
     }
   })
 
-  it('collect(Struct) re-times body events to mask onsets', () => {
-    // Body is a single Play spanning [0, 1) (default duration 1 cycle).
-    // Mask "x ~ x ~" has 4 slots; truthy at i=0 and i=2. Each slot is 1/4
-    // wide. The body event INTERSECTS every slot, so each truthy slot
-    // re-emits a copy. Net: 2 events at begins {0, 0.5} each with width 0.25.
-    // (Mirrors Strudel's appRight semantics — pattern.mjs:218-237.)
-    const node = IR.struct('x ~ x ~', IR.play('c4'))
-    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    expect(events.length).toBe(2)
-    const sorted = [...events].sort((a, b) => a.begin - b.begin)
-    expect(sorted[0].begin).toBeCloseTo(0, 9)
-    expect(sorted[0].end).toBeCloseTo(0.25, 9)
-    expect(sorted[0].note).toBe('c4')
-    expect(sorted[1].begin).toBeCloseTo(0.5, 9)
-    expect(sorted[1].note).toBe('c4')
-  })
-
-  it('collect(Struct) samples body across slots when body has multiple events', () => {
-    // Body is Seq("c","d","e","f") — events at begin 0, 1/4, 2/4, 3/4 each
-    // with end at the next slot. Mask "x ~ x ~" has truthy at i=0, i=2.
-    // Slot 0 [0, 1/4) captures the c event → re-emit at 0.
-    // Slot 2 [2/4, 3/4) captures the e event → re-emit at 2/4.
-    const body = IR.seq(IR.play('c'), IR.play('d'), IR.play('e'), IR.play('f'))
-    const node = IR.struct('x ~ x ~', body)
-    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    expect(events.length).toBe(2)
-    const sorted = [...events].sort((a, b) => a.begin - b.begin)
-    expect(sorted[0].note).toBe('c')
-    expect(sorted[0].begin).toBeCloseTo(0, 9)
-    expect(sorted[1].note).toBe('e')
-    expect(sorted[1].begin).toBeCloseTo(0.5, 9)
-  })
-
   it('toStrudel(Struct) round-trips to .struct("…")', () => {
     const node = IR.struct('x ~ x ~', IR.play('c4'))
     const code = toStrudel(node)
@@ -826,30 +779,6 @@ describe('parseStrudel', () => {
     }
   })
 
-  it('collect(Swing) shifts odd-slot events by 1/(6n) within the cycle', () => {
-    // Body = 8 plays as a Seq, so events land at begins {0, 1/8, 2/8, ...,
-    // 7/8} each spanning 1/8. With n=4, slot width = 1/4, so events fall
-    // into slots: {0,0,1,1,2,2,3,3}. Odd-slot events (slot 1 and 3) shift
-    // by 1/24. Even-slot events stay put.
-    const body = IR.seq(
-      IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'),
-      IR.play('e'), IR.play('f'), IR.play('g'), IR.play('h'),
-    )
-    const node = IR.swing(4, body)
-    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    expect(events.length).toBe(8)
-    const sorted = [...events].sort((a, b) => a.begin - b.begin)
-    // Slot 0 (events 0, 1) — no shift. Slot 1 (events 2, 3) — +1/24.
-    expect(sorted[0].begin).toBeCloseTo(0, 9)        // a, slot 0
-    expect(sorted[1].begin).toBeCloseTo(1 / 8, 9)    // b, slot 0
-    expect(sorted[2].begin).toBeCloseTo(2 / 8 + 1 / 24, 9)  // c, slot 1 +shift
-    expect(sorted[3].begin).toBeCloseTo(3 / 8 + 1 / 24, 9)  // d, slot 1 +shift
-    expect(sorted[4].begin).toBeCloseTo(4 / 8, 9)    // e, slot 2
-    expect(sorted[5].begin).toBeCloseTo(5 / 8, 9)    // f, slot 2
-    expect(sorted[6].begin).toBeCloseTo(6 / 8 + 1 / 24, 9)  // g, slot 3 +shift
-    expect(sorted[7].begin).toBeCloseTo(7 / 8 + 1 / 24, 9)  // h, slot 3 +shift
-  })
-
   it('toStrudel(Swing) round-trips to .swing(n)', () => {
     const node = IR.swing(4, IR.play('c4'))
     const code = toStrudel(node)
@@ -879,82 +808,6 @@ describe('parseStrudel', () => {
     }
   })
 
-  it('collect(Shuffle) produces a per-cycle PERMUTATION (each slot used exactly once)', () => {
-    // Body = 4 notes at slots {0, 1/4, 2/4, 3/4}. Shuffle reorders the slot
-    // contents per cycle. The permutation property: across one cycle, the
-    // set of source-slot indices used is exactly {0,1,2,3}.
-    const body = IR.seq(IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'))
-    const node = IR.shuffle(4, body)
-    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    expect(events.length).toBe(4)
-    // Each note appears exactly once (permutation, not independent samples).
-    const notes = events.map((e) => e.note).sort()
-    expect(notes).toEqual(['a', 'b', 'c', 'd'])
-    // Destination begins are exactly the slot grid {0, 1/4, 1/2, 3/4}.
-    const begins = events.map((e) => +e.begin.toFixed(9)).sort((a, b) => a - b)
-    expect(begins).toEqual([0, 0.25, 0.5, 0.75])
-  })
-
-  it('collect(Shuffle) is deterministic — same cycle yields same permutation', () => {
-    const body = IR.seq(IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'))
-    const node = IR.shuffle(4, body)
-    const a = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    const b = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    expect(a.map((e) => e.note)).toEqual(b.map((e) => e.note))
-  })
-
-  it('collect(Shuffle) propagates loc through _collectRearrange (PV24)', () => {
-    const body = IR.seq(
-      IR.play('a', 0.25, {}, [{ start: 5, end: 6 }]),
-      IR.play('b', 0.25, {}, [{ start: 7, end: 8 }]),
-      IR.play('c', 0.25, {}, [{ start: 9, end: 10 }]),
-      IR.play('d', 0.25, {}, [{ start: 11, end: 12 }]),
-    )
-    const node = IR.shuffle(4, body)
-    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    for (const e of events) expect(e.loc).toBeDefined()
-  })
-
-  it('collect(Scramble) selector entries are each in [0, n) with replacement allowed', () => {
-    // 4 slots, n=4. Each destination slot independently samples a source
-    // index in [0, 4). Entries may repeat or be omitted (with replacement).
-    const body = IR.seq(IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'))
-    const node = IR.scramble(4, body)
-    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    // Count is 0..n depending on whether some source slots were never picked.
-    // The permutation property does NOT hold (with replacement). So we don't
-    // assert event count = 4. Each event MUST come from a body note in {a,b,c,d}.
-    for (const e of events) {
-      expect(['a', 'b', 'c', 'd']).toContain(String(e.note))
-    }
-  })
-
-  it('collect(Scramble) is deterministic — same cycle yields same selection', () => {
-    const body = IR.seq(IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'))
-    const node = IR.scramble(4, body)
-    const a = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    const b = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    expect(a.length).toBe(b.length)
-    expect(a.map((e) => `${e.begin}|${e.note}`)).toEqual(
-      b.map((e) => `${e.begin}|${e.note}`),
-    )
-  })
-
-  it('collect(Shuffle) cycles 0 and 1 produce different permutations (per-cycle randomness)', () => {
-    // A weak property — different cycles MAY occasionally yield the same
-    // permutation by chance. With seed=0 and small n=4, however, the legacy
-    // RNG produces distinct permutations across consecutive cycles.
-    const body = IR.seq(IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'))
-    const node = IR.shuffle(4, body)
-    const c0 = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    const c1 = collect(node, { cycle: 1, time: 1, begin: 1, end: 2, duration: 1 })
-    const seq0 = c0.sort((a, b) => a.begin - b.begin).map((e) => e.note).join(',')
-    const seq1 = c1.sort((a, b) => a.begin - b.begin).map((e) => e.note).join(',')
-    // Per-cycle permutation differs cycle-to-cycle for at least one cycle pair.
-    // If this ever fires false, document the seed alignment.
-    expect(seq0).not.toEqual(seq1)
-  })
-
   it('toStrudel(Shuffle) round-trips to .shuffle(n)', () => {
     const node = IR.shuffle(4, IR.play('c4'))
     expect(toStrudel(node)).toContain('.shuffle(4)')
@@ -975,63 +828,6 @@ describe('parseStrudel', () => {
       expect(node.body).toBe(body)
       expect(Object.keys(node).sort()).toEqual(['body', 'n', 'tag'])
     }
-  })
-
-  it('collect(Chop) emits n sub-events per source event with progressive begin/end controls', () => {
-    // s("bd").chop(4): one source event @ [0, 1) with no existing begin/end
-    // → 4 sub-events at begins [0, 0.25, 0.5, 0.75] with params.begin/end
-    // ∈ {(0, 0.25), (0.25, 0.5), (0.5, 0.75), (0.75, 1)}.
-    const node = IR.chop(4, IR.play('bd', 1, { s: 'bd' }))
-    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    expect(events.length).toBe(4)
-    const begins = events.map((e) => +e.begin.toFixed(9)).sort((a, b) => a - b)
-    expect(begins).toEqual([0, 0.25, 0.5, 0.75])
-    const params = events
-      .map((e) => [
-        +(e.params?.begin as number).toFixed(9),
-        +(e.params?.end as number).toFixed(9),
-      ])
-      .sort((a, b) => a[0] - b[0])
-    expect(params).toEqual([
-      [0, 0.25],
-      [0.25, 0.5],
-      [0.5, 0.75],
-      [0.75, 1],
-    ])
-  })
-
-  it('collect(Chop) composes nested begin/end via the merge function (Chop(2, Chop(2, body)))', () => {
-    // Inner Chop(2) on a single bd event yields 2 sub-events with params
-    // (0, 0.5) and (0.5, 1). The outer Chop(2) then takes EACH of those
-    // and slices its [b0, e0) range into 2 sub-ranges. Per merge:
-    //   inner slot 0: b0=0,   e0=0.5 → outer slots: (0, 0.25),  (0.25, 0.5)
-    //   inner slot 1: b0=0.5, e0=1   → outer slots: (0.5, 0.75),(0.75, 1)
-    // Net: 4 events with begin/end identical to a flat Chop(4). The
-    // merge function is what makes nested chop compose correctly.
-    const body = IR.play('bd', 1, { s: 'bd' })
-    const node = IR.chop(2, IR.chop(2, body))
-    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    expect(events.length).toBe(4)
-    const params = events
-      .map((e) => [
-        +(e.params?.begin as number).toFixed(9),
-        +(e.params?.end as number).toFixed(9),
-      ])
-      .sort((a, b) => a[0] - b[0])
-    expect(params).toEqual([
-      [0, 0.25],
-      [0.25, 0.5],
-      [0.5, 0.75],
-      [0.75, 1],
-    ])
-  })
-
-  it('collect(Chop) propagates loc to every sub-event (PV24)', () => {
-    const body = IR.play('bd', 1, { s: 'bd' }, [{ start: 2, end: 4 }])
-    const node = IR.chop(4, body)
-    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
-    expect(events.length).toBe(4)
-    for (const e of events) expect(e.loc).toBeDefined()
   })
 
   it('toStrudel(Chop) round-trips to .chop(n)', () => {
@@ -1099,22 +895,23 @@ describe('parseStrudel', () => {
       }
     })
 
-    it('events from collect carry loc all the way through', () => {
+    it('leaf items carry loc all the way through the structural walk', () => {
       // PV36 / D-01 — multi-range loc, innermost first. The atom range
       // ("c4" / "e4") stays at loc[0]; Seq's wrapping range (the whole
       // mini-notation string source) is appended at loc[1+].
-      const events = collect(parseStrudel('note("c4 e4")'))
-      expect(events).toHaveLength(2)
-      expect(events[0].loc?.[0]).toEqual({ start: 6, end: 8 })
-      expect(events[1].loc?.[0]).toEqual({ start: 9, end: 11 })
-      // Non-empty loc on every event — the contract PV36 enforces.
-      expect(events[0].loc!.length).toBeGreaterThanOrEqual(1)
-      expect(events[1].loc!.length).toBeGreaterThanOrEqual(1)
+      const items = walkLeafItems(parseStrudel('note("c4 e4")'), 1)
+      expect(items).toHaveLength(2)
+      expect(items[0].loc?.[0]).toEqual({ start: 6, end: 8 })
+      expect(items[1].loc?.[0]).toEqual({ start: 9, end: 11 })
+      // Non-empty loc on every leaf — the contract PV36 enforces.
+      expect(items[0].loc!.length).toBeGreaterThanOrEqual(1)
+      expect(items[1].loc!.length).toBeGreaterThanOrEqual(1)
     })
 
-    it('opaque expressions have no loc (correct — the mapping is unknown)', () => {
-      const events = collect(parseStrudel('mystery(42)'))
-      expect(events.every(e => e.loc === undefined)).toBe(true)
+    it('opaque expressions contribute no structural leaves (mapping is unknown)', () => {
+      // mystery(42) is opaque → a Code node with no modellable inner, so the
+      // structural walk reaches no leaf and no loc is invented.
+      expect(walkLeafItems(parseStrudel('mystery(42)'), 1)).toEqual([])
     })
   })
 })
@@ -1129,12 +926,6 @@ describe('full pipeline', () => {
     const patternIR = parseStrudel(input)
     expect(patternIR.tag).toBe('Seq')
     if (patternIR.tag === 'Seq') expect(patternIR.children).toHaveLength(3)
-
-    const events = collect(patternIR)
-    expect(events).toHaveLength(3)
-    // Events at sequential times
-    expect(events[0].begin).toBeLessThan(events[1].begin)
-    expect(events[1].begin).toBeLessThan(events[2].begin)
 
     const code = toStrudel(patternIR)
     expect(code).toContain('c4')
@@ -1163,9 +954,6 @@ describe('full pipeline', () => {
       expect(patternIR.tracks).toHaveLength(2)
     }
 
-    const events = collect(patternIR)
-    expect(events.length).toBeGreaterThan(0)
-
     const code = toStrudel(patternIR)
     expect(code).toContain('stack(')
   })
@@ -1174,14 +962,11 @@ describe('full pipeline', () => {
     const input = 'note("c4").every(4, fast(2))'
     const patternIR = parseStrudel(input)
     expect(patternIR.tag).toBe('Every')
-
-    // cycle 0 fires body
-    const eventsOn = collect(patternIR, { cycle: 0 })
-    expect(eventsOn.length).toBeGreaterThan(0)
-
-    // cycle 1 fires default (same node since every wraps with ir as default)
-    const eventsOff = collect(patternIR, { cycle: 1 })
-    expect(eventsOff.length).toBeGreaterThanOrEqual(0)
+    if (patternIR.tag === 'Every') {
+      expect(patternIR.n).toBe(4)
+      // cycle-0 fires the transformed body (Fast), other cycles the default.
+      expect(patternIR.body.tag).toBe('Fast')
+    }
   })
 
   it('test 5: cycle alternation', () => {
@@ -1194,10 +979,11 @@ describe('full pipeline', () => {
       expect(flat.items).toHaveLength(3)
     }
 
-    const e0 = collect(flat, { cycle: 0 })
-    const e1 = collect(flat, { cycle: 1 })
-    expect(e0[0]?.note).toBe('c4')
-    expect(e1[0]?.note).toBe('e4')
+    // The Cycle picks item[cycle % len] — a structural per-cycle selection the
+    // walk reproduces without the behaviour interpreter.
+    const perCycle = walkLeafItems(flat, 2)
+    expect(perCycle.find((it) => it.cycle === 0)?.labelValue).toBe('c4')
+    expect(perCycle.find((it) => it.cycle === 1)?.labelValue).toBe('e4')
   })
 
   it('test 6: JSON round-trip', () => {
@@ -1227,155 +1013,32 @@ describe('full pipeline', () => {
     expect(patternIR.tag).toBe('Code')
     // toStrudel(Code) = original code
     expect(toStrudel(patternIR)).toBe(input)
-    // collect(Code) = [] (no Strudel runtime)
-    expect(collect(patternIR)).toEqual([])
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Propagation engine
-// ---------------------------------------------------------------------------
-
-describe('propagate', () => {
-  it('processes strudelCode → patternIR → irEvents', () => {
-    const bag = propagate({ strudelCode: 'note("c4")' }, [StrudelParseSystem, IREventCollectSystem])
-    expect(bag.patternIR).toBeDefined()
-    expect(bag.irEvents).toBeDefined()
-  })
-
-  it('systems run in stratum order', () => {
-    const order: string[] = []
-    const s1 = { name: 'A', stratum: 2, inputs: [] as (keyof ComponentBag)[], outputs: [] as (keyof ComponentBag)[], run: (b: ComponentBag) => { order.push('A'); return b } }
-    const s2 = { name: 'B', stratum: 1, inputs: [] as (keyof ComponentBag)[], outputs: [] as (keyof ComponentBag)[], run: (b: ComponentBag) => { order.push('B'); return b } }
-    propagate({}, [s1, s2])
-    expect(order).toEqual(['B', 'A'])
-  })
-
-  it('system with missing input is skipped', () => {
-    const bag = propagate({}, [IREventCollectSystem])
-    expect(bag.irEvents).toBeUndefined()
-  })
-
-  it('empty bag returns empty bag', () => {
-    const bag = propagate({}, [StrudelParseSystem, IREventCollectSystem])
-    expect(bag.patternIR).toBeUndefined()
-    expect(bag.irEvents).toBeUndefined()
-  })
-
-  it('custom system can be added', () => {
-    const customSystem = {
-      name: 'Custom',
-      stratum: 3,
-      inputs: ['irEvents'] as (keyof ComponentBag)[],
-      outputs: [] as (keyof ComponentBag)[],
-      run: (bag: ComponentBag) => ({ ...bag, _custom: true } as ComponentBag),
-    }
-    const bag = propagate(
-      { strudelCode: 'note("c4")' },
-      [StrudelParseSystem, IREventCollectSystem, customSystem],
-    ) as ComponentBag & { _custom?: boolean }
-    expect(bag._custom).toBe(true)
   })
 })
 
 // ---------------------------------------------------------------------------
 // Phase 20-10 wave γ — Param sub-IR slot-table semantics (PLAN §5 γ-2).
 //
-// The 11-test corpus pinning each edge case from RESEARCH G2.3 + Trap 10
-// + the merge-shadow at α-1. Lifecycle step 0: collectCycles is exported
-// from parity.test.ts:183 (verified at task time); we import it directly
-// for tests that exercise multi-cycle alternation (`<bd cp>` / `<bd <hh
-// cp>>`). Loc / irNodeId imports are local to the spread-mechanics tests.
+// The behavioural slot-table pins (per-event evt.s / gain resolution, silence,
+// numeric coercion, merge direction) were the retired collect engine's job —
+// value resolution now comes from Strudel's eval, so those arms are gone. What
+// remains here is STRUCTURAL: the Param sub-IR walk must preserve loc + node
+// identity on the body leaves, and opaque methods must stay opaque.
 // ---------------------------------------------------------------------------
-import { collectCycles } from './helpers/collectCycles'
 
 describe('20-10 wave γ — Param sub-IR slot-table semantics', () => {
-  // 1. Event count, not duplication (RESEARCH G2.3 #5 / Trap 10).
-  it('note("c d").s("<bd cp>") produces exactly 2 events (no slot-event leakage)', () => {
-    const evs = collect(parseStrudel('note("c d").s("<bd cp>")'))
-    expect(evs).toHaveLength(2)
-  })
-
-  // 2. Per-event evt.s alternates with cycle.
-  // <bd cp> at root form is per-cycle alternation; here `note("c d")` body
-  // has 2 atoms within one cycle. The slot-table walks the s-stream once
-  // per body event within the cycle. Per RESEARCH G1.2: case 'Cycle' picks
-  // items[ctx.cycle % len], so within cycle 0 the s-pattern resolves to
-  // 'bd' for every body event in that cycle. The per-event variation
-  // happens across CYCLES, not within. (Sequence form `s("bd cp")` would
-  // give per-event-within-cycle variation.)
-  it('note("c d").s("<bd cp>") evt.s alternates by cycle', () => {
-    const cyc = collectCycles(parseStrudel('note("c d").s("<bd cp>")'), 0, 2)
-    expect(cyc.length).toBe(4)
-    // Cycle 0 → all 'bd'; cycle 1 → all 'cp'.
-    expect(cyc[0].s).toBe('bd')
-    expect(cyc[1].s).toBe('bd')
-    expect(cyc[2].s).toBe('cp')
-    expect(cyc[3].s).toBe('cp')
-  })
-
-  // 3. Silence (`~`) preserves body event but emits null s.
-  it('note("c d").s("bd ~") evt.s is "bd" then null/undefined', () => {
-    const evs = collect(parseStrudel('note("c d").s("bd ~")'))
-    expect(evs[0].s).toBe('bd')
-    expect(evs[1].s ?? null).toBeNull()
-  })
-
-  // 4. Numeric coercion for value-stream.
-  it('note("c d").gain("0.3 0.7") coerces string atoms to numbers', () => {
-    const evs = collect(parseStrudel('note("c d").gain("0.3 0.7")'))
-    expect(evs[0].gain).toBeCloseTo(0.3)
-    expect(evs[1].gain).toBeCloseTo(0.7)
-  })
-
-  // 5. Nested mini `<bd <hh cp>>` — now ALIGNED with Strudel runtime.
-  // Outer `<...>` advances its inner arm only ONCE PER PERIOD (on visit),
-  // so the inner `<hh cp>` sees cycle `floor(globalCycle / period)`:
-  // [bd, hh, bd, cp] over 4 cycles. VERIFIED against real `@strudel/mini`
-  // haps (#463 Stage 0). Previously the Cycle collect reused ctx.cycle at
-  // every level, giving the divergent [bd, cp, bd, cp] (issue #109 family);
-  // the weighted-slowcat fix in collect.ts now passes the per-period inner
-  // cycle, matching the runtime exactly.
-  it('note("c").s("<bd <hh cp>>") cycles — aligned with Strudel runtime (#463 Stage 0)', () => {
-    const cycles = collectCycles(parseStrudel('note("c").s("<bd <hh cp>>")'), 0, 4)
-    expect(cycles.map((e) => e.s)).toEqual(['bd', 'hh', 'bd', 'cp'])
-  })
-
-  // 6. Param with mini-fast `s("hh*8")` — Fast-as-repeat semantics fixed.
-  // Strudel runtime: `hh*8` produces 8 events per cycle, so every body
-  // event finds a slot of 'hh'. Earlier the Fast collect arm only scaled
-  // ctx.speed without repeating the body, so the second body event at
-  // begin=0.5 fell outside the single 0..0.125 slot → s=null. After
-  // gaining repeat semantics (collect.ts Fast arm iterates `factor`
-  // times), 8 slots span [0..1) at width 0.125 each, and BOTH body
-  // events find a 'hh' slot. Pins the corrected behavior.
-  it('note("c d").s("hh*8") — both body events get hh after Fast-as-repeat fix', () => {
-    const evs = collect(parseStrudel('note("c d").s("hh*8")'))
-    expect(evs).toHaveLength(2)
-    expect(evs[0].s).toBe('hh')
-    expect(evs[1].s).toBe('hh')
-  })
-
   // 7. Loc-position assertion (PV36 / RESEARCH Trap 10 second clause).
-  // The first event's first loc atom should be inside `note("c d")` —
+  // The first leaf's first loc atom should be inside `note("c d")` —
   // specifically the position of "c" inside the note string. NOT the
   // position of "bd" inside the s mini-string.
-  it('note("c d").s("<bd cp>") events carry body-atom loc, NOT mini-string loc', () => {
+  it('note("c d").s("<bd cp>") leaves carry body-atom loc, NOT mini-string loc', () => {
     const code = 'note("c d").s("<bd cp>")'
-    const evs = collect(parseStrudel(code))
-    const firstAtomStart = evs[0].loc?.[0]?.start ?? -1
+    const items = walkLeafItems(parseStrudel(code), 1)
+    const firstAtomStart = items[0].loc?.[0]?.start ?? -1
     const cPos = code.indexOf('"c d"') + 1 // position of "c"
     const bdPos = code.indexOf('"<bd cp>"') + 2 // position of "b" in "bd"
     expect(firstAtomStart).toBe(cPos)
     expect(firstAtomStart).not.toBe(bdPos)
-  })
-
-  // 8. Param-shadow shallow probe (root-cause version of γ-3).
-  // D-05 LOCKED 2026-05-09 (α-1 executed): last-typed-wins. So
-  // .s("a").s("b") → evt.s === 'b'. γ-3 is the runtime-parity version.
-  it('note("c").s("a").s("b") evt.s reflects α-1 merge direction (last-typed-wins)', () => {
-    const evs = collect(parseStrudel('note("c").s("a").s("b")'))
-    expect(evs[0].s).toBe('b')
   })
 
   // 9. No regression for opaque (PV37 preservation). #928 note: `release` is
@@ -1388,16 +1051,20 @@ describe('20-10 wave γ — Param sub-IR slot-table semantics', () => {
     expect((ir as { via?: object }).via).toBeDefined()
   })
 
-  // 10. Param sub-IR walk preserves loc + irNodeId on body events
+  // 10. Param sub-IR walk preserves loc + irNodeId on body leaves
   // (PV36 + PV38 — Issue #3 catcher for α-4 pre_mortem clause 7).
-  it('Param sub-IR walk preserves loc and irNodeId on every body event', () => {
+  it('Param sub-IR walk preserves loc and irNodeId on every body leaf', () => {
     const ir = parseStrudel('note("c4 e4").s("<bd cp>")')
-    const evs = collect(ir)
-    expect(evs.length).toBeGreaterThan(0)
-    for (const e of evs) {
-      expect(e.loc).toBeDefined()
-      expect(e.loc!.length).toBeGreaterThan(0)
-      expect(e.irNodeId).toBeDefined()
+    const items = walkLeafItems(ir, 1)
+    const index = buildNodeLocIndex(ir)
+    expect(items.length).toBeGreaterThan(0)
+    for (const it of items) {
+      expect(it.loc).toBeDefined()
+      expect(it.loc!.length).toBeGreaterThan(0)
+      // Node identity is derived from the SAME walk (buildNodeLocIndex indexes
+      // walkLeafItems by leaf loc), so every body leaf resolves to an irNodeId.
+      const key = `${it.loc![0].start}:${it.loc![0].end}`
+      expect(index.get(key)?.[0]?.irNodeId).toBeDefined()
     }
   })
 
@@ -1440,69 +1107,62 @@ describe('20-10 wave γ — Param sub-IR slot-table semantics', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Phase 20-11 wave β — Track collect arm (β-1).
-// CollectContext.trackId? slot, propagated by `case 'Track':` walk arm,
-// consumed by makeEvent's conditional spread → IREvent.trackId.
+// Phase 20-11 wave β — Track → lane identity (β-1).
+// A Track's `trackId` becomes the leaf's lane key (`laneKey = trackId ?? s ??
+// '$default'`), threaded by structuralWalk's `case 'Track':` arm. This is the
+// live substrate the timeline reads; the retired collect arm produced the same
+// identity as `evt.trackId`.
 // ---------------------------------------------------------------------------
 
-describe('20-11 wave β — Track collect arm', () => {
-  it('collect on Track-wrapped IR populates evt.trackId', () => {
+describe('20-11 wave β — Track lane identity', () => {
+  it('Track-wrapped IR gives its leaves the trackId as laneKey', () => {
     const ir = IR.track('d1', IR.play('c4'))
-    const evs = collect(ir)
-    expect(evs.length).toBeGreaterThan(0)
-    expect(evs[0].trackId).toBe('d1')
+    const items = walkLeafItems(ir, 1)
+    expect(items.length).toBeGreaterThan(0)
+    expect(items[0].laneKey).toBe('d1')
   })
 
-  it('collect on hand-built IR (no Track wrapper) leaves evt.trackId absent (conditional spread)', () => {
-    const evs = collect(IR.play('c4'))
-    expect(evs.length).toBeGreaterThan(0)
-    // Conditional spread → field absent, not present-with-undefined.
-    expect('trackId' in evs[0]).toBe(false)
+  it('hand-built IR with no Track wrapper falls back to the $default lane', () => {
+    const items = walkLeafItems(IR.play('c4'), 1)
+    expect(items.length).toBeGreaterThan(0)
+    // No trackId, no sample → the default lane key.
+    expect(items[0].laneKey).toBe('$default')
   })
 
-  it('nested Track — innermost wrapper wins (simple-spread override at each childCtx)', () => {
-    // Hand-built IR shape: outer='d1' wraps inner='lead' wraps Play.
-    // Walk: outer sets ctx.trackId='d1'; inner walks with childCtx
-    // {...ctx, trackId:'lead'} → 'lead' overrides for inner's subtree.
-    // Play under inner gets 'lead'. Simple spread → INNER wins.
-    //
-    // Source-order semantics for `.p(a).p(b)` are governed by parser
-    // wrap-direction, NOT by collect-arm spread. (Parser places
-    // last-typed-method as OUTER wrapper; with simple spread, the
-    // FIRST-typed `.p()` wins because it sits inside as inner. If
-    // last-typed-source-wins is desired, the fix lives at the parser
-    // shape, not the spread direction. β-1 ships simple-spread + pins
-    // hand-built shape.)
+  it('nested Track — innermost wrapper wins (childCtx override at each level)', () => {
+    // Hand-built IR shape: outer='d1' wraps inner='lead' wraps Play. The Track
+    // arm sets childCtx.trackId=ir.trackId at each level, so the inner 'lead'
+    // overrides 'd1' for the leaf beneath it.
     const ir = IR.track('d1', IR.track('lead', IR.play('c4'), { userMethod: 'p' }))
-    const evs = collect(ir)
-    expect(evs[0].trackId).toBe('lead')
+    expect(walkLeafItems(ir, 1)[0].laneKey).toBe('lead')
   })
 
-  it('parseStrudel + collect on duplicate $: blocks produces distinct trackIds (the 20-10 γ-4 fix)', () => {
+  it('parseStrudel on duplicate $: blocks produces distinct lane keys (the 20-10 γ-4 fix)', () => {
     const code = '$: s("hh*8")\n$: s("hh*8")'
-    const evs = collect(parseStrudel(code))
-    const trackIds = new Set(evs.map(e => e.trackId))
-    expect(trackIds.has('d1')).toBe(true)
-    expect(trackIds.has('d2')).toBe(true)
-    expect(trackIds.size).toBe(2)
+    const laneKeys = new Set(walkLeafItems(parseStrudel(code), 1).map((it) => it.laneKey))
+    expect(laneKeys.has('d1')).toBe(true)
+    expect(laneKeys.has('d2')).toBe(true)
+    expect(laneKeys.size).toBe(2)
   })
 
-  it('Track wrapper preserves loc + irNodeId on body events (PV36 + PV38)', () => {
-    const code = '$: note("c4 e4")'
-    const evs = collect(parseStrudel(code))
-    expect(evs.length).toBeGreaterThan(0)
-    evs.forEach(e => {
-      expect(e.loc).toBeDefined()
-      expect(e.loc!.length).toBeGreaterThan(0)
-      expect(e.irNodeId).toBeDefined()
+  it('Track wrapper preserves loc + irNodeId on body leaves (PV36 + PV38)', () => {
+    const ir = parseStrudel('$: note("c4 e4")')
+    const items = walkLeafItems(ir, 1)
+    const index = buildNodeLocIndex(ir)
+    expect(items.length).toBeGreaterThan(0)
+    items.forEach((it) => {
+      expect(it.loc).toBeDefined()
+      expect(it.loc!.length).toBeGreaterThan(0)
+      const key = `${it.loc![0].start}:${it.loc![0].end}`
+      expect(index.get(key)?.[0]?.irNodeId).toBeDefined()
     })
   })
 
-  it('user .p("custom") via parseStrudel propagates trackId="custom" to events', () => {
+  it('user .p("custom") via parseStrudel gives its leaves the "custom" lane key', () => {
     const ir = parseStrudel('note("c").p("custom")')
-    const evs = collect(ir)
-    expect(evs.length).toBeGreaterThan(0)
-    expect(evs[0].trackId).toBe('custom')
+    const items = walkLeafItems(ir, 1)
+    expect(items.length).toBeGreaterThan(0)
+    expect(items[0].laneKey).toBe('custom')
   })
 })
 

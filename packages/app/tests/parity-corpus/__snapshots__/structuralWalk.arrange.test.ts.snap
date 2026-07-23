@@ -1,0 +1,14 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`structuralWalk buckets arrange arms by the OUTER song cycle (#974) > the multi-track fixture the e2e split-gesture uses (d1 arrange, two sibling $: tracks) 1`] = `
+[
+  0,
+  0,
+  1,
+  1,
+  2,
+  2,
+  2,
+  2,
+]
+`;
