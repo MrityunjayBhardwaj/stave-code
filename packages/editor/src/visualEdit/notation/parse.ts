@@ -922,9 +922,45 @@ function topLevelSpans(src: string): ElementSpan[] | null {
   return out
 }
 
-interface Onset {
+/**
+ * A leaf atom's OWN source span, in `src`-space (offsets into the inner mini
+ * string), read from a hap's `context.locations`. Strudel's `mini()` calls
+ * `.withLoc` on each atom pure (`mini.mjs` `patternifyAST` → `pattern.mjs`
+ * `withLoc`), so a nested atom carries its own token span, not its container's:
+ * `s("a [b c]")` gives the `c` hap the span of `c`, never `[b c]`. This is the
+ * anchor #986 P1 writes back through — span surgery at the note's own leaf loc
+ * instead of the top-level element span — so structures with internal structure
+ * (`[a [b c]]`, `[a b]*2`) stop breaking the cell↔leaf-span bijection.
+ */
+export interface LeafSpan {
+  start: number
+  end: number
+}
+
+/**
+ * The leaf atom's span for a hap, from `context.locations[0]`, shifted to
+ * `src`-space. Within a bare reified mini string (no method chain) the leaf's own
+ * location is FIRST — an inline op's mini arg (`*2`, `(3,8)`) contributes its
+ * location AFTER, in source order. The `.scale("…")`-style prepend that pushes the
+ * leaf last only happens for a method whose arg is a mini STRING, which
+ * `gridOnsets`/`rollOnsets` never see: they reify the inner string alone. The
+ * stored offsets count the leading quote `mini()` adds, so subtract 1. Verified
+ * token-for-token against krill in `leafLoc.test.ts`. `null` when a hap carried no
+ * usable location.
+ */
+function leafLoc(h: {
+  context?: { locations?: Array<{ start: number; end: number }> }
+}): LeafSpan | null {
+  const l = h.context?.locations?.[0]
+  if (!l || typeof l.start !== 'number' || typeof l.end !== 'number') return null
+  return { start: l.start - 1, end: l.end - 1 }
+}
+
+export interface Onset {
   pos: number
   atoms: string[]
+  /** leaf span per atom, index-aligned with `atoms`; `null` where none was carried */
+  spans: (LeafSpan | null)[]
 }
 
 /**
@@ -935,18 +971,19 @@ interface Onset {
  * pattern isn't a plain sound grid the view can show — a numeric value (that is
  * the roll's, not the grid's), a `.gain`/signal-only hap, or a query that throws.
  */
-function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
+export function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
   let haps: Array<{
     hasOnset?: () => boolean
     whole?: { begin: { valueOf(): number } }
     value: unknown
+    context?: { locations?: Array<{ start: number; end: number }> }
   }>
   try {
     haps = (pat as { queryArc(a: number, b: number): typeof haps }).queryArc(cyc, cyc + 1)
   } catch {
     return null
   }
-  const byCol = new Map<number, string[]>()
+  const byCol = new Map<number, { atoms: string[]; spans: (LeafSpan | null)[] }>()
   for (const h of haps) {
     if (!(h.hasOnset?.() ?? false) || !h.whole) continue
     // A bare mini string reifies to raw token VALUES (`"bd"`), not superdough
@@ -962,11 +999,18 @@ function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
     if (NUMERIC.test(token)) return null // a bare number is the roll's, not the grid's
     const pos = h.whole.begin.valueOf() - cyc
     const key = Math.round(pos * 720720)
-    const cell = byCol.get(key) ?? []
-    if (!cell.includes(token)) cell.push(token)
+    const cell = byCol.get(key) ?? { atoms: [], spans: [] }
+    // one span per distinct token in the column — the note's OWN leaf loc, the
+    // #986 write-back anchor. A `*n`/euclid element yields the same leaf at several
+    // columns (N cells, one span); a `,`-stack lands two leaves on one column (two
+    // spans) — both are recorded faithfully; the bijection gate is P2's, not here.
+    if (!cell.atoms.includes(token)) {
+      cell.atoms.push(token)
+      cell.spans.push(leafLoc(h))
+    }
     byCol.set(key, cell)
   }
-  return [...byCol.entries()].map(([k, atoms]) => ({ pos: k / 720720, atoms }))
+  return [...byCol.entries()].map(([k, c]) => ({ pos: k / 720720, atoms: c.atoms, spans: c.spans }))
 }
 
 const onsetKey = (o: Onset[]): string =>
@@ -1198,10 +1242,12 @@ function projectionEditSafe(
       const want = base[bb]
       if (bb !== b) return want
       const hit = want.find((o) => Math.abs(o.pos - t) < 1e-9)
+      // synthetic probe onsets — only `onsetKey` (pos + atoms) reads these, so the
+      // probe atom's span is a placeholder `null`; the real atoms keep their spans.
       const out2 = want.map((o) =>
-        o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND] } : o,
+        o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND], spans: [...o.spans, null] } : o,
       )
-      if (!hit) out2.push({ pos: t, atoms: [PROBE_SOUND] })
+      if (!hit) out2.push({ pos: t, atoms: [PROBE_SOUND], spans: [null] })
       return out2
     }
     for (let bb = 0; bb < bars; bb++) {
@@ -1557,11 +1603,13 @@ function rollFromAltElements(mini: string): ParseResult<PianoRollModel> | null {
 
 /* ── behaviour projection: the roll's inherited fallback (#924) ── */
 
-interface RollOnset {
+export interface RollOnset {
   pos: number
   dur: number
   pitch: string
   numeric: boolean
+  /** the note's own leaf span (src-space), the #986 write-back anchor; `null` if none carried */
+  loc: LeafSpan | null
 }
 
 /**
@@ -1574,11 +1622,12 @@ interface RollOnset {
  * a hap isn't a placeable pitch (a sound token, a signal/params value, a zero-length
  * hap) or the query throws.
  */
-function rollOnsets(pat: unknown, cyc: number): RollOnset[] | null {
+export function rollOnsets(pat: unknown, cyc: number): RollOnset[] | null {
   let haps: Array<{
     hasOnset?: () => boolean
     whole?: { begin: { valueOf(): number }; end: { valueOf(): number } }
     value: unknown
+    context?: { locations?: Array<{ start: number; end: number }> }
   }>
   try {
     haps = (pat as { queryArc(a: number, b: number): typeof haps }).queryArc(cyc, cyc + 1)
@@ -1608,7 +1657,7 @@ function rollOnsets(pat: unknown, cyc: number): RollOnset[] | null {
     const pos = h.whole.begin.valueOf() - cyc
     const dur = h.whole.end.valueOf() - h.whole.begin.valueOf()
     if (dur <= 0) return null
-    out.push({ pos, dur, pitch, numeric })
+    out.push({ pos, dur, pitch, numeric, loc: leafLoc(h) })
   }
   return out
 }
