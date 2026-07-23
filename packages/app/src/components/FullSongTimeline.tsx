@@ -26,7 +26,7 @@ import * as React from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SongAnalysis, PatternIR, HapStream, IREvent } from '@stave/editor'
 import {
-  collectCycles,
+  structuralWalk,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
 } from '@stave/editor'
@@ -281,10 +281,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const natCycles = naturalSpan(analysis)
   const bareSong = useMemo(() => {
     if (props.ir == null) return false
-    const evs = collectCycles(props.ir, 0, Math.max(1, Math.ceil(natCycles))) as Array<{
-      armIndex?: number
-    }>
-    return !evs.some((e) => typeof e.armIndex === 'number')
+    // Structure-only probe (#974): "bare" = NO arrange/cat combinator. A lane carries
+    // `armByCycle` iff an event under it had an `armIndex` (an arrangement arm) — the
+    // structural walk sets it from the same source structure `collectCycles` did, so this is
+    // the byte-identical successor to the old `evs.some(e => armIndex)` check, without needing
+    // the behaviour engine and resilient on mid-edit code.
+    const lanes = structuralWalk(props.ir, Math.max(1, Math.ceil(natCycles)))
+    return !lanes.some((l) => l.armByCycle !== undefined)
   }, [props.ir, natCycles])
   // The user's resized display span for a pure bare loop (#662, option B). A
   // VIEW-ONLY preference — dragging the bare clip's right edge grows/shrinks the
@@ -608,6 +611,42 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const events = props.getTimelineEvents?.(loopCycles) ?? null
     return collectNoteMarks(events, props.ir ?? null, loopCycles)
   }, [props.ir, loopCycles, props.getTimelineEvents])
+  // #977 — test-only observation of the computed marks. Marks are canvas-drawn,
+  // so a browser e2e can't read them from the DOM; this publishes a per-lane
+  // onset summary + whether the marks are EVAL-backed (haps present) or the
+  // COLLECT fallback (pre-eval) — exactly the collect→eval verdict PR-B moves,
+  // adjudicated at true browser fidelity. Gated on a localStorage flag so
+  // production pays nothing (no window write unless a test opts in).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    let on = false
+    try {
+      on = !!window.localStorage.getItem('stave:debug.timelineMarks')
+    } catch {
+      on = false
+    }
+    if (!on) return
+    const events = props.getTimelineEvents?.(loopCycles) ?? null
+    const byLane: Record<
+      string,
+      { count: number; onsets: number[]; pitches: Array<number | null> }
+    > = {}
+    for (const [key, notes] of marks.marksByLane) {
+      byLane[key] = {
+        count: notes.length,
+        onsets: notes.map((n) => n.cycle),
+        pitches: notes.map((n) => n.pitch),
+      }
+    }
+    ;(
+      window as unknown as { __staveTimelineMarks?: unknown }
+    ).__staveTimelineMarks = {
+      evalBacked: Array.isArray(events) && events.length > 0,
+      eventCount: Array.isArray(events) ? events.length : 0,
+      laneCount: marks.marksByLane.size,
+      byLane,
+    }
+  }, [marks, loopCycles, props.getTimelineEvents])
   // #871 — the lane order the user WROTE, read off the IR's track list. Lane
   // order is structure, and structure is IR-owned: the IR carries a Track node
   // per statement even when that track emits no static-IR events (a signal, a

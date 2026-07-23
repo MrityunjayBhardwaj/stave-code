@@ -3,6 +3,8 @@ export type { IREvent, SourceLocation, IRPattern } from './ir'
 export { merge, transpose, timestretch, filter, scaleGain } from './ir'
 export type { PatternIR, PlayParams, CollectContext, ComponentBag, System } from './ir'
 export { IR, collect, collectCycles, toStrudel, patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './ir'
+export { structuralWalk, aggregateLaneItems } from './ir'
+export type { LaneSkeleton, LaneItem } from './ir'
 // Full-song analysis (#385)
 export { analyzeSong, analyzeEvents, accumulateLanes, cycleFingerprints, detectPeriod, computeSections, laneKeyOf } from './ir'
 export type { SongAnalysis, LaneActivity, SongSection, AnalyzeSongOptions } from './ir'

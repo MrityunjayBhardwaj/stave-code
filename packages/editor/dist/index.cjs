@@ -1145,6 +1145,326 @@ function collapseToMini(children) {
 }
 __name(collapseToMini, "collapseToMini");
 
+// src/ir/structuralWalk.ts
+function aggregateLaneItems(items, nCycles) {
+  const order = [];
+  const byKey = /* @__PURE__ */ new Map();
+  const armByCycle = /* @__PURE__ */ new Map();
+  const armLabels = /* @__PURE__ */ new Map();
+  for (const it of items) {
+    let lane = byKey.get(it.laneKey);
+    if (!lane) {
+      lane = { laneKey: it.laneKey };
+      byKey.set(it.laneKey, lane);
+      order.push(it.laneKey);
+    }
+    if (lane.dollarPos === void 0 && it.dollarPos !== void 0) lane.dollarPos = it.dollarPos;
+    if (lane.sourceOffset === void 0 && it.loc && it.loc.length > 0) {
+      const s = it.loc[0]?.start;
+      if (typeof s === "number" && Number.isFinite(s)) lane.sourceOffset = s;
+    }
+    if (lane.arrangeOffset === void 0 && it.loc && it.loc.length > 0) {
+      let outer;
+      for (const l of it.loc) {
+        const s = l?.start;
+        if (typeof s !== "number" || !Number.isFinite(s)) continue;
+        if (it.dollarPos !== void 0 && s === it.dollarPos) continue;
+        if (outer === void 0 || s < outer) outer = s;
+      }
+      if (outer !== void 0) lane.arrangeOffset = outer;
+    }
+    if (lane.leafIndex === void 0 && it.leafIndex !== void 0) lane.leafIndex = it.leafIndex;
+    if (typeof it.armIndex === "number") {
+      let byCycle = armByCycle.get(it.laneKey);
+      if (!byCycle) {
+        byCycle = new Array(nCycles);
+        armByCycle.set(it.laneKey, byCycle);
+      }
+      if (it.cycle >= 0 && it.cycle < nCycles) byCycle[it.cycle] = it.armIndex;
+      let labels = armLabels.get(it.laneKey);
+      if (!labels) {
+        labels = /* @__PURE__ */ new Map();
+        armLabels.set(it.laneKey, labels);
+      }
+      if (!labels.has(it.armIndex) && it.labelValue != null) labels.set(it.armIndex, it.labelValue);
+    }
+  }
+  return order.map((key2) => {
+    const lane = byKey.get(key2);
+    const byCycle = armByCycle.get(key2);
+    if (byCycle) lane.armByCycle = byCycle;
+    const labels = armLabels.get(key2);
+    if (labels) lane.armLabels = labels;
+    return lane;
+  });
+}
+__name(aggregateLaneItems, "aggregateLaneItems");
+function withWrapperLoc2(items, wrapper) {
+  if (!wrapper || wrapper.length === 0) return items;
+  const range2 = wrapper[0];
+  return items.map((it) => ({ ...it, loc: it.loc ? [...it.loc, range2] : [range2] }));
+}
+__name(withWrapperLoc2, "withWrapperLoc");
+function safeCountLeaves(node) {
+  try {
+    return countLeavesInIR2(node);
+  } catch {
+    return 1;
+  }
+}
+__name(safeCountLeaves, "safeCountLeaves");
+function countLeavesInIR2(node) {
+  if (node.tag === "Stack") {
+    if (node.userMethod === void 0 || node.userMethod === "stack") {
+      let n = 0;
+      for (const t of node.tracks) n += countLeavesInIR2(t);
+      return n;
+    }
+    return 1;
+  }
+  if (node.tag === "Code" && node.via && !("literal" in node.via) && node.via.inner) {
+    return countLeavesInIR2(node.via.inner);
+  }
+  switch (node.tag) {
+    case "Param":
+    case "Fast":
+    case "Slow":
+    case "Elongate":
+    case "Late":
+    case "Degrade":
+    case "Ply":
+    case "Struct":
+    case "Swing":
+    case "Shuffle":
+    case "Scramble":
+    case "Chop":
+    case "When":
+    case "Every":
+    case "Loop":
+    case "Ramp":
+      return countLeavesInIR2(node.body);
+    default:
+      return 1;
+  }
+}
+__name(countLeavesInIR2, "countLeavesInIR");
+function walkCycle(ir, ctx) {
+  const recurse = /* @__PURE__ */ __name((node, childCtx) => {
+    try {
+      return walkCycle(node, childCtx);
+    } catch {
+      return [];
+    }
+  }, "recurse");
+  switch (ir.tag) {
+    case "Pure":
+    case "Signal":
+    case "Builder":
+    case "Sleep":
+      return [];
+    case "Track": {
+      const childCtx = {
+        ...ctx,
+        trackId: ir.trackId,
+        dollarPos: ctx.dollarPos !== void 0 ? ctx.dollarPos : ir.loc?.[0]?.start,
+        leafIndex: void 0
+      };
+      return withWrapperLoc2(recurse(ir.body, childCtx), ir.loc);
+    }
+    case "Code": {
+      if (ir.via && !("literal" in ir.via)) {
+        return withWrapperLoc2(recurse(ir.via.inner, ctx), ir.loc);
+      }
+      return [];
+    }
+    case "Param": {
+      if (typeof ir.value === "string" || typeof ir.value === "number") {
+        const childCtx = { ...ctx, params: { [ir.key]: ir.value, ...ctx.params } };
+        return withWrapperLoc2(recurse(ir.body, childCtx), ir.loc);
+      }
+      return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
+    }
+    case "Play": {
+      const merged = { ...ir.params, ...ctx.params };
+      const s = merged.s ?? void 0;
+      const laneKey = ctx.trackId ?? s ?? "$default";
+      const labelValue = s ?? (ir.note != null ? String(ir.note) : void 0);
+      const item = {
+        laneKey,
+        // Bucket by the OUTER song cycle, not the arm-local selection cycle (#974) — armByCycle
+        // must index an arrange arm at the song cycle it plays, mirroring collect's floor(begin).
+        cycle: ctx.outputCycle,
+        ...ctx.dollarPos !== void 0 ? { dollarPos: ctx.dollarPos } : {},
+        ...ctx.leafIndex !== void 0 ? { leafIndex: ctx.leafIndex } : {},
+        ...ctx.armIndex !== void 0 ? { armIndex: ctx.armIndex } : {},
+        ...ir.loc && ir.loc.length > 0 ? { loc: ir.loc } : {},
+        ...labelValue !== void 0 ? { labelValue } : {}
+      };
+      return [item];
+    }
+    case "Seq": {
+      if (ir.children.length === 0) return [];
+      const out = [];
+      for (const child of ir.children) {
+        const target = child.tag === "Elongate" ? child.body : child;
+        out.push(...recurse(target, ctx));
+      }
+      return withWrapperLoc2(out, ir.loc);
+    }
+    case "Stack": {
+      const isVoiceDefining = ir.userMethod === void 0 || ir.userMethod === "stack";
+      const out = [];
+      if (isVoiceDefining) {
+        let leafIdx = ctx.leafIndex ?? 0;
+        for (const track of ir.tracks) {
+          out.push(...recurse(track, { ...ctx, leafIndex: leafIdx }));
+          leafIdx += safeCountLeaves(track);
+        }
+      } else {
+        for (const track of ir.tracks) out.push(...recurse(track, ctx));
+      }
+      return withWrapperLoc2(out, ir.loc);
+    }
+    case "Choice": {
+      const out = [];
+      out.push(...recurse(ir.then, ctx));
+      out.push(...recurse(ir.else_, ctx));
+      return withWrapperLoc2(out, ir.loc);
+    }
+    case "Every": {
+      const fires = ctx.cycle % ir.n === 0;
+      if (fires) return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
+      if (ir.default_) return withWrapperLoc2(recurse(ir.default_, ctx), ir.loc);
+      return [];
+    }
+    case "Cycle": {
+      if (ir.items.length === 0) return [];
+      const weights = ir.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
+      const period = weights.reduce((s, w) => s + w, 0);
+      if (period <= 0) return [];
+      const pos = (ctx.cycle % period + period) % period;
+      const innerCycle = Math.floor(ctx.cycle / period);
+      let acc = 0;
+      let selected = 0;
+      for (let k = 0; k < ir.items.length; k++) {
+        if (pos < acc + weights[k]) {
+          selected = k;
+          break;
+        }
+        acc += weights[k];
+      }
+      const item = ir.items[selected];
+      const target = item.tag === "Elongate" ? item.body : item;
+      return withWrapperLoc2(recurse(target, { ...ctx, cycle: innerCycle }), ir.loc);
+    }
+    case "Arrange": {
+      if (ir.arms.length === 0) return [];
+      const period = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
+      if (period <= 0) return [];
+      const pos = (ctx.cycle % period + period) % period;
+      let acc = 0;
+      let armIndex = 0;
+      let localCycle = 0;
+      for (let i = 0; i < ir.arms.length; i++) {
+        const w = ir.arms[i].weight > 0 ? ir.arms[i].weight : 0;
+        if (pos < acc + w) {
+          armIndex = i;
+          localCycle = pos - acc;
+          break;
+        }
+        acc += w;
+      }
+      const childCtx = {
+        ...ctx,
+        cycle: localCycle,
+        armIndex: ctx.armIndex ?? armIndex
+      };
+      return withWrapperLoc2(recurse(ir.arms[armIndex].pattern, childCtx), ir.loc);
+    }
+    case "When": {
+      return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
+    }
+    case "Ramp": {
+      return withWrapperLoc2(recurse(ir.body, { ...ctx, params: { ...ctx.params, [ir.param]: 0 } }), ir.loc);
+    }
+    // Single-body uniform-modifier wrappers: behaviour (timing/RNG/rearrange) drops, one
+    // walk of the body suffices for lanes + loc-layering. Duplication/rearrange nodes
+    // (Fast/Ply/Chop/Shuffle/Scramble) share the body's leaf loc[0], so first-wins is stable.
+    case "Fast":
+    case "Slow":
+    case "Loop":
+    case "Elongate":
+    case "Late":
+    case "Degrade":
+    case "Swing":
+    case "Ply":
+    case "Shuffle":
+    case "Scramble":
+    case "Chop":
+    case "Struct":
+      return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
+    case "Chunk": {
+      return withWrapperLoc2(recurse(ir.body, ctx), ir.loc);
+    }
+    case "Pick": {
+      if (ir.lookup.length === 0) return [];
+      const out = [];
+      const selectorLoc = ir.selector.loc?.[0];
+      for (const sub of ir.lookup) {
+        for (const it of recurse(sub, ctx)) {
+          const childLoc = it.loc ?? [];
+          const newLoc = [...childLoc, ...selectorLoc ? [selectorLoc] : []];
+          out.push(newLoc.length > 0 ? { ...it, loc: newLoc } : it);
+        }
+      }
+      return withWrapperLoc2(out, ir.loc);
+    }
+    case "NamedPick": {
+      if (ir.entries.length === 0) return [];
+      let selectedArm;
+      if (ir.selector.tag === "Cycle" && ir.selector.items.length > 0) {
+        const weights = ir.selector.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
+        const period = weights.reduce((s, w) => s + w, 0);
+        if (period > 0) {
+          const pos = (ctx.cycle % period + period) % period;
+          let acc = 0;
+          for (let k = 0; k < weights.length; k++) {
+            if (pos < acc + weights[k]) {
+              selectedArm = k;
+              break;
+            }
+            acc += weights[k];
+          }
+        }
+      }
+      const armIndex = ctx.armIndex ?? selectedArm;
+      const out = [];
+      const selectorLoc = ir.selector.loc?.[0];
+      for (const entry of ir.entries) {
+        const childCtx = { ...ctx, ...armIndex !== void 0 ? { armIndex } : {} };
+        for (const it of recurse(entry.pattern, childCtx)) {
+          const childLoc = it.loc ?? [];
+          const newLoc = [...childLoc, ...selectorLoc ? [selectorLoc] : []];
+          out.push(newLoc.length > 0 ? { ...it, loc: newLoc } : it);
+        }
+      }
+      return withWrapperLoc2(out, ir.loc);
+    }
+  }
+}
+__name(walkCycle, "walkCycle");
+function structuralWalk(ir, nCycles) {
+  const items = [];
+  for (let c = 0; c < nCycles; c++) {
+    try {
+      items.push(...walkCycle(ir, { cycle: c, outputCycle: c, params: {} }));
+    } catch {
+    }
+  }
+  return aggregateLaneItems(items, nCycles);
+}
+__name(structuralWalk, "structuralWalk");
+
 // src/ir/songAnalysis.ts
 function laneKeyOf(ev) {
   return ev.trackId ?? ev.s ?? "$default";
@@ -37268,6 +37588,19 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
      * bump it; after every await, `play()` bails if its token is stale (#811).
      */
     this.playGeneration = 0;
+    /**
+     * Serializes every `engine.evaluate()` call this runtime makes — `play()`'s
+     * eval and `evaluateForTimeline()`'s eval share it (#977). The engine
+     * installs its `.p` capture wrappers on the shared Pattern prototype and
+     * closes them over the CURRENT evaluate's capture maps; two overlapping
+     * evaluates would cross-wire captured patterns (the same audio-boundary
+     * race class as the double-init in #815). A user can edit — firing a
+     * debounced eval-on-load — and press Play a beat later, so the overlap is
+     * real. Chaining through this promise guarantees one evaluate at a time;
+     * `play()`'s supersession gate (#811) still runs after the wait, so a Stop
+     * landing during the queue is honored.
+     */
+    this.evalGate = Promise.resolve();
     this.errorListeners = /* @__PURE__ */ new Set();
     this.playingChangedListeners = /* @__PURE__ */ new Set();
     this.evaluateSuccessListeners = /* @__PURE__ */ new Set();
@@ -37319,6 +37652,54 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     this.isInitialized = true;
   }
   /**
+   * Run `fn` (an `engine.evaluate()` call) exclusively, chained behind any
+   * evaluate already in flight. See `evalGate` for why serialization is
+   * mandatory. Errors are swallowed on the gate chain so one failed evaluate
+   * doesn't poison the queue; the caller still sees `fn`'s own resolution.
+   */
+  runExclusiveEval(fn) {
+    const run = this.evalGate.then(fn, fn);
+    this.evalGate = run.then(
+      () => void 0,
+      () => void 0
+    );
+    return run;
+  }
+  /**
+   * Populate the engine's timeline haps (`songPatterns`) WITHOUT starting
+   * playback, so the Song timeline draws eval-faithful marks BEFORE the user
+   * presses Play (#977). Runs init (idempotent) + `engine.evaluate` and stops
+   * there: no bus publish, no `scheduler.start()`, no playing-state flip.
+   *
+   * The AudioContext stays suspended — `evaluate()` captures patterns via the
+   * `.p` setter and queryArcs them offline; the scheduler start that produces
+   * sound lives in `play()` (step 8), which this never reaches. Reusing the
+   * real `engine.evaluate` means pre-play marks come from the SAME eval oracle
+   * as playback — there is no second interpreter to drift.
+   *
+   * Silent by design: does NOT fire `onError` / `evaluateSuccess`. A failed
+   * evaluate (mid-edit invalid code) simply leaves `songPatterns` empty and the
+   * timeline falls back to the structural walk + collect marks (the resilience
+   * path). The only observable change is that pre-play marks for VALID code
+   * become eval-computed instead of collect-computed.
+   *
+   * No-op while playing or disposed: `play()` already keeps `songPatterns`
+   * fresh, so re-evaluating mid-play would be redundant churn.
+   */
+  async evaluateForTimeline() {
+    if (this.isDisposed || this.isPlayingState) return;
+    try {
+      if (!this.isInitialized) {
+        await this.engine.init();
+        this.isInitialized = true;
+      }
+      if (this.isDisposed || this.isPlayingState) return;
+      const code = this.getFileContent();
+      await this.runExclusiveEval(() => this.engine.evaluate(code));
+    } catch {
+    }
+  }
+  /**
    * The nine-step play lifecycle (PK1). See class JSDoc above.
    *
    * Returns the evaluate error if any (also fires `onError` listeners).
@@ -37345,7 +37726,7 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     const code = this.getFileContent();
     let evalResult;
     try {
-      evalResult = await this.engine.evaluate(code);
+      evalResult = await this.runExclusiveEval(() => this.engine.evaluate(code));
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       this.fireOnError(error);
@@ -42374,6 +42755,7 @@ exports.WorkspaceShell = WorkspaceShell;
 exports.Writeback = Writeback;
 exports.accumulateLanes = accumulateLanes;
 exports.adaptMasterChunk = adaptMasterChunk;
+exports.aggregateLaneItems = aggregateLaneItems;
 exports.analyzeEvents = analyzeEvents;
 exports.analyzeSong = analyzeSong;
 exports.applyEdits = applyEdits;
@@ -42716,6 +43098,7 @@ exports.startHistoryDriver = startHistoryDriver;
 exports.startSampleSound = startSampleSound;
 exports.statementOffsetForSource = statementOffsetForSource;
 exports.stopSampleSound = stopSampleSound;
+exports.structuralWalk = structuralWalk;
 exports.subscribeCapture = subscribeCapture;
 exports.subscribeFixed = subscribeFixed;
 exports.subscribeIRSnapshot = subscribeIRSnapshot;
