@@ -1132,13 +1132,26 @@ export default function StrudelEditorClient({
     // first play/eval/error event — so pre-play the active-runtime accessor
     // builder saw `runtimeStates.get(fid)` undefined and wired NULL accessors,
     // leaving the Song timeline unable to read the eval haps eval-on-load had
-    // populated. Seeding here keeps runtimeStates consistent with runtimesRef.
-    setRuntimeStates((prev) => {
-      if (prev.has(fileId)) return prev;
-      const next = new Map(prev);
-      next.set(fileId, { isPlaying: false, error: null, autoRefresh: false });
-      return next;
-    });
+    // populated. Seeding here keeps runtimeStates consistent with runtimesRef,
+    // AND the state change re-triggers the accessor builder when the runtime is
+    // created after the active file is already set.
+    //
+    // #979 — but getOrCreateRuntime is invoked DURING render (`chromeForTab`, in
+    // WorkspaceShell's render) as well as from handlers/effects, so seeding
+    // synchronously would call setState during another component's render (React
+    // cross-component update warning). Defer it to a microtask — a post-render
+    // side effect — guarded on the ref so the per-render call from chromeForTab
+    // neither loops nor schedules repeatedly, and idempotent so a race is a no-op.
+    if (!runtimeStatesRef.current.has(fileId)) {
+      queueMicrotask(() => {
+        setRuntimeStates((prev) => {
+          if (prev.has(fileId)) return prev;
+          const next = new Map(prev);
+          next.set(fileId, { isPlaying: false, error: null, autoRefresh: false });
+          return next;
+        });
+      });
+    }
     return runtime;
   }, []);
 
