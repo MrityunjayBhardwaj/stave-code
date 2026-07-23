@@ -1814,7 +1814,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "operators inside a group are beyond the editable subset",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "<[g3,b3,e4] [a3,c3,e4] [b3,d3,f#4] [b3,e4,g4]@0.75 [b3,d3,f#4]@0.25>",
     "roll": "ok",
   },
@@ -1904,12 +1904,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "unsupported mini-notation syntax",
+    "grid": "ok",
     "mini": "<a4,c#4,e4,g#4>@10",
     "roll": "unsupported mini-notation syntax",
   },
   {
-    "grid": ""polymeter_slowcat" is beyond the editable subset",
+    "grid": "ok",
     "mini": "<bd - - -> *2",
     "roll": ""polymeter_slowcat" is beyond the editable subset",
   },
@@ -2094,7 +2094,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""cr" is not a note name",
   },
   {
-    "grid": "elongation is beyond the drum-grid subset",
+    "grid": "ok",
     "mini": "<crow -@3>",
     "roll": ""crow" is not a note name",
   },
@@ -2154,7 +2154,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""slow" stretch is beyond the editable subset",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "<eeloil>/2",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -2349,7 +2349,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""sawtooth" is not a note name",
   },
   {
-    "grid": "unsupported token ","",
+    "grid": "ok",
     "mini": "<sawtooth, folkharp>",
     "roll": "unsupported token ","",
   },
@@ -2369,7 +2369,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""polymeter_slowcat" is beyond the editable subset",
   },
   {
-    "grid": "unsupported token ","",
+    "grid": "ok",
     "mini": "<sine, folkharp>",
     "roll": "unsupported token ","",
   },
@@ -3789,7 +3789,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""amen" is not a note name",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "amen/4",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -3799,7 +3799,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""slow" stretch is beyond the editable subset",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "apache/2",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -4289,7 +4289,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""bd" is not a note name",
   },
   {
-    "grid": ""feet" is beyond the editable subset",
+    "grid": "ok",
     "mini": "bd*4 . bd*2 . bd . bd*4",
     "roll": ""feet" is beyond the editable subset",
   },
@@ -4879,7 +4879,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""slow" stretch is beyond the editable subset",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "crowd/2",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -4954,7 +4954,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""dantranh_tremolo" is not a note name",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "delight/2",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -4974,7 +4974,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""slow" stretch is beyond the editable subset",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "drumloop/2",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -6185,7 +6185,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""long" is not a note name",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "loop4/4",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -6260,7 +6260,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""movement" is not a note name",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "movement/2",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -6310,7 +6310,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""oberheimdmx_rim" is not a note name",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "ocarina/4",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -6550,7 +6550,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""riffin" is not a note name",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "riffin/2",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -7000,12 +7000,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""tubularbells" is not a note name",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "tubularbells/2",
     "roll": ""slow" stretch is beyond the editable subset",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "useme/2",
     "roll": ""slow" stretch is beyond the editable subset",
   },
@@ -7045,7 +7045,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": ""vox" is not a note name",
   },
   {
-    "grid": ""slow" stretch is beyond the editable subset",
+    "grid": "ok",
     "mini": "vox*1/2",
     "roll": ""slow" stretch is beyond the editable subset",
   },

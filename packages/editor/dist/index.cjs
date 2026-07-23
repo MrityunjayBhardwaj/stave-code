@@ -25663,6 +25663,7 @@ function fmtGain(v) {
 }
 __name(fmtGain, "fmtGain");
 function serializeStepGrid(model) {
+  if (model.leafSource) return spliceByLeaf(model);
   if (altSourceFits(model.altSource, model.steps)) return spliceAltGrid(model);
   const spliced = spliceGrid(model);
   if (spliced !== null) return spliced;
@@ -25703,6 +25704,41 @@ function spliceGrid(model) {
   return out + src.suffix;
 }
 __name(spliceGrid, "spliceGrid");
+function serializeByLeaf(src, edits) {
+  let out = src;
+  for (const e of [...edits].sort((a, b) => b.span.start - a.span.start)) {
+    out = out.slice(0, e.span.start) + e.text + out.slice(e.span.end);
+  }
+  return out;
+}
+__name(serializeByLeaf, "serializeByLeaf");
+function spliceByLeaf(model) {
+  const ls = model.leafSource;
+  if (!ls || ls.cols.length !== model.steps) return null;
+  const now2 = columnAtoms(model.lanes, model.steps);
+  const want = /* @__PURE__ */ new Map();
+  for (let c = 0; c < model.steps; c++) {
+    const anchors = ls.cols[c];
+    const before = anchors.map((a) => a.atom);
+    const after = [...new Set(now2[c])];
+    const gone = before.filter((a) => !after.includes(a));
+    const added = after.filter((a) => !before.includes(a));
+    const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1;
+    if (added.length > 0 && !swap) return null;
+    for (const a of anchors) {
+      const text = swap ? added[0] : gone.includes(a.atom) ? "~" : a.atom;
+      const key2 = `${a.span.start}:${a.span.end}`;
+      const prev = want.get(key2);
+      if (prev && prev.text !== text) return null;
+      want.set(key2, { span: a.span, text });
+    }
+  }
+  const edits = [...want.values()].filter(
+    (e) => ls.src.slice(e.span.start, e.span.end) !== e.text
+  );
+  return serializeByLeaf(ls.src, edits);
+}
+__name(spliceByLeaf, "spliceByLeaf");
 function spliceAltGrid(model) {
   const a = model.altSource;
   if (!a) return "";
@@ -25761,6 +25797,7 @@ function gridColumns(lanes, steps) {
 __name(gridColumns, "gridColumns");
 function serializeStepGain(model) {
   if (model.gainForeign) return { kind: "skip" };
+  if (model.leafSource) return { kind: "skip" };
   const bars = model.bars ?? 1;
   const parts = new Set(model.lanes.map((l) => l.part ?? 0));
   if (bars > 1 || parts.size > 1) return { kind: "skip" };
@@ -26898,10 +26935,129 @@ function projectionEditSafe(model, perBar2, bars, base, probeCols) {
   return true;
 }
 __name(projectionEditSafe, "projectionEditSafe");
+function projectStepGridByLeaf(src0) {
+  const src = src0.trim();
+  if (src === "") return null;
+  let pat;
+  try {
+    pat = mini_mjs.mini(src);
+  } catch {
+    return null;
+  }
+  const cycles = [];
+  for (let c = 0; c < PERIOD_PROBE; c++) {
+    const cc = gridOnsets(pat, c);
+    if (cc === null) return null;
+    cycles.push(cc);
+  }
+  const bars = detectPeriod2(cycles.map(onsetKey), MAX_PROJECT_BARS);
+  if (bars === 0) return null;
+  const perCycle = cycles.slice(0, bars);
+  if (perCycle.every((c) => c.length === 0)) return null;
+  let perBar2 = 1;
+  for (const o of perCycle.flat()) {
+    const d = denom(o.pos);
+    if (d === 0) return null;
+    perBar2 = lcm(perBar2, d);
+  }
+  if (perBar2 * bars > MAX_STEPS) return null;
+  const cols = leafAnchors(src, perCycle, perBar2, bars);
+  if (cols === null) return null;
+  const model = {
+    steps: perBar2 * bars,
+    ...bars > 1 ? { bars } : {},
+    lanes: lanesFromCells(cols.map((c) => c.map((a) => a.atom))),
+    leafSource: { src, cols }
+  };
+  if (!leafEditSafe(model, perBar2, bars)) return null;
+  if (!leafViewUsable(model)) return null;
+  return { ok: true, model };
+}
+__name(projectStepGridByLeaf, "projectStepGridByLeaf");
+function leafViewUsable(model) {
+  for (let c = 0; c < model.steps; c++) {
+    const on = model.lanes.find((l) => l.cells[c]);
+    if (!on) continue;
+    const lanes = model.lanes.map(
+      (l) => l === on ? { ...l, cells: l.cells.map((v, j) => j === c ? false : v) } : l
+    );
+    if (serializeStepGrid({ ...model, lanes }) !== null) return true;
+  }
+  return false;
+}
+__name(leafViewUsable, "leafViewUsable");
+function leafAnchors(src, perCycle, perBar2, bars) {
+  const cols = Array.from({ length: perBar2 * bars }, () => []);
+  const seen = [];
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const c = b * perBar2 + Math.round(o.pos * perBar2);
+      if (c < 0 || c >= perBar2 * bars) return null;
+      for (let i = 0; i < o.atoms.length; i++) {
+        const span = o.spans[i];
+        if (!span || src.slice(span.start, span.end) !== o.atoms[i]) return null;
+        for (const s of seen) {
+          const same = s.start === span.start && s.end === span.end;
+          if (!same && s.end > span.start && span.end > s.start) return null;
+        }
+        seen.push(span);
+        cols[c].push({ atom: o.atoms[i], span });
+      }
+    }
+  }
+  return cols;
+}
+__name(leafAnchors, "leafAnchors");
+function leafEditSafe(model, perBar2, bars) {
+  const ls = model.leafSource;
+  if (!ls) return false;
+  const probes = /* @__PURE__ */ new Map();
+  for (const col of ls.cols) {
+    for (const a of col) probes.set(`${a.span.start}:${a.span.end}`, a);
+  }
+  for (const anchor of probes.values()) {
+    for (const text of [PROBE_SOUND, "~"]) {
+      const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }]);
+      let edited;
+      try {
+        edited = mini_mjs.mini(out);
+      } catch {
+        return false;
+      }
+      const want = leafExpected(ls.cols, perBar2, bars, anchor.span, text === "~" ? null : text);
+      for (let b = 0; b < bars; b++) {
+        const got = gridOnsets(edited, b);
+        if (got === null || onsetKey(got) !== onsetKey(want[b])) return false;
+      }
+      const wrap5 = gridOnsets(edited, bars);
+      if (wrap5 === null || onsetKey(wrap5) !== onsetKey(want[0])) return false;
+    }
+  }
+  return true;
+}
+__name(leafEditSafe, "leafEditSafe");
+function leafExpected(cols, perBar2, bars, span, text) {
+  const out = [];
+  for (let b = 0; b < bars; b++) {
+    const bar2 = [];
+    for (let i = 0; i < perBar2; i++) {
+      const atoms = /* @__PURE__ */ new Set();
+      for (const a of cols[b * perBar2 + i]) {
+        const hit = a.span.start === span.start && a.span.end === span.end;
+        if (hit && text === null) continue;
+        atoms.add(hit ? text : a.atom);
+      }
+      if (atoms.size > 0) bar2.push({ pos: i / perBar2, atoms: [...atoms], spans: [] });
+    }
+    out.push(bar2);
+  }
+  return out;
+}
+__name(leafExpected, "leafExpected");
 function parseStepGrid(mini) {
   const core = parseStepGridCore(mini);
   if (core.ok) return core;
-  return projectStepGrid(mini) ?? core;
+  return projectStepGrid(mini) ?? projectStepGridByLeaf(mini) ?? core;
 }
 __name(parseStepGrid, "parseStepGrid");
 function parseStepGridCore(mini) {

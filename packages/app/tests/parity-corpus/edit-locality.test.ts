@@ -378,7 +378,7 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
     if (!r.ok) return
     // lane 0 is `bd`; column 3 is the `sd` step — turn `bd` on there
     const edited = toggleCell(r.model, 0, 3, true)
-    expect(serializeStepGrid(edited)).toBe('bd!3 [bd,sd]')
+    expect(serializeStepGrid(edited) ?? '<null>').toBe('bd!3 [bd,sd]')
   })
 
   /**
@@ -395,7 +395,70 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
     expect(r.ok).toBe(true)
     if (!r.ok) return
     const edited = toggleCell(r.model, 0, 1, true) // lane 0 = bd (part 0)
-    expect(serializeStepGrid(edited)).toBe('bd bd sd ~, hh*4')
+    expect(serializeStepGrid(edited) ?? '<null>').toBe('bd bd sd ~, hh*4')
+  })
+
+  /**
+   * THE LEAF WRITER'S PROOF (#986). The leaf-anchored projection opens patterns
+   * whose notation no re-emit can spell (`<c2 eb2 f2 g2>*2`, a slow-repeat, a
+   * `,`-stack of nested groups). Its whole claim is that an edit is a byte
+   * replacement at ONE note's own span and every other byte is copied — so here
+   * the assertion is literal: the output differs from the source only inside the
+   * edited leaf, and nothing about the grammar (brackets, `*`, `<>`, `@`) is
+   * touched. This IS the adapter/printer boundary made a test.
+   */
+  it('leaf: clearing one note edits only that note`s bytes (nested-group source)', () => {
+    // an alternation of CHORDS — the region projection can't spell this, so it
+    // reaches the leaf writer. Clearing the `g3` (chord member of bar 0) must
+    // touch exactly the `g3` token; every bracket, comma, `@0.75`, and other
+    // pitch rides back byte-for-byte.
+    const src = '<[g3,b3,e4] [a3,c3,e4] [b3,d3,f#4] [b3,e4,g4]@0.75 [b3,d3,f#4]@0.25>'
+    const r = parseStepGrid(src)
+    expect(r.ok, `${src} should leaf-project`).toBe(true)
+    if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored grid')
+    const lane = r.model.lanes.find((l) => l.sound === 'g3')!
+    const col = lane.cells.indexOf(true)
+    const cleared = toggleCell(r.model, r.model.lanes.indexOf(lane), col, false)
+    const out = serializeStepGrid(cleared)
+    expect(out).toBe('<[~,b3,e4] [a3,c3,e4] [b3,d3,f#4] [b3,e4,g4]@0.75 [b3,d3,f#4]@0.25>')
+  })
+
+  /**
+   * The adapter, made literal: a leaf edit changes ONLY bytes inside the edited
+   * leaf's span, at ANY depth. `<crow -@3>` is a slow-alternation the region
+   * writer refuses; clearing the `crow` leaf produces a one-token diff and leaves
+   * `<`, the `-@3`, and `>` untouched.
+   */
+  it('leaf: an edit is a byte replacement at the leaf span, structure verbatim', () => {
+    const src = '<crow -@3>'
+    const r = parseStepGrid(src)
+    expect(r.ok).toBe(true)
+    if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored grid')
+    const col = r.model.lanes[0].cells.indexOf(true)
+    const out = serializeStepGrid(toggleCell(r.model, 0, col, false))
+    expect(out).toBe('<~ -@3>')
+    // literal locality: the diff is confined to the `crow` span
+    const before = src.indexOf('crow')
+    expect(out!.slice(0, before)).toBe(src.slice(0, before))
+    expect(out!.slice(before + 1)).toBe(src.slice(before + 4)) // `~` vs `crow`
+  })
+
+  /**
+   * The bijection refusal, as a test. When a projected model's cells no longer
+   * agree about a shared leaf, the leaf writer DECLINES (`null`) and the panel
+   * keeps the document — it never lets the last writer silently win. Built by
+   * hand from a real leaf model so the invariant is asserted regardless of which
+   * patterns happen to open a view.
+   */
+  it('leaf: a shared-leaf disagreement declines to null, never corrupts', () => {
+    const src = '<bd - - -> *2' // one `bd` leaf under bar 0, `-` (silence) elsewhere
+    const r = parseStepGrid(src)
+    expect(r.ok).toBe(true)
+    if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored grid')
+    // forge a disagreement: turn the `bd` ON at a column its leaf isn't under.
+    // No single byte-replacement satisfies both columns → decline.
+    const forged = toggleCell(r.model, 0, 1, true)
+    expect(serializeStepGrid(forged)).toBeNull()
   })
 
   /**

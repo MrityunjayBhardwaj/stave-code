@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseStepGrid,
+  parseStepGridCore,
   parsePianoRoll,
   bjorklund,
   parseGainMini,
@@ -555,11 +556,17 @@ describe('piano roll — parse', () => {
     // the operator adds in the second cycle. Bar expansion (#938) shows both cycles
     // truthfully, so that reason is gone and it now opens — see the #938 test below
     // for what its write-back does and does not preserve.
-    // and on silence: `~:3` parses (rest atom + tail). A bare `bd ~:3` still
-    // refuses — the projection can't reproduce a `:3` on a rest, so it declines
-    // rather than drop it. But `[bd ~:3] sd` PLAYS only bd + sd (the variant rides
-    // on silence), so it projects to [bd sd] and the source rides back verbatim (#922).
-    expect(parseStepGrid('bd ~:3').ok).toBe(false)
+    // and on silence: `~:3` parses (rest atom + tail). The syntactic CORE still
+    // refuses a bare `bd ~:3` (a `:3` on a rest is outside its subset)…
+    expect(parseStepGridCore('bd ~:3').ok).toBe(false)
+    // …but the leaf-anchored projection (#986) opens it: it PLAYS one bd onset,
+    // and its write-back copies the `~:3` bytes verbatim rather than modelling
+    // them — clearing bd yields `~ ~:3`, the variant preserved, never dropped.
+    // (The old refusal reasoned "the projection can't reproduce a `:3` on a
+    // rest"; leaf surgery can, by copying, so that reason is gone.)
+    const restVar = parseStepGrid('bd ~:3')
+    expect(restVar.ok).toBe(true)
+    if (restVar.ok) expect(restVar.model.lanes.map((l) => l.sound)).toEqual(['bd'])
     gridRoundTrips('[bd ~:3] sd')
     // the plain `:variant` it must NOT over-refuse
     const ok = parseStepGrid('bd:3 sn')
@@ -1292,12 +1299,20 @@ describe('#904 — underscores in sound names vs `_` elongation', () => {
     expect(r.model.lanes.map((l) => l.sound)).toEqual(['bd_', 'sd'])
   })
 
-  // The boundary: these must STAY rejected. A standalone `_` is real
-  // elongation sugar, which the drum grid does not model — declining is
-  // correct. Widening the ATOM rule must not swallow it.
-  it('STILL rejects a standalone `_` (elongation sugar, not a name)', () => {
-    expect(parseStepGrid('bd _').ok).toBe(false)
-    expect(parseStepGrid('bd _ _').ok).toBe(false)
+  // The boundary #904 actually guards: a standalone `_` is elongation sugar and
+  // must never be read as a sound NAME. The syntactic core still declines it
+  // (elongation is not the grid's subset), and — the real invariant — `_` never
+  // appears as a lane. The leaf projection (#986) now OPENS `bd _`, showing the
+  // single bd onset it plays and copying the `_` back verbatim on edit; that is
+  // an onset view, not the char-class bug this test was written against.
+  it('never reads a standalone `_` as a sound name (#904)', () => {
+    for (const src of ['bd _', 'bd _ _']) {
+      expect(parseStepGridCore(src).ok, `core should refuse ${src}`).toBe(false)
+      const full = parseStepGrid(src)
+      // whether or not the projection opens it, `_` is never a lane
+      if (full.ok) expect(full.model.lanes.every((l) => l.sound !== '_')).toBe(true)
+    }
+    // `_ bd` (leading elongation) has no onset to anchor and stays refused
     expect(parseStepGrid('_ bd').ok).toBe(false)
   })
 

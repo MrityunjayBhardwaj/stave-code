@@ -95,6 +95,48 @@ export interface AltSource<C> {
 export type GridCells = string[][]
 
 /**
+ * A leaf atom's OWN source span — `[start, end)` into the inner mini string.
+ *
+ * Read from a hap's `context.locations` (Strudel's `mini()` calls `.withLoc` per
+ * atom), never computed here: a nested atom carries its own token span, not its
+ * container's, so `s("a [b c]")` gives the `c` hap the span of `c` and never of
+ * `[b c]` (#987).
+ */
+export interface LeafSpan {
+  start: number
+  end: number
+}
+
+/** one atom sounding in a column, paired with the source leaf it was read from */
+export interface LeafAnchor {
+  atom: string
+  span: LeafSpan
+}
+
+/**
+ * The source of a LEAF-ANCHORED projection (#986) — the third write-back shape,
+ * and the only one that never re-emits notation.
+ *
+ * `source`/`altSource` pair the view with the source's TOP-LEVEL elements, so an
+ * edited element is re-spelled from the cell model (`reemitRegion`). That re-emit
+ * is a mini-notation printer of our own, and it can only spell flat or one-level
+ * output — which is why anything with internal structure (`[a [b c]]`, `<a b>*4`)
+ * round-trips wrong and is refused.
+ *
+ * A leaf anchor pairs the view with the ATOM instead: an edit replaces that one
+ * note's bytes and every other byte — brackets, spaces, operators, unedited notes
+ * — is copied verbatim. Nothing about the grammar is authored, so the writer
+ * cannot invent syntax; what it cannot express (a note where no leaf exists) it
+ * REFUSES. See `spliceByLeaf`.
+ */
+export interface LeafSource {
+  /** the inner mini string the spans index into, byte-for-byte */
+  src: string
+  /** per model column, the atoms sounding there and each one's own leaf span */
+  cols: LeafAnchor[][]
+}
+
+/**
  * One `,`-separated part of the source, and the columns it produced.
  *
  * A flat sequence and a `<…>` alternation are the one-part case; a `,`-stack
@@ -164,6 +206,14 @@ export interface StepGridModel {
    * two are mutually exclusive.
    */
   altSource?: AltSource<GridCells>
+  /**
+   * Set by the LEAF-anchored projection (#986) for patterns whose notation no
+   * element re-emit can reproduce. Takes precedence over both of the above and
+   * is TERMINAL: a leaf grid is never rebuilt from its cells, because rebuilding
+   * is exactly what would destroy the notation it was opened to preserve — an
+   * edit it cannot express as a byte replacement is refused instead.
+   */
+  leafSource?: LeafSource
   /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
   bars?: number
   /**

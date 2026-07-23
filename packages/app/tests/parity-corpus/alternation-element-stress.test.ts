@@ -129,6 +129,12 @@ describe('#920 — <...>-as-element writeback holds under every edit', () => {
             lanes: r.model.lanes.map((l, li) => (li === lane ? { ...l, cells } : l)),
           }
           const out = serializeStepGrid(edited)
+          // an altSource grid is always expressible, so a null here would be a
+          // real defect — flag it rather than silently skip
+          if (out === null) {
+            if (bad.length < 8) bad.push(`NULL ${JSON.stringify(mini.trim())}`)
+            continue
+          }
           edits++
           const re = parseStepGrid(out)
           if (!re.ok) {

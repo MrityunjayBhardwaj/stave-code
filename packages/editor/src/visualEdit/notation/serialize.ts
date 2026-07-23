@@ -12,6 +12,7 @@
 import type {
   AltSource,
   GainWrite,
+  LeafSpan,
   NotationSource,
   PianoRollModel,
   RollNote,
@@ -44,7 +45,14 @@ function fmtGain(v: number): string {
 
 /* ── drum grid ─────────────────────────────────────────────────── */
 
-export function serializeStepGrid(model: StepGridModel): string {
+export function serializeStepGrid(model: StepGridModel): string | null {
+  // A leaf-anchored grid (#986) is written by byte surgery at each note's own
+  // span and NEVER rebuilt: its notation is precisely what no re-emit of ours can
+  // spell, so a rebuild would destroy the pattern the projection opened. An edit
+  // it can't express as a byte replacement returns null — the binding layer then
+  // leaves the document (and the model) untouched.
+  if (model.leafSource) return spliceByLeaf(model)
+
   // A `<...>`-as-element pattern (`bd <sd hh>`, #920) uses its own span surgery
   // and NEVER the rebuilds below — a rebuild would reshape it into the
   // whole-cycle `<[bd sd] [bd hh]>`. Every grid edit is a cell toggle, always
@@ -136,6 +144,79 @@ function spliceGrid(model: StepGridModel): string | null {
     out += p.after
   }
   return out + src.suffix
+}
+
+/* ── leaf surgery (#986) ───────────────────────────────────────── */
+
+/**
+ * Replace bytes at leaf spans, and copy everything else.
+ *
+ * The whole write-back, and deliberately the whole of it: descending order so an
+ * earlier splice can't shift a later offset, no knowledge of the grammar it is
+ * editing. Every structural byte in the output was already in `src` — this
+ * function cannot emit a bracket, an operator or a separator that the user did
+ * not write, which is what makes leaf-anchored write-back an adapter rather than
+ * a mini-notation printer. Shared with the roll in P1b.
+ */
+export function serializeByLeaf(
+  src: string,
+  edits: Array<{ span: LeafSpan; text: string }>,
+): string {
+  let out = src
+  for (const e of [...edits].sort((a, b) => b.span.start - a.span.start)) {
+    out = out.slice(0, e.span.start) + e.text + out.slice(e.span.end)
+  }
+  return out
+}
+
+/**
+ * Write a leaf-anchored grid back by editing each changed note's own bytes.
+ *
+ * Every column is compared with the atoms it was read with: an atom the user
+ * cleared becomes `~` at its own span (silence is a leaf VALUE — `~` and `-`
+ * both reduce to `silence` in `mini.mjs` — not a structural rule we invented), a
+ * single-atom column whose sound was swapped becomes the new token, and an
+ * untouched atom asserts its own token so a leaf shared by several columns can be
+ * checked for agreement.
+ *
+ * Returns null — the document is left alone — for the three edits that have no
+ * span to write through, all of which are the one bijection stated four ways:
+ *  - a hit added where no leaf exists (or a second sound stacked onto a column):
+ *    writing it would mean AUTHORING notation, which is the line between adapter
+ *    and printer;
+ *  - two columns sharing one leaf (`bd*4`) that disagree about the result: one
+ *    token cannot be two things, and letting the last writer win would silently
+ *    rewrite cells the user did not touch;
+ *  - anchors that no longer describe the grid, which is what a restructure
+ *    (resize/quantize) leaves behind.
+ */
+function spliceByLeaf(model: StepGridModel): string | null {
+  const ls = model.leafSource
+  if (!ls || ls.cols.length !== model.steps) return null
+  const now = columnAtoms(model.lanes, model.steps)
+  const want = new Map<string, { span: LeafSpan; text: string }>()
+  for (let c = 0; c < model.steps; c++) {
+    const anchors = ls.cols[c]
+    const before = anchors.map((a) => a.atom)
+    const after = [...new Set(now[c])]
+    const gone = before.filter((a) => !after.includes(a))
+    const added = after.filter((a) => !before.includes(a))
+    // The one add that IS a byte replacement: a lone atom swapped for another in
+    // a lone-atom column. Anything else added has no leaf of its own.
+    const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1
+    if (added.length > 0 && !swap) return null
+    for (const a of anchors) {
+      const text = swap ? added[0] : gone.includes(a.atom) ? '~' : a.atom
+      const key = `${a.span.start}:${a.span.end}`
+      const prev = want.get(key)
+      if (prev && prev.text !== text) return null
+      want.set(key, { span: a.span, text })
+    }
+  }
+  const edits = [...want.values()].filter(
+    (e) => ls.src.slice(e.span.start, e.span.end) !== e.text,
+  )
+  return serializeByLeaf(ls.src, edits)
 }
 
 /* ── span surgery for `<...>`-as-element (#920) ────────────────── */
@@ -246,6 +327,9 @@ function gridColumns(lanes: StepLane[], steps: number): string[] {
  */
 export function serializeStepGain(model: StepGridModel): GainWrite {
   if (model.gainForeign) return { kind: 'skip' }
+  // A leaf-anchored grid emits the user's own columns, not ours — there is no
+  // serialized column sequence for a `.gain("…")` to run against. Hands off.
+  if (model.leafSource) return { kind: 'skip' }
   const bars = model.bars ?? 1
   const parts = new Set(model.lanes.map((l) => l.part ?? 0))
   if (bars > 1 || parts.size > 1) return { kind: 'skip' }
