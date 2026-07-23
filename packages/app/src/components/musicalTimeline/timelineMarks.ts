@@ -262,6 +262,58 @@ function evalTrackIdToLaneKey(trackId: string | undefined): string {
 }
 
 /**
+ * The lane-anchor containment index eval haps are attributed to: `(laneKey,
+ * dollarPos)` pairs ascending by `dollarPos`, from the resilient structural walk
+ * plus the #927 declared-track seeding (zero-event tracks — signals / bare-refs —
+ * the static IR emits nothing for). This is the SINGLE source of the hap→lane
+ * join: `collectHapMarks` (marks) and the song-analysis remap (`analyzeSong`
+ * onsets, #980) both attribute through `laneKeyForHap` over this index, so their
+ * lane keyings can never drift (PV175 — a hap's `$N` trackId ≠ its `d{N}` IR lane
+ * key; containment reconciles them via source offsets both sides carry).
+ * `displayCycles` only bounds the walk — `dollarPos` is a source offset, so any
+ * `≥ 1` yields the same anchors.
+ */
+export function buildLaneAnchors(
+  ir: PatternIR | null,
+  displayCycles: number,
+): Array<[string, number]> {
+  if (!ir) return []
+  const labelOffsetByLane = new Map<string, number>()
+  const nCycles = Math.max(1, Math.ceil(displayCycles))
+  for (const lane of structuralWalk(ir, nCycles)) {
+    if (lane.dollarPos !== undefined) labelOffsetByLane.set(lane.laneKey, lane.dollarPos)
+  }
+  if (ir.tag === 'Stack') {
+    for (const [key, start] of declaredTrackAnchors(ir)) {
+      if (!labelOffsetByLane.has(key)) labelOffsetByLane.set(key, start)
+    }
+  }
+  return [...labelOffsetByLane].sort((a, b) => a[1] - b[1])
+}
+
+/**
+ * Attribute one eval hap to its display lane key: source containment into the
+ * anchor index (the IR lane whose `dollarPos` is the LARGEST ≤ the hap's
+ * `loc[0].start`), else the hap's own positional producer id
+ * (`evalTrackIdToLaneKey`). NOT `laneKeyOf` string equality — that splits an
+ * anon `$:`'s `$N` hap from its `d{N}` IR lane (PV175).
+ */
+export function laneKeyForHap(
+  ev: IREvent,
+  anchors: ReadonlyArray<readonly [string, number]>,
+): string {
+  const start = ev.loc?.[0]?.start
+  let hit: string | undefined
+  if (typeof start === 'number' && Number.isFinite(start)) {
+    for (const [key, pos] of anchors) {
+      if (pos <= start) hit = key
+      else break // ascending → no later anchor can be ≤ start
+    }
+  }
+  return hit ?? evalTrackIdToLaneKey(ev.trackId)
+}
+
+/**
  * Derive note marks from EVALUATED haps (#861), attributed to a lane by SOURCE
  * CONTAINMENT when possible, else to an EVAL-BACKED lane (#864 / P1b).
  *
@@ -290,23 +342,13 @@ function collectHapMarks(
   const out = new Map<string, SceneNote[]>()
   // (laneKey, dollarPos) pairs ascending by dollarPos — the containment index.
   const anchors = [...labelOffsetByLane].sort((a, b) => a[1] - b[1])
-  // Containment hit (an IR lane), or undefined when the hap's source start lands
-  // before every lane's statement (or it has no `loc`).
-  const irLaneFor = (start: number | undefined): string | undefined => {
-    if (typeof start !== 'number' || !Number.isFinite(start)) return undefined
-    let hit: string | undefined
-    for (const [key, pos] of anchors) {
-      if (pos <= start) hit = key
-      else break // ascending → no later anchor can be ≤ start
-    }
-    return hit
-  }
   for (const ev of events) {
     const cycle = ev.begin
     if (!Number.isFinite(cycle) || cycle < 0 || cycle >= displayCycles) continue
-    // Containment first (keeps a hap on its named/positional IR lane); else an
-    // eval-backed lane keyed by the hap's own producer id (#864 / P1b).
-    const key = irLaneFor(ev.loc?.[0]?.start) ?? evalTrackIdToLaneKey(ev.trackId)
+    // The ONE join (`laneKeyForHap`): containment first (keeps a hap on its
+    // named/positional IR lane), else an eval-backed lane keyed by the hap's own
+    // producer id (#864 / P1b). Shared with the song-analysis remap (#980).
+    const key = laneKeyForHap(ev, anchors)
     let arr = out.get(key)
     if (!arr) {
       arr = []
