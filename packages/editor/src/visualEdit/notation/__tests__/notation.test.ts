@@ -1334,8 +1334,28 @@ describe('#904 — underscores in sound names vs `_` elongation', () => {
     expect(parseStepGrid('_ bd').ok).toBe(false)
   })
 
-  it('STILL rejects `_sd` (Strudel reads it as `bd@2 sd`; we decline, never guess)', () => {
-    expect(parseStepGrid('bd _sd').ok).toBe(false)
+  // `bd _sd` is the sharpest case: Strudel reads it as `bd@2 sd`, so a char-class
+  // that took `_sd` for a NAME would invent a sound nobody wrote. This used to be
+  // asserted as a flat refusal — the safe answer while no writer could show the
+  // pattern truthfully. The leaf projection can: it draws the two onsets Strudel
+  // actually plays and splices each note's own bytes. So the invariant is held
+  // where it belongs — on what the view SAYS, not on whether it opens.
+  it('never invents a sound from a leading `_` (#904), even now that it opens', () => {
+    const r = parseStepGrid('bd _sd')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    // Strudel's reading, not a guess at one: bd elongated over two of three slots,
+    // then sd — never a lane called `_sd` or `_`
+    expect(r.model.lanes.map((l) => l.sound)).toEqual(['bd', 'sd'])
+    expect(r.model.steps).toBe(3)
+    expect(r.model.lanes[0].cells).toEqual([true, false, false])
+    expect(r.model.lanes[1].cells).toEqual([false, false, true])
+    // and an edit touches only that note's bytes — the `_` rides back verbatim
+    const sd = r.model.lanes[1]
+    const lanes = r.model.lanes.map((l) =>
+      l === sd ? { ...l, cells: l.cells.map(() => false) } : l,
+    )
+    expect(serializeStepGrid({ ...r.model, lanes })).toBe('bd _~')
   })
 })
 
@@ -1390,5 +1410,46 @@ describe('#991 — the leaf period cap, per surface', () => {
     expect(r.gate).toBe('unstable-period')
     // the sentence must name the cap that ACTUALLY stopped it, not the grid's
     expect(r.reason).toContain('4 bars')
+  })
+})
+
+/**
+ * #994 — the edit-safety probe used to fail on its own marker.
+ *
+ * `PROBE_SOUND` was `__stave_probe__`, and `_` is mini's elongation token, so
+ * splicing it anywhere but column 0 elongated the element before it and handed the
+ * probe a pattern one slot too long. The projections read that as "the writer would
+ * not reproduce this" and declined `edit-unsafe` — for 45 corpus patterns whose
+ * write-back was fine all along. The grammar property is held in `krillContract`;
+ * these are the patterns, so a regression shows up as lost VIEWS and not only as a
+ * lost invariant.
+ */
+describe('#994 — patterns the probe marker used to refuse', () => {
+  it('opens `<bd hh sd hh>*2` and clears a cell by byte surgery', () => {
+    const r = parseStepGrid('<bd hh sd hh>*2')
+    expect(r.ok, 'refused before #994 as edit-unsafe').toBe(true)
+    if (!r.ok) return
+    expect(r.model.bars).toBe(2)
+    expect(r.model.steps).toBe(4)
+    // the alternation's four sounds sit one per column across the two bars
+    expect(r.model.lanes.map((l) => l.sound)).toEqual(['bd', 'hh', 'sd'])
+    const bd = r.model.lanes[0]
+    const lanes = r.model.lanes.map((l) =>
+      l === bd ? { ...l, cells: l.cells.map(() => false) } : l,
+    )
+    // only `bd`'s own bytes move; the `*2` and the brackets ride back verbatim
+    expect(serializeStepGrid({ ...r.model, lanes })).toBe('<~ hh sd hh>*2')
+  })
+
+  it('opens a slowed alternation of sample names', () => {
+    const r = parseStepGrid('<kalimba piano folkharp square>/3')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.steps).toBe(12)
+    const first = r.model.lanes[0]
+    const lanes = r.model.lanes.map((l) =>
+      l === first ? { ...l, cells: l.cells.map(() => false) } : l,
+    )
+    expect(serializeStepGrid({ ...r.model, lanes })).toBe('<~ piano folkharp square>/3')
   })
 })

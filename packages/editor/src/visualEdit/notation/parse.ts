@@ -1352,8 +1352,26 @@ function projectAltBars(
   return { ok: true, model }
 }
 
-/** an improbable sound token used to probe an edit; won't collide with real content */
-const PROBE_SOUND = '__stave_probe__'
+/**
+ * Marker sounds/pitches for the edit self-verify — improbable in real content, and
+ * (the part that bit us) a SINGLE ATOM wherever they land.
+ *
+ * The probe is spliced into the middle of a pattern, so it has to survive being
+ * lexed next to its neighbours. `__stave_probe__` did not: `_` is mini's elongation
+ * token, so its two leading underscores bound to the element BEFORE it — krill reads
+ * `- __stave_probe__ - sd` as `-` with weight 3 followed by an atom `stave_probe__`.
+ * The probe then compared a 6-slot sequence against the 4-slot original-plus-marker,
+ * failed, and the projection declined `edit-unsafe` — 45 perfectly editable patterns
+ * refused for a property of the marker (#994). It misfired only away from the start
+ * of a string, where there is no preceding element to elongate, which is why the
+ * first column of every pattern probed clean and nothing looked systematically wrong.
+ *
+ * So the constraint is the GRAMMAR's, not the sample library's: no character that
+ * mini gives a meaning to. The probe-token contract in `krillContract.test.ts`
+ * holds that property against krill itself, in leading and non-leading position,
+ * so the next distinctive-looking marker cannot bring the bug back.
+ */
+export const PROBE_SOUND = 'zzstaveprobezz'
 
 /**
  * The projection may only OFFER a grid the writer can reproduce under edit. Probe
@@ -1624,15 +1642,42 @@ function leafExpected(
   return out
 }
 
+/**
+ * True when the element writer's locality promise buys the user nothing here.
+ *
+ * That writer keeps an edit local by re-spelling ONLY the region it touched and
+ * copying the rest. When a single region covers the whole cycle there is no rest:
+ * `amen/4` is one element over four bars, so clearing its only cell re-emits the
+ * entire pattern as `<~ ~ ~ ~>` and the `/4` the user wrote is gone. The leaf
+ * writer splices `~/4` instead — the same bytes back, minus the note.
+ *
+ * So this does not DECLINE the element model; it only lets the leaf writer go
+ * first where it has something to offer. `bd*<1 2>` matches this shape too and the
+ * leaf writer cannot serve it (one shared `bd` leaf under three columns), so the
+ * element model still wins and #930's view is unchanged. It is a preference
+ * between two writers that can both do the job, not a new refusal (#994).
+ *
+ * Asked of the `AltSource` both surfaces build, because the property belongs to
+ * the source shape and not to the view — but applied only by the GRID, and that
+ * asymmetry is measured, not assumed. See `parsePianoRoll`: the same preference
+ * costs the roll a unit of committed writer-reach, while the 13 grid units the
+ * element writer would otherwise claim move across with no verdict changing.
+ */
+function vacuousLocality(a: AltSource<unknown> | undefined): boolean {
+  if (!a || a.bars <= 1 || a.regions.length !== 1) return false
+  return a.regions[0].from === 0 && a.regions[0].to === a.perBar
+}
+
 export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
   const core = parseStepGridCore(mini)
   if (core.ok) return core
   // syntactic model refused → try the inherited behaviour projection (#922), then
   // the leaf-anchored projection (#986) for the notation no re-emit can spell
   const element = projectStepGrid(mini)
-  if (element.ok) return element
+  if (element.ok && !vacuousLocality(element.model.altSource)) return element
   const leaf = projectStepGridByLeaf(mini)
   if (leaf.ok) return leaf
+  if (element.ok) return element
   // …and if nothing opened it, report the gate that actually stopped the general
   // write-back (#990) — not the core's syntactic message, which names the first
   // writer to decline
@@ -2045,9 +2090,9 @@ const rollKey = (o: Array<{ pos: number; dur: number; pitch: string }>): string 
     o.map((x) => [Math.round(x.pos * 720720), Math.round(x.dur * 720720), x.pitch]).sort(),
   )
 
-/** probe pitches for the edit self-verify — valid tokens improbable in real content */
-const PROBE_NOTE = 'c9'
-const PROBE_NUM = '999'
+/** the roll's probe pitches — same single-atom requirement as `PROBE_SOUND` (#994) */
+export const PROBE_NOTE = 'c9'
+export const PROBE_NUM = '999'
 
 /**
  * The roll's `projectionEditSafe`. The projection may only offer a roll the writer
@@ -2511,6 +2556,12 @@ export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
   // syntactic model refused → try the inherited behaviour projection (#924), then the
   // leaf-anchored projection (#986) for the notation no re-emit can spell
   const element = projectPianoRoll(mini)
+  // NOT gated on `vacuousLocality` the way the grid is, and that asymmetry is
+  // measured rather than assumed: preferring the leaf writer here moves 3 units to
+  // byte-local writes but costs one of them its edit entirely (a shared leaf the
+  // leaf writer declines), so the roll's committed writer-reach falls 73 → 72. The
+  // grid pays nothing for the same preference and gains 13. Reach is the invariant
+  // under contract; locality on two units does not buy a unit of it (#994).
   if (element.ok) return element
   const leaf = projectPianoRollByLeaf(mini)
   if (leaf.ok) return leaf

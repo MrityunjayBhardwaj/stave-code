@@ -154,3 +154,28 @@ test('a period longer than four bars opens a coarse grid and edits by byte surge
   await page.waitForTimeout(80)
   expect(await strudelValue(page)).toBe('$: s("~/8")')
 })
+
+/**
+ * #994 — a pattern the edit-safety probe used to refuse for a property of its own
+ * marker. `<bd hh sd hh>*2` is an ordinary alternation played twice per cycle; the
+ * projection declined it `edit-unsafe` because splicing `__stave_probe__` into it
+ * elongated the token before the marker, so the probe compared the pattern against
+ * a different one and concluded the writer was unsafe.
+ *
+ * Driven on the real panel rather than asserted through the parser, because the
+ * claim being made is that the user gets a WORKING view: four columns, three
+ * sounds, and a click that writes one token.
+ */
+test('a pattern the probe marker used to refuse opens and edits (#994)', async ({ page }) => {
+  await boot(page)
+  await setStrudelCode(page, '$: s("<bd hh sd hh>*2")')
+  const drawer = await openSequencer(page)
+  const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+  await expect(grid).toHaveCount(1)
+  // two bars of two columns; bd, hh and sd each own a lane
+  await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
+  await grid.locator('[data-seq-cell="0:0"]').click()
+  await page.waitForTimeout(80)
+  // only `bd`'s own bytes moved — the alternation and its `*2` came back verbatim
+  expect(await strudelValue(page)).toBe('$: s("<~ hh sd hh>*2")')
+})
