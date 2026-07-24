@@ -407,20 +407,8 @@ exports[`edit-parity — view-editability over the vendored corpus > pins per-fi
 exports[`edit-parity — view-editability over the vendored corpus > pins per-fixture editability + the reason for every refusal > refusal-reasons 1`] = `
 [
   [
-    "step: "polymeter_slowcat" is beyond the editable subset",
-    1,
-  ],
-  [
-    "step: a patterned ":" variant on "rd" is beyond the editable subset",
-    1,
-  ],
-  [
-    "step: a patterned ":" variant on "sd" is beyond the editable subset",
-    1,
-  ],
-  [
-    "step: nested groups are beyond the editable subset",
-    1,
+    "step: no-note-content",
+    4,
   ],
 ]
 `;

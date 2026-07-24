@@ -215,6 +215,8 @@ interface Tally {
   editOk: number
   refusedReasons: Map<string, number>
   reachByReason: Map<string, number>
+  /** for units NO writer opened: the gate that actually stopped them (#990) */
+  unopenedGates: Map<string, number>
   losses: string[]
 }
 const blank = (): Tally => ({
@@ -223,6 +225,7 @@ const blank = (): Tally => ({
   editOk: 0,
   refusedReasons: new Map(),
   reachByReason: new Map(),
+  unopenedGates: new Map(),
   losses: [],
 })
 
@@ -236,7 +239,16 @@ function sweep(s: Surface): Tally {
     const m = r.ok ? (r.model as StepGridModel & PianoRollModel) : null
     t.refused++
     t.refusedReasons.set(reason, (t.refusedReasons.get(reason) ?? 0) + 1)
-    if (m === null) continue // projection did not open it
+    if (m === null) {
+      // Nothing opened it — record the gate that actually stopped it, not the
+      // core's syntactic message (#990). This is the residual bucketed by CAUSE,
+      // which is what a reach lever has to be sized against: `unstable-period`
+      // is the period cap, `wrong-surface` is a unit that was never this view's
+      // to open and should not be read as a gap at all.
+      const g = r.ok ? '(opened)' : (r.gate ?? '(core syntax)')
+      t.unopenedGates.set(g, (t.unopenedGates.get(g) ?? 0) + 1)
+      continue
+    }
     t.projected++
 
     // Bar-expanded projections (#930) show `bars` cycles at once. `steps` then spans
@@ -291,6 +303,9 @@ function report(name: string, t: Tally, floor: number): void {
   console.log(`  -- writer-reach bought back, by refused reason --`)
   for (const [k, v] of [...t.reachByReason.entries()].sort((a, b) => b[1] - a[1]))
     console.log(`     +${String(v).padStart(2)}  ${k}`)
+  console.log(`  -- units NO writer opened, by the gate that stopped them (#990) --`)
+  for (const [k, v] of [...t.unopenedGates.entries()].sort((a, b) => b[1] - a[1]))
+    console.log(`     ${String(v).padStart(4)}x  ${k}`)
   if (t.losses.length) {
     console.log(`  -- LOSSES sample (${t.losses.length}) --`)
     t.losses.forEach((l) => console.log(`     ✗ ${l}`))

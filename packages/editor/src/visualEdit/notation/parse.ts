@@ -30,6 +30,7 @@ import type {
   AltRegion,
   AltSource,
   ChunkGain,
+  Gate,
   GridCells,
   LeafAnchor,
   LeafSpan,
@@ -862,6 +863,80 @@ const PERIOD_PROBE = 24
  */
 const MAX_PROJECT_BARS = 4
 
+/* ── refusal gates (#990) ──────────────────────────────────────────────────── */
+
+/** a projection's outcome: a model, or the gate that stopped it */
+type Projection<M> = { ok: true; model: M } | { ok: false; gate: Gate }
+
+/** decline at `gate` — the only way a projection says no */
+const no = (gate: Gate): { ok: false; gate: Gate } => ({ ok: false, gate })
+
+/** the onsets a surface read, or the gate that stopped the read */
+type Read<T> = { ok: true; onsets: T } | { ok: false; gate: Gate }
+
+/** which view is speaking — only `wrong-surface` needs to name the other one */
+type Surface = 'grid' | 'roll'
+
+/** the sentence a gate says, in the voice of the view that declined */
+function gateReason(gate: Gate, surface: Surface): string {
+  switch (gate) {
+    case 'wrong-surface':
+      return surface === 'grid'
+        ? 'the pattern plays numbers, which the piano roll shows, not the step grid'
+        : 'the pattern plays sound names, which the step grid shows, not the piano roll'
+    case 'no-note-content':
+      return 'the pattern plays no placeable notes'
+    case 'unstable-period':
+      return `the pattern does not repeat within ${MAX_PROJECT_BARS} bars`
+    case 'mixed-pitch-domain':
+      return 'mixed numeric and note-name tokens are beyond the editable subset'
+    case 'irrational-onset':
+      return 'an onset does not land on any step column'
+    case 'resolution':
+      return `the pattern needs more than ${MAX_STEPS} steps`
+    case 'element-tiling':
+      return 'the source elements do not line up with the columns the pattern plays'
+    case 'no-leaf-anchor':
+      return 'a played note has no source token of its own to edit'
+    case 'edit-unsafe':
+      return 'an edit here would not write back the pattern as shown'
+    case 'view-unusable':
+      return 'nothing in this view could be edited on its own'
+    case 'not-a-pattern':
+      return 'unsupported mini-notation syntax'
+  }
+}
+
+/**
+ * The refusal a caller sees once every writer has declined.
+ *
+ * The reported gate is the LEAF projection's, and that choice is the whole point
+ * of #990. The leaf writer is the GENERAL write-back — it needs only that each
+ * played note own a disjoint source token — while the element re-emit it
+ * supersedes additionally needs the source's top-level elements to tile the
+ * played columns. So the leaf writer's obstruction is the answer to "what would
+ * have to change for this pattern to be editable", and the element writer's is a
+ * fact about a specialization.
+ *
+ * Measured over the 1500-unit corpus, reporting the DEEPEST gate across both
+ * writers instead is actively misleading: the element writer checks for a
+ * whole-cycle `<…>` BEFORE it reads a single hap, so 144 units reported a tiling
+ * problem while the truth — read one line later by the leaf writer — was that 65
+ * of them are the wrong surface entirely and 58 never repeat. A gate that fires
+ * before the values are even read is not progress.
+ *
+ * When nothing reified there is no projection verdict worth having, and the
+ * syntactic core's own message — which names the actual syntax — is kept.
+ */
+function refused<M>(
+  surface: Surface,
+  core: { ok: false; reason: string },
+  gate: Gate,
+): ParseResult<M> {
+  if (gate === 'not-a-pattern') return core
+  return { ok: false, reason: gateReason(gate, surface), gate }
+}
+
 /**
  * The smallest `p ≤ cap` at which the probed cycles repeat, or 0 if none does.
  *
@@ -975,6 +1050,21 @@ export interface Onset {
  * the roll's, not the grid's), a `.gain`/signal-only hap, or a query that throws.
  */
 export function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
+  const r = readGridOnsets(pat, cyc)
+  return r.ok ? r.onsets : null
+}
+
+/**
+ * `gridOnsets`, saying WHY when it declines (#990).
+ *
+ * The distinction the plain `null` could not make, and the one that dominates
+ * every refusal count: a pattern that plays NUMBERS is not a broken grid, it is
+ * the piano roll's (`wrong-surface`), while a pattern whose haps carry params or
+ * a signal has nothing placeable at all (`no-note-content`). Reporting both as
+ * one failure is what made a drum pattern politely declining the roll read as an
+ * editability gap.
+ */
+function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
   let haps: Array<{
     hasOnset?: () => boolean
     whole?: { begin: { valueOf(): number } }
@@ -984,7 +1074,7 @@ export function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
   try {
     haps = (pat as { queryArc(a: number, b: number): typeof haps }).queryArc(cyc, cyc + 1)
   } catch {
-    return null
+    return no('no-note-content')
   }
   const byCol = new Map<number, { atoms: string[]; spans: (LeafSpan | null)[] }>()
   for (const h of haps) {
@@ -993,13 +1083,14 @@ export function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
     // params — that is what `parseStepGrid` receives (the inner string of
     // `s("…")`). Accept both: a string token, or an `{s,n}` object if a caller
     // ever reifies in sound context.
-    const v = h.value as string | { s?: unknown; n?: unknown } | null
+    const v = h.value as string | number | { s?: unknown; n?: unknown } | null
     let token: string
     if (typeof v === 'string') token = v
+    else if (typeof v === 'number') return no('wrong-surface') // a pitch, not a sound
     else if (v && typeof v === 'object' && typeof v.s === 'string') {
       token = v.s + (v.n != null ? ':' + String(v.n) : '')
-    } else return null
-    if (NUMERIC.test(token)) return null // a bare number is the roll's, not the grid's
+    } else return no('no-note-content')
+    if (NUMERIC.test(token)) return no('wrong-surface') // a bare number is the roll's
     const pos = h.whole.begin.valueOf() - cyc
     const key = Math.round(pos * 720720)
     const cell = byCol.get(key) ?? { atoms: [], spans: [] }
@@ -1013,7 +1104,14 @@ export function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
     }
     byCol.set(key, cell)
   }
-  return [...byCol.entries()].map(([k, c]) => ({ pos: k / 720720, atoms: c.atoms, spans: c.spans }))
+  return {
+    ok: true,
+    onsets: [...byCol.entries()].map(([k, c]) => ({
+      pos: k / 720720,
+      atoms: c.atoms,
+      spans: c.spans,
+    })),
+  }
 }
 
 const onsetKey = (o: Onset[]): string =>
@@ -1033,14 +1131,14 @@ const onsetKey = (o: Onset[]): string =>
  * alternation (that is the bars path, and projecting cycle 0 would DROP the other
  * cycles), a blow-up past the step ceiling, or spans that don't tile.
  */
-function projectStepGrid(src0: string): ParseResult<StepGridModel> | null {
+function projectStepGrid(src0: string): Projection<StepGridModel> {
   const src = src0.trim()
-  if (src === '') return null
+  if (src === '') return no('not-a-pattern')
   let pat: unknown
   try {
     pat = reifyMini(src)
   } catch {
-    return null
+    return no('not-a-pattern')
   }
   // A whole-cycle `<…>` is not the FLAT projection's to take — owning it as one
   // region would re-spell the whole pattern on the first edit. It is still worth
@@ -1048,27 +1146,29 @@ function projectStepGrid(src0: string): ParseResult<StepGridModel> | null {
   // `<…>` carrying trailing ops (`<a b>*2`) has no branch tiling to write back
   // through, so it stays refused.
   const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null
-  if (isWholeAlternation(src) && whole === null) return null
+  if (isWholeAlternation(src) && whole === null) return no('element-tiling')
   // What it PLAYS, cycle by cycle, and the period it repeats at. A pattern that
   // varies across cycles is no longer refused (#930): each cycle becomes a bar and
   // the source stays the single cycle the user wrote, so an edit re-emits one
   // element as `<b0 b1 …>` and leaves every other byte alone.
   const cycles: Onset[][] = []
   for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = gridOnsets(pat, c)
-    if (cc === null) return null
-    cycles.push(cc)
+    const cc = readGridOnsets(pat, c)
+    if (!cc.ok) return cc
+    cycles.push(cc.onsets)
   }
   const bars = detectPeriod(cycles.map(onsetKey), MAX_PROJECT_BARS)
-  if (bars === 0) return null
+  if (bars === 0) return no('unstable-period')
   const perCycle = cycles.slice(0, bars)
   // A pattern that plays nothing at all is not a grid to offer. Identical to the
   // old `cyc0.length === 0` refusal when the period is 1.
-  if (perCycle.every((c) => c.length === 0)) return null
+  if (perCycle.every((c) => c.length === 0)) return no('no-note-content')
   // a whole-cycle `<…>`: bars are its branches, not a flat sequence's columns
-  if (whole !== null) return bars > 1 ? projectAltBars(src, whole, perCycle, bars) : null
+  if (whole !== null) {
+    return bars > 1 ? projectAltBars(src, whole, perCycle, bars) : no('element-tiling')
+  }
   const spans = topLevelSpans(src)
-  if (!spans) return null
+  if (!spans) return no('element-tiling')
   const totalWeight = spans.reduce((s, e) => s + e.weight, 0)
   // element boundaries (cumulative weight) must land on integer columns too, or
   // the regions can't tile the grid
@@ -1083,16 +1183,17 @@ function projectStepGrid(src0: string): ParseResult<StepGridModel> | null {
   let perBar = 1
   for (const x of [...perCycle.flat().map((o) => o.pos), ...bounds]) {
     const d = denom(x)
-    if (d === 0) return null
+    if (d === 0) return no('irrational-onset')
     perBar = lcm(perBar, d)
   }
-  if (perBar * bars > MAX_STEPS || perBar % totalWeight !== 0) return null
+  if (perBar * bars > MAX_STEPS) return no('resolution')
+  if (perBar % totalWeight !== 0) return no('element-tiling')
   const divPerUnit = perBar / totalWeight
   const cells: GridCells = Array.from({ length: perBar * bars }, () => [])
   for (let b = 0; b < bars; b++) {
     for (const o of perCycle[b]) {
       const c = Math.round(o.pos * perBar)
-      if (c < 0 || c >= perBar) return null
+      if (c < 0 || c >= perBar) return no('irrational-onset')
       cells[b * perBar + c] = [...new Set(o.atoms)]
     }
   }
@@ -1102,14 +1203,14 @@ function projectStepGrid(src0: string): ParseResult<StepGridModel> | null {
     // The single-cycle projection, unchanged: a flat `source` the span writer
     // splices. Kept as its own branch so #930 cannot move what #922 already ships.
     const parts = singlePart(src, spans, divPerUnit, perBar, gridContent(cells))
-    if (!parts) return null
+    if (!parts) return no('element-tiling')
     const model: StepGridModel = {
       steps: perBar,
       lanes,
       source: { prefix: '', suffix: '', parts },
     }
     const cols0 = parts[0].regions.map((r) => r.from)
-    if (!projectionEditSafe(model, perBar, 1, perCycle, cols0)) return null
+    if (!projectionEditSafe(model, perBar, 1, perCycle, cols0)) return no('edit-unsafe')
     return { ok: true, model }
   }
 
@@ -1121,7 +1222,7 @@ function projectStepGrid(src0: string): ParseResult<StepGridModel> | null {
       cells.slice(from + b * perBar, to + b * perBar).map((c) => [...new Set(c)]),
     ),
   )
-  if (!regions) return null
+  if (!regions) return no('element-tiling')
   const model: StepGridModel = {
     steps: perBar * bars,
     bars,
@@ -1132,7 +1233,7 @@ function projectStepGrid(src0: string): ParseResult<StepGridModel> | null {
   const cols = regions.flatMap((r) =>
     Array.from({ length: bars }, (_, b) => b * perBar + r.from),
   )
-  if (!projectionEditSafe(model, perBar, bars, perCycle, cols)) return null
+  if (!projectionEditSafe(model, perBar, bars, perCycle, cols)) return no('edit-unsafe')
   return { ok: true, model }
 }
 
@@ -1154,31 +1255,31 @@ function projectAltBars(
   inner: string,
   perCycle: Onset[][],
   bars: number,
-): ParseResult<StepGridModel> | null {
+): Projection<StepGridModel> {
   const innerSrc = inner.trim()
   const spans = topLevelSpans(innerSrc)
-  if (!spans) return null
+  if (!spans) return no('element-tiling')
   // one top-level element per BAR — a branch repeated `!n` claims n of them, and
   // the bar count has to come out exactly or the branches don't line up with cycles
-  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return null
+  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return no('element-tiling')
   let perBar = 1
   for (const o of perCycle.flat()) {
     const d = denom(o.pos)
-    if (d === 0) return null
+    if (d === 0) return no('irrational-onset')
     perBar = lcm(perBar, d)
   }
-  if (perBar * bars > MAX_STEPS) return null
+  if (perBar * bars > MAX_STEPS) return no('resolution')
   const cells: GridCells = Array.from({ length: perBar * bars }, () => [])
   for (let b = 0; b < bars; b++) {
     for (const o of perCycle[b]) {
       const c = Math.round(o.pos * perBar)
-      if (c < 0 || c >= perBar) return null
+      if (c < 0 || c >= perBar) return no('irrational-onset')
       cells[b * perBar + c] = [...new Set(o.atoms)]
     }
   }
   // a branch spans one bar's worth of columns, so the per-unit division IS perBar
   const parts = singlePart(innerSrc, spans, perBar, perBar * bars, gridContent(cells))
-  if (!parts) return null
+  if (!parts) return no('element-tiling')
   const model: StepGridModel = {
     steps: perBar * bars,
     bars,
@@ -1191,9 +1292,9 @@ function projectAltBars(
   }
   // regions already sit one per bar, so each is probed once, at its own start
   const cols = parts[0].regions.map((r) => r.from)
-  if (!projectionEditSafe(model, perBar, bars, perCycle, cols)) return null
+  if (!projectionEditSafe(model, perBar, bars, perCycle, cols)) return no('edit-unsafe')
   // the writer must reproduce the user's bytes before we offer the view at all
-  if (serializeStepGrid(model) !== src.trim()) return null
+  if (serializeStepGrid(model) !== src.trim()) return no('edit-unsafe')
   return { ok: true, model }
 }
 
@@ -1289,42 +1390,42 @@ function projectionEditSafe(
  * Runs only after `projectStepGrid` declines, so nothing that opens today changes
  * shape: this path can only turn refusals into views, never the reverse.
  */
-function projectStepGridByLeaf(src0: string): ParseResult<StepGridModel> | null {
+function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
   const src = src0.trim()
-  if (src === '') return null
+  if (src === '') return no('not-a-pattern')
   let pat: unknown
   try {
     pat = reifyMini(src)
   } catch {
-    return null
+    return no('not-a-pattern')
   }
   const cycles: Onset[][] = []
   for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = gridOnsets(pat, c)
-    if (cc === null) return null
-    cycles.push(cc)
+    const cc = readGridOnsets(pat, c)
+    if (!cc.ok) return cc
+    cycles.push(cc.onsets)
   }
   const bars = detectPeriod(cycles.map(onsetKey), MAX_PROJECT_BARS)
-  if (bars === 0) return null
+  if (bars === 0) return no('unstable-period')
   const perCycle = cycles.slice(0, bars)
-  if (perCycle.every((c) => c.length === 0)) return null
+  if (perCycle.every((c) => c.length === 0)) return no('no-note-content')
   let perBar = 1
   for (const o of perCycle.flat()) {
     const d = denom(o.pos)
-    if (d === 0) return null
+    if (d === 0) return no('irrational-onset')
     perBar = lcm(perBar, d)
   }
-  if (perBar * bars > MAX_STEPS) return null
+  if (perBar * bars > MAX_STEPS) return no('resolution')
   const cols = leafAnchors(src, perCycle, perBar, bars)
-  if (cols === null) return null
+  if (cols === null) return no('no-leaf-anchor')
   const model: StepGridModel = {
     steps: perBar * bars,
     ...(bars > 1 ? { bars } : {}),
     lanes: lanesFromCells(cols.map((c) => c.map((a) => a.atom))),
     leafSource: { src, cols },
   }
-  if (!leafEditSafe(model, perBar, bars)) return null
-  if (!leafViewUsable(model)) return null
+  if (!leafEditSafe(model, perBar, bars)) return no('edit-unsafe')
+  if (!leafViewUsable(model)) return no('view-unusable')
   return { ok: true, model }
 }
 
@@ -1465,9 +1566,15 @@ export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
   const core = parseStepGridCore(mini)
   if (core.ok) return core
   // syntactic model refused → try the inherited behaviour projection (#922), then
-  // the leaf-anchored projection (#986) for the notation no re-emit can spell,
-  // keeping the original refusal if neither applies
-  return projectStepGrid(mini) ?? projectStepGridByLeaf(mini) ?? core
+  // the leaf-anchored projection (#986) for the notation no re-emit can spell
+  const element = projectStepGrid(mini)
+  if (element.ok) return element
+  const leaf = projectStepGridByLeaf(mini)
+  if (leaf.ok) return leaf
+  // …and if nothing opened it, report the gate that actually stopped the general
+  // write-back (#990) — not the core's syntactic message, which names the first
+  // writer to decline
+  return refused('grid', core, leaf.gate)
 }
 
 export function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
@@ -1820,6 +1927,18 @@ export interface RollOnset {
  * hap) or the query throws.
  */
 export function rollOnsets(pat: unknown, cyc: number): RollOnset[] | null {
+  const r = readRollOnsets(pat, cyc)
+  return r.ok ? r.onsets : null
+}
+
+/**
+ * `rollOnsets`, saying WHY when it declines — the roll's half of
+ * `readGridOnsets` (#990), and the surface where the distinction matters most:
+ * a drum pattern asked of the piano roll plays SOUND names, which is not a
+ * broken roll but the wrong view, and counting it as a failure is what inflated
+ * every editability denominator we quoted.
+ */
+function readRollOnsets(pat: unknown, cyc: number): Read<RollOnset[]> {
   let haps: Array<{
     hasOnset?: () => boolean
     whole?: { begin: { valueOf(): number }; end: { valueOf(): number } }
@@ -1829,7 +1948,7 @@ export function rollOnsets(pat: unknown, cyc: number): RollOnset[] | null {
   try {
     haps = (pat as { queryArc(a: number, b: number): typeof haps }).queryArc(cyc, cyc + 1)
   } catch {
-    return null
+    return no('no-note-content')
   }
   const out: RollOnset[] = []
   for (const h of haps) {
@@ -1849,14 +1968,14 @@ export function rollOnsets(pat: unknown, cyc: number): RollOnset[] | null {
         // convention has no business riding back out into the document
         pitch = v.toLowerCase()
         numeric = false
-      } else return null // a sound token / non-pitch — the grid's, not the roll's
-    } else return null // an object (params) or signal value has no note to place
+      } else return no('wrong-surface') // a sound token — the grid's, not the roll's
+    } else return no('no-note-content') // params / a signal value has no note to place
     const pos = h.whole.begin.valueOf() - cyc
     const dur = h.whole.end.valueOf() - h.whole.begin.valueOf()
-    if (dur <= 0) return null
+    if (dur <= 0) return no('no-note-content')
     out.push({ pos, dur, pitch, numeric, loc: leafLoc(h) })
   }
-  return out
+  return { ok: true, onsets: out }
 }
 
 const rollKey = (o: Array<{ pos: number; dur: number; pitch: string }>): string =>
@@ -1944,40 +2063,42 @@ function projectionRollEditSafe(
  * per-cycle `<…>` (their own paths; projecting cycle 0 would drop the rest), mixed
  * numeric/named tokens, a blow-up past the step ceiling, or spans that don't tile.
  */
-function projectPianoRoll(src0: string): ParseResult<PianoRollModel> | null {
+function projectPianoRoll(src0: string): Projection<PianoRollModel> {
   const src = src0.trim()
-  if (src === '') return null
+  if (src === '') return no('not-a-pattern')
   let pat: unknown
   try {
     pat = reifyMini(src)
   } catch {
-    return null
+    return no('not-a-pattern')
   }
   // A whole-cycle `<…>` is projected bar-wise with its branches as regions (#938),
   // never flat — owning the whole `<…>` as one region would re-spell all of it on
   // the first edit. One carrying trailing ops has no branch tiling to write through.
   const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null
-  if (isWholeAlternation(src) && whole === null) return null
+  if (isWholeAlternation(src) && whole === null) return no('element-tiling')
   // What it PLAYS each cycle, and the period it repeats at (#938). A melodic pattern
   // that varies is bar-expanded rather than refused.
   const cycles: RollOnset[][] = []
   for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = rollOnsets(pat, c)
-    if (cc === null) return null
-    cycles.push(cc)
+    const cc = readRollOnsets(pat, c)
+    if (!cc.ok) return cc
+    cycles.push(cc.onsets)
   }
   const bars = detectPeriod(cycles.map(rollKey), MAX_PROJECT_BARS)
-  if (bars === 0) return null
+  if (bars === 0) return no('unstable-period')
   const perCycle = cycles.slice(0, bars)
   const all = perCycle.flat()
-  if (all.length === 0) return null
+  if (all.length === 0) return no('no-note-content')
   // mixed numeric/named tokens are rejected like the core — checked across EVERY
   // bar, since a later bar can introduce the token that breaks the convention
   const numeric = all.some((o) => o.numeric)
-  if (numeric && all.some((o) => !o.numeric)) return null
-  if (whole !== null) return bars > 1 ? projectAltRollBars(src, whole, perCycle, numeric) : null
+  if (numeric && all.some((o) => !o.numeric)) return no('mixed-pitch-domain')
+  if (whole !== null) {
+    return bars > 1 ? projectAltRollBars(src, whole, perCycle, numeric) : no('element-tiling')
+  }
   const spans = topLevelSpans(src)
-  if (!spans) return null
+  if (!spans) return no('element-tiling')
   const totalWeight = spans.reduce((s, e) => s + e.weight, 0)
   const bounds: number[] = []
   let accW = 0
@@ -1990,18 +2111,19 @@ function projectPianoRoll(src0: string): ParseResult<PianoRollModel> | null {
   let perBar = 1
   for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur), ...bounds]) {
     const d = denom(x)
-    if (d === 0) return null
+    if (d === 0) return no('irrational-onset')
     perBar = lcm(perBar, d)
   }
-  if (perBar * bars > MAX_STEPS || perBar % totalWeight !== 0) return null
+  if (perBar * bars > MAX_STEPS) return no('resolution')
+  if (perBar % totalWeight !== 0) return no('element-tiling')
   const divPerUnit = perBar / totalWeight
   const notes = barNotes(perCycle, perBar)
-  if (notes === null) return null
+  if (notes === null) return no('element-tiling')
 
   if (bars === 1) {
     // the single-cycle projection, unchanged (#924)
     const parts = singlePart(src, spans, divPerUnit, perBar, rollContent(notes))
-    if (!parts) return null
+    if (!parts) return no('element-tiling')
     const model: PianoRollModel = {
       steps: perBar,
       notes,
@@ -2009,7 +2131,7 @@ function projectPianoRoll(src0: string): ParseResult<PianoRollModel> | null {
       source: { prefix: '', suffix: '', parts },
     }
     const probes0 = parts[0].regions.map((r) => ({ from: r.from, to: r.to }))
-    if (!projectionRollEditSafe(model, perBar, 1, numeric, probes0)) return null
+    if (!projectionRollEditSafe(model, perBar, 1, numeric, probes0)) return no('edit-unsafe')
     return { ok: true, model }
   }
 
@@ -2021,7 +2143,7 @@ function projectPianoRoll(src0: string): ParseResult<PianoRollModel> | null {
         .map((n) => ({ pitch: n.pitch, start: n.start - b * perBar, duration: n.duration })),
     ),
   )
-  if (!regions) return null
+  if (!regions) return no('element-tiling')
   const model: PianoRollModel = {
     steps: perBar * bars,
     bars,
@@ -2035,7 +2157,7 @@ function projectPianoRoll(src0: string): ParseResult<PianoRollModel> | null {
       to: b * perBar + r.to,
     })),
   )
-  if (!projectionRollEditSafe(model, perBar, bars, numeric, probes)) return null
+  if (!projectionRollEditSafe(model, perBar, bars, numeric, probes)) return no('edit-unsafe')
   return { ok: true, model }
 }
 
@@ -2069,24 +2191,24 @@ function projectAltRollBars(
   inner: string,
   perCycle: RollOnset[][],
   numeric: boolean,
-): ParseResult<PianoRollModel> | null {
+): Projection<PianoRollModel> {
   const bars = perCycle.length
   const innerSrc = inner.trim()
   const spans = topLevelSpans(innerSrc)
-  if (!spans) return null
-  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return null
+  if (!spans) return no('element-tiling')
+  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return no('element-tiling')
   const all = perCycle.flat()
   let perBar = 1
   for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
     const d = denom(x)
-    if (d === 0) return null
+    if (d === 0) return no('irrational-onset')
     perBar = lcm(perBar, d)
   }
-  if (perBar * bars > MAX_STEPS) return null
+  if (perBar * bars > MAX_STEPS) return no('resolution')
   const notes = barNotes(perCycle, perBar)
-  if (notes === null) return null
+  if (notes === null) return no('element-tiling')
   const parts = singlePart(innerSrc, spans, perBar, perBar * bars, rollContent(notes))
-  if (!parts) return null
+  if (!parts) return no('element-tiling')
   const model: PianoRollModel = {
     steps: perBar * bars,
     bars,
@@ -2099,8 +2221,8 @@ function projectAltRollBars(
     },
   }
   const probes = parts[0].regions.map((r) => ({ from: r.from, to: r.to }))
-  if (!projectionRollEditSafe(model, perBar, bars, numeric, probes)) return null
-  if (serializePianoRoll(model) !== src.trim()) return null
+  if (!projectionRollEditSafe(model, perBar, bars, numeric, probes)) return no('edit-unsafe')
+  if (serializePianoRoll(model) !== src.trim()) return no('edit-unsafe')
   return { ok: true, model }
 }
 
@@ -2117,40 +2239,40 @@ function projectAltRollBars(
  * Runs LAST for the same reason the grid's does: it can only turn refusals into
  * views, never take one away from the writer that already handles it.
  */
-function projectPianoRollByLeaf(src0: string): ParseResult<PianoRollModel> | null {
+function projectPianoRollByLeaf(src0: string): Projection<PianoRollModel> {
   const src = src0.trim()
-  if (src === '') return null
+  if (src === '') return no('not-a-pattern')
   let pat: unknown
   try {
     pat = reifyMini(src)
   } catch {
-    return null
+    return no('not-a-pattern')
   }
   const cycles: RollOnset[][] = []
   for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = rollOnsets(pat, c)
-    if (cc === null) return null
-    cycles.push(cc)
+    const cc = readRollOnsets(pat, c)
+    if (!cc.ok) return cc
+    cycles.push(cc.onsets)
   }
   const bars = detectPeriod(cycles.map(rollKey), MAX_PROJECT_BARS)
-  if (bars === 0) return null
+  if (bars === 0) return no('unstable-period')
   const perCycle = cycles.slice(0, bars)
   const all = perCycle.flat()
-  if (all.length === 0) return null
+  if (all.length === 0) return no('no-note-content')
   // mixed numeric/named tokens are rejected like the core, across EVERY bar
   const numeric = all.some((o) => o.numeric)
-  if (numeric && all.some((o) => !o.numeric)) return null
+  if (numeric && all.some((o) => !o.numeric)) return no('mixed-pitch-domain')
   // onsets AND durations must land on integer columns — the duration is the roll's
   // extra term the grid's projection has no equivalent of
   let perBar = 1
   for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
     const d = denom(x)
-    if (d === 0) return null
+    if (d === 0) return no('irrational-onset')
     perBar = lcm(perBar, d)
   }
-  if (perBar * bars > MAX_STEPS) return null
+  if (perBar * bars > MAX_STEPS) return no('resolution')
   const anchors = rollAnchors(src, perCycle, perBar, bars)
-  if (anchors === null) return null
+  if (anchors === null) return no('no-leaf-anchor')
   const model: PianoRollModel = {
     steps: perBar * bars,
     ...(bars > 1 ? { bars } : {}),
@@ -2160,8 +2282,8 @@ function projectPianoRollByLeaf(src0: string): ParseResult<PianoRollModel> | nul
     ...(numeric ? { numeric: true } : {}),
     leafSource: { src, anchors, steps: perBar * bars },
   }
-  if (!leafRollEditSafe(model, perBar, bars, numeric)) return null
-  if (!leafRollViewUsable(model)) return null
+  if (!leafRollEditSafe(model, perBar, bars, numeric)) return no('edit-unsafe')
+  if (!leafRollViewUsable(model)) return no('view-unusable')
   return { ok: true, model }
 }
 
@@ -2314,9 +2436,14 @@ export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
   const core = parsePianoRollCore(mini)
   if (core.ok) return core
   // syntactic model refused → try the inherited behaviour projection (#924), then the
-  // leaf-anchored projection (#986) for the notation no re-emit can spell, keeping the
-  // original refusal if neither applies
-  return projectPianoRoll(mini) ?? projectPianoRollByLeaf(mini) ?? core
+  // leaf-anchored projection (#986) for the notation no re-emit can spell
+  const element = projectPianoRoll(mini)
+  if (element.ok) return element
+  const leaf = projectPianoRollByLeaf(mini)
+  if (leaf.ok) return leaf
+  // …and if nothing opened it, report the gate that actually stopped the general
+  // write-back (#990)
+  return refused('roll', core, leaf.gate)
 }
 
 // exported for the projection stress gate — it sweeps only patterns the CORE

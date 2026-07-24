@@ -159,6 +159,29 @@ function spliceGrid(model: StepGridModel): string | null {
  * not write, which is what makes leaf-anchored write-back an adapter rather than
  * a mini-notation printer. Shared with the roll in P1b.
  */
+/**
+ * Do these anchors still describe THIS model? — the one guard both leaf writers
+ * share (#990, [[P329]]).
+ *
+ * Anchors are provenance read against one particular layout. A restructure
+ * (`resizeGrid`/`resizeRoll`) re-lays the model and carries them through, so they
+ * survive describing a layout that no longer exists: widening leaves every note's
+ * start and length intact and would write the ORIGINAL source back, silently
+ * discarding the resize; narrowing drops the notes outside the new width, which a
+ * writer that diffs anchors against current notes reads as DELETIONS and splices
+ * `~` over — data loss from a gesture that edited nothing.
+ *
+ * The check therefore belongs at the WIDTH, the thing a restructure changes, and
+ * in ONE place: it was found on the roll (#989) while the grid happened to be
+ * covered by a `cols.length` comparison that was this same invariant under
+ * another name. Two writers enforcing one rule independently is how the next
+ * surface ships without it. Each source passes ITS OWN width — the grid's is its
+ * column array, the roll's is the `steps` it recorded — and the rule lives here.
+ */
+function anchorsDescribe(model: { steps: number }, anchoredWidth: number | undefined): boolean {
+  return anchoredWidth === model.steps
+}
+
 export function serializeByLeaf(
   src: string,
   edits: Array<{ span: LeafSpan; text: string }>,
@@ -193,7 +216,7 @@ export function serializeByLeaf(
  */
 function spliceByLeaf(model: StepGridModel): string | null {
   const ls = model.leafSource
-  if (!ls || ls.cols.length !== model.steps) return null
+  if (!ls || !anchorsDescribe(model, ls.cols.length)) return null
   const now = columnAtoms(model.lanes, model.steps)
   const want = new Map<string, { span: LeafSpan; text: string }>()
   for (let c = 0; c < model.steps; c++) {
@@ -245,9 +268,7 @@ function spliceByLeaf(model: StepGridModel): string | null {
  */
 function spliceRollByLeaf(model: PianoRollModel): string | null {
   const ls = model.leafSource
-  // the anchors must still describe THIS grid — a restructure that re-laid it leaves
-  // them describing a layout that no longer exists (see `RollLeafSource.steps`)
-  if (!ls || ls.steps !== model.steps) return null
+  if (!ls || !anchorsDescribe(model, ls.steps)) return null
   // group the anchors by the column they start on — a chord contributes several here,
   // each with its own disjoint leaf
   const byStart = new Map<number, RollLeafAnchor[]>()
