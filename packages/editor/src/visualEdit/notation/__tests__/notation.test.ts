@@ -1338,3 +1338,57 @@ describe('#904 — underscores in sound names vs `_` elongation', () => {
     expect(parseStepGrid('bd _sd').ok).toBe(false)
   })
 })
+
+/**
+ * #991 — the leaf projection's period cap is its OWN, and it is per-surface.
+ *
+ * `MAX_PROJECT_BARS = 4` is the ELEMENT writer's bound, and its stated reason is
+ * re-emit readability: `spliceAltGrid` respells an edited element as `<b0 b1 …>`,
+ * one slot per bar, so a long period turns one cell toggle into a wall of
+ * alternation. The leaf writer never gets there — `serializeStepGrid` branches on
+ * `leafSource` first and that branch is terminal — so the bound does not apply to
+ * it, and the grid looks out to twelve bars.
+ *
+ * The roll stays at four ON PURPOSE. Measured at 6/8/12/16 bars its writer-reach
+ * does not move (73 at every one of them) while the views it would add are 13–58%
+ * live, because long-period roll patterns are built from `!n`/`@n` repetition and
+ * their notes share leaves. These tests hold both halves: the grid's gain, and the
+ * roll's deliberate refusal — so raising the roll later has to be a decision, not
+ * an accident.
+ */
+describe('#991 — the leaf period cap, per surface', () => {
+  it('opens a grid whose period is 8 bars — beyond the element writer\'s cap', () => {
+    // one sample stretched over eight cycles: period 8, one column per bar
+    const r = parseStepGrid('hacking/8')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.leafSource, 'must be the LEAF projection, not the element one').toBeTruthy()
+    expect(r.model.bars).toBe(8)
+    expect(r.model.steps).toBe(8)
+    // and it is live: clearing the sounding cell writes back by byte surgery
+    const on = r.model.lanes.find((l) => l.cells.some(Boolean))!
+    const col = on.cells.findIndex(Boolean)
+    const lanes = r.model.lanes.map((l) =>
+      l === on ? { ...l, cells: l.cells.map((c, j) => (j === col ? false : c)) } : l,
+    )
+    expect(serializeStepGrid({ ...r.model, lanes })).toBe('~/8')
+  })
+
+  it('still refuses a grid that does not repeat within twelve bars', () => {
+    // period 13 — past the cap, and past what PERIOD_PROBE = 24 can VERIFY anyway
+    const r = parseStepGrid('bd/13')
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.gate).toBe('unstable-period')
+    expect(r.reason).toContain('12 bars')
+  })
+
+  it('holds the roll at four bars, and says four when it refuses', () => {
+    const r = parsePianoRoll('<G1 D1 <D1 D1 D1 A1>>')
+    expect(r.ok, 'the roll deliberately does not look past 4 bars (#991)').toBe(false)
+    if (r.ok) return
+    expect(r.gate).toBe('unstable-period')
+    // the sentence must name the cap that ACTUALLY stopped it, not the grid's
+    expect(r.reason).toContain('4 bars')
+  })
+})

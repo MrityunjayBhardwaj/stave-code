@@ -863,6 +863,46 @@ const PERIOD_PROBE = 24
  */
 const MAX_PROJECT_BARS = 4
 
+/**
+ * The same bound for the LEAF-anchored projections, per surface (#991).
+ *
+ * The cap above is the ELEMENT writer's, and its readability rationale is not
+ * this path's: `serializeStepGrid`/`serializePianoRoll` branch on
+ * `model.leafSource` FIRST and that branch is terminal, so a leaf edit never
+ * reaches `spliceAltGrid`'s `<b0 b1 …>` re-emit. Replacing one token's bytes and
+ * copying the rest costs the same at twelve bars as at one. So the leaf path is
+ * free to look further — where looking further is measured to BUY something.
+ *
+ * GRID 12. Worth +9 writer-reach over the 1500-unit corpus (95 → 104), and the
+ * views it opens are slow single samples — `hacking/8`, `drm/9`, `<vox1 - [vox2]
+ * ->/2` — which expand to eight or nine columns TOTAL and are 100% live: every
+ * sounding cell accepts an edit.
+ *
+ * ROLL 4, deliberately unchanged — and written as a literal, not as an alias of
+ * `MAX_PROJECT_BARS`. The two are equal today by coincidence of measurement, not
+ * because this path follows the element writer; aliasing them would re-make the
+ * very mistake this constant exists to undo, and would move the roll silently the
+ * next time the element cap moves for a re-emit reason. Measured at 6, 8, 12 and 16 bars the roll's
+ * writer-reach does not move at all — it stays at 73 — while the nine extra views
+ * it opens are 13–58% live (`<[0@6 -3@1 -2@1]!1 …>`: three of thirteen notes
+ * respond). The roll's long-period patterns are built out of `!n`/`@n` repetition,
+ * so their notes SHARE leaves, and a shared leaf whose notes disagree is refused
+ * by the bijection. Opening a mostly-dead sixty-four-column roll for no reach is
+ * the trade `leafRollViewUsable` exists to refuse, one step coarser.
+ *
+ * Neither may exceed PERIOD_PROBE/2, and that is not a round number: `detectPeriod`
+ * confirms a period by finding a repeat among the probed cycles, so period p is
+ * only VERIFIED once 2p cycles were probed. At p = 16 against a probe of 24,
+ * cycles 8–15 are never checked against anything and a period-32 pattern
+ * masquerades as period-16 — a view that silently stops being true. Raising this
+ * past 12 means raising PERIOD_PROBE with it.
+ *
+ * `MAX_STEPS` still caps `perBar × bars` independently and stays the binding
+ * constraint: at twelve bars a pattern may be no finer than five steps to the bar,
+ * which is why this buys back coarse long-period patterns only.
+ */
+const LEAF_PROJECT_BARS: Record<Surface, number> = { grid: 12, roll: 4 }
+
 /* ── refusal gates (#990) ──────────────────────────────────────────────────── */
 
 /** a projection's outcome: a model, or the gate that stopped it */
@@ -887,7 +927,10 @@ function gateReason(gate: Gate, surface: Surface): string {
     case 'no-note-content':
       return 'the pattern plays no placeable notes'
     case 'unstable-period':
-      return `the pattern does not repeat within ${MAX_PROJECT_BARS} bars`
+      // the LEAF cap, because `refused` reports the leaf writer's gate — quoting
+      // the element writer's stricter cap here would name a bound that did not
+      // stop this pattern (#991)
+      return `the pattern does not repeat within ${LEAF_PROJECT_BARS[surface]} bars`
     case 'mixed-pitch-domain':
       // deliberately NOT the core's "…is beyond the editable subset" phrasing:
       // the gate vocabulary has to be distinguishable from the syntactic core's,
@@ -1416,7 +1459,7 @@ function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
     if (!cc.ok) return cc
     cycles.push(cc.onsets)
   }
-  const bars = detectPeriod(cycles.map(onsetKey), MAX_PROJECT_BARS)
+  const bars = detectPeriod(cycles.map(onsetKey), LEAF_PROJECT_BARS.grid)
   if (bars === 0) return no('unstable-period')
   const perCycle = cycles.slice(0, bars)
   if (perCycle.every((c) => c.length === 0)) return no('no-note-content')
@@ -2273,7 +2316,7 @@ function projectPianoRollByLeaf(src0: string): Projection<PianoRollModel> {
     if (!cc.ok) return cc
     cycles.push(cc.onsets)
   }
-  const bars = detectPeriod(cycles.map(rollKey), MAX_PROJECT_BARS)
+  const bars = detectPeriod(cycles.map(rollKey), LEAF_PROJECT_BARS.roll)
   if (bars === 0) return no('unstable-period')
   const perCycle = cycles.slice(0, bars)
   const all = perCycle.flat()
