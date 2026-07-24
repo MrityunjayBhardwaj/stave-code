@@ -33,6 +33,7 @@ import {
   parsePianoRoll,
   rollOnsets,
 } from '../../../editor/src/visualEdit/notation/parse'
+import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -172,5 +173,140 @@ describe('#986 P1b leaf-anchor sweep — a shipped ROLL anchor slices to its own
     // Splicing any of them would rewrite the wrong bytes, so this staying > 0 is what
     // proves `rollAnchors` has something real to refuse.
     expect(nonSlicing).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * #986 P2 — THE BIJECTION, HELD OVER EVERY SHIPPED VIEW.
+ *
+ * The projection's whole editability rule is one property: a played note is
+ * view-editable exactly when it maps to a source span that is its OWN and that no
+ * other note's span partly claims. `claimLeafSpan` states it once and both
+ * surfaces ask it; the ~25 syntactic guards in the core are the same rule detected
+ * feature-by-feature, which is why they need a case for nesting, for `*n`, for
+ * every spelling, and this needs none.
+ *
+ * The sweeps above already hold the first clause — a shipped anchor slices to its
+ * own token. This holds the two nothing gated at corpus scale:
+ *
+ *  - DISJOINTNESS: any two anchor spans in one view are IDENTICAL or do not
+ *    overlap at all. Identical is the normal case and means shared (`bd*4` is one
+ *    token played four times, and the writer makes the sharers agree). Partial
+ *    overlap is the one no byte replacement can satisfy, because the two notes
+ *    disagree about who owns the bytes between them — a view shipped with that in
+ *    it corrupts on a click, silently.
+ *
+ *    Measured honestly, and unlike its sibling clause this one is DEFENSIVE, not
+ *    load-bearing: across the whole corpus, on both surfaces, exactly ZERO span
+ *    pairs that pass the slices-to-its-own-token clause then partly overlap. The
+ *    clause below therefore proves the property holds, not that it is exercised —
+ *    which is the opposite of what the two "load-bearing" sweeps above assert, and
+ *    is stated rather than implied so nobody reads a passing test as evidence the
+ *    guard is doing work. It stays because it is the other half of the rule and
+ *    the cost of asking is a comparison.
+ *  - TOTALITY: every cell the view DRAWS has an anchor behind it. A drawn cell
+ *    with nothing to write through is a dead control — the failure #986 P1a's
+ *    usable-view gate exists to prevent, asserted here as a property of the model
+ *    rather than of one fixture.
+ *
+ * THE ORACLE is the shipped parser. These read the models it actually returns; a
+ * re-walk of the anchor logic could only agree with itself.
+ */
+describe('#986 P2 — the bijection holds on every shipped leaf view', () => {
+  /** two spans may be identical (shared) or disjoint — never partly overlapping */
+  const partlyOverlaps = (
+    a: { start: number; end: number },
+    b: { start: number; end: number },
+  ): boolean => {
+    const identical = a.start === b.start && a.end === b.end
+    return !identical && a.end > b.start && b.end > a.start
+  }
+
+  it('grid: anchor spans are pairwise identical-or-disjoint, and every drawn cell has one', () => {
+    let views = 0
+    let spans = 0
+    let shared = 0
+    const overlapping: string[] = []
+    const dead: string[] = []
+    for (const src of minis) {
+      const r = parseStepGrid(src)
+      if (!r.ok || !r.model.leafSource) continue
+      views++
+      const all = r.model.leafSource.cols.flat().map((a) => a.span)
+      spans += all.length
+      for (let i = 0; i < all.length; i++) {
+        for (let j = i + 1; j < all.length; j++) {
+          if (all[i].start === all[j].start && all[i].end === all[j].end) shared++
+          else if (partlyOverlaps(all[i], all[j])) overlapping.push(src)
+        }
+      }
+      // totality: a lane cell drawn ON must have an anchor in that column
+      for (let c = 0; c < r.model.steps; c++) {
+        const drawn = r.model.lanes.some((l) => l.cells[c])
+        if (drawn && (r.model.leafSource.cols[c]?.length ?? 0) === 0) dead.push(`${src} @${c}`)
+      }
+    }
+    console.log(`\n[grid] bijection: ${views} views, ${spans} anchor spans, ${shared} shared pairs`)
+    expect(views).toBeGreaterThan(50) // the sweep ran
+    // never yet observed on real content (see the header) — this holds the property
+    expect(overlapping, 'anchors that partly overlap would corrupt on a click').toEqual([])
+    expect(dead, 'a drawn cell with no anchor is a control that does nothing').toEqual([])
+    // sharing is the normal case, not an edge one — if this hit zero the disjointness
+    // assertion above would be passing for the wrong reason
+    expect(shared).toBeGreaterThan(0)
+  })
+
+  it('roll: anchor spans are pairwise identical-or-disjoint, and every drawn note has one', () => {
+    let views = 0
+    let spans = 0
+    const overlapping: string[] = []
+    for (const src of minis) {
+      const r = parsePianoRoll(src)
+      if (!r.ok || !r.model.leafSource) continue
+      views++
+      const anchors = r.model.leafSource.anchors
+      spans += anchors.length
+      // totality, exactly: the roll's notes ARE its anchors, one for one
+      expect(r.model.notes.length, `every drawn note needs an anchor (${src})`).toBe(anchors.length)
+      for (let i = 0; i < anchors.length; i++) {
+        for (let j = i + 1; j < anchors.length; j++) {
+          if (partlyOverlaps(anchors[i].span, anchors[j].span)) overlapping.push(src)
+        }
+      }
+    }
+    console.log(`\n[roll] bijection: ${views} views, ${spans} anchor spans`)
+    expect(views).toBeGreaterThan(20) // the sweep ran
+    expect(overlapping, 'anchors that partly overlap would corrupt on a drag').toEqual([])
+  })
+
+  /**
+   * Non-vacuity, and the point of stating the rule as a property: the corpus DOES
+   * contain patterns whose played notes share a leaf, and the writer — not the
+   * projection — is what makes disagreeing edits on a shared leaf decline. If this
+   * ever hit zero, both disjointness assertions above would be trivially true.
+   */
+  it('the shared-leaf case is real, and a disagreeing edit on one declines', () => {
+    const r = parseStepGrid('bd*4')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    // whether `bd*4` opens as a leaf view or not, the corpus sweep above proved
+    // shared spans occur; this pins the WRITER's half of the contract on a model
+    // built by hand, so it holds regardless of which patterns happen to project
+    const model = {
+      steps: 2,
+      lanes: [{ sound: 'bd', cells: [true, true] }],
+      leafSource: {
+        src: 'bd*2',
+        cols: [
+          [{ atom: 'bd', span: { start: 0, end: 2 } }],
+          [{ atom: 'bd', span: { start: 0, end: 2 } }],
+        ],
+      },
+    }
+    // both columns agree (both still bd) → the shared span writes once
+    expect(serializeStepGrid(model)).toBe('bd*2')
+    // clear one and they disagree → no single byte replacement satisfies both
+    const half = { ...model, lanes: [{ sound: 'bd', cells: [true, false] }] }
+    expect(serializeStepGrid(half)).toBeNull()
   })
 })

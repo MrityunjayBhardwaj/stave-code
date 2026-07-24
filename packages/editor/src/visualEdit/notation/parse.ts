@@ -1525,21 +1525,65 @@ function leafViewUsable(model: StepGridModel): boolean {
 }
 
 /**
+ * THE BIJECTION, STATED ONCE (#986 P2).
+ *
+ * A played note is view-editable exactly when it maps to a source span that is
+ * its OWN and that no other note's span partly claims. Everything the leaf
+ * writers refuse is one of those two clauses failing, and both surfaces ask this
+ * function rather than spelling the rule twice — the grid per atom in a column,
+ * the roll per note. The ~25 syntactic guards in the core above are the same rule
+ * detected feature-by-feature; this is it stated as a property of what the
+ * pattern PLAYS, which is why it needs no case for nesting, for `*n`, or for any
+ * spelling at all.
+ *
+ * Clause 1 — the span must BE the token. `loc[0]` is the leaf for a bare reified
+ * mini but not for every value the engine can synthesise: a `..` range gives each
+ * generated note the RANGE END's location, a patterned operator (`*<8 [4 16]>`)
+ * puts its own argument first, and a `.` phrase separator can pad a span with a
+ * trailing space. Splicing any of those rewrites bytes belonging to something
+ * else. Checked per parse rather than trusted — 0 mismatches across the grid's
+ * 8449 corpus spans and 861 across the roll's, so the check is load-bearing on
+ * one surface and cheap insurance on the other.
+ *
+ * Clause 2 — spans may be IDENTICAL but never partly overlapping. Sharing is
+ * fine and common (`bd*4` is one token played four times); the writer then
+ * requires the sharers to AGREE on the result. Partial overlap is the case no
+ * byte replacement can satisfy, because the two notes disagree about who owns
+ * the bytes in between.
+ *
+ * Returns the gate that refused, or null on success — and on success the span
+ * joins `seen`, so the caller's loop accumulates the claim set as it goes.
+ *
+ * `fold` is the roll's: it case-folds note names for its row maths, so it must
+ * compare on that footing. The anchor still points at the user's own bytes and
+ * the writer puts THOSE back.
+ */
+function claimLeafSpan(
+  src: string,
+  span: LeafSpan | null | undefined,
+  token: string,
+  seen: LeafSpan[],
+  fold = false,
+): Gate | null {
+  if (!span) return 'no-leaf-anchor'
+  const bytes = src.slice(span.start, span.end)
+  const isOwn = fold ? bytes.toLowerCase() === token.toLowerCase() : bytes === token
+  if (!isOwn) return 'no-leaf-anchor'
+  for (const s of seen) {
+    const identical = s.start === span.start && s.end === span.end
+    if (!identical && s.end > span.start && span.end > s.start) return 'no-leaf-anchor'
+  }
+  seen.push(span)
+  return null
+}
+
+/**
  * Pair every column with the atoms sounding there and each atom's own leaf span.
  *
- * Refuses — and the refusals are the bijection ([[PV218]]), not convenience:
- *  - an atom carrying NO location: nothing to write back through;
- *  - a span whose bytes are not the atom's token: the anchor would splice the
- *    wrong bytes. `loc[0]` is the leaf for a bare reified mini, but not for every
- *    value the engine can synthesise — a `..` range gives each generated note the
- *    RANGE END's location, and a patterned operator (`*<8 [4 16]>`) puts its own
- *    argument first. Checked per parse rather than trusted (0 mismatches across
- *    the grid's 8449 corpus spans, 861 across the roll's — so the check is
- *    load-bearing, not ceremony);
- *  - spans that OVERLAP without being identical: two cells claiming overlapping
- *    bytes cannot both be spliced.
- * Sharing one span across several columns is allowed (`bd*4` is one token played
- * four times) — the writer requires those columns to AGREE on the result.
+ * The refusals are `claimLeafSpan`'s — the bijection — plus one that is NOT it:
+ * an onset outside the grid it was measured for is a LAYOUT refusal, reported as
+ * `note-crosses-bar` so the anchor count stays an honest measure of the
+ * write-back guard (#990).
  */
 function leafAnchors(
   src: string,
@@ -1558,17 +1602,9 @@ function leafAnchors(
       if (c < 0 || c >= perBar * bars) return { ok: false, gate: 'note-crosses-bar' }
       for (let i = 0; i < o.atoms.length; i++) {
         const span = o.spans[i]
-        if (!span || src.slice(span.start, span.end) !== o.atoms[i]) {
-          return { ok: false, gate: 'no-leaf-anchor' }
-        }
-        for (const s of seen) {
-          const same = s.start === span.start && s.end === span.end
-          if (!same && s.end > span.start && span.end > s.start) {
-            return { ok: false, gate: 'no-leaf-anchor' }
-          }
-        }
-        seen.push(span)
-        cols[c].push({ atom: o.atoms[i], span })
+        const gate = claimLeafSpan(src, span, o.atoms[i], seen)
+        if (gate) return { ok: false, gate }
+        cols[c].push({ atom: o.atoms[i], span: span! })
       }
     }
   }
@@ -2398,23 +2434,16 @@ function projectPianoRollByLeaf(src0: string): Projection<PianoRollModel> {
 /**
  * Pair every played note with its own pitch token's span.
  *
- * Refuses — and each refusal is the bijection, not a convenience limit:
- *  - a note carrying NO location: nothing to write back through;
- *  - a span whose bytes are not the note's own pitch. `loc[0]` is the leaf for a
- *    token the user TYPED, but not for a value the engine SYNTHESISED: a `..` range
- *    gives every generated note the RANGE END's location and a patterned operator
- *    (`*<8 [4 16]>`) puts its own argument first, so splicing either would rewrite
- *    bytes belonging to something else. The grid never meets this class (it rejects
- *    numeric values upstream); numbers are the roll's whole point, so it meets all of
- *    it — 861 of the corpus's ~7949 roll spans do not slice to their pitch. Checked
- *    per note, never trusted;
- *  - spans that OVERLAP without being identical: two notes claiming overlapping bytes
- *    cannot both be spliced;
- *  - a note that does not fit inside its own bar, which has no single bar to belong
- *    to — reported as its own gate, because such a note HAS a good source token and
- *    counting it here would overstate the write-back guard (#990).
- * Sharing one span across several notes is allowed (one token sounding in every bar) —
- * the writer then requires them to AGREE on the result.
+ * The refusals are `claimLeafSpan`'s — the same bijection the grid asks, case-folded
+ * because the roll folds note names for its row maths. This surface is where clause 1
+ * earns its keep: the grid rejects numeric values upstream and so never meets an
+ * engine-synthesised location, while numbers are the roll's whole point and 861 of
+ * the corpus's ~7949 roll spans do not slice to their pitch.
+ *
+ * The one refusal that is NOT the bijection: a note that does not fit inside its own
+ * bar has no single bar to belong to, and it is reported as its own gate because such
+ * a note HAS a good source token — counting it here would overstate the write-back
+ * guard (#990).
  */
 function rollAnchors(
   src: string,
@@ -2436,19 +2465,9 @@ function rollAnchors(
         return { ok: false, gate: 'note-crosses-bar' }
       }
       const span = o.loc
-      // the roll case-folds note names for its row math, so compare on that footing —
-      // the anchor still points at the user's own bytes, and the writer puts THOSE back
-      if (!span || src.slice(span.start, span.end).toLowerCase() !== o.pitch.toLowerCase()) {
-        return { ok: false, gate: 'no-leaf-anchor' }
-      }
-      for (const s of seen) {
-        const same = s.start === span.start && s.end === span.end
-        if (!same && s.end > span.start && span.end > s.start) {
-          return { ok: false, gate: 'no-leaf-anchor' }
-        }
-      }
-      seen.push(span)
-      out.push({ pitch: o.pitch, start: b * perBar + start, duration, span })
+      const gate = claimLeafSpan(src, span, o.pitch, seen, true)
+      if (gate) return { ok: false, gate }
+      out.push({ pitch: o.pitch, start: b * perBar + start, duration, span: span! })
     }
   }
   return { ok: true, anchors: out }
