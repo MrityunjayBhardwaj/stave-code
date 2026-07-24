@@ -81,10 +81,10 @@ exports[`edit-parity — view-editability over the vendored corpus > pins per-fi
   },
   {
     "broken": 0,
-    "class": "partial",
+    "class": "fully",
     "editable": 1,
     "file": "bakery-143-guarded-boot.strudel",
-    "units": 2,
+    "units": 1,
   },
   {
     "broken": 0,
