@@ -37,11 +37,123 @@ const COMBINATOR_EXPAND = new Set(['stack', 'cat', 'slowcat', 'fastcat'])
 // Non-musical setup/boilerplate statement heads — top-level expression
 // statements that carry no editable musical content, excluded from the
 // editability denominator (reported separately).
+//
+// NOTE `'await'` is NOT in this list, and deliberately so: `chunkDetect` does
+// not unwrap `AwaitExpression`, so `await samples('github:…')` reports a null
+// head and the entry could never have matched. That dead entry is what this
+// list looked like when it was written by guessing at heads instead of reading
+// units — `hostPlumbingRanges` below handles the await-wrapped case against the
+// real AST instead. See #998.
 const SETUP_HEADS = new Set([
   'samples', 'setcpm', 'setcps', 'setbpm', 'setVoicingRange', 'useRNG',
-  'register', 'setGainCurve', 'setmidimap', 'aliasBank', 'await',
+  'register', 'setGainCurve', 'setmidimap', 'aliasBank',
   'setCpm', 'setCps', 'setBpm', 'initAudio', 'setGain', 'setVolume',
 ])
+
+// Host/runtime and visual calls: they start a renderer, load a video, or draw —
+// they never denote a pattern, so no grid or roll could exist for them however
+// good our editors get.
+//
+// DERIVED FROM THE UNITS, never extended speculatively: every name here was
+// observed as a top-level statement in the corpus + 150 real Bakery tunes. A
+// speculative entry is invisible when it is wrong, which is exactly how the
+// dead `'await'` above survived.
+const HOST_CALL_HEADS = new Set([
+  'initHydra', 'initBytebeat', 'initVideo', 'dough', 'render', 'src', 'enableMotion',
+])
+
+/**
+ * The head name of a call chain's ROOT call — `src(s0).kaleid(…).out()` is
+ * headed by `src`, and `s1.initVideo('…')` by `initVideo`, matching how
+ * `chunkDetect` names heads.
+ */
+function rootHead(node: any): string | null {
+  let n = node
+  while (n) {
+    if (n.type === 'TaggedTemplateExpression') return n.tag?.type === 'Identifier' ? n.tag.name : null
+    if (n.type === 'CallExpression') {
+      const c = n.callee
+      if (c?.type === 'Identifier') return c.name
+      if (c?.type === 'MemberExpression') {
+        if (c.object?.type === 'CallExpression' || c.object?.type === 'MemberExpression') {
+          n = c.object
+          continue
+        }
+        return c.property?.type === 'Identifier' ? c.property.name : null
+      }
+      return null
+    }
+    if (n.type === 'MemberExpression') {
+      n = n.object
+      continue
+    }
+    return null
+  }
+  return null
+}
+
+/** `typeof X !== 'undefined' && X(…)` — a load guard, not a track. */
+function isTypeofGuard(e: any): boolean {
+  if (!e || e.type !== 'LogicalExpression') return false
+  let l = e.left
+  while (l && (l.type === 'LogicalExpression' || l.type === 'BinaryExpression')) l = l.left
+  return l?.type === 'UnaryExpression' && l.operator === 'typeof'
+}
+
+/**
+ * Top-level statements that are HOST PLUMBING rather than music — the second
+ * half of the coverage fraction, and the half nobody had audited (#998).
+ *
+ * A coverage number is `editable / musical units`. Statements that start hydra,
+ * load a video, log, guard a load, or re-export a helper to `window` carry no
+ * note content and never could — counting them in the denominator both deflates
+ * the number and, worse, files them under `code-only`, which reads as "we have
+ * no view for this YET" when the truth is "this is not a musical unit."
+ *
+ * THE RULE IS DELIBERATELY NARROW, and errs toward counting things AGAINST us:
+ *   - only `ExpressionStatement`s. Declarations are out of scope because
+ *     `detectAllChunks` never yields a chunk for one (`chunkDetect.ts:263-266`,
+ *     deliberately, to avoid a duplicate strip) — so a `const x = <pattern>`
+ *     line is not a unit here at all and this rule must not pretend to judge it.
+ *   - an assignment is excluded only when its right-hand side is an identifier
+ *     or a number/boolean — a re-export or a knob. `window.foo = "<<C E>:…>"`
+ *     stays IN, because its value could carry music.
+ *   - `silence`, `all(x => …)`, `chord(…)`, `seq(…)`, `pick(…)`, `mask(…)` all
+ *     stay IN. They are musical units with no view yet, and must keep counting
+ *     against us — that residual is the roadmap.
+ */
+function hostPlumbingRanges(doc: string): { setup: Overlap[]; nonMusical: Overlap[] } {
+  const setup: Overlap[] = []
+  const nonMusical: Overlap[] = []
+  for (const stmt of parseTopLevel(doc) ?? []) {
+    if (stmt.type !== 'ExpressionStatement') continue
+    const range: Overlap = [stmt.start, stmt.end]
+    let e = stmt.expression
+    if (e?.type === 'AwaitExpression') e = e.argument
+
+    if (isTypeofGuard(e)) {
+      nonMusical.push(range)
+      continue
+    }
+    if (e?.type === 'AssignmentExpression') {
+      const r = e.right
+      const bare =
+        r?.type === 'Identifier' ||
+        (r?.type === 'Literal' && (typeof r.value === 'number' || typeof r.value === 'boolean'))
+      if (bare) nonMusical.push(range)
+      continue
+    }
+    if (e?.type === 'CallExpression' && e.callee?.type === 'MemberExpression' && e.callee.object?.type === 'Identifier' && e.callee.object.name === 'console') {
+      nonMusical.push(range)
+      continue
+    }
+    const head = rootHead(e)
+    if (head == null) continue
+    if (SETUP_HEADS.has(head)) setup.push(range)
+    else if (HOST_CALL_HEADS.has(head)) nonMusical.push(range)
+  }
+  return { setup, nonMusical }
+}
 
 type Overlap = [number, number]
 const overlaps = (a: Overlap, b: Overlap) => a[0] < b[1] && b[0] < a[1]
@@ -97,6 +209,7 @@ function collectUnits(doc: string): ChunkInfo[] {
 
 export type UnitStatus =
   | { status: 'setup'; head: string }
+  | { status: 'non-musical'; head: string }
   | { status: 'note'; kind: 'roll' | 'step' }
   | { status: 'note-broken'; kind: 'roll' | 'step'; reason: string; gate?: string; head: string }
   | { status: 'clip'; kind: string }
@@ -123,10 +236,22 @@ export type UnitStatus =
 const blockerKey = (s: { kind: string; reason: string; gate?: string }): string =>
   `${s.kind}: ${s.gate ?? s.reason}`
 
-function classifyUnit(u: ChunkInfo, arrangeRanges: Overlap[], pickRanges: Overlap[]): UnitStatus {
+function classifyUnit(
+  u: ChunkInfo,
+  arrangeRanges: Overlap[],
+  pickRanges: Overlap[],
+  plumbing: { setup: Overlap[]; nonMusical: Overlap[] },
+): UnitStatus {
   const head = u.headFn
   const mini = u.miniString
   if (head != null && SETUP_HEADS.has(head)) return { status: 'setup', head }
+  // Statement-level host plumbing (#998). Checked against the real AST rather
+  // than the unit's head, because the head is null for the shapes that matter
+  // (`await samples(…)`, `window.x = y`, a `typeof` guard).
+  if (plumbing.setup.some((r) => overlaps(r, u.exprRange))) return { status: 'setup', head: head ?? '(await)' }
+  if (plumbing.nonMusical.some((r) => overlaps(r, u.exprRange))) {
+    return { status: 'non-musical', head: head ?? '(no-head)' }
+  }
   if (mini !== null && (head === 'note' || head === 'n')) {
     const r = parsePianoRoll(mini)
     return r.ok
@@ -147,9 +272,11 @@ function classifyUnit(u: ChunkInfo, arrangeRanges: Overlap[], pickRanges: Overla
 
 export interface TuneReport {
   file: string
-  /** musical units only (setup/boilerplate excluded) */
+  /** musical units only (setup/boilerplate AND host plumbing excluded) */
   units: number
   setup: number
+  /** host plumbing: hydra init, video, render, logging, guards, re-exports (#998) */
+  nonMusical: number
   noteEditable: number
   clip: number
   noteBroken: number
@@ -176,20 +303,22 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
   for (const { name, code } of docs) {
     if (!docParses(code)) {
       tunes.push({
-        file: name, units: 0, setup: 0, noteEditable: 0, clip: 0, noteBroken: 0,
+        file: name, units: 0, setup: 0, nonMusical: 0, noteEditable: 0, clip: 0, noteBroken: 0,
         knobs: 0, codeOnly: 0, structurallyEditable: 0, tuneClass: 'unparseable',
       })
       continue
     }
     const arrangeRanges = detectAllArrangeCalls(code).map((a): Overlap => a.callRange)
     const pickRanges = detectAllPickControls(code).map((p): Overlap => p.callRange)
+    const plumbing = hostPlumbingRanges(code)
     const allUnits = collectUnits(code)
 
-    let note = 0, clip = 0, broken = 0, knobs = 0, codeOnly = 0, setup = 0
+    let note = 0, clip = 0, broken = 0, knobs = 0, codeOnly = 0, setup = 0, nonMusical = 0
     for (const u of allUnits) {
-      const s = classifyUnit(u, arrangeRanges, pickRanges)
+      const s = classifyUnit(u, arrangeRanges, pickRanges, plumbing)
       switch (s.status) {
         case 'setup': setup++; break
+        case 'non-musical': nonMusical++; break
         case 'note': note++; break
         case 'clip': clip++; break
         case 'knobs': knobs++; break
@@ -197,7 +326,7 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
         case 'code-only': codeOnly++; bump(codeOnlyHeads, s.head); break
       }
     }
-    const musical = allUnits.length - setup
+    const musical = allUnits.length - setup - nonMusical
     const structural = note + clip
     const tuneClass: TuneReport['tuneClass'] =
       musical === 0 ? 'code-only'
@@ -207,7 +336,7 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
       : 'code-only'
 
     tunes.push({
-      file: name, units: musical, setup, noteEditable: note, clip, noteBroken: broken,
+      file: name, units: musical, setup, nonMusical, noteEditable: note, clip, noteBroken: broken,
       knobs, codeOnly, structurallyEditable: structural, tuneClass,
     })
   }
@@ -232,7 +361,7 @@ export function aggregate(m: Measurement) {
   return {
     n, fully, partial, anyEditable,
     knobsOnly: cls('knobs-only'), codeOnlyTunes: cls('code-only'), unparseable: cls('unparseable'),
-    totalUnits, uSetup: sum((t) => t.setup), uNote, uClip,
+    totalUnits, uSetup: sum((t) => t.setup), uNonMusical: sum((t) => t.nonMusical), uNote, uClip,
     uStructural: uNote + uClip, uBroken: sum((t) => t.noteBroken),
     uKnobs: sum((t) => t.knobs), uCode: sum((t) => t.codeOnly),
     anyEditablePct: Number(pct(anyEditable, n)),
@@ -248,7 +377,8 @@ export function summaryLines(label: string, m: Measurement): string[] {
     `TUNE  any-editable: ${a.anyEditable}/${a.n} (${a.anyEditablePct}%)  ` +
       `[fully ${a.fully} · partial ${a.partial} · knobs ${a.knobsOnly} · code ${a.codeOnlyTunes} · unparse ${a.unparseable}]`,
     `UNIT  structural: ${a.uStructural}/${a.totalUnits} (${a.structuralPct}%)  ` +
-      `[note ${a.uNote} · clip ${a.uClip} · broken ${a.uBroken} · knobs ${a.uKnobs} · code ${a.uCode}]  (setup ${a.uSetup} excluded)`,
+      `[note ${a.uNote} · clip ${a.uClip} · broken ${a.uBroken} · knobs ${a.uKnobs} · code ${a.uCode}]  ` +
+      `(excluded: setup ${a.uSetup} · host plumbing ${a.uNonMusical})`,
     'top note-broken reasons:',
     ...rank(m.brokenReasons).slice(0, 6).map(([k, c]) => `   ${c}×  ${k}`),
     'top code-only heads:',
@@ -284,7 +414,17 @@ export function renderMarkdown(m: Measurement, title: string): string {
   md.push('')
   md.push('## Unit-level')
   md.push('')
-  md.push(`Total musical units (top-level chunks + stack/cat voices, setup excluded): **${a.totalUnits}**`)
+  md.push(`Total musical units (top-level chunks + stack/cat voices): **${a.totalUnits}**`)
+  md.push('')
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
+  md.push(`Excluded from that denominator: **${plural(a.uSetup, 'setup/boilerplate statement')}**`)
+  md.push(`and **${plural(a.uNonMusical, 'host-plumbing statement')}** — hydra`)
+  md.push('`initHydra`/`initVideo`/`render`/`src`, `console.*`, `typeof` load guards, and')
+  md.push('`window.x = y` re-exports. These carry no note content and no view could ever open')
+  md.push('them, so counting them would both deflate the percentage and file them under')
+  md.push('`code-only`, which reads as "no view for this yet" (#998). Deliberately still')
+  md.push('counted AGAINST us: `silence`, `all(x => …)`, `chord(…)`, `seq(…)`, `pick(…)` and')
+  md.push('`mask(…)` — real musical units with no view yet.')
   md.push('')
   md.push('| Status | Units | % |')
   md.push('|---|---:|---:|')
@@ -347,6 +487,7 @@ export function resultJson(m: Measurement, extra: Record<string, unknown> = {}) 
     unitLevel: {
       totalUnits: a.totalUnits, note: a.uNote, clip: a.uClip, structurallyEditable: a.uStructural,
       noteBroken: a.uBroken, knobs: a.uKnobs, codeOnly: a.uCode, setup: a.uSetup,
+      nonMusical: a.uNonMusical,
       structurallyEditablePct: a.structuralPct,
     },
     brokenReasons: Object.fromEntries(rank(m.brokenReasons)),
