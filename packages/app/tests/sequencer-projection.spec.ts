@@ -118,3 +118,39 @@ test.describe('Sequencer behaviour-projection (#922)', () => {
     )
   })
 })
+
+/**
+ * #991 — a pattern whose period runs past the element writer's four-bar cap.
+ *
+ * `hacking/8` is one sample stretched over eight cycles. Its period is 8, so
+ * every projection used to decline it as "does not repeat within 4 bars" and the
+ * Sequencer showed standby. The LEAF projection looks out to twelve bars, because
+ * the cap's stated reason — `spliceAltGrid` respelling an edited element as
+ * `<b0 b1 …>` — is a property of a writer this path never reaches.
+ *
+ * The observation that settled the UX question: a wide view here is not a wall of
+ * columns. `MAX_STEPS` caps `perBar × bars` at 64 independently, so a pattern that
+ * reaches eight bars must be COARSE — this one is eight columns TOTAL, narrower
+ * than the twelve-column nested-group grid above. Asserted here as a real click on
+ * a real panel, because "the view opens" and "the view can be worked with" are
+ * different claims and only the second one matters.
+ */
+test('a period longer than four bars opens a coarse grid and edits by byte surgery', async ({
+  page,
+}) => {
+  await boot(page)
+  await setStrudelCode(page, '$: s("hacking/8")')
+  const drawer = await openSequencer(page)
+  const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+  await expect(grid).toHaveCount(1)
+  // eight bars, one column each — the whole period is visible at once
+  await expect(grid.locator('[data-seq-cell]')).toHaveCount(8)
+  await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
+  for (let c = 1; c < 8; c++) {
+    await expect(grid.locator(`[data-seq-cell="0:${c}"]`)).toHaveAttribute('aria-pressed', 'false')
+  }
+  // clearing the sounding cell replaces that token's bytes; the `/8` rides back
+  await grid.locator('[data-seq-cell="0:0"]').click()
+  await page.waitForTimeout(80)
+  expect(await strudelValue(page)).toBe('$: s("~/8")')
+})

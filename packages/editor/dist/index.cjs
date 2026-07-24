@@ -26735,6 +26735,7 @@ function denom(x, cap = MAX_STEPS) {
 __name(denom, "denom");
 var PERIOD_PROBE = 24;
 var MAX_PROJECT_BARS = 4;
+var LEAF_PROJECT_BARS = { grid: 12, roll: MAX_PROJECT_BARS };
 var no = /* @__PURE__ */ __name((gate) => ({ ok: false, gate }), "no");
 function gateReason(gate, surface) {
   switch (gate) {
@@ -26743,7 +26744,7 @@ function gateReason(gate, surface) {
     case "no-note-content":
       return "the pattern plays no placeable notes";
     case "unstable-period":
-      return `the pattern does not repeat within ${MAX_PROJECT_BARS} bars`;
+      return `the pattern does not repeat within ${LEAF_PROJECT_BARS[surface]} bars`;
     case "mixed-pitch-domain":
       return "the pattern mixes numeric and note-name pitches";
     case "irrational-onset":
@@ -27048,7 +27049,7 @@ function projectStepGridByLeaf(src0) {
     if (!cc.ok) return cc;
     cycles.push(cc.onsets);
   }
-  const bars = detectPeriod2(cycles.map(onsetKey), MAX_PROJECT_BARS);
+  const bars = detectPeriod2(cycles.map(onsetKey), LEAF_PROJECT_BARS.grid);
   if (bars === 0) return no("unstable-period");
   const perCycle = cycles.slice(0, bars);
   if (perCycle.every((c) => c.length === 0)) return no("no-note-content");
@@ -27640,7 +27641,7 @@ function projectPianoRollByLeaf(src0) {
     if (!cc.ok) return cc;
     cycles.push(cc.onsets);
   }
-  const bars = detectPeriod2(cycles.map(rollKey), MAX_PROJECT_BARS);
+  const bars = detectPeriod2(cycles.map(rollKey), LEAF_PROJECT_BARS.roll);
   if (bars === 0) return no("unstable-period");
   const perCycle = cycles.slice(0, bars);
   const all = perCycle.flat();
