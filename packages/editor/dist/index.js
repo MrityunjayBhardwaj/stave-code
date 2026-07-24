@@ -26709,7 +26709,7 @@ function denom(x, cap = MAX_STEPS) {
 __name(denom, "denom");
 var PERIOD_PROBE = 24;
 var MAX_PROJECT_BARS = 4;
-var LEAF_PROJECT_BARS = { grid: 12, roll: MAX_PROJECT_BARS };
+var LEAF_PROJECT_BARS = { grid: 12, roll: 4 };
 var no = /* @__PURE__ */ __name((gate) => ({ ok: false, gate }), "no");
 function gateReason(gate, surface) {
   switch (gate) {

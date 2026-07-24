@@ -878,7 +878,11 @@ const MAX_PROJECT_BARS = 4
  * ->/2` — which expand to eight or nine columns TOTAL and are 100% live: every
  * sounding cell accepts an edit.
  *
- * ROLL 4, deliberately unchanged. Measured at 6, 8, 12 and 16 bars the roll's
+ * ROLL 4, deliberately unchanged — and written as a literal, not as an alias of
+ * `MAX_PROJECT_BARS`. The two are equal today by coincidence of measurement, not
+ * because this path follows the element writer; aliasing them would re-make the
+ * very mistake this constant exists to undo, and would move the roll silently the
+ * next time the element cap moves for a re-emit reason. Measured at 6, 8, 12 and 16 bars the roll's
  * writer-reach does not move at all — it stays at 73 — while the nine extra views
  * it opens are 13–58% live (`<[0@6 -3@1 -2@1]!1 …>`: three of thirteen notes
  * respond). The roll's long-period patterns are built out of `!n`/`@n` repetition,
@@ -897,7 +901,7 @@ const MAX_PROJECT_BARS = 4
  * constraint: at twelve bars a pattern may be no finer than five steps to the bar,
  * which is why this buys back coarse long-period patterns only.
  */
-const LEAF_PROJECT_BARS: Record<Surface, number> = { grid: 12, roll: MAX_PROJECT_BARS }
+const LEAF_PROJECT_BARS: Record<Surface, number> = { grid: 12, roll: 4 }
 
 /* ── refusal gates (#990) ──────────────────────────────────────────────────── */
 
