@@ -251,6 +251,16 @@ describe('krill contract — the edit probes are single atoms wherever they land
       // than as a puzzling atom-list mismatch
       expect(token).toMatch(/^[a-z0-9]+$/i)
     })
+
+    it(`${name} is still distinguishable from the pattern it is spliced into`, () => {
+      // The property the ORIGINAL marker was chosen for, kept: the probe compares
+      // "the pattern plus this marker" against what came back, so a marker the user
+      // could plausibly have written would make the two indistinguishable. Losing
+      // this while fixing the grammar collision would trade one silent failure for
+      // another, so both are asserted rather than one replacing the other.
+      expect(atoms(`bd ${token} sd`).filter((a) => a === token)).toHaveLength(1)
+      expect(token.length).toBeGreaterThan(1)
+    })
   }
 
   it('is non-vacuous: the old marker FAILS the property it was chosen without', () => {
