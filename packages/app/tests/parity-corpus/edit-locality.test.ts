@@ -58,6 +58,7 @@ import {
   serializeStepGrid,
   serializePianoRoll,
 } from '../../../editor/src/visualEdit/notation/serialize'
+import { resizeRoll } from '../../../editor/src/visualEdit/notation/resize'
 import type {
   PianoRollModel,
   RollNote,
@@ -459,6 +460,135 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
     // No single byte-replacement satisfies both columns → decline.
     const forged = toggleCell(r.model, 0, 1, true)
     expect(serializeStepGrid(forged)).toBeNull()
+  })
+
+  /**
+   * THE LEAF WRITER'S PROOF, THE PITCHED VIEW (#986 P1b). Same law as the grid's
+   * leaf tests above, on the surface that also models DURATION — which is exactly
+   * where the roll's boundary sits. All fixtures are real corpus units.
+   */
+  it('leaf roll: clearing a chord member edits only that member`s bytes', () => {
+    // a `,`-stack of nested groups — no element re-emit can spell it, so it reaches
+    // the leaf writer. Clearing the `0` touches the `0` and nothing else: every
+    // bracket, comma, `-` rest and sibling pitch rides back byte-for-byte.
+    const src = '- [0,3,7], [- [-2,1]] -'
+    const r = parsePianoRoll(src)
+    expect(r.ok, `${src} should leaf-project`).toBe(true)
+    if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
+    const m = r.model
+    const target = m.notes.find((n) => n.pitch === '0')!
+    const out = serializePianoRoll({ ...m, notes: m.notes.filter((n) => n !== target) })
+    expect(out).toBe('- [~,3,7], [- [-2,1]] -')
+  })
+
+  /**
+   * A pitch drag at DEPTH, through an alternation inside an alternation inside a
+   * `*2`. The edit is one token wide; `<`, `>`, `[`, `]`, `,`, `-` and `*2` are
+   * bytes the writer copies and provably cannot invent.
+   */
+  it('leaf roll: dragging a deeply nested pitch is a one-token diff', () => {
+    const src = '<- - <g4 [d4 c5]> [- [[bb4,d4] [- [g4,d3]]]]>*2'
+    const r = parsePianoRoll(src)
+    expect(r.ok, `${src} should leaf-project`).toBe(true)
+    const ls = r.ok ? r.model.leafSource : undefined
+    if (!r.ok || !ls) throw new Error('expected a leaf-anchored roll')
+    const m = r.model
+    // the `g4` inside `<g4 [d4 c5]>` — the first note whose span is that token
+    const span = ls.anchors.find((a) => src.slice(a.span.start, a.span.end) === 'g4')!
+    const target = m.notes.find((n) => n.start === span.start && n.pitch === 'g4')!
+    const out = serializePianoRoll({
+      ...m,
+      notes: m.notes.map((n) => (n === target ? { ...n, pitch: 'c9' } : n)),
+    })
+    expect(out).toBe('<- - <c9 [d4 c5]> [- [[bb4,d4] [- [g4,d3]]]]>*2')
+    // literal locality: the diff is confined to that one leaf span
+    expect(out!.slice(0, span.span.start)).toBe(src.slice(0, span.span.start))
+    expect(out!.slice(span.span.start + 2)).toBe(src.slice(span.span.end))
+  })
+
+  /**
+   * THE `@n` DECISION, MADE A TEST (#986 P1b §6.1). A held note's hap carries ONLY
+   * its pitch leaf — the `@n` is never a location of its own (observed by driving
+   * `reifyMini` on `c3@2`, `[c3 e3]@2`, `0@2 2`). So:
+   *  - clearing a held note replaces the PITCH and leaves the `@n` byte-identical;
+   *  - changing a DURATION has no span to write through and is REFUSED, never
+   *    approximated — authoring `@n` would be the printer this mechanism deletes.
+   * Refusing is not a limitation to fix later; it is the adapter boundary holding.
+   */
+  it('leaf roll: clearing a held note keeps its `@n` verbatim', () => {
+    const src = '6@8, 4!, 7, 13@2'
+    const r = parsePianoRoll(src)
+    expect(r.ok, `${src} should leaf-project`).toBe(true)
+    if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
+    const m = r.model
+    const held = m.notes.find((n) => n.pitch === '6')!
+    expect(serializePianoRoll({ ...m, notes: m.notes.filter((n) => n !== held) })).toBe(
+      '~@8, 4!, 7, 13@2',
+    )
+  })
+
+  it('leaf roll: a duration change is refused — no `@n` span to splice', () => {
+    const src = '6@8, 4!, 7, 13@2'
+    const r = parsePianoRoll(src)
+    expect(r.ok).toBe(true)
+    if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
+    const m = r.model
+    const held = m.notes.find((n) => n.pitch === '6')!
+    // longer than anything at its column…
+    expect(
+      serializePianoRoll({
+        ...m,
+        notes: m.notes.map((n) => (n === held ? { ...n, duration: n.duration + 1 } : n)),
+      }),
+    ).toBeNull()
+    // …and shortened onto a SIBLING's length, which a per-note check would wave
+    // through as a silent no-op. The multiset match is what catches this one.
+    const sibling = m.notes.find((n) => n.start === held.start && n.duration !== held.duration)
+    if (sibling) {
+      expect(
+        serializePianoRoll({
+          ...m,
+          notes: m.notes.map((n) => (n === held ? { ...n, duration: sibling.duration } : n)),
+        }),
+      ).toBeNull()
+    }
+  })
+
+  /**
+   * A RESTRUCTURE must not read as a pile of deletions.
+   *
+   * `resizeRoll` re-lays the grid and carries the model's other fields through, so
+   * the anchors survive describing a layout that no longer exists. Widening leaves
+   * every note's start and length intact — which passes the per-note check and would
+   * write the ORIGINAL source back, silently discarding the resize. Narrowing is
+   * worse: the notes that fall outside the new width look exactly like notes the user
+   * DELETED, and the writer would splice `~` over them — observed emitting
+   * `- [~,~,~], [- [-2,1]] -` from a resize gesture before this was guarded. Both
+   * must be a clean refusal, so the panel keeps the document.
+   */
+  it('leaf roll: a resized model declines — a restructure is not a delete', () => {
+    const src = '- [0,3,7], [- [-2,1]] -'
+    const r = parsePianoRoll(src)
+    expect(r.ok).toBe(true)
+    if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
+    const m = r.model
+    expect(serializePianoRoll(resizeRoll(m, m.steps * 2, 'pad'))).toBeNull() // widen
+    expect(serializePianoRoll(resizeRoll(m, 2, 'pad'))).toBeNull() // narrow — the data-loss one
+  })
+
+  it('leaf roll: a moved note is refused — no leaf spells a new position', () => {
+    const src = '- [0,3,7], [- [-2,1]] -'
+    const r = parsePianoRoll(src)
+    expect(r.ok).toBe(true)
+    if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
+    const m = r.model
+    const target = m.notes.find((n) => n.pitch === '0')!
+    expect(
+      serializePianoRoll({
+        ...m,
+        notes: m.notes.map((n) => (n === target ? { ...n, start: n.start + 1 } : n)),
+      }),
+    ).toBeNull()
   })
 
   /**

@@ -353,9 +353,9 @@ exports[`edit-parity — view-editability over the vendored corpus > pins per-fi
     "units": 1,
   },
   {
-    "broken": 1,
+    "broken": 0,
     "class": "partial",
-    "editable": 2,
+    "editable": 3,
     "file": "flatrave.strudel",
     "units": 5,
   },
@@ -406,10 +406,6 @@ exports[`edit-parity — view-editability over the vendored corpus > pins per-fi
 
 exports[`edit-parity — view-editability over the vendored corpus > pins per-fixture editability + the reason for every refusal > refusal-reasons 1`] = `
 [
-  [
-    "roll: multi-bar parallel note lanes are beyond the editable subset",
-    1,
-  ],
   [
     "step: "polymeter_slowcat" is beyond the editable subset",
     1,

@@ -25739,6 +25739,47 @@ function spliceByLeaf(model) {
   return serializeByLeaf(ls.src, edits);
 }
 __name(spliceByLeaf, "spliceByLeaf");
+function spliceRollByLeaf(model) {
+  const ls = model.leafSource;
+  if (!ls || ls.steps !== model.steps) return null;
+  const byStart = /* @__PURE__ */ new Map();
+  for (const a of ls.anchors) {
+    const here = byStart.get(a.start);
+    if (here) here.push(a);
+    else byStart.set(a.start, [a]);
+  }
+  for (const [start, anchors] of byStart) {
+    const avail = anchors.map((a) => a.duration);
+    for (const n of model.notes) {
+      if (n.start !== start) continue;
+      const i = avail.indexOf(n.duration);
+      if (i < 0) return null;
+      avail.splice(i, 1);
+    }
+  }
+  for (const n of model.notes) if (!byStart.has(n.start)) return null;
+  const want = /* @__PURE__ */ new Map();
+  for (const [start, anchors] of byStart) {
+    const before = anchors.map((a) => a.pitch);
+    const after = [...new Set(model.notes.filter((n) => n.start === start).map((n) => n.pitch))];
+    const gone = before.filter((p) => !after.includes(p));
+    const added = after.filter((p) => !before.includes(p));
+    const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1;
+    if (added.length > 0 && !swap) return null;
+    for (const a of anchors) {
+      const text = swap ? added[0] : gone.includes(a.pitch) ? "~" : ls.src.slice(a.span.start, a.span.end);
+      const key2 = `${a.span.start}:${a.span.end}`;
+      const prev = want.get(key2);
+      if (prev && prev.text !== text) return null;
+      want.set(key2, { span: a.span, text });
+    }
+  }
+  const edits = [...want.values()].filter(
+    (e) => ls.src.slice(e.span.start, e.span.end) !== e.text
+  );
+  return serializeByLeaf(ls.src, edits);
+}
+__name(spliceRollByLeaf, "spliceRollByLeaf");
 function spliceAltGrid(model) {
   const a = model.altSource;
   if (!a) return "";
@@ -25843,6 +25884,7 @@ function buildGroups(model) {
 }
 __name(buildGroups, "buildGroups");
 function serializePianoRoll(model) {
+  if (model.leafSource) return spliceRollByLeaf(model);
   if (altSourceFits(model.altSource, model.steps)) return spliceAltRoll(model);
   const spliced = spliceRoll(model);
   if (spliced !== null) return spliced;
@@ -26160,6 +26202,7 @@ function rollBars(groups, steps, bars) {
 __name(rollBars, "rollBars");
 function serializeRollGain(model) {
   if (model.gainForeign) return { kind: "skip" };
+  if (model.leafSource) return { kind: "skip" };
   const bars = model.bars ?? 1;
   if (bars > 1 && model.steps !== bars) return { kind: "skip" };
   const placed = placedGroups(model);
@@ -27510,10 +27553,138 @@ function projectAltRollBars(src, inner, perCycle, numeric) {
   return { ok: true, model };
 }
 __name(projectAltRollBars, "projectAltRollBars");
+function projectPianoRollByLeaf(src0) {
+  const src = src0.trim();
+  if (src === "") return null;
+  let pat;
+  try {
+    pat = mini_mjs.mini(src);
+  } catch {
+    return null;
+  }
+  const cycles = [];
+  for (let c = 0; c < PERIOD_PROBE; c++) {
+    const cc = rollOnsets(pat, c);
+    if (cc === null) return null;
+    cycles.push(cc);
+  }
+  const bars = detectPeriod2(cycles.map(rollKey), MAX_PROJECT_BARS);
+  if (bars === 0) return null;
+  const perCycle = cycles.slice(0, bars);
+  const all = perCycle.flat();
+  if (all.length === 0) return null;
+  const numeric = all.some((o) => o.numeric);
+  if (numeric && all.some((o) => !o.numeric)) return null;
+  let perBar2 = 1;
+  for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
+    const d = denom(x);
+    if (d === 0) return null;
+    perBar2 = lcm(perBar2, d);
+  }
+  if (perBar2 * bars > MAX_STEPS) return null;
+  const anchors = rollAnchors(src, perCycle, perBar2, bars);
+  if (anchors === null) return null;
+  const model = {
+    steps: perBar2 * bars,
+    ...bars > 1 ? { bars } : {},
+    // the notes ARE the anchors — one source of truth, so the view and the spans
+    // that write it back can never describe different music
+    notes: anchors.map((a) => ({ pitch: a.pitch, start: a.start, duration: a.duration })),
+    ...numeric ? { numeric: true } : {},
+    leafSource: { src, anchors, steps: perBar2 * bars }
+  };
+  if (!leafRollEditSafe(model, perBar2, bars, numeric)) return null;
+  if (!leafRollViewUsable(model)) return null;
+  return { ok: true, model };
+}
+__name(projectPianoRollByLeaf, "projectPianoRollByLeaf");
+function rollAnchors(src, perCycle, perBar2, bars) {
+  const out = [];
+  const seen = [];
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const start = Math.round(o.pos * perBar2);
+      const duration = Math.round(o.dur * perBar2);
+      if (start < 0 || duration < 1 || start + duration > perBar2) return null;
+      const span = o.loc;
+      if (!span || src.slice(span.start, span.end).toLowerCase() !== o.pitch.toLowerCase()) {
+        return null;
+      }
+      for (const s of seen) {
+        const same = s.start === span.start && s.end === span.end;
+        if (!same && s.end > span.start && span.end > s.start) return null;
+      }
+      seen.push(span);
+      out.push({ pitch: o.pitch, start: b * perBar2 + start, duration, span });
+    }
+  }
+  return out;
+}
+__name(rollAnchors, "rollAnchors");
+function leafRollEditSafe(model, perBar2, bars, numeric) {
+  const ls = model.leafSource;
+  if (!ls) return false;
+  const probePitch = numeric ? PROBE_NUM : PROBE_NOTE;
+  const probes = /* @__PURE__ */ new Map();
+  for (const a of ls.anchors) probes.set(`${a.span.start}:${a.span.end}`, a);
+  for (const anchor of probes.values()) {
+    for (const text of [probePitch, "~"]) {
+      const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }]);
+      let edited;
+      try {
+        edited = mini_mjs.mini(out);
+      } catch {
+        return false;
+      }
+      const want = leafRollExpected(
+        ls.anchors,
+        perBar2,
+        bars,
+        anchor.span,
+        text === "~" ? null : text
+      );
+      for (let b = 0; b < bars; b++) {
+        const got = rollOnsets(edited, b);
+        if (got === null || rollKey(got) !== rollKey(want[b])) return false;
+      }
+      const wrap5 = rollOnsets(edited, bars);
+      if (wrap5 === null || rollKey(wrap5) !== rollKey(want[0])) return false;
+    }
+  }
+  return true;
+}
+__name(leafRollEditSafe, "leafRollEditSafe");
+function leafRollExpected(anchors, perBar2, bars, span, text) {
+  const out = [];
+  for (let b = 0; b < bars; b++) out.push([]);
+  for (const a of anchors) {
+    const hit = a.span.start === span.start && a.span.end === span.end;
+    const pitch = hit ? text : a.pitch;
+    if (pitch === null) continue;
+    const b = Math.floor(a.start / perBar2);
+    if (b < 0 || b >= bars) continue;
+    out[b].push({
+      pos: (a.start - b * perBar2) / perBar2,
+      dur: a.duration / perBar2,
+      pitch
+    });
+  }
+  return out;
+}
+__name(leafRollExpected, "leafRollExpected");
+function leafRollViewUsable(model) {
+  for (const n of model.notes) {
+    if (serializePianoRoll({ ...model, notes: model.notes.filter((x) => x !== n) }) !== null) {
+      return true;
+    }
+  }
+  return false;
+}
+__name(leafRollViewUsable, "leafRollViewUsable");
 function parsePianoRoll(mini) {
   const core = parsePianoRollCore(mini);
   if (core.ok) return core;
-  return projectPianoRoll(mini) ?? core;
+  return projectPianoRoll(mini) ?? projectPianoRollByLeaf(mini) ?? core;
 }
 __name(parsePianoRoll, "parsePianoRoll");
 function parsePianoRollCore(mini) {

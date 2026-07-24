@@ -7928,6 +7928,61 @@ interface LeafSource {
     cols: LeafAnchor[][];
 }
 /**
+ * One played note, paired with the source leaf its PITCH was read from.
+ *
+ * The roll's analogue of `LeafAnchor`, and deliberately not the same shape: a grid
+ * column holds a set of atoms, while a roll note is positioned AND held, so an
+ * anchor has to carry where it starts and how long it lasts as well as what it
+ * plays. Both are still the same fact — "these bytes are this note's own".
+ */
+interface RollLeafAnchor {
+    /** the note as the model carries it — names case-folded, numerics stringified */
+    pitch: string;
+    /** the model column the note starts at, absolute across bars */
+    start: number;
+    /** length in columns */
+    duration: number;
+    /** the PITCH token's own `[start, end)` in `src` — never the `@n` hold (see below) */
+    span: LeafSpan;
+}
+/**
+ * The source of a leaf-anchored ROLL projection (#986 P1b) — `LeafSource` for the
+ * pitched surface.
+ *
+ * Anchored per NOTE rather than per column, because a note is what the roll edits.
+ * A chord contributes one anchor per member, each with its own disjoint leaf, so a
+ * member can be cleared without touching the others.
+ *
+ * DURATION IS NOT WRITABLE HERE, and that is a fact about Strudel, not a shortcut:
+ * a held note's hap carries ONLY its pitch leaf in `context.locations` — the `@n`
+ * never appears as a location of its own (observed by driving `reifyMini` on
+ * `c3@2`, `[c3 e3]@2`, `c3 e3@2 g3`, `0@2 2`: every one reports a single location,
+ * the pitch). So there is no span through which a duration could be spliced, and
+ * writing one would mean AUTHORING `@n` syntax — exactly the modelling this whole
+ * mechanism exists to delete. A resized or moved note is therefore REFUSED by the
+ * writer, never approximated. See `spliceRollByLeaf`.
+ */
+interface RollLeafSource {
+    /** the inner mini string the spans index into, byte-for-byte */
+    src: string;
+    /** one per played note, in play order */
+    anchors: RollLeafAnchor[];
+    /**
+     * The column count these anchors were read against — the roll's equivalent of
+     * the grid's `cols.length`, and a REQUIRED guard rather than bookkeeping.
+     *
+     * A restructure (`resizeRoll`) re-lays the grid while carrying the model's other
+     * fields through, so the anchors survive describing a layout that no longer
+     * exists. Widening then leaves every note's start and length intact, which passes
+     * the writer's per-note check and would write the ORIGINAL source back, silently
+     * discarding the resize. Narrowing is worse: the notes that fell outside the new
+     * width look to the writer exactly like notes the user DELETED, and it would
+     * splice `~` over them — data loss from a resize gesture. Comparing the width
+     * makes both a clean refusal.
+     */
+    steps: number;
+}
+/**
  * One `,`-separated part of the source, and the columns it produced.
  *
  * A flat sequence and a `<…>` alternation are the one-part case; a `,`-stack
@@ -8071,6 +8126,14 @@ interface PianoRollModel {
      * two are mutually exclusive.
      */
     altSource?: AltSource<RollNote[]>;
+    /**
+     * Set by the LEAF-anchored projection (#986 P1b) for patterns whose notation no
+     * element re-emit can reproduce — the roll's half of `StepGridModel.leafSource`,
+     * and TERMINAL for the same reason: a leaf roll is never rebuilt from its notes,
+     * because rebuilding is what would destroy the notation it was opened to
+     * preserve. An edit it cannot express as a byte replacement is refused instead.
+     */
+    leafSource?: RollLeafSource;
     /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
     bars?: number;
     notes: RollNote[];

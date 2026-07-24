@@ -222,11 +222,28 @@ describe('#920 roll — <...> as a sequence element', () => {
       expect(serializePianoRoll(edited)).toBe('<0 0 0 9> <2!3 3> 5')
     })
 
-    it('0 <2@2 3> 5 stays refused — an elongated branch would change weight', () => {
-      // `@2` is the case bar expansion does NOT rescue: re-emitting the element
-      // per bar cannot preserve its weight, so writing it back would re-divide the
-      // cycle and shift every neighbour. Refusing is still the honest answer.
-      expect(parsePianoRoll('0 <2@2 3> 5').ok).toBe(false)
+    it('0 <2@2 3> 5 is never RE-EMITTED — the leaf writer edits its bytes instead', () => {
+      // `@2` is the case bar expansion does NOT rescue: re-emitting the element per
+      // bar cannot preserve its weight, so writing it back that way would re-divide
+      // the cycle and shift every neighbour. Both element paths still decline, and
+      // that is what this locks.
+      expect(parsePianoRollCore('0 <2@2 3> 5').ok).toBe(false)
+      // What changed (#986 P1b) is that refusing the VIEW is no longer the only
+      // honest answer: the leaf writer never re-emits an element, so the weight it
+      // could not preserve is simply bytes it never touches. Editing the `3` branch
+      // rewrites that one token and leaves `@2` — and every other byte — verbatim.
+      const r = parsePianoRoll('0 <2@2 3> 5')
+      expect(r.ok).toBe(true)
+      if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
+      const m = r.model
+      const three = m.notes.find((n) => n.pitch === '3')!
+      expect(serializePianoRoll({ ...m, notes: m.notes.filter((n) => n !== three) })).toBe(
+        '0 <2@2 ~> 5',
+      )
+      // …and a note whose single leaf sounds in every bar cannot be dropped from ONE
+      // of them: no byte replacement says that, so the writer declines (never guesses).
+      const shared = m.notes.find((n) => n.pitch === '0' && n.start === 0)!
+      expect(serializePianoRoll({ ...m, notes: m.notes.filter((n) => n !== shared) })).toBeNull()
     })
   })
 })

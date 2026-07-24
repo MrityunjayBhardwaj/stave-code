@@ -3,6 +3,7 @@ import {
   parseStepGrid,
   parseStepGridCore,
   parsePianoRoll,
+  parsePianoRollCore,
   bjorklund,
   parseGainMini,
   applyStepGain,
@@ -1249,8 +1250,25 @@ describe('#628 parallel note lanes', () => {
   })
 
   it('rejects misaligned lanes (different step widths)', () => {
-    const r = parsePianoRoll('c3 ~ ~, e3 ~ ~ ~') // 3 vs 4 columns
+    // The LANE model requires the parts to share a step grid — 3 columns against 4
+    // has no common lane width, so the syntactic path declines. That contract is
+    // what this locks.
+    const r = parsePianoRollCore('c3 ~ ~, e3 ~ ~ ~') // 3 vs 4 columns
     expect(r.ok).toBe(false)
+    // The leaf projection (#986 P1b) does not use the lane model at all: it shows
+    // what the pattern PLAYS on the common grid (lcm(3,4) = 12) and anchors each
+    // note to its own token, so misalignment stops being a reason to refuse the
+    // view. Verified as an edit, not just a parse — deleting either note leaves the
+    // other's bytes untouched.
+    const full = parsePianoRoll('c3 ~ ~, e3 ~ ~ ~')
+    expect(full.ok).toBe(true)
+    if (!full.ok || !full.model.leafSource) throw new Error('expected a leaf-anchored roll')
+    const m = full.model
+    expect(m.steps).toBe(12)
+    const c3 = m.notes.find((n) => n.pitch === 'c3')!
+    expect(serializePianoRoll({ ...m, notes: m.notes.filter((n) => n !== c3) })).toBe(
+      '~ ~ ~, e3 ~ ~ ~',
+    )
   })
 })
 
