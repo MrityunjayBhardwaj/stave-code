@@ -27087,16 +27087,17 @@ function leafViewUsable(model) {
 }
 __name(leafViewUsable, "leafViewUsable");
 function claimLeafSpan(src, span, token, seen, fold = false) {
-  if (!span) return "no-leaf-anchor";
+  const no2 = { ok: false, gate: "no-leaf-anchor" };
+  if (!span) return no2;
   const bytes = src.slice(span.start, span.end);
   const isOwn = fold ? bytes.toLowerCase() === token.toLowerCase() : bytes === token;
-  if (!isOwn) return "no-leaf-anchor";
+  if (!isOwn) return no2;
   for (const s of seen) {
     const identical = s.start === span.start && s.end === span.end;
-    if (!identical && s.end > span.start && span.end > s.start) return "no-leaf-anchor";
+    if (!identical && s.end > span.start && span.end > s.start) return no2;
   }
   seen.push(span);
-  return null;
+  return { ok: true, span };
 }
 __name(claimLeafSpan, "claimLeafSpan");
 function leafAnchors(src, perCycle, perBar2, bars) {
@@ -27107,10 +27108,9 @@ function leafAnchors(src, perCycle, perBar2, bars) {
       const c = b * perBar2 + Math.round(o.pos * perBar2);
       if (c < 0 || c >= perBar2 * bars) return { ok: false, gate: "note-crosses-bar" };
       for (let i = 0; i < o.atoms.length; i++) {
-        const span = o.spans[i];
-        const gate = claimLeafSpan(src, span, o.atoms[i], seen);
-        if (gate) return { ok: false, gate };
-        cols[c].push({ atom: o.atoms[i], span });
+        const claim = claimLeafSpan(src, o.spans[i], o.atoms[i], seen);
+        if (!claim.ok) return claim;
+        cols[c].push({ atom: o.atoms[i], span: claim.span });
       }
     }
   }
@@ -27693,10 +27693,9 @@ function rollAnchors(src, perCycle, perBar2, bars) {
       if (start < 0 || duration < 1 || start + duration > perBar2) {
         return { ok: false, gate: "note-crosses-bar" };
       }
-      const span = o.loc;
-      const gate = claimLeafSpan(src, span, o.pitch, seen, true);
-      if (gate) return { ok: false, gate };
-      out.push({ pitch: o.pitch, start: b * perBar2 + start, duration, span });
+      const claim = claimLeafSpan(src, o.loc, o.pitch, seen, true);
+      if (!claim.ok) return claim;
+      out.push({ pitch: o.pitch, start: b * perBar2 + start, duration, span: claim.span });
     }
   }
   return { ok: true, anchors: out };

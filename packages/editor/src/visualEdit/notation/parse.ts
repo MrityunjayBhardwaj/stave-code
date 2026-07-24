@@ -1551,8 +1551,10 @@ function leafViewUsable(model: StepGridModel): boolean {
  * byte replacement can satisfy, because the two notes disagree about who owns
  * the bytes in between.
  *
- * Returns the gate that refused, or null on success — and on success the span
- * joins `seen`, so the caller's loop accumulates the claim set as it goes.
+ * Returns the gate that refused, or the CLAIMED span on success — narrowed, so a
+ * caller cannot end up putting a missing span into an anchor and the invariant is
+ * the compiler's rather than an assertion. On success the span also joins `seen`,
+ * so the caller's loop accumulates the claim set as it goes.
  *
  * `fold` is the roll's: it case-folds note names for its row maths, so it must
  * compare on that footing. The anchor still points at the user's own bytes and
@@ -1564,17 +1566,18 @@ function claimLeafSpan(
   token: string,
   seen: LeafSpan[],
   fold = false,
-): Gate | null {
-  if (!span) return 'no-leaf-anchor'
+): { ok: true; span: LeafSpan } | { ok: false; gate: Gate } {
+  const no = { ok: false, gate: 'no-leaf-anchor' } as const
+  if (!span) return no
   const bytes = src.slice(span.start, span.end)
   const isOwn = fold ? bytes.toLowerCase() === token.toLowerCase() : bytes === token
-  if (!isOwn) return 'no-leaf-anchor'
+  if (!isOwn) return no
   for (const s of seen) {
     const identical = s.start === span.start && s.end === span.end
-    if (!identical && s.end > span.start && span.end > s.start) return 'no-leaf-anchor'
+    if (!identical && s.end > span.start && span.end > s.start) return no
   }
   seen.push(span)
-  return null
+  return { ok: true, span }
 }
 
 /**
@@ -1601,10 +1604,9 @@ function leafAnchors(
       // measure of the write-back guard (#990)
       if (c < 0 || c >= perBar * bars) return { ok: false, gate: 'note-crosses-bar' }
       for (let i = 0; i < o.atoms.length; i++) {
-        const span = o.spans[i]
-        const gate = claimLeafSpan(src, span, o.atoms[i], seen)
-        if (gate) return { ok: false, gate }
-        cols[c].push({ atom: o.atoms[i], span: span! })
+        const claim = claimLeafSpan(src, o.spans[i], o.atoms[i], seen)
+        if (!claim.ok) return claim
+        cols[c].push({ atom: o.atoms[i], span: claim.span })
       }
     }
   }
@@ -2464,10 +2466,9 @@ function rollAnchors(
       if (start < 0 || duration < 1 || start + duration > perBar) {
         return { ok: false, gate: 'note-crosses-bar' }
       }
-      const span = o.loc
-      const gate = claimLeafSpan(src, span, o.pitch, seen, true)
-      if (gate) return { ok: false, gate }
-      out.push({ pitch: o.pitch, start: b * perBar + start, duration, span: span! })
+      const claim = claimLeafSpan(src, o.loc, o.pitch, seen, true)
+      if (!claim.ok) return claim
+      out.push({ pitch: o.pitch, start: b * perBar + start, duration, span: claim.span })
     }
   }
   return { ok: true, anchors: out }
