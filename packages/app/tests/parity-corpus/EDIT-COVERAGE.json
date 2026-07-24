@@ -1,32 +1,27 @@
 {
   "tunes": 57,
   "tuneLevel": {
-    "fully": 22,
+    "fully": 23,
     "partial": 8,
-    "anyEditable": 30,
+    "anyEditable": 31,
     "knobsOnly": 20,
-    "codeOnly": 6,
+    "codeOnly": 5,
     "unparseable": 1,
-    "anyEditablePct": 52.6
+    "anyEditablePct": 54.4
   },
   "unitLevel": {
     "totalUnits": 102,
-    "note": 52,
+    "note": 54,
     "clip": 0,
-    "structurallyEditable": 52,
-    "noteBroken": 6,
+    "structurallyEditable": 54,
+    "noteBroken": 4,
     "knobs": 31,
     "codeOnly": 13,
     "setup": 36,
-    "structurallyEditablePct": 51
+    "structurallyEditablePct": 52.9
   },
   "brokenReasons": {
-    "step: a patterned \":\" variant on \"rd\" is beyond the editable subset": 1,
-    "step: a patterned \":\" variant on \"sd\" is beyond the editable subset": 1,
-    "step: \"polymeter_slowcat\" is beyond the editable subset": 1,
-    "roll: euclid on a group is beyond the editable subset": 1,
-    "roll: multi-bar parallel note lanes are beyond the editable subset": 1,
-    "step: nested groups are beyond the editable subset": 1
+    "step: no-note-content": 4
   },
   "codeOnlyHeads": {
     "chord": 3,
@@ -630,24 +625,24 @@
       "file": "echoPiano.strudel",
       "units": 1,
       "setup": 0,
-      "noteEditable": 0,
+      "noteEditable": 1,
       "clip": 0,
-      "noteBroken": 1,
+      "noteBroken": 0,
       "knobs": 0,
       "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "structurallyEditable": 1,
+      "tuneClass": "fully"
     },
     {
       "file": "flatrave.strudel",
       "units": 5,
       "setup": 1,
-      "noteEditable": 2,
+      "noteEditable": 3,
       "clip": 0,
-      "noteBroken": 1,
+      "noteBroken": 0,
       "knobs": 2,
       "codeOnly": 0,
-      "structurallyEditable": 2,
+      "structurallyEditable": 3,
       "tuneClass": "partial"
     },
     {
