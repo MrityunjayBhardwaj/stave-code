@@ -58,6 +58,7 @@ import {
   serializeStepGrid,
   serializePianoRoll,
 } from '../../../editor/src/visualEdit/notation/serialize'
+import { resizeRoll } from '../../../editor/src/visualEdit/notation/resize'
 import type {
   PianoRollModel,
   RollNote,
@@ -551,6 +552,28 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
         }),
       ).toBeNull()
     }
+  })
+
+  /**
+   * A RESTRUCTURE must not read as a pile of deletions.
+   *
+   * `resizeRoll` re-lays the grid and carries the model's other fields through, so
+   * the anchors survive describing a layout that no longer exists. Widening leaves
+   * every note's start and length intact — which passes the per-note check and would
+   * write the ORIGINAL source back, silently discarding the resize. Narrowing is
+   * worse: the notes that fall outside the new width look exactly like notes the user
+   * DELETED, and the writer would splice `~` over them — observed emitting
+   * `- [~,~,~], [- [-2,1]] -` from a resize gesture before this was guarded. Both
+   * must be a clean refusal, so the panel keeps the document.
+   */
+  it('leaf roll: a resized model declines — a restructure is not a delete', () => {
+    const src = '- [0,3,7], [- [-2,1]] -'
+    const r = parsePianoRoll(src)
+    expect(r.ok).toBe(true)
+    if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
+    const m = r.model
+    expect(serializePianoRoll(resizeRoll(m, m.steps * 2, 'pad'))).toBeNull() // widen
+    expect(serializePianoRoll(resizeRoll(m, 2, 'pad'))).toBeNull() // narrow — the data-loss one
   })
 
   it('leaf roll: a moved note is refused — no leaf spells a new position', () => {

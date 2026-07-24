@@ -25741,7 +25741,7 @@ function spliceByLeaf(model) {
 __name(spliceByLeaf, "spliceByLeaf");
 function spliceRollByLeaf(model) {
   const ls = model.leafSource;
-  if (!ls) return null;
+  if (!ls || ls.steps !== model.steps) return null;
   const byStart = /* @__PURE__ */ new Map();
   for (const a of ls.anchors) {
     const here = byStart.get(a.start);
@@ -27591,7 +27591,7 @@ function projectPianoRollByLeaf(src0) {
     // that write it back can never describe different music
     notes: anchors.map((a) => ({ pitch: a.pitch, start: a.start, duration: a.duration })),
     ...numeric ? { numeric: true } : {},
-    leafSource: { src, anchors }
+    leafSource: { src, anchors, steps: perBar2 * bars }
   };
   if (!leafRollEditSafe(model, perBar2, bars, numeric)) return null;
   if (!leafRollViewUsable(model)) return null;

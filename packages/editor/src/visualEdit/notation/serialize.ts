@@ -245,7 +245,9 @@ function spliceByLeaf(model: StepGridModel): string | null {
  */
 function spliceRollByLeaf(model: PianoRollModel): string | null {
   const ls = model.leafSource
-  if (!ls) return null
+  // the anchors must still describe THIS grid — a restructure that re-laid it leaves
+  // them describing a layout that no longer exists (see `RollLeafSource.steps`)
+  if (!ls || ls.steps !== model.steps) return null
   // group the anchors by the column they start on — a chord contributes several here,
   // each with its own disjoint leaf
   const byStart = new Map<number, RollLeafAnchor[]>()

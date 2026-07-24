@@ -177,6 +177,20 @@ export interface RollLeafSource {
   src: string
   /** one per played note, in play order */
   anchors: RollLeafAnchor[]
+  /**
+   * The column count these anchors were read against — the roll's equivalent of
+   * the grid's `cols.length`, and a REQUIRED guard rather than bookkeeping.
+   *
+   * A restructure (`resizeRoll`) re-lays the grid while carrying the model's other
+   * fields through, so the anchors survive describing a layout that no longer
+   * exists. Widening then leaves every note's start and length intact, which passes
+   * the writer's per-note check and would write the ORIGINAL source back, silently
+   * discarding the resize. Narrowing is worse: the notes that fell outside the new
+   * width look to the writer exactly like notes the user DELETED, and it would
+   * splice `~` over them — data loss from a resize gesture. Comparing the width
+   * makes both a clean refusal.
+   */
+  steps: number
 }
 
 /**

@@ -2158,7 +2158,7 @@ function projectPianoRollByLeaf(src0: string): ParseResult<PianoRollModel> | nul
     // that write it back can never describe different music
     notes: anchors.map((a) => ({ pitch: a.pitch, start: a.start, duration: a.duration })),
     ...(numeric ? { numeric: true } : {}),
-    leafSource: { src, anchors },
+    leafSource: { src, anchors, steps: perBar * bars },
   }
   if (!leafRollEditSafe(model, perBar, bars, numeric)) return null
   if (!leafRollViewUsable(model)) return null
