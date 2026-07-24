@@ -15,6 +15,7 @@ import type {
   LeafSpan,
   NotationSource,
   PianoRollModel,
+  RollLeafAnchor,
   RollNote,
   StepGridModel,
   StepLane,
@@ -219,6 +220,85 @@ function spliceByLeaf(model: StepGridModel): string | null {
   return serializeByLeaf(ls.src, edits)
 }
 
+/**
+ * Write a leaf-anchored ROLL back by editing each changed note's own pitch bytes —
+ * the roll's half of `spliceByLeaf`, sharing its serializer and its bijection.
+ *
+ * Notes are compared at the column they START on, the roll's positional key (the
+ * grid compares at the column a cell sits in). A note the user dropped becomes `~`
+ * at its own span, a lone note whose pitch was dragged becomes the new token, and an
+ * untouched note asserts ITS OWN SOURCE BYTES — which does two jobs: a leaf shared by
+ * several notes (one token sounding in every bar) can be checked for agreement, and
+ * the model's case fold never rides back out into the document, so `C3` stays `C3`
+ * rather than coming back lowercased for the crime of being looked at.
+ *
+ * Returns null — the document is left alone — for every edit with no span to write
+ * through, each of them the one bijection restated:
+ *  - a note MOVED or RESIZED: a note's `@n` hold is not in its hap's locations at
+ *    all (only the pitch is), so no span exists to splice a duration or a position
+ *    through. Writing one would mean authoring `@n` syntax, which is the line
+ *    between adapter and printer;
+ *  - a note ADDED where no leaf exists (including a chord member renamed — with two
+ *    members the new pitch has no unambiguous leaf to claim);
+ *  - two notes sharing one leaf that disagree about the result, where letting the
+ *    last writer win would silently rewrite a note the user never touched.
+ */
+function spliceRollByLeaf(model: PianoRollModel): string | null {
+  const ls = model.leafSource
+  if (!ls) return null
+  // group the anchors by the column they start on — a chord contributes several here,
+  // each with its own disjoint leaf
+  const byStart = new Map<number, RollLeafAnchor[]>()
+  for (const a of ls.anchors) {
+    const here = byStart.get(a.start)
+    if (here) here.push(a)
+    else byStart.set(a.start, [a])
+  }
+  // Every note still on the roll must sit where a leaf already put one, at a length
+  // that leaf already played. A note that MOVED lands on a column no anchor holds; a
+  // note that was RESIZED leaves the durations at its column no longer a sub-multiset
+  // of the ones the anchors played. Matched as a multiset rather than "some anchor
+  // here has this length", so resizing a note to a SIBLING's length is caught too —
+  // otherwise it would slip through as a silent no-op instead of an honest refusal.
+  for (const [start, anchors] of byStart) {
+    const avail = anchors.map((a) => a.duration)
+    for (const n of model.notes) {
+      if (n.start !== start) continue
+      const i = avail.indexOf(n.duration)
+      if (i < 0) return null
+      avail.splice(i, 1)
+    }
+  }
+  for (const n of model.notes) if (!byStart.has(n.start)) return null
+  const want = new Map<string, { span: LeafSpan; text: string }>()
+  for (const [start, anchors] of byStart) {
+    const before = anchors.map((a) => a.pitch)
+    const after = [...new Set(model.notes.filter((n) => n.start === start).map((n) => n.pitch))]
+    const gone = before.filter((p) => !after.includes(p))
+    const added = after.filter((p) => !before.includes(p))
+    // the one add that IS a byte replacement: a lone note swapped for another at a
+    // start that held exactly one
+    const swap =
+      added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1
+    if (added.length > 0 && !swap) return null
+    for (const a of anchors) {
+      const text = swap
+        ? added[0]
+        : gone.includes(a.pitch)
+          ? '~'
+          : ls.src.slice(a.span.start, a.span.end)
+      const key = `${a.span.start}:${a.span.end}`
+      const prev = want.get(key)
+      if (prev && prev.text !== text) return null
+      want.set(key, { span: a.span, text })
+    }
+  }
+  const edits = [...want.values()].filter(
+    (e) => ls.src.slice(e.span.start, e.span.end) !== e.text,
+  )
+  return serializeByLeaf(ls.src, edits)
+}
+
 /* ── span surgery for `<...>`-as-element (#920) ────────────────── */
 
 /**
@@ -394,6 +474,12 @@ function buildGroups(model: PianoRollModel): Map<number, Group> | null {
 }
 
 export function serializePianoRoll(model: PianoRollModel): string | null {
+  // A leaf-anchored roll (#986 P1b) is TERMINAL — it edits the user's own bytes and
+  // never falls through to a rebuild, because a rebuild is exactly what would respell
+  // the notation it was opened to preserve. It returns null for an edit it cannot
+  // express as a byte replacement, and then the document is left alone.
+  if (model.leafSource) return spliceRollByLeaf(model)
+
   // A `<...>`-as-element pattern (`0 <2 3> 5`, #920) uses its own span surgery and
   // NEVER the rebuilds below — a rebuild would reshape it into the whole-cycle
   // `<[0 2 5] [0 3 5]>`. It returns null (keep the document) for an edit it can't
@@ -912,6 +998,10 @@ function rollBars(groups: Map<number, Group>, steps: number, bars: number): stri
  */
 export function serializeRollGain(model: PianoRollModel): GainWrite {
   if (model.gainForeign) return { kind: 'skip' }
+  // A leaf-anchored roll emits the user's own notation, not a note sequence of ours
+  // — there is nothing for a per-note `.gain("…")` mini to run 1:1 against. Hands off
+  // (the grid's `serializeStepGain` declines for the same reason).
+  if (model.leafSource) return { kind: 'skip' }
   const bars = model.bars ?? 1
   // Multi-bar velocity is managed only when each bar is a single column
   // (`perBar === 1`, i.e. steps === bars) — one note/chord per bar (#632). There

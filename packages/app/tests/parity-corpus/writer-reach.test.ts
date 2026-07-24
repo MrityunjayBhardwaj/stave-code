@@ -70,7 +70,7 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
  * reach gain is shipped and re-observed.
  */
 const FLOOR_STEP = 95
-const FLOOR_ROLL = 56
+const FLOOR_ROLL = 73
 
 /* ── the engine oracle: what a mini PLAYS in cycle 0 (onset, duration, atom) ── */
 

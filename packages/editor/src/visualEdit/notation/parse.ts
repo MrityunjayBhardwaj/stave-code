@@ -36,6 +36,7 @@ import type {
   NotationSource,
   ParseResult,
   PianoRollModel,
+  RollLeafAnchor,
   RollNote,
   SourcePart,
   SourceRegion,
@@ -2103,12 +2104,219 @@ function projectAltRollBars(
   return { ok: true, model }
 }
 
+/**
+ * The LEAF-anchored roll projection (#986 P1b) — the roll's half of
+ * `projectStepGridByLeaf`, and the last thing tried.
+ *
+ * Where `projectPianoRoll` pairs the view with the source's top-level ELEMENTS and
+ * re-emits an edited one, this pairs each note with its OWN pitch token and writes an
+ * edit as a byte replacement there. Nothing about the grammar is authored, so the
+ * notation an element re-emit cannot spell — internal structure, a patterned operator,
+ * a `*n` over a group — stops being a reason to refuse the view.
+ *
+ * Runs LAST for the same reason the grid's does: it can only turn refusals into
+ * views, never take one away from the writer that already handles it.
+ */
+function projectPianoRollByLeaf(src0: string): ParseResult<PianoRollModel> | null {
+  const src = src0.trim()
+  if (src === '') return null
+  let pat: unknown
+  try {
+    pat = reifyMini(src)
+  } catch {
+    return null
+  }
+  const cycles: RollOnset[][] = []
+  for (let c = 0; c < PERIOD_PROBE; c++) {
+    const cc = rollOnsets(pat, c)
+    if (cc === null) return null
+    cycles.push(cc)
+  }
+  const bars = detectPeriod(cycles.map(rollKey), MAX_PROJECT_BARS)
+  if (bars === 0) return null
+  const perCycle = cycles.slice(0, bars)
+  const all = perCycle.flat()
+  if (all.length === 0) return null
+  // mixed numeric/named tokens are rejected like the core, across EVERY bar
+  const numeric = all.some((o) => o.numeric)
+  if (numeric && all.some((o) => !o.numeric)) return null
+  // onsets AND durations must land on integer columns — the duration is the roll's
+  // extra term the grid's projection has no equivalent of
+  let perBar = 1
+  for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
+    const d = denom(x)
+    if (d === 0) return null
+    perBar = lcm(perBar, d)
+  }
+  if (perBar * bars > MAX_STEPS) return null
+  const anchors = rollAnchors(src, perCycle, perBar, bars)
+  if (anchors === null) return null
+  const model: PianoRollModel = {
+    steps: perBar * bars,
+    ...(bars > 1 ? { bars } : {}),
+    // the notes ARE the anchors — one source of truth, so the view and the spans
+    // that write it back can never describe different music
+    notes: anchors.map((a) => ({ pitch: a.pitch, start: a.start, duration: a.duration })),
+    ...(numeric ? { numeric: true } : {}),
+    leafSource: { src, anchors },
+  }
+  if (!leafRollEditSafe(model, perBar, bars, numeric)) return null
+  if (!leafRollViewUsable(model)) return null
+  return { ok: true, model }
+}
+
+/**
+ * Pair every played note with its own pitch token's span.
+ *
+ * Refuses — and each refusal is the bijection, not a convenience limit:
+ *  - a note carrying NO location: nothing to write back through;
+ *  - a span whose bytes are not the note's own pitch. `loc[0]` is the leaf for a
+ *    token the user TYPED, but not for a value the engine SYNTHESISED: a `..` range
+ *    gives every generated note the RANGE END's location and a patterned operator
+ *    (`*<8 [4 16]>`) puts its own argument first, so splicing either would rewrite
+ *    bytes belonging to something else. The grid never meets this class (it rejects
+ *    numeric values upstream); numbers are the roll's whole point, so it meets all of
+ *    it — 861 of the corpus's ~7949 roll spans do not slice to their pitch. Checked
+ *    per note, never trusted;
+ *  - spans that OVERLAP without being identical: two notes claiming overlapping bytes
+ *    cannot both be spliced;
+ *  - a note that does not fit inside its own bar, which has no single bar to belong to.
+ * Sharing one span across several notes is allowed (one token sounding in every bar) —
+ * the writer then requires them to AGREE on the result.
+ */
+function rollAnchors(
+  src: string,
+  perCycle: RollOnset[][],
+  perBar: number,
+  bars: number,
+): RollLeafAnchor[] | null {
+  const out: RollLeafAnchor[] = []
+  const seen: LeafSpan[] = []
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const start = Math.round(o.pos * perBar)
+      const duration = Math.round(o.dur * perBar)
+      if (start < 0 || duration < 1 || start + duration > perBar) return null
+      const span = o.loc
+      // the roll case-folds note names for its row math, so compare on that footing —
+      // the anchor still points at the user's own bytes, and the writer puts THOSE back
+      if (!span || src.slice(span.start, span.end).toLowerCase() !== o.pitch.toLowerCase()) {
+        return null
+      }
+      for (const s of seen) {
+        const same = s.start === span.start && s.end === span.end
+        if (!same && s.end > span.start && span.end > s.start) return null
+      }
+      seen.push(span)
+      out.push({ pitch: o.pitch, start: b * perBar + start, duration, span })
+    }
+  }
+  return out
+}
+
+/**
+ * The leaf roll writer's own edit probe — `leafEditSafe` for the pitched surface.
+ *
+ * The writer's two edits are RENAME a note's pitch and CLEAR it (`~`); duration is
+ * deliberately not among them, because a held note's `@n` never appears in its hap's
+ * locations and so has no span to write through. Both edits are probed at every leaf,
+ * through the REAL serializer and the REAL engine, and every bar must come back as
+ * predicted — so a span that is subtly wrong (or a `~` the surrounding syntax will not
+ * take, `~@2` among them) makes the view refuse to open rather than corrupt on the
+ * first drag.
+ */
+function leafRollEditSafe(
+  model: PianoRollModel,
+  perBar: number,
+  bars: number,
+  numeric: boolean,
+): boolean {
+  const ls = model.leafSource
+  if (!ls) return false
+  const probePitch = numeric ? PROBE_NUM : PROBE_NOTE
+  const probes = new Map<string, RollLeafAnchor>()
+  for (const a of ls.anchors) probes.set(`${a.span.start}:${a.span.end}`, a)
+  for (const anchor of probes.values()) {
+    for (const text of [probePitch, '~']) {
+      const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }])
+      let edited: unknown
+      try {
+        edited = reifyMini(out)
+      } catch {
+        return false
+      }
+      const want = leafRollExpected(
+        ls.anchors,
+        perBar,
+        bars,
+        anchor.span,
+        text === '~' ? null : text,
+      )
+      for (let b = 0; b < bars; b++) {
+        const got = rollOnsets(edited, b)
+        if (got === null || rollKey(got) !== rollKey(want[b])) return false
+      }
+      // …and it must still REPEAT at `bars`, or the roll stops being true one cycle
+      // past its own width — cycle `bars` is cycle 0 again.
+      const wrap = rollOnsets(edited, bars)
+      if (wrap === null || rollKey(wrap) !== rollKey(want[0])) return false
+    }
+  }
+  return true
+}
+
+/** the notes the anchors predict once `span`'s leaf becomes `text` (null = cleared) */
+function leafRollExpected(
+  anchors: RollLeafAnchor[],
+  perBar: number,
+  bars: number,
+  span: LeafSpan,
+  text: string | null,
+): Array<Array<{ pos: number; dur: number; pitch: string }>> {
+  const out: Array<Array<{ pos: number; dur: number; pitch: string }>> = []
+  for (let b = 0; b < bars; b++) out.push([])
+  for (const a of anchors) {
+    // a leaf shared by several notes changes at every one of them — that is the whole
+    // meaning of "one token, played more than once"
+    const hit = a.span.start === span.start && a.span.end === span.end
+    const pitch = hit ? text : a.pitch
+    if (pitch === null) continue // this note is the cleared one
+    const b = Math.floor(a.start / perBar)
+    if (b < 0 || b >= bars) continue
+    out[b].push({
+      pos: (a.start - b * perBar) / perBar,
+      dur: a.duration / perBar,
+      pitch,
+    })
+  }
+  return out
+}
+
+/**
+ * Only offer a roll the writer can honour at least one edit on.
+ *
+ * The roll's `leafViewUsable`: a pattern that is ONE token sounding many times has a
+ * single leaf under every note, so deleting any one disagrees with the rest and is
+ * refused — correctly, but the result is a roll where nothing the user drags moves.
+ * That reads as broken, which is worse than the honest code-only refusal it replaces.
+ * Asked of the REAL writer, one delete per note, so it cannot drift from a real click.
+ */
+function leafRollViewUsable(model: PianoRollModel): boolean {
+  for (const n of model.notes) {
+    if (serializePianoRoll({ ...model, notes: model.notes.filter((x) => x !== n) }) !== null) {
+      return true
+    }
+  }
+  return false
+}
+
 export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
   const core = parsePianoRollCore(mini)
   if (core.ok) return core
-  // syntactic model refused → try the inherited behaviour projection (#924),
-  // keeping the original refusal if the projection doesn't apply
-  return projectPianoRoll(mini) ?? core
+  // syntactic model refused → try the inherited behaviour projection (#924), then the
+  // leaf-anchored projection (#986) for the notation no re-emit can spell, keeping the
+  // original refusal if neither applies
+  return projectPianoRoll(mini) ?? projectPianoRollByLeaf(mini) ?? core
 }
 
 // exported for the projection stress gate — it sweeps only patterns the CORE
