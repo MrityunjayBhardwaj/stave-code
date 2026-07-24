@@ -25,12 +25,14 @@
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { bjorklund, rotateEuclid } from '../../ir/euclid'
-import { serializeStepGrid, serializePianoRoll } from './serialize'
+import { serializeByLeaf, serializeStepGrid, serializePianoRoll } from './serialize'
 import type {
   AltRegion,
   AltSource,
   ChunkGain,
   GridCells,
+  LeafAnchor,
+  LeafSpan,
   NotationSource,
   ParseResult,
   PianoRollModel,
@@ -931,11 +933,11 @@ function topLevelSpans(src: string): ElementSpan[] | null {
  * anchor #986 P1 writes back through — span surgery at the note's own leaf loc
  * instead of the top-level element span — so structures with internal structure
  * (`[a [b c]]`, `[a b]*2`) stop breaking the cell↔leaf-span bijection.
+ *
+ * Lives in `model.ts` (the write-back models carry it); re-exported here because
+ * this is where the haps are read.
  */
-export interface LeafSpan {
-  start: number
-  end: number
-}
+export type { LeafSpan }
 
 /**
  * The leaf atom's span for a hap, from `context.locations[0]`, shifted to
@@ -1265,12 +1267,206 @@ function projectionEditSafe(
   return true
 }
 
+/* ── leaf-anchored projection: write-back without a printer (#986) ─ */
+
+/**
+ * The LAST fallback for the step grid: project what the pattern plays and anchor
+ * every cell to the ATOM's own source span, so an edit replaces that note's bytes
+ * and touches nothing else.
+ *
+ * Why a third path. The region projection above pairs columns with the source's
+ * TOP-LEVEL elements, so an edited element is re-spelled by `reemitRegion` — a
+ * mini-notation printer of our own, which can only write flat or one-level output.
+ * Patterns whose elements have internal structure (`<c2 eb2 f2 g2>*2`, a `,`-stack
+ * of nested groups) therefore either fail to tile into regions or fail the edit
+ * probe, and are refused. Anchoring on the LEAF removes the printer from the loop
+ * entirely: every structural byte — `[` `]` `<` `>` `*n` `@n` `!` `,` whitespace —
+ * is COPIED from the source, never generated, so this writer is incapable of
+ * inventing syntax. What it cannot express as a byte replacement (a hit where no
+ * leaf exists) it REFUSES; that refusal is what keeps it an adapter.
+ *
+ * Runs only after `projectStepGrid` declines, so nothing that opens today changes
+ * shape: this path can only turn refusals into views, never the reverse.
+ */
+function projectStepGridByLeaf(src0: string): ParseResult<StepGridModel> | null {
+  const src = src0.trim()
+  if (src === '') return null
+  let pat: unknown
+  try {
+    pat = reifyMini(src)
+  } catch {
+    return null
+  }
+  const cycles: Onset[][] = []
+  for (let c = 0; c < PERIOD_PROBE; c++) {
+    const cc = gridOnsets(pat, c)
+    if (cc === null) return null
+    cycles.push(cc)
+  }
+  const bars = detectPeriod(cycles.map(onsetKey), MAX_PROJECT_BARS)
+  if (bars === 0) return null
+  const perCycle = cycles.slice(0, bars)
+  if (perCycle.every((c) => c.length === 0)) return null
+  let perBar = 1
+  for (const o of perCycle.flat()) {
+    const d = denom(o.pos)
+    if (d === 0) return null
+    perBar = lcm(perBar, d)
+  }
+  if (perBar * bars > MAX_STEPS) return null
+  const cols = leafAnchors(src, perCycle, perBar, bars)
+  if (cols === null) return null
+  const model: StepGridModel = {
+    steps: perBar * bars,
+    ...(bars > 1 ? { bars } : {}),
+    lanes: lanesFromCells(cols.map((c) => c.map((a) => a.atom))),
+    leafSource: { src, cols },
+  }
+  if (!leafEditSafe(model, perBar, bars)) return null
+  if (!leafViewUsable(model)) return null
+  return { ok: true, model }
+}
+
+/**
+ * Only offer a grid the writer can honour at least one edit on.
+ *
+ * A pattern that is ONE token played many times (`<bd>*4`, `sd!15(10,30)`) has a
+ * single leaf under every column, so clearing any one cell disagrees with the
+ * others and is refused — correctly, but the result is a grid where nothing the
+ * user clicks moves. That reads as broken, which is worse than the honest
+ * code-only refusal it replaces. Asked of the REAL writer, one clear per sounding
+ * column, so the check cannot drift from what an actual click does.
+ */
+function leafViewUsable(model: StepGridModel): boolean {
+  for (let c = 0; c < model.steps; c++) {
+    const on = model.lanes.find((l) => l.cells[c])
+    if (!on) continue
+    const lanes = model.lanes.map((l) =>
+      l === on ? { ...l, cells: l.cells.map((v, j) => (j === c ? false : v)) } : l,
+    )
+    if (serializeStepGrid({ ...model, lanes }) !== null) return true
+  }
+  return false
+}
+
+/**
+ * Pair every column with the atoms sounding there and each atom's own leaf span.
+ *
+ * Refuses — and the refusals are the bijection ([[PV218]]), not convenience:
+ *  - an atom carrying NO location: nothing to write back through;
+ *  - a span whose bytes are not the atom's token: the anchor would splice the
+ *    wrong bytes. `loc[0]` is the leaf for a bare reified mini, but not for every
+ *    value the engine can synthesise — a `..` range gives each generated note the
+ *    RANGE END's location, and a patterned operator (`*<8 [4 16]>`) puts its own
+ *    argument first. Checked per parse rather than trusted (0 mismatches across
+ *    the grid's 8449 corpus spans, 861 across the roll's — so the check is
+ *    load-bearing, not ceremony);
+ *  - spans that OVERLAP without being identical: two cells claiming overlapping
+ *    bytes cannot both be spliced.
+ * Sharing one span across several columns is allowed (`bd*4` is one token played
+ * four times) — the writer requires those columns to AGREE on the result.
+ */
+function leafAnchors(
+  src: string,
+  perCycle: Onset[][],
+  perBar: number,
+  bars: number,
+): LeafAnchor[][] | null {
+  const cols: LeafAnchor[][] = Array.from({ length: perBar * bars }, () => [])
+  const seen: LeafSpan[] = []
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const c = b * perBar + Math.round(o.pos * perBar)
+      if (c < 0 || c >= perBar * bars) return null
+      for (let i = 0; i < o.atoms.length; i++) {
+        const span = o.spans[i]
+        if (!span || src.slice(span.start, span.end) !== o.atoms[i]) return null
+        for (const s of seen) {
+          const same = s.start === span.start && s.end === span.end
+          if (!same && s.end > span.start && span.end > s.start) return null
+        }
+        seen.push(span)
+        cols[c].push({ atom: o.atoms[i], span })
+      }
+    }
+  }
+  return cols
+}
+
+/**
+ * The leaf writer's own edit probe — the sibling of `projectionEditSafe`, shaped
+ * to the edits this writer actually performs.
+ *
+ * The region probe overlays a NEW sound, because its writer re-emits a region and
+ * can therefore add one. The leaf writer never adds; its two edits are RENAME a
+ * leaf and CLEAR it (`~`). Both are probed at every leaf, through the REAL writer
+ * and the REAL engine, and every bar must come back as predicted — so a span that
+ * is subtly wrong (or a `~` the surrounding syntax won't take) makes the view
+ * refuse to open rather than corrupt on the first click.
+ */
+function leafEditSafe(model: StepGridModel, perBar: number, bars: number): boolean {
+  const ls = model.leafSource
+  if (!ls) return false
+  const probes = new Map<string, LeafAnchor>()
+  for (const col of ls.cols) {
+    for (const a of col) probes.set(`${a.span.start}:${a.span.end}`, a)
+  }
+  for (const anchor of probes.values()) {
+    for (const text of [PROBE_SOUND, '~']) {
+      const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }])
+      let edited: unknown
+      try {
+        edited = reifyMini(out)
+      } catch {
+        return false
+      }
+      const want = leafExpected(ls.cols, perBar, bars, anchor.span, text === '~' ? null : text)
+      for (let b = 0; b < bars; b++) {
+        const got = gridOnsets(edited, b)
+        if (got === null || onsetKey(got) !== onsetKey(want[b])) return false
+      }
+      // …and it must still REPEAT at `bars`, or the grid stops being true one
+      // cycle past its own width — cycle `bars` is cycle 0 again.
+      const wrap = gridOnsets(edited, bars)
+      if (wrap === null || onsetKey(wrap) !== onsetKey(want[0])) return false
+    }
+  }
+  return true
+}
+
+/** the onsets the anchors predict once `span`'s leaf becomes `text` (null = cleared) */
+function leafExpected(
+  cols: LeafAnchor[][],
+  perBar: number,
+  bars: number,
+  span: LeafSpan,
+  text: string | null,
+): Onset[][] {
+  const out: Onset[][] = []
+  for (let b = 0; b < bars; b++) {
+    const bar: Onset[] = []
+    for (let i = 0; i < perBar; i++) {
+      const atoms = new Set<string>()
+      for (const a of cols[b * perBar + i]) {
+        const hit = a.span.start === span.start && a.span.end === span.end
+        if (hit && text === null) continue
+        atoms.add(hit ? text! : a.atom)
+      }
+      // spans are irrelevant to `onsetKey`, which is all this feeds
+      if (atoms.size > 0) bar.push({ pos: i / perBar, atoms: [...atoms], spans: [] })
+    }
+    out.push(bar)
+  }
+  return out
+}
+
 export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
   const core = parseStepGridCore(mini)
   if (core.ok) return core
-  // syntactic model refused → try the inherited behaviour projection (#922),
-  // keeping the original refusal if the projection doesn't apply
-  return projectStepGrid(mini) ?? core
+  // syntactic model refused → try the inherited behaviour projection (#922), then
+  // the leaf-anchored projection (#986) for the notation no re-emit can spell,
+  // keeping the original refusal if neither applies
+  return projectStepGrid(mini) ?? projectStepGridByLeaf(mini) ?? core
 }
 
 export function parseStepGridCore(mini: string): ParseResult<StepGridModel> {

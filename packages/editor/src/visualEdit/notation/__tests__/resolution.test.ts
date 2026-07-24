@@ -22,6 +22,13 @@ import {
 } from '../resolution'
 import type { StepGridModel, PianoRollModel } from '../model'
 
+/** serialize → assert the writer did not decline → return the string */
+function ser(m: StepGridModel): string {
+  const s = serializeStepGrid(m)
+  expect(s, 'expected the grid writer not to decline').not.toBeNull()
+  return s as string
+}
+
 /** parse → assert ok → return model */
 function step(s: string): StepGridModel {
   const r = parseStepGrid(s)
@@ -58,7 +65,7 @@ describe('#479 resolution — step grid ×2 / ÷2', () => {
 
   it('×2 round-trips through parse (stable expanded form)', () => {
     const m = scaleStepGrid(step('bd hh sn'), 'double')
-    const reparsed = step(serializeStepGrid(m))
+    const reparsed = step(ser(m))
     expect(serializeStepGrid(reparsed)).toBe(serializeStepGrid(m))
   })
 
@@ -265,7 +272,7 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     const out = quantizeStepGridTo(dense, 4)
     expect(out.steps).toBe(4)
     // each lane still present, no crash, serializes to a valid 4-col grid
-    expect(serializeStepGrid(out).split(' ').length).toBe(4)
+    expect(ser(out).split(' ').length).toBe(4)
   })
 
   it('piano roll: a non-power-of-2 reduce snaps notes and always serializes', () => {
