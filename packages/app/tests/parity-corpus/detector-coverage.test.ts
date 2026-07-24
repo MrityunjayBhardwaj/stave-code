@@ -19,6 +19,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { measureDocs } from './editCoverage'
 
 const visualEditDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -89,6 +90,23 @@ describe('the coverage harness asks every shipped editor', () => {
         'lists in NOT_CONSULTED with a reason. A surface the app can edit must not be measured as ' +
         '`code-only` — see #1003.',
     ).toEqual([])
+  })
+
+  it('credits the master strip with exactly the line it edits', () => {
+    const plain = measureDocs([{ name: 'm', code: 's("bd")\nall(x=>x.gain(1.5))\n' }]).tunes[0]
+    expect({ master: plain.master, note: plain.noteEditable, knobs: plain.knobs }).toEqual({
+      master: 1, note: 1, knobs: 0,
+    })
+
+    // A master line with patterns nested inside it still counts ONCE. The strip
+    // edits the whole line, so anything it swallowed twice would inflate the
+    // numerator — the failure this file exists to stop, in the other direction.
+    const nested = measureDocs([
+      { name: 'n', code: 's("bd")\nall(x=>x.add(stack(s("hh"), gain(0.5))))\n' },
+    ]).tunes[0]
+    expect({ units: nested.units, master: nested.master, note: nested.noteEditable }).toEqual({
+      units: 2, master: 1, note: 1,
+    })
   })
 
   it('every NOT_CONSULTED entry still exists and still carries a reason', () => {

@@ -282,7 +282,17 @@ function classifyUnit(
   // reach — measured across the corpus and 150 real tunes: 16 master lines, all
   // 16 the bound line, 0 unbound extras. Stated because it is an assumption,
   // not because it currently bites.
-  if (masterRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'master' }
+  //
+  // `!u.nested` is DEFENSIVE, and says so because a guard that reads as
+  // load-bearing when it never fires is a false claim about the code.
+  // `collectUnits` expands stack/cat voices anywhere in the document, so voices
+  // inside `all(x => x.add(stack(a, b)))` would lexically overlap the master
+  // statement — but measured, they do not survive as distinct units:
+  // `detectChunk` at those positions anchors on the enclosing statement and the
+  // range-dedup collapses them. So this has zero firings today. It is kept
+  // because crediting a voice to a strip that edits the whole LINE would be the
+  // same over-count in the other direction, and the cost is one condition.
+  if (!u.nested && masterRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'master' }
   if (u.type === 'knobs') return { status: 'knobs' }
   return { status: 'code-only', head: head ?? '(no-head)' }
 }
