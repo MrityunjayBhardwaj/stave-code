@@ -76,7 +76,9 @@ describe('#469 — numeric note/degree patterns', () => {
   it('DISCRIMINATOR: mixing numbers and note names is rejected', () => {
     const r = parsePianoRoll('c3 60')
     expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.reason).toMatch(/mixed/)
+    // asserted on the GATE, not the wording — the reason string is derived from
+    // it (#990) and re-wording a sentence should not be able to turn this red
+    if (!r.ok) expect(r.gate).toBe('mixed-pitch-domain')
   })
 
   it('note-name patterns are unaffected (numeric flag stays off)', () => {

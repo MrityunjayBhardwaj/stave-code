@@ -125,15 +125,14 @@ describe('refusal gates — a refusal names what stopped it, not who spoke first
   })
 
   it('no gated refusal still speaks the syntactic core\'s feature vocabulary', () => {
+    // No exemptions: the gate sentences are deliberately worded so that none of
+    // them reuses the core's phrasing, which is what keeps "did this reason come
+    // from a gate?" answerable by reading it.
     const leaked = rows.filter(
       (r) => r.gate !== null && CORE_VOCABULARY.some((v) => r.reason.includes(v)),
     )
-    // `mixed numeric and note-name tokens are beyond the editable subset` is the
-    // one gate sentence that reuses the core's phrasing, and legitimately so —
-    // the gate and the core refuse the same thing for the same reason.
-    const real = leaked.filter((r) => r.gate !== 'mixed-pitch-domain')
     expect(
-      real.map((r) => `${r.surface} ${r.gate} ${JSON.stringify(r.mini)} ⟶ ${r.reason}`),
+      leaked.map((r) => `${r.surface} ${r.gate} ${JSON.stringify(r.mini)} ⟶ ${r.reason}`),
     ).toEqual([])
   })
 

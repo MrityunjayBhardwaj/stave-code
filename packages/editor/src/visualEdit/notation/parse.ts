@@ -889,12 +889,21 @@ function gateReason(gate: Gate, surface: Surface): string {
     case 'unstable-period':
       return `the pattern does not repeat within ${MAX_PROJECT_BARS} bars`
     case 'mixed-pitch-domain':
-      return 'mixed numeric and note-name tokens are beyond the editable subset'
+      // deliberately NOT the core's "…is beyond the editable subset" phrasing:
+      // the gate vocabulary has to be distinguishable from the syntactic core's,
+      // or "did the reason come from a gate?" stops being answerable
+      return 'the pattern mixes numeric and note-name pitches'
     case 'irrational-onset':
       return 'an onset does not land on any step column'
     case 'resolution':
       return `the pattern needs more than ${MAX_STEPS} steps`
     case 'element-tiling':
+      // The ELEMENT writer's own vocabulary, and currently never surfaced —
+      // `refused` reports the leaf writer's gate, and the leaf writer has no
+      // notion of tiling. Kept because it is what that writer actually means at
+      // each of its refusal points, and because the two writers unify later;
+      // deliberately not deleted into a vaguer shared label that would make its
+      // refusals unreadable in the meantime.
       return 'the source elements do not line up with the columns the pattern plays'
     case 'no-leaf-anchor':
       return 'a played note has no source token of its own to edit'

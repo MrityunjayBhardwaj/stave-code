@@ -26719,7 +26719,7 @@ function gateReason(gate, surface) {
     case "unstable-period":
       return `the pattern does not repeat within ${MAX_PROJECT_BARS} bars`;
     case "mixed-pitch-domain":
-      return "mixed numeric and note-name tokens are beyond the editable subset";
+      return "the pattern mixes numeric and note-name pitches";
     case "irrational-onset":
       return "an onset does not land on any step column";
     case "resolution":

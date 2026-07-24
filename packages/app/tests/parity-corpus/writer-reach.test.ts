@@ -236,19 +236,19 @@ function sweep(s: Surface): Tally {
     if (core.ok) continue // the core writer's surface — tested elsewhere
     const reason = core.reason
     const r = s.full(mini)
-    const m = r.ok ? (r.model as StepGridModel & PianoRollModel) : null
     t.refused++
     t.refusedReasons.set(reason, (t.refusedReasons.get(reason) ?? 0) + 1)
-    if (m === null) {
+    if (!r.ok) {
       // Nothing opened it — record the gate that actually stopped it, not the
       // core's syntactic message (#990). This is the residual bucketed by CAUSE,
       // which is what a reach lever has to be sized against: `unstable-period`
       // is the period cap, `wrong-surface` is a unit that was never this view's
       // to open and should not be read as a gap at all.
-      const g = r.ok ? '(opened)' : (r.gate ?? '(core syntax)')
+      const g = r.gate ?? '(core syntax)'
       t.unopenedGates.set(g, (t.unopenedGates.get(g) ?? 0) + 1)
       continue
     }
+    const m = r.model as StepGridModel & PianoRollModel
     t.projected++
 
     // Bar-expanded projections (#930) show `bars` cycles at once. `steps` then spans

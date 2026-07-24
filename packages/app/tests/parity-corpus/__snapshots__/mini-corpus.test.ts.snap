@@ -1555,7 +1555,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "<G1[0,4,7,11]>*1 <A3[0,4,7,11] F3[0,4,7,11] C3[0,4,7,11] G3[0,4,7,11]>*20<G2[0,4,8] A5[0,4,8] E2[0,4,8] C2[0,4,8]>*50 <F3[0,4,8] G5[0,4,7,11]>*2",
-    "roll": "mixed numeric and note-name tokens are beyond the editable subset",
+    "roll": "the pattern mixes numeric and note-name pitches",
   },
   {
     "grid": "an edit here would not write back the pattern as shown",
@@ -5186,7 +5186,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "g g g f e g a g g f f f f e d b b a a g g g g g f e 50 51 52 53 54 55 41 42 43 44 45 46 47 48 49",
-    "roll": "mixed numeric and note-name tokens are beyond the editable subset",
+    "roll": "the pattern mixes numeric and note-name pitches",
   },
   {
     "grid": "ok",
