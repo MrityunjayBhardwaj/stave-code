@@ -426,22 +426,39 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
 
   /**
    * The adapter, made literal: a leaf edit changes ONLY bytes inside the edited
-   * leaf's span, at ANY depth. `<crow -@3>` is a slow-alternation the region
-   * writer refuses; clearing the `crow` leaf produces a one-token diff and leaves
-   * `<`, the `-@3`, and `>` untouched.
+   * leaf's span, at ANY depth. `<bd hh sd hh>*2` puts the leaf two levels down —
+   * inside an alternation carrying a trailing operator — and clearing `bd`
+   * produces a one-token diff: the `<`, the `*2`, and the three other sounds are
+   * the user's own bytes coming back.
    */
   it('leaf: an edit is a byte replacement at the leaf span, structure verbatim', () => {
-    const src = '<crow -@3>'
+    const src = '<bd hh sd hh>*2'
     const r = parseStepGrid(src)
     expect(r.ok).toBe(true)
     if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored grid')
     const col = r.model.lanes[0].cells.indexOf(true)
     const out = serializeStepGrid(toggleCell(r.model, 0, col, false))
-    expect(out).toBe('<~ -@3>')
-    // literal locality: the diff is confined to the `crow` span
-    const before = src.indexOf('crow')
+    expect(out).toBe('<~ hh sd hh>*2')
+    // literal locality: the diff is confined to the `bd` span
+    const before = src.indexOf('bd')
     expect(out!.slice(0, before)).toBe(src.slice(0, before))
-    expect(out!.slice(before + 1)).toBe(src.slice(before + 4)) // `~` vs `crow`
+    expect(out!.slice(before + 1)).toBe(src.slice(before + 2)) // `~` vs `bd`
+  })
+
+  /**
+   * The preference #994 added, as a test. `amen/4` is one element over four bars,
+   * so the element writer's "only the touched region is re-spelled" promise covers
+   * the whole pattern — clearing the single cell re-emits it as `<~ ~ ~ ~>` and the
+   * `/4` is gone. The leaf writer goes first here and splices the note out, leaving
+   * the slow operator exactly where the user typed it.
+   */
+  it('leaf: a whole-cycle element keeps its operator, which a re-emit would drop', () => {
+    const r = parseStepGrid('amen/4')
+    expect(r.ok).toBe(true)
+    if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored grid')
+    expect(r.model.bars).toBe(4)
+    const col = r.model.lanes[0].cells.indexOf(true)
+    expect(serializeStepGrid(toggleCell(r.model, 0, col, false))).toBe('~/4')
   })
 
   /**

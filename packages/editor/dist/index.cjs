@@ -26992,7 +26992,7 @@ function projectAltBars(src, inner, perCycle, bars) {
   return { ok: true, model };
 }
 __name(projectAltBars, "projectAltBars");
-var PROBE_SOUND = "__stave_probe__";
+var PROBE_SOUND = "zzstaveprobezz";
 function projectionEditSafe(model, perBar2, bars, base, probeCols) {
   for (const col of probeCols) {
     const b = Math.floor(col / perBar2);
@@ -27158,13 +27158,19 @@ function leafExpected(cols, perBar2, bars, span, text) {
   return out;
 }
 __name(leafExpected, "leafExpected");
+function vacuousLocality(a) {
+  if (!a || a.bars <= 1 || a.regions.length !== 1) return false;
+  return a.regions[0].from === 0 && a.regions[0].to === a.perBar;
+}
+__name(vacuousLocality, "vacuousLocality");
 function parseStepGrid(mini) {
   const core = parseStepGridCore(mini);
   if (core.ok) return core;
   const element = projectStepGrid(mini);
-  if (element.ok) return element;
+  if (element.ok && !vacuousLocality(element.model.altSource)) return element;
   const leaf = projectStepGridByLeaf(mini);
   if (leaf.ok) return leaf;
+  if (element.ok) return element;
   return refused("grid", core, leaf.gate);
 }
 __name(parseStepGrid, "parseStepGrid");

@@ -38,6 +38,7 @@
 import { describe, it, expect } from 'vitest'
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import { bjorklund as strudelBjorklund } from '@strudel/core/euclid.mjs'
+import { PROBE_SOUND, PROBE_NOTE, PROBE_NUM } from '../parse'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -200,5 +201,72 @@ describe('@strudel/core euclid contract — the distribution the grid draws', ()
    */
   it('does NOT handle k > n — which is why the adapter guards it', () => {
     expect(() => strudelBjorklund(5, 4)).toThrow()
+  })
+})
+
+/**
+ * The edit-safety probes splice a marker into the MIDDLE of a user's pattern and
+ * require the result to be the original plus that marker. That comparison is only
+ * meaningful if the marker survives being lexed next to its neighbours — one atom,
+ * carrying its own bytes, wherever it lands.
+ *
+ * `PROBE_SOUND` used to be `__stave_probe__`, picked to be improbable in a sample
+ * library. It was — but `_` is mini's elongation token, so its leading underscores
+ * bound to the element BEFORE it and the marker arrived two bytes short inside a
+ * pattern one slot too long. Every probe away from column 0 failed, and the
+ * projections declined 45 editable patterns as `edit-unsafe` (#994). The marker was
+ * checked against the wrong authority: the constraint is the grammar's, not the
+ * sample library's.
+ *
+ * So these hold the property against krill itself, in both positions — after an
+ * element (where the old marker broke) and at the start (where it did not, which is
+ * why the bug stayed hidden). A marker chosen for how distinctive it LOOKS cannot
+ * pass here.
+ */
+describe('krill contract — the edit probes are single atoms wherever they land', () => {
+  /** every atom krill produces for `mini`, in order */
+  const atoms = (mini: string): string[] =>
+    p(mini).source_.map((e: any) => e.source_.source_)
+  /** the weights krill assigns — an elongation shows up HERE, not in the atom list */
+  const weights = (mini: string): number[] =>
+    p(mini).source_.map((e: any) => e.options_?.weight ?? 1)
+
+  for (const [name, token] of [
+    ['PROBE_SOUND', PROBE_SOUND],
+    ['PROBE_NOTE', PROBE_NOTE],
+    ['PROBE_NUM', PROBE_NUM],
+  ] as const) {
+    it(`${name} lexes as ONE atom after another element`, () => {
+      expect(atoms(`bd ${token} sd`)).toEqual(['bd', token, 'sd'])
+      // and it must not have been swallowed as somebody else's elongation
+      expect(weights(`bd ${token} sd`)).toEqual([1, 1, 1])
+    })
+
+    it(`${name} lexes as ONE atom at the start of a pattern`, () => {
+      expect(atoms(`${token} bd`)).toEqual([token, 'bd'])
+    })
+
+    it(`${name} carries no character mini gives a meaning to`, () => {
+      // the direct statement of the rule, so a red here reads as the CAUSE rather
+      // than as a puzzling atom-list mismatch
+      expect(token).toMatch(/^[a-z0-9]+$/i)
+    })
+
+    it(`${name} is still distinguishable from the pattern it is spliced into`, () => {
+      // The property the ORIGINAL marker was chosen for, kept: the probe compares
+      // "the pattern plus this marker" against what came back, so a marker the user
+      // could plausibly have written would make the two indistinguishable. Losing
+      // this while fixing the grammar collision would trade one silent failure for
+      // another, so both are asserted rather than one replacing the other.
+      expect(atoms(`bd ${token} sd`).filter((a) => a === token)).toHaveLength(1)
+      expect(token.length).toBeGreaterThan(1)
+    })
+  }
+
+  it('is non-vacuous: the old marker FAILS the property it was chosen without', () => {
+    // `-` keeps its own slot and absorbs both underscores as weight; the marker
+    // that follows is `stave_probe__`, two bytes short of what was spliced in
+    expect(atoms('bd __stave_probe__ sd')).toEqual(['bd', 'stave_probe__', 'sd'])
+    expect(weights('bd __stave_probe__ sd')).toEqual([3, 1, 1])
   })
 })
