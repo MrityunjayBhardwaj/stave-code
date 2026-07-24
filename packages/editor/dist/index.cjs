@@ -25704,6 +25704,10 @@ function spliceGrid(model) {
   return out + src.suffix;
 }
 __name(spliceGrid, "spliceGrid");
+function anchorsDescribe(model, anchoredWidth) {
+  return anchoredWidth === model.steps;
+}
+__name(anchorsDescribe, "anchorsDescribe");
 function serializeByLeaf(src, edits) {
   let out = src;
   for (const e of [...edits].sort((a, b) => b.span.start - a.span.start)) {
@@ -25714,7 +25718,7 @@ function serializeByLeaf(src, edits) {
 __name(serializeByLeaf, "serializeByLeaf");
 function spliceByLeaf(model) {
   const ls = model.leafSource;
-  if (!ls || ls.cols.length !== model.steps) return null;
+  if (!ls || !anchorsDescribe(model, ls.cols.length)) return null;
   const now2 = columnAtoms(model.lanes, model.steps);
   const want = /* @__PURE__ */ new Map();
   for (let c = 0; c < model.steps; c++) {
@@ -25741,7 +25745,7 @@ function spliceByLeaf(model) {
 __name(spliceByLeaf, "spliceByLeaf");
 function spliceRollByLeaf(model) {
   const ls = model.leafSource;
-  if (!ls || ls.steps !== model.steps) return null;
+  if (!ls || !anchorsDescribe(model, ls.steps)) return null;
   const byStart = /* @__PURE__ */ new Map();
   for (const a of ls.anchors) {
     const here = byStart.get(a.start);
@@ -26731,6 +26735,41 @@ function denom(x, cap = MAX_STEPS) {
 __name(denom, "denom");
 var PERIOD_PROBE = 24;
 var MAX_PROJECT_BARS = 4;
+var no = /* @__PURE__ */ __name((gate) => ({ ok: false, gate }), "no");
+function gateReason(gate, surface) {
+  switch (gate) {
+    case "wrong-surface":
+      return surface === "grid" ? "the pattern plays numbers, which the piano roll shows, not the step grid" : "the pattern plays sound names, which the step grid shows, not the piano roll";
+    case "no-note-content":
+      return "the pattern plays no placeable notes";
+    case "unstable-period":
+      return `the pattern does not repeat within ${MAX_PROJECT_BARS} bars`;
+    case "mixed-pitch-domain":
+      return "the pattern mixes numeric and note-name pitches";
+    case "irrational-onset":
+      return "an onset does not land on any step column";
+    case "resolution":
+      return `the pattern needs more than ${MAX_STEPS} steps`;
+    case "element-tiling":
+      return "the source elements do not line up with the columns the pattern plays";
+    case "no-leaf-anchor":
+      return "a played note has no source token of its own to edit";
+    case "note-crosses-bar":
+      return "a played note does not fit inside the bar it starts in";
+    case "edit-unsafe":
+      return "an edit here would not write back the pattern as shown";
+    case "view-unusable":
+      return "nothing in this view could be edited on its own";
+    case "not-a-pattern":
+      return "unsupported mini-notation syntax";
+  }
+}
+__name(gateReason, "gateReason");
+function refused(surface, core, gate) {
+  if (gate === "not-a-pattern") return core;
+  return { ok: false, reason: gateReason(gate, surface), gate };
+}
+__name(refused, "refused");
 function detectPeriod2(keys, cap) {
   for (let p = 1; p <= cap; p++) {
     let ok = true;
@@ -26785,11 +26824,16 @@ function leafLoc(h) {
 }
 __name(leafLoc, "leafLoc");
 function gridOnsets(pat, cyc) {
+  const r = readGridOnsets(pat, cyc);
+  return r.ok ? r.onsets : null;
+}
+__name(gridOnsets, "gridOnsets");
+function readGridOnsets(pat, cyc) {
   let haps;
   try {
     haps = pat.queryArc(cyc, cyc + 1);
   } catch {
-    return null;
+    return no("no-note-content");
   }
   const byCol = /* @__PURE__ */ new Map();
   for (const h of haps) {
@@ -26797,10 +26841,11 @@ function gridOnsets(pat, cyc) {
     const v = h.value;
     let token;
     if (typeof v === "string") token = v;
+    else if (typeof v === "number") return no("wrong-surface");
     else if (v && typeof v === "object" && typeof v.s === "string") {
       token = v.s + (v.n != null ? ":" + String(v.n) : "");
-    } else return null;
-    if (NUMERIC.test(token)) return null;
+    } else return no("no-note-content");
+    if (NUMERIC.test(token)) return no("wrong-surface");
     const pos = h.whole.begin.valueOf() - cyc;
     const key2 = Math.round(pos * 720720);
     const cell = byCol.get(key2) ?? { atoms: [], spans: [] };
@@ -26810,34 +26855,43 @@ function gridOnsets(pat, cyc) {
     }
     byCol.set(key2, cell);
   }
-  return [...byCol.entries()].map(([k, c]) => ({ pos: k / 720720, atoms: c.atoms, spans: c.spans }));
+  return {
+    ok: true,
+    onsets: [...byCol.entries()].map(([k, c]) => ({
+      pos: k / 720720,
+      atoms: c.atoms,
+      spans: c.spans
+    }))
+  };
 }
-__name(gridOnsets, "gridOnsets");
+__name(readGridOnsets, "readGridOnsets");
 var onsetKey = /* @__PURE__ */ __name((o) => JSON.stringify(o.map((x) => [Math.round(x.pos * 720720), [...x.atoms].sort()]).sort()), "onsetKey");
 function projectStepGrid(src0) {
   const src = src0.trim();
-  if (src === "") return null;
+  if (src === "") return no("not-a-pattern");
   let pat;
   try {
     pat = mini_mjs.mini(src);
   } catch {
-    return null;
+    return no("not-a-pattern");
   }
   const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null;
-  if (isWholeAlternation(src) && whole === null) return null;
+  if (isWholeAlternation(src) && whole === null) return no("element-tiling");
   const cycles = [];
   for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = gridOnsets(pat, c);
-    if (cc === null) return null;
-    cycles.push(cc);
+    const cc = readGridOnsets(pat, c);
+    if (!cc.ok) return cc;
+    cycles.push(cc.onsets);
   }
   const bars = detectPeriod2(cycles.map(onsetKey), MAX_PROJECT_BARS);
-  if (bars === 0) return null;
+  if (bars === 0) return no("unstable-period");
   const perCycle = cycles.slice(0, bars);
-  if (perCycle.every((c) => c.length === 0)) return null;
-  if (whole !== null) return bars > 1 ? projectAltBars(src, whole, perCycle, bars) : null;
+  if (perCycle.every((c) => c.length === 0)) return no("no-note-content");
+  if (whole !== null) {
+    return bars > 1 ? projectAltBars(src, whole, perCycle, bars) : no("element-tiling");
+  }
   const spans = topLevelSpans(src);
-  if (!spans) return null;
+  if (!spans) return no("element-tiling");
   const totalWeight = spans.reduce((s, e) => s + e.weight, 0);
   const bounds = [];
   let accW = 0;
@@ -26848,30 +26902,31 @@ function projectStepGrid(src0) {
   let perBar2 = 1;
   for (const x of [...perCycle.flat().map((o) => o.pos), ...bounds]) {
     const d = denom(x);
-    if (d === 0) return null;
+    if (d === 0) return no("irrational-onset");
     perBar2 = lcm(perBar2, d);
   }
-  if (perBar2 * bars > MAX_STEPS || perBar2 % totalWeight !== 0) return null;
+  if (perBar2 * bars > MAX_STEPS) return no("resolution");
+  if (perBar2 % totalWeight !== 0) return no("element-tiling");
   const divPerUnit = perBar2 / totalWeight;
   const cells = Array.from({ length: perBar2 * bars }, () => []);
   for (let b = 0; b < bars; b++) {
     for (const o of perCycle[b]) {
       const c = Math.round(o.pos * perBar2);
-      if (c < 0 || c >= perBar2) return null;
+      if (c < 0 || c >= perBar2) return no("irrational-onset");
       cells[b * perBar2 + c] = [...new Set(o.atoms)];
     }
   }
   const lanes = lanesFromCells(cells);
   if (bars === 1) {
     const parts = singlePart(src, spans, divPerUnit, perBar2, gridContent(cells));
-    if (!parts) return null;
+    if (!parts) return no("element-tiling");
     const model2 = {
       steps: perBar2,
       lanes,
       source: { prefix: "", suffix: "", parts }
     };
     const cols0 = parts[0].regions.map((r) => r.from);
-    if (!projectionEditSafe(model2, perBar2, 1, perCycle, cols0)) return null;
+    if (!projectionEditSafe(model2, perBar2, 1, perCycle, cols0)) return no("edit-unsafe");
     return { ok: true, model: model2 };
   }
   const regions = buildAltRegions(
@@ -26884,7 +26939,7 @@ function projectStepGrid(src0) {
       (_, b) => cells.slice(from + b * perBar2, to + b * perBar2).map((c) => [...new Set(c)])
     )
   );
-  if (!regions) return null;
+  if (!regions) return no("element-tiling");
   const model = {
     steps: perBar2 * bars,
     bars,
@@ -26894,32 +26949,32 @@ function projectStepGrid(src0) {
   const cols = regions.flatMap(
     (r) => Array.from({ length: bars }, (_, b) => b * perBar2 + r.from)
   );
-  if (!projectionEditSafe(model, perBar2, bars, perCycle, cols)) return null;
+  if (!projectionEditSafe(model, perBar2, bars, perCycle, cols)) return no("edit-unsafe");
   return { ok: true, model };
 }
 __name(projectStepGrid, "projectStepGrid");
 function projectAltBars(src, inner, perCycle, bars) {
   const innerSrc = inner.trim();
   const spans = topLevelSpans(innerSrc);
-  if (!spans) return null;
-  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return null;
+  if (!spans) return no("element-tiling");
+  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return no("element-tiling");
   let perBar2 = 1;
   for (const o of perCycle.flat()) {
     const d = denom(o.pos);
-    if (d === 0) return null;
+    if (d === 0) return no("irrational-onset");
     perBar2 = lcm(perBar2, d);
   }
-  if (perBar2 * bars > MAX_STEPS) return null;
+  if (perBar2 * bars > MAX_STEPS) return no("resolution");
   const cells = Array.from({ length: perBar2 * bars }, () => []);
   for (let b = 0; b < bars; b++) {
     for (const o of perCycle[b]) {
       const c = Math.round(o.pos * perBar2);
-      if (c < 0 || c >= perBar2) return null;
+      if (c < 0 || c >= perBar2) return no("irrational-onset");
       cells[b * perBar2 + c] = [...new Set(o.atoms)];
     }
   }
   const parts = singlePart(innerSrc, spans, perBar2, perBar2 * bars, gridContent(cells));
-  if (!parts) return null;
+  if (!parts) return no("element-tiling");
   const model = {
     steps: perBar2 * bars,
     bars,
@@ -26931,8 +26986,8 @@ function projectAltBars(src, inner, perCycle, bars) {
     }
   };
   const cols = parts[0].regions.map((r) => r.from);
-  if (!projectionEditSafe(model, perBar2, bars, perCycle, cols)) return null;
-  if (serializeStepGrid(model) !== src.trim()) return null;
+  if (!projectionEditSafe(model, perBar2, bars, perCycle, cols)) return no("edit-unsafe");
+  if (serializeStepGrid(model) !== src.trim()) return no("edit-unsafe");
   return { ok: true, model };
 }
 __name(projectAltBars, "projectAltBars");
@@ -26980,40 +27035,41 @@ function projectionEditSafe(model, perBar2, bars, base, probeCols) {
 __name(projectionEditSafe, "projectionEditSafe");
 function projectStepGridByLeaf(src0) {
   const src = src0.trim();
-  if (src === "") return null;
+  if (src === "") return no("not-a-pattern");
   let pat;
   try {
     pat = mini_mjs.mini(src);
   } catch {
-    return null;
+    return no("not-a-pattern");
   }
   const cycles = [];
   for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = gridOnsets(pat, c);
-    if (cc === null) return null;
-    cycles.push(cc);
+    const cc = readGridOnsets(pat, c);
+    if (!cc.ok) return cc;
+    cycles.push(cc.onsets);
   }
   const bars = detectPeriod2(cycles.map(onsetKey), MAX_PROJECT_BARS);
-  if (bars === 0) return null;
+  if (bars === 0) return no("unstable-period");
   const perCycle = cycles.slice(0, bars);
-  if (perCycle.every((c) => c.length === 0)) return null;
+  if (perCycle.every((c) => c.length === 0)) return no("no-note-content");
   let perBar2 = 1;
   for (const o of perCycle.flat()) {
     const d = denom(o.pos);
-    if (d === 0) return null;
+    if (d === 0) return no("irrational-onset");
     perBar2 = lcm(perBar2, d);
   }
-  if (perBar2 * bars > MAX_STEPS) return null;
-  const cols = leafAnchors(src, perCycle, perBar2, bars);
-  if (cols === null) return null;
+  if (perBar2 * bars > MAX_STEPS) return no("resolution");
+  const anchored = leafAnchors(src, perCycle, perBar2, bars);
+  if (!anchored.ok) return anchored;
+  const cols = anchored.cols;
   const model = {
     steps: perBar2 * bars,
     ...bars > 1 ? { bars } : {},
     lanes: lanesFromCells(cols.map((c) => c.map((a) => a.atom))),
     leafSource: { src, cols }
   };
-  if (!leafEditSafe(model, perBar2, bars)) return null;
-  if (!leafViewUsable(model)) return null;
+  if (!leafEditSafe(model, perBar2, bars)) return no("edit-unsafe");
+  if (!leafViewUsable(model)) return no("view-unusable");
   return { ok: true, model };
 }
 __name(projectStepGridByLeaf, "projectStepGridByLeaf");
@@ -27035,20 +27091,24 @@ function leafAnchors(src, perCycle, perBar2, bars) {
   for (let b = 0; b < bars; b++) {
     for (const o of perCycle[b]) {
       const c = b * perBar2 + Math.round(o.pos * perBar2);
-      if (c < 0 || c >= perBar2 * bars) return null;
+      if (c < 0 || c >= perBar2 * bars) return { ok: false, gate: "note-crosses-bar" };
       for (let i = 0; i < o.atoms.length; i++) {
         const span = o.spans[i];
-        if (!span || src.slice(span.start, span.end) !== o.atoms[i]) return null;
+        if (!span || src.slice(span.start, span.end) !== o.atoms[i]) {
+          return { ok: false, gate: "no-leaf-anchor" };
+        }
         for (const s of seen) {
           const same = s.start === span.start && s.end === span.end;
-          if (!same && s.end > span.start && span.end > s.start) return null;
+          if (!same && s.end > span.start && span.end > s.start) {
+            return { ok: false, gate: "no-leaf-anchor" };
+          }
         }
         seen.push(span);
         cols[c].push({ atom: o.atoms[i], span });
       }
     }
   }
-  return cols;
+  return { ok: true, cols };
 }
 __name(leafAnchors, "leafAnchors");
 function leafEditSafe(model, perBar2, bars) {
@@ -27100,7 +27160,11 @@ __name(leafExpected, "leafExpected");
 function parseStepGrid(mini) {
   const core = parseStepGridCore(mini);
   if (core.ok) return core;
-  return projectStepGrid(mini) ?? projectStepGridByLeaf(mini) ?? core;
+  const element = projectStepGrid(mini);
+  if (element.ok) return element;
+  const leaf = projectStepGridByLeaf(mini);
+  if (leaf.ok) return leaf;
+  return refused("grid", core, leaf.gate);
 }
 __name(parseStepGrid, "parseStepGrid");
 function parseStepGridCore(mini) {
@@ -27348,11 +27412,16 @@ function rollFromAltElements(mini) {
 }
 __name(rollFromAltElements, "rollFromAltElements");
 function rollOnsets(pat, cyc) {
+  const r = readRollOnsets(pat, cyc);
+  return r.ok ? r.onsets : null;
+}
+__name(rollOnsets, "rollOnsets");
+function readRollOnsets(pat, cyc) {
   let haps;
   try {
     haps = pat.queryArc(cyc, cyc + 1);
   } catch {
-    return null;
+    return no("no-note-content");
   }
   const out = [];
   for (const h of haps) {
@@ -27370,16 +27439,16 @@ function rollOnsets(pat, cyc) {
       } else if (pitchToMidi(v.toLowerCase()) !== null) {
         pitch = v.toLowerCase();
         numeric = false;
-      } else return null;
-    } else return null;
+      } else return no("wrong-surface");
+    } else return no("no-note-content");
     const pos = h.whole.begin.valueOf() - cyc;
     const dur = h.whole.end.valueOf() - h.whole.begin.valueOf();
-    if (dur <= 0) return null;
+    if (dur <= 0) return no("no-note-content");
     out.push({ pos, dur, pitch, numeric, loc: leafLoc(h) });
   }
-  return out;
+  return { ok: true, onsets: out };
 }
-__name(rollOnsets, "rollOnsets");
+__name(readRollOnsets, "readRollOnsets");
 var rollKey = /* @__PURE__ */ __name((o) => JSON.stringify(
   o.map((x) => [Math.round(x.pos * 720720), Math.round(x.dur * 720720), x.pitch]).sort()
 ), "rollKey");
@@ -27422,31 +27491,33 @@ function projectionRollEditSafe(model, perBar2, bars, numeric, probes) {
 __name(projectionRollEditSafe, "projectionRollEditSafe");
 function projectPianoRoll(src0) {
   const src = src0.trim();
-  if (src === "") return null;
+  if (src === "") return no("not-a-pattern");
   let pat;
   try {
     pat = mini_mjs.mini(src);
   } catch {
-    return null;
+    return no("not-a-pattern");
   }
   const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null;
-  if (isWholeAlternation(src) && whole === null) return null;
+  if (isWholeAlternation(src) && whole === null) return no("element-tiling");
   const cycles = [];
   for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = rollOnsets(pat, c);
-    if (cc === null) return null;
-    cycles.push(cc);
+    const cc = readRollOnsets(pat, c);
+    if (!cc.ok) return cc;
+    cycles.push(cc.onsets);
   }
   const bars = detectPeriod2(cycles.map(rollKey), MAX_PROJECT_BARS);
-  if (bars === 0) return null;
+  if (bars === 0) return no("unstable-period");
   const perCycle = cycles.slice(0, bars);
   const all = perCycle.flat();
-  if (all.length === 0) return null;
+  if (all.length === 0) return no("no-note-content");
   const numeric = all.some((o) => o.numeric);
-  if (numeric && all.some((o) => !o.numeric)) return null;
-  if (whole !== null) return bars > 1 ? projectAltRollBars(src, whole, perCycle, numeric) : null;
+  if (numeric && all.some((o) => !o.numeric)) return no("mixed-pitch-domain");
+  if (whole !== null) {
+    return bars > 1 ? projectAltRollBars(src, whole, perCycle, numeric) : no("element-tiling");
+  }
   const spans = topLevelSpans(src);
-  if (!spans) return null;
+  if (!spans) return no("element-tiling");
   const totalWeight = spans.reduce((s, e) => s + e.weight, 0);
   const bounds = [];
   let accW = 0;
@@ -27457,16 +27528,17 @@ function projectPianoRoll(src0) {
   let perBar2 = 1;
   for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur), ...bounds]) {
     const d = denom(x);
-    if (d === 0) return null;
+    if (d === 0) return no("irrational-onset");
     perBar2 = lcm(perBar2, d);
   }
-  if (perBar2 * bars > MAX_STEPS || perBar2 % totalWeight !== 0) return null;
+  if (perBar2 * bars > MAX_STEPS) return no("resolution");
+  if (perBar2 % totalWeight !== 0) return no("element-tiling");
   const divPerUnit = perBar2 / totalWeight;
   const notes = barNotes(perCycle, perBar2);
-  if (notes === null) return null;
+  if (notes === null) return no("element-tiling");
   if (bars === 1) {
     const parts = singlePart(src, spans, divPerUnit, perBar2, rollContent(notes));
-    if (!parts) return null;
+    if (!parts) return no("element-tiling");
     const model2 = {
       steps: perBar2,
       notes,
@@ -27474,7 +27546,7 @@ function projectPianoRoll(src0) {
       source: { prefix: "", suffix: "", parts }
     };
     const probes0 = parts[0].regions.map((r) => ({ from: r.from, to: r.to }));
-    if (!projectionRollEditSafe(model2, perBar2, 1, numeric, probes0)) return null;
+    if (!projectionRollEditSafe(model2, perBar2, 1, numeric, probes0)) return no("edit-unsafe");
     return { ok: true, model: model2 };
   }
   const regions = buildAltRegions(
@@ -27487,7 +27559,7 @@ function projectPianoRoll(src0) {
       (_, b) => notes.filter((n) => n.start >= from + b * perBar2 && n.start < to + b * perBar2).map((n) => ({ pitch: n.pitch, start: n.start - b * perBar2, duration: n.duration }))
     )
   );
-  if (!regions) return null;
+  if (!regions) return no("element-tiling");
   const model = {
     steps: perBar2 * bars,
     bars,
@@ -27501,7 +27573,7 @@ function projectPianoRoll(src0) {
       to: b * perBar2 + r.to
     }))
   );
-  if (!projectionRollEditSafe(model, perBar2, bars, numeric, probes)) return null;
+  if (!projectionRollEditSafe(model, perBar2, bars, numeric, probes)) return no("edit-unsafe");
   return { ok: true, model };
 }
 __name(projectPianoRoll, "projectPianoRoll");
@@ -27522,20 +27594,20 @@ function projectAltRollBars(src, inner, perCycle, numeric) {
   const bars = perCycle.length;
   const innerSrc = inner.trim();
   const spans = topLevelSpans(innerSrc);
-  if (!spans) return null;
-  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return null;
+  if (!spans) return no("element-tiling");
+  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return no("element-tiling");
   const all = perCycle.flat();
   let perBar2 = 1;
   for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
     const d = denom(x);
-    if (d === 0) return null;
+    if (d === 0) return no("irrational-onset");
     perBar2 = lcm(perBar2, d);
   }
-  if (perBar2 * bars > MAX_STEPS) return null;
+  if (perBar2 * bars > MAX_STEPS) return no("resolution");
   const notes = barNotes(perCycle, perBar2);
-  if (notes === null) return null;
+  if (notes === null) return no("element-tiling");
   const parts = singlePart(innerSrc, spans, perBar2, perBar2 * bars, rollContent(notes));
-  if (!parts) return null;
+  if (!parts) return no("element-tiling");
   const model = {
     steps: perBar2 * bars,
     bars,
@@ -27548,42 +27620,43 @@ function projectAltRollBars(src, inner, perCycle, numeric) {
     }
   };
   const probes = parts[0].regions.map((r) => ({ from: r.from, to: r.to }));
-  if (!projectionRollEditSafe(model, perBar2, bars, numeric, probes)) return null;
-  if (serializePianoRoll(model) !== src.trim()) return null;
+  if (!projectionRollEditSafe(model, perBar2, bars, numeric, probes)) return no("edit-unsafe");
+  if (serializePianoRoll(model) !== src.trim()) return no("edit-unsafe");
   return { ok: true, model };
 }
 __name(projectAltRollBars, "projectAltRollBars");
 function projectPianoRollByLeaf(src0) {
   const src = src0.trim();
-  if (src === "") return null;
+  if (src === "") return no("not-a-pattern");
   let pat;
   try {
     pat = mini_mjs.mini(src);
   } catch {
-    return null;
+    return no("not-a-pattern");
   }
   const cycles = [];
   for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = rollOnsets(pat, c);
-    if (cc === null) return null;
-    cycles.push(cc);
+    const cc = readRollOnsets(pat, c);
+    if (!cc.ok) return cc;
+    cycles.push(cc.onsets);
   }
   const bars = detectPeriod2(cycles.map(rollKey), MAX_PROJECT_BARS);
-  if (bars === 0) return null;
+  if (bars === 0) return no("unstable-period");
   const perCycle = cycles.slice(0, bars);
   const all = perCycle.flat();
-  if (all.length === 0) return null;
+  if (all.length === 0) return no("no-note-content");
   const numeric = all.some((o) => o.numeric);
-  if (numeric && all.some((o) => !o.numeric)) return null;
+  if (numeric && all.some((o) => !o.numeric)) return no("mixed-pitch-domain");
   let perBar2 = 1;
   for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
     const d = denom(x);
-    if (d === 0) return null;
+    if (d === 0) return no("irrational-onset");
     perBar2 = lcm(perBar2, d);
   }
-  if (perBar2 * bars > MAX_STEPS) return null;
-  const anchors = rollAnchors(src, perCycle, perBar2, bars);
-  if (anchors === null) return null;
+  if (perBar2 * bars > MAX_STEPS) return no("resolution");
+  const anchored = rollAnchors(src, perCycle, perBar2, bars);
+  if (!anchored.ok) return anchored;
+  const anchors = anchored.anchors;
   const model = {
     steps: perBar2 * bars,
     ...bars > 1 ? { bars } : {},
@@ -27593,8 +27666,8 @@ function projectPianoRollByLeaf(src0) {
     ...numeric ? { numeric: true } : {},
     leafSource: { src, anchors, steps: perBar2 * bars }
   };
-  if (!leafRollEditSafe(model, perBar2, bars, numeric)) return null;
-  if (!leafRollViewUsable(model)) return null;
+  if (!leafRollEditSafe(model, perBar2, bars, numeric)) return no("edit-unsafe");
+  if (!leafRollViewUsable(model)) return no("view-unusable");
   return { ok: true, model };
 }
 __name(projectPianoRollByLeaf, "projectPianoRollByLeaf");
@@ -27605,20 +27678,24 @@ function rollAnchors(src, perCycle, perBar2, bars) {
     for (const o of perCycle[b]) {
       const start = Math.round(o.pos * perBar2);
       const duration = Math.round(o.dur * perBar2);
-      if (start < 0 || duration < 1 || start + duration > perBar2) return null;
+      if (start < 0 || duration < 1 || start + duration > perBar2) {
+        return { ok: false, gate: "note-crosses-bar" };
+      }
       const span = o.loc;
       if (!span || src.slice(span.start, span.end).toLowerCase() !== o.pitch.toLowerCase()) {
-        return null;
+        return { ok: false, gate: "no-leaf-anchor" };
       }
       for (const s of seen) {
         const same = s.start === span.start && s.end === span.end;
-        if (!same && s.end > span.start && span.end > s.start) return null;
+        if (!same && s.end > span.start && span.end > s.start) {
+          return { ok: false, gate: "no-leaf-anchor" };
+        }
       }
       seen.push(span);
       out.push({ pitch: o.pitch, start: b * perBar2 + start, duration, span });
     }
   }
-  return out;
+  return { ok: true, anchors: out };
 }
 __name(rollAnchors, "rollAnchors");
 function leafRollEditSafe(model, perBar2, bars, numeric) {
@@ -27684,7 +27761,11 @@ __name(leafRollViewUsable, "leafRollViewUsable");
 function parsePianoRoll(mini) {
   const core = parsePianoRollCore(mini);
   if (core.ok) return core;
-  return projectPianoRoll(mini) ?? projectPianoRollByLeaf(mini) ?? core;
+  const element = projectPianoRoll(mini);
+  if (element.ok) return element;
+  const leaf = projectPianoRollByLeaf(mini);
+  if (leaf.ok) return leaf;
+  return refused("roll", core, leaf.gate);
 }
 __name(parsePianoRoll, "parsePianoRoll");
 function parsePianoRollCore(mini) {

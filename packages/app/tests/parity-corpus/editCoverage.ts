@@ -98,10 +98,30 @@ function collectUnits(doc: string): ChunkInfo[] {
 export type UnitStatus =
   | { status: 'setup'; head: string }
   | { status: 'note'; kind: 'roll' | 'step' }
-  | { status: 'note-broken'; kind: 'roll' | 'step'; reason: string; head: string }
+  | { status: 'note-broken'; kind: 'roll' | 'step'; reason: string; gate?: string; head: string }
   | { status: 'clip'; kind: string }
   | { status: 'knobs' }
   | { status: 'code-only'; head: string }
+
+/**
+ * How a broken unit is BUCKETED in the blocker histogram (#990).
+ *
+ * The parser's `gate` when it has one, the raw reason otherwise. The gate is the
+ * cause; the reason string used to be whichever of the three stacked writers
+ * declined FIRST, so a histogram keyed on it ranked subsystems that had nothing
+ * to do with why the unit was unavailable — "nested groups" sat near the top of
+ * this list for months while not one of those units was stopped by nesting.
+ *
+ * NOTE on `wrong-surface`: it means the values played belong to the other view.
+ * In the both-surfaces gate sweep that is a routing fact and no failure at all —
+ * a drum pattern SHOULD decline the roll. Here it is still an editability
+ * failure, because this harness routes by HEAD (`note`/`n` → roll, `s`/`sound` →
+ * grid) exactly as the app does: a `wrong-surface` unit is one whose head asks
+ * for a view its own values cannot fill, and the user gets code. Same gate, two
+ * honest readings — which is why the distinction is worth carrying.
+ */
+const blockerKey = (s: { kind: string; reason: string; gate?: string }): string =>
+  `${s.kind}: ${s.gate ?? s.reason}`
 
 function classifyUnit(u: ChunkInfo, arrangeRanges: Overlap[], pickRanges: Overlap[]): UnitStatus {
   const head = u.headFn
@@ -111,13 +131,13 @@ function classifyUnit(u: ChunkInfo, arrangeRanges: Overlap[], pickRanges: Overla
     const r = parsePianoRoll(mini)
     return r.ok
       ? { status: 'note', kind: 'roll' }
-      : { status: 'note-broken', kind: 'roll', reason: r.reason, head: head! }
+      : { status: 'note-broken', kind: 'roll', reason: r.reason, gate: r.gate, head: head! }
   }
   if (mini !== null && (head === 's' || head === 'sound')) {
     const r = parseStepGrid(mini)
     return r.ok
       ? { status: 'note', kind: 'step' }
-      : { status: 'note-broken', kind: 'step', reason: r.reason, head: head! }
+      : { status: 'note-broken', kind: 'step', reason: r.reason, gate: r.gate, head: head! }
   }
   if (arrangeRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'clip', kind: 'arrange' }
   if (pickRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'clip', kind: 'pick' }
@@ -173,7 +193,7 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
         case 'note': note++; break
         case 'clip': clip++; break
         case 'knobs': knobs++; break
-        case 'note-broken': broken++; bump(brokenReasons, `${s.kind}: ${s.reason}`); break
+        case 'note-broken': broken++; bump(brokenReasons, blockerKey(s)); break
         case 'code-only': codeOnly++; bump(codeOnlyHeads, s.head); break
       }
     }
@@ -277,7 +297,19 @@ export function renderMarkdown(m: Measurement, title: string): string {
   md.push('')
   md.push('## Blocker histogram — `note-broken` (offered a grid/roll but no round-trip)')
   md.push('')
-  md.push('| Count | kind: reason |')
+  md.push('> Bucketed by the **gate that actually stopped the write-back**, not by the')
+  md.push('> first writer to decline (#990). Three writers stack behind one parse call')
+  md.push('> — syntactic core → element projection → leaf projection — and the reason')
+  md.push('> string used to be whichever spoke first, which is how "nested groups" led')
+  md.push('> this list while not one of those units was stopped by nesting.')
+  md.push('>')
+  md.push('> `wrong-surface` = the values played belong to the other view. Under this')
+  md.push('> harness\'s head routing (`note`/`n` → roll, `s`/`sound` → grid, as the app')
+  md.push('> does) that is still an editability failure: the head asks for a view its')
+  md.push('> own values cannot fill. It is only a non-failure in a sweep that asks BOTH')
+  md.push('> surfaces of every unit — there, a drum pattern *should* decline the roll.')
+  md.push('')
+  md.push('| Count | kind: gate |')
   md.push('|---:|---|')
   for (const [k, c] of rank(m.brokenReasons)) md.push(`| ${c} | ${k} |`)
   if (m.brokenReasons.size === 0) md.push('| — | none |')

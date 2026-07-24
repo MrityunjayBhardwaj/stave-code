@@ -7924,7 +7924,13 @@ interface LeafAnchor {
 interface LeafSource {
     /** the inner mini string the spans index into, byte-for-byte */
     src: string;
-    /** per model column, the atoms sounding there and each one's own leaf span */
+    /**
+     * Per model column, the atoms sounding there and each one's own leaf span.
+     *
+     * Its LENGTH is also the layout these anchors were read against — the width
+     * `anchorsDescribe` (`serialize.ts`) requires the model to still have before
+     * either leaf writer may write. See `RollLeafSource.steps` for why.
+     */
     cols: LeafAnchor[][];
 }
 /**
@@ -7971,14 +7977,19 @@ interface RollLeafSource {
      * The column count these anchors were read against — the roll's equivalent of
      * the grid's `cols.length`, and a REQUIRED guard rather than bookkeeping.
      *
-     * A restructure (`resizeRoll`) re-lays the grid while carrying the model's other
-     * fields through, so the anchors survive describing a layout that no longer
-     * exists. Widening then leaves every note's start and length intact, which passes
-     * the writer's per-note check and would write the ORIGINAL source back, silently
-     * discarding the resize. Narrowing is worse: the notes that fell outside the new
-     * width look to the writer exactly like notes the user DELETED, and it would
-     * splice `~` over them — data loss from a resize gesture. Comparing the width
-     * makes both a clean refusal.
+     * Anchors are PROVENANCE: they describe where each note's bytes live in a
+     * source laid out one particular way. A restructure (`resizeRoll`) re-lays the
+     * grid while carrying the model's other fields through, so the anchors survive
+     * describing a layout that no longer exists. Widening leaves every note's start
+     * and length intact, which passes the writer's per-note check and would write
+     * the ORIGINAL source back, silently discarding the resize. Narrowing is worse:
+     * the notes that fell outside the new width look to the writer exactly like
+     * notes the user DELETED, and it would splice `~` over them — data loss from a
+     * gesture that edited nothing.
+     *
+     * So the check belongs at the WIDTH, the thing a restructure changes, not at
+     * the item — and in ONE place: `anchorsDescribe` (`serialize.ts`), which both
+     * leaf writers call ([[P329]], #990).
      */
     steps: number;
 }
@@ -8149,9 +8160,53 @@ interface PianoRollModel {
     numeric?: boolean;
 }
 /**
+ * WHY a view declined a pattern — the gate that actually stopped it (#990).
+ *
+ * Three writers stack behind one parse call (syntactic core → element projection
+ * → leaf projection), and before this the `reason` string was whichever one
+ * declined FIRST — almost always the core, describing a subsystem that often had
+ * nothing to do with why the unit was unavailable. Measured over 1500 real units,
+ * every pattern reporting "nested groups are beyond the editable subset" was in
+ * fact stopped by a wrong-surface value or an unstable period; not one was stopped
+ * by anything to do with nesting. A gate names the real cause.
+ *
+ * These are not a new list of features. Each is one face of the single editability
+ * invariant — a played onset is editable iff it maps to a unique disjoint source
+ * span, in a view that stays true:
+ *   - `wrong-surface`      the values belong to the OTHER view (a drum pattern
+ *                          asked of the piano roll, a number asked of the grid).
+ *                          Not an editability failure — a routing fact.
+ *   - `no-note-content`    nothing placeable sounds at all: a params/signal value,
+ *                          a zero-length hap, silence, or a query that threw.
+ *   - `unstable-period`    what it plays does not repeat inside the projection's
+ *                          bar window, so any view of it stops being true.
+ *   - `mixed-pitch-domain` numeric and named pitches in one pattern (roll only).
+ *   - `irrational-onset`   an onset/duration/boundary that lands on no column.
+ *   - `resolution`         the columns needed exceed the step ceiling.
+ *   - `element-tiling`     the source's top-level elements do not tile the played
+ *                          columns — the element writer's half of the bijection.
+ *   - `no-leaf-anchor`     a played note has no source token of its own, or two
+ *                          notes claim overlapping bytes — the leaf writer's half.
+ *   - `note-crosses-bar`   a played note does not fit inside the bar it starts
+ *                          in, so no column layout can hold it. Deliberately NOT
+ *                          folded into `no-leaf-anchor`: such a note has a
+ *                          perfectly good source token, and folding it in would
+ *                          overstate the write-back guard — the exact kind of
+ *                          misattribution this vocabulary exists to end.
+ *   - `edit-unsafe`        the write-back probe and the engine disagreed.
+ *   - `view-unusable`      the view opens but no single edit is expressible.
+ *   - `not-a-pattern`      it does not reify at all; the core's own syntax
+ *                          message is the better answer and is kept.
+ */
+type Gate = 'wrong-surface' | 'no-note-content' | 'unstable-period' | 'mixed-pitch-domain' | 'irrational-onset' | 'resolution' | 'element-tiling' | 'no-leaf-anchor' | 'note-crosses-bar' | 'edit-unsafe' | 'view-unusable' | 'not-a-pattern';
+/**
  * Parse outcome. `ok: false` is a first-class result, not an exception — every
  * panel checks it on open and disables itself (code-only) when the pattern is
  * outside the editable subset.
+ *
+ * `gate` is present whenever a projection ran and declined — the machine-readable
+ * half of `reason`, so a measurement buckets by cause instead of by string match.
+ * Absent when the refusal is the syntactic core's own (nothing reified).
  */
 type ParseResult<M> = {
     ok: true;
@@ -8159,6 +8214,7 @@ type ParseResult<M> = {
 } | {
     ok: false;
     reason: string;
+    gate?: Gate;
 };
 
 declare function parseStepGrid(mini: string): ParseResult<StepGridModel>;
