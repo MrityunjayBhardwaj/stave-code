@@ -27,6 +27,7 @@ import {
 import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
 import { detectAllArrangeCalls } from '../../../editor/src/visualEdit/arrange/parse'
 import { detectAllPickControls } from '../../../editor/src/visualEdit/pickControl/parse'
+import { detectMasterAll } from '../../../editor/src/visualEdit/mixer/masterEdit'
 
 // Bare-identifier combinators whose direct arguments are themselves patterns —
 // their nested voices ARE separately editable (the app binds them via
@@ -213,6 +214,7 @@ export type UnitStatus =
   | { status: 'note'; kind: 'roll' | 'step' }
   | { status: 'note-broken'; kind: 'roll' | 'step'; reason: string; gate?: string; head: string }
   | { status: 'clip'; kind: string }
+  | { status: 'master' }
   | { status: 'knobs' }
   | { status: 'code-only'; head: string }
 
@@ -241,6 +243,7 @@ function classifyUnit(
   arrangeRanges: Overlap[],
   pickRanges: Overlap[],
   plumbing: { setup: Overlap[]; nonMusical: Overlap[] },
+  masterRanges: Overlap[],
 ): UnitStatus {
   const head = u.headFn
   const mini = u.miniString
@@ -266,6 +269,20 @@ function classifyUnit(
   }
   if (arrangeRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'clip', kind: 'arrange' }
   if (pickRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'clip', kind: 'pick' }
+  // A master `all(x => …)` line, edited through the mixer's master strip
+  // (`detectMasterAll`). Checked BEFORE `knobs` because it is a real view edit —
+  // the strip's fader, pan and insert chain — not a bare numeric argument, and
+  // AFTER the note surfaces because those are strictly more specific. See #1003.
+  //
+  // `detectMasterAll` and not `detectMasterAudioAll`: the mute sentinel
+  // (`x => silence`) and viz-only lines are master lines with their own editors
+  // (the mute toggle, viz assignment), so the broader detector is the right
+  // question here. The one shape this would over-count is a SECOND audio
+  // `all(x => …)` line, which the mixer does not bind and the user could not
+  // reach — measured across the corpus and 150 real tunes: 16 master lines, all
+  // 16 the bound line, 0 unbound extras. Stated because it is an assumption,
+  // not because it currently bites.
+  if (masterRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'master' }
   if (u.type === 'knobs') return { status: 'knobs' }
   return { status: 'code-only', head: head ?? '(no-head)' }
 }
@@ -279,10 +296,12 @@ export interface TuneReport {
   nonMusical: number
   noteEditable: number
   clip: number
+  /** master `all(x => …)` lines, edited through the mixer's master strip (#1003) */
+  master: number
   noteBroken: number
   knobs: number
   codeOnly: number
-  /** structurally editable = note OR clip (real view editing, not just a knob) */
+  /** structurally editable = note OR clip OR master (real view editing, not just a knob) */
   structurallyEditable: number
   tuneClass: 'fully' | 'partial' | 'knobs-only' | 'code-only' | 'unparseable'
 }
@@ -303,31 +322,33 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
   for (const { name, code } of docs) {
     if (!docParses(code)) {
       tunes.push({
-        file: name, units: 0, setup: 0, nonMusical: 0, noteEditable: 0, clip: 0, noteBroken: 0,
-        knobs: 0, codeOnly: 0, structurallyEditable: 0, tuneClass: 'unparseable',
+        file: name, units: 0, setup: 0, nonMusical: 0, noteEditable: 0, clip: 0, master: 0,
+        noteBroken: 0, knobs: 0, codeOnly: 0, structurallyEditable: 0, tuneClass: 'unparseable',
       })
       continue
     }
     const arrangeRanges = detectAllArrangeCalls(code).map((a): Overlap => a.callRange)
     const pickRanges = detectAllPickControls(code).map((p): Overlap => p.callRange)
     const plumbing = hostPlumbingRanges(code)
+    const masterRanges = detectMasterAll(code).map((m): Overlap => m.statementRange)
     const allUnits = collectUnits(code)
 
-    let note = 0, clip = 0, broken = 0, knobs = 0, codeOnly = 0, setup = 0, nonMusical = 0
+    let note = 0, clip = 0, master = 0, broken = 0, knobs = 0, codeOnly = 0, setup = 0, nonMusical = 0
     for (const u of allUnits) {
-      const s = classifyUnit(u, arrangeRanges, pickRanges, plumbing)
+      const s = classifyUnit(u, arrangeRanges, pickRanges, plumbing, masterRanges)
       switch (s.status) {
         case 'setup': setup++; break
         case 'non-musical': nonMusical++; break
         case 'note': note++; break
         case 'clip': clip++; break
+        case 'master': master++; break
         case 'knobs': knobs++; break
         case 'note-broken': broken++; bump(brokenReasons, blockerKey(s)); break
         case 'code-only': codeOnly++; bump(codeOnlyHeads, s.head); break
       }
     }
     const musical = allUnits.length - setup - nonMusical
-    const structural = note + clip
+    const structural = note + clip + master
     const tuneClass: TuneReport['tuneClass'] =
       musical === 0 ? 'code-only'
       : structural === musical ? 'fully'
@@ -336,8 +357,8 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
       : 'code-only'
 
     tunes.push({
-      file: name, units: musical, setup, nonMusical, noteEditable: note, clip, noteBroken: broken,
-      knobs, codeOnly, structurallyEditable: structural, tuneClass,
+      file: name, units: musical, setup, nonMusical, noteEditable: note, clip, master,
+      noteBroken: broken, knobs, codeOnly, structurallyEditable: structural, tuneClass,
     })
   }
   return { tunes, brokenReasons, codeOnlyHeads }
@@ -358,14 +379,16 @@ export function aggregate(m: Measurement) {
   const totalUnits = sum((t) => t.units)
   const uNote = sum((t) => t.noteEditable)
   const uClip = sum((t) => t.clip)
+  const uMaster = sum((t) => t.master)
   return {
     n, fully, partial, anyEditable,
     knobsOnly: cls('knobs-only'), codeOnlyTunes: cls('code-only'), unparseable: cls('unparseable'),
     totalUnits, uSetup: sum((t) => t.setup), uNonMusical: sum((t) => t.nonMusical), uNote, uClip,
-    uStructural: uNote + uClip, uBroken: sum((t) => t.noteBroken),
+    uMaster,
+    uStructural: uNote + uClip + uMaster, uBroken: sum((t) => t.noteBroken),
     uKnobs: sum((t) => t.knobs), uCode: sum((t) => t.codeOnly),
     anyEditablePct: Number(pct(anyEditable, n)),
-    structuralPct: Number(pct(uNote + uClip, totalUnits)),
+    structuralPct: Number(pct(uNote + uClip + uMaster, totalUnits)),
   }
 }
 
@@ -377,7 +400,7 @@ export function summaryLines(label: string, m: Measurement): string[] {
     `TUNE  any-editable: ${a.anyEditable}/${a.n} (${a.anyEditablePct}%)  ` +
       `[fully ${a.fully} · partial ${a.partial} · knobs ${a.knobsOnly} · code ${a.codeOnlyTunes} · unparse ${a.unparseable}]`,
     `UNIT  structural: ${a.uStructural}/${a.totalUnits} (${a.structuralPct}%)  ` +
-      `[note ${a.uNote} · clip ${a.uClip} · broken ${a.uBroken} · knobs ${a.uKnobs} · code ${a.uCode}]  ` +
+      `[note ${a.uNote} · clip ${a.uClip} · master ${a.uMaster} · broken ${a.uBroken} · knobs ${a.uKnobs} · code ${a.uCode}]  ` +
       `(excluded: setup ${a.uSetup} · host plumbing ${a.uNonMusical})`,
     'top note-broken reasons:',
     ...rank(m.brokenReasons).slice(0, 6).map(([k, c]) => `   ${c}×  ${k}`),
@@ -396,7 +419,8 @@ export function renderMarkdown(m: Measurement, title: string): string {
   md.push('')
   md.push('> **What "editable" means:** a unit is *structurally editable* when its note')
   md.push('> string round-trips into a StepGrid/PianoRoll model (the app\'s own')
-  md.push('> `useGridModel` gate) **or** it is an `arrange`/`pickRestart` clip control.')
+  md.push('> `useGridModel` gate), **or** it is an `arrange`/`pickRestart` clip control,')
+  md.push('> **or** it is a master `all(x => …)` line the mixer\'s master strip edits.')
   md.push('> `note-broken` = the app would OFFER a grid/roll editor but the string does')
   md.push('> not round-trip (the "offered but blank" class). `knobs`-only = numeric')
   md.push('> params but no note/clip structure. Setup/boilerplate heads excluded.')
@@ -430,6 +454,7 @@ export function renderMarkdown(m: Measurement, title: string): string {
   md.push('|---|---:|---:|')
   md.push(`| note-editable (round-trips) | ${a.uNote} | ${pct(a.uNote, a.totalUnits)} |`)
   md.push(`| clip (arrange/pick) | ${a.uClip} | ${pct(a.uClip, a.totalUnits)} |`)
+  md.push(`| master strip (\`all(x => …)\`) | ${a.uMaster} | ${pct(a.uMaster, a.totalUnits)} |`)
   md.push(`| **structurally editable** | **${a.uStructural}** | **${pct(a.uStructural, a.totalUnits)}** |`)
   md.push(`| note-broken (offered, no round-trip) | ${a.uBroken} | ${pct(a.uBroken, a.totalUnits)} |`)
   md.push(`| knobs-only | ${a.uKnobs} | ${pct(a.uKnobs, a.totalUnits)} |`)
@@ -463,11 +488,11 @@ export function renderMarkdown(m: Measurement, title: string): string {
   md.push('')
   md.push('## Per-tune')
   md.push('')
-  md.push('| Tune | units | note | clip | broken | knobs | code | class |')
-  md.push('|---|---:|---:|---:|---:|---:|---:|---|')
+  md.push('| Tune | units | note | clip | master | broken | knobs | code | class |')
+  md.push('|---|---:|---:|---:|---:|---:|---:|---:|---|')
   for (const t of m.tunes) {
     md.push(
-      `| ${t.file} | ${t.units} | ${t.noteEditable} | ${t.clip} | ${t.noteBroken} | ${t.knobs} | ${t.codeOnly} | ${t.tuneClass} |`,
+      `| ${t.file} | ${t.units} | ${t.noteEditable} | ${t.clip} | ${t.master} | ${t.noteBroken} | ${t.knobs} | ${t.codeOnly} | ${t.tuneClass} |`,
     )
   }
   md.push('')
@@ -485,7 +510,8 @@ export function resultJson(m: Measurement, extra: Record<string, unknown> = {}) 
       anyEditablePct: a.anyEditablePct,
     },
     unitLevel: {
-      totalUnits: a.totalUnits, note: a.uNote, clip: a.uClip, structurallyEditable: a.uStructural,
+      totalUnits: a.totalUnits, note: a.uNote, clip: a.uClip, master: a.uMaster,
+      structurallyEditable: a.uStructural,
       noteBroken: a.uBroken, knobs: a.uKnobs, codeOnly: a.uCode, setup: a.uSetup,
       nonMusical: a.uNonMusical,
       structurallyEditablePct: a.structuralPct,
