@@ -25,12 +25,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": " [3 3 4 , 5 5]/4",
-    "roll": "a played note has no source token of its own to edit",
+    "roll": "a played note does not fit inside the bar it starts in",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": " [3 3 4 , 5 7]/4",
-    "roll": "a played note has no source token of its own to edit",
+    "roll": "a played note does not fit inside the bar it starts in",
   },
   {
     "grid": "ok",
@@ -1180,7 +1180,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "<0 1>/2",
-    "roll": "a played note has no source token of its own to edit",
+    "roll": "a played note does not fit inside the bar it starts in",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
@@ -1540,7 +1540,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "an edit here would not write back the pattern as shown",
     "mini": "<F2 G2>/2",
-    "roll": "a played note has no source token of its own to edit",
+    "roll": "a played note does not fit inside the bar it starts in",
   },
   {
     "grid": "ok",
@@ -1886,7 +1886,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "an edit here would not write back the pattern as shown",
     "mini": "<a1 c2>/2",
-    "roll": "a played note has no source token of its own to edit",
+    "roll": "a played note does not fit inside the bar it starts in",
   },
   {
     "grid": "ok",
@@ -2836,7 +2836,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "[0 1 3 1 5 4]/4",
-    "roll": "a played note has no source token of its own to edit",
+    "roll": "a played note does not fit inside the bar it starts in",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",

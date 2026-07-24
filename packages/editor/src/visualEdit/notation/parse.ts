@@ -907,6 +907,8 @@ function gateReason(gate: Gate, surface: Surface): string {
       return 'the source elements do not line up with the columns the pattern plays'
     case 'no-leaf-anchor':
       return 'a played note has no source token of its own to edit'
+    case 'note-crosses-bar':
+      return 'a played note does not fit inside the bar it starts in'
     case 'edit-unsafe':
       return 'an edit here would not write back the pattern as shown'
     case 'view-unusable':
@@ -1425,8 +1427,9 @@ function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
     perBar = lcm(perBar, d)
   }
   if (perBar * bars > MAX_STEPS) return no('resolution')
-  const cols = leafAnchors(src, perCycle, perBar, bars)
-  if (cols === null) return no('no-leaf-anchor')
+  const anchored = leafAnchors(src, perCycle, perBar, bars)
+  if (!anchored.ok) return anchored
+  const cols = anchored.cols
   const model: StepGridModel = {
     steps: perBar * bars,
     ...(bars > 1 ? { bars } : {}),
@@ -1482,26 +1485,33 @@ function leafAnchors(
   perCycle: Onset[][],
   perBar: number,
   bars: number,
-): LeafAnchor[][] | null {
+): { ok: true; cols: LeafAnchor[][] } | { ok: false; gate: Gate } {
   const cols: LeafAnchor[][] = Array.from({ length: perBar * bars }, () => [])
   const seen: LeafSpan[] = []
   for (let b = 0; b < bars; b++) {
     for (const o of perCycle[b]) {
       const c = b * perBar + Math.round(o.pos * perBar)
-      if (c < 0 || c >= perBar * bars) return null
+      // an onset outside the grid it was measured for is a LAYOUT refusal, not
+      // an anchor one — kept distinct so the anchor count stays an honest
+      // measure of the write-back guard (#990)
+      if (c < 0 || c >= perBar * bars) return { ok: false, gate: 'note-crosses-bar' }
       for (let i = 0; i < o.atoms.length; i++) {
         const span = o.spans[i]
-        if (!span || src.slice(span.start, span.end) !== o.atoms[i]) return null
+        if (!span || src.slice(span.start, span.end) !== o.atoms[i]) {
+          return { ok: false, gate: 'no-leaf-anchor' }
+        }
         for (const s of seen) {
           const same = s.start === span.start && s.end === span.end
-          if (!same && s.end > span.start && span.end > s.start) return null
+          if (!same && s.end > span.start && span.end > s.start) {
+            return { ok: false, gate: 'no-leaf-anchor' }
+          }
         }
         seen.push(span)
         cols[c].push({ atom: o.atoms[i], span })
       }
     }
   }
-  return cols
+  return { ok: true, cols }
 }
 
 /**
@@ -2280,8 +2290,9 @@ function projectPianoRollByLeaf(src0: string): Projection<PianoRollModel> {
     perBar = lcm(perBar, d)
   }
   if (perBar * bars > MAX_STEPS) return no('resolution')
-  const anchors = rollAnchors(src, perCycle, perBar, bars)
-  if (anchors === null) return no('no-leaf-anchor')
+  const anchored = rollAnchors(src, perCycle, perBar, bars)
+  if (!anchored.ok) return anchored
+  const anchors = anchored.anchors
   const model: PianoRollModel = {
     steps: perBar * bars,
     ...(bars > 1 ? { bars } : {}),
@@ -2311,7 +2322,9 @@ function projectPianoRollByLeaf(src0: string): Projection<PianoRollModel> {
  *    per note, never trusted;
  *  - spans that OVERLAP without being identical: two notes claiming overlapping bytes
  *    cannot both be spliced;
- *  - a note that does not fit inside its own bar, which has no single bar to belong to.
+ *  - a note that does not fit inside its own bar, which has no single bar to belong
+ *    to — reported as its own gate, because such a note HAS a good source token and
+ *    counting it here would overstate the write-back guard (#990).
  * Sharing one span across several notes is allowed (one token sounding in every bar) —
  * the writer then requires them to AGREE on the result.
  */
@@ -2320,29 +2333,37 @@ function rollAnchors(
   perCycle: RollOnset[][],
   perBar: number,
   bars: number,
-): RollLeafAnchor[] | null {
+): { ok: true; anchors: RollLeafAnchor[] } | { ok: false; gate: Gate } {
   const out: RollLeafAnchor[] = []
   const seen: LeafSpan[] = []
   for (let b = 0; b < bars; b++) {
     for (const o of perCycle[b]) {
       const start = Math.round(o.pos * perBar)
       const duration = Math.round(o.dur * perBar)
-      if (start < 0 || duration < 1 || start + duration > perBar) return null
+      // A note that does not fit inside its own bar is a LAYOUT refusal, not an
+      // anchor one — it has a perfectly good source token, there is just no
+      // single bar to hang it on. Kept distinct so the anchor count stays an
+      // honest measure of the write-back guard (#990).
+      if (start < 0 || duration < 1 || start + duration > perBar) {
+        return { ok: false, gate: 'note-crosses-bar' }
+      }
       const span = o.loc
       // the roll case-folds note names for its row math, so compare on that footing —
       // the anchor still points at the user's own bytes, and the writer puts THOSE back
       if (!span || src.slice(span.start, span.end).toLowerCase() !== o.pitch.toLowerCase()) {
-        return null
+        return { ok: false, gate: 'no-leaf-anchor' }
       }
       for (const s of seen) {
         const same = s.start === span.start && s.end === span.end
-        if (!same && s.end > span.start && span.end > s.start) return null
+        if (!same && s.end > span.start && span.end > s.start) {
+          return { ok: false, gate: 'no-leaf-anchor' }
+        }
       }
       seen.push(span)
       out.push({ pitch: o.pitch, start: b * perBar + start, duration, span })
     }
   }
-  return out
+  return { ok: true, anchors: out }
 }
 
 /**

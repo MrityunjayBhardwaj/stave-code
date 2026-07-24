@@ -30,7 +30,7 @@
  *   4. wrong-surface is separable from the rest, because it is the bucket that
  *      must be read differently depending on who is asking (see below).
  *
- * READING `wrong-surface`. It is 62% of all refusals HERE and it is mostly not a
+ * READING `wrong-surface`. It is ~67% of all refusals HERE and it is mostly not a
  * failure: this sweep asks BOTH surfaces of every unit, so a drum pattern
  * declining the piano roll is counted, and it should be — the pattern is simply
  * not the roll's. That single fact inflated every denominator quoted off a
@@ -185,6 +185,7 @@ describe('refusal gates — a refusal names what stopped it, not who spoke first
       'unstable-period',
       'irrational-onset',
       'no-leaf-anchor',
+      'note-crosses-bar',
       'edit-unsafe',
       'view-unusable',
     ] as const) {

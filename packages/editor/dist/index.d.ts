@@ -8187,12 +8187,18 @@ interface PianoRollModel {
  *                          columns — the element writer's half of the bijection.
  *   - `no-leaf-anchor`     a played note has no source token of its own, or two
  *                          notes claim overlapping bytes — the leaf writer's half.
+ *   - `note-crosses-bar`   a played note does not fit inside the bar it starts
+ *                          in, so no column layout can hold it. Deliberately NOT
+ *                          folded into `no-leaf-anchor`: such a note has a
+ *                          perfectly good source token, and folding it in would
+ *                          overstate the write-back guard — the exact kind of
+ *                          misattribution this vocabulary exists to end.
  *   - `edit-unsafe`        the write-back probe and the engine disagreed.
  *   - `view-unusable`      the view opens but no single edit is expressible.
  *   - `not-a-pattern`      it does not reify at all; the core's own syntax
  *                          message is the better answer and is kept.
  */
-type Gate = 'wrong-surface' | 'no-note-content' | 'unstable-period' | 'mixed-pitch-domain' | 'irrational-onset' | 'resolution' | 'element-tiling' | 'no-leaf-anchor' | 'edit-unsafe' | 'view-unusable' | 'not-a-pattern';
+type Gate = 'wrong-surface' | 'no-note-content' | 'unstable-period' | 'mixed-pitch-domain' | 'irrational-onset' | 'resolution' | 'element-tiling' | 'no-leaf-anchor' | 'note-crosses-bar' | 'edit-unsafe' | 'view-unusable' | 'not-a-pattern';
 /**
  * Parse outcome. `ok: false` is a first-class result, not an exception — every
  * panel checks it on open and disables itself (code-only) when the pattern is

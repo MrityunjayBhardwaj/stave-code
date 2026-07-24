@@ -26728,6 +26728,8 @@ function gateReason(gate, surface) {
       return "the source elements do not line up with the columns the pattern plays";
     case "no-leaf-anchor":
       return "a played note has no source token of its own to edit";
+    case "note-crosses-bar":
+      return "a played note does not fit inside the bar it starts in";
     case "edit-unsafe":
       return "an edit here would not write back the pattern as shown";
     case "view-unusable":
@@ -27031,8 +27033,9 @@ function projectStepGridByLeaf(src0) {
     perBar2 = lcm(perBar2, d);
   }
   if (perBar2 * bars > MAX_STEPS) return no("resolution");
-  const cols = leafAnchors(src, perCycle, perBar2, bars);
-  if (cols === null) return no("no-leaf-anchor");
+  const anchored = leafAnchors(src, perCycle, perBar2, bars);
+  if (!anchored.ok) return anchored;
+  const cols = anchored.cols;
   const model = {
     steps: perBar2 * bars,
     ...bars > 1 ? { bars } : {},
@@ -27062,20 +27065,24 @@ function leafAnchors(src, perCycle, perBar2, bars) {
   for (let b = 0; b < bars; b++) {
     for (const o of perCycle[b]) {
       const c = b * perBar2 + Math.round(o.pos * perBar2);
-      if (c < 0 || c >= perBar2 * bars) return null;
+      if (c < 0 || c >= perBar2 * bars) return { ok: false, gate: "note-crosses-bar" };
       for (let i = 0; i < o.atoms.length; i++) {
         const span = o.spans[i];
-        if (!span || src.slice(span.start, span.end) !== o.atoms[i]) return null;
+        if (!span || src.slice(span.start, span.end) !== o.atoms[i]) {
+          return { ok: false, gate: "no-leaf-anchor" };
+        }
         for (const s of seen) {
           const same = s.start === span.start && s.end === span.end;
-          if (!same && s.end > span.start && span.end > s.start) return null;
+          if (!same && s.end > span.start && span.end > s.start) {
+            return { ok: false, gate: "no-leaf-anchor" };
+          }
         }
         seen.push(span);
         cols[c].push({ atom: o.atoms[i], span });
       }
     }
   }
-  return cols;
+  return { ok: true, cols };
 }
 __name(leafAnchors, "leafAnchors");
 function leafEditSafe(model, perBar2, bars) {
@@ -27621,8 +27628,9 @@ function projectPianoRollByLeaf(src0) {
     perBar2 = lcm(perBar2, d);
   }
   if (perBar2 * bars > MAX_STEPS) return no("resolution");
-  const anchors = rollAnchors(src, perCycle, perBar2, bars);
-  if (anchors === null) return no("no-leaf-anchor");
+  const anchored = rollAnchors(src, perCycle, perBar2, bars);
+  if (!anchored.ok) return anchored;
+  const anchors = anchored.anchors;
   const model = {
     steps: perBar2 * bars,
     ...bars > 1 ? { bars } : {},
@@ -27644,20 +27652,24 @@ function rollAnchors(src, perCycle, perBar2, bars) {
     for (const o of perCycle[b]) {
       const start = Math.round(o.pos * perBar2);
       const duration = Math.round(o.dur * perBar2);
-      if (start < 0 || duration < 1 || start + duration > perBar2) return null;
+      if (start < 0 || duration < 1 || start + duration > perBar2) {
+        return { ok: false, gate: "note-crosses-bar" };
+      }
       const span = o.loc;
       if (!span || src.slice(span.start, span.end).toLowerCase() !== o.pitch.toLowerCase()) {
-        return null;
+        return { ok: false, gate: "no-leaf-anchor" };
       }
       for (const s of seen) {
         const same = s.start === span.start && s.end === span.end;
-        if (!same && s.end > span.start && span.end > s.start) return null;
+        if (!same && s.end > span.start && span.end > s.start) {
+          return { ok: false, gate: "no-leaf-anchor" };
+        }
       }
       seen.push(span);
       out.push({ pitch: o.pitch, start: b * perBar2 + start, duration, span });
     }
   }
-  return out;
+  return { ok: true, anchors: out };
 }
 __name(rollAnchors, "rollAnchors");
 function leafRollEditSafe(model, perBar2, bars, numeric) {
