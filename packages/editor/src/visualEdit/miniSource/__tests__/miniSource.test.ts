@@ -224,3 +224,97 @@ describe('resolveMiniSource — eval proposes, and the AST still disposes', () =
     expect(r.ok && r.text).toBe('bd sd')
   })
 })
+
+describe('a binding\'s role is scoped to the unit that reads it (#1017)', () => {
+  // The corpus shape: one binding, two units, opposite roles. `ch` is the
+  // pattern source of the second unit and a control argument of the first, and
+  // it is DECLARED FIRST — which is what made the document-wide verdict
+  // dangerous, because tied candidates break on source order.
+  const twoRoles = [
+    'var ch = "[Am C G <Em F>]/8"',
+    '$: n("[0 1 <- 2> [3 <7 4>]]*2").chord(ch).voicing().sound("sawtooth")',
+    '$: chord(ch).voicing().sound("supersaw")',
+  ].join('\n')
+
+  const unitAt = (doc: string, needle: string) => {
+    const u = detectChunk(doc, doc.indexOf(needle))
+    if (!u) throw new Error(`no unit at ${needle}`)
+    return u
+  }
+
+  it('the consumer keeps its own note content, not the binding it passes along', () => {
+    const index = SpanIndex.build(twoRoles)!
+    const unit = unitAt(twoRoles, 'n("[0 1')
+    const r = resolveMiniSource(twoRoles, unit, { index })
+    expect(r.ok && r.text).toBe('[0 1 <- 2> [3 <7 4>]]*2')
+    // ASSERT THE RUNNERS-UP TOO. The wrongly-admitted span shows up in
+    // `alternatives` and nowhere else, so a test that reads only the winner
+    // passes while the rule is broken — the ranking repairs it.
+    expect(r.ok && r.alternatives).toEqual([])
+  })
+
+  it('the unit that genuinely plays the binding still resolves to it', () => {
+    const index = SpanIndex.build(twoRoles)!
+    const unit = unitAt(twoRoles, '$: chord(ch)')
+    const r = resolveMiniSource(twoRoles, unit, { index })
+    expect(r.ok && r.text).toBe('[Am C G <Em F>]/8')
+    expect(r.ok && r.crossesBinding).toBe(true)
+  })
+
+  it('the answer does not depend on which line was written first', () => {
+    const reversed = [
+      '$: n("[0 1 <- 2> [3 <7 4>]]*2").chord(ch).voicing().sound("sawtooth")',
+      'var ch = "[Am C G <Em F>]/8"',
+      '$: chord(ch).voicing().sound("supersaw")',
+    ].join('\n')
+    const index = SpanIndex.build(reversed)!
+    const r = resolveMiniSource(reversed, unitAt(reversed, 'n("[0 1'), { index })
+    expect(r.ok && r.text).toBe('[0 1 <- 2> [3 <7 4>]]*2')
+  })
+
+  it('nor on how many atoms each candidate has — the ranking must not decide it', () => {
+    // The ranking is by how many admitted spans landed in each literal, so a
+    // one-atom content beside a four-chord binding is where a document-wide
+    // verdict loses even WITH eval. Simulated here by proposing the spans eval
+    // would return for both literals.
+    const doc = 'var ch = "<Am C G Em>"\n$: n("0").chord(ch).voicing()\n$: chord(ch).voicing()'
+    const index = SpanIndex.build(doc)!
+    const chInterior = doc.indexOf('<Am C G Em>')
+    const proposals: SpanProposal[] = [
+      { span: [chInterior, chInterior + 2], via: 'eval' }, // Am
+      { span: [chInterior + 3, chInterior + 4], via: 'eval' }, // C
+      { span: [chInterior + 5, chInterior + 6], via: 'eval' }, // G
+      { span: [chInterior + 7, chInterior + 9], via: 'eval' }, // Em
+      { span: [doc.indexOf('n("0") ') + 3, doc.indexOf('n("0")') + 4], via: 'eval' }, // 0
+    ]
+    const r = resolveMiniSource(doc, unitAt(doc, 'n("0")'), { proposals, index })
+    expect(r.ok && r.text).toBe('0')
+    expect(r.ok && r.alternatives).toEqual([])
+  })
+
+  it('RED TEST: widening the question back to the whole document must fail', () => {
+    // The defect, reproduced by asking the binding about every reference in the
+    // document instead of the ones this unit can see. If this passes, the fix is
+    // not load-bearing.
+    const index = SpanIndex.build(twoRoles)!
+    const unit = unitAt(twoRoles, 'n("[0 1')
+    const wholeDoc: [number, number][] = [[0, twoRoles.length]]
+    // With the whole document as the boundary, `ch`'s head-position reference in
+    // the OTHER unit is in scope, the binding disposes as `source`, and the
+    // chord progression becomes an admissible candidate for this unit.
+    const chSpan = index.reachableRanges(unit.exprRange)
+    expect(index.roleOfSpan([twoRoles.indexOf('[Am C'), twoRoles.indexOf('[Am C') + 5], chSpan)).toBe('argument')
+    expect(index.roleOfSpan([twoRoles.indexOf('[Am C'), twoRoles.indexOf('[Am C') + 5], wholeDoc)).toBe('source')
+  })
+
+  it('a binding used both ways INSIDE one unit still resolves as source', () => {
+    // The tie-break is scoped, not deleted: losing real content is still the
+    // worse error when the ambiguity is genuinely local.
+    const local = 'var p = "bd sd"\n$: s(p).bank(p)'
+    const index = SpanIndex.build(local)!
+    const before = index.tieBreakFired
+    const r = resolveMiniSource(local, unitAt(local, 's(p)'), { index })
+    expect(r.ok && r.text).toBe('bd sd')
+    expect(index.tieBreakFired).toBeGreaterThan(before)
+  })
+})

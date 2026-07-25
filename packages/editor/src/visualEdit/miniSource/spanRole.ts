@@ -247,7 +247,7 @@ export class SpanIndex {
           const name = parent.id?.type === 'Identifier' ? parent.id.name : null
           if (!name || seen.has(name)) return 'unknown'
           seen.add(name)
-          return this.roleOfBinding(name)
+          return this.roleOfBinding(name, boundary)
         }
         case 'ExpressionStatement':
         case 'LabeledStatement':
@@ -353,16 +353,34 @@ export class SpanIndex {
    * matters: `const x = "…"` is not syntactically anybody's argument, so a
    * position-only rule keeps every bound control argument.
    *
-   * A binding used BOTH ways resolves as `source`: losing real content is the
-   * worse error of the two. That is a JUDGEMENT CALL and it is not free —
-   * measured over the corpus, 11 of 192 bindings are used both as a pattern and
-   * as a control argument — so `mixedUseBindings()` counts them and the
-   * calibration reports the number, rather than the code claiming a rarity it
-   * never checked.
+   * THE QUESTION IS SCOPED TO THE UNIT, because a role is a property of a
+   * REFERENCE and a unit only ever sees its own. Asking it of the whole document
+   * manufactures ties that do not exist locally, and the ranking then resolves
+   * them by source order: `var ch = "[Am C G <Em F>]/8"` is a pattern source in
+   * `chord(ch).voicing()` and a control argument in
+   * `n("[0 1 <- 2>…]*2").chord(ch)`, and a document-wide verdict of `source`
+   * hands the second unit the first one's chord progression as its own content —
+   * because `ch` is declared at the top of the file and the ranking breaks ties
+   * on source order. `boundary` is the unit's own expression plus the initialiser
+   * of every binding it reaches, so filtering references to it asks only about
+   * the uses this unit can actually see.
+   *
+   * A binding used both ways WITHIN one unit still resolves as `source`: losing
+   * real content is the worse error of the two. That tie-break is a JUDGEMENT
+   * CALL, so `mixedUseBindings()` reports the population it could apply to and
+   * `tieBreakFired` counts how often it actually decides — a guard believed
+   * load-bearing is a false claim about the code.
    */
-  private roleOfBinding(name: string): SpanRole {
-    const refs = this.ctx.refs.get(name) ?? []
+  private roleOfBinding(name: string, boundary: Span[]): SpanRole {
+    const all = this.ctx.refs.get(name) ?? []
+    // Fall back to every reference only when there is no boundary to scope by
+    // (`roleOfNode` called without one) — never as a way to widen the question.
+    const mine = boundary.length
+      ? all.filter((r: any) => boundary.some(([s, e]) => r.start >= s && r.end <= e))
+      : all
+    const refs = mine.length ? mine : all
     let sawArgument = false
+    let sawSource = false
     for (const ref of refs) {
       // ONE STEP, not a climb. The question a binding asks is only "is this
       // name consumed as a pattern, or as a control's argument value" — and
@@ -371,18 +389,32 @@ export class SpanIndex {
       // unit's question and (for a name used by several units) would be
       // answered against whichever statement happened to come first.
       const r = this.roleOfRef(ref)
-      if (r === 'source') return 'source'
-      if (r === 'argument') sawArgument = true
+      if (r === 'source') sawSource = true
+      else if (r === 'argument') sawArgument = true
     }
+    // Both, inside this unit: the tie-break decides, and says so out loud.
+    if (sawSource && sawArgument) this.tieBreakFired++
+    if (sawSource) return 'source'
     // No reference decided: an unused binding, or one used only in positions
     // this rule does not judge. Neither content nor a control value.
     return sawArgument ? 'argument' : 'unknown'
   }
 
   /**
-   * Bindings referenced BOTH as a pattern and as a control argument — the
-   * population where `roleOfBinding`'s tie-break decides the answer instead of
-   * the code. Reported, not assumed away.
+   * How many times the mixed-use tie-break actually DECIDED a role — a binding
+   * referenced both ways within one unit's boundary. Scoping the question to the
+   * unit is expected to make this rare or zero; if it is zero over the corpus the
+   * tie-break is DEFENSIVE, and saying so is more honest than leaving a comment
+   * claiming it carries weight.
+   */
+  tieBreakFired = 0
+
+  /**
+   * Bindings referenced BOTH as a pattern and as a control argument SOMEWHERE in
+   * the document. This is the population the tie-break could apply to, not the
+   * set it decides: `roleOfBinding` scopes the question to one unit's references,
+   * so a binding can be mixed-use document-wide and unambiguous in every unit
+   * that reads it. Compare with `tieBreakFired`, which counts the decisions.
    */
   mixedUseBindings(): string[] {
     const out: string[] = []

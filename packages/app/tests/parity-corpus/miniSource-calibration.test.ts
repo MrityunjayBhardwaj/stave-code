@@ -24,6 +24,20 @@
  * are pinned one-by-one in `miniSource.test.ts` with red-tests behind them, and
  * hand-read on the unoffered pool this file also counts.
  *
+ * ── THE DENOMINATORS, SAID OUT LOUD ───────────────────────────────────────
+ * This block once printed three figures against three different populations
+ * without naming any of them: coverage counted over the 147 documents that have
+ * units but printed against 150, exactness counted over the documents that
+ * EVALUATED, and the unoffered pool counted over all 150. A gate that quietly
+ * excludes the hard documents reads as a stronger result than it is, so each
+ * number now states the population it is over:
+ *  - coverage — every document, before any skip.
+ *  - exactness — every known-content unit in all 150 documents. The parse walk
+ *    serves the ones whose document did not evaluate; that is what a fallback
+ *    is for, and excluding them measured the easy half.
+ *  - presence — only the units in EVALUATING documents, because "is the span
+ *    among the located haps" is not a question about a document with no haps.
+ *
  * ── WHAT IS ASSERTED, AND WHY EACH ONE CAN FAIL ───────────────────────────
  *  - eval coverage: reported and floored. A sweep that silently stops reaching
  *    documents reads as a reach ceiling.
@@ -53,6 +67,7 @@ describe('miniSource calibration over 150 real tunes', () => {
 
     let evalOk = 0
     let known = 0
+    let knownEvaluating = 0
     let exact = 0
     let wrong = 0
     let refused = 0
@@ -63,14 +78,20 @@ describe('miniSource calibration over 150 real tunes', () => {
     let unoffered = 0
     let unofferedResolved = 0
     let mixedUse = 0
+    let tieBreakFired = 0
     const wrongDetail: string[] = []
 
     for (const doc of docs) {
       const units = unitsWithStatus(doc.code)
+      const ev = await evalLocations(doc.code, QUERY_CYCLES)
+      // COVERAGE IS COUNTED OVER EVERY DOCUMENT, before anything is skipped. It
+      // used to be incremented after the no-units check while still being
+      // printed against 150, which made the headline a numerator over 147 and a
+      // denominator over 150 — a document that evaluates and happens to contain
+      // no unit is still a document the harness reached.
+      if (ev.ok) evalOk++
       if (units.length === 0) continue
       const index = SpanIndex.build(doc.code)
-      const ev = await evalLocations(doc.code, QUERY_CYCLES)
-      if (ev.ok) evalOk++
       const admitted = admitProposals({ miniLocations: ev.declared, locations: ev.seen })
       undeclared += admitted.undeclared.length
       const proposals = admitted.proposals
@@ -78,17 +99,26 @@ describe('miniSource calibration over 150 real tunes', () => {
 
       for (const { unit, status } of units) {
         if (status.status === 'note' && unit.miniRange) {
-          if (!ev.ok) continue
+          // EVERY known-content unit counts, including the ones in documents
+          // that did not evaluate — the parse walk serves those, and skipping
+          // them made this gate a statement about the EASY documents while the
+          // unoffered-pool figure printed below it covered all 150.
           known++
           const truth = unit.miniRange
-          const inTruth = proposals.some((p) => p.span[0] >= truth[0] && p.span[1] <= truth[1])
-          if (inTruth) present++
-          else if (
-            proposals.some(
-              (p) => p.span[0] >= unit.statementRange[0] && p.span[1] <= unit.statementRange[1],
-            )
-          ) {
-            missWithSoundingStatement++
+          // PRESENCE, unlike exactness, is only answerable where there are
+          // proposals to be present in. It stays scoped to the evaluating
+          // documents and reports its own denominator.
+          if (ev.ok) {
+            knownEvaluating++
+            const inTruth = proposals.some((p) => p.span[0] >= truth[0] && p.span[1] <= truth[1])
+            if (inTruth) present++
+            else if (
+              proposals.some(
+                (p) => p.span[0] >= unit.statementRange[0] && p.span[1] <= unit.statementRange[1],
+              )
+            ) {
+              missWithSoundingStatement++
+            }
           }
 
           const r = resolveMiniSource(doc.code, unit, { proposals, index })
@@ -110,17 +140,19 @@ describe('miniSource calibration over 150 real tunes', () => {
           if (resolveMiniSource(doc.code, unit, { proposals, index }).ok) unofferedResolved++
         }
       }
+      tieBreakFired += index?.tieBreakFired ?? 0
     }
 
     const pct = (a: number, b: number) => ((100 * a) / b).toFixed(1)
     console.log(
       [
         `\n─── miniSource calibration (window ${QUERY_CYCLES} cycles) ───`,
-        `eval coverage      ${evalOk}/${docs.length} (${pct(evalOk, docs.length)}%)`,
+        `eval coverage      ${evalOk}/${docs.length} (${pct(evalOk, docs.length)}%)  — counted over EVERY document`,
         `undeclared spans   ${undeclared}  (coordinate-space leaks, refused by admission)`,
-        `mixed-use bindings ${mixedUse}  (used as pattern AND as control arg — the tie-break decides)`,
-        `known-content      ${known}`,
-        `  content present  ${present}/${known} (${pct(present, known)}%)`,
+        `mixed-use bindings ${mixedUse}  (used both ways SOMEWHERE in the doc — the population, not the decisions)`,
+        `  tie-break fired  ${tieBreakFired}  (times a binding was used both ways WITHIN one unit, so it actually decided)`,
+        `known-content      ${known}  over ALL ${docs.length} documents`,
+        `  content present  ${present}/${knownEvaluating} (${pct(present, knownEvaluating)}%)  — of the units in EVALUATING docs, the only ones this is answerable for`,
         `  resolved exactly ${exact}/${known} (${pct(exact, known)}%)  wrong ${wrong}  refused ${refused}`,
         `  of those exact, ${servedByParseFallback} answered by the parse fallback`,
         `unoffered pool     ${unofferedResolved}/${unoffered} (${pct(unofferedResolved, unoffered)}%) got a SPAN — not a view, not an edit`,
@@ -130,7 +162,7 @@ describe('miniSource calibration over 150 real tunes', () => {
 
     // Coverage floor — a silent drop reads as a reach ceiling, not a bug.
     expect(evalOk).toBeGreaterThanOrEqual(130)
-    expect(known).toBeGreaterThanOrEqual(480)
+    expect(known).toBeGreaterThanOrEqual(515)
     // Exactness: no wrong answers, nothing withheld.
     expect(wrong).toBe(0)
     expect(refused).toBe(0)
