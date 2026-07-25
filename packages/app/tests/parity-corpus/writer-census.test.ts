@@ -58,6 +58,7 @@ import {
   parsePianoRollCore,
   projectStepGridDerived,
   projectPianoRollDerived,
+  tailToken,
 } from '../../../editor/src/visualEdit/notation/parse'
 import type {
   ParseResult,
@@ -263,12 +264,6 @@ const SURFACES: Surface[] = [
   { key: 'roll', core: parsePianoRollCore, derived: projectPianoRollDerived, edit: ROLL_SURFACE },
 ]
 
-/** the derived chain for a surface, by the key the census rows carry */
-const derivedFor = (k: 'step' | 'roll') => (m: string) =>
-  k === 'step'
-    ? projectStepGridDerived(m, NO_CORE_REFUSAL)
-    : projectPianoRollDerived(m, NO_CORE_REFUSAL)
-
 function census(s: Surface): Ask[] {
   const out: Ask[] = []
   for (const mini of minis) {
@@ -451,9 +446,17 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // A BAND, NOT A FLOOR. This is a measurement, so a move in EITHER direction is
     // a finding and should turn this red rather than pass quietly upward.
     const why = ' — a MOVE, not a regression: re-read WRITER-CENSUS.md and update it and this number together, stating which mechanism moved'
-    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(965)
-    expect(untransferable.length, 'untransferable' + why).toBe(151)
-    expect(all.filter((r) => r.outcome === 'no-probe').length, 'unverified' + why).toBe(101)
+    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(1058)
+    expect(untransferable.length, 'untransferable' + why).toBe(57)
+    expect(all.filter((r) => r.outcome === 'no-probe').length, 'unverified' + why).toBe(102)
+
+    // THE GAIN THAT COUNTS, PINNED SEPARATELY FROM RAW REACH. #1019 moved 93 asks
+    // from "no derived view at all" to a verified transfer — but only 32 of them
+    // have more than one cell. The other 61 are a single atom: a CORRECT model of a
+    // bare instrument name and a useless surface ([[P338]] clause 2). Quoting 93 as
+    // the product gain would repeat the error this census exists to stop, so the
+    // structured count is pinned beside the total and is the one to quote.
+    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(641)
 
     // NOTHING CORRUPTS. Both derived writers refuse rather than mis-write over this
     // whole population, which is what makes the untransferable set readable as an
@@ -462,11 +465,17 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // worse than one that never opened.
     expect(all.filter((r) => r.outcome === 'view-corrupts')).toEqual([])
 
-    // THE SPLIT IS THE DELIVERABLE. 101 of the 151 are one naming hole (#1019) and
-    // 50 are candidate structural bounds. Pinned separately so closing #1019 shows
-    // up HERE as the untransferable set shrinking to 50, rather than as a total
-    // that moved for an unstated reason.
-    expect(untransferable.filter((r) => r.arrayValue).length).toBe(101)
+    // THE SPLIT IS THE DELIVERABLE, AND #1019 HAS NOW LANDED ON IT. It was 101
+    // naming hole / 50 candidate structural; naming the `:`-variant took the first
+    // column to 7 and left the second EXACTLY where it was. That the structural
+    // column did not move is the load-bearing half of this assertion: a fix that
+    // also moved it would mean the two classes were never independent, and the
+    // whole hole-versus-bound split would need re-deriving.
+    //
+    // The 7 that remain play an array value AND have a second, real blocker (six
+    // `,`-stacks with no leaf anchor, one past the period cap) — so they are
+    // structural residual that happens to contain a `:`, not naming failures.
+    expect(untransferable.filter((r) => r.arrayValue).length).toBe(7)
     expect(untransferable.filter((r) => !r.arrayValue).length).toBe(50)
 
     // THE NUMBER P6 IS SCOPED AGAINST, and it is a CONJUNCTION. "46 have a
@@ -528,48 +537,79 @@ describe('writer census — how much of the syntactic core transfers to the deri
       expect(rollBlockedByItsOwnCap).toBe(20)
     }, 900_000)
 
-    it('the word:index asks are blocked by the VALUE SHAPE, proven by rewrite with a control arm', () => {
-      // THE EXPERIMENT: rewrite `word:index` to a nameable single token and re-ask
-      // the real writers. If the verdict flips, the unnameable ARRAY value was the
-      // blocker rather than anything about the notation's structure.
+    it('naming a `:`-variant is the exact INVERSE of krill lowering it, and the whole tail is load-bearing', () => {
+      // THE MECHANISM, ASSERTED AFTER THE FIX. Before #1019 the evidence was a
+      // rewrite experiment — turn `word:index` into `word_index`, watch the verdict
+      // flip. That experiment cannot outlive the fix, because the rows it filtered
+      // are no longer refused. So the claim it stood for is asserted directly:
+      // joining krill's array value on `:` reconstructs the token it was lowered
+      // FROM, which is what makes the token safe to write back verbatim.
       //
-      // Scoped honestly: a PATTERNED index (`gm_bird_tweet:<0 1 2 3>`) is reported
-      // out of scope rather than rewritten into something else's meaning.
-      const rewrite = (m: string) => m.replace(/([A-Za-z_][A-Za-z0-9_]*):(\d+)/g, '$1_$2')
-      const rows = [...grid, ...roll].filter((r) => r.outcome === 'no-view' && r.arrayValue)
-      let flips = 0
-      let stays = 0
-      let outOfScope = 0
-      for (const r of rows) {
-        const m = rewrite(r.mini)
-        if (/:/.test(m)) {
-          outOfScope++
-          continue
+      // GROUNDED, not inferred: `tail` is the only op that builds an array value and
+      // it ACCRETES (`@strudel/mini/mini.mjs:50-52` —
+      // `Array.isArray(a) ? [...a, b] : [a, b]`).
+      const played = (src: string): unknown[] => {
+        try {
+          return (src === '' ? [] : (reifyMini(src) as { queryArc(a: number, b: number): { value: unknown }[] }).queryArc(0, 1))
+        } catch {
+          return []
         }
-        if (derivedFor(r.surface)(m).ok) flips++
-        else stays++
       }
-
-      // THE CONTROL ARM, and it is part of the experiment rather than an extra: the
-      // same rewrite on asks it does not textually touch must open NONE of them.
-      // Without it, "the rewrite opens views" is consistent with the rewrite itself
-      // being what helps, and the claim about the value shape would be unfounded.
-      let controlFlips = 0
-      for (const r of structural) {
-        if (rewrite(r.mini) !== r.mini) continue
-        if (derivedFor(r.surface)(r.mini).ok) controlFlips++
+      let checked = 0
+      let headWouldBeWrong = 0
+      const wrong: string[] = []
+      for (const m of minis) {
+        for (const h of played(m)) {
+          const v = (h as { value: unknown }).value
+          if (!Array.isArray(v)) continue
+          const token = tailToken(v)
+          if (token === null) {
+            wrong.push(`unnameable array value in ${JSON.stringify(m)}: ${JSON.stringify(v)}`)
+            continue
+          }
+          checked++
+          // Re-reify the reconstructed token ON ITS OWN and require the SAME value
+          // back. This is the round trip the write-back depends on.
+          const back = played(token).map((x) => (x as { value: unknown }).value)
+          if (back.length !== 1 || JSON.stringify(back[0]) !== JSON.stringify(v)) {
+            wrong.push(`${JSON.stringify(m)}: ${JSON.stringify(v)} named ${JSON.stringify(token)} re-plays ${JSON.stringify(back)}`)
+          }
+          // THE RED TEST, run as arithmetic rather than by breaking the source: a
+          // `v[0] + ':' + v[1]` naming — the shape the reference notes described,
+          // and the one I would have written from memory — silently drops the tail.
+          if (v.length > 2) headWouldBeWrong++
+        }
       }
+      console.log(`\n  ':'-variant naming: ${checked} array values round-tripped, ${wrong.length} wrong; head-only naming would corrupt ${headWouldBeWrong}`)
+      expect(wrong.slice(0, 5), wrong.slice(0, 5).join('\n')).toEqual([])
+      // The corpus must actually EXERCISE this, or the assertion above is vacuous.
+      expect(checked).toBeGreaterThan(300)
+      // And the join must be doing real work: if this is ever 0, the corpus stopped
+      // covering 3-member variants (`sd:0:0.5`) and the round trip above would pass
+      // for a head-only naming too — the assertion would still be green and would
+      // no longer be evidence for anything.
+      expect(headWouldBeWrong).toBeGreaterThan(0)
+    }, 900_000)
 
-      console.log(
-        `\n  word:index rewrite — ${flips} flip open, ${stays} have a second blocker, ` +
-          `${outOfScope} out of scope (patterned index); control arm opened ${controlFlips}`,
+    it('the 7 remaining array-value asks are held by a SECOND blocker, not by naming', () => {
+      // The counterpart to the test above, and the reason the residual can still be
+      // called structural: every untransferable ask that still plays a `:`-variant
+      // must be stopped by a gate that has nothing to do with naming. If one ever
+      // shows up refused for want of note content again, the naming regressed.
+      const rows = [...grid, ...roll].filter(
+        (r) => (r.outcome === 'no-view' || r.outcome === 'view-corrupts') && r.arrayValue,
       )
-      expect(flips).toBe(92)
-      expect(stays).toBe(1)
-      expect(outOfScope).toBe(8)
-      // If the control arm ever opens anything, the rewrite is doing the work and
-      // the mechanism claim is void.
-      expect(controlFlips).toBe(0)
+      console.log(
+        `\n  array-value asks still untransferable (${rows.length}):\n` +
+          rows.map((r) => `     ${r.surface}  ${r.gate}  ${JSON.stringify(r.mini).slice(0, 70)}`).join('\n'),
+      )
+      expect(rows.length).toBe(7)
+      expect(rows.filter((r) => r.gate === 'no-note-content')).toEqual([])
+      // six `,`-stacks with no leaf anchor, one past the period cap — both are the
+      // SAME bounds the non-array residual is made of, which is what makes these
+      // structural residual that happens to contain a `:` rather than naming misses.
+      expect(rows.filter((r) => r.gate === 'no-leaf-anchor').length).toBe(6)
+      expect(rows.filter((r) => r.gate === 'unstable-period').length).toBe(1)
     }, 900_000)
 
     it('the census population IS the population the shipped path serves via the core', () => {
@@ -625,7 +665,17 @@ describe('writer census — how much of the syntactic core transfers to the deri
         }
       }
       console.log(`\n  asks where the two writers' probes DISAGREE: ${disagree}`)
-      expect(disagree).toBeGreaterThan(100)
+      // THE THRESHOLD MOVED WITH #1019, AND DOWNWARD IS THE EXPECTED DIRECTION.
+      // It was >100 when 101 asks were untransferable purely because the derived
+      // projection could not name a `:`-variant — much of that "disagreement" was
+      // the naming hole, not a real difference between the writers. Naming it
+      // removed 93 of those disagreements and the figure fell to 63.
+      //
+      // The test's PURPOSE is unchanged and still met: the two writers must not be
+      // the same measurement twice. 63 genuine disagreements over 1217 asks is that
+      // proof, and the bound is re-pinned rather than deleted so a future change
+      // that collapses the counterfactual entirely still turns this red.
+      expect(disagree).toBeGreaterThan(50)
     }, 900_000)
   })
 })

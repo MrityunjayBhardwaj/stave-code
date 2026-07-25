@@ -1088,6 +1088,44 @@ function leafLoc(h: {
   return { start: l.start - 1, end: l.end - 1 }
 }
 
+/**
+ * The source text a hap's `:`-variant value was written as (#1019).
+ *
+ * krill lowers `bd:3` to the ARRAY `["bd", 3]` — NOT a string and NOT the `{s,n}`
+ * object our readers were first written against, which only appears once a CONTROL
+ * has resolved it (`s("bd:3")`). A bare mini string — exactly what `parseStepGrid`
+ * and `parsePianoRoll` receive — never produces that object.
+ *
+ * Joining on `:` is not a new rule, it is the exact inverse of the ONE construction
+ * path: the `tail` op is the only thing that builds an array value, and it ACCRETES
+ * (`@strudel/mini/mini.mjs:50-52` — `Array.isArray(a) ? [...a, b] : [a, b]`), so
+ * `bd:3:0.5` arrives as `["bd", 3, 0.5]` and rejoins to its own source text. That is
+ * what makes the token safe to write straight back out, since `cellToken` emits
+ * atoms verbatim.
+ *
+ * Members can be strings as well as numbers — `piano:x:.5` is real corpus notation,
+ * so this is not an integer-index rule.
+ *
+ * Returns null for any array that is not that shape, so an unfamiliar value is
+ * REFUSED rather than stringified into something that would not re-parse.
+ *
+ * BOTH guards are DEFENSIVE, measured rather than assumed: over the 10183
+ * array-valued haps the corpus plays across a 24-cycle window, **0** are shorter
+ * than 2 members and **0** carry a non-scalar member. That follows from the
+ * construction — `tail` seeds at `[a, b]` and only ever appends — so neither can
+ * occur today. They are kept because the failure they prevent is silent: joining an
+ * unexpected member would emit `[object Object]` into the document, and a guard
+ * whose absence would be invisible is exactly the one to keep after measuring that
+ * it does not fire. What is NOT defensive is the `join` covering the whole array:
+ * 1372 of those haps have three members, so a `v[0] + ':' + v[1]` naming would
+ * silently truncate `sd:0:0.5` to `sd:0`.
+ */
+export function tailToken(v: unknown[]): string | null {
+  if (v.length < 2) return null
+  if (!v.every((p) => typeof p === 'string' || typeof p === 'number')) return null
+  return v.join(':')
+}
+
 export interface Onset {
   pos: number
   atoms: string[]
@@ -1135,13 +1173,23 @@ function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
     if (!(h.hasOnset?.() ?? false) || !h.whole) continue
     // A bare mini string reifies to raw token VALUES (`"bd"`), not superdough
     // params — that is what `parseStepGrid` receives (the inner string of
-    // `s("…")`). Accept both: a string token, or an `{s,n}` object if a caller
-    // ever reifies in sound context.
-    const v = h.value as string | number | { s?: unknown; n?: unknown } | null
+    // `s("…")`). THREE shapes arrive, not two: a string token, a number, and an
+    // ARRAY for a `:`-variant (`bd:3` → `["bd", 3]`). The `{s,n}` object is a
+    // fourth, and only a CONTROL produces it (`s("bd:3")`) — a bare mini never
+    // does, so that branch is for callers reifying in sound context.
+    const v = h.value as string | number | unknown[] | { s?: unknown; n?: unknown } | null
     let token: string
     if (typeof v === 'string') token = v
     else if (typeof v === 'number') return no('wrong-surface') // a pitch, not a sound
-    else if (v && typeof v === 'object' && typeof v.s === 'string') {
+    else if (Array.isArray(v)) {
+      // a `:`-variant — krill's ARRAY value (#1019). Checked BEFORE the object
+      // branch, because `typeof [] === 'object'` and an array has no `.s`, so it
+      // used to fall through to `no-note-content` and take the whole pattern with
+      // it: every `bd:3` in the corpus was invisible to both derived projections.
+      const t = tailToken(v)
+      if (t === null) return no('no-note-content')
+      token = t
+    } else if (v && typeof v === 'object' && typeof v.s === 'string') {
       token = v.s + (v.n != null ? ':' + String(v.n) : '')
     } else return no('no-note-content')
     if (NUMERIC.test(token)) return no('wrong-surface') // a bare number is the roll's
@@ -2133,17 +2181,31 @@ function readRollOnsets(pat: unknown, cyc: number): Read<RollOnset[]> {
     if (typeof v === 'number' && Number.isFinite(v)) {
       pitch = String(v)
       numeric = true
-    } else if (typeof v === 'string') {
-      if (NUMERIC.test(v)) {
-        pitch = v
+    } else {
+      // A `:`-variant arrives as krill's ARRAY (`["bd", 3]`, #1019). Rejoined to its
+      // own source text and judged as the token it was WRITTEN as — which for the
+      // roll is a reclassification, not new reach, and deliberately so:
+      //   `bd:3` is a sound with a sample index — the grid's surface.
+      //   `c4:2` is a pitch the roll still cannot serve, because its write-back
+      //          replaces the leaf span and has nowhere to carry the `:2`; opening
+      //          it would silently drop the index, and a view that opens and
+      //          corrupts is worse than one that never opened.
+      // `pitchToMidi` is fully anchored, so BOTH land in `wrong-surface` below.
+      // Before #1019 both were reported as `no-note-content` — "this pattern plays
+      // nothing placeable" said about a pattern that plays perfectly well, which is
+      // the same conflation #990 split the two reasons apart to stop.
+      const s = typeof v === 'string' ? v : Array.isArray(v) ? tailToken(v) : null
+      if (s === null) return no('no-note-content') // params / a signal has no note to place
+      if (NUMERIC.test(s)) {
+        pitch = s
         numeric = true
-      } else if (pitchToMidi(v.toLowerCase()) !== null) {
+      } else if (pitchToMidi(s.toLowerCase()) !== null) {
         // fold case like the core does — the row math is case-blind, and the
         // convention has no business riding back out into the document
-        pitch = v.toLowerCase()
+        pitch = s.toLowerCase()
         numeric = false
       } else return no('wrong-surface') // a sound token — the grid's, not the roll's
-    } else return no('no-note-content') // params / a signal value has no note to place
+    }
     const pos = h.whole.begin.valueOf() - cyc
     const dur = h.whole.end.valueOf() - h.whole.begin.valueOf()
     if (dur <= 0) return no('no-note-content')

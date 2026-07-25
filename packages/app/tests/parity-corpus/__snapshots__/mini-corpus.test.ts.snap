@@ -123,9 +123,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern does not repeat within 4 bars",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "- [misc:5*2 -]",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "an onset does not land on any step column",
@@ -175,7 +175,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "- sd:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -1008,14 +1008,14 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "< [~ ~ passerine_snare:1 ~] [~ ~ passerine_snare:1 [~ ~ passerine_rimshot:4 passerine_rimshot:3]] >",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "< passerine_basse:2 [~ passerine_basse:2 passerine_basse:2 ~ ~ ~ passerine_basse:3 ~] >",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -1065,7 +1065,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<- cp:1>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "nothing in this view could be edited on its own",
@@ -1078,9 +1078,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "<- sd:10>*4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -1123,9 +1123,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays no placeable notes",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "<-@7 [- - [sd:0:0.5(5,8,<0!2 1!2>)]@2]>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
@@ -1718,9 +1718,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern needs more than 64 steps",
     "mini": "<[[bd:2 bd:2] - [sd:2, sd:1] [bd bd] <-> <[bd, oh] bd!5> <- [sd:2, sd:1]> <sd:2*<1 1 2> ->]>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -1919,12 +1919,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "<bd <-@4 bd> -@5 bd cp:2@6 <bd - -> <- bd>>*16",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "<bd <-@6 bd> -@5 bd cp:2@6 <bd - -> <- bd>>*16",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -1939,7 +1939,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "<bd [hh hh] [rim rim] [hh hh] bd [hh bd] rim [hh hh], jazz jazz - jazz, [casio:1 casio:4] - - casio:1 casio:2 - [casio:1 casio:3], casio:5 -- casio:5 casio:5 -,- - - east - - - [east east] >*10",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -1954,7 +1954,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "<bd bd [bd ~ east:1] [bd bd]> * 4, <~ sd ~ sd> * 4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -1994,7 +1994,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "<bd*4, sd:3(2,4)>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -2004,14 +2004,14 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "<bd:0*<<4 1!8 4> 4 1!4 4>>/2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "<bd:1*<1 2 2 [2 4]> ->, [- sd:1:.5]",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "nothing in this view could be edited on its own",
@@ -2026,7 +2026,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<bigb:2 bigb:1>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -2161,7 +2161,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<ethnic_st:2!3 ethnic_st:1>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -2184,7 +2184,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "<fm2,e2[bm2,d#2:3],am2>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -2194,14 +2194,14 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "<fx:1*<1>>/2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "<fx:1>/4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "the pattern needs more than 64 steps",
@@ -2229,14 +2229,14 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "<gm_bird_tweet:<0 1 2 3>>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "<gm_distortion_guitar:4> <pipe_organ_loud:1>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -2249,7 +2249,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "<gm_reed_organ@10 gm_church_organ:1@4 ~@2>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -2264,14 +2264,14 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "<gtr_cru:<0 1 2 3 4 <5 6>>>/4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "<gtr_vib:<0 1 2 3 0 <5 6>>>/4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "the pattern needs more than 64 steps",
@@ -2306,7 +2306,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<lp:1!8 - lp:11!8>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -2329,9 +2329,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "<rd:1 -@3> -@3, bd:1 bd:1 sd:1 bd:0 sd:1 stick:<2 3> bd:0 hh:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -2394,9 +2394,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "<st:4 st:6>/4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -2661,7 +2661,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "LinnDrum_hh:0:.3",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -2711,7 +2711,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "YamahaRY30_bd:2*4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
@@ -2796,7 +2796,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[- oh:4]*4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -3149,7 +3149,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern does not repeat within 4 bars",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "[[bd bd cp hh*2] | [bd:2 ~ hh lt:2] | [[hh,bd:3] hh:2 hh cp]]",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -3164,7 +3164,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "[[hh*<2!2 [2|[8 4]] 2>,<- sd:1>] <oh!2 hh*2 oh>]*4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -3186,7 +3186,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[a3:0.7 a3:0.3] ~ [a3:0.7 a3:0.3] ~",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -3244,12 +3244,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "[bd <bd ~> hh ~ cp ~ bd ~  hh:4 bd <cp oh> ~ sd ~ hh:3 hh], [hh oh:2]*1",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "[bd <bd ~> hh ~ cp ~ bd ~  hh:4 bd <cp oh> ~ sd ~ hh:3 hh], [hh oh:2]*4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -3284,7 +3284,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "[bd rim:1 [~ bd] rim:2]*2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -3314,7 +3314,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "an onset does not land on any step column",
     "mini": "[bd*<1 3> -@3] bd,- [rim@0.02 cp], [- hh:<0 1>:.9]*2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -3324,9 +3324,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "[bd:<1 0!3> hh rim bd hh rim rim*[2|4] bd],[hh hh oh -]*2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -3334,7 +3334,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "[bd@4 bd] cp:3:1, hh*8:.1:0.6",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -3441,7 +3441,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[drumloop_170:2 drumloop_170:6 drumloop_170:2 drumloop_170:6 ]",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -3569,9 +3569,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "[rd:<0 1> [[hh,rd:<1 2>:.5] - rd:0:.4?]]*2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -3636,7 +3636,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[~ sd:16]*2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -3794,9 +3794,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "amen:1/4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -3836,12 +3836,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "bassdrum1:3",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "bassloop2:4/2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -3919,7 +3919,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "bd [~@3 bd:0:.5?],~@1.02 [sd,rim],hh*4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4054,12 +4054,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "bd hh*32 rim hh*16 siren:1 <clap clap>*8",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "bd hh:<1 2>:.5 - bd - - bd -",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4209,7 +4209,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "bd(10,16)/2, hh(6,8)*2:0:[[.25 .75]*4],[- sd]*2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4314,12 +4314,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "bd*4,- [sd*<1 2> -], - oh:<0 1>:.3, [- cp:0:.4?]*2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "bd*4,[clap:0:0.5 clap:0:0.9](7,16), hh(4,8,1), [- [- sd:0:0.5] -]*4, -!3 sd(2,4,1)",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4344,7 +4344,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "bd, [- - [sd:1]]",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4361,62 +4361,62 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "bd:1 -, - [sd:1:.6 -]",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "bd:1 <~ ~ bd:1> ~ ~ ~ ~ ~ ~",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "bd:1 sd:1 bd:1 sax:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "bd:15*2  ~ alesishr16_perc:<1 2 6 8>*<2 4 >@4 ",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "bd:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "bd:2*<4!7 8>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "bd:3",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "bd:3(<4!7 <3 6>>,12)",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "an onset does not land on any step column",
     "mini": "bd:4 [sd . ~ bd:4] [~ cp] hh(3,8)",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "bd:6(3,8) -",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "bd:<20 ~ 11> tambourine:<1 2 3 4> agogo:<1 2 3 4>< [5 6 7 8 9]>*4  east:<1 4>< 2 4>< 5 6> space:<1 2 3 4>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "the pattern does not repeat within 12 bars",
@@ -4456,7 +4456,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "bigb:5",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -4484,24 +4484,24 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "breaks:2/2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "breaks:5/2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "breaks:8/2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "breaks:[[0|1|2|3|4|5|6|7]*8]/4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -4761,12 +4761,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "casio:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "casio:3",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -4781,17 +4781,17 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "chap:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "charli:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "charli:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -4811,7 +4811,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "clap:1, clap:7",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5169,9 +5169,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "fungi:<6!2 <1 <1 2>> <3 5>>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5227,12 +5227,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "glasstap:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "glitch:7",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5242,12 +5242,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_accordion:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "gm_accordion:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5257,12 +5257,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_acoustic_bass:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "gm_acoustic_bass:5",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5292,7 +5292,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_bassoon:0",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5302,12 +5302,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_celesta:3",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "gm_celesta:4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5332,7 +5332,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_church_organ:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5352,7 +5352,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_distortion_guitar:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5362,7 +5362,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_drawbar_organ:4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5377,12 +5377,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_electric_bass_finger:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "gm_electric_bass_finger:3",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5392,7 +5392,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_electric_bass_pick:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5407,7 +5407,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_electric_guitar_clean:4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5447,12 +5447,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_epiano1:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "gm_epiano1:4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5507,7 +5507,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_fx_crystal:5",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5532,7 +5532,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_harpsichord:3",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5587,7 +5587,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_oboe:4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5612,7 +5612,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_pad_bowed:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5662,7 +5662,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_piano:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5677,12 +5677,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_rock_organ:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "gm_rock_organ:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5702,7 +5702,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_slap_bass_1:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5722,7 +5722,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_synth_bass_1:6",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5732,12 +5732,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_synth_bass_2:0",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "gm_synth_bass_2:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5747,7 +5747,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_synth_brass_1:3",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5777,27 +5777,27 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_synth_strings_1:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "gm_synth_strings_1:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "gm_synth_strings_2:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "gm_synth_strings_2:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "gm_taiko_drum:1*4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5852,7 +5852,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_violin:6",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5877,7 +5877,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gong:1 agogo:2 marktrees:1 bassdrum1:3",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5887,7 +5887,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "great:8",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5917,7 +5917,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "hats:12",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6097,27 +6097,27 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "hh:1 ~ sd:1 ~",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "hh:1*4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "hh:1*8",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "hh:3(2,3,1)*4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "hh:3:.2*<8!24 16!16>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6147,7 +6147,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "insect:2 [insect:2]",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6155,9 +6155,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "jazz:<[8 2 ][<8 9>][<  3>][<2 21>]>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6177,7 +6177,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "laugh:7",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6205,9 +6205,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "lp:6/4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6272,7 +6272,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "noise:4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6387,27 +6387,27 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "passerine_acc:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "passerine_acc:4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "passerine_acc:5",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "passerine_hihat:4*16",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "passerine_kick:5, passerine_basse:5 ",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6417,12 +6417,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "perc:0(3,12,3)",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "perc:2(7,12,3)",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6487,12 +6487,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "pulse:.3",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "pulse:[0.3 0.5 0.7 0.2]",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6510,24 +6510,24 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "rd:<0 1 2 3 4>*2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "rd:<1 3 2>*2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "rd:<1!3 2>*2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "rd:<2 3 1>*2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6637,22 +6637,22 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "sawtooth:0:.8",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "sawtooth:<1 3 5 7 9 13>, brown:<2 4 6 7 2>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "sawtooth:<13 17 19>,<1 3 5 7>, <11 7 4>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "sax:2 sax:3 sax:1 saxello:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6680,7 +6680,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "sd hh:[1|0]",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -6700,14 +6700,14 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "sd:3(<2!3 3>,12,3)",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "sd:4/2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6717,7 +6717,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "sh:1!4 sh:0!2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6725,9 +6725,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "short:[[0|1|2|3|4|5|6|7]*160]/4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6777,7 +6777,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "siren:1*4 - siren:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6785,9 +6785,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "space:1*[1|3|5|7|9|11|13|15|17|19] hh",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6805,7 +6805,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern needs more than 64 steps",
     "mini": "square gm_pizzicato_strings <gm_kalimba:<1 2 3 4 5 6>>*4 gm_pad_bowed:<1 2 3 4>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -6872,7 +6872,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "supersaw:4 ~ supersaw:7 supersaw:11",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6882,17 +6882,17 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "swpad:0",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "swpad:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "swpad:<0@2 8@2 6@2 7@2 4@2>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6907,7 +6907,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "tech:5",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6972,7 +6972,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "trial:0:.4",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -6990,9 +6990,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "triangle:<1 2 3 4 5>,<6 4 2 1 2 7>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -7037,7 +7037,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "viscospacedrum_misc:3",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -7097,12 +7097,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "wind:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "wind:2",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -7305,7 +7305,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern does not repeat within 4 bars",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "an onset does not land on any step column",
     "mini": "~ <sd [sd sd:1@15]>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -7315,12 +7315,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "~ [rim, sd:<1 3>]",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "~ [rim, sd:<2 3>]",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -7420,9 +7420,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "~ sd:[<1 3>/16]",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -7430,9 +7430,9 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays no placeable notes",
+    "grid": "ok",
     "mini": "~ ~  ~ ~ <~ <~ jazz:4>>",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
@@ -7472,7 +7472,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "~ ~ ~ cp:1",
-    "roll": "the pattern plays no placeable notes",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",

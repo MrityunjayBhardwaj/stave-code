@@ -34,43 +34,123 @@ to `writer-reach`'s complement so the two gates cannot drift apart silently.
 
 ## The result
 
-| outcome | asks | of 1217 |
-|---|---|---|
-| **transfers** — a derived writer opens it AND the edit survives the engine | **965** | 79.3% |
-| **untransferable** — no derived view, or the view corrupts | **151** | 12.4% |
-| **unverified** — opened, but no clean single-note delete probe exists | **101** | 8.3% |
+> **Updated after #1019 and #1021 landed.** The figures below are post-fix. Where a
+> number moved, the pre-fix value is given beside it, because the *movement* is the
+> finding — see "What #1019 actually bought" below.
 
-- Transfers by writer: **934 element / 31 leaf**.
-- **Zero asks corrupt** on either surface. Both derived writers refuse rather than
-  mis-write over this entire population, which is what makes the untransferable set
-  readable as an *admission* result and not a fidelity one.
+| outcome | asks | of 1217 | was |
+|---|---|---|---|
+| **transfers** — a derived writer opens it AND the edit survives the engine | **1058** | 86.9% | 965 |
+| **untransferable** — no derived view, or the view corrupts | **57** | 4.7% | 151 |
+| **unverified** — opened, but no clean single-note delete probe exists | **102** | 8.4% | 101 |
+
+Per surface: grid **713 / 803 = 88.8%**, roll **345 / 414 = 83.3%**.
+
+- Transfers by writer: **1027 element / 31 leaf**. The entire gain is the element
+  writer on the grid; the leaf writer's 31 did not move.
+- **Zero asks corrupt** on either surface — still true after the fix, and it was the
+  must-not for it. Both derived writers refuse rather than mis-write over this entire
+  population, which is what makes the untransferable set readable as an *admission*
+  result and not a fidelity one.
 - **14 transfers change the view's shape** (10 grid / 4 roll) — reach moves, no verdict
-  moves, and the user sees a different grid. Enumerated in the test output.
-- The 151 untransferable asks sit behind **146 distinct minis**.
+  moves, and the user sees a different grid. Unchanged by the fix.
+- The 57 untransferable asks sit behind **52 distinct minis** (was 151 / 146).
+- **Additive per unit, verified row by row rather than netted:** across all 1217 asks,
+  **0 went from a better outcome to a worse one**. The 94 that moved went
+  `no-view → transfers` (93) and `no-view → no-probe` (1).
 
-### The 151 split into a hole and a bound — and the hole is most of it
+### The 151 split into a hole and a bound — the hole was most of it, and it is now closed
 
-| | asks | |
+| | asks | now |
 |---|---|---|
-| a `word:index` naming hole (**#1019**) | **101** | not structural — one function |
-| candidate structural bound | **50** | |
+| a `word:index` naming hole (**#1019**) | 101 | **7** |
+| candidate structural bound | 50 | **50** |
 
-**#1019.** krill lowers `bd:3` to the array value `["bd", 3]`. `readGridOnsets` names a
-`string`, a `number` and an `{s, n}` object, and falls through to `no-note-content` for
-the array — so every `:`-variant is invisible to both derived projections. The core
-parses `:` itself and answers first, so nothing looks broken today.
+**#1019, and why the structural column not moving is the load-bearing half.** krill
+lowers `bd:3` to the array value `["bd", 3]`. `readGridOnsets` named a `string`, a
+`number` and an `{s, n}` object, and fell through to `no-note-content` for the array —
+so every `:`-variant was invisible to both derived projections. The core parses `:`
+itself and answers first, so nothing looked broken.
 
-Proven by rewriting `word:index` → `word_index` and re-asking the real writers:
-**92 flip straight to open**, 1 has a second real blocker, 8 are out of scope (a
-*patterned* index, `gm_bird_tweet:<0 1 2 3>`). Control arm — the same rewrite on the
-asks it does not textually touch — opens **0**, so the experiment is about the value
-shape and not the rewrite.
+The fix rejoins the array to its own source text. That is not a new rule: `tail` is the
+**only** op that builds an array value and it *accretes*
+(`@strudel/mini/mini.mjs:50-52` — `Array.isArray(a) ? [...a, b] : [a, b]`), so joining
+on `:` is the exact inverse of the one construction path, and `cellToken` can write the
+token straight back out.
 
-> **Live cost is 20 asks, not 205.** An earlier reading of this counted every ask whose
-> mini *contains* an array value and no writer opens (234) and attributed them all to
-> the hole. The rewrite experiment says **20** of the asks no writer opens today are
-> actually recovered by naming the variant. Co-occurrence is not cause; the 205 figure
-> should not be quoted.
+The naming column fell 101 → **7** and the structural column stayed at **exactly 50**.
+A fix that had also moved the second column would have meant the two classes were never
+independent and the whole hole-versus-bound split needed re-deriving.
+
+The 7 that remain play a `:`-variant *and* have a second, real blocker — six `,`-stacks
+with no leaf anchor, one past the period cap. They are structural residual that happens
+to contain a `:`, and the gate asserts that none of them is refused for note content.
+
+> **The tail is load-bearing, and the reference notes were wrong about it.** The array
+> was documented as a two-element pair. It is not: `sd:0:0.5` arrives as
+> `["sd", 0, 0.5]`, and **1372 of the corpus's array-valued haps have three members**. A
+> `v[0] + ':' + v[1]` naming — the one that follows from the notes — would have written
+> `sd:0` back into the document and silently dropped the gain. Members can also be
+> non-numeric (`piano:x:.5`), so the join accepts strings as well as numbers.
+
+> **Correction to the pre-fix write-up.** The 8 asks this document previously called
+> "out of scope (a *patterned* index, `gm_bird_tweet:<0 1 2 3>`)" were **not patterned
+> indices — not one of them**. They were decimal-tail forms — `LinnDrum_hh:0:.3`,
+> `pulse:.3`, `sawtooth:0:.8`, `trial:0:.4`, `gm_epiano1 piano:x:.5`, and three
+> `,`-stacks — which the rewrite regex `(\w+):(\d+)` left a stray `:` in, so the
+> experiment scored them as unscoreable rather than as failures. Five of the eight
+> transfer under the real fix, precisely because it joins the whole tail instead of
+> pattern-matching an integer index.
+
+---
+
+## What #1019 actually bought — and the instrument that hid it
+
+**93 asks moved from "no derived view at all" to a verified transfer.** All on the grid,
+all answered by the element writer, all showing the same shape the core showed, none
+corrupting.
+
+**Of those 93, only 32 have more than one cell.** The other 61 are a single atom — a
+correct model of a bare instrument name, and a useless surface. Structured transfers
+overall went **609 → 641**, and *that* is the product-facing number. The raw 93 should
+not be quoted as reach.
+
+Three figures have been attached to this hole at different times. Only the last is a
+transfer count:
+
+| figure | what it actually counted |
+|---|---|
+| 205 | asks whose mini *contains* an array value and that no writer opens — co-occurrence |
+| 92 | asks whose *view opens* after a text rewrite — a parse result, never an edit result |
+| **93 / 32** | **asks that gained a verified transfer / of those, the ones with structure** |
+
+### The measurement was suppressed by a copy of the bug it was measuring (#1021)
+
+With only the reader fixed, the census reported transfers **unchanged at exactly 965**,
+and all 94 newly-opened asks landed in `no-probe` with reason `no-readable-haps`.
+
+That was not a fact about the projections. `atomOf` in `engineEditOracle.ts` named a
+played atom from a number, a string, or an object with `.s`/`.note`/`.n` — and an array
+is an object with none of those, so it returned `null`, which `enginePlayedCycle` reads
+as "this whole mini is unreadable". **The instrument carried the identical naming hole
+it had been built to measure**, and it had been passing all of its own assertions.
+
+The oracle now names the array through the readers' own `tailToken`, imported rather
+than reimplemented, so there is one rule instead of two. Only then did transfers move
+off 965.
+
+The lesson is narrower and sharper than "test your tests": a `no-probe` bucket is a
+claim about the *model*, and it silently became a claim about the *oracle*. Any reason
+code that can be produced by the instrument's own limits needs a check that it is not.
+
+### Still open: `no-readable-haps` conflates two different facts
+
+Nine asks still report it, and none of them is a naming failure — they are alternations
+that are **silent in the probed cycle** (`<- cp:1>`, `<~ sd ~ sd ~>`, `<- c5>`). The
+probe reads one cycle, sees no onsets, and reports the same reason it uses for an
+unnameable value. "Plays nothing here" and "plays something I cannot name" are different
+facts and should not share a label. Pre-existing, not introduced here, and filed
+separately.
 
 ---
 
@@ -213,6 +293,14 @@ not one bound but a stack of four, three of which have a named owner:
 lanes + irrational onsets) with no derived view at all. Whether that is acceptable is a
 product call, not a measurement one — but it is a decision about 15 asks over ~15 minis,
 not about 234.
+
+> **#1019 has now landed, and it did not change this verdict by one ask.** The blocker
+> set is still **40** and its four components are still 33 / 9 / 6 / 2. That is the
+> expected result and worth stating plainly: the naming hole and the structural bound
+> were always independent claims, and closing the first was never going to move the
+> second. What #1019 changed is the *untransferable* total (151 → 57) and the live
+> product surface (32 structured views that did not exist). **#1020 remains the only
+> one of the two that moves P6's number.**
 
 The alternative outcome the phase was told to be willing to report — "two writers,
 bounded" — is **not** what the measurement says. It says one writer plus a small named

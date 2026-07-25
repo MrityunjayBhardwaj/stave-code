@@ -27,6 +27,7 @@ import {
   serializeStepGrid,
   serializePianoRoll,
 } from '../../../editor/src/visualEdit/notation/serialize'
+import { tailToken } from '../../../editor/src/visualEdit/notation/parse'
 import type { PianoRollModel, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
 
 export const HRES = 720720
@@ -59,6 +60,18 @@ export function atomOf(v: unknown): string | null {
   if (v == null) return null
   if (typeof v === 'number') return String(v)
   if (typeof v === 'string') return v.toLowerCase()
+  // A `:`-variant is krill's ARRAY value (`["bd", 3]`), and it used to land in the
+  // `object` branch below with no `.s`/`.note`/`.n` — so it returned null, which
+  // `enginePlayedCycle` reads as "this whole mini is unreadable" and the probe then
+  // reports `no-readable-haps` for a pattern that plays perfectly well (#1021).
+  //
+  // Named through the READERS' OWN rule rather than a local copy: a second
+  // implementation of the same grammar question is exactly how the instrument
+  // drifts from the thing it measures, and an oracle that is more permissive than
+  // production is a divergence just as much as a stricter one. Joining rather than
+  // taking the head is what keeps `bd:3` distinct from `bd:1`, so a write-back that
+  // drops or changes the index is still caught as a corruption instead of matching.
+  if (Array.isArray(v)) return tailToken(v)?.toLowerCase() ?? null
   if (typeof v === 'object') {
     const o = v as { s?: unknown; note?: unknown; n?: unknown }
     if (o.s !== undefined) return String(o.s).toLowerCase()
