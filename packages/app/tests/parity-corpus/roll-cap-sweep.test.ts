@@ -99,7 +99,16 @@ interface Row {
   gate?: string
   /** which derived writer served it */
   writer?: 'leaf' | 'element'
-  /** more than one note — a one-note roll is a correct model and a useless surface */
+  /**
+   * More than one note — a one-note roll is a correct model and a useless surface.
+   *
+   * The same predicate the census applies to this surface (`hasStructure`, roll clause).
+   * Restated rather than shared because the census's version is surface-generic and
+   * unexported, and this file only ever asks about the roll — but the two must agree, and
+   * the coupling is here rather than nowhere. If the roll's notion of "structured" ever
+   * becomes more than a note count, these move together or the two documents start
+   * quoting different gains from the same run.
+   */
   structured?: boolean
   notes?: number
   /** notes whose own delete round-trips / notes cleanly probeable; null when none are */
