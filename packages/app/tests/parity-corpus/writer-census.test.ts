@@ -52,7 +52,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import {
+  parseStepGrid,
   parseStepGridCore,
+  parsePianoRoll,
   parsePianoRollCore,
   projectStepGridDerived,
   projectPianoRollDerived,
@@ -178,7 +180,17 @@ function playsArrayValue(m: string): boolean {
   }
 }
 
-/** more than one cell / note — a one-cell view round-trips perfectly and is useless */
+/**
+ * More than one cell / note — a one-cell view round-trips perfectly and is useless
+ * ([[P338]] clause 2).
+ *
+ * The two surfaces get DIFFERENT predicates on purpose, and the asymmetry is worth
+ * stating because it is easy to read as an oversight: the grid is a cell instrument,
+ * so "useful" means more than one column with at least one hit in it; the roll is a
+ * note instrument with no columns of its own to be empty, so "useful" means more
+ * than one note. Applying the grid's predicate to the roll would count a
+ * single-note roll spanning 16 steps as structured.
+ */
 function hasStructure(m: StepGridModel & PianoRollModel, key: 'step' | 'roll'): boolean {
   if (key === 'roll') return (m.notes?.length ?? 0) > 1
   const hits = m.lanes.reduce((n, l) => n + l.cells.filter(Boolean).length, 0)
@@ -277,6 +289,10 @@ function census(s: Surface): Ask[] {
         mini,
         surface: s.key,
         outcome: 'no-view',
+        // The `??` is DEFENSIVE — 0 rows over 1217 asks. `refused` returns the
+        // fallback verbatim (gate-less) for `not-a-pattern`, which is reachable in
+        // principle: the core parses syntactically and never reifies, so a mini it
+        // accepts but `reifyMini` rejects would land here. The corpus contains none.
         gate: derived.gate ?? '(no gate — did not reify)',
         coreProbe,
         shape,
@@ -434,9 +450,10 @@ describe('writer census — how much of the syntactic core transfers to the deri
 
     // A BAND, NOT A FLOOR. This is a measurement, so a move in EITHER direction is
     // a finding and should turn this red rather than pass quietly upward.
-    expect(all.filter((r) => r.outcome === 'transfers').length).toBe(965)
-    expect(untransferable.length).toBe(151)
-    expect(all.filter((r) => r.outcome === 'no-probe').length).toBe(101)
+    const why = ' — a MOVE, not a regression: re-read WRITER-CENSUS.md and update it and this number together, stating which mechanism moved'
+    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(965)
+    expect(untransferable.length, 'untransferable' + why).toBe(151)
+    expect(all.filter((r) => r.outcome === 'no-probe').length, 'unverified' + why).toBe(101)
 
     // NOTHING CORRUPTS. Both derived writers refuse rather than mis-write over this
     // whole population, which is what makes the untransferable set readable as an
@@ -553,6 +570,40 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // If the control arm ever opens anything, the rewrite is doing the work and
       // the mechanism claim is void.
       expect(controlFlips).toBe(0)
+    }, 900_000)
+
+    it('the census population IS the population the shipped path serves via the core', () => {
+      // THE OTHER SIDE OF THE BOUNDARY. Every number in this file rests on "the asks
+      // this census sweeps are exactly the asks the core serves in production", and
+      // that rests in turn on `parseStepGrid` handing back the core's own result
+      // whenever the core succeeds. That is one line of `parse.ts` — and reading a
+      // line is inference. Verify it against the real entry point instead.
+      const mismatches: string[] = []
+      let checked = 0
+      for (const s of [
+        { k: 'grid', core: parseStepGridCore, full: parseStepGrid },
+        { k: 'roll', core: parsePianoRollCore, full: parsePianoRoll },
+      ]) {
+        for (const mini of minis) {
+          const core = s.core(mini)
+          if (!core.ok) continue
+          checked++
+          const full = s.full(mini)
+          if (!full.ok) {
+            mismatches.push(`${s.k}: shipped path REFUSED a core-served ask: ${mini}`)
+            continue
+          }
+          const fm = full.model as StepGridModel & PianoRollModel
+          // a projection answered where the core should have — the census would then
+          // be measuring a counterfactual against the wrong incumbent
+          if (fm.leafSource) mismatches.push(`${s.k}: leaf writer answered a core-served ask: ${mini}`)
+          else if (JSON.stringify(fm) !== JSON.stringify(core.model))
+            mismatches.push(`${s.k}: shipped model differs from the core's: ${mini}`)
+        }
+      }
+      console.log(`\n  shipped path vs core over ${checked} core-served asks: ${mismatches.length} mismatches`)
+      expect(mismatches, mismatches.slice(0, 5).join('\n')).toEqual([])
+      expect(checked).toBe(1217)
     }, 900_000)
 
     it('RED TEST: the census distinguishes the two writers — it is not measuring one twice', () => {

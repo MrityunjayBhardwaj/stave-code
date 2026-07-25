@@ -157,7 +157,16 @@ export function deleteFromGrid(model: StepGridModel, col: number): string | null
  * four cannot say whether a writer is untested or untestable.
  */
 export type NoProbeReason =
-  /** `steps / bars` is not a whole number, so there is no column to probe */
+  /**
+   * `steps / bars` is not a whole number, so there is no column to probe.
+   *
+   * DEFENSIVE — measured at **0 firings over both populations** (the 1217
+   * core-served asks and the 2783 core-refused ones). Kept because the hazard is
+   * real and silent if it ever occurs: `Math.round(pos * perBar)` on a fractional
+   * `perBar` probes the WRONG column and the edit is then verified against a note
+   * nobody deleted, which passes. A guard whose absence would be invisible is
+   * exactly the one to keep after measuring that it does not fire.
+   */
   | 'non-integer-per-bar'
   /** the mini plays nothing, or plays a value we cannot name */
   | 'no-readable-haps'
