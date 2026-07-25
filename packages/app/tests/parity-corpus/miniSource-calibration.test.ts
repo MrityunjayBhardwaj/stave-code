@@ -62,7 +62,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { unitsWithStatus } from './editCoverage'
-import { evalLocations, loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
+import { boot, evalLocations, loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
 import { admitProposals } from '../../../editor/src/visualEdit/miniSource/evalProposals'
 import { QUERY_CYCLES } from '../../../editor/src/visualEdit/miniSource/evalProposals'
 import { resolveMiniSource } from '../../../editor/src/visualEdit/miniSource/resolveMiniSource'
@@ -72,6 +72,10 @@ describe('miniSource calibration over 150 real tunes', () => {
   it('resolves every known content span, and every miss is a silent statement', async () => {
     const docs = await loadCorpus()
     expect(docs.length).toBe(150)
+    // A module the engine registers and we could not is a DEVIATION, and it
+    // belongs in the output beside the coverage it could be silently inflating
+    // — not only in a comment next to the catch that swallowed it.
+    const { missingModules } = (await boot()) as { missingModules: string[] }
 
     let evalOk = 0
     const evalFailures: { name: string; error: string }[] = []
@@ -167,6 +171,7 @@ describe('miniSource calibration over 150 real tunes', () => {
         `  of those exact, ${servedByParseFallback} answered by the parse fallback`,
         `unoffered pool     ${unofferedResolved}/${unoffered} (${pct(unofferedResolved, unoffered)}%) got a SPAN — not a view, not an edit`,
         ...wrongDetail.map((w) => `  WRONG ${w}`),
+        `modules NOT registered ${missingModules.length ? missingModules.join('; ') : 'none — the full engine list loaded'}`,
         `─── the ${evalFailures.length} documents this sweep could NOT reach ───`,
         ...evalFailures.map((f) => `  ${f.name}  ${f.error.slice(0, 90)}`),
       ].join('\n'),

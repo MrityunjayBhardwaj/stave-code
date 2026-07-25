@@ -153,9 +153,12 @@ export async function boot() {
     for (const name of ['setcps', 'setcpm', 'setCps', 'setCpm', 'setbpm', 'setBpm', 'initHydra', 'initBytebeat', 'initVideo', 'enableMotion', 'setVoicingRange', 'useRNG', 'setGainCurve', 'setmidimap', 'aliasBank', 'initAudio', 'setGain', 'setVolume', 'hush', 'render', 'src', 'dough']) {
       if (typeof g[name] !== 'function') g[name] = () => undefined
     }
-    // draw.mjs:49 reads the scheduler clock when a pattern registers a painter.
-    // A constant clock is span-neutral (it decides WHEN to draw, never which
-    // span produced a value).
+    // A painter reads the scheduler clock when it registers (`draw.mjs:49`). We
+    // no longer register `@strudel/draw` at all — the engine does not — and the
+    // taps below are identity, so nothing should reach that path; the constant
+    // clock stays because it costs nothing and is span-neutral either way (it
+    // decides WHEN to draw, never which span produced a value). `setTime` is a
+    // core export, so dropping the draw module does not remove it.
     core.setTime?.(() => 0)
     g.samples = async () => undefined
     g.slider = (v: any) => v

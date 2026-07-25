@@ -59,5 +59,12 @@ describe('evalHarness coverage mechanisms', () => {
     const diverged = await evalLocations(LABEL_DOC, 4, { miniAllStrings: true })
     expect(diverged.ok).toBe(false)
     expect(diverged.error).toMatch(/parse error/)
+
+    // And it must be put BACK. The string parser is a module-global in
+    // @strudel/core, so a restore that quietly no-ops would leave every
+    // subsequent document in the process running the divergence — with no
+    // error anywhere, only a coverage figure that is a little too low.
+    const afterwards = await evalLocations(LABEL_DOC, 4)
+    expect(afterwards.ok).toBe(true)
   }, 60_000)
 })
