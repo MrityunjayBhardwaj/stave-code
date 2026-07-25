@@ -37,10 +37,10 @@ through the writer would measure a path production never takes.
 
 | cap | **A** reach | **A** views opened | **B** transfers | **B** no view at all |
 |---|---|---|---|---|
-| **4** (today) | 73 | 118 | 345 | 31 |
-| 6 | **73** | 118 | 346 | 30 |
-| 8 | **73** | 126 | 355 | 21 |
-| **12** | **73** | 127 | **358** | **17** |
+| **4** (today) | 75 | 118 | 347 | 31 |
+| 6 | **75** | 118 | 348 | 30 |
+| 8 | **75** | 126 | 357 | 21 |
+| **12** | **75** | 127 | **360** | **17** |
 
 - **Population A's reach does not move by one ask, at any cap.** The original measurement
   reproduces exactly. It was never wrong — it was answering about a different population.
@@ -99,11 +99,20 @@ At cap 12, with the syntactic core deleted (#1012):
 |---|---|---|
 | untransferable asks, both surfaces | 57 | **43** |
 | roll untransferable | 31 | **17** |
-| **the set that actually blocks deleting the core** | **40** | **28** |
+| **the set that actually blocks deleting the core** | **44** | **32** |
 
-The step grid is untouched at every cap — 803 asks / 713 transfers / 26 untransferable /
-blocker 14, identical to the digit. The constant is per-surface and roll-only, and this is
+The step grid is untouched at every cap — 803 asks / 719 transfers / 26 untransferable /
+blocker 17, identical to the digit. The constant is per-surface and roll-only, and this is
 the control arm that proves the sweep changed nothing it was not aiming at.
+
+> **Re-measured after #1022, and the shape of the correction is the useful part.** The
+> edit probe used to read cycle 0 and nothing else, so a pattern that rests in bar 0 was
+> filed unverified — including on the **incumbent** side, which is where the blocker set's
+> "core edit verified" column comes from. Teaching it to advance to the first sounding bar
+> moved both endpoints by four (40 → 44 at cap 4, 28 → 32 at cap 12) and moved **the cap's
+> own contribution by zero**: it clears 12 asks either way. The cost of deleting the core
+> did not rise, our measurement of it did — and the two changes being independent is what
+> makes both readable.
 
 ---
 
@@ -193,9 +202,9 @@ answer, not a reversal.
 
 Shipped **with** #1012, the populations merge — core-served minis fall through to the
 derived writers too — and the same constant buys 14 views at 78.7% live against those 9 at
-27.6%, while dropping the deletion's cost from 40 asks to 28.
+27.6%, while dropping the deletion's cost from 44 asks to 32.
 
 So: `LEAF_PROJECT_BARS.roll` stays at **4** on this branch. The value it should take when
-the core is deleted is **12**, and the number P6 should be scoped against is **28, not
-40**. `roll-cap-sweep.test.ts` ships pinned at the current cap so the sweep is repeatable
+the core is deleted is **12**, and the number P6 should be scoped against is **32, not
+44**. `roll-cap-sweep.test.ts` ships pinned at the current cap so the sweep is repeatable
 and so a future change to this constant has to face both populations.

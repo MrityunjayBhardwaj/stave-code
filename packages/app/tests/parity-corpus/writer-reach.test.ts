@@ -74,9 +74,20 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
  * committed corpus. editOk must never fall below it; a projection that closes units
  * it used to open turns this red. Raise it (never lower it silently) when a genuine
  * reach gain is shipped and re-observed.
+ *
+ * ⚠ RAISED 131/73 → 155/75 at #1022, and NOT because the writers reach further. They
+ * are untouched. What this gate counts is VERIFIED reach, and the probe used to read
+ * cycle 0 and nothing else — so an alternation whose first arm is a rest (`<- c5>`,
+ * `<~ sd ~ sd ~>`) came back empty and its unit was filed unverified rather than
+ * counted. The probe now advances to the first bar the model spans that actually
+ * sounds. The units were always editable; the oracle could not see them.
+ *
+ * Worth stating because the distinction is invisible in the number: this is a gain in
+ * MEASUREMENT, not in product surface, and must not be quoted as reach the projections
+ * bought.
  */
-const FLOOR_STEP = 131
-const FLOOR_ROLL = 73
+const FLOOR_STEP = 155
+const FLOOR_ROLL = 75
 
 /* ── the sweep ──────────────────────────────────────────────────────────────── */
 

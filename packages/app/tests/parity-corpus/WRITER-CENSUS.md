@@ -34,20 +34,27 @@ to `writer-reach`'s complement so the two gates cannot drift apart silently.
 
 ## The result
 
-> **Updated after #1019 and #1021 landed.** The figures below are post-fix. Where a
-> number moved, the pre-fix value is given beside it, because the *movement* is the
+> **Updated after #1019, #1021 and #1022 landed.** The figures below are post-fix. Where
+> a number moved, the pre-fix value is given beside it, because the *movement* is the
 > finding — see "What #1019 actually bought" below.
+>
+> **#1022's contribution is a MEASUREMENT gain, not a reach gain, and the two must not be
+> read as the same thing.** The probe read cycle 0 and nothing else, so any pattern that
+> rests in its first bar was filed unverified. It now advances to the first bar the model
+> spans that actually sounds. Transfers 1058 → 1066 and unverified 102 → 94 — **the +8
+> came entirely out of `unverified`, and `untransferable` did not move by one ask.**
+> Nothing was reclassified from broken to working; asks that were untestable became
+> testable and then passed.
 
 | outcome | asks | of 1217 | was |
 |---|---|---|---|
-| **transfers** — a derived writer opens it AND the edit survives the engine | **1058** | 86.9% | 965 |
+| **transfers** — a derived writer opens it AND the edit survives the engine | **1066** | 87.6% | 965 |
 | **untransferable** — no derived view, or the view corrupts | **57** | 4.7% | 151 |
-| **unverified** — opened, but no clean single-note delete probe exists | **102** | 8.4% | 101 |
+| **unverified** — opened, but no clean single-note delete probe exists | **94** | 7.7% | 101 |
 
-Per surface: grid **713 / 803 = 88.8%**, roll **345 / 414 = 83.3%**.
+Per surface: grid **719 / 803 = 89.5%**, roll **347 / 414 = 83.8%**.
 
-- Transfers by writer: **1027 element / 31 leaf**. The entire gain is the element
-  writer on the grid; the leaf writer's 31 did not move.
+- Transfers by writer: **1033 element / 33 leaf**.
 - **Zero asks corrupt** on either surface — still true after the fix, and it was the
   must-not for it. Both derived writers refuse rather than mis-write over this entire
   population, which is what makes the untransferable set readable as an *admission*
@@ -112,8 +119,9 @@ corrupting.
 
 **Of those 93, only 32 have more than one cell.** The other 61 are a single atom — a
 correct model of a bare instrument name, and a useless surface. Structured transfers
-overall went **609 → 641**, and *that* is the product-facing number. The raw 93 should
-not be quoted as reach.
+overall went **609 → 641** (and to **648** once #1022 let the probe see patterns that
+rest in bar 0), and *that* is the product-facing number. The raw 93 should not be quoted
+as reach.
 
 Three figures have been attached to this hole at different times. Only the last is a
 transfer count:
@@ -143,9 +151,19 @@ The lesson is narrower and sharper than "test your tests": a `no-probe` bucket i
 claim about the *model*, and it silently became a claim about the *oracle*. Any reason
 code that can be produced by the instrument's own limits needs a check that it is not.
 
-### Still open: `no-readable-haps` conflates two different facts
+### CLOSED (#1022): `no-readable-haps` conflated two different facts
 
-Nine asks still report it, and none of them is a naming failure — they are alternations
+*Kept because the shape of the error is the reusable part.* The reason code meant both
+"the oracle cannot name this value" and "this plays nothing in the cycle I looked at" —
+an oracle limitation and a property of the notation, sharing one label, in the very
+bucket that exists to tell unverified apart from untestable.
+
+It is now two reasons, `unnameable-value` and `silent-in-probed-window`, and the probe
+advances past silent bars instead of giving up on cycle 0. **All nine were the second
+case and all nine are now verified**; the bucket is empty. What follows is the original
+diagnosis.
+
+Nine asks reported it, and none of them was a naming failure — they are alternations
 that are **silent in the probed cycle** (`<- cp:1>`, `<~ sd ~ sd ~>`, `<- c5>`). The
 probe reads one cycle, sees no onsets, and reports the same reason it uses for an
 unnameable value. "Plays nothing here" and "plays something I cannot name" are different
@@ -277,10 +295,17 @@ one-cell view of an instrument name is a correct model and a useless surface) an
 |---|---|
 | candidate structural | 50 |
 | …with a structured core view | 46 |
-| …with a verified core edit | 41 |
-| **…both (the set that actually blocks deletion)** | **40** |
+| …with a verified core edit | 45 |
+| **…both (the set that actually blocks deletion)** | **44** |
 
-The two filters are not nested, so the conjunction (40) is the number to quote, never
+> **41 → 45, and so 40 → 44, at #1022 — with the untransferable set unchanged at 50.**
+> This column is the **incumbent's** probe, and the incumbent benefits from a better probe
+> exactly as the challenger does. Four core views whose patterns rest in bar 0 were filed
+> unverified and are now verified, so they graduate from "structured but untestable" into
+> the blocker set. **The cost of deleting the core did not rise; our measurement of it
+> did.** A change that had also moved the 50 would have meant something else entirely.
+
+The two filters are not nested, so the conjunction (44) is the number to quote, never
 either single column. The residue: **4 asks have no structured core view at all** —
 `~` on both surfaces, `<0 -@7>`, and `gm_choir_aahs,gm_choir_aahs` — a view of silence or
 of one repeated lane, which is not a view worth preserving. **6 more have a structured
@@ -289,7 +314,7 @@ testable) — unverified, not untransferable.
 
 ### So the honest answer to P3
 
-**The syntactic core's irreplaceable reach is 40 surface-asks, not 234** — and it is
+**The syntactic core's irreplaceable reach is 44 surface-asks, not 234** — and it is
 not one bound but a stack of four, three of which have a named owner:
 
 1. **33 period-cap** → #1020. 20 clear at a cap the grid already ships.
@@ -304,14 +329,15 @@ product call, not a measurement one — but it is a decision about 15 asks over 
 not about 234.
 
 > **#1019 has now landed, and it did not change this verdict by one ask.** The blocker
-> set is still **40** and its four components are still 33 / 9 / 6 / 2. That is the
+> set was still **40** at the time (it is 44 after #1022 made the incumbent's own probe
+> less blind — see above) and its four components are still 33 / 9 / 6 / 2. That is the
 > expected result and worth stating plainly: the naming hole and the structural bound
 > were always independent claims, and closing the first was never going to move the
 > second. What #1019 changed is the *untransferable* total (151 → 57) and the live
 > product surface (32 structured views that did not exist). **#1020 remains the only
 > one of the two that moves P6's number.**
 
-### #1020 has now been measured, and it moves the number to 28 — conditionally
+### #1020 has now been measured, and it moves the number to 32 — conditionally
 
 Full sweep: **`ROLL-CAP-SWEEP.md`**. `LEAF_PROJECT_BARS.roll` swept at 4/6/8/12 against
 both populations separately. At 12, with the core deleted:
@@ -320,7 +346,7 @@ both populations separately. At 12, with the core deleted:
 |---|---|---|
 | roll untransferable | 31 | **17** |
 | untransferable, both surfaces | 57 | **43** |
-| **the set that actually blocks deleting the core** | **40** | **28** |
+| **the set that actually blocks deleting the core** | **44** | **32** |
 
 The step grid is identical to the digit at every cap — the constant is roll-only, which
 is the control arm. Zero corrupt and zero asks moved to a worse outcome, per ask.
@@ -333,7 +359,7 @@ new views on the core-*refused* population at 27.6% live for zero extra reach** 
 exact trade the cap was set to 4 to refuse, and reproduced here on today's code rather
 than inherited.
 
-So the raise belongs to the deletion, not before it. **P6 should be scoped against 28, and
+So the raise belongs to the deletion, not before it. **P6 should be scoped against 32, and
 must include `LEAF_PROJECT_BARS.roll = 12` in its own diff.** Raising it earlier costs
 real product surface and buys nothing until the core stops answering first.
 

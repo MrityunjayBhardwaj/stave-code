@@ -266,11 +266,11 @@ describe(`the roll's leaf period cap at ${CAP}, on both populations it governs`,
     // Population A is the one production reaches today. Its reach is `writer-reach`'s
     // roll floor and must agree with it — two gates disagreeing about the same number
     // over the same population would mean one of them is measuring something else.
-    expect(transfers(rowsA), 'population A reach fell below the committed roll floor').toBeGreaterThanOrEqual(73)
+    expect(transfers(rowsA), 'population A reach fell below the committed roll floor').toBeGreaterThanOrEqual(75)
 
     // Population B's is what the core's deletion would inherit (#1012). It is a floor
     // and not a target: it only becomes user-facing when the core stops answering first.
-    expect(transfers(rowsB), 'population B transfer count fell').toBeGreaterThanOrEqual(345)
+    expect(transfers(rowsB), 'population B transfer count fell').toBeGreaterThanOrEqual(347)
   })
 
   it('never admits a period it has not verified — the cap stays within half the probe window', () => {

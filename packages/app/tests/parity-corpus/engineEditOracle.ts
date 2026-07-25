@@ -189,9 +189,26 @@ export type NoProbeReason =
    * exactly the one to keep after measuring that it does not fire.
    */
   | 'non-integer-per-bar'
-  /** the mini plays nothing, or plays a value we cannot name */
-  | 'no-readable-haps'
-  /** every onset is a chord — no position plays exactly one note */
+  /**
+   * the mini plays a value the oracle cannot name (or will not reify at all)
+   *
+   * This is a claim about the ORACLE's vocabulary, and it has been wrong in exactly
+   * that way before: `atomOf` could not name krill's `:`-variant array, so 94 asks
+   * that play perfectly well were filed here (#1021). Any ask landing here deserves
+   * the question "can the instrument name this, or can production?" before it is read
+   * as a fact about the pattern.
+   */
+  | 'unnameable-value'
+  /**
+   * the mini plays NOTHING in any bar the model spans — a view of silence
+   *
+   * Split out of the old `no-readable-haps`, which meant this AND the case above
+   * (#1022). "I cannot name this value" is an oracle limitation worth fixing; "this
+   * rests here" is a property of the notation. One label for both defeated the whole
+   * point of reporting the `no-probe` bucket by reason.
+   */
+  | 'silent-in-probed-window'
+  /** the first SOUNDING bar is all chords — no position in it plays exactly one note */
   | 'fully-chorded'
   /** the writer declined the delete (a safe no-op), which is not reach */
   | 'writer-declined'
@@ -244,11 +261,34 @@ export function probeEdit(
   const perBar = model.steps / bars
   if (!Number.isInteger(perBar)) return { verdict: 'no-probe', why: 'non-integer-per-bar' }
 
-  const base = enginePlayed(mini)
-  if (base === null || base.length === 0) return { verdict: 'no-probe', why: 'no-readable-haps' }
-  const pos = singletonPos(base)
+  // THE PROBE ADVANCES PAST SILENT BARS (#1022). It used to read cycle 0 and nothing
+  // else, so an alternation whose first arm is a rest — `<- c5>`, `<~ sd ~ sd ~>` — came
+  // back empty and was filed as unreadable. That is the window-dependence that has bitten
+  // these measurements before: a pattern that rests in cycle 0 and plays in cycle 1 looks
+  // silent to a single-cycle probe.
+  //
+  // The scan stops at `bars`, never beyond it. Past that lies music the model does not
+  // claim to show, and a delete aimed there addresses a column the view does not have.
+  let bar = -1
+  let played: Note[] = []
+  for (let b = 0; b < bars; b++) {
+    const here = enginePlayedCycle(mini, b)
+    // a value the oracle cannot name is a fact about the ORACLE and stops the probe
+    // immediately — advancing would just hide it in a later bar
+    if (here === null) return { verdict: 'no-probe', why: 'unnameable-value' }
+    if (here.length > 0) {
+      bar = b
+      played = here
+      break
+    }
+  }
+  if (bar < 0) return { verdict: 'no-probe', why: 'silent-in-probed-window' }
+
+  // …and `fully-chorded` is now asked of the first bar that SOUNDS rather than of bar 0,
+  // which is what the label always meant.
+  const pos = singletonPos(played)
   if (pos === null) return { verdict: 'no-probe', why: 'fully-chorded' }
-  return probeDeleteAt(mini, model, s, 0, pos)
+  return probeDeleteAt(mini, model, s, bar, pos)
 }
 
 /**
