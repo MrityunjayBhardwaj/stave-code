@@ -160,21 +160,30 @@ separately.
 of the parse-side harvest — over the 150 real tunes, taking the mini the eval-first
 resolver (#1006) hands each unit.
 
-| population | transfer rate |
-|---|---|
-| mini-corpus (parse-side harvest), 1500 minis | **965 / 1217 = 79.3%** |
-| eval-first, all 671 resolved minis | **413 / 500 = 82.6%** |
-| eval-first, only the 275 minis the parse snapshot lacks | **73 / 93 = 78.5%** |
+| population | transfer rate | was (pre-#1019) |
+|---|---|---|
+| mini-corpus (parse-side harvest), 1500 minis | **1058 / 1217 = 86.9%** | 965 / 1217 = 79.3% |
+| eval-first, all resolved minis | **430 / 500 = 86.0%** | 413 / 500 = 82.6% |
+| eval-first, only the minis the parse snapshot lacks | **75 / 93 = 80.6%** | 73 / 93 = 78.5% |
 
-The prediction was that the eval arm would score *lower*, being the wider and harder
-population. **It scored higher, and the reason is that it is not wider — it is smaller**:
-671 minis against 1500, because the resolver answers once per unit while the harvest
-collected every mini it could find. So this arm is a **robustness check**, not a harder
-test. The three figures agree inside ~3pp and the genuinely-new slice is the lowest of
-them, at an effect size (0.8pp, n=93) too small to claim.
+**Both arms had to be re-read after #1019, and this table is the reason.** The two arms
+run the same writers over differently-drawn ask populations, so a fix to the writers moves
+both. Quoting the new harvest figure beside the old eval figure would have put a post-fix
+number and a pre-fix number in adjacent cells and invited the reader to treat the gap as a
+population effect — which is the failure this table exists to guard against, committed by
+the table itself.
 
-Read that as: **the transfer rate is a property of the corpus, not of how the asks were
-drawn.** Weaker than the prediction wanted, and more useful than either arm alone.
+The pre-fix reading was that the eval arm scored *higher* than the harvest arm. After the
+fix it scores marginally **lower** (86.0% against 86.9%), so that ordering was never a
+real effect — it was the naming hole falling differently across two populations that
+overlap heavily. What survives is the thing worth keeping: **all three figures agree
+inside ~1pp for the two large populations, and the genuinely-new slice sits 6pp below
+them** (n=93, so still a weak signal, but a more visible one than the 0.8pp it was).
+
+Read that as: **the transfer rate is close to a property of the corpus rather than of how
+the asks were drawn** — and note that the eval arm's assertions are loose bounds
+(`> 200`, `>= 142`), so it will *not* turn red when its rate moves. Its figures must be
+re-read from the test output whenever the writers change; nothing pins them.
 
 Eval coverage for this arm is **142/150** — #1008's floor, reported beside the figure
 because every number computed from an eval sweep is over the documents that evaluated.

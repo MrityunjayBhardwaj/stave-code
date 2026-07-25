@@ -44,9 +44,27 @@
  *   eval-first, ONLY the 275 minis the parse snapshot does not contain
  *                                      73/93   = 78.5%
  *
- * The three agree inside ~3pp, and the genuinely-new slice is the LOWEST of them —
- * which is the direction the prediction named, at an effect size (0.8pp, n=93) far
- * too small to claim. The transfer rate is a property of the corpus, not of how the
+ * ⚠ THOSE THREE FIGURES ARE PRE-#1019 AND ARE KEPT ONLY TO PRESERVE THE REASONING
+ * ABOVE. Naming the `:`-variant (#1019) moved BOTH arms, because both run the same
+ * writers over differently-drawn ask populations. Current values:
+ *
+ *   mini-corpus (parse-side harvest) 1058/1217 = 86.9%
+ *   eval-first, all resolved minis    430/500  = 86.0%
+ *   eval-first, ONLY the newly-admitted slice
+ *                                      75/93   = 80.6%
+ *
+ * And it cost this file its headline conclusion: the eval arm no longer scores
+ * HIGHER than the harvest arm, it scores marginally lower. So that ordering was
+ * never a population effect — it was one naming hole falling differently across two
+ * heavily-overlapping samples. What survives is the weaker, real claim: the two large
+ * populations agree inside ~1pp and the new slice sits ~6pp below them.
+ *
+ * NOTE FOR WHOEVER CHANGES THE WRITERS NEXT: this test's assertions are deliberately
+ * loose bounds (`> 200`, `>= 142`), so it does NOT turn red when the rate moves. It
+ * did not turn red for #1019. The figures above have to be re-read from the test
+ * output by hand; nothing pins them.
+ *
+ * The transfer rate is close to a property of the corpus, not of how the
  * asks were drawn. That is a weaker claim than the prediction wanted and a more
  * useful one than either arm alone could support.
  */

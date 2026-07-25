@@ -113,12 +113,18 @@ interface Ask {
   /**
    * Does this mini play a `word:index` ARRAY value (krill's `bd:3`)?
    *
-   * Recorded because it turned out to be the DOMINANT untransferable mechanism and
-   * it is not structural: `readGridOnsets` names a string, a number and an `{s,n}`
-   * object, and krill hands it `["bd", 3]` for a `:`-variant, which falls through
-   * to `no-note-content`. Filed separately (#1019); split out here so this phase's
-   * residual separates "the projection has a hole" from "the bijection genuinely
-   * fails", which is the difference between a fix and a bound.
+   * Recorded because it WAS the dominant untransferable mechanism and was never
+   * structural: `readGridOnsets` named a string, a number and an `{s,n}` object, and
+   * krill hands it `["bd", 3]` for a `:`-variant, which fell through to
+   * `no-note-content`. Split out here so the residual separates "the projection has
+   * a hole" from "the bijection genuinely fails" — the difference between a fix and
+   * a bound.
+   *
+   * #1019 HAS LANDED and the readers now name the array, so this flag no longer
+   * marks a hole. It is kept because it is still the axis that keeps the two classes
+   * apart: the count behind it fell 101 → 7 while the structural count stayed at
+   * exactly 50, and that pair is what shows the classes were independent. The 7 that
+   * remain carry a `:` AND a second real blocker — asserted below.
    */
   arrayValue: boolean
   /** does the CORE's own view have structure — i.e. is the view being lost worth keeping */
