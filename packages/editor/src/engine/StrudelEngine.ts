@@ -15,6 +15,7 @@ import type { IREvent } from '../ir/IREvent'
 import { getTierFlags, type TierFlags } from './tierFlags'
 import { resolveAlias } from './aliases'
 import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
+import { installMiniStringParser } from './stringParser'
 
 type HapHandler = (event: HapEvent) => void
 
@@ -322,8 +323,14 @@ export class StrudelEngine implements LiveCodingEngine {
       }
     }
 
-    // Set up mini-notation string parser (parses "c3 e3 g3" strings as patterns)
-    miniMod.miniAllStrings()
+    // Set up mini-notation string parser (parses "c3 e3 g3" strings as patterns).
+    //
+    // NOT `miniAllStrings()`, which installs `mini` bare and makes it throw on any string
+    // that is not mini notation — `s('bd').label('🍕')` and single-quoted bytebeat source
+    // are both real, and both took the whole evaluation down (#1018). The shared
+    // installer falls back to the plain value instead, so a single-quoted mini still
+    // pattern-parses and a single-quoted anything-else stays what it was.
+    installMiniStringParser({ core: coreMod as never, mini: miniMod as never })
 
     // Transpiler converts $: pattern syntax → pattern.p("$") and handles
     // mini-notation template literals. Required for $: to work correctly.

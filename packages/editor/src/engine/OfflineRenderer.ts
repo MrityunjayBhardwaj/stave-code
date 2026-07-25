@@ -1,5 +1,6 @@
 import { WavEncoder } from './WavEncoder'
 import { noteToMidi } from './noteToMidi'
+import { installMiniStringParser } from './stringParser'
 
 /**
  * Offline renderer — processes a Strudel pattern at CPU speed via OfflineAudioContext.
@@ -21,9 +22,13 @@ export class OfflineRenderer {
     // Register Strudel globals without affecting the live audio graph
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mini = await import('@strudel/mini') as any
-    mini.miniAllStrings()
     await import('@strudel/tonal')
-    const { evaluate } = await import('@strudel/core')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const coreMod = await import('@strudel/core') as any
+    // the same string rule the live engine installs — a renderer that parses strings
+    // differently from the engine renders music the user never heard (#1018)
+    installMiniStringParser({ core: coreMod, mini })
+    const { evaluate } = coreMod
     const { transpiler } = await import('@strudel/transpiler')
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

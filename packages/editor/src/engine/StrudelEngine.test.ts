@@ -69,6 +69,12 @@ vi.mock('@strudel/core', () => {
     // is fine.
     noteToMidi: vi.fn((_note: string) => 108),
     valueToMidi: vi.fn((_value: unknown) => 60),
+    // `init()` installs the bare-string parser through these (#1018). They must be
+    // present even though nothing here exercises them: vitest throws on ANY access to
+    // an export a mock does not define, so an optional call (`setStringParser?.()`) is
+    // not enough to make the mock's omission harmless.
+    setStringParser: vi.fn(),
+    pure: vi.fn((v: unknown) => v),
   }
 })
 

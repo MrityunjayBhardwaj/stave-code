@@ -3733,13 +3733,27 @@ try {
 } catch {
 }
 
+// src/engine/stringParser.ts
+function installMiniStringParser(deps) {
+  const { core, mini } = deps;
+  core.setStringParser?.((s) => {
+    try {
+      return mini.mini(s);
+    } catch {
+      return core.pure(s);
+    }
+  });
+}
+__name(installMiniStringParser, "installMiniStringParser");
+
 // src/engine/OfflineRenderer.ts
 var _OfflineRenderer = class _OfflineRenderer {
   static async render(code, duration, sampleRate) {
     const mini = await import('@strudel/mini');
-    mini.miniAllStrings();
     await import('@strudel/tonal');
-    const { evaluate } = await import('@strudel/core');
+    const coreMod = await import('@strudel/core');
+    installMiniStringParser({ core: coreMod, mini });
+    const { evaluate } = coreMod;
     const { transpiler } = await import('@strudel/transpiler');
     const result = await evaluate(code, transpiler);
     const pattern = result.pattern;
@@ -4478,7 +4492,7 @@ var _StrudelEngine = class _StrudelEngine {
         console.warn("[StrudelEngine] enableWebMidi() failed; MIDI output unavailable.", err);
       }
     }
-    miniMod.miniAllStrings();
+    installMiniStringParser({ core: coreMod, mini: miniMod });
     const { transpiler } = await import('@strudel/transpiler');
     const { initAudio, getAudioContext: getAudioContext3, webaudioOutput, webaudioRepl } = webaudioMod;
     await initAudio();
