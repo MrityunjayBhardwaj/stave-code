@@ -297,6 +297,25 @@ function classifyUnit(
   return { status: 'code-only', head: head ?? '(no-head)' }
 }
 
+/**
+ * Every musical unit in a doc paired with the verdict this harness gives it —
+ * the unit model itself, exposed so a measurement can be taken PER UNIT without
+ * re-deriving `collectUnits`/`classifyUnit` beside it. A second copy of the unit
+ * model would answer confidently and diverge silently, which is the failure this
+ * module's header names. `measureDocs` is the only other caller.
+ */
+export function unitsWithStatus(doc: string): { unit: ChunkInfo; status: UnitStatus }[] {
+  if (!docParses(doc)) return []
+  const arrangeRanges = detectAllArrangeCalls(doc).map((a): Overlap => a.callRange)
+  const pickRanges = detectAllPickControls(doc).map((p): Overlap => p.callRange)
+  const plumbing = hostPlumbingRanges(doc)
+  const masterRanges = detectMasterAll(doc).map((m): Overlap => m.statementRange)
+  return collectUnits(doc).map((unit) => ({
+    unit,
+    status: classifyUnit(unit, arrangeRanges, pickRanges, plumbing, masterRanges),
+  }))
+}
+
 export interface TuneReport {
   file: string
   /** musical units only (setup/boilerplate AND host plumbing excluded) */
@@ -337,15 +356,10 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
       })
       continue
     }
-    const arrangeRanges = detectAllArrangeCalls(code).map((a): Overlap => a.callRange)
-    const pickRanges = detectAllPickControls(code).map((p): Overlap => p.callRange)
-    const plumbing = hostPlumbingRanges(code)
-    const masterRanges = detectMasterAll(code).map((m): Overlap => m.statementRange)
-    const allUnits = collectUnits(code)
+    const allUnits = unitsWithStatus(code)
 
     let note = 0, clip = 0, master = 0, broken = 0, knobs = 0, codeOnly = 0, setup = 0, nonMusical = 0
-    for (const u of allUnits) {
-      const s = classifyUnit(u, arrangeRanges, pickRanges, plumbing, masterRanges)
+    for (const { status: s } of allUnits) {
       switch (s.status) {
         case 'setup': setup++; break
         case 'non-musical': nonMusical++; break
