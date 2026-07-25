@@ -72,6 +72,26 @@ describe('resolveMiniSource — the pattern SOURCE, by position', () => {
     expect(textOf('"<- - sd:3 ->".fast(4).lpf(5000)')).toBe('<- - sd:3 ->')
   })
 
+  it('the root-position override does not depend on how the note arg is written', () => {
+    // A BOUND note argument is the same shape as a literal one, and requiring a
+    // literal left both strings disposing as `source` — so the answer came from
+    // whichever was written first. `alternatives` is what makes that visible.
+    for (const doc of [
+      'const mel = "<c4 e4>"\n$: "gm_pad_warm".note(mel).gain(.5)',
+      '$: "gm_pad_warm".note(mel).gain(.5)\nconst mel = "<c4 e4>"',
+    ]) {
+      const unit = detectAllChunks(doc).find((c) => c.label === '$')!
+      const r = resolveMiniSource(doc, unit)
+      expect(r.ok && r.text).toBe('<c4 e4>')
+      expect(r.ok && r.alternatives).toEqual([])
+    }
+  })
+
+  it('a bare `.note()` with NO argument reifies the root, so the root stays content', () => {
+    expect(textOf('"0 5 3 2".sometimes(slow(2)).scale(\'G4 minor\').note()')).toBe('0 5 3 2')
+    expect(textOf('"<9@14 ~@2>".sub(12).n()')).toBe('<9@14 ~@2>')
+  })
+
   it('a mid-chain note on a chain that HAS a head call does not override it', () => {
     // `sound(…)` already supplies this unit's source; `.note(…)` is the pitch
     // control applied to those samples, and the grid the user edits is the

@@ -62,6 +62,7 @@ describe('miniSource calibration over 150 real tunes', () => {
     let undeclared = 0
     let unoffered = 0
     let unofferedResolved = 0
+    let mixedUse = 0
     const wrongDetail: string[] = []
 
     for (const doc of docs) {
@@ -73,6 +74,7 @@ describe('miniSource calibration over 150 real tunes', () => {
       const admitted = admitProposals({ miniLocations: ev.declared, locations: ev.seen })
       undeclared += admitted.undeclared.length
       const proposals = admitted.proposals
+      mixedUse += index?.mixedUseBindings().length ?? 0
 
       for (const { unit, status } of units) {
         if (status.status === 'note' && unit.miniRange) {
@@ -116,6 +118,7 @@ describe('miniSource calibration over 150 real tunes', () => {
         `\n─── miniSource calibration (window ${QUERY_CYCLES} cycles) ───`,
         `eval coverage      ${evalOk}/${docs.length} (${pct(evalOk, docs.length)}%)`,
         `undeclared spans   ${undeclared}  (coordinate-space leaks, refused by admission)`,
+        `mixed-use bindings ${mixedUse}  (used as pattern AND as control arg — the tie-break decides)`,
         `known-content      ${known}`,
         `  content present  ${present}/${known} (${pct(present, known)}%)`,
         `  resolved exactly ${exact}/${known} (${pct(exact, known)}%)  wrong ${wrong}  refused ${refused}`,
