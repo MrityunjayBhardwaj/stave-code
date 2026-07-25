@@ -195,7 +195,14 @@ describe('the reach transfer over the EVAL-FIRST ask population', () => {
         `  untransferable      ${fresh.untransferable}  (${pct(fresh.untransferable, fresh.coreServed)})`,
         `  unverified          ${fresh.unverified}`,
         ``,
-        `mini-corpus arm, for comparison: 965/1217 = 79.3% transfer`,
+        // ⚠ TRANSCRIBED, and therefore capable of going stale while reading as current.
+        // It said `965/1217 = 79.3%` for three merges after that arm moved to 1055/1217
+        // = 86.7% — a pre-fix number printed one line from post-fix ones, which is the
+        // side-by-side-populations error this whole comparison exists to guard against.
+        // Left as a literal because the two arms are separate test files and importing
+        // one into the other to derive it would make each unrunnable alone; the fix is
+        // that it now says WHEN it was taken, so a reader can tell that it might not be.
+        `mini-corpus arm, for comparison (as of #1026): 1055/1217 = 86.7% transfer`,
         `modules NOT registered ${missingModules.length ? missingModules.join('; ') : 'none'}`,
       ].join('\n'),
     )

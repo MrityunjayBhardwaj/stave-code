@@ -34,7 +34,9 @@
  * THE EDIT PROBE ITSELF LIVES IN `engineEditOracle.ts` (#1009) — the writer census
  * asks the same question of a different writer, and two copies of an edit oracle are
  * two oracles that can only agree with themselves ([[PV192]]). This gate's numbers
- * are what pins that extraction: 131 / 73 with losses `[]`, unchanged by it.
+ * are what pins that extraction: 131 / 73 with losses `[]`, unchanged BY IT. They are not
+ * the current numbers — see the floor below, which has moved twice since, both times
+ * because the oracle's sight changed rather than the writers'.
  *
  * THE ASSERTION is a FLOOR, not a snapshot: editOk must not fall below the reach
  * observed when this gate was written. A grammar/subset change that quietly closes

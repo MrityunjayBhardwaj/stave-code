@@ -200,11 +200,23 @@ separately.
 of the parse-side harvest — over the 150 real tunes, taking the mini the eval-first
 resolver (#1006) hands each unit.
 
-| population | transfer rate | was (pre-#1019) |
-|---|---|---|
-| mini-corpus (parse-side harvest), 1500 minis | **1055 / 1217 = 86.7%** | 965 / 1217 = 79.3% |
-| eval-first, all resolved minis | **430 / 500 = 86.0%** | 413 / 500 = 82.6% |
-| eval-first, only the minis the parse snapshot lacks | **75 / 93 = 80.6%** | 73 / 93 = 78.5% |
+| population | transfer rate | was (pre-#1026) | was (pre-#1019) |
+|---|---|---|---|
+| mini-corpus (parse-side harvest), 1500 minis | **1055 / 1217 = 86.7%** | 1066 / 1217 = 87.6% | 965 / 1217 = 79.3% |
+| eval-first, all resolved minis | **427 / 500 = 85.4%** | 432 / 500 = 86.4% | 413 / 500 = 82.6% |
+| eval-first, only the minis the parse snapshot lacks | **76 / 93 = 81.7%** | 77 / 93 = 82.8% | 73 / 93 = 78.5% |
+
+> ⚠ **The eval rows had drifted before #1026 touched them, and that is worth more than the
+> correction itself.** This document recorded 430/500 and 75/93. Re-measured on the same
+> tree with the *old* oracle they are 432/500 and 77/93 — so they had moved across #1018
+> and #1022 and nobody re-read them. **The eval arm prints its figures and asserts none of
+> them**, unlike the harvest arm, whose every headline is pinned to a literal that turns
+> red on movement. An ungated number in a document is a number that decays quietly. Filed.
+>
+> #1026's own contribution, isolated by running both oracles on this tree: **−5 asks** on
+> the 500 arm and **−1** on the 93 slice. Monotone down on both, which is the only
+> direction a strictly stricter comparison can move a transfer count — and worth checking
+> rather than assuming, because the raw before/after would have shown 75 → 76 going *up*.
 
 **Both arms had to be re-read after #1019, and this table is the reason.** The two arms
 run the same writers over differently-drawn ask populations, so a fix to the writers moves

@@ -5,7 +5,12 @@
  * needs it: the writer census asks the SAME question of a different writer, and
  * two copies of an edit oracle are two oracles that can only agree with
  * themselves ([[PV192]]). The extraction is verdict-neutral by construction —
- * `writer-reach` calls this and must still read exactly 131 / 73 with no losses.
+ * `writer-reach` calls this and read exactly 131 / 73 with no losses on the day of the
+ * extraction. Both numbers have moved since, and never because a writer changed: 155 / 75
+ * when the probe learned to advance past a silent bar (#1022), then 126 / 75 with 29 named
+ * losses when the grid arm's duration axis was restored (#1026). What the sentence meant —
+ * that moving this code must not move a verdict — still holds; what it must not be read as
+ * is a claim that these two digits are the current ones.
  *
  * WHAT IT MEASURES, and it is deliberately narrow: delete ONE cleanly-singleton
  * note through the REAL writer, then re-query the emitted document through the
