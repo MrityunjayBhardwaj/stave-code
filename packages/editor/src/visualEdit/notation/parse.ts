@@ -890,18 +890,41 @@ const MAX_PROJECT_BARS = 4
  * by the bijection. Opening a mostly-dead sixty-four-column roll for no reach is
  * the trade `leafRollViewUsable` exists to refuse, one step coarser.
  *
- * Neither may exceed PERIOD_PROBE/2, and that is not a round number: `detectPeriod`
- * confirms a period by finding a repeat among the probed cycles, so period p is
- * only VERIFIED once 2p cycles were probed. At p = 16 against a probe of 24,
- * cycles 8–15 are never checked against anything and a period-32 pattern
- * masquerades as period-16 — a view that silently stops being true. Raising this
- * past 12 means raising PERIOD_PROBE with it.
+ * Neither may exceed `PROJECTION_PERIOD_BOUNDS.maxVerifiedBars` — see below for why
+ * that is a derived number and not a written-down one.
  *
  * `MAX_STEPS` still caps `perBar × bars` independently and stays the binding
  * constraint: at twelve bars a pattern may be no finer than five steps to the bar,
  * which is why this buys back coarse long-period patterns only.
  */
 const LEAF_PROJECT_BARS: Record<Surface, number> = { grid: 12, roll: 4 }
+
+/**
+ * The period caps, and the one bound every single one of them obeys (#1025).
+ *
+ * THE BOUND: `detectPeriod` confirms a period by finding a repeat among the probed
+ * cycles, so a period `p` is only VERIFIED once `2p` cycles were probed. At `p = 16`
+ * against a probe of 24, cycles 8–15 are checked against nothing and a period-32
+ * pattern masquerades as period-16 — a view that silently stops being true one cycle
+ * past its own width, which no onset oracle observes.
+ *
+ * DERIVED, NOT RESTATED. This used to be the literal `12` written into a doc comment
+ * here and into a test assertion in the app package, while `PERIOD_PROBE` stayed
+ * private — so raising the probe (a perfectly reasonable change, since it is what
+ * limits how long a period can be detected at all) would have left both copies stale
+ * AND GREEN. A guard that can only ever be observed passing is not a guard. Exported
+ * so the gates check the relationship instead of a number that agrees with it today.
+ */
+export const PROJECTION_PERIOD_BOUNDS = Object.freeze({
+  /** cycles probed when establishing a period */
+  probe: PERIOD_PROBE,
+  /** the largest period any projection may admit — half the probe, because of the doubling */
+  maxVerifiedBars: Math.floor(PERIOD_PROBE / 2),
+  /** the element writer's cap, bounded by re-emit readability rather than by this */
+  element: MAX_PROJECT_BARS,
+  /** the leaf writers' caps, per surface */
+  leaf: Object.freeze({ ...LEAF_PROJECT_BARS }),
+})
 
 /* ── refusal gates (#990) ──────────────────────────────────────────────────── */
 
