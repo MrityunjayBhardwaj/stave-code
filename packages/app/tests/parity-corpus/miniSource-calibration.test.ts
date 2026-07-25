@@ -39,8 +39,16 @@
  *    among the located haps" is not a question about a document with no haps.
  *
  * ── WHAT IS ASSERTED, AND WHY EACH ONE CAN FAIL ───────────────────────────
- *  - eval coverage: reported and floored. A sweep that silently stops reaching
- *    documents reads as a reach ceiling.
+ *  - eval coverage: reported and floored, WITH the documents it could not reach
+ *    named. A sweep that silently stops reaching documents reads as a reach
+ *    ceiling.
+ *  - undeclared spans: 0, and that is a change of instrument, not of rule. The
+ *    coordinate-space leak this refuses only ever arose because the harness
+ *    mini-parsed strings the transpiler had not rewritten — a divergence from
+ *    `StrudelEngine`, now removed. So on this corpus the admission rule is
+ *    DEFENSIVE rather than load-bearing, and is kept for a stated reason: the
+ *    engine's missing string parser is itself a bug (#1018), and the day it is
+ *    fixed the harness follows and the whole class comes straight back.
  *  - exactness: every known-content unit resolves to exactly its known span. A
  *    disposal change that admits a control argument breaks this.
  *  - PRESENCE IS TOTAL, CONDITIONAL ON THE STATEMENT SOUNDING: this is the
@@ -66,6 +74,7 @@ describe('miniSource calibration over 150 real tunes', () => {
     expect(docs.length).toBe(150)
 
     let evalOk = 0
+    const evalFailures: { name: string; error: string }[] = []
     let known = 0
     let knownEvaluating = 0
     let exact = 0
@@ -90,6 +99,7 @@ describe('miniSource calibration over 150 real tunes', () => {
       // denominator over 150 — a document that evaluates and happens to contain
       // no unit is still a document the harness reached.
       if (ev.ok) evalOk++
+      else evalFailures.push({ name: doc.name, error: ev.error ?? '(none)' })
       if (units.length === 0) continue
       const index = SpanIndex.build(doc.code)
       const admitted = admitProposals({ miniLocations: ev.declared, locations: ev.seen })
@@ -148,7 +158,7 @@ describe('miniSource calibration over 150 real tunes', () => {
       [
         `\n─── miniSource calibration (window ${QUERY_CYCLES} cycles) ───`,
         `eval coverage      ${evalOk}/${docs.length} (${pct(evalOk, docs.length)}%)  — counted over EVERY document`,
-        `undeclared spans   ${undeclared}  (coordinate-space leaks, refused by admission)`,
+        `undeclared spans   ${undeclared}  (coordinate-space leaks refused by admission — see the note below on why this is now 0)`,
         `mixed-use bindings ${mixedUse}  (used both ways SOMEWHERE in the doc — the population, not the decisions)`,
         `  tie-break fired  ${tieBreakFired}  (times a binding was used both ways WITHIN one unit, so it actually decided)`,
         `known-content      ${known}  over ALL ${docs.length} documents`,
@@ -157,11 +167,38 @@ describe('miniSource calibration over 150 real tunes', () => {
         `  of those exact, ${servedByParseFallback} answered by the parse fallback`,
         `unoffered pool     ${unofferedResolved}/${unoffered} (${pct(unofferedResolved, unoffered)}%) got a SPAN — not a view, not an edit`,
         ...wrongDetail.map((w) => `  WRONG ${w}`),
+        `─── the ${evalFailures.length} documents this sweep could NOT reach ───`,
+        ...evalFailures.map((f) => `  ${f.name}  ${f.error.slice(0, 90)}`),
       ].join('\n'),
     )
 
-    // Coverage floor — a silent drop reads as a reach ceiling, not a bug.
-    expect(evalOk).toBeGreaterThanOrEqual(130)
+    // ── COVERAGE IS A RESULT, NOT A PRECONDITION ─────────────────────────
+    // Floored at the level #1008 established. Every document below this line
+    // was traced to a failing frame and classified; the classification, not the
+    // count, is what says whether the gap is a bug:
+    //   5 document-intrinsic (2 saved truncated, 2 call a control with two
+    //     arguments so the second becomes the pattern, 1 calls a function that
+    //     exists nowhere) — these fail in the live app too;
+    //   2 browser-bound (device motion, and bytebeat needing a real
+    //     AudioContext) — together 0 known-content and 1 unoffered unit, so
+    //     they are left unstubbed on purpose rather than bought with two
+    //     divergences;
+    //   1 engine-version (`trigzeroJoin` is in no @strudel module we pin);
+    //   0 missing-scope — nothing here is a module we forgot to register.
+    // So the reachable ceiling is 144, not 150, and 142 is two off it.
+    expect(evalOk).toBeGreaterThanOrEqual(142)
+    // The named residual, so a document that silently drops out of the sweep
+    // fails HERE rather than being absorbed by a floor with slack in it.
+    expect(evalFailures.map((f) => f.name).sort()).toEqual([
+      '0/-8Xqyjn750i4',
+      '0/-MMxsqMYG_ID',
+      '250/0vk9wpBvt6Nd',
+      '500/3CMJf_qbfks9',
+      '500/3HWHF_ZUbZD_',
+      '500/3H_LAkg97Urt',
+      '500/3HvvWoaCyciz',
+      '500/3L25jxCjZ235',
+    ])
     expect(known).toBeGreaterThanOrEqual(515)
     // Exactness: no wrong answers, nothing withheld.
     expect(wrong).toBe(0)
