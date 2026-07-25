@@ -549,9 +549,47 @@ describe('piano roll — parse', () => {
    * A refusal is recoverable; silent data loss is not.
    */
   it('refuses a patterned `:` variant rather than truncating the token', () => {
-    expect(parseStepGrid('rd:<1 3 2>').ok).toBe(false)
+    // A RANDOM tail argument still refuses: `[1|0]` picks per cycle, so no finite
+    // bar expansion is faithful to it.
     expect(parseStepGrid('sd hh:[1|0]').ok).toBe(false)
-    expect(parseStepGrid('pulse:[0.3 0.5]').ok).toBe(false)
+
+    // `rd:<1 3 2>` USED to refuse here, for the same reason `*<1!3 2>` did below: a
+    // single-cycle projection could only have shown one of the three variants. Bar
+    // expansion (#938) plus naming the `:`-variant (#1019) now show all three
+    // truthfully — 3 bars, one lane per variant — and the anti-truncation property
+    // this test exists for is asserted directly rather than via a refusal.
+    const alt = parseStepGrid('rd:<1 3 2>')
+    expect(alt.ok).toBe(true)
+    if (alt.ok) {
+      expect(alt.model.bars).toBe(3)
+      expect(alt.model.lanes.map((l) => l.sound)).toEqual(['rd:1', 'rd:3', 'rd:2'])
+      // NEVER truncated to a bare `rd` — that is the failure this guards.
+      expect(alt.model.lanes.map((l) => l.sound)).not.toContain('rd')
+      // and the alternation survives an edit: clearing the first arm keeps the other
+      // two variants and the `<…>` shape, rather than flattening to one index
+      const cleared = {
+        ...alt.model,
+        lanes: alt.model.lanes.map((l, i) => (i === 0 ? { ...l, cells: l.cells.map(() => false) } : l)),
+      }
+      expect(serializeStepGrid(cleared)).toBe('<~ rd:3 rd:2>')
+    }
+    gridRoundTrips('rd:<1 3 2>')
+
+    // A tail argument patterned WITHIN the cycle is a different case, and the engine
+    // settles it: `tail` is `fmap(...).appLeft(friend)`, and `appLeft` samples the
+    // argument at the LEFT hap's onset — so `pulse:[0.3 0.5]` plays `["pulse", 0.3]`
+    // in every cycle and the `0.5` never sounds at all. Verified against the engine,
+    // not reasoned from the grammar. A one-cell `pulse:0.3` view is therefore a
+    // FAITHFUL model of what plays rather than a truncation of it, and the unedited
+    // round-trip below copies the original bytes verbatim, so the dead `0.5` is not
+    // silently rewritten by merely opening the view.
+    const inner = parseStepGrid('pulse:[0.3 0.5]')
+    expect(inner.ok).toBe(true)
+    if (inner.ok) {
+      expect(inner.model.lanes.map((l) => l.sound)).toEqual(['pulse:0.3'])
+      expect(inner.model.lanes.map((l) => l.sound)).not.toContain('pulse')
+    }
+    gridRoundTrips('pulse:[0.3 0.5]')
     // The `*<1!3 2>` case USED to refuse here for a display reason: the single-cycle
     // projection would have shown a bare `[0,1]` chord, silently dropping the notes
     // the operator adds in the second cycle. Bar expansion (#938) shows both cycles

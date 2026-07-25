@@ -26824,6 +26824,12 @@ function leafLoc(h) {
   return { start: l.start - 1, end: l.end - 1 };
 }
 __name(leafLoc, "leafLoc");
+function tailToken(v) {
+  if (v.length < 2) return null;
+  if (!v.every((p) => typeof p === "string" || typeof p === "number")) return null;
+  return v.join(":");
+}
+__name(tailToken, "tailToken");
 function gridOnsets(pat, cyc) {
   const r = readGridOnsets(pat, cyc);
   return r.ok ? r.onsets : null;
@@ -26843,7 +26849,11 @@ function readGridOnsets(pat, cyc) {
     let token;
     if (typeof v === "string") token = v;
     else if (typeof v === "number") return no("wrong-surface");
-    else if (v && typeof v === "object" && typeof v.s === "string") {
+    else if (Array.isArray(v)) {
+      const t = tailToken(v);
+      if (t === null) return no("no-note-content");
+      token = t;
+    } else if (v && typeof v === "object" && typeof v.s === "string") {
       token = v.s + (v.n != null ? ":" + String(v.n) : "");
     } else return no("no-note-content");
     if (NUMERIC.test(token)) return no("wrong-surface");
@@ -27168,15 +27178,19 @@ function vacuousLocality(a) {
   return a.regions[0].from === 0 && a.regions[0].to === a.perBar;
 }
 __name(vacuousLocality, "vacuousLocality");
-function parseStepGrid(mini) {
-  const core = parseStepGridCore(mini);
-  if (core.ok) return core;
+function projectStepGridDerived(mini, fallbackReason) {
   const element = projectStepGrid(mini);
   if (element.ok && !vacuousLocality(element.model.altSource)) return element;
   const leaf = projectStepGridByLeaf(mini);
   if (leaf.ok) return leaf;
   if (element.ok) return element;
-  return refused("grid", core, leaf.gate);
+  return refused("grid", fallbackReason, leaf.gate);
+}
+__name(projectStepGridDerived, "projectStepGridDerived");
+function parseStepGrid(mini) {
+  const core = parseStepGridCore(mini);
+  if (core.ok) return core;
+  return projectStepGridDerived(mini, core);
 }
 __name(parseStepGrid, "parseStepGrid");
 function parseStepGridCore(mini) {
@@ -27444,15 +27458,17 @@ function readRollOnsets(pat, cyc) {
     if (typeof v === "number" && Number.isFinite(v)) {
       pitch = String(v);
       numeric = true;
-    } else if (typeof v === "string") {
-      if (NUMERIC.test(v)) {
-        pitch = v;
+    } else {
+      const s = typeof v === "string" ? v : Array.isArray(v) ? tailToken(v) : null;
+      if (s === null) return no("no-note-content");
+      if (NUMERIC.test(s)) {
+        pitch = s;
         numeric = true;
-      } else if (pitchToMidi(v.toLowerCase()) !== null) {
-        pitch = v.toLowerCase();
+      } else if (pitchToMidi(s.toLowerCase()) !== null) {
+        pitch = s.toLowerCase();
         numeric = false;
       } else return no("wrong-surface");
-    } else return no("no-note-content");
+    }
     const pos = h.whole.begin.valueOf() - cyc;
     const dur = h.whole.end.valueOf() - h.whole.begin.valueOf();
     if (dur <= 0) return no("no-note-content");
@@ -27761,14 +27777,18 @@ function leafRollViewUsable(model) {
   return false;
 }
 __name(leafRollViewUsable, "leafRollViewUsable");
-function parsePianoRoll(mini) {
-  const core = parsePianoRollCore(mini);
-  if (core.ok) return core;
+function projectPianoRollDerived(mini, fallbackReason) {
   const element = projectPianoRoll(mini);
   if (element.ok) return element;
   const leaf = projectPianoRollByLeaf(mini);
   if (leaf.ok) return leaf;
-  return refused("roll", core, leaf.gate);
+  return refused("roll", fallbackReason, leaf.gate);
+}
+__name(projectPianoRollDerived, "projectPianoRollDerived");
+function parsePianoRoll(mini) {
+  const core = parsePianoRollCore(mini);
+  if (core.ok) return core;
+  return projectPianoRollDerived(mini, core);
 }
 __name(parsePianoRoll, "parsePianoRoll");
 function parsePianoRollCore(mini) {

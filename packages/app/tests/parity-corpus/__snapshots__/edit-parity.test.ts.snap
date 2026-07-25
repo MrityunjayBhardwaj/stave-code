@@ -234,9 +234,9 @@ exports[`edit-parity — view-editability over the vendored corpus > pins per-fi
     "units": 2,
   },
   {
-    "broken": 2,
-    "class": "code-only",
-    "editable": 0,
+    "broken": 1,
+    "class": "partial",
+    "editable": 1,
     "file": "bakery-903-patterned-variant.strudel",
     "units": 2,
   },
@@ -407,8 +407,16 @@ exports[`edit-parity — view-editability over the vendored corpus > pins per-fi
 exports[`edit-parity — view-editability over the vendored corpus > pins per-fixture editability + the reason for every refusal > refusal-reasons 1`] = `
 [
   [
-    "step: no-note-content",
-    4,
+    "step: no-leaf-anchor",
+    1,
+  ],
+  [
+    "step: resolution",
+    1,
+  ],
+  [
+    "step: unstable-period",
+    1,
   ],
 ]
 `;
