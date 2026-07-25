@@ -1184,6 +1184,11 @@ const onsetKey = (o: Onset[]): string =>
  * the pattern isn't a static single-cycle sound grid — a `,`-stack, a per-cycle
  * alternation (that is the bars path, and projecting cycle 0 would DROP the other
  * cycles), a blow-up past the step ceiling, or spans that don't tile.
+ *
+ * Deliberately NOT exported: no caller may pick a writer directly, because the
+ * selection ORDER is the contract ([[PK58]]) and every decline in it re-routes
+ * work to the next writer. Anything outside this module that needs the derived
+ * chain asks `projectStepGridDerived`, which is that order.
  */
 function projectStepGrid(src0: string): Projection<StepGridModel> {
   const src = src0.trim()
@@ -1706,11 +1711,29 @@ function vacuousLocality(a: AltSource<unknown> | undefined): boolean {
   return a.regions[0].from === 0 && a.regions[0].to === a.perBar
 }
 
-export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
-  const core = parseStepGridCore(mini)
-  if (core.ok) return core
-  // syntactic model refused → try the inherited behaviour projection (#922), then
-  // the leaf-anchored projection (#986) for the notation no re-emit can spell
+/**
+ * THE DERIVED WRITERS FOR THE GRID, in the order `parseStepGrid` asks them — the
+ * whole chain BELOW the syntactic core, and the only place that order is written.
+ *
+ * Split out for the writer census (#1009), which has to ask the counterfactual
+ * "what would serve this if the core were deleted" — a question `parseStepGrid`
+ * cannot answer, because the core answers first and wins. Re-deriving the order
+ * inside the census would make it a second oracle that can only agree with
+ * itself ([[PV192]]), and the ORDER is the contract ([[PK58]]): every decline
+ * here re-routes work to the next writer.
+ *
+ * `fallbackReason` is what to say when nothing below the core opened it. The
+ * live caller passes the core's own refusal, because `refused` returns it
+ * verbatim for `not-a-pattern` (the mini did not even reify, so no derived gate
+ * is meaningful). The census passes a synthetic one: in its world the core
+ * SUCCEEDED, so there is no core refusal to report.
+ */
+export function projectStepGridDerived(
+  mini: string,
+  fallbackReason: { ok: false; reason: string },
+): ParseResult<StepGridModel> {
+  // the inherited behaviour projection (#922), then the leaf-anchored projection
+  // (#986) for the notation no re-emit can spell
   const element = projectStepGrid(mini)
   if (element.ok && !vacuousLocality(element.model.altSource)) return element
   const leaf = projectStepGridByLeaf(mini)
@@ -1719,7 +1742,13 @@ export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
   // …and if nothing opened it, report the gate that actually stopped the general
   // write-back (#990) — not the core's syntactic message, which names the first
   // writer to decline
-  return refused('grid', core, leaf.gate)
+  return refused('grid', fallbackReason, leaf.gate)
+}
+
+export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
+  const core = parseStepGridCore(mini)
+  if (core.ok) return core
+  return projectStepGridDerived(mini, core)
 }
 
 export function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
@@ -2570,11 +2599,19 @@ function leafRollViewUsable(model: PianoRollModel): boolean {
   return false
 }
 
-export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
-  const core = parsePianoRollCore(mini)
-  if (core.ok) return core
-  // syntactic model refused → try the inherited behaviour projection (#924), then the
-  // leaf-anchored projection (#986) for the notation no re-emit can spell
+/**
+ * THE DERIVED WRITERS FOR THE ROLL, in the order `parsePianoRoll` asks them — the
+ * roll's counterpart to `projectStepGridDerived`, and the only place this order is
+ * written. See that function for why the census needs it split out; note that the
+ * two orders DIFFER (the grid takes the `vacuousLocality` exception and the roll
+ * does not), which is exactly why neither may be re-derived by a caller.
+ */
+export function projectPianoRollDerived(
+  mini: string,
+  fallbackReason: { ok: false; reason: string },
+): ParseResult<PianoRollModel> {
+  // the inherited behaviour projection (#924), then the leaf-anchored projection
+  // (#986) for the notation no re-emit can spell
   const element = projectPianoRoll(mini)
   // NOT gated on `vacuousLocality` the way the grid is, and that asymmetry is
   // measured rather than assumed: preferring the leaf writer here moves 3 units to
@@ -2587,7 +2624,13 @@ export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
   if (leaf.ok) return leaf
   // …and if nothing opened it, report the gate that actually stopped the general
   // write-back (#990)
-  return refused('roll', core, leaf.gate)
+  return refused('roll', fallbackReason, leaf.gate)
+}
+
+export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
+  const core = parsePianoRollCore(mini)
+  if (core.ok) return core
+  return projectPianoRollDerived(mini, core)
 }
 
 // exported for the projection stress gate — it sweeps only patterns the CORE

@@ -28,6 +28,11 @@
  * so a nested `[hh ~]!16` shows sixteen faithful onsets and its per-cell duration is
  * not the grid's to preserve; its probe compares (onset, atom).
  *
+ * THE EDIT PROBE ITSELF LIVES IN `engineEditOracle.ts` (#1009) — the writer census
+ * asks the same question of a different writer, and two copies of an edit oracle are
+ * two oracles that can only agree with themselves ([[PV192]]). This gate's numbers
+ * are what pins that extraction: 131 / 73 with losses `[]`, unchanged by it.
+ *
  * THE ASSERTION is a FLOOR, not a snapshot: editOk must not fall below the reach
  * observed when this gate was written. A grammar/subset change that quietly closes
  * units the projection used to open turns this red. The per-reason breakdown is
@@ -40,22 +45,23 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import {
   parseStepGrid,
   parseStepGridCore,
   parsePianoRoll,
   parsePianoRollCore,
 } from '../../../editor/src/visualEdit/notation/parse'
-import {
-  serializeStepGrid,
-  serializePianoRoll,
-} from '../../../editor/src/visualEdit/notation/serialize'
 import type {
   ParseResult,
   PianoRollModel,
   StepGridModel,
 } from '../../../editor/src/visualEdit/notation/model'
+import {
+  GRID_SURFACE,
+  ROLL_SURFACE,
+  probeEdit,
+  type Surface as EditSurface,
+} from './engineEditOracle'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -72,141 +78,24 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 const FLOOR_STEP = 131
 const FLOOR_ROLL = 73
 
-/* ── the engine oracle: what a mini PLAYS in cycle 0 (onset, duration, atom) ── */
-
-const HRES = 720720
-type Note = { pos: number; dur: number; atom: string }
-/**
- * The equivalence key, per the surface's OWN editable contract — mirroring what
- * the shipped projection reads back, never a stricter oracle of our own:
- *
- *  - ROLL (`durAware`): a duration-carrying MULTISET of (onset, dur, atom). The
- *    roll has `@n`, so a dropped elongation must show; its projection is
- *    overlap-free by construction, so a multiset is exact.
- *  - GRID: an onset SET of (onset, atom). A cell grid holds a hit or not — it
- *    cannot hold two identical hits at one instant, so `hh(<3,7>,16)` (which
- *    superimposes euclid(3) and euclid(7), doubling some hits) collapses to one
- *    per column, exactly as `gridOnsets` dedupes. Duration is not the grid's axis.
- */
-const sig = (rows: Note[], durAware: boolean): string => {
-  const keys = rows.map((r) =>
-    durAware ? `${Math.round(r.pos * HRES)}|${Math.round(r.dur * HRES)}|${r.atom}` : `${Math.round(r.pos * HRES)}|${r.atom}`,
-  )
-  return JSON.stringify((durAware ? keys : [...new Set(keys)]).sort())
-}
-
-/** the played atom, however the value carries it — a sound, a MIDI note, a degree */
-function atomOf(v: unknown): string | null {
-  if (v == null) return null
-  if (typeof v === 'number') return String(v)
-  if (typeof v === 'string') return v.toLowerCase()
-  if (typeof v === 'object') {
-    const o = v as { s?: unknown; note?: unknown; n?: unknown }
-    if (o.s !== undefined) return String(o.s).toLowerCase()
-    if (o.note !== undefined) return String(o.note).toLowerCase()
-    if (o.n !== undefined) return String(o.n)
-  }
-  return null
-}
-
-interface Hap {
-  hasOnset?: () => boolean
-  whole?: { begin: { valueOf(): number }; end: { valueOf(): number } }
-  part?: { begin: { valueOf(): number } }
-  value: unknown
-}
-
-/** the onset notes a mini plays in cycle 0, or null if it won't reify / has an atom we can't name */
-function enginePlayed(src: string): Note[] | null {
-  return enginePlayedCycle(src, 0)
-}
-
-/**
- * The onsets a mini plays in ONE given cycle, positions normalised into `[0,1)`.
- *
- * A bar-expanded projection (#930) shows several cycles at once, so verifying an
- * edit against cycle 0 alone would miss a write-back that corrupts a LATER bar —
- * the exact silent multi-cycle loss the projection has to be trusted not to do.
- */
-function enginePlayedCycle(src: string, cyc: number): Note[] | null {
-  let haps: Hap[]
-  try {
-    haps = (reifyMini(src) as { queryArc(a: number, b: number): Hap[] }).queryArc(cyc, cyc + 1)
-  } catch {
-    return null
-  }
-  const out: Note[] = []
-  for (const h of haps) {
-    const onset = h.hasOnset?.() ?? (!!h.whole && !!h.part && Math.abs(h.whole.begin.valueOf() - h.part.begin.valueOf()) < 1e-9)
-    if (!onset || !h.whole) continue
-    const atom = atomOf(h.value)
-    if (atom === null) return null
-    out.push({ pos: h.whole.begin.valueOf(), dur: h.whole.end.valueOf() - h.whole.begin.valueOf(), atom })
-  }
-  return out
-}
-
-/** an onset position that plays exactly ONE note — deleting the model element there removes exactly that hap */
-function singletonPos(base: Note[]): number | null {
-  const counts = new Map<number, number>()
-  for (const n of base) counts.set(Math.round(n.pos * HRES), (counts.get(Math.round(n.pos * HRES)) ?? 0) + 1)
-  for (const n of base) if (counts.get(Math.round(n.pos * HRES)) === 1) return n.pos
-  return null
-}
-
-/* ── the modeled delete, per surface — the real UI edit through the real writer ── */
-
-/**
- * Delete the single note sounding at model column `col`; null if not a clean
- * single-note target.
- *
- * The COLUMN is passed in rather than derived from a cycle-0 position, because on
- * a bar-expanded model `steps` spans every bar — `pos * steps` would stretch a
- * cycle-0 onset across the whole grid and probe the wrong column.
- */
-function deleteFromRoll(model: PianoRollModel, col: number): string | null {
-  const here = model.notes.filter((n) => n.start === col)
-  if (here.length !== 1) return null // chord / no note starts here — not our clean target
-  const edited: PianoRollModel = { ...model, notes: model.notes.filter((n) => n !== here[0]) }
-  return serializePianoRoll(edited)
-}
-
-/** clear the single lane on at model column `col`; null if not a clean single-lane target */
-function deleteFromGrid(model: StepGridModel, col: number): string | null {
-  const on = model.lanes.filter((l) => l.cells[col])
-  if (on.length !== 1) return null
-  const edited: StepGridModel = {
-    ...model,
-    lanes: model.lanes.map((l) => (l === on[0] ? { ...l, cells: l.cells.map((c, j) => (j === col ? false : c)) } : l)),
-  }
-  return serializeStepGrid(edited)
-}
-
 /* ── the sweep ──────────────────────────────────────────────────────────────── */
 
+/**
+ * A surface = the two writers to compare plus how the shared edit oracle drives it.
+ * `core`/`full` are this gate's question (does the PROJECTION buy back what the
+ * syntactic model refused); `edit` is the probe, imported so the census can hold a
+ * different writer to exactly the same standard.
+ */
 interface Surface {
   key: 'step' | 'roll'
-  durAware: boolean
   core: (m: string) => ParseResult<StepGridModel | PianoRollModel>
   full: (m: string) => ParseResult<StepGridModel | PianoRollModel>
-  del: (model: StepGridModel & PianoRollModel, pos: number) => string | null
+  edit: EditSurface
 }
 
 const SURFACES: Surface[] = [
-  {
-    key: 'step',
-    durAware: false, // an onset instrument — the grid has no duration axis
-    core: parseStepGridCore,
-    full: parseStepGrid,
-    del: (m, pos) => deleteFromGrid(m, pos),
-  },
-  {
-    key: 'roll',
-    durAware: true, // `@n` elongation — duration is the roll's to preserve
-    core: parsePianoRollCore,
-    full: parsePianoRoll,
-    del: (m, pos) => deleteFromRoll(m, pos),
-  },
+  { key: 'step', core: parseStepGridCore, full: parseStepGrid, edit: GRID_SURFACE },
+  { key: 'roll', core: parsePianoRollCore, full: parsePianoRoll, edit: ROLL_SURFACE },
 ]
 
 interface Tally {
@@ -251,42 +140,17 @@ function sweep(s: Surface): Tally {
     const m = r.model as StepGridModel & PianoRollModel
     t.projected++
 
-    // Bar-expanded projections (#930) show `bars` cycles at once. `steps` then spans
-    // every bar, so the probe column comes from the PER-BAR width, and the edit is
-    // checked against every bar — a delete in bar 0 that quietly rewrites bar 1 is
-    // the multi-cycle loss this gate exists to catch, and comparing cycle 0 alone
-    // would call it a pass.
-    const bars = m.bars ?? 1
-    const perBar = m.steps / bars
-    if (!Number.isInteger(perBar)) continue
-
-    // edit round-trip verified through the real engine on both sides
-    const base = enginePlayed(mini)
-    if (base === null || base.length === 0) continue
-    const pos = singletonPos(base)
-    if (pos === null) continue // fully chorded — no clean single-note delete probe
-    const out = s.del(m, Math.round(pos * perBar))
-    if (out === null) continue // the writer declined (a safe no-op) — not counted as reach
-    let ok = true
-    for (let b = 0; b < bars && ok; b++) {
-      const want = enginePlayedCycle(mini, b)
-      const got = enginePlayedCycle(out, b)
-      if (want === null || got === null) {
-        ok = false
-        break
-      }
-      // the deleted note is gone from bar 0; every other bar is untouched
-      const expected =
-        b === 0
-          ? want.filter((n) => Math.round(n.pos * HRES) !== Math.round(pos * HRES))
-          : want
-      ok = sig(got, s.durAware) === sig(expected, s.durAware)
-    }
-    if (ok) {
+    // The edit round-trip, verified through the real engine on both sides, by the
+    // ONE shared probe (`engineEditOracle.ts`). A `no-probe` verdict — fully
+    // chorded, a non-integer per-bar width, or a writer that declined — is
+    // UNVERIFIED and counts as neither reach nor a loss, exactly as it always did
+    // when these were four separate `continue`s.
+    const probe = probeEdit(mini, m, s.edit)
+    if (probe.verdict === 'ok') {
       t.editOk++
       t.reachByReason.set(reason, (t.reachByReason.get(reason) ?? 0) + 1)
-    } else if (t.losses.length < 20) {
-      t.losses.push(`${JSON.stringify(mini)}  edit→${JSON.stringify(out)}`)
+    } else if (probe.verdict === 'corrupt' && t.losses.length < 20) {
+      t.losses.push(`${JSON.stringify(mini)}  edit→${JSON.stringify(probe.out)}`)
     }
   }
   return t

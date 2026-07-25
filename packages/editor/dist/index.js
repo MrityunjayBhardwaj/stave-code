@@ -27142,15 +27142,19 @@ function vacuousLocality(a) {
   return a.regions[0].from === 0 && a.regions[0].to === a.perBar;
 }
 __name(vacuousLocality, "vacuousLocality");
-function parseStepGrid(mini) {
-  const core = parseStepGridCore(mini);
-  if (core.ok) return core;
+function projectStepGridDerived(mini, fallbackReason) {
   const element = projectStepGrid(mini);
   if (element.ok && !vacuousLocality(element.model.altSource)) return element;
   const leaf = projectStepGridByLeaf(mini);
   if (leaf.ok) return leaf;
   if (element.ok) return element;
-  return refused("grid", core, leaf.gate);
+  return refused("grid", fallbackReason, leaf.gate);
+}
+__name(projectStepGridDerived, "projectStepGridDerived");
+function parseStepGrid(mini) {
+  const core = parseStepGridCore(mini);
+  if (core.ok) return core;
+  return projectStepGridDerived(mini, core);
 }
 __name(parseStepGrid, "parseStepGrid");
 function parseStepGridCore(mini) {
@@ -27735,14 +27739,18 @@ function leafRollViewUsable(model) {
   return false;
 }
 __name(leafRollViewUsable, "leafRollViewUsable");
-function parsePianoRoll(mini) {
-  const core = parsePianoRollCore(mini);
-  if (core.ok) return core;
+function projectPianoRollDerived(mini, fallbackReason) {
   const element = projectPianoRoll(mini);
   if (element.ok) return element;
   const leaf = projectPianoRollByLeaf(mini);
   if (leaf.ok) return leaf;
-  return refused("roll", core, leaf.gate);
+  return refused("roll", fallbackReason, leaf.gate);
+}
+__name(projectPianoRollDerived, "projectPianoRollDerived");
+function parsePianoRoll(mini) {
+  const core = parsePianoRollCore(mini);
+  if (core.ok) return core;
+  return projectPianoRollDerived(mini, core);
 }
 __name(parsePianoRoll, "parsePianoRoll");
 function parsePianoRollCore(mini) {
