@@ -311,6 +311,38 @@ not about 234.
 > product surface (32 structured views that did not exist). **#1020 remains the only
 > one of the two that moves P6's number.**
 
+### #1020 has now been measured, and it moves the number to 28 — conditionally
+
+Full sweep: **`ROLL-CAP-SWEEP.md`**. `LEAF_PROJECT_BARS.roll` swept at 4/6/8/12 against
+both populations separately. At 12, with the core deleted:
+
+| | cap 4 | cap 12 |
+|---|---|---|
+| roll untransferable | 31 | **17** |
+| untransferable, both surfaces | 57 | **43** |
+| **the set that actually blocks deleting the core** | **40** | **28** |
+
+The step grid is identical to the digit at every cap — the constant is roll-only, which
+is the control arm. Zero corrupt and zero asks moved to a worse outcome, per ask.
+
+**The cap has NOT been raised, and that is deliberate.** Its two populations do not pay at
+the same time. In production `parsePianoRoll` is core → projection, so for a core-*served*
+mini the core answers and the derived writers are never consulted: the +13 transfers above
+are a counterfactual about a core that still exists. Meanwhile the same raise opens **9
+new views on the core-*refused* population at 27.6% live for zero extra reach** — the
+exact trade the cap was set to 4 to refuse, and reproduced here on today's code rather
+than inherited.
+
+So the raise belongs to the deletion, not before it. **P6 should be scoped against 28, and
+must include `LEAF_PROJECT_BARS.roll = 12` in its own diff.** Raising it earlier costs
+real product surface and buys nothing until the core stops answering first.
+
+The 12 remaining roll asks the raise clears are branch alternations whose notes each own a
+source token; the 17 that survive it are the shared-leaf family, and they stop at
+`note-crosses-bar` (`@n` inside `<>`, 0 → 4) and `view-unusable` (`!n` inside `<>`,
+2 → 4) rather than at the period gate. **No cap reaches those** — they are the same
+bijection bound §2 already names.
+
 The alternative outcome the phase was told to be willing to report — "two writers,
 bounded" — is **not** what the measurement says. It says one writer plus a small named
 residual, and the residual is enumerated above rather than estimated.
