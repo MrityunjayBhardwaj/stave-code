@@ -268,6 +268,12 @@ describe(`the roll's leaf period cap at ${CAP}, on both populations it governs`,
     // is only VERIFIED once 2p cycles were probed. At p = 16 against a 24-cycle probe,
     // cycles 8–15 are checked against nothing and a period-32 pattern masquerades as
     // period-16 — a view that silently stops being true one cycle past its own width.
+    //
+    // ⚠ 12 is `PERIOD_PROBE / 2` and `PERIOD_PROBE` is a module-private constant in
+    // `parse.ts` (~line 853). This literal has to track it and nothing makes it: raising
+    // the probe would leave this bound stale-but-green, which is the quiet direction.
+    // Filed as #1025 rather than papered over — the honest fix is one shared constant,
+    // not a second copy of 24 here.
     expect(CAP).toBeLessThanOrEqual(12)
 
     // and the label is not a misattribution: nothing refused for period has a period

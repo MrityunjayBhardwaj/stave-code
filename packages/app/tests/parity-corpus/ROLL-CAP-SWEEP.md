@@ -120,8 +120,24 @@ both populations and all four caps it finds:
 - **zero notes that mis-write.** Not "the probed note round-trips" — *every* note of
   *every* derived roll view either round-trips or is declined. Nothing lies about the
   document. That is a materially stronger statement than the reach gates could make.
-- population A **84.5%** live at cap 4, population B **100%**. The two disagreeing is what
-  shows the measure discriminates rather than agreeing with itself.
+- the two populations disagree, which is what shows the measure discriminates rather than
+  agreeing with itself.
+
+Three different denominators are in play and they are not interchangeable, so each figure
+is given with the population it is over — adjacent percentages that share no denominator
+are how a report lies by layout:
+
+| figure at cap 4 | over | live |
+|---|---|---|
+| every opened view, both writers — population A | 1115 notes | **84.5%** |
+| every opened view, both writers — population B | 1924 notes | **100%** |
+| **leaf**-served views only — population A | 295 notes | **41.4%** |
+| **leaf**-served views only — population B | 9 notes | **100%** |
+
+The leaf rows are the ones this cap governs; the all-writer rows are the control. The
+gained-set figures quoted above (78.7% for B's 14, 27.6% for A's 9) are a fifth and sixth
+denominator again — they are over the views the raise *adds*, which is the only population
+the decision is actually about.
 
 > **The first version of this measurement was wrong, and it was wrong in the direction
 > that looks like a discovery.** `enginePlayedCycle` returns onset positions in the
