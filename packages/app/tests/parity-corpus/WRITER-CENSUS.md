@@ -46,22 +46,38 @@ to `writer-reach`'s complement so the two gates cannot drift apart silently.
 > Nothing was reclassified from broken to working; asks that were untestable became
 > testable and then passed.
 
-| outcome | asks | of 1217 | was |
-|---|---|---|---|
-| **transfers** — a derived writer opens it AND the edit survives the engine | **1066** | 87.6% | 965 |
-| **untransferable** — no derived view, or the view corrupts | **57** | 4.7% | 151 |
-| **unverified** — opened, but no clean single-note delete probe exists | **94** | 7.7% | 101 |
+> **#1026 is a different kind of correction again, and it moved the headline down.** The
+> oracle's grid arm compared **onsets only** — `durAware: false`, commented "an onset
+> instrument — the grid has no duration axis". That is a true statement about what the
+> grid *panel* draws and a false licence for what the grid *writer* may alter: a view
+> that cannot show duration still must not change it, because "edits locally / no silent
+> data loss" is a property of the document. Restoring the axis reclassifies **11 grid
+> asks** from `transfers` to `view-corrupts`. Every one plays the right atoms at the
+> right instants and holds one of them for a different length. **The roll does not move
+> on any figure** — it was already duration-aware, which makes it this change's control
+> arm — and `unverified` does not move at all.
 
-Per surface: grid **719 / 803 = 89.5%**, roll **347 / 414 = 83.8%**.
+| outcome | asks | of 1217 | was (pre-#1026) | was (pre-#1019) |
+|---|---|---|---|---|
+| **transfers** — a derived writer opens it AND the edit survives the engine | **1055** | 86.7% | 1066 | 965 |
+| **untransferable** — no derived view, or the view corrupts | **68** | 5.6% | 57 | 151 |
+| **unverified** — opened, but no clean single-note delete probe exists | **94** | 7.7% | 94 | 101 |
 
-- Transfers by writer: **1033 element / 33 leaf**.
-- **Zero asks corrupt** on either surface — still true after the fix, and it was the
-  must-not for it. Both derived writers refuse rather than mis-write over this entire
-  population, which is what makes the untransferable set readable as an *admission*
-  result and not a fidelity one.
+Per surface: grid **708 / 803 = 88.2%**, roll **347 / 414 = 83.8%**.
+
+- Transfers by writer: **1022 element / 33 leaf**.
+- **11 asks corrupt, all on the grid, all from the element re-emit.** This paragraph used
+  to read "zero asks corrupt on either surface… which is what makes the untransferable
+  set readable as an *admission* result and not a fidelity one". That zero was the
+  oracle's, not the writers'. The honest reading is now: the untransferable set is an
+  admission result **plus** 11 fidelity failures. What survives as an invariant is
+  sharper and has a mechanism behind it — **the leaf adapter corrupts nowhere, 0 of the
+  11 here and 0 of the 29 in `writer-reach`.** Byte surgery copies every structural byte
+  it was not asked to change, so it cannot lose a length; the element re-emit re-derives
+  every length from a cell model that has none.
 - **14 transfers change the view's shape** (10 grid / 4 roll) — reach moves, no verdict
   moves, and the user sees a different grid. Unchanged by the fix.
-- The 57 untransferable asks sit behind **52 distinct minis** (was 151 / 146).
+- The 68 untransferable asks sit behind **63 distinct minis** (was 57 / 52, and 151 / 146).
 - **Additive per unit, verified row by row rather than netted:** across all 1217 asks,
   **0 went from a better outcome to a worse one**. The 94 that moved went
   `no-view → transfers` (93) and `no-view → no-probe` (1).
@@ -71,7 +87,13 @@ Per surface: grid **719 / 803 = 89.5%**, roll **347 / 414 = 83.8%**.
 | | asks | now |
 |---|---|---|
 | a `word:index` naming hole (**#1019**) | 101 | **7** |
-| candidate structural bound | 50 | **50** |
+| candidate structural bound | 50 | **61** |
+
+> The structural column moved 50 → 61 at **#1026** and that is not a change in this
+> split's meaning: the 11 duration reclassifications play no array value, so they land
+> wholly in the second column. The claim this table protects — that naming the
+> `:`-variant did not touch the structural column — is about #1019 and still holds,
+> because the array column is still 7.
 
 **#1019, and why the structural column not moving is the load-bearing half.** krill
 lowers `bd:3` to the array value `["bd", 3]`. `readGridOnsets` named a `string`, a
@@ -180,7 +202,7 @@ resolver (#1006) hands each unit.
 
 | population | transfer rate | was (pre-#1019) |
 |---|---|---|
-| mini-corpus (parse-side harvest), 1500 minis | **1058 / 1217 = 86.9%** | 965 / 1217 = 79.3% |
+| mini-corpus (parse-side harvest), 1500 minis | **1055 / 1217 = 86.7%** | 965 / 1217 = 79.3% |
 | eval-first, all resolved minis | **430 / 500 = 86.0%** | 413 / 500 = 82.6% |
 | eval-first, only the minis the parse snapshot lacks | **75 / 93 = 80.6%** | 73 / 93 = 78.5% |
 
@@ -192,7 +214,7 @@ population effect — which is the failure this table exists to guard against, c
 the table itself.
 
 The pre-fix reading was that the eval arm scored *higher* than the harvest arm. After the
-fix it scores marginally **lower** (86.0% against 86.9%), so that ordering was never a
+fix it scores marginally **lower** (86.0% against 86.7%), so that ordering was never a
 real effect — it was the naming hole falling differently across two populations that
 overlap heavily. What survives is the thing worth keeping: **all three figures agree
 inside ~1pp for the two large populations, and the genuinely-new slice sits 6pp below
@@ -291,13 +313,22 @@ Filtering the 50 to asks whose **core view has structure** (more than one cell/n
 one-cell view of an instrument name is a correct model and a useless surface) and whose
 **core edit is itself verified**:
 
-| | asks |
-|---|---|
-| candidate structural | 50 |
-| …with a structured core view | 46 |
-| …with a verified core edit | 45 |
-| **…both (the set that actually blocks deletion)** | **44** |
+| | asks | was (pre-#1026) |
+|---|---|---|
+| candidate structural | 61 | 50 |
+| …with a structured core view | 57 | 46 |
+| …with a verified core edit | 47 | 45 |
+| **…both (the set that actually blocks deletion)** | **46** | 44 |
 
+> **46 at #1026, up from 44 — and the small size of that move is the finding.** Eleven
+> asks were reclassified from `transfers` to `view-corrupts`, so the structural set grew
+> by eleven, but the blocker set grew by only **two**. This column holds the INCUMBENT to
+> the same restored axis, and **eight of the eleven are asks whose core write loses the
+> same duration** — never reach on either side, and charging them to the projection would
+> be a free win for the incumbent, which is exactly what the conjunction exists to stop.
+> Only the three the core writes faithfully are a real cost, and two of those have a
+> structured core view.
+>
 > **41 → 45, and so 40 → 44, at #1022 — with the untransferable set unchanged at 50.**
 > This column is the **incumbent's** probe, and the incumbent benefits from a better probe
 > exactly as the challenger does. Four core views whose patterns rest in bar 0 were filed
@@ -305,7 +336,7 @@ one-cell view of an instrument name is a correct model and a useless surface) an
 > the blocker set. **The cost of deleting the core did not rise; our measurement of it
 > did.** A change that had also moved the 50 would have meant something else entirely.
 
-The two filters are not nested, so the conjunction (44) is the number to quote, never
+The two filters are not nested, so the conjunction (46) is the number to quote, never
 either single column. The residue: **4 asks have no structured core view at all** —
 `~` on both surfaces, `<0 -@7>`, and `gm_choir_aahs,gm_choir_aahs` — a view of silence or
 of one repeated lane, which is not a view worth preserving. **6 more have a structured
@@ -314,23 +345,31 @@ testable) — unverified, not untransferable.
 
 ### So the honest answer to P3
 
-**The syntactic core's irreplaceable reach is 44 surface-asks, not 234** — and it is
-not one bound but a stack of four, three of which have a named owner:
+**The syntactic core's irreplaceable reach is 46 surface-asks, not 234** — and it is
+not one bound but a stack of five, four of which have a named owner. Anatomy of the
+candidate-structural **61** (the blocker set's count for each is in brackets):
 
-1. **33 period-cap** → #1020. 20 clear at a cap the grid already ships.
-2. **9 shared leaf** → the bijection. No fix known; this is the real bound.
-3. **4 duplicate lanes / 2 irrational onsets** → genuine, small, structural.
-4. **2 degenerate** → not worth keeping.
+1. **33 period-cap** [30] → #1020. 20 clear at a cap the grid already ships.
+2. **11 duration loss** [3] → **#1026 / #1010.** New at #1026: these are not admission
+   failures at all but fidelity ones — the view opens, the edit writes back, and a
+   surviving note is a different length. Every one is the element re-emit, so retiring it
+   for surgery removes the class. Only 3 reach the blocker set, because on the other 8
+   the *core's* write loses the same duration and the ask was never reach on either side.
+3. **9 shared leaf** [9] → the bijection. No fix known; this is the real bound.
+4. **4 duplicate lanes / 2 irrational onsets** [3 / 1] → genuine, small, structural.
+5. **2 degenerate** [0] → not worth keeping.
 
 **Verdict for P6: not blocked, but not free either.** Deleting the core is viable *after*
 #1019 and #1020 land, and even then leaves roughly **15 asks** (shared leaf + duplicate
-lanes + irrational onsets) with no derived view at all. Whether that is acceptable is a
+lanes + irrational onsets) with no derived view at all. **That 15 is unchanged by #1026** —
+the duration class is a fixable fidelity failure owned by #1010, not a permanent bound, so
+it does not join the residual the deletion has to accept. Whether that is acceptable is a
 product call, not a measurement one — but it is a decision about 15 asks over ~15 minis,
 not about 234.
 
 > **#1019 has now landed, and it did not change this verdict by one ask.** The blocker
-> set was still **40** at the time (it is 44 after #1022 made the incumbent's own probe
-> less blind — see above) and its four components are still 33 / 9 / 6 / 2. That is the
+> set was still **40** at the time (44 after #1022 made the incumbent's own probe less
+> blind, 46 after #1026 restored the duration axis — see above) and its four components are still 33 / 9 / 6 / 2. That is the
 > expected result and worth stating plainly: the naming hole and the structural bound
 > were always independent claims, and closing the first was never going to move the
 > second. What #1019 changed is the *untransferable* total (151 → 57) and the live
@@ -345,8 +384,15 @@ both populations separately. At 12, with the core deleted:
 | | cap 4 | cap 12 |
 |---|---|---|
 | roll untransferable | 31 | **17** |
-| untransferable, both surfaces | 57 | **43** |
-| **the set that actually blocks deleting the core** | **44** | **32** |
+| untransferable, both surfaces | 68 | **54** |
+| **the set that actually blocks deleting the core** | **46** | **34** |
+
+> ⚠ **Re-derived at #1026** (was 44 → 32). The cap-12 figure was **observed** by running
+> this census with the constant set, not obtained by subtracting the cap's known
+> contribution of 12 from 46. The two agree; the point is that the agreement was checked
+> rather than assumed. The cap's own contribution is unchanged at **12 asks**, which
+> follows from the roll being untouched by the duration axis — the cap is roll-only and
+> the axis moved the grid alone.
 
 The step grid is identical to the digit at every cap — the constant is roll-only, which
 is the control arm. Zero corrupt and zero asks moved to a worse outcome, per ask.
@@ -359,7 +405,7 @@ new views on the core-*refused* population at 27.6% live for zero extra reach** 
 exact trade the cap was set to 4 to refuse, and reproduced here on today's code rather
 than inherited.
 
-So the raise belongs to the deletion, not before it. **P6 should be scoped against 32, and
+So the raise belongs to the deletion, not before it. **P6 should be scoped against 34, and
 must include `LEAF_PROJECT_BARS.roll = 12` in its own diff.** Raising it earlier costs
 real product surface and buys nothing until the core stops answering first.
 

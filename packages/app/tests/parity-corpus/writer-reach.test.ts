@@ -21,12 +21,15 @@
  * column grid — `[~ 1@2]` and `[~ ~ 1@4]` are the same music at two resolutions, and
  * a column compare would false-flag a faithful re-spelling.
  *
- * The compare is per each view's OWN editable axes. The ROLL models duration (`@n`),
- * so its probe is duration-aware — the full (onset, duration, atom) multiset, so a
- * lost `@n` is caught even when the onset count is unchanged. The GRID is an ONSET
- * instrument — elongation is explicitly outside its subset (the core refuses `@n`),
- * so a nested `[hh ~]!16` shows sixteen faithful onsets and its per-cell duration is
- * not the grid's to preserve; its probe compares (onset, atom).
+ * The compare spans every axis the DOCUMENT carries, on both surfaces. This paragraph
+ * used to say the opposite — that the grid is an onset instrument, that "a nested
+ * `[hh ~]!16` shows sixteen faithful onsets and its per-cell duration is not the grid's
+ * to preserve", and that its probe therefore compares (onset, atom). The first clause is
+ * true and the conclusion does not follow (#1026): what the grid PANEL can draw does not
+ * bound what the grid WRITER may alter, because "edits locally / no silent data loss" is
+ * a property of the file. `[hh ~]!16` is one of the units that made the point — deleting
+ * one hit rewrote it to sixteen flat cells and doubled every surviving note's length,
+ * and the gate called it reach.
  *
  * THE EDIT PROBE ITSELF LIVES IN `engineEditOracle.ts` (#1009) — the writer census
  * asks the same question of a different writer, and two copies of an edit oracle are
@@ -85,9 +88,81 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
  * Worth stating because the distinction is invisible in the number: this is a gain in
  * MEASUREMENT, not in product surface, and must not be quoted as reach the projections
  * bought.
+ *
+ * ⚠ LOWERED 155 → 126 at #1026, and the same caveat runs the other way. The writers are
+ * again untouched. The oracle's grid arm compared ONSETS ONLY, so 29 units whose edit
+ * silently changed a surviving note's LENGTH were counted as reach. Restoring the axis
+ * removes them from the count; nothing about the product got worse on the day this
+ * number fell. It is a loss in FICTION, not in surface, and must not be quoted as a
+ * regression the projections caused.
+ *
+ * The floor returns when #1010 lands — see `DURATION_LOSSES` below for why that is a
+ * prediction with a mechanism behind it rather than a hope.
  */
-const FLOOR_STEP = 155
+const FLOOR_STEP = 126
 const FLOOR_ROLL = 75
+
+/**
+ * The units whose edit survives the engine on every axis EXCEPT duration.
+ *
+ * Enumerated rather than counted, and asserted as a set rather than as a ceiling, so
+ * that a thirtieth cannot arrive unnoticed and a fix cannot quietly trade one for
+ * another. Every entry is a real loss: the emitted document plays the right atoms at
+ * the right instants and holds one of them for a different length.
+ *
+ * WHY THIS SET HAS A MECHANISM AND NOT JUST A SIZE — measured per unit across both
+ * populations (#1026): all 29 here, and all 11 on the census's counterfactual arm,
+ * come from the ELEMENT RE-EMIT. The leaf adapter produces **0 of 40**. That is not a
+ * coincidence to be re-checked each time; it follows from what the two writers are.
+ * Leaf surgery replaces the edited note's own source bytes and COPIES everything else,
+ * so the structural bytes that carry duration — `@n`, `!n`, `*n`, nesting, spacing —
+ * ride back out verbatim and it is incapable of changing a length it was not asked to
+ * change. The element re-emit re-spells the whole element from a cell model, and a cell
+ * model has no duration in it, so it re-spells at the grid's resolution and every
+ * length in the element is re-derived from scratch. `[hh ~]!16` → `~ hh hh …` is that
+ * in one line.
+ *
+ * SO THIS LIST IS #1010's SCORECARD. Retiring the element re-emit in favour of surgery
+ * wherever a span exists empties it — the ones with a span become clean splices, the
+ * ones without (a shared leaf, `!16`) become honest refusals. Either outcome removes
+ * the silent rewrite, which is the whole point. When that lands, this array goes to
+ * empty and `FLOOR_STEP` returns toward 155.
+ */
+const DURATION_LOSSES: string[] = [
+  // ⚠ the ` ` is a NON-BREAKING SPACE in the harvested source, not a typo here.
+  // `JSON.stringify` renders it identically to an ordinary space, so a mismatch on it
+  // prints as two visually identical lines in a test diff. Written escaped so the next
+  // reader sees it.
+  '<[bd*4 . bd*2 . bd . bd*4]\n  [bd*4 . bd@2 . bd\u00a0. bd*4]>',
+  '<[c3, [eb5, eb6, f7] [bb6 d7]] [f3, [ab5, eb6, bb7] [bb6 d7]]>',
+  '<[hh*2] hh*4>',
+  '<~ [~@3.5 d2@2 c#2@2.5]>',
+  '[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]',
+  '[<g4 e4> [b4 g4]] [- <a4> <->]',
+  '[bd hh] hh sd hh [bd bd] - hh hh - <sd hh>*4',
+  '[bd hh] hh sd hh bd bd - hh <sd hh>*4',
+  '[bd rim:1 [~ bd] rim:2]*2',
+  '[bd*2 -] <- [~@2 bd bd - bd - sd]>',
+  '[bd@0.5  - - -  - - bd@0.5  - bd@0.5  - - bd@0.25  - - - -]',
+  '[c#5 [f#5 e5] b4] [b4 b4 c#5 d5] [d5 f#5 e5] [[a4 b4] c#4]',
+  '[c1 ds1*2]*4',
+  '[c2 ds2*2]*4',
+  '[e1 f2 [e3 f1]] [f2 f3] [g2 g2]',
+  '[g2 d2 e2][d2 b1@2 a1][- a2 f#2 g2 ][d2 b1@3]',
+  '[hh [hh hh]]!4',
+  '[hh ~]!16',
+  '[oberheimdmx_tb@0.6  oberheimdmx_tb@0.5 oberheimdmx_tb@0.6  oberheimdmx_tb@0.5]*2',
+  'a!4 b!2 a@4 a@2 c*2 b*2',
+  'bd bd - <- - - [- bd, sd]>',
+  'bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]',
+  'c <d c> - [c <d c>]',
+  'c [a <bb ab>] <b g>',
+  'cp(5,<8 16>,2)',
+  'rim(3,<16 8>)',
+  '{c [f g] d# d}%2',
+  '~ sd ~[sd[~ <~~~ sd>]]',
+  '~ ~ ~ bd(<2 4!2>, 8)',
+]
 
 /* ── the sweep ──────────────────────────────────────────────────────────────── */
 
@@ -117,7 +192,18 @@ interface Tally {
   reachByReason: Map<string, number>
   /** for units NO writer opened: the gate that actually stopped them (#990) */
   unopenedGates: Map<string, number>
-  losses: string[]
+  /**
+   * Every unit whose edit corrupts — the mini it came from and the document the
+   * writer emitted, plus which writer emitted it.
+   *
+   * UNCAPPED, deliberately. This used to stop recording at 20 while the report
+   * printed `LOSSES sample (${t.losses.length})`, so a run with 29 losses said 20
+   * and read as the whole set. A bound on coverage that does not announce itself is
+   * indistinguishable from complete coverage, which is the whole failure this gate
+   * exists to catch, committed by the gate. The report still prints a SAMPLE — it
+   * just says how many it is a sample of.
+   */
+  losses: { mini: string; out: string; writer: 'leaf' | 'element' }[]
 }
 const blank = (): Tally => ({
   refused: 0,
@@ -160,8 +246,8 @@ function sweep(s: Surface): Tally {
     if (probe.verdict === 'ok') {
       t.editOk++
       t.reachByReason.set(reason, (t.reachByReason.get(reason) ?? 0) + 1)
-    } else if (probe.verdict === 'corrupt' && t.losses.length < 20) {
-      t.losses.push(`${JSON.stringify(mini)}  edit→${JSON.stringify(probe.out)}`)
+    } else if (probe.verdict === 'corrupt') {
+      t.losses.push({ mini, out: probe.out, writer: m.leafSource ? 'leaf' : 'element' })
     }
   }
   return t
@@ -182,8 +268,15 @@ function report(name: string, t: Tally, floor: number): void {
   for (const [k, v] of [...t.unopenedGates.entries()].sort((a, b) => b[1] - a[1]))
     console.log(`     ${String(v).padStart(4)}x  ${k}`)
   if (t.losses.length) {
-    console.log(`  -- LOSSES sample (${t.losses.length}) --`)
-    t.losses.forEach((l) => console.log(`     ✗ ${l}`))
+    const SAMPLE = 20
+    const byWriter = (w: string) => t.losses.filter((l) => l.writer === w).length
+    console.log(
+      `  -- LOSSES: ${t.losses.length} total  (leaf ${byWriter('leaf')} / element ${byWriter('element')})` +
+        `${t.losses.length > SAMPLE ? `, showing the first ${SAMPLE}` : ''} --`,
+    )
+    t.losses
+      .slice(0, SAMPLE)
+      .forEach((l) => console.log(`     ✗ [${l.writer}] ${JSON.stringify(l.mini)}  edit→${JSON.stringify(l.out)}`))
   }
 }
 
@@ -193,14 +286,29 @@ describe('writer-reach — the projection makes real refused units editable, and
 
   it('step grid: projection reach holds at or above the floor', () => {
     report('step grid (#922)', step, FLOOR_STEP)
-    // every projected unit that got a clean probe must round-trip — no partial credit
-    expect(step.losses, step.losses.join('\n')).toEqual([])
+    // Every projected unit that got a clean probe must round-trip, EXCEPT the named
+    // duration set — asserted as an exact set, so a thirtieth cannot arrive unnoticed
+    // and a fix cannot silently trade one loss for another (#1026).
+    expect(
+      step.losses.map((l) => l.mini).sort(),
+      step.losses.map((l) => `${JSON.stringify(l.mini)}  edit→${JSON.stringify(l.out)}`).join('\n'),
+    ).toEqual([...DURATION_LOSSES].sort())
+    // …and the mechanism is asserted, not just the membership: the leaf adapter copies
+    // every byte it did not edit, so it CANNOT change a length it was not asked to.
+    // A leaf-written loss appearing here would mean that reasoning is wrong.
+    expect(
+      step.losses.filter((l) => l.writer === 'leaf'),
+      'a leaf-adapter write lost duration — byte surgery is supposed to make that impossible',
+    ).toEqual([])
     expect(step.editOk, `step writer-reach ${step.editOk} fell below floor ${FLOOR_STEP}`).toBeGreaterThanOrEqual(FLOOR_STEP)
   })
 
   it('piano roll: projection reach holds at or above the floor', () => {
     report('piano roll (#924)', roll, FLOOR_ROLL)
-    expect(roll.losses, roll.losses.join('\n')).toEqual([])
+    // The roll's arm was ALREADY duration-aware, so it is the control for #1026: this
+    // stays empty and 75 stays 75 across the change. A roll movement would have meant
+    // the edit did something other than restore the grid's missing axis.
+    expect(roll.losses, roll.losses.map((l) => l.mini).join('\n')).toEqual([])
     expect(roll.editOk, `roll writer-reach ${roll.editOk} fell below floor ${FLOOR_ROLL}`).toBeGreaterThanOrEqual(FLOOR_ROLL)
   })
 })

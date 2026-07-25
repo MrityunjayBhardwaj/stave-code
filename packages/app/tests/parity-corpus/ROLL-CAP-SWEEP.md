@@ -49,7 +49,10 @@ through the writer would measure a path production never takes.
 - **Zero asks moved to a worse outcome at any cap, on either population**, verified per
   ask against the cap-4 rows rather than by netting totals.
 - **Zero corrupt** on either population at every cap — and that is now a stronger claim
-  than it used to be (see *Every note, not one note*).
+  than it used to be (see *Every note, not one note*). **Still true after #1026 restored
+  the oracle's duration axis**, and not by luck: this sweep is roll-only, and the roll arm
+  was already duration-aware. The axis that was missing was the grid's, which this sweep
+  never touches — that is why the grid's 11 reclassified asks do not appear here.
 
 The ceiling is 12 and not a round number: `detectPeriod` confirms a period `p` only once
 `2p` cycles were probed, and `PERIOD_PROBE` is 24. A cap of 16 would admit periods that
@@ -97,12 +100,18 @@ At cap 12, with the syntactic core deleted (#1012):
 
 | | cap 4 | cap 12 |
 |---|---|---|
-| untransferable asks, both surfaces | 57 | **43** |
+| untransferable asks, both surfaces | 68 | **54** |
 | roll untransferable | 31 | **17** |
-| **the set that actually blocks deleting the core** | **44** | **32** |
+| **the set that actually blocks deleting the core** | **46** | **34** |
 
-The step grid is untouched at every cap — 803 asks / 719 transfers / 26 untransferable /
-blocker 17, identical to the digit. The constant is per-surface and roll-only, and this is
+> ⚠ **Re-derived at #1026** (was 44 → 32). Both endpoints moved by two and **the cap's own
+> contribution is unchanged at 12**, which is what the roll being duration-aware already
+> predicts: the axis that was restored was the grid's, and this constant is roll-only. The
+> cap-12 figure was OBSERVED by running the census with the constant set, not obtained by
+> subtracting 12 from 46.
+
+The step grid is untouched at every cap — 803 asks / 708 transfers / 37 untransferable /
+blocker 19, identical to the digit. The constant is per-surface and roll-only, and this is
 the control arm that proves the sweep changed nothing it was not aiming at.
 
 > **Re-measured after #1022, and the shape of the correction is the useful part.** The
@@ -110,7 +119,8 @@ the control arm that proves the sweep changed nothing it was not aiming at.
 > filed unverified — including on the **incumbent** side, which is where the blocker set's
 > "core edit verified" column comes from. Teaching it to advance to the first sounding bar
 > moved both endpoints by four (40 → 44 at cap 4, 28 → 32 at cap 12) and moved **the cap's
-> own contribution by zero**: it clears 12 asks either way. The cost of deleting the core
+> own contribution by zero**: it clears 12 asks either way. **#1026 then did the same thing
+> again** — both endpoints up by two (44 → 46, 32 → 34), the cap's contribution still 12. The cost of deleting the core
 > did not rise, our measurement of it did — and the two changes being independent is what
 > makes both readable.
 
@@ -202,9 +212,9 @@ answer, not a reversal.
 
 Shipped **with** #1012, the populations merge — core-served minis fall through to the
 derived writers too — and the same constant buys 14 views at 78.7% live against those 9 at
-27.6%, while dropping the deletion's cost from 44 asks to 32.
+27.6%, while dropping the deletion's cost from 46 asks to 34.
 
 So: `LEAF_PROJECT_BARS.roll` stays at **4** on this branch. The value it should take when
-the core is deleted is **12**, and the number P6 should be scoped against is **32, not
-44**. `roll-cap-sweep.test.ts` ships pinned at the current cap so the sweep is repeatable
+the core is deleted is **12**, and the number P6 should be scoped against is **34, not
+46**. `roll-cap-sweep.test.ts` ships pinned at the current cap so the sweep is repeatable
 and so a future change to this constant has to face both populations.
