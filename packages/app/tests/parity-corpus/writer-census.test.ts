@@ -72,6 +72,7 @@ import {
   type NoProbeReason,
   type Surface as EditSurface,
 } from './engineEditOracle'
+import { truePeriod } from './enginePeriod'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -209,51 +210,13 @@ const shapeKey = (m: StepGridModel & PianoRollModel, key: 'step' | 'roll'): stri
     ? `${m.steps}/${m.bars ?? 1}/${m.notes?.length ?? 0}`
     : `${m.steps}/${m.bars ?? 1}/${m.lanes.length}`
 
-/**
- * The pattern's TRUE cycle period, probed from the engine — the independent answer
- * the `unstable-period` label is checked against.
- *
- * Probed to 48 cycles for a cap search to 24, so a period is only believed when at
- * least a doubling of it repeated ([[PV229]]: under-windowing returns a clean,
- * plausible, wrong number). 0 means aperiodic within that window, which is a
- * different fact from "past the cap" and is counted separately.
+/*
+ * The pattern's TRUE cycle period — the independent answer the `unstable-period`
+ * label is checked against — now lives in `enginePeriod.ts`, because the cap sweep
+ * (#1020) asks the same question and two copies would be two oracles ([[PV192]]).
+ * The assertions below are what pin the extraction: 31 past the cap, 2 aperiodic,
+ * 0 within it.
  */
-function truePeriod(m: string): number {
-  const key = (c: number): string => {
-    try {
-      const haps = (
-        reifyMini(m) as {
-          queryArc(
-            a: number,
-            b: number,
-          ): { whole?: { begin: { valueOf(): number } }; value: unknown; hasOnset?: () => boolean }[]
-        }
-      ).queryArc(c, c + 1)
-      return JSON.stringify(
-        haps
-          .filter((h) => (h.hasOnset?.() ?? false) && h.whole)
-          .map((h) => [
-            Math.round((h.whole!.begin.valueOf() - c) * 720720),
-            JSON.stringify(h.value),
-          ])
-          .sort(),
-      )
-    } catch {
-      return 'ERR'
-    }
-  }
-  const keys = Array.from({ length: 48 }, (_, c) => key(c))
-  for (let p = 1; p <= 24; p++) {
-    let ok = true
-    for (let c = p; c < keys.length; c++)
-      if (keys[c] !== keys[c % p]) {
-        ok = false
-        break
-      }
-    if (ok) return p
-  }
-  return 0
-}
 
 interface Surface {
   key: 'step' | 'roll'
