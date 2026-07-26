@@ -28,7 +28,7 @@ const RUNS = [
   'edit-samples-offset500-2026-07-24T17-49-08-639Z.json',
 ]
 
-const CYCLES = [0, 1, 2, 3]
+const CYCLES = Array.from({ length: 16 }, (_, i) => i) // widened: 4 was hiding a unit that first collides at cycle 12
 
 /** identical detector to arm (a); duplicated here only because arm (a) is a spec */
 function collapses(mini: string, cyc: number): { token: string; durs: number[] }[] | null {
