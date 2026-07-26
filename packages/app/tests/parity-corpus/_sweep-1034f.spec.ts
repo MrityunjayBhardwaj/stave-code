@@ -17,7 +17,7 @@ describe('#1034 — what the 44 dropped occurrences were carrying', () => {
     const spanRows: string[] = []
     const durUnits = new Set<string>(), spanUnits = new Set<string>(), anyUnits = new Set<string>()
     for (const m of minis) {
-      for (const cyc of [0, 1, 2, 3]) {
+      for (let cyc = 0; cyc < 16; cyc++) {
         let pat: unknown
         try { pat = reifyMini(m) } catch { continue }
         const r = readGridOnsets(pat, cyc) as { ok: boolean; onsets?: any[] }

@@ -23,6 +23,8 @@ const HITS = [
   '[C G], <D Fb B C A>*[0.5,2]',
   '[C3 G3], <D Fb B C A>*[0.5,2]',
   'hh,hh oh sd',
+  // the fifth, found only past cycle 11 once the window was widened
+  'bd*2,[- sd]*2,[- hh]*4, <-!7 oh>, <-!12 bd*4 bd*8 bd*16!2>',
 ]
 
 describe('#1034 cost arm — do the colliding units currently count as reach?', () => {

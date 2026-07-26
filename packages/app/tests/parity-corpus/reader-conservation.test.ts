@@ -11,8 +11,8 @@
  * test noticed. The axis-diff instruments could not find it either — they compare
  * the grid's reader against the roll's, and the field was present in both.
  *
- * What found it was COUNTING: 19375 occurrences played, 19331 kept. Conservation
- * is the property, so conservation is what gets pinned.
+ * What found it was COUNTING: over a 4-cycle window, 19375 occurrences played and
+ * 19331 kept. Conservation is the property, so conservation is what gets pinned.
  *
  * THE STATEMENT, per surface: for any unit the reader ACCEPTS, the number of
  * records it returns equals the number of haps the engine played that a reader is
@@ -28,14 +28,14 @@
  * of absence, and a detector that fires on its own control is not evidence either.
  *
  * PROVEN TO FIRE (2026-07-26). Restoring the old dedupe guard and re-running turns
- * the grid arm red at **31 violating unit×cycle pairs, 19331 kept against 19375
- * played** — the 44 dropped notes — while the roll control stays at 0. Both halves
- * matter: a detector that cannot fire is not evidence of absence, and one that also
+ * the grid arm red — at a 4-cycle window, 31 violating unit×cycle pairs and 19331
+ * kept against 19375 played, the 44 dropped notes — while the roll control stays
+ * at 0. Both halves matter: a detector that cannot fire is not evidence of absence, and one that also
  * fires on its conserving sibling is measuring its own arithmetic.
  *
  * POPULATION AND WINDOW ARE PART OF THE CLAIM, and are stated in the assertions
  * rather than in prose: the committed `mini-corpus.json` (1500 distinct minis
- * harvested from 360 real tunes), cycles 0-3. The totals are pinned to literals so
+ * harvested from 360 real tunes), cycles 0-15. The totals are pinned to literals so
  * that a corpus refresh or a window change announces itself instead of quietly
  * re-scoping the guarantee — a figure produced at this boundary has three times
  * shipped carrying an unstated restriction, and a gate that only asserts ">= 0
@@ -54,8 +54,18 @@ const corpus: { minis: { mini: string }[] } = JSON.parse(
 )
 const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 
-/** the window the claim is scoped to — part of the assertion, not a detail */
-const CYCLES = [0, 1, 2, 3]
+/**
+ * The window the claim is scoped to — part of the assertion, not a detail.
+ *
+ * SIXTEEN, and the number is measured rather than chosen. At a 4-cycle window the
+ * corpus shows 10 units with a same-token column collision; at 16 it shows 11, and
+ * at 32 still 11 — so 16 is where this property converges. The unit that needs it
+ * is `bd*2,[- sd]*2,[- hh]*4, <-!7 oh>, <-!12 bd*4 bd*8 bd*16!2>`, whose alternation
+ * does not reach its colliding arm until CYCLE 12. A 4-cycle gate would have been
+ * blind to it, and blind in the exact way this file exists to prevent: silently, by
+ * never sampling deep enough rather than by asserting something false.
+ */
+const CYCLES = Array.from({ length: 16 }, (_, i) => i)
 
 /**
  * The engine's own count of what it played: haps a reader is obliged to consider.
@@ -162,7 +172,7 @@ describe('#1036 — an accepted unit keeps every note the engine played', () => 
     // These are the numbers the two arms above are a statement ABOUT. Without them
     // the gate still passes on a corpus of one mini over zero cycles.
     expect(minis.length).toBe(1500)
-    expect(CYCLES).toEqual([0, 1, 2, 3])
+    expect(CYCLES).toHaveLength(16)
     const grid = sweep(GRID)
     const roll = sweep(ROLL)
     expect(grid.accepted).toBe(GRID_ACCEPTED)
@@ -175,11 +185,14 @@ describe('#1036 — an accepted unit keeps every note the engine played', () => 
 /**
  * Observed 2026-07-26 on the committed corpus over cycles 0-3.
  *
- * `GRID_KEPT` is the figure the #1034 fix moved: the old reader kept 19331 of the
- * 19375 notes it accepted, and the 44 it dropped were 32 anchors, 8 lengths and 12
- * true duplicates. Pinned here so that number can never drift unremarked again.
+ * `GRID_KEPT` is the figure the #1034 fix moved. Over this 16-cycle window the old
+ * reader dropped 182 of the 77659 notes it accepted — 134 anchors, 35 lengths and
+ * 48 true duplicates, across 11 units. (The same measurement over 4 cycles reads
+ * 44 / 19375 across 10 units; both are correct, which is exactly why the window
+ * belongs in the assertion and not in a sentence someone can quote without.)
+ * Pinned here so the figure can never drift unremarked again.
  */
-const GRID_ACCEPTED = 4662
-const GRID_KEPT = 19375
-const ROLL_ACCEPTED = 2873
-const ROLL_KEPT = 15872
+const GRID_ACCEPTED = 18662
+const GRID_KEPT = 77659
+const ROLL_ACCEPTED = 11528
+const ROLL_KEPT = 63543
