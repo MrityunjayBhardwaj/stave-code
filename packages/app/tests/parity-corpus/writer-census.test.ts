@@ -61,6 +61,7 @@ import {
   tailToken,
   PROJECTION_PERIOD_BOUNDS,
 } from '../../../editor/src/visualEdit/notation/parse'
+import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import type {
   ParseResult,
   PianoRollModel,
@@ -202,7 +203,7 @@ function playsArrayValue(m: string): boolean {
  */
 function hasStructure(m: StepGridModel & PianoRollModel, key: 'step' | 'roll'): boolean {
   if (key === 'roll') return (m.notes?.length ?? 0) > 1
-  const hits = m.lanes.reduce((n, l) => n + l.cells.filter(Boolean).length, 0)
+  const hits = m.lanes.reduce((n, l) => n + l.cells.filter(isCellOn).length, 0)
   return m.steps > 1 && hits >= 1
 }
 

@@ -33,6 +33,7 @@ import {
   serializePianoRoll,
 } from '../../../editor/src/visualEdit/notation/serialize'
 import { tailToken } from '../../../editor/src/visualEdit/notation/parse'
+import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import type { PianoRollModel, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
 
 export const HRES = 720720
@@ -182,7 +183,7 @@ export function deleteFromRoll(model: PianoRollModel, col: number): string | nul
 
 /** clear the single lane on at model column `col`; null if not a clean single-lane target */
 export function deleteFromGrid(model: StepGridModel, col: number): string | null {
-  const on = model.lanes.filter((l) => l.cells[col])
+  const on = model.lanes.filter((l) => isCellOn(l.cells[col]))
   if (on.length !== 1) return null
   const edited: StepGridModel = {
     ...model,

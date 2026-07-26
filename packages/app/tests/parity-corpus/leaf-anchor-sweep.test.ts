@@ -34,6 +34,7 @@ import {
   rollOnsets,
 } from '../../../editor/src/visualEdit/notation/parse'
 import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
+import { cellOn, isCellOn } from '../../../editor/src/visualEdit/notation/model'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -242,7 +243,7 @@ describe('#986 P2 — the bijection holds on every shipped leaf view', () => {
       }
       // totality: a lane cell drawn ON must have an anchor in that column
       for (let c = 0; c < r.model.steps; c++) {
-        const drawn = r.model.lanes.some((l) => l.cells[c])
+        const drawn = r.model.lanes.some((l) => isCellOn(l.cells[c]))
         if (drawn && (r.model.leafSource.cols[c]?.length ?? 0) === 0) dead.push(`${src} @${c}`)
       }
     }
@@ -294,7 +295,7 @@ describe('#986 P2 — the bijection holds on every shipped leaf view', () => {
     // built by hand, so it holds regardless of which patterns happen to project
     const model = {
       steps: 2,
-      lanes: [{ sound: 'bd', cells: [true, true] }],
+      lanes: [{ sound: 'bd', cells: [cellOn(), cellOn()] }],
       leafSource: {
         src: 'bd*2',
         cols: [
@@ -306,7 +307,7 @@ describe('#986 P2 — the bijection holds on every shipped leaf view', () => {
     // both columns agree (both still bd) → the shared span writes once
     expect(serializeStepGrid(model)).toBe('bd*2')
     // clear one and they disagree → no single byte replacement satisfies both
-    const half = { ...model, lanes: [{ sound: 'bd', cells: [true, false] }] }
+    const half = { ...model, lanes: [{ sound: 'bd', cells: [cellOn(), false] }] }
     expect(serializeStepGrid(half)).toBeNull()
   })
 })

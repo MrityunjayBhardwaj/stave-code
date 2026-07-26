@@ -310,10 +310,31 @@ export interface StepGridModel {
   gainForeign?: boolean
 }
 
+/**
+ * One column of one lane. `false` is no trigger.
+ *
+ * A bare `boolean` today. It becomes note-shaped in #1010 P4b, so that a cell can
+ * carry HOW LONG its note sounds — the axis the grid's reader dropped and every
+ * duration loss starts from ([[PV239]]). The alias and the two constructors below
+ * exist so that the code which only asks "is this cell on?" says exactly that, and
+ * does not have to change again when the shape does.
+ *
+ * They are introduced AHEAD of the shape change on purpose: the corpus edit ORACLE
+ * reads `.cells` too, and a diff that moves the instrument and the product together
+ * produces a delta belonging to neither ([[PK62]]).
+ */
+export type StepCell = boolean
+
+/** an ON cell */
+export const cellOn = (): StepCell => true
+
+/** is this cell a trigger? (`undefined` — past the end of the lane — is not) */
+export const isCellOn = (cell: StepCell | undefined): boolean => cell === true
+
 export interface StepLane {
   sound: string
   part?: number
-  cells: boolean[]
+  cells: StepCell[]
 }
 
 /** A single note in the piano roll. */
