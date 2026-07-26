@@ -26844,6 +26844,19 @@ function tailToken(v) {
   return v.join(":");
 }
 __name(tailToken, "tailToken");
+function deriveColumn(occ) {
+  const atoms = [];
+  const spans = [];
+  const durs = [];
+  for (const o of occ) {
+    if (atoms.includes(o.token)) continue;
+    atoms.push(o.token);
+    spans.push(o.span);
+    durs.push(o.dur);
+  }
+  return { atoms, spans, durs };
+}
+__name(deriveColumn, "deriveColumn");
 function gridOnsets(pat, cyc) {
   const r = readGridOnsets(pat, cyc);
   return r.ok ? r.onsets : null;
@@ -26873,21 +26886,20 @@ function readGridOnsets(pat, cyc) {
     if (NUMERIC.test(token)) return no("wrong-surface");
     const pos = h.whole.begin.valueOf() - cyc;
     const key2 = Math.round(pos * 720720);
-    const cell = byCol.get(key2) ?? { atoms: [], spans: [], durs: [] };
-    if (!cell.atoms.includes(token)) {
-      cell.atoms.push(token);
-      cell.spans.push(leafLoc(h));
-      cell.durs.push(h.whole.end.valueOf() - h.whole.begin.valueOf());
-    }
+    const cell = byCol.get(key2) ?? [];
+    cell.push({
+      token,
+      span: leafLoc(h),
+      dur: h.whole.end.valueOf() - h.whole.begin.valueOf()
+    });
     byCol.set(key2, cell);
   }
   return {
     ok: true,
-    onsets: [...byCol.entries()].map(([k, c]) => ({
+    onsets: [...byCol.entries()].map(([k, occ]) => ({
       pos: k / 720720,
-      atoms: c.atoms,
-      spans: c.spans,
-      durs: c.durs
+      occ,
+      ...deriveColumn(occ)
     }))
   };
 }
@@ -27042,15 +27054,19 @@ function projectionEditSafe(model, perBar2, bars, base, probeCols) {
       const want = base[bb];
       if (bb !== b) return want;
       const hit = want.find((o) => Math.abs(o.pos - t) < 1e-9);
+      const probeOcc = { token: PROBE_SOUND, span: null, dur: null };
       const out2 = want.map(
         (o) => o === hit ? {
           pos: o.pos,
+          occ: [...o.occ, probeOcc],
           atoms: [...o.atoms, PROBE_SOUND],
           spans: [...o.spans, null],
-          durs: [...o.durs, 0]
+          durs: [...o.durs, null]
         } : o
       );
-      if (!hit) out2.push({ pos: t, atoms: [PROBE_SOUND], spans: [null], durs: [0] });
+      if (!hit) {
+        out2.push({ pos: t, occ: [probeOcc], atoms: [PROBE_SOUND], spans: [null], durs: [null] });
+      }
       return out2;
     }, "expectedFor");
     for (let bb = 0; bb < bars; bb++) {
@@ -27187,7 +27203,10 @@ function leafExpected(cols, perBar2, bars, span, text) {
         if (hit && text === null) continue;
         atoms.add(hit ? text : a.atom);
       }
-      if (atoms.size > 0) bar2.push({ pos: i / perBar2, atoms: [...atoms], spans: [], durs: [] });
+      if (atoms.size > 0) {
+        const occ = [...atoms].map((a) => ({ token: a, span: null, dur: null }));
+        bar2.push({ pos: i / perBar2, occ, ...deriveColumn(occ) });
+      }
     }
     out.push(bar2);
   }

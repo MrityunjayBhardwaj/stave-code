@@ -20,12 +20,19 @@ import { describe, it, expect } from 'vitest'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { readGridOnsets, type Onset } from '../parse'
 
-/** flatten to `atom@pos×dur` triples, rounded, so a mismatch reads in one line */
+/**
+ * flatten to `atom@pos×dur` triples, rounded, so a mismatch reads in one line
+ *
+ * Reads `occ` — every hap the column held — rather than the derived `atoms`/`durs`
+ * pair (#1034). For a pattern where no two haps at a column share a token the two
+ * are identical, which is every case below except the collapse ones at the end;
+ * reading the authority means those cases can be written at all.
+ */
 function read(mini: string): string[] {
   const r = readGridOnsets(reifyMini(mini), 0)
   if (!r.ok) throw new Error(`${mini} refused at gate: ${JSON.stringify(r.gate)}`)
   return (r.onsets as Onset[]).flatMap((o) =>
-    o.atoms.map((a, i) => `${a}@${o.pos.toFixed(3)}×${o.durs[i].toFixed(3)}`),
+    o.occ.map((c) => `${c.token}@${o.pos.toFixed(3)}×${(c.dur ?? NaN).toFixed(3)}`),
   )
 }
 
@@ -65,5 +72,88 @@ describe('#1010 P4a — the grid reader carries duration, as the roll always has
     // 0.5 : 1 : 1 : 1 — bd takes 0.5/3.5 of the cycle, an irrational-looking 1/7
     // that no resolution-derived guess would produce.
     expect(read('[bd@0.5 - - -]')).toEqual(['bd@0.000×0.143'])
+  })
+})
+
+describe('#1034 — one sound at one column with two lengths keeps both', () => {
+  /**
+   * The atom dedupe is a DISPLAY rule. It used to gate the span and the length as
+   * well, so where a `,`-stack put the same token on one column the second hap was
+   * dropped entirely — and WHICH one survived came down to hap arrival order.
+   *
+   * Measured before the fix: 2 of the 889 musical units across 150 tunes, 4 of the
+   * 1500 distinct corpus minis. Nil impact then (none of them project, and nothing
+   * read the field yet), which is exactly what made it worth closing before P4b
+   * puts the length into the cell.
+   */
+  /**
+   * WHY ASSERTING AN ORDER HERE IS SAFE, and not a flake waiting to happen.
+   *
+   * The issue this closes says which length survived came down to "hap arrival
+   * order", which reads like non-determinism — it is not. `stack`'s query is
+   * `flatten(pats.map((pat) => pat.query(state)))`
+   * (`@strudel/core@1.2.6/pattern.mjs:1324`): a map over the parts in SOURCE
+   * order, flattened. So a stack's haps arrive in part order, deterministically.
+   *
+   * What was arbitrary was never the order — it was letting the order DECIDE
+   * which of two real notes to keep. The order itself is stable enough to pin,
+   * and pinning it is what makes "both are kept, in part order" checkable at all.
+   */
+  it('keeps BOTH lengths when a stack sounds one token twice at one instant', () => {
+    // part A: `bd*2` → bd at 0 for 0.5. part B: `bd` → bd at 0 for the full cycle.
+    expect(read('bd*2, bd')).toEqual([
+      'bd@0.000×0.500',
+      'bd@0.000×1.000', // ← dropped entirely before #1034
+      'bd@0.500×0.500',
+    ])
+  })
+
+  it('keeps both ANCHORS too — the span is the write-back target, not a label', () => {
+    // The span collapsed under the same guard, and predates the duration field.
+    // A column resolving to one anchor means an edit writes to one of the two
+    // source leaves and silently ignores the other.
+    const r = readGridOnsets(reifyMini('bd*2, bd'), 0)
+    if (!r.ok) throw new Error('refused')
+    const first = (r.onsets as Onset[]).find((o) => o.pos === 0)!
+    expect(first.occ.map((c) => c.span)).toEqual([
+      { start: 0, end: 2 }, // `bd*2`'s leaf
+      { start: 6, end: 8 }, // the stacked `bd`'s leaf
+    ])
+    // the DISPLAY view still shows the sound once — that rule was never wrong
+    expect(first.atoms).toEqual(['bd'])
+  })
+
+  it('records both members of a stack whose parts AGREE, losing nothing either way', () => {
+    // `[bd@2, bd]` cannot exhibit the LOSS: a `,`-stack normalizes each part to
+    // the full cycle, so both haps read 1.0 and the old guard discarded a value
+    // identical to the one it kept. Kept as a case because it was the first probe
+    // tried for this defect and it cannot produce the failure — a probe that
+    // cannot fail is not evidence of absence.
+    //
+    // Note the column still holds TWO occurrences now, not one: the count changes
+    // even where no length does, because two notes really are sounding. Only the
+    // derived `atoms` collapses them, which is what display should do.
+    expect(read('[bd@2, bd]')).toEqual(['bd@0.000×1.000', 'bd@0.000×1.000'])
+    const r = readGridOnsets(reifyMini('[bd@2, bd]'), 0)
+    if (!r.ok) throw new Error('refused')
+    expect((r.onsets as Onset[])[0].atoms).toEqual(['bd'])
+  })
+
+  it('leaves a stack with DISTINCT tokens exactly as it was', () => {
+    expect(read('bd*2, sd')).toEqual([
+      'bd@0.000×0.500',
+      'sd@0.000×1.000',
+      'bd@0.500×0.500',
+    ])
+  })
+
+  it('keeps both lengths for a real corpus unit, not only a constructed one', () => {
+    // `hh,hh oh sd` — a sustained hh layered against hh oh sd. One of the four the
+    // corpus sweep found, and the only one that reads as music rather than a probe.
+    const got = read('hh,hh oh sd')
+    expect(got.filter((g) => g.startsWith('hh@0.000'))).toEqual([
+      'hh@0.000×1.000',
+      'hh@0.000×0.333',
+    ])
   })
 })

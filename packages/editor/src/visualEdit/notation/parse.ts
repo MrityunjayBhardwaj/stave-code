@@ -1149,13 +1149,63 @@ export function tailToken(v: unknown[]): string | null {
   return v.join(':')
 }
 
+/**
+ * ONE hap that sounded at a column — the whole of what the engine said about it.
+ *
+ * WHY THIS EXISTS RATHER THAN MORE PARALLEL ARRAYS (#1034). The column used to be
+ * three index-aligned arrays filled inside one guard, `if (!atoms.includes(token))`.
+ * That predicate is about IDENTITY — a cell shows a sound once, which is true — and
+ * it was silently deciding what the reader RETAINS:
+ *
+ *     "bd*2, sd"   atoms=["bd","sd"]  spans=[{0,2},{6,8}]  durs=[0.5,1.0]
+ *     "bd*2, bd"   atoms=["bd"]       spans=[{0,2}]        durs=[0.5]   ← part B gone
+ *
+ * Same stack, same two haps; the only difference is whether the two tokens happen
+ * to be spelled alike. Duration was the second axis caught in that guard and the
+ * SPAN — the write-back anchor — was the first, collapsing there since before
+ * duration was read at all. Neither was noticed at the time, because parallel
+ * arrays make "stay index-aligned" the invariant the code advertises, so adding a
+ * fourth `push` beside the others preserves it while importing a collapse rule
+ * that was only ever justified for `atoms`.
+ *
+ * One array of records cannot go out of alignment, and leaves no guard for the
+ * next axis to be added inside — gain (#1027) and `part` (#1028) become fields
+ * here, with no predicate between them and the reader.
+ */
+export interface Occurrence {
+  token: string
+  /** this note's OWN leaf span — the write-back anchor; `null` where none was carried */
+  span: LeafSpan | null
+  /**
+   * How long this note SOUNDS, in cycles. `null` means NOT KNOWN — a synthetic
+   * onset predicted by an edit-safety check rather than read from the engine.
+   * Never `0` for "unknown": a later consumer reads `0` as a zero-length note.
+   */
+  dur: number | null
+}
+
 export interface Onset {
   pos: number
+  /**
+   * Every hap that sounded at this column, in engine arrival order, nothing
+   * collapsed. This is the column's TRUTH; the three arrays below are views of it.
+   */
+  occ: Occurrence[]
+  /**
+   * DERIVED from `occ`: distinct tokens, first occurrence wins — what the cell
+   * DISPLAYS. A grid cell shows a sound once, so this one really is deduped.
+   *
+   * `atoms`/`spans`/`durs` are retained so this change lands inert; they are
+   * derived by literally the loop that used to build them, so every consumer sees
+   * byte-identical values. They are retired in P4b (#1010) as consumers move to
+   * `occ`, and with them the last place a column can lose a note to a name clash.
+   */
   atoms: string[]
-  /** leaf span per atom, index-aligned with `atoms`; `null` where none was carried */
+  /** DERIVED from `occ`: leaf span of each atom's FIRST occurrence */
   spans: (LeafSpan | null)[]
   /**
-   * How long each atom SOUNDS, in cycles, index-aligned with `atoms` (#1010 P4a).
+   * DERIVED from `occ`: how long each atom's FIRST occurrence SOUNDS, in cycles
+   * (#1010 P4a). `null` where the onset is synthetic and no length is known.
    *
    * The grid used to read only `whole.begin` and drop this — its hap type did not
    * even declare `end`. That is where every duration loss starts: a reader that
@@ -1168,7 +1218,30 @@ export interface Onset {
    * Same units as `pos` — cycle-relative — so a column's width in cycles is
    * directly comparable and no caller has to know the grid's resolution to read it.
    */
-  durs: number[]
+  durs: (number | null)[]
+}
+
+/**
+ * The DISPLAY view of a column: distinct tokens in arrival order, first occurrence
+ * winning the span and the length.
+ *
+ * This is verbatim the loop that used to populate the three arrays in place —
+ * kept identical on purpose, so that moving the truth into `occ` cannot move a
+ * single downstream value. The difference is entirely in what is now RETAINED
+ * alongside it: the dedupe still decides what the cell shows and no longer
+ * decides what the reader keeps.
+ */
+function deriveColumn(occ: Occurrence[]): Pick<Onset, 'atoms' | 'spans' | 'durs'> {
+  const atoms: string[] = []
+  const spans: (LeafSpan | null)[] = []
+  const durs: (number | null)[] = []
+  for (const o of occ) {
+    if (atoms.includes(o.token)) continue
+    atoms.push(o.token)
+    spans.push(o.span)
+    durs.push(o.dur)
+  }
+  return { atoms, spans, durs }
 }
 
 /**
@@ -1211,10 +1284,7 @@ export function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
   } catch {
     return no('no-note-content')
   }
-  const byCol = new Map<
-    number,
-    { atoms: string[]; spans: (LeafSpan | null)[]; durs: number[] }
-  >()
+  const byCol = new Map<number, Occurrence[]>()
   for (const h of haps) {
     if (!(h.hasOnset?.() ?? false) || !h.whole) continue
     // A bare mini string reifies to raw token VALUES (`"bd"`), not superdough
@@ -1241,27 +1311,30 @@ export function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
     if (NUMERIC.test(token)) return no('wrong-surface') // a bare number is the roll's
     const pos = h.whole.begin.valueOf() - cyc
     const key = Math.round(pos * 720720)
-    const cell = byCol.get(key) ?? { atoms: [], spans: [], durs: [] }
-    // one span per distinct token in the column — the note's OWN leaf loc, the
-    // #986 write-back anchor. A `*n`/euclid element yields the same leaf at several
-    // columns (N cells, one span); a `,`-stack lands two leaves on one column (two
-    // spans) — both are recorded faithfully; the bijection gate is P2's, not here.
-    if (!cell.atoms.includes(token)) {
-      cell.atoms.push(token)
-      cell.spans.push(leafLoc(h))
-      // read the same way the roll reads it, so the two surfaces cannot disagree
-      // about what a note's length IS
-      cell.durs.push(h.whole.end.valueOf() - h.whole.begin.valueOf())
-    }
+    // EVERY hap is recorded, unconditionally (#1034). The note's own leaf loc is
+    // the #986 write-back anchor and its length is read the way the roll reads it,
+    // so the two surfaces cannot disagree about what a note's length IS.
+    //
+    // This used to sit behind `if (!cell.atoms.includes(token))`. A `*n`/euclid
+    // element yields the same leaf at several columns (N cells, one span), and a
+    // `,`-stack lands two leaves on ONE column — and where those two leaves spell
+    // the same token, that guard dropped the second one entirely, span and length
+    // together, picking the survivor by hap arrival order. The dedupe is a display
+    // rule and now applies only where display is derived (`deriveColumn`).
+    const cell = byCol.get(key) ?? []
+    cell.push({
+      token,
+      span: leafLoc(h),
+      dur: h.whole.end.valueOf() - h.whole.begin.valueOf(),
+    })
     byCol.set(key, cell)
   }
   return {
     ok: true,
-    onsets: [...byCol.entries()].map(([k, c]) => ({
+    onsets: [...byCol.entries()].map(([k, occ]) => ({
       pos: k / 720720,
-      atoms: c.atoms,
-      spans: c.spans,
-      durs: c.durs,
+      occ,
+      ...deriveColumn(occ),
     })),
   }
 }
@@ -1521,20 +1594,30 @@ function projectionEditSafe(
       const want = base[bb]
       if (bb !== b) return want
       const hit = want.find((o) => Math.abs(o.pos - t) < 1e-9)
-      // synthetic probe onsets — only `onsetKey` (pos + atoms) reads these, so the
-      // probe atom's span is a placeholder `null` and its duration a placeholder 0;
-      // the real atoms keep their own spans and lengths.
+      // Synthetic probe onsets — only `onsetKey` (pos + atoms) reads these. The
+      // probe atom has no source span and no length that was ever played, so both
+      // are `null` = NOT KNOWN. The duration used to be a placeholder `0`, which a
+      // consumer reading `durs` later would take for a zero-length note (#1034).
+      //
+      // The display arrays are written out here rather than derived from `occ`,
+      // because this appends the probe UNCONDITIONALLY — a pattern that already
+      // plays `PROBE_SOUND` gets it twice, and `onsetKey` sorts atoms without
+      // deduping, so deriving would silently change the key for that one case.
+      const probeOcc: Occurrence = { token: PROBE_SOUND, span: null, dur: null }
       const out2 = want.map((o) =>
         o === hit
           ? {
               pos: o.pos,
+              occ: [...o.occ, probeOcc],
               atoms: [...o.atoms, PROBE_SOUND],
               spans: [...o.spans, null],
-              durs: [...o.durs, 0],
+              durs: [...o.durs, null],
             }
           : o,
       )
-      if (!hit) out2.push({ pos: t, atoms: [PROBE_SOUND], spans: [null], durs: [0] })
+      if (!hit) {
+        out2.push({ pos: t, occ: [probeOcc], atoms: [PROBE_SOUND], spans: [null], durs: [null] })
+      }
       return out2
     }
     for (let bb = 0; bb < bars; bb++) {
@@ -1783,10 +1866,15 @@ function leafExpected(
         if (hit && text === null) continue
         atoms.add(hit ? text! : a.atom)
       }
-      // spans are irrelevant to `onsetKey`, which is all this feeds
-      // predicted onsets, compared through `onsetKey` (pos + atoms) only — spans and
-      // durations are not predicted here, so both stay empty rather than guessed
-      if (atoms.size > 0) bar.push({ pos: i / perBar, atoms: [...atoms], spans: [], durs: [] })
+      // Predicted onsets, compared through `onsetKey` (pos + atoms) only. These
+      // are what the anchors SAY will sound, not something the engine played, so
+      // no span and no length is known — `null` each, rather than guessed (#1034).
+      // Aligned with `atoms` now that the arrays are derived from one record; they
+      // used to be left empty, which quietly broke the alignment the type promises.
+      if (atoms.size > 0) {
+        const occ: Occurrence[] = [...atoms].map((a) => ({ token: a, span: null, dur: null }))
+        bar.push({ pos: i / perBar, occ, ...deriveColumn(occ) })
+      }
     }
     out.push(bar)
   }
