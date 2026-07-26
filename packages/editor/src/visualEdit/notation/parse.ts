@@ -2736,11 +2736,20 @@ export function projectPianoRollDerived(
   // (#986) for the notation no re-emit can spell
   const element = projectPianoRoll(mini)
   // NOT gated on `vacuousLocality` the way the grid is, and that asymmetry is
-  // measured rather than assumed: preferring the leaf writer here moves 3 units to
-  // byte-local writes but costs one of them its edit entirely (a shared leaf the
-  // leaf writer declines), so the roll's committed writer-reach falls 73 → 72. The
-  // grid pays nothing for the same preference and gains 13. Reach is the invariant
-  // under contract; locality on two units does not buy a unit of it (#994).
+  // measured rather than assumed: preferring the leaf writer here costs the roll
+  // reach outright, because a shared leaf it declines is an edit the element writer
+  // completes. Reach is the invariant under contract; locality does not buy a unit
+  // of it (#994).
+  //
+  // ⚠ RE-MEASURED at #1010, and the old figure did not survive. This comment used
+  // to record the cost as one unit (73 → 72), taken at #994 on an oracle that
+  // compared ONSETS ONLY. On the duration-aware oracle the same flip costs TEN:
+  // 75 → 65. The original number was not wrong when it was written; it was taken
+  // with an instrument that could not see the axis the flip moves, so it never
+  // transferred. Re-measure a figure before reusing it across an instrument change
+  // rather than carrying it forward — the grid's own answer to this same flip
+  // (+5 reach, 16 fewer silent length rewrites) is the opposite sign, which is why
+  // the two surfaces are decided separately and never by analogy.
   if (element.ok) return element
   const leaf = projectPianoRollByLeaf(mini)
   if (leaf.ok) return leaf
