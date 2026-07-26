@@ -1,5 +1,12 @@
 # SWEEP-1034 — one sound, one column, two lengths
 
+> ⚠ **POPULATION NOTE.** Every figure below was measured on the pre-#1037 corpus:
+> 1500 distinct minis, harvested by the old regex. #1037 rebuilt that harvester and
+> the corpus is now 1535 units — backtick minis in, commented-out code out. The
+> defect, the mechanism and the decision are unaffected (the fix is structural), but
+> the COUNTS here are over a population that no longer exists and must not be quoted
+> against a post-#1037 one.
+
 Measurement for #1034, taken before P4b consumes `Onset.durs`. **No product code
 changed by the sweep.** The arms are `_sweep-1034{,b,c,e,f}.spec.ts` — `_`-prefixed
 specs sit outside the gate's include glob (`*.test.ts`), the established convention

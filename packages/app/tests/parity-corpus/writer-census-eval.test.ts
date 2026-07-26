@@ -313,7 +313,14 @@ const NEWLY_ADMITTED = { coreServed: 93, transfers: 76, untransferable: 7, unver
  * the sibling's own movement visible from this side, which is the failure that
  * started this — 965/1217 sat here across three merges of someone else's change.
  */
-const MINI_CORPUS_ARM = { transfers: 1055, asks: 1217 }
+const MINI_CORPUS_ARM = { transfers: 1026, asks: 1204 }
+// ⚠ MOVED 1055/1217 -> 1026/1204 at #1037, when the harvester was rebuilt and the
+// corpus went 1500 -> 1535 units. This pin FIRED on that change, which is the whole
+// reason it exists: the sibling arm moved and this side found out immediately
+// instead of three merges later. Note what did NOT move — this arm's own
+// population is derived from EVALUATION, and evaluation never sees commented-out
+// code, so shedding the 94 dead-code strings changed the sibling without touching
+// the 266 newly-admitted here.
 
 /**
  * Known-unregistered modules. `@strudel/soundfonts` fails on a CommonJS interop

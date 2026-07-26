@@ -4,6 +4,316 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
 [
   {
     "grid": "ok",
+    "mini": "
+      bd - - -
+      cp - - -
+      -  - bd -
+      cp - - -
+    ",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "a played note has no source token of its own to edit",
+    "mini": "
+    <bd>*4,
+    <- sd>*4,
+    <- cp:3>*4
+  ",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+    [~ ~ hh ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~]
+    < [~ ~ <hh ~> ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~]
+      [~ ~ ~ ~ ~ ~ ~ ~ hh ~ ~ ~ ~ ~ ~ ~ ] >
+  ",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+    [~ ~ ~ hh ~ ~ hh ~ ~ ~ ~ ~ ~ ~ ~ ~]
+    < [~ ~ ~ hh hh hh hh ~ ~ ~ hh ~ ~ ~ ~ ~ ]
+      [~ ~ ~ ~ ~ ~ ~ ~ ~ hh hh hh hh hh hh ~ ] >
+  ",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "
+  <
+  < [0, 2, 5, 6]!2 [1,7,3,9,5,6]>
+  [ [0,1, 2],      <[ 8, 7, 6]!2  [- 7 [6, 5] [3, 4] 5 8]!1>] 
+  <[0, 1#,2#,3,4,5,6]!6 [6#,2#,9#,5,11]>
+  <<[0bb, 2bb, 3bb 4bb 5bb 6bb]  [0bb, 2bb, 3bb, 4bb, 5bb, 6bb]> [0##, 2#, 3##, 4#, 5##]>
+  >
+  ",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+- - gm_pizzicato_strings gm_woodblock
+- - - -
+",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "
+<
+0!2*8
+7!1*8
+<
+7!1*8
+10!1*8
+>
+
+3!2*8
+7!1*8
+5!1*8
+
+2!2*8
+5!1*8 
+7!1*8
+
+1!2*8
+1!2*8
+
+-2!2*8
+10!2*8
+
+3!2*8
+5!1*8 
+<
+10!1*8
+5!1*8
+>
+
+>/1
+
+",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern does not repeat within 12 bars",
+    "mini": "
+<
+a4      -       -        -        -       [g4 g4]  g4     [g4 a4] 
+[g4 f4] [- d4]  -        -        -       -        [- g4] [g4 g4] 
+-       a4      -        -        -       [g4 g4]  g4     [g4 a4] 
+[g4 f4] [- d4]  -        -        -       -        [- d4] [d4 d4]
+a4      [a4 a4] [c5 a4]  [g4 g4]  [- d4]  -        [- d4] [d4 d4]
+a4      [a4 a4] [c5 a4]  [g4 g4]  [- d4]  -        -      [-  d4]
+[f4 e4] [ - d4] -        -        -       [e4 e4]  e4     [e4 d4] 
+-       -       -        -        -       -        -      [ - d4]
+>
+",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+[-  -  -  - ] [cp  -  -  - ] [-  -  -  - ] [~  cp -  - ],
+[-  -  -  - ] [sd:1 -  -  - ] [-  -  -  - ] [sd:1  -  -  - ],
+[bd -  -  - ] [-  -  bd -  ] [bd -  -  - ] [-  -  -  - ]
+",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+[<e2 d3>]
+[b2 <a2 e3>]
+[<g2 d3>]
+[f#2]
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+[<e4 d5>]
+[b4 <a4 e5>]
+[<g4 d5>]
+[f#4]
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+[<e5 [d5 g5]>]
+[<d5 a5>]
+[<c5 [e5 d5]>]
+[<b4 b5>]
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+[<g2@0.5 g2@0.5 g2@0.5 g2@0.5> g3]
+  [ d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 ]
+  [c2@0.5 c2@0.5 c2@0.5 ]
+  [d#2@0.5 g#1@0.5 c2 c2]
+  ",
+    "roll": "ok",
+  },
+  {
+    "grid": "an onset does not land on any step column",
+    "mini": "
+[[e3,a3,c4]@2 [e3,a3,c4] [e3,a3,c4]
+[e3,a3,d4]@2 [e3,a3,d4] [e3,a3,d4]
+[e3,a3,b3]@2 [e3,a3,b3] [e3,a3,b3]
+[e3,a3,c4]@2 [e3,a3,c4] [e3,a3,c4]]!3
+
+[[e3,a3,e4]@2 [e3,a3,e4] [e3,a3,e4]
+[e3,a3,f4]@2 [e3,a3,f4] [e3,a3,f4]
+[e3,a3,g4]@2 [e3,a3,g4] [e3,a3,g4]
+[e3,a3,d4]@2 [e3,a3,d4] [e3,a3,d4]]
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "an onset does not land on any step column",
+    "mini": "
+[c5@0.5 f4@0.5 f5@3]
+[eb5@0.5 f5@0.5 bb4@3]
+[db5@0.5 c5@0.5 f4@3]
+[f4@0.5 g4@0.5 bb4 ab4 g4]
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "an onset does not land on any step column",
+    "mini": "
+[d1@2 d1 d2@2 d1 g1 a1]
+[g1@2 g1 g2@2 g1 b1 c2]
+[a1@2 a1 a2@2 a1 c2 d2]!2
+
+[d1@2 d1 d2@2 d1 g1 a1]
+[g1@2 g1 g2@2 g1 b1 c2]
+[a1@2 a1 a2@2 a1 c2 d2]
+[a1@2 a1 a2@2 a1 c3 b2]
+
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "an onset does not land on any step column",
+    "mini": "
+[eb4 g3 d4 c4@2 d4 eb4 c4]
+[d4 eb4 g3 d4 c4@2 d4 eb4]
+[c4 d4 eb4 g3 d4 c4@2 d4]
+[eb4 c4 d4 eb4 g3 d4 c4@2]
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+[f1 ~ ~ f1 ~ ~ f1 ~ ~ f1 ~ ~ f1 ~ ~ f1]
+[db1 ~ ~ db1 ~ ~ db1 ~ ~ eb1 ~ ~ eb1 ~ ~ eb1]
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+[f3 ab3 g3]
+[eb3 g3 c3]
+[f3 bb3 ab3]
+[eb3 c3 g3 f3]
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "an onset does not land on any step column",
+    "mini": "
+[f4 g4 f4 g4 ab4 g4 f4@2]
+[eb4 f4 eb4 f4 c4 db4 eb4@2]
+[f4 g4 f4 g4 bb4 g4 ab4@2]
+[~ eb4 c4 bb3@2 g4@2 f4]
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+[f4,e5]
+[<[f4,d5] [f4,g5]>]
+[<[e4,c5] [[e4,a5]@2 [f4,e5] [f3,d5]]>]@2
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+[f5]
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+[g3 ab3 f3 g3 d4 eb4 c4 d4]
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "nothing in this view could be edited on its own",
+    "mini": "
+d#2 - - -
+- - - -
+- - <a#3 a#2 -> -
+- - <g#2 g#1> -",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+d#4 g#4 f#4 g#4 
+a#4 f#4 a#4 ~
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+f#2 ~ ~ ~ g#2 ~ ~ ~
+d#2 ~ ~ ~ e2 ~ ~ ~
+f#2 ~ ~ ~ g#2 ~ ~ ~
+b1 ~ ~ ~ c#2 ~ ~ ~
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "
+f#5 c#6 a#5 f6 c#6 g#6 f6 ~
+",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern needs more than 64 steps",
+    "mini": " 
+[bd bd - - 
+- - - bd
+- - bd - 
+- <-!3 bd> - <-!3 bd>]
+,
+[- sd - <sd*<1 2> [- [sd, cp]] sd>]
+,
+[hh hh hh hh hh <oh hh> hh <- hh hh hh>]
+,
+[-!15 <- cb>]
+",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
     "mini": "  [ a4 ~ ~ a4] [ a4 ~ a4 ~]  [ a4 ~ ~ a4 ]  [ a4 ~ a4 a4 ]*2 ",
     "roll": "ok",
   },
@@ -33,6 +343,14 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "a played note does not fit inside the bar it starts in",
   },
   {
+    "grid": "the pattern does not repeat within 12 bars",
+    "mini": " bd <~ bd> [~|hh] ~    
+      hh ~ [hh|bd] [~|bd] 
+      [sd|cp] ~ [~|hh|bd] [hh|oh]
+    ",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
     "grid": "ok",
     "mini": " bd hh*2 sd cp ",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
@@ -40,6 +358,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": " bd mt  bd [lt lt] lt lt lt@2 ",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": " bd, hh, oh",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -136,11 +459,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "ok",
     "mini": "- cp",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "- e2 [e3, e4] [e3, e4] [e3, e4]@2 -",
-    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -249,11 +567,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "0 1 2",
-    "roll": "ok",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "0 1 2 3",
     "roll": "ok",
   },
@@ -269,17 +582,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "0 1 2 3 <4 5 6><8 7 9><9 8 5 3><5 2 3 7 4 >",
-    "roll": "the pattern does not repeat within 4 bars",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "0 1 2 <4 6 3 [6 7]> <- - - 6> - <- 8> <- - - [2 1]> ",
-    "roll": "ok",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "0 1 2 [3 4] 5 6 7 6 5 4 3 2 1",
     "roll": "ok",
   },
   {
@@ -300,11 +603,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "0 1 [4 3] 2 0 2 [~ 3] 4",
-    "roll": "ok",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "0 12*2",
     "roll": "ok",
   },
   {
@@ -399,11 +697,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "0 ~ 1 ~ 2 ~ 3 ~",
-    "roll": "ok",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "0 ~ <2 -1> ~ ~ ~",
     "roll": "ok",
   },
@@ -429,11 +722,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "0, -12.1",
-    "roll": "ok",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "0, 4, <[8 7]!4 [7 6]!4>",
     "roll": "the pattern does not repeat within 4 bars",
   },
@@ -446,11 +734,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "0, [24.1|12]",
     "roll": "the pattern does not repeat within 4 bars",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "0,-12",
-    "roll": "ok",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
@@ -470,11 +753,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "0,12.1",
-    "roll": "ok",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "0,2",
     "roll": "ok",
   },
   {
@@ -509,13 +787,13 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "1 2 3",
+    "mini": "1 2 3 4 5 [6 7], 14 15 16 17",
     "roll": "ok",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "1 2 3 4 5 [6 7], 14 15 16 17",
-    "roll": "ok",
+    "mini": "1 2 3, <[7 3 4] [8 9 7]>*3",
+    "roll": "nothing in this view could be edited on its own",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
@@ -555,6 +833,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "10",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "10 20 30",
     "roll": "ok",
   },
   {
@@ -614,6 +897,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "18 3 4",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "19",
     "roll": "ok",
   },
@@ -626,11 +914,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "2 9 5 5",
     "roll": "ok",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "2(3,8),2*2,3*3,4*4,5*5,6,7,8",
-    "roll": "the pattern needs more than 64 steps",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
@@ -700,6 +983,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "3 1 - 1",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "3 4 6 4",
     "roll": "ok",
   },
   {
@@ -825,11 +1113,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "48",
-    "roll": "ok",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "48 67 63 [62, 58]",
     "roll": "ok",
   },
   {
@@ -989,6 +1272,513 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "the pattern does not repeat within 12 bars",
+    "mini": "<
+         [g5 ~ [d4, b4] g4]
+         [f5 ~ g4 [d4, b4]]
+         [e5 ~ [d4, b4] g4]
+         [c5 ~ g4 [d4, b4]]
+         [d4 ~ [d4, b4] g4]
+  
+         [g5 ~ [d4, b4] g4]
+         [f5 ~ g4 [d4, b4]]
+         [e5 ~ [d4, b4] g4]
+         [c5 ~ g4 [d4, b4]]
+         [d4 ~ [d4, b4] g4]
+
+         [g5 ~ [d4, b4] g4]
+         [f5 ~ g4 [d4, b4]]
+         [e5 ~ [d4, b4] g4]
+         [c5 ~ g4 [d4, b4]]
+         [d4 ~ [d4, b4] g4]
+         
+         [c3 e3 f3 g3]
+         
+         ~
+
+         [g6 ~ [d5, b4] g5]
+         [f6 ~ g5 [d4, b4]]
+         [g6 ~ [d5, b4] g5]
+         [f6 ~ g5 [d4, b4]]
+
+         [g6 ~ [d5, b4] g4]
+         [a6 ~ e5 [e4, g4]]
+         [b6 ~ f5 [f4, a4]]
+         
+         [d7 ~ a5 [a4, c5]]
+         
+         [b6 ~ f5 [f4, a4]]
+         [a6 ~ e5 [e4, g4]]
+         [g6 ~ [d5, b4] g4]
+
+         [g6 ~ [d5, b4] g5]
+         [f6 ~ g5 [d4, b4]]
+         [g6 ~ [d5, b4] g5]
+         [f6 ~ g5 [d4, b4]]
+
+         [g6 ~ [d5, b4] g4]
+         [a6 ~ e5 [e4, g4]]
+         [b6 ~ f5 [f4, a4]]
+         
+         [d7 ~ a5 [a4, c5]]
+         
+         [b6 ~ f5 [f4, a4]]
+         [a6 ~ e5 [e4, g4]]
+         [g6 ~ [d5, b4] g4]
+
+         [g6 ~ [d5, b4] g5]
+         [f6 ~ g5 [d4, b4]]
+         [g6 ~ [d5, b4] g5]
+         [f6 ~ g5 [d4, b4]]
+         >",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern does not repeat within 12 bars",
+    "mini": "<
+         ~
+         ~
+         ~
+         ~
+         ~
+  
+         [g2, d3]@2
+         [g2, c3, e3]
+         [g2, d3]
+         [g2, c3, e3]
+
+         [g2, d3]@2
+         [g2, c3, e3]
+         [g2, d3]
+         [g2, c3, e3]
+
+         [c2, ~ [d6 c6 b5 a5] ]@2
+         
+         [g1, d2]@11
+
+         [g1, d2]@11
+
+         [g1, d1]@4
+         >",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+       [0 2 4 6]!2 [0 2 4@2]!2  [5 7 9 11]!2 [3 5 7@2]!2
+       [0 2 4 6]!2 [0 2 4@2]!2  [5 7 9 11]!2 [3 5 7@2]!2
+       [- 0 - 2 - 4 - 6]!4 [- 5 - 7 - 9 - 11]!2 [ - 3 - 5 - 7 - 9]!2
+       [- 0 - 2 - 4 - 6]!4 [- 5 - 7 - 9 - 11]!2 [ - 3 - 5 - 7 - 9]!2
+    >",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+    [0 2 4] 2 [5 7 9] [~ 7 5 4 2 0] 
+    [~ 3] 3 [2 0 -1] [~ 1 0]
+    [2 4 5 7] 4 [9 7 5 4] [~ 2 3 5 7]
+    [0@ 5] 3 [4 2 0] [~ 0 2 4] 
+    >*2
+  ",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+    [0@ 1 2] 3 [2 1 0 -1 -3] [~ 2 3]*2
+    [~ 6] 3 [1 2] [~ 1]
+    [~ 0] 3 [0 4] [~ 3 2 1 -1 -3]
+    9 2 [0 2] [~ 2]
+    [0@ 8 6] 3 [2 1 0 -2 -3] [~ 2 3]*2
+    [~ 6] 3 [1 4] [~ 6]
+    [~ 0] 3 [0 6] [~ 7 4 1 -1 -7]
+    9 2 [0 4] [~ 9]
+    >*4",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+  <[1,2,3,4,5,6]!2 [0, 1,7,3,9,5,6]>
+  [ <[0,1, 2, 3, 4, 5, 8, 7, 6, 5]!2 [0,1 ,2 , 7, 6, 5, 3, 4, 5, 8]>] 
+  <[0, 1#,2#,3,4,5,6]!6 [6#,2#,9#,5,11]>
+  <[0bb, 2bb, 3bb, 4bb, 5bb, 6bb] [0##, 2#, 3##, 4#, 5##]>
+  >",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+  [[0 -] [0 3]] 
+  [[0 -] [0 -]] 
+  [[0 -] [0 -]] 
+  [[0 -] [0 -]] 
+  [[0 -] [0 -]] 
+  [[0 -] [0 -]] 
+  [[0 -] [0 -]]
+  [[0 -] [0 -]]
+  >/2",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ -
+ [0@2 -1 0 0 - - -]
+ -
+ [0@2  2 0 0 - - -]
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ 0 2 3 2
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ 3 2 7 0
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [- [2 0 - [2,4]]]
+ [- [1 - 0 -]]
+ [- [5 3 - [5,7]]]
+ [- [4 - 3 -]]
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [- [2 2*2] - 3 ]
+ [[0,4] - - [0,5]]
+ [- [5 [5,7]*2] - [4,9] ]
+ [[2,5] - - 0]
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [- [5 3 - [5,7]]]
+ [- [2 - 3 -]]
+ [- [3 1 - [2,4]]]
+ [- [-1 - 0 -]]
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [- [5 5*2] - 3 ]
+ [[0,4] - - [0,5]]
+ [- [7 [5,7]*2] - [5,9] ]
+ [[0,2] - - -]
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [4,6] [5,7]*2 [7,10] [8,10]*4
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [7,9] [8,10] [8#, 11] [10, 12]*4
+>",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [[0,2,4] - - -]
+ -
+ [[3,5,7] - - -]
+ -
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [[0,4] - - [- 7]]
+ [[1,5] - - [- 7]]
+ [[2,7] - - [- 9]]
+ [[3,7] - - [- 10]]
+>/2",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [[2,7]@2 - [1 0]]
+ 2
+ [[1#, 0]@2 - [1 0]]
+ 1#
+>",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [[3,5,7] - - -]
+ -
+ [[0,2,4] - - -]
+ -
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [[3,7] - - [- 10]]
+ [[2,7] - - [- 9]]
+ [[1,5] - - [- 7]]
+ [[0,4] - - [- 7]]
+>/2",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [[4,6]@2 - [3 2]]
+ 4
+ [[3,5]@2 - [4 5]]
+ 3
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [[4,8] [3 2 - [0,5]]] 
+ -
+ [[3,5] - - 2 3 4 - [2,4]]
+ -
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+ [[4,9] [3 4 - [7,9]]] 
+ -
+ [5@2 - [4,6] - [5,7] - [7,9]]
+ -
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+0@2 2 0
+2 0 0 0b
+  -1 3 -1 -1@2
+  3 -1 -1#
+>*8",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+4@2 - - 6@2 7 4@3
+    - - 6@2 7 4@3
+    - - 6@2 7 8@4
+    7@3 6 4
+>*8",
+    "roll": "a played note does not fit inside the bar it starts in",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+[0 0 [- 0] [2 4]]
+[4@2 2@2]
+[-2@2 5 2]
+[4 3 2 [- 0]]
+[-5 0 0 [0 -1]]
+[0@ -2 0]
+[2@2 3 2]
+[4 3 2 4]>",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+[0, 2, 4, 14]
+[0, 3, 5, 11]
+[[2, 4, 5#, 10]]
+<[[ 3, 4, 7, 12]] [[ 3, 4, 5#, 7, 10, 11]@3 [2, 4, 5, 6, 11]]>
+>",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+[7 7] [4 4] 2 [- 4]    [- 4] [4 -] [4 -] [- 3]    [- 3] [3 -] [3 -] [- 4]    [7 7] [4 4] 2 4
+[7 7] [4 4] 2 [2 2]    [4 4] [4 4] [- 4] [- 4]    [3 3] [3 3] [3 -] [- 4]    [7 7] [4 4] 2 4
+[7 7] [4 4] 2 [- 4]    [- 4] [4 -] [4 -] [- 3]    [- 3] [3 -] [3 -] [- 4]    [7 7] [4 4] 2 4
+[7 7] [4 4] 2 [2 2]    [4 4] [4 4] [- 4] [- 4]    [3 3] [3 3] [3 -] [- 4]    [7 7] [4 4] 2 4
+-!32
+[7 7] [4 4] 2 [- 4]    [- 4] [4 -] [4 -] [- 3]    [- 3] [3 -] [3 -] [- 4]    [7 7] [4 4] 2 4
+[7 7] [4 4] 2 [2 2]    [4 4] [4 4] [- 4] [- 4]    [3 3] [3 3] [3 -] [- 4]    [7 7] [4 4] 2 4
+-!32
+[7 7] [4 4] 2 [- 4]    [- 4] [4 -] [4 -] [- 3]    [- 3] [3 -] [3 -] [- 4]    [7 7] [4 4] 2 4
+[7 7] [4 4] 2 [2 2]    [4 4] [4 4] [- 4] [- 4]    [3 3] [3 3] [3 -] [- 4]    [7 7] [4 4] 2 4
+-!32
+[7 7] [4 4] 2 [- 4]    [- 4] [4 -] [4 -] [- 3]    [- 3] [3 -] [3 -] [- 4]    [7 7] [4 4] 2 4
+[7 7] [4 4] 2 [2 2]    [4 4] [4 4] [- 4] [- 4]    [3 3] [3 3] [3 -] [- 4]    [7 7] [4 4] 2 4
+>",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern does not repeat within 12 bars",
+    "mini": "<
+[<[[d4] [g3]] [d4, d5]>] [- [[a#3, a#4] [a3, a4]@7] [e4, e5]] [<[a4, a5] -> <- - [d4, d5]> [g3, g4]] [[a#3, a#4] [f4, f5]] [-] [-]
+<[e3, e4] [e4 d4]> <[d3, d4] [d4 db4]> [g3,g4] [f#3@5, f#4@5 -] [e3, e4] <- - [- b3, b4]>
+>/2",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+[[-7 0]*4]
+[[-7 0]*4]
+[[-7 0]*4]
+[[-7 0]*4]
+[[-7 0]*4]
+[[-7 0]*4]
+[[-7 0]*4]
+[[-7 0]*4]>",
+    "roll": "an edit here would not write back the pattern as shown",
+  },
+  {
+    "grid": "ok",
+    "mini": "<
+[bb3 [d4,f4,d4] ~[d4,f4,d4]~ ~]
+[bb3 [c4, e4, g4]~[c4, e4, g4]~ ~]
+[d3 [f3,a3,c4]~ [f3,a3,c4]~ ~ ]
+[[bb2,bb3] [d4, f4, a4]~[d4, f4, a4]~ ~ ]
+[bb3 [d4,f4,d4] ~[d4,f4,d4]~ ~]
+[bb3 [c4, e4, g4]~[c4, e4, g4]~ ~]
+[bb3 [c4, e4, g4]~[c4, e4, g4]~ ~]
+[d3 [f3,a3,c4]~ [f3,a3,c4]~ ~ ]
+>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern needs more than 64 steps",
+    "mini": "<
+[d4 f#4 a4 b4]*2
+[e4 g#4 a4 <c#5 e5>]
+[c#4 f#4 a4 e5]*2
+[d4 f#4 <b4 a4> <c#5 b4>]
+> [-]",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<
+[~ 0] 2 [0 2] [~ 2]
+[~ 0] 1 [0 1] [~ 1]
+[~ 0] 3 [0 3] [~ 3]
+[~ 0] 2 [0 2] [~ 2]
+>*4",
+    "roll": "ok",
+  },
+  {
+    "grid": "a played note has no source token of its own to edit",
+    "mini": "<
+f#5 g#5 e5 c#5,
+a5 e5 c#5
+>",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "< -!15 [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+7 - - [- 2]    [4 4] [4 -] - [- -2]    [3 3] [3 3] - -    - - - [- 4]
+>",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "< -!16
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2 
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+[7 -]*2!4    [4 -]*2!4    [3 -]*2!4    [3 -]*2!2 -!2
+>",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays no placeable notes",
+    "mini": "< -!31 [4 4]
+[7 7] [4 4] 2 [- 4]    [- 4] [4 -] [4 -] [- 3]    [- 3] [3 -] [3 -] [- 4]    [7 7] [4 4] 2 4
+[7 7] [4 4] 2 [2 2]    [4 4] [4 4] [- 4] [- 4]    [3 3] [3 3] [3 -] [- 4]    [7 7] [4 4] 2 4
+-!31 [4 4]
+[7 7] [4 4] 2 [- 4]    [- 4] [4 -] [4 -] [- 3]    [- 3] [3 -] [3 -] [- 4]    [7 7] [4 4] 2 4
+[7 7] [4 4] 2 [2 2]    [4 4] [4 4] [- 4] [- 4]    [3 3] [3 3] [3 -] [- 4]    [7 7] [4 4] 2 4
+-!31 [4 4]
+[7 7] [4 4] 2 [- 4]    [- 4] [4 -] [4 -] [- 3]    [- 3] [3 -] [3 -] [- 4]    [7 7] [4 4] 2 4
+[7 7] [4 4] 2 [2 2]    [4 4] [4 4] [- 4] [- 4]    [3 3] [3 3] [3 -] [- 4]    [7 7] [4 4] 2 4
+-!31 [4 4]
+[7 7] [4 4] 2 [- 4]    [- 4] [4 -] [4 -] [- 3]    [- 3] [3 -] [3 -] [- 4]    [7 7] [4 4] 2 4
+[7 7] [4 4] 2 [2 2]    [4 4] [4 4] [- 4] [- 4]    [3 3] [3 3] [3 -] [- 4]    [7 7] [4 4] 2 4
+>",
+    "roll": "the pattern plays no placeable notes",
+  },
+  {
+    "grid": "the pattern plays no placeable notes",
+    "mini": "< -!32 -!32
+[6 6] [[6 4] -] [[6 6] 6] [6 4]    [6 6] [6 6] [6# 6] [5 4]    [6 6#] [4 -] [6 6] [6# 4]    [- 6] [6 6] [7 6] [5 4]
+[6 6]!4    [6 6] [[6 7] -] [7 6] [7 4]    [- 6] - [6 6] [7 4]    [- 9] [8 7] [6 6] [7 4]
+-!32
+[6 6] [[6 4] -] [[6 6] 6] [6 4]    [6 6] [6 6] [6# 6] [5 4]    [6 6#] [4 -] [6 6] [6# 4]    [- 6] [6 6] [7 6] [5 4]
+[6 6]!4    [6 6] [[6 7] -] [7 6] [7 4]    [- 6] - [6 6] [7 4]    [- 9] [8 7] [6 6] [7 4]
+-!32
+[6 6] [[6 4] -] [[6 6] 6] [6 4]    [6 6] [6 6] [6# 6] [5 4]    [6 6#] [4 -] [6 6] [6# 4]    [- 6] [6 6] [7 6] [5 4]
+[6 6]!4    [6 6] [[6 7] -] [7 6] [7 4]    [- 6] - [6 6] [7 4]    [- 9] [8 7] [6 6] [7 4]
+-!32
+>",
+    "roll": "the pattern plays no placeable notes",
+  },
+  {
+    "grid": "the pattern does not repeat within 12 bars",
     "mini": "< -@16 oh!15 cr >",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -1075,11 +1865,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "nothing in this view could be edited on its own",
     "mini": "<- sd - sd [- sd]>*4",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "a played note has no source token of its own to edit",
-    "mini": "<- sd:10>*4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -1196,11 +1981,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "<0 3 5 7 3 5 0 2>",
     "roll": "ok",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "<0 3 <4 7 5>>*8",
-    "roll": "the pattern does not repeat within 4 bars",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
@@ -1439,6 +2219,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<4, 8 [4 3]>*6",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "<5 4 3>",
     "roll": "ok",
   },
@@ -1456,6 +2241,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "<5 ~>*8",
     "roll": "nothing in this view could be edited on its own",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<6 4 5 4>",
+    "roll": "ok",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
@@ -1599,6 +2389,21 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<[-1] [-1] [-1] [-1] [-1] [-1] [-1 -1 82 -1] [-1 -1 -1 79]>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<[-2, -4]>/2",
+    "roll": "a played note does not fit inside the bar it starts in",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<[-3 -5] [-4 -6] [-2 -4]>*3",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "<[-3@1 -2@1 -1@1 0@1]*2>",
     "roll": "ok",
   },
@@ -1611,6 +2416,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "<[0 1 2 3 4 5 6 7]!4 [5 6 7 8 9 10 11 12]!2 [3 4 5 6 7 8 9 10]!2>",
     "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<[0 2 4 <[6 8 ~@6] [7 9 ~@6]>]>",
+    "roll": "ok",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
@@ -1679,7 +2489,20 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<[53 56 63 53] [56 65 53 56] [55 58 63 55] [58 63 55 58] [56 60 65 56] [60 63 56 60] [58 62 70 58] [62 63 58 67]>",
+    "roll": "ok",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "<[6 [5 4] 5 [6 7 8]] 0 -1 2 0 0>",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<[7, 9, 4, 6]
+[1, 3 [3 5] 5 [5, 7]]
+<[[13, [13 12 9 10] 2]] [[9, 4, 13]]!2>
+>",
     "roll": "the pattern does not repeat within 4 bars",
   },
   {
@@ -1718,13 +2541,47 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "<[[4,2] [[0,0] 4] [7 3 1 7]]!3
+[[7 [6 1]]]!2
+[[6,1,0] [0,1,3] [4 1 5 0] [5 2 1 3]]
+[[2 [0 0]]]!4>",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
     "grid": "the pattern needs more than 64 steps",
     "mini": "<[[bd:2 bd:2] - [sd:2, sd:1] [bd bd] <-> <[bd, oh] bd!5> <- [sd:2, sd:1]> <sd:2*<1 1 2> ->]>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
+    "grid": "the pattern does not repeat within 12 bars",
+    "mini": "<[a2, e4, g4, c4, [f#4]] 
+[e2, b2, e3, g4, b3, e4]
+[<g2>, d3, f#3, g3, d4, a4]
+[f2, a2, f3, a3, d4, g4]
+[a3, c4, f#4, b4] 
+[ < [f3, bb3, d#4, <g4 d5>]  [c3, e4, g4, <b4 d4>]> ]
+>/4",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern does not repeat within 12 bars",
+    "mini": "<[a3,c4,e4]!2 [f3,a3,c4]!2 [g3,b3,d4]!2 [e3,g3,b3]!2     [a3,c4,e4]!2 [f3,a3,d4]!2 [g3,b3,d4]!2 [c4,e4,g4]!2>",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
     "grid": "ok",
     "mini": "<[b2 b3]*4 [a2 a3]*4 >",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "<[b4, g#4, e4, c#4]>
+        <[a3, g#4, e4, c#4]>
+        <[g#4, gb4, d#4, b4, c#4]>
+        <[g#4, gb4, d#4, b4, c#4]>
+        <[g#4, gb4, d#4, b4, d#3]>
+        ",
     "roll": "ok",
   },
   {
@@ -1735,6 +2592,17 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern does not repeat within 12 bars",
     "mini": "<[bd [- [- hh]]]!16 bd!12>",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "<[bd sd hh sd hh hh]
+          [bd sd hh sd hh hh]
+          [bd sd hh sd hh hh]
+          
+          [bd sd bd sd bd hh]
+          [bd sd bd sd bd hh]
+          [bd sd bd sd hh hh]>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -1797,6 +2665,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "ok",
     "mini": "<[c5, e5] [d5, f5] [e5, g5] [f5, a5]>",
     "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -1870,11 +2743,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "<[~ c4 e4 c4]!3 [~ [c4,d4] g4 [c4,d4]]>/2",
-    "roll": "the pattern does not repeat within 4 bars",
-  },
-  {
-    "grid": "ok",
     "mini": "<[~ c4 e4 c4]!3 [~ d4 g4 d4]>/2",
     "roll": "the pattern does not repeat within 4 bars",
   },
@@ -1901,11 +2769,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "<a4 ~ ~ c5 ~ e5 ~ c5 ~ ~ g4 ~ b4 ~ g4 ~ ~ e5 ~ a5 ~>",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "<a4,c#4,e4,g#4>@10",
     "roll": "ok",
   },
   {
@@ -1954,21 +2817,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "a played note has no source token of its own to edit",
-    "mini": "<bd bd [bd ~ east:1] [bd bd]> * 4, <~ sd ~ sd> * 4",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "<bd bd hh bd rim bd hh bd>*8",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "<bd hh sd [hh oh]>*2",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
     "grid": "ok",
     "mini": "<bd hh sd hh>*2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
@@ -1989,11 +2837,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "ok",
-    "mini": "<bd*4 [bd cp]*4>",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
     "grid": "a played note has no source token of its own to edit",
     "mini": "<bd*4, sd:3(2,4)>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
@@ -2011,11 +2854,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "a played note has no source token of its own to edit",
     "mini": "<bd:1*<1 2 2 [2 4]> ->, [- sd:1:.5]",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "nothing in this view could be edited on its own",
-    "mini": "<bd>*4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -2155,11 +2993,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "<eeloil>/2",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "<ethnic_st:2!3 ethnic_st:1>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -2217,6 +3050,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "the pattern does not repeat within 12 bars",
     "mini": "<g1!3 e1!3>/4",
     "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "ok",
+    "mini": "<g1, c1> - <c3, g4 - - >",
+    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -2279,8 +3117,10 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern needs more than 64 steps",
-    "mini": "<hh*2 <sd clap bd>> bd bd <hh sd sd*2> bd bd clap ",
+    "grid": "ok",
+    "mini": "<hh ~ hh ~ hh ~ hh ~  hh ~  hh ~  hh ~ <hh oh> ~>*16,
+      <~  ~ ~  ~ sd ~ ~  ~  ~  ~  ~  ~  sd ~ ~       ~>*16,
+      <bd ~ bd ~ ~  ~ ~  bd bd ~  <bd ~> ~ ~ ~ ~     ~>*16",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -2414,6 +3254,42 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
+    "grid": "the pattern does not repeat within 12 bars",
+    "mini": "<useme/2 
+      sesame/0.5 
+      funkydrummer/2 
+      mechanicalman/1 
+      kool/2
+      sport/1 
+      rill/2 
+      think/1 
+      king/2
+      around/0.5 
+      riffin/2 
+      apache/2 
+      neworleans/2 
+      hitormiss/2 
+      action/1 
+      hotline/1 
+      swat/1 
+      ripple/2 
+      fireeater/2 
+      hungup/2 
+      newday/2 
+      movement/2 
+      boogiewoogie/2 
+      delight/2 
+      eeloil/2 
+      impeach/1 
+      marymary/2 
+      amen/4 
+      sneakin/2 
+      squib/2 
+      groove/2
+>/2",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
     "grid": "ok",
     "mini": "<vox1 - [vox2] ->/2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
@@ -2449,6 +3325,13 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
+    "grid": "the pattern does not repeat within 12 bars",
+    "mini": "<~ c#4 d#4@2 c#4@2 [c4 c#4] [d#4 f4] c#4@2 d#4@2 ~ [~ c#4] [c4 c#4] [d#4 f4] d#4 g#3@5
+         ~ [~ d#4] f4@2 d#4@2 d4 d#4 ~ [~ d#4] f4@2 [g4 f4] [d#4 f4] d#4@2
+         ~ [~ d#4] f4@2 d#4@2 [f4@3 d#4@3]@3 f4@9 >",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
     "grid": "ok",
     "mini": "<~ oh ~@2 oh ~@3 oh>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
@@ -2482,6 +3365,13 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "the pattern plays no placeable notes",
     "mini": "<~!12 [sd [sd sd] [sd sd] [sd sd sd]]>/4",
     "roll": "the pattern plays no placeable notes",
+  },
+  {
+    "grid": "the pattern does not repeat within 12 bars",
+    "mini": "<~@2 [[d#4@2 c#4@2 [c4 c#4] [d#4 f4] c#4@2 [d#4@6 ~ c#4]@4 [c4 c#4] [d#4 f4] d#4 
+         [g#3@8 ~ d#4]@5 f4@2 d#4@2 d4 [d#4@4 ~ d#4]@3 f4@2 g4@2 d#4@3
+         [~ d#4] f4@2 d#4@2 f4@2 d#4 f4@8 [~ <c#4 ~>]]!2]@104 >",
+    "roll": "the pattern does not repeat within 4 bars",
   },
   {
     "grid": "the pattern plays no placeable notes",
@@ -2560,11 +3450,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "C E F F D A <C C4>",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
     "mini": "C Em",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -2612,11 +3497,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "ok",
     "mini": "Evermore",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "F",
-    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -2715,6 +3595,24 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "[
+[0, 2, 4, <9 11>]@7 <- - [-3, 2, 4, <10>] ->
+<[0, 3, 5, 7] [ 3, 5,  8, 9]>@9
+]/2",
+    "roll": "the pattern does not repeat within 4 bars",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
+    "mini": "[
+[0, 2, 4]
+[0, 3, 5]
+<[[2, 4, 5#]] [[2, 4, 5#]@7 [9, 11, 12#]] [[2, 4, 5#]]>
+<[[ 3, 4, 7, 10]] [[ 3, 4, 5#, 7, 10]@3 [2, 4, 5, 6]]>
+]/4",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "[ 0 3 -2 5 4 8 2 ] * 1.001",
     "roll": "the pattern does not repeat within 4 bars",
   },
@@ -2750,18 +3648,13 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "[- - - - - - - 16 17 16 14@ 16 - 14 15 13 12 6 7 10@3 8 - 9! 10 7 11! 12! 11 10 8 0! 1 6 4 5 2@3 3 2 - ]",
-    "roll": "ok",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "[- - - - - - - 17 16 15 - - - - - 14 14 5 10 11 - - - 10 - 10 10 9 11 8 9 9 7 6 9 4 1 1 5 1 1 6 9 3 4 2 3 - ]",
-    "roll": "ok",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "[- - - - - - - 17 16 15 - - - - - 14@2 5 10 11 - - - 10 - 10@2 9 11 8 9@2 7 6 9 4 1@2 5 1@2 6 9 3 4 2 3 - ]",
     "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "[- - - - - - - sd - sd - - - - - -]",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -2871,11 +3764,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "[0 <1 3>]*<2!3 4>",
-    "roll": "ok",
-  },
-  {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "[0 <12 -12>]*4",
     "roll": "ok",
   },
   {
@@ -3034,11 +3922,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern does not repeat within 4 bars",
   },
   {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "[<6 0> [ ~ 1] 0 1]",
-    "roll": "ok",
-  },
-  {
     "grid": "the pattern needs more than 64 steps",
     "mini": "[<[c3 c2] [e2,c2] g2 [eb2,eb1] <f2 bb2>>*4](7,16)/2",
     "roll": "the pattern does not repeat within 4 bars",
@@ -3046,6 +3929,15 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[<a3 c4 e4> <d3 g3 b3>]",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "[<g2@0.5 g2@0.5 g2@0.5 g2@0.5> g3]
+  [ d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 ]
+  [g@0.5 g@0.5 g@0.5 ]
+  [d#2@0.5 g#1@0.5]
+",
     "roll": "ok",
   },
   {
@@ -3096,6 +3988,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[C3*3 -] [A2*3 -] [G3*3 -]",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "[G, Ab, Bb] ~ [G, Ab, Bb] ~ [G, Ab, Bb] ~ [G, Ab, Bb] ~ [G, Ab, Bb] [G, Ab, Bb4] [G, Ab, Ab4] [G, Ab, Db4]",
     "roll": "ok",
   },
   {
@@ -3209,8 +4106,15 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
+    "grid": "an onset does not land on any step column",
+    "mini": "[as3, d3, f3, a3](4,8,1)[c3, ds3, as3, fs3](4,8,1)[f3,a3,c3,ds3](4,8,1)[as3, d3, f3, a3](4,8,1)
+[b3,ds3,f3,a3](4,8,1)[as3, d3, f3, a3](4,8,1)[gs3,c3,ds3,fs3](4,8,1)[as3, d3, f3, a3](4,8,1)",
+    "roll": "ok",
+  },
+  {
     "grid": "ok",
-    "mini": "[a4@3] [b4] [b4] [a4]",
+    "mini": "[as3, d3, f3, a3][c3, ds3, as3, fs3][f3,a3,c3,ds3][as3, d3, f3, a3] 
+[b3,ds3,f3,a3][as3, d3, f3, a3][gs3,c3,ds3,fs3][as3, d3, f3, a3]",
     "roll": "ok",
   },
   {
@@ -3235,7 +4139,18 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
+    "mini": "[bb3] - [e3] - - ",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
     "mini": "[bd -  -  bd -  -  bd -  ]*2",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "[bd - [- bd] -],
+          [- sd] * 2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -3260,22 +4175,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "[bd hh sd] <sd oh>",
+    "mini": "[bd bd][sd bd] bd sd",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
     "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "[bd hh] hh sd hh [bd bd] - hh hh - <sd hh>*4",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "[bd hh] hh sd hh bd bd - hh <sd hh>*4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -3286,6 +4191,21 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[bd rim:1 [~ bd] rim:2]*2",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "[bd sd, hh hh hh]",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "[bd sd] hh",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "the pattern does not repeat within 12 bars",
+    "mini": "[bd |cp |hh]",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -3319,11 +4239,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "ok",
-    "mini": "[bd,fx]*4",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
     "grid": "the pattern does not repeat within 12 bars",
     "mini": "[bd:<1 0!3> hh rim bd hh rim rim*[2|4] bd],[hh hh oh -]*2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
@@ -3341,16 +4256,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[c eb g <f bb>](3,8,<0 1>)",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "[c#4 d4 d4 c#4]",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "[c#5 [f#5 e5] b4] [b4 b4 c#5 d5] [d5 f#5 e5] [[a4 b4] c#4]",
     "roll": "ok",
   },
   {
@@ -3465,22 +4370,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "[e4 f#4 f#4 e4]",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
     "mini": "[g#2][f2][c#2][c2]",
     "roll": "ok",
   },
   {
     "grid": "ok",
     "mini": "[g#4 -] [g#4 - ] c# d# - g#3 g#5 - - - - - - - - -",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "[g#4 ~ ~ ~]",
     "roll": "ok",
   },
   {
@@ -3491,21 +4386,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[g,b,d]",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "[g2 d2 e2][d2 b1@2 a1][- a2 f#2 g2 ][d2 b1@3]",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "[g4 d4 b3][f#4 c4 a3][e4 b3 g3][d4 a3 f#3]",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "[g4 f#4 g4 e4 d4 e4 c4 d4]",
     "roll": "ok",
   },
   {
@@ -3541,6 +4421,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[hh*8]",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "[hh] * 8 ",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -3610,11 +4495,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "[~ cp]",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "[~ cp]*2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -3651,11 +4531,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "[~ ~ ~ [a3 c3]]",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "a a a a b b a ~ ~ ~ a ~ [c c] [b b]",
     "roll": "ok",
   },
   {
@@ -3805,7 +4680,17 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
+    "mini": "as1*8 c2*8 f2*8 as1*8 b1*8 as1*8 gs1*8 as1*8",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
     "mini": "b3",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "b5 a5 c5 e5 f5 f5 g5",
     "roll": "ok",
   },
   {
@@ -3895,6 +4780,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
+    "mini": "bd <sd hh cp>",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
     "mini": "bd [bd - bd], sd(2,4,1), hh*6",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -3936,6 +4826,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "bd bd - bd,hh,sd,cp",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "bd bd bd",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -4030,11 +4925,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "bd hh sd hh",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "bd hh sd oh",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4054,18 +4944,8 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern does not repeat within 12 bars",
-    "mini": "bd hh*32 rim hh*16 siren:1 <clap clap>*8",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
     "grid": "ok",
     "mini": "bd hh:<1 2>:.5 - bd - - bd -",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "bd ht lt*2 - hh sd -rim",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -4100,6 +4980,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
+    "mini": "bd sd [ bd bd ] sd",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
     "mini": "bd sd bd bd hh",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4109,8 +4994,8 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "ok",
-    "mini": "bd sd bd sd,hh*16",
+    "grid": "the pattern does not repeat within 12 bars",
+    "mini": "bd sd bd*2 [sd oh?], hh*8",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -4145,11 +5030,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "bd ~",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "bd ~ [sd:1, rim] [bd rim] [~ rim] bd [sd:1, rim] ~",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4161,11 +5041,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern does not repeat within 12 bars",
     "mini": "bd ~ [~ bd?],~ hh*<1!2 2> ~, ~ rim*<0!5 1> rim",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "bd ~ [~ bd] ~, ~ [~ sd] ~ sd",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -4200,6 +5075,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
+    "mini": "bd!3 sd",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
     "mini": "bd!4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4211,11 +5091,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "a played note has no source token of its own to edit",
     "mini": "bd(10,16)/2, hh(6,8)*2:0:[[.25 .75]*4],[- sd]*2",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "bd(11,16)",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -4265,6 +5140,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
+    "mini": "bd*2 sd",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
     "mini": "bd*2 sd bd*2 sd bd oh bd sd",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4296,11 +5176,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "bd*4, [- cp]*2, [- hh]*4",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "nothing in this view could be edited on its own",
-    "mini": "bd*4, [~ <sd cp>]*2, [~ hh]*4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -4355,6 +5230,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
+    "mini": "bd/2 sd",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
     "mini": "bd808 ~ ~ ~",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4371,11 +5251,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "bd:1 sd:1 bd:1 sax:1",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "a played note has no source token of its own to edit",
-    "mini": "bd:15*2  ~ alesishr16_perc:<1 2 6 8>*<2 4 >@4 ",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -4414,13 +5289,8 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
-    "mini": "bd:<20 ~ 11> tambourine:<1 2 3 4> agogo:<1 2 3 4>< [5 6 7 8 9]>*4  east:<1 4>< 2 4>< 5 6> space:<1 2 3 4>",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
     "grid": "the pattern does not repeat within 12 bars",
-    "mini": "bd? ~ <bd*2? [~ bd]> ~",
+    "mini": "bd? sd",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -4510,11 +5380,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "c [a <bb ab>] <b g>",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
     "mini": "c [c e!2] [b,c] a",
     "roll": "ok",
   },
@@ -4534,11 +5399,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "roll": "ok",
   },
   {
-    "grid": "ok",
-    "mini": "c eb g bb",
-    "roll": "ok",
-  },
-  {
     "grid": "nothing in this view could be edited on its own",
     "mini": "c!3 [eb,<g a bb a>]",
     "roll": "ok",
@@ -4547,11 +5407,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "ok",
     "mini": "c#4,<<g#4!3 g4> <f#4 [d#4 f4] f#4 [f#4 d#4]>>",
     "roll": "the pattern does not repeat within 4 bars",
-  },
-  {
-    "grid": "ok",
-    "mini": "c#4@3 f#4@1.5 e4@1.5 b3",
-    "roll": "ok",
   },
   {
     "grid": "ok",
@@ -4595,16 +5450,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "c2 ~ a2 g2 ~",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "c2 ~ ~ g1 ~ ~ a1 ~",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
     "mini": "c2, eb3 g3 [bb3 c4 c3]",
     "roll": "ok",
   },
@@ -4635,12 +5480,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "c3 c3 c3 c3",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "c3 e3 f3 g3",
+    "mini": "c3 f6 e5 c4",
     "roll": "ok",
   },
   {
@@ -4670,8 +5510,8 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "c4 a4 f4 e4",
-    "roll": "ok",
+    "mini": "c4 e7 c5 f3 p7",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -4695,11 +5535,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "c4 ~ g4 a4",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
     "mini": "c4,g4",
     "roll": "ok",
   },
@@ -4711,11 +5546,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "c5 b4 a4 g4 f#4 g4 e4 f#4",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "c5 e5 g5 a5 b5 a5 g5 e5",
     "roll": "ok",
   },
   {
@@ -4750,6 +5580,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
+    "mini": "c7 e4",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
     "mini": "casio",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4770,28 +5605,8 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "cb eb gb bb bb bb bb",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
     "mini": "cb*4",
     "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "chap:1",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "charli:1",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "charli:2",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -4841,11 +5656,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "cp(5,<8 16>,2)",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "cp*4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -4915,11 +5725,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "d3",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
     "mini": "d4 d4  d e2 d2 d2 e2 c2",
     "roll": "ok",
   },
@@ -4956,11 +5761,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "delight/2",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "distkick",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -5020,6 +5820,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
+    "mini": "e1!8 g1!8 a1!4 as1!4 b1!8",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
     "mini": "e1*10",
     "roll": "ok",
   },
@@ -5041,11 +5846,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "e3 d2 g4 a3",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "e4 [c#5@3 d5] [d4, g4, b4] [d4, g4, b4] [d4, g4, b4]@2 [d5, f#5]",
     "roll": "ok",
   },
   {
@@ -5115,22 +5915,17 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "f3 ~ a3 ~ e3 ~ d3 ~",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
-    "mini": "f3 ~ a3 ~ g3 ~ d3",
-    "roll": "ok",
-  },
-  {
-    "grid": "ok",
     "mini": "f4 [f4 a4] c5 f5 e5 [d5 c5] bb4 [a4 g4]",
     "roll": "ok",
   },
   {
     "grid": "ok",
     "mini": "f4 c4",
+    "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "f4 c5 e6",
     "roll": "ok",
   },
   {
@@ -5142,6 +5937,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "ok",
     "mini": "f5 [f5 e5] d5 [c5 bb4] a4 [bb4 c5] d5 f5",
     "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "f5 p1 c6 e3",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
@@ -5195,12 +5995,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "g2 d2 g3 d2",
+    "mini": "g1 d1 g1 g1",
     "roll": "ok",
   },
   {
     "grid": "ok",
-    "mini": "g3 f#3 e3 ~",
+    "mini": "g2 d2 g3 d2",
     "roll": "ok",
   },
   {
@@ -5306,17 +6106,7 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "gm_celesta:4",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "gm_cello",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "gm_choir_aahs",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -5422,6 +6212,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_electric_guitar_muted",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "gm_electric_guitar_muted*8",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -5611,11 +6406,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "gm_pad_bowed:1",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "gm_pad_choir",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -5737,11 +6527,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "gm_synth_bass_2:1",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "gm_synth_brass_1",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -5876,11 +6661,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "gong:1 agogo:2 marktrees:1 bassdrum1:3",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "gravel/1",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -5996,11 +6776,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "hh(7,8,1)",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "hh(9,16)",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -6017,11 +6792,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "hh*16",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "the pattern does not repeat within 12 bars",
-    "mini": "hh*16?",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -6087,6 +6857,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "the pattern does not repeat within 12 bars",
     "mini": "hh*[<4 8>/16]",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "hh, hh, hh, bd, hh, rd",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -6161,16 +6936,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "kalimba",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "kawa",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "kawai",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -6212,11 +6977,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "lt cp",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "lt ht mt cp",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -6461,12 +7221,12 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "pigeon",
+    "mini": "pink",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",
-    "mini": "pink",
+    "mini": "pipeorgan_loud_pedal",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -6666,11 +7426,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "scream",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "sd",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -6826,6 +7581,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
+    "mini": "srd/2",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
     "mini": "sri",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -6871,11 +7631,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "supersaw:4 ~ supersaw:7 supersaw:11",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "swpad",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -6911,11 +7666,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "temporality end",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "thailand",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -6932,6 +7682,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "think/1",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
+  },
+  {
+    "grid": "ok",
+    "mini": "timpani2:10",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -6957,11 +7712,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "tr909_sd",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "tri",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -7107,16 +7857,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   {
     "grid": "ok",
     "mini": "woodblock",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "x",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "x x x",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
@@ -7356,16 +8096,6 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
   },
   {
     "grid": "ok",
-    "mini": "~ cp ~ <oh cp>",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
-    "mini": "~ cp ~ cp",
-    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
-  },
-  {
-    "grid": "ok",
     "mini": "~ cp ~ ~ cp",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -7493,6 +8223,11 @@ exports[`mini-corpus — real-world mini strings > pins every grid + roll verdic
     "grid": "ok",
     "mini": "~ ~ ~ ~ ~ ~ ~ C2",
     "roll": "ok",
+  },
+  {
+    "grid": "ok",
+    "mini": "~ ~~ hh",
+    "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
     "grid": "ok",

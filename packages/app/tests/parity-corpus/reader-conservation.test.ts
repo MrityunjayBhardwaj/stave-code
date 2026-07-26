@@ -35,7 +35,8 @@
  *
  * POPULATION AND WINDOW ARE PART OF THE CLAIM, and are stated in the assertions
  * rather than in prose: the committed `mini-corpus.json` (1500 distinct minis
- * harvested from 360 real tunes), cycles 0-15. The totals are pinned to literals so
+ * harvested from 360 real tunes — re-harvested at #1037 to include backtick minis
+ * and to stop harvesting commented-out code), cycles 0-15. The totals are pinned to literals so
  * that a corpus refresh or a window change announces itself instead of quietly
  * re-scoping the guarantee — a figure produced at this boundary has three times
  * shipped carrying an unstated restriction, and a gate that only asserts ">= 0
@@ -171,7 +172,7 @@ describe('#1036 — an accepted unit keeps every note the engine played', () => 
   it('pins the population and the window, so a re-scope cannot pass silently', () => {
     // These are the numbers the two arms above are a statement ABOUT. Without them
     // the gate still passes on a corpus of one mini over zero cycles.
-    expect(minis.length).toBe(1500)
+    expect(minis.length).toBe(1535)
     expect(CYCLES).toHaveLength(16)
     const grid = sweep(GRID)
     const roll = sweep(ROLL)
@@ -185,14 +186,18 @@ describe('#1036 — an accepted unit keeps every note the engine played', () => 
 /**
  * Observed 2026-07-26 on the committed corpus over cycles 0-3.
  *
- * `GRID_KEPT` is the figure the #1034 fix moved. Over this 16-cycle window the old
- * reader dropped 182 of the 77659 notes it accepted — 134 anchors, 35 lengths and
+ * `GRID_KEPT` is the figure the #1034 fix moved. These totals rose at #1037 when
+ * the corpus itself widened (77659 -> 85536 notes over 18825 accepted pairs); the
+ * PROPERTY is unchanged and stayed at zero violations throughout, which is exactly
+ * what a conservation gate should do when its population grows. Measured before
+ * that widening, over this same 16-cycle window, the old reader dropped 182 of the
+ * 77659 notes it accepted — 134 anchors, 35 lengths and
  * 48 true duplicates, across 11 units. (The same measurement over 4 cycles reads
  * 44 / 19375 across 10 units; both are correct, which is exactly why the window
  * belongs in the assertion and not in a sentence someone can quote without.)
  * Pinned here so the figure can never drift unremarked again.
  */
-const GRID_ACCEPTED = 18662
-const GRID_KEPT = 77659
-const ROLL_ACCEPTED = 11528
-const ROLL_KEPT = 63543
+const GRID_ACCEPTED = 18825
+const GRID_KEPT = 85536
+const ROLL_ACCEPTED = 12230
+const ROLL_KEPT = 72920
