@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
 import type { PianoRollModel, StepGridModel } from '../../notation/model'
+import { cellOn } from '../../notation/model'
 import { gainAtStart, setGroupGain, setColumnGain } from '../inspector'
 
 const roll = (notes: PianoRollModel['notes']): PianoRollModel => ({ steps: 4, notes })
@@ -33,7 +34,7 @@ describe('setGroupGain — one shared `.gain` write path (PV129)', () => {
 describe('setColumnGain — per-column step velocity', () => {
   const step = (gains?: number[]): StepGridModel => ({
     steps: 4,
-    lanes: [{ sound: 'bd', cells: [true, false, true, false] }],
+    lanes: [{ sound: 'bd', cells: [cellOn(), false, cellOn(), false] }],
     ...(gains ? { gains } : {}),
   })
 

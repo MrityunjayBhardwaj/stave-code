@@ -25,7 +25,8 @@
  * reference when it can't apply, so `useGridModel.mutate` skips the write and
  * the document is left untouched.
  */
-import type { PianoRollModel, RollNote, StepGridModel } from './model'
+import { cellOn, clampLane, isCellOn, scaleCell } from './model'
+import type { PianoRollModel, RollNote, StepCell, StepGridModel } from './model'
 
 /** which way the resolution control scales the grid */
 export type ResolutionDir = 'double' | 'halve'
@@ -58,7 +59,7 @@ export function canHalveStepGrid(model: StepGridModel): boolean {
   if (model.steps < 2 || model.steps % 2 !== 0) return false
   if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false
   const oddCellEmpty = model.lanes.every((lane) =>
-    lane.cells.every((on, i) => i % 2 === 0 || !on),
+    lane.cells.every((cell, i) => i % 2 === 0 || !isCellOn(cell)),
   )
   if (!oddCellEmpty) return false
   if (model.gains) {
@@ -80,7 +81,7 @@ export function scaleStepGrid(model: StepGridModel, dir: ResolutionDir): StepGri
       steps: model.steps * 2,
       lanes: model.lanes.map((lane) => ({
         ...lane,
-        cells: lane.cells.flatMap((on) => [on, false]),
+        cells: lane.cells.flatMap((cell): StepCell[] => [scaleCell(cell, 2), false]),
       })),
       ...(model.gains ? { gains: model.gains.flatMap((g) => [g, 1]) } : {}),
     }
@@ -91,7 +92,7 @@ export function scaleStepGrid(model: StepGridModel, dir: ResolutionDir): StepGri
     steps: model.steps / 2,
     lanes: model.lanes.map((lane) => ({
       ...lane,
-      cells: lane.cells.filter((_, i) => i % 2 === 0),
+      cells: lane.cells.filter((_, i) => i % 2 === 0).map((cell) => scaleCell(cell, 0.5)),
     })),
     ...(model.gains ? { gains: model.gains.filter((_, i) => i % 2 === 0) } : {}),
   }
@@ -217,19 +218,31 @@ export function quantizeStepGridTo(model: StepGridModel, target: number): StepGr
   if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model
   if ((model.bars ?? 1) > 1) return scaleStepGridTo(model, target)
   const from = model.steps
+  const addingSlots = target > from
   const lanes = model.lanes.map((lane) => {
-    const cells = Array<boolean>(target).fill(false)
-    lane.cells.forEach((on, c) => {
-      if (on) cells[bucket(c, from, target)] = true
+    const cells = Array<StepCell>(target).fill(false)
+    lane.cells.forEach((cell, c) => {
+      if (!isCellOn(cell)) return
+      const b = bucket(c, from, target)
+      // SCALE FIRST, then merge. Coarsening scales every length by `target / from`;
+      // merging takes the SHORTEST, so a merged note never sounds longer than one of
+      // the notes it stands for (the choice `quantizePianoRollTo` makes for a chord).
+      // Doing it the other way round rescales a value already scaled by an earlier
+      // source cell in the same bucket — 1 and 1 columns became 0.25 instead of 0.5.
+      // Refining keeps the COLUMN count instead (#607, the roll's rule): the onset is
+      // preserved and the note simply no longer spans the widened gap.
+      const scaled = addingSlots ? cell.duration : cell.duration * (target / from)
+      const prev = cells[b]
+      cells[b] = cellOn(isCellOn(prev) ? Math.min(prev.duration, scaled) : scaled)
     })
-    return { ...lane, cells }
+    return { ...lane, cells: clampLane(cells, target) }
   })
   let gains: number[] | undefined
   if (model.gains) {
     gains = Array<number>(target).fill(1)
     const filled = new Set<number>()
     for (let c = 0; c < from; c++) {
-      if (!model.lanes.some((l) => l.cells[c])) continue // only audible columns carry gain
+      if (!model.lanes.some((l) => isCellOn(l.cells[c]))) continue // only audible columns carry gain
       const b = bucket(c, from, target)
       const g = model.gains[c] ?? 1
       gains[b] = filled.has(b) ? Math.max(gains[b], g) : g

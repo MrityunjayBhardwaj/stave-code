@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { parseStepGrid, parsePianoRoll } from '../parse'
+import { cellOn } from '../model'
 import { serializeStepGrid, serializePianoRoll } from '../serialize'
 import type { StepGridModel, PianoRollModel } from '../model'
 
@@ -37,7 +38,7 @@ describe('#468 — bare `-` rest', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.model.steps).toBe(3)
-    expect(r.model.lanes).toEqual([{ sound: 'bd', cells: [true, false, true] }])
+    expect(r.model.lanes).toEqual([{ sound: 'bd', cells: [cellOn(), false, cellOn()] }])
   })
 
   it('piano roll: `c3 - e3 -` parses identically to `c3 ~ e3 ~`', () => {
@@ -58,7 +59,7 @@ describe('#468 — bare `-` rest', () => {
   it('a trailing `-` is a rest', () => {
     const r = parseStepGrid('bd -')
     expect(r.ok).toBe(true)
-    if (r.ok) expect(r.model.lanes[0].cells).toEqual([true, false])
+    if (r.ok) expect(r.model.lanes[0].cells).toEqual([cellOn(), false])
   })
 
   it('writes a `-` rest back as the `-` the user typed (#913)', () => {

@@ -310,10 +310,111 @@ export interface StepGridModel {
   gainForeign?: boolean
 }
 
+/**
+ * One column of one lane: `false` for no trigger, or the note that starts there.
+ *
+ * WHY THIS IS NOT A BOOLEAN (#1010 P4b). A cell used to be one bit, so how long
+ * its note sounds was not part of the model — and a writer cannot preserve an axis
+ * its model never carried ([[PV239]]). Every duration loss on this surface starts
+ * there: the element re-emit has nothing to write with except the view's own
+ * resolution, so `[hh ~]!16` — sixteen notes each sounding for HALF a column —
+ * comes back as sixteen notes of a full column, twice their length, and the pattern
+ * is quietly a different pattern. The piano roll's note has carried `duration`
+ * since the beginning and has never produced one of these.
+ *
+ * `false` rather than `null`/`undefined` for the off cell, so that the many places
+ * which only ask "is anything here?" keep reading exactly as they did —
+ * truthiness, `.some(Boolean)`, `filter(Boolean)`.
+ */
+export type StepCell = false | StepNote
+
+/** A note occupying one grid cell. */
+export interface StepNote {
+  /**
+   * How long the note SOUNDS, in COLUMNS: `1` is exactly this column, `2` spans
+   * the next one too, `0.5` sounds for the first half of it and is silent after.
+   *
+   * COLUMNS, not cycles, and both units are deliberately in play at this boundary.
+   * `Onset.durs` is cycle-relative so that no reader needs to know the grid's
+   * resolution; a CELL is already positioned in the grid, and every consumer of
+   * this field reasons in columns — the ×2/÷2 resolution ops, resize, and (P4c) the
+   * printer deciding whether a note even needs a `[x ~]` to be spelled.
+   * `RollNote.duration` is the same unit, which is what makes the two surfaces
+   * comparable and is the direction #1032 goes.
+   *
+   * FRACTIONAL IS NORMAL — this is where it differs from the roll's integral `@n`.
+   * Measured over the 1535-unit corpus: ~206 units carry a length that is not 1,
+   * and 5 are sub-column (`[hh ~]!16` → 0.5, `[bd@0.5 - - -]` → 0.1429). A
+   * consumer that assumes integers is wrong about real corpus material.
+   */
+  duration: number
+}
+
+/** an ON cell; `duration` in columns, defaulting to exactly this column */
+export const cellOn = (duration = 1): StepNote => ({ duration })
+
+/**
+ * Is this cell a trigger? (`undefined` — past the end of the lane — is not.)
+ *
+ * Tests the SHAPE rather than `!== false`, so that a value from before the cell
+ * carried a length — a stale `true` — reads as off instead of passing this guard and
+ * handing `undefined` to arithmetic. That produced a `duration: NaN` exactly once, in
+ * a test still building models by hand, and NaN is the kind of wrong answer that
+ * propagates quietly. Nothing persists a `StepGridModel` (it is re-read from the
+ * document every time), so this guards the JS boundary, not a migration.
+ */
+export const isCellOn = (cell: StepCell | undefined): cell is StepNote =>
+  typeof cell === 'object' && cell !== null
+
+/**
+ * Scale a cell's LENGTH by the same factor the grid's resolution changed by, so the
+ * note keeps the time it actually occupies (#1010 P4b).
+ *
+ * This is what makes ×2 / ÷2 mean what this module's header already promised —
+ * "every hit keeps its position", extended from the onset to the whole note. A cell
+ * lasting one column of a 16-column grid lasts TWO columns of the 32-column one: the
+ * same eighth of a cycle, spelled at a finer resolution. Leaving the length alone
+ * would silently halve every note on a ×2, which is the corruption this axis exists
+ * to prevent, arriving from the op instead of from the printer.
+ *
+ * Halving needs no integrality guard, and that is worth saying because the roll needs
+ * one: `RollNote.duration` counts whole `@n` steps, so an odd length cannot be halved
+ * and `canHalvePianoRoll` refuses. A cell's length is fractional by design, so ÷2
+ * always represents exactly — it can only ever SHORTEN a note in column terms, never
+ * lengthen it, and never drops one. `canHalveStepGrid` is therefore unchanged: what it
+ * has always checked (nothing lives on the odd columns) is still the whole condition.
+ */
+export const scaleCell = (cell: StepCell, factor: number): StepCell =>
+  isCellOn(cell) ? cellOn(cell.duration * factor) : false
+
+/**
+ * Keep every note inside the room it has: no note reaches past the next hit in its
+ * own lane, and none runs past the end of the grid.
+ *
+ * Only the quantize path needs this. ×2/÷2 scale onsets and lengths by one factor, so
+ * a grid with no overlap keeps having none; quantize ROUNDS each onset onto a coarser
+ * bucket, which can pull two hits closer together than their lengths allow. Same
+ * promise `quantizePianoRollTo` already makes for the roll ("durations are clamped so
+ * nothing overlaps or runs past the grid"), per lane here because a lane is one sound
+ * and two notes of one sound cannot overlap in any notation we could write back.
+ */
+export function clampLane(cells: StepCell[], steps: number): StepCell[] {
+  const out = [...cells]
+  for (let c = 0; c < out.length; c++) {
+    const cell = out[c]
+    if (!isCellOn(cell)) continue
+    let next = c + 1
+    while (next < out.length && !isCellOn(out[next])) next++
+    const room = Math.min(next, steps) - c
+    if (cell.duration > room) out[c] = cellOn(room)
+  }
+  return out
+}
+
 export interface StepLane {
   sound: string
   part?: number
-  cells: boolean[]
+  cells: StepCell[]
 }
 
 /** A single note in the piano roll. */

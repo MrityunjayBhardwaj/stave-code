@@ -25639,6 +25639,24 @@ function useActiveChunk() {
 }
 __name(useActiveChunk, "useActiveChunk");
 
+// src/visualEdit/notation/model.ts
+var cellOn = /* @__PURE__ */ __name((duration = 1) => ({ duration }), "cellOn");
+var isCellOn = /* @__PURE__ */ __name((cell) => typeof cell === "object" && cell !== null, "isCellOn");
+var scaleCell = /* @__PURE__ */ __name((cell, factor) => isCellOn(cell) ? cellOn(cell.duration * factor) : false, "scaleCell");
+function clampLane(cells, steps) {
+  const out = [...cells];
+  for (let c = 0; c < out.length; c++) {
+    const cell = out[c];
+    if (!isCellOn(cell)) continue;
+    let next = c + 1;
+    while (next < out.length && !isCellOn(out[next])) next++;
+    const room = Math.min(next, steps) - c;
+    if (cell.duration > room) out[c] = cellOn(room);
+  }
+  return out;
+}
+__name(clampLane, "clampLane");
+
 // src/visualEdit/notation/serialize.ts
 function altSourceFits(a, steps) {
   return !!a && a.perBar * a.bars === steps;
@@ -25805,7 +25823,8 @@ function partColumns(lanes, steps, factor) {
 __name(partColumns, "partColumns");
 function columnAtoms(lanes, steps) {
   const cols = [];
-  for (let i = 0; i < steps; i++) cols.push(lanes.filter((l) => l.cells[i]).map((l) => l.sound));
+  for (let i = 0; i < steps; i++)
+    cols.push(lanes.filter((l) => isCellOn(l.cells[i])).map((l) => l.sound));
   return cols;
 }
 __name(columnAtoms, "columnAtoms");
@@ -26560,6 +26579,7 @@ function tokenize(mini, allowNumeric = false) {
 }
 __name(tokenize, "tokenize");
 var gridHasElongation = /* @__PURE__ */ __name((steps) => steps.some((s) => s.elongation !== 1 || (s.sub?.some((slot) => slot.units !== 1) ?? false)), "gridHasElongation");
+var tokensOf = /* @__PURE__ */ __name((cols) => cols.map((c) => c.map((n) => n.token)), "tokensOf");
 function toCells(steps, div) {
   const cells = [];
   for (const step of steps) {
@@ -26567,7 +26587,7 @@ function toCells(steps, div) {
     const total = stepUnits(step);
     for (const slot of slots) {
       const span = div / total * slot.units;
-      cells.push(slot.atoms);
+      cells.push(slot.atoms.map((token) => ({ token, duration: span })));
       for (let j = 1; j < span; j++) cells.push([]);
     }
   }
@@ -26577,12 +26597,15 @@ __name(toCells, "toCells");
 function lanesFromCells(cells, part) {
   const order = [];
   for (const cell of cells) {
-    for (const sound of cell) if (!order.includes(sound)) order.push(sound);
+    for (const n of cell) if (!order.includes(n.token)) order.push(n.token);
   }
   return order.map((sound) => ({
     sound,
     ...part !== void 0 ? { part } : {},
-    cells: cells.map((cell) => cell.includes(sound))
+    cells: cells.map((cell) => {
+      const note = cell.find((n) => n.token === sound);
+      return note ? cellOn(note.duration) : false;
+    })
   }));
 }
 __name(lanesFromCells, "lanesFromCells");
@@ -26603,6 +26626,21 @@ function buildRegions(src, elements, div, total, content) {
   return regions;
 }
 __name(buildRegions, "buildRegions");
+function columnsFromOnsets(perCycle, perBar2, bars) {
+  const cols = Array.from({ length: perBar2 * bars }, () => []);
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const c = Math.round(o.pos * perBar2);
+      if (c < 0 || c >= perBar2) return null;
+      cols[b * perBar2 + c] = o.atoms.map((token, i) => {
+        const dur = o.durs[i];
+        return { token, duration: dur === null ? 1 : dur * perBar2 };
+      });
+    }
+  }
+  return cols;
+}
+__name(columnsFromOnsets, "columnsFromOnsets");
 var gridContent = /* @__PURE__ */ __name((cells) => (from, to) => cells.slice(from, to).map((c) => [...new Set(c)]), "gridContent");
 var rollContent = /* @__PURE__ */ __name((notes) => (from, to) => notes.filter((n) => n.start >= from && n.start < to).map((n) => ({ pitch: n.pitch, start: n.start, duration: n.duration })), "rollContent");
 function singlePart(src, elements, div, total, content) {
@@ -26705,7 +26743,11 @@ function gridFromAltElements(mini) {
   const regions = buildAltRegions(src, elemSpans, div, perBarCols, (from, to) => {
     const perBar2 = [];
     for (let b = 0; b < bars; b++) {
-      perBar2.push(cells.slice(from + b * perBarCols, to + b * perBarCols).map((c) => [...new Set(c)]));
+      perBar2.push(
+        tokensOf(cells.slice(from + b * perBarCols, to + b * perBarCols)).map((c) => [
+          ...new Set(c)
+        ])
+      );
     }
     return perBar2;
   });
@@ -26921,17 +26963,11 @@ function projectStepGrid(src0) {
   if (perBar2 * bars > MAX_STEPS) return no("resolution");
   if (perBar2 % totalWeight !== 0) return no("element-tiling");
   const divPerUnit = perBar2 / totalWeight;
-  const cells = Array.from({ length: perBar2 * bars }, () => []);
-  for (let b = 0; b < bars; b++) {
-    for (const o of perCycle[b]) {
-      const c = Math.round(o.pos * perBar2);
-      if (c < 0 || c >= perBar2) return no("irrational-onset");
-      cells[b * perBar2 + c] = [...new Set(o.atoms)];
-    }
-  }
+  const cells = columnsFromOnsets(perCycle, perBar2, bars);
+  if (cells === null) return no("irrational-onset");
   const lanes = lanesFromCells(cells);
   if (bars === 1) {
-    const parts = singlePart(src, spans, divPerUnit, perBar2, gridContent(cells));
+    const parts = singlePart(src, spans, divPerUnit, perBar2, gridContent(tokensOf(cells)));
     if (!parts) return no("element-tiling");
     const model2 = {
       steps: perBar2,
@@ -26949,7 +26985,7 @@ function projectStepGrid(src0) {
     perBar2,
     (from, to) => Array.from(
       { length: bars },
-      (_, b) => cells.slice(from + b * perBar2, to + b * perBar2).map((c) => [...new Set(c)])
+      (_, b) => tokensOf(cells.slice(from + b * perBar2, to + b * perBar2)).map((c) => [...new Set(c)])
     )
   );
   if (!regions) return no("element-tiling");
@@ -26978,15 +27014,9 @@ function projectAltBars(src, inner, perCycle, bars) {
     perBar2 = lcm(perBar2, d);
   }
   if (perBar2 * bars > MAX_STEPS) return no("resolution");
-  const cells = Array.from({ length: perBar2 * bars }, () => []);
-  for (let b = 0; b < bars; b++) {
-    for (const o of perCycle[b]) {
-      const c = Math.round(o.pos * perBar2);
-      if (c < 0 || c >= perBar2) return no("irrational-onset");
-      cells[b * perBar2 + c] = [...new Set(o.atoms)];
-    }
-  }
-  const parts = singlePart(innerSrc, spans, perBar2, perBar2 * bars, gridContent(cells));
+  const cells = columnsFromOnsets(perCycle, perBar2, bars);
+  if (cells === null) return no("irrational-onset");
+  const parts = singlePart(innerSrc, spans, perBar2, perBar2 * bars, gridContent(tokensOf(cells)));
   if (!parts) return no("element-tiling");
   const model = {
     steps: perBar2 * bars,
@@ -27015,7 +27045,7 @@ function projectionEditSafe(model, perBar2, bars, base, probeCols) {
       probe = { sound: PROBE_SOUND, cells: Array(perBar2 * bars).fill(false) };
       lanes.push(probe);
     }
-    probe.cells[col] = true;
+    probe.cells[col] = cellOn();
     const out = serializeStepGrid({ ...model, lanes });
     if (out == null) return false;
     let edited;
@@ -27084,10 +27114,19 @@ function projectStepGridByLeaf(src0) {
   const anchored = leafAnchors(src, perCycle, perBar2, bars);
   if (!anchored.ok) return anchored;
   const cols = anchored.cols;
+  const played = columnsFromOnsets(perCycle, perBar2, bars);
+  if (played === null) return no("irrational-onset");
   const model = {
     steps: perBar2 * bars,
     ...bars > 1 ? { bars } : {},
-    lanes: lanesFromCells(cols.map((c) => c.map((a) => a.atom))),
+    lanes: lanesFromCells(
+      cols.map(
+        (col, i) => col.map((a) => ({
+          token: a.atom,
+          duration: played[i].find((n) => n.token === a.atom)?.duration ?? 1
+        }))
+      )
+    ),
     leafSource: { src, cols }
   };
   if (!leafEditSafe(model, perBar2, bars)) return no("edit-unsafe");
@@ -27097,7 +27136,7 @@ function projectStepGridByLeaf(src0) {
 __name(projectStepGridByLeaf, "projectStepGridByLeaf");
 function leafViewUsable(model) {
   for (let c = 0; c < model.steps; c++) {
-    const on = model.lanes.find((l) => l.cells[c]);
+    const on = model.lanes.find((l) => isCellOn(l.cells[c]));
     if (!on) continue;
     const lanes = model.lanes.map(
       (l) => l === on ? { ...l, cells: l.cells.map((v, j) => j === c ? false : v) } : l
@@ -27225,7 +27264,7 @@ function parseStepGridCore(mini) {
   }
   const cells = toCells(tok.steps, div);
   const src = mini.trim();
-  const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(cells));
+  const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)));
   return {
     ok: true,
     model: {
@@ -27249,7 +27288,7 @@ function gridFromAlternation(inner) {
   }
   const cells = toCells(tok.steps, div);
   const src = inner.trim();
-  const parts = singlePart(src, tok.elements, div, cells.length, gridContent(cells));
+  const parts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)));
   return {
     ok: true,
     model: {
@@ -27292,7 +27331,7 @@ function gridFromStack(parts) {
     const factor = total / (cells.length || 1);
     const stretched = Array.from(
       { length: total },
-      (_, c) => c % factor === 0 ? cells[c / factor] ?? [] : []
+      (_, c) => c % factor === 0 ? (cells[c / factor] ?? []).map((n) => ({ ...n, duration: n.duration * factor })) : []
     );
     lanes.push(...lanesFromCells(stretched, part));
   });
@@ -27313,7 +27352,7 @@ function stackSource(parts, divs, elements, partCells, total) {
       elements[i],
       divs[i],
       partCells[i].length,
-      gridContent(partCells[i])
+      gridContent(tokensOf(partCells[i]))
     );
     if (!regions) return null;
     out.push({
@@ -28360,7 +28399,7 @@ function canHalveStepGrid(model) {
   if (model.steps < 2 || model.steps % 2 !== 0) return false;
   if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false;
   const oddCellEmpty = model.lanes.every(
-    (lane) => lane.cells.every((on, i) => i % 2 === 0 || !on)
+    (lane) => lane.cells.every((cell, i) => i % 2 === 0 || !isCellOn(cell))
   );
   if (!oddCellEmpty) return false;
   if (model.gains) {
@@ -28377,7 +28416,7 @@ function scaleStepGrid(model, dir) {
       steps: model.steps * 2,
       lanes: model.lanes.map((lane) => ({
         ...lane,
-        cells: lane.cells.flatMap((on) => [on, false])
+        cells: lane.cells.flatMap((cell) => [scaleCell(cell, 2), false])
       })),
       ...model.gains ? { gains: model.gains.flatMap((g) => [g, 1]) } : {}
     };
@@ -28388,7 +28427,7 @@ function scaleStepGrid(model, dir) {
     steps: model.steps / 2,
     lanes: model.lanes.map((lane) => ({
       ...lane,
-      cells: lane.cells.filter((_, i) => i % 2 === 0)
+      cells: lane.cells.filter((_, i) => i % 2 === 0).map((cell) => scaleCell(cell, 0.5))
     })),
     ...model.gains ? { gains: model.gains.filter((_, i) => i % 2 === 0) } : {}
   };
@@ -28462,19 +28501,24 @@ function quantizeStepGridTo(model, target) {
   if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model;
   if ((model.bars ?? 1) > 1) return scaleStepGridTo(model, target);
   const from = model.steps;
+  const addingSlots = target > from;
   const lanes = model.lanes.map((lane) => {
     const cells = Array(target).fill(false);
-    lane.cells.forEach((on, c) => {
-      if (on) cells[bucket(c, from, target)] = true;
+    lane.cells.forEach((cell, c) => {
+      if (!isCellOn(cell)) return;
+      const b = bucket(c, from, target);
+      const scaled = addingSlots ? cell.duration : cell.duration * (target / from);
+      const prev = cells[b];
+      cells[b] = cellOn(isCellOn(prev) ? Math.min(prev.duration, scaled) : scaled);
     });
-    return { ...lane, cells };
+    return { ...lane, cells: clampLane(cells, target) };
   });
   let gains;
   if (model.gains) {
     gains = Array(target).fill(1);
     const filled = /* @__PURE__ */ new Set();
     for (let c = 0; c < from; c++) {
-      if (!model.lanes.some((l) => l.cells[c])) continue;
+      if (!model.lanes.some((l) => isCellOn(l.cells[c]))) continue;
       const b = bucket(c, from, target);
       const g = model.gains[c] ?? 1;
       gains[b] = filled.has(b) ? Math.max(gains[b], g) : g;
@@ -29463,11 +29507,12 @@ var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
 var VELOCITY_FULL_PX = 80;
 var DRAG_THRESHOLD = 4;
 var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+var paint = /* @__PURE__ */ __name((value) => value ? cellOn() : false, "paint");
 function toggleCell(model, laneIndex, stepIndex, value) {
   return {
     ...model,
     lanes: model.lanes.map(
-      (lane, i) => i === laneIndex ? { ...lane, cells: lane.cells.map((c, j) => j === stepIndex ? value : c) } : lane
+      (lane, i) => i === laneIndex ? { ...lane, cells: lane.cells.map((c, j) => j === stepIndex ? paint(value) : c) } : lane
     )
   };
 }
@@ -29494,7 +29539,7 @@ function SequencerGrid({ onResolution } = {}) {
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
         const lane = prev.lanes[laneIndex];
-        if (!lane || stepIndex >= lane.cells.length || lane.cells[stepIndex] === value) {
+        if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) {
           return prev;
         }
         return toggleCell(prev, laneIndex, stepIndex, value);
@@ -29660,7 +29705,8 @@ function SequencerGrid({ onResolution } = {}) {
                 children: "\xD7"
               }
             ),
-            /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((on, stepIndex) => {
+            /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((cell, stepIndex) => {
+              const on = isCellOn(cell);
               const gain = model.gains?.[stepIndex] ?? 1;
               const isPlaying = stepIndex === playingStep;
               return /* @__PURE__ */ jsx(
@@ -42094,24 +42140,30 @@ function resizeGrid(model, nextSteps, mode) {
     return {
       ...restructured(model),
       steps: nextSteps,
-      lanes: model.lanes.map((l) => ({ ...l, cells: padCells(l.cells, nextSteps) }))
+      lanes: model.lanes.map((l) => ({
+        ...l,
+        cells: clampLane(padCells(l.cells, nextSteps), nextSteps)
+      }))
     };
   }
   const from = model.steps;
+  const factor = nextSteps / from;
   return {
     ...restructured(model),
     steps: nextSteps,
-    lanes: model.lanes.map((l) => ({
-      ...l,
-      cells: Array.from({ length: nextSteps }, (_, j) => {
+    lanes: model.lanes.map((l) => {
+      const cells = Array.from({ length: nextSteps }, (_, j) => {
         if (nextSteps >= from) {
-          return j * from % nextSteps === 0 && l.cells[j * from / nextSteps] === true;
+          if (j * from % nextSteps !== 0) return false;
+          return scaleCell(l.cells[j * from / nextSteps] ?? false, factor);
         }
         const lo = Math.ceil(j * from / nextSteps);
         const hi = Math.ceil((j + 1) * from / nextSteps);
-        return l.cells.slice(lo, hi).some(Boolean);
-      })
-    }))
+        const hits = l.cells.slice(lo, hi).filter(isCellOn);
+        return hits.length === 0 ? false : cellOn(Math.min(...hits.map((h) => h.duration)) * factor);
+      });
+      return { ...l, cells: clampLane(cells, nextSteps) };
+    })
   };
 }
 __name(resizeGrid, "resizeGrid");

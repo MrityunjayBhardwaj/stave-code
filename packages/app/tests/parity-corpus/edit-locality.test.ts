@@ -59,6 +59,7 @@ import {
   serializePianoRoll,
 } from '../../../editor/src/visualEdit/notation/serialize'
 import { resizeRoll } from '../../../editor/src/visualEdit/notation/resize'
+import { cellOn, isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import type {
   PianoRollModel,
   RollNote,
@@ -163,7 +164,7 @@ function toggleCell(m: StepGridModel, laneIndex: number, stepIndex: number, valu
     ...m,
     lanes: m.lanes.map((lane, i) =>
       i === laneIndex
-        ? { ...lane, cells: lane.cells.map((c, j) => (j === stepIndex ? value : c)) }
+        ? { ...lane, cells: lane.cells.map((c, j) => (j === stepIndex ? (value ? cellOn() : false) : c)) }
         : lane,
     ),
   }
@@ -190,7 +191,7 @@ function probe(mini: string): Violation | null {
   const lane = model.lanes[laneIndex]
   if (!lane || model.steps < 1) return null
   const last = model.steps - 1
-  const edited = toggleCell(model, laneIndex, last, !lane.cells[last])
+  const edited = toggleCell(model, laneIndex, last, !isCellOn(lane.cells[last]))
   let out: string | null
   try {
     out = serializeStepGrid(edited)
@@ -418,7 +419,7 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
     expect(r.ok, `${src} should leaf-project`).toBe(true)
     if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored grid')
     const lane = r.model.lanes.find((l) => l.sound === 'g3')!
-    const col = lane.cells.indexOf(true)
+    const col = lane.cells.findIndex(isCellOn)
     const cleared = toggleCell(r.model, r.model.lanes.indexOf(lane), col, false)
     const out = serializeStepGrid(cleared)
     expect(out).toBe('<[~,b3,e4] [a3,c3,e4] [b3,d3,f#4] [b3,e4,g4]@0.75 [b3,d3,f#4]@0.25>')
@@ -436,7 +437,7 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
     const r = parseStepGrid(src)
     expect(r.ok).toBe(true)
     if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored grid')
-    const col = r.model.lanes[0].cells.indexOf(true)
+    const col = r.model.lanes[0].cells.findIndex(isCellOn)
     const out = serializeStepGrid(toggleCell(r.model, 0, col, false))
     expect(out).toBe('<~ hh sd hh>*2')
     // literal locality: the diff is confined to the `bd` span
@@ -457,7 +458,7 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
     expect(r.ok).toBe(true)
     if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored grid')
     expect(r.model.bars).toBe(4)
-    const col = r.model.lanes[0].cells.indexOf(true)
+    const col = r.model.lanes[0].cells.findIndex(isCellOn)
     expect(serializeStepGrid(toggleCell(r.model, 0, col, false))).toBe('~/4')
   })
 

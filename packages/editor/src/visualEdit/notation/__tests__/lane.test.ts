@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { parseStepGrid } from '../parse'
 import { serializeStepGrid } from '../serialize'
 import { addLane, removeLane } from '../lane'
+import { cellOn } from '../model'
 import type { StepGridModel } from '../model'
 
 function parse(s: string): StepGridModel {
@@ -24,7 +25,9 @@ describe('addLane / removeLane (#516)', () => {
     const li = m.lanes.length - 1
     const withHit: StepGridModel = {
       ...m,
-      lanes: m.lanes.map((l, i) => (i === li ? { ...l, cells: [true, false, false, false] } : l)),
+      lanes: m.lanes.map((l, i) =>
+        i === li ? { ...l, cells: [cellOn(), false, false, false] } : l,
+      ),
     }
     expect(serializeStepGrid(withHit)).toBe('[bd,hh] ~ sd ~')
   })

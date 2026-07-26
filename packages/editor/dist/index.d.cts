@@ -8096,10 +8096,48 @@ interface StepGridModel {
      */
     gainForeign?: boolean;
 }
+/**
+ * One column of one lane: `false` for no trigger, or the note that starts there.
+ *
+ * WHY THIS IS NOT A BOOLEAN (#1010 P4b). A cell used to be one bit, so how long
+ * its note sounds was not part of the model — and a writer cannot preserve an axis
+ * its model never carried ([[PV239]]). Every duration loss on this surface starts
+ * there: the element re-emit has nothing to write with except the view's own
+ * resolution, so `[hh ~]!16` — sixteen notes each sounding for HALF a column —
+ * comes back as sixteen notes of a full column, twice their length, and the pattern
+ * is quietly a different pattern. The piano roll's note has carried `duration`
+ * since the beginning and has never produced one of these.
+ *
+ * `false` rather than `null`/`undefined` for the off cell, so that the many places
+ * which only ask "is anything here?" keep reading exactly as they did —
+ * truthiness, `.some(Boolean)`, `filter(Boolean)`.
+ */
+type StepCell = false | StepNote;
+/** A note occupying one grid cell. */
+interface StepNote {
+    /**
+     * How long the note SOUNDS, in COLUMNS: `1` is exactly this column, `2` spans
+     * the next one too, `0.5` sounds for the first half of it and is silent after.
+     *
+     * COLUMNS, not cycles, and both units are deliberately in play at this boundary.
+     * `Onset.durs` is cycle-relative so that no reader needs to know the grid's
+     * resolution; a CELL is already positioned in the grid, and every consumer of
+     * this field reasons in columns — the ×2/÷2 resolution ops, resize, and (P4c) the
+     * printer deciding whether a note even needs a `[x ~]` to be spelled.
+     * `RollNote.duration` is the same unit, which is what makes the two surfaces
+     * comparable and is the direction #1032 goes.
+     *
+     * FRACTIONAL IS NORMAL — this is where it differs from the roll's integral `@n`.
+     * Measured over the 1535-unit corpus: ~206 units carry a length that is not 1,
+     * and 5 are sub-column (`[hh ~]!16` → 0.5, `[bd@0.5 - - -]` → 0.1429). A
+     * consumer that assumes integers is wrong about real corpus material.
+     */
+    duration: number;
+}
 interface StepLane {
     sound: string;
     part?: number;
-    cells: boolean[];
+    cells: StepCell[];
 }
 /** A single note in the piano roll. */
 interface RollNote {
@@ -8269,21 +8307,14 @@ declare function isBlackKey(midi: number): boolean;
 
 declare function placeNote(model: PianoRollModel, pitch: string, start: number, duration: number): PianoRollModel;
 
-/**
- * Step-count changes. A flat mini string spans one cycle, so step count is the
- * note value (8 steps → 8th notes, 16 → 16ths):
- *
- *  - "spread" (default): preserve musical time — 8→16 moves a hit at step i to
- *    step 2i, so it sounds identical at finer resolution; shrinking quantizes
- *    hits onto the coarser grid (any hit in a bucket keeps the bucket on).
- *  - "pad": preserve step indices — append/truncate at the end, stretching or
- *    compressing the groove (hardware "pattern length" semantics).
- *
- * Multi-bar (`<...>`) patterns don't resize — their column resolution is fixed
- * by the bar groups — so both functions return the model unchanged.
- */
-
 type ResizeMode = 'spread' | 'pad';
+/**
+ * Both modes clamp lengths (`clampLane`) for the same reason `quantizeStepGridTo` and
+ * `resizeRoll` do: rounding hits onto a coarser grid, or truncating one, can leave a
+ * note reaching past the next hit or past the end of the grid, and neither is
+ * something the writer could spell. The roll has always clamped here; the grid could
+ * not, because a cell had no length to clamp (#1010 P4b).
+ */
 declare function resizeGrid(model: StepGridModel, nextSteps: number, mode: ResizeMode): StepGridModel;
 declare function resizeRoll(model: PianoRollModel, nextSteps: number, mode: ResizeMode): PianoRollModel;
 
@@ -8337,34 +8368,6 @@ declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProp
  */
 /** the snap grids the picker offers; `'grid'` = native cell (no extra snap) */
 type Division = 'grid' | '1/4' | '1/8' | '1/16' | '1/8T' | '1/16T';
-
-/**
- * resolution.ts — pure ×2 / ÷2 grid-resolution transforms (#479).
- *
- * A flat Strudel sequence conflates LENGTH and RESOLUTION: the token count IS
- * the number of equal cycle subdivisions, so `s("bd ~ sn ~ bd")` is exactly 5
- * slots and appending a token re-times every event (grounded with real haps in
- * #479). The only RATIO-PRESERVING way to change the slot count — the standard
- * step-sequencer "Rate / resolution" control (Logic, Elektron) decoupled from
- * length — is an integer resolution change:
- *
- *   ×2  each slot splits into two; every hit keeps its position, the new
- *       in-between slots are empty (editable). `bd ~ sn` → `bd ~ ~ ~ sn ~`.
- *   ÷2  the inverse, and LOSSLESS only when every odd column is empty (a step
- *       grid) / every note starts and lasts an even number of columns (a roll).
- *       Otherwise it would drop or shorten notes, so it's disabled (the `canHalve*`
- *       predicates) — an honest control, never a silent corruption.
- *
- * Verified against real `@strudel` haps (#479): the doubled model serializes to
- * onsets byte-identical to the source — `bd ~ sn ~ bd` and its ×2 both query to
- * `[0, 0.4, 0.8]`; `note("c3 e3 g3")` and `note("c3@2 e3@2 g3@2")` both to
- * `[0, ⅓, ⅔]`. Roll notes scale duration too (a held `@n` keeps its time span).
- *
- * Pure (no React, no DOM), in the `notation/` model-op family alongside
- * `lane.ts` / `place.ts` / `resize.ts`: a transform returns the SAME model
- * reference when it can't apply, so `useGridModel.mutate` skips the write and
- * the document is left untouched.
- */
 
 /** how setting the grid to `target` slots behaves, for the control's label/state */
 type SlotState = 'active' | 'lossless' | 'quantize' | 'disabled';

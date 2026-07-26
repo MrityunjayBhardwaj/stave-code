@@ -16,6 +16,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePianoRoll, parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
+import { cellOn, isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import { serializePianoRoll, serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
 
 const require = createRequire(import.meta.url)
@@ -123,7 +124,7 @@ describe('#920 — <...>-as-element writeback holds under every edit', () => {
       for (let lane = 0; lane < r.model.lanes.length; lane++) {
         for (let col = 0; col < r.model.steps; col++) {
           const cells = [...r.model.lanes[lane].cells]
-          cells[col] = !cells[col]
+          cells[col] = isCellOn(cells[col]) ? false : cellOn()
           const edited = {
             ...r.model,
             lanes: r.model.lanes.map((l, li) => (li === lane ? { ...l, cells } : l)),
