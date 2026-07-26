@@ -89,8 +89,16 @@ interface Hap {
 }
 
 /**
- * The onsets a mini plays in ONE given cycle, positions normalised into `[0,1)`,
- * or null if it won't reify / has an atom we can't name.
+ * The onsets a mini plays in ONE given cycle, or null if it won't reify / has an atom
+ * we can't name.
+ *
+ * POSITIONS ARE ABSOLUTE — cycle 2's downbeat is `pos = 2`, not `0`. This comment used
+ * to say "normalised into [0,1)" and that was simply false; it went unnoticed because
+ * the only caller that reads a position back out is `probeEdit`, which reads cycle 0,
+ * where the two frames coincide. The first caller to read a LATER cycle (`liveness`,
+ * #1020) trusted the comment, derived a column from an absolute position, and produced
+ * a plausible corruption rate for views that are perfectly fine. Callers that need a
+ * cycle-local offset must subtract the cycle themselves.
  *
  * A bar-expanded projection (#930) shows several cycles at once, so verifying an
  * edit against cycle 0 alone would miss a write-back that corrupts a LATER bar —
@@ -181,9 +189,26 @@ export type NoProbeReason =
    * exactly the one to keep after measuring that it does not fire.
    */
   | 'non-integer-per-bar'
-  /** the mini plays nothing, or plays a value we cannot name */
-  | 'no-readable-haps'
-  /** every onset is a chord — no position plays exactly one note */
+  /**
+   * the mini plays a value the oracle cannot name (or will not reify at all)
+   *
+   * This is a claim about the ORACLE's vocabulary, and it has been wrong in exactly
+   * that way before: `atomOf` could not name krill's `:`-variant array, so 94 asks
+   * that play perfectly well were filed here (#1021). Any ask landing here deserves
+   * the question "can the instrument name this, or can production?" before it is read
+   * as a fact about the pattern.
+   */
+  | 'unnameable-value'
+  /**
+   * the mini plays NOTHING in any bar the model spans — a view of silence
+   *
+   * Split out of the old `no-readable-haps`, which meant this AND the case above
+   * (#1022). "I cannot name this value" is an oracle limitation worth fixing; "this
+   * rests here" is a property of the notation. One label for both defeated the whole
+   * point of reporting the `no-probe` bucket by reason.
+   */
+  | 'silent-in-probed-window'
+  /** the first SOUNDING bar is all chords — no position in it plays exactly one note */
   | 'fully-chorded'
   /** the writer declined the delete (a safe no-op), which is not reach */
   | 'writer-declined'
@@ -236,23 +261,129 @@ export function probeEdit(
   const perBar = model.steps / bars
   if (!Number.isInteger(perBar)) return { verdict: 'no-probe', why: 'non-integer-per-bar' }
 
-  const base = enginePlayed(mini)
-  if (base === null || base.length === 0) return { verdict: 'no-probe', why: 'no-readable-haps' }
-  const pos = singletonPos(base)
+  // THE PROBE ADVANCES PAST SILENT BARS (#1022). It used to read cycle 0 and nothing
+  // else, so an alternation whose first arm is a rest — `<- c5>`, `<~ sd ~ sd ~>` — came
+  // back empty and was filed as unreadable. That is the window-dependence that has bitten
+  // these measurements before: a pattern that rests in cycle 0 and plays in cycle 1 looks
+  // silent to a single-cycle probe.
+  //
+  // The scan stops at `bars`, never beyond it. Past that lies music the model does not
+  // claim to show, and a delete aimed there addresses a column the view does not have.
+  let bar = -1
+  let played: Note[] = []
+  for (let b = 0; b < bars; b++) {
+    const here = enginePlayedCycle(mini, b)
+    // a value the oracle cannot name is a fact about the ORACLE and stops the probe
+    // immediately — advancing would just hide it in a later bar
+    if (here === null) return { verdict: 'no-probe', why: 'unnameable-value' }
+    if (here.length > 0) {
+      bar = b
+      played = here
+      break
+    }
+  }
+  if (bar < 0) return { verdict: 'no-probe', why: 'silent-in-probed-window' }
+
+  // …and `fully-chorded` is now asked of the first bar that SOUNDS rather than of bar 0,
+  // which is what the label always meant.
+  const pos = singletonPos(played)
   if (pos === null) return { verdict: 'no-probe', why: 'fully-chorded' }
-  const out = s.del(model, Math.round(pos * perBar))
+  return probeDeleteAt(mini, model, s, bar, pos)
+}
+
+/**
+ * Delete the note this mini plays at `pos` within cycle `bar`, and require every bar
+ * to come back as predicted.
+ *
+ * THE ONE delete-and-verify rule. `probeEdit` is this called at (bar 0, the first
+ * cleanly-singleton onset); `liveness` is this called at EVERY singleton onset of
+ * every bar. They ask different questions — "does one modelled edit survive" versus
+ * "how much of this view responds" — and the answer to both is the same comparison,
+ * so it is written once. A second copy would be a second oracle for the question this
+ * file exists to define ([[PV192]]), and the census has already been bitten once by an
+ * instrument that named things its own way ([[P347]]).
+ *
+ * `bar` is the model bar the delete targets and `pos` is the note's position in the
+ * ABSOLUTE frame `enginePlayedCycle` reports — cycle 2's downbeat is `2`, not `0`. The
+ * column is therefore `bar * perBar + round((pos - bar) * perBar)`: the cycle offset
+ * has to come out before scaling and go back in as whole bars, because on a
+ * bar-expanded model `steps` spans every bar. At `bar = 0` this is exactly
+ * `round(pos * perBar)`, which is what `probeEdit` has always computed.
+ */
+export function probeDeleteAt(
+  mini: string,
+  model: StepGridModel & PianoRollModel,
+  s: Surface,
+  bar: number,
+  pos: number,
+): EditProbe {
+  const bars = model.bars ?? 1
+  const perBar = model.steps / bars
+  if (!Number.isInteger(perBar)) return { verdict: 'no-probe', why: 'non-integer-per-bar' }
+  const out = s.del(model, bar * perBar + Math.round((pos - bar) * perBar))
   if (out === null) return { verdict: 'no-probe', why: 'writer-declined' }
 
   for (let b = 0; b < bars; b++) {
     const want = enginePlayedCycle(mini, b)
     const got = enginePlayedCycle(out, b)
     if (want === null || got === null) return { verdict: 'corrupt', out }
-    // the deleted note is gone from bar 0; every other bar is untouched
+    // the deleted note is gone from the bar it was deleted in; every other bar is
+    // untouched. `pos` and `n.pos` are both absolute, so they compare directly.
     const expected =
-      b === 0
+      b === bar
         ? want.filter((n) => Math.round(n.pos * HRES) !== Math.round(pos * HRES))
         : want
     if (sig(got, s.durAware) !== sig(expected, s.durAware)) return { verdict: 'corrupt', out }
   }
   return { verdict: 'ok', out }
+}
+
+/**
+ * How much of a view actually RESPONDS — the fraction of its cleanly-singleton notes
+ * whose own delete round-trips, over every bar the model spans.
+ *
+ * `probeEdit` answers "is this view editable at all", which is one note. That is the
+ * right question for a reach floor and the wrong one for "is this view worth showing":
+ * the roll cap was left at 4 partly because the views a raise opened were only
+ * **13–58% live** ([[PV222]]), and a one-note probe cannot see that. This is that
+ * measurement, defined once so a sweep and a gate cannot disagree about it.
+ *
+ * Chorded positions are not probed and not counted — they are `probeEdit`'s
+ * `fully-chorded`, unverified rather than dead — so `probed` is the honest
+ * denominator and a view with none is reported as `null` rather than as 0%.
+ *
+ * `corrupt` IS REPORTED SEPARATELY, and it is the reason this is worth running at all
+ * beyond the liveness number. `probeEdit` verifies ONE note per view; a note it never
+ * probed can still mis-write, and that loss is invisible to every reach figure in the
+ * project. A note that is merely declined is a dead cell — disappointing. A note that
+ * corrupts is the view lying about the document, and the two must not share a bucket.
+ */
+export function liveness(
+  mini: string,
+  model: StepGridModel & PianoRollModel,
+  s: Surface,
+): { alive: number; probed: number; corrupt: number } | null {
+  const bars = model.bars ?? 1
+  const perBar = model.steps / bars
+  if (!Number.isInteger(perBar)) return null
+  let alive = 0
+  let probed = 0
+  let corrupt = 0
+  for (let b = 0; b < bars; b++) {
+    const played = enginePlayedCycle(mini, b)
+    if (played === null) return null
+    const counts = new Map<number, number>()
+    for (const n of played) {
+      const k = Math.round(n.pos * HRES)
+      counts.set(k, (counts.get(k) ?? 0) + 1)
+    }
+    for (const [k, c] of counts) {
+      if (c !== 1) continue // a chord — unverifiable, not dead
+      probed++
+      const v = probeDeleteAt(mini, model, s, b, k / HRES).verdict
+      if (v === 'ok') alive++
+      else if (v === 'corrupt') corrupt++
+    }
+  }
+  return probed === 0 ? null : { alive, probed, corrupt }
 }

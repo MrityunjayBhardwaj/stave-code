@@ -59,6 +59,7 @@ import {
   projectStepGridDerived,
   projectPianoRollDerived,
   tailToken,
+  PROJECTION_PERIOD_BOUNDS,
 } from '../../../editor/src/visualEdit/notation/parse'
 import type {
   ParseResult,
@@ -72,6 +73,7 @@ import {
   type NoProbeReason,
   type Surface as EditSurface,
 } from './engineEditOracle'
+import { truePeriod } from './enginePeriod'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -209,51 +211,13 @@ const shapeKey = (m: StepGridModel & PianoRollModel, key: 'step' | 'roll'): stri
     ? `${m.steps}/${m.bars ?? 1}/${m.notes?.length ?? 0}`
     : `${m.steps}/${m.bars ?? 1}/${m.lanes.length}`
 
-/**
- * The pattern's TRUE cycle period, probed from the engine — the independent answer
- * the `unstable-period` label is checked against.
- *
- * Probed to 48 cycles for a cap search to 24, so a period is only believed when at
- * least a doubling of it repeated ([[PV229]]: under-windowing returns a clean,
- * plausible, wrong number). 0 means aperiodic within that window, which is a
- * different fact from "past the cap" and is counted separately.
+/*
+ * The pattern's TRUE cycle period — the independent answer the `unstable-period`
+ * label is checked against — now lives in `enginePeriod.ts`, because the cap sweep
+ * (#1020) asks the same question and two copies would be two oracles ([[PV192]]).
+ * The assertions below are what pin the extraction: 31 past the cap, 2 aperiodic,
+ * 0 within it.
  */
-function truePeriod(m: string): number {
-  const key = (c: number): string => {
-    try {
-      const haps = (
-        reifyMini(m) as {
-          queryArc(
-            a: number,
-            b: number,
-          ): { whole?: { begin: { valueOf(): number } }; value: unknown; hasOnset?: () => boolean }[]
-        }
-      ).queryArc(c, c + 1)
-      return JSON.stringify(
-        haps
-          .filter((h) => (h.hasOnset?.() ?? false) && h.whole)
-          .map((h) => [
-            Math.round((h.whole!.begin.valueOf() - c) * 720720),
-            JSON.stringify(h.value),
-          ])
-          .sort(),
-      )
-    } catch {
-      return 'ERR'
-    }
-  }
-  const keys = Array.from({ length: 48 }, (_, c) => key(c))
-  for (let p = 1; p <= 24; p++) {
-    let ok = true
-    for (let c = p; c < keys.length; c++)
-      if (keys[c] !== keys[c % p]) {
-        ok = false
-        break
-      }
-    if (ok) return p
-  }
-  return 0
-}
 
 interface Surface {
   key: 'step' | 'roll'
@@ -452,9 +416,9 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // A BAND, NOT A FLOOR. This is a measurement, so a move in EITHER direction is
     // a finding and should turn this red rather than pass quietly upward.
     const why = ' — a MOVE, not a regression: re-read WRITER-CENSUS.md and update it and this number together, stating which mechanism moved'
-    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(1058)
+    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(1066)
     expect(untransferable.length, 'untransferable' + why).toBe(57)
-    expect(all.filter((r) => r.outcome === 'no-probe').length, 'unverified' + why).toBe(102)
+    expect(all.filter((r) => r.outcome === 'no-probe').length, 'unverified' + why).toBe(94)
 
     // THE GAIN THAT COUNTS, PINNED SEPARATELY FROM RAW REACH. #1019 moved 93 asks
     // from "no derived view at all" to a verified transfer — but only 32 of them
@@ -462,7 +426,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // bare instrument name and a useless surface ([[P338]] clause 2). Quoting 93 as
     // the product gain would repeat the error this census exists to stop, so the
     // structured count is pinned beside the total and is the one to quote.
-    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(641)
+    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(648)
 
     // NOTHING CORRUPTS. Both derived writers refuse rather than mis-write over this
     // whole population, which is what makes the untransferable set readable as an
@@ -485,13 +449,19 @@ describe('writer census — how much of the syntactic core transfers to the deri
     expect(untransferable.filter((r) => !r.arrayValue).length).toBe(50)
 
     // THE NUMBER P6 IS SCOPED AGAINST, and it is a CONJUNCTION. "46 have a
-    // structured core view" and "41 have a verified core edit" are different
+    // structured core view" and "45 have a verified core edit" are different
     // filters over the same 50, and quoting either alone overstates the blocker
     // set. The set that actually blocks deleting the core is both at once.
+    //
+    // ⚠ 41 → 45 and so 40 → 44 at #1022, with the untransferable set UNCHANGED at 50.
+    // Nothing became harder to replace; the INCUMBENT became more testable. The probe
+    // used to read cycle 0 only, so a core view whose pattern rests in bar 0 counted as
+    // unverified rather than as verified — and this column is the core's own probe.
+    // The cost of deleting the core did not rise, our measurement of it did.
     const structural = untransferable.filter((r) => !r.arrayValue)
     expect(structural.filter((r) => r.coreStructured).length).toBe(46)
-    expect(structural.filter((r) => r.coreProbe === 'ok').length).toBe(41)
-    expect(structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length).toBe(40)
+    expect(structural.filter((r) => r.coreProbe === 'ok').length).toBe(45)
+    expect(structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length).toBe(44)
   }, 900_000)
 
   /**
@@ -511,8 +481,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     )
 
     it('every unstable-period ask really does have a period past its surface cap', () => {
-      // the shipped caps: LEAF_PROJECT_BARS = { grid: 12, roll: 4 }
-      const CAP = { step: 12, roll: 4 } as const
+      // the shipped caps, taken from the writer rather than copied beside it (#1025)
+      const CAP = { step: PROJECTION_PERIOD_BOUNDS.leaf.grid, roll: PROJECTION_PERIOD_BOUNDS.leaf.roll } as const
       const rows = structural.filter((r) => r.gate === 'unstable-period')
       expect(rows.length).toBe(33)
 

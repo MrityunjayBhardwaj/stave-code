@@ -49,14 +49,21 @@ describe('evalHarness coverage mechanisms', () => {
     expect((globalThis as Record<string, unknown>).osc).toBeUndefined()
   }, 60_000)
 
-  it('miniAllStrings is a DIVERGENCE, not a step: turning it on breaks a real document', async () => {
-    // `StrudelEngine` never calls it, so neither do we. It used to be called
-    // here, and it cost exactly this document — a single-quoted label is not
-    // mini notation and the mini parser will not have it.
+  it('a BARE miniAllStrings is still a divergence: turning it on breaks a real document', async () => {
+    // ⚠ The engine DOES install a string parser — `StrudelEngine.ts` has called
+    // `miniAllStrings()` for a long time, and the comment that used to sit here
+    // claiming otherwise was simply wrong (#1018). Removing the call from this
+    // harness did not close that divergence, it flipped it: the harness became
+    // MORE permissive than the engine and scored documents the live app threw on.
+    //
+    // Both now install the same fallback rule, so the mirrored run is the default
+    // and what is still a divergence is the BARE call — which remains worth
+    // pinning, because a single-quoted label is not mini notation and bare `mini`
+    // will not have it.
     const mirrored = await evalLocations(LABEL_DOC, 4)
     expect(mirrored.ok).toBe(true)
 
-    const diverged = await evalLocations(LABEL_DOC, 4, { miniAllStrings: true })
+    const diverged = await evalLocations(LABEL_DOC, 4, { bareMiniAllStrings: true })
     expect(diverged.ok).toBe(false)
     expect(diverged.error).toMatch(/parse error/)
 

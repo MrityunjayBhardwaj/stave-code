@@ -42,13 +42,20 @@
  *  - eval coverage: reported and floored, WITH the documents it could not reach
  *    named. A sweep that silently stops reaching documents reads as a reach
  *    ceiling.
- *  - undeclared spans: 0, and that is a change of instrument, not of rule. The
- *    coordinate-space leak this refuses only ever arose because the harness
- *    mini-parsed strings the transpiler had not rewritten — a divergence from
- *    `StrudelEngine`, now removed. So on this corpus the admission rule is
- *    DEFENSIVE rather than load-bearing, and is kept for a stated reason: the
- *    engine's missing string parser is itself a bug (#1018), and the day it is
- *    fixed the harness follows and the whole class comes straight back.
+ *  - undeclared spans: 92, and the admission rule is LOAD-BEARING again. This
+ *    line predicted exactly that, and got the reason backwards, which is worth
+ *    keeping rather than quietly rewriting. It used to read 0 and said the class
+ *    would return "the day the engine's missing string parser is fixed". The
+ *    engine was never missing one — `StrudelEngine` has called
+ *    `miniAllStrings()` all along (#1018). What was actually true is that the
+ *    HARNESS had none, so removing its parser did not close a divergence, it
+ *    flipped it: the instrument became more permissive than the engine and
+ *    scored documents the live app threw on. Both now install the same rule, so
+ *    single-quoted minis are parsed here exactly as the app parses them, their
+ *    spans land in the STRING's coordinate space rather than the document's, and
+ *    admission refuses all 92 of them. Coverage and exactness are unmoved by the
+ *    change (142/150 and 538/538), which is what says the rule is refusing the
+ *    right things.
  *  - exactness: every known-content unit resolves to exactly its known span. A
  *    disposal change that admits a control argument breaks this.
  *  - PRESENCE IS TOTAL, CONDITIONAL ON THE STATEMENT SOUNDING: this is the
@@ -162,7 +169,7 @@ describe('miniSource calibration over 150 real tunes', () => {
       [
         `\n─── miniSource calibration (window ${QUERY_CYCLES} cycles) ───`,
         `eval coverage      ${evalOk}/${docs.length} (${pct(evalOk, docs.length)}%)  — counted over EVERY document`,
-        `undeclared spans   ${undeclared}  (coordinate-space leaks refused by admission — see the note below on why this is now 0)`,
+        `undeclared spans   ${undeclared}  (coordinate-space leaks refused by admission — load-bearing since #1018; see the header note)`,
         `mixed-use bindings ${mixedUse}  (used both ways SOMEWHERE in the doc — the population, not the decisions)`,
         `  tie-break fired  ${tieBreakFired}  (times a binding was used both ways WITHIN one unit, so it actually decided)`,
         `known-content      ${known}  over ALL ${docs.length} documents`,

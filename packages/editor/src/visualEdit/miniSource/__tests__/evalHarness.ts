@@ -12,10 +12,16 @@
  *     alone throws; passing too few produces a chain-method "is not a function"
  *     per tune, which reads as a corpus property rather than a setup bug. And
  *     passing MORE is the same fault mirrored: this harness used to call
- *     `miniAllStrings()`, which the engine never calls, and that single extra
- *     line manufactured a parse failure for a real document whose only sin was
- *     a single-quoted emoji label. A measurement instrument that is more
- *     capable than the thing it measures is not a safer instrument.
+ *     `miniAllStrings()` bare, which manufactured a parse failure for a real
+ *     document whose only sin was a single-quoted emoji label.
+ *
+ *     ⚠ CORRECTED (#1018). The comment here used to say the engine "never calls
+ *     it". It does — `StrudelEngine.ts` has called `miniAllStrings()` since long
+ *     before this harness existed. So removing the call did not close the
+ *     divergence, it FLIPPED it: the harness became more permissive than the
+ *     engine and scored documents the live app would have thrown on. Both now
+ *     install the same rule (`installMiniStringParser` — try mini, fall back to
+ *     the plain value), which is the only version that is right for both.
  *  2. PASS THE TRANSPILER — `evaluate(code, transpiler)`, never `evaluate(code)`.
  *     Without it, locations are MINI-relative rather than document-space, AND
  *     `$:` never becomes `.p`, so nothing is collected and every count reads
@@ -75,8 +81,12 @@ let ready: Promise<any> | null = null
 export interface EvalOptions {
   /** install the hydra globals for a document that calls `initHydra` (default true) */
   hydra?: boolean
-  /** point `reify`'s string parser at mini — the DIVERGENCE, off by default */
-  miniAllStrings?: boolean
+  /**
+   * install `miniAllStrings()` BARE instead of the engine's fallback rule — the
+   * DIVERGENCE, off by default. Kept solely so the red test can turn it back on and
+   * show it still breaks a real document.
+   */
+  bareMiniAllStrings?: boolean
 }
 
 /**
@@ -226,19 +236,34 @@ async function withHydra<T>(code: string, on: boolean, fn: () => Promise<T>): Pr
 }
 
 /**
- * `miniAllStrings()` points `reify`'s string parser at mini, so EVERY string
- * reaching `reify` is mini-parsed — including single-quoted labels
- * (`.label('🍕')`) and single-quoted bytebeat source, which are not mini
- * notation and throw. `StrudelEngine` never calls it, so calling it here is a
- * DIVERGENCE that manufactures per-document failures: it cost one real document
- * in the corpus. Off by default; the option exists so the divergence can be
- * turned back on in a red-test and shown to break that document again.
+ * Install the SAME string rule the live engine installs, for the duration of one
+ * evaluation, and take it back off afterwards.
+ *
+ * `reify` hands every bare string to whatever parser is installed. `miniAllStrings()`
+ * installs `mini` bare, which THROWS on anything that is not mini notation — a
+ * single-quoted label (`.label('🍕')`) or single-quoted bytebeat source takes the whole
+ * document down. Installing NOTHING is the opposite error: `note('c4 e4')` then plays as
+ * one note whose value is the string, silently.
+ *
+ * The engine resolves this with `installMiniStringParser` (try mini, fall back to the
+ * plain value) and so does this harness, because an instrument that parses strings
+ * differently from the engine is measuring a dialect nobody ships — in EITHER direction.
+ * `bare` exists only for the red test that shows the naive call still breaks a document.
+ *
+ * The parser is a module-global in `@strudel/core`, so the restore is not optional: a
+ * quiet no-op here would leave every subsequent document in the process running someone
+ * else's dialect, with no error anywhere and only a coverage figure slightly off.
  */
-async function withStringParser<T>(on: boolean, fn: () => Promise<T>): Promise<T> {
-  if (!on) return fn()
+async function withStringParser<T>(bare: boolean, fn: () => Promise<T>): Promise<T> {
   const core: any = await import('@strudel/core')
   const mini: any = await import('@strudel/mini')
-  mini.miniAllStrings()
+  if (bare) mini.miniAllStrings()
+  else {
+    // imported here rather than at module scope to match this file's dynamic-import
+    // style, and imported at all rather than reimplemented: one rule, two callers
+    const { installMiniStringParser } = await import('../../../engine/stringParser')
+    installMiniStringParser({ core, mini })
+  }
   try {
     return await fn()
   } finally {
@@ -248,7 +273,7 @@ async function withStringParser<T>(on: boolean, fn: () => Promise<T>): Promise<T
 
 /** Evaluate + query. `cycles` is the query WINDOW (see PV229 — scales with the period). */
 export async function evalLocations(code: string, cycles = 128, opts: EvalOptions = {}): Promise<EvalResult> {
-  return withStringParser(opts.miniAllStrings === true, () =>
+  return withStringParser(opts.bareMiniAllStrings === true, () =>
     withHydra(code, opts.hydra !== false, () => evalLocationsInner(code, cycles)),
   )
 }
