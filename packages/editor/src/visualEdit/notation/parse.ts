@@ -873,22 +873,54 @@ const MAX_PROJECT_BARS = 4
  * copying the rest costs the same at twelve bars as at one. So the leaf path is
  * free to look further — where looking further is measured to BUY something.
  *
- * GRID 12. Worth +9 writer-reach over the 1500-unit corpus (95 → 104), and the
- * views it opens are slow single samples — `hacking/8`, `drm/9`, `<vox1 - [vox2]
- * ->/2` — which expand to eight or nine columns TOTAL and are 100% live: every
- * sounding cell accepts an edit.
+ * GRID 12. Worth **+17 writer-reach over the 1500-unit corpus (109 → 126)**, and
+ * the views it opens are slow single samples — `hacking/8`, `drm/9`, `<vox1 -
+ * [vox2] ->/2` — which expand to eight or nine columns TOTAL and are 100% live:
+ * every sounding cell accepts an edit.
+ *
+ * ⚠ RE-MEASURED 2026-07-27 (#1038). This line read "+9 (95 → 104)" — taken at
+ * #991, on an oracle that probed cycle 0 only and compared onsets only. Both
+ * changed since: the probe now advances to the first bar that sounds (#1022) and
+ * the oracle compares duration (#1026). Re-run on the current tree, setting the
+ * constant to 4 and back exactly as a ship would: 109 against 126, projected 161
+ * against 186. The gain nearly doubled rather than eroding, and the reason is
+ * legible — #1022 was specifically about alternations whose first cycle is
+ * silent, which is where long-period patterns live, which is the only material
+ * this cap governs. Losses stay 29 (leaf 0 / element 29) at BOTH values, which is
+ * the leaf path being structurally incapable of changing a length it was not
+ * asked to change rather than a coincidence.
+ *
+ * Reproduce: set `grid` below to 4, run
+ * `pnpm --filter @stave/app exec vitest run tests/parity-corpus/writer-reach.test.ts`,
+ * restore. The roll has a real sweep harness for this (`scripts/roll-cap-sweep.mjs`
+ * + `roll-cap-sweep.test.ts`); the grid has no equivalent, so this figure is
+ * re-measured by hand and dated rather than gated — see #1041.
  *
  * ROLL 4, deliberately unchanged — and written as a literal, not as an alias of
  * `MAX_PROJECT_BARS`. The two are equal today by coincidence of measurement, not
  * because this path follows the element writer; aliasing them would re-make the
  * very mistake this constant exists to undo, and would move the roll silently the
- * next time the element cap moves for a re-emit reason. Measured at 6, 8, 12 and 16 bars the roll's
- * writer-reach does not move at all — it stays at 73 — while the nine extra views
- * it opens are 13–58% live (`<[0@6 -3@1 -2@1]!1 …>`: three of thirteen notes
- * respond). The roll's long-period patterns are built out of `!n`/`@n` repetition,
- * so their notes SHARE leaves, and a shared leaf whose notes disagree is refused
- * by the bijection. Opening a mostly-dead sixty-four-column roll for no reach is
- * the trade `leafRollViewUsable` exists to refuse, one step coarser.
+ * next time the element cap moves for a re-emit reason.
+ *
+ * The measurement behind the 4 is GATED, not written here — `roll-cap-sweep.test.ts`
+ * and `ROLL-CAP-SWEEP.md` (#1020/#1024) re-swept caps 4/6/8/12 on BOTH populations
+ * this constant governs, per ask rather than by netting totals. On the population
+ * this path serves in production (core-REFUSED) reach does not move by one ask at
+ * any cap: it is **75** at 4, 6, 8 and 12 alike. The extra views it would open are
+ * 13–58% live (`<[0@6 -3@1 -2@1]!1 …>`: three of thirteen notes respond).
+ *
+ * ⚠ This paragraph used to carry that figure inline as "it stays at 73", measured
+ * before the probe widening (#1022) — the count is 75 now and the CONCLUSION is
+ * unchanged, which is exactly why an inline number was the wrong place for it. It
+ * lives in a gate that fails on movement instead (#1038).
+ *
+ * The reason the reach is flat: the roll's long-period patterns are built out of
+ * `!n`/`@n` repetition, so their notes SHARE leaves, and a shared leaf whose notes
+ * disagree is refused by the bijection. Opening a mostly-dead sixty-four-column
+ * roll for no reach is the trade `leafRollViewUsable` exists to refuse, one step
+ * coarser. What the sweep DID find is that the other population — the 414 asks the
+ * core serves today — gains 13 transfers at cap 12, which is why raising it belongs
+ * to #1012 and not here.
  *
  * Neither may exceed `PROJECTION_PERIOD_BOUNDS.maxVerifiedBars` — see below for why
  * that is a derived number and not a written-down one.
@@ -2374,7 +2406,13 @@ export const PROBE_NUM = '999'
 /**
  * The roll's `projectionEditSafe`. The projection may only offer a roll the writer
  * can reproduce under edit — and for the roll that must include DURATION, the axis
- * the grid doesn't have and the one the 71→44 writer-reach gap loses on. Probe
+ * the grid doesn't have. (This line used to size that with "the 71→44 writer-reach
+ * gap", a figure from before the probe widening (#1022) and the duration axis
+ * (#1026); the surfaces now read 126 step / 75 roll and the two are not comparable
+ * as a "gap" at all, since they are measured over different refusal populations —
+ * 697 grid asks against 1086 roll. The number is dropped rather than restated:
+ * nothing here turns on its size, only on duration being an axis the roll must
+ * preserve. #1038.) Probe
  * every region by swapping its first note's pitch (an overlap-free edit — a placed
  * note could land under a sustain, which the grid never has), serialize through the
  * REAL writer, re-query the REAL engine, and require the haps to be the model's
