@@ -1311,10 +1311,17 @@ export interface Onset {
    * DERIVED from `occ`: distinct tokens, first occurrence wins — what the cell
    * DISPLAYS. A grid cell shows a sound once, so this one really is deduped.
    *
-   * `atoms`/`spans`/`durs` are retained so this change lands inert; they are
-   * derived by literally the loop that used to build them, so every consumer sees
-   * byte-identical values. They are retired in P4b (#1010) as consumers move to
-   * `occ`, and with them the last place a column can lose a note to a name clash.
+   * `atoms`/`spans`/`durs` are derived by literally the loop that used to build them
+   * in place, so every consumer sees byte-identical values.
+   *
+   * P4a predicted they would RETIRE in P4b as consumers moved to `occ`. They did not,
+   * and the reason is worth keeping: what a CELL needs is exactly this — the display
+   * view, one length and one anchor per distinct sound, first occurrence winning.
+   * Retiring these would mean re-deriving that dedupe at every call site instead of
+   * once here. `occ` is still the column's truth and the only thing that keeps a
+   * second note of the same name; these three stay as its display projection. The
+   * place where one column's two same-named notes stop being a choice at all is one
+   * internal note representation for both surfaces (#1032).
    */
   atoms: string[]
   /** DERIVED from `occ`: leaf span of each atom's FIRST occurrence */

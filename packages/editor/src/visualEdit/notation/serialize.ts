@@ -386,6 +386,16 @@ function columnAtoms(lanes: StepLane[], steps: number): string[][] {
   return cols
 }
 
+/**
+ * ⚠ SOUNDS ONLY, and as of #1010 P4b a cell also carries a LENGTH (#1045). A model
+ * whose only difference from parse time is a note's length compares EQUAL here, so
+ * the region is copied back verbatim and the edit does nothing. Nothing can reach
+ * that state today — no gesture changes a length without also changing positions or
+ * sounds, and the ops that rescale lengths drop the regions outright — but P4c makes
+ * the printer honour lengths, and honouring them is undetectable while this
+ * comparison cannot see them. Decide it there, before the first "my edit did
+ * nothing".
+ */
 const sameCell = (a: string[], b: string[]): boolean =>
   a.length === b.length && a.every((x) => b.includes(x))
 
