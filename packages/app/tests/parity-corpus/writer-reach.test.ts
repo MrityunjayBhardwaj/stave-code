@@ -100,9 +100,33 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
  *
  * The floor returns when #1010 lands — see `DURATION_LOSSES` below for why that is a
  * prediction with a mechanism behind it rather than a hope.
+ *
+ * ⚠ RE-BASED 126 -> 123 STEP and 75 -> 85 ROLL at #1037, and the writers are again
+ * untouched. The CORPUS changed: the harvester now asks the transpiler which
+ * strings become patterns instead of approximating it with a regex, so it gained
+ * backtick minis (the multi-line, multi-cycle material) and lost commented-out
+ * code the text scan could not tell from live code.
+ *
+ * Decomposed, because a net delta over two opposite effects is not a finding
+ * (measured by re-running this gate on the intermediate corpus):
+ *
+ *     corpus                              step  losses   roll
+ *     1500  committed                      126      29     75
+ *     1406  minus commented-out code       119      24     70
+ *     1535  plus backtick + chained        123      30     85
+ *
+ * So **seven step units and five roll units of the old floors were code nobody
+ * runs** — a `//sound("…")` line the regex harvested as if it were an ask. That
+ * part of the floor was fiction, and removing it is a correction, not a
+ * regression. Real material then buys +4 step and +15 roll. The roll gains far
+ * more because backticks are how people write long melodic and chord patterns,
+ * which is the roll's material.
+ *
+ * Neither number may be quoted against a pre-#1037 one without saying so: they are
+ * over different populations ([[P343]]).
  */
-const FLOOR_STEP = 126
-const FLOOR_ROLL = 75
+const FLOOR_STEP = 123
+const FLOOR_ROLL = 85
 
 /**
  * The units whose edit survives the engine on every axis EXCEPT duration.
@@ -129,41 +153,43 @@ const FLOOR_ROLL = 75
  * ones without (a shared leaf, `!16`) become honest refusals. Either outcome removes
  * the silent rewrite, which is the whole point. When that lands, this array goes to
  * empty and `FLOOR_STEP` returns toward 155.
+ *
+ * ⚠ 29 -> 30 at #1037, again a corpus change and not a writer change: five of the
+ * 29 were commented-out code and six real ones arrived with the backtick material.
+ * Still 0 leaf, 30 element — the mechanism claim below is unaffected, which is the
+ * point of asserting it separately from the membership.
  */
 const DURATION_LOSSES: string[] = [
-  // ⚠ the ` ` is a NON-BREAKING SPACE in the harvested source, not a typo here.
-  // `JSON.stringify` renders it identically to an ordinary space, so a mismatch on it
-  // prints as two visually identical lines in a test diff. Written escaped so the next
-  // reader sees it.
-  '<[bd*4 . bd*2 . bd . bd*4]\n  [bd*4 . bd@2 . bd\u00a0. bd*4]>',
-  '<[c3, [eb5, eb6, f7] [bb6 d7]] [f3, [ab5, eb6, bb7] [bb6 d7]]>',
-  '<[hh*2] hh*4>',
-  '<~ [~@3.5 d2@2 c#2@2.5]>',
-  '[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]',
-  '[<g4 e4> [b4 g4]] [- <a4> <->]',
-  '[bd hh] hh sd hh [bd bd] - hh hh - <sd hh>*4',
-  '[bd hh] hh sd hh bd bd - hh <sd hh>*4',
-  '[bd rim:1 [~ bd] rim:2]*2',
-  '[bd*2 -] <- [~@2 bd bd - bd - sd]>',
-  '[bd@0.5  - - -  - - bd@0.5  - bd@0.5  - - bd@0.25  - - - -]',
-  '[c#5 [f#5 e5] b4] [b4 b4 c#5 d5] [d5 f#5 e5] [[a4 b4] c#4]',
-  '[c1 ds1*2]*4',
-  '[c2 ds2*2]*4',
-  '[e1 f2 [e3 f1]] [f2 f3] [g2 g2]',
-  '[g2 d2 e2][d2 b1@2 a1][- a2 f#2 g2 ][d2 b1@3]',
-  '[hh [hh hh]]!4',
-  '[hh ~]!16',
-  '[oberheimdmx_tb@0.6  oberheimdmx_tb@0.5 oberheimdmx_tb@0.6  oberheimdmx_tb@0.5]*2',
-  'a!4 b!2 a@4 a@2 c*2 b*2',
-  'bd bd - <- - - [- bd, sd]>',
-  'bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]',
-  'c <d c> - [c <d c>]',
-  'c [a <bb ab>] <b g>',
-  'cp(5,<8 16>,2)',
-  'rim(3,<16 8>)',
-  '{c [f g] d# d}%2',
-  '~ sd ~[sd[~ <~~~ sd>]]',
-  '~ ~ ~ bd(<2 4!2>, 8)',
+  "<[bd*4 . bd*2 . bd . bd*4]\n  [bd*4 . bd@2 . bd\u00a0. bd*4]>",
+  "<[c3, [eb5, eb6, f7] [bb6 d7]] [f3, [ab5, eb6, bb7] [bb6 d7]]>",
+  "<[hh*2] hh*4>",
+  "<~ [~@3.5 d2@2 c#2@2.5]>",
+  "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "[<g2@0.5 g2@0.5 g2@0.5 g2@0.5> g3]\n  [ d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 ]\n  [c2@0.5 c2@0.5 c2@0.5 ]\n  [d#2@0.5 g#1@0.5 c2 c2]",
+  "[<g2@0.5 g2@0.5 g2@0.5 g2@0.5> g3]\n  [ d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 ]\n  [g@0.5 g@0.5 g@0.5 ]\n  [d#2@0.5 g#1@0.5]",
+  "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "[bd rim:1 [~ bd] rim:2]*2",
+  "[bd sd, hh hh hh]",
+  "[bd*2 -] <- [~@2 bd bd - bd - sd]>",
+  "[bd@0.5  - - -  - - bd@0.5  - bd@0.5  - - bd@0.25  - - - -]",
+  "[c1 ds1*2]*4",
+  "[c2 ds2*2]*4",
+  "[e1 f2 [e3 f1]] [f2 f3] [g2 g2]",
+  "[hh [hh hh]]!4",
+  "[hh ~]!16",
+  "[oberheimdmx_tb@0.6  oberheimdmx_tb@0.5 oberheimdmx_tb@0.6  oberheimdmx_tb@0.5]*2",
+  "[~ ~ hh ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~]\n    < [~ ~ <hh ~> ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~]\n      [~ ~ ~ ~ ~ ~ ~ ~ hh ~ ~ ~ ~ ~ ~ ~ ] >",
+  "a!4 b!2 a@4 a@2 c*2 b*2",
+  "bd bd - <- - - [- bd, sd]>",
+  "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "c <d c> - [c <d c>]",
+  "cp(5,<8 16>,2)",
+  "rim(3,<16 8>)",
+  "{c [f g] d# d}%2",
+  "~ sd ~[sd[~ <~~~ sd>]]",
+  "~ ~ ~ bd(<2 4!2>, 8)",
 ]
 
 /* ── the sweep ──────────────────────────────────────────────────────────────── */

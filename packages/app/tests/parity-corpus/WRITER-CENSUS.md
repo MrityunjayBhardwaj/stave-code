@@ -9,6 +9,43 @@ enumerated below is exactly what that deletion would cost.
 
 ---
 
+## ⚠ RE-BASED AT #1037 — every figure below this banner is over the OLD corpus
+
+The harvester was rebuilt to ask the transpiler which strings become patterns
+instead of approximating it with a regex. The corpus went **1500 → 1535** units:
+backtick minis in (long, multi-line, multi-cycle — the hard material), and
+**commented-out code out** (94 strings that existed only inside `//sound("…")`
+lines and were never asks at all). **No runtime code changed in that diff**, so
+every movement is the population's.
+
+The document below has NOT been rewritten line by line, deliberately: a
+half-updated table is worse than a clearly-dated one, and that failure mode is
+what this whole arc has been about. Read every figure below as **pre-#1037**, and
+take the current values from here or from the pins in `writer-census.test.ts`,
+which fail on movement:
+
+| figure | pre-#1037 | **now** |
+| --- | --- | --- |
+| corpus units | 1500 | **1535** |
+| core-served asks | 1217 (803 grid / 414 roll) | **1204** (791 grid / 413 roll) |
+| transfers | 1055 = 86.7% | **1026** = 85.2% |
+| untransferable | 68 | **78** |
+| unverified (no-probe) | 94 | **100** |
+| array-value residual | 7 | **8** |
+| unstable-period residual | 33 | **36** |
+| **the P6 blocker set** | **46** | **54** |
+| the P6 blocker at roll cap 12 | 34 (19 grid + 15 roll) | **39** (24 grid + 15 roll) |
+
+The rate fell 86.7% → 85.2% and that is **not a regression**: the population it is
+over now contains the multi-cycle material the old net could not see, and no
+longer contains code nobody runs. A rate over the two is not comparable, which is
+why both are stated with their corpus.
+
+**For P6:** the number to scope against is **54**, not 46 — and 39 if the roll cap
+moves to 12 in the same change.
+
+---
+
 ## The measurement
 
 For every **surface-ask** the syntactic core serves — one (mini, surface) pair — both

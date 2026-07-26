@@ -45,7 +45,7 @@ survived even though the counts did not.
 
 ---
 
-## GAP 2 — CORPUS HARVEST — **found, filed as #1037, biased against the hard cases**
+## GAP 2 — CORPUS HARVEST — **found, FIXED at #1037; the bias was real and so was a second one nobody had looked for**
 
 `mini-corpus.json`'s own pattern is `\b(?:s|sound|note|n)\(\s*"([^"\\]*)"`.
 Double quotes only. Measured over the same 150 tunes:
@@ -68,6 +68,48 @@ down: minis passed to `mask` (124), `scale` (65), `struct` (47), `when` (38).
 
 **This refuted the prediction written before measuring**, which guessed the missed
 strings would be short control patterns like `"x*4"`. They are the opposite.
+
+### Fixed — and the fix found a second bias running the other way
+
+The harvester now asks the transpiler which strings become patterns instead of
+approximating it, parsing with acorn and mirroring `isBackTickString` /
+`isStringWithDoubleQuotes`. Two corrections to the plan filed in the issue, both
+forced by measurement:
+
+- **Single quotes stay OUT.** The issue said "widen to all three quote styles".
+  The transpiler reifies double quotes and backticks and *not* single quotes —
+  which is exactly why the codebase writes `.p('name')` for string identifiers.
+  Harvesting them would have put `s('wt_flute')`, a sample name, into a corpus
+  that gates the notation readers.
+- **The regex was harvesting COMMENTED-OUT CODE.** 94 strings in the old corpus
+  existed only inside `//sound("…")` lines. A text scan cannot tell live code from
+  dead; an AST never sees it. So the corpus was partly a record of code nobody
+  runs, and **seven step units and five roll units of the committed floors were
+  that fiction**.
+
+Net 1500 → 1535 units, and the floors decompose cleanly (no runtime code changed
+in the diff, so every movement belongs to the population):
+
+| corpus | step reach | losses | roll reach |
+| --- | --- | --- | --- |
+| 1500 committed | 126 | 29 | 75 |
+| 1406 minus commented-out code | 119 | 24 | 70 |
+| 1535 plus backtick + chained | **123** | 30 | **85** |
+
+The roll gains most, which is what the bias measurement predicted: backticks are
+how people write long melodic and chord patterns, and that is the roll's material.
+
+Every pinned gate fired on the change, which is what the pins are for — floors,
+conservation totals, both census arms, the roll-cap sweep, and two snapshots. Each
+was re-derived rather than regenerated past: the 110 removed round-trip entries
+were checked to be corpus removals rather than regressions, and the verdict
+snapshot was verified by restoring the old corpus and confirming current code
+reproduces the old snapshot exactly — so no mini's verdict changed.
+
+Re-sweeping the roll cap on the corrected corpus also corrected one of its
+conclusions: population A's reach was "flat at every cap", and is now "moves by
+exactly one ask at cap 8+". Very nearly the same answer, and no longer the
+structural-sounding one it was being quoted as.
 
 ---
 

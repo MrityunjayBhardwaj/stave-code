@@ -407,11 +407,16 @@ describe('writer census — how much of the syntactic core transfers to the deri
     )
 
     // THE DENOMINATOR IS PINNED TO writer-reach's COMPLEMENT. That gate sweeps the
-    // asks the core REFUSES (697 grid / 1086 roll of 1500); this one sweeps the
+    // asks the core REFUSES (744 grid / 1122 roll of 1535); this one sweeps the
     // asks it SERVES. If these two stop summing to the corpus, one of them is
     // asking a different question and neither number is readable.
-    expect(grid.length).toBe(1500 - 697)
-    expect(roll.length).toBe(1500 - 1086)
+    //
+    // ⚠ the corpus itself moved at #1037 — 1500 -> 1535 units, as the harvester
+    // stopped approximating the transpiler with a regex. Every figure in this file
+    // is therefore over a different population than a pre-#1037 one and the two
+    // must never be quoted side by side.
+    expect(grid.length).toBe(1535 - 744)
+    expect(roll.length).toBe(1535 - 1122)
 
     // A BAND, NOT A FLOOR. This is a measurement, so a move in EITHER direction is
     // a finding and should turn this red rather than pass quietly upward.
@@ -425,9 +430,13 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // this change's control arm. All 11 come from the element re-emit; the leaf adapter
     // produces 0, here and in `writer-reach`'s 29.
     const why = ' — a MOVE, not a regression: re-read WRITER-CENSUS.md and update it and this number together, stating which mechanism moved'
-    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(1055)
-    expect(untransferable.length, 'untransferable' + why).toBe(68)
-    expect(all.filter((r) => r.outcome === 'no-probe').length, 'unverified' + why).toBe(94)
+    // ⚠ MOVED AGAIN 1055 → 1026 / 68 → 78 at #1037, and this time the mechanism is
+    // the CORPUS: it gained backtick minis (long, multi-cycle, the hard material)
+    // and shed commented-out code that was never an ask. A rate computed over the
+    // two is not comparable — 1055/1217 = 86.7% against 1026/1204 = 85.2%.
+    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(1026)
+    expect(untransferable.length, 'untransferable' + why).toBe(78)
+    expect(all.filter((r) => r.outcome === 'no-probe').length, 'unverified' + why).toBe(100)
     // The reclassification is asserted by MECHANISM as well as by total, so that a
     // future change cannot hold the totals steady while moving asks between buckets.
     expect(
@@ -451,7 +460,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // were worth quoting. The structured count therefore falls by the full 11 while the
     // total falls by 11 too — the loss lands entirely on the half of the number this
     // line exists to keep honest.
-    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(637)
+    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(624)
 
     // THIS USED TO SAY "NOTHING CORRUPTS", and it said why that mattered: both derived
     // writers refuse rather than mis-write, which is what made the untransferable set
@@ -497,8 +506,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // plays an array value, so they land wholly in the second column. The claim this
     // assertion protects — that naming the `:`-variant did not touch the structural
     // column — is about #1019 and still holds, because the array column is still 7.
-    expect(untransferable.filter((r) => r.arrayValue).length).toBe(7)
-    expect(untransferable.filter((r) => !r.arrayValue).length).toBe(61)
+    expect(untransferable.filter((r) => r.arrayValue).length).toBe(8)
+    expect(untransferable.filter((r) => !r.arrayValue).length).toBe(70)
 
     // THE NUMBER P6 IS SCOPED AGAINST, and it is a CONJUNCTION. "46 have a
     // structured core view" and "45 have a verified core edit" are different
@@ -521,15 +530,23 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // three the core writes faithfully are a real cost, and two of those have a
     // structured core view.
     //
+    // ⚠ 46 → 54 at #1037, and the mechanism is again the CORPUS rather than any
+    // writer: it gained the backtick material and shed commented-out code. This is
+    // the number P6 is scoped against, so it must not be carried across that change
+    // silently — 46 was over 1500 harvested units, 54 is over 1535 differently
+    // harvested ones.
+    //
     // MEASURED AT THE OTHER CAP TOO, since P6 carries `LEAF_PROJECT_BARS.roll = 12` in
-    // its own diff: at cap 12 the blocker is 34 (grid 19 + roll 15), OBSERVED by running
+    // its own diff: at cap 12 the blocker is 39 (grid 24 + roll 15), OBSERVED by running
     // this census with the constant set rather than by subtracting the cap's known
-    // contribution of 12 from 46. The two happen to agree; the point is that the
-    // agreement was checked.
+    // contribution from 54. (On the pre-#1037 corpus the same measurement read 34 =
+    // grid 19 + roll 15. The roll half is unchanged at 15, which is what you would
+    // expect of a cap whose reach the roll sweep found flat; the grid half moved with
+    // the corpus.)
     const structural = untransferable.filter((r) => !r.arrayValue)
-    expect(structural.filter((r) => r.coreStructured).length).toBe(57)
-    expect(structural.filter((r) => r.coreProbe === 'ok').length).toBe(47)
-    expect(structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length).toBe(46)
+    expect(structural.filter((r) => r.coreStructured).length).toBe(65)
+    expect(structural.filter((r) => r.coreProbe === 'ok').length).toBe(55)
+    expect(structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length).toBe(54)
   }, 900_000)
 
   /**
@@ -552,7 +569,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // the shipped caps, taken from the writer rather than copied beside it (#1025)
       const CAP = { step: PROJECTION_PERIOD_BOUNDS.leaf.grid, roll: PROJECTION_PERIOD_BOUNDS.leaf.roll } as const
       const rows = structural.filter((r) => r.gate === 'unstable-period')
-      expect(rows.length).toBe(33)
+      expect(rows.length).toBe(36)
 
       const withinCap: string[] = []
       let past = 0
@@ -576,9 +593,9 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // cap would mean the gate is misattributing, and the whole mechanism claim
       // (and #1020 with it) would be wrong.
       expect(withinCap, withinCap.join('\n')).toEqual([])
-      expect(past).toBe(31)
+      expect(past).toBe(34)
       expect(aperiodic).toBe(2)
-      expect(rollBlockedByItsOwnCap).toBe(20)
+      expect(rollBlockedByItsOwnCap).toBe(23)
     }, 900_000)
 
     it('naming a `:`-variant is the exact INVERSE of krill lowering it, and the whole tail is load-bearing', () => {
@@ -647,12 +664,12 @@ describe('writer census — how much of the syntactic core transfers to the deri
         `\n  array-value asks still untransferable (${rows.length}):\n` +
           rows.map((r) => `     ${r.surface}  ${r.gate}  ${JSON.stringify(r.mini).slice(0, 70)}`).join('\n'),
       )
-      expect(rows.length).toBe(7)
+      expect(rows.length).toBe(8)
       expect(rows.filter((r) => r.gate === 'no-note-content')).toEqual([])
       // six `,`-stacks with no leaf anchor, one past the period cap — both are the
       // SAME bounds the non-array residual is made of, which is what makes these
       // structural residual that happens to contain a `:` rather than naming misses.
-      expect(rows.filter((r) => r.gate === 'no-leaf-anchor').length).toBe(6)
+      expect(rows.filter((r) => r.gate === 'no-leaf-anchor').length).toBe(7)
       expect(rows.filter((r) => r.gate === 'unstable-period').length).toBe(1)
     }, 900_000)
 
@@ -687,7 +704,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
       }
       console.log(`\n  shipped path vs core over ${checked} core-served asks: ${mismatches.length} mismatches`)
       expect(mismatches, mismatches.slice(0, 5).join('\n')).toEqual([])
-      expect(checked).toBe(1217)
+      expect(checked).toBe(1204)
     }, 900_000)
 
     it('RED TEST: the census distinguishes the two writers — it is not measuring one twice', () => {

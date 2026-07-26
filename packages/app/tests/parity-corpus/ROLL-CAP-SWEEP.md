@@ -35,19 +35,30 @@ Both populations, all four caps, the real shipped writers at each value. The cap
 module constant and the sweep sets it exactly as a ship would; threading a parameter
 through the writer would measure a path production never takes.
 
-| cap | **A** reach | **A** views opened | **B** transfers | **B** no view at all |
-|---|---|---|---|---|
-| **4** (today) | 75 | 118 | 347 | 31 |
-| 6 | **75** | 118 | 348 | 30 |
-| 8 | **75** | 126 | 357 | 21 |
-| **12** | **75** | 127 | **360** | **17** |
+⚠ **RE-SWEPT 2026-07-27 on the rebuilt corpus (#1037).** The harvester stopped
+approximating the transpiler with a regex, so the corpus went 1500 → 1535 units:
+backtick minis in, commented-out code out. No runtime code changed in that diff, so
+every movement below belongs to the population. The figures first published here were
+A flat at 75 across all caps, B 347 → 360.
 
-- **Population A's reach does not move by one ask, at any cap.** The original measurement
-  reproduces exactly. It was never wrong — it was answering about a different population.
-- **Population B gains 14 views and 13 transfers**, and every gain is served by the leaf
-  writer, which is the writer this cap governs.
+| cap | **A** reach | **B** transfers |
+|---|---|---|
+| **4** (today) | 85 | 339 |
+| 6 | 85 | 340 |
+| 8 | **86** | 352 |
+| **12** | **86** | **355** |
+
+- **Population A's reach moves by exactly ONE ask, at cap 8 and above.** On the old
+  corpus it was flat at every cap, and that flatness was quoted as the finding. It is
+  very nearly still true — one ask in 1535 is no reason to raise the cap — but the claim
+  is now "moves by one", not "does not move", and the difference matters because the flat
+  version was being used as though it were structural. It was not; it was a property of a
+  corpus that had never seen a backtick.
+- **Population B gains 16 transfers** (339 → 355), up from 13 on the old corpus, and every
+  gain is served by the leaf writer, which is the writer this cap governs.
 - **Zero asks moved to a worse outcome at any cap, on either population**, verified per
-  ask against the cap-4 rows rather than by netting totals.
+  ask against the cap-4 rows rather than by netting totals — still true after the
+  re-sweep, on the wider population.
 - **Zero corrupt** on either population at every cap — and that is now a stronger claim
   than it used to be (see *Every note, not one note*). **Still true after #1026 restored
   the oracle's duration axis**, and not by luck: this sweep is roll-only, and the roll arm
