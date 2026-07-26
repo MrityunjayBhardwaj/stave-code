@@ -11,6 +11,14 @@
  *
  * Atoms collapse at a column (a cell shows a sound once). Durations do not.
  *
+ * ⚠ THIS ARM ANSWERS THE FILED QUESTION, WHICH TURNED OUT TO BE THE SMALLER HALF.
+ * It detects columns where a token carries two different LENGTHS. The same guard
+ * was also discarding the write-back ANCHOR, four times as often (32 occurrences
+ * / 9 units against 8 / 4), including in units where the two lengths AGREE and
+ * this detector is therefore silent. See `_sweep-1034f.spec.ts` for that split and
+ * `SWEEP-1034.md` for the whole picture; do not quote this arm's count as the size
+ * of the defect.
+ *
  * HOW THIS AVOIDS BEING A SECOND ORACLE ([[PV192]]). It does not re-implement the
  * reader. It asks the ENGINE for the same haps the reader sees, and then asserts
  * that its own per-column DISTINCT-TOKEN sets are identical to the shipped
