@@ -147,6 +147,21 @@ describe('the grid ops keep a length meaning what it says', () => {
     expect(lens(q, 'bd')).toEqual([1, 0.5])
   })
 
+  it('a length is clamped to the grid it lands on, in resize as in quantize', () => {
+    // pad TRUNCATING: a 3-column note on a grid cut to 2 columns cannot keep reaching
+    // past the end. `resizeRoll` has always clamped here (`Math.min(duration,
+    // nextSteps - start)`); the grid could not, because a cell had no length.
+    const long: StepGridModel = { steps: 4, lanes: [{ sound: 'bd', cells: [cellOn(3), false, false, false] }] }
+    expect(lens(resizeGrid(long, 2, 'pad'), 'bd')).toEqual([2, null])
+    // spread DOWNSAMPLING: two hits collapse toward each other, so the first may not
+    // keep a length that now runs into the second
+    const two: StepGridModel = {
+      steps: 4,
+      lanes: [{ sound: 'bd', cells: [cellOn(2), false, cellOn(2), false] }],
+    }
+    expect(lens(resizeGrid(two, 2, 'spread'), 'bd')).toEqual([1, 1])
+  })
+
   it('an off cell is `false`, so every "is anything here?" reader still works', () => {
     const cells: StepCell[] = grid('bd ~ bd ~').lanes[0].cells
     expect(cells.filter(Boolean).length).toBe(2)

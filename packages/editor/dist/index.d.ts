@@ -8308,6 +8308,13 @@ declare function isBlackKey(midi: number): boolean;
 declare function placeNote(model: PianoRollModel, pitch: string, start: number, duration: number): PianoRollModel;
 
 type ResizeMode = 'spread' | 'pad';
+/**
+ * Both modes clamp lengths (`clampLane`) for the same reason `quantizeStepGridTo` and
+ * `resizeRoll` do: rounding hits onto a coarser grid, or truncating one, can leave a
+ * note reaching past the next hit or past the end of the grid, and neither is
+ * something the writer could spell. The roll has always clamped here; the grid could
+ * not, because a cell had no length to clamp (#1010 P4b).
+ */
 declare function resizeGrid(model: StepGridModel, nextSteps: number, mode: ResizeMode): StepGridModel;
 declare function resizeRoll(model: PianoRollModel, nextSteps: number, mode: ResizeMode): PianoRollModel;
 

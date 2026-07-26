@@ -25668,6 +25668,20 @@ __name(useActiveChunk, "useActiveChunk");
 // src/visualEdit/notation/model.ts
 var cellOn = /* @__PURE__ */ __name((duration = 1) => ({ duration }), "cellOn");
 var isCellOn = /* @__PURE__ */ __name((cell) => typeof cell === "object" && cell !== null, "isCellOn");
+var scaleCell = /* @__PURE__ */ __name((cell, factor) => isCellOn(cell) ? cellOn(cell.duration * factor) : false, "scaleCell");
+function clampLane(cells, steps) {
+  const out = [...cells];
+  for (let c = 0; c < out.length; c++) {
+    const cell = out[c];
+    if (!isCellOn(cell)) continue;
+    let next = c + 1;
+    while (next < out.length && !isCellOn(out[next])) next++;
+    const room = Math.min(next, steps) - c;
+    if (cell.duration > room) out[c] = cellOn(room);
+  }
+  return out;
+}
+__name(clampLane, "clampLane");
 
 // src/visualEdit/notation/serialize.ts
 function altSourceFits(a, steps) {
@@ -28403,20 +28417,6 @@ function perBar(steps, bars) {
   return bars && bars > 0 ? steps / bars : steps;
 }
 __name(perBar, "perBar");
-var scaleCell = /* @__PURE__ */ __name((cell, factor) => isCellOn(cell) ? cellOn(cell.duration * factor) : false, "scaleCell");
-function clampLane(cells, steps) {
-  const out = [...cells];
-  for (let c = 0; c < out.length; c++) {
-    const cell = out[c];
-    if (!isCellOn(cell)) continue;
-    let next = c + 1;
-    while (next < out.length && !isCellOn(out[next])) next++;
-    const room = Math.min(next, steps) - c;
-    if (cell.duration > room) out[c] = cellOn(room);
-  }
-  return out;
-}
-__name(clampLane, "clampLane");
 function canDoubleStepGrid(model) {
   return model.steps >= 1 && model.steps * 2 <= MAX_RESOLUTION_STEPS;
 }
@@ -42166,7 +42166,10 @@ function resizeGrid(model, nextSteps, mode) {
     return {
       ...restructured(model),
       steps: nextSteps,
-      lanes: model.lanes.map((l) => ({ ...l, cells: padCells(l.cells, nextSteps) }))
+      lanes: model.lanes.map((l) => ({
+        ...l,
+        cells: clampLane(padCells(l.cells, nextSteps), nextSteps)
+      }))
     };
   }
   const from = model.steps;
@@ -42174,20 +42177,19 @@ function resizeGrid(model, nextSteps, mode) {
   return {
     ...restructured(model),
     steps: nextSteps,
-    lanes: model.lanes.map((l) => ({
-      ...l,
-      cells: Array.from({ length: nextSteps }, (_, j) => {
+    lanes: model.lanes.map((l) => {
+      const cells = Array.from({ length: nextSteps }, (_, j) => {
         if (nextSteps >= from) {
           if (j * from % nextSteps !== 0) return false;
-          const src = l.cells[j * from / nextSteps];
-          return isCellOn(src) ? cellOn(src.duration * factor) : false;
+          return scaleCell(l.cells[j * from / nextSteps] ?? false, factor);
         }
         const lo = Math.ceil(j * from / nextSteps);
         const hi = Math.ceil((j + 1) * from / nextSteps);
         const hits = l.cells.slice(lo, hi).filter(isCellOn);
         return hits.length === 0 ? false : cellOn(Math.min(...hits.map((h) => h.duration)) * factor);
-      })
-    }))
+      });
+      return { ...l, cells: clampLane(cells, nextSteps) };
+    })
   };
 }
 __name(resizeGrid, "resizeGrid");

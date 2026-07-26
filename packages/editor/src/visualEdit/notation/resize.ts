@@ -11,7 +11,7 @@
  * Multi-bar (`<...>`) patterns don't resize — their column resolution is fixed
  * by the bar groups — so both functions return the model unchanged.
  */
-import { cellOn, isCellOn } from './model'
+import { cellOn, clampLane, isCellOn, scaleCell } from './model'
 import type { PianoRollModel, StepCell, StepGridModel } from './model'
 
 export type ResizeMode = 'spread' | 'pad'
@@ -28,6 +28,13 @@ export type ResizeMode = 'spread' | 'pad'
  */
 const restructured = ({ source: _drop, ...rest }: StepGridModel): StepGridModel => rest
 
+/**
+ * Both modes clamp lengths (`clampLane`) for the same reason `quantizeStepGridTo` and
+ * `resizeRoll` do: rounding hits onto a coarser grid, or truncating one, can leave a
+ * note reaching past the next hit or past the end of the grid, and neither is
+ * something the writer could spell. The roll has always clamped here; the grid could
+ * not, because a cell had no length to clamp (#1010 P4b).
+ */
 export function resizeGrid(
   model: StepGridModel,
   nextSteps: number,
@@ -38,7 +45,10 @@ export function resizeGrid(
     return {
       ...restructured(model),
       steps: nextSteps,
-      lanes: model.lanes.map((l) => ({ ...l, cells: padCells(l.cells, nextSteps) })),
+      lanes: model.lanes.map((l) => ({
+        ...l,
+        cells: clampLane(padCells(l.cells, nextSteps), nextSteps),
+      })),
     }
   }
   const from = model.steps
@@ -50,14 +60,12 @@ export function resizeGrid(
   return {
     ...restructured(model),
     steps: nextSteps,
-    lanes: model.lanes.map((l) => ({
-      ...l,
-      cells: Array.from({ length: nextSteps }, (_, j): StepCell => {
+    lanes: model.lanes.map((l) => {
+      const cells = Array.from({ length: nextSteps }, (_, j): StepCell => {
         if (nextSteps >= from) {
           // upsample: a hit only at the exact mapped position
           if ((j * from) % nextSteps !== 0) return false
-          const src = l.cells[(j * from) / nextSteps]
-          return isCellOn(src) ? cellOn(src.duration * factor) : false
+          return scaleCell(l.cells[(j * from) / nextSteps] ?? false, factor)
         }
         // downsample: any hit in the bucket lands on this step, and where several do,
         // the SHORTEST wins — a merged note never sounds longer than a note it stands
@@ -68,8 +76,9 @@ export function resizeGrid(
         return hits.length === 0
           ? false
           : cellOn(Math.min(...hits.map((h) => h.duration)) * factor)
-      }),
-    })),
+      })
+      return { ...l, cells: clampLane(cells, nextSteps) }
+    }),
   }
 }
 

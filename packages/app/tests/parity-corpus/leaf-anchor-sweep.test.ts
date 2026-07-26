@@ -35,6 +35,7 @@ import {
 } from '../../../editor/src/visualEdit/notation/parse'
 import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
 import { cellOn, isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import type { StepGridModel } from '../../../editor/src/visualEdit/notation/model'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -293,7 +294,7 @@ describe('#986 P2 — the bijection holds on every shipped leaf view', () => {
     // whether `bd*4` opens as a leaf view or not, the corpus sweep above proved
     // shared spans occur; this pins the WRITER's half of the contract on a model
     // built by hand, so it holds regardless of which patterns happen to project
-    const model = {
+    const model: StepGridModel = {
       steps: 2,
       lanes: [{ sound: 'bd', cells: [cellOn(), cellOn()] }],
       leafSource: {
@@ -307,7 +308,7 @@ describe('#986 P2 — the bijection holds on every shipped leaf view', () => {
     // both columns agree (both still bd) → the shared span writes once
     expect(serializeStepGrid(model)).toBe('bd*2')
     // clear one and they disagree → no single byte replacement satisfies both
-    const half = { ...model, lanes: [{ sound: 'bd', cells: [cellOn(), false] }] }
+    const half: StepGridModel = { ...model, lanes: [{ sound: 'bd', cells: [cellOn(), false] }] }
     expect(serializeStepGrid(half)).toBeNull()
   })
 })
