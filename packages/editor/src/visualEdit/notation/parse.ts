@@ -1154,6 +1154,21 @@ export interface Onset {
   atoms: string[]
   /** leaf span per atom, index-aligned with `atoms`; `null` where none was carried */
   spans: (LeafSpan | null)[]
+  /**
+   * How long each atom SOUNDS, in cycles, index-aligned with `atoms` (#1010 P4a).
+   *
+   * The grid used to read only `whole.begin` and drop this — its hap type did not
+   * even declare `end`. That is where every duration loss starts: a reader that
+   * never picks the axis up leaves the writer nothing to preserve, so a re-emit
+   * re-derives each length at the grid's resolution and `[hh ~]!16` comes back as
+   * sixteen notes of twice the length. The roll has always kept it
+   * (`whole.end - whole.begin`, `readRollNotes`) and has never produced one of
+   * these losses; this closes that asymmetry at the source.
+   *
+   * Same units as `pos` — cycle-relative — so a column's width in cycles is
+   * directly comparable and no caller has to know the grid's resolution to read it.
+   */
+  durs: number[]
 }
 
 /**
@@ -1179,10 +1194,15 @@ export function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
  * one failure is what made a drum pattern politely declining the roll read as an
  * editability gap.
  */
-function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
+/* exported for `gridOnsetDuration.test.ts` — the axis-dropping boundary is worth
+   being able to interrogate directly; see that file for why. */
+export function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
   let haps: Array<{
     hasOnset?: () => boolean
-    whole?: { begin: { valueOf(): number } }
+    // `end` is read for `Onset.durs` (#1010 P4a). It was absent from this type,
+    // which is the literal form the dropped-duration defect took: the axis could
+    // not be read because it was not declared. Same shape the roll already uses.
+    whole?: { begin: { valueOf(): number }; end: { valueOf(): number } }
     value: unknown
     context?: { locations?: Array<{ start: number; end: number }> }
   }>
@@ -1191,7 +1211,10 @@ function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
   } catch {
     return no('no-note-content')
   }
-  const byCol = new Map<number, { atoms: string[]; spans: (LeafSpan | null)[] }>()
+  const byCol = new Map<
+    number,
+    { atoms: string[]; spans: (LeafSpan | null)[]; durs: number[] }
+  >()
   for (const h of haps) {
     if (!(h.hasOnset?.() ?? false) || !h.whole) continue
     // A bare mini string reifies to raw token VALUES (`"bd"`), not superdough
@@ -1218,7 +1241,7 @@ function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
     if (NUMERIC.test(token)) return no('wrong-surface') // a bare number is the roll's
     const pos = h.whole.begin.valueOf() - cyc
     const key = Math.round(pos * 720720)
-    const cell = byCol.get(key) ?? { atoms: [], spans: [] }
+    const cell = byCol.get(key) ?? { atoms: [], spans: [], durs: [] }
     // one span per distinct token in the column — the note's OWN leaf loc, the
     // #986 write-back anchor. A `*n`/euclid element yields the same leaf at several
     // columns (N cells, one span); a `,`-stack lands two leaves on one column (two
@@ -1226,6 +1249,9 @@ function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
     if (!cell.atoms.includes(token)) {
       cell.atoms.push(token)
       cell.spans.push(leafLoc(h))
+      // read the same way the roll reads it, so the two surfaces cannot disagree
+      // about what a note's length IS
+      cell.durs.push(h.whole.end.valueOf() - h.whole.begin.valueOf())
     }
     byCol.set(key, cell)
   }
@@ -1235,6 +1261,7 @@ function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
       pos: k / 720720,
       atoms: c.atoms,
       spans: c.spans,
+      durs: c.durs,
     })),
   }
 }
@@ -1495,11 +1522,19 @@ function projectionEditSafe(
       if (bb !== b) return want
       const hit = want.find((o) => Math.abs(o.pos - t) < 1e-9)
       // synthetic probe onsets — only `onsetKey` (pos + atoms) reads these, so the
-      // probe atom's span is a placeholder `null`; the real atoms keep their spans.
+      // probe atom's span is a placeholder `null` and its duration a placeholder 0;
+      // the real atoms keep their own spans and lengths.
       const out2 = want.map((o) =>
-        o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND], spans: [...o.spans, null] } : o,
+        o === hit
+          ? {
+              pos: o.pos,
+              atoms: [...o.atoms, PROBE_SOUND],
+              spans: [...o.spans, null],
+              durs: [...o.durs, 0],
+            }
+          : o,
       )
-      if (!hit) out2.push({ pos: t, atoms: [PROBE_SOUND], spans: [null] })
+      if (!hit) out2.push({ pos: t, atoms: [PROBE_SOUND], spans: [null], durs: [0] })
       return out2
     }
     for (let bb = 0; bb < bars; bb++) {
@@ -1749,7 +1784,9 @@ function leafExpected(
         atoms.add(hit ? text! : a.atom)
       }
       // spans are irrelevant to `onsetKey`, which is all this feeds
-      if (atoms.size > 0) bar.push({ pos: i / perBar, atoms: [...atoms], spans: [] })
+      // predicted onsets, compared through `onsetKey` (pos + atoms) only — spans and
+      // durations are not predicted here, so both stay empty rather than guessed
+      if (atoms.size > 0) bar.push({ pos: i / perBar, atoms: [...atoms], spans: [], durs: [] })
     }
     out.push(bar)
   }
