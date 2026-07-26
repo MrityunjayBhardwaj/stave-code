@@ -311,25 +311,60 @@ export interface StepGridModel {
 }
 
 /**
- * One column of one lane. `false` is no trigger.
+ * One column of one lane: `false` for no trigger, or the note that starts there.
  *
- * A bare `boolean` today. It becomes note-shaped in #1010 P4b, so that a cell can
- * carry HOW LONG its note sounds — the axis the grid's reader dropped and every
- * duration loss starts from ([[PV239]]). The alias and the two constructors below
- * exist so that the code which only asks "is this cell on?" says exactly that, and
- * does not have to change again when the shape does.
+ * WHY THIS IS NOT A BOOLEAN (#1010 P4b). A cell used to be one bit, so how long
+ * its note sounds was not part of the model — and a writer cannot preserve an axis
+ * its model never carried ([[PV239]]). Every duration loss on this surface starts
+ * there: the element re-emit has nothing to write with except the view's own
+ * resolution, so `[hh ~]!16` — sixteen notes each sounding for HALF a column —
+ * comes back as sixteen notes of a full column, twice their length, and the pattern
+ * is quietly a different pattern. The piano roll's note has carried `duration`
+ * since the beginning and has never produced one of these.
  *
- * They are introduced AHEAD of the shape change on purpose: the corpus edit ORACLE
- * reads `.cells` too, and a diff that moves the instrument and the product together
- * produces a delta belonging to neither ([[PK62]]).
+ * `false` rather than `null`/`undefined` for the off cell, so that the many places
+ * which only ask "is anything here?" keep reading exactly as they did —
+ * truthiness, `.some(Boolean)`, `filter(Boolean)`.
  */
-export type StepCell = boolean
+export type StepCell = false | StepNote
 
-/** an ON cell */
-export const cellOn = (): StepCell => true
+/** A note occupying one grid cell. */
+export interface StepNote {
+  /**
+   * How long the note SOUNDS, in COLUMNS: `1` is exactly this column, `2` spans
+   * the next one too, `0.5` sounds for the first half of it and is silent after.
+   *
+   * COLUMNS, not cycles, and both units are deliberately in play at this boundary.
+   * `Onset.durs` is cycle-relative so that no reader needs to know the grid's
+   * resolution; a CELL is already positioned in the grid, and every consumer of
+   * this field reasons in columns — the ×2/÷2 resolution ops, resize, and (P4c) the
+   * printer deciding whether a note even needs a `[x ~]` to be spelled.
+   * `RollNote.duration` is the same unit, which is what makes the two surfaces
+   * comparable and is the direction #1032 goes.
+   *
+   * FRACTIONAL IS NORMAL — this is where it differs from the roll's integral `@n`.
+   * Measured over the 1535-unit corpus: ~206 units carry a length that is not 1,
+   * and 5 are sub-column (`[hh ~]!16` → 0.5, `[bd@0.5 - - -]` → 0.1429). A
+   * consumer that assumes integers is wrong about real corpus material.
+   */
+  duration: number
+}
 
-/** is this cell a trigger? (`undefined` — past the end of the lane — is not) */
-export const isCellOn = (cell: StepCell | undefined): boolean => cell === true
+/** an ON cell; `duration` in columns, defaulting to exactly this column */
+export const cellOn = (duration = 1): StepNote => ({ duration })
+
+/**
+ * Is this cell a trigger? (`undefined` — past the end of the lane — is not.)
+ *
+ * Tests the SHAPE rather than `!== false`, so that a value from before the cell
+ * carried a length — a stale `true` — reads as off instead of passing this guard and
+ * handing `undefined` to arithmetic. That produced a `duration: NaN` exactly once, in
+ * a test still building models by hand, and NaN is the kind of wrong answer that
+ * propagates quietly. Nothing persists a `StepGridModel` (it is re-read from the
+ * document every time), so this guards the JS boundary, not a migration.
+ */
+export const isCellOn = (cell: StepCell | undefined): cell is StepNote =>
+  typeof cell === 'object' && cell !== null
 
 export interface StepLane {
   sound: string

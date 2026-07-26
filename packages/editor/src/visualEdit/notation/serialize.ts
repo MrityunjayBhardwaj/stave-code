@@ -20,6 +20,7 @@ import type {
   StepGridModel,
   StepLane,
 } from './model'
+import { isCellOn } from './model'
 
 /**
  * An `altSource` still describes a model only while its single-cycle width times
@@ -380,7 +381,8 @@ function partColumns(lanes: StepLane[], steps: number, factor: number): string[]
 /** the sounds sitting in each column — lane order is presentational, so compare as sets */
 function columnAtoms(lanes: StepLane[], steps: number): string[][] {
   const cols: string[][] = []
-  for (let i = 0; i < steps; i++) cols.push(lanes.filter((l) => l.cells[i]).map((l) => l.sound))
+  for (let i = 0; i < steps; i++)
+    cols.push(lanes.filter((l) => isCellOn(l.cells[i])).map((l) => l.sound))
   return cols
 }
 

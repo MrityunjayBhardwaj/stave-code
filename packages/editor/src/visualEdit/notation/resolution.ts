@@ -25,7 +25,8 @@
  * reference when it can't apply, so `useGridModel.mutate` skips the write and
  * the document is left untouched.
  */
-import type { PianoRollModel, RollNote, StepGridModel } from './model'
+import { cellOn, isCellOn } from './model'
+import type { PianoRollModel, RollNote, StepCell, StepGridModel } from './model'
 
 /** which way the resolution control scales the grid */
 export type ResolutionDir = 'double' | 'halve'
@@ -43,6 +44,51 @@ function perBar(steps: number, bars?: number): number {
   return bars && bars > 0 ? steps / bars : steps
 }
 
+/**
+ * Scale a cell's LENGTH by the same factor the grid's resolution changed by, so the
+ * note keeps the time it actually occupies (#1010 P4b).
+ *
+ * This is what makes ×2 / ÷2 mean what this module's header already promised —
+ * "every hit keeps its position", extended from the onset to the whole note. A cell
+ * lasting one column of a 16-column grid lasts TWO columns of the 32-column one: the
+ * same eighth of a cycle, spelled at a finer resolution. Leaving the length alone
+ * would silently halve every note on a ×2, which is the corruption this axis exists
+ * to prevent, arriving from the op instead of from the printer.
+ *
+ * Halving needs no integrality guard, and that is worth saying because the roll needs
+ * one: `RollNote.duration` counts whole `@n` steps, so an odd length cannot be halved
+ * and `canHalvePianoRoll` refuses. A cell's length is fractional by design, so ÷2
+ * always represents exactly — it can only ever SHORTEN a note in column terms, never
+ * lengthen it, and never drops one. `canHalveStepGrid` is therefore unchanged: what it
+ * has always checked (nothing lives on the odd columns) is still the whole condition.
+ */
+const scaleCell = (cell: StepCell, factor: number): StepCell =>
+  isCellOn(cell) ? cellOn(cell.duration * factor) : false
+
+/**
+ * Keep every note inside the room it has: no note reaches past the next hit in its
+ * own lane, and none runs past the end of the grid.
+ *
+ * Only the quantize path needs this. ×2/÷2 scale onsets and lengths by one factor, so
+ * a grid with no overlap keeps having none; quantize ROUNDS each onset onto a coarser
+ * bucket, which can pull two hits closer together than their lengths allow. Same
+ * promise `quantizePianoRollTo` already makes for the roll ("durations are clamped so
+ * nothing overlaps or runs past the grid"), per lane here because a lane is one sound
+ * and two notes of one sound cannot overlap in any notation we could write back.
+ */
+function clampLane(cells: StepCell[], steps: number): StepCell[] {
+  const out = [...cells]
+  for (let c = 0; c < out.length; c++) {
+    const cell = out[c]
+    if (!isCellOn(cell)) continue
+    let next = c + 1
+    while (next < out.length && !isCellOn(out[next])) next++
+    const room = Math.min(next, steps) - c
+    if (cell.duration > room) out[c] = cellOn(room)
+  }
+  return out
+}
+
 /* ── step grid ─────────────────────────────────────────────────── */
 
 export function canDoubleStepGrid(model: StepGridModel): boolean {
@@ -58,7 +104,7 @@ export function canHalveStepGrid(model: StepGridModel): boolean {
   if (model.steps < 2 || model.steps % 2 !== 0) return false
   if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false
   const oddCellEmpty = model.lanes.every((lane) =>
-    lane.cells.every((on, i) => i % 2 === 0 || !on),
+    lane.cells.every((cell, i) => i % 2 === 0 || !isCellOn(cell)),
   )
   if (!oddCellEmpty) return false
   if (model.gains) {
@@ -80,7 +126,7 @@ export function scaleStepGrid(model: StepGridModel, dir: ResolutionDir): StepGri
       steps: model.steps * 2,
       lanes: model.lanes.map((lane) => ({
         ...lane,
-        cells: lane.cells.flatMap((on) => [on, false]),
+        cells: lane.cells.flatMap((cell): StepCell[] => [scaleCell(cell, 2), false]),
       })),
       ...(model.gains ? { gains: model.gains.flatMap((g) => [g, 1]) } : {}),
     }
@@ -91,7 +137,7 @@ export function scaleStepGrid(model: StepGridModel, dir: ResolutionDir): StepGri
     steps: model.steps / 2,
     lanes: model.lanes.map((lane) => ({
       ...lane,
-      cells: lane.cells.filter((_, i) => i % 2 === 0),
+      cells: lane.cells.filter((_, i) => i % 2 === 0).map((cell) => scaleCell(cell, 0.5)),
     })),
     ...(model.gains ? { gains: model.gains.filter((_, i) => i % 2 === 0) } : {}),
   }
@@ -217,19 +263,31 @@ export function quantizeStepGridTo(model: StepGridModel, target: number): StepGr
   if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model
   if ((model.bars ?? 1) > 1) return scaleStepGridTo(model, target)
   const from = model.steps
+  const addingSlots = target > from
   const lanes = model.lanes.map((lane) => {
-    const cells = Array<boolean>(target).fill(false)
-    lane.cells.forEach((on, c) => {
-      if (on) cells[bucket(c, from, target)] = true
+    const cells = Array<StepCell>(target).fill(false)
+    lane.cells.forEach((cell, c) => {
+      if (!isCellOn(cell)) return
+      const b = bucket(c, from, target)
+      // SCALE FIRST, then merge. Coarsening scales every length by `target / from`;
+      // merging takes the SHORTEST, so a merged note never sounds longer than one of
+      // the notes it stands for (the choice `quantizePianoRollTo` makes for a chord).
+      // Doing it the other way round rescales a value already scaled by an earlier
+      // source cell in the same bucket — 1 and 1 columns became 0.25 instead of 0.5.
+      // Refining keeps the COLUMN count instead (#607, the roll's rule): the onset is
+      // preserved and the note simply no longer spans the widened gap.
+      const scaled = addingSlots ? cell.duration : cell.duration * (target / from)
+      const prev = cells[b]
+      cells[b] = cellOn(isCellOn(prev) ? Math.min(prev.duration, scaled) : scaled)
     })
-    return { ...lane, cells }
+    return { ...lane, cells: clampLane(cells, target) }
   })
   let gains: number[] | undefined
   if (model.gains) {
     gains = Array<number>(target).fill(1)
     const filled = new Set<number>()
     for (let c = 0; c < from; c++) {
-      if (!model.lanes.some((l) => l.cells[c])) continue // only audible columns carry gain
+      if (!model.lanes.some((l) => isCellOn(l.cells[c]))) continue // only audible columns carry gain
       const b = bucket(c, from, target)
       const g = model.gains[c] ?? 1
       gains[b] = filled.has(b) ? Math.max(gains[b], g) : g

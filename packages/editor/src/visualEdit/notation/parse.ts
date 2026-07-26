@@ -41,9 +41,11 @@ import type {
   RollNote,
   SourcePart,
   SourceRegion,
+  StepCell,
   StepGridModel,
   StepLane,
 } from './model'
+import { cellOn, isCellOn } from './model'
 import { pitchToMidi } from './pitch'
 
 /**
@@ -554,31 +556,74 @@ function tokenize(mini: string, allowNumeric = false): Tokenized {
 const gridHasElongation = (steps: Step[]): boolean =>
   steps.some((s) => s.elongation !== 1 || (s.sub?.some((slot) => slot.units !== 1) ?? false))
 
-/** flatten steps to `div`-resolution trigger cells, each an atom list */
-function toCells(steps: Step[], div: number): string[][] {
-  const cells: string[][] = []
+/**
+ * What the reader knows about one column: the notes STARTING in it, each with its
+ * own length in columns (#1010 P4b).
+ *
+ * This is the reader's own working shape, not a model type. `GridCells`
+ * (`string[][]`) stays exactly what it was — it is what a source REGION remembers
+ * having shown, and the writer compares those as sets of sounds — so the tokens are
+ * projected back out of this with `tokensOf` wherever a region is built. Two shapes
+ * because they answer two questions: what the cell HOLDS, and what the region SHOWED.
+ */
+interface ColumnNote {
+  token: string
+  /** length in COLUMNS (see `StepNote.duration`) */
+  duration: number
+}
+type ColumnNotes = ColumnNote[][]
+
+/** the display view of columns — just the sounds, in order, for a source region */
+const tokensOf = (cols: ColumnNotes): GridCells => cols.map((c) => c.map((n) => n.token))
+
+/**
+ * Flatten steps to `div`-resolution trigger cells.
+ *
+ * A slot occupying `span` columns places its atoms in the first and leaves the rest
+ * empty, and its note SOUNDS for the whole span — `bd [sd sd sd]` gives `bd` three
+ * columns of six, and the engine agrees (`whole.end - whole.begin` = ½ cycle). That
+ * agreement is not an argument, it is a gate: `cell-duration.test.ts` compares this
+ * structural length against what the engine plays for every ON cell in the corpus,
+ * on this path and the projected ones, and a disagreement fails.
+ *
+ * The elongation guard is what makes the span honest here — `@n` inside a step is
+ * refused upstream (`gridHasElongation`), so a slot's own `units` never stretch it
+ * past the columns it owns.
+ */
+function toCells(steps: Step[], div: number): ColumnNotes {
+  const cells: ColumnNotes = []
   for (const step of steps) {
     const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }]
     const total = stepUnits(step)
     for (const slot of slots) {
       const span = (div / total) * slot.units
-      cells.push(slot.atoms)
+      cells.push(slot.atoms.map((token) => ({ token, duration: span })))
       for (let j = 1; j < span; j++) cells.push([])
     }
   }
   return cells
 }
 
-/** derive lanes (one per distinct sound, first-appearance order) from cells */
-function lanesFromCells(cells: string[][], part?: number): StepLane[] {
+/**
+ * Derive lanes (one per distinct sound, first-appearance order) from cells.
+ *
+ * A sound appears at most once per column — the cell shows it once — so where a
+ * column holds the same token twice, the FIRST one wins the cell, matching how
+ * `deriveColumn` picks the displayed atom's span and length. The dedupe is a
+ * display rule and lives only here; nothing upstream of this loses a note to it.
+ */
+function lanesFromCells(cells: ColumnNotes, part?: number): StepLane[] {
   const order: string[] = []
   for (const cell of cells) {
-    for (const sound of cell) if (!order.includes(sound)) order.push(sound)
+    for (const n of cell) if (!order.includes(n.token)) order.push(n.token)
   }
   return order.map((sound) => ({
     sound,
     ...(part !== undefined ? { part } : {}),
-    cells: cells.map((cell) => cell.includes(sound)),
+    cells: cells.map((cell) => {
+      const note = cell.find((n) => n.token === sound)
+      return note ? cellOn(note.duration) : false
+    }),
   }))
 }
 
@@ -618,6 +663,41 @@ function buildRegions<C>(
   if (col !== total) return null
   if (regions.map((r) => r.raw).join('') !== src) return null
   return regions
+}
+
+/**
+ * Lay played onsets out as columns of notes — what `toCells` is for the syntactic
+ * core, for the paths that read the pattern's behaviour instead of its syntax.
+ * Returns null when an onset does not land on a column of this grid (the caller
+ * refuses; it is the same `irrational-onset` this always reported).
+ *
+ * THE UNIT CONVERSION, and it is the only one in the file: `Onset.durs` is in
+ * CYCLES and a cell's length is in COLUMNS, so a length is scaled by `perBar` — the
+ * number of columns one cycle covers. `[hh ~]!16` plays sixteen notes of 1/32 cycle
+ * on a 16-column grid, which is 0.5 columns each: half a cell, exactly as heard.
+ *
+ * Reads the DISPLAY view (`atoms`/`durs`) rather than `occ`, so a column showing one
+ * sound twice takes the same first-occurrence length the displayed atom's span comes
+ * from. Where the two disagree is #1032's business, not a place to invent a rule.
+ */
+function columnsFromOnsets(perCycle: Onset[][], perBar: number, bars: number): ColumnNotes | null {
+  const cols: ColumnNotes = Array.from({ length: perBar * bars }, () => [])
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const c = Math.round(o.pos * perBar)
+      if (c < 0 || c >= perBar) return null
+      cols[b * perBar + c] = o.atoms.map((token, i) => {
+        const dur = o.durs[i]
+        // `null` is NOT KNOWN, and only synthetic onsets carry it — probe columns and
+        // anchor predictions, neither of which is ever projected into a model. One
+        // column is the honest reading if one ever arrived here, and
+        // `cell-duration.test.ts` compares every cell against the engine, so a wrong
+        // length would fail rather than sit there looking plausible.
+        return { token, duration: dur === null ? 1 : dur * perBar }
+      })
+    }
+  }
+  return cols
 }
 
 /** the grid's view of a span of columns — the sounds in each, deduped (see `SourceRegion`) */
@@ -816,14 +896,18 @@ function gridFromAltElements(mini: string): ParseResult<StepGridModel> | null {
   if (perBarSteps.some(gridHasElongation)) {
     return { ok: false, reason: 'elongation is beyond the drum-grid subset' }
   }
-  const cells: string[][] = []
+  const cells: ColumnNotes = []
   for (const steps of perBarSteps) cells.push(...toCells(steps, div))
   const lanes = lanesFromCells(cells)
   const src = mini.trim()
   const regions = buildAltRegions<GridCells>(src, elemSpans, div, perBarCols, (from, to) => {
     const perBar: GridCells[] = []
     for (let b = 0; b < bars; b++) {
-      perBar.push(cells.slice(from + b * perBarCols, to + b * perBarCols).map((c) => [...new Set(c)]))
+      perBar.push(
+        tokensOf(cells.slice(from + b * perBarCols, to + b * perBarCols)).map((c) => [
+          ...new Set(c),
+        ]),
+      )
     }
     return perBar
   })
@@ -1451,20 +1535,14 @@ function projectStepGrid(src0: string): Projection<StepGridModel> {
   if (perBar * bars > MAX_STEPS) return no('resolution')
   if (perBar % totalWeight !== 0) return no('element-tiling')
   const divPerUnit = perBar / totalWeight
-  const cells: GridCells = Array.from({ length: perBar * bars }, () => [])
-  for (let b = 0; b < bars; b++) {
-    for (const o of perCycle[b]) {
-      const c = Math.round(o.pos * perBar)
-      if (c < 0 || c >= perBar) return no('irrational-onset')
-      cells[b * perBar + c] = [...new Set(o.atoms)]
-    }
-  }
+  const cells = columnsFromOnsets(perCycle, perBar, bars)
+  if (cells === null) return no('irrational-onset')
   const lanes = lanesFromCells(cells)
 
   if (bars === 1) {
     // The single-cycle projection, unchanged: a flat `source` the span writer
     // splices. Kept as its own branch so #930 cannot move what #922 already ships.
-    const parts = singlePart(src, spans, divPerUnit, perBar, gridContent(cells))
+    const parts = singlePart(src, spans, divPerUnit, perBar, gridContent(tokensOf(cells)))
     if (!parts) return no('element-tiling')
     const model: StepGridModel = {
       steps: perBar,
@@ -1481,7 +1559,7 @@ function projectStepGrid(src0: string): Projection<StepGridModel> {
   // owns a within-bar column span and remembers what it showed in each bar.
   const regions = buildAltRegions<GridCells>(src, spans, divPerUnit, perBar, (from, to) =>
     Array.from({ length: bars }, (_, b) =>
-      cells.slice(from + b * perBar, to + b * perBar).map((c) => [...new Set(c)]),
+      tokensOf(cells.slice(from + b * perBar, to + b * perBar)).map((c) => [...new Set(c)]),
     ),
   )
   if (!regions) return no('element-tiling')
@@ -1531,16 +1609,10 @@ function projectAltBars(
     perBar = lcm(perBar, d)
   }
   if (perBar * bars > MAX_STEPS) return no('resolution')
-  const cells: GridCells = Array.from({ length: perBar * bars }, () => [])
-  for (let b = 0; b < bars; b++) {
-    for (const o of perCycle[b]) {
-      const c = Math.round(o.pos * perBar)
-      if (c < 0 || c >= perBar) return no('irrational-onset')
-      cells[b * perBar + c] = [...new Set(o.atoms)]
-    }
-  }
+  const cells = columnsFromOnsets(perCycle, perBar, bars)
+  if (cells === null) return no('irrational-onset')
   // a branch spans one bar's worth of columns, so the per-unit division IS perBar
-  const parts = singlePart(innerSrc, spans, perBar, perBar * bars, gridContent(cells))
+  const parts = singlePart(innerSrc, spans, perBar, perBar * bars, gridContent(tokensOf(cells)))
   if (!parts) return no('element-tiling')
   const model: StepGridModel = {
     steps: perBar * bars,
@@ -1607,10 +1679,14 @@ function projectionEditSafe(
     const lanes = model.lanes.map((l) => ({ ...l, cells: [...l.cells] }))
     let probe = lanes.find((l) => l.sound === PROBE_SOUND)
     if (!probe) {
-      probe = { sound: PROBE_SOUND, cells: Array<boolean>(perBar * bars).fill(false) }
+      probe = { sound: PROBE_SOUND, cells: Array<StepCell>(perBar * bars).fill(false) }
       lanes.push(probe)
     }
-    probe.cells[col] = true
+    // The probe's own length is one column: it is written as a plain cell token, and
+    // the check only asks which sounds come back at which position. Nothing reads a
+    // probe's duration today; when the printer starts to (P4c) one column is what it
+    // should spell.
+    probe.cells[col] = cellOn()
     const out = serializeStepGrid({ ...model, lanes })
     if (out == null) return false
     let edited: unknown
@@ -1717,10 +1793,23 @@ function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
   const anchored = leafAnchors(src, perCycle, perBar, bars)
   if (!anchored.ok) return anchored
   const cols = anchored.cols
+  // The lanes come from the ANCHORS — that atom set is what this path can write back
+  // — and the lengths from what was PLAYED, matched per column. The anchors are total
+  // over drawn cells (`leaf-anchor-sweep`: a drawn cell with no anchor is a control
+  // that does nothing), so every anchor has an onset to take a length from.
+  const played = columnsFromOnsets(perCycle, perBar, bars)
+  if (played === null) return no('irrational-onset')
   const model: StepGridModel = {
     steps: perBar * bars,
     ...(bars > 1 ? { bars } : {}),
-    lanes: lanesFromCells(cols.map((c) => c.map((a) => a.atom))),
+    lanes: lanesFromCells(
+      cols.map((col, i) =>
+        col.map((a) => ({
+          token: a.atom,
+          duration: played[i].find((n) => n.token === a.atom)?.duration ?? 1,
+        })),
+      ),
+    ),
     leafSource: { src, cols },
   }
   if (!leafEditSafe(model, perBar, bars)) return no('edit-unsafe')
@@ -1740,7 +1829,7 @@ function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
  */
 function leafViewUsable(model: StepGridModel): boolean {
   for (let c = 0; c < model.steps; c++) {
-    const on = model.lanes.find((l) => l.cells[c])
+    const on = model.lanes.find((l) => isCellOn(l.cells[c]))
     if (!on) continue
     const lanes = model.lanes.map((l) =>
       l === on ? { ...l, cells: l.cells.map((v, j) => (j === c ? false : v)) } : l,
@@ -2000,7 +2089,7 @@ export function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
   }
   const cells = toCells(tok.steps, div)
   const src = mini.trim()
-  const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(cells))
+  const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)))
   return {
     ok: true,
     model: {
@@ -2034,7 +2123,7 @@ function gridFromAlternation(inner: string): ParseResult<StepGridModel> {
   }
   const cells = toCells(tok.steps, div)
   const src = inner.trim()
-  const parts = singlePart(src, tok.elements, div, cells.length, gridContent(cells))
+  const parts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)))
   return {
     ok: true,
     model: {
@@ -2063,7 +2152,7 @@ function gridFromAlternation(inner: string): ParseResult<StepGridModel> {
  * around it) is carried verbatim as the part's `before`.
  */
 function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
-  const partCells: string[][][] = []
+  const partCells: ColumnNotes[] = []
   const divs: number[] = []
   const elements: ElementSpan[][] = []
   for (const part of parts) {
@@ -2085,8 +2174,15 @@ function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
   const lanes: StepLane[] = []
   partCells.forEach((cells, part) => {
     const factor = total / (cells.length || 1)
-    const stretched: string[][] = Array.from({ length: total }, (_, c) =>
-      c % factor === 0 ? (cells[c / factor] ?? []) : [],
+    // A part coarser than the shared grid has its columns spread out every `factor`
+    // of them — and its notes are `factor` times as long in the SHARED grid's columns
+    // as in its own. `E2` beside `A2 A2` is one note over a two-column grid: two
+    // columns long, not one. Missed on the first cut of P4b and caught by
+    // `cell-duration.test.ts` on its first run, which is what that gate is for.
+    const stretched: ColumnNotes = Array.from({ length: total }, (_, c) =>
+      c % factor === 0
+        ? (cells[c / factor] ?? []).map((n) => ({ ...n, duration: n.duration * factor }))
+        : [],
     )
     lanes.push(...lanesFromCells(stretched, part))
   })
@@ -2104,7 +2200,7 @@ function stackSource(
   parts: string[],
   divs: number[],
   elements: ElementSpan[][],
-  partCells: string[][][],
+  partCells: ColumnNotes[],
   total: number,
 ): { source: NotationSource<GridCells> } | null {
   const out: SourcePart<GridCells>[] = []
@@ -2117,7 +2213,7 @@ function stackSource(
       elements[i],
       divs[i],
       partCells[i].length,
-      gridContent(partCells[i]),
+      gridContent(tokensOf(partCells[i])),
     )
     if (!regions) return null
     out.push({

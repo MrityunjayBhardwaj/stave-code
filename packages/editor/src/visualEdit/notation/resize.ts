@@ -11,7 +11,8 @@
  * Multi-bar (`<...>`) patterns don't resize — their column resolution is fixed
  * by the bar groups — so both functions return the model unchanged.
  */
-import type { PianoRollModel, StepGridModel } from './model'
+import { cellOn, isCellOn } from './model'
+import type { PianoRollModel, StepCell, StepGridModel } from './model'
 
 export type ResizeMode = 'spread' | 'pad'
 
@@ -41,20 +42,32 @@ export function resizeGrid(
     }
   }
   const from = model.steps
+  // "spread" preserves musical time, so a note's LENGTH scales with the grid exactly
+  // as its position does (#1010 P4b): 8→16 puts a hit at 2i and makes it twice as many
+  // columns long, which is the same fraction of the cycle. Leaving lengths alone here
+  // would halve every note while claiming to preserve the groove.
+  const factor = nextSteps / from
   return {
     ...restructured(model),
     steps: nextSteps,
     lanes: model.lanes.map((l) => ({
       ...l,
-      cells: Array.from({ length: nextSteps }, (_, j) => {
+      cells: Array.from({ length: nextSteps }, (_, j): StepCell => {
         if (nextSteps >= from) {
           // upsample: a hit only at the exact mapped position
-          return (j * from) % nextSteps === 0 && l.cells[(j * from) / nextSteps] === true
+          if ((j * from) % nextSteps !== 0) return false
+          const src = l.cells[(j * from) / nextSteps]
+          return isCellOn(src) ? cellOn(src.duration * factor) : false
         }
-        // downsample: any hit in the bucket lands on this step
+        // downsample: any hit in the bucket lands on this step, and where several do,
+        // the SHORTEST wins — a merged note never sounds longer than a note it stands
+        // for (the rule `quantizeStepGridTo` uses for the same collision)
         const lo = Math.ceil((j * from) / nextSteps)
         const hi = Math.ceil(((j + 1) * from) / nextSteps)
-        return l.cells.slice(lo, hi).some(Boolean)
+        const hits = l.cells.slice(lo, hi).filter(isCellOn)
+        return hits.length === 0
+          ? false
+          : cellOn(Math.min(...hits.map((h) => h.duration)) * factor)
       }),
     })),
   }
@@ -97,8 +110,15 @@ export function resizeRoll(
   }
 }
 
-function padCells(cells: boolean[], steps: number): boolean[] {
+/**
+ * "pad" preserves step INDICES, so a cell keeps the length it had in columns and the
+ * groove stretches or compresses with the grid — the hardware "pattern length"
+ * semantics this file's header describes. That is the opposite choice from "spread",
+ * and it is the same choice for lengths as for positions, which is the point: each
+ * mode is consistent about what it holds fixed.
+ */
+function padCells(cells: StepCell[], steps: number): StepCell[] {
   if (cells.length === steps) return [...cells]
   if (cells.length > steps) return cells.slice(0, steps)
-  return [...cells, ...new Array(steps - cells.length).fill(false)]
+  return [...cells, ...new Array<StepCell>(steps - cells.length).fill(false)]
 }

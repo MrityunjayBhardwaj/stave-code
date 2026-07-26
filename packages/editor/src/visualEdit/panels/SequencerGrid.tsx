@@ -23,7 +23,8 @@ import * as React from 'react'
 
 import { parseStepGrid, applyStepGain } from '../notation/parse'
 import { serializeStepGrid, serializeStepGain } from '../notation/serialize'
-import type { StepGridModel } from '../notation/model'
+import { cellOn, isCellOn } from '../notation/model'
+import type { StepCell, StepGridModel } from '../notation/model'
 import { VisualEditStandby } from './VisualEditStandby'
 import { SEQUENCER_TAB_ID } from './tabs'
 import { isStepChunk } from './patternKind'
@@ -47,6 +48,19 @@ const DRAG_THRESHOLD = 4
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v))
 
+/**
+ * What a painted cell holds. A hit the user places lasts exactly the column they
+ * clicked — that is the box they see, and one column is what the notation spells
+ * without any grouping.
+ *
+ * It is NOT matched to whatever length the lane's other notes happen to have: on a
+ * grid projected from `[hh ~]!16` every existing note lasts half a column, and
+ * quietly giving a new note that length would be the view deciding the music. If
+ * painting on such a grid should offer the prevailing length, that is a product
+ * question, and it belongs with P4c where the printer starts spelling lengths.
+ */
+const paint = (value: boolean): StepCell => (value ? cellOn() : false)
+
 /** flip one cell, returning a new model (stable lane set preserved) */
 function toggleCell(
   model: StepGridModel,
@@ -58,7 +72,7 @@ function toggleCell(
     ...model,
     lanes: model.lanes.map((lane, i) =>
       i === laneIndex
-        ? { ...lane, cells: lane.cells.map((c, j) => (j === stepIndex ? value : c)) }
+        ? { ...lane, cells: lane.cells.map((c, j) => (j === stepIndex ? paint(value) : c)) }
         : lane,
     ),
   }
@@ -108,7 +122,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     (laneIndex: number, stepIndex: number, value: boolean): void => {
       mutate((prev) => {
         const lane = prev.lanes[laneIndex]
-        if (!lane || stepIndex >= lane.cells.length || lane.cells[stepIndex] === value) {
+        if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) {
           return prev // no change → useGridModel skips the write
         }
         return toggleCell(prev, laneIndex, stepIndex, value)
@@ -312,7 +326,12 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
               ×
             </button>
             <div style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
-              {lane.cells.map((on, stepIndex) => {
+              {lane.cells.map((cell, stepIndex) => {
+                // The cell draws as a full-width square whether its note lasts one
+                // column or half of one — the grid has one box per column and no
+                // sub-column geometry to show a length in. Drawing the length is
+                // #1010 P4d's question, not this phase's.
+                const on = isCellOn(cell)
                 const gain = model.gains?.[stepIndex] ?? 1
                 const isPlaying = stepIndex === playingStep
                 return (

@@ -13,7 +13,7 @@
  * mini, and an empty lane leaves that unchanged, so the staged row survives
  * re-detection and only writes to text on the first hit.
  */
-import type { StepGridModel, StepLane } from './model'
+import type { StepCell, StepGridModel, StepLane } from './model'
 
 /**
  * Append a new drum voice of all-rest cells. No-op when `sound` is blank or
@@ -28,7 +28,7 @@ export function addLane(model: StepGridModel, sound: string): StepGridModel {
   const lane: StepLane = {
     sound: token,
     part: model.lanes[0]?.part,
-    cells: Array<boolean>(model.steps).fill(false),
+    cells: Array<StepCell>(model.steps).fill(false),
   }
   return { ...model, lanes: [...model.lanes, lane] }
 }

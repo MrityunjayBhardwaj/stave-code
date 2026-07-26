@@ -18,7 +18,8 @@ import {
 import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../pitch'
 import { placeNote, resizeNote } from '../place'
 import { resizeGrid, resizeRoll } from '../resize'
-import type { StepGridModel, PianoRollModel } from '../model'
+import { cellOn, isCellOn } from '../model'
+import type { StepCell, StepGridModel, PianoRollModel } from '../model'
 // the authority our bjorklund adapts — imported so the euclid test can A/B
 // against it rather than a hand-written table of our own beliefs (#917).
 import { bjorklund as strudelEuclid } from '@strudel/core/euclid.mjs'
@@ -37,10 +38,10 @@ function gridEdit(src: string, col: number, sound: string): string | null {
   const lanes = r.model.lanes.map((l) => ({ ...l, cells: [...l.cells] }))
   let lane = lanes.find((l) => l.sound === sound)
   if (!lane) {
-    lane = { sound, cells: Array<boolean>(r.model.steps).fill(false) }
+    lane = { sound, cells: Array<StepCell>(r.model.steps).fill(false) }
     lanes.push(lane)
   }
-  lane.cells[col] = !lane.cells[col]
+  lane.cells[col] = isCellOn(lane.cells[col]) ? false : cellOn()
   return serializeStepGrid({ ...r.model, lanes })
 }
 
@@ -73,7 +74,9 @@ describe('step grid — parse', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.model.steps).toBe(4)
-    expect(r.model.lanes).toEqual([{ sound: 'bd', cells: [true, false, true, false] }])
+    expect(r.model.lanes).toEqual([
+      { sound: 'bd', cells: [cellOn(), false, cellOn(), false] },
+    ])
   })
 
   it('reads a multi-sound sequence as one lane per sound', () => {
@@ -81,7 +84,7 @@ describe('step grid — parse', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.model.lanes.map((l) => l.sound)).toEqual(['bd', 'hh', 'sn'])
-    expect(r.model.lanes[1].cells).toEqual([false, true, false, true])
+    expect(r.model.lanes[1].cells).toEqual([false, cellOn(), false, cellOn()])
   })
 
   it('keeps :variant in the lane sound', () => {
@@ -105,8 +108,10 @@ describe('step grid — parse', () => {
     if (!r.ok) return
     // bd ~ hh hh on a 4-cell grid
     expect(r.model.steps).toBe(4)
+    // bd's cell lasts TWO columns — it owns half the cycle, and the group in the
+    // other half is what made the grid four wide (#1010 P4b)
     expect(r.model.lanes.find((l) => l.sound === 'bd')!.cells).toEqual([
-      true, false, false, false,
+      cellOn(2), false, false, false,
     ])
   })
 
@@ -115,8 +120,8 @@ describe('step grid — parse', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.model.lanes.map((l) => l.sound)).toEqual(['bd', 'sn'])
-    expect(r.model.lanes[0].cells[0]).toBe(true)
-    expect(r.model.lanes[1].cells[0]).toBe(true)
+    expect(r.model.lanes[0].cells[0]).toEqual(cellOn())
+    expect(r.model.lanes[1].cells[0]).toEqual(cellOn())
   })
 
   it('reads a whole-string <...> alternation as bars', () => {
@@ -159,7 +164,11 @@ describe('step grid — parse', () => {
     expect(r.model.bars).toBe(2)
     expect(r.model.steps).toBe(4) // 2 columns per bar × 2 bars
     // bar 0 fires once, bar 1 twice — exactly the two cycles it plays
-    expect(r.model.lanes).toEqual([{ sound: 'bd', cells: [true, false, true, true] }])
+    // bar 0's single hit lasts the WHOLE bar (2 columns); bar 1's two hits last one
+    // column each — the alternation changes the lengths, not just the positions
+    expect(r.model.lanes).toEqual([
+      { sound: 'bd', cells: [cellOn(2), false, cellOn(), cellOn()] },
+    ])
     // and an untouched open→write still returns the user's own bytes
     expect(serializeStepGrid(r.model)).toBe('bd*<1 2>')
   })
@@ -169,7 +178,7 @@ describe('step grid — parse', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.model.steps).toBe(8)
-    expect(r.model.lanes).toEqual([{ sound: 'hh', cells: Array(8).fill(true) }])
+    expect(r.model.lanes).toEqual([{ sound: 'hh', cells: Array(8).fill(cellOn()) }])
   })
 
   it('packs `atom*n` into its own step alongside plain steps', () => {
@@ -178,11 +187,13 @@ describe('step grid — parse', () => {
     if (!r.ok) return
     // bd holds the first half (4 cols), hh fires across the second half
     expect(r.model.steps).toBe(8)
+    // "bd holds the first half" is now in the model rather than only in this
+    // comment: its cell lasts 4 of the 8 columns, each `hh` exactly 1
     expect(r.model.lanes.find((l) => l.sound === 'bd')!.cells).toEqual([
-      true, false, false, false, false, false, false, false,
+      cellOn(4), false, false, false, false, false, false, false,
     ])
     expect(r.model.lanes.find((l) => l.sound === 'hh')!.cells).toEqual([
-      false, false, false, false, true, true, true, true,
+      false, false, false, false, cellOn(), cellOn(), cellOn(), cellOn(),
     ])
   })
 
@@ -207,7 +218,10 @@ describe('step grid — parse', () => {
     expect(r.model.steps).toBe(8)
     // Bjørklund(3,8) = x . . x . . x .
     expect(r.model.lanes).toEqual([
-      { sound: 'bd', cells: [true, false, false, true, false, false, true, false] },
+      {
+        sound: 'bd',
+        cells: [cellOn(), false, false, cellOn(), false, false, cellOn(), false],
+      },
     ])
   })
 
@@ -236,7 +250,7 @@ describe('step grid — parse', () => {
     expect(r.model.steps).toBe(16)
     // exact cells, verified against Strudel's queryArc onset columns 1,4,6,9,12,14
     expect(
-      r.model.lanes[0].cells.flatMap((on, i) => (on ? [i] : [])),
+      r.model.lanes[0].cells.flatMap((cell, i) => (isCellOn(cell) ? [i] : [])),
     ).toEqual([1, 4, 6, 9, 12, 14])
   })
 
@@ -259,7 +273,7 @@ describe('step grid — parse', () => {
     if (!r.ok) return
     // Strudel applies rotate(b, -rot) — a right rotation: x..x..x. → x.x..x..
     expect(r.model.lanes[0].cells).toEqual([
-      true, false, true, false, false, true, false, false,
+      cellOn(), false, cellOn(), false, false, cellOn(), false, false,
     ])
   })
 
@@ -269,7 +283,7 @@ describe('step grid — parse', () => {
     if (!r.ok) return
     // bd holds the first half (8 cols), sn euclid fills the second half
     expect(r.model.steps).toBe(16)
-    expect(r.model.lanes.find((l) => l.sound === 'bd')!.cells[0]).toBe(true)
+    expect(r.model.lanes.find((l) => l.sound === 'bd')!.cells[0]).toEqual(cellOn(8))
     expect(r.model.lanes.find((l) => l.sound === 'sn')!.cells.filter(Boolean).length).toBe(3)
   })
 
@@ -294,7 +308,9 @@ describe('step grid — parse', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.model.steps).toBe(3)
-    expect(r.model.lanes).toEqual([{ sound: 'bd', cells: [true, true, true] }])
+    expect(r.model.lanes).toEqual([
+      { sound: 'bd', cells: [cellOn(), cellOn(), cellOn()] },
+    ])
   })
 
   it('`!n` replicates as whole steps, unlike `*n` (subdivision)', () => {
@@ -303,12 +319,17 @@ describe('step grid — parse', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.model.steps).toBe(4)
-    expect(r.model.lanes.find((l) => l.sound === 'bd')!.cells).toEqual([true, true, true, false])
+    expect(r.model.lanes.find((l) => l.sound === 'bd')!.cells).toEqual([
+      cellOn(),
+      cellOn(),
+      cellOn(),
+      false,
+    ])
     expect(r.model.lanes.find((l) => l.sound === 'sn')!.cells).toEqual([
       false,
       false,
       false,
-      true,
+      cellOn(),
     ])
   })
 
@@ -428,7 +449,9 @@ describe('step grid — `[group]*n` (#467 nested-group multiplier)', () => {
     const r = parseStepGrid('[~ sd]*2')
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(r.model.lanes).toEqual([{ sound: 'sd', cells: [false, true, false, true] }])
+    expect(r.model.lanes).toEqual([
+      { sound: 'sd', cells: [false, cellOn(), false, cellOn()] },
+    ])
     expect(serializeStepGrid(r.model)).toBe('[~ sd]*2')
     expect(parseStepGrid('[sd hh]*3').ok).toBe(true)
   })
@@ -569,7 +592,7 @@ describe('piano roll — parse', () => {
       // two variants and the `<…>` shape, rather than flattening to one index
       const cleared = {
         ...alt.model,
-        lanes: alt.model.lanes.map((l, i) => (i === 0 ? { ...l, cells: l.cells.map(() => false) } : l)),
+        lanes: alt.model.lanes.map((l, i) => (i === 0 ? { ...l, cells: l.cells.map((): StepCell => false) } : l)),
       }
       expect(serializeStepGrid(cleared)).toBe('<~ rd:3 rd:2>')
     }
@@ -825,19 +848,23 @@ describe('resize', () => {
   it('spread preserves musical time when doubling steps', () => {
     const model: StepGridModel = {
       steps: 2,
-      lanes: [{ sound: 'bd', cells: [true, false] }],
+      lanes: [{ sound: 'bd', cells: [cellOn(), false] }],
     }
     const next = resizeGrid(model, 4, 'spread')
     expect(next.steps).toBe(4)
-    expect(next.lanes[0].cells).toEqual([true, false, false, false])
+    // "preserves musical time" now covers the LENGTH too: one column of a 2-column
+    // grid is two columns of a 4-column one, the same half-cycle either way
+    expect(next.lanes[0].cells).toEqual([cellOn(2), false, false, false])
   })
   it('pad appends empty steps', () => {
     const model: StepGridModel = {
       steps: 2,
-      lanes: [{ sound: 'bd', cells: [true, true] }],
+      lanes: [{ sound: 'bd', cells: [cellOn(), cellOn()] }],
     }
     const next = resizeGrid(model, 4, 'pad')
-    expect(next.lanes[0].cells).toEqual([true, true, false, false])
+    // pad holds step INDICES fixed, so the lengths are kept as they were and the
+    // groove stretches — the opposite trade from spread, deliberately
+    expect(next.lanes[0].cells).toEqual([cellOn(), cellOn(), false, false])
   })
   it('does not resize multi-bar patterns', () => {
     const model: StepGridModel = { steps: 4, bars: 2, lanes: [] }
@@ -950,7 +977,7 @@ const foreignGain = { mini: null, numeric: null, foreign: true }
 describe('step grid — velocity (.gain)', () => {
   const base = (steps: number, gains?: number[]): StepGridModel => ({
     steps,
-    lanes: [{ sound: 'bd', cells: Array<boolean>(steps).fill(true) }],
+    lanes: [{ sound: 'bd', cells: Array<StepCell>(steps).fill(cellOn()) }],
     ...(gains ? { gains } : {}),
   })
 
@@ -987,7 +1014,7 @@ describe('step grid — velocity (.gain)', () => {
     it('writes a quoted per-column string for mixed levels, rests as `~`', () => {
       const m: StepGridModel = {
         steps: 4,
-        lanes: [{ sound: 'bd', cells: [true, false, true, true] }],
+        lanes: [{ sound: 'bd', cells: [cellOn(), false, cellOn(), cellOn()] }],
         gains: [1, 1, 0.5, 0.25],
       }
       // column 1 is a rest (bd off) → `~`, regardless of its stored gain
@@ -997,7 +1024,7 @@ describe('step grid — velocity (.gain)', () => {
       // active columns 0 & 2 both 0.4 (col 1 is a rest) → collapses to a scalar
       const m: StepGridModel = {
         steps: 3,
-        lanes: [{ sound: 'bd', cells: [true, false, true] }],
+        lanes: [{ sound: 'bd', cells: [cellOn(), false, cellOn()] }],
         gains: [0.4, 1, 0.4],
       }
       expect(serializeStepGain(m)).toEqual({ kind: 'write', value: '0.4', quoted: false })
@@ -1008,8 +1035,8 @@ describe('step grid — velocity (.gain)', () => {
         serializeStepGain({
           steps: 2,
           lanes: [
-            { sound: 'bd', part: 0, cells: [true, false] },
-            { sound: 'hh', part: 1, cells: [true, true] },
+            { sound: 'bd', part: 0, cells: [cellOn(), false] },
+            { sound: 'hh', part: 1, cells: [cellOn(), cellOn()] },
           ],
           gains: [0.5, 0.5],
         }),
@@ -1386,12 +1413,13 @@ describe('#904 — underscores in sound names vs `_` elongation', () => {
     // then sd — never a lane called `_sd` or `_`
     expect(r.model.lanes.map((l) => l.sound)).toEqual(['bd', 'sd'])
     expect(r.model.steps).toBe(3)
-    expect(r.model.lanes[0].cells).toEqual([true, false, false])
-    expect(r.model.lanes[1].cells).toEqual([false, false, true])
+    // "elongated over two of three slots" is in the model now, not just the comment
+    expect(r.model.lanes[0].cells).toEqual([cellOn(2), false, false])
+    expect(r.model.lanes[1].cells).toEqual([false, false, cellOn()])
     // and an edit touches only that note's bytes — the `_` rides back verbatim
     const sd = r.model.lanes[1]
     const lanes = r.model.lanes.map((l) =>
-      l === sd ? { ...l, cells: l.cells.map(() => false) } : l,
+      l === sd ? { ...l, cells: l.cells.map((): StepCell => false) } : l,
     )
     expect(serializeStepGrid({ ...r.model, lanes })).toBe('bd _~')
   })
@@ -1473,7 +1501,7 @@ describe('#994 — patterns the probe marker used to refuse', () => {
     expect(r.model.lanes.map((l) => l.sound)).toEqual(['bd', 'hh', 'sd'])
     const bd = r.model.lanes[0]
     const lanes = r.model.lanes.map((l) =>
-      l === bd ? { ...l, cells: l.cells.map(() => false) } : l,
+      l === bd ? { ...l, cells: l.cells.map((): StepCell => false) } : l,
     )
     // only `bd`'s own bytes move; the `*2` and the brackets ride back verbatim
     expect(serializeStepGrid({ ...r.model, lanes })).toBe('<~ hh sd hh>*2')
@@ -1486,7 +1514,7 @@ describe('#994 — patterns the probe marker used to refuse', () => {
     expect(r.model.steps).toBe(12)
     const first = r.model.lanes[0]
     const lanes = r.model.lanes.map((l) =>
-      l === first ? { ...l, cells: l.cells.map(() => false) } : l,
+      l === first ? { ...l, cells: l.cells.map((): StepCell => false) } : l,
     )
     expect(serializeStepGrid({ ...r.model, lanes })).toBe('<~ piano folkharp square>/3')
   })

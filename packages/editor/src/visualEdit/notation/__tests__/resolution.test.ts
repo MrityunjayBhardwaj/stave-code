@@ -20,7 +20,7 @@ import {
   RESOLUTION_PRESETS,
   MAX_RESOLUTION_STEPS,
 } from '../resolution'
-import type { StepGridModel, PianoRollModel } from '../model'
+import type { StepGridModel, PianoRollModel, StepCell } from '../model'
 
 /** serialize → assert the writer did not decline → return the string */
 function ser(m: StepGridModel): string {
@@ -98,7 +98,7 @@ describe('#479 resolution — step grid ÷2 guards (honest, lossless-only)', () 
   it('caps ×2 at the column ceiling', () => {
     const wide: StepGridModel = {
       steps: MAX_RESOLUTION_STEPS,
-      lanes: [{ sound: 'bd', cells: Array<boolean>(MAX_RESOLUTION_STEPS).fill(false) }],
+      lanes: [{ sound: 'bd', cells: Array<StepCell>(MAX_RESOLUTION_STEPS).fill(false) }],
     }
     expect(canDoubleStepGrid(wide)).toBe(false)
     expect(scaleStepGrid(wide, 'double')).toBe(wide)
@@ -246,7 +246,7 @@ describe('#479 resolution — absolute slot targets (the 4/8/16/32 control)', ()
   it('caps an upward target at the column ceiling', () => {
     const wide: StepGridModel = {
       steps: MAX_RESOLUTION_STEPS / 2,
-      lanes: [{ sound: 'bd', cells: Array<boolean>(MAX_RESOLUTION_STEPS / 2).fill(false) }],
+      lanes: [{ sound: 'bd', cells: Array<StepCell>(MAX_RESOLUTION_STEPS / 2).fill(false) }],
     }
     // 128 → 256 is fine (== cap), but the doubling that would exceed it aborts.
     expect(scaleStepGridTo(wide, MAX_RESOLUTION_STEPS).steps).toBe(MAX_RESOLUTION_STEPS)
