@@ -5,7 +5,12 @@
  * needs it: the writer census asks the SAME question of a different writer, and
  * two copies of an edit oracle are two oracles that can only agree with
  * themselves ([[PV192]]). The extraction is verdict-neutral by construction —
- * `writer-reach` calls this and must still read exactly 131 / 73 with no losses.
+ * `writer-reach` calls this and read exactly 131 / 73 with no losses on the day of the
+ * extraction. Both numbers have moved since, and never because a writer changed: 155 / 75
+ * when the probe learned to advance past a silent bar (#1022), then 126 / 75 with 29 named
+ * losses when the grid arm's duration axis was restored (#1026). What the sentence meant —
+ * that moving this code must not move a verdict — still holds; what it must not be read as
+ * is a claim that these two digits are the current ones.
  *
  * WHAT IT MEASURES, and it is deliberately narrow: delete ONE cleanly-singleton
  * note through the REAL writer, then re-query the emitted document through the
@@ -35,24 +40,42 @@ export const HRES = 720720
 export type Note = { pos: number; dur: number; atom: string }
 
 /**
- * The equivalence key, per the surface's OWN editable contract — mirroring what
- * the shipped projection reads back, never a stricter oracle of our own:
+ * The equivalence key: (onset, duration, atom), on EVERY surface.
  *
- *  - ROLL (`durAware`): a duration-carrying MULTISET of (onset, dur, atom). The
- *    roll has `@n`, so a dropped elongation must show; its projection is
- *    overlap-free by construction, so a multiset is exact.
- *  - GRID: an onset SET of (onset, atom). A cell grid holds a hit or not — it
- *    cannot hold two identical hits at one instant, so `hh(<3,7>,16)` (which
- *    superimposes euclid(3) and euclid(7), doubling some hits) collapses to one
- *    per column, exactly as `gridOnsets` dedupes. Duration is not the grid's axis.
+ * DURATION IS NOT A PER-SURFACE CHOICE (#1026). This key used to take a
+ * `durAware` flag that the grid set to `false`, commented "an onset instrument —
+ * the grid has no duration axis". That sentence is true about what the grid PANEL
+ * draws and it is not a licence for what the grid WRITER may alter: a view that
+ * cannot show duration still must not change it, because "edits locally / no
+ * silent data loss" is a property of the DOCUMENT, not of the panel. Under the
+ * old key, 11 grid asks emitted writes whose surviving note had a different
+ * length and every one of them scored as a clean transfer — including
+ * `[bd ~]*2`, where the derived writer emits `~ bd` and the surviving `bd` grows
+ * from 0.25 to 0.5. The comparison must span every axis the document carries,
+ * not every axis the view draws.
+ *
+ * `collapses` is what genuinely IS per-surface, and it is about the view's
+ * representational capacity rather than about which axes count:
+ *
+ *  - GRID (`collapses`): a cell holds a hit or it does not, so it cannot hold two
+ *    IDENTICAL events at one instant. `hh(<3,7>,16)` superimposes euclid(3) and
+ *    euclid(7) and plays 10 haps at 7 distinct instants; the grid shows 7 and a
+ *    faithful re-emit plays 7. Comparing as a multiset would false-flag that.
+ *  - ROLL: a duration-carrying MULTISET. Its projection is overlap-free by
+ *    construction, so nothing is there to collapse and a multiset is exact.
+ *
+ * Measured over the corpus (#1026): the two spellings of the collapse — dedupe on
+ * the onset key versus on the full key — pick out the same 11 asks, and dropping
+ * the collapse entirely picks out the same 11 again. So `collapses` fires (4 grid
+ * asks have a row to collapse, and the `hh(<3,7>,16)` control collapses 10 rows
+ * to 7) but currently changes no verdict. It is kept as DEFENSIVE rather than
+ * deleted: the hazard is real, silent, and a grid re-emit is entitled to collapse.
  */
-export const sig = (rows: Note[], durAware: boolean): string => {
-  const keys = rows.map((r) =>
-    durAware
-      ? `${Math.round(r.pos * HRES)}|${Math.round(r.dur * HRES)}|${r.atom}`
-      : `${Math.round(r.pos * HRES)}|${r.atom}`,
+export const sig = (rows: Note[], collapses: boolean): string => {
+  const keys = rows.map(
+    (r) => `${Math.round(r.pos * HRES)}|${Math.round(r.dur * HRES)}|${r.atom}`,
   )
-  return JSON.stringify((durAware ? keys : [...new Set(keys)]).sort())
+  return JSON.stringify((collapses ? [...new Set(keys)] : keys).sort())
 }
 
 /** the played atom, however the value carries it — a sound, a MIDI note, a degree */
@@ -220,20 +243,27 @@ export type EditProbe =
 
 export interface Surface {
   key: 'step' | 'roll'
-  /** the roll models `@n`, so a lost elongation must show; the grid is onset-only */
-  durAware: boolean
+  /**
+   * Does this surface COLLAPSE identical events at one instant?
+   *
+   * The only per-surface property of the comparison. Duration is deliberately NOT
+   * one — see `sig` — because it is an axis of the document rather than of the
+   * panel, and the flag that used to make it optional certified 11 writes that
+   * silently changed a note's length (#1026).
+   */
+  collapses: boolean
   del: (model: StepGridModel & PianoRollModel, col: number) => string | null
 }
 
 export const GRID_SURFACE: Surface = {
   key: 'step',
-  durAware: false, // an onset instrument — the grid has no duration axis
+  collapses: true, // a cell holds a hit or not — two identical hits at one instant are one cell
   del: (m, col) => deleteFromGrid(m, col),
 }
 
 export const ROLL_SURFACE: Surface = {
   key: 'roll',
-  durAware: true, // `@n` elongation — duration is the roll's to preserve
+  collapses: false, // overlap-free by construction — nothing to collapse, so a multiset is exact
   del: (m, col) => deleteFromRoll(m, col),
 }
 
@@ -333,7 +363,7 @@ export function probeDeleteAt(
       b === bar
         ? want.filter((n) => Math.round(n.pos * HRES) !== Math.round(pos * HRES))
         : want
-    if (sig(got, s.durAware) !== sig(expected, s.durAware)) return { verdict: 'corrupt', out }
+    if (sig(got, s.collapses) !== sig(expected, s.collapses)) return { verdict: 'corrupt', out }
   }
   return { verdict: 'ok', out }
 }
