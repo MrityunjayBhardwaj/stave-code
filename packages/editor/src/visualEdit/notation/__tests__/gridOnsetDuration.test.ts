@@ -86,6 +86,19 @@ describe('#1034 — one sound at one column with two lengths keeps both', () => 
    * read the field yet), which is exactly what made it worth closing before P4b
    * puts the length into the cell.
    */
+  /**
+   * WHY ASSERTING AN ORDER HERE IS SAFE, and not a flake waiting to happen.
+   *
+   * The issue this closes says which length survived came down to "hap arrival
+   * order", which reads like non-determinism — it is not. `stack`'s query is
+   * `flatten(pats.map((pat) => pat.query(state)))`
+   * (`@strudel/core@1.2.6/pattern.mjs:1324`): a map over the parts in SOURCE
+   * order, flattened. So a stack's haps arrive in part order, deterministically.
+   *
+   * What was arbitrary was never the order — it was letting the order DECIDE
+   * which of two real notes to keep. The order itself is stable enough to pin,
+   * and pinning it is what makes "both are kept, in part order" checkable at all.
+   */
   it('keeps BOTH lengths when a stack sounds one token twice at one instant', () => {
     // part A: `bd*2` → bd at 0 for 0.5. part B: `bd` → bd at 0 for the full cycle.
     expect(read('bd*2, bd')).toEqual([
