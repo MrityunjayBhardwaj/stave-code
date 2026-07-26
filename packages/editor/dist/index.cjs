@@ -26873,10 +26873,11 @@ function readGridOnsets(pat, cyc) {
     if (NUMERIC.test(token)) return no("wrong-surface");
     const pos = h.whole.begin.valueOf() - cyc;
     const key2 = Math.round(pos * 720720);
-    const cell = byCol.get(key2) ?? { atoms: [], spans: [] };
+    const cell = byCol.get(key2) ?? { atoms: [], spans: [], durs: [] };
     if (!cell.atoms.includes(token)) {
       cell.atoms.push(token);
       cell.spans.push(leafLoc(h));
+      cell.durs.push(h.whole.end.valueOf() - h.whole.begin.valueOf());
     }
     byCol.set(key2, cell);
   }
@@ -26885,7 +26886,8 @@ function readGridOnsets(pat, cyc) {
     onsets: [...byCol.entries()].map(([k, c]) => ({
       pos: k / 720720,
       atoms: c.atoms,
-      spans: c.spans
+      spans: c.spans,
+      durs: c.durs
     }))
   };
 }
@@ -27041,9 +27043,14 @@ function projectionEditSafe(model, perBar2, bars, base, probeCols) {
       if (bb !== b) return want;
       const hit = want.find((o) => Math.abs(o.pos - t) < 1e-9);
       const out2 = want.map(
-        (o) => o === hit ? { pos: o.pos, atoms: [...o.atoms, PROBE_SOUND], spans: [...o.spans, null] } : o
+        (o) => o === hit ? {
+          pos: o.pos,
+          atoms: [...o.atoms, PROBE_SOUND],
+          spans: [...o.spans, null],
+          durs: [...o.durs, 0]
+        } : o
       );
-      if (!hit) out2.push({ pos: t, atoms: [PROBE_SOUND], spans: [null] });
+      if (!hit) out2.push({ pos: t, atoms: [PROBE_SOUND], spans: [null], durs: [0] });
       return out2;
     }, "expectedFor");
     for (let bb = 0; bb < bars; bb++) {
@@ -27180,7 +27187,7 @@ function leafExpected(cols, perBar2, bars, span, text) {
         if (hit && text === null) continue;
         atoms.add(hit ? text : a.atom);
       }
-      if (atoms.size > 0) bar2.push({ pos: i / perBar2, atoms: [...atoms], spans: [] });
+      if (atoms.size > 0) bar2.push({ pos: i / perBar2, atoms: [...atoms], spans: [], durs: [] });
     }
     out.push(bar2);
   }
