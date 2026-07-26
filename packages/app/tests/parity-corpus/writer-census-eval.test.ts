@@ -46,12 +46,14 @@
  *
  * ⚠ THOSE THREE FIGURES ARE PRE-#1019 AND ARE KEPT ONLY TO PRESERVE THE REASONING
  * ABOVE. Naming the `:`-variant (#1019) moved BOTH arms, because both run the same
- * writers over differently-drawn ask populations. Current values:
+ * writers over differently-drawn ask populations.
  *
- *   mini-corpus (parse-side harvest) 1058/1217 = 86.9%
- *   eval-first, all resolved minis    430/500  = 86.0%
- *   eval-first, ONLY the newly-admitted slice
- *                                      75/93   = 80.6%
+ * ⚠ AND THE "current values" THAT USED TO SIT HERE — 1058/1217, 430/500, 75/93 —
+ * HAD THEMSELVES DRIFTED, to 1055/1217, 427/500 and 76/93, because the duration
+ * axis (#1026) moved both arms again. That is the third time this file's headline
+ * figures went stale in prose while the test stayed green. They are no longer
+ * written here: every one of them is now a pinned constant at the foot of this
+ * file, asserted exactly, so it cannot move without failing (#1031).
  *
  * And it cost this file its headline conclusion: the eval arm no longer scores
  * HIGHER than the harvest arm, it scores marginally lower. So that ordering was
@@ -59,16 +61,24 @@
  * heavily-overlapping samples. What survives is the weaker, real claim: the two large
  * populations agree inside ~1pp and the new slice sits ~6pp below them.
  *
- * NOTE FOR WHOEVER CHANGES THE WRITERS NEXT: this test's assertions are deliberately
- * loose bounds (`> 200`, `>= 142`), so it does NOT turn red when the rate moves. It
- * did not turn red for #1019. The figures above have to be re-read from the test
- * output by hand; nothing pins them.
+ * NOTE FOR WHOEVER CHANGES THE WRITERS NEXT — REVERSED AT #1031. This file used to
+ * assert only loose bounds (`> 200`, `>= 142`), so it did not turn red when the
+ * rate moved; it did not turn red for #1019, and it did not turn red for #1026
+ * either. Every printed headline is now pinned to an exact literal. If you have
+ * changed a writer, a reader or the oracle, EXPECT this file to fail — that is the
+ * point of it. Re-derive the numbers (measure the new value, then re-measure the
+ * OLD value on the current tree, because the difference from the recorded figure
+ * is someone else's drift and belongs to them), and update the pins in the same
+ * commit that moves them, saying which direction and why.
  *
  * The transfer rate is close to a property of the corpus, not of how the
  * asks were drawn. That is a weaker claim than the prediction wanted and a more
  * useful one than either arm alone could support.
  */
 import { describe, it, expect } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { unitsWithStatus } from './editCoverage'
 import {
   boot,
@@ -91,6 +101,34 @@ import type { PianoRollModel, StepGridModel } from '../../../editor/src/visualEd
 import { GRID_SURFACE, ROLL_SURFACE, probeEdit } from './engineEditOracle'
 
 const NO_CORE_REFUSAL = { ok: false as const, reason: '(core served this — no refusal)' }
+
+/**
+ * The mini-corpus arm's headline, READ from the artifact that arm emits rather
+ * than transcribed into a comment here (#1031).
+ *
+ * It used to be a hand-copied literal, and it said `965/1217 = 79.3%` for three
+ * merges after the real value had moved to 1055/1217 — a pre-fix number printed
+ * one line away from post-fix ones, which is exactly the side-by-side-populations
+ * error this whole comparison exists to guard against. The objection to deriving
+ * it was that importing the other TEST file would make each unrunnable alone.
+ * That objection does not apply to its committed OUTPUT: `WRITER-CENSUS.json` is
+ * a file, reading it couples nothing, and a stale read is now impossible because
+ * the figure IS the other arm's own output rather than a copy of it.
+ */
+function miniCorpusArm(): { transfers: number; asks: number; pct: string } {
+  const j = JSON.parse(
+    fs.readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), 'WRITER-CENSUS.json'),
+      'utf8',
+    ),
+  ) as { rows: { outcome: string }[] }
+  const transfers = j.rows.filter((r) => r.outcome === 'transfers').length
+  return {
+    transfers,
+    asks: j.rows.length,
+    pct: ((100 * transfers) / j.rows.length).toFixed(1) + '%',
+  }
+}
 
 const SURFACES = [
   {
@@ -174,6 +212,7 @@ describe('the reach transfer over the EVAL-FIRST ask population', () => {
 
     const all = rate(resolved)
     const fresh = rate(newlyAdmitted)
+    const otherArm = miniCorpusArm()
     const pct = (a: number, b: number) => (b === 0 ? 'n/a' : ((100 * a) / b).toFixed(1) + '%')
 
     console.log(
@@ -195,17 +234,14 @@ describe('the reach transfer over the EVAL-FIRST ask population', () => {
         `  untransferable      ${fresh.untransferable}  (${pct(fresh.untransferable, fresh.coreServed)})`,
         `  unverified          ${fresh.unverified}`,
         ``,
-        // ⚠ TRANSCRIBED, and therefore capable of going stale while reading as current.
-        // It said `965/1217 = 79.3%` for three merges after that arm moved to 1055/1217
-        // = 86.7% — a pre-fix number printed one line from post-fix ones, which is the
-        // side-by-side-populations error this whole comparison exists to guard against.
-        // Left as a literal because the two arms are separate test files and importing
-        // one into the other to derive it would make each unrunnable alone; the fix is
-        // that it now says WHEN it was taken, so a reader can tell that it might not be.
-        `mini-corpus arm, for comparison (as of #1026): 1055/1217 = 86.7% transfer`,
+        // DERIVED from `WRITER-CENSUS.json`, that arm's own committed output — no
+        // longer transcribed, so it cannot disagree with the arm it reports on.
+        `mini-corpus arm, for comparison: ${otherArm.transfers}/${otherArm.asks} = ${otherArm.pct} transfer`,
         `modules NOT registered ${missingModules.length ? missingModules.join('; ') : 'none'}`,
       ].join('\n'),
     )
+
+    /* ── the bounds that express INTENT ──────────────────────────────────────── */
 
     // The arm has to contain minis the parse-side snapshot does not, or it is
     // measuring the same thing twice and its agreement means nothing. Note this is
@@ -218,5 +254,71 @@ describe('the reach transfer over the EVAL-FIRST ask population', () => {
     // Both arms must find a non-trivial core-served population, or the comparison
     // of their rates is between two numbers one of which is noise.
     expect(all.coreServed).toBeGreaterThan(200)
+
+    /* ── the PINS (#1031) ────────────────────────────────────────────────────────
+     * Every figure the report above prints, asserted exactly. The bounds alone let
+     * this file print three generations of stale headlines while staying green;
+     * they say what must never be true, and say nothing about what IS true.
+     *
+     * A bound and a pin answer different questions and this file needs both: the
+     * bound survives an intended change, the pin makes an unintended one loud.
+     */
+    expect({
+      evalOk,
+      docs: docs.length,
+      units,
+      resolvedUnits,
+      resolvedMinis: resolved.size,
+      newlyAdmitted: newlyAdmitted.size,
+    }).toEqual(POPULATION)
+
+    expect(all).toEqual(ALL_RESOLVED)
+    expect(fresh).toEqual(NEWLY_ADMITTED)
+    expect({ transfers: otherArm.transfers, asks: otherArm.asks }).toEqual(MINI_CORPUS_ARM)
+
+    // A module that stops registering silently shrinks the population every figure
+    // above is computed over — a restriction that would otherwise appear only as a
+    // number moving for no visible reason. Pinned by NAME so a NEW one fires while
+    // the known-broken one stays quiet.
+    expect(missingModules.map((m) => m.split(':')[0]).sort()).toEqual(MISSING_MODULES)
   }, 900_000)
 })
+
+/* ── PINNED FIGURES (#1031) ───────────────────────────────────────────────────
+ * Observed 2026-07-27. These are the numbers the header used to carry as prose
+ * and get wrong three times running. Moving one is a real event: re-derive it,
+ * establish whether the movement is yours or drift someone else's change left
+ * behind, and update it here in the commit that causes it.
+ */
+
+/** the ask population this arm draws, before any writer is asked anything */
+const POPULATION = {
+  evalOk: 142,
+  docs: 150,
+  units: 1039,
+  resolvedUnits: 898,
+  resolvedMinis: 671,
+  newlyAdmitted: 266,
+}
+
+/** the counterfactual over every eval-resolved mini */
+const ALL_RESOLVED = { coreServed: 500, transfers: 427, untransferable: 33, unverified: 40 }
+
+/** the counterfactual over ONLY the slice `mini-corpus.json` does not contain */
+const NEWLY_ADMITTED = { coreServed: 93, transfers: 76, untransferable: 7, unverified: 10 }
+
+/**
+ * The sibling arm's headline, pinned here too even though it is DERIVED from
+ * `WRITER-CENSUS.json`. Deriving stops the two disagreeing; pinning is what makes
+ * the sibling's own movement visible from this side, which is the failure that
+ * started this — 965/1217 sat here across three merges of someone else's change.
+ */
+const MINI_CORPUS_ARM = { transfers: 1055, asks: 1217 }
+
+/**
+ * Known-unregistered modules. `@strudel/soundfonts` fails on a CommonJS interop
+ * problem with `soundfont2` and has done throughout; it is pinned rather than
+ * fixed so that a SECOND module joining it turns this red instead of quietly
+ * removing documents from every figure above.
+ */
+const MISSING_MODULES = ['@strudel/soundfonts']
