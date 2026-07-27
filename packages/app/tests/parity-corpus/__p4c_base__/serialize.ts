@@ -12,7 +12,6 @@
 import type {
   AltSource,
   GainWrite,
-  GridCells,
   LeafSpan,
   NotationSource,
   PianoRollModel,
@@ -21,7 +20,7 @@ import type {
   StepGridModel,
   StepLane,
 } from './model'
-import { gridCellKey, isCellOn } from './model'
+import { isCellOn } from './model'
 
 /**
  * An `altSource` still describes a model only while its single-cycle width times
@@ -46,62 +45,6 @@ function fmtGain(v: number): string {
   return v.toFixed(2).replace(/\.?0+$/, '')
 }
 
-/* ── op admissibility: ASK THE WRITER, never predict it ──────────── */
-
-/**
- * An op's result, or the input UNCHANGED when the writer cannot spell it.
- *
- * WHY THIS EXISTS, and why it lives here rather than in each op (#1010 P4c). The ops
- * each carried a hand-written `can<Op>` predicate that reasoned about the MODEL — "every
- * odd column is empty", "the gains are neutral", "the bars stay integral" — and from
- * that PREDICTED whether the writer would accept the result. That is a second oracle for
- * the writer's admissibility ([[PV192]]), and it broke the moment the printer's rules
- * changed: P4c made the printer preserve a note's length, which the grid can only spell
- * as a whole number of columns ≥1, and every COARSENING op scales a length below that.
- * Measured over the corpus: ÷2 went from 0 declines to 24 of the 24 units where it is
- * offered — the button present and doing nothing — plus quantize-down and
- * resize-spread-down, with no gate anywhere seeing it, because each op's A/B compared
- * that op to ITSELF ([[PK64]]) and never reached the writer.
- *
- * The rule this replaces the predictions with is one the project already proved at the
- * READ boundary and simply had not applied to the OPS:
- *
- *   prove-before-offer — `parse.ts:1638` ("the writer must reproduce the user's bytes
- *   before we offer the view at all") and `leafViewUsable` ("Asked of the REAL writer …
- *   so the check cannot drift from what an actual click does").
- *
- * So an op is admissible exactly when its result is WRITABLE, asked of the real writer.
- * One rule for every op including ops not yet written; it cannot drift from the printer;
- * and it needs no per-op length reasoning, which leaves [[PV240]]'s table alone — ÷2
- * still SCALES, it is simply not offered where scaling produces something unspellable.
- *
- * WHY REFUSE RATHER THAN CLAMP TO ONE COLUMN. Clamping would keep ÷2 working and change
- * every note's length instead (1/8 → 1/4). `SequencerGrid.tsx` never reads `duration`, so
- * that change is INVISIBLE in the panel — and #1026 already ruled on exactly this: a view
- * that cannot show duration still must not change it, because "edits locally / no silent
- * data loss" is a property of the DOCUMENT, not of the panel. An op the user explicitly
- * asked for is no licence to alter an axis the view cannot show them.
- *
- * Returning the INPUT (by reference) rather than null is what makes this composable: the
- * `notation/` op family already signals "could not apply" that way, so `mutate` skips the
- * write and every `can<Op>` reduces to `op(model) !== model` with no extra plumbing.
- *
- * NOT the same thing as leaning on an incidental refusal. `resize.ts`'s `restructured()`
- * warns against treating a writer null as a substitute for invalidating stale regions,
- * and that still holds: this gate is a deliberate admissibility question asked of the
- * writer, not a length check that happens to catch a provenance bug.
- */
-export function ifGridSpellable(input: StepGridModel, next: StepGridModel): StepGridModel {
-  if (next === input) return input
-  return serializeStepGrid(next) === null ? input : next
-}
-
-/** the roll's half of `ifGridSpellable` — same rule, the other writer */
-export function ifRollSpellable(input: PianoRollModel, next: PianoRollModel): PianoRollModel {
-  if (next === input) return input
-  return serializePianoRoll(next) === null ? input : next
-}
-
 /* ── drum grid ─────────────────────────────────────────────────── */
 
 export function serializeStepGrid(model: StepGridModel): string | null {
@@ -122,30 +65,24 @@ export function serializeStepGrid(model: StepGridModel): string | null {
   if (altSourceFits(model.altSource, model.steps)) return spliceAltGrid(model)
 
   // Span surgery first: it puts back what the user wrote wherever they didn't
-  // edit. Three answers, and the third is new in P4c:
-  //   a string   — spliced;
-  //   'rebuild'  — the regions no longer describe the grid, so the rebuilds below
-  //                take over, the way this always worked;
-  //   'decline'  — a length this grid carries has no spelling at its resolution.
-  // The last MUST NOT fall through to the rebuild: the rebuild is exactly the
-  // re-derivation that drops the length, so falling through would turn a refusal
-  // back into the silent corruption it exists to prevent.
+  // edit. It declines (null) whenever the regions no longer describe the grid,
+  // and the rebuilds below take over — the way this always worked.
   const spliced = spliceGrid(model)
-  if (spliced === 'decline') return null
-  if (spliced !== 'rebuild') return spliced
+  if (spliced !== null) return spliced
 
   const bars = model.bars ?? 1
   if (bars > 1) return gridBars(model, bars)
 
   const parts = [...new Set(model.lanes.map((l) => l.part ?? 0))].sort((a, b) => a - b)
-  if (parts.length <= 1) return gridColumns(model.lanes, model.steps)?.join(' ') ?? null
-  const lines = parts.map((p) =>
-    gridColumns(
-      model.lanes.filter((l) => (l.part ?? 0) === p),
-      model.steps,
-    )?.join(' '),
-  )
-  return lines.some((l) => l === undefined) ? null : lines.join(', ')
+  if (parts.length <= 1) return gridColumns(model.lanes, model.steps).join(' ')
+  return parts
+    .map((p) =>
+      gridColumns(
+        model.lanes.filter((l) => (l.part ?? 0) === p),
+        model.steps,
+      ).join(' '),
+    )
+    .join(', ')
 }
 
 /* ── span surgery (#913) ───────────────────────────────────────── */
@@ -163,19 +100,18 @@ export function serializeStepGrid(model: StepGridModel): string | null {
  * (`serialize(parse(m)) === m`) falls out as a consequence rather than being a
  * case anyone has to special-case.
  *
- * Returns `'rebuild'` when the regions no longer describe this grid — then the
- * caller rebuilds from the model, which is lossy and always was — and `'decline'`
- * when a length here cannot be spelled, which the caller must NOT rebuild past.
+ * Returns null when the regions no longer describe this grid — then the caller
+ * rebuilds from the model, which is lossy and always was.
  */
-function spliceGrid(model: StepGridModel): string | 'rebuild' | 'decline' {
+function spliceGrid(model: StepGridModel): string | null {
   const src = model.source
-  if (!src || src.parts.length === 0) return 'rebuild'
+  if (!src || src.parts.length === 0) return null
   // A per-column `.gain("…")` runs 1:1 against the FLAT column sequence, so a
   // grid carrying one has to keep emitting that sequence or the velocities
   // land on the wrong notes. Asked rather than re-derived, so the two writers
   // cannot drift apart.
   const gain = serializeStepGain(model)
-  if (gain.kind === 'write' && gain.quoted) return 'rebuild'
+  if (gain.kind === 'write' && gain.quoted) return null
 
   let out = src.prefix
   for (const p of src.parts) {
@@ -190,9 +126,7 @@ function spliceGrid(model: StepGridModel): string | 'rebuild' | 'decline' {
     const last = p.regions[p.regions.length - 1]
     out += p.before
     if (cols === null || last === undefined || last.to !== cols.length) {
-      const rebuilt = gridColumns(lanes, model.steps)
-      if (rebuilt === null) return 'decline'
-      out += rebuilt.join(' ') + p.after
+      out += gridColumns(lanes, model.steps).join(' ') + p.after
       continue
     }
     // A lone element owning the whole line has nothing to stay aligned WITH, so
@@ -205,13 +139,9 @@ function spliceGrid(model: StepGridModel): string | 'rebuild' | 'decline' {
       const now = cols.slice(r.from, r.to)
       // untouched → the span's own bytes, verbatim; touched → re-emit, keeping
       // whatever padding the span carried around it
-      if (sameCells(now, r.content)) {
-        out += r.raw
-        continue
-      }
-      const re = reemitRegion(now, sole ? 1 : p.div)
-      if (re === null) return 'decline'
-      out += r.leading + re + r.trailing
+      out += sameCells(now, r.content)
+        ? r.raw
+        : r.leading + (sole ? now.map(cellToken).join(' ') : reemitRegion(now, p.div)) + r.trailing
     }
     out += p.after
   }
@@ -293,7 +223,7 @@ function spliceByLeaf(model: StepGridModel): string | null {
   for (let c = 0; c < model.steps; c++) {
     const anchors = ls.cols[c]
     const before = anchors.map((a) => a.atom)
-    const after = [...new Set(now[c].map((n) => n.token))]
+    const after = [...new Set(now[c])]
     const gone = before.filter((a) => !after.includes(a))
     const added = after.filter((a) => !before.includes(a))
     // The one add that IS a byte replacement: a lone atom swapped for another in
@@ -404,41 +334,28 @@ function spliceRollByLeaf(model: PianoRollModel): string | null {
  *
  * Never rebuilds: an alt model that reached the whole-cycle `gridBars` path
  * would come back as `<[bd sd] [bd hh]>`, destroying the notation the user wrote.
- *
- * Null when a length in an edited element has no spelling — same refusal as the
- * other two writers, and here it is the only answer available, since this path
- * has no rebuild to fall to by construction.
  */
-function spliceAltGrid(model: StepGridModel): string | null {
+function spliceAltGrid(model: StepGridModel): string {
   const a = model.altSource
   if (!a) return '' // unreachable: caller gates on altSource
   const cols = columnAtoms(model.lanes, model.steps)
   let out = ''
   for (const r of a.regions) {
-    const now: GridCells[] = []
+    const now: string[][][] = []
     for (let b = 0; b < a.bars; b++) {
-      now.push(
-        cols
-          .slice(r.from + b * a.perBar, r.to + b * a.perBar)
-          .map((c) => [...new Map(c.map((n) => [gridCellKey(n), n])).values()]),
-      )
+      now.push(cols.slice(r.from + b * a.perBar, r.to + b * a.perBar).map((c) => [...new Set(c)]))
     }
-    if (now.every((bar, b) => sameCells(bar, r.perBar[b]))) {
-      out += r.raw
-      continue
-    }
-    const re = reemitAltRegion(now, a.div)
-    if (re === null) return null
-    out += r.leading + re + r.trailing
+    out += now.every((bar, b) => sameCells(bar, r.perBar[b]))
+      ? r.raw
+      : r.leading + reemitAltRegion(now, a.div) + r.trailing
   }
   return out
 }
 
 /** re-emit an edited alt element: `<b0 b1 …>` when its bars differ, plain when equal */
-function reemitAltRegion(perBar: GridCells[], div: number): string | null {
+function reemitAltRegion(perBar: string[][][], div: number): string {
   const barTokens = perBar.map((bar) => reemitRegion(bar, div))
-  if (barTokens.some((t) => t === null)) return null
-  return barTokens.every((t) => t === barTokens[0]) ? barTokens[0]! : `<${barTokens.join(' ')}>`
+  return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(' ')}>`
 }
 
 /**
@@ -450,44 +367,24 @@ function reemitAltRegion(perBar: GridCells[], div: number): string | null {
  * rhythm than the part's notation can hold, and the caller falls back to
  * rebuilding the whole line (lossy, and the only honest answer here).
  */
-function partColumns(lanes: StepLane[], steps: number, factor: number): GridCells | null {
+function partColumns(lanes: StepLane[], steps: number, factor: number): string[][] | null {
   if (factor < 1 || steps % factor !== 0) return null
   const all = columnAtoms(lanes, steps)
-  const cols: GridCells = []
+  const cols: string[][] = []
   for (let c = 0; c < steps; c++) {
-    // THE LENGTHS ARE IN THE UNITS BEING CHANGED. Taking every `factor`-th column
-    // re-expresses this part on its OWN grid, and a cell's duration is counted in
-    // SHARED columns — `sd` beside `bd bd` lasts two of them and one of its own. So
-    // the duration divides by the same factor the index does. Scaling the index and
-    // copying the payload is the same mistake the READER made at this boundary one
-    // phase ago: a rescale is a change of units, and it applies to every field
-    // expressed in those units, never to the index alone.
-    if (c % factor === 0)
-      cols.push(all[c].map((n) => ({ token: n.token, duration: n.duration / factor })))
+    if (c % factor === 0) cols.push(all[c])
     else if (all[c].length > 0) return null
   }
   return cols
 }
 
-/**
- * the notes STARTING in each column, with their lengths — lane order is
- * presentational, so these compare as sets (`gridCellKey`)
- */
-function columnAtoms(lanes: StepLane[], steps: number): GridCells {
-  const cols: GridCells = []
-  for (let i = 0; i < steps; i++) {
-    const here: GridCells[number] = []
-    for (const l of lanes) {
-      const cell = l.cells[i]
-      if (isCellOn(cell)) here.push({ token: l.sound, duration: cell.duration })
-    }
-    cols.push(here)
-  }
+/** the sounds sitting in each column — lane order is presentational, so compare as sets */
+function columnAtoms(lanes: StepLane[], steps: number): string[][] {
+  const cols: string[][] = []
+  for (let i = 0; i < steps; i++)
+    cols.push(lanes.filter((l) => isCellOn(l.cells[i])).map((l) => l.sound))
   return cols
 }
-
-/** just the sounds, for the write paths that address notes rather than spell them */
-const soundsOf = (cols: GridCells): string[][] => cols.map((c) => c.map((n) => n.token))
 
 /**
  * ⚠ SOUNDS ONLY, and as of #1010 P4b a cell also carries a LENGTH (#1045). A model
@@ -499,12 +396,10 @@ const soundsOf = (cols: GridCells): string[][] => cols.map((c) => c.map((n) => n
  * comparison cannot see them. Decide it there, before the first "my edit did
  * nothing".
  */
-const sameCell = (a: GridCells[number], b: GridCells[number]): boolean => {
-  const keys = b.map(gridCellKey)
-  return a.length === b.length && a.every((x) => keys.includes(gridCellKey(x)))
-}
+const sameCell = (a: string[], b: string[]): boolean =>
+  a.length === b.length && a.every((x) => b.includes(x))
 
-const sameCells = (a: GridCells, b: GridCells): boolean =>
+const sameCells = (a: string[][], b: string[][]): boolean =>
   a.length === b.length && a.every((c, i) => sameCell(c, b[i]))
 
 /**
@@ -514,94 +409,25 @@ const sameCells = (a: GridCells, b: GridCells): boolean =>
  * top-level steps, which is exactly the flattening that pushed `hh*2`'s
  * neighbours out of position.
  */
-function reemitRegion(cols: GridCells, div: number): string | null {
-  const spelled = sustainTokens(cols, div)
-  if (spelled === null) return null
+function reemitRegion(cols: string[][], div: number): string {
   const steps: string[] = []
-  for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(spelled.slice(i, i + div)))
+  for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(cols.slice(i, i + div)))
   return steps.join(' ')
 }
 
-/**
- * One token per column, with a held note's covered columns spelled `_` — the
- * printer PRESERVING a length instead of re-deriving it (#1010 P4c).
- *
- * `_` is SUSTAIN, not silence: `bd _ sd` is bd sounding two thirds of the cycle,
- * and `bd _ _` is one note of weight 3 (`~` and `-` are the rests, the same branch
- * in `mini.mjs`). So a note covering N columns is its token followed by N-1 `_`,
- * which keeps the one-token-per-column shape every other writer here depends on —
- * unlike `@n`, which would change the element COUNT and shift its neighbours.
- *
- * DECLINES (null) rather than spelling a length wrongly. Four ways a length has no
- * spelling at this resolution, each a real shape in the corpus:
- *  - a length that is not a whole number of columns — a note shorter than a column
- *    cannot be a token at the grid's own resolution without subdividing, which
- *    would mean authoring notation the user never wrote;
- *  - a covered column that ANOTHER note starts in: `[_,b]` is a chord containing a
- *    token that means nothing there, not a sustain under a note;
- *  - a sustain running past the region: regions are emitted independently and an
- *    untouched one is copied VERBATIM, so the `_` would have to land in bytes this
- *    call does not own;
- *  - a `_` with nothing before it in its own sequence — the first column of a
- *    `[…]` step group, or of the region itself.
- *
- * Declining is not a shrug. A derived view that mis-writes is worse than one that
- * declines: the caller returns null, the binding layer leaves the document alone,
- * and the edit visibly does nothing instead of silently shortening a note.
- */
-function sustainTokens(cols: GridCells, div: number): string[] | null {
-  const out: string[] = new Array(cols.length).fill('')
-  const covered = new Array<boolean>(cols.length).fill(false)
-
-  for (let c = 0; c < cols.length; c++) {
-    for (const n of cols[c]) {
-      const d = Math.round(n.duration)
-      if (Math.abs(n.duration - d) > 1e-6 || d < 1) return null
-      if (c + d > cols.length) return null // runs past the bytes this region owns
-      for (let k = 1; k < d; k++) {
-        if (cols[c + k].length > 0) return null // another note starts under the sustain
-        covered[c + k] = true
-      }
-    }
-  }
-
-  for (let c = 0; c < cols.length; c++) {
-    if (cols[c].length > 0) {
-      out[c] = cellToken(cols[c].map((n) => n.token))
-      continue
-    }
-    if (!covered[c]) {
-      out[c] = '~'
-      continue
-    }
-    // nothing precedes a `_` at the start of its own sequence — the region's first
-    // column, or the first column of the `[…]` group a step expands to
-    if (c === 0 || (div > 1 && c % div === 0)) return null
-    out[c] = '_'
-  }
-  return out
-}
-
-function reemitStep(tokens: string[]): string {
-  if (tokens.length === 1) return tokens[0]
+function reemitStep(cols: string[][]): string {
+  if (cols.length === 1) return cellToken(cols[0])
   // a step nobody plays is `~`, not `[~ ~]`
-  if (tokens.every((t) => t === '~')) return '~'
-  return `[${tokens.join(' ')}]`
+  if (cols.every((c) => c.length === 0)) return '~'
+  return `[${cols.map(cellToken).join(' ')}]`
 }
 
 const cellToken = (atoms: string[]): string =>
   atoms.length === 0 ? '~' : atoms.length === 1 ? atoms[0] : `[${atoms.join(',')}]`
 
-/**
- * one token per column: `~`, a sound, `[a,b]` when several sound together, or `_`
- * where a held note covers the column
- *
- * Null when a length here has no spelling — the rebuild is the path that used to
- * DROP those lengths, so it needs the same refusal as the splice or the decline
- * above is only half a rule.
- */
-function gridColumns(lanes: StepLane[], steps: number): string[] | null {
-  return sustainTokens(columnAtoms(lanes, steps), 1)
+/** one token per column: `~`, a sound, or `[a,b]` when several sound together */
+function gridColumns(lanes: StepLane[], steps: number): string[] {
+  return columnAtoms(lanes, steps).map(cellToken)
 }
 
 /**
@@ -625,7 +451,6 @@ export function serializeStepGain(model: StepGridModel): GainWrite {
   const gains = model.gains
   if (!gains || gains.length !== model.steps) return { kind: 'clear' }
   const cols = gridColumns(model.lanes, model.steps)
-  if (cols === null) return { kind: 'skip' }
   // only the active (non-rest) columns carry an audible gain
   const active = gains.filter((_, i) => cols[i] !== '~')
   if (active.length === 0 || active.every((g) => g === 1)) return { kind: 'clear' }
@@ -639,10 +464,9 @@ export function serializeStepGain(model: StepGridModel): GainWrite {
 }
 
 /** `<...>` with one slot per bar; an all-rest bar collapses to `~` */
-function gridBars(model: StepGridModel, bars: number): string | null {
+function gridBars(model: StepGridModel, bars: number): string {
   const perBar = model.steps / bars
   const cols = gridColumns(model.lanes, model.steps)
-  if (cols === null) return null
   const slots: string[] = []
   for (let b = 0; b < bars; b++) {
     const bar = cols.slice(b * perBar, (b + 1) * perBar)

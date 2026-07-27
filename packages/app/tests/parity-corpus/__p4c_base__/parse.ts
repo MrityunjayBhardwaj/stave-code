@@ -24,14 +24,13 @@
  */
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { bjorklund, rotateEuclid } from '../../ir/euclid'
+import { bjorklund, rotateEuclid } from '../../../../editor/src/ir/euclid'
 import { serializeByLeaf, serializeStepGrid, serializePianoRoll } from './serialize'
 import type {
   AltRegion,
   AltSource,
   ChunkGain,
   Gate,
-  GridCell,
   GridCells,
   LeafAnchor,
   LeafSpan,
@@ -46,8 +45,8 @@ import type {
   StepGridModel,
   StepLane,
 } from './model'
-import { cellOn, gridCellKey, isCellOn } from './model'
-import { pitchToMidi } from './pitch'
+import { cellOn, isCellOn } from './model'
+import { pitchToMidi } from '../../../../editor/src/visualEdit/notation/pitch'
 
 /**
  * A bare integer (`60`, `0`, `-7`) — a numeric note value for the roll (#469).
@@ -561,17 +560,21 @@ const gridHasElongation = (steps: Step[]): boolean =>
  * What the reader knows about one column: the notes STARTING in it, each with its
  * own length in columns (#1010 P4b).
  *
- * As of #1010 P4c this is exactly `GridCell` — a source REGION now remembers the
- * lengths too, because the printer preserves them and a region whose only change is
- * a length has to read as changed (#1045). The two names stay because they answer
- * two questions — what the cell HOLDS versus what the region SHOWED — and only the
- * second is a model type others depend on.
+ * This is the reader's own working shape, not a model type. `GridCells`
+ * (`string[][]`) stays exactly what it was — it is what a source REGION remembers
+ * having shown, and the writer compares those as sets of sounds — so the tokens are
+ * projected back out of this with `tokensOf` wherever a region is built. Two shapes
+ * because they answer two questions: what the cell HOLDS, and what the region SHOWED.
  */
-type ColumnNote = GridCell
+interface ColumnNote {
+  token: string
+  /** length in COLUMNS (see `StepNote.duration`) */
+  duration: number
+}
 type ColumnNotes = ColumnNote[][]
 
-/** the display view of columns — the sounds and their lengths, in order, for a source region */
-const tokensOf = (cols: ColumnNotes): GridCells => cols.map((c) => c.map((n) => ({ ...n })))
+/** the display view of columns — just the sounds, in order, for a source region */
+const tokensOf = (cols: ColumnNotes): GridCells => cols.map((c) => c.map((n) => n.token))
 
 /**
  * Flatten steps to `div`-resolution trigger cells.
@@ -697,14 +700,11 @@ function columnsFromOnsets(perCycle: Onset[][], perBar: number, bars: number): C
   return cols
 }
 
-/**
- * the grid's view of a span of columns — the sounds in each with their lengths,
- * deduped on (sound, length) (see `SourceRegion` and `gridCellKey`)
- */
+/** the grid's view of a span of columns — the sounds in each, deduped (see `SourceRegion`) */
 const gridContent =
   (cells: GridCells) =>
   (from: number, to: number): GridCells =>
-    cells.slice(from, to).map((c) => [...new Map(c.map((n) => [gridCellKey(n), n])).values()])
+    cells.slice(from, to).map((c) => [...new Set(c)])
 
 /**
  * The roll's view of a span of columns: the notes STARTING in it.

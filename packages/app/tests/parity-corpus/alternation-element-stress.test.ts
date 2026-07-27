@@ -16,7 +16,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePianoRoll, parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import { cellOn, isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { cellOn, clampLane, isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import { serializePianoRoll, serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
 
 const require = createRequire(import.meta.url)
@@ -117,23 +117,38 @@ describe('#920 — <...>-as-element writeback holds under every edit', () => {
   it('grid: toggle every cell — no data loss, ≤1 element touched', () => {
     let edits = 0
     const bad: string[] = []
+    const declined = new Set<string>()
+    let declinedToggles = 0
     for (const mini of minis) {
       const r = parseStepGrid(mini)
       if (!r.ok || !r.model.altSource) continue
       const spans = topSpans(mini.trim())
       for (let lane = 0; lane < r.model.lanes.length; lane++) {
         for (let col = 0; col < r.model.steps; col++) {
-          const cells = [...r.model.lanes[lane].cells]
-          cells[col] = isCellOn(cells[col]) ? false : cellOn()
+          const cells0 = [...r.model.lanes[lane].cells]
+          cells0[col] = isCellOn(cells0[col]) ? false : cellOn()
+          // CLAMPED, as the panel's own toggle does (#1010 P4c). Painting a hit into
+          // a column an earlier note was still sounding through takes that note's
+          // room; leaving the stale length in place simulates a model no gesture can
+          // produce, and the writer then rightly declines an edit the UI would have
+          // clamped before it ever reached here.
+          const cells = clampLane(cells0, r.model.steps)
           const edited = {
             ...r.model,
             lanes: r.model.lanes.map((l, li) => (li === lane ? { ...l, cells } : l)),
           }
           const out = serializeStepGrid(edited)
-          // an altSource grid is always expressible, so a null here would be a
-          // real defect — flag it rather than silently skip
+          // A null is a DECLINE, and since #1010 P4c that is a legitimate answer
+          // rather than a defect: the printer preserves a note's length, and where
+          // the grid's own resolution cannot spell one — a note shorter than a
+          // column, or a column another note already starts in — it refuses instead
+          // of emitting a shortened note. Refusing is the outcome this project ranks
+          // above mis-writing. So declines are COLLECTED AND PINNED rather than
+          // forbidden: the set must not grow, which is what would signal the guard
+          // spreading past the shapes it was measured on.
           if (out === null) {
-            if (bad.length < 8) bad.push(`NULL ${JSON.stringify(mini.trim())}`)
+            declined.add(mini.trim())
+            declinedToggles++
             continue
           }
           edits++
@@ -151,5 +166,49 @@ describe('#920 — <...>-as-element writeback holds under every edit', () => {
     }
     expect(edits, 'the sweep must actually exercise grid alt-element edits').toBeGreaterThan(20)
     expect(bad, bad.join('\n')).toEqual([])
+    // THE DECLINE SET, pinned — and pinned at BOTH granularities, because a decline is
+    // per EDIT and the unit set alone hides how much of a view it costs ([[PK65]] step 3).
+    //
+    // VERIFIED, NOT ASSUMED. 18 units is 18 more than the one this phase predicted, and
+    // a count cannot tell an over-broad guard from a correct refusal — both read as "the
+    // writer said no". `_p4c-decline-verify.spec.ts` settles it by counterfactual: every
+    // declined toggle is emitted by the writer as it stood at `studio_v0.2.0` (the real
+    // old code, imported side by side, not a reconstruction) and the ENGINE is asked
+    // whether the notes AWAY from the toggled column still play the same.
+    //
+    //   512 declined toggles / 18 units — 512 DIFFER, and all 512 differ in DURATION
+    //   ONLY. 0 structural, 0 identical. Emitting any of them the old way would have
+    //   silently shortened a note the user never touched.
+    //
+    // So the guard is not over-broad: it declines exactly where emitting corrupts, on
+    // the one axis it was written for. The cost, at the granularity the user feels it:
+    // 512 of the 1912 toggles these 18 units offer, and NONE of the 512 was an edit the
+    // old writer got right. Both controls ran green — the base parser reads the same
+    // grid HEAD does (so it is the same edit on both sides), and the comparison was
+    // proven able to see a dropped length before its silence was believed ([[P353]]).
+    //
+    // Pinned as an exact set so the refusal cannot quietly spread to shapes it was never
+    // measured against — the failure mode a bare `>= 0` would hide.
+    expect(declinedToggles, 'declined EDITS, not units — the number the user experiences').toBe(512)
+    expect([...declined].sort()).toEqual([
+      '<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>',
+      '<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd',
+      '[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]',
+      '[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]',
+      '[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]',
+      '[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]',
+      '[<g4 e4> [b4 g4]] [- <a4> <->]',
+      '[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>',
+      '[bd*2 -] <- [~@2 bd bd - bd - sd]>',
+      '[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~',
+      'a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>',
+      'bd sd <[bd ~] [~ bd]> sd',
+      'bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]',
+      'c <d c> - [c <d c>]',
+      'd#3 f3 ~ <~ [~ ~ c#3]>',
+      'hh*5 <bd bd> ~ sd',
+      '{c [f g] d# d}%2',
+      '~ sd ~[sd[~ <~~~ sd>]]',
+    ])
   })
 })

@@ -63,11 +63,21 @@ describe('a step cell carries its note’s length, in columns', () => {
     expect(lens(grid('bd [sd sd sd]'), 'bd')).toEqual([3, null, null, null, null, null])
   })
 
-  it('a note SHORTER than its column keeps its real length', () => {
-    // The case the whole phase is named after: sixteen notes of 1/32 cycle on a
-    // 1/16 grid. Re-derived at the view's resolution they come back TWICE as long,
-    // which is the duration loss #1026 counted 40 of.
-    expect(lens(grid('[hh ~]!16'), 'hh')).toEqual(Array<number>(16).fill(0.5))
+  it('a note shorter than its column now costs the VIEW, not the length', () => {
+    // The case the phase was named after: `[hh ~]!16` is sixteen notes of 1/32 cycle on a
+    // 1/16 grid. The READER has read them as 0.5 columns since P4b and still does — what
+    // changed at P4c is the WRITER. It preserves lengths now, the grid can only spell a
+    // whole number of columns, and prove-before-offer therefore refuses the view rather
+    // than opening one whose every edit would double sixteen notes.
+    //
+    // So this asserts the refusal, by its reason. The reader's sub-column correctness has
+    // not gone untested: `cell-duration.test.ts` checks every ON cell against the engine
+    // corpus-wide (4718 cells, 0 mismatches, ~206 units carrying a length that is not 1),
+    // and the leaf-anchored case below still projects because byte surgery never spells a
+    // length at all.
+    const r = parseStepGrid('[hh ~]!16')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toBe('nothing in this view could be edited on its own')
   })
 
   it('a length that is neither a column nor half of one', () => {
@@ -106,14 +116,27 @@ describe('the grid ops keep a length meaning what it says', () => {
     expect(lens(m, 'hh').filter((d) => d !== null)).toEqual([2, 2])
   })
 
-  it('÷2 halves them, and needs no integrality guard the roll needs', () => {
-    // `RollNote.duration` counts whole `@n` steps, so an odd length cannot halve and
-    // `canHalvePianoRoll` refuses. A cell's length is fractional by design: 1 → 0.5
-    // represents exactly, so ÷2 stays available and only ever SHORTENS in columns.
-    const m = scaleStepGrid(grid('bd ~ sd ~'), 'halve')
-    expect(m.steps).toBe(2)
-    expect(lens(m, 'bd')).toEqual([0.5, null])
-    expect(lens(m, 'sd')).toEqual([null, 0.5])
+  it('÷2 DOES need a guard — and it is about spelling, not about integrality', () => {
+    // This test used to assert the opposite, and the reasoning was right about the model and
+    // wrong about the notation. `RollNote.duration` counts whole `@n` steps, so an odd length
+    // cannot halve and `canHalvePianoRoll` refuses; a CELL's length is fractional by design,
+    // so 1 → 0.5 represents exactly — and the conclusion drawn from that was that the grid
+    // needs no guard at all.
+    //
+    // Representing it was never the question. SPELLING it is: the grid emits one token per
+    // column and a sustain as `_`, so it can write a whole number of columns and nothing
+    // else. 0.5 has no spelling, and until P4c that did not show because the printer threw
+    // the length away. So both surfaces need a guard, derived from different things — the
+    // roll's from its number system, the grid's from its notation — which is [[PV240]]'s
+    // corollary standing, with its example corrected.
+    const m4 = grid('bd ~ sd ~')
+    expect(scaleStepGrid(m4, 'halve')).toBe(m4) // refused: 1 column → half a column
+    // …and where the lengths CAN survive the halving, it still applies and still halves:
+    const doubled = scaleStepGrid(m4, 'double') // lengths now 2 columns
+    const back = scaleStepGrid(doubled, 'halve')
+    expect(back.steps).toBe(4)
+    expect(lens(back, 'bd')).toEqual([1, null, null, null])
+    expect(lens(back, 'sd')).toEqual([null, null, 1, null])
   })
 
   it('spread scales lengths with the grid; pad keeps them', () => {
@@ -125,26 +148,42 @@ describe('the grid ops keep a length meaning what it says', () => {
     expect(lens(resizeGrid(m, 4, 'pad'), 'bd')).toEqual([1, null, null, null])
   })
 
-  it('quantize scales down when coarsening and keeps the count when refining', () => {
+  it('quantize keeps the count when refining; COARSENING is refused where it cannot spell', () => {
     const m = grid('bd hh*2 sd cp')
-    // 8 → 4: every length halves with the grid, so a 2-column `bd` stays half a cycle
-    expect(lens(quantizeStepGridTo(m, 4), 'bd')[0]).toBe(1)
     // 8 → 16: the note keeps its COLUMN count rather than stretching (#607, the rule
     // the roll already follows), so it occupies less of the cycle than before
     expect(lens(quantizeStepGridTo(m, 16), 'bd')[0]).toBe(2)
+    // 8 → 4 halves every length, which is right, and lands the one-column `hh`s on half a
+    // column, which cannot be spelled — so the op declines instead of writing a grid whose
+    // notes are all the wrong length. The scale-down RULE is unchanged; what is new is that
+    // its result has to be writable to be offered.
+    expect(quantizeStepGridTo(m, 4)).toBe(m)
+    // a grid whose lengths survive the halving still coarsens, and still scales:
+    const even: StepGridModel = {
+      steps: 4,
+      lanes: [{ sound: 'bd', cells: [cellOn(2), false, cellOn(2), false] }],
+    }
+    expect(lens(quantizeStepGridTo(even, 2), 'bd')).toEqual([1, 1])
   })
 
-  it('quantize merging a column keeps the SHORTER note, and clamps to the next hit', () => {
-    // two hits of different lengths landing in one bucket: the merged cell may not
-    // sound longer than a note it stands for, and may not reach past the next hit
+  it('quantize MERGING is now unreachable on the grid, and that is a finding not a gap', () => {
+    // The merge rule is unchanged and still correct — collide → keep the SHORTEST, so a
+    // merged note never sounds longer than one it stands for, then clamp to the next hit.
+    // What P4c changed is whether any input can reach it.
+    //
+    // Two hits share a bucket only if they are within `from / target` columns of each other,
+    // and hits that close cannot be longer than that gap without overlapping. So a merging
+    // pair is always about one column long, and coarsening scales one column to less than
+    // one — never spellable. The op therefore declines on every input that would merge.
+    //
+    // Left asserted rather than deleted: it records that the branch is dead under the
+    // current printer, so the next reader neither trusts an untested path nor removes one
+    // whose reason they cannot reconstruct.
     const m: StepGridModel = {
       steps: 4,
       lanes: [{ sound: 'bd', cells: [cellOn(3), cellOn(1), false, cellOn(1)] }],
     }
-    const q = quantizeStepGridTo(m, 2)
-    // col 0's three columns scale to 1.5 and then CLAMP to 1 — the next hit is
-    // adjacent. Cols 1 and 3 both land in bucket 1 and merge to the shorter (0.5).
-    expect(lens(q, 'bd')).toEqual([1, 0.5])
+    expect(quantizeStepGridTo(m, 2)).toBe(m)
   })
 
   it('a length is clamped to the grid it lands on, in resize as in quantize', () => {

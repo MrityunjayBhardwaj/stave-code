@@ -4409,7 +4409,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "ok",
+    "grid": "nothing in this view could be edited on its own",
     "mini": "[hh ~]!16",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4479,7 +4479,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "ok",
+    "grid": "nothing in this view could be edited on its own",
     "mini": "[~ [<[d3,a3,f4]!2 [d3,bb3,g4]!2> ~]]*2",
     "roll": "ok",
   },
@@ -4669,7 +4669,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "ok",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "amen:1/4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4724,7 +4724,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "ok",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "bassloop2:4/2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -5354,17 +5354,17 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "ok",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "breaks:2/2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "ok",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "breaks:5/2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "ok",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "breaks:8/2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -6970,7 +6970,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "ok",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "lp:6/4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -7460,7 +7460,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "ok",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "sd:4/2",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -8195,7 +8195,7 @@ a5 e5 c#5
     "roll": "ok",
   },
   {
-    "grid": "ok",
+    "grid": "a played note has no source token of its own to edit",
     "mini": "~ ~ ~ bd(<2 4!2>, 8)",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },

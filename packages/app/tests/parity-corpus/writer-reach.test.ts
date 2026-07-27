@@ -125,7 +125,7 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
  * Neither number may be quoted against a pre-#1037 one without saying so: they are
  * over different populations ([[P343]]).
  */
-const FLOOR_STEP = 123
+const FLOOR_STEP = 141
 const FLOOR_ROLL = 85
 
 /**
@@ -159,38 +159,24 @@ const FLOOR_ROLL = 85
  * Still 0 leaf, 30 element — the mechanism claim below is unaffected, which is the
  * point of asserting it separately from the membership.
  */
-const DURATION_LOSSES: string[] = [
-  "<[bd*4 . bd*2 . bd . bd*4]\n  [bd*4 . bd@2 . bd\u00a0. bd*4]>",
-  "<[c3, [eb5, eb6, f7] [bb6 d7]] [f3, [ab5, eb6, bb7] [bb6 d7]]>",
-  "<[hh*2] hh*4>",
-  "<~ [~@3.5 d2@2 c#2@2.5]>",
-  "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
-  "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
-  "[<g2@0.5 g2@0.5 g2@0.5 g2@0.5> g3]\n  [ d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 ]\n  [c2@0.5 c2@0.5 c2@0.5 ]\n  [d#2@0.5 g#1@0.5 c2 c2]",
-  "[<g2@0.5 g2@0.5 g2@0.5 g2@0.5> g3]\n  [ d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 d#2@0.5 ]\n  [g@0.5 g@0.5 g@0.5 ]\n  [d#2@0.5 g#1@0.5]",
-  "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
-  "[<g4 e4> [b4 g4]] [- <a4> <->]",
-  "[bd rim:1 [~ bd] rim:2]*2",
-  "[bd sd, hh hh hh]",
-  "[bd*2 -] <- [~@2 bd bd - bd - sd]>",
-  "[bd@0.5  - - -  - - bd@0.5  - bd@0.5  - - bd@0.25  - - - -]",
-  "[c1 ds1*2]*4",
-  "[c2 ds2*2]*4",
-  "[e1 f2 [e3 f1]] [f2 f3] [g2 g2]",
-  "[hh [hh hh]]!4",
-  "[hh ~]!16",
-  "[oberheimdmx_tb@0.6  oberheimdmx_tb@0.5 oberheimdmx_tb@0.6  oberheimdmx_tb@0.5]*2",
-  "[~ ~ hh ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~]\n    < [~ ~ <hh ~> ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~]\n      [~ ~ ~ ~ ~ ~ ~ ~ hh ~ ~ ~ ~ ~ ~ ~ ] >",
-  "a!4 b!2 a@4 a@2 c*2 b*2",
-  "bd bd - <- - - [- bd, sd]>",
-  "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
-  "c <d c> - [c <d c>]",
-  "cp(5,<8 16>,2)",
-  "rim(3,<16 8>)",
-  "{c [f g] d# d}%2",
-  "~ sd ~[sd[~ <~~~ sd>]]",
-  "~ ~ ~ bd(<2 4!2>, 8)",
-]
+/**
+ * EMPTY as of #1010 P4c — the printer preserves lengths instead of re-deriving them.
+ *
+ * All 30 were duration-only: the emitted document agreed with the expectation on
+ * every onset and every atom and differed only in how long a note sounded. 24 are
+ * now spelled — a held note's covered columns come out as `_` (sustain), which is
+ * what the grid's own resolution can say. The other 6 have lengths it cannot say at
+ * all (a note shorter than a column, or a column another note already starts in),
+ * and those are REFUSED rather than shortened: the writer declines, the projection
+ * stops offering the view, and the document is left alone. A derived view that
+ * mis-writes is worse than one that declines, and it is not a close call here —
+ * across those 6 units the one-note-per-onset probe found 49 of 50 notes already
+ * mis-writing, so what a refusal costs is one live note, not six live views.
+ *
+ * Kept as an exact set rather than deleted: a thirty-first loss arriving is what
+ * this assertion exists to catch, and `[]` states that more loudly than no list.
+ */
+const DURATION_LOSSES: string[] = []
 
 /* ── the sweep ──────────────────────────────────────────────────────────────── */
 

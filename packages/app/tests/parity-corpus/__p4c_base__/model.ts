@@ -91,44 +91,8 @@ export interface AltSource<C> {
   regions: AltRegion<C>[]
 }
 
-/**
- * What a step grid shows for one column: each sound STARTING there, with how long
- * it sounds, in columns.
- *
- * Carried the length as of #1010 P4c (#1045). Sounds alone were enough while the
- * printer re-derived every length, because a length could not differ from what the
- * bytes already said. Once the printer PRESERVES lengths, "did the user change this
- * region?" has to include them, or the honouring is undetectable for exactly the
- * edits it exists for — a region whose only change is a length compares equal and is
- * copied back verbatim.
- */
-export interface GridCell {
-  token: string
-  /** length in COLUMNS (see `StepNote.duration`) */
-  duration: number
-}
-
-/** what a step grid shows for a span of columns: the sounds in each, with their lengths */
-export type GridCells = GridCell[][]
-
-/**
- * The identity of a shown note, for "did this region change?".
- *
- * Both axes, because both are the document's: a sound swapped and a length changed
- * are equally real edits. Deduped on this key rather than on the token, so `[sd,sd]`
- * still reads as one note (the reason `SourceRegion.content` is a view and not the
- * raw atoms) while the one corpus unit that plays two DIFFERENT lengths for one
- * sound at one column keeps both — those are genuinely two things.
- */
-/**
- * ROUNDED, and that is not cosmetic. Lengths arrive from `whole.end - whole.begin`
- * scaled cycles->columns, so one musical length reaches this comparison as `2` down
- * one path and `2.000000000000001` down another. Comparing raw numbers makes a
- * region the user never touched read as CHANGED — and a changed region is
- * re-emitted, which rewrites notation nobody edited. Six decimals is far finer than
- * any length the grid can spell and far coarser than the error.
- */
-export const gridCellKey = (c: GridCell): string => `${c.token} ${c.duration.toFixed(6)}`
+/** what a step grid shows for a span of columns: the sounds in each */
+export type GridCells = string[][]
 
 /**
  * A leaf atom's OWN source span — `[start, end)` into the inner mini string.
@@ -413,16 +377,12 @@ export const isCellOn = (cell: StepCell | undefined): cell is StepNote =>
  * would silently halve every note on a ×2, which is the corruption this axis exists
  * to prevent, arriving from the op instead of from the printer.
  *
- * Halving needs a guard on BOTH surfaces, and the two are derived from different things.
- * The roll's comes from its number system: `RollNote.duration` counts whole `@n` steps, so
- * an odd length cannot be halved and `canHalvePianoRoll` refuses. A cell's length is
- * fractional by design, so ÷2 always REPRESENTS exactly — and representing it was never the
- * question. SPELLING it is: the grid writes one token per column and a sustain as `_`, so it
- * can express a whole number of columns and nothing else, and half a column has no notation
- * at all. This comment used to conclude from the fractional model that `canHalveStepGrid`
- * needed nothing further; that held only while the printer threw the length away (#1010 P4c).
- * Halving is now offered when the RESULT IS WRITABLE, asked of the real writer — see
- * `ifGridSpellable` in `serialize.ts`.
+ * Halving needs no integrality guard, and that is worth saying because the roll needs
+ * one: `RollNote.duration` counts whole `@n` steps, so an odd length cannot be halved
+ * and `canHalvePianoRoll` refuses. A cell's length is fractional by design, so ÷2
+ * always represents exactly — it can only ever SHORTEN a note in column terms, never
+ * lengthen it, and never drops one. `canHalveStepGrid` is therefore unchanged: what it
+ * has always checked (nothing lives on the odd columns) is still the whole condition.
  */
 export const scaleCell = (cell: StepCell, factor: number): StepCell =>
   isCellOn(cell) ? cellOn(cell.duration * factor) : false

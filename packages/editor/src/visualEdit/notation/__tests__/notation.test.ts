@@ -138,9 +138,14 @@ describe('step grid — parse', () => {
     // what they play and copies the source back verbatim.
     gridRoundTrips('{bd hh}%4') // plays [bd hh bd hh]
     gridRoundTrips('bd@2 hh') // the held bd reads as a hit + rest: [bd ~ hh]
-    // an edit re-emits locally and stays hap-faithful — the source's own bytes
-    // ride back around the one touched region
-    expect(gridEdit('bd@2 hh', 1, 'cp')).toBe('bd cp hh')
+    // An edit re-emits locally and stays hap-faithful — the source's own bytes ride back
+    // around the one touched region. `bd@2 hh` is the exception, and it is instructive:
+    // `bd` sounds 2/3 of the cycle on a 3-column grid, so the re-emit has to spell a
+    // two-column note in the region it owns. Toggling column 1 puts `cp` INSIDE the columns
+    // `bd` is still sounding through, and there is no per-column token that means both. So
+    // the writer declines (#1010 P4c) rather than emitting `bd cp hh`, which silently cut
+    // `bd` from 2/3 to 1/3 — a length the panel cannot show the user it changed (#1026).
+    expect(gridEdit('bd@2 hh', 1, 'cp')).toBeNull()
     // still refused: a pattern with no period at all. `?` degrades at random, so it
     // never repeats and there are no bars to show — an honest refusal, not a lie.
     expect(parseStepGrid('bd?').ok).toBe(false)
@@ -403,7 +408,9 @@ describe('step grid — velocity still defeats span surgery (#913 known gap)', (
       numeric: null,
       foreign: false,
     })
-    expect(serializeStepGrid(withGain)).toBe('bd ~ hh hh sd ~ cp ~')
+    // `bd _ …`, not `bd ~ …` (#1010 P4c): the rebuild spells each note's real length, and
+    // `bd` beside a `hh*2` group owns two of the flattened columns.
+    expect(serializeStepGrid(withGain)).toBe('bd _ hh hh sd _ cp _')
   })
 
   it('a SCALAR .gain does not — it needs no column alignment', () => {
@@ -878,14 +885,22 @@ describe('resize', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.model.source).toBeDefined()
-    for (const mode of ['spread', 'pad'] as const) {
-      const next = resizeGrid(r.model, 4, mode)
-      expect(next.source, `${mode} must not carry stale regions`).toBeUndefined()
-    }
-    // and the writer REBUILDS from the resized grid — the `*2` is gone because
-    // the user asked for a different grid, which is the one case where losing it
-    // is the answer rather than the bug. (8→4 spread folds each column pair.)
-    expect(serializeStepGrid(resizeGrid(r.model, 4, 'spread'))).toBe('bd hh sd cp')
+    // WHEN the resize applies it must drop the regions. `pad` still applies here (it keeps
+    // every length, so nothing becomes unspellable); `spread` DOWN to 4 does not, because it
+    // scales each 8-column length by 1/2 and half a column has no spelling — so it returns
+    // the input by reference, regions and all, which is correct for a no-op (#1010 P4c).
+    const padded = resizeGrid(r.model, 4, 'pad')
+    expect(padded).not.toBe(r.model)
+    expect(padded.source, 'pad must not carry stale regions').toBeUndefined()
+    expect(resizeGrid(r.model, 4, 'spread'), 'spread DOWN is refused, not silently wrong').toBe(
+      r.model,
+    )
+    // and where a resize DOES apply, the writer REBUILDS from the resized grid — the `*2` is
+    // gone because the user asked for a different grid, which is the one case where losing it
+    // is the answer rather than the bug. Widening spreads and keeps every length spellable.
+    const wide = resizeGrid(r.model, 16, 'spread')
+    expect(wide.source).toBeUndefined()
+    expect(serializeStepGrid(wide)).not.toBeNull()
   })
   it('resizeRoll spread scales note starts', () => {
     const model: PianoRollModel = { steps: 2, notes: [{ pitch: 'c3', start: 1, duration: 1 }] }

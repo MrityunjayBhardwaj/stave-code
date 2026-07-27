@@ -391,6 +391,29 @@ describe('writer census — how much of the syntactic core transfers to the deri
       ].join('\n'),
     )
 
+    // THE P6 BLOCKER, PRINTED BEFORE ANYTHING IS ASSERTED. It is the number #1012 is
+    // scoped against and it has been re-based four times; a figure that exists only as a
+    // literal inside an `expect` cannot be read without a green run, which is how the
+    // sibling document ended up quoting a stale one ([[P366]]). Printing it up here also
+    // makes it readable when a pin BELOW is red — including the deliberate red of running
+    // this census with `LEAF_PROJECT_BARS.roll = 12` to measure the figure at the other
+    // cap, which is otherwise unobservable because the cap-4 pins fail first.
+    {
+      const structuralNow = untransferable.filter((r) => !r.arrayValue)
+      const both = structuralNow.filter((r) => r.coreStructured && r.coreProbe === 'ok')
+      console.log(
+        [
+          `\n===== THE P6 BLOCKER   (roll cap ${PROJECTION_PERIOD_BOUNDS.leaf.roll}) =====`,
+          `  structural untransferable        ${structuralNow.length}`,
+          `  ...core view has STRUCTURE       ${structuralNow.filter((r) => r.coreStructured).length}`,
+          `  ...core edit VERIFIED ok         ${structuralNow.filter((r) => r.coreProbe === 'ok').length}`,
+          `  ...BOTH (blocks deleting core)   ${both.length}` +
+            `   [grid ${both.filter((r) => r.surface === 'step').length}` +
+            ` + roll ${both.filter((r) => r.surface === 'roll').length}]`,
+        ].join('\n'),
+      )
+    }
+
     // Dump the enumeration so it can be hand-read and quoted per entry. The
     // deliverable of this phase is the NAMED residual, not the count — a count
     // without a classification is the error the previous phase corrected.
@@ -435,15 +458,38 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // the CORPUS: it gained backtick minis (long, multi-cycle, the hard material)
     // and shed commented-out code that was never an ask. A rate computed over the
     // two is not comparable — 1055/1217 = 86.7% against 1026/1204 = 85.2%.
-    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(1026)
-    expect(untransferable.length, 'untransferable' + why).toBe(78)
+    //
+    // ⚠ MOVED A THIRD TIME 1026 → 1035 / 78 → 69 at #1010 P4c, and this mechanism is a
+    // WRITER at last: the printer preserves a note's length instead of re-deriving it, so
+    // the eleven fidelity failures #1026 exposed are gone. Attributed row by row against
+    // the census JSON this file generated at `studio_v0.2.0`, and it is the eleven and
+    // nothing else — 1204 rows on both sides, no row appearing or disappearing,
+    // `no-probe` unmoved at 100:
+    //   - 9 `view-corrupts → transfers`, the writes that now keep the length they always
+    //     kept the onsets for (`<c2*2 g2*5 [a g]>`, `sd*2 sd*4 sd*8`, …);
+    //   - 2 `view-corrupts → no-view`, gate `view-unusable` — `[bd ~]*2` and `[- - sd -]*2`,
+    //     where the resolution cannot spell the length at all, so the writer declines and
+    //     the view is no longer offered. That is the ranking this project already held:
+    //     a view that never opens beats one that opens and mis-writes.
+    // So transfers gains 9 while untransferable loses 9 (its no-view half rises 67 → 69,
+    // its corrupting half falls 11 → 0). The rate is 1035/1204 = 86.0%, over the SAME
+    // population as 1026/1204 = 85.2%, so those two ARE comparable — unlike the #1037 pair.
+    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(1035)
+    expect(untransferable.length, 'untransferable' + why).toBe(69)
     expect(all.filter((r) => r.outcome === 'no-probe').length, 'unverified' + why).toBe(100)
     // The reclassification is asserted by MECHANISM as well as by total, so that a
     // future change cannot hold the totals steady while moving asks between buckets.
+    // ⚠ 11 → 0 at #1010 P4c. The printer preserves lengths, so nothing in the census
+    // opens a view and then mis-writes it. This is BACK to the zero the block below
+    // describes as the original state — but it is a different zero and the difference
+    // matters: the first was an oracle that could not see duration, this one is a writer
+    // that does not lose it, measured by an oracle that compares (onset, duration, atom)
+    // on every surface. Kept as an exact `0` rather than deleted, because "nothing
+    // corrupts" is the census's headline and it must fail loudly if it stops being true.
     expect(
       all.filter((r) => r.outcome === 'view-corrupts').length,
       'view-corrupts' + why,
-    ).toBe(11)
+    ).toBe(0)
     expect(
       all.filter((r) => r.outcome === 'view-corrupts' && r.writer === 'leaf'),
       'a leaf-adapter write corrupted — byte surgery is supposed to make that impossible',
@@ -461,7 +507,13 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // were worth quoting. The structured count therefore falls by the full 11 while the
     // total falls by 11 too — the loss lands entirely on the half of the number this
     // line exists to keep honest.
-    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(624)
+    // ⚠ 624 → 633 at #1010 P4c, and the +9 is the whole of the transfers gain: all nine
+    // asks the length-preserving printer recovered are STRUCTURED. That is the mirror of
+    // the #1026 note above — the writes that lose a duration are re-emits of multi-element
+    // patterns, so fixing the printer returns exactly the views worth quoting, just as
+    // breaking the oracle had removed exactly those. The half of the number this line
+    // exists to keep honest is the half that moved, in the good direction this time.
+    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(633)
 
     // THIS USED TO SAY "NOTHING CORRUPTS", and it said why that mattered: both derived
     // writers refuse rather than mis-write, which is what made the untransferable set
@@ -482,6 +534,16 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // asked to change, so it cannot lose a length; the element re-emit re-derives every
     // length from a cell model that has none. The remaining zero is the one with a
     // mechanism behind it.
+    //
+    // ⚠ AND AT #1010 P4c THE ELEVEN ARE GONE — the element re-emit no longer re-derives a
+    // length, so `view-corrupts` is 0 again and the narration above is now HISTORY rather
+    // than the current reading. Keep it: it is the record of a headline that changed
+    // meaning twice for two different reasons, which is the thing a bare number cannot
+    // carry. But read the two assertions below for what they now are — with the total at
+    // 0 they are satisfied by an EMPTY input, so they no longer discriminate anything on
+    // their own ([[P352]]). What still discriminates is the exact `0` pinned above and the
+    // row-by-row attribution in its comment; these two are kept as the shape that must
+    // hold the moment the total is ever non-zero again.
     expect(
       all.filter((r) => r.outcome === 'view-corrupts' && r.surface === 'roll'),
       'the roll arm was already duration-aware — it is this change\'s control and must stay empty',
@@ -507,8 +569,15 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // plays an array value, so they land wholly in the second column. The claim this
     // assertion protects — that naming the `:`-variant did not touch the structural
     // column — is about #1019 and still holds, because the array column is still 7.
+    //
+    // ⚠ THEN 61 → 70 at #1037 (the corpus) and 70 → 61 at #1010 P4c (the printer, giving
+    // back the 9 asks it recovered). The trail is recorded because the column has now
+    // been 61 TWICE for unrelated reasons, and the #1037 leg went unwritten at the time —
+    // so for one phase the prose said "61" beside a pin that read 70. A figure only named
+    // in a comment has no gate on it ([[P356]]); the pin is the record and the comment
+    // must be re-read whenever the pin moves, in both directions.
     expect(untransferable.filter((r) => r.arrayValue).length).toBe(8)
-    expect(untransferable.filter((r) => !r.arrayValue).length).toBe(70)
+    expect(untransferable.filter((r) => !r.arrayValue).length).toBe(61)
 
     // THE NUMBER P6 IS SCOPED AGAINST, and it is a CONJUNCTION. "46 have a
     // structured core view" and "45 have a verified core edit" are different
@@ -537,6 +606,16 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // silently — 46 was over 1500 harvested units, 54 is over 1535 differently
     // harvested ones.
     //
+    // ⚠ AND AT #1010 P4c IT DID NOT MOVE — 54 still, grid 24 + roll 30, while the
+    // structural set fell 70 → 61 and its `coreStructured` column fell 65 → 56. That
+    // pairing is the finding, not a coincidence: all 9 asks the length-preserving printer
+    // recovered had a STRUCTURED core view and NONE had a verified core edit
+    // (`coreProbe === 'ok'` is unmoved at 55). The core could not write them faithfully
+    // either, so they were never part of what blocks deleting it. P4c recovered 9 views
+    // and reduced the P6 blocker by ZERO, and #1012 stays scoped against 54 — a phase
+    // that improves reach is not thereby a phase that shrinks this conjunction, which is
+    // exactly the confusion this filter was built to prevent.
+    //
     // MEASURED AT THE OTHER CAP TOO, since P6 carries `LEAF_PROJECT_BARS.roll = 12` in
     // its own diff: at cap 12 the blocker is 39 (grid 24 + roll 15), OBSERVED by running
     // this census with the constant set rather than by subtracting the cap's known
@@ -545,7 +624,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // expect of a cap whose reach the roll sweep found flat; the grid half moved with
     // the corpus.)
     const structural = untransferable.filter((r) => !r.arrayValue)
-    expect(structural.filter((r) => r.coreStructured).length).toBe(65)
+    expect(structural.filter((r) => r.coreStructured).length).toBe(56)
     expect(structural.filter((r) => r.coreProbe === 'ok').length).toBe(55)
     expect(structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length).toBe(54)
   }, 900_000)

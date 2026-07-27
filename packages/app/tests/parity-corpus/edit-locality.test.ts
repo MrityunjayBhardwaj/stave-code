@@ -59,7 +59,7 @@ import {
   serializePianoRoll,
 } from '../../../editor/src/visualEdit/notation/serialize'
 import { resizeRoll } from '../../../editor/src/visualEdit/notation/resize'
-import { cellOn, isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { cellOn, clampLane, isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import type {
   PianoRollModel,
   RollNote,
@@ -164,7 +164,15 @@ function toggleCell(m: StepGridModel, laneIndex: number, stepIndex: number, valu
     ...m,
     lanes: m.lanes.map((lane, i) =>
       i === laneIndex
-        ? { ...lane, cells: lane.cells.map((c, j) => (j === stepIndex ? (value ? cellOn() : false) : c)) }
+        ? {
+            ...lane,
+            // clamped, exactly as the panel's own `toggleCell` does — a new hit takes
+            // the room an earlier note was sounding through (#1010 P4c)
+            cells: clampLane(
+              lane.cells.map((c, j) => (j === stepIndex ? (value ? cellOn() : false) : c)),
+              m.steps,
+            ),
+          }
         : lane,
     ),
   }
@@ -397,7 +405,11 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
     expect(r.ok).toBe(true)
     if (!r.ok) return
     const edited = toggleCell(r.model, 0, 1, true) // lane 0 = bd (part 0)
-    expect(serializeStepGrid(edited) ?? '<null>').toBe('bd bd sd ~, hh*4')
+    // `sd _`, not `sd ~` (#1010 P4c). `bd sd` gives sd HALF the cycle; on the shared
+    // 4-column grid that is two columns, and the trailing `_` is the printer keeping
+    // that length. The old `sd ~` re-derived it as one column — the note quietly
+    // halved by an edit that never touched it.
+    expect(serializeStepGrid(edited) ?? '<null>').toBe('bd bd sd _, hh*4')
   })
 
   /**
@@ -585,13 +597,24 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
    * must be a clean refusal, so the panel keeps the document.
    */
   it('leaf roll: a resized model declines — a restructure is not a delete', () => {
+    // THE REFUSAL MOVED ONE LAYER UP at #1010 P4c, and this test is where that shows. It
+    // used to assert the WRITER returns null for a resized leaf-anchored roll. It still
+    // would — but the OP no longer hands it one: `resizeRoll` asks the writer before
+    // returning, and where the writer cannot spell the result the op returns the input by
+    // reference (`ifRollSpellable`). So the model is never resized in the first place, the
+    // panel's control is disabled rather than dead, and `mutate` skips the write.
+    //
+    // That is strictly stronger than the old assertion, so it is asserted as identity and
+    // the old mechanism is checked too: serializing what the op returned gives the source
+    // back verbatim, i.e. the document is untouched — which was always the point.
     const src = '- [0,3,7], [- [-2,1]] -'
     const r = parsePianoRoll(src)
     expect(r.ok).toBe(true)
     if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
     const m = r.model
-    expect(serializePianoRoll(resizeRoll(m, m.steps * 2, 'pad'))).toBeNull() // widen
-    expect(serializePianoRoll(resizeRoll(m, 2, 'pad'))).toBeNull() // narrow — the data-loss one
+    expect(resizeRoll(m, m.steps * 2, 'pad'), 'widen must not apply').toBe(m)
+    expect(resizeRoll(m, 2, 'pad'), 'narrow must not apply — the data-loss one').toBe(m)
+    expect(serializePianoRoll(resizeRoll(m, 2, 'pad'))).toBe(src)
   })
 
   it('leaf roll: a moved note is refused — no leaf spells a new position', () => {

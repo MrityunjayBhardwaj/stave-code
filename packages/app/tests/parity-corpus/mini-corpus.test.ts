@@ -89,6 +89,21 @@ describe('mini-corpus — real-world mini strings', () => {
   /**
    * The load-bearing assertion. Every mini, both parsers, verdict pinned.
    * Ordered by the corpus's own sorted order so the diff is readable.
+   *
+   * ⚠ 10 GRID VERDICTS FLIPPED `ok` → a refusal at #1010 P4c, and no roll verdict moved.
+   * The printer now preserves a note's length, so prove-before-offer (`parse.ts:1638`)
+   * stops offering a grid for units whose length the column resolution cannot spell:
+   * 8 land on "a played note has no source token of its own to edit" and 2 on "nothing in
+   * this view could be edited on its own". Every one is a view that could previously be
+   * opened and then mis-written — the ranking that decides it is older than this phase
+   * (`roll-cap-sweep.test.ts`: a derived view that mis-writes is worse than no view).
+   *
+   * READ, NOT REGENERATED-PAST. The corpus input is byte-identical in this change, so the
+   * code was the only variable and the diff was checkable by construction ([[P361]]):
+   * `_p4c-pin-attribution.spec.ts` derives the set from base-vs-HEAD parse and asserts
+   * that this snapshot moved on exactly it, that every flip is `ok` → refusal and never
+   * the reverse, and that the round-trip lock lost the same 10 while its
+   * `serializer-null` pin gained nothing.
    */
   it('pins every grid + roll verdict over the real-world corpus', () => {
     const verdicts = corpus.minis.map(({ mini }) => ({
