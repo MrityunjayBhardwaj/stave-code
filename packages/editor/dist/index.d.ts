@@ -8320,7 +8320,6 @@ declare function isBlackKey(midi: number): boolean;
  *  - an earlier note sustaining across `start` → it trims to end at `start`;
  *  - the next group (or the grid end) caps the new note's duration.
  */
-
 declare function placeNote(model: PianoRollModel, pitch: string, start: number, duration: number): PianoRollModel;
 
 type ResizeMode = 'spread' | 'pad';

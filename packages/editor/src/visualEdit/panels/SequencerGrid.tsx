@@ -23,14 +23,15 @@ import * as React from 'react'
 
 import { parseStepGrid, applyStepGain } from '../notation/parse'
 import { serializeStepGrid, serializeStepGain } from '../notation/serialize'
-import { cellOn, clampLane, isCellOn } from '../notation/model'
-import type { StepCell, StepGridModel } from '../notation/model'
+import { isCellOn } from '../notation/model'
+import type { StepGridModel } from '../notation/model'
 import { VisualEditStandby } from './VisualEditStandby'
 import { SEQUENCER_TAB_ID } from './tabs'
 import { isStepChunk } from './patternKind'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import { addLane, removeLane } from '../notation/lane'
+import { toggleCell } from '../notation/place'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice } from './drumVoices'
 import { useNoteColorMode, velocityColor } from './noteColor'
@@ -47,50 +48,6 @@ const VELOCITY_FULL_PX = 80
 const DRAG_THRESHOLD = 4
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v))
-
-/**
- * What a painted cell holds. A hit the user places lasts exactly the column they
- * clicked — that is the box they see, and one column is what the notation spells
- * without any grouping.
- *
- * It is NOT matched to whatever length the lane's other notes happen to have: on a
- * grid projected from `[hh ~]!16` every existing note lasts half a column, and
- * quietly giving a new note that length would be the view deciding the music. If
- * painting on such a grid should offer the prevailing length, that is a product
- * question, and it belongs with P4c where the printer starts spelling lengths.
- */
-const paint = (value: boolean): StepCell => (value ? cellOn() : false)
-
-/** flip one cell, returning a new model (stable lane set preserved) */
-function toggleCell(
-  model: StepGridModel,
-  laneIndex: number,
-  stepIndex: number,
-  value: boolean,
-): StepGridModel {
-  return {
-    ...model,
-    lanes: model.lanes.map((lane, i) =>
-      i === laneIndex
-        ? {
-            ...lane,
-            // CLAMPED, because a promise about lengths is a promise about ROOM
-            // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
-            // still sounding through shortens that note — the room it had is gone.
-            // Without this the model keeps a length that reaches past the new hit,
-            // which is notation nothing can spell, and the writer rightly declines
-            // an edit the user plainly made. The resize and quantize ops already
-            // clamp for exactly this reason; paint is the third op that moves
-            // onsets closer together, and it was the one still missing it.
-            cells: clampLane(
-              lane.cells.map((c, j) => (j === stepIndex ? paint(value) : c)),
-              model.steps,
-            ),
-          }
-        : lane,
-    ),
-  }
-}
 
 /** velocity is grid-aligned only for single-part, single-bar, non-foreign models */
 function gainInScope(model: StepGridModel): boolean {

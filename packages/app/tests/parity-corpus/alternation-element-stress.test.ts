@@ -16,7 +16,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePianoRoll, parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import { cellOn, clampLane, isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+// The PRODUCTION cell toggle — see the note at its call site below (#1048).
+import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
 import { serializePianoRoll, serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
 
 const require = createRequire(import.meta.url)
@@ -125,18 +127,12 @@ describe('#920 — <...>-as-element writeback holds under every edit', () => {
       const spans = topSpans(mini.trim())
       for (let lane = 0; lane < r.model.lanes.length; lane++) {
         for (let col = 0; col < r.model.steps; col++) {
-          const cells0 = [...r.model.lanes[lane].cells]
-          cells0[col] = isCellOn(cells0[col]) ? false : cellOn()
-          // CLAMPED, as the panel's own toggle does (#1010 P4c). Painting a hit into
-          // a column an earlier note was still sounding through takes that note's
-          // room; leaving the stale length in place simulates a model no gesture can
-          // produce, and the writer then rightly declines an edit the UI would have
-          // clamped before it ever reached here.
-          const cells = clampLane(cells0, r.model.steps)
-          const edited = {
-            ...r.model,
-            lanes: r.model.lanes.map((l, li) => (li === lane ? { ...l, cells } : l)),
-          }
+          // The PRODUCTION toggle, which clamps (#1010 P4c): painting a hit into a
+          // column an earlier note was still sounding through takes that note's room.
+          // Modelling the flip here instead simulated a model no gesture can produce,
+          // and the writer then rightly declined an edit the UI would have clamped
+          // before it ever reached here (#1048).
+          const edited = toggleCell(r.model, lane, col, !isCellOn(r.model.lanes[lane].cells[col]))
           const out = serializeStepGrid(edited)
           // A null is a DECLINE, and since #1010 P4c that is a legitimate answer
           // rather than a defect: the printer preserves a note's length, and where
