@@ -261,6 +261,32 @@ with a control set — the cause is the accumulated `_` sustains, not the width:
 A writer emitting notation its own reader will not re-open is a round-trip hole. Filed
 separately; the mechanism is **not** diagnosed here and this doc does not guess at it.
 
+### What this spike did NOT measure — stated so no one reads it as covered
+
+- **Only `k = 2`.** #1059's presets are absolute counts (4/8/16/32/64), which are `perBar × k`
+  for larger `k`. A larger `k` produces longer runs of `_`, which is exactly what #1066's
+  refusal is sensitive to, so acceptance and re-openability at `k > 2` are **unknown**.
+- **`MAX_STEPS = 64` is bypassed here.** The refine rescales the model directly rather than
+  re-reading, so a unit at 40 columns refines to 80 and is measured — while the reader would
+  refuse to re-open it. That interaction is #1055's question and is **not** answered here.
+- **The two population restrictions cost nothing, which is checked rather than assumed.**
+  819 + 569 + 82 + 57 = 1527 exactly: zero units were dropped for a non-identity base, zero
+  for a span-walk mismatch, zero for a null refine. The span walk reproduced the original
+  mini byte-for-byte on all 819, which is what makes the element offsets sound.
+- **The hypothesis arm is judged against a rule written for the shipped op.** Its 1,293
+  "play-differs" asks are the cross-lane clamp firing as designed, not defects — the
+  pre-registered allowance only covers a same-lane clamp. So "90.5% plays" reads that arm
+  conservatively.
+
+### One note on the instrument, because it nearly produced the opposite verdict
+
+The probe's first version compared **refined** columns against **unrefined** region ranges,
+so every click was attributed to the next element along. It reported `L = 21.2%` — a clean
+INVALIDATE — and nothing in it failed. It was caught by printing the non-local samples and
+reading them: `C D`, click on element 0, reported as element `D`. The fix moved `L` from
+21.2% to 95.7% with no change to any product code. A locality measure that indexes its own
+reference frame wrongly fails in the direction that looks like a finding.
+
 ---
 
 ## VERDICT
