@@ -27,7 +27,17 @@ import type {
   GridCells,
   StepGridModel,
 } from '../../../editor/src/visualEdit/notation/model'
+import type { ParseResult } from '../../../editor/src/visualEdit/notation/model'
 import { enginePlayedCycle, HRES, type Note } from './engineEditOracle'
+
+/**
+ * `parseStepGrid` returns a discriminated union, so the model is reached through
+ * the `ok` discriminant rather than by reading `.model` off either arm — the
+ * refusal arm has no `model`, and reading it there is only invisible because
+ * JavaScript hands back `undefined`.
+ */
+const opened = (r: ParseResult<StepGridModel>): StepGridModel | null => (r.ok ? r.model : null)
+const refusalOf = (r: ParseResult<StepGridModel>): string => (r.ok ? '-' : r.reason)
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -336,7 +346,7 @@ function sweep(asksPerUnit: number) {
       bump(pop, 'reader-threw')
       continue
     }
-    const m = res?.model
+    const m = opened(res)
     if (!m) {
       bump(pop, 'no-grid-view')
       continue
@@ -524,10 +534,10 @@ describe('#1058 spike', () => {
       'bd sd, hh*4',
     ]) {
       const r = parseStepGrid(s)
-      const m = r?.model
+      const m = opened(r)
       const back = m ? serializeStepGrid(m) : null
       console.log(
-        `P0  ${JSON.stringify(s).padEnd(34)} reason=${(r as {reason?: string})?.reason ?? '-'} opens=${!!m} steps=${m?.steps ?? '-'} bars=${m?.bars ?? 1} path=${m?.leafSource ? 'leaf' : m?.altSource ? 'alt' : m?.source ? 'source' : 'none'} roundTrip=${back === s} back=${JSON.stringify(back)}`,
+        `P0  ${JSON.stringify(s).padEnd(34)} reason=${refusalOf(r)} opens=${!!m} steps=${m?.steps ?? '-'} bars=${m?.bars ?? 1} path=${m?.leafSource ? 'leaf' : m?.altSource ? 'alt' : m?.source ? 'source' : 'none'} roundTrip=${back === s} back=${JSON.stringify(back)}`,
       )
     }
   })
@@ -568,26 +578,27 @@ describe('#1058 spike', () => {
     // high here belongs to the shipped placement path, not to subdivision.
     const t: Tally = {}
     for (const mini of MINIS) {
-      let m
+      let m: StepGridModel | null
       try {
-        m = parseStepGrid(mini)?.model
+        m = opened(parseStepGrid(mini))
       } catch {
         continue
       }
       if (!m || m.leafSource || m.altSource || !m.source) continue
       if (serializeStepGrid(m) !== mini) continue
+      const mm: StepGridModel = m
       bump(t, 'units')
-      for (let lane = 0; lane < m.lanes.length; lane++)
-        for (let col = 0; col < m.steps; col++) {
-          if (isCellOn(m.lanes[lane].cells[col])) continue
+      for (let lane = 0; lane < mm.lanes.length; lane++)
+        for (let col = 0; col < mm.steps; col++) {
+          if (isCellOn(mm.lanes[lane].cells[col])) continue
           bump(t, 'asks')
-          const out = serializeStepGrid(toggleCell(m, lane, col, true))
+          const out = serializeStepGrid(toggleCell(mm, lane, col, true))
           if (out === null) {
             bump(t, 'declined')
-            const covered = m.lanes.some(
+            const covered = mm.lanes.some(
               (ln, i) =>
                 i !== lane &&
-                (ln.part ?? 0) === (m!.lanes[lane].part ?? 0) &&
+                (ln.part ?? 0) === (mm.lanes[lane].part ?? 0) &&
                 ln.cells.some((c, j) => isCellOn(c) && j < col && j + c.duration > col),
             )
             bump(t, covered ? 'declined:covered-by-ANOTHER-lane' : 'declined:other')
@@ -615,7 +626,7 @@ describe('#1058 spike', () => {
       let cur = start
       const line: string[] = []
       for (let n = 1; n <= 6; n++) {
-        const m = parseStepGrid(cur)?.model
+        const m = opened(parseStepGrid(cur))
         if (!m || !m.source) {
           line.push(
             `n=${n}: LEFT THE SPLICE PATH — opens=${!!m} steps=${m?.steps ?? '-'} path=${m?.leafSource ? 'leaf' : m?.altSource ? 'alt' : m ? 'model-without-source' : 'refused'}`,
