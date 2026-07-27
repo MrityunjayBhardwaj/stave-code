@@ -59,11 +59,15 @@ import {
   serializePianoRoll,
 } from '../../../editor/src/visualEdit/notation/serialize'
 import { resizeRoll } from '../../../editor/src/visualEdit/notation/resize'
-import { cellOn, clampLane, isCellOn } from '../../../editor/src/visualEdit/notation/model'
+// The PRODUCTION cell toggle — what a click on a cell actually does. Modelling
+// the edit here instead would be a second oracle for what an edit *is*, and it
+// could not catch a change in the edit: it would quietly keep testing the old
+// one (#1048).
+import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
+import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import type {
   PianoRollModel,
   RollNote,
-  StepGridModel,
 } from '../../../editor/src/visualEdit/notation/model'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
@@ -156,26 +160,6 @@ function lastElement(src: string): Target | null {
     return s ? { kind: 'part', start: s.start, part: children.length - 1 } : null
   }
   return null
-}
-
-/** the Sequencer's own edit: flip one cell (SequencerGrid.tsx `toggleCell`) */
-function toggleCell(m: StepGridModel, laneIndex: number, stepIndex: number, value: boolean): StepGridModel {
-  return {
-    ...m,
-    lanes: m.lanes.map((lane, i) =>
-      i === laneIndex
-        ? {
-            ...lane,
-            // clamped, exactly as the panel's own `toggleCell` does — a new hit takes
-            // the room an earlier note was sounding through (#1010 P4c)
-            cells: clampLane(
-              lane.cells.map((c, j) => (j === stepIndex ? (value ? cellOn() : false) : c)),
-              m.steps,
-            ),
-          }
-        : lane,
-    ),
-  }
 }
 
 interface Violation {

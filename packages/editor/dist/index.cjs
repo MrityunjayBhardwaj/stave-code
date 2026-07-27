@@ -28256,6 +28256,69 @@ function removeLane(model, sound) {
 }
 __name(removeLane, "removeLane");
 
+// src/visualEdit/notation/place.ts
+var paint = /* @__PURE__ */ __name((value) => value ? cellOn() : false, "paint");
+function toggleCell(model, laneIndex, stepIndex, value) {
+  return {
+    ...model,
+    lanes: model.lanes.map(
+      (lane, i) => i === laneIndex ? {
+        ...lane,
+        // CLAMPED, because a promise about lengths is a promise about ROOM
+        // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
+        // still sounding through shortens that note — the room it had is gone.
+        // Without this the model keeps a length that reaches past the new hit,
+        // which is notation nothing can spell, and the writer rightly declines
+        // an edit the user plainly made. The resize and quantize ops already
+        // clamp for exactly this reason; paint is the third op that moves
+        // onsets closer together, and it was the one still missing it.
+        cells: clampLane(
+          lane.cells.map((c, j) => j === stepIndex ? paint(value) : c),
+          model.steps
+        )
+      } : lane
+    )
+  };
+}
+__name(toggleCell, "toggleCell");
+function placeNote(model, pitch, start, duration) {
+  const groupAt = model.notes.find((n) => n.start === start);
+  if (groupAt) {
+    return { ...model, notes: [...model.notes, { pitch, start, duration: groupAt.duration }] };
+  }
+  const nextStart = Math.min(
+    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+    model.steps
+  );
+  const notes = model.notes.map(
+    (n) => n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
+  );
+  notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
+  return { ...model, notes };
+}
+__name(placeNote, "placeNote");
+function resizeNote(model, start, pitch, duration) {
+  if ((model.bars ?? 1) > 1) {
+    const nextStart = Math.min(
+      ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+      model.steps
+    );
+    const capped2 = Math.max(1, Math.min(duration, nextStart - start));
+    return {
+      ...model,
+      notes: model.notes.map((n) => n.start === start ? { ...n, duration: capped2 } : n)
+    };
+  }
+  const capped = Math.max(1, Math.min(duration, model.steps - start));
+  return {
+    ...model,
+    notes: model.notes.map(
+      (n) => n.start === start && n.pitch === pitch ? { ...n, duration: capped } : n
+    )
+  };
+}
+__name(resizeNote, "resizeNote");
+
 // src/visualEdit/panels/soundCatalog.ts
 var INSTRUMENTS = [
   {
@@ -29618,30 +29681,6 @@ var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
 var VELOCITY_FULL_PX = 80;
 var DRAG_THRESHOLD = 4;
 var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
-var paint = /* @__PURE__ */ __name((value) => value ? cellOn() : false, "paint");
-function toggleCell(model, laneIndex, stepIndex, value) {
-  return {
-    ...model,
-    lanes: model.lanes.map(
-      (lane, i) => i === laneIndex ? {
-        ...lane,
-        // CLAMPED, because a promise about lengths is a promise about ROOM
-        // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
-        // still sounding through shortens that note — the room it had is gone.
-        // Without this the model keeps a length that reaches past the new hit,
-        // which is notation nothing can spell, and the writer rightly declines
-        // an edit the user plainly made. The resize and quantize ops already
-        // clamp for exactly this reason; paint is the third op that moves
-        // onsets closer together, and it was the one still missing it.
-        cells: clampLane(
-          lane.cells.map((c, j) => j === stepIndex ? paint(value) : c),
-          model.steps
-        )
-      } : lane
-    )
-  };
-}
-__name(toggleCell, "toggleCell");
 function gainInScope(model) {
   if (model.gainForeign || (model.bars ?? 1) > 1) return false;
   return new Set(model.lanes.map((l) => l.part ?? 0)).size === 1;
@@ -29921,45 +29960,6 @@ function SequencerGrid({ onResolution } = {}) {
   );
 }
 __name(SequencerGrid, "SequencerGrid");
-
-// src/visualEdit/notation/place.ts
-function placeNote(model, pitch, start, duration) {
-  const groupAt = model.notes.find((n) => n.start === start);
-  if (groupAt) {
-    return { ...model, notes: [...model.notes, { pitch, start, duration: groupAt.duration }] };
-  }
-  const nextStart = Math.min(
-    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-    model.steps
-  );
-  const notes = model.notes.map(
-    (n) => n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
-  );
-  notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
-  return { ...model, notes };
-}
-__name(placeNote, "placeNote");
-function resizeNote(model, start, pitch, duration) {
-  if ((model.bars ?? 1) > 1) {
-    const nextStart = Math.min(
-      ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-      model.steps
-    );
-    const capped2 = Math.max(1, Math.min(duration, nextStart - start));
-    return {
-      ...model,
-      notes: model.notes.map((n) => n.start === start ? { ...n, duration: capped2 } : n)
-    };
-  }
-  const capped = Math.max(1, Math.min(duration, model.steps - start));
-  return {
-    ...model,
-    notes: model.notes.map(
-      (n) => n.start === start && n.pitch === pitch ? { ...n, duration: capped } : n
-    )
-  };
-}
-__name(resizeNote, "resizeNote");
 
 // src/visualEdit/panels/division.ts
 var DIVISIONS = [
