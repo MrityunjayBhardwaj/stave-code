@@ -9,6 +9,49 @@ enumerated below is exactly what that deletion would cost.
 
 ---
 
+## ⚠ RE-BASED AGAIN AT #1010 P4c — the duration class is CLOSED
+
+The step-grid printer now **preserves** a note's length instead of re-deriving it from
+the columns. That retires class 2 of the five-part anatomy below ("11 duration loss →
+#1026 / **#1010**") — the owner named there has landed.
+
+Attributed row by row against the `WRITER-CENSUS.json` this harness generated at
+`studio_v0.2.0`: **1204 rows on both sides, no row appearing or disappearing**, and the
+eleven corrupting asks are the *only* rows that moved.
+
+| figure | pre-P4c | **now** | mechanism |
+| --- | --- | --- | --- |
+| corpus units | 1535 | **1535** | — |
+| core-served asks | 1204 (791 grid / 413 roll) | **1204** | — |
+| transfers | 1026 = 85.2% | **1035** = 86.0% | +9 recovered from `view-corrupts` |
+| untransferable | 78 | **69** | −9; its `no-view` half rises 67 → **69**, its corrupting half falls 11 → **0** |
+| **view-corrupts** | 11 | **0** | the printer keeps the length |
+| structured transfers | 624 | **633** | all 9 recovered asks are structured |
+| unverified (no-probe) | 100 | **100** | — |
+| array-value residual | 8 | **8** | — |
+| candidate-structural residual | 70 | **61** | the 9 recovered |
+| **the P6 blocker set** | **54** | **54** | **unmoved — see below** |
+| the P6 blocker at roll cap 12 | 39 (24 grid + 15 roll) | **39** (24 grid + 15 roll) | unmoved; **observed** by running this census with `LEAF_PROJECT_BARS.roll = 12`, not derived |
+
+Of the eleven: **9 became clean transfers**, and **2 became `no-view`** at gate
+`view-usable` — `[bd ~]*2` and `[- - sd -]*2`, where the column resolution cannot spell
+the length at all, so the writer declines and the view is no longer offered. That is the
+ranking this project already held before the phase existed: a view that never opens beats
+one that opens and mis-writes.
+
+**P4c recovered 9 views and reduced P6's number by ZERO.** That is not a disappointment,
+it is the conjunction doing its job: all 9 had a structured core view (`coreStructured`
+falls 65 → 56) and **none** had a verified core edit (`coreProbe === 'ok'` is unmoved at
+55). The core could not write those asks faithfully either, so they were never part of what
+blocks deleting it. **For P6 the number to scope against is still 54, and 39 if the roll
+cap moves in the same change.**
+
+Every figure above is printed by `writer-census.test.ts` — the `BOTH SURFACES` and
+`THE P6 BLOCKER` blocks — and pinned to a literal that fails on movement. Take them from a
+run, never from prose.
+
+---
+
 ## ⚠ RE-BASED AT #1037 — every figure below this banner is over the OLD corpus
 
 The harvester was rebuilt to ask the transpiler which strings become patterns

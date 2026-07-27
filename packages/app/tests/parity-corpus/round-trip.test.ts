@@ -135,6 +135,23 @@ describe('round-trip — an unedited open→write must not change the text', () 
    * code. It passed, it looked like a lock, and it could not have failed for
    * any reason. A lock needs a reference OUTSIDE the run it is checking; the
    * snapshot file is that reference.
+   *
+   * ⚠ 10 STRINGS LEFT THE GRID LOCK AT #1010 P4c, and "a change made a safe string
+   * unsafe" is NOT what happened — read the bucket they went to. `roundTrip` files a
+   * parse failure as `closed`, not as `null`, so these 10 left because the grid view is
+   * no longer OFFERED for them: the printer now preserves lengths, and where the column
+   * resolution cannot spell one, prove-before-offer (`parse.ts:1638`) declines the view
+   * rather than opening one whose edits the writer cannot honour. They are the same 10
+   * that take the projected-view count from 185 to 175 and flip their verdict in
+   * `mini-corpus`'s snapshot — `[hh ~]!16`, `amen:1/4`, `breaks:{2,5,8}/2`, `lp:6/4`,
+   * `sd:4/2`, `bassloop2:4/2`, `~ ~ ~ bd(<2 4!2>, 8)`, `[~ [<[d3,a3,f4]!2 …> ~]]*2`.
+   *
+   * The half of that diff worth checking is the OTHER pin: `grid-serializer-null` is
+   * byte-identical. Nothing new opens and then refuses to write, which is the failure
+   * mode that WOULD have been "a safe string made unsafe". Both facts are asserted
+   * mechanically against the pre-change snapshots in `_p4c-pin-attribution.spec.ts`
+   * rather than read off a diff ([[P361]]) — the corpus input did not move in this
+   * change, so the code was the only variable and the set was checkable by construction.
    */
   it.each(VIEWS.map((v) => v.name))('%s: LOCKED — these round-trip today and must not stop', (name) => {
     const rows = outcomes.find((o) => o.view === name)!.rows

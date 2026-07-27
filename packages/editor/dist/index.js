@@ -25640,6 +25640,7 @@ function useActiveChunk() {
 __name(useActiveChunk, "useActiveChunk");
 
 // src/visualEdit/notation/model.ts
+var gridCellKey = /* @__PURE__ */ __name((c) => `${c.token} ${c.duration.toFixed(6)}`, "gridCellKey");
 var cellOn = /* @__PURE__ */ __name((duration = 1) => ({ duration }), "cellOn");
 var isCellOn = /* @__PURE__ */ __name((cell) => typeof cell === "object" && cell !== null, "isCellOn");
 var scaleCell = /* @__PURE__ */ __name((cell, factor) => isCellOn(cell) ? cellOn(cell.duration * factor) : false, "scaleCell");
@@ -25668,28 +25669,40 @@ function fmtGain(v) {
   return v.toFixed(2).replace(/\.?0+$/, "");
 }
 __name(fmtGain, "fmtGain");
+function ifGridSpellable(input, next) {
+  if (next === input) return input;
+  return serializeStepGrid(next) === null ? input : next;
+}
+__name(ifGridSpellable, "ifGridSpellable");
+function ifRollSpellable(input, next) {
+  if (next === input) return input;
+  return serializePianoRoll(next) === null ? input : next;
+}
+__name(ifRollSpellable, "ifRollSpellable");
 function serializeStepGrid(model) {
   if (model.leafSource) return spliceByLeaf(model);
   if (altSourceFits(model.altSource, model.steps)) return spliceAltGrid(model);
   const spliced = spliceGrid(model);
-  if (spliced !== null) return spliced;
+  if (spliced === "decline") return null;
+  if (spliced !== "rebuild") return spliced;
   const bars = model.bars ?? 1;
   if (bars > 1) return gridBars(model, bars);
   const parts = [...new Set(model.lanes.map((l) => l.part ?? 0))].sort((a, b) => a - b);
-  if (parts.length <= 1) return gridColumns(model.lanes, model.steps).join(" ");
-  return parts.map(
+  if (parts.length <= 1) return gridColumns(model.lanes, model.steps)?.join(" ") ?? null;
+  const lines = parts.map(
     (p) => gridColumns(
       model.lanes.filter((l) => (l.part ?? 0) === p),
       model.steps
-    ).join(" ")
-  ).join(", ");
+    )?.join(" ")
+  );
+  return lines.some((l) => l === void 0) ? null : lines.join(", ");
 }
 __name(serializeStepGrid, "serializeStepGrid");
 function spliceGrid(model) {
   const src = model.source;
-  if (!src || src.parts.length === 0) return null;
+  if (!src || src.parts.length === 0) return "rebuild";
   const gain = serializeStepGain(model);
-  if (gain.kind === "write" && gain.quoted) return null;
+  if (gain.kind === "write" && gain.quoted) return "rebuild";
   let out = src.prefix;
   for (const p of src.parts) {
     const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part);
@@ -25697,13 +25710,21 @@ function spliceGrid(model) {
     const last = p.regions[p.regions.length - 1];
     out += p.before;
     if (cols === null || last === void 0 || last.to !== cols.length) {
-      out += gridColumns(lanes, model.steps).join(" ") + p.after;
+      const rebuilt = gridColumns(lanes, model.steps);
+      if (rebuilt === null) return "decline";
+      out += rebuilt.join(" ") + p.after;
       continue;
     }
     const sole = src.parts.length === 1 && src.prefix === "" && p.regions.length === 1;
     for (const r of p.regions) {
       const now2 = cols.slice(r.from, r.to);
-      out += sameCells(now2, r.content) ? r.raw : r.leading + (sole ? now2.map(cellToken).join(" ") : reemitRegion(now2, p.div)) + r.trailing;
+      if (sameCells(now2, r.content)) {
+        out += r.raw;
+        continue;
+      }
+      const re = reemitRegion(now2, sole ? 1 : p.div);
+      if (re === null) return "decline";
+      out += r.leading + re + r.trailing;
     }
     out += p.after;
   }
@@ -25730,7 +25751,7 @@ function spliceByLeaf(model) {
   for (let c = 0; c < model.steps; c++) {
     const anchors = ls.cols[c];
     const before = anchors.map((a) => a.atom);
-    const after = [...new Set(now2[c])];
+    const after = [...new Set(now2[c].map((n) => n.token))];
     const gone = before.filter((a) => !after.includes(a));
     const added = after.filter((a) => !before.includes(a));
     const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1;
@@ -25798,15 +25819,24 @@ function spliceAltGrid(model) {
   for (const r of a.regions) {
     const now2 = [];
     for (let b = 0; b < a.bars; b++) {
-      now2.push(cols.slice(r.from + b * a.perBar, r.to + b * a.perBar).map((c) => [...new Set(c)]));
+      now2.push(
+        cols.slice(r.from + b * a.perBar, r.to + b * a.perBar).map((c) => [...new Map(c.map((n) => [gridCellKey(n), n])).values()])
+      );
     }
-    out += now2.every((bar2, b) => sameCells(bar2, r.perBar[b])) ? r.raw : r.leading + reemitAltRegion(now2, a.div) + r.trailing;
+    if (now2.every((bar2, b) => sameCells(bar2, r.perBar[b]))) {
+      out += r.raw;
+      continue;
+    }
+    const re = reemitAltRegion(now2, a.div);
+    if (re === null) return null;
+    out += r.leading + re + r.trailing;
   }
   return out;
 }
 __name(spliceAltGrid, "spliceAltGrid");
 function reemitAltRegion(perBar2, div) {
   const barTokens = perBar2.map((bar2) => reemitRegion(bar2, div));
+  if (barTokens.some((t) => t === null)) return null;
   return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(" ")}>`;
 }
 __name(reemitAltRegion, "reemitAltRegion");
@@ -25815,7 +25845,8 @@ function partColumns(lanes, steps, factor) {
   const all = columnAtoms(lanes, steps);
   const cols = [];
   for (let c = 0; c < steps; c++) {
-    if (c % factor === 0) cols.push(all[c]);
+    if (c % factor === 0)
+      cols.push(all[c].map((n) => ({ token: n.token, duration: n.duration / factor })));
     else if (all[c].length > 0) return null;
   }
   return cols;
@@ -25823,28 +25854,68 @@ function partColumns(lanes, steps, factor) {
 __name(partColumns, "partColumns");
 function columnAtoms(lanes, steps) {
   const cols = [];
-  for (let i = 0; i < steps; i++)
-    cols.push(lanes.filter((l) => isCellOn(l.cells[i])).map((l) => l.sound));
+  for (let i = 0; i < steps; i++) {
+    const here = [];
+    for (const l of lanes) {
+      const cell = l.cells[i];
+      if (isCellOn(cell)) here.push({ token: l.sound, duration: cell.duration });
+    }
+    cols.push(here);
+  }
   return cols;
 }
 __name(columnAtoms, "columnAtoms");
-var sameCell = /* @__PURE__ */ __name((a, b) => a.length === b.length && a.every((x) => b.includes(x)), "sameCell");
+var sameCell = /* @__PURE__ */ __name((a, b) => {
+  const keys = b.map(gridCellKey);
+  return a.length === b.length && a.every((x) => keys.includes(gridCellKey(x)));
+}, "sameCell");
 var sameCells = /* @__PURE__ */ __name((a, b) => a.length === b.length && a.every((c, i) => sameCell(c, b[i])), "sameCells");
 function reemitRegion(cols, div) {
+  const spelled = sustainTokens(cols, div);
+  if (spelled === null) return null;
   const steps = [];
-  for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(cols.slice(i, i + div)));
+  for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(spelled.slice(i, i + div)));
   return steps.join(" ");
 }
 __name(reemitRegion, "reemitRegion");
-function reemitStep(cols) {
-  if (cols.length === 1) return cellToken(cols[0]);
-  if (cols.every((c) => c.length === 0)) return "~";
-  return `[${cols.map(cellToken).join(" ")}]`;
+function sustainTokens(cols, div) {
+  const out = new Array(cols.length).fill("");
+  const covered = new Array(cols.length).fill(false);
+  for (let c = 0; c < cols.length; c++) {
+    for (const n of cols[c]) {
+      const d = Math.round(n.duration);
+      if (Math.abs(n.duration - d) > 1e-6 || d < 1) return null;
+      if (c + d > cols.length) return null;
+      for (let k = 1; k < d; k++) {
+        if (cols[c + k].length > 0) return null;
+        covered[c + k] = true;
+      }
+    }
+  }
+  for (let c = 0; c < cols.length; c++) {
+    if (cols[c].length > 0) {
+      out[c] = cellToken(cols[c].map((n) => n.token));
+      continue;
+    }
+    if (!covered[c]) {
+      out[c] = "~";
+      continue;
+    }
+    if (c === 0 || div > 1 && c % div === 0) return null;
+    out[c] = "_";
+  }
+  return out;
+}
+__name(sustainTokens, "sustainTokens");
+function reemitStep(tokens) {
+  if (tokens.length === 1) return tokens[0];
+  if (tokens.every((t) => t === "~")) return "~";
+  return `[${tokens.join(" ")}]`;
 }
 __name(reemitStep, "reemitStep");
 var cellToken = /* @__PURE__ */ __name((atoms) => atoms.length === 0 ? "~" : atoms.length === 1 ? atoms[0] : `[${atoms.join(",")}]`, "cellToken");
 function gridColumns(lanes, steps) {
-  return columnAtoms(lanes, steps).map(cellToken);
+  return sustainTokens(columnAtoms(lanes, steps), 1);
 }
 __name(gridColumns, "gridColumns");
 function serializeStepGain(model) {
@@ -25856,6 +25927,7 @@ function serializeStepGain(model) {
   const gains = model.gains;
   if (!gains || gains.length !== model.steps) return { kind: "clear" };
   const cols = gridColumns(model.lanes, model.steps);
+  if (cols === null) return { kind: "skip" };
   const active2 = gains.filter((_, i) => cols[i] !== "~");
   if (active2.length === 0 || active2.every((g) => g === 1)) return { kind: "clear" };
   if (active2.every((g) => g === active2[0])) {
@@ -25868,6 +25940,7 @@ __name(serializeStepGain, "serializeStepGain");
 function gridBars(model, bars) {
   const perBar2 = model.steps / bars;
   const cols = gridColumns(model.lanes, model.steps);
+  if (cols === null) return null;
   const slots = [];
   for (let b = 0; b < bars; b++) {
     const bar2 = cols.slice(b * perBar2, (b + 1) * perBar2);
@@ -26579,7 +26652,7 @@ function tokenize(mini, allowNumeric = false) {
 }
 __name(tokenize, "tokenize");
 var gridHasElongation = /* @__PURE__ */ __name((steps) => steps.some((s) => s.elongation !== 1 || (s.sub?.some((slot) => slot.units !== 1) ?? false)), "gridHasElongation");
-var tokensOf = /* @__PURE__ */ __name((cols) => cols.map((c) => c.map((n) => n.token)), "tokensOf");
+var tokensOf = /* @__PURE__ */ __name((cols) => cols.map((c) => c.map((n) => ({ ...n }))), "tokensOf");
 function toCells(steps, div) {
   const cells = [];
   for (const step of steps) {
@@ -26641,7 +26714,7 @@ function columnsFromOnsets(perCycle, perBar2, bars) {
   return cols;
 }
 __name(columnsFromOnsets, "columnsFromOnsets");
-var gridContent = /* @__PURE__ */ __name((cells) => (from, to) => cells.slice(from, to).map((c) => [...new Set(c)]), "gridContent");
+var gridContent = /* @__PURE__ */ __name((cells) => (from, to) => cells.slice(from, to).map((c) => [...new Map(c.map((n) => [gridCellKey(n), n])).values()]), "gridContent");
 var rollContent = /* @__PURE__ */ __name((notes) => (from, to) => notes.filter((n) => n.start >= from && n.start < to).map((n) => ({ pitch: n.pitch, start: n.start, duration: n.duration })), "rollContent");
 function singlePart(src, elements, div, total, content) {
   const regions = buildRegions(src, elements, div, total, content);
@@ -28391,11 +28464,11 @@ function perBar(steps, bars) {
   return bars && bars > 0 ? steps / bars : steps;
 }
 __name(perBar, "perBar");
-function canDoubleStepGrid(model) {
+function structurallyCanDouble(model) {
   return model.steps >= 1 && model.steps * 2 <= MAX_RESOLUTION_STEPS;
 }
-__name(canDoubleStepGrid, "canDoubleStepGrid");
-function canHalveStepGrid(model) {
+__name(structurallyCanDouble, "structurallyCanDouble");
+function structurallyCanHalve(model) {
   if (model.steps < 2 || model.steps % 2 !== 0) return false;
   if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false;
   const oddCellEmpty = model.lanes.every(
@@ -28407,11 +28480,11 @@ function canHalveStepGrid(model) {
   }
   return true;
 }
-__name(canHalveStepGrid, "canHalveStepGrid");
+__name(structurallyCanHalve, "structurallyCanHalve");
 function scaleStepGrid(model, dir) {
   if (dir === "double") {
-    if (!canDoubleStepGrid(model)) return model;
-    return {
+    if (!structurallyCanDouble(model)) return model;
+    return ifGridSpellable(model, {
       ...model,
       steps: model.steps * 2,
       lanes: model.lanes.map((lane) => ({
@@ -28419,10 +28492,10 @@ function scaleStepGrid(model, dir) {
         cells: lane.cells.flatMap((cell) => [scaleCell(cell, 2), false])
       })),
       ...model.gains ? { gains: model.gains.flatMap((g) => [g, 1]) } : {}
-    };
+    });
   }
-  if (!canHalveStepGrid(model)) return model;
-  return {
+  if (!structurallyCanHalve(model)) return model;
+  return ifGridSpellable(model, {
     ...model,
     steps: model.steps / 2,
     lanes: model.lanes.map((lane) => ({
@@ -28430,34 +28503,34 @@ function scaleStepGrid(model, dir) {
       cells: lane.cells.filter((_, i) => i % 2 === 0).map((cell) => scaleCell(cell, 0.5))
     })),
     ...model.gains ? { gains: model.gains.filter((_, i) => i % 2 === 0) } : {}
-  };
+  });
 }
 __name(scaleStepGrid, "scaleStepGrid");
-function canDoublePianoRoll(model) {
+function structurallyCanDoubleRoll(model) {
   return model.steps >= 1 && model.steps * 2 <= MAX_RESOLUTION_STEPS;
 }
-__name(canDoublePianoRoll, "canDoublePianoRoll");
-function canHalvePianoRoll(model) {
+__name(structurallyCanDoubleRoll, "structurallyCanDoubleRoll");
+function structurallyCanHalveRoll(model) {
   if (model.steps < 2 || model.steps % 2 !== 0) return false;
   if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false;
   return model.notes.every((n) => n.start % 2 === 0 && n.duration % 2 === 0);
 }
-__name(canHalvePianoRoll, "canHalvePianoRoll");
+__name(structurallyCanHalveRoll, "structurallyCanHalveRoll");
 function scalePianoRoll(model, dir) {
   if (dir === "double") {
-    if (!canDoublePianoRoll(model)) return model;
-    return {
+    if (!structurallyCanDoubleRoll(model)) return model;
+    return ifRollSpellable(model, {
       ...model,
       steps: model.steps * 2,
       notes: model.notes.map((n) => ({ ...n, start: n.start * 2, duration: n.duration * 2 }))
-    };
+    });
   }
-  if (!canHalvePianoRoll(model)) return model;
-  return {
+  if (!structurallyCanHalveRoll(model)) return model;
+  return ifRollSpellable(model, {
     ...model,
     steps: model.steps / 2,
     notes: model.notes.map((n) => ({ ...n, start: n.start / 2, duration: n.duration / 2 }))
-  };
+  });
 }
 __name(scalePianoRoll, "scalePianoRoll");
 var RESOLUTION_PRESETS = [4, 8, 16, 32, 64];
@@ -28525,7 +28598,7 @@ function quantizeStepGridTo(model, target) {
       filled.add(b);
     }
   }
-  return { ...model, steps: target, lanes, ...gains ? { gains } : {} };
+  return ifGridSpellable(model, { ...model, steps: target, lanes, ...gains ? { gains } : {} });
 }
 __name(quantizeStepGridTo, "quantizeStepGridTo");
 function quantizePianoRollTo(model, target) {
@@ -28537,7 +28610,7 @@ function quantizePianoRollTo(model, target) {
     while (cur.steps < target) {
       cur = { ...cur, steps: cur.steps * 2, notes: cur.notes.map((n) => ({ ...n, start: n.start * 2 })) };
     }
-    return cur;
+    return ifRollSpellable(model, cur);
   }
   const from = model.steps;
   const addingSlots = target > from;
@@ -28563,22 +28636,34 @@ function quantizePianoRollTo(model, target) {
     const gain = Math.max(...grp.map((m) => m.gain));
     for (const m of grp) notes.push({ pitch: m.pitch, start, duration, gain });
   });
-  return { ...model, steps: target, notes };
+  return ifRollSpellable(model, { ...model, steps: target, notes });
 }
 __name(quantizePianoRollTo, "quantizePianoRollTo");
-function slotState(steps, bars, lossless, target) {
+function slotState(steps, bars, lossless, applies, target) {
   if (target === steps) return "active";
   if (lossless) return "lossless";
   if ((bars ?? 1) > 1) return "disabled";
-  return "quantize";
+  return applies ? "quantize" : "disabled";
 }
 __name(slotState, "slotState");
 function stepSlotState(model, target) {
-  return slotState(model.steps, model.bars, canScaleStepGridTo(model, target), target);
+  return slotState(
+    model.steps,
+    model.bars,
+    canScaleStepGridTo(model, target),
+    quantizeStepGridTo(model, target) !== model,
+    target
+  );
 }
 __name(stepSlotState, "stepSlotState");
 function rollSlotState(model, target) {
-  return slotState(model.steps, model.bars, canScalePianoRollTo(model, target), target);
+  return slotState(
+    model.steps,
+    model.bars,
+    canScalePianoRollTo(model, target),
+    quantizePianoRollTo(model, target) !== model,
+    target
+  );
 }
 __name(rollSlotState, "rollSlotState");
 function useLiftResolution(steps, slotState2, onScaleTo, onResolution) {
@@ -29512,7 +29597,21 @@ function toggleCell(model, laneIndex, stepIndex, value) {
   return {
     ...model,
     lanes: model.lanes.map(
-      (lane, i) => i === laneIndex ? { ...lane, cells: lane.cells.map((c, j) => j === stepIndex ? paint(value) : c) } : lane
+      (lane, i) => i === laneIndex ? {
+        ...lane,
+        // CLAMPED, because a promise about lengths is a promise about ROOM
+        // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
+        // still sounding through shortens that note — the room it had is gone.
+        // Without this the model keeps a length that reaches past the new hit,
+        // which is notation nothing can spell, and the writer rightly declines
+        // an edit the user plainly made. The resize and quantize ops already
+        // clamp for exactly this reason; paint is the third op that moves
+        // onsets closer together, and it was the one still missing it.
+        cells: clampLane(
+          lane.cells.map((c, j) => j === stepIndex ? paint(value) : c),
+          model.steps
+        )
+      } : lane
     )
   };
 }
@@ -42137,18 +42236,18 @@ var restructured = /* @__PURE__ */ __name(({ source: _drop, ...rest }) => rest, 
 function resizeGrid(model, nextSteps, mode) {
   if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
   if (mode === "pad" || model.steps === 0) {
-    return {
+    return ifGridSpellable(model, {
       ...restructured(model),
       steps: nextSteps,
       lanes: model.lanes.map((l) => ({
         ...l,
         cells: clampLane(padCells(l.cells, nextSteps), nextSteps)
       }))
-    };
+    });
   }
   const from = model.steps;
   const factor = nextSteps / from;
-  return {
+  return ifGridSpellable(model, {
     ...restructured(model),
     steps: nextSteps,
     lanes: model.lanes.map((l) => {
@@ -42164,17 +42263,17 @@ function resizeGrid(model, nextSteps, mode) {
       });
       return { ...l, cells: clampLane(cells, nextSteps) };
     })
-  };
+  });
 }
 __name(resizeGrid, "resizeGrid");
 function resizeRoll(model, nextSteps, mode) {
   if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
   if (mode === "pad" || model.steps === 0) {
-    return {
+    return ifRollSpellable(model, {
       ...model,
       steps: nextSteps,
       notes: model.notes.filter((n) => n.start < nextSteps).map((n) => ({ ...n, duration: Math.min(n.duration, nextSteps - n.start) }))
-    };
+    });
   }
   const factor = nextSteps / model.steps;
   const scaled = model.notes.map((n) => {
@@ -42183,7 +42282,7 @@ function resizeRoll(model, nextSteps, mode) {
     return { ...n, start, duration: Math.min(end, nextSteps) - start };
   }).filter((n) => n.start < nextSteps && n.duration >= 1);
   const seen = /* @__PURE__ */ new Set();
-  return {
+  return ifRollSpellable(model, {
     ...model,
     steps: nextSteps,
     notes: scaled.filter((n) => {
@@ -42192,7 +42291,7 @@ function resizeRoll(model, nextSteps, mode) {
       seen.add(key2);
       return true;
     })
-  };
+  });
 }
 __name(resizeRoll, "resizeRoll");
 function padCells(cells, steps) {

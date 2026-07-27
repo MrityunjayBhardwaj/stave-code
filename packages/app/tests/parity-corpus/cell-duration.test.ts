@@ -203,11 +203,29 @@ describe('the step cell carries a length the engine actually played', () => {
     // denominator and this gate would go green over less material — the failure mode
     // that put an unstated population restriction into four shipped figures at this
     // boundary before it was named ([[P343]]).
-    expect(units.length).toBe(968)
+    //
+    // RE-BASED at #1010 P4c (968 → 958, split 783/113/72 → 783/93/82, cells 4763 → 4718),
+    // and the mechanism is exactly what the pin exists to make visible: this population
+    // is gated on `parseStepGrid(...).ok`, and the PARSER asks the WRITER before it
+    // offers a view at all (`parse.ts:1638` — "the writer must reproduce the user's
+    // bytes"; also `leafViewUsable`). Once the printer preserves lengths, a view whose
+    // edits it cannot honour stops being offered. Attributed unit by unit against the
+    // base writer (`_p4c-pin-attribution.spec.ts`), and it is two disjoint moves, not a
+    // diffuse drift:
+    //   - 10 units `derived → ABSENT` — `[hh ~]!16`, `amen:1/4`, `breaks:2/2`, … each
+    //     carrying a length the column resolution cannot spell. These are the SAME 10
+    //     that take the projected-view count from 185 to 175; a view that mis-writes is
+    //     worse than no view, so losing them is the phase working, not leaking.
+    //   - 10 units `derived → derived+leaf` — `[bd sd, hh hh hh]`, `bd/2 sd`, … falling
+    //     back to the leaf-anchored projection, which is a gain in fidelity and no loss
+    //     of population; that is why `derived` drops 20 while the total drops only 10.
+    // Syntactic is UNMOVED at 783, which is the control inside the split: the core path
+    // never consults the writer, so a printer change must not touch it.
+    expect(units.length).toBe(958)
     expect(byPath.get('syntactic')).toBe(783)
-    expect(byPath.get('derived')).toBe(113)
-    expect(byPath.get('derived+leaf')).toBe(72)
-    expect(cells).toBe(4763)
+    expect(byPath.get('derived')).toBe(93)
+    expect(byPath.get('derived+leaf')).toBe(82)
+    expect(cells).toBe(4718)
   })
 
   it('CONTROL: a reader that returns 1 for every length is caught', () => {

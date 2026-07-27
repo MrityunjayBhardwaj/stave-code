@@ -298,14 +298,35 @@ const POPULATION = {
   units: 1039,
   resolvedUnits: 898,
   resolvedMinis: 671,
-  newlyAdmitted: 266,
+  // ⚠ newlyAdmitted MOVED 266 → 269 at #1010 P4c, and it is the only field of this
+  // population that moved. The mechanism is the PRINTER, reaching a population figure
+  // through the parse side: `status.status !== 'note'` means "the coverage harness offers
+  // this unit no note view today", and the parser asks the writer before it offers one
+  // (`parse.ts:1638`). Once the printer preserves lengths, 10 units whose length the
+  // column resolution cannot spell stop being offered a derived grid — and exactly 3 of
+  // those 10 are in this arm's eval-resolved set, so they cross into `newlyAdmitted`:
+  // `[hh ~]!16`, `lp:6/4`, `~ ~ ~ bd(<2 4!2>, 8)`. Observed by intersecting this set with
+  // the 10 the attribution sweep named, not deduced from the delta being 3.
+  newlyAdmitted: 269,
 }
 
-/** the counterfactual over every eval-resolved mini */
-const ALL_RESOLVED = { coreServed: 500, transfers: 427, untransferable: 33, unverified: 40 }
+/**
+ * the counterfactual over every eval-resolved mini
+ *
+ * ⚠ MOVED 427/33 → 431/29 at #1010 P4c. The length-preserving printer recovers 4 of this
+ * arm's asks from untransferable to transfers; `coreServed` (500) and `unverified` (40) do
+ * not move at all, which is what says the population is the same and only fidelity
+ * changed. The sibling arm's equivalent move is +9 over its 1204 asks — a different
+ * number over a different population, as it should be, and neither is the other's check.
+ */
+const ALL_RESOLVED = { coreServed: 500, transfers: 431, untransferable: 29, unverified: 40 }
 
-/** the counterfactual over ONLY the slice `mini-corpus.json` does not contain */
-const NEWLY_ADMITTED = { coreServed: 93, transfers: 76, untransferable: 7, unverified: 10 }
+/**
+ * the counterfactual over ONLY the slice `mini-corpus.json` does not contain
+ *
+ * ⚠ MOVED 76/7 → 77/6 at #1010 P4c — one of the four above falls in this slice.
+ */
+const NEWLY_ADMITTED = { coreServed: 93, transfers: 77, untransferable: 6, unverified: 10 }
 
 /**
  * The sibling arm's headline, pinned here too even though it is DERIVED from
@@ -313,7 +334,7 @@ const NEWLY_ADMITTED = { coreServed: 93, transfers: 76, untransferable: 7, unver
  * the sibling's own movement visible from this side, which is the failure that
  * started this — 965/1217 sat here across three merges of someone else's change.
  */
-const MINI_CORPUS_ARM = { transfers: 1026, asks: 1204 }
+const MINI_CORPUS_ARM = { transfers: 1035, asks: 1204 }
 // ⚠ MOVED 1055/1217 -> 1026/1204 at #1037, when the harvester was rebuilt and the
 // corpus went 1500 -> 1535 units. This pin FIRED on that change, which is the whole
 // reason it exists: the sibling arm moved and this side found out immediately
@@ -321,6 +342,15 @@ const MINI_CORPUS_ARM = { transfers: 1026, asks: 1204 }
 // population is derived from EVALUATION, and evaluation never sees commented-out
 // code, so shedding the 94 dead-code strings changed the sibling without touching
 // the 266 newly-admitted here.
+//
+// ⚠ MOVED AGAIN 1026 -> 1035 at #1010 P4c (asks unchanged at 1204): the sibling's eleven
+// duration failures are gone, 9 to `transfers` and 2 to `no-view`. This pin FIRED a second
+// time, and it caught something better than drift on the way — it briefly read **1051**,
+// because measuring the P6 blocker at `LEAF_PROJECT_BARS.roll = 12` re-runs the sibling
+// harness and rewrites `WRITER-CENSUS.json` on disk. This arm DERIVES from that file, so a
+// throwaway measurement had left a cap-12 figure sitting in a committed artifact. Anything
+// that runs the sibling with a constant changed must regenerate the JSON at the shipped
+// constant afterwards, and this pin is what makes forgetting loud instead of silent.
 
 /**
  * Known-unregistered modules. `@strudel/soundfonts` fails on a CommonJS interop

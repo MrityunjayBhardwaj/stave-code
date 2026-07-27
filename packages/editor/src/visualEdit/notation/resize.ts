@@ -13,6 +13,7 @@
  */
 import { cellOn, clampLane, isCellOn, scaleCell } from './model'
 import type { PianoRollModel, StepCell, StepGridModel } from './model'
+import { ifGridSpellable, ifRollSpellable } from './serialize'
 
 export type ResizeMode = 'spread' | 'pad'
 
@@ -42,14 +43,17 @@ export function resizeGrid(
 ): StepGridModel {
   if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model
   if (mode === 'pad' || model.steps === 0) {
-    return {
+    // `pad` KEEPS lengths ([[PV240]]), so it cannot push one below a column — but it is
+    // gated all the same, because the rule is "ask the writer", not "ask the writer where
+    // I predict trouble". A prediction about which ops are safe is the thing this replaces.
+    return ifGridSpellable(model, {
       ...restructured(model),
       steps: nextSteps,
       lanes: model.lanes.map((l) => ({
         ...l,
         cells: clampLane(padCells(l.cells, nextSteps), nextSteps),
       })),
-    }
+    })
   }
   const from = model.steps
   // "spread" preserves musical time, so a note's LENGTH scales with the grid exactly
@@ -57,7 +61,9 @@ export function resizeGrid(
   // columns long, which is the same fraction of the cycle. Leaving lengths alone here
   // would halve every note while claiming to preserve the groove.
   const factor = nextSteps / from
-  return {
+  // DOWNSAMPLING scales every length down, and below one column the grid has no spelling
+  // for it, so `spread` is not offered there (#1010 P4c) — see `ifGridSpellable`.
+  return ifGridSpellable(model, {
     ...restructured(model),
     steps: nextSteps,
     lanes: model.lanes.map((l) => {
@@ -79,7 +85,7 @@ export function resizeGrid(
       })
       return { ...l, cells: clampLane(cells, nextSteps) }
     }),
-  }
+  })
 }
 
 export function resizeRoll(
@@ -89,13 +95,13 @@ export function resizeRoll(
 ): PianoRollModel {
   if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model
   if (mode === 'pad' || model.steps === 0) {
-    return {
+    return ifRollSpellable(model, {
       ...model,
       steps: nextSteps,
       notes: model.notes
         .filter((n) => n.start < nextSteps)
         .map((n) => ({ ...n, duration: Math.min(n.duration, nextSteps - n.start) })),
-    }
+    })
   }
   const factor = nextSteps / model.steps
   const scaled = model.notes
@@ -107,7 +113,7 @@ export function resizeRoll(
     .filter((n) => n.start < nextSteps && n.duration >= 1)
   // drop collisions from downsampling (same pitch onto the same step)
   const seen = new Set<string>()
-  return {
+  return ifRollSpellable(model, {
     ...model,
     steps: nextSteps,
     notes: scaled.filter((n) => {
@@ -116,7 +122,7 @@ export function resizeRoll(
       seen.add(key)
       return true
     }),
-  }
+  })
 }
 
 /**

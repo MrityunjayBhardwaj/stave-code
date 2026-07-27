@@ -1,0 +1,4610 @@
+[
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 0,
+  "col": 5,
+  "laneToken": "e2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 0,
+  "col": 7,
+  "laneToken": "e2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 0,
+  "col": 9,
+  "laneToken": "e2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 0,
+  "col": 13,
+  "laneToken": "e2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 0,
+  "col": 15,
+  "laneToken": "e2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "b2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 1,
+  "col": 5,
+  "laneToken": "b2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 1,
+  "col": 7,
+  "laneToken": "b2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 1,
+  "col": 9,
+  "laneToken": "b2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 1,
+  "col": 13,
+  "laneToken": "b2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 1,
+  "col": 15,
+  "laneToken": "b2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 2,
+  "col": 1,
+  "laneToken": "a2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 2,
+  "col": 5,
+  "laneToken": "a2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 2,
+  "col": 7,
+  "laneToken": "a2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 2,
+  "col": 9,
+  "laneToken": "a2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 2,
+  "col": 13,
+  "laneToken": "a2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 2,
+  "col": 15,
+  "laneToken": "a2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 3,
+  "col": 1,
+  "laneToken": "g2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 3,
+  "col": 7,
+  "laneToken": "g2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 3,
+  "col": 9,
+  "laneToken": "g2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 3,
+  "col": 13,
+  "laneToken": "g2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 3,
+  "col": 15,
+  "laneToken": "g2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 4,
+  "col": 1,
+  "laneToken": "f#2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 4,
+  "col": 5,
+  "laneToken": "f#2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 4,
+  "col": 9,
+  "laneToken": "f#2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 4,
+  "col": 13,
+  "laneToken": "f#2",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 5,
+  "col": 1,
+  "laneToken": "d3",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 5,
+  "col": 5,
+  "laneToken": "d3",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 5,
+  "col": 7,
+  "laneToken": "d3",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 5,
+  "col": 15,
+  "laneToken": "d3",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 6,
+  "col": 1,
+  "laneToken": "e3",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 6,
+  "col": 5,
+  "laneToken": "e3",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 6,
+  "col": 7,
+  "laneToken": "e3",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 6,
+  "col": 9,
+  "laneToken": "e3",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 6,
+  "col": 13,
+  "laneToken": "e3",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]",
+  "lane": 6,
+  "col": 15,
+  "laneToken": "e3",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 0,
+  "col": 5,
+  "laneToken": "e4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 0,
+  "col": 7,
+  "laneToken": "e4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 0,
+  "col": 9,
+  "laneToken": "e4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 0,
+  "col": 13,
+  "laneToken": "e4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 0,
+  "col": 15,
+  "laneToken": "e4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "b4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 1,
+  "col": 5,
+  "laneToken": "b4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 1,
+  "col": 7,
+  "laneToken": "b4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 1,
+  "col": 9,
+  "laneToken": "b4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 1,
+  "col": 13,
+  "laneToken": "b4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 1,
+  "col": 15,
+  "laneToken": "b4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 2,
+  "col": 1,
+  "laneToken": "a4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 2,
+  "col": 5,
+  "laneToken": "a4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 2,
+  "col": 7,
+  "laneToken": "a4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 2,
+  "col": 9,
+  "laneToken": "a4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 2,
+  "col": 13,
+  "laneToken": "a4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 2,
+  "col": 15,
+  "laneToken": "a4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 3,
+  "col": 1,
+  "laneToken": "g4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 3,
+  "col": 7,
+  "laneToken": "g4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 3,
+  "col": 9,
+  "laneToken": "g4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 3,
+  "col": 13,
+  "laneToken": "g4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 3,
+  "col": 15,
+  "laneToken": "g4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 4,
+  "col": 1,
+  "laneToken": "f#4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 4,
+  "col": 5,
+  "laneToken": "f#4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 4,
+  "col": 9,
+  "laneToken": "f#4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 4,
+  "col": 13,
+  "laneToken": "f#4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 5,
+  "col": 1,
+  "laneToken": "d5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 5,
+  "col": 5,
+  "laneToken": "d5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 5,
+  "col": 7,
+  "laneToken": "d5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 5,
+  "col": 15,
+  "laneToken": "d5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 6,
+  "col": 1,
+  "laneToken": "e5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 6,
+  "col": 5,
+  "laneToken": "e5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 6,
+  "col": 7,
+  "laneToken": "e5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 6,
+  "col": 9,
+  "laneToken": "e5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 6,
+  "col": 13,
+  "laneToken": "e5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]",
+  "lane": 6,
+  "col": 15,
+  "laneToken": "e5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 0,
+  "col": 3,
+  "laneToken": "e5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 0,
+  "col": 5,
+  "laneToken": "e5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 0,
+  "col": 7,
+  "laneToken": "e5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 0,
+  "col": 11,
+  "laneToken": "e5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 0,
+  "col": 15,
+  "laneToken": "e5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "d5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 1,
+  "col": 5,
+  "laneToken": "d5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 1,
+  "col": 7,
+  "laneToken": "d5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 1,
+  "col": 11,
+  "laneToken": "d5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 1,
+  "col": 15,
+  "laneToken": "d5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 2,
+  "col": 1,
+  "laneToken": "c5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 2,
+  "col": 3,
+  "laneToken": "c5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 2,
+  "col": 7,
+  "laneToken": "c5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 2,
+  "col": 11,
+  "laneToken": "c5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 2,
+  "col": 15,
+  "laneToken": "c5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 3,
+  "col": 1,
+  "laneToken": "b4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 3,
+  "col": 3,
+  "laneToken": "b4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 3,
+  "col": 5,
+  "laneToken": "b4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 3,
+  "col": 11,
+  "laneToken": "b4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 3,
+  "col": 15,
+  "laneToken": "b4",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 4,
+  "col": 1,
+  "laneToken": "g5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 4,
+  "col": 3,
+  "laneToken": "g5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 4,
+  "col": 5,
+  "laneToken": "g5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 4,
+  "col": 7,
+  "laneToken": "g5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 4,
+  "col": 11,
+  "laneToken": "g5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 4,
+  "col": 15,
+  "laneToken": "g5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 5,
+  "col": 1,
+  "laneToken": "a5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 5,
+  "col": 3,
+  "laneToken": "a5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 5,
+  "col": 5,
+  "laneToken": "a5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 5,
+  "col": 7,
+  "laneToken": "a5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 5,
+  "col": 15,
+  "laneToken": "a5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 6,
+  "col": 1,
+  "laneToken": "b5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 6,
+  "col": 3,
+  "laneToken": "b5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 6,
+  "col": 5,
+  "laneToken": "b5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 6,
+  "col": 7,
+  "laneToken": "b5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]",
+  "lane": 6,
+  "col": 11,
+  "laneToken": "b5",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 0,
+  "col": 10,
+  "laneToken": "d4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 0,
+  "col": 11,
+  "laneToken": "d4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 0,
+  "col": 13,
+  "laneToken": "d4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 0,
+  "col": 14,
+  "laneToken": "d4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 1,
+  "col": 10,
+  "laneToken": "c4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 1,
+  "col": 11,
+  "laneToken": "c4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 1,
+  "col": 13,
+  "laneToken": "c4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 1,
+  "col": 14,
+  "laneToken": "c4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 2,
+  "col": 10,
+  "laneToken": "g4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 2,
+  "col": 11,
+  "laneToken": "g4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 2,
+  "col": 13,
+  "laneToken": "g4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 2,
+  "col": 14,
+  "laneToken": "g4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 3,
+  "col": 10,
+  "laneToken": "bb3",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 3,
+  "col": 11,
+  "laneToken": "bb3",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 3,
+  "col": 13,
+  "laneToken": "bb3",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 3,
+  "col": 14,
+  "laneToken": "bb3",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 4,
+  "col": 10,
+  "laneToken": "a3",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 4,
+  "col": 11,
+  "laneToken": "a3",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 4,
+  "col": 13,
+  "laneToken": "a3",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 4,
+  "col": 14,
+  "laneToken": "a3",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 5,
+  "col": 13,
+  "laneToken": "g3",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 5,
+  "col": 14,
+  "laneToken": "g3",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 6,
+  "col": 10,
+  "laneToken": "f#3:4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 6,
+  "col": 11,
+  "laneToken": "f#3:4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 6,
+  "col": 13,
+  "laneToken": "f#3:4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 6,
+  "col": 14,
+  "laneToken": "f#3:4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 7,
+  "col": 10,
+  "laneToken": "bb4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>",
+  "lane": 7,
+  "col": 11,
+  "laneToken": "bb4",
+  "steps": 15,
+  "bars": 1,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 0,
+  "col": 5,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 0,
+  "col": 6,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 0,
+  "col": 7,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 0,
+  "col": 13,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 0,
+  "col": 14,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 0,
+  "col": 15,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 0,
+  "col": 21,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 0,
+  "col": 22,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 0,
+  "col": 23,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 0,
+  "col": 29,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 0,
+  "col": 30,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 0,
+  "col": 31,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 1,
+  "col": 2,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 1,
+  "col": 3,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 1,
+  "col": 25,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd",
+  "lane": 1,
+  "col": 27,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 0,
+  "col": 3,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 0,
+  "col": 5,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 0,
+  "col": 7,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 0,
+  "col": 9,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 0,
+  "col": 13,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 0,
+  "col": 15,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 0,
+  "col": 19,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 0,
+  "col": 21,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 0,
+  "col": 23,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 0,
+  "col": 25,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 0,
+  "col": 29,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 0,
+  "col": 31,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "e4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 1,
+  "col": 5,
+  "laneToken": "e4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 1,
+  "col": 7,
+  "laneToken": "e4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 1,
+  "col": 9,
+  "laneToken": "e4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 1,
+  "col": 13,
+  "laneToken": "e4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 1,
+  "col": 15,
+  "laneToken": "e4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 1,
+  "col": 21,
+  "laneToken": "e4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 1,
+  "col": 23,
+  "laneToken": "e4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 1,
+  "col": 25,
+  "laneToken": "e4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 1,
+  "col": 29,
+  "laneToken": "e4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 1,
+  "col": 31,
+  "laneToken": "e4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 2,
+  "col": 1,
+  "laneToken": "d4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 2,
+  "col": 3,
+  "laneToken": "d4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 2,
+  "col": 7,
+  "laneToken": "d4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 2,
+  "col": 9,
+  "laneToken": "d4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 2,
+  "col": 13,
+  "laneToken": "d4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 2,
+  "col": 15,
+  "laneToken": "d4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 2,
+  "col": 19,
+  "laneToken": "d4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 2,
+  "col": 23,
+  "laneToken": "d4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 2,
+  "col": 25,
+  "laneToken": "d4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 2,
+  "col": 29,
+  "laneToken": "d4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 2,
+  "col": 31,
+  "laneToken": "d4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 3,
+  "col": 1,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 3,
+  "col": 3,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 3,
+  "col": 5,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 3,
+  "col": 9,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 3,
+  "col": 13,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 3,
+  "col": 15,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 3,
+  "col": 19,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 3,
+  "col": 21,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 3,
+  "col": 25,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 3,
+  "col": 29,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 3,
+  "col": 31,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 4,
+  "col": 1,
+  "laneToken": "a3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 4,
+  "col": 3,
+  "laneToken": "a3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 4,
+  "col": 5,
+  "laneToken": "a3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 4,
+  "col": 7,
+  "laneToken": "a3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 4,
+  "col": 13,
+  "laneToken": "a3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 4,
+  "col": 19,
+  "laneToken": "a3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 4,
+  "col": 21,
+  "laneToken": "a3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 4,
+  "col": 23,
+  "laneToken": "a3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 4,
+  "col": 29,
+  "laneToken": "a3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 5,
+  "col": 1,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 5,
+  "col": 3,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 5,
+  "col": 5,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 5,
+  "col": 7,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 5,
+  "col": 9,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 5,
+  "col": 15,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 5,
+  "col": 19,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 5,
+  "col": 21,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 5,
+  "col": 23,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 5,
+  "col": 25,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]",
+  "lane": 5,
+  "col": 31,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 7,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 8,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 17,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 18,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 19,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 25,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 26,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 27,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 28,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 29,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 31,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 32,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 41,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 42,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 0,
+  "col": 43,
+  "laneToken": "g4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 2,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 3,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 4,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 5,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 10,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 11,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 17,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 18,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 19,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 25,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 26,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 27,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 28,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 29,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 34,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 35,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 41,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 42,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 1,
+  "col": 43,
+  "laneToken": "b4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 1,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 2,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 3,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 4,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 5,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 7,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 8,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 10,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 11,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 25,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 26,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 27,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 28,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 29,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 31,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 32,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 34,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 2,
+  "col": 35,
+  "laneToken": "a4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 1,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 2,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 3,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 4,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 5,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 7,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 8,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 10,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 11,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 17,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 18,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 19,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 31,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 32,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 34,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 35,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 41,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 42,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[<g4 e4> [b4 g4]] [- <a4> <->]",
+  "lane": 3,
+  "col": 43,
+  "laneToken": "e4",
+  "steps": 48,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 0,
+  "col": 3,
+  "laneToken": "bd",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 0,
+  "col": 5,
+  "laneToken": "bd",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 0,
+  "col": 7,
+  "laneToken": "bd",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 0,
+  "col": 11,
+  "laneToken": "bd",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 0,
+  "col": 13,
+  "laneToken": "bd",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 0,
+  "col": 19,
+  "laneToken": "bd",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 0,
+  "col": 21,
+  "laneToken": "bd",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 1,
+  "col": 3,
+  "laneToken": "hh:3",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 1,
+  "col": 5,
+  "laneToken": "hh:3",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 1,
+  "col": 7,
+  "laneToken": "hh:3",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 1,
+  "col": 11,
+  "laneToken": "hh:3",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 1,
+  "col": 13,
+  "laneToken": "hh:3",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 1,
+  "col": 19,
+  "laneToken": "hh:3",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 1,
+  "col": 21,
+  "laneToken": "hh:3",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 2,
+  "col": 5,
+  "laneToken": "sd",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 2,
+  "col": 7,
+  "laneToken": "sd",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 2,
+  "col": 13,
+  "laneToken": "sd",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 2,
+  "col": 21,
+  "laneToken": "sd",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 3,
+  "col": 3,
+  "laneToken": "lt",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 3,
+  "col": 7,
+  "laneToken": "lt",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 3,
+  "col": 11,
+  "laneToken": "lt",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 3,
+  "col": 19,
+  "laneToken": "lt",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 4,
+  "col": 3,
+  "laneToken": "oh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 4,
+  "col": 5,
+  "laneToken": "oh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 4,
+  "col": 11,
+  "laneToken": "oh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 4,
+  "col": 13,
+  "laneToken": "oh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 4,
+  "col": 19,
+  "laneToken": "oh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 4,
+  "col": 21,
+  "laneToken": "oh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 5,
+  "col": 3,
+  "laneToken": "hh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 5,
+  "col": 5,
+  "laneToken": "hh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 5,
+  "col": 7,
+  "laneToken": "hh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 5,
+  "col": 11,
+  "laneToken": "hh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 5,
+  "col": 13,
+  "laneToken": "hh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 5,
+  "col": 19,
+  "laneToken": "hh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 5,
+  "col": 21,
+  "laneToken": "hh",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 6,
+  "col": 3,
+  "laneToken": "misc:5",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 6,
+  "col": 5,
+  "laneToken": "misc:5",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 6,
+  "col": 7,
+  "laneToken": "misc:5",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 6,
+  "col": 11,
+  "laneToken": "misc:5",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 6,
+  "col": 13,
+  "laneToken": "misc:5",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 6,
+  "col": 19,
+  "laneToken": "misc:5",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>",
+  "lane": 6,
+  "col": 21,
+  "laneToken": "misc:5",
+  "steps": 24,
+  "bars": 3,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd*2 -] <- [~@2 bd bd - bd - sd]>",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd*2 -] <- [~@2 bd bd - bd - sd]>",
+  "lane": 1,
+  "col": 3,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd*2 -] <- [~@2 bd bd - bd - sd]>",
+  "lane": 1,
+  "col": 17,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[bd*2 -] <- [~@2 bd bd - bd - sd]>",
+  "lane": 1,
+  "col": 19,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 0,
+  "col": 9,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 0,
+  "col": 25,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 0,
+  "col": 27,
+  "laneToken": "c4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 1,
+  "col": 9,
+  "laneToken": "f4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 1,
+  "col": 11,
+  "laneToken": "f4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 1,
+  "col": 25,
+  "laneToken": "f4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 1,
+  "col": 27,
+  "laneToken": "f4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 2,
+  "col": 9,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 2,
+  "col": 11,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 2,
+  "col": 25,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 2,
+  "col": 27,
+  "laneToken": "g4",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 3,
+  "col": 11,
+  "laneToken": "a3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 3,
+  "col": 27,
+  "laneToken": "a3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 4,
+  "col": 9,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 4,
+  "col": 11,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~",
+  "lane": 4,
+  "col": 25,
+  "laneToken": "g3",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 0,
+  "col": 3,
+  "laneToken": "a1",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 0,
+  "col": 5,
+  "laneToken": "a1",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 0,
+  "col": 7,
+  "laneToken": "a1",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 0,
+  "col": 11,
+  "laneToken": "a1",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 0,
+  "col": 13,
+  "laneToken": "a1",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 0,
+  "col": 19,
+  "laneToken": "a1",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 0,
+  "col": 21,
+  "laneToken": "a1",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 0,
+  "col": 23,
+  "laneToken": "a1",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 0,
+  "col": 27,
+  "laneToken": "a1",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 0,
+  "col": 29,
+  "laneToken": "a1",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "c2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 1,
+  "col": 5,
+  "laneToken": "c2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 1,
+  "col": 7,
+  "laneToken": "c2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 1,
+  "col": 9,
+  "laneToken": "c2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 1,
+  "col": 13,
+  "laneToken": "c2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 1,
+  "col": 17,
+  "laneToken": "c2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 1,
+  "col": 21,
+  "laneToken": "c2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 1,
+  "col": 23,
+  "laneToken": "c2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 1,
+  "col": 25,
+  "laneToken": "c2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 1,
+  "col": 29,
+  "laneToken": "c2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 2,
+  "col": 1,
+  "laneToken": "e2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 2,
+  "col": 3,
+  "laneToken": "e2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 2,
+  "col": 9,
+  "laneToken": "e2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 2,
+  "col": 11,
+  "laneToken": "e2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 2,
+  "col": 17,
+  "laneToken": "e2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 2,
+  "col": 19,
+  "laneToken": "e2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 2,
+  "col": 25,
+  "laneToken": "e2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 2,
+  "col": 27,
+  "laneToken": "e2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 1,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 3,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 5,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 7,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 9,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 11,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 13,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 17,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 19,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 21,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 23,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 25,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 27,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>",
+  "lane": 3,
+  "col": 29,
+  "laneToken": "f2",
+  "steps": 32,
+  "bars": 4,
+  "turningOn": true
+ },
+ {
+  "mini": "bd sd <[bd ~] [~ bd]> sd",
+  "lane": 0,
+  "col": 3,
+  "laneToken": "bd",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd sd <[bd ~] [~ bd]> sd",
+  "lane": 0,
+  "col": 7,
+  "laneToken": "bd",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd sd <[bd ~] [~ bd]> sd",
+  "lane": 0,
+  "col": 11,
+  "laneToken": "bd",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd sd <[bd ~] [~ bd]> sd",
+  "lane": 0,
+  "col": 15,
+  "laneToken": "bd",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd sd <[bd ~] [~ bd]> sd",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "sd",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd sd <[bd ~] [~ bd]> sd",
+  "lane": 1,
+  "col": 9,
+  "laneToken": "sd",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 0,
+  "col": 9,
+  "laneToken": "bd:7",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 0,
+  "col": 13,
+  "laneToken": "bd:7",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 0,
+  "col": 25,
+  "laneToken": "bd:7",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 0,
+  "col": 29,
+  "laneToken": "bd:7",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 0,
+  "col": 31,
+  "laneToken": "bd:7",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 1,
+  "col": 2,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 1,
+  "col": 3,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 1,
+  "col": 9,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 1,
+  "col": 11,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 1,
+  "col": 17,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 1,
+  "col": 18,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 1,
+  "col": 19,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 1,
+  "col": 25,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 1,
+  "col": 27,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 1,
+  "col": 31,
+  "laneToken": "sd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 2,
+  "col": 1,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 2,
+  "col": 2,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 2,
+  "col": 3,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 2,
+  "col": 11,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 2,
+  "col": 13,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 2,
+  "col": 17,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 2,
+  "col": 18,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 2,
+  "col": 19,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 2,
+  "col": 25,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 2,
+  "col": 27,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 2,
+  "col": 29,
+  "laneToken": "bd",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 1,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 2,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 3,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 9,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 11,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 13,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 17,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 18,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 19,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 25,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 27,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 29,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
+  "lane": 3,
+  "col": 31,
+  "laneToken": "lt",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "c <d c> - [c <d c>]",
+  "lane": 0,
+  "col": 3,
+  "laneToken": "c",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "c <d c> - [c <d c>]",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "d",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "c <d c> - [c <d c>]",
+  "lane": 1,
+  "col": 9,
+  "laneToken": "d",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "c <d c> - [c <d c>]",
+  "lane": 1,
+  "col": 11,
+  "laneToken": "d",
+  "steps": 16,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 0,
+  "col": 4,
+  "laneToken": "d#3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 0,
+  "col": 5,
+  "laneToken": "d#3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 0,
+  "col": 16,
+  "laneToken": "d#3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 0,
+  "col": 17,
+  "laneToken": "d#3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "f3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 1,
+  "col": 2,
+  "laneToken": "f3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 1,
+  "col": 13,
+  "laneToken": "f3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 1,
+  "col": 14,
+  "laneToken": "f3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 2,
+  "col": 1,
+  "laneToken": "c#3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 2,
+  "col": 2,
+  "laneToken": "c#3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 2,
+  "col": 4,
+  "laneToken": "c#3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 2,
+  "col": 5,
+  "laneToken": "c#3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 2,
+  "col": 13,
+  "laneToken": "c#3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 2,
+  "col": 14,
+  "laneToken": "c#3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 2,
+  "col": 16,
+  "laneToken": "c#3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "d#3 f3 ~ <~ [~ ~ c#3]>",
+  "lane": 2,
+  "col": 17,
+  "laneToken": "c#3",
+  "steps": 24,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 6,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 7,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 8,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 9,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 16,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 17,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 18,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 19,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 26,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 27,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 28,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 29,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 36,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 37,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 38,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 0,
+  "col": 39,
+  "laneToken": "hh",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 1,
+  "col": 16,
+  "laneToken": "bd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 1,
+  "col": 17,
+  "laneToken": "bd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 1,
+  "col": 18,
+  "laneToken": "bd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 1,
+  "col": 19,
+  "laneToken": "bd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 1,
+  "col": 36,
+  "laneToken": "bd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 1,
+  "col": 37,
+  "laneToken": "bd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 1,
+  "col": 38,
+  "laneToken": "bd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 1,
+  "col": 39,
+  "laneToken": "bd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 2,
+  "col": 6,
+  "laneToken": "sd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 2,
+  "col": 7,
+  "laneToken": "sd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 2,
+  "col": 8,
+  "laneToken": "sd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 2,
+  "col": 9,
+  "laneToken": "sd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 2,
+  "col": 26,
+  "laneToken": "sd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 2,
+  "col": 27,
+  "laneToken": "sd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 2,
+  "col": 28,
+  "laneToken": "sd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "hh*5 <bd bd> ~ sd",
+  "lane": 2,
+  "col": 29,
+  "laneToken": "sd",
+  "steps": 40,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "{c [f g] d# d}%2",
+  "lane": 0,
+  "col": 5,
+  "laneToken": "c",
+  "steps": 8,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "{c [f g] d# d}%2",
+  "lane": 0,
+  "col": 7,
+  "laneToken": "c",
+  "steps": 8,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "{c [f g] d# d}%2",
+  "lane": 1,
+  "col": 1,
+  "laneToken": "f",
+  "steps": 8,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "{c [f g] d# d}%2",
+  "lane": 1,
+  "col": 5,
+  "laneToken": "f",
+  "steps": 8,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "{c [f g] d# d}%2",
+  "lane": 1,
+  "col": 7,
+  "laneToken": "f",
+  "steps": 8,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "{c [f g] d# d}%2",
+  "lane": 2,
+  "col": 1,
+  "laneToken": "g",
+  "steps": 8,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "{c [f g] d# d}%2",
+  "lane": 2,
+  "col": 5,
+  "laneToken": "g",
+  "steps": 8,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "{c [f g] d# d}%2",
+  "lane": 2,
+  "col": 7,
+  "laneToken": "g",
+  "steps": 8,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "{c [f g] d# d}%2",
+  "lane": 3,
+  "col": 1,
+  "laneToken": "d#",
+  "steps": 8,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "{c [f g] d# d}%2",
+  "lane": 3,
+  "col": 7,
+  "laneToken": "d#",
+  "steps": 8,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "{c [f g] d# d}%2",
+  "lane": 4,
+  "col": 1,
+  "laneToken": "d",
+  "steps": 8,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "{c [f g] d# d}%2",
+  "lane": 4,
+  "col": 5,
+  "laneToken": "d",
+  "steps": 8,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "~ sd ~[sd[~ <~~~ sd>]]",
+  "lane": 1,
+  "col": 5,
+  "laneToken": "~~~",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "~ sd ~[sd[~ <~~~ sd>]]",
+  "lane": 1,
+  "col": 6,
+  "laneToken": "~~~",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "~ sd ~[sd[~ <~~~ sd>]]",
+  "lane": 1,
+  "col": 7,
+  "laneToken": "~~~",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "~ sd ~[sd[~ <~~~ sd>]]",
+  "lane": 1,
+  "col": 13,
+  "laneToken": "~~~",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "~ sd ~[sd[~ <~~~ sd>]]",
+  "lane": 1,
+  "col": 21,
+  "laneToken": "~~~",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "~ sd ~[sd[~ <~~~ sd>]]",
+  "lane": 1,
+  "col": 22,
+  "laneToken": "~~~",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "~ sd ~[sd[~ <~~~ sd>]]",
+  "lane": 1,
+  "col": 23,
+  "laneToken": "~~~",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ },
+ {
+  "mini": "~ sd ~[sd[~ <~~~ sd>]]",
+  "lane": 1,
+  "col": 29,
+  "laneToken": "~~~",
+  "steps": 32,
+  "bars": 2,
+  "turningOn": true
+ }
+]

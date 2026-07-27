@@ -7886,8 +7886,24 @@ interface AltSource<C> {
     /** the single-cycle top-level elements, tiling the source in order */
     regions: AltRegion<C>[];
 }
-/** what a step grid shows for a span of columns: the sounds in each */
-type GridCells = string[][];
+/**
+ * What a step grid shows for one column: each sound STARTING there, with how long
+ * it sounds, in columns.
+ *
+ * Carried the length as of #1010 P4c (#1045). Sounds alone were enough while the
+ * printer re-derived every length, because a length could not differ from what the
+ * bytes already said. Once the printer PRESERVES lengths, "did the user change this
+ * region?" has to include them, or the honouring is undetectable for exactly the
+ * edits it exists for — a region whose only change is a length compares equal and is
+ * copied back verbatim.
+ */
+interface GridCell {
+    token: string;
+    /** length in COLUMNS (see `StepNote.duration`) */
+    duration: number;
+}
+/** what a step grid shows for a span of columns: the sounds in each, with their lengths */
+type GridCells = GridCell[][];
 /**
  * A leaf atom's OWN source span — `[start, end)` into the inner mini string.
  *

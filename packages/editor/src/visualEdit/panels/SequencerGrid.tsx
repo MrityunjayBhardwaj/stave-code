@@ -23,7 +23,7 @@ import * as React from 'react'
 
 import { parseStepGrid, applyStepGain } from '../notation/parse'
 import { serializeStepGrid, serializeStepGain } from '../notation/serialize'
-import { cellOn, isCellOn } from '../notation/model'
+import { cellOn, clampLane, isCellOn } from '../notation/model'
 import type { StepCell, StepGridModel } from '../notation/model'
 import { VisualEditStandby } from './VisualEditStandby'
 import { SEQUENCER_TAB_ID } from './tabs'
@@ -72,7 +72,21 @@ function toggleCell(
     ...model,
     lanes: model.lanes.map((lane, i) =>
       i === laneIndex
-        ? { ...lane, cells: lane.cells.map((c, j) => (j === stepIndex ? paint(value) : c)) }
+        ? {
+            ...lane,
+            // CLAMPED, because a promise about lengths is a promise about ROOM
+            // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
+            // still sounding through shortens that note — the room it had is gone.
+            // Without this the model keeps a length that reaches past the new hit,
+            // which is notation nothing can spell, and the writer rightly declines
+            // an edit the user plainly made. The resize and quantize ops already
+            // clamp for exactly this reason; paint is the third op that moves
+            // onsets closer together, and it was the one still missing it.
+            cells: clampLane(
+              lane.cells.map((c, j) => (j === stepIndex ? paint(value) : c)),
+              model.steps,
+            ),
+          }
         : lane,
     ),
   }

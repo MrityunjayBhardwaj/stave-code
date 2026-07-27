@@ -27,7 +27,6 @@
  */
 import { cellOn, clampLane, isCellOn, scaleCell } from './model'
 import type { PianoRollModel, RollNote, StepCell, StepGridModel } from './model'
-import { ifGridSpellable, ifRollSpellable } from './serialize'
 
 /** which way the resolution control scales the grid */
 export type ResolutionDir = 'double' | 'halve'
@@ -47,25 +46,16 @@ function perBar(steps: number, bars?: number): number {
 
 /* ── step grid ─────────────────────────────────────────────────── */
 
-/**
- * ── STRUCTURE vs SPELLABILITY ──────────────────────────────────────────────────
- * The `structurallyCan*` predicates below are the op's own arithmetic: is there an
- * integer grid to scale onto, and does ÷2 drop information. They are PRIVATE, because
- * they are only half of "can this op apply". The other half — can the writer SPELL the
- * result — is asked of the real writer by `ifGridSpellable`, and the exported `can*`
- * predicates are derived from the composed op so that the two can never disagree.
- * See `ifGridSpellable` in `serialize.ts` for why the prediction had to stop (#1010 P4c).
- */
-function structurallyCanDouble(model: StepGridModel): boolean {
+export function canDoubleStepGrid(model: StepGridModel): boolean {
   return model.steps >= 1 && model.steps * 2 <= MAX_RESOLUTION_STEPS
 }
 
 /**
- * ÷2 drops no information only when nothing lives on the odd columns: every lane's
+ * ÷2 is lossless only when no information lives on the odd columns: every lane's
  * odd cells are empty AND every odd per-column gain is neutral. Multi-bar grids
  * also need an even columns-per-bar so each `<...>` slot stays integral.
  */
-function structurallyCanHalve(model: StepGridModel): boolean {
+export function canHalveStepGrid(model: StepGridModel): boolean {
   if (model.steps < 2 || model.steps % 2 !== 0) return false
   if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false
   const oddCellEmpty = model.lanes.every((lane) =>
@@ -81,13 +71,12 @@ function structurallyCanHalve(model: StepGridModel): boolean {
 /**
  * Scale a step grid's resolution. `double` splits each column in two (odd columns
  * inserted empty / neutral); `halve` merges pairs back, keeping the even column.
- * Returns the model unchanged when the direction can't apply (so `mutate` skips) —
- * which now includes "the writer cannot spell the result", not only the arithmetic.
+ * Returns the model unchanged when the direction can't apply (so `mutate` skips).
  */
 export function scaleStepGrid(model: StepGridModel, dir: ResolutionDir): StepGridModel {
   if (dir === 'double') {
-    if (!structurallyCanDouble(model)) return model
-    return ifGridSpellable(model, {
+    if (!canDoubleStepGrid(model)) return model
+    return {
       ...model,
       steps: model.steps * 2,
       lanes: model.lanes.map((lane) => ({
@@ -95,10 +84,10 @@ export function scaleStepGrid(model: StepGridModel, dir: ResolutionDir): StepGri
         cells: lane.cells.flatMap((cell): StepCell[] => [scaleCell(cell, 2), false]),
       })),
       ...(model.gains ? { gains: model.gains.flatMap((g) => [g, 1]) } : {}),
-    })
+    }
   }
-  if (!structurallyCanHalve(model)) return model
-  return ifGridSpellable(model, {
+  if (!canHalveStepGrid(model)) return model
+  return {
     ...model,
     steps: model.steps / 2,
     lanes: model.lanes.map((lane) => ({
@@ -106,51 +95,24 @@ export function scaleStepGrid(model: StepGridModel, dir: ResolutionDir): StepGri
       cells: lane.cells.filter((_, i) => i % 2 === 0).map((cell) => scaleCell(cell, 0.5)),
     })),
     ...(model.gains ? { gains: model.gains.filter((_, i) => i % 2 === 0) } : {}),
-  })
-}
-
-/**
- * Can the control offer ×2 / ÷2 at all — asked of the composed op, so an enabled
- * control and a working one are the same statement. `canScaleStepGridTo` has always
- * been spelled this way; these two used to predict instead, and a prediction is what
- * left the ÷2 button present and dead on every unit that offered it.
- */
-export function canDoubleStepGrid(model: StepGridModel): boolean {
-  return scaleStepGrid(model, 'double') !== model
-}
-export function canHalveStepGrid(model: StepGridModel): boolean {
-  return scaleStepGrid(model, 'halve') !== model
+  }
 }
 
 /* ── piano roll ────────────────────────────────────────────────── */
 
-/** the roll's own arithmetic — private, for the same reason the grid's is (see above) */
-function structurallyCanDoubleRoll(model: PianoRollModel): boolean {
+export function canDoublePianoRoll(model: PianoRollModel): boolean {
   return model.steps >= 1 && model.steps * 2 <= MAX_RESOLUTION_STEPS
 }
 
 /**
- * ÷2 drops nothing only when every note sits on an even column AND spans an even
- * number of columns (so halving keeps integer start/duration). Multi-bar rolls also
- * need an even columns-per-bar.
- *
- * This one has always been written as a question about what the NOTATION can carry —
- * `RollNote.duration` counts whole steps, so an odd `@n` has no halved spelling
- * ([[PV240]]'s admissibility corollary). That is the same question `ifRollSpellable`
- * asks, arrived at by hand; keeping both costs nothing and the derived predicate below
- * is what guarantees they agree.
+ * ÷2 is lossless only when every note sits on an even column AND spans an even
+ * number of columns (so halving keeps integer start/duration and drops nothing).
+ * Multi-bar rolls also need an even columns-per-bar.
  */
-function structurallyCanHalveRoll(model: PianoRollModel): boolean {
+export function canHalvePianoRoll(model: PianoRollModel): boolean {
   if (model.steps < 2 || model.steps % 2 !== 0) return false
   if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false
   return model.notes.every((n) => n.start % 2 === 0 && n.duration % 2 === 0)
-}
-
-export function canDoublePianoRoll(model: PianoRollModel): boolean {
-  return scalePianoRoll(model, 'double') !== model
-}
-export function canHalvePianoRoll(model: PianoRollModel): boolean {
-  return scalePianoRoll(model, 'halve') !== model
 }
 
 /**
@@ -161,19 +123,19 @@ export function canHalvePianoRoll(model: PianoRollModel): boolean {
  */
 export function scalePianoRoll(model: PianoRollModel, dir: ResolutionDir): PianoRollModel {
   if (dir === 'double') {
-    if (!structurallyCanDoubleRoll(model)) return model
-    return ifRollSpellable(model, {
+    if (!canDoublePianoRoll(model)) return model
+    return {
       ...model,
       steps: model.steps * 2,
       notes: model.notes.map((n) => ({ ...n, start: n.start * 2, duration: n.duration * 2 })),
-    })
+    }
   }
-  if (!structurallyCanHalveRoll(model)) return model
-  return ifRollSpellable(model, {
+  if (!canHalvePianoRoll(model)) return model
+  return {
     ...model,
     steps: model.steps / 2,
     notes: model.notes.map((n) => ({ ...n, start: n.start / 2, duration: n.duration / 2 })),
-  })
+  }
 }
 
 /* ── absolute slot-count targets (the 4 / 8 / 16 / 32 / 64 control) ── */
@@ -287,9 +249,7 @@ export function quantizeStepGridTo(model: StepGridModel, target: number): StepGr
       filled.add(b)
     }
   }
-  // Coarsening scales every length down, and below one column the grid has no
-  // spelling for it — so the same admissibility rule as ×2/÷2 applies here.
-  return ifGridSpellable(model, { ...model, steps: target, lanes, ...(gains ? { gains } : {}) })
+  return { ...model, steps: target, lanes, ...(gains ? { gains } : {}) }
 }
 
 /**
@@ -322,12 +282,7 @@ export function quantizePianoRollTo(model: PianoRollModel, target: number): Pian
     while (cur.steps < target) {
       cur = { ...cur, steps: cur.steps * 2, notes: cur.notes.map((n) => ({ ...n, start: n.start * 2 })) }
     }
-    // This branch KEEPS each duration while doubling the starts (#607), so a note can end
-    // up spanning less of the widened grid than the next start allows — and on a multi-bar
-    // `<…>` the result is not always spellable. Gated like every other op rather than
-    // trusted: it was the one path in this file still returning unchecked (found by the
-    // op-admissibility sweep, 52 unwritable results, all from here).
-    return ifRollSpellable(model, cur)
+    return cur
   }
   const from = model.steps
   const addingSlots = target > from
@@ -362,49 +317,22 @@ export function quantizePianoRollTo(model: PianoRollModel, target: number): Pian
     const gain = Math.max(...grp.map((m) => m.gain)) // a chord shares one gain
     for (const m of grp) notes.push({ pitch: m.pitch, start, duration, gain })
   })
-  return ifRollSpellable(model, { ...model, steps: target, notes })
+  return { ...model, steps: target, notes }
 }
 
 /** how setting the grid to `target` slots behaves, for the control's label/state */
 export type SlotState = 'active' | 'lossless' | 'quantize' | 'disabled'
 
-/**
- * `applies` is the DECIDING input, and it is the op itself rather than a prediction of it.
- *
- * This used to return `'quantize'` for any single-bar, non-lossless target — i.e. it enabled
- * the control and left the op to sort it out. That was the same prediction the `can<Op>`
- * predicates were making, in the one place it reaches a user: after #1010 P4c a coarsening
- * quantize declines, so the "Slots" button stayed clickable and did nothing. The control's
- * state now comes from whether the op it would run actually applies.
- */
-function slotState(
-  steps: number,
-  bars: number | undefined,
-  lossless: boolean,
-  applies: boolean,
-  target: number,
-): SlotState {
+function slotState(steps: number, bars: number | undefined, lossless: boolean, target: number): SlotState {
   if (target === steps) return 'active'
   if (lossless) return 'lossless'
   if ((bars ?? 1) > 1) return 'disabled' // multi-bar can't quantize off the bar grid yet
-  return applies ? 'quantize' : 'disabled'
+  return 'quantize'
 }
 
 export function stepSlotState(model: StepGridModel, target: number): SlotState {
-  return slotState(
-    model.steps,
-    model.bars,
-    canScaleStepGridTo(model, target),
-    quantizeStepGridTo(model, target) !== model,
-    target,
-  )
+  return slotState(model.steps, model.bars, canScaleStepGridTo(model, target), target)
 }
 export function rollSlotState(model: PianoRollModel, target: number): SlotState {
-  return slotState(
-    model.steps,
-    model.bars,
-    canScalePianoRollTo(model, target),
-    quantizePianoRollTo(model, target) !== model,
-    target,
-  )
+  return slotState(model.steps, model.bars, canScalePianoRollTo(model, target), target)
 }

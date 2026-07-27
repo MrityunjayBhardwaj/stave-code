@@ -47,14 +47,27 @@ describe('#479 resolution — step grid ×2 / ÷2', () => {
   it('×2 splits each column, inserting empty odd columns (timing preserved)', () => {
     const m = scaleStepGrid(step('bd ~ sn ~ bd'), 'double')
     expect(m.steps).toBe(10)
-    expect(serializeStepGrid(m)).toBe('bd ~ ~ ~ sn ~ ~ ~ bd ~')
+    // `bd _`, not `bd ~` (#1010 P4c). ×2 promises "every hit keeps its position", and
+    // [[PV240]] reads the length rule off that promise: the length SCALES with the grid, so
+    // a note that was one of 5 columns is two of 10 — the same 1/5 of a cycle. The trailing
+    // `_` is the printer spelling that sustain. The old `bd ~` re-derived the length from
+    // the column and quietly halved every note the op claimed to leave alone.
+    expect(serializeStepGrid(m)).toBe('bd _ ~ ~ sn _ ~ ~ bd _')
   })
 
-  it('÷2 merges pairs back to the source (lossless inverse)', () => {
+  it('÷2 is NOT offered on a source-authored grid — it would lengthen every note', () => {
+    // This used to halve `bd ~ ~ ~ sn ~ ~ ~ bd ~` to `bd ~ sn ~ bd` and call it the lossless
+    // inverse. It is not the inverse of anything: the source wrote ten columns, so each note
+    // sounds 1/10 of a cycle, and a 5-column grid can only spell 1/5. The old answer doubled
+    // every note's length — invisibly, since the panel draws no duration axis (#1026).
+    //
+    // So the op is not offered here. The INVERSE claim is real and lives where it is true:
+    // the acceptance test below round-trips ×2 then ÷2, because ×2 makes the notes two
+    // columns long and ÷2 takes them back to one. `op-admissibility.test.ts` asserts that
+    // over the whole corpus — every one of the 884 units ×2 applies to can be undone.
     const doubled = step('bd ~ ~ ~ sn ~ ~ ~ bd ~')
-    const halved = scaleStepGrid(doubled, 'halve')
-    expect(halved.steps).toBe(5)
-    expect(serializeStepGrid(halved)).toBe('bd ~ sn ~ bd')
+    expect(canHalveStepGrid(doubled)).toBe(false)
+    expect(scaleStepGrid(doubled, 'halve')).toBe(doubled) // same reference → mutate skips
   })
 
   it('×2 then ÷2 returns the byte-identical source (acceptance)', () => {
@@ -71,7 +84,7 @@ describe('#479 resolution — step grid ×2 / ÷2', () => {
 
   it('preserves multiple lanes when scaling', () => {
     const m = scaleStepGrid(step('bd hh bd hh'), 'double')
-    expect(serializeStepGrid(m)).toBe('bd ~ hh ~ bd ~ hh ~')
+    expect(serializeStepGrid(m)).toBe('bd _ hh _ bd _ hh _') // lengths scale with the grid
   })
 })
 
@@ -81,9 +94,18 @@ describe('#479 resolution — step grid ÷2 guards (honest, lossless-only)', () 
     expect(canHalveStepGrid(step('bd hh sn hh'))).toBe(false)
   })
 
-  it('enables ÷2 only when every odd column is empty', () => {
-    expect(canHalveStepGrid(step('bd ~ sn ~'))).toBe(true)
-    expect(serializeStepGrid(scaleStepGrid(step('bd ~ sn ~'), 'halve'))).toBe('bd sn')
+  it('an empty odd column is NECESSARY but no longer SUFFICIENT for ÷2', () => {
+    // Structure alone used to decide, and `bd ~ sn ~` halved to `bd sn`. Both notes then
+    // sounded twice as long, which is the one thing an op may not do to an axis the panel
+    // cannot show (#1026). Admissibility is now asked of the real writer, so the structural
+    // check is only half of it — see `ifGridSpellable`.
+    expect(canHalveStepGrid(step('bd ~ sn ~'))).toBe(false)
+    // …and it is TRUE exactly where halving does not lengthen anything: after a ×2, every
+    // note is two columns long, so ÷2 returns it to one.
+    expect(canHalveStepGrid(scaleStepGrid(step('bd ~ sn ~'), 'double'))).toBe(true)
+    expect(
+      serializeStepGrid(scaleStepGrid(scaleStepGrid(step('bd ~ sn ~'), 'double'), 'halve')),
+    ).toBe('bd ~ sn ~')
   })
 
   it('disables ÷2 on an odd column count', () => {
@@ -112,12 +134,19 @@ describe('#479 resolution — step grid velocity scales with the grid', () => {
     const base = applyStepGain(step('bd ~ bd ~'), { mini: '0.5 ~ 1 ~', numeric: null, foreign: false })
     const doubled = scaleStepGrid(base, 'double')
     expect(doubled.steps).toBe(8)
-    expect(serializeStepGrid(doubled)).toBe('bd ~ ~ ~ bd ~ ~ ~')
+    expect(serializeStepGrid(doubled)).toBe('bd _ ~ ~ bd _ ~ ~') // lengths scale (#1010 P4c)
     // each hit keeps its gain (soft 0.5, neutral 1); the mini realigns to the
     // doubled columns, the inserted odd columns are rests.
+    //
+    // The SUSTAIN column carries a neutral `1` rather than `~`, because `serializeStepGain`
+    // emits per COLUMN and a `_` is neither a hit nor a rest to it. Harmless — `.gain`
+    // combines with `appLeft`, so it is sampled at the note's ONSET and the value under a
+    // sustain is never read — and the round-trip below recovers `0.5 ~ 1 ~` exactly. Filed
+    // as its own cleanup rather than fixed here: it is the gain writer's alignment rule, not
+    // the resolution op's, and touching it would put this phase inside another gate.
     const g = serializeStepGain(doubled)
     expect(g.kind).toBe('write')
-    if (g.kind === 'write') expect(g.value).toBe('0.5 ~ ~ ~ 1 ~ ~ ~')
+    if (g.kind === 'write') expect(g.value).toBe('0.5 1 ~ ~ 1 1 ~ ~')
   })
 
   it('÷2 round-trips a velocity grid back to source', () => {
@@ -196,14 +225,20 @@ describe('#479 resolution — absolute slot targets (the 4/8/16/32 control)', ()
 
   it('step grid: scaling to a higher power-of-2 target doubles repeatedly', () => {
     const m4 = step('bd ~ sn ~') // 4 columns
-    expect(serializeStepGrid(scaleStepGridTo(m4, 8))).toBe('bd ~ ~ ~ sn ~ ~ ~')
+    expect(serializeStepGrid(scaleStepGridTo(m4, 8))).toBe('bd _ ~ ~ sn _ ~ ~') // lengths scale
     expect(scaleStepGridTo(m4, 16).steps).toBe(16) // ×4
   })
 
-  it('step grid: scaling DOWN to a target halves when lossless', () => {
+  it('step grid: scaling DOWN a source-authored grid is not offered', () => {
+    // Same reason ÷2 is not: 8→4 would double every note's length and 8→2 quadruple it,
+    // on an axis the panel cannot show (#1026). Coarsening a grid the user WROTE is
+    // therefore refused; coarsening one this control previously widened is not — the
+    // round-trip case is asserted in the ×2/÷2 block above and corpus-wide in
+    // `op-admissibility.test.ts`.
     const m8 = step('bd ~ ~ ~ sn ~ ~ ~') // 8 columns, hits on 0 and 4
-    expect(serializeStepGrid(scaleStepGridTo(m8, 4))).toBe('bd ~ sn ~')
-    expect(serializeStepGrid(scaleStepGridTo(m8, 2))).toBe('bd sn') // 8→4→2
+    expect(canScaleStepGridTo(m8, 4)).toBe(false)
+    expect(scaleStepGridTo(m8, 4)).toBe(m8)
+    expect(scaleStepGridTo(m8, 2)).toBe(m8)
   })
 
   it('step grid: a non-power-of-2 ratio is unreachable (no re-timing)', () => {
@@ -219,7 +254,10 @@ describe('#479 resolution — absolute slot targets (the 4/8/16/32 control)', ()
     const m8 = step('bd ~ ~ ~ sn ~ ~ ~')
     expect(canScaleStepGridTo(m8, 8)).toBe(false)
     expect(canScaleStepGridTo(m8, 16)).toBe(true)
-    expect(canScaleStepGridTo(m8, 4)).toBe(true)
+    // 4 was `true` until #1010 P4c. Coarsening a SOURCE-authored grid would double every
+    // note's length, so it is not offered — the case this test is about (the current count
+    // being excluded) is the `8` above, and the widening `16` is its live counterpart.
+    expect(canScaleStepGridTo(m8, 4)).toBe(false)
   })
 
   it('step grid: a target below a LOSSY column is disabled', () => {
@@ -255,24 +293,42 @@ describe('#479 resolution — absolute slot targets (the 4/8/16/32 control)', ()
 })
 
 describe('#479 quantize-set — reduce any pattern to any slot count', () => {
-  it('step grid: a lossless ratio gives the SAME result as ×2/÷2', () => {
+  it('step grid: at a lossless ratio, quantize and ×2 now DIFFER on length', () => {
+    // This test used to assert the two agree. They no longer do, and both are right:
+    // [[PV240]] reads each op's length rule off the promise that op already made, and the
+    // two promises differ. ×2 preserves musical time, so the length SCALES
+    // (`bd _ ~ ~ sn _ ~ ~`). Quantize REFINING keeps the slot count (#607: "do not stretch
+    // into the widened gap"), so the length is KEPT (`bd ~ ~ ~ sn ~ ~ ~`). Same onsets,
+    // different note lengths, from two controls a user might reasonably expect to agree —
+    // recorded here rather than smoothed over, and filed for a product call.
     const m4 = step('bd ~ sn ~')
-    expect(serializeStepGrid(quantizeStepGridTo(m4, 8))).toBe('bd ~ ~ ~ sn ~ ~ ~') // == scaleTo
-    expect(serializeStepGrid(quantizeStepGridTo(step('bd ~ ~ ~ sn ~ ~ ~'), 4))).toBe('bd ~ sn ~')
+    expect(serializeStepGrid(quantizeStepGridTo(m4, 8))).toBe('bd ~ ~ ~ sn ~ ~ ~') // KEEP
+    expect(serializeStepGrid(scaleStepGridTo(m4, 8))).toBe('bd _ ~ ~ sn _ ~ ~') // SCALE
+    // and COARSENING is not offered at all, for the reason the ÷2 block gives
+    const m8 = step('bd ~ ~ ~ sn ~ ~ ~')
+    expect(quantizeStepGridTo(m8, 4)).toBe(m8)
   })
 
-  it('step grid: a NON-power-of-2 reduce quantizes hits to the nearest slot', () => {
-    // 5 columns → 4: bd@0→0, sn@2→round(2*4/5)=2, bd@4→round(4*4/5)=3
-    expect(serializeStepGrid(quantizeStepGridTo(step('bd ~ sn ~ bd'), 4))).toBe('bd ~ sn bd')
+  it('step grid: a NON-power-of-2 REDUCE is not offered (it would lengthen every note)', () => {
+    // 5 → 4 snapped bd@0→0, sn@2→2, bd@4→3 and emitted `bd ~ sn bd`. The onsets were right
+    // and every length was wrong by 5/4, so the op is refused now. REFINING still applies —
+    // it keeps the slot count (#607) and so keeps every length spellable.
+    const m5 = step('bd ~ sn ~ bd')
+    expect(quantizeStepGridTo(m5, 4)).toBe(m5)
+    expect(quantizeStepGridTo(m5, 16)).not.toBe(m5)
+    expect(serializeStepGrid(quantizeStepGridTo(m5, 16))).not.toBeNull()
   })
 
-  it('step grid: a lossy reduce merges colliding hits instead of dropping them', () => {
-    // every column filled, 8 → 4: pairs (0,1)(2,3)(4,5)(6,7) each collapse to one hit
+  it('step grid: a lossy reduce is refused rather than merged into wrong lengths', () => {
+    // The merge rule itself is unchanged and still right (collide → keep the SHORTEST, so a
+    // merged note never sounds longer than one it stands for). What changed is that the
+    // merged lengths are then scaled by 4/8 and land at half a column, which the grid cannot
+    // spell — so the op declines instead of emitting a plausible 4-column grid whose every
+    // note is the wrong length.
     const dense = step('bd sd hh cp bd sd hh cp')
-    const out = quantizeStepGridTo(dense, 4)
-    expect(out.steps).toBe(4)
-    // each lane still present, no crash, serializes to a valid 4-col grid
-    expect(ser(out).split(' ').length).toBe(4)
+    expect(quantizeStepGridTo(dense, 4)).toBe(dense)
+    // REFINING the same grid is still offered and still writes
+    expect(ser(quantizeStepGridTo(dense, 16)).split(' ').length).toBe(16)
   })
 
   it('piano roll: a non-power-of-2 reduce snaps notes and always serializes', () => {
@@ -340,10 +396,17 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     expect(quantizeStepGridTo(m, 4)).toBe(m)
   })
 
-  it('slot state classifies active / lossless / quantize', () => {
+  it('slot state classifies active / lossless / quantize / disabled', () => {
     const m5 = step('bd ~ sn ~ bd') // 5 cols (non-power-of-2)
     expect(stepSlotState(m5, 5)).toBe('active')
-    expect(stepSlotState(m5, 4)).toBe('quantize') // not a power-of-2 ratio → quantize, still offered
+    // REFINING at a non-power-of-2 ratio is a quantize and is still offered: it keeps each
+    // note's column count (#607), so nothing becomes unspellable.
+    expect(stepSlotState(m5, 8)).toBe('quantize')
+    // COARSENING is now `disabled` rather than `quantize` (#1010 P4c). 5→4 scales every
+    // length by 4/5 and the grid can only spell whole columns, so `quantizeStepGridTo`
+    // declines — and a control whose op declines must not be offered, or it is a button the
+    // user can press to no effect. `stepSlotState` asks the op rather than predicting it.
+    expect(stepSlotState(m5, 4)).toBe('disabled')
     const m4 = step('bd ~ sn ~')
     expect(stepSlotState(m4, 4)).toBe('active')
     expect(stepSlotState(m4, 8)).toBe('lossless') // power-of-2 ratio
