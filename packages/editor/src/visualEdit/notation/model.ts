@@ -460,6 +460,39 @@ export function clampLane(cells: StepCell[], steps: number): StepCell[] {
  */
 const COLUMN_EPS = 1e-9
 
+/** How much of one column a note occupies, and where in the column it starts. */
+export interface ColumnOverlap {
+  /** where the note starts within this column, in `[0, 1)`; `0` unless it begins mid-column */
+  offset: number
+  /** how much of this column the note fills, in `(0, 1]` */
+  extent: number
+}
+
+/**
+ * The one rule both surfaces ask: what does the interval `[begin, end)` occupy of the
+ * column `[col, col + 1)`? (#1056, #1074)
+ *
+ * It is an interval intersection and nothing more, which is the point — the step grid and
+ * the piano roll had two different answers to this question and both were wrong in their
+ * own way. The grid drew one full box per trigger and could not show a length at all; the
+ * roll walked INTEGER steps against `start <= step < start + duration`, so a note starting
+ * at 0.5 for 0.5 spans `[0.5, 1.0)`, contains no integer, and was drawn in no column
+ * whatsoever while sounding perfectly.
+ *
+ * `offset` is what the grid never needs and the roll cannot do without: a grid note is
+ * indexed BY its column so it always begins at one, while a roll note carries a fractional
+ * `start` in the same field it is positioned by.
+ */
+export function columnOverlap(begin: number, end: number, col: number): ColumnOverlap | null {
+  const lo = Math.max(begin, col)
+  const hi = Math.min(end, col + 1)
+  const extent = hi - lo
+  // A SLIVER IS NOT A COLUMN — see COLUMN_EPS. This is the single place that decides it,
+  // so the two surfaces cannot drift on where a note stops.
+  if (extent <= COLUMN_EPS) return null
+  return { offset: lo - col, extent }
+}
+
 /** One column of a lane, as covered by the note sounding through it. */
 export interface ColumnCoverage {
   /** column the covering note BEGINS at; `=== c` exactly when this column is the head */
@@ -508,20 +541,13 @@ export function laneCoverage(cells: StepCell[], steps: number): (ColumnCoverage 
     out[c] = { start: c, extent: Math.min(1, Math.max(0, cell.duration)) }
     for (let k = 1; c + k < gridEnd; k++) {
       if (isCellOn(cells[c + k])) break // the next hit owns its own column
-      const extent = Math.min(1, cell.duration - k)
-      // A SLIVER IS NOT A COLUMN. Lengths reach here through float arithmetic on the
-      // engine's Fractions, so a note that fills its column exactly arrives as
-      // `1.0000000000000004` and would otherwise claim the next one at an extent of
-      // 4e-16 — a bar with no width in a column the pattern never sounds through.
-      //
-      // MEASURED, corpus-wide: 61 phantom columns, and they decompose with no residue —
-      // carried 1550 → 1489 and partial 73 → 12 are the same 61. All of them are on the
-      // DERIVED paths, whose lengths come from float haps; the syntactic path computes
-      // from AST spans and loses exactly zero, which is the attribution that says this is
-      // float noise and not a length. The smallest REAL sub-column the corpus carries is
-      // 0.5, nine orders of magnitude from the threshold.
-      if (extent <= COLUMN_EPS) break
-      out[c + k] = { start: c, extent }
+      // The carry asks the shared interval rule, so the grid and the roll cannot disagree
+      // about where a note stops. A grid note begins AT its column, so `offset` is always
+      // 0 here and only `extent` is used — that asymmetry is the whole of the difference
+      // between the two surfaces.
+      const ov = columnOverlap(c, c + cell.duration, c + k)
+      if (!ov) break
+      out[c + k] = { start: c, extent: ov.extent }
     }
   }
   return out

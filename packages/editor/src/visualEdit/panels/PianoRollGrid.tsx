@@ -20,7 +20,8 @@ import * as React from 'react'
 
 import { parsePianoRoll, applyRollGain } from '../notation/parse'
 import { serializePianoRoll, serializeRollGain } from '../notation/serialize'
-import type { PianoRollModel, RollNote } from '../notation/model'
+import type { PianoRollModel, RollNote, ColumnOverlap } from '../notation/model'
+import { columnOverlap } from '../notation/model'
 import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../notation/pitch'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID } from './tabs'
@@ -102,12 +103,39 @@ function contentRange(model: PianoRollModel): { lo: number; hi: number } {
   return { lo, hi }
 }
 
+/**
+ * The note covering (midi, step), if any — asked as an INTERVAL, not as an integer walk
+ * (#1074).
+ *
+ * The old test was `n.start <= step && step < n.start + n.duration` against an integer
+ * `step`. `RollNote.duration` is documented as counting whole `@n` elongation steps, and
+ * the corpus disagrees on 17 notes: `[c5@0.5 f4@0.5 f5@3]` puts `f4` at start 0.5 for
+ * 0.5, spanning `[0.5, 1.0)`, which contains no integer — so the note sounded and was
+ * drawn in no column at all. Ten more were drawn for the wrong length in both directions.
+ */
+function overlapAt(
+  model: PianoRollModel,
+  midi: number,
+  step: number,
+): { note: RollNote; overlap: ColumnOverlap } | undefined {
+  for (const n of model.notes) {
+    if (pitchToMidi(n.pitch) !== midi) continue
+    const overlap = columnOverlap(n.start, n.start + n.duration, step)
+    if (overlap) return { note: n, overlap }
+  }
+  return undefined
+}
+
 /** the note covering (midi, step), if any */
 function noteAt(model: PianoRollModel, midi: number, step: number): RollNote | undefined {
-  return model.notes.find(
-    (n) => pitchToMidi(n.pitch) === midi && n.start <= step && step < n.start + n.duration,
-  )
+  return overlapAt(model, midi, step)?.note
 }
+
+/** the column a note is drawn as starting in — its own column even when `start` is fractional */
+const headColumn = (n: RollNote): number => Math.floor(n.start + 1e-9)
+
+/** the last column a note reaches into */
+const tailColumn = (n: RollNote): number => Math.ceil(n.start + n.duration - 1e-9) - 1
 
 interface DragState {
   /** 'move' drags the note in pitch+time; 'resize' grows/shrinks its duration */
@@ -665,10 +693,11 @@ export function PianoRollGrid({
               )}
               <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
                 {Array.from({ length: model.steps }, (_, step) => {
-                  const note = noteAt(model, midi, step)
+                  const hit = overlapAt(model, midi, step)
+                  const note = hit?.note
                   const on = note !== undefined
-                  const isHead = on && note!.start === step
-                  const isTail = on && note!.start + note!.duration - 1 === step
+                  const isHead = on && headColumn(note!) === step
+                  const isTail = on && tailColumn(note!) === step
                   // the ⌘-clicked copy/paste cell — highlighted whether or not a
                   // note sits there, so an empty paste target is visible (#528).
                   const isSel =
@@ -718,16 +747,15 @@ export function PianoRollGrid({
                             ? '1px solid var(--foreground, #e6e6ea)'
                             : '1px solid var(--border, #3a3a42)',
                         borderRadius: 2,
-                        background: on
-                          ? colorMode === 'velocity'
-                            ? velocityColor(note!.gain ?? 1)
-                            : 'var(--accent, #6ea8fe)'
-                          : step === playingStep
+                        // The note is drawn by the fill BELOW, not by this background, so
+                        // that a note occupying part of a column occupies part of the box
+                        // (#1074). The cell keeps its own empty-cell background.
+                        background:
+                          step === playingStep
                             ? 'var(--background, #34343c)'
                             : black
                               ? 'var(--background, #1c1c20)'
                               : 'var(--background-elevated, #26262c)',
-                        opacity: on && !isHead ? 0.7 : 1,
                         cursor: 'pointer',
                         // selection ring (#432) — distinct from the playhead border
                         boxShadow: isSel
@@ -735,6 +763,34 @@ export function PianoRollGrid({
                           : undefined,
                       }}
                     >
+                      {hit && (
+                        // The note itself. WIDTH is how much of this column it sounds
+                        // for and LEFT is where in the column it begins — the same
+                        // geometry the step grid draws (#1056), from the same shared
+                        // `columnOverlap` rule, with the offset that only the roll needs
+                        // because only a roll note carries a fractional start.
+                        //
+                        // A non-head is dimmed, which is what this surface already did
+                        // via the button's own opacity; moving it onto the fill keeps the
+                        // cell's playhead border and selection ring at full strength.
+                        <span
+                          data-roll-fill
+                          data-roll-sustain={!isHead ? 'true' : undefined}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            bottom: 0,
+                            left: `${hit.overlap.offset * 100}%`,
+                            width: `${hit.overlap.extent * 100}%`,
+                            background:
+                              colorMode === 'velocity'
+                                ? velocityColor(note!.gain ?? 1)
+                                : 'var(--accent, #6ea8fe)',
+                            opacity: isHead ? 1 : 0.7,
+                            pointerEvents: 'none',
+                          }}
+                        />
+                      )}
                       {isHead && (
                         // Note name inside the bar (#605) — rendered on the head
                         // cell, clipped to it so it never spills onto a neighbour.

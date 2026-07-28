@@ -25684,6 +25684,14 @@ function clampLane(cells, steps) {
 }
 __name(clampLane, "clampLane");
 var COLUMN_EPS = 1e-9;
+function columnOverlap(begin, end, col) {
+  const lo = Math.max(begin, col);
+  const hi = Math.min(end, col + 1);
+  const extent = hi - lo;
+  if (extent <= COLUMN_EPS) return null;
+  return { offset: lo - col, extent };
+}
+__name(columnOverlap, "columnOverlap");
 function laneCoverage(cells, steps) {
   const out = new Array(cells.length).fill(void 0);
   const gridEnd = Math.min(cells.length, steps);
@@ -25693,9 +25701,9 @@ function laneCoverage(cells, steps) {
     out[c] = { start: c, extent: Math.min(1, Math.max(0, cell.duration)) };
     for (let k = 1; c + k < gridEnd; k++) {
       if (isCellOn(cells[c + k])) break;
-      const extent = Math.min(1, cell.duration - k);
-      if (extent <= COLUMN_EPS) break;
-      out[c + k] = { start: c, extent };
+      const ov = columnOverlap(c, c + cell.duration, c + k);
+      if (!ov) break;
+      out[c + k] = { start: c, extent: ov.extent };
     }
   }
   return out;
@@ -30147,12 +30155,21 @@ function contentRange(model) {
   return { lo, hi };
 }
 __name(contentRange, "contentRange");
+function overlapAt(model, midi, step) {
+  for (const n of model.notes) {
+    if (pitchToMidi(n.pitch) !== midi) continue;
+    const overlap = columnOverlap(n.start, n.start + n.duration, step);
+    if (overlap) return { note: n, overlap };
+  }
+  return void 0;
+}
+__name(overlapAt, "overlapAt");
 function noteAt(model, midi, step) {
-  return model.notes.find(
-    (n) => pitchToMidi(n.pitch) === midi && n.start <= step && step < n.start + n.duration
-  );
+  return overlapAt(model, midi, step)?.note;
 }
 __name(noteAt, "noteAt");
+var headColumn = /* @__PURE__ */ __name((n) => Math.floor(n.start + 1e-9), "headColumn");
+var tailColumn = /* @__PURE__ */ __name((n) => Math.ceil(n.start + n.duration - 1e-9) - 1, "tailColumn");
 function PianoRollGrid({
   selected,
   onSelect,
@@ -30552,10 +30569,11 @@ function PianoRollGrid({
                             )
                           ),
                           /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: model.steps }, (_, step) => {
-                            const note = noteAt(model, midi, step);
+                            const hit = overlapAt(model, midi, step);
+                            const note = hit?.note;
                             const on = note !== void 0;
-                            const isHead = on && note.start === step;
-                            const isTail = on && note.start + note.duration - 1 === step;
+                            const isHead = on && headColumn(note) === step;
+                            const isTail = on && tailColumn(note) === step;
                             const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
                             const canPlace = on || placesNotes;
                             return /* @__PURE__ */ jsxRuntime.jsxs(
@@ -30585,13 +30603,41 @@ function PianoRollGrid({
                                   padding: 0,
                                   border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
                                   borderRadius: 2,
-                                  background: on ? colorMode === "velocity" ? velocityColor(note.gain ?? 1) : "var(--accent, #6ea8fe)" : step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
-                                  opacity: on && !isHead ? 0.7 : 1,
+                                  // The note is drawn by the fill BELOW, not by this background, so
+                                  // that a note occupying part of a column occupies part of the box
+                                  // (#1074). The cell keeps its own empty-cell background.
+                                  background: step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
                                   cursor: "pointer",
                                   // selection ring (#432) — distinct from the playhead border
                                   boxShadow: isSel ? "inset 0 0 0 2px var(--foreground, #e6e6ea)" : void 0
                                 },
                                 children: [
+                                  hit && // The note itself. WIDTH is how much of this column it sounds
+                                  // for and LEFT is where in the column it begins — the same
+                                  // geometry the step grid draws (#1056), from the same shared
+                                  // `columnOverlap` rule, with the offset that only the roll needs
+                                  // because only a roll note carries a fractional start.
+                                  //
+                                  // A non-head is dimmed, which is what this surface already did
+                                  // via the button's own opacity; moving it onto the fill keeps the
+                                  // cell's playhead border and selection ring at full strength.
+                                  /* @__PURE__ */ jsxRuntime.jsx(
+                                    "span",
+                                    {
+                                      "data-roll-fill": true,
+                                      "data-roll-sustain": !isHead ? "true" : void 0,
+                                      style: {
+                                        position: "absolute",
+                                        top: 0,
+                                        bottom: 0,
+                                        left: `${hit.overlap.offset * 100}%`,
+                                        width: `${hit.overlap.extent * 100}%`,
+                                        background: colorMode === "velocity" ? velocityColor(note.gain ?? 1) : "var(--accent, #6ea8fe)",
+                                        opacity: isHead ? 1 : 0.7,
+                                        pointerEvents: "none"
+                                      }
+                                    }
+                                  ),
                                   isHead && // Note name inside the bar (#605) — rendered on the head
                                   // cell, clipped to it so it never spills onto a neighbour.
                                   // pointer-events:none so it never blocks the cell's
