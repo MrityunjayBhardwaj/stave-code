@@ -773,8 +773,14 @@ export function clampPartAtOnset(lanes: StepLane[], part: number, column: number
     let touched = false
     const cells = lane.cells.map((cell, c) => {
       if (c >= column || !isCellOn(cell)) return cell
-      // a length that merely ENDS at the column is not sounding through it
-      if (c + cell.duration <= column + 1e-6) return cell
+      // A length that merely ENDS at the column is not sounding through it — and that
+      // question is `columnOverlap`'s, not this function's. It was written here with its
+      // own `1e-6` before the shared rule existed, which left the file deciding "does
+      // this note reach into this column?" at two different thresholds a hundred lines
+      // apart. Asking the shared rule was measured to move nothing (parity-corpus 371,
+      // editor 3082, every pinned per-path figure identical), so this is a consolidation
+      // with no behavioural component — which is the only kind worth making silently.
+      if (!columnOverlap(c, c + cell.duration, column)) return cell
       touched = true
       return cellOn(column - c)
     })

@@ -25692,6 +25692,26 @@ function columnOverlap(begin, end, col) {
   return { offset: lo - col, extent };
 }
 __name(columnOverlap, "columnOverlap");
+function headColumn(n) {
+  return Math.floor(n.start + COLUMN_EPS);
+}
+__name(headColumn, "headColumn");
+function tailColumn(n) {
+  return Math.ceil(n.start + n.duration - COLUMN_EPS) - 1;
+}
+__name(tailColumn, "tailColumn");
+function columnCount(model) {
+  let cols = Math.floor(model.steps + COLUMN_EPS);
+  for (const n of model.notes ?? []) cols = Math.max(cols, tailColumn(n) + 1);
+  return Math.max(0, cols);
+}
+__name(columnCount, "columnCount");
+function columnSplit(width) {
+  const whole = Math.floor(width + COLUMN_EPS);
+  const remainder = width - whole;
+  return { whole, remainder: remainder <= COLUMN_EPS ? 0 : remainder };
+}
+__name(columnSplit, "columnSplit");
 function laneCoverage(cells, steps) {
   const out = new Array(cells.length).fill(void 0);
   const gridEnd = Math.min(cells.length, steps);
@@ -25709,13 +25729,42 @@ function laneCoverage(cells, steps) {
   return out;
 }
 __name(laneCoverage, "laneCoverage");
+function columnGroups(notes, col) {
+  const endByStart = /* @__PURE__ */ new Map();
+  for (const n of notes) {
+    const end = n.start + n.duration;
+    const prev = endByStart.get(n.start);
+    if (prev === void 0 || end > prev) endByStart.set(n.start, end);
+  }
+  const out = [];
+  for (const [start, end] of endByStart) {
+    const ov = columnOverlap(start, end, col);
+    if (ov) out.push({ start, ...ov });
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+__name(columnGroups, "columnGroups");
+function spansAreSequential(spans) {
+  const byOffset = [...spans].sort((a, b) => a.offset - b.offset);
+  for (let i = 1; i < byOffset.length; i++) {
+    const prevEnd = byOffset[i - 1].offset + byOffset[i - 1].extent;
+    if (byOffset[i].offset < prevEnd - COLUMN_EPS) return false;
+  }
+  return true;
+}
+__name(spansAreSequential, "spansAreSequential");
+function sequentialColumnGroups(notes, col) {
+  const groups = columnGroups(notes, col);
+  return groups.length > 1 && spansAreSequential(groups) ? groups : null;
+}
+__name(sequentialColumnGroups, "sequentialColumnGroups");
 function clampPartAtOnset(lanes, part, column) {
   return lanes.map((lane) => {
     if ((lane.part ?? 0) !== part) return lane;
     let touched = false;
     const cells = lane.cells.map((cell, c) => {
       if (c >= column || !isCellOn(cell)) return cell;
-      if (c + cell.duration <= column + 1e-6) return cell;
+      if (!columnOverlap(c, c + cell.duration, column)) return cell;
       touched = true;
       return cellOn(column - c);
     });
@@ -26018,7 +26067,16 @@ function gridBars(model, bars) {
 }
 __name(gridBars, "gridBars");
 var groupBody = /* @__PURE__ */ __name((g) => g.pitches.length === 1 ? g.pitches[0] : `[${g.pitches.join(",")}]`, "groupBody");
-var groupToken = /* @__PURE__ */ __name((g) => g.duration === 1 ? groupBody(g) : `${groupBody(g)}@${g.duration}`, "groupToken");
+var weightToken = /* @__PURE__ */ __name((n) => String(Number(n.toPrecision(12))), "weightToken");
+var groupToken = /* @__PURE__ */ __name((g) => g.duration === 1 ? groupBody(g) : `${groupBody(g)}@${weightToken(g.duration)}`, "groupToken");
+function restTokens(width) {
+  const { whole, remainder } = columnSplit(width);
+  if (whole < 0) return null;
+  const out = new Array(whole).fill("~");
+  if (remainder > 0) out.push(`~@${weightToken(remainder)}`);
+  return out;
+}
+__name(restTokens, "restTokens");
 function buildGroups(model) {
   const groups = /* @__PURE__ */ new Map();
   for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
@@ -26181,6 +26239,7 @@ __name(toPlaced, "toPlaced");
 function reemitRollRegion(notes, from, to, div) {
   const groups = toPlaced(notes);
   if (groups === null) return null;
+  if (columnSplit((to - from) / div).remainder > 0) return null;
   const at = new Map(groups.map((g) => [g.start, g]));
   const starts = groups.map((g) => g.start).sort((a, b) => a - b);
   const tokens = [];
@@ -26276,18 +26335,14 @@ function laneString(groups, steps) {
   const cols = [];
   let col = 0;
   for (const g of [...groups].sort((a, b) => a.start - b.start)) {
-    if (g.start < col) return null;
-    while (col < g.start) {
-      cols.push("~");
-      col++;
-    }
-    cols.push(groupToken({ pitches: g.pitches, duration: g.duration }));
-    col += g.duration;
+    const gap = restTokens(g.start - col);
+    if (gap === null) return null;
+    cols.push(...gap, groupToken({ pitches: g.pitches, duration: g.duration }));
+    col = g.start + g.duration;
   }
-  while (col < steps) {
-    cols.push("~");
-    col++;
-  }
+  const tail = restTokens(steps - col);
+  if (tail === null) return null;
+  cols.push(...tail);
   return cols.join(" ");
 }
 __name(laneString, "laneString");
@@ -26375,19 +26430,18 @@ function serializeRollGain(model) {
   const cols = [];
   let col = 0;
   for (const start of [...groups.keys()].sort((a, b) => a - b)) {
-    if (start < col) return { kind: "skip" };
-    while (col < start) {
-      cols.push("~");
-      col++;
-    }
+    const gap = restTokens(start - col);
+    if (gap === null) return { kind: "skip" };
     const g = groups.get(start);
-    cols.push(g.duration === 1 ? fmtGain(g.gain) : `${fmtGain(g.gain)}@${g.duration}`);
-    col += g.duration;
+    cols.push(
+      ...gap,
+      g.duration === 1 ? fmtGain(g.gain) : `${fmtGain(g.gain)}@${weightToken(g.duration)}`
+    );
+    col = start + g.duration;
   }
-  while (col < model.steps) {
-    cols.push("~");
-    col++;
-  }
+  const tail = restTokens(model.steps - col);
+  if (tail === null) return { kind: "skip" };
+  cols.push(...tail);
   const seq = cols.join(" ");
   return { kind: "write", value: bars > 1 ? `<${seq}>` : seq, quoted: true };
 }
@@ -28254,26 +28308,26 @@ function readCurrentCycle() {
 __name(readCurrentCycle, "readCurrentCycle");
 
 // src/visualEdit/panels/usePlayingStep.ts
-function cycleToStep(cycle, steps, bars) {
-  if (cycle === null || !Number.isFinite(cycle) || steps <= 0) return null;
+function cycleToStep(cycle, steps, bars, cols) {
+  if (cycle === null || !Number.isFinite(cycle) || steps <= 0 || cols <= 0) return null;
   const b = bars > 0 ? bars : 1;
   const phase = (cycle % b + b) % b;
   const step = Math.floor(phase / b * steps);
-  return Math.max(0, Math.min(steps - 1, step));
+  return Math.max(0, Math.min(cols - 1, step));
 }
 __name(cycleToStep, "cycleToStep");
-function usePlayingStep(steps, bars) {
+function usePlayingStep(steps, bars, cols) {
   const [step, setStep] = React36__namespace.useState(null);
   React36__namespace.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
-      const next = cycleToStep(readCurrentCycle(), steps, bars);
+      const next = cycleToStep(readCurrentCycle(), steps, bars, cols);
       setStep((prev) => prev === next ? prev : next);
       raf = requestAnimationFrame(tick);
     }, "tick");
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [steps, bars]);
+  }, [steps, bars, cols]);
   return step;
 }
 __name(usePlayingStep, "usePlayingStep");
@@ -29751,7 +29805,11 @@ function SequencerGrid({ onResolution } = {}) {
     applyGain: applyStepGain,
     serializeGain: serializeStepGain
   });
-  const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
+  const playingStep = usePlayingStep(
+    model?.steps ?? 0,
+    model?.bars ?? 1,
+    model ? columnCount(model) : 0
+  );
   const [colorMode] = useNoteColorMode();
   const gestureRef = React36__namespace.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
@@ -30152,6 +30210,7 @@ var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
 var RESIZE_ZONE_PX = 8;
 var HOLD_RETRIGGER_MS = AUDITION_DUR_S * 1e3;
+var VELOCITY_READ_ONLY = "Shows this pattern\u2019s velocities \u2014 to change them, use the code view.";
 var LANE_HEIGHT = 48;
 var VELOCITY_FULL_PX2 = 80;
 var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
@@ -30181,8 +30240,6 @@ function noteAt(model, midi, step) {
   return overlapAt(model, midi, step)?.note;
 }
 __name(noteAt, "noteAt");
-var headColumn = /* @__PURE__ */ __name((n) => Math.floor(n.start + 1e-9), "headColumn");
-var tailColumn = /* @__PURE__ */ __name((n) => Math.ceil(n.start + n.duration - 1e-9) - 1, "tailColumn");
 function PianoRollGrid({
   selected,
   onSelect,
@@ -30199,7 +30256,11 @@ function PianoRollGrid({
   });
   const dragRef = React36__namespace.useRef(null);
   const velRef = React36__namespace.useRef(null);
-  const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
+  const playingStep = usePlayingStep(
+    model?.steps ?? 0,
+    model?.bars ?? 1,
+    model ? columnCount(model) : 0
+  );
   const [colorMode] = useNoteColorMode();
   const [hoveredMidi, setHoveredMidi] = React36__namespace.useState(null);
   const holdMidiRef = React36__namespace.useRef(null);
@@ -30230,6 +30291,11 @@ function PianoRollGrid({
     }
   }, [model]);
   const placesNotes = model ? viewPlacesNotes(model) : false;
+  const cols = model ? columnCount(model) : 0;
+  const gainWritable = React36__namespace.useMemo(
+    () => model ? serializeRollGain(model).kind !== "skip" : false,
+    [model]
+  );
   React36__namespace.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
@@ -30323,10 +30389,13 @@ function PianoRollGrid({
     }
     const note = noteAt(model, midi, step);
     if (note) {
-      const isTail = note.start + note.duration - 1 === step;
+      const isTail = tailColumn(note) === step;
       const rect = e.currentTarget.getBoundingClientRect();
-      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, rect.width * 0.4));
-      if (isTail && e.clientX - rect.left >= rect.width - zone) {
+      const ov = columnOverlap(note.start, note.start + note.duration, step);
+      const barEnd = ov ? (ov.offset + ov.extent) * rect.width : rect.width;
+      const barW = ov ? ov.extent * rect.width : rect.width;
+      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4));
+      if (isTail && e.clientX - rect.left >= barEnd - zone) {
         onResizeDown(note);
         return;
       }
@@ -30581,7 +30650,7 @@ function PianoRollGrid({
                               }
                             )
                           ),
-                          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: model.steps }, (_, step) => {
+                          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, step) => {
                             const hit = overlapAt(model, midi, step);
                             const note = hit?.note;
                             const on = note !== void 0;
@@ -30595,6 +30664,7 @@ function PianoRollGrid({
                                 type: "button",
                                 "aria-pressed": on,
                                 "aria-label": `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
+                                "aria-current": isSel ? "true" : void 0,
                                 "data-roll-cell": `${midi}:${step}`,
                                 "data-roll-selected": isSel ? "true" : void 0,
                                 "data-playing": step === playingStep ? "true" : void 0,
@@ -30652,9 +30722,19 @@ function PianoRollGrid({
                                     }
                                   ),
                                   isHead && // Note name inside the bar (#605) — rendered on the head
-                                  // cell, clipped to it so it never spills onto a neighbour.
+                                  // cell, clipped to THE BAR so it never spills onto a
+                                  // neighbour or onto the empty part of its own column.
                                   // pointer-events:none so it never blocks the cell's
                                   // pointer gestures (paint/drag) or the tail resize handle.
+                                  //
+                                  // Positioned against the FILL's box, not the cell's (#1078).
+                                  // While the note WAS the whole cell the two rectangles
+                                  // coincided and nothing had to choose; once the note became a
+                                  // child span occupying only its overlap (#1076), `inset: 0`
+                                  // put the label on empty background BESIDE the bar it names —
+                                  // 12 of 4842 corpus notes, every one of them a note that
+                                  // begins mid-column. Same two numbers the bar uses, so the
+                                  // two cannot drift apart again.
                                   /* @__PURE__ */ jsxRuntime.jsx(
                                     "span",
                                     {
@@ -30662,7 +30742,10 @@ function PianoRollGrid({
                                       "aria-hidden": "true",
                                       style: {
                                         position: "absolute",
-                                        inset: 0,
+                                        top: 0,
+                                        bottom: 0,
+                                        left: `${hit.overlap.offset * 100}%`,
+                                        width: `${hit.overlap.extent * 100}%`,
                                         display: "flex",
                                         alignItems: "center",
                                         paddingLeft: 3,
@@ -30678,7 +30761,22 @@ function PianoRollGrid({
                                       children: model.numeric ? String(midi) : noteDisplayName(midi)
                                     }
                                   ),
-                                  isTail && /* @__PURE__ */ jsxRuntime.jsx(
+                                  isTail && // The resize handle sits at the BAR's trailing edge, not the
+                                  // cell's (#1078). A note that ends mid-column used to put its
+                                  // handle at the far side of the column — floating in empty
+                                  // background past the end of the note it resizes, which is a
+                                  // handle you cannot aim at because it is not on the thing.
+                                  // 18 of 4842 corpus notes.
+                                  //
+                                  // WIDTH IS CLAMPED TO THE BAR: a `@0.25` note in a
+                                  // minimum-width (12px) column is a 3px bar, and a fixed 8px
+                                  // handle would be wider than the note, overhanging backwards
+                                  // past its own start. The handle is never wider than what it
+                                  // resizes. What that costs — a very small note draws a very
+                                  // small handle — is paid back by the pointer-down grab zone
+                                  // below, which is floored and invisible: what you SEE is the
+                                  // note's own trailing edge, what you can HIT is larger.
+                                  /* @__PURE__ */ jsxRuntime.jsx(
                                     "span",
                                     {
                                       "data-roll-resize": `${midi}:${note.start}`,
@@ -30692,8 +30790,8 @@ function PianoRollGrid({
                                         position: "absolute",
                                         top: 0,
                                         bottom: 0,
-                                        right: 0,
-                                        width: RESIZE_ZONE_PX,
+                                        right: `${(1 - hit.overlap.offset - hit.overlap.extent) * 100}%`,
+                                        width: `min(${RESIZE_ZONE_PX}px, ${hit.overlap.extent * 100}%)`,
                                         cursor: "ew-resize",
                                         background: "var(--foreground, #e6e6ea)",
                                         opacity: 0.45,
@@ -30752,26 +30850,33 @@ function PianoRollGrid({
                       "data-roll-velocity-lane": true,
                       style: { display: "flex", alignItems: "flex-end", gap: 6, marginTop: 8 },
                       children: [
-                        /* @__PURE__ */ jsxRuntime.jsx(
+                        /* @__PURE__ */ jsxRuntime.jsxs(
                           "span",
                           {
+                            title: gainWritable ? void 0 : VELOCITY_READ_ONLY,
                             style: {
                               width: 36,
                               fontSize: 9,
                               textAlign: "right",
                               color: "var(--foreground-muted, #a0a0aa)"
                             },
-                            children: "vel"
+                            children: [
+                              "vel",
+                              gainWritable ? "" : " \xB7"
+                            ]
                           }
                         ),
-                        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }, children: Array.from({ length: model.steps }, (_, col) => {
+                        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }, children: Array.from({ length: cols }, (_, col) => {
                           const covering = model.notes.find((n) => n.start === col) ?? model.notes.find((n) => n.start < col && col < n.start + n.duration);
                           const g = covering ? gainAtStart(model, covering.start) : 1;
+                          const split = sequentialColumnGroups(model.notes, col);
                           return /* @__PURE__ */ jsxRuntime.jsx(
                             "div",
                             {
                               "data-vel-col": col,
-                              onPointerDown: covering ? (e) => {
+                              "data-vel-readonly": gainWritable ? void 0 : "true",
+                              title: gainWritable ? void 0 : VELOCITY_READ_ONLY,
+                              onPointerDown: covering && gainWritable ? (e) => {
                                 e.preventDefault();
                                 onBarDown(covering.start, e);
                               } : void 0,
@@ -30783,13 +30888,46 @@ function PianoRollGrid({
                                 height: "100%",
                                 borderRadius: 2,
                                 background: "var(--background-elevated, #26262c)",
-                                cursor: covering ? "ns-resize" : "default"
+                                cursor: covering && gainWritable ? "ns-resize" : "default"
                               },
-                              children: covering && // bottom-anchored bar = the note group's velocity (full = neutral)
+                              children: split ? split.map((grp) => {
+                                const gg = gainAtStart(model, grp.start);
+                                return /* @__PURE__ */ jsxRuntime.jsx(
+                                  "span",
+                                  {
+                                    "data-vel-bar": col,
+                                    "data-vel-group": grp.start,
+                                    "data-gain": gg,
+                                    style: {
+                                      position: "absolute",
+                                      // laid against the column's own box, like the note fill
+                                      left: `${grp.offset * 100}%`,
+                                      width: `${grp.extent * 100}%`,
+                                      bottom: 0,
+                                      height: `${clamp013(gg) * 100}%`,
+                                      background: colorMode === "velocity" ? velocityColor(gg) : "var(--accent, #6ea8fe)",
+                                      borderRadius: 2,
+                                      // VISUAL ONLY, and still deliberately so. Every column
+                                      // that splits today sits in a pattern with a
+                                      // fractional-start note, and `serializeRollGain` skips
+                                      // exactly those — the gain mini is one slot per column,
+                                      // and a note beginning mid-column has no slot of its own.
+                                      // #1089 has since made the whole column read-only in that
+                                      // case, so there is no drag here to divide per group; a
+                                      // per-bar drag becomes worth building the day a split
+                                      // column appears in a pattern the gain writer accepts,
+                                      // and not before.
+                                      pointerEvents: "none"
+                                    }
+                                  },
+                                  grp.start
+                                );
+                              }) : covering && // bottom-anchored bar = the note group's velocity (full = neutral)
                               /* @__PURE__ */ jsxRuntime.jsx(
                                 "span",
                                 {
                                   "data-vel-bar": col,
+                                  "data-vel-group": covering.start,
                                   "data-gain": g,
                                   style: {
                                     position: "absolute",
