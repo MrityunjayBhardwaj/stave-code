@@ -471,9 +471,16 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
     expect(r.ok).toBe(true)
     if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored grid')
     // forge a disagreement: turn the `bd` ON at a column its leaf isn't under.
-    // No single byte-replacement satisfies both columns → decline.
+    // No single byte-replacement satisfies both columns → refuse.
+    //
+    // THE REFUSAL MOVED TO THE OP (#1064). `toggleCell` asks the real writer
+    // before returning, so it hands back the INPUT rather than a model the
+    // writer then nulls. Asserted at both layers, because the original
+    // guarantee — never corrupt — is the one that must not weaken:
     const forged = toggleCell(r.model, 0, 1, true)
-    expect(serializeStepGrid(forged)).toBeNull()
+    expect(forged, 'the op refuses rather than producing an unspellable model').toBe(r.model)
+    // and the document is left exactly as the user wrote it, not half-written.
+    expect(serializeStepGrid(forged)).toBe(src)
   })
 
   /**

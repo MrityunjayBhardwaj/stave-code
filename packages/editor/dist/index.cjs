@@ -28257,9 +28257,13 @@ function removeLane(model, sound) {
 __name(removeLane, "removeLane");
 
 // src/visualEdit/notation/place.ts
+function viewPlacesNotes(model) {
+  return model.leafSource == null;
+}
+__name(viewPlacesNotes, "viewPlacesNotes");
 var paint = /* @__PURE__ */ __name((value) => value ? cellOn() : false, "paint");
 function toggleCell(model, laneIndex, stepIndex, value) {
-  return {
+  return ifGridSpellable(model, {
     ...model,
     lanes: model.lanes.map(
       (lane, i) => i === laneIndex ? {
@@ -28278,13 +28282,16 @@ function toggleCell(model, laneIndex, stepIndex, value) {
         )
       } : lane
     )
-  };
+  });
 }
 __name(toggleCell, "toggleCell");
 function placeNote(model, pitch, start, duration) {
   const groupAt = model.notes.find((n) => n.start === start);
   if (groupAt) {
-    return { ...model, notes: [...model.notes, { pitch, start, duration: groupAt.duration }] };
+    return ifRollSpellable(model, {
+      ...model,
+      notes: [...model.notes, { pitch, start, duration: groupAt.duration }]
+    });
   }
   const nextStart = Math.min(
     ...model.notes.filter((n) => n.start > start).map((n) => n.start),
@@ -28294,9 +28301,11 @@ function placeNote(model, pitch, start, duration) {
     (n) => n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
   );
   notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
-  return { ...model, notes };
+  return ifRollSpellable(model, { ...model, notes });
 }
 __name(placeNote, "placeNote");
+var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value) => toggleCell(model, laneIndex, stepIndex, value) !== model, "canToggleCell");
+var canPlaceNote = /* @__PURE__ */ __name((model, pitch, start, duration) => placeNote(model, pitch, start, duration) !== model, "canPlaceNote");
 function resizeNote(model, start, pitch, duration) {
   if ((model.bars ?? 1) > 1) {
     const nextStart = Math.min(
@@ -29699,6 +29708,13 @@ function SequencerGrid({ onResolution } = {}) {
   const [colorMode] = useNoteColorMode();
   const gestureRef = React36__namespace.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
+  const placesNotes = model ? viewPlacesNotes(model) : false;
+  const placeable = React36__namespace.useMemo(
+    () => model ? model.lanes.map(
+      (lane, li) => lane.cells.map((c, si) => isCellOn(c) ? true : canToggleCell(model, li, si, true))
+    ) : null,
+    [model]
+  );
   const paintCell = React36__namespace.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
@@ -29824,6 +29840,18 @@ function SequencerGrid({ onResolution } = {}) {
       },
       children: /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: "100%" }, children: [
         /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 4 }, children: /* @__PURE__ */ jsxRuntime.jsx(PatternTrackChip, {}) }),
+        !placesNotes && /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            "data-seq-no-placement": true,
+            style: {
+              fontSize: 11,
+              color: "var(--foreground-muted, #a0a0aa)",
+              paddingBottom: 2
+            },
+            children: "Edits the notes already here \u2014 to add one, use the code view."
+          }
+        ),
         model.lanes.map((lane, laneIndex) => {
           const voice = sampleVoice(lane.sound);
           return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
@@ -29873,6 +29901,7 @@ function SequencerGrid({ onResolution } = {}) {
               const on = isCellOn(cell);
               const gain = model.gains?.[stepIndex] ?? 1;
               const isPlaying = stepIndex === playingStep;
+              const canPlace = on || (placeable?.[laneIndex]?.[stepIndex] ?? true);
               return /* @__PURE__ */ jsxRuntime.jsx(
                 "button",
                 {
@@ -29882,8 +29911,12 @@ function SequencerGrid({ onResolution } = {}) {
                   "data-seq-cell": `${laneIndex}:${stepIndex}`,
                   "data-gain": on && gainScoped ? gain : void 0,
                   "data-playing": isPlaying ? "true" : void 0,
+                  "data-seq-cell-inert": canPlace ? void 0 : "true",
+                  "aria-disabled": canPlace ? void 0 : true,
+                  title: canPlace ? void 0 : placesNotes ? "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that." : "This pattern edits its existing notes \u2014 add steps in the code view.",
                   onPointerDown: (e) => {
                     e.preventDefault();
+                    if (!canPlace) return;
                     onCellDown(laneIndex, stepIndex, on, e);
                   },
                   onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
@@ -29900,7 +29933,7 @@ function SequencerGrid({ onResolution } = {}) {
                     // subtle gap at each bar boundary
                     marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
                     background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-                    cursor: gainScoped && on ? "ns-resize" : "pointer"
+                    cursor: !canPlace ? "default" : gainScoped && on ? "ns-resize" : "pointer"
                   },
                   children: on && // bottom-anchored fill = velocity (full when neutral); when
                   // gain is out of scope it always reads full, so the cell
@@ -30119,6 +30152,18 @@ function PianoRollGrid({
       }));
     }
   }, [model]);
+  const placesNotes = model ? viewPlacesNotes(model) : false;
+  const placeable = React36__namespace.useMemo(() => {
+    if (!model) return null;
+    const m = /* @__PURE__ */ new Map();
+    for (let midi = range2.lo; midi <= range2.hi; midi++) {
+      const pitch = tokenForRow(!!model.numeric, midi);
+      for (let step = 0; step < model.steps; step++) {
+        m.set(`${midi}:${step}`, canPlaceNote(model, pitch, step, 1));
+      }
+    }
+    return m;
+  }, [model, range2]);
   React36__namespace.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
@@ -30363,6 +30408,18 @@ function PianoRollGrid({
             children: /* @__PURE__ */ jsxRuntime.jsx(PatternTrackChip, {})
           }
         ),
+        !placesNotes && /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            "data-roll-no-placement": true,
+            style: {
+              fontSize: 11,
+              color: "var(--foreground-muted, #a0a0aa)",
+              padding: "0 8px 4px"
+            },
+            children: "Edits the notes already here \u2014 to add one, use the code view."
+          }
+        ),
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
@@ -30466,6 +30523,7 @@ function PianoRollGrid({
                             const isHead = on && note.start === step;
                             const isTail = on && note.start + note.duration - 1 === step;
                             const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
+                            const canPlace = on || (placeable?.get(`${midi}:${step}`) ?? true);
                             return /* @__PURE__ */ jsxRuntime.jsxs(
                               "button",
                               {
@@ -30475,8 +30533,12 @@ function PianoRollGrid({
                                 "data-roll-cell": `${midi}:${step}`,
                                 "data-roll-selected": isSel ? "true" : void 0,
                                 "data-playing": step === playingStep ? "true" : void 0,
+                                "data-roll-cell-inert": canPlace ? void 0 : "true",
+                                "aria-disabled": canPlace ? void 0 : true,
+                                title: canPlace ? void 0 : placesNotes ? "A note here has no spelling this pattern can take." : "This pattern edits its existing notes \u2014 add notes in the code view.",
                                 onPointerDown: (e) => {
                                   e.preventDefault();
+                                  if (!canPlace && !(e.metaKey || e.ctrlKey)) return;
                                   onCellDown(midi, step, e);
                                 },
                                 onPointerEnter: () => onCellEnter(midi, step),

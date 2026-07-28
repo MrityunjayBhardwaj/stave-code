@@ -31,7 +31,7 @@ import { isStepChunk } from './patternKind'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import { addLane, removeLane } from '../notation/lane'
-import { toggleCell } from '../notation/place'
+import { canToggleCell, toggleCell, viewPlacesNotes } from '../notation/place'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice } from './drumVoices'
 import { useNoteColorMode, velocityColor } from './noteColor'
@@ -88,6 +88,32 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   } | null>(null)
 
   const gainScoped = model ? gainInScope(model) : false
+
+  // Does this view place notes at all? A leaf-anchored projection writes by byte
+  // surgery at each note's own span, so it can change and delete what exists and
+  // can never create — said ONCE here rather than as a grid full of individually
+  // dead cells (#1070). The per-cell map below would refuse every one of them
+  // anyway; this is what lets the panel give a reason.
+  const placesNotes = model ? viewPlacesNotes(model) : false
+
+  // PROVE BEFORE OFFER, at the cell — the gesture this panel exists for.
+  // `canToggleCell` runs the real op and asks the real writer, so it cannot
+  // drift from what a click actually does ([[PV241]]). Only the OFF→ON direction
+  // is gated: an ON cell still carries its delete and its velocity drag, which
+  // are different ops with their own write paths, and narrowing those is not
+  // what #1070 decided.
+  //
+  // Memoized on the model, so the serialize-per-empty-cell is paid once per
+  // edit rather than once per render.
+  const placeable = React.useMemo(
+    () =>
+      model
+        ? model.lanes.map((lane, li) =>
+            lane.cells.map((c, si) => (isCellOn(c) ? true : canToggleCell(model, li, si, true))),
+          )
+        : null,
+    [model],
+  )
 
   const paintCell = React.useCallback(
     (laneIndex: number, stepIndex: number, value: boolean): void => {
@@ -251,6 +277,22 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
               elsewhere now — the header just carries the track identity chip. */}
           <PatternTrackChip />
         </div>
+        {/* ONE statement for a view that cannot take a new note, rather than a
+            grid of dead cells with no reason on them (#1070). The notes that are
+            here still edit, delete and take velocity — which is what this view
+            was opened for. */}
+        {!placesNotes && (
+          <div
+            data-seq-no-placement
+            style={{
+              fontSize: 11,
+              color: 'var(--foreground-muted, #a0a0aa)',
+              paddingBottom: 2,
+            }}
+          >
+            Edits the notes already here — to add one, use the code view.
+          </div>
+        )}
         {model.lanes.map((lane, laneIndex) => {
           const voice = sampleVoice(lane.sound)
           return (
@@ -305,6 +347,10 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                 const on = isCellOn(cell)
                 const gain = model.gains?.[stepIndex] ?? 1
                 const isPlaying = stepIndex === playingStep
+                // An empty cell is offered only where the writer will take it.
+                // Where it will not, the cell is inert AND says so, instead of
+                // swallowing the click the way it did before (#1064/#1070).
+                const canPlace = on || (placeable?.[laneIndex]?.[stepIndex] ?? true)
                 return (
                   <button
                     key={stepIndex}
@@ -314,8 +360,18 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     data-seq-cell={`${laneIndex}:${stepIndex}`}
                     data-gain={on && gainScoped ? gain : undefined}
                     data-playing={isPlaying ? 'true' : undefined}
+                    data-seq-cell-inert={canPlace ? undefined : 'true'}
+                    aria-disabled={canPlace ? undefined : true}
+                    title={
+                      canPlace
+                        ? undefined
+                        : placesNotes
+                          ? 'Adding a step here would change how long another sound plays — the grid has no way to write that.'
+                          : 'This pattern edits its existing notes — add steps in the code view.'
+                    }
                     onPointerDown={(e) => {
                       e.preventDefault()
+                      if (!canPlace) return
                       onCellDown(laneIndex, stepIndex, on, e)
                     }}
                     onPointerEnter={() => onCellEnter(laneIndex, stepIndex)}
@@ -336,7 +392,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                       background: isPlaying
                         ? 'var(--background, #34343c)'
                         : 'var(--background-elevated, #26262c)',
-                      cursor: gainScoped && on ? 'ns-resize' : 'pointer',
+                      cursor: !canPlace ? 'default' : gainScoped && on ? 'ns-resize' : 'pointer',
                     }}
                   >
                     {on && (

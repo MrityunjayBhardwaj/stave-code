@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import { parseStepGrid } from '../parse'
 import { serializeStepGrid } from '../serialize'
-import { toggleCell } from '../place'
+import { canToggleCell, toggleCell, viewPlacesNotes } from '../place'
 import { cellOn, isCellOn } from '../model'
 import type { StepGridModel } from '../model'
 
@@ -73,5 +73,69 @@ describe('toggleCell — the one definition of what a cell click does (#1048)', 
     const m = parse('bd ~ sd ~')
     const after = toggleCell(m, 0, 99, true)
     expect(after.lanes[0].cells).toHaveLength(m.lanes[0].cells.length)
+  })
+})
+
+/**
+ * PROVE BEFORE OFFER, AT THE CELL (#1064) — an op is admissible exactly when its
+ * result is WRITABLE, asked of the real writer. `resize.ts` and `resolution.ts`
+ * have applied this since #1010 P4c; the cell, which is the gesture the panel
+ * exists for, was the one that never got it. The visible consequence was silence:
+ * a click the writer could not spell wrote nothing, toggled nothing, said nothing.
+ */
+describe('placement admissibility — the op refuses rather than going inert (#1064)', () => {
+  it('refuses by returning the INPUT, so `mutate` skips and `can*` is derivable', () => {
+    // `<bd - - -> *2` is leaf-anchored: its notes are written by byte surgery at
+    // their own spans, so a note at a column no leaf sits under has no spelling.
+    const m = parse('<bd - - -> *2')
+    expect(m.leafSource, 'fixture must reach the leaf path').toBeTruthy()
+    const after = toggleCell(m, 0, 1, true)
+    expect(after, 'refusal is the input by reference').toBe(m)
+    expect(canToggleCell(m, 0, 1, true)).toBe(false)
+  })
+
+  it('leaves the document exactly as written when it refuses', () => {
+    const src = '<bd - - -> *2'
+    const m = parse(src)
+    expect(serializeStepGrid(toggleCell(m, 0, 1, true))).toBe(src)
+  })
+
+  it('still offers the placements the writer will take', () => {
+    const m = parse('bd ~ sd ~')
+    expect(canToggleCell(m, 0, 1, true)).toBe(true)
+    expect(toggleCell(m, 0, 1, true)).not.toBe(m)
+  })
+
+  /**
+   * DELETES ARE NOT GATED BY THIS DECISION. A leaf view exists to edit what is
+   * already there, and byte surgery at an existing note's own span is precisely
+   * what it can do — so clearing a hit goes through on the same model that
+   * refuses a placement. This is the split that showed placement is unsupported
+   * BY CONSTRUCTION rather than broken (#1070): 63 deletes written vs 0 places.
+   */
+  it('a leaf view still clears the notes it holds', () => {
+    const m = parse('<bd - - -> *2')
+    const laneCell = m.lanes[0].cells.findIndex((c) => isCellOn(c))
+    expect(laneCell, 'fixture must have a hit to clear').toBeGreaterThanOrEqual(0)
+    expect(canToggleCell(m, 0, laneCell, false)).toBe(true)
+  })
+})
+
+describe('viewPlacesNotes — the PATH question, asked once per view (#1070)', () => {
+  it('is false for a leaf-anchored view and true otherwise', () => {
+    expect(viewPlacesNotes(parse('<bd - - -> *2'))).toBe(false)
+    expect(viewPlacesNotes(parse('bd ~ sd ~'))).toBe(true)
+  })
+
+  /**
+   * The whole point of asking it at the view: it must agree with what every
+   * cell would say, so the panel can state it once instead of greying each cell
+   * with no reason on it.
+   */
+  it('agrees with every cell on the view it describes', () => {
+    const m = parse('<bd - - -> *2')
+    expect(viewPlacesNotes(m)).toBe(false)
+    for (let col = 0; col < m.steps; col++)
+      if (!isCellOn(m.lanes[0].cells[col])) expect(canToggleCell(m, 0, col, true)).toBe(false)
   })
 })

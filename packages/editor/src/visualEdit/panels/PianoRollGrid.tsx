@@ -27,7 +27,7 @@ import { PIANO_ROLL_TAB_ID } from './tabs'
 import { isRollChunk } from './patternKind'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
-import { placeNote, resizeNote } from '../notation/place'
+import { canPlaceNote, placeNote, resizeNote, viewPlacesNotes } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
@@ -205,6 +205,30 @@ export function PianoRollGrid({
     // Within-track edits still change `model` → id matches → sticky union (#391).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model])
+
+  // The roll's half of the grid's placement admissibility — same rule, same
+  // reasons (#1064/#1070). `viewPlacesNotes` is the view-level fact: a
+  // leaf-anchored roll writes by byte surgery at each note's own span, so it
+  // cannot create one, and all 18,386 corpus placements on that path are
+  // refused. `placeable` is the per-cell question, asked of the real op so it
+  // cannot disagree with what a click does.
+  //
+  // Keyed on the displayed range as well as the model, because that range is
+  // what bounds the cells this pays for — the roll's own paths are near-clean
+  // (element 0.9%, alt 0.0%), so this map is almost all `true` and exists to
+  // keep the rule uniform rather than to catch a large class.
+  const placesNotes = model ? viewPlacesNotes(model) : false
+  const placeable = React.useMemo(() => {
+    if (!model) return null
+    const m = new Map<string, boolean>()
+    for (let midi = range.lo; midi <= range.hi; midi++) {
+      const pitch = tokenForRow(!!model.numeric, midi)
+      for (let step = 0; step < model.steps; step++) {
+        m.set(`${midi}:${step}`, canPlaceNote(model, pitch, step, 1))
+      }
+    }
+    return m
+  }, [model, range])
 
   React.useEffect(() => {
     const onUp = (): void => {
@@ -524,6 +548,22 @@ export function PianoRollGrid({
       >
         <PatternTrackChip />
       </div>
+      {/* ONE statement for a view that cannot take a new note (#1070) — the same
+          fact the grid states, on the surface that carries 18,386 of the corpus's
+          19,098 inert roll placements. Moving, resizing, deleting and velocity
+          all still work on the notes that are here. */}
+      {!placesNotes && (
+        <div
+          data-roll-no-placement
+          style={{
+            fontSize: 11,
+            color: 'var(--foreground-muted, #a0a0aa)',
+            padding: '0 8px 4px',
+          }}
+        >
+          Edits the notes already here — to add one, use the code view.
+        </div>
+      )}
       {/* "Slots" moved to the Pattern inspector (#601) and the Note Color toggle
           to the editor Settings tab (#602) — the old top-right overlay is gone,
           so the piano roll keeps its full height for pitch rows. */}
@@ -634,6 +674,11 @@ export function PianoRollGrid({
                     selected?.kind === 'roll' &&
                     selected.start === step &&
                     selected.pitch === tokenForRow(!!model.numeric, midi)
+                  // Offer an empty cell only where the writer will take the note
+                  // (#1064/#1070). A cell holding a note keeps every gesture it
+                  // had — move, resize, delete, velocity — and so does ⌘-click,
+                  // which selects a paste target without editing anything.
+                  const canPlace = on || (placeable?.get(`${midi}:${step}`) ?? true)
                   return (
                     <button
                       key={step}
@@ -643,8 +688,20 @@ export function PianoRollGrid({
                       data-roll-cell={`${midi}:${step}`}
                       data-roll-selected={isSel ? 'true' : undefined}
                       data-playing={step === playingStep ? 'true' : undefined}
+                      data-roll-cell-inert={canPlace ? undefined : 'true'}
+                      aria-disabled={canPlace ? undefined : true}
+                      title={
+                        canPlace
+                          ? undefined
+                          : placesNotes
+                            ? 'A note here has no spelling this pattern can take.'
+                            : 'This pattern edits its existing notes — add notes in the code view.'
+                      }
                       onPointerDown={(e) => {
                         e.preventDefault()
+                        // ⌘/Ctrl-click is selection, not an edit — it stays
+                        // available on a cell that cannot take a note.
+                        if (!canPlace && !(e.metaKey || e.ctrlKey)) return
                         onCellDown(midi, step, e)
                       }}
                       onPointerEnter={() => onCellEnter(midi, step)}
