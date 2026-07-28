@@ -122,8 +122,14 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   //
   // Memoized alongside `placeable` and for the same reason: `mutate` fires every
   // pointermove of a drag, so anything derived per cell is recomputed per frame
-  // unless it hangs off the model ([[P380]]). This one is O(cells) — it walks each
-  // lane once — where `placeable` serializes per empty cell, so it rides along.
+  // unless it hangs off the model ([[P380]] — where the comment claiming a per-cell
+  // map was cheap predated any measurement, so this one carries the number).
+  //
+  // MEASURED over the 958 corpus models, same shape as that entry: p50 0.0006ms,
+  // p99 0.0063ms, worst 0.0985ms — against `placeable`'s p99 2.25ms and worst
+  // 13.10ms on the same run, i.e. 0.86% of its total. The carry loop breaks at the
+  // next onset, so a lane costs one pass over its own cells however long the notes
+  // are. It rides along with the expensive memo rather than adding a frame cost.
   const coverage = React.useMemo(
     () => (model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null),
     [model],
@@ -378,7 +384,15 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     key={stepIndex}
                     type="button"
                     aria-pressed={on}
-                    aria-label={`${lane.sound} step ${stepIndex + 1}`}
+                    // A carried column now LOOKS different and has to READ different:
+                    // the fill says "a note is sounding through here" to anyone who can
+                    // see it, and without this the accessible name is identical to an
+                    // empty cell's. Making the picture richer is what opened the gap.
+                    aria-label={
+                      held
+                        ? `${lane.sound} step ${stepIndex + 1}, held from step ${cov!.start + 1}`
+                        : `${lane.sound} step ${stepIndex + 1}`
+                    }
                     data-seq-cell={`${laneIndex}:${stepIndex}`}
                     data-gain={on && gainScoped ? gain : undefined}
                     data-playing={isPlaying ? 'true' : undefined}

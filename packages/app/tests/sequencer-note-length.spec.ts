@@ -121,6 +121,16 @@ test.describe('a note is drawn across the columns it covers (#1056)', () => {
     // still say only column 0 is pressed.
     await expect(page.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
     await expect(page.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'false')
+
+    // The fill is the only thing that distinguishes a carried column from an empty one,
+    // so the accessible name has to carry it too — otherwise this change is legible to
+    // sighted users and invisible to everyone else, which is the same failure the phase
+    // exists to fix, one audience over.
+    await expect(page.locator('[data-seq-cell="0:1"]')).toHaveAttribute(
+      'aria-label',
+      'bd step 2, held from step 1',
+    )
+    await expect(page.locator('[data-seq-cell="0:2"]')).toHaveAttribute('aria-label', 'bd step 3')
   })
 
   test('drawing the length does not disturb an ordinary all-length-1 pattern', async ({ page }) => {

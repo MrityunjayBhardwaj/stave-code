@@ -29913,7 +29913,7 @@ function SequencerGrid({ onResolution } = {}) {
                 {
                   type: "button",
                   "aria-pressed": on,
-                  "aria-label": `${lane.sound} step ${stepIndex + 1}`,
+                  "aria-label": held ? `${lane.sound} step ${stepIndex + 1}, held from step ${cov.start + 1}` : `${lane.sound} step ${stepIndex + 1}`,
                   "data-seq-cell": `${laneIndex}:${stepIndex}`,
                   "data-gain": on && gainScoped ? gain : void 0,
                   "data-playing": isPlaying ? "true" : void 0,
