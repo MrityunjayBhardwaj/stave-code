@@ -15,6 +15,33 @@
  */
 import { cellOn, clampLane } from './model'
 import type { PianoRollModel, StepCell, StepGridModel } from './model'
+import { ifGridSpellable, ifRollSpellable } from './serialize'
+
+/**
+ * Does this view accept a NEW note at all?
+ *
+ * Not a per-cell question and not a prediction of the writer — it reads WHICH
+ * writer the parse chose. A leaf-anchored model (#986) is written by byte
+ * surgery at each note's own `location_` span, so changing or deleting a note
+ * that exists works, and creating one cannot: a new note has no span to operate
+ * on, and `serialize*` correctly returns null every time. Measured over the
+ * corpus, leaf placements are refused 3,584/3,584 on the grid and
+ * 18,386/18,386 on the roll, while deletes on the same units go through
+ * (63 written / 19 refused) — so this is a property of the path, not a bug in
+ * the writer and not a stale-anchoring artefact (#1070).
+ *
+ * The per-cell gate below would already refuse each of those placements. This
+ * exists so the panel can say it ONCE, as a view-level fact, rather than render
+ * 136 units' worth of individually-greyed cells with no reason given.
+ *
+ * ⚠ Distinct from writer REACH, which asks "can this view write back?" — a
+ * question every leaf view answers yes to, and the axis #986 raised (grid
+ * 80→131, roll 56→85). Those figures are true and unaffected; acceptance of new
+ * content is a different axis that nothing measured until now.
+ */
+export function viewPlacesNotes(model: { leafSource?: unknown }): boolean {
+  return model.leafSource == null
+}
 
 /**
  * What a painted cell holds. A hit the user places lasts exactly the column they
@@ -39,7 +66,21 @@ export function toggleCell(
   stepIndex: number,
   value: boolean,
 ): StepGridModel {
-  return {
+  // ADMISSIBLE EXACTLY WHEN THE RESULT IS WRITABLE, asked of the real writer
+  // ([[PV241]]) — the same rule `resize.ts` and `resolution.ts` already apply to
+  // every op they offer. It had reached every op and every control-state
+  // function and never reached the CELL, which is the gesture the panel exists
+  // for: `SequencerGrid` toggled unconditionally and `useGridModel` returned on
+  // the null serialize before updating the model, so a declined click wrote
+  // nothing, toggled nothing and said nothing — 1,748 of 11,633 placements
+  // (15.0%) on the element path, and 31.3% of the grid's overall (#1064).
+  //
+  // Returning the INPUT by reference is what the `notation/` op family already
+  // means by "could not apply": `mutate` skips the write and every `can<Op>`
+  // reduces to `op(model) !== model`, with no second predicate to drift.
+  // Putting it HERE rather than in the panel is deliberate — an admissibility
+  // rule enumerated caller-by-caller is exactly how the cell was missed.
+  return ifGridSpellable(model, {
     ...model,
     lanes: model.lanes.map((lane, i) =>
       i === laneIndex
@@ -60,7 +101,7 @@ export function toggleCell(
           }
         : lane,
     ),
-  }
+  })
 }
 
 /**
@@ -78,9 +119,17 @@ export function placeNote(
   start: number,
   duration: number,
 ): PianoRollModel {
+  // Gated by the real writer, exactly as `toggleCell` is — same rule, the other
+  // surface. The roll's own paths are near-clean (element 0.9%, alt 0.0%), so
+  // this is cheap here; what it buys is that the roll cannot drift back into
+  // offering a gesture the writer refuses, and that `canPlaceNote` is derivable
+  // rather than a second predicate. Leaf rolls refuse all 18,386 (#1070).
   const groupAt = model.notes.find((n) => n.start === start)
   if (groupAt) {
-    return { ...model, notes: [...model.notes, { pitch, start, duration: groupAt.duration }] }
+    return ifRollSpellable(model, {
+      ...model,
+      notes: [...model.notes, { pitch, start, duration: groupAt.duration }],
+    })
   }
   const nextStart = Math.min(
     ...model.notes.filter((n) => n.start > start).map((n) => n.start),
@@ -90,8 +139,58 @@ export function placeNote(
     n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n,
   )
   notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) })
-  return { ...model, notes }
+  return ifRollSpellable(model, { ...model, notes })
 }
+
+/**
+ * Replace whatever sits at (`pitch`, `start`) with a note of `duration` — the
+ * paste gesture (#528), as ONE op rather than a clear composed with a place.
+ *
+ * The composition is the whole reason this exists. `placeNote` signals "could
+ * not apply" by returning its input, and a paste's input is the model with the
+ * target note ALREADY removed — so a caller that clears first and places second
+ * turns a refusal into a deletion the user never asked for, and writes it,
+ * because the cleared model serializes perfectly well. Composing a
+ * decline-capable op with one that cannot decline puts the atomicity of the
+ * whole gesture on the caller, and it is not the caller's to carry.
+ *
+ * Refusing returns the ORIGINAL model, so the clear goes back with it.
+ */
+export function pasteNote(
+  model: PianoRollModel,
+  pitch: string,
+  start: number,
+  duration: number,
+): PianoRollModel {
+  const cleared = {
+    ...model,
+    notes: model.notes.filter((n) => !(n.start === start && n.pitch === pitch)),
+  }
+  const placed = placeNote(cleared, pitch, start, duration)
+  return placed === cleared ? model : placed
+}
+
+/**
+ * Is this exact gesture admissible? Derived from the op rather than predicted
+ * alongside it, so the two cannot disagree ([[PV241]], [[P369]]).
+ *
+ * The panel asks these per cell to decide whether to OFFER the gesture. Ask
+ * `viewPlacesNotes` first: on a creation-incapable path the honest answer is
+ * "this view does not place notes", not a cell-by-cell decline (#1070).
+ */
+export const canToggleCell = (
+  model: StepGridModel,
+  laneIndex: number,
+  stepIndex: number,
+  value: boolean,
+): boolean => toggleCell(model, laneIndex, stepIndex, value) !== model
+
+export const canPlaceNote = (
+  model: PianoRollModel,
+  pitch: string,
+  start: number,
+  duration: number,
+): boolean => placeNote(model, pitch, start, duration) !== model
 
 /**
  * Resize the single note identified by (`start`, `pitch`) to `duration` steps.

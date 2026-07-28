@@ -121,6 +121,7 @@ describe('#920 — <...>-as-element writeback holds under every edit', () => {
     const bad: string[] = []
     const declined = new Set<string>()
     let declinedToggles = 0
+    let writerNulls = 0
     for (const mini of minis) {
       const r = parseStepGrid(mini)
       if (!r.ok || !r.model.altSource) continue
@@ -133,6 +134,19 @@ describe('#920 — <...>-as-element writeback holds under every edit', () => {
           // and the writer then rightly declined an edit the UI would have clamped
           // before it ever reached here (#1048).
           const edited = toggleCell(r.model, lane, col, !isCellOn(r.model.lanes[lane].cells[col]))
+          // THE DECLINE MOVED ONE LAYER EARLIER (#1064). `toggleCell` now asks
+          // the real writer before returning, so a toggle whose result cannot be
+          // spelled comes back as the INPUT — the `notation/` family's "could not
+          // apply" — instead of an unspellable model the writer then nulls. The
+          // refusals are the same refusals, observed where the user meets them:
+          // the panel can now ask before it offers, rather than swallowing the
+          // click. Both pins below are unchanged (512 toggles / the same 18
+          // units), which is what proves the set did not grow or shrink.
+          if (edited === r.model) {
+            declined.add(mini.trim())
+            declinedToggles++
+            continue
+          }
           const out = serializeStepGrid(edited)
           // A null is a DECLINE, and since #1010 P4c that is a legitimate answer
           // rather than a defect: the printer preserves a note's length, and where
@@ -142,9 +156,14 @@ describe('#920 — <...>-as-element writeback holds under every edit', () => {
           // above mis-writing. So declines are COLLECTED AND PINNED rather than
           // forbidden: the set must not grow, which is what would signal the guard
           // spreading past the shapes it was measured on.
+          // NOTHING should reach here unspellable any more: the op refused it
+          // above. A non-zero count means a toggle produced a model the writer
+          // cannot spell AND the op said it could — the two disagreeing, which
+          // is exactly the drift asking the real writer is meant to make
+          // impossible. Kept as an assertion rather than deleted, because a
+          // branch that stops being taken silently is how this class hides.
           if (out === null) {
-            declined.add(mini.trim())
-            declinedToggles++
+            writerNulls++
             continue
           }
           edits++
@@ -186,6 +205,11 @@ describe('#920 — <...>-as-element writeback holds under every edit', () => {
     // Pinned as an exact set so the refusal cannot quietly spread to shapes it was never
     // measured against — the failure mode a bare `>= 0` would hide.
     expect(declinedToggles, 'declined EDITS, not units — the number the user experiences').toBe(512)
+    // The op and the writer agree on every one of these toggles. Before #1064 this
+    // count WAS the 512 above — same refusals, observed at the writer instead of at
+    // the gesture. Zero here and 512 there is the whole claim: nothing was lost,
+    // nothing new was refused, and the answer now arrives early enough to offer.
+    expect(writerNulls, 'the op must not hand the writer anything it cannot spell').toBe(0)
     expect([...declined].sort()).toEqual([
       '<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>',
       '<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd',

@@ -27,7 +27,7 @@ import { PIANO_ROLL_TAB_ID } from './tabs'
 import { isRollChunk } from './patternKind'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
-import { placeNote, resizeNote } from '../notation/place'
+import { pasteNote, placeNote, resizeNote, viewPlacesNotes } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
@@ -205,6 +205,28 @@ export function PianoRollGrid({
     // Within-track edits still change `model` → id matches → sticky union (#391).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model])
+
+  // The roll's half of placement admissibility (#1064/#1070) — the VIEW-level
+  // question only, and that asymmetry with the grid is measured, not stylistic.
+  //
+  // A leaf-anchored roll writes by byte surgery at each note's own span, so it
+  // cannot create one: 18,386 of 18,386 corpus placements on that path are
+  // refused, which is 96.3% of everything inert on this surface. This one
+  // boolean catches all of it, and costs nothing.
+  //
+  // The remaining 3.7% would need the grid's per-cell map, and here it does not
+  // pay for itself. The roll's own paths are near-clean (element 0.9%, alt
+  // 0.0%), while a roll view spans rows × steps rather than lanes × steps —
+  // measured over the corpus, per model change: grid p50 0.01ms / p99 2.1ms,
+  // roll p50 0.28ms / p99 21.7ms / worst 50ms at 1,632 cells. `mutate` fires on
+  // every pointermove of a move drag, so on the roll that map would be a
+  // per-frame cost, to make 0.9% of cells legible.
+  //
+  // Correctness does not rest on this either way: `placeNote` still asks the
+  // real writer, so a refused click leaves the document untouched exactly as a
+  // gated one would. What the 0.9% does not get is the affordance — unchanged
+  // from today, and stated rather than quietly dropped.
+  const placesNotes = model ? viewPlacesNotes(model) : false
 
   React.useEffect(() => {
     const onUp = (): void => {
@@ -438,11 +460,14 @@ export function PianoRollGrid({
     const sel = selectedRef.current
     if (!model || !clip || !sel || sel.kind !== 'roll') return
     mutate((prev) => {
-      const cleared = {
-        ...prev,
-        notes: prev.notes.filter((n) => !(n.start === sel.start && n.pitch === sel.pitch)),
-      }
-      return setGroupGain(placeNote(cleared, sel.pitch, sel.start, clip.duration), sel.start, clip.gain)
+      // Replace-at-target is ONE op (`pasteNote`), so a refusal takes the clear
+      // back with it instead of leaving a deletion behind. The gain is applied
+      // only once the paste itself is known to have happened — `setGroupGain`
+      // cannot decline, so composing it onto a refusal would write a gain
+      // change for a note that was never pasted.
+      const pasted = pasteNote(prev, sel.pitch, sel.start, clip.duration)
+      if (pasted === prev) return prev
+      return setGroupGain(pasted, sel.start, clip.gain)
     })
   }
 
@@ -524,6 +549,22 @@ export function PianoRollGrid({
       >
         <PatternTrackChip />
       </div>
+      {/* ONE statement for a view that cannot take a new note (#1070) — the same
+          fact the grid states, on the surface that carries 18,386 of the corpus's
+          19,098 inert roll placements. Moving, resizing, deleting and velocity
+          all still work on the notes that are here. */}
+      {!placesNotes && (
+        <div
+          data-roll-no-placement
+          style={{
+            fontSize: 11,
+            color: 'var(--foreground-muted, #a0a0aa)',
+            padding: '0 8px 4px',
+          }}
+        >
+          Edits the notes already here — to add one, use the code view.
+        </div>
+      )}
       {/* "Slots" moved to the Pattern inspector (#601) and the Note Color toggle
           to the editor Settings tab (#602) — the old top-right overlay is gone,
           so the piano roll keeps its full height for pitch rows. */}
@@ -634,6 +675,11 @@ export function PianoRollGrid({
                     selected?.kind === 'roll' &&
                     selected.start === step &&
                     selected.pitch === tokenForRow(!!model.numeric, midi)
+                  // On a view that takes no new note, an empty cell says so
+                  // (#1070). A cell holding a note keeps every gesture it had —
+                  // move, resize, delete, velocity — and so does ⌘-click, which
+                  // selects a paste target without editing anything.
+                  const canPlace = on || placesNotes
                   return (
                     <button
                       key={step}
@@ -643,8 +689,20 @@ export function PianoRollGrid({
                       data-roll-cell={`${midi}:${step}`}
                       data-roll-selected={isSel ? 'true' : undefined}
                       data-playing={step === playingStep ? 'true' : undefined}
+                      data-roll-cell-inert={canPlace ? undefined : 'true'}
+                      aria-disabled={canPlace ? undefined : true}
+                      // `canPlace` is false only when the view takes no new note
+                      // at all, so there is one reason to give, not two.
+                      title={
+                        canPlace
+                          ? undefined
+                          : 'This pattern edits its existing notes — add notes in the code view.'
+                      }
                       onPointerDown={(e) => {
                         e.preventDefault()
+                        // ⌘/Ctrl-click is selection, not an edit — it stays
+                        // available on a cell that cannot take a note.
+                        if (!canPlace && !(e.metaKey || e.ctrlKey)) return
                         onCellDown(midi, step, e)
                       }}
                       onPointerEnter={() => onCellEnter(midi, step)}

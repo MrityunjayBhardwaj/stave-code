@@ -334,4 +334,75 @@ test.describe('Sequencer (#382)', () => {
     expect(await strudelValue(page)).toBe('$: s("bd ~ bd")')
     await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'false')
   })
+
+  /**
+   * #1070 — A LEAF-ANCHORED GRID SAYS WHAT IT CANNOT DO, once.
+   *
+   * `<bd - - ->*2` is written by byte surgery at each note's own span, so it can
+   * change and delete the notes it holds and can never create one. Before this,
+   * the grid opened looking completely normal and swallowed every click on an
+   * empty cell — no write, no toggle, no message. Corpus-wide that was 3,584 of
+   * 3,584 grid placements and 18,386 of 18,386 roll placements.
+   *
+   * Observed through the REAL gesture on the REAL document, because the whole
+   * defect was that the model and the document stayed untouched — which is
+   * exactly what a forced-state check cannot distinguish from success.
+   */
+  test('a leaf-anchored grid states it takes no new note, and still deletes (#1070)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("<bd - - ->*2")')
+    await placeCursorOn(page, 'bd')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await expect(grid).toHaveCount(1) // it still OPENS — reach is unaffected
+
+    // ONE statement for the view, not a cell-by-cell greying.
+    await expect(grid.locator('[data-seq-no-placement]')).toHaveCount(1)
+
+    // an empty cell is inert AND says why, instead of silently eating the click
+    const empty = grid.locator('[data-seq-cell="0:1"]')
+    await expect(empty).toHaveAttribute('aria-pressed', 'false')
+    await expect(empty).toHaveAttribute('data-seq-cell-inert', 'true')
+    await expect(empty).toHaveAttribute('aria-disabled', 'true')
+
+    // The affordance is genuinely gone, not merely styled: an ordinary click
+    // cannot reach it at all.
+    await expect(empty).toBeDisabled()
+
+    // AND the op refuses underneath it — forced past the affordance, the
+    // document is still untouched. Both layers, because the panel's guard is a
+    // courtesy and the op's refusal is the guarantee.
+    const before = await strudelValue(page)
+    await empty.click({ force: true })
+    await page.waitForTimeout(100)
+    expect(await strudelValue(page), 'a refused placement leaves the document alone').toBe(before)
+    await expect(empty).toHaveAttribute('aria-pressed', 'false')
+
+    // and the half the decision KEPT: the notes that are here still delete.
+    const held = grid.locator('[data-seq-cell="0:0"]')
+    await expect(held).toHaveAttribute('aria-pressed', 'true')
+    await expect(held).not.toHaveAttribute('data-seq-cell-inert', 'true')
+    await held.click()
+    await page.waitForTimeout(100)
+    expect(await strudelValue(page), 'delete still writes on a leaf view').not.toBe(before)
+  })
+
+  /**
+   * The other half, on the ordinary write path: a grid that CAN take notes must
+   * not have been narrowed by any of this. No view-level message, no inert
+   * cells, and the placement lands.
+   */
+  test('an ordinary grid is unchanged — no message, no inert cells (#1064)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd ~ ~ ~")')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await expect(grid.locator('[data-seq-no-placement]')).toHaveCount(0)
+    await expect(grid.locator('[data-seq-cell-inert]')).toHaveCount(0)
+    await grid.locator('[data-seq-cell="0:2"]').click()
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: s("bd ~ bd ~")')
+  })
 })
