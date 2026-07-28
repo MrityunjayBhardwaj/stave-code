@@ -733,6 +733,23 @@ export function PianoRollGrid({
                       type="button"
                       aria-pressed={on}
                       aria-label={`${tokenForRow(!!model.numeric, midi)} step ${step + 1}`}
+                      // THE SELECTION, SAID RATHER THAN ONLY DRAWN (#1080). Until
+                      // now selection was a data attribute and a ring — one for
+                      // tests, one for pixels, neither of which reaches assistive
+                      // tech, so the copy/paste target was announced exactly like
+                      // every other cell. #1077 was the same object failing for
+                      // sighted users; restoring the ring is what made the half
+                      // that was never there worth writing down.
+                      //
+                      // `aria-current` rather than `aria-selected`: this cell IS
+                      // the target of the next paste, which is what `aria-current`
+                      // means on a control. `aria-selected` would imply a
+                      // listbox/grid role, and declaring one commits the panel to a
+                      // keyboard contract (roving tabindex, arrow-key navigation)
+                      // it does not implement — announcing a contract you do not
+                      // keep is worse than the omission. That role, and the
+                      // navigation it obliges, is its own question (#1083).
+                      aria-current={isSel ? 'true' : undefined}
                       data-roll-cell={`${midi}:${step}`}
                       data-roll-selected={isSel ? 'true' : undefined}
                       data-playing={step === playingStep ? 'true' : undefined}
@@ -824,6 +841,11 @@ export function PianoRollGrid({
                         // two cannot drift apart again.
                         <span
                           data-roll-note-name
+                          // aria-hidden holds, checked rather than assumed (#1080):
+                          // this renders `noteDisplayName(midi)`, which is
+                          // `midiToPitch(midi)` capitalised, and the cell's own
+                          // aria-label opens with `tokenForRow` — the same
+                          // `midiToPitch(midi)`. The name is already announced.
                           aria-hidden="true"
                           style={{
                             position: 'absolute',

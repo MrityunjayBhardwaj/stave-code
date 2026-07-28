@@ -30620,6 +30620,7 @@ function PianoRollGrid({
                                 type: "button",
                                 "aria-pressed": on,
                                 "aria-label": `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
+                                "aria-current": isSel ? "true" : void 0,
                                 "data-roll-cell": `${midi}:${step}`,
                                 "data-roll-selected": isSel ? "true" : void 0,
                                 "data-playing": step === playingStep ? "true" : void 0,

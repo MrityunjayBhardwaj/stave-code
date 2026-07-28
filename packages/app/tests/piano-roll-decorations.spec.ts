@@ -1,10 +1,11 @@
 /**
- * Piano roll — a note's DECORATIONS belong to the note, not to its column (#1078).
+ * Piano roll — a note's DECORATIONS belong to the note, not to its column
+ * (#1078), and its selection is said as well as drawn (#1080).
  *
- * WHY A BROWSER TEST. The claim is about rendered geometry. The name and the
- * handle were in the DOM the whole time, with correct content and correct
- * handlers — they were simply drawn somewhere the note was not, which no
- * model-level test can see ([[PV245]]).
+ * WHY A BROWSER TEST. Both claims are about rendered geometry and rendered
+ * attributes on the real element. The name and the handle were in the DOM the
+ * whole time, with correct content and correct handlers — they were simply drawn
+ * somewhere the note was not, which no model-level test can see ([[PV245]]).
  *
  * WHY EACH CLAIM GETS ITS OWN `it`. A test body stops at its first failure, so an
  * assertion placed after a failing one is evidence for nothing — and it is the
@@ -231,5 +232,32 @@ test.describe('roll decorations follow the note, not the column (#1078)', () => 
         `${g.cell}: handle still at the cell's right`,
       ).toBeLessThanOrEqual(1)
     }
+  })
+})
+
+test.describe('the roll says which cell is selected (#1080)', () => {
+  test('the selected cell carries aria-current', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c4 e4 g4 c5")')
+    await openRoll(page)
+
+    const target = page.locator('[data-roll-cell]').first()
+    await target.click({ modifiers: ['Meta'] })
+    // the pre-existing signal still holds — this is the precondition, not the claim
+    await expect(target).toHaveAttribute('data-roll-selected', 'true')
+    // THE CLAIM: selection reaches assistive tech, not only pixels and a data attribute
+    await expect(target).toHaveAttribute('aria-current', 'true')
+  })
+
+  test('CONTROL — an unselected cell carries no aria-current', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c4 e4 g4 c5")')
+    await openRoll(page)
+
+    const cells = page.locator('[data-roll-cell]')
+    await cells.first().click({ modifiers: ['Meta'] })
+    await expect(cells.first()).toHaveAttribute('aria-current', 'true')
+    // if every cell claimed to be current, the attribute would say nothing
+    await expect(cells.nth(1)).not.toHaveAttribute('aria-current', 'true')
   })
 })
