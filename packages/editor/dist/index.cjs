@@ -30345,10 +30345,13 @@ function PianoRollGrid({
     }
     const note = noteAt(model, midi, step);
     if (note) {
-      const isTail = note.start + note.duration - 1 === step;
+      const isTail = tailColumn(note) === step;
       const rect = e.currentTarget.getBoundingClientRect();
-      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, rect.width * 0.4));
-      if (isTail && e.clientX - rect.left >= rect.width - zone) {
+      const ov = columnOverlap(note.start, note.start + note.duration, step);
+      const barEnd = ov ? (ov.offset + ov.extent) * rect.width : rect.width;
+      const barW = ov ? ov.extent * rect.width : rect.width;
+      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4));
+      if (isTail && e.clientX - rect.left >= barEnd - zone) {
         onResizeDown(note);
         return;
       }
@@ -30674,9 +30677,19 @@ function PianoRollGrid({
                                     }
                                   ),
                                   isHead && // Note name inside the bar (#605) — rendered on the head
-                                  // cell, clipped to it so it never spills onto a neighbour.
+                                  // cell, clipped to THE BAR so it never spills onto a
+                                  // neighbour or onto the empty part of its own column.
                                   // pointer-events:none so it never blocks the cell's
                                   // pointer gestures (paint/drag) or the tail resize handle.
+                                  //
+                                  // Positioned against the FILL's box, not the cell's (#1078).
+                                  // While the note WAS the whole cell the two rectangles
+                                  // coincided and nothing had to choose; once the note became a
+                                  // child span occupying only its overlap (#1076), `inset: 0`
+                                  // put the label on empty background BESIDE the bar it names —
+                                  // 12 of 4842 corpus notes, every one of them a note that
+                                  // begins mid-column. Same two numbers the bar uses, so the
+                                  // two cannot drift apart again.
                                   /* @__PURE__ */ jsxRuntime.jsx(
                                     "span",
                                     {
@@ -30684,7 +30697,10 @@ function PianoRollGrid({
                                       "aria-hidden": "true",
                                       style: {
                                         position: "absolute",
-                                        inset: 0,
+                                        top: 0,
+                                        bottom: 0,
+                                        left: `${hit.overlap.offset * 100}%`,
+                                        width: `${hit.overlap.extent * 100}%`,
                                         display: "flex",
                                         alignItems: "center",
                                         paddingLeft: 3,
@@ -30700,7 +30716,22 @@ function PianoRollGrid({
                                       children: model.numeric ? String(midi) : noteDisplayName(midi)
                                     }
                                   ),
-                                  isTail && /* @__PURE__ */ jsxRuntime.jsx(
+                                  isTail && // The resize handle sits at the BAR's trailing edge, not the
+                                  // cell's (#1078). A note that ends mid-column used to put its
+                                  // handle at the far side of the column — floating in empty
+                                  // background past the end of the note it resizes, which is a
+                                  // handle you cannot aim at because it is not on the thing.
+                                  // 18 of 4842 corpus notes.
+                                  //
+                                  // WIDTH IS CLAMPED TO THE BAR: a `@0.25` note in a
+                                  // minimum-width (12px) column is a 3px bar, and a fixed 8px
+                                  // handle would be wider than the note, overhanging backwards
+                                  // past its own start. The handle is never wider than what it
+                                  // resizes. What that costs — a very small note draws a very
+                                  // small handle — is paid back by the pointer-down grab zone
+                                  // below, which is floored and invisible: what you SEE is the
+                                  // note's own trailing edge, what you can HIT is larger.
+                                  /* @__PURE__ */ jsxRuntime.jsx(
                                     "span",
                                     {
                                       "data-roll-resize": `${midi}:${note.start}`,
@@ -30714,8 +30745,8 @@ function PianoRollGrid({
                                         position: "absolute",
                                         top: 0,
                                         bottom: 0,
-                                        right: 0,
-                                        width: RESIZE_ZONE_PX,
+                                        right: `${(1 - hit.overlap.offset - hit.overlap.extent) * 100}%`,
+                                        width: `min(${RESIZE_ZONE_PX}px, ${hit.overlap.extent * 100}%)`,
                                         cursor: "ew-resize",
                                         background: "var(--foreground, #e6e6ea)",
                                         opacity: 0.45,
