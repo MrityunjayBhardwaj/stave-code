@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url'
 import { parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
 import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
 import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
+import { ungatedToggle } from './ungatedOps'
 import { scaleCell, isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import type {
   GridCells,
@@ -397,12 +398,35 @@ function sweep(asksPerUnit: number) {
 
     for (const { lane, col } of picked) {
       bump(ask, 'asks')
+      // ASK THE OP FOR ITS OWN VERDICT, never the writer for one (#1073). Since
+      // #1071 `toggleCell` answers "could not apply" by returning its INPUT by
+      // reference — and the input is the user's current model, which serializes
+      // perfectly well. Inferring acceptance from a non-null serialize therefore
+      // counts every refusal as an acceptance, which is not a skew but the loss of
+      // the distinction: measured unmodified on this tree, every cell of this sweep
+      // read 100.0% regardless of what the code did, and the refused clicks went on
+      // to reach the playback oracle as edits and fail it — 9,082 CORRUPT asks at
+      // ALL depth against the 86 the committed artifact reports.
+      //
+      // `op(x) !== x` is the signal the `notation/` family defines and the one every
+      // `can*` is derived from, so this cannot drift away from the op again.
       const next = toggleCell(refined, lane, col, true)
-      const edited = serializeStepGrid(next)
-      // HYPOTHESIS ARM, measured on every ask so the two are directly comparable
+      const edited = next === refined ? null : serializeStepGrid(next)
+      // HYPOTHESIS ARM, measured on every ask so the two are directly comparable.
+      // It asks what a clamp ACROSS the part would have made spellable, so it is
+      // built on the UNGATED toggle rather than the shipped one: the shipped op
+      // refuses exactly the placements this arm exists to rescue, and
+      // `clampAcrossLanes` cannot decline, so composing on the gated op would clamp
+      // an UNMODIFIED model, serialize it fine and score the rescue it never
+      // performed ([[P379]] — composing a decline-capable op with one that cannot
+      // moves the verdict onto the caller).
       {
         const alt = serializeStepGrid(
-          clampAcrossLanes(toggleCell(refined, lane, col, true), col, refined.lanes[lane].part ?? 0),
+          clampAcrossLanes(
+            ungatedToggle(refined, lane, col, true),
+            col,
+            refined.lanes[lane].part ?? 0,
+          ),
         )
         if (alt === null) bump(ask, 'ALT:declined')
         else {
@@ -462,7 +486,8 @@ function sweep(asksPerUnit: number) {
         let baseVerdict = 'no-base-probe'
         for (let bc = 0; bc < m.steps; bc++) {
           if (isCellOn(m.lanes[lane]?.cells[bc])) continue
-          const b0 = serializeStepGrid(toggleCell(m, lane, bc, true))
+          const bn = toggleCell(m, lane, bc, true)
+          const b0 = bn === m ? null : serializeStepGrid(bn)
           if (b0 === null) {
             if (baseVerdict === 'no-base-probe') baseVerdict = 'base-declines'
             continue
@@ -592,7 +617,8 @@ describe('#1058 spike', () => {
         for (let col = 0; col < mm.steps; col++) {
           if (isCellOn(mm.lanes[lane].cells[col])) continue
           bump(t, 'asks')
-          const out = serializeStepGrid(toggleCell(mm, lane, col, true))
+          const nx = toggleCell(mm, lane, col, true)
+          const out = nx === mm ? null : serializeStepGrid(nx)
           if (out === null) {
             bump(t, 'declined')
             const covered = mm.lanes.some(
@@ -640,7 +666,7 @@ describe('#1058 spike', () => {
         const perBar = r.steps / (m.bars ?? 1)
         const col = Math.min(r.steps - 1, Math.floor(perBar / 4) | 1)
         const next = toggleCell(r, 0, col, true)
-        const out = serializeStepGrid(next)
+        const out = next === r ? null : serializeStepGrid(next)
         if (out === null) {
           line.push(`n=${n}: DECLINED`)
           break

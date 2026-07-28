@@ -66,6 +66,22 @@ A `null` is a **decline**, which is an honest answer at this boundary and not a 
 writer refuses rather than mis-spells ([[PV241]]). Declines are counted and bucketed, never
 treated as failures of correctness.
 
+> **How this is asked changed under the probe, 2026-07-29 (#1073).** The rule above is
+> pre-registered and unchanged; only its operationalisation moved. Since #1071 the decline
+> happens one layer earlier — `toggleCell` asks the writer itself and signals "could not
+> apply" by returning its INPUT, which serializes perfectly well. Reading acceptance off a
+> non-null serialize therefore stopped distinguishing anything: re-run unmodified, every
+> cell of the table below read `A = 100.0%`, and the refused clicks reached the playback
+> oracle as edits and failed it (9,082 corrupt asks against the 86 recorded here). The probe
+> now asks the op for its own verdict (`op(x) !== x`), and the hypothesis arm — which exists
+> to rescue exactly the placements the shipped op refuses — is built on the ungated toggle.
+>
+> **Every figure below was reproduced by that re-run**, which is why they stand rather than
+> being restated: A at all four depths (79.1 / 68.8 / 62.1 / 40.9), L (98.0 / 97.6 / 97.0 /
+> 95.7), corrupt (3/2, 5/2, 9/2, 86/3), the base arm (11,633 asks, 85.0%, 1717 of 1748
+> declines), and the ALT arm (15,056 accepted, 14,778 local, 13,763 plays, 1,293
+> play-differs). The verdict was taken on numbers that still hold.
+
 ### P2 — it plays
 
 `enginePlayed(edited)` against `enginePlayed(original)`, as (onset, duration, atom) rows.
