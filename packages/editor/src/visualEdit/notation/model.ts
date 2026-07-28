@@ -451,6 +451,82 @@ export function clampLane(cells: StepCell[], steps: number): StepCell[] {
   return out
 }
 
+/**
+ * Below this much of a column, a note is not occupying it (#1056).
+ *
+ * Lengths reach the cell through float arithmetic on the engine's Fractions, so
+ * "exactly one column" routinely arrives as `1.0000000000000004`. The same constant
+ * `cell-duration.test.ts` compares lengths with, for the same reason.
+ */
+const COLUMN_EPS = 1e-9
+
+/** One column of a lane, as covered by the note sounding through it. */
+export interface ColumnCoverage {
+  /** column the covering note BEGINS at; `=== c` exactly when this column is the head */
+  start: number
+  /**
+   * Fraction of THIS column the note sounds through, in `[0, 1]`. A whole column
+   * is `1`; `[hh ~]!16` covers half of its own column and nothing after it, so its
+   * head reads `0.5`. The last column of a length-2.5 note reads `0.5` as well —
+   * the unit is the column, not the note.
+   */
+  extent: number
+}
+
+/**
+ * Which columns each note in a lane occupies, and by how much of each (#1056).
+ *
+ * WHY THIS EXISTS AS A DERIVATION rather than in the panel. `StepNote.duration` has
+ * been read by the parser (P4b) and preserved by the printer (P4c) since #1010, and
+ * was still invisible: every visual property of a cell derived from `isCellOn`, and a
+ * sustained column is `false`, so `bd _ sd ~` and `bd ~ sd ~` drew an IDENTICAL lit-cell
+ * pattern. An axis the model carries and the writer preserves is not an axis the user
+ * can see — only the panel's geometry decides that ([[PV245]]) — and this is the
+ * derivation that geometry needs. It is a READ: it never mutates a cell, and it is not
+ * an op, which is why it sits beside `clampLane` rather than in `place.ts`.
+ *
+ * THE ROOM RULE IS `clampLane`'S, ASKED NON-DESTRUCTIVELY. A note stops at the next hit
+ * in its own lane and at the end of the grid, because those are the only lengths the
+ * writer can spell (two notes of one sound cannot overlap in any notation we could write
+ * back). Reading the same rule the clamp enforces is what keeps the drawing and the
+ * document from disagreeing — a model that has been through `clampLane` is a fixpoint
+ * here, and one that has not still draws only what is spellable.
+ *
+ * THE HEAD IS ALWAYS EMITTED, even at `extent === 0`, so a note can never be dropped from
+ * the drawing by arithmetic. Whether a zero-extent head is still worth a pixel is the
+ * renderer's question, not this function's.
+ */
+export function laneCoverage(cells: StepCell[], steps: number): (ColumnCoverage | undefined)[] {
+  const out: (ColumnCoverage | undefined)[] = new Array(cells.length).fill(undefined)
+  // The two bounds are `clampLane`'s and are deliberately different: cells are read to
+  // the END OF THE LANE so no trigger can be dropped from the drawing, while a note is
+  // carried only to the END OF THE GRID, because that is as far as the writer can spell.
+  const gridEnd = Math.min(cells.length, steps)
+  for (let c = 0; c < cells.length; c++) {
+    const cell = cells[c]
+    if (!isCellOn(cell)) continue
+    out[c] = { start: c, extent: Math.min(1, Math.max(0, cell.duration)) }
+    for (let k = 1; c + k < gridEnd; k++) {
+      if (isCellOn(cells[c + k])) break // the next hit owns its own column
+      const extent = Math.min(1, cell.duration - k)
+      // A SLIVER IS NOT A COLUMN. Lengths reach here through float arithmetic on the
+      // engine's Fractions, so a note that fills its column exactly arrives as
+      // `1.0000000000000004` and would otherwise claim the next one at an extent of
+      // 4e-16 — a bar with no width in a column the pattern never sounds through.
+      //
+      // MEASURED, corpus-wide: 61 phantom columns, and they decompose with no residue —
+      // carried 1550 → 1489 and partial 73 → 12 are the same 61. All of them are on the
+      // DERIVED paths, whose lengths come from float haps; the syntactic path computes
+      // from AST spans and loses exactly zero, which is the attribution that says this is
+      // float noise and not a length. The smallest REAL sub-column the corpus carries is
+      // 0.5, nine orders of magnitude from the threshold.
+      if (extent <= COLUMN_EPS) break
+      out[c + k] = { start: c, extent }
+    }
+  }
+  return out
+}
+
 export interface StepLane {
   sound: string
   part?: number

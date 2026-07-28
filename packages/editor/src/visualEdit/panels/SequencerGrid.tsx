@@ -23,7 +23,7 @@ import * as React from 'react'
 
 import { parseStepGrid, applyStepGain } from '../notation/parse'
 import { serializeStepGrid, serializeStepGain } from '../notation/serialize'
-import { isCellOn } from '../notation/model'
+import { isCellOn, laneCoverage } from '../notation/model'
 import type { StepGridModel } from '../notation/model'
 import { VisualEditStandby } from './VisualEditStandby'
 import { SEQUENCER_TAB_ID } from './tabs'
@@ -112,6 +112,20 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             lane.cells.map((c, si) => (isCellOn(c) ? true : canToggleCell(model, li, si, true))),
           )
         : null,
+    [model],
+  )
+
+  // How long each note SOUNDS, per column (#1056). The grid drew one full box per
+  // trigger and nothing at all for the columns a note carried on through, so
+  // `bd _ sd ~` and `bd ~ sd ~` were the same picture — a length the parser reads
+  // and the printer preserves that no user could see ([[PV245]]).
+  //
+  // Memoized alongside `placeable` and for the same reason: `mutate` fires every
+  // pointermove of a drag, so anything derived per cell is recomputed per frame
+  // unless it hangs off the model ([[P380]]). This one is O(cells) — it walks each
+  // lane once — where `placeable` serializes per empty cell, so it rides along.
+  const coverage = React.useMemo(
+    () => (model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null),
     [model],
   )
 
@@ -340,12 +354,20 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             </button>
             <div style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
               {lane.cells.map((cell, stepIndex) => {
-                // The cell draws as a full-width square whether its note lasts one
-                // column or half of one — the grid has one box per column and no
-                // sub-column geometry to show a length in. Drawing the length is
-                // #1010 P4d's question, not this phase's.
+                // A cell is drawn from the note SOUNDING through it, not from the
+                // trigger alone (#1056): `cov.extent` is how much of this column
+                // the note fills, so a half-column note draws a half-width bar and
+                // a two-column note lights both. `on` stays the trigger — it is
+                // what the ops, `aria-pressed` and the velocity gesture mean.
                 const on = isCellOn(cell)
-                const gain = model.gains?.[stepIndex] ?? 1
+                const cov = coverage?.[laneIndex]?.[stepIndex]
+                /** this column is carried by a note that began earlier in the lane */
+                const held = cov !== undefined && cov.start !== stepIndex
+                // A held column shows the HEAD's velocity, not its own: the grid's
+                // gains are per column and a column with no trigger has none, so
+                // reading `stepIndex` would make a long note jump to full height
+                // halfway through. Same rule the roll's velocity lane already uses.
+                const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1
                 const isPlaying = stepIndex === playingStep
                 // An empty cell is offered only where the writer will take it.
                 // Where it will not, the cell is inert AND says so, instead of
@@ -395,24 +417,39 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                       cursor: !canPlace ? 'default' : gainScoped && on ? 'ns-resize' : 'pointer',
                     }}
                   >
-                    {on && (
-                      // bottom-anchored fill = velocity (full when neutral); when
-                      // gain is out of scope it always reads full, so the cell
-                      // looks exactly like the pre-velocity solid square. The
-                      // hue is the voice colour (#471), or a velocity ramp when
-                      // View ▸ Note Color = Velocity (#428).
+                    {cov && (
+                      // Two orthogonal axes on one bar, which is how a DAW draws a
+                      // note: WIDTH is how much of this column the note sounds for
+                      // (#1056), HEIGHT is velocity, bottom-anchored and full when
+                      // neutral — so a length-1 note at neutral gain is the same
+                      // solid square it has always been. The hue is the voice
+                      // colour (#471), or a velocity ramp when View ▸ Note Color =
+                      // Velocity (#428).
+                      //
+                      // A carried column is dimmed rather than drawn solid, the
+                      // vocabulary the piano roll already ships for the same fact
+                      // (`opacity: on && !isHead ? 0.7 : 1`) — one held note reads
+                      // as one note, and never as a second trigger.
                       <span
                         data-seq-fill
+                        data-seq-sustain={held ? 'true' : undefined}
+                        data-seq-extent={cov.extent !== 1 ? cov.extent.toFixed(4) : undefined}
                         style={{
                           position: 'absolute',
                           left: 0,
-                          right: 0,
                           bottom: 0,
+                          // `minWidth` is a floor on the PIXEL, not on the datum: a
+                          // note whose length rounds to nothing still has to be
+                          // visible, or the grid would silently lose a trigger it
+                          // can spell.
+                          width: `${clamp01(cov.extent) * 100}%`,
+                          minWidth: held ? 0 : 2,
                           height: `${clamp01(gainScoped ? gain : 1) * 100}%`,
                           background:
                             colorMode === 'velocity'
                               ? velocityColor(gainScoped ? gain : 1)
                               : voice.color,
+                          opacity: held ? 0.7 : 1,
                           pointerEvents: 'none',
                         }}
                       />
