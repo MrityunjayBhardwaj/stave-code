@@ -181,7 +181,15 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     expect(leafOffered, 'a leaf-anchored grid takes no new note at all').toBe(0)
   })
 
-  it('roll: the offer matches the writer on every cell, split by write path', () => {
+  /**
+   * The roll's op-level half. ⚠ The roll PANEL asks only the view-level
+   * question — the per-cell map costs p99 21.7ms per model change there (vs the
+   * grid's 2.1ms, since a roll spans rows × steps) to make 0.9% of cells
+   * legible, and `mutate` fires on every frame of a move drag. That is an
+   * affordance decision; this gate is about the OP, which is what keeps a
+   * refused click from writing, and it holds on every cell regardless.
+   */
+  it('roll: the op refuses exactly what the writer refuses, split by write path', () => {
     const by: Record<Path, Tally> = { leaf: zero(), alt: zero(), element: zero() }
     let disagreements = 0
     const examples: string[] = []

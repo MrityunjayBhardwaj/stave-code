@@ -27,7 +27,7 @@ import { PIANO_ROLL_TAB_ID } from './tabs'
 import { isRollChunk } from './patternKind'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
-import { canPlaceNote, pasteNote, placeNote, resizeNote, viewPlacesNotes } from '../notation/place'
+import { pasteNote, placeNote, resizeNote, viewPlacesNotes } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
@@ -206,29 +206,27 @@ export function PianoRollGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model])
 
-  // The roll's half of the grid's placement admissibility — same rule, same
-  // reasons (#1064/#1070). `viewPlacesNotes` is the view-level fact: a
-  // leaf-anchored roll writes by byte surgery at each note's own span, so it
-  // cannot create one, and all 18,386 corpus placements on that path are
-  // refused. `placeable` is the per-cell question, asked of the real op so it
-  // cannot disagree with what a click does.
+  // The roll's half of placement admissibility (#1064/#1070) — the VIEW-level
+  // question only, and that asymmetry with the grid is measured, not stylistic.
   //
-  // Keyed on the displayed range as well as the model, because that range is
-  // what bounds the cells this pays for — the roll's own paths are near-clean
-  // (element 0.9%, alt 0.0%), so this map is almost all `true` and exists to
-  // keep the rule uniform rather than to catch a large class.
+  // A leaf-anchored roll writes by byte surgery at each note's own span, so it
+  // cannot create one: 18,386 of 18,386 corpus placements on that path are
+  // refused, which is 96.3% of everything inert on this surface. This one
+  // boolean catches all of it, and costs nothing.
+  //
+  // The remaining 3.7% would need the grid's per-cell map, and here it does not
+  // pay for itself. The roll's own paths are near-clean (element 0.9%, alt
+  // 0.0%), while a roll view spans rows × steps rather than lanes × steps —
+  // measured over the corpus, per model change: grid p50 0.01ms / p99 2.1ms,
+  // roll p50 0.28ms / p99 21.7ms / worst 50ms at 1,632 cells. `mutate` fires on
+  // every pointermove of a move drag, so on the roll that map would be a
+  // per-frame cost, to make 0.9% of cells legible.
+  //
+  // Correctness does not rest on this either way: `placeNote` still asks the
+  // real writer, so a refused click leaves the document untouched exactly as a
+  // gated one would. What the 0.9% does not get is the affordance — unchanged
+  // from today, and stated rather than quietly dropped.
   const placesNotes = model ? viewPlacesNotes(model) : false
-  const placeable = React.useMemo(() => {
-    if (!model) return null
-    const m = new Map<string, boolean>()
-    for (let midi = range.lo; midi <= range.hi; midi++) {
-      const pitch = tokenForRow(!!model.numeric, midi)
-      for (let step = 0; step < model.steps; step++) {
-        m.set(`${midi}:${step}`, canPlaceNote(model, pitch, step, 1))
-      }
-    }
-    return m
-  }, [model, range])
 
   React.useEffect(() => {
     const onUp = (): void => {
@@ -677,11 +675,11 @@ export function PianoRollGrid({
                     selected?.kind === 'roll' &&
                     selected.start === step &&
                     selected.pitch === tokenForRow(!!model.numeric, midi)
-                  // Offer an empty cell only where the writer will take the note
-                  // (#1064/#1070). A cell holding a note keeps every gesture it
-                  // had — move, resize, delete, velocity — and so does ⌘-click,
-                  // which selects a paste target without editing anything.
-                  const canPlace = on || (placeable?.get(`${midi}:${step}`) ?? true)
+                  // On a view that takes no new note, an empty cell says so
+                  // (#1070). A cell holding a note keeps every gesture it had —
+                  // move, resize, delete, velocity — and so does ⌘-click, which
+                  // selects a paste target without editing anything.
+                  const canPlace = on || placesNotes
                   return (
                     <button
                       key={step}
@@ -693,12 +691,12 @@ export function PianoRollGrid({
                       data-playing={step === playingStep ? 'true' : undefined}
                       data-roll-cell-inert={canPlace ? undefined : 'true'}
                       aria-disabled={canPlace ? undefined : true}
+                      // `canPlace` is false only when the view takes no new note
+                      // at all, so there is one reason to give, not two.
                       title={
                         canPlace
                           ? undefined
-                          : placesNotes
-                            ? 'A note here has no spelling this pattern can take.'
-                            : 'This pattern edits its existing notes — add notes in the code view.'
+                          : 'This pattern edits its existing notes — add notes in the code view.'
                       }
                       onPointerDown={(e) => {
                         e.preventDefault()

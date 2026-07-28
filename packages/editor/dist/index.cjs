@@ -28314,7 +28314,6 @@ function pasteNote(model, pitch, start, duration) {
 }
 __name(pasteNote, "pasteNote");
 var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value) => toggleCell(model, laneIndex, stepIndex, value) !== model, "canToggleCell");
-var canPlaceNote = /* @__PURE__ */ __name((model, pitch, start, duration) => placeNote(model, pitch, start, duration) !== model, "canPlaceNote");
 function resizeNote(model, start, pitch, duration) {
   if ((model.bars ?? 1) > 1) {
     const nextStart = Math.min(
@@ -30162,17 +30161,6 @@ function PianoRollGrid({
     }
   }, [model]);
   const placesNotes = model ? viewPlacesNotes(model) : false;
-  const placeable = React36__namespace.useMemo(() => {
-    if (!model) return null;
-    const m = /* @__PURE__ */ new Map();
-    for (let midi = range2.lo; midi <= range2.hi; midi++) {
-      const pitch = tokenForRow(!!model.numeric, midi);
-      for (let step = 0; step < model.steps; step++) {
-        m.set(`${midi}:${step}`, canPlaceNote(model, pitch, step, 1));
-      }
-    }
-    return m;
-  }, [model, range2]);
   React36__namespace.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
@@ -30530,7 +30518,7 @@ function PianoRollGrid({
                             const isHead = on && note.start === step;
                             const isTail = on && note.start + note.duration - 1 === step;
                             const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
-                            const canPlace = on || (placeable?.get(`${midi}:${step}`) ?? true);
+                            const canPlace = on || placesNotes;
                             return /* @__PURE__ */ jsxRuntime.jsxs(
                               "button",
                               {
@@ -30542,7 +30530,7 @@ function PianoRollGrid({
                                 "data-playing": step === playingStep ? "true" : void 0,
                                 "data-roll-cell-inert": canPlace ? void 0 : "true",
                                 "aria-disabled": canPlace ? void 0 : true,
-                                title: canPlace ? void 0 : placesNotes ? "A note here has no spelling this pattern can take." : "This pattern edits its existing notes \u2014 add notes in the code view.",
+                                title: canPlace ? void 0 : "This pattern edits its existing notes \u2014 add notes in the code view.",
                                 onPointerDown: (e) => {
                                   e.preventDefault();
                                   if (!canPlace && !(e.metaKey || e.ctrlKey)) return;
