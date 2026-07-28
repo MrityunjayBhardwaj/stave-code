@@ -735,6 +735,52 @@ export function sequentialColumnGroups(notes: RollNote[], col: number): ColumnGr
   return groups.length > 1 && spansAreSequential(groups) ? groups : null
 }
 
+/**
+ * A NEW ONSET ENDS EVERY NOTE STILL SOUNDING THROUGH ITS COLUMN — across the
+ * whole `,`-part, not just the lane that was clicked (#1064 phase 2).
+ *
+ * `clampLane` above resolves the conflict over a LANE because a click lands in
+ * one. The writer's constraint is not per lane: `sustainTokens` emits one token
+ * per column per PART and declines when "another note starts under the sustain",
+ * because `[_,bd]` is a chord containing a token that means nothing there. So a
+ * note sustaining in ANY lane of the part blocks the column, and clamping only
+ * the clicked lane hands the writer a model that says two things at once — which
+ * it correctly refuses, leaving the user's click inert (1,717 of 1,748 declines
+ * on the element path, 98.2%).
+ *
+ * WHY THE PART AND NOT THE WHOLE COLUMN: the scope is dictated by the writer's
+ * constraint and nothing else. Parts are serialized independently — `partColumns`
+ * filters by part before `sustainTokens` ever runs — so `bd _ _ _, ~ ~ hh ~` is
+ * legal notation and the `hh` onset under the `bd` sustain needs no resolution at
+ * all. Trimming across the part boundary would shorten a note the writer was
+ * always going to accept: a silent musical change with no notational need, which
+ * is the one thing this op must not do.
+ *
+ * This SHORTENS A DIFFERENT SOUND'S NOTE, and that is the deliberate product
+ * ruling behind phase 2 rather than a side effect: uniformly, on both surfaces,
+ * without conditioning on whether the shortening is audible. The piano roll's
+ * `placeNote` has always resolved across pitches this way; the grid resolving
+ * over a narrower scope than its sibling was the defect.
+ *
+ * Still only a WIDENING, never a promise. Anything it cannot make spellable —
+ * a trim that lands on a fraction of the part's own coarser grid, a `_` with
+ * nothing before it — the writer still refuses, and `ifGridSpellable` still
+ * gates the op ([[PV241]]: ask the writer, never predict it).
+ */
+export function clampPartAtOnset(lanes: StepLane[], part: number, column: number): StepLane[] {
+  return lanes.map((lane) => {
+    if ((lane.part ?? 0) !== part) return lane
+    let touched = false
+    const cells = lane.cells.map((cell, c) => {
+      if (c >= column || !isCellOn(cell)) return cell
+      // a length that merely ENDS at the column is not sounding through it
+      if (c + cell.duration <= column + 1e-6) return cell
+      touched = true
+      return cellOn(column - c)
+    })
+    return touched ? { ...lane, cells } : lane
+  })}
+
 export interface StepLane {
   sound: string
   part?: number
