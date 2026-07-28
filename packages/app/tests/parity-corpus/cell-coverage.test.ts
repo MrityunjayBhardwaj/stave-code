@@ -51,7 +51,7 @@ import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { parseStepGrid, parseStepGridCore, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
 import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
 import { scaleStepGrid } from '../../../editor/src/visualEdit/notation/resolution'
-import { isCellOn, laneCoverage } from '../../../editor/src/visualEdit/notation/model'
+import { isCellOn, laneCoverage, columnOverlap } from '../../../editor/src/visualEdit/notation/model'
 import type { StepCell, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
@@ -537,13 +537,20 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
       rolls++
       for (const n of r.model.notes) {
         notes++
-        // what the roll's own predicate lights for this note
+        // What the roll ACTUALLY lights, asked of the SHIPPED rule rather than a copy of
+        // it. The first version of this arm re-implemented the panel's integer predicate
+        // inline — a second oracle ([[PV192]]), which happened to agree only because the
+        // panel was also wrong. Now both ask `columnOverlap`.
         let lit = 0
         for (let s = 0; s < r.model.steps; s++) {
-          if (n.start <= s && s < n.start + n.duration) lit++
+          const ov = columnOverlap(n.start, n.start + n.duration, s)
+          if (ov) lit += ov.extent
         }
+        // …against the time the note actually occupies. This side is plain arithmetic on
+        // `start`/`duration` and does not go through the rule, so the comparison is a
+        // conservation check and not a restatement.
         const want = Math.max(0, Math.min(n.duration, r.model.steps - n.start))
-        if (Math.abs(lit - want) < EPS) {
+        if (Math.abs(lit - want) < 1e-6) {
           integral++
           continue
         }
@@ -556,33 +563,32 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
       `  ROLL: ${rolls} models, ${notes} notes — exact ${integral}, ` +
         `invisible ${invisible}, misdrawn ${misdrawn}, in ${affected.size} minis`,
     )
-    // NO-OP CONFIRMED FOR THE COVERAGE WALK, AND REFUTED FOR FRACTIONS. The roll's
-    // `noteAt` already covers `start <= step < start + duration` and already dims a
-    // non-head, so 4825 of 4842 notes need nothing from this phase — that half of the
-    // prediction holds.
+    // NO-OP CONFIRMED FOR THE COVERAGE WALK, REFUTED FOR FRACTIONS, AND NOW FIXED (#1074).
     //
-    // The other half did not, and #1056 asked for it to be measured rather than inferred
-    // precisely because "the reverse would be more surprising still". `RollNote.duration`
-    // is documented as counting whole `@n` steps; the corpus disagrees on 17 notes across
-    // 4 minis, and the mechanism is one — `noteAt` tests an INTEGER step against the
-    // half-open span `[start, start + duration)` — with two outcomes:
-    //   - 7 are drawn in NO column at all. `f4` at start 0.5 for 0.5 spans `[0.5, 1.0)`,
-    //     which contains no integer, so the note is simply not there.
-    //   - 10 are drawn for the wrong length, in BOTH directions: `[b3,e4,g4]@0.75` gets a
-    //     whole column for three quarters of one, and `c#2` at 13.5 for 2.5 columns gets
-    //     two. So this is not a rounding convention — it is the absence of a partial
-    //     column, which is exactly what the grid gained here.
-    // The split was hand-derived as 9/8 first and measured at 7/10; the two that moved are
-    // long fractional notes, which read as "overdrawn" until the direction is checked.
+    // #1056 predicted this phase would be a no-op on the roll and asked for it to be
+    // measured rather than inferred, precisely because "the reverse would be more
+    // surprising still". Half the prediction held — the roll already covered
+    // `start <= step < start + duration` and already dimmed a non-head, so 4825 of 4842
+    // notes needed nothing. The other half did not: `RollNote.duration` is documented as
+    // counting whole `@n` steps and the corpus disagreed on 17 notes across 4 minis, all
+    // through one mechanism — an INTEGER step tested against the half-open span:
+    //   - 7 were drawn in NO column at all. `f4` at start 0.5 for 0.5 spans `[0.5, 1.0)`,
+    //     which contains no integer, so the note sounded and was simply not there.
+    //   - 10 were drawn for the wrong length in BOTH directions: `[b3,e4,g4]@0.75` got a
+    //     whole column for three quarters of one, and `c#2` at 13.5 for 2.5 columns got
+    //     two. Not a rounding convention — the absence of a partial column, which is
+    //     exactly what the grid gained in #1056.
+    // The split was hand-derived as 9/8 and measured at 7/10; the two that moved are long
+    // fractional notes, which read as "overdrawn" until the direction is checked.
     //
-    // PRE-EXISTING and untouched by this phase — nothing here changes `parse.ts` or the
-    // roll panel. Filed separately rather than widened into this one; the fix wants the
-    // grid's `laneCoverage` rule shared across both surfaces, which is #1032's direction.
+    // Both surfaces now ask ONE rule, `columnOverlap`, and the roll supplies the `offset`
+    // the grid never needs because only a roll note carries a fractional start. The whole
+    // population is exact.
     expect(integral + invisible + misdrawn).toBe(notes)
-    expect(integral).toBe(4825)
-    expect(invisible).toBe(7)
-    expect(misdrawn).toBe(10)
-    expect(affected.size).toBe(4)
+    expect(integral).toBe(4842)
+    expect(invisible).toBe(0)
+    expect(misdrawn).toBe(0)
+    expect(affected.size).toBe(0)
   })
 
   it('a note that fills its column exactly does not claim the next one (float slivers)', () => {
