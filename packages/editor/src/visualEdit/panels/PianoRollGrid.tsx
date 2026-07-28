@@ -858,6 +858,13 @@ export function PianoRollGrid({
                           aria-hidden="true"
                           style={{
                             position: 'absolute',
+                            // Laid out against the PADDING box, so the ring sits a pixel
+                            // further in than the old inset shadow did — measured 403
+                            // white frame pixels against the original 424. Growing the
+                            // overlay by the border width to close that gap was tried and
+                            // MEASURED WORSE: at `inset: -1` the ring is drawn outside the
+                            // cell and bleeds across the 1px lane gap (2156). The pixel
+                            // nearest the border is not worth a ring that leaves its cell.
                             inset: 0,
                             borderRadius: 2,
                             boxShadow: 'inset 0 0 0 2px var(--foreground, #e6e6ea)',
