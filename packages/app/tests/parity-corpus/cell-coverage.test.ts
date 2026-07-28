@@ -12,12 +12,19 @@
  * WHAT IS AND IS NOT CIRCULAR HERE — stated because the issue's first wording asked for
  * a comparison that could only agree with itself. Coverage is DERIVED from the cell
  * length, so re-checking a derived path's coverage against the haps it descends from
- * proves nothing. Two arms are real:
- *   - SYNTACTIC path (the majority of the population): lengths come from the AST slot
- *     span and never touch the engine, so an engine comparison is fully independent.
+ * proves nothing. Four arms are real, and they are real in different ways:
+ *   - SYNTACTIC path: lengths come from the AST slot span and never touch the engine, so
+ *     an engine comparison is fully independent. Covers 3931 of 6207 drawn columns.
  *   - The DISTRIBUTION arithmetic on every path: conservation, disjointness, and the
  *     room rule are properties of `laneCoverage` alone, not of the length it was handed.
- * Both are reported separately rather than pooled into one green.
+ *   - THE WRITER, reached through TEXT: `sustainTokens` answers the same covered-columns
+ *     question in its own loop and spells it `_`, so comparing against the serialized
+ *     document puts `laneCoverage` on one side of the comparison only. This is the arm
+ *     that is non-circular on the DERIVED paths too, and it runs in both directions
+ *     across two tests — see each for the direction it can and cannot see.
+ *   - RESOLUTION INVARIANCE, on the shipped ×2 op: what the user sees must not change
+ *     when the grid is viewed twice as fine.
+ * Reported separately rather than pooled into one green.
  *
  * THE CONTROL ARM THE PHASE OWES ([[PV232]] — a control must be reported, not assumed).
  * #1056's "at 1× the layout is identical" is asserted STRUCTURALLY, not sampled: the
@@ -30,10 +37,11 @@
  * run through the same comparisons and MUST be caught. If it is not, the phase changed
  * nothing.
  *
- * NOT COVERED, and blocked rather than skipped: the issue also asks for the k = 2 and
- * k = 4 arms. The view multiple is #1055's parameter and #1055 is not shipped, so there
- * is no k to run at; every figure here is k = 1. Re-run this file with the multiple once
- * #1055 lands — the comparison is resolution-generic, only the input is missing.
+ * THE k = 2 / k = 4 ARMS the issue asks for run here, on `scaleStepGrid(m, 'double')` —
+ * the SHIPPED ×2 op, which doubles the column count and every cell length exactly as a
+ * finer view would. They were first reported as blocked on #1055's view multiple; that
+ * was one option too many. When #1055 lands, its parameter is a second input to the same
+ * comparison, not a reason this one could not be made.
  */
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
@@ -41,6 +49,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { parseStepGrid, parseStepGridCore, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
+import { scaleStepGrid } from '../../../editor/src/visualEdit/notation/resolution'
 import { isCellOn, laneCoverage } from '../../../editor/src/visualEdit/notation/model'
 import type { StepCell, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
 
@@ -299,6 +309,210 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     const cov = laneCoverage(lane.cells, r.model.steps)
     expect(cov[0]?.extent).toBeCloseTo(0.5, 9)
     expect(cov[0]?.start).toBe(0)
+  })
+
+  it('k = 2 and k = 4 — the drawing is resolution-generic, on the SHIPPED ×2 op', () => {
+    // #1056 asks for these arms and they were first reported as blocked on #1055's view
+    // multiple. That was one option too many: `scaleStepGrid(model, 'double')` already
+    // ships, already doubles both the column count and every cell length, and is exactly
+    // the input a k = 2 view would hand the renderer. Measuring at a shipped op is also
+    // the only honest way to do it — a figure taken at a constant nothing ships at
+    // describes a build that does not exist ([[PK67]]).
+    //
+    // THE PROPERTY: doubling the resolution must not change what the user sees. Each
+    // note draws twice the columns of half the width, so its TOTAL drawn time is
+    // invariant in cycles and exactly doubles in columns, and every head lands on twice
+    // its old index. A renderer that lit "the note's column" rather than the note's TIME
+    // would keep a total of 1 across the doubling and fail here.
+    let doubled = 0
+    let quadrupled = 0
+    let skipped = 0
+    const bad: string[] = []
+
+    const drawn = (m: StepGridModel): Map<string, { total: number; heads: number[] }> => {
+      const out = new Map<string, { total: number; heads: number[] }>()
+      m.lanes.forEach((lane, li) => {
+        const cov = laneCoverage(lane.cells, m.steps)
+        let total = 0
+        const heads: number[] = []
+        cov.forEach((cv, c) => {
+          if (!cv) return
+          total += cv.extent
+          if (cv.start === c) heads.push(c)
+        })
+        out.set(`${li}:${lane.sound}`, { total, heads })
+      })
+      return out
+    }
+
+    for (const u of units) {
+      const x1 = u.model
+      const x2 = scaleStepGrid(x1, 'double')
+      // POPULATION, NAMED: `scaleStepGrid` returns the model unchanged when the writer
+      // cannot spell the result, so this arm asks only about grids that really can be
+      // viewed at 2× today. Counted rather than filtered away in silence ([[P345]]).
+      if (x2 === x1) {
+        skipped++
+        continue
+      }
+      doubled++
+      const a = drawn(x1)
+      const b = drawn(x2)
+      for (const [key, one] of a) {
+        const two = b.get(key)
+        if (!two) {
+          bad.push(`${u.mini} ${key} lane vanished at 2x`)
+          continue
+        }
+        if (Math.abs(two.total - one.total * 2) > 1e-6) {
+          bad.push(`${u.mini} ${key} total ${one.total} -> ${two.total} (want ${one.total * 2})`)
+        }
+        const want = one.heads.map((h) => h * 2)
+        if (JSON.stringify(two.heads) !== JSON.stringify(want)) {
+          bad.push(`${u.mini} ${key} heads ${JSON.stringify(two.heads)} want ${JSON.stringify(want)}`)
+        }
+      }
+
+      const x4 = scaleStepGrid(x2, 'double')
+      if (x4 === x2) continue
+      quadrupled++
+      const c4 = drawn(x4)
+      for (const [key, one] of a) {
+        const four = c4.get(key)
+        if (!four) continue
+        if (Math.abs(four.total - one.total * 4) > 1e-6) {
+          bad.push(`${u.mini} ${key} total@4x ${one.total} -> ${four.total}`)
+        }
+      }
+    }
+    console.log(`  k=2 on ${doubled} units, k=4 on ${quadrupled}, not viewable at 2x ${skipped}`)
+    for (const b of bad.slice(0, 8)) console.log(`  DRIFT ${b}`)
+    expect(bad.slice(0, 8), 'the drawn time must be invariant under a resolution change').toEqual([])
+    expect(doubled).toBeGreaterThan(0)
+    expect(quadrupled).toBeGreaterThan(0)
+  })
+
+  it('THE WRITER AGREES — the carried columns are the ones the document spells `_`', () => {
+    // THE ARM THAT IS NOT CIRCULAR, and it took two tries to get there. The comparison
+    // must reach a source that `laneCoverage` had no hand in, so it reads the SERIALIZED
+    // TEXT and takes the `_` positions straight out of it. `_` is the printer's own
+    // answer to the same question, computed in its own loop (`sustainTokens`, which
+    // builds a `covered[]` array from `Math.round(n.duration)`), and #1056 named exactly
+    // this as the point: "the sustain already has a spelling in the writer, so the visual
+    // has a document counterpart to stay honest against."
+    //
+    // THE FIRST VERSION OF THIS ARM WAS A TAUTOLOGY AND IS RECORDED AS ONE. It round-
+    // tripped the model and compared the picture before against the picture after — but
+    // built BOTH pictures with `laneCoverage`, so breaking the coverage rule broke both
+    // sides identically and the arm stayed green while four others went red. A gate whose
+    // two sides share the code under test cannot fail ([[P381]]/[[P370]]); it was caught
+    // by running the red-test and noticing which arms did NOT fire, which is the only
+    // reason it is not still sitting here reading green.
+    //
+    // SUSTAIN IS A PER-COLUMN FACT, NOT A PER-LANE ONE — and getting that wrong is what
+    // made the first population useless. Restricting to single-lane models left 357 units
+    // containing ZERO `_` between them, because `bd _ sd ~` is TWO lanes sharing one token
+    // sequence: the thing being compared had been defined out of the population, and the
+    // arm read green over 357 units of nothing. Measured before being believed.
+    //
+    // POPULATION, BOUNDED AND NAMED: models whose serialization is one flat token sequence
+    // of exactly `steps` tokens — any number of lanes, since a column's token is shared.
+    // Excluded are stacked parts and nested groups, which spell a column across several
+    // tokens; inferring which token is which column would mean re-implementing the reader,
+    // a second oracle and exactly what this arm exists to avoid. Sizes printed, including
+    // how many sustains the population actually contains, so a repeat of the vacuous
+    // version fails loudly instead of reading green.
+    let compared = 0
+    let outOfShape = 0
+    let declined = 0
+    let sustains = 0
+    const bad: string[] = []
+    for (const u of units) {
+      const m = u.model
+      const text = serializeStepGrid(m)
+      if (text === null) {
+        declined++
+        continue
+      }
+      // FLATNESS HAS TO BE CHECKED ON THE SYNTAX, NOT THE TOKEN COUNT. Splitting on
+      // whitespace and counting was not enough: `[a4,c#4,e4],[~ f#6 e6]` happens to yield
+      // `steps` pieces, and the pieces are fragments like `e6]` rather than columns. Any
+      // grouping, stacking or operator character means a column is not one token here.
+      const tokens = text.trim().split(/\s+/)
+      if (/[[\]{}<>,*!@/]/.test(text) || tokens.length !== m.steps) {
+        outOfShape++
+        continue
+      }
+      compared++
+      // a column is carried if ANY lane's note is sounding through it
+      const covs = m.lanes.map((lane) => laneCoverage(lane.cells, m.steps))
+      const spelledSustain = tokens.map((t) => t === '_')
+      sustains += spelledSustain.filter(Boolean).length
+      for (let c = 0; c < m.steps; c++) {
+        const drewCarried = covs.some((cov) => cov[c] !== undefined && cov[c]!.start !== c)
+        if (drewCarried !== spelledSustain[c]) {
+          bad.push(
+            `${JSON.stringify(u.mini).slice(0, 50)} col=${c} drew=${drewCarried ? 'carried' : 'not'} ` +
+              `document=${JSON.stringify(tokens[c])}`,
+          )
+        }
+      }
+    }
+    console.log(
+      `  writer agreement: compared ${compared} units (${sustains} sustain tokens), ` +
+        `not one flat sequence ${outOfShape}, writer declined ${declined}`,
+    )
+    for (const b of bad.slice(0, 6)) console.log(`  DISAGREE ${b}`)
+    expect(bad.slice(0, 6), 'a column the grid draws as carried must be a column the file spells `_`').toEqual([])
+    expect(compared).toBeGreaterThan(0)
+    // WHAT THIS ARM CANNOT CATCH, measured rather than left to the reader. The flat
+    // population contains ZERO `_`: every carried column in this corpus lives in a mini
+    // whose serialization is grouped or stacked, and those are excluded above because a
+    // column is not one token in them. So at corpus scale this proves only that the grid
+    // never draws a carry the document does not have — the over-draw direction. Failing
+    // to draw one it DOES have is the other half, and is covered by the fixture arm
+    // below, on minis that actually carry a sustain. Pinned so that if the corpus ever
+    // gains flat sustain material this comment stops being true out loud.
+    expect(sustains, 'if this is no longer 0, widen the assertion — the arm just got stronger').toBe(0)
+  })
+
+  it('THE WRITER AGREES, the other direction — a `_` in the document is a carried column', () => {
+    // The half the corpus arm structurally cannot reach. These minis DO carry a sustain,
+    // and each is checked against the writer's own spelling of it: the drawn carry set
+    // must be exactly the `_` positions in the serialized text. `laneCoverage` is on one
+    // side of this comparison only — the other side is `sustainTokens`' independent
+    // `covered[]` loop, reached through text.
+    const cases: Array<[string, string[]]> = [
+      // mini, expected per-lane picture (# head, = carried, - empty)
+      ['bd _ sd ~', ['bd:#=--', 'sd:--#-']],
+      ['bd _ _ sd', ['bd:#==-', 'sd:---#']],
+      ['hh hh bd _', ['hh:##--', 'bd:--#=']],
+    ]
+    for (const [mini, want] of cases) {
+      const r = parseStepGrid(mini)
+      expect(r.ok, `${mini} should open a grid`).toBe(true)
+      if (!r.ok) continue
+      const m = r.model
+      const got = m.lanes.map((lane) => {
+        const cov = laneCoverage(lane.cells, m.steps)
+        return `${lane.sound}:${lane.cells.map((_, c) => (!cov[c] ? '-' : cov[c]!.start === c ? '#' : '=')).join('')}`
+      })
+      expect(got, `${mini} drawn`).toEqual(want)
+
+      // and the document says the same thing, in its own vocabulary
+      const text = serializeStepGrid(m)
+      expect(text, `${mini} must round-trip`).not.toBeNull()
+      const tokens = text!.trim().split(/\s+/)
+      expect(tokens.length).toBe(m.steps)
+      const spelled = tokens.map((t) => t === '_')
+      for (let c = 0; c < m.steps; c++) {
+        const drew = m.lanes.some((lane) => {
+          const cov = laneCoverage(lane.cells, m.steps)
+          return cov[c] !== undefined && cov[c]!.start !== c
+        })
+        expect(drew, `${mini} col=${c} — drawn carry vs document ${JSON.stringify(tokens[c])}`).toBe(spelled[c])
+      }
+    }
   })
 
   it('THE ROLL — already draws length, so this phase is a no-op there; measured, not assumed', () => {
