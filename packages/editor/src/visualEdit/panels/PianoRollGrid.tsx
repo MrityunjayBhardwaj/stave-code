@@ -27,7 +27,7 @@ import { PIANO_ROLL_TAB_ID } from './tabs'
 import { isRollChunk } from './patternKind'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
-import { canPlaceNote, placeNote, resizeNote, viewPlacesNotes } from '../notation/place'
+import { canPlaceNote, pasteNote, placeNote, resizeNote, viewPlacesNotes } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
@@ -462,11 +462,14 @@ export function PianoRollGrid({
     const sel = selectedRef.current
     if (!model || !clip || !sel || sel.kind !== 'roll') return
     mutate((prev) => {
-      const cleared = {
-        ...prev,
-        notes: prev.notes.filter((n) => !(n.start === sel.start && n.pitch === sel.pitch)),
-      }
-      return setGroupGain(placeNote(cleared, sel.pitch, sel.start, clip.duration), sel.start, clip.gain)
+      // Replace-at-target is ONE op (`pasteNote`), so a refusal takes the clear
+      // back with it instead of leaving a deletion behind. The gain is applied
+      // only once the paste itself is known to have happened — `setGroupGain`
+      // cannot decline, so composing it onto a refusal would write a gain
+      // change for a note that was never pasted.
+      const pasted = pasteNote(prev, sel.pitch, sel.start, clip.duration)
+      if (pasted === prev) return prev
+      return setGroupGain(pasted, sel.start, clip.gain)
     })
   }
 

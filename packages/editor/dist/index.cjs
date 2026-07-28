@@ -28304,6 +28304,15 @@ function placeNote(model, pitch, start, duration) {
   return ifRollSpellable(model, { ...model, notes });
 }
 __name(placeNote, "placeNote");
+function pasteNote(model, pitch, start, duration) {
+  const cleared = {
+    ...model,
+    notes: model.notes.filter((n) => !(n.start === start && n.pitch === pitch))
+  };
+  const placed = placeNote(cleared, pitch, start, duration);
+  return placed === cleared ? model : placed;
+}
+__name(pasteNote, "pasteNote");
 var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value) => toggleCell(model, laneIndex, stepIndex, value) !== model, "canToggleCell");
 var canPlaceNote = /* @__PURE__ */ __name((model, pitch, start, duration) => placeNote(model, pitch, start, duration) !== model, "canPlaceNote");
 function resizeNote(model, start, pitch, duration) {
@@ -30338,11 +30347,9 @@ function PianoRollGrid({
     const sel = selectedRef.current;
     if (!model || !clip2 || !sel || sel.kind !== "roll") return;
     mutate((prev) => {
-      const cleared = {
-        ...prev,
-        notes: prev.notes.filter((n) => !(n.start === sel.start && n.pitch === sel.pitch))
-      };
-      return setGroupGain(placeNote(cleared, sel.pitch, sel.start, clip2.duration), sel.start, clip2.gain);
+      const pasted = pasteNote(prev, sel.pitch, sel.start, clip2.duration);
+      if (pasted === prev) return prev;
+      return setGroupGain(pasted, sel.start, clip2.gain);
     });
   }, "pasteClip");
   const scaleToSlots = /* @__PURE__ */ __name((target) => {

@@ -143,6 +143,34 @@ export function placeNote(
 }
 
 /**
+ * Replace whatever sits at (`pitch`, `start`) with a note of `duration` — the
+ * paste gesture (#528), as ONE op rather than a clear composed with a place.
+ *
+ * The composition is the whole reason this exists. `placeNote` signals "could
+ * not apply" by returning its input, and a paste's input is the model with the
+ * target note ALREADY removed — so a caller that clears first and places second
+ * turns a refusal into a deletion the user never asked for, and writes it,
+ * because the cleared model serializes perfectly well. Composing a
+ * decline-capable op with one that cannot decline puts the atomicity of the
+ * whole gesture on the caller, and it is not the caller's to carry.
+ *
+ * Refusing returns the ORIGINAL model, so the clear goes back with it.
+ */
+export function pasteNote(
+  model: PianoRollModel,
+  pitch: string,
+  start: number,
+  duration: number,
+): PianoRollModel {
+  const cleared = {
+    ...model,
+    notes: model.notes.filter((n) => !(n.start === start && n.pitch === pitch)),
+  }
+  const placed = placeNote(cleared, pitch, start, duration)
+  return placed === cleared ? model : placed
+}
+
+/**
  * Is this exact gesture admissible? Derived from the op rather than predicted
  * alongside it, so the two cannot disagree ([[PV241]], [[P369]]).
  *
