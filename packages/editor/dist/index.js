@@ -25657,6 +25657,24 @@ function clampLane(cells, steps) {
   return out;
 }
 __name(clampLane, "clampLane");
+var COLUMN_EPS = 1e-9;
+function laneCoverage(cells, steps) {
+  const out = new Array(cells.length).fill(void 0);
+  const gridEnd = Math.min(cells.length, steps);
+  for (let c = 0; c < cells.length; c++) {
+    const cell = cells[c];
+    if (!isCellOn(cell)) continue;
+    out[c] = { start: c, extent: Math.min(1, Math.max(0, cell.duration)) };
+    for (let k = 1; c + k < gridEnd; k++) {
+      if (isCellOn(cells[c + k])) break;
+      const extent = Math.min(1, cell.duration - k);
+      if (extent <= COLUMN_EPS) break;
+      out[c + k] = { start: c, extent };
+    }
+  }
+  return out;
+}
+__name(laneCoverage, "laneCoverage");
 
 // src/visualEdit/notation/serialize.ts
 function altSourceFits(a, steps) {
@@ -29697,6 +29715,10 @@ function SequencerGrid({ onResolution } = {}) {
     ) : null,
     [model]
   );
+  const coverage = React36.useMemo(
+    () => model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null,
+    [model]
+  );
   const paintCell = React36.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
@@ -29881,7 +29903,9 @@ function SequencerGrid({ onResolution } = {}) {
             ),
             /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((cell, stepIndex) => {
               const on = isCellOn(cell);
-              const gain = model.gains?.[stepIndex] ?? 1;
+              const cov = coverage?.[laneIndex]?.[stepIndex];
+              const held = cov !== void 0 && cov.start !== stepIndex;
+              const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
               const isPlaying = stepIndex === playingStep;
               const canPlace = on || (placeable?.[laneIndex]?.[stepIndex] ?? true);
               return /* @__PURE__ */ jsx(
@@ -29889,7 +29913,7 @@ function SequencerGrid({ onResolution } = {}) {
                 {
                   type: "button",
                   "aria-pressed": on,
-                  "aria-label": `${lane.sound} step ${stepIndex + 1}`,
+                  "aria-label": held ? `${lane.sound} step ${stepIndex + 1}, held from step ${cov.start + 1}` : `${lane.sound} step ${stepIndex + 1}`,
                   "data-seq-cell": `${laneIndex}:${stepIndex}`,
                   "data-gain": on && gainScoped ? gain : void 0,
                   "data-playing": isPlaying ? "true" : void 0,
@@ -29917,22 +29941,37 @@ function SequencerGrid({ onResolution } = {}) {
                     background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
                     cursor: !canPlace ? "default" : gainScoped && on ? "ns-resize" : "pointer"
                   },
-                  children: on && // bottom-anchored fill = velocity (full when neutral); when
-                  // gain is out of scope it always reads full, so the cell
-                  // looks exactly like the pre-velocity solid square. The
-                  // hue is the voice colour (#471), or a velocity ramp when
-                  // View ▸ Note Color = Velocity (#428).
+                  children: cov && // Two orthogonal axes on one bar, which is how a DAW draws a
+                  // note: WIDTH is how much of this column the note sounds for
+                  // (#1056), HEIGHT is velocity, bottom-anchored and full when
+                  // neutral — so a length-1 note at neutral gain is the same
+                  // solid square it has always been. The hue is the voice
+                  // colour (#471), or a velocity ramp when View ▸ Note Color =
+                  // Velocity (#428).
+                  //
+                  // A carried column is dimmed rather than drawn solid, the
+                  // vocabulary the piano roll already ships for the same fact
+                  // (`opacity: on && !isHead ? 0.7 : 1`) — one held note reads
+                  // as one note, and never as a second trigger.
                   /* @__PURE__ */ jsx(
                     "span",
                     {
                       "data-seq-fill": true,
+                      "data-seq-sustain": held ? "true" : void 0,
+                      "data-seq-extent": cov.extent !== 1 ? cov.extent.toFixed(4) : void 0,
                       style: {
                         position: "absolute",
                         left: 0,
-                        right: 0,
                         bottom: 0,
+                        // `minWidth` is a floor on the PIXEL, not on the datum: a
+                        // note whose length rounds to nothing still has to be
+                        // visible, or the grid would silently lose a trigger it
+                        // can spell.
+                        width: `${clamp012(cov.extent) * 100}%`,
+                        minWidth: held ? 0 : 2,
                         height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
                         background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
+                        opacity: held ? 0.7 : 1,
                         pointerEvents: "none"
                       }
                     }
