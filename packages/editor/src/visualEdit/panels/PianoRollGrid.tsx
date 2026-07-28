@@ -757,10 +757,8 @@ export function PianoRollGrid({
                               ? 'var(--background, #1c1c20)'
                               : 'var(--background-elevated, #26262c)',
                         cursor: 'pointer',
-                        // selection ring (#432) — distinct from the playhead border
-                        boxShadow: isSel
-                          ? 'inset 0 0 0 2px var(--foreground, #e6e6ea)'
-                          : undefined,
+                        // The selection ring (#432) is NOT here — see the overlay that
+                        // is the cell's last child (#1077).
                       }}
                     >
                       {hit && (
@@ -837,6 +835,40 @@ export function PianoRollGrid({
                             background: 'var(--foreground, #e6e6ea)',
                             opacity: 0.45,
                             borderRadius: '0 2px 2px 0',
+                          }}
+                        />
+                      )}
+                      {isSel && (
+                        // Selection ring (#432), drawn as the LAST child rather than as
+                        // the cell's own inset shadow (#1077).
+                        //
+                        // An inset box-shadow paints with the element's background, and
+                        // every child paints above it. That cost nothing while the note
+                        // WAS the background; once the note became a child span (#1074)
+                        // the ring was covered on every cell holding a note — which is
+                        // every cell you would want to select. Measured against the
+                        // previous build: 424 white ring pixels on a selected note cell
+                        // → 0, while a selected EMPTY cell was unaffected, which is
+                        // exactly why every existing assertion stayed green.
+                        //
+                        // Drawn last so it frames whatever is underneath — note, name,
+                        // resize handle or bare cell — and never has to know which.
+                        <span
+                          data-roll-selection
+                          aria-hidden="true"
+                          style={{
+                            position: 'absolute',
+                            // Laid out against the PADDING box, so the ring sits a pixel
+                            // further in than the old inset shadow did — measured 403
+                            // white frame pixels against the original 424. Growing the
+                            // overlay by the border width to close that gap was tried and
+                            // MEASURED WORSE: at `inset: -1` the ring is drawn outside the
+                            // cell and bleeds across the 1px lane gap (2156). The pixel
+                            // nearest the border is not worth a ring that leaves its cell.
+                            inset: 0,
+                            borderRadius: 2,
+                            boxShadow: 'inset 0 0 0 2px var(--foreground, #e6e6ea)',
+                            pointerEvents: 'none',
                           }}
                         />
                       )}
