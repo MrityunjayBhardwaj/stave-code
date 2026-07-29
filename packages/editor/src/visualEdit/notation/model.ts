@@ -414,8 +414,15 @@ export const isCellOn = (cell: StepCell | undefined): cell is StepNote =>
  * to prevent, arriving from the op instead of from the printer.
  *
  * Halving needs a guard on BOTH surfaces, and the two are derived from different things.
- * The roll's comes from its number system: `RollNote.duration` counts whole `@n` steps, so
- * an odd length cannot be halved and `canHalvePianoRoll` refuses. A cell's length is
+ * The roll's is a STRUCTURAL choice, not a property of its numbers — a distinction this
+ * comment used to get wrong by saying `RollNote.duration` "counts whole `@n` steps". It
+ * does not: `@n` is a relative weight, `duration` is that weight converted to columns, and
+ * real models carry `[0.5, 0.5, 3]` routinely. The writer can even spell a fractional one
+ * (`c3@1.5 ~ ~ ~`), declining only below a whole column. What `structurallyCanHalveRoll`
+ * actually requires is that every start AND duration be even, so the halved grid still
+ * lands on whole columns — and `canHalvePianoRoll` then asks the real op rather than
+ * predicting it (`scalePianoRoll(m,'halve') !== m`), with `ifRollSpellable` on top.
+ * A cell's length is
  * fractional by design, so ÷2 always REPRESENTS exactly — and representing it was never the
  * question. SPELLING it is: the grid writes one token per column and a sustain as `_`, so it
  * can express a whole number of columns and nothing else, and half a column has no notation
@@ -583,6 +590,81 @@ export function laneCoverage(cells: StepCell[], steps: number): (ColumnCoverage 
   return out
 }
 
+/** One note group's geometry within a column: where it starts and how much it fills. */
+export interface ColumnGroup extends ColumnOverlap {
+  /** the group's exact `start`, which is what the gain write path is keyed by */
+  start: number
+}
+
+/**
+ * The note GROUPS sounding through `col`, in time order, with their column geometry
+ * (#1086). The roll's answer to the question `laneCoverage` answers for the grid.
+ *
+ * A group is the set of notes sharing an exact `start` — that is already the unit the
+ * gain path uses (`setGroupGain` writes every note at one `start`, so a chord is one
+ * velocity), so keying on `start` is not a new grouping, it is the existing one made
+ * legible to the panel. The group's span runs to the LATEST end among its members: a
+ * chord whose members hold for different lengths sounds until its last one stops.
+ *
+ * WHY THE PANEL CANNOT DO THIS ITSELF, which is the whole of #1086. The velocity lane
+ * asked `n.start === col` — an equality on a number that is fractional whenever a note
+ * begins mid-column, so such a group matched no column and got no bar. That is the same
+ * whole-number question `noteAt` asked before #1074 and the resize grab zone asked before
+ * #1078; this is the third site, and the fix is the same one: ask the shared interval
+ * rule instead of testing integers.
+ */
+export function columnGroups(notes: RollNote[], col: number): ColumnGroup[] {
+  const endByStart = new Map<number, number>()
+  for (const n of notes) {
+    const end = n.start + n.duration
+    const prev = endByStart.get(n.start)
+    if (prev === undefined || end > prev) endByStart.set(n.start, end)
+  }
+  const out: ColumnGroup[] = []
+  for (const [start, end] of endByStart) {
+    const ov = columnOverlap(start, end, col)
+    if (ov) out.push({ start, ...ov })
+  }
+  return out.sort((a, b) => a.start - b.start)
+}
+
+/**
+ * Do these column spans lay end-to-end without overlapping (#1086)?
+ *
+ * The gate that decides whether a column's groups can be drawn side by side. Groups that
+ * overlap IN TIME — a stack's simultaneous voices — cannot be laid out along the column's
+ * time axis at all, because they are not sequential in it; drawing them that way puts one
+ * bar on top of another. Corpus-wide, 129 of the 137 multi-group columns are that case,
+ * and they are deferred to #1088 as a layout question rather than answered here.
+ *
+ * Asked through `COLUMN_EPS` rather than an exact comparison for the same reason every
+ * other question here is: a span that ends exactly where the next begins arrives from
+ * float arithmetic as a hair's overlap, and that must read as sequential.
+ */
+export function spansAreSequential(spans: readonly ColumnOverlap[]): boolean {
+  const byOffset = [...spans].sort((a, b) => a.offset - b.offset)
+  for (let i = 1; i < byOffset.length; i++) {
+    const prevEnd = byOffset[i - 1].offset + byOffset[i - 1].extent
+    if (byOffset[i].offset < prevEnd - COLUMN_EPS) return false
+  }
+  return true
+}
+
+/**
+ * The groups a velocity column is DRAWN AS, when it is drawn as more than one (#1086) —
+ * `null` when the column keeps its single bar.
+ *
+ * The decision lives here, in one exported function, rather than as an expression in the
+ * panel, so that the gate asserting how many columns split asks the SAME rule the panel
+ * renders from. Re-stating `length > 1 && sequential` in a test would be a second oracle,
+ * and one that agrees by construction — the shape that has gone green over a real defect
+ * more than once at this boundary.
+ */
+export function sequentialColumnGroups(notes: RollNote[], col: number): ColumnGroup[] | null {
+  const groups = columnGroups(notes, col)
+  return groups.length > 1 && spansAreSequential(groups) ? groups : null
+}
+
 export interface StepLane {
   sound: string
   part?: number
@@ -595,7 +677,12 @@ export interface RollNote {
   pitch: string
   /** column index where the note begins */
   start: number
-  /** length in columns (1 = one step; emitted as `@n` elongation) */
+  /**
+   * Length in COLUMNS — frequently fractional, and not a count of `@n`s. `@n` is a
+   * relative weight (`n / Σweights` of the enclosing sequence), so a whole `@n` lands on
+   * whatever share of a column that works out to. The writer spells this back as `@n`
+   * where it can, including fractionally, and declines below one column.
+   */
   duration: number
   /**
    * Per-note velocity. `1` (or absent) is neutral and emits no `.gain`. Chord

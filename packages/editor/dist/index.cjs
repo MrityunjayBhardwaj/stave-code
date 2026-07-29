@@ -25717,6 +25717,35 @@ function laneCoverage(cells, steps) {
   return out;
 }
 __name(laneCoverage, "laneCoverage");
+function columnGroups(notes, col) {
+  const endByStart = /* @__PURE__ */ new Map();
+  for (const n of notes) {
+    const end = n.start + n.duration;
+    const prev = endByStart.get(n.start);
+    if (prev === void 0 || end > prev) endByStart.set(n.start, end);
+  }
+  const out = [];
+  for (const [start, end] of endByStart) {
+    const ov = columnOverlap(start, end, col);
+    if (ov) out.push({ start, ...ov });
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+__name(columnGroups, "columnGroups");
+function spansAreSequential(spans) {
+  const byOffset = [...spans].sort((a, b) => a.offset - b.offset);
+  for (let i = 1; i < byOffset.length; i++) {
+    const prevEnd = byOffset[i - 1].offset + byOffset[i - 1].extent;
+    if (byOffset[i].offset < prevEnd - COLUMN_EPS) return false;
+  }
+  return true;
+}
+__name(spansAreSequential, "spansAreSequential");
+function sequentialColumnGroups(notes, col) {
+  const groups = columnGroups(notes, col);
+  return groups.length > 1 && spansAreSequential(groups) ? groups : null;
+}
+__name(sequentialColumnGroups, "sequentialColumnGroups");
 
 // src/visualEdit/notation/serialize.ts
 function altSourceFits(a, steps) {
@@ -30760,6 +30789,7 @@ function PianoRollGrid({
                         /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }, children: Array.from({ length: model.steps }, (_, col) => {
                           const covering = model.notes.find((n) => n.start === col) ?? model.notes.find((n) => n.start < col && col < n.start + n.duration);
                           const g = covering ? gainAtStart(model, covering.start) : 1;
+                          const split = sequentialColumnGroups(model.notes, col);
                           return /* @__PURE__ */ jsxRuntime.jsx(
                             "div",
                             {
@@ -30778,11 +30808,44 @@ function PianoRollGrid({
                                 background: "var(--background-elevated, #26262c)",
                                 cursor: covering ? "ns-resize" : "default"
                               },
-                              children: covering && // bottom-anchored bar = the note group's velocity (full = neutral)
+                              children: split ? split.map((grp) => {
+                                const gg = gainAtStart(model, grp.start);
+                                return /* @__PURE__ */ jsxRuntime.jsx(
+                                  "span",
+                                  {
+                                    "data-vel-bar": col,
+                                    "data-vel-group": grp.start,
+                                    "data-gain": gg,
+                                    style: {
+                                      position: "absolute",
+                                      // laid against the column's own box, like the note fill
+                                      left: `${grp.offset * 100}%`,
+                                      width: `${grp.extent * 100}%`,
+                                      bottom: 0,
+                                      height: `${clamp013(gg) * 100}%`,
+                                      background: colorMode === "velocity" ? velocityColor(gg) : "var(--accent, #6ea8fe)",
+                                      borderRadius: 2,
+                                      // VISUAL ONLY, and deliberately so. Every column that
+                                      // splits today sits in a pattern with a fractional-start
+                                      // note, and `serializeRollGain` skips exactly those — the
+                                      // gain mini is one slot per column, and a note beginning
+                                      // mid-column has no slot of its own. A per-bar drag would
+                                      // therefore be an affordance that cannot work, which is
+                                      // the thing this codebase already refuses to ship. The
+                                      // column keeps the drag behaviour it has always had; the
+                                      // lane's inert-affordance problem is older and wider than
+                                      // this phase (#1089).
+                                      pointerEvents: "none"
+                                    }
+                                  },
+                                  grp.start
+                                );
+                              }) : covering && // bottom-anchored bar = the note group's velocity (full = neutral)
                               /* @__PURE__ */ jsxRuntime.jsx(
                                 "span",
                                 {
                                   "data-vel-bar": col,
+                                  "data-vel-group": covering.start,
                                   "data-gain": g,
                                   style: {
                                     position: "absolute",

@@ -325,3 +325,77 @@ test.describe('velocity — Piano Roll (#409)', () => {
     await expect(roll.locator('[data-roll-velocity-lane]')).toHaveCount(0)
   })
 })
+
+test.describe('velocity — a column splits where its groups are sequential (#1086)', () => {
+  // `[c5@0.5 f4@0.5 f5@3]` opens at 4 columns. Column 0 holds TWO groups — c5 over
+  // [0, 0.5) and f4 over [0.5, 1.0) — which do not overlap in time, so it splits.
+  //
+  // A BROWSER TEST because the claim is about rendered geometry. The model has carried
+  // f4 the whole time; what it did not have was a bar, and only the pixels can say so.
+  //
+  // NO DRAG IS ASSERTED HERE, and that is a finding rather than an omission: every
+  // column that splits sits in a pattern with a fractional-start note, and the gain
+  // writer skips exactly those, so the bars are visual only (#1089).
+  const SPLIT = '$: note("[c5@0.5 f4@0.5 f5@3]")'
+
+  test('the group that begins mid-column is drawn at all — it had no bar before', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, SPLIT)
+    const drawer = await openSequencer(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll.locator('[data-roll-velocity-lane]')).toHaveCount(1)
+    // f4 starts at column 0.5. The lane asked `n.start === col`, an equality no
+    // fractional start satisfies, so this element did not exist.
+    await expect(roll.locator('[data-vel-group="0.5"]')).toHaveCount(1)
+  })
+
+  test('the split column draws one bar per group, each at its own offset and width', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, SPLIT)
+    const drawer = await openSequencer(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    const col0 = roll.locator('[data-vel-col="0"]')
+    await expect(col0.locator('[data-vel-bar]')).toHaveCount(2)
+    // Measured against the column's PADDING box, which is what an absolutely
+    // positioned child is laid against — the border box reads 2px wider and would
+    // make every one of these comparisons quietly wrong.
+    const geom = await col0.evaluate((el) => {
+      const host = el as HTMLElement
+      const inner = host.clientWidth
+      const left = host.getBoundingClientRect().left + host.clientLeft
+      return Array.from(host.querySelectorAll('[data-vel-bar]')).map((b) => {
+        const r = (b as HTMLElement).getBoundingClientRect()
+        return {
+          group: b.getAttribute('data-vel-group'),
+          offset: +((r.left - left) / inner).toFixed(3),
+          extent: +(r.width / inner).toFixed(3),
+        }
+      })
+    })
+    console.log(`  split column 0: ${JSON.stringify(geom)}`)
+    expect(geom).toEqual([
+      { group: '0', offset: 0, extent: 0.5 },
+      { group: '0.5', offset: 0.5, extent: 0.5 },
+    ])
+  })
+
+  test('CONTROL — a whole-column pattern is untouched: one full bar per column, still writable', async ({ page }) => {
+    // The control must run on a pattern the gain writer SERVES, or it proves nothing
+    // about the path this phase leaves alone. `c3 e3 g3 c4` sits on whole columns, so
+    // no column splits and the drag still writes — exactly as before.
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 e3 g3 c4")')
+    const drawer = await openSequencer(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll.locator('[data-vel-col="0"] [data-vel-bar]')).toHaveCount(1)
+    await expect(roll.locator('[data-vel-col="1"] [data-vel-bar]')).toHaveCount(1)
+    const w = await roll.locator('[data-vel-col="1"]').evaluate((el) => {
+      const host = el as HTMLElement
+      const bar = host.querySelector('[data-vel-bar]') as HTMLElement
+      return +(bar.getBoundingClientRect().width / host.clientWidth).toFixed(2)
+    })
+    expect(w).toBeGreaterThan(0.9) // the pre-existing bar insets 1px each side
+    await dragVertical(page, roll.locator('[data-vel-col="1"]'), 40)
+    expect(await strudelValue(page)).toMatch(/\.gain\("1 [\d.]+ 1 1"\)/)
+  })
+})

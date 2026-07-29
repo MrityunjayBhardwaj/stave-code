@@ -118,17 +118,22 @@ describe('the grid ops keep a length meaning what it says', () => {
 
   it('÷2 DOES need a guard — and it is about spelling, not about integrality', () => {
     // This test used to assert the opposite, and the reasoning was right about the model and
-    // wrong about the notation. `RollNote.duration` counts whole `@n` steps, so an odd length
-    // cannot halve and `canHalvePianoRoll` refuses; a CELL's length is fractional by design,
-    // so 1 → 0.5 represents exactly — and the conclusion drawn from that was that the grid
-    // needs no guard at all.
+    // wrong about the notation. The roll refuses an odd length (`structurallyCanHalveRoll`
+    // wants every start and duration even, so the halved grid still lands on whole columns);
+    // a CELL's length is fractional by design, so 1 → 0.5 represents exactly — and the
+    // conclusion drawn from that was that the grid needs no guard at all.
+    //
+    // The roll's half of that used to be justified as "`RollNote.duration` counts whole `@n`
+    // steps", which is not true and is worth not repeating: `@n` is a relative WEIGHT, not a
+    // count, `duration` is that weight in columns, and it is fractional all over the corpus.
+    // The roll's guard is a structural choice about staying on whole columns.
     //
     // Representing it was never the question. SPELLING it is: the grid emits one token per
     // column and a sustain as `_`, so it can write a whole number of columns and nothing
     // else. 0.5 has no spelling, and until P4c that did not show because the printer threw
     // the length away. So both surfaces need a guard, derived from different things — the
-    // roll's from its number system, the grid's from its notation — which is [[PV240]]'s
-    // corollary standing, with its example corrected.
+    // roll's from staying on whole columns, the grid's from its notation — which is
+    // [[PV240]]'s corollary standing, with its example corrected.
     const m4 = grid('bd ~ sd ~')
     expect(scaleStepGrid(m4, 'halve')).toBe(m4) // refused: 1 column → half a column
     // …and where the lengths CAN survive the halving, it still applies and still halves:
