@@ -487,10 +487,40 @@ export function columnOverlap(begin: number, end: number, col: number): ColumnOv
   const lo = Math.max(begin, col)
   const hi = Math.min(end, col + 1)
   const extent = hi - lo
-  // A SLIVER IS NOT A COLUMN — see COLUMN_EPS. This is the single place that decides it,
-  // so the two surfaces cannot drift on where a note stops.
+  // A SLIVER IS NOT A COLUMN — see COLUMN_EPS. This was once claimed to be the single
+  // place that decides it and was not (#1085); it is now, together with `headColumn` and
+  // `tailColumn` below, which read the same constant. The threshold stays PRIVATE to this
+  // module for that reason — the rules are exported, the number is not, so a caller
+  // cannot re-derive the question with a literal of its own the way the roll did.
   if (extent <= COLUMN_EPS) return null
   return { offset: lo - col, extent }
+}
+
+/**
+ * The FIRST column a note reaches into — `columnOverlap`'s answer in closed form (#1085).
+ *
+ * WHY THESE LIVE HERE. `columnOverlap`'s comment claims to be "the single place that
+ * decides" where a note stops, and it was not: the piano roll hand-rolled the same
+ * threshold twice, as bare `1e-9` literals, for the same question. Three literals, one
+ * rule, two files — and the comment asserting there was one is what made it easy to
+ * miss, because a reader who checks does find a single named constant.
+ *
+ * The stake rose when the resize GRAB ZONE started asking `tailColumn` too (#1078),
+ * having previously walked integers of its own. The drawn handle and the grabbable zone
+ * now derive from one rule, so a divergence between the thresholds would put them on
+ * different columns for a note near a boundary — which is the class #1078 was fixing.
+ *
+ * These are closed forms rather than a search because they are asked per cell in the
+ * render loop; that they really are `columnOverlap`'s first and last non-null column is
+ * asserted over the whole roll corpus rather than argued (`cell-coverage.test.ts`).
+ */
+export function headColumn(n: { start: number }): number {
+  return Math.floor(n.start + COLUMN_EPS)
+}
+
+/** The LAST column a note reaches into — see {@link headColumn}. */
+export function tailColumn(n: { start: number; duration: number }): number {
+  return Math.ceil(n.start + n.duration - COLUMN_EPS) - 1
 }
 
 /** One column of a lane, as covered by the note sounding through it. */

@@ -25692,6 +25692,14 @@ function columnOverlap(begin, end, col) {
   return { offset: lo - col, extent };
 }
 __name(columnOverlap, "columnOverlap");
+function headColumn(n) {
+  return Math.floor(n.start + COLUMN_EPS);
+}
+__name(headColumn, "headColumn");
+function tailColumn(n) {
+  return Math.ceil(n.start + n.duration - COLUMN_EPS) - 1;
+}
+__name(tailColumn, "tailColumn");
 function laneCoverage(cells, steps) {
   const out = new Array(cells.length).fill(void 0);
   const gridEnd = Math.min(cells.length, steps);
@@ -30168,8 +30176,6 @@ function noteAt(model, midi, step) {
   return overlapAt(model, midi, step)?.note;
 }
 __name(noteAt, "noteAt");
-var headColumn = /* @__PURE__ */ __name((n) => Math.floor(n.start + 1e-9), "headColumn");
-var tailColumn = /* @__PURE__ */ __name((n) => Math.ceil(n.start + n.duration - 1e-9) - 1, "tailColumn");
 function PianoRollGrid({
   selected,
   onSelect,

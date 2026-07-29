@@ -21,7 +21,7 @@ import * as React from 'react'
 import { parsePianoRoll, applyRollGain } from '../notation/parse'
 import { serializePianoRoll, serializeRollGain } from '../notation/serialize'
 import type { PianoRollModel, RollNote, ColumnOverlap } from '../notation/model'
-import { columnOverlap } from '../notation/model'
+import { columnOverlap, headColumn, tailColumn } from '../notation/model'
 import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../notation/pitch'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID } from './tabs'
@@ -130,12 +130,6 @@ function overlapAt(
 function noteAt(model: PianoRollModel, midi: number, step: number): RollNote | undefined {
   return overlapAt(model, midi, step)?.note
 }
-
-/** the column a note is drawn as starting in — its own column even when `start` is fractional */
-const headColumn = (n: RollNote): number => Math.floor(n.start + 1e-9)
-
-/** the last column a note reaches into */
-const tailColumn = (n: RollNote): number => Math.ceil(n.start + n.duration - 1e-9) - 1
 
 interface DragState {
   /** 'move' drags the note in pitch+time; 'resize' grows/shrinks its duration */

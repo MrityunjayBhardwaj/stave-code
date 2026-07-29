@@ -51,7 +51,7 @@ import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { parseStepGrid, parseStepGridCore, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
 import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
 import { scaleStepGrid } from '../../../editor/src/visualEdit/notation/resolution'
-import { isCellOn, laneCoverage, columnOverlap } from '../../../editor/src/visualEdit/notation/model'
+import { isCellOn, laneCoverage, columnOverlap, headColumn, tailColumn } from '../../../editor/src/visualEdit/notation/model'
 import type { StepCell, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
@@ -589,6 +589,56 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     expect(invisible).toBe(0)
     expect(misdrawn).toBe(0)
     expect(affected.size).toBe(0)
+  })
+
+  it('THE CLOSED FORMS ARE THE INTERVAL RULE — `headColumn`/`tailColumn` vs `columnOverlap`', () => {
+    // #1085. `columnOverlap`'s comment claimed to be "the single place that decides" where
+    // a note stops; the roll hand-rolled the same threshold twice as bare `1e-9` literals
+    // for the same question, so there were three literals and one rule. They now read one
+    // constant — but co-location is not agreement, and the panel calls the CLOSED FORMS
+    // (per cell, in the render loop) while every drawing claim in this file is made about
+    // the interval rule. This arm is what makes those the same statement.
+    //
+    // Asked over the note's own natural span rather than the panel's `steps` window, so
+    // the claim is about the RULE and not about where the panel stops looking. How many
+    // notes reach past that window is reported separately rather than hidden by it.
+    let notes = 0
+    let checked = 0
+    let silent = 0 // no column at all: a sliver shorter than the threshold
+    let headBad = 0
+    let tailBad = 0
+    let pastWindow = 0
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok) continue
+      for (const n of r.model.notes) {
+        notes++
+        const end = n.start + n.duration
+        const lit: number[] = []
+        for (let c = Math.floor(n.start) - 1; c <= Math.ceil(end) + 1; c++) {
+          if (columnOverlap(n.start, end, c)) lit.push(c)
+        }
+        if (lit.length === 0) {
+          silent++
+          continue
+        }
+        checked++
+        if (headColumn(n) !== lit[0]) headBad++
+        if (tailColumn(n) !== lit[lit.length - 1]) tailBad++
+        if (tailColumn(n) >= r.model.steps) pastWindow++
+      }
+    }
+    console.log(
+      `  CLOSED FORMS: ${notes} notes — checked ${checked}, sub-threshold ${silent}, ` +
+        `head mismatches ${headBad}, tail mismatches ${tailBad}, tail past the panel window ${pastWindow}`,
+    )
+    // The population must be non-empty and must be the whole of it ([[P345]]) — an
+    // equivalence asserted over nothing reads green forever.
+    expect(notes).toBe(4842)
+    expect(silent).toBe(0)
+    expect(checked).toBe(4842)
+    expect(headBad).toBe(0)
+    expect(tailBad).toBe(0)
   })
 
   it('a note that fills its column exactly does not claim the next one (float slivers)', () => {
