@@ -379,13 +379,32 @@ export function PianoRollGrid({
     }
     const note = noteAt(model, midi, step)
     if (note) {
-      // Pressing the right edge of the note's TAIL cell = resize intent (#530),
+      // Pressing the trailing edge of the note's TAIL cell = resize intent (#530),
       // even if the thin handle strip was missed. Widening this grab zone stops
       // a near-miss from starting a move/delete instead of a resize.
-      const isTail = note.start + note.duration - 1 === step
+      //
+      // ANCHORED TO THE BAR, NOT THE CELL (#1078) — and asked of the same
+      // `tailColumn` the render uses. Both halves were wrong for a note that does
+      // not fill its column. The integer walk (`start + duration - 1 === step`)
+      // never matches a fractional note at all — `c5@0.5` asks `-0.5 === 0` — so
+      // the generous zone simply never fired for the notes that most need it,
+      // while the render drew them a handle; and measuring inward from the CELL's
+      // right edge put the zone past the end of a bar that stops mid-column.
+      //
+      // The zone runs from the bar's trailing edge to the cell's right edge, so
+      // nothing that used to resize stops resizing: for a whole-column note the
+      // bar's edge IS the cell's edge and this reduces to the old rule exactly,
+      // which is the control that keeps 4842-minus-18 notes unchanged. Its depth
+      // scales with the BAR — a grab zone should be proportional to the thing it
+      // grabs — floored at RESIZE_ZONE_PX so a 3px bar stays aimable, and still
+      // capped against the CELL so it can never reach into a neighbouring column.
+      const isTail = tailColumn(note) === step
       const rect = e.currentTarget.getBoundingClientRect()
-      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, rect.width * 0.4))
-      if (isTail && e.clientX - rect.left >= rect.width - zone) {
+      const ov = columnOverlap(note.start, note.start + note.duration, step)
+      const barEnd = ov ? (ov.offset + ov.extent) * rect.width : rect.width
+      const barW = ov ? ov.extent * rect.width : rect.width
+      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4))
+      if (isTail && e.clientX - rect.left >= barEnd - zone) {
         onResizeDown(note)
         return
       }
@@ -714,6 +733,23 @@ export function PianoRollGrid({
                       type="button"
                       aria-pressed={on}
                       aria-label={`${tokenForRow(!!model.numeric, midi)} step ${step + 1}`}
+                      // THE SELECTION, SAID RATHER THAN ONLY DRAWN (#1080). Until
+                      // now selection was a data attribute and a ring — one for
+                      // tests, one for pixels, neither of which reaches assistive
+                      // tech, so the copy/paste target was announced exactly like
+                      // every other cell. #1077 was the same object failing for
+                      // sighted users; restoring the ring is what made the half
+                      // that was never there worth writing down.
+                      //
+                      // `aria-current` rather than `aria-selected`: this cell IS
+                      // the target of the next paste, which is what `aria-current`
+                      // means on a control. `aria-selected` would imply a
+                      // listbox/grid role, and declaring one commits the panel to a
+                      // keyboard contract (roving tabindex, arrow-key navigation)
+                      // it does not implement — announcing a contract you do not
+                      // keep is worse than the omission. That role, and the
+                      // navigation it obliges, is its own question (#1083).
+                      aria-current={isSel ? 'true' : undefined}
                       data-roll-cell={`${midi}:${step}`}
                       data-roll-selected={isSel ? 'true' : undefined}
                       data-playing={step === playingStep ? 'true' : undefined}
@@ -790,15 +826,33 @@ export function PianoRollGrid({
                       )}
                       {isHead && (
                         // Note name inside the bar (#605) — rendered on the head
-                        // cell, clipped to it so it never spills onto a neighbour.
+                        // cell, clipped to THE BAR so it never spills onto a
+                        // neighbour or onto the empty part of its own column.
                         // pointer-events:none so it never blocks the cell's
                         // pointer gestures (paint/drag) or the tail resize handle.
+                        //
+                        // Positioned against the FILL's box, not the cell's (#1078).
+                        // While the note WAS the whole cell the two rectangles
+                        // coincided and nothing had to choose; once the note became a
+                        // child span occupying only its overlap (#1076), `inset: 0`
+                        // put the label on empty background BESIDE the bar it names —
+                        // 12 of 4842 corpus notes, every one of them a note that
+                        // begins mid-column. Same two numbers the bar uses, so the
+                        // two cannot drift apart again.
                         <span
                           data-roll-note-name
+                          // aria-hidden holds, checked rather than assumed (#1080):
+                          // this renders `noteDisplayName(midi)`, which is
+                          // `midiToPitch(midi)` capitalised, and the cell's own
+                          // aria-label opens with `tokenForRow` — the same
+                          // `midiToPitch(midi)`. The name is already announced.
                           aria-hidden="true"
                           style={{
                             position: 'absolute',
-                            inset: 0,
+                            top: 0,
+                            bottom: 0,
+                            left: `${hit!.overlap.offset * 100}%`,
+                            width: `${hit!.overlap.extent * 100}%`,
                             display: 'flex',
                             alignItems: 'center',
                             paddingLeft: 3,
@@ -816,6 +870,21 @@ export function PianoRollGrid({
                         </span>
                       )}
                       {isTail && (
+                        // The resize handle sits at the BAR's trailing edge, not the
+                        // cell's (#1078). A note that ends mid-column used to put its
+                        // handle at the far side of the column — floating in empty
+                        // background past the end of the note it resizes, which is a
+                        // handle you cannot aim at because it is not on the thing.
+                        // 18 of 4842 corpus notes.
+                        //
+                        // WIDTH IS CLAMPED TO THE BAR: a `@0.25` note in a
+                        // minimum-width (12px) column is a 3px bar, and a fixed 8px
+                        // handle would be wider than the note, overhanging backwards
+                        // past its own start. The handle is never wider than what it
+                        // resizes. What that costs — a very small note draws a very
+                        // small handle — is paid back by the pointer-down grab zone
+                        // below, which is floored and invisible: what you SEE is the
+                        // note's own trailing edge, what you can HIT is larger.
                         <span
                           data-roll-resize={`${midi}:${note!.start}`}
                           aria-label={`resize ${tokenForRow(!!model.numeric, midi)}`}
@@ -828,8 +897,8 @@ export function PianoRollGrid({
                             position: 'absolute',
                             top: 0,
                             bottom: 0,
-                            right: 0,
-                            width: RESIZE_ZONE_PX,
+                            right: `${(1 - hit!.overlap.offset - hit!.overlap.extent) * 100}%`,
+                            width: `min(${RESIZE_ZONE_PX}px, ${hit!.overlap.extent * 100}%)`,
                             cursor: 'ew-resize',
                             background: 'var(--foreground, #e6e6ea)',
                             opacity: 0.45,
