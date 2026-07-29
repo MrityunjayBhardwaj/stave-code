@@ -63,6 +63,66 @@ describe('toggleCell — the one definition of what a cell click does (#1048)', 
   })
 
   /**
+   * PHASE 2 (#1064): the clamp spans the `,`-PART, not the lane that was clicked.
+   *
+   * The writer emits one token per column per part and spells a held note's
+   * covered columns `_`, so `[_,sd]` — a sustain and an onset in the same column —
+   * has no spelling at all. A note sustaining in a SIBLING lane therefore blocks
+   * the column exactly as one in the clicked lane does, and clamping only the
+   * clicked lane handed the writer a model it had to refuse. That was 1,717 of
+   * the element path's 1,748 declined placements (98.2%).
+   *
+   * This SHORTENS A DIFFERENT SOUND'S NOTE. That is the product ruling, taken
+   * deliberately and applied uniformly rather than conditioned on whether the
+   * shortening is one the listener can hear — plain samples discard length, so a
+   * conditional rule would make the same click work or not work depending on the
+   * sound under it.
+   */
+  it('shortens a SIBLING lane’s note the new hit lands inside', () => {
+    // `bd _ sd ~` — bd sounds through columns 0 and 1; sd is a second lane of the
+    // same part. Painting sd at column 1 takes the room bd was using.
+    const before = parse('bd _ sd ~')
+    expect(before.lanes[0].cells[0], 'fixture: bd spans two columns').toEqual(cellOn(2))
+    const after = toggleCell(before, 1, 1, true)
+    expect(after.lanes[0].cells[0], 'bd ends where sd starts').toEqual(cellOn(1))
+    expect(after.lanes[1].cells[1]).toEqual(cellOn(1))
+    expect(serializeStepGrid(after)).toBe('bd sd sd ~')
+  })
+
+  /**
+   * ...AND STOPS AT THE PART BOUNDARY, because that is where the writer's
+   * constraint stops. Parts are serialized independently — each gets its own
+   * sequence — so a sustain in one part and an onset in another at the same column
+   * is legal notation needing no resolution. Trimming across it would shorten a
+   * note the writer was always going to accept: a silent musical change with no
+   * notational need, which is the one thing this op must not do ([[PV238]]).
+   */
+  it('does NOT shorten a note in a different `,`-part', () => {
+    // four parts. `E2` and `E1` each span the whole cycle; placing inside part 2
+    // subdivides E2's own part and must leave part 3's E1 at full length.
+    const before = parse('A2 A2, A1 A1, E2, E1')
+    expect(before.lanes.map((l) => l.part ?? 0), 'fixture: four parts').toEqual([0, 1, 2, 3])
+    const after = toggleCell(before, 2, 1, true)
+    expect(after.lanes[3].cells[0], 'E1 keeps the whole cycle').toEqual(
+      before.lanes[3].cells[0],
+    )
+    expect(after.lanes[3], 'an untouched part is the same object').toBe(before.lanes[3])
+    expect(serializeStepGrid(after)).toBe('A2 A2, A1 A1, E2 E2, E1')
+  })
+
+  /**
+   * ERASING IS NOT CLAMPED. Removing an onset can only give the notes around it
+   * more room, never less, so there is nothing to resolve — and running the clamp
+   * on a clear would shorten notes for a gesture that never asked to.
+   */
+  it('clears a cell without touching any other lane', () => {
+    const before = parse('bd _ sd ~')
+    const after = toggleCell(before, 1, 2, false)
+    expect(after.lanes[0], 'the sustaining lane is untouched by a clear').toBe(before.lanes[0])
+    expect(serializeStepGrid(after)).toBe('bd _ ~ ~')
+  })
+
+  /**
    * The panel guards this before calling (`paintCell` returns early past the end),
    * and the model keeps `cells.length === steps` — measured across the whole
    * corpus, 0 of 966 parsing models have a lane shorter than its grid. Pinned here

@@ -8,12 +8,19 @@
  * a new onset takes the room an earlier note was sounding through, so that
  * earlier note ends where the new one starts.
  *
+ * "An earlier note" means ANY of them, not the one in the lane or pitch that was
+ * clicked. The roll has always read it that way (`placeNote` trims across
+ * pitches); the grid read it per lane, which is narrower than the notation it has
+ * to produce, and that mismatch was #1064. Both now resolve over the scope the
+ * WRITER constrains — the `,`-part's column — and both do it unconditionally,
+ * without asking whether the shortening is one the listener will hear.
+ *
  * This is the ONE definition of each gesture. The panels are callers, and so
  * are the corpus sweeps: a test that models the edit itself is a second oracle
  * for what an edit *is*, and it cannot catch a change in the edit — it quietly
  * keeps testing the old one (#1048).
  */
-import { cellOn, clampLane } from './model'
+import { cellOn, clampLane, clampPartAtOnset } from './model'
 import type { PianoRollModel, StepCell, StepGridModel } from './model'
 import { ifGridSpellable, ifRollSpellable } from './serialize'
 
@@ -80,28 +87,39 @@ export function toggleCell(
   // reduces to `op(model) !== model`, with no second predicate to drift.
   // Putting it HERE rather than in the panel is deliberate — an admissibility
   // rule enumerated caller-by-caller is exactly how the cell was missed.
-  return ifGridSpellable(model, {
-    ...model,
-    lanes: model.lanes.map((lane, i) =>
-      i === laneIndex
-        ? {
-            ...lane,
-            // CLAMPED, because a promise about lengths is a promise about ROOM
-            // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
-            // still sounding through shortens that note — the room it had is gone.
-            // Without this the model keeps a length that reaches past the new hit,
-            // which is notation nothing can spell, and the writer rightly declines
-            // an edit the user plainly made. The resize and quantize ops already
-            // clamp for exactly this reason; paint is the third op that moves
-            // onsets closer together, and it was the one still missing it.
-            cells: clampLane(
-              lane.cells.map((c, j) => (j === stepIndex ? paint(value) : c)),
-              model.steps,
-            ),
-          }
-        : lane,
-    ),
-  })
+  const painted = model.lanes.map((lane, i) =>
+    i === laneIndex
+      ? {
+          ...lane,
+          // CLAMPED, because a promise about lengths is a promise about ROOM
+          // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
+          // still sounding through shortens that note — the room it had is gone.
+          // Without this the model keeps a length that reaches past the new hit,
+          // which is notation nothing can spell, and the writer rightly declines
+          // an edit the user plainly made. The resize and quantize ops already
+          // clamp for exactly this reason; paint is the third op that moves
+          // onsets closer together, and it was the one still missing it.
+          cells: clampLane(
+            lane.cells.map((c, j) => (j === stepIndex ? paint(value) : c)),
+            model.steps,
+          ),
+        }
+      : lane,
+  )
+  // ...AND OVER THE SCOPE THE WRITER CONSTRAINS, which is the `,`-part, not the
+  // lane the click landed in ([[PV243]]). One token per column per part, a held
+  // note's covered columns spelled `_`, and `[_,bd]` unspellable — so a note
+  // sustaining in a SIBLING lane blocks the column just as surely as one in this
+  // lane, and clamping only here left the writer a model it had to refuse. That
+  // was 1,717 of the element path's 1,748 declines, and it stops being a corner
+  // under #1052's refinement, where every new column sits under a sustain.
+  //
+  // Only on placement: erasing a cell removes an onset, which can only give the
+  // notes around it more room, never less.
+  const lanes = value
+    ? clampPartAtOnset(painted, model.lanes[laneIndex]?.part ?? 0, stepIndex)
+    : painted
+  return ifGridSpellable(model, { ...model, lanes })
 }
 
 /**

@@ -25758,6 +25758,20 @@ function sequentialColumnGroups(notes, col) {
   return groups.length > 1 && spansAreSequential(groups) ? groups : null;
 }
 __name(sequentialColumnGroups, "sequentialColumnGroups");
+function clampPartAtOnset(lanes, part, column) {
+  return lanes.map((lane) => {
+    if ((lane.part ?? 0) !== part) return lane;
+    let touched = false;
+    const cells = lane.cells.map((cell, c) => {
+      if (c >= column || !isCellOn(cell)) return cell;
+      if (!columnOverlap(c, c + cell.duration, column)) return cell;
+      touched = true;
+      return cellOn(column - c);
+    });
+    return touched ? { ...lane, cells } : lane;
+  });
+}
+__name(clampPartAtOnset, "clampPartAtOnset");
 
 // src/visualEdit/notation/serialize.ts
 function altSourceFits(a, steps) {
@@ -28343,26 +28357,25 @@ function viewPlacesNotes(model) {
 __name(viewPlacesNotes, "viewPlacesNotes");
 var paint = /* @__PURE__ */ __name((value) => value ? cellOn() : false, "paint");
 function toggleCell(model, laneIndex, stepIndex, value) {
-  return ifGridSpellable(model, {
-    ...model,
-    lanes: model.lanes.map(
-      (lane, i) => i === laneIndex ? {
-        ...lane,
-        // CLAMPED, because a promise about lengths is a promise about ROOM
-        // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
-        // still sounding through shortens that note — the room it had is gone.
-        // Without this the model keeps a length that reaches past the new hit,
-        // which is notation nothing can spell, and the writer rightly declines
-        // an edit the user plainly made. The resize and quantize ops already
-        // clamp for exactly this reason; paint is the third op that moves
-        // onsets closer together, and it was the one still missing it.
-        cells: clampLane(
-          lane.cells.map((c, j) => j === stepIndex ? paint(value) : c),
-          model.steps
-        )
-      } : lane
-    )
-  });
+  const painted = model.lanes.map(
+    (lane, i) => i === laneIndex ? {
+      ...lane,
+      // CLAMPED, because a promise about lengths is a promise about ROOM
+      // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
+      // still sounding through shortens that note — the room it had is gone.
+      // Without this the model keeps a length that reaches past the new hit,
+      // which is notation nothing can spell, and the writer rightly declines
+      // an edit the user plainly made. The resize and quantize ops already
+      // clamp for exactly this reason; paint is the third op that moves
+      // onsets closer together, and it was the one still missing it.
+      cells: clampLane(
+        lane.cells.map((c, j) => j === stepIndex ? paint(value) : c),
+        model.steps
+      )
+    } : lane
+  );
+  const lanes = value ? clampPartAtOnset(painted, model.lanes[laneIndex]?.part ?? 0, stepIndex) : painted;
+  return ifGridSpellable(model, { ...model, lanes });
 }
 __name(toggleCell, "toggleCell");
 function placeNote(model, pitch, start, duration) {

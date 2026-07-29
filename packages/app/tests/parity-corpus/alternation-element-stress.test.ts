@@ -140,8 +140,11 @@ describe('#920 — <...>-as-element writeback holds under every edit', () => {
           // apply" — instead of an unspellable model the writer then nulls. The
           // refusals are the same refusals, observed where the user meets them:
           // the panel can now ask before it offers, rather than swallowing the
-          // click. Both pins below are unchanged (512 toggles / the same 18
-          // units), which is what proves the set did not grow or shrink.
+          // click. Phase 1 left both pins unchanged (512 toggles / the same 18
+          // units), which is what proved the set had not grown or shrunk; phase 2
+          // then took them to ZERO by making the clamp span the `,`-part, and the
+          // pins below say so — see the note at the assertion for why that is the
+          // edit succeeding rather than a guard being weakened.
           if (edited === r.model) {
             declined.add(mini.trim())
             declinedToggles++
@@ -195,40 +198,46 @@ describe('#920 — <...>-as-element writeback holds under every edit', () => {
     //   ONLY. 0 structural, 0 identical. Emitting any of them the old way would have
     //   silently shortened a note the user never touched.
     //
-    // So the guard is not over-broad: it declines exactly where emitting corrupts, on
-    // the one axis it was written for. The cost, at the granularity the user feels it:
-    // 512 of the 1912 toggles these 18 units offer, and NONE of the 512 was an edit the
-    // old writer got right. Both controls ran green — the base parser reads the same
-    // grid HEAD does (so it is the same edit on both sides), and the comparison was
-    // proven able to see a dropped length before its silence was believed ([[P353]]).
+    // ⚠ THAT ENTIRE SET IS NOW ZERO, and the reason is the word "silently" (#1064
+    // phase 2). The refusal was never about the shortening being wrong — the
+    // counterfactual above established that every one of the 512 differed in duration
+    // and nothing else. It was about the shortening being INVISIBLE: until #1056 the
+    // step grid drew a two-column note exactly like a one-column one, so an edit that
+    // trimmed a neighbour changed the document in a way the panel could not show, and
+    // a view that cannot display an axis must not change it.
     //
-    // Pinned as an exact set so the refusal cannot quietly spread to shapes it was never
-    // measured against — the failure mode a bare `>= 0` would hide.
-    expect(declinedToggles, 'declined EDITS, not units — the number the user experiences').toBe(512)
+    // The grid draws length now, and the clamp ends every note sounding through a new
+    // onset's column across the `,`-part. So these 512 stopped being corruption to
+    // refuse and became the edit the user asked for, with its consequence on screen:
+    // observed in the app on `s("bd hh*2 sd cp")`, where placing hh at column 1 halves
+    // the kick's bar from two columns to one and writes `[bd hh] hh*2 sd cp`.
+    //
+    // What is still pinned is that the writer is never handed anything it cannot spell
+    // (`writerNulls`) and that no edit loses data (`bad`) — those are the guarantees;
+    // the decline count was only ever the cost of one of them.
+    expect(declinedToggles, 'declined EDITS, not units — the number the user experiences').toBe(0)
     // The op and the writer agree on every one of these toggles. Before #1064 this
     // count WAS the 512 above — same refusals, observed at the writer instead of at
     // the gesture. Zero here and 512 there is the whole claim: nothing was lost,
     // nothing new was refused, and the answer now arrives early enough to offer.
     expect(writerNulls, 'the op must not hand the writer anything it cannot spell').toBe(0)
-    expect([...declined].sort()).toEqual([
-      '<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>',
-      '<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd',
-      '[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]',
-      '[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]',
-      '[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]',
-      '[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]',
-      '[<g4 e4> [b4 g4]] [- <a4> <->]',
-      '[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>',
-      '[bd*2 -] <- [~@2 bd bd - bd - sd]>',
-      '[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~',
-      'a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>',
-      'bd sd <[bd ~] [~ bd]> sd',
-      'bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]',
-      'c <d c> - [c <d c>]',
-      'd#3 f3 ~ <~ [~ ~ c#3]>',
-      'hh*5 <bd bd> ~ sd',
-      '{c [f g] d# d}%2',
-      '~ sd ~[sd[~ <~~~ sd>]]',
-    ])
+    // The 18 units that used to decline, named so the change is legible rather than a
+    // number going to zero. Each is `<...>`-as-element with a note sustaining under a
+    // sibling's onset; the clamp ends that note at the onset and the writer takes it.
+    //
+    //   '<[d4 c4 d4]> <[g4 c4 bb3]> <[a3 g3 f#3:4]> <[g3]> <[bb4]>'
+    //   '<bd[~ bd bd ~ ][bd ~ ~ bd][bd bd]>sd'          '[bd hh:3] sd lt <oh [oh hh] [misc:5 hh]>'
+    //   '[<e2 d3>]\n[b2 <a2 e3>]\n[<g2 d3>]\n[f#2]'     '[bd*2 -] <- [~@2 bd bd - bd - sd]>'
+    //   '[<e4 d5>]\n[b4 <a4 e5>]\n[<g4 d5>]\n[f#4]'     '[c4 f4 ~ g4] ~ [a3 <c4 g3>] ~'
+    //   '[<e5 [d5 g5]>]\n[<d5 a5>]\n[<c5 [e5 d5]>]\n[<b4 b5>]'
+    //   '[<g4 [g4 g4]> e4 d4 c4] [a3 ~ g3 a3]'          'a1 c2 e2 <e2 [e2 e2] e2 [f2 f2]>'
+    //   '[<g4 e4> [b4 g4]] [- <a4> <->]'                'bd sd <[bd ~] [~ bd]> sd'
+    //   'bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]'   'c <d c> - [c <d c>]'
+    //   'd#3 f3 ~ <~ [~ ~ c#3]>'   'hh*5 <bd bd> ~ sd'   '{c [f g] d# d}%2'
+    //   '~ sd ~[sd[~ <~~~ sd>]]'
+    //
+    // Pinned as an exact SET rather than as `.length === 0`, so a future refusal on a
+    // shape never measured here still has to be named before it can pass.
+    expect([...declined].sort()).toEqual([])
   })
 })
