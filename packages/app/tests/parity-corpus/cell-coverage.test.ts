@@ -51,6 +51,7 @@ import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { parseStepGrid, parseStepGridCore, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
 import { serializeStepGrid, serializeRollGain } from '../../../editor/src/visualEdit/notation/serialize'
 import { scaleStepGrid } from '../../../editor/src/visualEdit/notation/resolution'
+import { setGroupGain } from '../../../editor/src/visualEdit/panels/inspector'
 import { isCellOn, laneCoverage, columnCount, columnOverlap, headColumn, tailColumn, sequentialColumnGroups } from '../../../editor/src/visualEdit/notation/model'
 import type { StepCell, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
 
@@ -775,6 +776,58 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // exactly the substitution that has to be watched here.
     expect(splitCols).toBe(8)
     expect(splitMinis.size).toBe(3)
+  })
+
+  it('THE VELOCITY LANE — a drag is offered only where the writer accepts it (#1089)', () => {
+    // Prove-before-offer, on the lane. `gainInScope` answers whether the lane should
+    // RENDER; the panel was using it for whether a drag could WRITE, and the two had
+    // drifted apart. This arm asks the shipped predicate — `serializeRollGain(model)`,
+    // the real writer — and reports the population it takes the gesture away from, so
+    // "we gated it" cannot be read without knowing how much it gates.
+    //
+    // Asked of the CURRENT model, and the arm below is what licenses that: a gain edit
+    // does not move a note, so the writer's answer is the same before and after one.
+    let inScope = 0
+    let skips = 0
+    let writable = 0
+    let inertCols = 0
+    let liveCols = 0
+    let predicateDiffers = 0
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok) continue
+      const m = r.model
+      if (m.gainForeign || !(m.bars == null || m.bars === m.steps)) continue
+      inScope++
+      const declines = serializeRollGain(m).kind === 'skip'
+      declines ? skips++ : writable++
+      for (let col = 0; col < columnCount(m); col++) {
+        const covering =
+          m.notes.find((n) => n.start === col) ??
+          m.notes.find((n) => n.start < col && col < n.start + n.duration)
+        if (!covering) continue
+        declines ? inertCols++ : liveCols++
+        // the same question asked of the model the drag would actually produce
+        const after = setGroupGain(m, covering.start, 0.5)
+        if ((serializeRollGain(after).kind === 'skip') !== declines) predicateDiffers++
+      }
+    }
+    console.log(
+      `  VELOCITY WRITABILITY: ${inScope} in-scope models — ${writable} the writer accepts, ` +
+        `${skips} it declines. Columns with a note: ${liveCols} keep the drag, ` +
+        `${inertCols} lose an affordance that never worked. ` +
+        `Predicate differs after a drag: ${predicateDiffers}.`,
+    )
+    expect(inScope).toBe(424)
+    // THE REACH, and it is the point of the fix: 305 columns across 33 patterns offered a
+    // `ns-resize` cursor and a pointer handler for a write that was always declined.
+    expect(skips).toBe(33)
+    expect(inertCols).toBe(305)
+    // …and the population it must NOT touch — every column whose drag really writes.
+    expect(writable).toBe(391)
+    expect(liveCols).toBe(2950)
+    // THE LICENCE for asking the current model instead of the post-drag one.
+    expect(predicateDiffers).toBe(0)
   })
 
   it('THE VELOCITY LANE — a split is additive: no bar dropped, no two bars overlapping', () => {

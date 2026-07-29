@@ -1,10 +1,13 @@
 /**
  * #1087 — the roll draws every note it carries.
+ * #1089 — the velocity lane offers a drag only where the gain writer accepts it.
  *
- * Observes (AnviDev: verify AND observe), in the running app, because the defect is
- * invisible to the unit suites by construction: the panel BOUND correctly, populated its
- * keyboard rows, its instrument, its Slots and its Snap, and then drew zero cells — no
- * error, no console warning, no standby message.
+ * Observes (AnviDev: verify AND observe), in the running app, because both defects are
+ * invisible to the unit suites by construction: #1087 was a panel that BOUND correctly,
+ * populated its keyboard rows, its instrument, its Slots and its Snap, and then drew zero
+ * cells — no error, no console warning, no standby message. #1089 was a cursor and a
+ * pointer handler on a write the serializer always declined, which leaves every test
+ * green because nothing throws; only the document says the drag did nothing.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
 
@@ -111,5 +114,70 @@ test.describe('#1087 — the roll draws every note it carries', () => {
     await setStrudelCode(page, '$: note("c4 e4 g4 b4 c5").sound("piano")')
     const drawer = await openRoll(page)
     expect(await drawnColumns(drawer)).toBe(5)
+  })
+})
+
+test.describe('#1089 — the velocity lane offers a drag only where it can write', () => {
+  test('a pattern the gain writer declines gets a read-only lane', async ({ page }) => {
+    await boot(page)
+    // `serializeRollGain` skips this: a note beginning mid-column has no gain slot
+    await setStrudelCode(page, '$: note("[c5@0.5 f4@0.5 f5@3]")')
+    const drawer = await openRoll(page)
+
+    const lane = drawer.locator('[data-roll-velocity-lane]')
+    await expect(lane).toHaveCount(1) // it still RENDERS — the bars carry real gains
+    const bars = lane.locator('[data-vel-bar]')
+    expect(await bars.count()).toBeGreaterThan(0)
+
+    // …but every column says so, and none offers the resize cursor
+    const cols = lane.locator('[data-vel-col]')
+    const n = await cols.count()
+    expect(n).toBeGreaterThan(0)
+    for (let i = 0; i < n; i++) {
+      await expect(cols.nth(i)).toHaveAttribute('data-vel-readonly', 'true')
+    }
+    const cursors = await cols.evaluateAll((els) => els.map((e) => getComputedStyle(e).cursor))
+    expect(cursors.every((c) => c !== 'ns-resize')).toBe(true)
+
+    // …and the reason is stated where the pointer goes, not only on the lane's label.
+    // The panel's other refusal is about PLACEMENT and does not cover velocity.
+    await expect(cols.first()).toHaveAttribute('title', /velocities.*code view/)
+
+    // THE OBSERVATION THAT MATTERS: the drag is now refused up front rather than
+    // accepted and silently dropped. The document is unchanged either way — what
+    // changed is that nothing promised otherwise.
+    const before = await strudelValue(page)
+    const box = await cols.first().boundingBox()
+    expect(box).not.toBeNull()
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 - 40, { steps: 10 })
+    await page.mouse.up()
+    await page.waitForTimeout(150)
+    expect(await strudelValue(page)).toBe(before)
+  })
+
+  test('CONTROL — a pattern the writer accepts keeps its drag, and it writes', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 e3 g3 c4")')
+    const drawer = await openRoll(page)
+
+    const cols = drawer.locator('[data-roll-velocity-lane] [data-vel-col]')
+    expect(await cols.count()).toBe(4)
+    // no column is marked read-only here
+    expect(await cols.evaluateAll((els) => els.filter((e) => e.hasAttribute('data-vel-readonly')).length)).toBe(0)
+
+    const first = cols.first()
+    await first.scrollIntoViewIfNeeded()
+    const box = await first.boundingBox()
+    expect(box).not.toBeNull()
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 + 40, { steps: 10 })
+    await page.mouse.up()
+    await page.waitForTimeout(200)
+
+    // the gate did not cost the gesture: this one still writes
+    expect(await strudelValue(page)).toMatch(/\.gain\("/)
   })
 })

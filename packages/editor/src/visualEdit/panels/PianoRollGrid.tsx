@@ -73,6 +73,15 @@ const RESIZE_ZONE_PX = 8
  */
 const HOLD_RETRIGGER_MS = AUDITION_DUR_S * 1000
 
+/**
+ * What the velocity lane says when the gain writer declines this pattern (#1089).
+ *
+ * Its own sentence, and not the panel's placement one: 30 of the 33 corpus patterns this
+ * covers already show "to add one, use the code view", which a reader takes to mean notes
+ * cannot be ADDED — it says nothing about whether the ones here can be made louder.
+ */
+const VELOCITY_READ_ONLY = 'Shows this pattern’s velocities — to change them, use the code view.'
+
 /** velocity lane height (px) and the drag distance that spans the full 0→1 */
 const LANE_HEIGHT = 48
 const VELOCITY_FULL_PX = 80
@@ -267,6 +276,30 @@ export function PianoRollGrid({
   // How many columns this roll DRAWS — not `model.steps`, which is the pattern's length
   // and need not be a whole number of columns (#1087). See `columnCount`.
   const cols = model ? columnCount(model) : 0
+  /**
+   * Can a velocity drag actually WRITE? (#1089)
+   *
+   * Asked of the REAL writer, not predicted. `gainInScope` answers a different question —
+   * whether the lane should RENDER — and the two had drifted apart: for a pattern like
+   * `[c5@0.5 f4@0.5 f5@3]` it is true (not foreign, single-bar) so the lane rendered in
+   * full, every column took a `ns-resize` cursor and a pointer handler, and
+   * `serializeRollGain` then declined every write. 305 columns across 33 corpus patterns
+   * offered a drag that silently did nothing.
+   *
+   * The writer's refusal is CORRECT — the gain mini is one slot per column (`"0.5 1 1 1"`)
+   * and a note beginning mid-column has no slot of its own to hold a value. The panel just
+   * never asked it. `serializeRollGain` is already the exact predicate, so this is a read
+   * and not a new rule — the failure mode `can<Op>` helpers have here is predicting the
+   * writer, and asking it is what makes that impossible.
+   *
+   * Asked of the CURRENT model rather than of the model a drag would produce, and that is
+   * measured rather than assumed: the skip is caused by the note geometry, which a gain
+   * edit does not move, so the two answers never differ (0 of 2950 corpus columns).
+   */
+  const gainWritable = React.useMemo(
+    () => (model ? serializeRollGain(model).kind !== 'skip' : false),
+    [model],
+  )
 
   React.useEffect(() => {
     const onUp = (): void => {
@@ -971,6 +1004,14 @@ export function PianoRollGrid({
             style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginTop: 8 }}
           >
           <span
+              // The reason, stated rather than left to a dead gesture (#1089). The lane
+              // still shows the pattern's real gains; what it cannot do here is change
+              // them, because a note starting mid-column has no gain slot of its own.
+              title={
+                gainWritable
+                  ? undefined
+                  : VELOCITY_READ_ONLY
+              }
               style={{
                 width: 36,
                 fontSize: 9,
@@ -978,7 +1019,7 @@ export function PianoRollGrid({
                 color: 'var(--foreground-muted, #a0a0aa)',
               }}
             >
-              vel
+              vel{gainWritable ? '' : ' ·'}
             </span>
             <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }}>
               {Array.from({ length: cols }, (_, col) => {
@@ -1008,8 +1049,24 @@ export function PianoRollGrid({
                   <div
                     key={col}
                     data-vel-col={col}
+                    // The gesture is offered only where the writer accepts it (#1089).
+                    // On a pattern whose gain the writer declines the bars still draw —
+                    // they carry the gains the pattern really has — but there is no
+                    // cursor and no handler, because both would promise a write that
+                    // cannot happen.
+                    data-vel-readonly={gainWritable ? undefined : 'true'}
+                    // Stated where the pointer actually goes. The panel's other refusal
+                    // ("to add one, use the code view") is about PLACEMENT and covers 30
+                    // of these 33 patterns, but it does not say anything about velocity —
+                    // a reader takes it to mean notes cannot be ADDED, not that the ones
+                    // here cannot be made louder. So the lane owes its own reason.
+                    title={
+                      gainWritable
+                        ? undefined
+                        : VELOCITY_READ_ONLY
+                    }
                     onPointerDown={
-                      covering
+                      covering && gainWritable
                         ? (e) => {
                             e.preventDefault()
                             onBarDown(covering.start, e)
@@ -1024,7 +1081,7 @@ export function PianoRollGrid({
                       height: '100%',
                       borderRadius: 2,
                       background: 'var(--background-elevated, #26262c)',
-                      cursor: covering ? 'ns-resize' : 'default',
+                      cursor: covering && gainWritable ? 'ns-resize' : 'default',
                     }}
                   >
                     {split
@@ -1046,16 +1103,16 @@ export function PianoRollGrid({
                                 background:
                                   colorMode === 'velocity' ? velocityColor(gg) : 'var(--accent, #6ea8fe)',
                                 borderRadius: 2,
-                                // VISUAL ONLY, and deliberately so. Every column that
-                                // splits today sits in a pattern with a fractional-start
-                                // note, and `serializeRollGain` skips exactly those — the
-                                // gain mini is one slot per column, and a note beginning
-                                // mid-column has no slot of its own. A per-bar drag would
-                                // therefore be an affordance that cannot work, which is
-                                // the thing this codebase already refuses to ship. The
-                                // column keeps the drag behaviour it has always had; the
-                                // lane's inert-affordance problem is older and wider than
-                                // this phase (#1089).
+                                // VISUAL ONLY, and still deliberately so. Every column
+                                // that splits today sits in a pattern with a
+                                // fractional-start note, and `serializeRollGain` skips
+                                // exactly those — the gain mini is one slot per column,
+                                // and a note beginning mid-column has no slot of its own.
+                                // #1089 has since made the whole column read-only in that
+                                // case, so there is no drag here to divide per group; a
+                                // per-bar drag becomes worth building the day a split
+                                // column appears in a pattern the gain writer accepts,
+                                // and not before.
                                 pointerEvents: 'none',
                               }}
                             />

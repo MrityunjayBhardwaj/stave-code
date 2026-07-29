@@ -30160,6 +30160,7 @@ var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
 var RESIZE_ZONE_PX = 8;
 var HOLD_RETRIGGER_MS = AUDITION_DUR_S * 1e3;
+var VELOCITY_READ_ONLY = "Shows this pattern\u2019s velocities \u2014 to change them, use the code view.";
 var LANE_HEIGHT = 48;
 var VELOCITY_FULL_PX2 = 80;
 var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
@@ -30241,6 +30242,10 @@ function PianoRollGrid({
   }, [model]);
   const placesNotes = model ? viewPlacesNotes(model) : false;
   const cols = model ? columnCount(model) : 0;
+  const gainWritable = React36.useMemo(
+    () => model ? serializeRollGain(model).kind !== "skip" : false,
+    [model]
+  );
   React36.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
@@ -30795,16 +30800,20 @@ function PianoRollGrid({
                       "data-roll-velocity-lane": true,
                       style: { display: "flex", alignItems: "flex-end", gap: 6, marginTop: 8 },
                       children: [
-                        /* @__PURE__ */ jsx(
+                        /* @__PURE__ */ jsxs(
                           "span",
                           {
+                            title: gainWritable ? void 0 : VELOCITY_READ_ONLY,
                             style: {
                               width: 36,
                               fontSize: 9,
                               textAlign: "right",
                               color: "var(--foreground-muted, #a0a0aa)"
                             },
-                            children: "vel"
+                            children: [
+                              "vel",
+                              gainWritable ? "" : " \xB7"
+                            ]
                           }
                         ),
                         /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }, children: Array.from({ length: cols }, (_, col) => {
@@ -30815,7 +30824,9 @@ function PianoRollGrid({
                             "div",
                             {
                               "data-vel-col": col,
-                              onPointerDown: covering ? (e) => {
+                              "data-vel-readonly": gainWritable ? void 0 : "true",
+                              title: gainWritable ? void 0 : VELOCITY_READ_ONLY,
+                              onPointerDown: covering && gainWritable ? (e) => {
                                 e.preventDefault();
                                 onBarDown(covering.start, e);
                               } : void 0,
@@ -30827,7 +30838,7 @@ function PianoRollGrid({
                                 height: "100%",
                                 borderRadius: 2,
                                 background: "var(--background-elevated, #26262c)",
-                                cursor: covering ? "ns-resize" : "default"
+                                cursor: covering && gainWritable ? "ns-resize" : "default"
                               },
                               children: split ? split.map((grp) => {
                                 const gg = gainAtStart(model, grp.start);
@@ -30846,16 +30857,16 @@ function PianoRollGrid({
                                       height: `${clamp013(gg) * 100}%`,
                                       background: colorMode === "velocity" ? velocityColor(gg) : "var(--accent, #6ea8fe)",
                                       borderRadius: 2,
-                                      // VISUAL ONLY, and deliberately so. Every column that
-                                      // splits today sits in a pattern with a fractional-start
-                                      // note, and `serializeRollGain` skips exactly those — the
-                                      // gain mini is one slot per column, and a note beginning
-                                      // mid-column has no slot of its own. A per-bar drag would
-                                      // therefore be an affordance that cannot work, which is
-                                      // the thing this codebase already refuses to ship. The
-                                      // column keeps the drag behaviour it has always had; the
-                                      // lane's inert-affordance problem is older and wider than
-                                      // this phase (#1089).
+                                      // VISUAL ONLY, and still deliberately so. Every column
+                                      // that splits today sits in a pattern with a
+                                      // fractional-start note, and `serializeRollGain` skips
+                                      // exactly those — the gain mini is one slot per column,
+                                      // and a note beginning mid-column has no slot of its own.
+                                      // #1089 has since made the whole column read-only in that
+                                      // case, so there is no drag here to divide per group; a
+                                      // per-bar drag becomes worth building the day a split
+                                      // column appears in a pattern the gain writer accepts,
+                                      // and not before.
                                       pointerEvents: "none"
                                     }
                                   },
