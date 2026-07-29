@@ -21,7 +21,13 @@ import * as React from 'react'
 import { parsePianoRoll, applyRollGain } from '../notation/parse'
 import { serializePianoRoll, serializeRollGain } from '../notation/serialize'
 import type { PianoRollModel, RollNote, ColumnOverlap } from '../notation/model'
-import { columnOverlap, headColumn, sequentialColumnGroups, tailColumn } from '../notation/model'
+import {
+  columnCount,
+  columnOverlap,
+  headColumn,
+  sequentialColumnGroups,
+  tailColumn,
+} from '../notation/model'
 import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../notation/pitch'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID } from './tabs'
@@ -179,7 +185,11 @@ export function PianoRollGrid({
   const dragRef = React.useRef<DragState | null>(null)
   // A velocity-lane drag: vertical drag on a note's bar sets that group's gain.
   const velRef = React.useRef<{ start: number; startY: number; startGain: number } | null>(null)
-  const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1)
+  const playingStep = usePlayingStep(
+    model?.steps ?? 0,
+    model?.bars ?? 1,
+    model ? columnCount(model) : 0,
+  )
   const [colorMode] = useNoteColorMode()
   // Pitch row the pointer is over → highlight its key on the keyboard (#430).
   const [hoveredMidi, setHoveredMidi] = React.useState<number | null>(null)
@@ -254,6 +264,9 @@ export function PianoRollGrid({
   // gated one would. What the 0.9% does not get is the affordance — unchanged
   // from today, and stated rather than quietly dropped.
   const placesNotes = model ? viewPlacesNotes(model) : false
+  // How many columns this roll DRAWS — not `model.steps`, which is the pattern's length
+  // and need not be a whole number of columns (#1087). See `columnCount`.
+  const cols = model ? columnCount(model) : 0
 
   React.useEffect(() => {
     const onUp = (): void => {
@@ -710,7 +723,7 @@ export function PianoRollGrid({
                 </span>
               )}
               <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
-                {Array.from({ length: model.steps }, (_, step) => {
+                {Array.from({ length: cols }, (_, step) => {
                   const hit = overlapAt(model, midi, step)
                   const note = hit?.note
                   const on = note !== undefined
@@ -968,7 +981,7 @@ export function PianoRollGrid({
               vel
             </span>
             <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }}>
-              {Array.from({ length: model.steps }, (_, col) => {
+              {Array.from({ length: cols }, (_, col) => {
                 // Prefer the note that STARTS at this column (it keeps its own
                 // velocity); otherwise a held note (`@n`) sustaining over the
                 // column fills the slot with its velocity. So extending a note

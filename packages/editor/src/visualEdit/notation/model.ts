@@ -530,6 +530,51 @@ export function tailColumn(n: { start: number; duration: number }): number {
   return Math.ceil(n.start + n.duration - COLUMN_EPS) - 1
 }
 
+/**
+ * How many columns a lane must DRAW to show everything the model carries (#1087).
+ *
+ * WHY THIS IS NOT `model.steps`. `steps` is the pattern's LENGTH, and `@n` is a relative
+ * weight, so a length is under no obligation to be a whole number of columns:
+ * `note("c4@1.5 e4@1.2")` is 2.7 columns long. The panel drew `Array.from({length:
+ * model.steps})`, and `Array.from` floors its length — so the pattern rendered two
+ * columns and the note sounding through the third was drawn nowhere. At
+ * `c4@0.2 e4@0.2 g4@0.2 b4@0.2 c5@0.2` the weights sum to `0.9999999999999998` and the
+ * panel drew ZERO columns while five notes sounded, with no message.
+ *
+ * The two questions had to be separated rather than reconciled, and that is measured, not
+ * argued: rounding `steps` up in the READER (the shape #1087 proposed) re-emits
+ * `c4@1.5 e4@1.2` as `"c4@1.5 e4@1.2000000000000002 ~"` — an invented trailing rest that
+ * lengthens the pattern. `steps` is what the writer spells the music from; this is what
+ * the panel counts cells with. Only the second may be rounded.
+ *
+ * ASKED AS THE CONSEQUENCE, NOT THE REPRESENTATION. The guard is not "is `steps` a whole
+ * number?" — `0.9999999999999998` passes any tolerance a reasonable person writes and
+ * still floors to 0. It is "does the count I hand the renderer cover every note?", so the
+ * note term is asked directly rather than inferred from `steps ≥ every note's end`. That
+ * is not defensive duplication: the note term is the ONLY thing that draws the partial
+ * tail column, and the length term is the only thing that draws a trailing rest. Break
+ * either and a real pattern loses a column, which is what the two arms in
+ * `columnCount.test.ts` pin.
+ */
+export function columnCount(model: {
+  steps: number
+  notes?: readonly { start: number; duration: number }[]
+}): number {
+  // The pattern's WHOLE columns — floored, not rounded up. A fractional length ends in a
+  // PARTIAL column, and a partial column is not a cell: nothing can be placed in it (the
+  // writer refuses a note running past `steps`), so drawing it would add an empty cell
+  // that only declines. `+ COLUMN_EPS` for the sliver, exactly as `headColumn` does, so a
+  // length arriving as `3.0000000000000004` is three columns and `2.9999999999999996`
+  // is not two.
+  let cols = Math.floor(model.steps + COLUMN_EPS)
+  // …and then every column a NOTE reaches into, which is what pulls the partial tail
+  // column back in when something actually sounds there — `c4@1.5 e4@1.2` is 2.7 long and
+  // its second note sounds through column 2, so three columns are drawn; `c4 ~@0.5` is
+  // also fractional but its tail holds a rest, so it stays at one.
+  for (const n of model.notes ?? []) cols = Math.max(cols, tailColumn(n) + 1)
+  return Math.max(0, cols)
+}
+
 /** One column of a lane, as covered by the note sounding through it. */
 export interface ColumnCoverage {
   /** column the covering note BEGINS at; `=== c` exactly when this column is the head */

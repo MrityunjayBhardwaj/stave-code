@@ -25700,6 +25700,12 @@ function tailColumn(n) {
   return Math.ceil(n.start + n.duration - COLUMN_EPS) - 1;
 }
 __name(tailColumn, "tailColumn");
+function columnCount(model) {
+  let cols = Math.floor(model.steps + COLUMN_EPS);
+  for (const n of model.notes ?? []) cols = Math.max(cols, tailColumn(n) + 1);
+  return Math.max(0, cols);
+}
+__name(columnCount, "columnCount");
 function laneCoverage(cells, steps) {
   const out = new Array(cells.length).fill(void 0);
   const gridEnd = Math.min(cells.length, steps);
@@ -28277,26 +28283,26 @@ function readCurrentCycle() {
 __name(readCurrentCycle, "readCurrentCycle");
 
 // src/visualEdit/panels/usePlayingStep.ts
-function cycleToStep(cycle, steps, bars) {
-  if (cycle === null || !Number.isFinite(cycle) || steps <= 0) return null;
+function cycleToStep(cycle, steps, bars, cols) {
+  if (cycle === null || !Number.isFinite(cycle) || steps <= 0 || cols <= 0) return null;
   const b = bars > 0 ? bars : 1;
   const phase = (cycle % b + b) % b;
   const step = Math.floor(phase / b * steps);
-  return Math.max(0, Math.min(steps - 1, step));
+  return Math.max(0, Math.min(cols - 1, step));
 }
 __name(cycleToStep, "cycleToStep");
-function usePlayingStep(steps, bars) {
+function usePlayingStep(steps, bars, cols) {
   const [step, setStep] = React36__namespace.useState(null);
   React36__namespace.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
-      const next = cycleToStep(readCurrentCycle(), steps, bars);
+      const next = cycleToStep(readCurrentCycle(), steps, bars, cols);
       setStep((prev) => prev === next ? prev : next);
       raf = requestAnimationFrame(tick);
     }, "tick");
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [steps, bars]);
+  }, [steps, bars, cols]);
   return step;
 }
 __name(usePlayingStep, "usePlayingStep");
@@ -29775,7 +29781,11 @@ function SequencerGrid({ onResolution } = {}) {
     applyGain: applyStepGain,
     serializeGain: serializeStepGain
   });
-  const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
+  const playingStep = usePlayingStep(
+    model?.steps ?? 0,
+    model?.bars ?? 1,
+    model ? columnCount(model) : 0
+  );
   const [colorMode] = useNoteColorMode();
   const gestureRef = React36__namespace.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
@@ -30221,7 +30231,11 @@ function PianoRollGrid({
   });
   const dragRef = React36__namespace.useRef(null);
   const velRef = React36__namespace.useRef(null);
-  const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
+  const playingStep = usePlayingStep(
+    model?.steps ?? 0,
+    model?.bars ?? 1,
+    model ? columnCount(model) : 0
+  );
   const [colorMode] = useNoteColorMode();
   const [hoveredMidi, setHoveredMidi] = React36__namespace.useState(null);
   const holdMidiRef = React36__namespace.useRef(null);
@@ -30252,6 +30266,7 @@ function PianoRollGrid({
     }
   }, [model]);
   const placesNotes = model ? viewPlacesNotes(model) : false;
+  const cols = model ? columnCount(model) : 0;
   React36__namespace.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
@@ -30606,7 +30621,7 @@ function PianoRollGrid({
                               }
                             )
                           ),
-                          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: model.steps }, (_, step) => {
+                          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, step) => {
                             const hit = overlapAt(model, midi, step);
                             const note = hit?.note;
                             const on = note !== void 0;
@@ -30818,7 +30833,7 @@ function PianoRollGrid({
                             children: "vel"
                           }
                         ),
-                        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }, children: Array.from({ length: model.steps }, (_, col) => {
+                        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }, children: Array.from({ length: cols }, (_, col) => {
                           const covering = model.notes.find((n) => n.start === col) ?? model.notes.find((n) => n.start < col && col < n.start + n.duration);
                           const g = covering ? gainAtStart(model, covering.start) : 1;
                           const split = sequentialColumnGroups(model.notes, col);
