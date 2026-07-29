@@ -96,13 +96,27 @@ describe('columnCount — the roll draws every note it carries (#1087)', () => {
    * `steps` is what the music is spelled from, so widening it appends a rest the user
    * never wrote and lengthens the pattern. The drawn column count and the pattern length
    * are two different questions and only the first may be rounded.
+   *
+   * ⚠ THE DAMAGE CHANGED SHAPE WHEN #1092 LANDED, AND THE CONCLUSION DID NOT.
+   * This arm pins a COUNTERFACTUAL — what rounding would have produced — so it is a
+   * reading of the writer, and #1092 taught the writer to spell a rest at its true
+   * width. Before, rounding produced `c4@1.5 e4@1.2000000000000002 ~`: a distorted
+   * weight plus a whole-column rest. Now it produces `c4@1.5 e4@1.2 ~@0.3`, which is
+   * spelled correctly and is still wrong, because the pattern still goes from 2.7
+   * columns to 3 and `e4` still moves from [0.5556, 1.0000) to [0.5000, 0.9000) —
+   * Strudel scales each comma-lane to its own total, so a rest nobody asked for
+   * retimes a note nobody touched.
+   *
+   * So the string below was re-argued rather than re-numbered: rounding the model
+   * field is still forbidden, and what a passing spelling proves is only that the
+   * writer got better at saying something it should never be asked to say.
    */
   it('does not touch what the writer spells', () => {
     const model = roll('c4@1.5 e4@1.2')
     expect(serializePianoRoll(model)).toBe('c4@1.5 e4@1.2')
     // what rounding `steps` in the reader would have produced instead
     expect(serializePianoRoll({ ...model, steps: columnCount(model) })).toBe(
-      'c4@1.5 e4@1.2000000000000002 ~',
+      'c4@1.5 e4@1.2 ~@0.3',
     )
   })
 })

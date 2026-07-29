@@ -21,7 +21,7 @@ import type {
   StepGridModel,
   StepLane,
 } from './model'
-import { gridCellKey, isCellOn } from './model'
+import { columnSplit, gridCellKey, isCellOn } from './model'
 
 /**
  * An `altSource` still describes a model only while its single-cycle width times
@@ -663,8 +663,45 @@ interface Group {
 const groupBody = (g: Group): string =>
   g.pitches.length === 1 ? g.pitches[0] : `[${g.pitches.join(',')}]`
 
+/**
+ * Spell a weight for the document (#1092).
+ *
+ * A roll's durations come out of the reader as float divisions of the enclosing
+ * sequence, so a note the user wrote `@1.2` arrives as `1.2000000000000002` and a
+ * bare `@1` as `0.9999999999999998`. Emitting that verbatim writes arithmetic noise
+ * into the user's source — text they did not type and would not type — even though
+ * it re-parses and plays the same. Twelve significant digits is far past any weight a
+ * person writes and far short of where the noise lives, so the rounding cannot reach
+ * a value anyone authored.
+ *
+ * The rounding lives HERE, at the point of emission, and not on the model field the
+ * reader fills: the panel positions notes from that field and needs it exact.
+ */
+const weightToken = (n: number): string => String(Number(n.toPrecision(12)))
+
 const groupToken = (g: Group): string =>
-  g.duration === 1 ? groupBody(g) : `${groupBody(g)}@${g.duration}`
+  g.duration === 1 ? groupBody(g) : `${groupBody(g)}@${weightToken(g.duration)}`
+
+/**
+ * The tokens for a silence exactly `width` columns wide, or null if there is no
+ * such silence to spell (#1092).
+ *
+ * A bare `~` is one column, so a run of them can only express a whole number of
+ * them; the fraction that is left over needs a weight of its own. Whole columns
+ * stay bare, so a pattern that never had a fractional gap serializes byte-for-byte
+ * as it always did.
+ *
+ * A NEGATIVE width is not a gap — it means the thing being placed starts before the
+ * one before it ended, which is an overlap the caller has to resolve rather than
+ * spell. Returning null rather than clamping keeps that from being written as silence.
+ */
+function restTokens(width: number): string[] | null {
+  const { whole, remainder } = columnSplit(width)
+  if (whole < 0) return null
+  const out = new Array<string>(whole).fill('~')
+  if (remainder > 0) out.push(`~@${weightToken(remainder)}`)
+  return out
+}
 
 /**
  * Bucket notes by start column. Chord notes sharing a start must share a
@@ -964,6 +1001,13 @@ function reemitRollRegion(
 ): string | null {
   const groups = toPlaced(notes)
   if (groups === null) return null
+  // "or not at all", said of the region's own span (#1092). Everything below walks
+  // `c` forward one whole step at a time, so a region that is not a whole number of
+  // steps wide — `c4@1.5` next to `~@0.5` — cannot be tiled by it: the walk emits a
+  // step too many and hands the region back heavier than it was, moving every note
+  // after it. The caller's fallback rebuilds the part as one flat lane, which CAN
+  // spell a fractional width, so declining here costs the edit nothing.
+  if (columnSplit((to - from) / div).remainder > 0) return null
   const at = new Map(groups.map((g) => [g.start, g]))
   const starts = groups.map((g) => g.start).sort((a, b) => a - b)
   const tokens: string[] = []
@@ -1102,23 +1146,27 @@ function packLanes(groups: PlacedGroup[]): PlacedGroup[][] {
  * padding trailing rests to `steps`. Every lane spans all `steps` columns so the
  * parallel lanes share one step grid — Strudel normalizes each comma-part to its
  * own total weight, so unequal widths would misalign the grids (#628 grounding).
+ *
+ * THE PADDING IS WEIGHTED, because `steps` and the gaps inside it are not always
+ * whole numbers (#1092). `@n` is a relative weight, so `note("c4@1.5 e4@1.2")` is
+ * 2.7 columns long with a note starting at 1.5 — and a run of bare `~` can only
+ * reach 1 or 2. Spelling a 1.5-column gap as two rests puts the note after it a
+ * half-column late and gives the lane a different total from its neighbours, which
+ * is a retime of music the gesture never touched. Every gap is measured from the
+ * group's own `start` rather than accumulated, so the widths cannot drift.
  */
 function laneString(groups: PlacedGroup[], steps: number): string | null {
   const cols: string[] = []
   let col = 0
   for (const g of [...groups].sort((a, b) => a.start - b.start)) {
-    if (g.start < col) return null // overlap within a lane (shouldn't happen post-pack)
-    while (col < g.start) {
-      cols.push('~')
-      col++
-    }
-    cols.push(groupToken({ pitches: g.pitches, duration: g.duration }))
-    col += g.duration
+    const gap = restTokens(g.start - col)
+    if (gap === null) return null // overlap within a lane (shouldn't happen post-pack)
+    cols.push(...gap, groupToken({ pitches: g.pitches, duration: g.duration }))
+    col = g.start + g.duration
   }
-  while (col < steps) {
-    cols.push('~')
-    col++
-  }
+  const tail = restTokens(steps - col)
+  if (tail === null) return null // the lane's own notes reach past the pattern
+  cols.push(...tail)
   return cols.join(' ')
 }
 
@@ -1241,22 +1289,25 @@ export function serializeRollGain(model: PianoRollModel): GainWrite {
     return { kind: 'write', value: fmtGain(vals[0]), quoted: false }
   }
 
+  // The gain mini has to land on the SAME grid as the note mini `serializeRollLanes`
+  // writes, so it pads with the same weighted rests (#1092). Padding these two the
+  // same way is not a nicety: whole-column rests here against weighted rests there
+  // would put a note's volume on a different column from the note.
   const cols: string[] = []
   let col = 0
   for (const start of [...groups.keys()].sort((a, b) => a - b)) {
-    if (start < col) return { kind: 'skip' } // overlap
-    while (col < start) {
-      cols.push('~')
-      col++
-    }
+    const gap = restTokens(start - col)
+    if (gap === null) return { kind: 'skip' } // overlap
     const g = groups.get(start)!
-    cols.push(g.duration === 1 ? fmtGain(g.gain) : `${fmtGain(g.gain)}@${g.duration}`)
-    col += g.duration
+    cols.push(
+      ...gap,
+      g.duration === 1 ? fmtGain(g.gain) : `${fmtGain(g.gain)}@${weightToken(g.duration)}`,
+    )
+    col = start + g.duration
   }
-  while (col < model.steps) {
-    cols.push('~')
-    col++
-  }
+  const tail = restTokens(model.steps - col)
+  if (tail === null) return { kind: 'skip' }
+  cols.push(...tail)
   // perBar === 1 multi-bar: one column per bar, so the flat sequence is wrapped
   // in `<...>` to align bar-for-bar with the note `<...>` (#632).
   const seq = cols.join(' ')

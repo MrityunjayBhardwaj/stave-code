@@ -25706,6 +25706,12 @@ function columnCount(model) {
   return Math.max(0, cols);
 }
 __name(columnCount, "columnCount");
+function columnSplit(width) {
+  const whole = Math.floor(width + COLUMN_EPS);
+  const remainder = width - whole;
+  return { whole, remainder: remainder <= COLUMN_EPS ? 0 : remainder };
+}
+__name(columnSplit, "columnSplit");
 function laneCoverage(cells, steps) {
   const out = new Array(cells.length).fill(void 0);
   const gridEnd = Math.min(cells.length, steps);
@@ -26047,7 +26053,16 @@ function gridBars(model, bars) {
 }
 __name(gridBars, "gridBars");
 var groupBody = /* @__PURE__ */ __name((g) => g.pitches.length === 1 ? g.pitches[0] : `[${g.pitches.join(",")}]`, "groupBody");
-var groupToken = /* @__PURE__ */ __name((g) => g.duration === 1 ? groupBody(g) : `${groupBody(g)}@${g.duration}`, "groupToken");
+var weightToken = /* @__PURE__ */ __name((n) => String(Number(n.toPrecision(12))), "weightToken");
+var groupToken = /* @__PURE__ */ __name((g) => g.duration === 1 ? groupBody(g) : `${groupBody(g)}@${weightToken(g.duration)}`, "groupToken");
+function restTokens(width) {
+  const { whole, remainder } = columnSplit(width);
+  if (whole < 0) return null;
+  const out = new Array(whole).fill("~");
+  if (remainder > 0) out.push(`~@${weightToken(remainder)}`);
+  return out;
+}
+__name(restTokens, "restTokens");
 function buildGroups(model) {
   const groups = /* @__PURE__ */ new Map();
   for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
@@ -26210,6 +26225,7 @@ __name(toPlaced, "toPlaced");
 function reemitRollRegion(notes, from, to, div) {
   const groups = toPlaced(notes);
   if (groups === null) return null;
+  if (columnSplit((to - from) / div).remainder > 0) return null;
   const at = new Map(groups.map((g) => [g.start, g]));
   const starts = groups.map((g) => g.start).sort((a, b) => a - b);
   const tokens = [];
@@ -26305,18 +26321,14 @@ function laneString(groups, steps) {
   const cols = [];
   let col = 0;
   for (const g of [...groups].sort((a, b) => a.start - b.start)) {
-    if (g.start < col) return null;
-    while (col < g.start) {
-      cols.push("~");
-      col++;
-    }
-    cols.push(groupToken({ pitches: g.pitches, duration: g.duration }));
-    col += g.duration;
+    const gap = restTokens(g.start - col);
+    if (gap === null) return null;
+    cols.push(...gap, groupToken({ pitches: g.pitches, duration: g.duration }));
+    col = g.start + g.duration;
   }
-  while (col < steps) {
-    cols.push("~");
-    col++;
-  }
+  const tail = restTokens(steps - col);
+  if (tail === null) return null;
+  cols.push(...tail);
   return cols.join(" ");
 }
 __name(laneString, "laneString");
@@ -26404,19 +26416,18 @@ function serializeRollGain(model) {
   const cols = [];
   let col = 0;
   for (const start of [...groups.keys()].sort((a, b) => a - b)) {
-    if (start < col) return { kind: "skip" };
-    while (col < start) {
-      cols.push("~");
-      col++;
-    }
+    const gap = restTokens(start - col);
+    if (gap === null) return { kind: "skip" };
     const g = groups.get(start);
-    cols.push(g.duration === 1 ? fmtGain(g.gain) : `${fmtGain(g.gain)}@${g.duration}`);
-    col += g.duration;
+    cols.push(
+      ...gap,
+      g.duration === 1 ? fmtGain(g.gain) : `${fmtGain(g.gain)}@${weightToken(g.duration)}`
+    );
+    col = start + g.duration;
   }
-  while (col < model.steps) {
-    cols.push("~");
-    col++;
-  }
+  const tail = restTokens(model.steps - col);
+  if (tail === null) return { kind: "skip" };
+  cols.push(...tail);
   const seq = cols.join(" ");
   return { kind: "write", value: bars > 1 ? `<${seq}>` : seq, quoted: true };
 }
