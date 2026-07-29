@@ -20,6 +20,28 @@ import { installMiniStringParser } from './stringParser'
 type HapHandler = (event: HapEvent) => void
 
 /**
+ * Capture id for the pattern a document with NO `.p()` call plays (#1094).
+ *
+ * `$0` is the id an anonymous `$:` would have taken, and that is the whole point:
+ * the timeline's hap→lane join maps `$N` onto the positional `d{N+1}`, so haps
+ * captured under it land on `d1` — the lane the IR already produces for a bare
+ * statement. Picking a fresh name would have made an eval-only lane sitting
+ * beside the IR one, which is the shape that duplicates a row.
+ */
+const BARE_CAPTURE_ID = '$0'
+
+/**
+ * Can this value answer a time query? The bare-capture fallback takes whatever
+ * the repl returned, and that is not always a Pattern — a document whose every
+ * track is `_`-muted leaves Strudel with nothing to play and it substitutes its
+ * own repl handle. Asking for the CAPABILITY the callers use (`queryArc`) rather
+ * than for a Pattern brand keeps this honest across Strudel's own wrappers.
+ */
+function isQueryablePattern(p: unknown): p is { queryArc: (a: number, b: number) => unknown[] } {
+  return !!p && typeof (p as { queryArc?: unknown }).queryArc === 'function'
+}
+
+/**
  * Reconstruct a literal viz name from whatever the user passed to
  * `.viz(...)` after Strudel's transpiler has reified it.
  *
@@ -901,15 +923,61 @@ export class StrudelEngine implements LiveCodingEngine {
     try {
       // repl.evaluate() never rejects — errors go to the onEvalError callback
       // set during repl construction. We bridge via evalResolve.
+      //
+      // #1094 — the resolved value is the pattern the repl actually PLAYS, and it
+      // is the only handle on a document that never called `.p()`.
+      //
+      // Read below only on the success path, and that is safe by ORDER, not by
+      // luck: the assignment happens before `evalResolve({})` in the same
+      // callback, so an awaited result with no error has already seen it. The
+      // error path resolves from `onEvalError` instead and never reads this.
+      let playedPattern: unknown
       const result = await new Promise<{ error?: Error }>((resolve) => {
         this.evalResolve = resolve
-        this.repl.evaluate(code).then(() => {
+        this.repl.evaluate(code).then((pattern: unknown) => {
+          playedPattern = pattern
           // If onEvalError didn't fire, evaluation succeeded
           if (this.evalResolve) { this.evalResolve({}); this.evalResolve = null }
         })
       })
 
       if (!result.error) {
+        // #1094 — A BARE DOCUMENT SOUNDS THROUGH THE REPL'S OTHER BRANCH.
+        // Strudel picks what to play two ways: with at least one `.p()` it stacks
+        // the registered patterns, and with none it plays the document's LAST
+        // EXPRESSION. Every capture above hangs off the `.p()` wrapper, so the
+        // second branch produced no captured pattern at all — `songPatterns`
+        // empty, `getTimelineEvents()` empty, and (since the collect interpreter
+        // was retired, and every timeline row is now built from eval haps) no
+        // Song row for a pattern that is plainly audible.
+        //
+        // The guard is the SAME CONDITION the repl branches on, not a guess about
+        // document shape: Strudel skips its registry exactly when nothing entered
+        // it, and nothing enters it in precisely the cases nothing is captured
+        // here (a `_`-muted id is refused on both sides). So this can never
+        // shadow a registered track — where one exists, the bare expression is
+        // not what plays either.
+        //
+        // Keyed `$0`, the id an anonymous `$:` would have taken: the hap→lane
+        // join maps `$N` to the positional `d{N+1}`, so the haps land on `d1` —
+        // the lane the IR already produces for a bare statement (measured: every
+        // bare document in the corpus walks to exactly one lane, `d1`; 41 of 41).
+        //
+        // SONG FRAME ONLY, deliberately. `capturedPatterns` (the scheduler frame)
+        // also feeds the mixer's per-track meters and the per-track analyser
+        // side-taps, so adding a bare entry there would grow a strip and an
+        // analyser this change was not asked for and has not measured. That a
+        // bare document has no mixer strip is the same gap one surface over, and
+        // it belongs to its own issue.
+        //
+        // Not seek-shifted either: the `.late(transportOffset)` wrap lives inside
+        // the `.p()` hook, so a bare document's AUDIO is unshifted today, and
+        // shifting the marks alone would draw them where the sound is not. The
+        // song frame is the pre-seek frame by definition (#863), so this is also
+        // the frame the entry belongs in.
+        if (capturedSongPatterns.size === 0 && isQueryablePattern(playedPattern)) {
+          capturedSongPatterns.set(BARE_CAPTURE_ID, playedPattern)
+        }
         // Build PatternSchedulers from captured patterns
         const sched = (this.repl as any).scheduler // eslint-disable-line @typescript-eslint/no-explicit-any
         this.trackSchedulers = new Map<string, PatternScheduler>()
