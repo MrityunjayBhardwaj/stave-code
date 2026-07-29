@@ -401,3 +401,210 @@ describe('source lane order (#871)', () => {
     expect(keys(analysisFixture, ['sig', 'bd'])).toEqual(['sig', 'bd', 'lead'])
   })
 })
+
+describe('declared-but-silent lanes (#1098)', () => {
+  // A track the DOCUMENT declares that produced no analysis events AND no eval
+  // marks. The everyday case is a MUTED track: Strudel refuses a `_`-prefixed
+  // registration, so it emits no haps by design and both evaluated row sources
+  // are correctly empty. Without a structural row source it has no row at all —
+  // it vanishes rather than fading, and nothing raises.
+  const irMarks = () =>
+    marks({
+      bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }],
+      lead: [{ cycle: 0, end: 0.5, pitch: 60, gain: 1 }],
+    })
+
+  const keysWithOrder = (order?: readonly string[], m: CollectedMarks = irMarks()) =>
+    buildTimelineScene(analysisFixture, m, undefined, undefined, undefined, order).lanes.map(
+      (l) => l.laneKey,
+    )
+
+  it('gives a declared track with no events and no marks its own row', () => {
+    // `mute` is declared between the two sounding tracks and produces nothing.
+    expect(keysWithOrder(['bd', 'mute', 'lead'])).toEqual(['bd', 'mute', 'lead'])
+  })
+
+  it('places the silent row where it was WRITTEN, first or last', () => {
+    expect(keysWithOrder(['mute', 'bd', 'lead'])).toEqual(['mute', 'bd', 'lead'])
+    expect(keysWithOrder(['bd', 'lead', 'mute'])).toEqual(['bd', 'lead', 'mute'])
+  })
+
+  it('draws EVERY declared track when the whole document is silent', () => {
+    // The all-muted document. Pre-#1098 this rendered the "no song" empty state
+    // over tracks the user had actually written.
+    const silent: SongAnalysis = { ...analysisFixture, lanes: [], sections: [] }
+    const scene = buildTimelineScene(
+      silent,
+      marks({}),
+      undefined,
+      undefined,
+      undefined,
+      ['d1', 'd2'],
+    )
+    expect(scene.lanes.map((l) => l.laneKey)).toEqual(['d1', 'd2'])
+  })
+
+  it('builds the silent row as present-and-empty, not degenerate', () => {
+    const scene = buildTimelineScene(
+      analysisFixture,
+      irMarks(),
+      undefined,
+      undefined,
+      undefined,
+      ['bd', 'mute', 'lead'],
+    )
+    const lane = scene.lanes.find((l) => l.laneKey === 'mute') as SceneLane
+    expect(lane).toBeDefined()
+    // One density bucket per displayed cycle, all zero — the same length rule
+    // the eval lanes follow, so the canvas draws a row with no bars.
+    expect(lane.density).toEqual([0, 0, 0, 0])
+    expect(lane.density.length).toBe(scene.displayCycles)
+    expect(lane.notes).toEqual([])
+    expect(lane.voices).toEqual([])
+    expect(lane.pitchMin).toBeNull()
+    expect(lane.pitchMax).toBeNull()
+    // Every lane has >= 1 clip; with no clips of its own it gets the whole-song
+    // implicit one, so clip hit-testing and geometry behave normally.
+    expect(lane.clips).toEqual([
+      { armIndex: -1, startCycle: 0, endCycle: 4, label: null },
+    ])
+  })
+
+  it('does not disturb the peak density', () => {
+    const withSilent = buildTimelineScene(
+      analysisFixture,
+      irMarks(),
+      undefined,
+      undefined,
+      undefined,
+      ['bd', 'mute', 'lead'],
+    )
+    const without = buildTimelineScene(analysisFixture, irMarks(), undefined, undefined, undefined, [
+      'bd',
+      'lead',
+    ])
+    expect(withSilent.peakDensity).toBe(without.peakDensity)
+    expect(withSilent.peakDensity).toBe(3)
+  })
+
+  it('resolves a MUTED named track to its bare display name', () => {
+    // `_bass:` at offset 0 — identity is already mute-invariant (`bass`), and the
+    // display deriver strips the marker too, so the silent row reads `bass`.
+    const code = '_bass: s("e1*2")\nbd: s("bd*4")'
+    const scene = buildTimelineScene(
+      analysisFixture,
+      marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] }, false, {}, {}, {}, { bass: 0 }),
+      undefined,
+      code,
+      undefined,
+      ['bass', 'bd', 'lead'],
+    )
+    const lane = scene.lanes.find((l) => l.laneKey === 'bass') as SceneLane
+    expect(lane).toBeDefined()
+    expect(lane.displayName).toBe('bass')
+    expect(lane.labelOffset).toBe(0)
+  })
+
+  // ── The rows this must NOT add ──────────────────────────────────────────────
+  // These are controls: the same code path, asked about tracks that already have
+  // a row. A duplicate row is the failure mode a freely-chosen key produces, and
+  // it is worse than a missing one — the user sees the track twice.
+
+  it('does not duplicate a track that already has an ANALYSIS lane', () => {
+    expect(keysWithOrder(['bd', 'lead'])).toEqual(['bd', 'lead'])
+  })
+
+  it('does not duplicate a track that already has an EVAL-marks lane', () => {
+    // `sig` is eval-backed only (no analysis lane) AND declared. One row.
+    const m = marks({
+      sig: [{ cycle: 0, end: 0.5, pitch: 48, gain: 1 }],
+      bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }],
+      lead: [{ cycle: 0, end: 0.5, pitch: 60, gain: 1 }],
+    })
+    expect(keysWithOrder(['sig', 'bd', 'lead'], m)).toEqual(['sig', 'bd', 'lead'])
+  })
+
+  it('does NOT let a marks ANNOTATION create a row (no phantom lanes)', () => {
+    // The row source is the document's track list, deliberately NOT the marks
+    // annotation maps. Those additionally carry lanes the RESILIENT structural
+    // walk reaches on mid-edit/invalid code, plus zero-event containment-anchor
+    // seeds — none of which is a statement the user wrote. `collectNoteMarks`
+    // states that annotate-only rule; this pins it from the consumer's side,
+    // where a future change of row source would otherwise land silently.
+    // `ghost` has a label offset, a source offset and a clip, but no marks and
+    // no place in the track list → no row.
+    const annotated = marks(
+      { bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] },
+      false,
+      { ghost: 12 },
+      { ghost: [{ armIndex: 0, startCycle: 0, endCycle: 2, label: 'A' }] },
+      { ghost: 12 },
+      { ghost: 12 },
+    )
+    const scene = buildTimelineScene(analysisFixture, annotated, undefined, undefined, undefined, [
+      'bd',
+      'lead',
+    ])
+    expect(scene.lanes.map((l) => l.laneKey)).toEqual(['bd', 'lead'])
+  })
+
+  it('adds nothing when a row is keyed by a name the IR does not use', () => {
+    // REGRESSION ARM. `$: s("bd*4").p('kick')` draws its row under `kick` — the
+    // producer id — while the IR calls that statement `d1`, because `.p()` is a
+    // chain method and not the statement's label. Observed in the browser: one
+    // declared track, one drawn row, two different names. A plain key difference
+    // reads `d1` as unrepresented and invents a SECOND row for the same track,
+    // which is worse than the missing row this whole block exists to fix.
+    const oneTrackNamedByProducer: SongAnalysis = {
+      periodCycles: 1,
+      horizonCycles: 1,
+      reachedCap: false,
+      lanes: [{ laneKey: 'kick', onsetsByCycle: [4] }],
+      sections: [],
+    }
+    const scene = buildTimelineScene(
+      oneTrackNamedByProducer,
+      marks({ kick: [{ cycle: 0, end: 0.25, pitch: null, gain: 1 }] }),
+      undefined,
+      undefined,
+      undefined,
+      ['d1'],
+    )
+    expect(scene.lanes.map((l) => l.laneKey)).toEqual(['kick'])
+  })
+
+  it('still fills a display that is genuinely SHORT of the document', () => {
+    // The pigeonhole only withholds rows when the display is already as wide as
+    // the document. Two rows drawn, four tracks declared → the two unrepresented
+    // statements are still added, so the guard cannot silently swallow the fix.
+    expect(keysWithOrder(['bd', 'lead', 'mute1', 'mute2'])).toEqual([
+      'bd',
+      'lead',
+      'mute1',
+      'mute2',
+    ])
+  })
+
+  it('adds nothing when no track list is given', () => {
+    // The pre-#1098 contract: absent/empty order → rows come from evaluated
+    // output alone. Guards the fallback every non-Strudel caller relies on.
+    expect(keysWithOrder(undefined)).toEqual(['bd', 'lead'])
+    expect(keysWithOrder([])).toEqual(['bd', 'lead'])
+  })
+
+  it('adds nothing for a bare document whose one row is eval-backed (#1094)', () => {
+    // The bare-capture key (`$0`) is mapped onto the positional `d1` before it
+    // reaches the marks, and the IR's single Track node is `d1` too. The two
+    // halves agree, so the structural source finds it already drawn — ONE row.
+    const bare: SongAnalysis = { periodCycles: 1, horizonCycles: 1, reachedCap: false, lanes: [], sections: [] }
+    const scene = buildTimelineScene(
+      bare,
+      marks({ d1: [{ cycle: 0, end: 0.25, pitch: null, gain: 1 }] }),
+      undefined,
+      undefined,
+      undefined,
+      ['d1'],
+    )
+    expect(scene.lanes.map((l) => l.laneKey)).toEqual(['d1'])
+  })
+})

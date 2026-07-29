@@ -215,6 +215,17 @@ export const EMPTY_MARKS: CollectedMarks = {
  * `analyzeSong`'s key, so the canvas rows line up with the DOM lane labels
  * exactly; their ORDER is the caller's `sourceTrackOrder` when given (#871),
  * else `analyzeSong`'s first-seen order with the eval lanes appended.
+ *
+ * ROWS COME FROM THREE SOURCES, in this order of preference per track:
+ *   1. an `analyzeSong` lane      — the track produced events;
+ *   2. an eval-marks key          — a signal/bare-ref/bare-document track whose
+ *                                   marks come from haps (#864, #1094);
+ *   3. a DECLARED track (#1098)   — the document says the track exists and both
+ *                                   sources above are legitimately empty, as for
+ *                                   a muted track.
+ * (1) and (2) are evaluated output; (3) is structure. Without (3) the row set is
+ * "what played" rather than "what was written", and a muted track vanishes
+ * instead of fading — silently, since an absent row reads as a valid state.
  */
 export function buildTimelineScene(
   analysis: SongAnalysis | null,
@@ -234,7 +245,19 @@ export function buildTimelineScene(
    *  the user wrote. Ranks IR-backed and eval-backed lanes together, so a track
    *  that emits no static-IR events (a signal, a bare ref) sits where it was
    *  written instead of after every IR lane. Absent/empty → no order information,
-   *  keep `analyzeSong`'s first-seen order with the eval lanes appended. */
+   *  keep `analyzeSong`'s first-seen order with the eval lanes appended.
+   *
+   *  PROMOTED BY #1098, and the promotion is the thing to notice: this is no
+   *  longer only an ORDERING hint, it is also the row-EXISTENCE source for a
+   *  declared-but-silent track. Same datum — the document's top-level tracks —
+   *  read two ways, so nothing is derived twice and there is no second
+   *  enumeration to keep in step. But the consequence is that passing a PARTIAL
+   *  list now drops rows rather than merely mis-ordering them, and passing a key
+   *  the marks path spells differently ADDS a duplicate row instead of leaving a
+   *  missing one. Callers must pass the whole track list or nothing:
+   *  `sourceTrackOrder(ir)` (trackOrder.ts) is the only intended producer, and it
+   *  is total over top-level `Track` nodes and mute-invariant via
+   *  `trackIdFromLabel`. Absent/empty is still fully supported (no rows added). */
   sourceTrackOrder?: readonly string[],
 ): TimelineScene {
   // The caller (FullSongTimeline) owns the authoritative span — it floors a bare
@@ -264,6 +287,61 @@ export function buildTimelineScene(
   for (const key of evalLaneKeys) {
     evalDensities.set(key, densityFromNotes(marks.marksByLane.get(key) ?? [], nCycles))
   }
+
+  // Declared-but-silent lanes (#1098): a track the DOCUMENT declares that
+  // produced NEITHER analysis events NOR eval marks. Both row sources above are
+  // evaluated output, so a track that legitimately plays nothing has no row at
+  // all — and an absent row raises nothing, it just reads as "you wrote no such
+  // track". A MUTED track is the everyday case: Strudel returns `silence` for a
+  // `_`-prefixed id without registering it (`@strudel/core/repl.mjs:172-175`)
+  // and our capture hook mirrors that branch deliberately, so it emits no haps
+  // BY DESIGN and every eval-derived source is correctly empty for it.
+  //
+  // So these rows come from STRUCTURE instead: the display's row set is the
+  // DOCUMENT's track set. That is a DIFFERENT statement from the engine's
+  // capture set equalling what the runtime plays (#1094) — the engine still
+  // captures nothing for a muted track and still should not. Which is why the
+  // repair lives here, in the row builder, and not at the capture hook.
+  //
+  // The source is `sourceTrackOrder` — the IR's TOP-LEVEL `Track` nodes, one per
+  // `$:`/`name:` statement, mute-invariant via `trackIdFromLabel` — and
+  // deliberately NOT the marks annotation maps (`labelOffsetByLane` and
+  // siblings). Those additionally carry lanes the RESILIENT structural walk
+  // reaches on mid-edit/invalid code, plus the #927 zero-event anchor seeds;
+  // promoting them to a row source is exactly the phantom row that
+  // `collectNoteMarks`'s annotate-only rule exists to prevent (timelineMarks.ts
+  // ~:143). A top-level Track node is a statement the user actually wrote.
+  // THE KEY SPACES CAN DIVERGE, so key difference alone is not enough — and
+  // getting this wrong ADDS a duplicate row, which is worse than the missing one
+  // being fixed. A track's IR id and its row key are two naming systems that
+  // normally agree because eval haps are attributed by SOURCE CONTAINMENT
+  // (`laneKeyForHap`), which resolves both to the IR id. They diverge when
+  // containment cannot run and the hap falls back to its own producer id:
+  // `$: s("bd*4").p('kick')` draws its row under `kick` while the IR calls the
+  // statement `d1` (`.p()` is a chain method, not the statement's label), so a
+  // plain key difference invents a second `d1` row for the one track.
+  //
+  // Measured: that divergence needs the document to have ONE top-level
+  // statement — the IR root is then a `Track` rather than a `Stack`, which is
+  // the case containment misses. With two or more statements the anchors exist
+  // and every row comes back keyed by its IR id (verified for `.p('name')`
+  // alongside a muted track: rows `d1`,`d2`).
+  //
+  // So the guard is a pigeonhole on REPRESENTATION rather than on names: if the
+  // display already shows at least as many rows as the document declares
+  // tracks, every track is represented — possibly under a name we cannot match —
+  // and nothing may be added. In the only shape where the names can disagree
+  // the document declares exactly ONE track, so any drawn row satisfies it.
+  // When the display is genuinely SHORT of the document, the missing tracks are
+  // the ones no row is keyed to, which is what the filter names.
+  //
+  // Deliberately conservative in the residual direction: an unmatchable name in
+  // a short display leaves a row missing (the old behaviour) rather than drawing
+  // a track twice.
+  const drawnKeys = new Set<string>([...analysisKeys, ...evalLaneKeys])
+  const declaredIds = sourceTrackOrder ?? []
+  const declaredSilentKeys =
+    drawnKeys.size >= declaredIds.length ? [] : declaredIds.filter((k) => !drawnKeys.has(k))
 
   // Peak onset across ALL lanes (IR + eval, ≥1) so the busiest cell is full-intensity.
   let peakDensity = 1
@@ -323,6 +401,11 @@ export function buildTimelineScene(
   const built: SceneLane[] = [
     ...lanesIn.map((lane) => buildLane(lane.laneKey, lane.onsetsByCycle)),
     ...evalLaneKeys.map((key) => buildLane(key, evalDensities.get(key)!)),
+    // Zero density through the SAME helper the eval lanes use, so the array
+    // length rule (one bucket per displayed cycle) is stated in one place.
+    // No notes, no clips of its own → `buildLane` gives it the whole-song
+    // implicit clip, so the row is present and empty rather than degenerate.
+    ...declaredSilentKeys.map((key) => buildLane(key, densityFromNotes([], nCycles))),
   ]
   // Source order (#871): rank IR-backed and eval-backed lanes TOGETHER by the
   // IR's track list, so each lane sits where the user wrote it regardless of

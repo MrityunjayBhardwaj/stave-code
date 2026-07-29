@@ -9,7 +9,12 @@
  *
  * This gate is the row itself, plus the two controls that say the fix is a fix
  * and not a "capture something, anything": the LABELLED path must be untouched,
- * and a document Strudel does NOT play must still draw nothing.
+ * and a document Strudel does NOT play must be captured by nothing.
+ *
+ * That second control was re-argued for #1098 — see the comment at the arm. It
+ * used to read the capture claim off the LANE COUNT, which worked only while
+ * every row was eval-derived; a declared-but-silent track now draws a structural
+ * row, so the claim is asserted where it actually lives (the marks) instead.
  *
  * Read through `__staveTimelineMarks` (the `stave:debug.timelineMarks` flag) as
  * well as the DOM, because a row can exist with no marks in it — the two
@@ -123,7 +128,9 @@ test('CONTROL — a labelled `$:` document is unchanged (#1094)', async ({ page 
   expect(marks!.byLane.d1.onsets.slice(0, 4)).toEqual([0, 0.25, 0.5, 0.75])
 })
 
-test('CONTROL — a document Strudel does not play still draws nothing (#1094)', async ({ page }) => {
+test('CONTROL — a document Strudel does not play is captured by nothing (#1094)', async ({
+  page,
+}) => {
   await bootShell(page)
   // `_$:` MUTES the track: Strudel refuses the registration, so nothing enters
   // its registry — and the value the document leaves behind is not a pattern.
@@ -132,8 +139,21 @@ test('CONTROL — a document Strudel does not play still draws nothing (#1094)',
   await typeSongAndEval(page, '_$: s("bd*4")')
 
   await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
-  await expect(page.locator('[data-full-song-lane]')).toHaveCount(0)
 
+  // RE-ARGUED for #1098 — the conclusion is unchanged, which is the point. This
+  // arm's claim is about the CAPTURE set: a registration Strudel refuses must not
+  // be captured by us either. It used to assert that as "zero lanes", and that
+  // proxy held only while EVERY row was eval-derived. #1098 gives a declared-but-
+  // silent track a STRUCTURAL row, so a muted document now draws one — while the
+  // claim this arm exists for is as true as before, and is asserted here directly
+  // instead of through a count that happened to agree with it.
   const marks = await marksProbe(page)
   expect(marks!.eventCount).toBe(0)
+  expect(marks!.laneCount).toBe(0)
+
+  // Exactly ONE row: the single track the document declares, drawn from the
+  // document. Two rows would mean the structural row and an eval-backed row sat
+  // side by side — the duplicate a freely-chosen capture key produces, and the
+  // failure this pair of assertions separates from a missing row.
+  await expect(page.locator('[data-full-song-lane]')).toHaveCount(1)
 })
