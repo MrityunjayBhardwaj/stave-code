@@ -49,9 +49,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { parseStepGrid, parseStepGridCore, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
+import { serializeStepGrid, serializeRollGain } from '../../../editor/src/visualEdit/notation/serialize'
 import { scaleStepGrid } from '../../../editor/src/visualEdit/notation/resolution'
-import { isCellOn, laneCoverage, columnOverlap } from '../../../editor/src/visualEdit/notation/model'
+import { isCellOn, laneCoverage, columnOverlap, headColumn, tailColumn, sequentialColumnGroups } from '../../../editor/src/visualEdit/notation/model'
 import type { StepCell, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
@@ -589,6 +589,208 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     expect(invisible).toBe(0)
     expect(misdrawn).toBe(0)
     expect(affected.size).toBe(0)
+  })
+
+  it('THE CLOSED FORMS ARE THE INTERVAL RULE — `headColumn`/`tailColumn` vs `columnOverlap`', () => {
+    // #1085. `columnOverlap`'s comment claimed to be "the single place that decides" where
+    // a note stops; the roll hand-rolled the same threshold twice as bare `1e-9` literals
+    // for the same question, so there were three literals and one rule. They now read one
+    // constant — but co-location is not agreement, and the panel calls the CLOSED FORMS
+    // (per cell, in the render loop) while every drawing claim in this file is made about
+    // the interval rule. This arm is what makes those the same statement.
+    //
+    // Asked over the note's own natural span rather than the panel's `steps` window, so
+    // the claim is about the RULE and not about where the panel stops looking. How many
+    // notes reach past that window is reported separately rather than hidden by it.
+    let notes = 0
+    let checked = 0
+    let silent = 0 // no column at all: a sliver shorter than the threshold
+    let headBad = 0
+    let tailBad = 0
+    let pastWindow = 0
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok) continue
+      for (const n of r.model.notes) {
+        notes++
+        const end = n.start + n.duration
+        const lit: number[] = []
+        for (let c = Math.floor(n.start) - 1; c <= Math.ceil(end) + 1; c++) {
+          if (columnOverlap(n.start, end, c)) lit.push(c)
+        }
+        if (lit.length === 0) {
+          silent++
+          continue
+        }
+        checked++
+        if (headColumn(n) !== lit[0]) headBad++
+        if (tailColumn(n) !== lit[lit.length - 1]) tailBad++
+        if (tailColumn(n) >= r.model.steps) pastWindow++
+      }
+    }
+    console.log(
+      `  CLOSED FORMS: ${notes} notes — checked ${checked}, sub-threshold ${silent}, ` +
+        `head mismatches ${headBad}, tail mismatches ${tailBad}, tail past the panel window ${pastWindow}`,
+    )
+    // The population must be non-empty and must be the whole of it ([[P345]]) — an
+    // equivalence asserted over nothing reads green forever.
+    expect(notes).toBe(4842)
+    expect(silent).toBe(0)
+    expect(checked).toBe(4842)
+    expect(headBad).toBe(0)
+    expect(tailBad).toBe(0)
+  })
+
+  it('THE VELOCITY LANE — a column splits only where its groups are sequential (#1086)', () => {
+    // #1086 was filed as a one-line fix (swap `n.start === col` for a head test). Measured,
+    // that gains ZERO slots and only changes which group owns 3 columns in one mini, so it
+    // is not what shipped. What ships splits a column into one bar per group where those
+    // groups do not overlap in time — which is where a group can be invisible today.
+    //
+    // ASKED THROUGH THE SHIPPED RULE. `sequentialColumnGroups` is the function the panel
+    // renders from; re-stating `length > 1 && sequential` here would be a second oracle
+    // that agrees by construction.
+    //
+    // POPULATION: the lane only renders when the gain is in scope, so that restriction is
+    // applied here rather than left implicit in a number that does not mention it.
+    let models = 0
+    let cols = 0
+    let splitCols = 0
+    let barsAdded = 0
+    let groups = 0
+    let represented = 0
+    const splitMinis = new Set<string>()
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok) continue
+      const m = r.model
+      if (m.gainForeign || !(m.bars == null || m.bars === m.steps)) continue
+      models++
+      const starts = [...new Set(m.notes.map((n) => n.start))]
+      groups += starts.length
+      const owned = new Set<number>()
+      for (let col = 0; col < m.steps; col++) {
+        cols++
+        // the SHIPPED single-bar rule, unchanged by this phase
+        const covering =
+          m.notes.find((n) => n.start === col) ??
+          m.notes.find((n) => n.start < col && col < n.start + n.duration)
+        const split = sequentialColumnGroups(m.notes, col)
+        if (!split) {
+          // an unsplit column must draw exactly what it drew before: the covering group
+          if (covering) owned.add(covering.start)
+          continue
+        }
+        splitCols++
+        splitMinis.add(mini)
+        barsAdded += split.length - 1
+        for (const g of split) owned.add(g.start)
+      }
+      for (const s of starts) if (owned.has(s)) represented++
+    }
+    console.log(
+      `  VELOCITY LANE: ${models} gain-in-scope models, ${cols} columns — split ${splitCols} ` +
+        `over ${splitMinis.size} minis, +${barsAdded} bars; groups ${represented}/${groups} represented`,
+    )
+    // The population, pinned so the figures below cannot be read over a shrinking corpus.
+    expect(models).toBe(424)
+    expect(cols).toBe(3943)
+    expect(groups).toBe(2508)
+    // THE REACH. Before this, 2503 of 2508 groups owned a bar; the 5 that did not all
+    // began mid-column and all sat in a column another group headed. Every one is now
+    // drawn — measured 5/5, which is why this phase is worth its 8 columns.
+    expect(represented).toBe(2508)
+    // THE BOUND. Only the sequential columns split; the 129 polyphonic ones are #1088.
+    //
+    // THREE minis, not two — and the difference is the point rather than a typo. TWO minis
+    // hold a group that had no bar at all; THREE hold a column that splits. The third has
+    // a sequential column whose groups were both already represented elsewhere, so it
+    // gains legibility and no reach. Quoting the reach population for the split count is
+    // exactly the substitution that has to be watched here.
+    expect(splitCols).toBe(8)
+    expect(splitMinis.size).toBe(3)
+  })
+
+  it('THE VELOCITY LANE — a split is additive: no bar dropped, no two bars overlapping', () => {
+    // Its own test, because an assertion that runs after a failing one is not evidence.
+    // Folded into the arm above, these two never executed under the red-test that would
+    // have exercised them: the split-count assertion failed first and took the run with
+    // it, so they were carried as claims nobody had shown could fire.
+    let overlapping = 0 // two bars in one column colliding — the reason #1088 is deferred
+    let dropped = 0 // a split that loses the group the column already showed
+    let checked = 0
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok) continue
+      const m = r.model
+      if (m.gainForeign || !(m.bars == null || m.bars === m.steps)) continue
+      for (let col = 0; col < m.steps; col++) {
+        const split = sequentialColumnGroups(m.notes, col)
+        if (!split) continue
+        checked++
+        const covering =
+          m.notes.find((n) => n.start === col) ??
+          m.notes.find((n) => n.start < col && col < n.start + n.duration)
+        if (covering && !split.some((g) => g.start === covering.start)) dropped++
+        const sorted = [...split].sort((a, b) => a.offset - b.offset)
+        for (let i = 1; i < sorted.length; i++) {
+          if (sorted[i].offset < sorted[i - 1].offset + sorted[i - 1].extent - 1e-9) overlapping++
+        }
+      }
+    }
+    console.log(`  VELOCITY LANE SAFETY: ${checked} split columns — overlapping ${overlapping}, dropped ${dropped}`)
+    // The population must be non-empty or both zeros below are vacuous.
+    expect(checked).toBeGreaterThan(0)
+    expect(overlapping).toBe(0)
+    expect(dropped).toBe(0)
+  })
+
+  it('THE VELOCITY LANE — what the split is NOT yet: a visible difference (recorded bound)', () => {
+    // The uncomfortable half of this phase, written down so that "8 columns split" is
+    // never read as "8 columns look different". Two bars of EQUAL height and colour laid
+    // side by side are indistinguishable from the one full-width bar they replace — so a
+    // split is perceptible exactly when its groups differ in gain, and corpus-wide they
+    // never do. The panel now draws the distinction; the material has no distinction to
+    // draw yet. That is the same trap the note-length work hit ([[PV245]]): a model can
+    // carry an axis, and the geometry can render it, and the user can still see nothing.
+    //
+    // Shipping it anyway is deliberate. Before the split, a group beginning mid-column had
+    // no bar and the column showed its NEIGHBOUR's gain — so setting that group's velocity
+    // was not merely invisible, it was misreported. The split is what makes the difference
+    // showable the moment there is one.
+    //
+    // THIS IS A RECORDED BOUND, NOT A DESIRED PROPERTY. If `differing` ever goes above
+    // zero that is an improvement, and the number below should be re-argued and updated
+    // deliberately rather than silently bumped.
+    let split = 0
+    let differing = 0
+    let inWritablePattern = 0
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok) continue
+      const m = r.model
+      if (m.gainForeign || !(m.bars == null || m.bars === m.steps)) continue
+      const writable = serializeRollGain(m).kind !== 'skip'
+      for (let col = 0; col < m.steps; col++) {
+        const groups = sequentialColumnGroups(m.notes, col)
+        if (!groups) continue
+        split++
+        if (writable) inWritablePattern++
+        const gains = groups.map((g) => m.notes.find((n) => n.start === g.start)?.gain ?? 1)
+        if (new Set(gains).size > 1) differing++
+      }
+    }
+    console.log(
+      `  VELOCITY LANE PERCEPTIBILITY: ${split} split columns — groups differing in gain ` +
+        `${differing}, in a pattern whose gain is writable ${inWritablePattern}`,
+    )
+    expect(split).toBe(8)
+    // Not one split column currently shows a difference…
+    expect(differing).toBe(0)
+    // …and only 3 of the 8 sit in a pattern where the user could create one at all. The
+    // other 5 are blocked by the gain writer skipping fractional-start patterns (#1089),
+    // which is why the split bars are drawn without a drag affordance.
+    expect(inWritablePattern).toBe(3)
   })
 
   it('a note that fills its column exactly does not claim the next one (float slivers)', () => {

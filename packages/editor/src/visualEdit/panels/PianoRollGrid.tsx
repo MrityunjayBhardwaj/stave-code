@@ -21,7 +21,7 @@ import * as React from 'react'
 import { parsePianoRoll, applyRollGain } from '../notation/parse'
 import { serializePianoRoll, serializeRollGain } from '../notation/serialize'
 import type { PianoRollModel, RollNote, ColumnOverlap } from '../notation/model'
-import { columnOverlap } from '../notation/model'
+import { columnOverlap, headColumn, sequentialColumnGroups, tailColumn } from '../notation/model'
 import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../notation/pitch'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID } from './tabs'
@@ -108,10 +108,15 @@ function contentRange(model: PianoRollModel): { lo: number; hi: number } {
  * (#1074).
  *
  * The old test was `n.start <= step && step < n.start + n.duration` against an integer
- * `step`. `RollNote.duration` is documented as counting whole `@n` elongation steps, and
- * the corpus disagrees on 17 notes: `[c5@0.5 f4@0.5 f5@3]` puts `f4` at start 0.5 for
- * 0.5, spanning `[0.5, 1.0)`, which contains no integer — so the note sounded and was
- * drawn in no column at all. Ten more were drawn for the wrong length in both directions.
+ * `step`, on the belief that `RollNote.duration` counts whole `@n` steps. It does not, and
+ * the belief is worth naming because it has produced the same defect three times here:
+ * `@n` is not a count of anything. It is a relative WEIGHT — an element occupies
+ * `n / Σweights` of its enclosing sequence — so `@1` lasts half a cycle in `bd@1 sd@1` and
+ * a quarter in a four-element one. `duration` is that share converted to COLUMNS, and it
+ * is routinely fractional: the corpus disagreed on 17 notes. `[c5@0.5 f4@0.5 f5@3]` puts
+ * `f4` at start 0.5 for 0.5, spanning `[0.5, 1.0)`, which contains no integer — so the
+ * note sounded and was drawn in no column at all. Ten more were drawn for the wrong length
+ * in both directions.
  */
 function overlapAt(
   model: PianoRollModel,
@@ -130,12 +135,6 @@ function overlapAt(
 function noteAt(model: PianoRollModel, midi: number, step: number): RollNote | undefined {
   return overlapAt(model, midi, step)?.note
 }
-
-/** the column a note is drawn as starting in — its own column even when `start` is fractional */
-const headColumn = (n: RollNote): number => Math.floor(n.start + 1e-9)
-
-/** the last column a note reaches into */
-const tailColumn = (n: RollNote): number => Math.ceil(n.start + n.duration - 1e-9) - 1
 
 interface DragState {
   /** 'move' drags the note in pitch+time; 'resize' grows/shrinks its duration */
@@ -910,6 +909,19 @@ export function PianoRollGrid({
                   model.notes.find((n) => n.start === col) ??
                   model.notes.find((n) => n.start < col && col < n.start + n.duration)
                 const g = covering ? gainAtStart(model, covering.start) : 1
+                // SPLIT THE COLUMN when more than one group sounds through it AND those
+                // groups are sequential — one ends where the next begins (#1086). Then
+                // each gets its own bar at its own offset/extent, the geometry the roll's
+                // own rows have drawn since #1074. A group that begins mid-column had no
+                // bar at all before this: the lane asked `n.start === col`, an equality a
+                // fractional start never satisfies.
+                //
+                // Groups that overlap IN TIME are NOT split — a stack's simultaneous
+                // voices are not sequential along the column's time axis, so laying them
+                // out that way stacks one bar on another. 129 of the corpus's 137
+                // multi-group columns are that case and they keep today's single bar;
+                // what they should show instead is #1088, a layout question.
+                const split = sequentialColumnGroups(model.notes, col)
                 return (
                   <div
                     key={col}
@@ -933,23 +945,58 @@ export function PianoRollGrid({
                       cursor: covering ? 'ns-resize' : 'default',
                     }}
                   >
-                    {covering && (
-                      // bottom-anchored bar = the note group's velocity (full = neutral)
-                      <span
-                        data-vel-bar={col}
-                        data-gain={g}
-                        style={{
-                          position: 'absolute',
-                          left: 1,
-                          right: 1,
-                          bottom: 0,
-                          height: `${clamp01(g) * 100}%`,
-                          background: colorMode === 'velocity' ? velocityColor(g) : 'var(--accent, #6ea8fe)',
-                          borderRadius: 2,
-                          pointerEvents: 'none',
-                        }}
-                      />
-                    )}
+                    {split
+                      ? split.map((grp) => {
+                          const gg = gainAtStart(model, grp.start)
+                          return (
+                            <span
+                              key={grp.start}
+                              data-vel-bar={col}
+                              data-vel-group={grp.start}
+                              data-gain={gg}
+                              style={{
+                                position: 'absolute',
+                                // laid against the column's own box, like the note fill
+                                left: `${grp.offset * 100}%`,
+                                width: `${grp.extent * 100}%`,
+                                bottom: 0,
+                                height: `${clamp01(gg) * 100}%`,
+                                background:
+                                  colorMode === 'velocity' ? velocityColor(gg) : 'var(--accent, #6ea8fe)',
+                                borderRadius: 2,
+                                // VISUAL ONLY, and deliberately so. Every column that
+                                // splits today sits in a pattern with a fractional-start
+                                // note, and `serializeRollGain` skips exactly those — the
+                                // gain mini is one slot per column, and a note beginning
+                                // mid-column has no slot of its own. A per-bar drag would
+                                // therefore be an affordance that cannot work, which is
+                                // the thing this codebase already refuses to ship. The
+                                // column keeps the drag behaviour it has always had; the
+                                // lane's inert-affordance problem is older and wider than
+                                // this phase (#1089).
+                                pointerEvents: 'none',
+                              }}
+                            />
+                          )
+                        })
+                      : covering && (
+                          // bottom-anchored bar = the note group's velocity (full = neutral)
+                          <span
+                            data-vel-bar={col}
+                            data-vel-group={covering.start}
+                            data-gain={g}
+                            style={{
+                              position: 'absolute',
+                              left: 1,
+                              right: 1,
+                              bottom: 0,
+                              height: `${clamp01(g) * 100}%`,
+                              background: colorMode === 'velocity' ? velocityColor(g) : 'var(--accent, #6ea8fe)',
+                              borderRadius: 2,
+                              pointerEvents: 'none',
+                            }}
+                          />
+                        )}
                   </div>
                 )
               })}

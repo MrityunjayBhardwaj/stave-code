@@ -8161,7 +8161,12 @@ interface RollNote {
     pitch: string;
     /** column index where the note begins */
     start: number;
-    /** length in columns (1 = one step; emitted as `@n` elongation) */
+    /**
+     * Length in COLUMNS — frequently fractional, and not a count of `@n`s. `@n` is a
+     * relative weight (`n / Σweights` of the enclosing sequence), so a whole `@n` lands on
+     * whatever share of a column that works out to. The writer spells this back as `@n`
+     * where it can, including fractionally, and declines below one column.
+     */
     duration: number;
     /**
      * Per-note velocity. `1` (or absent) is neutral and emits no `.gain`. Chord
