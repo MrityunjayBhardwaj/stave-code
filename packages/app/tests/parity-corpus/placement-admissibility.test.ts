@@ -30,17 +30,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePianoRoll, parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import {
-  cellOn,
-  clampLane,
-  clampPartAtOnset,
-  isCellOn,
-} from '../../../editor/src/visualEdit/notation/model'
-import type {
-  PianoRollModel,
-  StepCell,
-  StepGridModel,
-} from '../../../editor/src/visualEdit/notation/model'
+import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { ungatedPlace, ungatedToggle } from './ungatedOps'
 import {
   canPlaceNote,
   canToggleCell,
@@ -61,61 +52,10 @@ type Path = 'leaf' | 'alt' | 'element'
 const pathOf = (m: { leafSource?: unknown; altSource?: unknown }): Path =>
   m.leafSource ? 'leaf' : m.altSource ? 'alt' : 'element'
 
-/**
- * THE CONTROL ARM — the same EDIT, with no admissibility question asked. Kept
- * byte-for-byte in shape with the production op minus the `ifGridSpellable`
- * wrapper, so the only variable between the arms is the gate itself.
- *
- * It tracks the edit and is independent of the GATE — that is the whole and only
- * axis it controls for. When the edit changes (phase 2 widened the clamp from the
- * lane to the `,`-part), this changes with it; if it did not, it would stop being
- * an ungated copy of the current op and become a frozen model of an older one,
- * which answers a question nobody is asking.
- */
-function ungatedToggle(
-  model: StepGridModel,
-  laneIndex: number,
-  stepIndex: number,
-  value: boolean,
-): StepGridModel {
-  const paint = (v: boolean): StepCell => (v ? cellOn() : false)
-  const painted = model.lanes.map((lane, i) =>
-    i === laneIndex
-      ? {
-          ...lane,
-          cells: clampLane(
-            lane.cells.map((c, j) => (j === stepIndex ? paint(value) : c)),
-            model.steps,
-          ),
-        }
-      : lane,
-  )
-  const lanes = value
-    ? clampPartAtOnset(painted, model.lanes[laneIndex]?.part ?? 0, stepIndex)
-    : painted
-  return { ...model, lanes }
-}
-
-function ungatedPlace(
-  model: PianoRollModel,
-  pitch: string,
-  start: number,
-  duration: number,
-): PianoRollModel {
-  const groupAt = model.notes.find((n) => n.start === start)
-  if (groupAt) {
-    return { ...model, notes: [...model.notes, { pitch, start, duration: groupAt.duration }] }
-  }
-  const nextStart = Math.min(
-    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-    model.steps,
-  )
-  const notes = model.notes.map((n) =>
-    n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n,
-  )
-  notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) })
-  return { ...model, notes }
-}
+// THE CONTROL ARM — the ops as they stood before #1064: build the model and hand
+// it to the writer, no admissibility question asked. Moved to `ungatedOps.ts` when
+// the #1058 probe needed the same arm (#1073); the justification for keeping a
+// second oracle at all lives with the definitions.
 
 interface Tally {
   units: number
@@ -413,6 +353,41 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // on it is how a population restriction goes unnamed ([[P345]]).
     expect(joinedAChord, 'roll placements that joined an existing chord').toBeGreaterThan(0)
   })
+
+  /**
+   * THE CONTROL ARM'S OWN GUARD (#1073). The arms above are only a comparison if
+   * `ungatedToggle` still builds what `toggleCell` builds — it is a hand-kept copy
+   * of the production op minus its spellability wrapper, and nothing made the two
+   * move together. If the production construction changed and the copy did not,
+   * "would the writer have taken it?" would quietly start answering about a model
+   * the op never produces, and every assertion here would keep passing while
+   * measuring nothing.
+   *
+   * The invariant is exact and derivable: wherever `toggleCell` does NOT refuse,
+   * it returns precisely what the ungated copy built. So compare the two directly
+   * on every accepted placement, rather than trusting them to be edited in step.
+   * Now that a second sweep depends on the copy (#1058's hypothesis arm), the
+   * copy is load-bearing in two places and worth pinning in one.
+   */
+  it('the ungated control arm still builds what the production op builds', () => {
+    let compared = 0
+    for (const mini of minis) {
+      const r = parseStepGrid(mini)
+      if (!r.ok) continue
+      for (let lane = 0; lane < r.model.lanes.length; lane++)
+        for (let col = 0; col < r.model.steps; col++) {
+          if (isCellOn(r.model.lanes[lane].cells[col])) continue
+          const gated = toggleCell(r.model, lane, col, true)
+          if (gated === r.model) continue // refused — the wrapper's answer, not the build
+          compared++
+          expect(
+            gated,
+            `${JSON.stringify(mini)} [${lane},${col}]: the control arm has drifted from the op`,
+          ).toEqual(ungatedToggle(r.model, lane, col, true))
+        }
+    }
+    // the population must be non-empty, or the comparison above reports on nothing
+    expect(compared, 'accepted placements compared').toBeGreaterThan(1000)  })
 
   it('viewPlacesNotes answers the PATH question, and no non-leaf view lost placement', () => {
     let leafViews = 0
