@@ -575,6 +575,31 @@ export function columnCount(model: {
   return Math.max(0, cols)
 }
 
+/** A span of columns, split into the whole ones it contains and the fraction left over. */
+export interface ColumnSplit {
+  /** how many whole columns fit in the span; NEGATIVE when the span itself is */
+  whole: number
+  /** what is left after them, in `[0, 1)`; `0` when the span is a whole number of columns */
+  remainder: number
+}
+
+/**
+ * How does a span of `width` columns divide into whole columns and a remainder? (#1092)
+ *
+ * The WRITER's half of `columnOverlap`'s question. The reader asks what a note occupies;
+ * the writer asks what it has to spell to put the next one in the right place, and a
+ * mini-notation rest is one column unless it is given a weight. While every span was a
+ * whole number of columns the two answers coincided and `while (col < start) push('~')`
+ * was exact; a span of 1.5 columns spelled that way is two, and everything after it moves.
+ *
+ * Shares `COLUMN_EPS` with `columnOverlap` deliberately: "a sliver is not a column" has to
+ * mean the same thing to the panel that draws a note and the writer that spells the silence
+ * before it, or one of them emits a rest the other cannot see.
+ */
+export function columnSplit(width: number): ColumnSplit {
+  const whole = Math.floor(width + COLUMN_EPS)
+  const remainder = width - whole
+  return { whole, remainder: remainder <= COLUMN_EPS ? 0 : remainder }}
 /** One column of a lane, as covered by the note sounding through it. */
 export interface ColumnCoverage {
   /** column the covering note BEGINS at; `=== c` exactly when this column is the head */
