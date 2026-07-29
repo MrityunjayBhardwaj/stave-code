@@ -23,7 +23,7 @@ import * as React from 'react'
 
 import { parseStepGrid, applyStepGain } from '../notation/parse'
 import { serializeStepGrid, serializeStepGain } from '../notation/serialize'
-import { isCellOn, laneCoverage } from '../notation/model'
+import { columnCount, isCellOn, laneCoverage } from '../notation/model'
 import type { StepGridModel } from '../notation/model'
 import { VisualEditStandby } from './VisualEditStandby'
 import { SEQUENCER_TAB_ID } from './tabs'
@@ -70,7 +70,13 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     serializeGain: serializeStepGain,
   })
 
-  const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1)
+  // The grid's length is always a whole number of columns, so `columnCount` is `steps`
+  // here; it is asked anyway so both panels bound the playhead by the same rule (#1087).
+  const playingStep = usePlayingStep(
+    model?.steps ?? 0,
+    model?.bars ?? 1,
+    model ? columnCount(model) : 0,
+  )
   const [colorMode] = useNoteColorMode()
 
   // One pointer gesture from a cell press. An OFF cell paints immediately (snappy

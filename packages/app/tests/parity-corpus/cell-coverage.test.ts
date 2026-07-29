@@ -51,7 +51,8 @@ import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { parseStepGrid, parseStepGridCore, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
 import { serializeStepGrid, serializeRollGain } from '../../../editor/src/visualEdit/notation/serialize'
 import { scaleStepGrid } from '../../../editor/src/visualEdit/notation/resolution'
-import { isCellOn, laneCoverage, columnOverlap, headColumn, tailColumn, sequentialColumnGroups } from '../../../editor/src/visualEdit/notation/model'
+import { setGroupGain } from '../../../editor/src/visualEdit/panels/inspector'
+import { isCellOn, laneCoverage, columnCount, columnOverlap, headColumn, tailColumn, sequentialColumnGroups } from '../../../editor/src/visualEdit/notation/model'
 import type { StepCell, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
@@ -641,6 +642,72 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     expect(tailBad).toBe(0)
   })
 
+  it('EVERY NOTE HAS A COLUMN TO BE DRAWN IN — the count the panel renders with (#1087)', () => {
+    // The consequence, asked AS the consequence. Not "is `steps` a whole number?" —
+    // `note("c4@0.2 e4@0.2 g4@0.2 b4@0.2 c5@0.2")` sums to `0.9999999999999998`, which
+    // passes any integrality tolerance a reasonable person writes and still floors to
+    // ZERO columns. So this asks `Array.from` itself, the operation that loses the unit.
+    //
+    // The first probe written for #1087 asked the integrality question and reported 0
+    // corpus hits — a worthless zero, because it would have cleared the very fixture
+    // already watched rendering nothing. Hence the CONTROL arm below: a zero is believed
+    // only when fixtures known to trip the defect are run through the same probe in the
+    // same run.
+    const uncovered: string[] = []
+    let models = 0
+    let fractional = 0
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok) continue
+      models++
+      if (!Number.isInteger(r.model.steps)) fractional++
+      const drawn = Array.from({ length: columnCount(r.model) }).length
+      for (const n of r.model.notes) {
+        if (tailColumn(n) >= drawn) {
+          uncovered.push(`${mini} :: note at ${n.start}+${n.duration} needs col ${tailColumn(n)}`)
+          break
+        }
+      }
+    }
+    // THE CONTROL — the same probe, over hand-written fixtures. It must FLAG the ones
+    // that trip the defect and CLEAR the ones whose weights sum to a whole number,
+    // measured against the count the panel used to render with (`model.steps`).
+    const OLD = (m: { steps: number }): number => Array.from({ length: m.steps }).length
+    const trips: string[] = []
+    const clears: string[] = []
+    for (const mini of [
+      'c4@0.2 e4@0.2 g4@0.2 b4@0.2 c5@0.2', // 0.9999999999999998 → drew 0 columns
+      'c4@1.5 e4 g4@0.2', // 2.7 → drew 2, third note drawn nowhere
+      'c4@0.5 e4', // 1.5 → drew 1, a column short
+      'c4@1.5 e4@1.2', // 2.7, and the writer is LIVE on this one
+      'c4 e4 g4 b4 c5', // control: no weights
+      'c4@2.5 e4@1.5', // control: fractional weights, whole-numbered sum
+    ]) {
+      const r = parsePianoRoll(mini)
+      expect(r.ok, `the roll should open the fixture ${mini}`).toBe(true)
+      if (!r.ok) continue
+      const short = r.model.notes.some((n) => tailColumn(n) >= OLD(r.model))
+      ;(short ? trips : clears).push(mini)
+      // …and under the shipped count, none of them is short
+      for (const n of r.model.notes) {
+        expect(tailColumn(n), `${mini} still loses a note`).toBeLessThan(columnCount(r.model))
+      }
+    }
+    console.log(
+      `  COLUMN COVER: ${models} roll models, ${fractional} of fractional length, ` +
+        `${uncovered.length} losing a note. CONTROL: ${trips.length} fixtures tripped ` +
+        `the old count, ${clears.length} cleared it.`,
+    )
+    // The corpus zero is REAL, not a dead probe — 4 of the 6 fixtures trip, 2 clear.
+    expect(trips.length).toBe(4)
+    expect(clears.length).toBe(2)
+    // …so the corpus figure means what it says: this notation is reachable by hand and
+    // no real Bakery material writes it today. That sets the severity, not the validity.
+    expect(models).toBe(544)
+    expect(fractional).toBe(0)
+    expect(uncovered).toEqual([])
+  })
+
   it('THE VELOCITY LANE — a column splits only where its groups are sequential (#1086)', () => {
     // #1086 was filed as a one-line fix (swap `n.start === col` for a head test). Measured,
     // that gains ZERO slots and only changes which group owns 3 columns in one mini, so it
@@ -709,6 +776,58 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // exactly the substitution that has to be watched here.
     expect(splitCols).toBe(8)
     expect(splitMinis.size).toBe(3)
+  })
+
+  it('THE VELOCITY LANE — a drag is offered only where the writer accepts it (#1089)', () => {
+    // Prove-before-offer, on the lane. `gainInScope` answers whether the lane should
+    // RENDER; the panel was using it for whether a drag could WRITE, and the two had
+    // drifted apart. This arm asks the shipped predicate — `serializeRollGain(model)`,
+    // the real writer — and reports the population it takes the gesture away from, so
+    // "we gated it" cannot be read without knowing how much it gates.
+    //
+    // Asked of the CURRENT model, and the arm below is what licenses that: a gain edit
+    // does not move a note, so the writer's answer is the same before and after one.
+    let inScope = 0
+    let skips = 0
+    let writable = 0
+    let inertCols = 0
+    let liveCols = 0
+    let predicateDiffers = 0
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok) continue
+      const m = r.model
+      if (m.gainForeign || !(m.bars == null || m.bars === m.steps)) continue
+      inScope++
+      const declines = serializeRollGain(m).kind === 'skip'
+      declines ? skips++ : writable++
+      for (let col = 0; col < columnCount(m); col++) {
+        const covering =
+          m.notes.find((n) => n.start === col) ??
+          m.notes.find((n) => n.start < col && col < n.start + n.duration)
+        if (!covering) continue
+        declines ? inertCols++ : liveCols++
+        // the same question asked of the model the drag would actually produce
+        const after = setGroupGain(m, covering.start, 0.5)
+        if ((serializeRollGain(after).kind === 'skip') !== declines) predicateDiffers++
+      }
+    }
+    console.log(
+      `  VELOCITY WRITABILITY: ${inScope} in-scope models — ${writable} the writer accepts, ` +
+        `${skips} it declines. Columns with a note: ${liveCols} keep the drag, ` +
+        `${inertCols} lose an affordance that never worked. ` +
+        `Predicate differs after a drag: ${predicateDiffers}.`,
+    )
+    expect(inScope).toBe(424)
+    // THE REACH, and it is the point of the fix: 305 columns across 33 patterns offered a
+    // `ns-resize` cursor and a pointer handler for a write that was always declined.
+    expect(skips).toBe(33)
+    expect(inertCols).toBe(305)
+    // …and the population it must NOT touch — every column whose drag really writes.
+    expect(writable).toBe(391)
+    expect(liveCols).toBe(2950)
+    // THE LICENCE for asking the current model instead of the post-drag one.
+    expect(predicateDiffers).toBe(0)
   })
 
   it('THE VELOCITY LANE — a split is additive: no bar dropped, no two bars overlapping', () => {
