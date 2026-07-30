@@ -32,6 +32,22 @@ type AnalysisProbe = {
 const LATE_ENTRY = '$: s("bd*4")\n$: s("hh*8").mask("<0!8 1!8>")'
 /** Both tracks sounding from cycle 0 — the control. */
 const BOTH_FROM_ZERO = '$: s("bd*4")\n$: s("hh*8")'
+/**
+ * A MUTED track beside a playing one. A muted track emits no haps BY DESIGN —
+ * Strudel refuses to register a `_`-prefixed id (`@strudel/core/repl.mjs:172-175`)
+ * and our capture hook mirrors that deliberately — so it can never be "heard",
+ * and if the expected set were the DECLARED tracks rather than the REGISTERED
+ * patterns, every document with a muted track would wait for it forever.
+ *
+ * ⚠ MEASURED, and it corrects the obvious guess: that would NOT produce a wrong
+ * span. Injecting a permanently-unheard id leaves this document's period intact,
+ * because the clause lifts at the cap and the period is found there anyway — the
+ * same bound that makes the six corpus documents with a silent registered track
+ * verdict-neutral. The cost would be analysis WORK (256 cycles instead of 8), not
+ * correctness. So this arm is a smoke check, not a proof: it cannot be reddened
+ * by that mistake, and saying so is more useful than implying it can.
+ */
+const ONE_MUTED = '$: s("bd*4")\n_$: s("hh*8")'
 
 async function boot(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -132,4 +148,16 @@ test('CONTROL — a song whose tracks all sound from the start keeps its period'
   // a track, and must not push an ordinary loop to the 256-cycle cap.
   expect(a.periodCycles).not.toBeNull()
   expect(a.lanes.length).toBe(2)
+})
+
+test('CONTROL — a muted track is not a track waiting to be heard', async ({ page }) => {
+  test.setTimeout(240_000)
+  await boot(page)
+  await editCode(page, ONE_MUTED)
+
+  const a = await settledAnalysis(page)
+  // A muted track must not change what the view shows: one drawn lane for the
+  // one track that plays, on its own bounded loop.
+  expect(a.periodCycles).not.toBeNull()
+  expect(a.lanes.length).toBe(1)
 })

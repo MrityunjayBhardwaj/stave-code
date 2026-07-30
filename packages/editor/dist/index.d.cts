@@ -326,15 +326,25 @@ interface AnalyzeSongOptions {
      * and what has been heard. The events reaching `analyzeSong` are in the
      * DISPLAY lane space — production remaps every hap through `laneKeyForHap`
      * source containment (`MusicalTimeline.tsx`) so analysis lanes line up with
-     * rendered rows ([[PV175]]) — and that space is the wrong one to ask in.
-     * Measured over the corpus: 20 of the 78 documents with structural anchors
-     * have an anchor key that NEVER receives an event in 256 cycles (a track whose
-     * haps carry no `loc`, or whose `loc` precedes its own statement), so a gate
-     * asked there would send 20 documents to the cap to fix 7. In the CAPTURE key
-     * space the engine stamps — one key per registered pattern — an expected key
-     * can only go unheard if the track genuinely never sounds, which is 6
-     * documents, and all 6 keep their exact period because the clause is bounded
-     * to `horizon < cap`.
+     * rendered rows ([[PV175]]) — and that space cannot answer it. Measured over
+     * the corpus: 20 of the 78 documents with structural anchors have an anchor key
+     * that NEVER receives an event in 256 cycles (a track whose haps carry no
+     * `loc`, or whose `loc` precedes its own statement). There, "unheard" does not
+     * mean a track that has yet to enter; it means a key nothing can ever land on,
+     * so the clause would be waiting for something that does not exist.
+     *
+     * NOT a cost argument, which is worth saying because that was the first guess
+     * and measurement refuted it: priced against its own control arm the structural
+     * clause takes documents collected to the full cap from 71 to 85, +14, and the
+     * capture-space clause costs +13 by construction (the 7 it moves, plus the 6
+     * documents with a registered track that never sounds). The work is the same.
+     * What differs is whether the question has an answer.
+     *
+     * In the CAPTURE key space the engine stamps — one key per registered pattern —
+     * an unheard key can only mean a track that genuinely never sounds, which is 6
+     * documents, and all 6 keep their exact period because the clause is bounded to
+     * `horizon < cap`. Measured past the cap too: all 9 such tracks are silent
+     * through 1024 cycles, so none is a late entry the bound hides.
      *
      * So the caller reads the raw capture keys BEFORE its own remap and compares
      * them against the engine's registered set. Absent, the clause is inert and

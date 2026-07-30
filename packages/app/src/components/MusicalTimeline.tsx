@@ -271,9 +271,10 @@ export function MusicalTimeline(
     // This is the whole reason the question is answered here: the remapped keys
     // are display lanes, and 20 of the corpus's 78 anchored documents have an
     // anchor key no hap ever lands on (a track whose haps carry no `loc`, or one
-    // whose `loc` precedes its own statement), so asking there would strand them
-    // at the cap. In the capture space every registered pattern that sounds at
-    // all stamps its own key, so an unheard key means an unheard TRACK.
+    // whose `loc` precedes its own statement) — so there, "unheard" would mean a
+    // key nothing can ever satisfy rather than a track yet to enter. In the
+    // capture space every registered pattern that sounds at all stamps its own
+    // key, so an unheard key means an unheard TRACK.
     const heard = new Set<string>()
     if (getEvents) {
       const anchors = buildLaneAnchors(ir, 1)
