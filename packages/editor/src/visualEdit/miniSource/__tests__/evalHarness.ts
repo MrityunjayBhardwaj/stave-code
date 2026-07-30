@@ -332,6 +332,81 @@ async function evalLocationsInner(code: string, cycles: number): Promise<EvalRes
   return { ok: true, declared: meta?.miniLocations ?? [], seen }
 }
 
+/** One captured track, mirroring an entry of `StrudelEngine.songPatterns`. */
+export interface SongTrack {
+  /** the capture key — `$N` for anonymous `$:`, the user's name for `name:`. */
+  trackId: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pattern: any
+}
+
+export interface SongTracksResult {
+  ok: boolean
+  error?: string
+  tracks: SongTrack[]
+}
+
+/**
+ * The per-track patterns the SONG frame draws from — a mirror of
+ * `StrudelEngine.songPatterns` (assigned `StrudelEngine.ts:1002`), NOT of the
+ * repl's single stacked play pattern.
+ *
+ * WHY THE DISTINCTION IS LOAD-BEARING, and why a period sweep must come through
+ * here rather than through `evalLocations`: `getTimelineEvents`
+ * (`StrudelEngine.ts:1366-1378`) queries each captured pattern SEPARATELY and
+ * stamps that pattern's capture key onto every hap as `trackId`. A probe that
+ * queries one stacked pattern instead gets haps with NO `trackId`, so
+ * `laneKeyOf`'s `ev.trackId ?? ev.s` fallback puts the SAMPLE NAME in the lane
+ * key — which silently repairs the exact defect #1102 is about ([[PV255]]) and
+ * would report a healthy corpus. The instrument has to carry the production
+ * shape or it measures a program nobody runs.
+ *
+ * The `$0` bare fallback is applied on the same condition the engine applies it
+ * — nothing registered, so the repl plays the document's last expression
+ * (#1094, `StrudelEngine.ts:978-980`).
+ *
+ * DECLARED BOUND: production takes one more step this does not — it remaps each
+ * hap's `trackId` to its STRUCTURAL lane via `laneKeyForHap`
+ * (`MusicalTimeline.tsx:266`). That is a relabelling of the same partition
+ * wherever the join is injective over capture keys, and period is invariant
+ * under relabelling; only a join that MERGED two capture keys into one lane
+ * could move a period (upward). Stated rather than assumed harmless.
+ */
+export async function evalSongTracks(
+  code: string,
+  opts: EvalOptions = {},
+): Promise<SongTracksResult> {
+  return withStringParser(opts.bareMiniAllStrings === true, () =>
+    withHydra(code, opts.hydra !== false, () => evalSongTracksInner(code)),
+  )
+}
+
+async function evalSongTracksInner(code: string): Promise<SongTracksResult> {
+  const { core, transpiler, state } = await boot()
+  state.pPatterns = {}
+  state.allTransforms = []
+  state.eachTransform = null
+  state.anon = 0
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let played: any
+  try {
+    const r = await core.evaluate(code, transpiler)
+    played = r.pattern
+  } catch (e: unknown) {
+    return { ok: false, error: String((e as Error)?.message ?? e), tracks: [] }
+  }
+  const tracks: SongTrack[] = Object.entries(state.pPatterns).map(([trackId, pattern]) => ({
+    trackId,
+    pattern,
+  }))
+  if (tracks.length === 0) {
+    // repl.mjs:238-250 — nothing registered, so the LAST EXPRESSION is what plays.
+    if (!core.isPattern(played)) return { ok: false, error: 'not a pattern', tracks: [] }
+    tracks.push({ trackId: '$0', pattern: played })
+  }
+  return { ok: true, tracks }
+}
+
 /** The 150 saved #986-P3 tunes (3 offsets × 50). */
 export async function loadCorpus(): Promise<{ name: string; code: string }[]> {
   const fs = await import('node:fs')
