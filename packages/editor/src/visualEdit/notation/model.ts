@@ -904,6 +904,14 @@ export type Gate =
   | 'mixed-pitch-domain'
   | 'irrational-onset'
   | 'resolution'
+  /**
+   * The VIEW asked for more columns than it may draw (#1055). Distinct from
+   * `resolution`, which is the DOCUMENT's own blow-up guard: this one says the
+   * document is fine and the requested magnification is not. Cannot fire while the
+   * view scale is `UNREFINED`, since the document ceiling (64) is below the view
+   * ceiling (256) — see `viewResolution.ts`.
+   */
+  | 'view-resolution'
   | 'element-tiling'
   | 'no-leaf-anchor'
   | 'note-crosses-bar'
