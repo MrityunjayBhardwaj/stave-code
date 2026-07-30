@@ -4283,6 +4283,11 @@ function formatFriendlyError(err, runtime, options = {}) {
 __name(formatFriendlyError, "formatFriendlyError");
 
 // src/engine/StrudelEngine.ts
+var BARE_CAPTURE_ID = "$0";
+function isQueryablePattern(p) {
+  return !!p && typeof p.queryArc === "function";
+}
+__name(isQueryablePattern, "isQueryablePattern");
 function extractVizName(rawArg) {
   if (typeof rawArg === "string") return rawArg || void 0;
   const pat = rawArg;
@@ -4851,9 +4856,11 @@ var _StrudelEngine = class _StrudelEngine {
       }
     });
     try {
+      let playedPattern;
       const result = await new Promise((resolve) => {
         this.evalResolve = resolve;
-        this.repl.evaluate(code).then(() => {
+        this.repl.evaluate(code).then((pattern) => {
+          playedPattern = pattern;
           if (this.evalResolve) {
             this.evalResolve({});
             this.evalResolve = null;
@@ -4861,6 +4868,9 @@ var _StrudelEngine = class _StrudelEngine {
         });
       });
       if (!result.error) {
+        if (capturedSongPatterns.size === 0 && isQueryablePattern(playedPattern)) {
+          capturedSongPatterns.set(BARE_CAPTURE_ID, playedPattern);
+        }
         const sched = this.repl.scheduler;
         this.trackSchedulers = /* @__PURE__ */ new Map();
         for (const [id, pattern] of capturedPatterns) {
