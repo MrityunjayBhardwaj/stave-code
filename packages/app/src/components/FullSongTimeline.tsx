@@ -316,6 +316,15 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   dragSpanRef.current = dragSpanCycles
   const loopCyclesRef = useRef(loopCycles)
   loopCyclesRef.current = loopCycles
+  // Is `loopCycles` an actual LOOP, or the point where period detection gave up?
+  // `reachedCap` means the analysis grew to its 256-cycle cap without confirming
+  // a period, so the span is a stopping point and nothing about the song repeats
+  // at it (#1105). Everything that treats the span as cyclic — the playhead wrap
+  // above all — has to ask this rather than assume. Derived ONCE here so the
+  // render path and the imperative rAF follow loop cannot disagree about it.
+  const looping = analysis == null || !analysis.reachedCap
+  const loopingRef = useRef(looping)
+  loopingRef.current = looping
 
   // ── Grid width via ResizeObserver (mirrors MusicalTimeline DB-04) ────────
   const areaRef = useRef<HTMLDivElement>(null)
@@ -519,7 +528,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const dc = displayCyclesRef.current
       const vw = areaWidthRef.current
       const cw = dragAwareContentWidth(vw)
-      const ph = songCycleToX(wrapSongPosition(pos, loopCyclesRef.current), dc, cw)
+      const ph = songCycleToX(
+        wrapSongPosition(pos, loopCyclesRef.current, loopingRef.current),
+        dc,
+        cw,
+      )
       const target = followScrollLeft(ph, vw, cw, scrollLeftRef.current)
       if (Math.abs(target - scrollLeftRef.current) < 1) return
       const el = areaRef.current
@@ -564,7 +577,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
 
   // Wrap the playhead at the TRUE period (not the padded extend span) so it
   // loops with the audio, never into the transient trailing room (#487).
-  const wrappedPos = wrapSongPosition(songPos, loopCycles)
+  const wrappedPos = wrapSongPosition(songPos, loopCycles, looping)
   // Playhead lives in CONTENT space (inside the scrolled/translated inner div),
   // so it maps against contentWidth, not the viewport width.
   const playheadX = songCycleToX(wrappedPos, displayCycles, contentWidth)
@@ -1418,6 +1431,24 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           ? `${analysis.horizonCycles}+ cycles`
           : `${analysis.horizonCycles} cycles`
 
+  // The span is where the analysis STOPPED LOOKING, not the song's length, and
+  // until now nothing said so: `periodLabel` above is written to a `display:none`
+  // attribute for Playwright and rendered nowhere (#1105). A song that never
+  // repeats got a 256-cycle timeline that reads exactly like a measured 256-cycle
+  // loop. Shown only for `reachedCap`, because that is the only case where the
+  // number means something other than what it appears to mean.
+  //
+  // The second clause is the complement of not wrapping the playhead: once the
+  // transport passes the span the playhead is withheld (`wrapSongPosition`), so
+  // without a word here the view would look stopped. Read from the SAME `looping`
+  // and `songPos` the playhead uses, so the two cannot contradict each other.
+  const beyondSpan = !looping && songPos != null && songPos >= loopCycles
+  const fallbackNotice = !looping
+    ? beyondSpan
+      ? `no repeat · playing past cycle ${Math.floor(loopCycles)}`
+      : `no repeat · showing first ${Math.floor(loopCycles)} cycles`
+    : null
+
   const zoomPercent = Math.round(zoom * 100)
 
   return (
@@ -1476,6 +1507,19 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             +
           </button>
         </div>
+        {/* The span is a stopping point, not a measurement — say so (#1105).
+            `role="status"` so a screen reader announces the change from
+            "showing first N" to "playing past N" without stealing focus. */}
+        {fallbackNotice != null && (
+          <span
+            data-full-song-fallback-notice={fallbackNotice}
+            role="status"
+            style={styles.fallbackNotice}
+            title="This song never repeats, so the timeline shows the opening stretch rather than a loop. Zoom in to read it."
+          >
+            {fallbackNotice}
+          </span>
+        )}
       </div>
 
       {/* Ruler: cycle/bar ticks + clickable seek surface + playhead */}
@@ -1890,6 +1934,17 @@ const styles = {
     background: 'var(--accent-faint, rgba(110,168,254,0.12))',
   },
   zoomCluster: { display: 'flex', alignItems: 'center', gap: 4 },
+  fallbackNotice: {
+    fontFamily: FONT_MONO,
+    fontSize: 11,
+    lineHeight: 1,
+    // Tertiary, not a warning colour: nothing is broken — the song genuinely
+    // does not repeat, and the view is stating what it is showing.
+    color: 'var(--text-tertiary, rgba(255,255,255,0.55))',
+    whiteSpace: 'nowrap' as const,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
   zoomButton: {
     fontFamily: FONT_MONO,
     fontSize: 11,

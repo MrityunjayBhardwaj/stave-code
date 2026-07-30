@@ -48,13 +48,36 @@ export function xToSongCycle(
  * Wrap a monotonically-increasing song position into the `[0, displayCycles)`
  * display range. The transport clock keeps advancing after a seek; the
  * full-song playhead shows the within-loop position.
+ *
+ * ── WHY `looping` IS A PARAMETER AND NOT AN ASSUMPTION (#1105) ───────────────
+ * The modulo is only meaningful when `displayCycles` IS a loop: cycle 257 of an
+ * 8-cycle song really does sound like cycle 1, so drawing it at the left edge is
+ * true. When the span is instead the point where period detection gave up (the
+ * 256-cycle cap, `SongAnalysis.reachedCap`), there is no loop and the modulo
+ * asserts a repeat that does not exist — the playhead would jump to the left
+ * edge and retrace material the transport has long since passed. Measured: 27 of
+ * the 32 single-lane aperiodic corpus documents have no structural period even
+ * with every shaping dimension removed, so this is the common case for them, not
+ * a corner.
+ *
+ * Past the span with `looping: false` the honest answer is that the playhead is
+ * NOT IN THIS VIEW — hence `null`, the same value every other "nothing to draw"
+ * path already returns, so callers need no new branch. Parking it at the right
+ * edge was the alternative and was rejected: it states a position the transport
+ * does not have, which is the same class of falsehood in a quieter voice.
+ *
+ * The flag is REQUIRED rather than defaulting to `true`. A default would let a
+ * new caller inherit the wrap silently, which is exactly how the assumption
+ * became invisible in the first place; every caller now says which it means.
  */
 export function wrapSongPosition(
   songPosition: number | null | undefined,
   displayCycles: number,
+  looping: boolean,
 ): number | null {
   if (songPosition == null || !Number.isFinite(songPosition)) return null
   if (displayCycles <= 0) return null
+  if (!looping) return songPosition < displayCycles ? Math.max(0, songPosition) : null
   const wrapped = songPosition % displayCycles
   return wrapped < 0 ? wrapped + displayCycles : wrapped
 }
