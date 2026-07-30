@@ -6,6 +6,7 @@ import {
   cycleFingerprints,
   detectPeriod,
   detectDisplayPeriod,
+  detectDisplayPeriodAtCap,
   computeSections,
   analyzeEvents,
   analyzeSong,
@@ -177,6 +178,89 @@ describe('detectDisplayPeriod (#488 — max single-lane, not lcm)', () => {
     expect(detectDisplayPeriod(lanesOf([['a', 5], ['b', 4]], 8), 8)).toBeNull()
     // Grow to 16 → both resolve → 5.
     expect(detectDisplayPeriod(lanesOf([['a', 5], ['b', 4]], 16), 16)).toBe(5)
+  })
+})
+
+describe('detectDisplayPeriodAtCap (#1104 — a lane with no loop abstains, at the cap only)', () => {
+  const lanesOf = (specs: Array<[string, number]>, horizon: number): IREvent[] => {
+    const out: IREvent[] = []
+    for (let c = 0; c < horizon; c++) for (const [lane, p] of specs) out.push(ev(c, lane, c % p))
+    return out
+  }
+  /** A lane whose value changes EVERY cycle and never repeats — the real
+   *  mechanism, an LFO-modulated control, not a synthetic "no period" flag. */
+  const modulated = (lane: string, horizon: number): IREvent[] =>
+    Array.from({ length: horizon }, (_, c) => ({ ...ev(c, lane), gain: 0.1 + c / (horizon * 2) }))
+
+  it('spans the answering lanes when one lane never repeats', () => {
+    const events = [...lanesOf([['a', 8]], 64), ...modulated('lfo', 64)]
+    // The veto rule is the contrast arm: it discards lane `a`'s measured 8.
+    expect(detectDisplayPeriod(events, 64)).toBeNull()
+    expect(detectDisplayPeriodAtCap(events, 64)).toBe(8)
+  })
+
+  it('still takes the MAX over the lanes that answered (#488 unchanged)', () => {
+    const events = [...lanesOf([['a', 5], ['b', 4]], 64), ...modulated('lfo', 64)]
+    expect(detectDisplayPeriodAtCap(events, 64)).toBe(5)
+  })
+
+  it('refuses an abstained answer below the floor, so an ostinato cannot set the span', () => {
+    // The measured failure: the arpeggio answers 2, the melody abstains. A
+    // 2-cycle span is as wrong as a 256-cycle one, so this stays aperiodic.
+    const events = [...lanesOf([['arp', 2]], 64), ...modulated('melody', 64)]
+    expect(detectDisplayPeriodAtCap(events, 64)).toBeNull()
+  })
+
+  it('applies the floor ONLY to an abstained answer — an honest short period stands', () => {
+    // Nothing abstains here, so this rule agreed with the veto rule and must not
+    // overrule it: refusing 2 would push a legitimately short song to the cap.
+    const events = lanesOf([['a', 2], ['b', 2]], 64)
+    expect(detectDisplayPeriod(events, 64)).toBe(2)
+    expect(detectDisplayPeriodAtCap(events, 64)).toBe(2)
+  })
+
+  it('returns null when EVERY lane is modulated — genuinely aperiodic', () => {
+    const events = [...modulated('x', 64), ...modulated('y', 64)]
+    expect(detectDisplayPeriodAtCap(events, 64)).toBeNull()
+  })
+
+  it('agrees with the veto rule whenever no lane abstains', () => {
+    for (const specs of [
+      [['a', 5], ['b', 4]],
+      [['a', 4], ['b', 4]],
+      [['a', 8], ['b', 2]],
+    ] as Array<Array<[string, number]>>) {
+      const events = lanesOf(specs, 64)
+      expect(detectDisplayPeriodAtCap(events, 64)).toBe(detectDisplayPeriod(events, 64))
+    }
+  })
+
+  it('is reached ONLY at the cap, so a fast lane cannot answer before a slow one resolves', async () => {
+    // THE REGRESSION THIS ARM EXISTS FOR, and its fixture is chosen so that
+    // abstaining too early gives a DIFFERENT answer rather than the same answer
+    // sooner — an earlier version asserted only the final period and stayed green
+    // when the at-cap gate was deleted, which made it decoration.
+    //
+    // `hh` loops every 4 and confirms at horizon 8. `pad` loops every 12 and
+    // cannot confirm until 24. `lfo` never repeats. Abstaining below the cap
+    // answers 4 at the very first horizon — the fast lane's loop mistaken for the
+    // song's. Holding the veto until the cap lets `pad` resolve and answers 12.
+    const collect = (s: number, e: number): IREvent[] => {
+      const out: IREvent[] = []
+      for (let c = s; c < e; c++) {
+        out.push(ev(c, 'hh', c % 4))
+        out.push(ev(c, 'pad', c % 12))
+        out.push({ ...ev(c, 'lfo'), gain: 0.1 + c / 512 })
+      }
+      return out
+    }
+    const a = await analyzeSong(null, {
+      collectFn: collect,
+      yieldFn: async () => {},
+      capCycles: 64,
+    })
+    expect(a.periodCycles).toBe(12) // the slow lane's loop, not the hi-hat's 4
+    expect(a.reachedCap).toBe(false)
   })
 })
 

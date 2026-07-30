@@ -41,6 +41,26 @@
  * `s` in ~75 documents and newly collapsed two to period 1 — reintroducing this
  * very defect. It needs the progressive horizon the main detection has.
  *
+ * ── THE DISPLAY QUESTION WAS THEN ANSWERED IN PART (#1104) ───────────────────
+ * The baseline below is no longer the post-#1102 one. Once the horizon is
+ * exhausted, a lane with no loop of its own now ABSTAINS from the span instead of
+ * vetoing it (`detectDisplayPeriodAtCap`), which is the same phasing argument
+ * #488 already makes about lanes of differing LENGTHS, extended to the case the
+ * veto covered. Swept per document: **20 documents left the 256-cycle cap for a
+ * real period** (6, 8, 14, 16, 23, 24, 28, 32×4, 48×2, 64, 96×3), nothing changed
+ * below the cap, no period was lost and none collapsed to 1 — so aperiodic-at-cap
+ * went 69 → 49.
+ *
+ * The candidates NOT taken, and the reasoning that killed them, are in
+ * `song-period-abstention.test.ts`, which prices them against a frozen
+ * pre-decision copy of this baseline. Read it before proposing a new rule here:
+ * abstaining below the cap and three different tests of WHICH lanes answered are
+ * all already measured and all fail.
+ *
+ * The 49 that remain are aperiodic under every rule measured — 32 of them have a
+ * single lane, so there is no other lane to borrow a period from at all. They are
+ * a DISPLAY question, not a detection one, and they are #1105.
+ *
  * ── HOW TO RE-BASELINE, deliberately awkward ─────────────────────────────────
  *   UPDATE_SONG_PERIOD_BASELINE=1 pnpm --filter @stave/app exec vitest run \
  *     tests/parity-corpus/song-period-sweep.test.ts
@@ -105,8 +125,12 @@ describe('Song display period — corpus baseline (#1102)', () => {
         '',
         `─── Song display period, ${evaluated.length}/${verdicts.length} documents evaluated ───`,
         ...hist.map(([k, n]) => `  period ${k.padEnd(22)} ${n}`),
-        `  aperiodic-at-cap ${evaluated.filter((v) => v.reachedCap).length}   (53 before the fix)`,
-        `  period 1          ${evaluated.filter((v) => v.period === 1).length}   (21 before the fix)`,
+        // Annotated with the WHOLE history, because there are now three eras and a
+        // single "before the fix" number silently means the wrong one: 53 was
+        // before #1102 made event identity total, 69 was after it, 49 is after
+        // #1104 let lanes abstain at the cap. The remaining 49 are #1105.
+        `  aperiodic-at-cap ${evaluated.filter((v) => v.reachedCap).length}   (53 pre-#1102 → 69 post-#1102 → 49 post-#1104; the rest is #1105)`,
+        `  period 1          ${evaluated.filter((v) => v.period === 1).length}   (21 pre-#1102 → 19 post-#1102, unmoved by #1104)`,
         // A document that produced NO events is not an aperiodic document — it is
         // a document the sweep saw nothing of, and `analyzeSong` short-circuits it
         // to a zero-cycle span. Reported separately so it can never be read as

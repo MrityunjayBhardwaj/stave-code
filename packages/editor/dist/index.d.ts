@@ -168,11 +168,20 @@ declare function structuralWalk(ir: PatternIR, nCycles: number): LaneSkeleton[];
  * ⚠ THAT CLASS IS MUCH LARGER THAN THE RNG CASE THIS COMMENT USED TO NAME.
  * Since the cycle fingerprint reads the event's whole value partition (#1102),
  * any CONTINUOUSLY MODULATED control — `.cutoff(sine)`, a slow `gain` LFO —
- * makes every cycle genuinely differ, and such a document is aperiodic in the
- * only sense this function measures. Swept over 150 real tunes: 69 of the 142
- * that evaluate land on the cap, up from 53. That is the true answer about the
- * EVENTS; what the display should do with it is #1104, and it is a display
- * question, not a reason to ask a narrower question about identity here.
+ * makes every cycle genuinely differ, and such a LANE is aperiodic in the only
+ * sense this module measures. Swept over 150 real tunes, that took documents
+ * landing on the cap from 53 to 69 of the 142 that evaluate.
+ *
+ * A lane being aperiodic no longer makes the SONG aperiodic (#1104). Once the
+ * progressive horizon is exhausted such lanes ABSTAIN and the span comes from
+ * the lanes that do loop, which is #488's phasing rule applied to the case the
+ * veto used to cover — see `detectDisplayPeriodAtCap`. That returned 20 of the
+ * 69 to a real period, so the swept figure is now 49.
+ *
+ * Those 49 are aperiodic under every rule measured — 32 of them have a single
+ * lane, so there is nothing to borrow a period from at all. What the display
+ * should do with them is #1105, and it is a display question, not a reason to
+ * ask a narrower question about identity here.
  */
 
 /**
@@ -250,7 +259,7 @@ declare function computeSections(lanes: readonly LaneActivity[], horizon: number
  * `reachedCap` is supplied by the caller (it's a property of the collection
  * loop, not of the events). Synchronous — used directly in unit tests.
  */
-declare function analyzeEvents(events: readonly IREvent[], horizon: number, reachedCap?: boolean): SongAnalysis;
+declare function analyzeEvents(events: readonly IREvent[], horizon: number, reachedCap?: boolean, detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null): SongAnalysis;
 interface AnalyzeSongOptions {
     /** Initial horizon to collect before the first period check (default 8). */
     hintCycles?: number;
@@ -271,6 +280,22 @@ interface AnalyzeSongOptions {
     signal?: {
         readonly aborted: boolean;
     };
+    /**
+     * The display-period rule, defaulting to `detectDisplayPeriod`.
+     *
+     * A MEASUREMENT SEAM, not a behaviour option — production never passes it.
+     * It exists because a candidate rule cannot be priced by post-processing a
+     * finished analysis: a `null` from this function is exactly what doubles the
+     * horizon below, so a different rule resolves at a different horizon and
+     * yields a different span. Pricing one therefore requires running THIS loop,
+     * and the alternative — copying the loop into the sweep — would re-implement
+     * the doubling, the cap and the one-loop trim, i.e. build the second oracle
+     * this module's injection points exist to avoid ([[PV192]]).
+     *
+     * The default keeps every verdict identical; `song-period-sweep.test.ts`'s
+     * pinned per-document baseline is the control arm proving it.
+     */
+    detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null;
 }
 /**
  * Analyze the whole song off the in-memory IR. Collects a progressive horizon

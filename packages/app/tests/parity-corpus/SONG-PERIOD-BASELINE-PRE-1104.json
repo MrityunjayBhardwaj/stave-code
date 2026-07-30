@@ -18,15 +18,15 @@
     "lanes": 1
   },
   "0/-1poFQwaznQK": {
-    "period": 32,
-    "span": 32,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 8
   },
   "0/-2Qi6z-VZ5sR": {
-    "period": 28,
-    "span": 28,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 6
   },
   "0/-2UKHhY2kOH8": {
@@ -54,9 +54,9 @@
     "lanes": 6
   },
   "0/-6KOcCDkJcMT": {
-    "period": 32,
-    "span": 32,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 7
   },
   "0/-6c1hEXe8Agi": {
@@ -96,9 +96,9 @@
     "lanes": 1
   },
   "0/-8AEZbzq2PQY": {
-    "period": 48,
-    "span": 48,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 7
   },
   "0/-9BuEqUq3uzT": {
@@ -138,10 +138,10 @@
     "lanes": 2
   },
   "0/-F1MqbcpcByv": {
-    "period": 64,
-    "span": 64,
-    "reachedCap": false,
-    "lanes": 5
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
+    "lanes": 6
   },
   "0/-G2drHRNFueu": {
     "period": 1,
@@ -180,9 +180,9 @@
     "lanes": 1
   },
   "0/-IsQGTchux6n": {
-    "period": 96,
-    "span": 96,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 6
   },
   "0/-JX1LueRKyYw": {
@@ -234,15 +234,15 @@
     "lanes": 1
   },
   "0/-M2i6h--w2cN": {
-    "period": 96,
-    "span": 96,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 6
   },
   "0/-ME6cUGs8L79": {
-    "period": 8,
-    "span": 8,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 7
   },
   "0/-NCnK2rm6qYf": {
@@ -276,9 +276,9 @@
     "lanes": 1
   },
   "0/-P5TIfAEmiGv": {
-    "period": 32,
-    "span": 32,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 2
   },
   "0/-Pbpa0SifYAJ": {
@@ -336,9 +336,9 @@
     "lanes": 1
   },
   "250/0x47sis9cKcs": {
-    "period": 8,
-    "span": 8,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 7
   },
   "250/0xt_O6UrjF71": {
@@ -372,9 +372,9 @@
     "lanes": 2
   },
   "250/0zQIrn0Y36Iu": {
-    "period": 23,
-    "span": 23,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 5
   },
   "250/1-xnSWSfzKqq": {
@@ -414,9 +414,9 @@
     "lanes": 2
   },
   "250/12k-m0Mql3lG": {
-    "period": 24,
-    "span": 24,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 4
   },
   "250/13tI-CdPxzMx": {
@@ -444,10 +444,10 @@
     "lanes": 1
   },
   "250/19FzyPQc7bcR": {
-    "period": 6,
-    "span": 6,
-    "reachedCap": false,
-    "lanes": 3
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
+    "lanes": 5
   },
   "250/19iySfKDfQK5": {
     "period": 16,
@@ -462,9 +462,9 @@
     "lanes": 3
   },
   "250/19zJsdzELxuf": {
-    "period": 96,
-    "span": 96,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 6
   },
   "250/1APcTv7DyEkW": {
@@ -510,9 +510,9 @@
     "lanes": 8
   },
   "250/1GKX8N0zCsbT": {
-    "period": 32,
-    "span": 32,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 7
   },
   "250/1G_8F3QX5lYL": {
@@ -576,9 +576,9 @@
     "lanes": 5
   },
   "250/1JE7WbXt0B2t": {
-    "period": 16,
-    "span": 16,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 5
   },
   "500/35S2vhVOTWjF": {
@@ -612,9 +612,9 @@
     "lanes": 1
   },
   "500/3717NwDuKdpI": {
-    "period": 14,
-    "span": 14,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 3
   },
   "500/37KhOWISAcNM": {
@@ -642,9 +642,9 @@
     "lanes": 1
   },
   "500/38eh7DdPyYBP": {
-    "period": 48,
-    "span": 48,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 11
   },
   "500/3AQWzhu339V6": {
@@ -738,9 +738,9 @@
     "lanes": 1
   },
   "500/3LJGAkjyNL-o": {
-    "period": 16,
-    "span": 16,
-    "reachedCap": false,
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
     "lanes": 6
   },
   "500/3MLO1QCnluxT": {
@@ -834,10 +834,10 @@
     "lanes": 1
   },
   "500/3Xv8ssjN67qW": {
-    "period": 6,
-    "span": 6,
-    "reachedCap": false,
-    "lanes": 3
+    "period": null,
+    "span": 256,
+    "reachedCap": true,
+    "lanes": 5
   },
   "500/3Y6Nw-c4WlmA": {
     "period": null,

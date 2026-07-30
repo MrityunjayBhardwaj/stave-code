@@ -45,7 +45,12 @@
 // Imported from the MODULES, never from the `@stave/editor` barrel: the barrel
 // drags `gifenc` (CJS) into the hermetic app test env and the suite fails to
 // collect ([[feedback_editor_barrel_import_breaks_app_tests]]).
-import { analyzeSong } from '../../../editor/src/ir/songAnalysis'
+import {
+  analyzeSong,
+  cycleFingerprints,
+  detectPeriod,
+  laneKeyOf,
+} from '../../../editor/src/ir/songAnalysis'
 import type { IREvent } from '../../../editor/src/ir/IREvent'
 import { normalizeStrudelHap } from '../../../editor/src/engine/NormalizedHap'
 import {
@@ -101,9 +106,198 @@ function trackCollector(tracks: readonly SongTrack[]) {
   }
 }
 
+/**
+ * CANDIDATE FAMILY for #1104: a lane with no period of its own ABSTAINS from
+ * the span instead of vetoing it.
+ *
+ * ── WHERE THE HYPOTHESIS COMES FROM ──────────────────────────────────────────
+ * `detectDisplayPeriod` holds two rules that do not agree with each other. The
+ * grounded one (#488, from real DAW manuals) is that lanes of differing lengths
+ * PHASE: show the MAX, never the lcm, because "a 5-cycle track beside a 4-cycle
+ * track shows a 5-cycle view (the 4-cycle loop repeats/phases inside it)". The
+ * other is `if (p === null) return null` — one lane without a period discards
+ * every OTHER lane's measured period and sends the whole document to the cap.
+ *
+ * If a 4-cycle lane can phase inside a 5-cycle view, a lane with no period can
+ * phase inside a view sized by the lanes that have one. That is the first
+ * direction #1104 lists ("show the structural loop, treat modulation as a
+ * continuous field over it") — but arrived at as the existing rule extended one
+ * case further rather than as a new philosophy, which makes it a MEASURABLE
+ * hypothesis instead of a preference.
+ *
+ * ── WHAT THE FIRST MEASUREMENT REFUTED, and what it taught ───────────────────
+ * Unconditional abstention (`atCapOnly: false`) was priced first and FAILED its
+ * own disqualifier: 32 documents left the 256-cycle cap but 14 landed on period
+ * 1 — the single stretched clip #1102 was filed for — and 5 of those had a
+ * CORRECT bounded period before (12→1, 10→1, 8→1, 7→1, 6→1). Nine documents
+ * appear in both the win and the cost list (cap → 1), so the honest recovery
+ * was 23, not 32.
+ *
+ * The mechanism is NOT variant E's. Variant E failed because its probe window
+ * could not see far enough. This failed at the combine step, and specifically at
+ * the HORIZON: below the cap a `null` is what DOUBLES the horizon, so the veto
+ * is not a defect there — it is the thing that gives a slow lane room to
+ * resolve. Abstaining below the cap answers early with whatever short lane
+ * happens to have resolved (a 1-cycle hi-hat), and the document never grows to
+ * the horizon where its 12-cycle pad would have been found.
+ *
+ * ── THE FLOOR IS ON *WHEN* ABSTENTION MAY SPEAK ──────────────────────────────
+ * So the refinement is not a bound on the period's size, it is a bound on the
+ * horizon: keep the veto while the horizon can still grow, and abstain only
+ * once growth is exhausted (`atCapOnly: true`). That is PV255's "a derived
+ * exclusion rule must share the horizon of the detection it feeds", applied to
+ * the combine step. Its production home is exactly `songAnalysis.ts:390`, the
+ * `if (horizon >= cap)` branch that currently falls straight back to the cap —
+ * where `horizon >= cap` is already in scope, so nothing needs re-deriving.
+ *
+ * Two further clauses are priced SEPARATELY so each is attributable rather than
+ * bundled: `minPeriod` (refuse a period of 1 at the cap — a direct guard on the
+ * #1102 shape) and `minLaneShare` (the abstaining lanes must be a minority, so
+ * a span is never claimed on the strength of one lane out of seven).
+ *
+ * ── WHAT IS AND IS NOT VARIED ────────────────────────────────────────────────
+ * Detection is production: this calls `cycleFingerprints` and `detectPeriod`
+ * per lane exactly as `detectDisplayPeriod` does, and keys lanes with the
+ * production `laneKeyOf`. ONLY the combine step differs. So a moved document is
+ * attributable to that one rule and no second detector exists to agree with
+ * itself ([[PV192]]).
+ *
+ * Injected into the real `analyzeSong` loop rather than applied to a finished
+ * analysis, because — as the refutation above shows — the rule CHANGES WHICH
+ * HORIZON the document resolves at, and that is most of the effect. Post-
+ * processing a fixed-horizon snapshot would measure a different rule than the
+ * one that would ship.
+ */
+export interface AbstentionRule {
+  /**
+   * Abstain only once the progressive horizon is exhausted. `cap` must match
+   * the cap `analyzeSong` is running with — this models the `horizon >= cap`
+   * branch, which is where the rule would actually live.
+   */
+  atCapOnly: boolean
+  cap?: number
+  /** Refuse a combined period below this, falling back to aperiodic. */
+  minPeriod?: number
+  /** Require this share of lanes (0..1) to have answered before accepting. */
+  minLaneShare?: number
+  /**
+   * Require the document's DENSEST lane (most events) to be among those that
+   * answered — the intuition being that an ostinato should not set the span
+   * while the lane carrying the song's content abstains.
+   *
+   * Priced because it was proposed, and it is measured rather than assumed:
+   * the per-lane probe of the six 2-cycle recoveries shows the densest lanes
+   * are the ostinatos themselves (`elArpegio`/`elAcorde` at 2048 events each)
+   * and the melody is LIGHTER (`laMelodia`, 1640), so this clause cannot see
+   * four of the six documents it was proposed to fix.
+   */
+  requireDensestLane?: boolean
+  /** Require the answering lanes to hold this share (0..1) of all events. */
+  minAnsweredEventShare?: number
+  /**
+   * Refuse when any SINGLE abstaining lane holds at least this share of the
+   * document's events. States the thing the six bad recoveries have in common
+   * without routing it through "which lane is biggest": a lane heavy enough to
+   * be the song's content, with no period of its own, contradicts a 2-cycle
+   * span no matter how many light ostinatos agree on one.
+   */
+  maxAbstainingLaneShare?: number
+}
+
+export function abstainingDetector(
+  rule: AbstentionRule,
+): (events: readonly IREvent[], horizon: number) => number | null {
+  const cap = rule.cap ?? 256
+  return (events, horizon) => {
+    const byLane = new Map<string, IREvent[]>()
+    for (const ev of events) {
+      const key = laneKeyOf(ev)
+      let bucket = byLane.get(key)
+      if (!bucket) {
+        bucket = []
+        byLane.set(key, bucket)
+      }
+      bucket.push(ev)
+    }
+    // Same degenerate case the production rule has: no lanes at all → ask the
+    // whole-event fingerprint rather than inventing an answer.
+    if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon))
+
+    let maxPeriod = 0
+    let answered = 0
+    let vetoed = false
+    let answeredEvents = 0
+    let totalEvents = 0
+    let densestCount = -1
+    let densestAnswered = false
+    let heaviestAbstaining = 0
+    for (const laneEvents of byLane.values()) {
+      const p = detectPeriod(cycleFingerprints(laneEvents, horizon))
+      const n = laneEvents.length
+      totalEvents += n
+      // Ties go to "answered" only if an answering lane holds the maximum, so a
+      // tie between an answering and an abstaining lane does not refuse.
+      if (n > densestCount) {
+        densestCount = n
+        densestAnswered = p !== null
+      } else if (n === densestCount && p !== null) {
+        densestAnswered = true
+      }
+      if (p === null) {
+        vetoed = true
+        if (n > heaviestAbstaining) heaviestAbstaining = n
+        continue
+      }
+      answered++
+      answeredEvents += n
+      if (p > maxPeriod) maxPeriod = p
+    }
+
+    // BELOW THE CAP under `atCapOnly`, this IS the production rule — a null
+    // here is the signal that doubles the horizon, and suppressing it is what
+    // cost the first candidate 5 correct periods.
+    if (vetoed && rule.atCapOnly && horizon < cap) return null
+
+    if (answered === 0 || maxPeriod <= 0) return null
+
+    // THE EXTRA CLAUSES GUARD ABSTENTION'S ANSWER, so they apply only when a
+    // lane actually abstained. If every lane answered, this rule agreed with
+    // production and has no standing to overrule it.
+    //
+    // Measured, and it is why this gate exists: ungated, `minPeriod: 2` also
+    // refused the honest period-1 answer on documents where nothing abstained.
+    // Because a `null` here means "grow the horizon", those documents did not
+    // merely lose a guard — they were pushed to the 256-cycle cap. All 19
+    // period-1 documents changed state, 3 becoming fully aperiodic and 16
+    // keeping period 1 while flipping to at-cap. A clause meant to PREVENT the
+    // #1102 shape was manufacturing the #1104 one.
+    if (vetoed) {
+      if (rule.minPeriod !== undefined && maxPeriod < rule.minPeriod) return null
+      if (rule.minLaneShare !== undefined && answered / byLane.size < rule.minLaneShare) return null
+      if (rule.requireDensestLane && !densestAnswered) return null
+      if (
+        rule.minAnsweredEventShare !== undefined &&
+        totalEvents > 0 &&
+        answeredEvents / totalEvents < rule.minAnsweredEventShare
+      ) {
+        return null
+      }
+      if (
+        rule.maxAbstainingLaneShare !== undefined &&
+        totalEvents > 0 &&
+        heaviestAbstaining / totalEvents >= rule.maxAbstainingLaneShare
+      ) {
+        return null
+      }
+    }
+    return maxPeriod
+  }
+}
+
 /** Analyse one already-evaluated document through the production path. */
 export async function periodOfTracks(
   tracks: readonly SongTrack[],
+  detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null,
 ): Promise<Omit<PeriodVerdict, 'name' | 'ok' | 'error'>> {
   let events = 0
   const collect = trackCollector(tracks)
@@ -116,6 +310,7 @@ export async function periodOfTracks(
       events += evs.length
       return evs
     },
+    detectPeriodFn,
   })
   return {
     period: analysis.periodCycles,
@@ -127,7 +322,11 @@ export async function periodOfTracks(
 }
 
 /** Evaluate + analyse one document. */
-export async function periodOfDocument(code: string, name: string): Promise<PeriodVerdict> {
+export async function periodOfDocument(
+  code: string,
+  name: string,
+  detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null,
+): Promise<PeriodVerdict> {
   const r = await evalSongTracks(code)
   if (!r.ok) {
     return {
@@ -142,7 +341,7 @@ export async function periodOfDocument(code: string, name: string): Promise<Peri
     }
   }
   try {
-    return { name, ok: true, ...(await periodOfTracks(r.tracks)) }
+    return { name, ok: true, ...(await periodOfTracks(r.tracks, detectPeriodFn)) }
   } catch (e: unknown) {
     return {
       name,
@@ -157,11 +356,19 @@ export async function periodOfDocument(code: string, name: string): Promise<Peri
   }
 }
 
-/** Sweep the whole corpus, in corpus order. */
-export async function sweepCorpus(): Promise<PeriodVerdict[]> {
+/**
+ * Sweep the whole corpus, in corpus order.
+ *
+ * With no `detectPeriodFn` this is the production rule — the pinned baseline.
+ * Pass one to price a CANDIDATE rule over the same documents through the same
+ * loop, so the two sweeps differ in exactly one function.
+ */
+export async function sweepCorpus(
+  detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null,
+): Promise<PeriodVerdict[]> {
   const corpus = await loadCorpus()
   const out: PeriodVerdict[] = []
-  for (const { name, code } of corpus) out.push(await periodOfDocument(code, name))
+  for (const { name, code } of corpus) out.push(await periodOfDocument(code, name, detectPeriodFn))
   return out
 }
 
