@@ -107,6 +107,11 @@ describe('Song display period — corpus baseline (#1102)', () => {
         ...hist.map(([k, n]) => `  period ${k.padEnd(22)} ${n}`),
         `  aperiodic-at-cap ${evaluated.filter((v) => v.reachedCap).length}   (53 before the fix)`,
         `  period 1          ${evaluated.filter((v) => v.period === 1).length}   (21 before the fix)`,
+        // A document that produced NO events is not an aperiodic document — it is
+        // a document the sweep saw nothing of, and `analyzeSong` short-circuits it
+        // to a zero-cycle span. Reported separately so it can never be read as
+        // either a period or a regression.
+        `  silent (0 events)  ${evaluated.filter((v) => v.events === 0).length}`,
       ].join('\n'),
     )
 

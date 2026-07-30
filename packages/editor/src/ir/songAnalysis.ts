@@ -18,9 +18,17 @@
  * with rendered rows. `trackId`/`dollarPos` already carry IR-node provenance
  * (assigned by collect.ts), so this is reuse, not a parallel attribution path.
  *
- * Seek caveat (§7.4): patterns with RNG/state (`degrade`, `shuffle`, running
- * counters) have no clean loop — `detectPeriod` returns null and the horizon
- * falls back to the analyzed cap. Documented edge, not a bug.
+ * Seek caveat (§7.4): a pattern with no exact repeat has no clean loop —
+ * `detectPeriod` returns null and the horizon falls back to the analyzed cap.
+ *
+ * ⚠ THAT CLASS IS MUCH LARGER THAN THE RNG CASE THIS COMMENT USED TO NAME.
+ * Since the cycle fingerprint reads the event's whole value partition (#1102),
+ * any CONTINUOUSLY MODULATED control — `.cutoff(sine)`, a slow `gain` LFO —
+ * makes every cycle genuinely differ, and such a document is aperiodic in the
+ * only sense this function measures. Swept over 150 real tunes: 69 of the 142
+ * that evaluate land on the cap, up from 53. That is the true answer about the
+ * EVENTS; what the display should do with it is #1104, and it is a display
+ * question, not a reason to ask a narrower question about identity here.
  */
 
 import type { PatternIR } from './PatternIR'

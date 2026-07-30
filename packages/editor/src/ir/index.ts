@@ -40,6 +40,11 @@ export type {
   AnalyzeSongOptions,
 } from './songAnalysis'
 
+// Event identity (#1102) — exported so the NEXT consumer asking "are these two
+// events the same sound" finds the one answer instead of curating its own field
+// list, which is exactly how the period bug got in.
+export { eventValueKey } from './eventValueKey'
+
 // Serialization
 export { patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './serialize'
 
