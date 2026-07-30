@@ -935,6 +935,27 @@ function detectDisplayPeriodAtCap(events, horizon) {
   return maxPeriod;
 }
 __name(detectDisplayPeriodAtCap, "detectDisplayPeriodAtCap");
+function spanCoversEveryLane(events, period) {
+  const inSpan = /* @__PURE__ */ new Set();
+  const all = /* @__PURE__ */ new Set();
+  for (const ev of events) {
+    const key2 = laneKeyOf(ev);
+    all.add(key2);
+    const cycle = Math.floor(ev.begin);
+    if (Number.isFinite(cycle) && cycle >= 0 && cycle < period) inSpan.add(key2);
+  }
+  for (const key2 of all) if (!inSpan.has(key2)) return false;
+  return true;
+}
+__name(spanCoversEveryLane, "spanCoversEveryLane");
+function displayPeriodRule(events, horizon, cap, hasUnheardTrack) {
+  const period = horizon >= cap ? detectDisplayPeriodAtCap(events, horizon) : detectDisplayPeriod(events, horizon);
+  if (period === null) return null;
+  if (hasUnheardTrack && horizon < cap) return null;
+  if (!spanCoversEveryLane(events, period)) return null;
+  return period;
+}
+__name(displayPeriodRule, "displayPeriodRule");
 function computeSections(lanes, horizon) {
   if (horizon <= 0) return [];
   const signatureAt = /* @__PURE__ */ __name((cycle) => lanes.filter((l) => (l.onsetsByCycle[cycle] ?? 0) > 0).map((l) => l.laneKey).sort(), "signatureAt");
@@ -957,7 +978,7 @@ function computeSections(lanes, horizon) {
 }
 __name(computeSections, "computeSections");
 function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn) {
-  const periodOf = detectPeriodFn ?? (reachedCap ? detectDisplayPeriodAtCap : detectDisplayPeriod);
+  const periodOf = detectPeriodFn ?? ((evs, h) => displayPeriodRule(evs, h, reachedCap ? h : Number.POSITIVE_INFINITY, false));
   const lanes = accumulateLanes(events, horizon);
   const periodCycles = periodOf(events, horizon);
   const sections = computeSections(lanes, horizon);
@@ -985,7 +1006,7 @@ async function analyzeSong(ir, opts = {}) {
   const now2 = opts.now ?? defaultNow;
   const yieldFn = opts.yieldFn ?? defaultYield;
   const signal = opts.signal;
-  const periodRule = /* @__PURE__ */ __name((evs, h) => opts.detectPeriodFn ? opts.detectPeriodFn(evs, h) : h >= cap ? detectDisplayPeriodAtCap(evs, h) : detectDisplayPeriod(evs, h), "periodRule");
+  const periodRule = /* @__PURE__ */ __name((evs, h) => opts.detectPeriodFn ? opts.detectPeriodFn(evs, h) : displayPeriodRule(evs, h, cap, opts.hasUnheardTrack ? opts.hasUnheardTrack() : false), "periodRule");
   const events = [];
   let collectedTo = 0;
   let horizon = hint;
@@ -5248,6 +5269,22 @@ var _StrudelEngine = class _StrudelEngine {
       }
     }
     return out;
+  }
+  /**
+   * The capture keys of every pattern the last evaluate() registered — the SAME
+   * ids `getTimelineEvents` stamps on each hap as `trackId`, in the same order.
+   *
+   * Exists so a caller can tell "this track has not played yet" from "there is no
+   * such track" (#1107). Deriving that from the events alone is impossible: a
+   * track that has not sounded within the queried window contributes nothing to
+   * distinguish itself from one that does not exist. Reading the REGISTERED set
+   * is the only way to know the difference, and this is the one place that knows
+   * it — `songPatterns` is private and mirrors what the repl actually plays, so a
+   * `_`-muted track (never registered, `@strudel/core/repl.mjs:172-175`) is
+   * correctly absent and can never be waited on.
+   */
+  getSongTrackIds() {
+    return [...this.songPatterns.keys()];
   }
   /**
    * Returns per-track viz requests captured during the last evaluate() call.
@@ -38360,6 +38397,17 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    */
   getTimelineEvents(cycles) {
     return this.engine.getTimelineEvents?.(cycles) ?? [];
+  }
+  /**
+   * The capture keys behind those events (#1107) — read-through in the same
+   * shape, from the same engine, so the two can never describe different track
+   * sets. Lets the Song analysis tell "this track has not played yet" from
+   * "there is no such track", which is the difference between a period that
+   * describes the whole song and one that erases the tracks it has not heard.
+   * `[]` for a non-Strudel runtime, which correctly claims nothing.
+   */
+  getSongTrackIds() {
+    return this.engine.getSongTrackIds?.() ?? [];
   }
   /**
    * Backdrop viz requested by a non-underscore Strudel viz method

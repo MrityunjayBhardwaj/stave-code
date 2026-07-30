@@ -588,6 +588,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // ref-closure shape as getHapStreamRef; default returns [] until a runtime
   // attaches (non-Strudel runtimes never populate it).
   const getTimelineEventsRef = useRef<(cycles: number) => IREvent[]>(() => []);
+  // #1107 — the registered track ids behind those events. The song analysis
+  // needs both to tell "this track has not played yet" from "there is no such
+  // track"; default `[]` makes no claim, which is right for a runtime that has
+  // not attached or is not Strudel.
+  const getSongTrackIdsRef = useRef<() => string[]>(() => []);
   // #384/#385 — transport seek accessors for the full-song timeline. Same
   // ref-closure shape as getCycleRef so the registered element never
   // re-registers when the active runtime swaps. getSongPosition is the
@@ -627,6 +632,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             getHapStream?: () => HapStream | null;
             // #861 — evaluated timeline events for the eval-backed DISPLAY marks.
             getTimelineEvents?: (cycles: number) => IREvent[];
+            // #1107 — registered track ids behind those events.
+            getSongTrackIds?: () => string[];
             // #384/#385 — transport seek accessors (Strudel only).
             getSongPosition?: () => number | null;
             onSeek?: (cycle: number) => void;
@@ -649,6 +656,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       getCpsRef.current = s?.getCps ?? (() => null);
       getHapStreamRef.current = s?.getHapStream ?? (() => null);
       getTimelineEventsRef.current = s?.getTimelineEvents ?? (() => []);
+      getSongTrackIdsRef.current = s?.getSongTrackIds ?? (() => []);
       getSongPositionRef.current = s?.getSongPosition ?? (() => null);
       onSeekRef.current = s?.onSeek ?? (() => {});
       onRequestSnapshotRef.current = s?.onRequestSnapshot ?? (() => {});
@@ -692,6 +700,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           getCps={() => getCpsRef.current()}
           getHapStream={() => getHapStreamRef.current()}
           getTimelineEvents={(cycles) => getTimelineEventsRef.current(cycles)}
+          getSongTrackIds={() => getSongTrackIdsRef.current()}
           getSongPosition={() => getSongPositionRef.current()}
           onSeek={(cycle) => onSeekRef.current(cycle)}
           onRequestSnapshot={() => onRequestSnapshotRef.current()}

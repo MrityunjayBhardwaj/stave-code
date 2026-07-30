@@ -182,6 +182,14 @@ declare function structuralWalk(ir: PatternIR, nCycles: number): LaneSkeleton[];
  * lane, so there is nothing to borrow a period from at all. What the display
  * should do with them is #1105, and it is a display question, not a reason to
  * ask a narrower question about identity here.
+ *
+ * A DETECTED PERIOD CAN ALSO BE TOO SHORT TO BE THIS SONG'S (#1107). It can be
+ * true of everything the analysis has heard and still describe only part of the
+ * document — accepted before a track entered, or accepted with a span that
+ * excludes one — and either way the missing track draws as an empty, UNMARKED
+ * row, indistinguishable from silence. `displayPeriodRule` adds the two
+ * plausibility clauses that refuse those spans; swept, they move exactly the
+ * seven defective documents and take the at-cap figure 49 → 56.
  */
 
 /**
@@ -220,6 +228,18 @@ interface SongAnalysis {
  * Accumulate per-lane onset counts bucketed by integer cycle over
  * `[0, horizon)`. Lane order is first-seen (matching `groupEventsByTrack`).
  * Events whose `floor(begin)` lands outside `[0, horizon)` are ignored.
+ *
+ * ⚠ A LANE IS CREATED ONLY BY AN ONSET INSIDE THE WINDOW, so narrowing the
+ * window filters lane MEMBERSHIP and not merely the counts ([[P405]]). A track
+ * whose first onset is later than `horizon` does not go empty — it ceases to
+ * exist, and the display then rebuilds its row from the DOCUMENT's track set
+ * (#1098) without the silenced treatment a muted track gets, which is how a
+ * track playing thousands of notes came to look exactly like one playing none.
+ *
+ * `analyzeSong` re-accumulates over `[0, period)` when it accepts a period, so
+ * that is the call this matters at — and it is safe there BY THE INVARIANT, not
+ * by luck: `displayPeriodRule` refuses any period whose span leaves a known lane
+ * empty (#1107), so every lane provably has an onset in range.
  */
 declare function accumulateLanes(events: readonly IREvent[], horizon: number): LaneActivity[];
 /**
@@ -296,6 +316,42 @@ interface AnalyzeSongOptions {
      * pinned per-document baseline is the control arm proving it.
      */
     detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null;
+    /**
+     * "Does the document declare a track that has produced no onset yet?" — clause
+     * (a) of `displayPeriodRule`, asked of the CALLER because only the caller can
+     * answer it soundly.
+     *
+     * ── WHY THE CALLER OWNS IT, and it is not derived from `events` ─────────────
+     * The question needs two sets in ONE key space: what the document declares,
+     * and what has been heard. The events reaching `analyzeSong` are in the
+     * DISPLAY lane space — production remaps every hap through `laneKeyForHap`
+     * source containment (`MusicalTimeline.tsx`) so analysis lanes line up with
+     * rendered rows ([[PV175]]) — and that space cannot answer it. Measured over
+     * the corpus: 20 of the 78 documents with structural anchors have an anchor key
+     * that NEVER receives an event in 256 cycles (a track whose haps carry no
+     * `loc`, or whose `loc` precedes its own statement). There, "unheard" does not
+     * mean a track that has yet to enter; it means a key nothing can ever land on,
+     * so the clause would be waiting for something that does not exist.
+     *
+     * NOT a cost argument, which is worth saying because that was the first guess
+     * and measurement refuted it: priced against its own control arm the structural
+     * clause takes documents collected to the full cap from 71 to 85, +14, and the
+     * capture-space clause costs +13 by construction (the 7 it moves, plus the 6
+     * documents with a registered track that never sounds). The work is the same.
+     * What differs is whether the question has an answer.
+     *
+     * In the CAPTURE key space the engine stamps — one key per registered pattern —
+     * an unheard key can only mean a track that genuinely never sounds, which is 6
+     * documents, and all 6 keep their exact period because the clause is bounded to
+     * `horizon < cap`. Measured past the cap too: all 9 such tracks are silent
+     * through 1024 cycles, so none is a late entry the bound hides.
+     *
+     * So the caller reads the raw capture keys BEFORE its own remap and compares
+     * them against the engine's registered set. Absent, the clause is inert and
+     * the rule is exactly the #1104 one — a deliberate default, since a caller
+     * that cannot name the document's tracks has nothing to claim about them.
+     */
+    hasUnheardTrack?: () => boolean;
 }
 /**
  * Analyze the whole song off the in-memory IR. Collects a progressive horizon
@@ -746,6 +802,20 @@ declare class StrudelEngine implements LiveCodingEngine {
      * `trackSchedulers` — the two frames coincide only while `transportOffset` is 0.
      */
     getTimelineEvents(cycles: number): IREvent[];
+    /**
+     * The capture keys of every pattern the last evaluate() registered — the SAME
+     * ids `getTimelineEvents` stamps on each hap as `trackId`, in the same order.
+     *
+     * Exists so a caller can tell "this track has not played yet" from "there is no
+     * such track" (#1107). Deriving that from the events alone is impossible: a
+     * track that has not sounded within the queried window contributes nothing to
+     * distinguish itself from one that does not exist. Reading the REGISTERED set
+     * is the only way to know the difference, and this is the one place that knows
+     * it — `songPatterns` is private and mirrors what the repl actually plays, so a
+     * `_`-muted track (never registered, `@strudel/core/repl.mjs:172-175`) is
+     * correctly absent and can never be waited on.
+     */
+    getSongTrackIds(): string[];
     /**
      * Returns per-track viz requests captured during the last evaluate() call.
      * Maps track keys ("$0", "$1", "d1") to viz descriptor IDs ("pianoroll", "scope").
@@ -6580,6 +6650,15 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
      * comes from here, where Strudel has already resolved it (PV174).
      */
     getTimelineEvents(cycles: number): IREvent[];
+    /**
+     * The capture keys behind those events (#1107) — read-through in the same
+     * shape, from the same engine, so the two can never describe different track
+     * sets. Lets the Song analysis tell "this track has not played yet" from
+     * "there is no such track", which is the difference between a period that
+     * describes the whole song and one that erases the tracks it has not heard.
+     * `[]` for a non-Strudel runtime, which correctly claims nothing.
+     */
+    getSongTrackIds(): string[];
     /**
      * Backdrop viz requested by a non-underscore Strudel viz method
      * (e.g. `.scope()`, `.pianoroll()`) during the last evaluate, or `null`.

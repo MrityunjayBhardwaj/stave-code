@@ -275,6 +275,13 @@ interface StrudelEditorClientProps {
      */
     getTimelineEvents: (cycles: number) => IREvent[];
     /**
+     * #1107 — the capture keys of every registered track, so the song analysis
+     * can tell "this track has not played yet" from "there is no such track".
+     * Same closure-bound shape; `[]` for a non-Strudel runtime, which correctly
+     * makes no claim about the document's tracks.
+     */
+    getSongTrackIds: () => string[];
+    /**
      * #384/#385 — transport seek accessors for the full-song timeline.
      * `getSongPosition` is the transport-offset-aware clock; `onSeek`
      * seeks to an absolute song cycle. Closure-bound through `runtimesRef`
@@ -1528,6 +1535,10 @@ export default function StrudelEditorClient({
       // Closure-bound through runtimesRef like getHapStream.
       getTimelineEvents: (cycles: number) =>
         runtimesRef.current.get(accessorFid)?.getTimelineEvents?.(cycles) ?? [],
+      // #1107 — the registered track ids, read from the same runtime as the
+      // events above so the two can never describe different track sets.
+      getSongTrackIds: () =>
+        runtimesRef.current.get(accessorFid)?.getSongTrackIds?.() ?? [],
       // #384/#385 — transport seek accessors. Closure-bound through
       // runtimesRef like getHapStream; seekTo is fire-and-forget here (the
       // full-song ruler doesn't await the re-eval — clock + playhead reflect
@@ -1698,6 +1709,9 @@ export default function StrudelEditorClient({
             runtimesRef.current
               .get(accessorFid)
               ?.getTimelineEvents?.(cycles) ?? [],
+          // #1107 — registered track ids (same shape as the builder above).
+          getSongTrackIds: () =>
+            runtimesRef.current.get(accessorFid)?.getSongTrackIds?.() ?? [],
           // #384/#385 — transport seek accessors (same shape as the
           // useEffect builder above).
           getSongPosition: () =>
