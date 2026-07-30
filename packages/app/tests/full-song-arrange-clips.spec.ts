@@ -85,30 +85,68 @@ test('arrange song renders one lane split into read-only clips (no longer blank)
   // (2) The arm boundary renders as a clip border — the brightest vertical line
   //     in the lane band sits at cycle 2 of 4 (x ≈ 0.5·W). This proves the
   //     two arms became two clips through the real collect → scene → draw path.
-  const borderFrac = await page.locator('[data-full-song-canvas]').evaluate((el) => {
+  //
+  //     ⚠ THE POSITION IS ASSERTED LAST, AND ONLY AFTER A SIGNAL IS PROVEN TO
+  //     EXIST. An argmax over a uniform column profile returns the scan's lower
+  //     bound — a well-formed coordinate that cannot be told apart from a real
+  //     extremum. This assertion used to be the position alone, and when the
+  //     display span collapsed to one cycle it measured `0.0022 = 2/W` and
+  //     failed with "the border is in the wrong place". It was not: there was no
+  //     border at all, one clip spanned the full width, and the real defect was
+  //     two layers upstream in period detection (#1102). A whole session's worth
+  //     of framing named the renderer because `0.002` looks like a coordinate.
+  //     So the profile is returned whole, and its SHAPE is asserted first.
+  const profile = await page.locator('[data-full-song-canvas]').evaluate((el) => {
     const c = el as HTMLCanvasElement
     const ctx = c.getContext('2d')!
     const W = c.width
     const yBand = Math.max(1, Math.floor(c.height * 0.12)) // the top (only) lane band
     const img = ctx.getImageData(0, 0, W, yBand).data
-    let best = -1
-    let bestX = -1
-    for (let x = 2; x < W - 2; x++) {
+    const col: number[] = []
+    for (let x = 0; x < W; x++) {
       let sum = 0
       for (let y = 0; y < yBand; y++) {
         const i = (y * W + x) * 4
         sum += img[i] + img[i + 1] + img[i + 2]
       }
-      if (sum > best) {
-        best = sum
+      col.push(sum)
+    }
+    let best = -1
+    let bestX = -1
+    for (let x = 2; x < W - 2; x++) {
+      if (col[x] > best) {
+        best = col[x]
         bestX = x
       }
     }
-    return bestX / W
+    const sorted = [...col].sort((a, b) => a - b)
+    // an EDGE strictly inside the scanned range — the border itself, as opposed
+    // to the two edges the lane's own outline always contributes at x=0 and x=W-1
+    let interiorEdges = 0
+    for (let x = 3; x < W - 2; x++) if (col[x] !== col[x - 1]) interiorEdges++
+    return {
+      borderFrac: bestX / W,
+      peak: best,
+      median: sorted[Math.floor(sorted.length / 2)],
+      distinctValues: new Set(col).size,
+      interiorEdges,
+    }
   })
-  // Cycle 2 of 4 = 0.5; allow a small tolerance for the 1px line + DPR rounding.
-  expect(borderFrac).toBeGreaterThan(0.47)
-  expect(borderFrac).toBeLessThan(0.53)
+
+  // (2a) THERE IS A SIGNAL. Without these, (2b) cannot tell "drawn in the wrong
+  //      place" from "never drawn", and its failure message names the wrong
+  //      subsystem.
+  expect(profile.distinctValues, `flat column profile — nothing was drawn: ${JSON.stringify(profile)}`)
+    .toBeGreaterThan(1)
+  expect(profile.interiorEdges, `no interior edge — one clip spans the whole width: ${JSON.stringify(profile)}`)
+    .toBeGreaterThan(0)
+  expect(profile.peak, `peak is not distinguishable from the band: ${JSON.stringify(profile)}`)
+    .toBeGreaterThan(profile.median)
+
+  // (2b) …and it is in the right place. Cycle 2 of 4 = 0.5; small tolerance for
+  //      the 1px line + DPR rounding.
+  expect(profile.borderFrac).toBeGreaterThan(0.47)
+  expect(profile.borderFrac).toBeLessThan(0.53)
 
   await page.screenshot({ path: 'test-results/arrange-clips.png' })
 

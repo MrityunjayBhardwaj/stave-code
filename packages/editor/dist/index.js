@@ -781,6 +781,37 @@ function buildNodeLocIndex(ir) {
 }
 __name(buildNodeLocIndex, "buildNodeLocIndex");
 
+// src/ir/eventValueKey.ts
+var VALUE_SLOTS = [
+  "note",
+  "freq",
+  "s",
+  "type",
+  "gain",
+  "velocity",
+  "color"
+];
+function stableValue(v) {
+  if (v === void 0) return "~";
+  try {
+    return JSON.stringify(v, (_k, x) => typeof x === "function" ? "[fn]" : x) ?? "~";
+  } catch {
+    return "[unserializable]";
+  }
+}
+__name(stableValue, "stableValue");
+function eventValueKey(ev) {
+  const parts = [];
+  const rec = ev;
+  for (const slot of VALUE_SLOTS) parts.push(`${slot}=${stableValue(rec[slot])}`);
+  const params = ev.params;
+  if (params) {
+    for (const k of Object.keys(params).sort()) parts.push(`${k}=${stableValue(params[k])}`);
+  }
+  return parts.join(",");
+}
+__name(eventValueKey, "eventValueKey");
+
 // src/ir/songAnalysis.ts
 function laneKeyOf(ev) {
   return ev.trackId ?? ev.s ?? "$default";
@@ -810,8 +841,7 @@ function cycleFingerprints(events, horizon) {
     const cycle = Math.floor(ev.begin);
     if (!Number.isFinite(cycle) || cycle < 0 || cycle >= horizon) continue;
     const offset = Math.round((ev.begin - cycle) * 1e6);
-    const note = ev.note ?? "";
-    perCycle[cycle].push(`${laneKeyOf(ev)}@${offset}:${note}`);
+    perCycle[cycle].push(`${laneKeyOf(ev)}@${offset}:${eventValueKey(ev)}`);
   }
   return perCycle.map((tokens) => tokens.sort().join("|"));
 }

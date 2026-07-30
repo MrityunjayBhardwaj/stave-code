@@ -12,8 +12,14 @@ export type NormalizedHap = IREvent
 
 /** Fields the Strudel hap maps to dedicated IREvent slots. Anything in
  *  `hap.value` outside this set flows through as `params` so engine-
- *  specific extras (cutoff, delay, pan, room, …) survive into the IR. */
-const KNOWN_VALUE_FIELDS = new Set([
+ *  specific extras (cutoff, delay, pan, room, …) survive into the IR.
+ *
+ *  EXPORTED so `eventValueKey` can be pinned against it: that key claims to
+ *  read the WHOLE value partition, and the only thing making the claim true is
+ *  that these two lists cannot drift apart unnoticed. Adding a slot here
+ *  without adding it there silently narrows every consumer that asks "are
+ *  these the same sound" — which is the defect the key was written to end. */
+export const KNOWN_VALUE_FIELDS = new Set([
   'note',
   'n',
   'freq',
