@@ -41,7 +41,7 @@ import {
   type VoiceOrderByLane,
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks } from './musicalTimeline/timelineMarks'
-import { sourceTrackOrder } from './musicalTimeline/trackOrder'
+import { declaredTracks } from './musicalTimeline/trackOrder'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import {
   loadTimelineCamera,
@@ -653,7 +653,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // bare ref), which is exactly the case the eval-backed lanes cover. Without it
   // the scene can only append those lanes after the IR ones, so a signal written
   // first renders last.
-  const trackOrder = useMemo(() => sourceTrackOrder(props.ir ?? null), [props.ir])
+  const trackOrder = useMemo(() => declaredTracks(props.ir ?? null), [props.ir])
   // Per-lane voice sub-row order is pinned first-seen across re-evals (#480) so
   // reordering clips in time doesn't reshuffle the instrument rows — the SAME
   // first-seen stability `stableTrackOrder` gives the top-level lanes, one level

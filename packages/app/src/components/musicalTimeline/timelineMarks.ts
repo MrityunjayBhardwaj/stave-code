@@ -12,6 +12,7 @@
 import type { IREvent, PatternIR } from '@stave/editor'
 import { structuralWalk } from '@stave/editor'
 import { extractPitch } from './pitch'
+import { containingAnchor } from './laneIdentity'
 import {
   downsampleMarksToCap,
   EMPTY_MARKS,
@@ -279,15 +280,10 @@ export function laneKeyForHap(
   ev: IREvent,
   anchors: ReadonlyArray<readonly [string, number]>,
 ): string {
-  const start = ev.loc?.[0]?.start
-  let hit: string | undefined
-  if (typeof start === 'number' && Number.isFinite(start)) {
-    for (const [key, pos] of anchors) {
-      if (pos <= start) hit = key
-      else break // ascending → no later anchor can be ≤ start
-    }
-  }
-  return hit ?? evalTrackIdToLaneKey(ev.trackId)
+  // The containment scan itself lives in `laneIdentity` — one definition, shared
+  // with the scene builder's declared-row reconciliation (#1101), so the two
+  // cannot answer "which statement owns this offset" differently.
+  return containingAnchor(anchors, ev.loc?.[0]?.start) ?? evalTrackIdToLaneKey(ev.trackId)
 }
 
 /**
