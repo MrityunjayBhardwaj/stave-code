@@ -956,9 +956,10 @@ function computeSections(lanes, horizon) {
   return sections;
 }
 __name(computeSections, "computeSections");
-function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn = detectDisplayPeriod) {
+function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn) {
+  const periodOf = detectPeriodFn ?? (reachedCap ? detectDisplayPeriodAtCap : detectDisplayPeriod);
   const lanes = accumulateLanes(events, horizon);
-  const periodCycles = detectPeriodFn(events, horizon);
+  const periodCycles = periodOf(events, horizon);
   const sections = computeSections(lanes, horizon);
   return { periodCycles, horizonCycles: horizon, lanes, sections, reachedCap };
 }

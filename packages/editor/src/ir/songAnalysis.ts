@@ -24,11 +24,20 @@
  * ⚠ THAT CLASS IS MUCH LARGER THAN THE RNG CASE THIS COMMENT USED TO NAME.
  * Since the cycle fingerprint reads the event's whole value partition (#1102),
  * any CONTINUOUSLY MODULATED control — `.cutoff(sine)`, a slow `gain` LFO —
- * makes every cycle genuinely differ, and such a document is aperiodic in the
- * only sense this function measures. Swept over 150 real tunes: 69 of the 142
- * that evaluate land on the cap, up from 53. That is the true answer about the
- * EVENTS; what the display should do with it is #1104, and it is a display
- * question, not a reason to ask a narrower question about identity here.
+ * makes every cycle genuinely differ, and such a LANE is aperiodic in the only
+ * sense this module measures. Swept over 150 real tunes, that took documents
+ * landing on the cap from 53 to 69 of the 142 that evaluate.
+ *
+ * A lane being aperiodic no longer makes the SONG aperiodic (#1104). Once the
+ * progressive horizon is exhausted such lanes ABSTAIN and the span comes from
+ * the lanes that do loop, which is #488's phasing rule applied to the case the
+ * veto used to cover — see `detectDisplayPeriodAtCap`. That returned 20 of the
+ * 69 to a real period, so the swept figure is now 49.
+ *
+ * Those 49 are aperiodic under every rule measured — 32 of them have a single
+ * lane, so there is nothing to borrow a period from at all. What the display
+ * should do with them is #1105, and it is a display question, not a reason to
+ * ask a narrower question about identity here.
  */
 
 import type { PatternIR } from './PatternIR'
@@ -345,12 +354,18 @@ export function analyzeEvents(
   // at-cap document reporting the production rule's period while the candidate
   // rule was credited with it — silently, and on exactly the population an
   // aperiodic-display change is about.
-  detectPeriodFn: (events: readonly IREvent[], horizon: number) => number | null = detectDisplayPeriod,
+  //
+  // The DEFAULT follows `reachedCap` rather than being fixed, so this function's
+  // two arguments cannot be set into a contradiction: a caller that says it hit
+  // the cap gets the cap's rule (#1104). `analyzeSong` always passes its own
+  // rule explicitly, so this only governs direct callers.
+  detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null,
 ): SongAnalysis {
+  const periodOf = detectPeriodFn ?? (reachedCap ? detectDisplayPeriodAtCap : detectDisplayPeriod)
   const lanes = accumulateLanes(events, horizon)
   // Per-lane MAX, not the global combined period — differing-length tracks
   // phase and the view spans the longest single loop (#488, see detectDisplayPeriod).
-  const periodCycles = detectPeriodFn(events, horizon)
+  const periodCycles = periodOf(events, horizon)
   const sections = computeSections(lanes, horizon)
   return { periodCycles, horizonCycles: horizon, lanes, sections, reachedCap }
 }
@@ -488,13 +503,8 @@ export async function analyzeSong(
     // length tracks phase; the view spans the longest one. `null` until EVERY
     // active lane has looped at least twice within the horizon, so we keep
     // growing until the slowest lane resolves (or the cap forces aperiodic).
-    // At the cap the veto has nowhere left to grow, so lanes with no loop of
-    // their own abstain rather than sending the whole song to a 256-cycle span
-    // (#1104). Below the cap the veto stands — it is what buys the next doubling.
-    // NOT `opts.detectPeriodFn?.(…) ?? fallback` — `null` is this function's
-    // MEANINGFUL answer ("no period"), not an absent one, so `??` would discard
-    // an injected rule's verdict exactly when it said aperiodic and silently
-    // measure the production rule instead.
+    // `periodRule` picks the veto below the cap and abstention at it (#1104);
+    // its own doc carries why. Stated once, there.
     const period = periodRule(events, horizon)
     if (period !== null) {
       // Trim the analysis to exactly ONE display loop. The full-song view spans

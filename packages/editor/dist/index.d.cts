@@ -168,11 +168,20 @@ declare function structuralWalk(ir: PatternIR, nCycles: number): LaneSkeleton[];
  * ⚠ THAT CLASS IS MUCH LARGER THAN THE RNG CASE THIS COMMENT USED TO NAME.
  * Since the cycle fingerprint reads the event's whole value partition (#1102),
  * any CONTINUOUSLY MODULATED control — `.cutoff(sine)`, a slow `gain` LFO —
- * makes every cycle genuinely differ, and such a document is aperiodic in the
- * only sense this function measures. Swept over 150 real tunes: 69 of the 142
- * that evaluate land on the cap, up from 53. That is the true answer about the
- * EVENTS; what the display should do with it is #1104, and it is a display
- * question, not a reason to ask a narrower question about identity here.
+ * makes every cycle genuinely differ, and such a LANE is aperiodic in the only
+ * sense this module measures. Swept over 150 real tunes, that took documents
+ * landing on the cap from 53 to 69 of the 142 that evaluate.
+ *
+ * A lane being aperiodic no longer makes the SONG aperiodic (#1104). Once the
+ * progressive horizon is exhausted such lanes ABSTAIN and the span comes from
+ * the lanes that do loop, which is #488's phasing rule applied to the case the
+ * veto used to cover — see `detectDisplayPeriodAtCap`. That returned 20 of the
+ * 69 to a real period, so the swept figure is now 49.
+ *
+ * Those 49 are aperiodic under every rule measured — 32 of them have a single
+ * lane, so there is nothing to borrow a period from at all. What the display
+ * should do with them is #1105, and it is a display question, not a reason to
+ * ask a narrower question about identity here.
  */
 
 /**
