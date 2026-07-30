@@ -61,6 +61,23 @@
  * single lane, so there is no other lane to borrow a period from at all. They are
  * a DISPLAY question, not a detection one, and they are #1105.
  *
+ * ── AND THEN A FOURTH ERA (#1107): 49 → 56, A RISE ON PURPOSE ────────────────
+ * Seven documents were accepting a span that left a whole track drawing empty and
+ * unmarked. Two mechanisms, and the difference decided the fix: three had the
+ * events and lost the lane to `accumulateLanes(events, period)` narrowing
+ * MEMBERSHIP ([[P405]]); four accepted a period before the track had ever sounded
+ * — `0/-Hx1rNCmeyD8` reads period 1 at horizon 8 while its other six tracks enter
+ * at cycles 16, 32, 56, 95, 128 and 159 — so no post-hoc repair could reach them,
+ * their events were never collected. `displayPeriodRule`'s two plausibility
+ * clauses refuse both, moving EXACTLY those seven and nothing else, every one
+ * recovering its full lane set (1→7 ×3, 2→4, 5→6, 3→5 ×2 = 25 lanes).
+ *
+ * Three of the seven are periods #1104 recovered. They are given back
+ * deliberately: a span that hides 98.6% of a document's onsets is a loop claim
+ * the document does not support, and #1105 already made the aperiodic display an
+ * honest one. Both clauses test whether the ANSWER is plausible, never which
+ * lanes answered — the family the abstention sibling measured and refused.
+ *
  * ── HOW TO RE-BASELINE, deliberately awkward ─────────────────────────────────
  *   UPDATE_SONG_PERIOD_BASELINE=1 pnpm --filter @stave/app exec vitest run \
  *     tests/parity-corpus/song-period-sweep.test.ts
@@ -125,11 +142,15 @@ describe('Song display period — corpus baseline (#1102)', () => {
         '',
         `─── Song display period, ${evaluated.length}/${verdicts.length} documents evaluated ───`,
         ...hist.map(([k, n]) => `  period ${k.padEnd(22)} ${n}`),
-        // Annotated with the WHOLE history, because there are now three eras and a
+        // Annotated with the WHOLE history, because there are now four eras and a
         // single "before the fix" number silently means the wrong one: 53 was
         // before #1102 made event identity total, 69 was after it, 49 is after
-        // #1104 let lanes abstain at the cap. The remaining 49 are #1105.
-        `  aperiodic-at-cap ${evaluated.filter((v) => v.reachedCap).length}   (53 pre-#1102 → 69 post-#1102 → 49 post-#1104; the rest is #1105)`,
+        // #1104 let lanes abstain at the cap, and 56 is after #1107 refused the
+        // seven spans that hid a whole track. That last move is a rise on purpose —
+        // three of the seven are periods #1104 recovered, given back because a span
+        // excluding a track is a loop claim the document does not support, and
+        // #1105 already made the aperiodic display an honest one.
+        `  aperiodic-at-cap ${evaluated.filter((v) => v.reachedCap).length}   (53 pre-#1102 → 69 post-#1102 → 49 post-#1104 → 56 post-#1107)`,
         `  period 1          ${evaluated.filter((v) => v.period === 1).length}   (21 pre-#1102 → 19 post-#1102, unmoved by #1104)`,
         // A document that produced NO events is not an aperiodic document — it is
         // a document the sweep saw nothing of, and `analyzeSong` short-circuits it
@@ -144,6 +165,25 @@ describe('Song display period — corpus baseline (#1102)', () => {
     // calibration, so the two arms must agree about who is missing.
     expect(verdicts.filter((v) => !v.ok).map((v) => v.name).sort()).toEqual(EVAL_FAILURES)
     expect(evaluated.length).toBe(142)
+
+    // #1107 — AN INVARIANT, ASSERTED SEPARATELY FROM THE PINNED ROWS, because a
+    // re-baseline must not be able to accept it. A track that sounded inside the
+    // analysed horizon and is still missing from `analysis.lanes` has not gone
+    // empty, it has ceased to exist ([[P405]]): the display rebuilds its row from
+    // the document (#1098) and draws it with no content and no silenced marking,
+    // so a track playing thousands of notes looks exactly like one playing none.
+    // Counted at `accumulateLanes`' own boundary rather than derived from the rule
+    // that prevents it, and it names the documents when it fails.
+    //
+    // ITS REACH IS HALF THE CLASS, and that is measured rather than hoped for:
+    // breaking the span clause turns it red on exactly `-F1MqbcpcByv: 1`,
+    // `19FzyPQc7bcR: 2`, `3Xv8ssjN67qW: 2`, while breaking the UNHEARD-TRACK
+    // clause leaves it green and reddens the pinned rows below instead. That is
+    // not a hole in the gate — a document that converged before its other tracks
+    // entered never collected their events, so nothing at this boundary can see
+    // them. The other half is guarded by those pinned rows and by
+    // `songAnalysis.test.ts`'s composed-loop arm.
+    expect(evaluated.filter((v) => v.lostLanes > 0).map((v) => `${v.name}: ${v.lostLanes}`)).toEqual([])
 
     const expected: Record<string, BaselineRow> = JSON.parse(fs.readFileSync(BASELINE, 'utf8'))
     // Per-document, so a failure NAMES the movers rather than reporting a

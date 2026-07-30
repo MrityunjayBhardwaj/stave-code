@@ -10,6 +10,7 @@ import {
   computeSections,
   analyzeEvents,
   analyzeSong,
+  displayPeriodRule,
   laneKeyOf,
 } from '../songAnalysis'
 
@@ -358,4 +359,101 @@ describe('analyzeSong (budgeted progressive horizon)', () => {
   // queryArc hap stream (MusicalTimeline.tsx). The analysis logic is covered by
   // the injected-collector arms above; the eval wiring is covered end-to-end by
   // the app's `full-song-analysis-eval` e2e.
+})
+
+describe('displayPeriodRule (#1107 — a period that leaves a track empty is not this song\'s loop)', () => {
+  /** A lane that repeats every `p` cycles, entering at `from`. */
+  const lane = (key: string, p: number, from: number, to: number): IREvent[] => {
+    const out: IREvent[] = []
+    for (let c = from; c < to; c++) out.push(ev(c, key, c % p))
+    return out
+  }
+
+  // ── clause (b): the accepted span must contain every lane it knows about ──
+  //
+  // A lane that ANSWERS the period question always has an onset inside the span:
+  // its fingerprints repeat with its own period q, the span is the max over
+  // answering lanes so q <= span, and a repeating non-empty lane therefore sounds
+  // somewhere in [0, q). So the clause can only ever fire on an ABSTAINING lane —
+  // which means only at the cap, since below it an abstaining lane still vetoes.
+  // The corpus agrees exactly: the clause moves 0 documents below the cap and 3 at it.
+  it('a late-entering lane abstains, so below the cap the veto refuses first', () => {
+    const events = [...lane('early', 4, 0, 64), ...lane('late', 4, 4, 64)]
+    expect(detectDisplayPeriod(events, 64)).toBeNull()
+    expect(displayPeriodRule(events, 64, 256, false)).toBeNull()
+  })
+
+  it('refuses AT the cap, where abstention would otherwise ship the span', () => {
+    const events = [...lane('early', 4, 0, 256), ...lane('late', 4, 4, 256)]
+    // the at-cap combine rule answers 4 on its own — `late` abstains and phases
+    expect(detectDisplayPeriodAtCap(events, 256)).toBe(4)
+    // …but a 4-cycle span never reaches `late`, whose first onset is cycle 4
+    expect(displayPeriodRule(events, 256, 256, false)).toBeNull()
+  })
+
+  it('accepts at the cap when the span does reach every lane', () => {
+    const events = [...lane('early', 4, 0, 256), ...lane('late', 2, 0, 256)]
+    expect(displayPeriodRule(events, 256, 256, false)).toBe(4)
+  })
+
+  // ── clause (a): an unheard declared track blocks acceptance while it can grow ──
+  it('refuses a period while the caller reports an unheard track', () => {
+    const events = lane('drums', 1, 0, 8)
+    expect(displayPeriodRule(events, 8, 256, false)).toBe(1)
+    expect(displayPeriodRule(events, 8, 256, true)).toBeNull()
+  })
+
+  it('lets an unheard track through AT the cap, so a silent track cannot stall forever', () => {
+    const events = lane('drums', 1, 0, 256)
+    expect(displayPeriodRule(events, 256, 256, true)).toBe(1)
+  })
+
+  // ── the composed loop: what the corpus documents actually do ──
+  it('a track entering after the accepted period stops being erased from the analysis', async () => {
+    // `bass` first sounds at cycle 8, so period 1 is confirmable at horizon 8 and
+    // ships a one-cycle view with `bass` absent from `lanes` ENTIRELY — not empty,
+    // gone — which is the defect: the row is then rebuilt from the document and
+    // draws unmarked. This is `0/-Hx1rNCmeyD8`'s shape in miniature.
+    const all = [...lane('drums', 1, 0, 256), ...lane('bass', 1, 8, 256)]
+    const collect = (a: number, b: number) => all.filter((e) => e.begin >= a && e.begin < b)
+
+    const before = await analyzeSong(null, { yieldFn: async () => {}, collectFn: collect })
+    expect(before.periodCycles).toBe(1)
+    expect(before.lanes.map((l) => l.laneKey)).toEqual(['drums'])
+
+    const declared = ['drums', 'bass']
+    const heard = new Set<string>()
+    const after = await analyzeSong(null, {
+      yieldFn: async () => {},
+      collectFn: (a, b) => {
+        const evs = collect(a, b)
+        for (const e of evs) if (e.trackId !== undefined) heard.add(e.trackId)
+        return evs
+      },
+      hasUnheardTrack: () => declared.some((id) => !heard.has(id)),
+    })
+    expect(after.lanes.map((l) => l.laneKey).sort()).toEqual(['bass', 'drums'])
+    // Honest outcome, and the one the corpus documents take: a track with a
+    // silent intro never repeats inside the horizon, so the song has no loop —
+    // it is drawn aperiodic (#1105) with every track present, rather than as a
+    // one-cycle loop with six of seven tracks erased.
+    expect(after.periodCycles).toBeNull()
+    expect(after.reachedCap).toBe(true)
+  })
+
+  it('every shipped lane has an onset inside the span (what accumulateLanes relies on)', async () => {
+    // `b` enters at cycle 4, exactly the span the at-cap combine rule would
+    // accept — so WITHOUT clause (b) this analysis ships one lane where the
+    // document has two, which is the whole defect. Both assertions are load-
+    // bearing: the count catches the erasure, the sum catches an empty row.
+    const all = [...lane('a', 4, 0, 256), ...lane('b', 4, 4, 256)]
+    const a = await analyzeSong(null, {
+      yieldFn: async () => {},
+      collectFn: (x, y) => all.filter((e) => e.begin >= x && e.begin < y),
+    })
+    expect(a.lanes.map((l) => l.laneKey).sort()).toEqual(['a', 'b'])
+    for (const l of a.lanes) {
+      expect(l.onsetsByCycle.reduce((sum, n) => sum + n, 0)).toBeGreaterThan(0)
+    }
+  })
 })

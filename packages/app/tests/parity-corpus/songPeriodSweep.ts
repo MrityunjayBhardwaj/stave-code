@@ -75,6 +75,14 @@ export interface PeriodVerdict {
   reachedCap: boolean
   /** distinct lane keys the analysis produced. */
   lanes: number
+  /**
+   * Declared tracks that SOUNDED within the analysed horizon and are still
+   * absent from `analysis.lanes` — the [[P405]] loss, counted at the boundary it
+   * happens at rather than inferred from the rule that now prevents it (#1107).
+   * An invariant, always 0; never pinned in the baseline, because a re-baseline
+   * must not be able to accept it.
+   */
+  lostLanes: number
   /** total events collected over the analysed horizon. */
   events: number
 }
@@ -301,6 +309,13 @@ export async function periodOfTracks(
 ): Promise<Omit<PeriodVerdict, 'name' | 'ok' | 'error'>> {
   let events = 0
   const collect = trackCollector(tracks)
+  // #1107 — the presence clause's two sides, both in the CAPTURE key space, which
+  // is the space production asks it in too. Here `tracks` IS `songPatterns`
+  // mirrored (`evalSongTracks`), and this collector does not remap, so expected
+  // and heard share one vocabulary by construction — the same arrangement
+  // `MusicalTimeline` reaches by recording raw keys before its remap.
+  const declared = tracks.map((t) => t.trackId)
+  const heard = new Set<string>()
   const analysis = await analyzeSong(null, {
     // no yield: this is a batch sweep, not a frame budget. The yield primitive is
     // injectable precisely so the slicing logic stays deterministic under test.
@@ -308,15 +323,19 @@ export async function periodOfTracks(
     collectFn: (a, b) => {
       const evs = collect(a, b)
       events += evs.length
+      for (const ev of evs) if (ev.trackId !== undefined) heard.add(ev.trackId)
       return evs
     },
     detectPeriodFn,
+    hasUnheardTrack: () => declared.some((id) => !heard.has(id)),
   })
+  const shipped = new Set(analysis.lanes.map((l) => l.laneKey))
   return {
     period: analysis.periodCycles,
     span: analysis.periodCycles ?? analysis.horizonCycles,
     reachedCap: analysis.reachedCap,
     lanes: analysis.lanes.length,
+    lostLanes: [...heard].filter((id) => !shipped.has(id)).length,
     events,
   }
 }
@@ -337,6 +356,7 @@ export async function periodOfDocument(
       span: 0,
       reachedCap: false,
       lanes: 0,
+      lostLanes: 0,
       events: 0,
     }
   }
@@ -351,6 +371,7 @@ export async function periodOfDocument(
       span: 0,
       reachedCap: false,
       lanes: 0,
+      lostLanes: 0,
       events: 0,
     }
   }

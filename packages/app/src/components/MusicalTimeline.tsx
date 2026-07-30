@@ -94,6 +94,13 @@ export interface MusicalTimelineProps {
    * view falls back to IR-collected marks (pre-eval behaviour).
    */
   readonly getTimelineEvents?: (cycles: number) => IREvent[]
+  /**
+   * #1107 — the capture keys of every track the engine registered, the same ids
+   * `getTimelineEvents` stamps as `trackId`. Lets the analysis refuse a period
+   * accepted before a declared track has been heard at all. Optional: without it
+   * the analysis makes no claim about tracks it has not seen (the #1104 rule).
+   */
+  readonly getSongTrackIds?: () => string[]
   /** Drawer open state — forwarded to FullSongTimeline to gate its playhead
    *  rAF loop (Trap NEW-1). */
   readonly getDrawerOpen: () => boolean
@@ -226,6 +233,10 @@ export function MusicalTimeline(
   // songPatterns, so the accessor returns real haps by the time we query.
   const getTimelineEventsRef = React.useRef(props.getTimelineEvents)
   getTimelineEventsRef.current = props.getTimelineEvents
+  // #1107 — same latest-value ref shape, for the same reason (fresh closure per
+  // render; the analyze effect stays keyed on `snapshot` alone).
+  const getSongTrackIdsRef = React.useRef(props.getSongTrackIds)
+  getSongTrackIdsRef.current = props.getSongTrackIds
 
   // Analyze the whole song from the IR snapshot on every new snapshot
   // (re-eval). The previous run is aborted via a per-run signal so a fast edit
@@ -252,9 +263,18 @@ export function MusicalTimeline(
     // duplicates every row (PV175). Anchors are built once per analysis run
     // (cheap; dollarPos is a source offset, so the cycle count is irrelevant).
     const getEvents = getTimelineEventsRef.current
+    const getTrackIds = getSongTrackIdsRef.current
     let collectFn:
       | ((startCycle: number, endCycle: number) => IREvent[])
       | undefined
+    // #1107 — the CAPTURE keys heard so far, recorded BEFORE the remap below.
+    // This is the whole reason the question is answered here: the remapped keys
+    // are display lanes, and 20 of the corpus's 78 anchored documents have an
+    // anchor key no hap ever lands on (a track whose haps carry no `loc`, or one
+    // whose `loc` precedes its own statement), so asking there would strand them
+    // at the cap. In the capture space every registered pattern that sounds at
+    // all stamps its own key, so an unheard key means an unheard TRACK.
+    const heard = new Set<string>()
     if (getEvents) {
       const anchors = buildLaneAnchors(ir, 1)
       collectFn = (startCycle, endCycle) =>
@@ -263,10 +283,20 @@ export function MusicalTimeline(
             const c = Math.floor(ev.begin)
             return c >= startCycle && c < endCycle
           })
-          .map((ev) => ({ ...ev, trackId: laneKeyForHap(ev, anchors) }))
+          .map((ev) => {
+            if (ev.trackId !== undefined) heard.add(ev.trackId)
+            return { ...ev, trackId: laneKeyForHap(ev, anchors) }
+          })
     }
+    // Asked at DECISION time, so it reflects everything collected up to the
+    // horizon being judged. Only claims an unheard track when BOTH accessors are
+    // threaded — a registered set with no event source would report every track
+    // unheard and stall every document at the cap.
+    const hasUnheardTrack = getEvents && getTrackIds
+      ? () => getTrackIds().some((id) => !heard.has(id))
+      : undefined
     const signal = { aborted: false }
-    analyzeSong(ir, { signal, collectFn })
+    analyzeSong(ir, { signal, collectFn, hasUnheardTrack })
       .then((result) => {
         if (!signal.aborted) setAnalysis(result)
       })

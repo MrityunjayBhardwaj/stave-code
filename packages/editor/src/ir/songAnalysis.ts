@@ -38,6 +38,14 @@
  * lane, so there is nothing to borrow a period from at all. What the display
  * should do with them is #1105, and it is a display question, not a reason to
  * ask a narrower question about identity here.
+ *
+ * A DETECTED PERIOD CAN ALSO BE TOO SHORT TO BE THIS SONG'S (#1107). It can be
+ * true of everything the analysis has heard and still describe only part of the
+ * document — accepted before a track entered, or accepted with a span that
+ * excludes one — and either way the missing track draws as an empty, UNMARKED
+ * row, indistinguishable from silence. `displayPeriodRule` adds the two
+ * plausibility clauses that refuse those spans; swept, they move exactly the
+ * seven defective documents and take the at-cap figure 49 → 56.
  */
 
 import type { PatternIR } from './PatternIR'
@@ -90,6 +98,18 @@ export interface SongAnalysis {
  * Accumulate per-lane onset counts bucketed by integer cycle over
  * `[0, horizon)`. Lane order is first-seen (matching `groupEventsByTrack`).
  * Events whose `floor(begin)` lands outside `[0, horizon)` are ignored.
+ *
+ * ⚠ A LANE IS CREATED ONLY BY AN ONSET INSIDE THE WINDOW, so narrowing the
+ * window filters lane MEMBERSHIP and not merely the counts ([[P405]]). A track
+ * whose first onset is later than `horizon` does not go empty — it ceases to
+ * exist, and the display then rebuilds its row from the DOCUMENT's track set
+ * (#1098) without the silenced treatment a muted track gets, which is how a
+ * track playing thousands of notes came to look exactly like one playing none.
+ *
+ * `analyzeSong` re-accumulates over `[0, period)` when it accepts a period, so
+ * that is the call this matters at — and it is safe there BY THE INVARIANT, not
+ * by luck: `displayPeriodRule` refuses any period whose span leaves a known lane
+ * empty (#1107), so every lane provably has an onset in range.
  */
 export function accumulateLanes(
   events: readonly IREvent[],
@@ -305,6 +325,90 @@ export function detectDisplayPeriodAtCap(
 }
 
 /**
+ * Does `[0, period)` contain at least one onset from every lane the events show?
+ *
+ * A span that leaves a whole track empty is not that song's loop. This is the
+ * SECOND clause of the plausibility rule (#1107) and it is a test on the ANSWER,
+ * not on which lanes answered — the family PV256 measured and refused, where
+ * `detectDisplayPeriodAtCap` was already forced to choose between an ostinato
+ * and the content it plays under. Here nothing is compared to anything: either a
+ * lane appears inside the accepted span or the span does not describe it.
+ *
+ * Its existence also makes the re-accumulation below SAFE. `analyzeSong` derives
+ * the shipped lanes with `accumulateLanes(events, period)`, which creates a lane
+ * only for an onset inside the window — so narrowing the window silently filters
+ * lane MEMBERSHIP, not just the counts ([[P405]]). With this clause holding, no
+ * lane can be lost that way, because every lane provably has an onset in range.
+ */
+function spanCoversEveryLane(events: readonly IREvent[], period: number): boolean {
+  const inSpan = new Set<string>()
+  const all = new Set<string>()
+  for (const ev of events) {
+    const key = laneKeyOf(ev)
+    all.add(key)
+    const cycle = Math.floor(ev.begin)
+    if (Number.isFinite(cycle) && cycle >= 0 && cycle < period) inSpan.add(key)
+  }
+  for (const key of all) if (!inSpan.has(key)) return false
+  return true
+}
+
+/**
+ * THE display-period rule — the combine step plus the two plausibility clauses,
+ * in ONE definition so the decision that ends the analysis cannot be made by a
+ * different rule than the one that drove it ([[P403]]).
+ *
+ * ── THE COMBINE STEP is situation-aware (#1104) ──────────────────────────────
+ * At the cap the veto has nowhere to grow and lanes with no loop of their own
+ * ABSTAIN; below it the veto stands, because a `null` there is what buys the
+ * next doubling. `detectDisplayPeriodAtCap`'s own header carries that argument.
+ *
+ * ── THE PLAUSIBILITY CLAUSES (#1107) ─────────────────────────────────────────
+ * A detected period can be true of everything the analysis has HEARD and still
+ * be false about the song, and both ways it fails leave a track drawing as an
+ * empty, unmarked row — pixel-identical to a track that plays nothing, and
+ * without even the fade a muted one gets.
+ *
+ * (a) UNHEARD TRACK — the analysis converged before a track entered. Measured on
+ *     the corpus: `0/-Hx1rNCmeyD8` accepts period 1 at horizon 8 while its other
+ *     six tracks first sound at cycles 16, 32, 56, 95, 128 and 159. Nothing here
+ *     can detect that, because those events have not been collected — only the
+ *     caller knows the document declares tracks it has not heard from, so it is
+ *     asked (`hasUnheardTrack`). Gated to `horizon < cap` for the same reason
+ *     abstention is gated to the cap: below it a `null` is the signal that grows
+ *     the horizon, and at the cap there is nowhere left to grow, so an unheard
+ *     track must not be able to block an answer forever. That bound is what
+ *     makes the clause verdict-NEUTRAL for a track that is simply silent: six
+ *     corpus documents register a pattern that never sounds in 256 cycles, and
+ *     all six keep their exact period — they only take longer to reach it.
+ *
+ * (b) EXCLUDED LANE — the analysis heard the track and then accepted a span that
+ *     excludes it. `250/19FzyPQc7bcR` accepts period 6 while `x4` first sounds at
+ *     cycle 6 and `x5` at cycle 23, putting ~98.6% of the document's onsets and
+ *     2 of its 5 tracks outside the view, on a document whose own `.mask()`s
+ *     spell a 32–64-cycle arrangement.
+ *
+ * Swept per document, both clauses together move EXACTLY the seven defective
+ * documents and nothing else — every one recovering its full lane set (1→7 ×3,
+ * 2→4, 5→6, 3→5 ×2) — and aperiodic-at-cap goes 49 → 56 of 142. Three of those
+ * are periods #1104 recovered; they are given back deliberately, because a span
+ * that hides a whole track is a loop claim the document does not support, and
+ * #1105 already made the aperiodic display an honest one.
+ */
+export function displayPeriodRule(
+  events: readonly IREvent[],
+  horizon: number,
+  cap: number,
+  hasUnheardTrack: boolean,
+): number | null {
+  const period = horizon >= cap ? detectDisplayPeriodAtCap(events, horizon) : detectDisplayPeriod(events, horizon)
+  if (period === null) return null
+  if (hasUnheardTrack && horizon < cap) return null
+  if (!spanCoversEveryLane(events, period)) return null
+  return period
+}
+
+/**
  * Partition `[0, horizon)` into contiguous sections, cutting wherever the set
  * of active lanes (lanes with ≥1 onset in that cycle) changes. Captures the
  * musical arc — intro/drop/breakdown emerge as the active-lane set thins and
@@ -361,7 +465,14 @@ export function analyzeEvents(
   // rule explicitly, so this only governs direct callers.
   detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null,
 ): SongAnalysis {
-  const periodOf = detectPeriodFn ?? (reachedCap ? detectDisplayPeriodAtCap : detectDisplayPeriod)
+  // ONE rule for direct callers too ([[P403]]): `displayPeriodRule` with the cap
+  // placed so `horizon >= cap` is true exactly when the caller says it hit the
+  // cap. `hasUnheardTrack` is false — a direct caller hands over a finished event
+  // list and makes no claim about tracks it has not heard from.
+  const periodOf =
+    detectPeriodFn ??
+    ((evs: readonly IREvent[], h: number) =>
+      displayPeriodRule(evs, h, reachedCap ? h : Number.POSITIVE_INFINITY, false))
   const lanes = accumulateLanes(events, horizon)
   // Per-lane MAX, not the global combined period — differing-length tracks
   // phase and the view spans the longest single loop (#488, see detectDisplayPeriod).
@@ -408,6 +519,33 @@ export interface AnalyzeSongOptions {
    * pinned per-document baseline is the control arm proving it.
    */
   detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null
+
+  /**
+   * "Does the document declare a track that has produced no onset yet?" — clause
+   * (a) of `displayPeriodRule`, asked of the CALLER because only the caller can
+   * answer it soundly.
+   *
+   * ── WHY THE CALLER OWNS IT, and it is not derived from `events` ─────────────
+   * The question needs two sets in ONE key space: what the document declares,
+   * and what has been heard. The events reaching `analyzeSong` are in the
+   * DISPLAY lane space — production remaps every hap through `laneKeyForHap`
+   * source containment (`MusicalTimeline.tsx`) so analysis lanes line up with
+   * rendered rows ([[PV175]]) — and that space is the wrong one to ask in.
+   * Measured over the corpus: 20 of the 78 documents with structural anchors
+   * have an anchor key that NEVER receives an event in 256 cycles (a track whose
+   * haps carry no `loc`, or whose `loc` precedes its own statement), so a gate
+   * asked there would send 20 documents to the cap to fix 7. In the CAPTURE key
+   * space the engine stamps — one key per registered pattern — an expected key
+   * can only go unheard if the track genuinely never sounds, which is 6
+   * documents, and all 6 keep their exact period because the clause is bounded
+   * to `horizon < cap`.
+   *
+   * So the caller reads the raw capture keys BEFORE its own remap and compares
+   * them against the engine's registered set. Absent, the clause is inert and
+   * the rule is exactly the #1104 one — a deliberate default, since a caller
+   * that cannot name the document's tracks has nothing to claim about them.
+   */
+  hasUnheardTrack?: () => boolean
 }
 
 const DEFAULT_HINT = 8
@@ -460,17 +598,20 @@ export async function analyzeSong(
    *
    * Situation-aware rather than fixed: at the cap the veto has nowhere to grow
    * and lanes abstain (#1104); below it the veto stands, because that is what
-   * buys the next doubling. Written as an explicit conditional, never
-   * `opts.detectPeriodFn?.(…) ?? …` — `null` is a meaningful verdict here and
-   * `??` would silently swap an injected rule for the production one whenever it
-   * answered "aperiodic".
+   * buys the next doubling. Both that choice and the two plausibility clauses
+   * live in `displayPeriodRule`, whose header carries the argument. Written as
+   * an explicit conditional, never `opts.detectPeriodFn?.(…) ?? …` — `null` is a
+   * meaningful verdict here and `??` would silently swap an injected rule for the
+   * production one whenever it answered "aperiodic".
+   *
+   * `hasUnheardTrack` is asked at DECISION time rather than passed as a value,
+   * because its answer moves with the horizon: `analyzeSong` has always collected
+   * up to `h` before calling this, so the caller's set is current by construction.
    */
   const periodRule = (evs: readonly IREvent[], h: number): number | null =>
     opts.detectPeriodFn
       ? opts.detectPeriodFn(evs, h)
-      : h >= cap
-        ? detectDisplayPeriodAtCap(evs, h)
-        : detectDisplayPeriod(evs, h)
+      : displayPeriodRule(evs, h, cap, opts.hasUnheardTrack ? opts.hasUnheardTrack() : false)
 
   const events: IREvent[] = []
   let collectedTo = 0 // events exist for [0, collectedTo)

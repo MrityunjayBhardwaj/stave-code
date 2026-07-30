@@ -848,6 +848,19 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   }
 
   /**
+   * The capture keys behind those events (#1107) — read-through in the same
+   * shape, from the same engine, so the two can never describe different track
+   * sets. Lets the Song analysis tell "this track has not played yet" from
+   * "there is no such track", which is the difference between a period that
+   * describes the whole song and one that erases the tracks it has not heard.
+   * `[]` for a non-Strudel runtime, which correctly claims nothing.
+   */
+  getSongTrackIds(): string[] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (this.engine as any).getSongTrackIds?.() ?? []
+  }
+
+  /**
    * Backdrop viz requested by a non-underscore Strudel viz method
    * (e.g. `.scope()`, `.pianoroll()`) during the last evaluate, or `null`.
    * Read-through accessor over the engine's components, mirroring

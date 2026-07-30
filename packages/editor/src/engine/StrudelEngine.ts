@@ -1378,6 +1378,23 @@ export class StrudelEngine implements LiveCodingEngine {
   }
 
   /**
+   * The capture keys of every pattern the last evaluate() registered — the SAME
+   * ids `getTimelineEvents` stamps on each hap as `trackId`, in the same order.
+   *
+   * Exists so a caller can tell "this track has not played yet" from "there is no
+   * such track" (#1107). Deriving that from the events alone is impossible: a
+   * track that has not sounded within the queried window contributes nothing to
+   * distinguish itself from one that does not exist. Reading the REGISTERED set
+   * is the only way to know the difference, and this is the one place that knows
+   * it — `songPatterns` is private and mirrors what the repl actually plays, so a
+   * `_`-muted track (never registered, `@strudel/core/repl.mjs:172-175`) is
+   * correctly absent and can never be waited on.
+   */
+  getSongTrackIds(): string[] {
+    return [...this.songPatterns.keys()]
+  }
+
+  /**
    * Returns per-track viz requests captured during the last evaluate() call.
    * Maps track keys ("$0", "$1", "d1") to viz descriptor IDs ("pianoroll", "scope").
    * Only patterns that called .viz("name") in user code appear in this map.
