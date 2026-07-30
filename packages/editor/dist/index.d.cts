@@ -207,10 +207,20 @@ interface SongAnalysis {
 declare function accumulateLanes(events: readonly IREvent[], horizon: number): LaneActivity[];
 /**
  * Per-cycle fingerprint string — a sorted signature of every onset's
- * (lane, within-cycle offset, note) in that cycle. Two cycles with identical
+ * (lane, within-cycle offset, VALUE) in that cycle. Two cycles with identical
  * fingerprints are musically identical, which is what period detection needs.
  * Within-cycle offset is quantised to 1e-6 to absorb float noise from the
  * rational→number conversion in collect.
+ *
+ * The value half is `eventValueKey` — the adapter's WHOLE value partition, not
+ * a subset curated here. It used to be `ev.note` alone, which meant an
+ * arrangement whose sections differ only by which SAMPLE plays fingerprinted as
+ * identical cycles: `detectPeriod` honestly returned 1 and the Song view's
+ * display span collapsed to a single cycle (#1102). `s` had only ever reached
+ * this token by accident, via `laneKeyOf`'s `trackId ?? s` fallback, so every
+ * event carrying a real `trackId` — which is every event in production — lost
+ * it. Naming `s` here would have fixed the one fixture and left the param and
+ * gain axes just as blind; the fix is to stop curating (see `eventValueKey`).
  */
 declare function cycleFingerprints(events: readonly IREvent[], horizon: number): string[];
 /**
