@@ -567,6 +567,29 @@ describe('StrudelEngine.getTimelineEvents (song frame, #863)', () => {
     engine.dispose()
   })
 
+  // #1107 — THE BOUNDARY PAIR. The Song analysis refuses a period while a
+  // declared track has produced no onset yet, and it decides that by comparing
+  // `getSongTrackIds()` against the `trackId`s `getTimelineEvents` stamps. If
+  // those two ever describe different track sets the failure is SILENT and
+  // one-directional: a key that never appears is read as a track that has not
+  // played, so every document with one would grow to the 256-cycle cap and be
+  // drawn as aperiodic — no error, no warning, just a worse view. Asserted here,
+  // at the one place that owns both.
+  it('reports the same track ids it stamps on timeline events', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    expect(engine.getSongTrackIds()).toEqual([])
+    await engine.evaluate('one-track')
+    const ids = engine.getSongTrackIds()
+    expect(ids.length).toBeGreaterThan(0)
+    const stamped = new Set(engine.getTimelineEvents(4).map((e) => e.trackId))
+    // Every stamped key is declared. The converse does NOT hold and must not be
+    // asserted: a registered track that is silent over the queried window stamps
+    // nothing, which is exactly the state the analysis needs to be able to see.
+    for (const key of stamped) expect(ids).toContain(key)
+    engine.dispose()
+  })
+
   it('is song-absolute at offset 0 (the frames coincide)', async () => {
     const engine = new StrudelEngine()
     await engine.init()
