@@ -18,7 +18,9 @@
 
 import type { SongAnalysis, SongSection } from '@stave/editor'
 import { trackIdentity } from './colors'
+import { containingAnchor } from './laneIdentity'
 import { resolveLaneName } from './trackLabel'
+import type { DeclaredTrack } from './trackOrder'
 
 /** Grouping key for marks with no sample name (`s == null`) — synth notes that
  *  carry only a `note`. Shared by the scene builder and the renderer so a
@@ -213,7 +215,7 @@ export const EMPTY_MARKS: CollectedMarks = {
  * Build the render scene from the analysis (density, sections, span, period)
  * merged with the collected note marks. PURE — no IR walk, no canvas. Lanes keep
  * `analyzeSong`'s key, so the canvas rows line up with the DOM lane labels
- * exactly; their ORDER is the caller's `sourceTrackOrder` when given (#871),
+ * exactly; their ORDER is the caller's `declaredTracks` when given (#871),
  * else `analyzeSong`'s first-seen order with the eval lanes appended.
  *
  * ROWS COME FROM THREE SOURCES, in this order of preference per track:
@@ -251,14 +253,17 @@ export function buildTimelineScene(
    *  longer only an ORDERING hint, it is also the row-EXISTENCE source for a
    *  declared-but-silent track. Same datum — the document's top-level tracks —
    *  read two ways, so nothing is derived twice and there is no second
-   *  enumeration to keep in step. But the consequence is that passing a PARTIAL
-   *  list now drops rows rather than merely mis-ordering them, and passing a key
-   *  the marks path spells differently ADDS a duplicate row instead of leaving a
-   *  missing one. Callers must pass the whole track list or nothing:
-   *  `sourceTrackOrder(ir)` (trackOrder.ts) is the only intended producer, and it
-   *  is total over top-level `Track` nodes and mute-invariant via
-   *  `trackIdFromLabel`. Absent/empty is still fully supported (no rows added). */
-  sourceTrackOrder?: readonly string[],
+   *  enumeration to keep in step. The consequence is that passing a PARTIAL list
+   *  now drops rows rather than merely mis-ordering them, so callers must pass the
+   *  whole track list or nothing: `declaredTracks(ir)` (trackOrder.ts) is the only
+   *  intended producer, and it is total over top-level `Track` nodes and
+   *  mute-invariant via `trackIdFromLabel`. Absent/empty is still fully supported
+   *  (no rows added).
+   *
+   *  EACH ENTRY CARRIES ITS STATEMENT OFFSET (#1101), which is what makes the
+   *  existence question answerable without comparing names — see the
+   *  reconciliation below. Ordering reads only the ids. */
+  declaredTracks?: readonly DeclaredTrack[],
 ): TimelineScene {
   // The caller (FullSongTimeline) owns the authoritative span — it floors a bare
   // loop to a minimum arrangement length so the single implicit clip has room to
@@ -303,7 +308,7 @@ export function buildTimelineScene(
   // captures nothing for a muted track and still should not. Which is why the
   // repair lives here, in the row builder, and not at the capture hook.
   //
-  // The source is `sourceTrackOrder` — the IR's TOP-LEVEL `Track` nodes, one per
+  // The source is `declaredTracks` — the IR's TOP-LEVEL `Track` nodes, one per
   // `$:`/`name:` statement, mute-invariant via `trackIdFromLabel` — and
   // deliberately NOT the marks annotation maps (`labelOffsetByLane` and
   // siblings). Those additionally carry lanes the RESILIENT structural walk
@@ -335,13 +340,39 @@ export function buildTimelineScene(
   // When the display is genuinely SHORT of the document, the missing tracks are
   // the ones no row is keyed to, which is what the filter names.
   //
-  // Deliberately conservative in the residual direction: an unmatchable name in
-  // a short display leaves a row missing (the old behaviour) rather than drawing
-  // a track twice.
-  const drawnKeys = new Set<string>([...analysisKeys, ...evalLaneKeys])
-  const declaredIds = sourceTrackOrder ?? []
-  const declaredSilentKeys =
-    drawnKeys.size >= declaredIds.length ? [] : declaredIds.filter((k) => !drawnKeys.has(k))
+  // SO THE MATCH IS POSITIONAL, NOT BY NAME (#1101). Both sides already carry the
+  // statement offset — the declared track its label's `loc[0].start`, a drawn row
+  // its `labelOffset` — and only the NAMES disagree. `containingAnchor` is the
+  // reconciler the rest of this subsystem uses for exactly this (`laneKeyForHap`
+  // attributes every hap by it), so asking it here means one rule with one
+  // definition rather than a second, private comparison beside it.
+  //
+  // A declared track with NO offset is never given a row, and that is a syntactic
+  // argument rather than a cautious one: an offset is the label's position, muting
+  // is a PREFIX on that label (`_$:`, `_name:`), so an unlabelled statement cannot
+  // be muted and is never owed a silent row. It is also exactly the pre-#1098
+  // behaviour for bare documents, whose row comes from the eval capture (#1094).
+  // (Consequence, deliberate: a bare `silence` statement draws no row. Nothing
+  // declared it as a track, and nothing played.)
+  //
+  // Representation takes the UNION of both readings — a row keyed by the track's
+  // own id, or a row whose offset lands in the track's statement. The asymmetry is
+  // the point: a false "represented" leaves a row missing, a false "unrepresented"
+  // draws the same track TWICE. Only the second corrupts what the user sees, so
+  // any evidence of representation is enough to withhold.
+  const drawnKeys = [...analysisKeys, ...evalLaneKeys]
+  const anchors = (declaredTracks ?? [])
+    .flatMap((t) => (typeof t.offset === 'number' && Number.isFinite(t.offset) ? [[t.id, t.offset] as const] : []))
+    .sort((a, b) => a[1] - b[1]) // `containingAnchor` requires ascending
+  const represented = new Set<string>()
+  for (const key of drawnKeys) {
+    represented.add(key)
+    const owner = containingAnchor(anchors, marks.labelOffsetByLane.get(key))
+    if (owner !== undefined) represented.add(owner)
+  }
+  const declaredSilentKeys = anchors
+    .filter(([id]) => !represented.has(id))
+    .map(([id]) => id)
 
   // Peak onset across ALL lanes (IR + eval, ≥1) so the busiest cell is full-intensity.
   let peakDensity = 1
@@ -414,15 +445,27 @@ export function buildTimelineScene(
   // relative order at the end rather than being dropped or guessed at. The sort
   // is stable, so an IR-only song (whose analysis order ALREADY follows the IR)
   // is unchanged.
-  const rank = new Map(sourceTrackOrder?.map((id, i) => [id, i] as const) ?? [])
+  const rank = new Map(declaredTracks?.map((t, i) => [t.id, i] as const) ?? [])
+  // A lane's source position is found the SAME two ways its existence is (#1101):
+  // by its own key, else by which declared statement CONTAINS its offset. Without
+  // the second reading a `.p('name')` track — whose row key is the producer id and
+  // not the IR id — has no rank and sorts to the end, so it renders BELOW a track
+  // written after it. Same rule, same primitive, so order and existence can never
+  // disagree about which statement a row belongs to.
+  const rankOf = (lane: SceneLane): number | undefined => {
+    const own = rank.get(lane.laneKey)
+    if (own !== undefined) return own
+    const owner = containingAnchor(anchors, lane.labelOffset ?? undefined)
+    return owner === undefined ? undefined : rank.get(owner)
+  }
   const lanes: SceneLane[] =
     rank.size === 0
       ? built
       : [
           ...built
-            .filter((l) => rank.has(l.laneKey))
-            .sort((a, b) => rank.get(a.laneKey)! - rank.get(b.laneKey)!),
-          ...built.filter((l) => !rank.has(l.laneKey)),
+            .filter((l) => rankOf(l) !== undefined)
+            .sort((a, b) => rankOf(a)! - rankOf(b)!),
+          ...built.filter((l) => rankOf(l) === undefined),
         ]
 
   return {

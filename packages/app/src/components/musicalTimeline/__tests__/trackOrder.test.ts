@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import type { PatternIR } from '@stave/editor'
-import { sourceTrackOrder } from '../trackOrder'
+import { declaredTracks, sourceTrackOrder } from '../trackOrder'
 
 const track = (trackId: string, start?: number): PatternIR =>
   ({
@@ -47,5 +47,43 @@ describe('sourceTrackOrder', () => {
   it('skips unidentified tracks and dedupes', () => {
     const noId = { tag: 'Track', body: { tag: 'Code' } } as unknown as PatternIR
     expect(sourceTrackOrder(stack(track('d1'), noId, track('d1'), track('d2')))).toEqual(['d1', 'd2'])
+  })
+})
+
+describe('declaredTracks — ids WITH their statement offsets (#1101)', () => {
+  it('carries the offset of every labelled statement', () => {
+    expect(declaredTracks(stack(track('d1', 0), track('d2', 38)))).toEqual([
+      { id: 'd1', offset: 0 },
+      { id: 'd2', offset: 38 },
+    ])
+  })
+
+  it('omits the offset for an UNLABELLED statement, and that absence is the signal', () => {
+    // A bare statement (`s("bd*4")`, `arrange(...)`) has no `$:`/`name:` label, so
+    // the Track carries no loc. Muting is a PREFIX on that label, so a statement
+    // with no offset cannot be muted — which is what lets the scene builder
+    // withhold a silent row for it rather than guessing by name.
+    expect(declaredTracks(track('d1'))).toEqual([{ id: 'd1' }])
+    expect(declaredTracks(stack(track('d1'), track('d2', 12)))).toEqual([
+      { id: 'd1' },
+      { id: 'd2', offset: 12 },
+    ])
+  })
+
+  it('is the single walk behind sourceTrackOrder (no second enumeration)', () => {
+    // Both projections must always describe the SAME track set in the SAME order;
+    // the ids are all ordering needs. Drift between two walks is precisely the
+    // failure this shape exists to make impossible.
+    for (const ir of [
+      stack(track('d1', 0), track('d2', 38)),
+      stack(track('sig', 0), track('drums', 40)),
+      track('d1', 0),
+      track('d1'),
+      null,
+      undefined,
+      stack(track('d1'), track('d1'), track('d2')), // deduped by id
+    ]) {
+      expect(declaredTracks(ir).map((t) => t.id)).toEqual([...sourceTrackOrder(ir)])
+    }
   })
 })
