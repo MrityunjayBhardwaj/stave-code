@@ -170,11 +170,6 @@ type Outcome =
   /** the op applied, the writer spelled it, and all three bits were read */
   | 'measured'
 
-interface Row {
-  outcome: Outcome
-  triple?: string
-}
-
 interface SurfaceReport {
   units: number
   asks: number
@@ -183,13 +178,6 @@ interface SurfaceReport {
   /** `${path} (document,layout,haps)` → count, over `measured` asks only */
   triples: Record<string, number>
   hapsUnevaluable: number
-  /**
-   * measured asks whose BEFORE source produces no onsets at all (a rest-only unit,
-   * `~ ~`). Counted because such a unit is silent under ANY transformation, so it can
-   * never move the haps bit — and an arm that asserts "the engine moved everywhere"
-   * has to account for them rather than quietly tolerate a non-zero residue.
-   */
-  silentUnits: number
 }
 
 interface Surface<M> {
@@ -247,7 +235,6 @@ function sweep<M>(s: Surface<M>, breaks: Breaks<M> = {}): SurfaceReport {
     byOutcome: { 'no-offer': 0, unwritable: 0, measured: 0 },
     triples: {},
     hapsUnevaluable: 0,
-    silentUnits: 0,
   }
 
   for (const mini of minis) {
@@ -285,7 +272,6 @@ function sweep<M>(s: Surface<M>, breaks: Breaks<M> = {}): SurfaceReport {
           continue
         }
         rep.byOutcome.measured++
-        if (hapsOf(mini, bars) === '') rep.silentUnits++
         const key = `${p} (${documentBit ? 'doc' : '---'},${layoutBit ? 'layout' : '------'},${hapsBit ? 'haps' : '----'})`
         rep.triples[key] = (rep.triples[key] ?? 0) + 1
       }
@@ -305,7 +291,6 @@ function print(rep: SurfaceReport, label: string): void {
       `  unwritable                        ${rep.byOutcome.unwritable}`,
       `  measured                          ${rep.byOutcome.measured}`,
       `  haps unevaluable                  ${rep.hapsUnevaluable}`,
-      `  ...of measured, silent units      ${rep.silentUnits}`,
       `  triples (over measured asks):`,
       ...Object.entries(rep.triples)
         .sort()
