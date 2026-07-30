@@ -245,11 +245,18 @@ export function analyzeEvents(
   events: readonly IREvent[],
   horizon: number,
   reachedCap = false,
+  // Same measurement seam as `AnalyzeSongOptions.detectPeriodFn`, threaded here
+  // because THIS is the terminal decision: the cap-fallback path returns through
+  // `analyzeEvents`, so a seam covering only the loop would leave every
+  // at-cap document reporting the production rule's period while the candidate
+  // rule was credited with it — silently, and on exactly the population an
+  // aperiodic-display change is about.
+  detectPeriodFn: (events: readonly IREvent[], horizon: number) => number | null = detectDisplayPeriod,
 ): SongAnalysis {
   const lanes = accumulateLanes(events, horizon)
   // Per-lane MAX, not the global combined period — differing-length tracks
   // phase and the view spans the longest single loop (#488, see detectDisplayPeriod).
-  const periodCycles = detectDisplayPeriod(events, horizon)
+  const periodCycles = detectPeriodFn(events, horizon)
   const sections = computeSections(lanes, horizon)
   return { periodCycles, horizonCycles: horizon, lanes, sections, reachedCap }
 }
@@ -276,6 +283,22 @@ export interface AnalyzeSongOptions {
   yieldFn?: () => Promise<void>
   /** Cooperative cancellation; checked between slices. */
   signal?: { readonly aborted: boolean }
+  /**
+   * The display-period rule, defaulting to `detectDisplayPeriod`.
+   *
+   * A MEASUREMENT SEAM, not a behaviour option — production never passes it.
+   * It exists because a candidate rule cannot be priced by post-processing a
+   * finished analysis: a `null` from this function is exactly what doubles the
+   * horizon below, so a different rule resolves at a different horizon and
+   * yields a different span. Pricing one therefore requires running THIS loop,
+   * and the alternative — copying the loop into the sweep — would re-implement
+   * the doubling, the cap and the one-loop trim, i.e. build the second oracle
+   * this module's injection points exist to avoid ([[PV192]]).
+   *
+   * The default keeps every verdict identical; `song-period-sweep.test.ts`'s
+   * pinned per-document baseline is the control arm proving it.
+   */
+  detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null
 }
 
 const DEFAULT_HINT = 8
@@ -321,6 +344,7 @@ export async function analyzeSong(
   const now = opts.now ?? defaultNow
   const yieldFn = opts.yieldFn ?? defaultYield
   const signal = opts.signal
+  const detectPeriodOf = opts.detectPeriodFn ?? detectDisplayPeriod
 
   const events: IREvent[] = []
   let collectedTo = 0 // events exist for [0, collectedTo)
@@ -348,12 +372,12 @@ export async function analyzeSong(
     // Nothing playing at all (null IR / fully silent pattern) → nothing to
     // analyze. Short-circuit to an empty analysis rather than growing the
     // horizon to the cap over empty cycles.
-    if (events.length === 0) return analyzeEvents([], 0, false)
+    if (events.length === 0) return analyzeEvents([], 0, false, detectPeriodOf)
     // The DISPLAY period = the longest single lane's loop (#488). Differing-
     // length tracks phase; the view spans the longest one. `null` until EVERY
     // active lane has looped at least twice within the horizon, so we keep
     // growing until the slowest lane resolves (or the cap forces aperiodic).
-    const period = detectDisplayPeriod(events, horizon)
+    const period = detectPeriodOf(events, horizon)
     if (period !== null) {
       // Trim the analysis to exactly ONE display loop. The full-song view spans
       // `displayCycles` and wraps the playhead there; if lanes/sections kept
@@ -371,11 +395,11 @@ export async function analyzeSong(
       return { periodCycles: period, horizonCycles: period, lanes, sections, reachedCap: false }
     }
     if (horizon >= cap) {
-      return analyzeEvents(events, cap, true)
+      return analyzeEvents(events, cap, true, detectPeriodOf)
     }
     horizon = Math.min(horizon * 2, cap)
   }
 
   // Aborted path — analyze what was collected.
-  return analyzeEvents(events, Math.min(horizon, collectedTo), false)
+  return analyzeEvents(events, Math.min(horizon, collectedTo), false, detectPeriodOf)
 }
