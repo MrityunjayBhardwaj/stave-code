@@ -452,20 +452,24 @@ export function buildTimelineScene(
   // not the IR id — has no rank and sorts to the end, so it renders BELOW a track
   // written after it. Same rule, same primitive, so order and existence can never
   // disagree about which statement a row belongs to.
-  const rankOf = (lane: SceneLane): number | undefined => {
+  //
+  // Resolved ONCE per lane rather than inside the comparator: a sort calls its
+  // comparator O(n log n) times and each call would re-run the anchor scan.
+  const rankByLane = new Map<string, number>()
+  for (const lane of built) {
     const own = rank.get(lane.laneKey)
-    if (own !== undefined) return own
-    const owner = containingAnchor(anchors, lane.labelOffset ?? undefined)
-    return owner === undefined ? undefined : rank.get(owner)
+    const owner = own !== undefined ? undefined : containingAnchor(anchors, lane.labelOffset ?? undefined)
+    const resolved = own ?? (owner === undefined ? undefined : rank.get(owner))
+    if (resolved !== undefined) rankByLane.set(lane.laneKey, resolved)
   }
   const lanes: SceneLane[] =
     rank.size === 0
       ? built
       : [
           ...built
-            .filter((l) => rankOf(l) !== undefined)
-            .sort((a, b) => rankOf(a)! - rankOf(b)!),
-          ...built.filter((l) => rankOf(l) === undefined),
+            .filter((l) => rankByLane.has(l.laneKey))
+            .sort((a, b) => rankByLane.get(a.laneKey)! - rankByLane.get(b.laneKey)!),
+          ...built.filter((l) => !rankByLane.has(l.laneKey)),
         ]
 
   return {

@@ -63,16 +63,3 @@ export function declaredTracks(ir: PatternIR | null | undefined): readonly Decla
   }
   return out
 }
-
-/**
- * The `trackId`s of the song's top-level tracks, in source order. `[]` when the
- * IR is absent or carries no identified track (a hand-built IR in a test, an IR
- * whose root is neither a `Track` nor a `Stack` of them) — callers treat that as
- * "no order information" and keep their existing lane order.
- *
- * The ids of `declaredTracks`, projected: ordering needs no offsets, and stating
- * it this way keeps one walk rather than two enumerations that could drift.
- */
-export function sourceTrackOrder(ir: PatternIR | null | undefined): readonly string[] {
-  return declaredTracks(ir).map((t) => t.id)
-}

@@ -1,7 +1,7 @@
 /**
  * Eval-backed lanes sit in SOURCE order (#871) — Playwright observation spec.
  *
- * AnviDev observe gate: the unit tests pin the pure pieces (`sourceTrackOrder`
+ * AnviDev observe gate: the unit tests pin the pure pieces (`declaredTracks`
  * off the IR, the scene's ranking); this drives the REAL app end-to-end.
  *
  * A track that emits no static-IR events — a sampled signal, a bare ref — has no
