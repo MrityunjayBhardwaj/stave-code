@@ -46,7 +46,17 @@ import { fileURLToPath } from 'node:url'
 import { sweepCorpus, abstainingDetector, type PeriodVerdict } from './songPeriodSweep'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const BASELINE = path.join(HERE, 'SONG-PERIOD-BASELINE.json')
+/**
+ * The PRE-DECISION baseline, frozen deliberately.
+ *
+ * This file prices ALTERNATIVES to the rule #1104 shipped, so it has to compare
+ * against the state the decision was made in. Pointing it at the live baseline
+ * would silently change what every row means the moment production moved — the
+ * shipped rule would read "0 moved" and the alternatives would be measured
+ * against themselves rather than against the defect. The live per-document pin
+ * is `SONG-PERIOD-BASELINE.json`, owned by `song-period-sweep.test.ts`.
+ */
+const BASELINE = path.join(HERE, 'SONG-PERIOD-BASELINE-PRE-1104.json')
 
 interface BaselineRow {
   period: number | null

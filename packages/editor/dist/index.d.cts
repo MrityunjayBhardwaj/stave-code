@@ -250,7 +250,7 @@ declare function computeSections(lanes: readonly LaneActivity[], horizon: number
  * `reachedCap` is supplied by the caller (it's a property of the collection
  * loop, not of the events). Synchronous — used directly in unit tests.
  */
-declare function analyzeEvents(events: readonly IREvent[], horizon: number, reachedCap?: boolean): SongAnalysis;
+declare function analyzeEvents(events: readonly IREvent[], horizon: number, reachedCap?: boolean, detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null): SongAnalysis;
 interface AnalyzeSongOptions {
     /** Initial horizon to collect before the first period check (default 8). */
     hintCycles?: number;
@@ -271,6 +271,22 @@ interface AnalyzeSongOptions {
     signal?: {
         readonly aborted: boolean;
     };
+    /**
+     * The display-period rule, defaulting to `detectDisplayPeriod`.
+     *
+     * A MEASUREMENT SEAM, not a behaviour option — production never passes it.
+     * It exists because a candidate rule cannot be priced by post-processing a
+     * finished analysis: a `null` from this function is exactly what doubles the
+     * horizon below, so a different rule resolves at a different horizon and
+     * yields a different span. Pricing one therefore requires running THIS loop,
+     * and the alternative — copying the loop into the sweep — would re-implement
+     * the doubling, the cap and the one-loop trim, i.e. build the second oracle
+     * this module's injection points exist to avoid ([[PV192]]).
+     *
+     * The default keeps every verdict identical; `song-period-sweep.test.ts`'s
+     * pinned per-document baseline is the control arm proving it.
+     */
+    detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null;
 }
 /**
  * Analyze the whole song off the in-memory IR. Collects a progressive horizon

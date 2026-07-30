@@ -863,16 +863,7 @@ function detectPeriod(fingerprints) {
 }
 __name(detectPeriod, "detectPeriod");
 function detectDisplayPeriod(events, horizon) {
-  const byLane = /* @__PURE__ */ new Map();
-  for (const ev of events) {
-    const key2 = laneKeyOf(ev);
-    let bucket2 = byLane.get(key2);
-    if (!bucket2) {
-      bucket2 = [];
-      byLane.set(key2, bucket2);
-    }
-    bucket2.push(ev);
-  }
+  const byLane = eventsByLane(events);
   if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
   let maxPeriod = 0;
   for (const laneEvents of byLane.values()) {
@@ -883,6 +874,41 @@ function detectDisplayPeriod(events, horizon) {
   return maxPeriod > 0 ? maxPeriod : null;
 }
 __name(detectDisplayPeriod, "detectDisplayPeriod");
+function eventsByLane(events) {
+  const byLane = /* @__PURE__ */ new Map();
+  for (const ev of events) {
+    const key2 = laneKeyOf(ev);
+    let bucket2 = byLane.get(key2);
+    if (!bucket2) {
+      bucket2 = [];
+      byLane.set(key2, bucket2);
+    }
+    bucket2.push(ev);
+  }
+  return byLane;
+}
+__name(eventsByLane, "eventsByLane");
+var MIN_ABSTAINED_PERIOD = 4;
+function detectDisplayPeriodAtCap(events, horizon) {
+  const byLane = eventsByLane(events);
+  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
+  let maxPeriod = 0;
+  let answered = 0;
+  let abstained = false;
+  for (const laneEvents of byLane.values()) {
+    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
+    if (p === null) {
+      abstained = true;
+      continue;
+    }
+    answered++;
+    if (p > maxPeriod) maxPeriod = p;
+  }
+  if (answered === 0 || maxPeriod <= 0) return null;
+  if (abstained && maxPeriod < MIN_ABSTAINED_PERIOD) return null;
+  return maxPeriod;
+}
+__name(detectDisplayPeriodAtCap, "detectDisplayPeriodAtCap");
 function computeSections(lanes, horizon) {
   if (horizon <= 0) return [];
   const signatureAt = /* @__PURE__ */ __name((cycle) => lanes.filter((l) => (l.onsetsByCycle[cycle] ?? 0) > 0).map((l) => l.laneKey).sort(), "signatureAt");
@@ -904,9 +930,9 @@ function computeSections(lanes, horizon) {
   return sections;
 }
 __name(computeSections, "computeSections");
-function analyzeEvents(events, horizon, reachedCap = false) {
+function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn = detectDisplayPeriod) {
   const lanes = accumulateLanes(events, horizon);
-  const periodCycles = detectDisplayPeriod(events, horizon);
+  const periodCycles = detectPeriodFn(events, horizon);
   const sections = computeSections(lanes, horizon);
   return { periodCycles, horizonCycles: horizon, lanes, sections, reachedCap };
 }
@@ -932,6 +958,7 @@ async function analyzeSong(ir, opts = {}) {
   const now2 = opts.now ?? defaultNow;
   const yieldFn = opts.yieldFn ?? defaultYield;
   const signal = opts.signal;
+  const periodRule = /* @__PURE__ */ __name((evs, h) => opts.detectPeriodFn ? opts.detectPeriodFn(evs, h) : h >= cap ? detectDisplayPeriodAtCap(evs, h) : detectDisplayPeriod(evs, h), "periodRule");
   const events = [];
   let collectedTo = 0;
   let horizon = hint;
@@ -952,19 +979,19 @@ async function analyzeSong(ir, opts = {}) {
   while (true) {
     const ok = await collectUpTo(horizon);
     if (!ok) break;
-    if (events.length === 0) return analyzeEvents([], 0, false);
-    const period = detectDisplayPeriod(events, horizon);
+    if (events.length === 0) return analyzeEvents([], 0, false, periodRule);
+    const period = periodRule(events, horizon);
     if (period !== null) {
       const lanes = accumulateLanes(events, period);
       const sections = computeSections(lanes, period);
       return { periodCycles: period, horizonCycles: period, lanes, sections, reachedCap: false };
     }
     if (horizon >= cap) {
-      return analyzeEvents(events, cap, true);
+      return analyzeEvents(events, cap, true, periodRule);
     }
     horizon = Math.min(horizon * 2, cap);
   }
-  return analyzeEvents(events, Math.min(horizon, collectedTo), false);
+  return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule);
 }
 __name(analyzeSong, "analyzeSong");
 
