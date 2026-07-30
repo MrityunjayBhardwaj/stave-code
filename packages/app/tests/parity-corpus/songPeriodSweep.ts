@@ -180,6 +180,28 @@ export interface AbstentionRule {
   minPeriod?: number
   /** Require this share of lanes (0..1) to have answered before accepting. */
   minLaneShare?: number
+  /**
+   * Require the document's DENSEST lane (most events) to be among those that
+   * answered — the intuition being that an ostinato should not set the span
+   * while the lane carrying the song's content abstains.
+   *
+   * Priced because it was proposed, and it is measured rather than assumed:
+   * the per-lane probe of the six 2-cycle recoveries shows the densest lanes
+   * are the ostinatos themselves (`elArpegio`/`elAcorde` at 2048 events each)
+   * and the melody is LIGHTER (`laMelodia`, 1640), so this clause cannot see
+   * four of the six documents it was proposed to fix.
+   */
+  requireDensestLane?: boolean
+  /** Require the answering lanes to hold this share (0..1) of all events. */
+  minAnsweredEventShare?: number
+  /**
+   * Refuse when any SINGLE abstaining lane holds at least this share of the
+   * document's events. States the thing the six bad recoveries have in common
+   * without routing it through "which lane is biggest": a lane heavy enough to
+   * be the song's content, with no period of its own, contradicts a 2-cycle
+   * span no matter how many light ostinatos agree on one.
+   */
+  maxAbstainingLaneShare?: number
 }
 
 export function abstainingDetector(
@@ -204,13 +226,30 @@ export function abstainingDetector(
     let maxPeriod = 0
     let answered = 0
     let vetoed = false
+    let answeredEvents = 0
+    let totalEvents = 0
+    let densestCount = -1
+    let densestAnswered = false
+    let heaviestAbstaining = 0
     for (const laneEvents of byLane.values()) {
       const p = detectPeriod(cycleFingerprints(laneEvents, horizon))
+      const n = laneEvents.length
+      totalEvents += n
+      // Ties go to "answered" only if an answering lane holds the maximum, so a
+      // tie between an answering and an abstaining lane does not refuse.
+      if (n > densestCount) {
+        densestCount = n
+        densestAnswered = p !== null
+      } else if (n === densestCount && p !== null) {
+        densestAnswered = true
+      }
       if (p === null) {
         vetoed = true
+        if (n > heaviestAbstaining) heaviestAbstaining = n
         continue
       }
       answered++
+      answeredEvents += n
       if (p > maxPeriod) maxPeriod = p
     }
 
@@ -235,6 +274,21 @@ export function abstainingDetector(
     if (vetoed) {
       if (rule.minPeriod !== undefined && maxPeriod < rule.minPeriod) return null
       if (rule.minLaneShare !== undefined && answered / byLane.size < rule.minLaneShare) return null
+      if (rule.requireDensestLane && !densestAnswered) return null
+      if (
+        rule.minAnsweredEventShare !== undefined &&
+        totalEvents > 0 &&
+        answeredEvents / totalEvents < rule.minAnsweredEventShare
+      ) {
+        return null
+      }
+      if (
+        rule.maxAbstainingLaneShare !== undefined &&
+        totalEvents > 0 &&
+        heaviestAbstaining / totalEvents >= rule.maxAbstainingLaneShare
+      ) {
+        return null
+      }
     }
     return maxPeriod
   }
