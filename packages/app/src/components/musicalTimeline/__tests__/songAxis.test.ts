@@ -63,19 +63,55 @@ describe('xToSongCycle', () => {
 
 describe('wrapSongPosition', () => {
   it('wraps a position past the loop length back into [0, displayCycles)', () => {
-    expect(wrapSongPosition(2, 8)).toBe(2)
-    expect(wrapSongPosition(10, 8)).toBe(2)
-    expect(wrapSongPosition(8, 8)).toBe(0)
+    expect(wrapSongPosition(2, 8, true)).toBe(2)
+    expect(wrapSongPosition(10, 8, true)).toBe(2)
+    expect(wrapSongPosition(8, 8, true)).toBe(0)
   })
 
   it('handles negative positions', () => {
-    expect(wrapSongPosition(-1, 8)).toBe(7)
+    expect(wrapSongPosition(-1, 8, true)).toBe(7)
   })
 
   it('returns null for null / non-finite / degenerate', () => {
-    expect(wrapSongPosition(null, 8)).toBeNull()
-    expect(wrapSongPosition(Number.NaN, 8)).toBeNull()
-    expect(wrapSongPosition(4, 0)).toBeNull()
+    expect(wrapSongPosition(null, 8, true)).toBeNull()
+    expect(wrapSongPosition(Number.NaN, 8, true)).toBeNull()
+    expect(wrapSongPosition(4, 0, true)).toBeNull()
+  })
+
+  // #1105 — when the span is the analysis cap rather than a loop, the modulo
+  // would assert a repeat the song does not have.
+  describe('non-looping span (the analysis gave up at the cap)', () => {
+    it('passes a position INSIDE the span straight through', () => {
+      expect(wrapSongPosition(0, 256, false)).toBe(0)
+      expect(wrapSongPosition(200, 256, false)).toBe(200)
+      expect(wrapSongPosition(255.9, 256, false)).toBeCloseTo(255.9)
+    })
+
+    it('withholds the playhead PAST the span instead of wrapping it', () => {
+      // The whole point: 257 must NOT come back as 1.
+      expect(wrapSongPosition(257, 256, false)).toBeNull()
+      expect(wrapSongPosition(256, 256, false)).toBeNull()
+      expect(wrapSongPosition(5000, 256, false)).toBeNull()
+    })
+
+    it('differs from the looping arm exactly where the loop claim is false', () => {
+      // Same inputs, both arms — inside the span they agree, past it they must not.
+      expect(wrapSongPosition(100, 256, false)).toBe(wrapSongPosition(100, 256, true))
+      expect(wrapSongPosition(257, 256, true)).toBe(1)
+      expect(wrapSongPosition(257, 256, false)).toBeNull()
+    })
+
+    it('still returns null for null / non-finite / degenerate', () => {
+      expect(wrapSongPosition(null, 256, false)).toBeNull()
+      expect(wrapSongPosition(Number.NaN, 256, false)).toBeNull()
+      expect(wrapSongPosition(4, 0, false)).toBeNull()
+    })
+
+    it('clamps a negative position to 0 rather than wrapping it to the tail', () => {
+      // Wrapping -1 to 255 would place the playhead at the far edge of a span
+      // that does not loop — the same false claim from the other direction.
+      expect(wrapSongPosition(-1, 256, false)).toBe(0)
+    })
   })
 })
 
