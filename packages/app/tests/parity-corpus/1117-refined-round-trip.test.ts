@@ -151,10 +151,20 @@ const blank = (): Tally => ({
  */
 type Edit<M> = (model: M, k: number) => M | null
 
-function sweep<M extends { steps: number; viewScale?: number }>(
+function sweep<
+  M extends {
+    steps: number
+    viewScale?: number
+    altSource?: unknown
+    leafSource?: unknown
+    source?: { prefix?: string }
+  },
+>(
   parse: (mini: string, k?: number) => { ok: true; model: M } | { ok: false },
   collapse: (m: M) => M | null,
-  serialize: (m: M) => string,
+  // the real writers DECLINE by returning null; a declined write is still a
+  // comparable answer here, and folding it to `string` would hide one
+  serialize: (m: M) => string | null,
   contentKey: (m: M) => string,
   edit: Edit<M>,
   needsFiner?: (m: M, k: number) => boolean | null,
