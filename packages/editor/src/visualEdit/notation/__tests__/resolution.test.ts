@@ -667,4 +667,38 @@ describe('a write spells the refinement only when it needs to', () => {
     }
     expect(collapsePianoRollToDocument(odd)).toBeNull()
   })
+
+  /**
+   * The write half is only sound if the READ half agrees: `.gain` is written at the
+   * resolution the notation is written at, so a model drawn k× finer has to expand
+   * the document's tokens rather than demand `model.steps` of them. Asking for the
+   * drawn count made an ordinary gain FOREIGN the moment the user refined, which
+   * retires the velocity lane for as long as they stay zoomed in — and the round
+   * trip then silently stops working, because a foreign gain is never written back.
+   */
+  it('both surfaces read their own `.gain` back while refined', () => {
+    const docGain = { mini: '0.5 ~ 1 ~', numeric: null, foreign: false }
+
+    const grid = parseStepGrid('bd ~ sn ~', 2)
+    if (!grid.ok) throw new Error('unreachable')
+    const gGained = applyStepGain(grid.model, docGain)
+    expect(gGained.gainForeign, 'a 4-token gain on an 8-column view is not foreign').toBeUndefined()
+    // the value lands on the column that STARTS the note; the rest stay neutral,
+    // which is what keeps the model collapsible (a non-neutral sustain column
+    // reads to the ÷k guard as data it would drop)
+    expect(gGained.gains?.[0]).toBe(0.5)
+    expect(gGained.gains?.[1]).toBe(1)
+    expect(collapseStepGridToDocument(gGained), 'and it still collapses').not.toBeNull()
+
+    const roll = parsePianoRoll('c3 ~ e3 ~', 2)
+    if (!roll.ok) throw new Error('unreachable')
+    const rGained = applyRollGain(roll.model, docGain)
+    expect(rGained.gainForeign, 'the roll cursor walks in document columns').toBeUndefined()
+    // 0.5 belongs to `c3`, and `c3` sits at drawn column 0 — if the cursor stepped
+    // by 1 instead of k the gain would land on a column no note starts at, and the
+    // whole gain would be handed off as foreign
+    expect(rGained.notes[0].gain).toBe(0.5)
+    expect(rGained.notes[1].gain).toBeUndefined()
+    expect(collapsePianoRollToDocument(rGained)).not.toBeNull()
+  })
 })
