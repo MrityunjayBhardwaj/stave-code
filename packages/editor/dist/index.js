@@ -27027,14 +27027,19 @@ function buildAltRegions(src, elemSpans, div, perBarCols, content) {
   return regions;
 }
 __name(buildAltRegions, "buildAltRegions");
-function gridFromAltElements(mini) {
+function gridFromAltElements(mini, viewScale = UNREFINED) {
   const exp = expandAltElements(mini, false);
   if (exp === null) return null;
   if ("reason" in exp) return { ok: false, reason: exp.reason };
-  const { bars, div, perBarCols, perBarSteps, elemSpans } = exp;
+  const { bars, div: documentDiv, perBarCols: documentPerBarCols, perBarSteps, elemSpans } = exp;
   if (perBarSteps.some(gridHasElongation)) {
     return { ok: false, reason: "elongation is beyond the drum-grid subset" };
   }
+  if (!viewScaleFits(documentPerBarCols, bars, viewScale)) {
+    return { ok: false, reason: gateReason("view-resolution", "grid") };
+  }
+  const div = documentDiv * viewScale;
+  const perBarCols = documentPerBarCols * viewScale;
   const cells = [];
   for (const steps of perBarSteps) cells.push(...toCells(steps, div));
   const lanes = lanesFromCells(cells);
@@ -27053,7 +27058,17 @@ function gridFromAltElements(mini) {
   if (!regions) return { ok: false, reason: "unsupported mini-notation syntax" };
   return {
     ok: true,
-    model: { steps: cells.length, bars, lanes, altSource: { perBar: perBarCols, bars, div, regions } }
+    // ⚠ RECORDING THE SCALE IS NOT OPTIONAL ([[P417]]). The entry check reads this
+    // self-report, so a path that multiplies correctly and stays silent is refused —
+    // and refusal is the safe direction, so nothing looks broken while the reach
+    // quietly disappears. Whoever multiplies by the scale also declares it.
+    model: {
+      steps: cells.length,
+      bars,
+      ...viewScale === UNREFINED ? {} : { viewScale },
+      lanes,
+      altSource: { perBar: perBarCols, bars, div, regions }
+    }
   };
 }
 __name(gridFromAltElements, "gridFromAltElements");
@@ -27244,7 +27259,7 @@ function projectStepGrid(src0, viewScale = UNREFINED) {
   const perCycle = cycles.slice(0, bars);
   if (perCycle.every((c) => c.length === 0)) return no("no-note-content");
   if (whole !== null) {
-    return bars > 1 ? projectAltBars(src, whole, perCycle, bars) : no("element-tiling");
+    return bars > 1 ? projectAltBars(src, whole, perCycle, bars, viewScale) : no("element-tiling");
   }
   const spans = topLevelSpans(src);
   if (!spans) return no("element-tiling");
@@ -27307,18 +27322,20 @@ function projectStepGrid(src0, viewScale = UNREFINED) {
   return { ok: true, model };
 }
 __name(projectStepGrid, "projectStepGrid");
-function projectAltBars(src, inner, perCycle, bars) {
+function projectAltBars(src, inner, perCycle, bars, viewScale = UNREFINED) {
   const innerSrc = inner.trim();
   const spans = topLevelSpans(innerSrc);
   if (!spans) return no("element-tiling");
   if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return no("element-tiling");
-  let perBar2 = 1;
+  let documentPerBar = 1;
   for (const o of perCycle.flat()) {
     const d = denom(o.pos);
     if (d === 0) return no("irrational-onset");
-    perBar2 = lcm(perBar2, d);
+    documentPerBar = lcm(documentPerBar, d);
   }
-  if (perBar2 * bars > MAX_STEPS) return no("resolution");
+  if (documentPerBar * bars > MAX_STEPS) return no("resolution");
+  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no("view-resolution");
+  const perBar2 = documentPerBar * viewScale;
   const cells = columnsFromOnsets(perCycle, perBar2, bars);
   if (cells === null) return no("irrational-onset");
   const parts = singlePart(innerSrc, spans, perBar2, perBar2 * bars, gridContent(tokensOf(cells)));
@@ -27326,6 +27343,7 @@ function projectAltBars(src, inner, perCycle, bars) {
   const model = {
     steps: perBar2 * bars,
     bars,
+    ...viewScale === UNREFINED ? {} : { viewScale },
     lanes: lanesFromCells(cells),
     source: {
       parts,
@@ -27570,10 +27588,8 @@ function parseStepGridCore(mini, viewScale = UNREFINED) {
   if (alt !== null) return gridFromAlternation(alt, viewScale);
   const parts = splitTopLevel(mini);
   if (parts.length > 1) return gridFromStack(parts, viewScale);
-  const altEl = gridFromAltElements(mini);
-  if (altEl !== null) {
-    return viewScale === UNREFINED ? altEl : { ok: false, reason: "this pattern does not offer a finer view yet" };
-  }
+  const altEl = gridFromAltElements(mini, viewScale);
+  if (altEl !== null) return altEl;
   const tok = tokenize(mini);
   if (!tok.ok) return tok;
   if (gridHasElongation(tok.steps)) {
@@ -27781,11 +27797,16 @@ function applyRollGain(model, gain) {
   };
 }
 __name(applyRollGain, "applyRollGain");
-function rollFromAltElements(mini) {
+function rollFromAltElements(mini, viewScale = UNREFINED) {
   const exp = expandAltElements(mini, true);
   if (exp === null) return null;
   if ("reason" in exp) return { ok: false, reason: exp.reason };
-  const { bars, div, perBarCols, perBarSteps, elemSpans } = exp;
+  const { bars, div: documentDiv, perBarCols: documentPerBarCols, perBarSteps, elemSpans } = exp;
+  if (!viewScaleFits(documentPerBarCols, bars, viewScale)) {
+    return { ok: false, reason: gateReason("view-resolution", "roll") };
+  }
+  const div = documentDiv * viewScale;
+  const perBarCols = documentPerBarCols * viewScale;
   const notes = [];
   let col = 0;
   let sawNumeric = false;
@@ -27832,6 +27853,7 @@ function rollFromAltElements(mini) {
       bars,
       notes,
       ...sawNumeric ? { numeric: true } : {},
+      ...viewScale === UNREFINED ? {} : { viewScale },
       altSource: { perBar: perBarCols, bars, div, regions }
     }
   };
@@ -27942,7 +27964,7 @@ function projectPianoRoll(src0, viewScale = UNREFINED) {
   const numeric = all.some((o) => o.numeric);
   if (numeric && all.some((o) => !o.numeric)) return no("mixed-pitch-domain");
   if (whole !== null) {
-    return bars > 1 ? projectAltRollBars(src, whole, perCycle, numeric) : no("element-tiling");
+    return bars > 1 ? projectAltRollBars(src, whole, perCycle, numeric, viewScale) : no("element-tiling");
   }
   const spans = topLevelSpans(src);
   if (!spans) return no("element-tiling");
@@ -28022,20 +28044,22 @@ function barNotes(perCycle, perBar2) {
   return notes;
 }
 __name(barNotes, "barNotes");
-function projectAltRollBars(src, inner, perCycle, numeric) {
+function projectAltRollBars(src, inner, perCycle, numeric, viewScale = UNREFINED) {
   const bars = perCycle.length;
   const innerSrc = inner.trim();
   const spans = topLevelSpans(innerSrc);
   if (!spans) return no("element-tiling");
   if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return no("element-tiling");
   const all = perCycle.flat();
-  let perBar2 = 1;
+  let documentPerBar = 1;
   for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
     const d = denom(x);
     if (d === 0) return no("irrational-onset");
-    perBar2 = lcm(perBar2, d);
+    documentPerBar = lcm(documentPerBar, d);
   }
-  if (perBar2 * bars > MAX_STEPS) return no("resolution");
+  if (documentPerBar * bars > MAX_STEPS) return no("resolution");
+  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no("view-resolution");
+  const perBar2 = documentPerBar * viewScale;
   const notes = barNotes(perCycle, perBar2);
   if (notes === null) return no("element-tiling");
   const parts = singlePart(innerSrc, spans, perBar2, perBar2 * bars, rollContent(notes));
@@ -28045,6 +28069,7 @@ function projectAltRollBars(src, inner, perCycle, numeric) {
     bars,
     notes,
     ...numeric ? { numeric: true } : {},
+    ...viewScale === UNREFINED ? {} : { viewScale },
     source: {
       parts,
       prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
@@ -28208,10 +28233,8 @@ function parsePianoRollCore(mini, viewScale = UNREFINED) {
   if (alt === null) {
     const parts2 = splitTopLevel(mini);
     if (parts2.length > 1) return parseRollLanes(parts2, viewScale);
-    const altEl = rollFromAltElements(mini);
-    if (altEl !== null) {
-      return viewScale === UNREFINED ? altEl : { ok: false, reason: "this pattern does not offer a finer view yet" };
-    }
+    const altEl = rollFromAltElements(mini, viewScale);
+    if (altEl !== null) return altEl;
   }
   const tok = tokenize(
     alt ?? mini,
