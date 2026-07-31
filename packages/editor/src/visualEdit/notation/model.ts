@@ -853,6 +853,16 @@ export interface PianoRollModel {
   leafSource?: RollLeafSource
   /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
   bars?: number
+  /**
+   * How much finer than the DOCUMENT this model is drawn — the roll's half of
+   * `StepGridModel.viewScale`, with the same meaning and the same default (#1055,
+   * #1116). Absent = `UNREFINED`, which is the truth for every projection that does
+   * not apply a scale and is what keeps `documentSteps(model)` total.
+   *
+   * ⚠ A ROLL COLUMN IS NOT A GRID COLUMN: `steps` here is a column COUNT that
+   * `start`/`duration` are measured in, so a refine multiplies all three together.
+   */
+  viewScale?: number
   notes: RollNote[]
   /** see `StepGridModel.gainForeign` — a `.gain` we read but don't manage. */
   gainForeign?: boolean
