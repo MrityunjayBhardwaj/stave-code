@@ -37,7 +37,12 @@ import { sampleVoice } from './drumVoices'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
-import { stepSlotState, quantizeStepGridTo, freeZoneScale } from '../notation/resolution'
+import {
+  stepSlotState,
+  quantizeStepGridTo,
+  freeZoneScale,
+  collapseStepGridToDocument,
+} from '../notation/resolution'
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { setColumnGain } from './inspector'
 
@@ -75,6 +80,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     serializeGain: serializeStepGain,
     viewScale,
     onViewScaleConsumed: () => setViewScale(UNREFINED),
+    collapseToDocument: collapseStepGridToDocument,
   })
 
   // A refinement belongs to the pattern it was made on. Dropping it when the cursor

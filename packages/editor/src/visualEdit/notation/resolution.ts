@@ -28,7 +28,7 @@
 import { cellOn, clampLane, isCellOn, scaleCell } from './model'
 import type { PianoRollModel, RollNote, StepCell, StepGridModel } from './model'
 import { ifGridSpellable, ifRollSpellable } from './serialize'
-import { MAX_VIEW_STEPS, documentSteps, type ViewScale } from './viewResolution'
+import { absorbViewScale, MAX_VIEW_STEPS, documentSteps, type ViewScale } from './viewResolution'
 
 /** which way the resolution control scales the grid */
 export type ResolutionDir = 'double' | 'halve'
@@ -405,6 +405,50 @@ export function freeZoneScale(docSteps: number, target: number): ViewScale | nul
   if (target < docSteps || target % docSteps !== 0) return null
   if (target > MAX_VIEW_STEPS) return null
   return target / docSteps
+}
+
+/**
+ * WHAT RESOLUTION SHOULD A WRITE SPELL? (#1057)
+ *
+ * While the view is refined the panel holds a model drawn `k×` finer than the file,
+ * and serializing THAT model spells every column at the drawn resolution. Which is
+ * right when the edit actually used one of the new columns — and wrong when it did
+ * not. A velocity drag never does: it changes `gain` and leaves every onset exactly
+ * where the document already put it, yet it would still respell `bd ~ sn ~` as
+ * `bd _ ~ ~ sn _ ~ ~` and widen the `.gain` mini to match. That is the same harm the
+ * free zone exists to prevent — a file rewritten to record how closely someone was
+ * looking — arriving through a different gesture.
+ *
+ * So a write asks this FIRST: can what I am about to write be said at the document's
+ * own resolution? The question is already answered by the ÷k guard the resolution
+ * control uses, because a refinement is an exact `k×` embedding — an edit that stayed
+ * on the document's grid collapses cleanly, and one that did not cannot.
+ *
+ * ⚠ NOTE LENGTH IS THE DISCRIMINATOR, and it is why this needs no new rule. A note
+ * placed in a column that exists only in the view is shorter than any column the
+ * document can spell, so the guard refuses and the finer spelling is written
+ * (`bd ~ sn ~` + a hit at drawn column 1 → `[bd bd] ~ sn ~`). A gain change leaves
+ * every note its inherited `k` columns, so it halves exactly back to the source.
+ *
+ * Returns the model expressed at the document's resolution, or `null` when the edit
+ * genuinely needs the finer spelling. An UNREFINED model is returned unchanged —
+ * there is nothing to collapse, which is the case every pre-#1057 caller is in.
+ */
+export function collapseStepGridToDocument(model: StepGridModel): StepGridModel | null {
+  if (model.viewScale === undefined) return model
+  const docSteps = documentSteps(model)
+  if (docSteps === model.steps) return absorbViewScale(model)
+  if (!canScaleStepGridTo(model, docSteps)) return null
+  return absorbViewScale(scaleStepGridTo(model, docSteps))
+}
+
+/** the roll's half of `collapseStepGridToDocument` — one rule, both surfaces */
+export function collapsePianoRollToDocument(model: PianoRollModel): PianoRollModel | null {
+  if (model.viewScale === undefined) return model
+  const docSteps = documentSteps(model)
+  if (docSteps === model.steps) return absorbViewScale(model)
+  if (!canScalePianoRollTo(model, docSteps)) return null
+  return absorbViewScale(scalePianoRollTo(model, docSteps))
 }
 
 /**

@@ -27760,8 +27760,11 @@ function applyStepGain(model, gain) {
     return gain.numeric === 1 ? model : { ...model, gains: Array(model.steps).fill(gain.numeric) };
   }
   if (gain.mini === null) return model;
-  const gains = parseGainMini(gain.mini, model.steps);
-  if (gains === null) return { ...model, gainForeign: true };
+  const docSteps = documentSteps(model);
+  const docGains = parseGainMini(gain.mini, docSteps);
+  if (docGains === null) return { ...model, gainForeign: true };
+  const k = model.steps / docSteps;
+  const gains = k === 1 ? docGains : docGains.flatMap((g) => [g, ...Array(k - 1).fill(1)]);
   return { ...model, gains };
 }
 __name(applyStepGain, "applyStepGain");
@@ -27778,16 +27781,17 @@ function applyRollGain(model, gain) {
     mini = inner;
   }
   const byStart = /* @__PURE__ */ new Map();
+  const k = model.steps / documentSteps(model);
   let col = 0;
   for (const t of mini.trim().split(/\s+/).filter((s) => s !== "")) {
     if (t === "~") {
-      col += 1;
+      col += k;
       continue;
     }
     const m = t.match(/^(\d+(?:\.\d+)?)(?:@(\d+))?$/);
     if (!m) return { ...model, gainForeign: true };
     byStart.set(col, parseFloat(m[1]));
-    col += m[2] ? parseInt(m[2], 10) : 1;
+    col += (m[2] ? parseInt(m[2], 10) : 1) * k;
   }
   if (col !== model.steps) return { ...model, gainForeign: true };
   const noteStarts = new Set(model.notes.map((n) => n.start));
@@ -28464,7 +28468,8 @@ function useGridModel(opts) {
     const chunkGain = readChunkGain(chunk);
     const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain) : parsed.model;
     const prev = modelRef.current;
-    const sameMini = prev != null && o.serialize(prev) === chunk.miniString;
+    const asWritten = prev == null ? null : o.collapseToDocument?.(prev) ?? prev;
+    const sameMini = asWritten != null && o.serialize(asWritten) === chunk.miniString;
     const sameGain = prev == null || !o.serializeGain ? true : gainUnchanged(o.serializeGain(prev), chunkGain);
     const sameScale = modelScaleRef.current === viewScale;
     const next = prev && sameMini && sameGain && sameScale ? prev : fresh;
@@ -28479,17 +28484,20 @@ function useGridModel(opts) {
       if (prev == null) return;
       const next = fn(prev);
       if (next === prev) return;
-      const mini = o.serialize(next);
+      const atDocument = o.collapseToDocument ? o.collapseToDocument(next) : null;
+      const spellsRefinement = atDocument === null;
+      const toWrite = atDocument ?? next;
+      const mini = o.serialize(toWrite);
       if (mini == null) return;
-      const written = absorbViewScale(next);
-      modelScaleRef.current = UNREFINED;
+      const written = spellsRefinement ? absorbViewScale(next) : next;
+      if (spellsRefinement) modelScaleRef.current = UNREFINED;
       modelRef.current = written;
       setModel(written);
-      o.onViewScaleConsumed?.();
+      if (spellsRefinement) o.onViewScaleConsumed?.();
       applyEdit((fresh, wb) => {
         if (!fresh.miniRange) return;
         const edits = [{ range: fresh.miniRange, text: mini }];
-        if (o.serializeGain) edits.push(...gainEdits(fresh, o.serializeGain(next)));
+        if (o.serializeGain) edits.push(...gainEdits(fresh, o.serializeGain(toWrite)));
         wb.replaceRanges(edits, o.source);
       });
     },
@@ -29053,6 +29061,22 @@ function freeZoneScale(docSteps, target) {
   return target / docSteps;
 }
 __name(freeZoneScale, "freeZoneScale");
+function collapseStepGridToDocument(model) {
+  if (model.viewScale === void 0) return model;
+  const docSteps = documentSteps(model);
+  if (docSteps === model.steps) return absorbViewScale(model);
+  if (!canScaleStepGridTo(model, docSteps)) return null;
+  return absorbViewScale(scaleStepGridTo(model, docSteps));
+}
+__name(collapseStepGridToDocument, "collapseStepGridToDocument");
+function collapsePianoRollToDocument(model) {
+  if (model.viewScale === void 0) return model;
+  const docSteps = documentSteps(model);
+  if (docSteps === model.steps) return absorbViewScale(model);
+  if (!canScalePianoRollTo(model, docSteps)) return null;
+  return absorbViewScale(scalePianoRollTo(model, docSteps));
+}
+__name(collapsePianoRollToDocument, "collapsePianoRollToDocument");
 function slotState(steps, docSteps, bars, lossless, applies, target, canDrawView) {
   if (target === steps) return "active";
   if (canDrawView) {
@@ -30056,7 +30080,8 @@ function SequencerGrid({ onResolution } = {}) {
     applyGain: applyStepGain,
     serializeGain: serializeStepGain,
     viewScale,
-    onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
+    onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed"),
+    collapseToDocument: collapseStepGridToDocument
   });
   const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
   React36__namespace.useEffect(() => {
@@ -30519,7 +30544,8 @@ function PianoRollGrid({
     applyGain: applyRollGain,
     serializeGain: serializeRollGain,
     viewScale,
-    onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
+    onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed"),
+    collapseToDocument: collapsePianoRollToDocument
   });
   const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
   React36__namespace.useEffect(() => {

@@ -20,7 +20,11 @@ import {
   RESOLUTION_PRESETS,
   MAX_RESOLUTION_STEPS,
   freeZoneScale,
+  collapseStepGridToDocument,
+  collapsePianoRollToDocument,
 } from '../resolution'
+import { setColumnGain, setGroupGain } from '../../panels/inspector'
+import { toggleCell } from '../place'
 import {
   MAX_VIEW_STEPS,
   UNREFINED,
@@ -587,5 +591,80 @@ describe('free zone — refining is a view change, not a rewrite', () => {
     expect(written.steps).toBe(drawn.model.steps)
     expect(documentSteps(written)).toBe(written.steps) // …and the claim is now true
     expect(serializeStepGrid(written)).toBe(serializeStepGrid(drawn.model))
+  })
+})
+
+describe('a write spells the refinement only when it needs to', () => {
+  /**
+   * The free zone stops a VIEW preference reaching the document. This is the other
+   * half: once the user does make a real edit while refined, only an edit that used
+   * a column the document does not have may respell the file. A velocity drag must
+   * not — it changes `gain` and moves no onset.
+   */
+  it('THE DEFECT: a gain-only edit at a refined view must not respell the document', () => {
+    const drawn = parseStepGrid('bd ~ sn ~', 2)
+    if (!drawn.ok) throw new Error('unreachable')
+    const gained = setColumnGain(drawn.model, 0, 0.42)
+
+    // what the model would have written before: the drawn spelling, and a `.gain`
+    // mini widened to match it — two ranges recording how closely someone looked
+    expect(serializeStepGrid(gained)).toBe('bd _ ~ ~ sn _ ~ ~')
+
+    const atDoc = collapseStepGridToDocument(gained)
+    expect(atDoc, 'a gain change stays on the document grid').not.toBeNull()
+    expect(serializeStepGrid(atDoc as StepGridModel)).toBe('bd ~ sn ~')
+    // the gain range collapses WITH the notation — they must agree about the
+    // document's resolution, which is exactly what they did not do
+    expect(serializeStepGain(atDoc as StepGridModel)).toEqual(
+      serializeStepGain(setColumnGain(step('bd ~ sn ~'), 0, 0.42)),
+    )
+    // …and the collapsed model no longer claims to be drawn finer than the file
+    expect((atDoc as StepGridModel).viewScale).toBeUndefined()
+  })
+
+  it('an edit that USES a view-only column still spells the finer grid', () => {
+    const drawn = parseStepGrid('bd ~ sn ~', 2)
+    if (!drawn.ok) throw new Error('unreachable')
+    // drawn column 1 exists only at ×2 — the whole reason to refine
+    const placed = toggleCell(drawn.model, 0, 1, true)
+    expect(placed).not.toBe(drawn.model)
+    expect(collapseStepGridToDocument(placed), 'this one NEEDS the finer spelling').toBeNull()
+    expect(serializeStepGrid(placed)).toBe('[bd bd] ~ sn ~')
+  })
+
+  it('NOTE LENGTH is what discriminates, not the column index', () => {
+    // drawn column 2 IS a document column boundary (2/8 === 1/4), so an index rule
+    // would call this collapsible. It is not: the placed note is one drawn column
+    // long, and no column the document can spell is that short.
+    const drawn = parseStepGrid('bd ~ sn ~', 2)
+    if (!drawn.ok) throw new Error('unreachable')
+    const placed = toggleCell(drawn.model, 0, 2, true)
+    expect(collapseStepGridToDocument(placed)).toBeNull()
+    expect(serializeStepGrid(placed)).toBe('bd [bd ~] sn ~')
+  })
+
+  it('an UNREFINED model is returned unchanged — every pre-#1057 caller lands here', () => {
+    const plain = step('bd ~ sn ~')
+    expect(collapseStepGridToDocument(plain)).toBe(plain) // same reference
+    const r = roll('c3 ~ e3 ~')
+    expect(collapsePianoRollToDocument(r)).toBe(r)
+  })
+
+  it('the roll behaves identically — one rule, both surfaces', () => {
+    const drawn = parsePianoRoll('c3 ~ e3 ~', 2)
+    if (!drawn.ok) throw new Error('unreachable')
+    const gained = setGroupGain(drawn.model, drawn.model.notes[0].start, 0.42)
+    expect(serializePianoRoll(gained)).toBe('c3@2 ~ ~ e3@2 ~ ~') // what it would have written
+    const atDoc = collapsePianoRollToDocument(gained)
+    expect(atDoc).not.toBeNull()
+    expect(serializePianoRoll(atDoc as PianoRollModel)).toBe('c3 ~ e3 ~')
+    expect((atDoc as PianoRollModel).notes[0].gain).toBe(0.42) // the edit survived
+
+    // a note starting on a view-only column cannot be said at the document's grid
+    const odd = {
+      ...drawn.model,
+      notes: [...drawn.model.notes, { pitch: 'd3', start: 1, duration: 1 }],
+    }
+    expect(collapsePianoRollToDocument(odd)).toBeNull()
   })
 })

@@ -47,7 +47,7 @@ import type {
   StepLane,
 } from './model'
 import { cellOn, gridCellKey, isCellOn } from './model'
-import { MAX_VIEW_STEPS, UNREFINED, viewScaleFits } from './viewResolution'
+import { MAX_VIEW_STEPS, UNREFINED, documentSteps, viewScaleFits } from './viewResolution'
 import type { ViewScale } from './viewResolution'
 import { pitchToMidi } from './pitch'
 
@@ -2450,8 +2450,27 @@ export function applyStepGain(model: StepGridModel, gain: ChunkGain): StepGridMo
     return gain.numeric === 1 ? model : { ...model, gains: Array<number>(model.steps).fill(gain.numeric) }
   }
   if (gain.mini === null) return model
-  const gains = parseGainMini(gain.mini, model.steps)
-  if (gains === null) return { ...model, gainForeign: true }
+  // READ AT THE DOCUMENT'S RESOLUTION, THEN EXPAND (#1057). `.gain` is written at
+  // whatever resolution the notation is written at, so on a model drawn `k×` finer
+  // than the file the mini has the DOCUMENT's token count, not `model.steps`.
+  // Asking for `model.steps` tokens made a perfectly ordinary gain look foreign the
+  // moment the user refined, which silently retired the velocity lane for as long
+  // as they stayed zoomed in. Expanding across each drawn column is the same
+  // embedding the notation gets, and the ÷k write collapses it back exactly.
+  const docSteps = documentSteps(model)
+  const docGains = parseGainMini(gain.mini, docSteps)
+  if (docGains === null) return { ...model, gainForeign: true }
+  const k = model.steps / docSteps
+  // ⚠ THE GAIN GOES ON THE GROUP'S FIRST COLUMN AND THE REST STAY NEUTRAL — the
+  // same shape `scaleStepGrid` ×2 produces ("keeps each hit gain, inserts neutral
+  // odd columns"). Filling every drawn column instead puts a non-neutral value on
+  // a sustain column, which the ÷k guard reads as data it would drop, so the model
+  // stops collapsing and every write respells the file again. Measured, not
+  // reasoned: the flood-fill version refused to collapse even UNMODIFIED.
+  const gains =
+    k === 1
+      ? docGains
+      : docGains.flatMap((g) => [g, ...Array<number>(k - 1).fill(1)])
   return { ...model, gains }
 }
 
@@ -2488,16 +2507,22 @@ export function applyRollGain(model: PianoRollModel, gain: ChunkGain): PianoRoll
     mini = inner
   }
   const byStart = new Map<number, number>()
+  // THE CURSOR WALKS IN DOCUMENT COLUMNS, THE NOTES SIT IN DRAWN ONES (#1057).
+  // `.gain` is written at the resolution the notation is written at, so on a model
+  // drawn `k×` finer every token spans `k` drawn columns. Stepping by 1 would land
+  // each gain on the wrong note and then fail the grid-total check below, turning
+  // an ordinary gain foreign the moment the user refined.
+  const k = model.steps / documentSteps(model)
   let col = 0
   for (const t of mini.trim().split(/\s+/).filter((s) => s !== '')) {
     if (t === '~') {
-      col += 1
+      col += k
       continue
     }
     const m = t.match(/^(\d+(?:\.\d+)?)(?:@(\d+))?$/)
     if (!m) return { ...model, gainForeign: true }
     byStart.set(col, parseFloat(m[1]))
-    col += m[2] ? parseInt(m[2], 10) : 1
+    col += (m[2] ? parseInt(m[2], 10) : 1) * k
   }
   if (col !== model.steps) return { ...model, gainForeign: true } // grid mismatch
   const noteStarts = new Set(model.notes.map((n) => n.start))

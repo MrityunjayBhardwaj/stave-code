@@ -38,7 +38,12 @@ import { pasteNote, placeNote, resizeNote, viewPlacesNotes } from '../notation/p
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
-import { rollSlotState, quantizePianoRollTo, freeZoneScale } from '../notation/resolution'
+import {
+  rollSlotState,
+  quantizePianoRollTo,
+  freeZoneScale,
+  collapsePianoRollToDocument,
+} from '../notation/resolution'
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
@@ -196,6 +201,7 @@ export function PianoRollGrid({
     serializeGain: serializeRollGain,
     viewScale,
     onViewScaleConsumed: () => setViewScale(UNREFINED),
+    collapseToDocument: collapsePianoRollToDocument,
   })
 
   // A refinement belongs to the pattern it was made on — see `SequencerGrid` for

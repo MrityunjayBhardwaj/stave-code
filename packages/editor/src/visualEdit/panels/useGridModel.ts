@@ -48,12 +48,24 @@ export interface GridModelOptions<M> {
    */
   viewScale?: ViewScale
   /**
-   * Called after a write-back has actually happened, so the panel can drop its
-   * refinement: the document now spells what was drawn (`absorbViewScale`). Not
-   * called when the transform declined or the result was inexpressible — nothing
-   * was written, so there is nothing to absorb.
+   * Called after a write-back has actually SPELLED the refinement, so the panel can
+   * drop it: the document now says what was drawn (`absorbViewScale`). Not called
+   * when the transform declined or the result was inexpressible — nothing was
+   * written — and not called when the write was expressible at the document's own
+   * resolution, because then the document's spelling did not change and the user's
+   * view must stay where they put it (see `collapseToDocument`).
    */
   onViewScaleConsumed?: () => void
+  /**
+   * Express a model drawn at a finer view at the DOCUMENT's own resolution, or
+   * `null` when the edit really used a column the document does not have (#1057).
+   *
+   * A write consults this FIRST, so that only a write which NEEDS the finer
+   * spelling respells the file. Omitting it restores the previous behaviour —
+   * every write spells what was drawn — which is what keeps a caller that never
+   * refines behaving exactly as it did.
+   */
+  collapseToDocument?: (model: M) => M | null
   /** model → mini, or null when the model can't be expressed in the subset */
   serialize: (model: M) => string | null
   /**
@@ -166,7 +178,13 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
     // was drawn at all still match; any external change to either — or any change
     // to how finely we are drawing — reseeds.
     const prev = modelRef.current
-    const sameMini = prev != null && o.serialize(prev) === chunk.miniString
+    // ASKED THE WAY THE WRITE ASKS IT. A refined model does not serialize to the
+    // document's bytes — it serializes to the drawn spelling — so comparing it
+    // directly would call every refined model "changed" and reseed on every frame
+    // of a velocity drag. The honest question is the one `mutate` answers: what
+    // would this model WRITE? (#1057)
+    const asWritten = prev == null ? null : (o.collapseToDocument?.(prev) ?? prev)
+    const sameMini = asWritten != null && o.serialize(asWritten) === chunk.miniString
     const sameGain =
       prev == null || !o.serializeGain
         ? true
@@ -185,21 +203,32 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
       if (prev == null) return
       const next = fn(prev)
       if (next === prev) return
-      const mini = o.serialize(next)
+      // WHAT RESOLUTION SHOULD THIS WRITE SPELL? Only an edit that used a column
+      // the document does not have needs the finer one; a velocity drag does not,
+      // and respelling for it rewrites the file to record how closely someone was
+      // looking (#1057). Asked once, here, rather than per op — and asked of the
+      // real ÷k guard rather than predicted, the same discipline `slotState` uses.
+      const atDocument = o.collapseToDocument ? o.collapseToDocument(next) : null
+      const spellsRefinement = atDocument === null
+      const toWrite = atDocument ?? next
+      const mini = o.serialize(toWrite)
       if (mini == null) return // inexpressible — leave the document untouched
-      // Past this point the write IS happening, so the refinement is being spelled
-      // into the document and the model stops being "drawn finer than the file".
-      // Both the marker and the panel's own scale state have to move together —
-      // keeping either alone is a model and a view that disagree (#1057).
-      const written = absorbViewScale(next)
-      modelScaleRef.current = UNREFINED
+      // The refinement is absorbed ONLY when the write actually spelled it. When
+      // the write went out at the document's own resolution the file's spelling
+      // did not change, so the marker and the panel's scale both stay put — and
+      // the model on screen stays the one the user is looking at.
+      const written = spellsRefinement ? absorbViewScale(next) : next
+      if (spellsRefinement) modelScaleRef.current = UNREFINED
       modelRef.current = written
       setModel(written)
-      o.onViewScaleConsumed?.()
+      if (spellsRefinement) o.onViewScaleConsumed?.()
       applyEdit((fresh, wb) => {
         if (!fresh.miniRange) return
         const edits: OffsetEdit[] = [{ range: fresh.miniRange, text: mini }]
-        if (o.serializeGain) edits.push(...gainEdits(fresh, o.serializeGain(next)))
+        // ⚠ THE SAME MODEL as the mini. These read `next` and `toWrite` separately
+        // once, and the gain mini was widened to the drawn column count while the
+        // notation was not — two ranges disagreeing about the document's resolution.
+        if (o.serializeGain) edits.push(...gainEdits(fresh, o.serializeGain(toWrite)))
         // One pushEditOperations → the mini and its `.gain` are one undo step.
         wb.replaceRanges(edits, o.source)
       })
