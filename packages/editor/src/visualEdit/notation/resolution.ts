@@ -26,9 +26,23 @@
  * the document is left untouched.
  */
 import { cellOn, clampLane, isCellOn, scaleCell } from './model'
-import type { PianoRollModel, RollNote, StepCell, StepGridModel } from './model'
+import type {
+  AltSource,
+  GridCells,
+  NotationSource,
+  PianoRollModel,
+  RollNote,
+  StepCell,
+  StepGridModel,
+} from './model'
 import { ifGridSpellable, ifRollSpellable } from './serialize'
-import { absorbViewScale, MAX_VIEW_STEPS, documentSteps, type ViewScale } from './viewResolution'
+import {
+  absorbViewScale,
+  MAX_VIEW_STEPS,
+  UNREFINED,
+  documentSteps,
+  type ViewScale,
+} from './viewResolution'
 
 /** which way the resolution control scales the grid */
 export type ResolutionDir = 'double' | 'halve'
@@ -439,7 +453,9 @@ export function collapseStepGridToDocument(model: StepGridModel): StepGridModel 
   const docSteps = documentSteps(model)
   if (docSteps === model.steps) return absorbViewScale(model)
   if (!canScaleStepGridTo(model, docSteps)) return null
-  return absorbViewScale(scaleStepGridTo(model, docSteps))
+  return absorbViewScale(
+    descaleSource(scaleStepGridTo(model, docSteps), model.viewScale, descaleGridCells),
+  )
 }
 
 /** the roll's half of `collapseStepGridToDocument` — one rule, both surfaces */
@@ -448,8 +464,104 @@ export function collapsePianoRollToDocument(model: PianoRollModel): PianoRollMod
   const docSteps = documentSteps(model)
   if (docSteps === model.steps) return absorbViewScale(model)
   if (!canScalePianoRollTo(model, docSteps)) return null
-  return absorbViewScale(scalePianoRollTo(model, docSteps))
+  return absorbViewScale(
+    descaleSource(scalePianoRollTo(model, docSteps), model.viewScale, descaleRollNotes),
+  )
 }
+
+/* ── the SOURCE half of the inverse (#1121) ─────────────────────── */
+
+/**
+ * WHY THE COLLAPSE CANNOT BE THE RESOLUTION OP ALONE.
+ *
+ * `scale*To` above is the DOCUMENT's resolution control: "produce a grid at N columns".
+ * It is entitled to reach that count and let the writer rebuild the notation, because
+ * that is precisely what the user asked for when they clicked ÷2 — the old spelling is
+ * the thing being changed.
+ *
+ * Used as the inverse of a VIEW refine it is too strong, and it fails in a way no
+ * column-count assertion can see. It scales `steps`, cells, gains and notes, and spreads
+ * `source` / `altSource` through UNTOUCHED — so a model back at 8 columns still carries a
+ * source description that says `div=4`, i.e. 16. The writer's covers-check correctly
+ * refuses a description that no longer describes the grid and falls to the rebuild, and
+ * the rebuild is the flat spelling: `[- - - -] [cp - - -] …` came back
+ * `~ ~ ~ ~ cp ~ ~ ~ …`, with `steps` right and every note in the right place.
+ *
+ * So the inverse has TWO halves and the op above is only one of them. The source
+ * description is scaled by the refine exactly as the cells are (`div`, each region's
+ * `[from, to)`, and the view content each region remembers), so undoing the refine means
+ * undoing it there too — the same rule, asked of the second carrier.
+ *
+ * `leafSource` is deliberately absent: a leaf-anchored model refuses a refine outright,
+ * so it never reaches here. That absence is ASSERTED rather than assumed — the corpus
+ * gate checks the shape SET it observes against the shapes it pins, and `leaf` is not
+ * among them.
+ *
+ * ⚠ K IS A POWER OF TWO, and that is a property of the offers rather than of this code.
+ * Every target comes from `RESOLUTION_PRESETS` (all powers of two) and `freeZoneScale`
+ * admits one only when it is a whole multiple of the document's own count — and only a
+ * power-of-two count divides a power-of-two preset. `scale*To` refuses any other ratio,
+ * so a hypothetical `k=3` view declines the collapse and writes the finer spelling. That
+ * is unreachable today; generalising it would be untested surface.
+ */
+function descaleSource<M extends { source?: NotationSource<C>; altSource?: AltSource<C> }, C>(
+  model: M,
+  k: ViewScale,
+  content: (c: C, k: ViewScale) => C,
+): M {
+  if (k === UNREFINED) return model
+  if (model.altSource) {
+    const a = model.altSource
+    return {
+      ...model,
+      altSource: {
+        ...a,
+        perBar: a.perBar / k,
+        div: a.div / k,
+        regions: a.regions.map((r) => ({
+          ...r,
+          from: r.from / k,
+          to: r.to / k,
+          perBar: r.perBar.map((c) => content(c, k)),
+        })),
+      },
+    }
+  }
+  if (model.source) {
+    const s = model.source
+    return {
+      ...model,
+      source: {
+        ...s,
+        parts: s.parts.map((p) => ({
+          ...p,
+          div: p.div / k,
+          regions: p.regions.map((r) => ({
+            ...r,
+            from: r.from / k,
+            to: r.to / k,
+            content: content(r.content, k),
+          })),
+        })),
+      },
+    }
+  }
+  return model
+}
+
+/**
+ * A region's remembered grid content, de-scaled — the same shape `scaleStepGrid`'s halve
+ * applies to a lane: keep the columns the document itself spells, and give each cell back
+ * the length it had before the view stretched it.
+ */
+const descaleGridCells = (cells: GridCells, k: ViewScale): GridCells =>
+  cells
+    .filter((_, i) => i % k === 0)
+    .map((column) => column.map((cell) => ({ ...cell, duration: cell.duration / k })))
+
+/** the roll's half — start and duration scale together, as they do in `scalePianoRoll` */
+const descaleRollNotes = (notes: RollNote[], k: ViewScale): RollNote[] =>
+  notes.map((n) => ({ ...n, start: n.start / k, duration: n.duration / k }))
 
 /**
  * how setting the grid to `target` slots behaves, for the control's label/state.

@@ -622,6 +622,67 @@ describe('a write spells the refinement only when it needs to', () => {
     expect((atDoc as StepGridModel).viewScale).toBeUndefined()
   })
 
+  /**
+   * ⚠ EVERY CASE AROUND THIS ONE USES `bd ~ sn ~`, AND THAT IS WHY #1121 SHIPPED.
+   * A flat pattern spells its own content uniquely, so flattening it is the identity
+   * and a round trip over it cannot fail a spelling assertion even in principle. The
+   * cases below use fixtures whose REPRESENTATION can differ from their VALUE —
+   * grouping, an operator, a stack, an alternation — which is the only kind of input
+   * on which "the document comes back as the user wrote it" says anything at all.
+   *
+   * What went wrong: the collapse de-scaled the model's cells and left the SOURCE
+   * description at the refined resolution, so the writer no longer recognised it and
+   * fell to the flat rebuild — right column count, right notes, wrong spelling.
+   */
+  it.each([
+    ['a group', 'bd [hh hh] sn ~'],
+    ['an operator', 'bd hh*2 sn cp'],
+    ['a repeat', 'bd*3 sn'],
+    ['nested rests', '[- - - -] [cp - - -] [- - - -] [~ cp - -]'],
+    ['a `,`-stack whose parts have different widths', 'bd sd, hh*4'],
+    ['an alternation as an element', '<bd sn> hh'],
+  ])('an unmodified round trip returns the document verbatim — %s', (_shape, mini) => {
+    const drawn = parseStepGrid(mini, 2)
+    if (!drawn.ok) throw new Error('unreachable')
+    const atDoc = collapseStepGridToDocument(drawn.model)
+    expect(atDoc, 'an untouched refine always collapses').not.toBeNull()
+    expect(serializeStepGrid(atDoc as StepGridModel)).toBe(mini)
+  })
+
+  it('the roll keeps its own spelling too — one rule, both surfaces', () => {
+    const mini = 'c3 [e3 g3] c4@2'
+    const drawn = parsePianoRoll(mini, 2)
+    if (!drawn.ok) throw new Error('unreachable')
+    const atDoc = collapsePianoRollToDocument(drawn.model)
+    expect(atDoc).not.toBeNull()
+    expect(serializePianoRoll(atDoc as PianoRollModel)).toBe(mini)
+  })
+
+  /**
+   * The equivalence form #1121 asks for, at module scale: not "the document did not
+   * change" — a collapse that did nothing would satisfy that — but "the same edit,
+   * made plainly and made through a refined view, writes the same bytes".
+   */
+  it('the same edit spells the same either way', () => {
+    const mini = 'bd [hh hh] sn cp'
+    const plain = parseStepGrid(mini)
+    const drawn = parseStepGrid(mini, 2)
+    if (!plain.ok || !drawn.ok) throw new Error('unreachable')
+
+    // erase the `bd`: document column 0, drawn column 0 — an edit that introduces no
+    // length, so it stays on the document's grid at both scales
+    const erasedPlain = toggleCell(plain.model, 0, 0, false)
+    const erasedDrawn = toggleCell(drawn.model, 0, 0, false)
+    expect(erasedPlain).not.toBe(plain.model)
+    expect(erasedDrawn).not.toBe(drawn.model)
+
+    const atDoc = collapseStepGridToDocument(erasedDrawn)
+    expect(atDoc, 'an erase never needs the finer grid').not.toBeNull()
+    expect(serializeStepGrid(atDoc as StepGridModel)).toBe(serializeStepGrid(erasedPlain))
+    // and the surviving group is still a group, which is the whole point
+    expect(serializeStepGrid(atDoc as StepGridModel)).toContain('[hh hh]')
+  })
+
   it('an edit that USES a view-only column still spells the finer grid', () => {
     const drawn = parseStepGrid('bd ~ sn ~', 2)
     if (!drawn.ok) throw new Error('unreachable')
