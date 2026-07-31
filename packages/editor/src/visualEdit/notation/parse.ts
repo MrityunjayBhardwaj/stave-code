@@ -47,6 +47,8 @@ import type {
   StepLane,
 } from './model'
 import { cellOn, gridCellKey, isCellOn } from './model'
+import { MAX_VIEW_STEPS, UNREFINED, viewScaleFits } from './viewResolution'
+import type { ViewScale } from './viewResolution'
 import { pitchToMidi } from './pitch'
 
 /**
@@ -1079,6 +1081,11 @@ function gateReason(gate: Gate, surface: Surface): string {
       return 'an onset does not land on any step column'
     case 'resolution':
       return `the pattern needs more than ${MAX_STEPS} steps`
+    case 'view-resolution':
+      // The DOCUMENT is fine here and the magnification is not, so the sentence has
+      // to blame the view rather than the pattern — a user who refined twice should
+      // read this as "too far in", not as "your pattern is unsupported" (#1055).
+      return `showing this pattern that finely needs more than ${MAX_VIEW_STEPS} columns`
     case 'element-tiling':
       // The ELEMENT writer's own vocabulary, and currently never surfaced —
       // `refused` reports the leaf writer's gate, and the leaf writer has no
@@ -1484,7 +1491,7 @@ const onsetKey = (o: Onset[]): string =>
  * work to the next writer. Anything outside this module that needs the derived
  * chain asks `projectStepGridDerived`, which is that order.
  */
-function projectStepGrid(src0: string): Projection<StepGridModel> {
+function projectStepGrid(src0: string, viewScale: ViewScale = UNREFINED): Projection<StepGridModel> {
   const src = src0.trim()
   if (src === '') return no('not-a-pattern')
   let pat: unknown
@@ -1533,13 +1540,21 @@ function projectStepGrid(src0: string): Projection<StepGridModel> {
   }
   // One column resolution shared by every bar: the alt writer indexes a region as
   // `from + b * perBar`, so bars that disagreed on width could not be strided.
-  let perBar = 1
+  let documentPerBar = 1
   for (const x of [...perCycle.flat().map((o) => o.pos), ...bounds]) {
     const d = denom(x)
     if (d === 0) return no('irrational-onset')
-    perBar = lcm(perBar, d)
+    documentPerBar = lcm(documentPerBar, d)
   }
-  if (perBar * bars > MAX_STEPS) return no('resolution')
+  // THE DOCUMENT'S OWN ceiling, asked of the UNSCALED quantity: `MAX_STEPS` guards a
+  // combinatorial blow-up in the notation, which a view refine does not cause (#1055).
+  if (documentPerBar * bars > MAX_STEPS) return no('resolution')
+  // …and the VIEW's ceiling, asked of what would actually be drawn. At `UNREFINED`
+  // this cannot fire — the line above already bounded the document at 64 and
+  // `MAX_VIEW_STEPS` is 256 — which is what makes this parameter inert until Phase 4
+  // writes a scale other than 1.
+  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no('view-resolution')
+  const perBar = documentPerBar * viewScale
   if (perBar % totalWeight !== 0) return no('element-tiling')
   const divPerUnit = perBar / totalWeight
   const cells = columnsFromOnsets(perCycle, perBar, bars)
@@ -2055,10 +2070,17 @@ function vacuousLocality(a: AltSource<unknown> | undefined): boolean {
 export function projectStepGridDerived(
   mini: string,
   fallbackReason: { ok: false; reason: string },
+  viewScale: ViewScale = UNREFINED,
 ): ParseResult<StepGridModel> {
   // the inherited behaviour projection (#922), then the leaf-anchored projection
-  // (#986) for the notation no re-emit can spell
-  const element = projectStepGrid(mini)
+  // (#986) for the notation no re-emit can spell.
+  //
+  // ⚠ ONLY THE ELEMENT PATH CARRIES THE VIEW SCALE (#1055). The leaf path anchors
+  // each note to its own source span, so a finer view has no span to subdivide —
+  // that is #1058's subject, not this phase's. Stated rather than hidden: at a scale
+  // other than `UNREFINED` a leaf-anchored unit returns its document resolution, so
+  // #1057 must decide what the control offers there before it can write a scale.
+  const element = projectStepGrid(mini, viewScale)
   if (element.ok && !vacuousLocality(element.model.altSource)) return element
   const leaf = projectStepGridByLeaf(mini)
   if (leaf.ok) return leaf
@@ -2588,7 +2610,10 @@ function projectionRollEditSafe(
  * per-cycle `<…>` (their own paths; projecting cycle 0 would drop the rest), mixed
  * numeric/named tokens, a blow-up past the step ceiling, or spans that don't tile.
  */
-function projectPianoRoll(src0: string): Projection<PianoRollModel> {
+function projectPianoRoll(
+  src0: string,
+  viewScale: ViewScale = UNREFINED,
+): Projection<PianoRollModel> {
   const src = src0.trim()
   if (src === '') return no('not-a-pattern')
   let pat: unknown
@@ -2633,13 +2658,17 @@ function projectPianoRoll(src0: string): Projection<PianoRollModel> {
   }
   // onsets, DURATIONS and element boundaries must all land on integer columns —
   // the duration is the roll's extra term the grid's projection omits
-  let perBar = 1
+  let documentPerBar = 1
   for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur), ...bounds]) {
     const d = denom(x)
     if (d === 0) return no('irrational-onset')
-    perBar = lcm(perBar, d)
+    documentPerBar = lcm(documentPerBar, d)
   }
-  if (perBar * bars > MAX_STEPS) return no('resolution')
+  // the document's blow-up guard, then the view's own ceiling — see the grid's twin
+  // of this pair and `viewResolution.ts` for why they are different questions (#1055)
+  if (documentPerBar * bars > MAX_STEPS) return no('resolution')
+  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no('view-resolution')
+  const perBar = documentPerBar * viewScale
   if (perBar % totalWeight !== 0) return no('element-tiling')
   const divPerUnit = perBar / totalWeight
   const notes = barNotes(perCycle, perBar)
@@ -2960,10 +2989,11 @@ function leafRollViewUsable(model: PianoRollModel): boolean {
 export function projectPianoRollDerived(
   mini: string,
   fallbackReason: { ok: false; reason: string },
+  viewScale: ViewScale = UNREFINED,
 ): ParseResult<PianoRollModel> {
   // the inherited behaviour projection (#924), then the leaf-anchored projection
   // (#986) for the notation no re-emit can spell
-  const element = projectPianoRoll(mini)
+  const element = projectPianoRoll(mini, viewScale)
   // NOT gated on `vacuousLocality` the way the grid is, and that asymmetry is
   // measured rather than assumed: preferring the leaf writer here costs the roll
   // reach outright, because a shared leaf it declines is an edit the element writer

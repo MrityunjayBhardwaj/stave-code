@@ -26552,6 +26552,23 @@ function serializeRollGain(model) {
 }
 __name(serializeRollGain, "serializeRollGain");
 
+// src/visualEdit/notation/viewResolution.ts
+var UNREFINED = 1;
+var MAX_VIEW_STEPS = 256;
+function isViewScale(k) {
+  return Number.isInteger(k) && k >= UNREFINED;
+}
+__name(isViewScale, "isViewScale");
+function viewSteps(documentSteps, scale) {
+  return documentSteps * scale;
+}
+__name(viewSteps, "viewSteps");
+function viewScaleFits(perBar2, bars, scale) {
+  if (!isViewScale(scale)) return false;
+  return viewSteps(perBar2 * bars, scale) <= MAX_VIEW_STEPS;
+}
+__name(viewScaleFits, "viewScaleFits");
+
 // src/visualEdit/notation/pitch.ts
 var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
 var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
@@ -27079,6 +27096,8 @@ function gateReason(gate, surface) {
       return "an onset does not land on any step column";
     case "resolution":
       return `the pattern needs more than ${MAX_STEPS} steps`;
+    case "view-resolution":
+      return `showing this pattern that finely needs more than ${MAX_VIEW_STEPS} columns`;
     case "element-tiling":
       return "the source elements do not line up with the columns the pattern plays";
     case "no-leaf-anchor":
@@ -27219,7 +27238,7 @@ function readGridOnsets(pat, cyc) {
 }
 __name(readGridOnsets, "readGridOnsets");
 var onsetKey = /* @__PURE__ */ __name((o) => JSON.stringify(o.map((x) => [Math.round(x.pos * 720720), [...x.atoms].sort()]).sort()), "onsetKey");
-function projectStepGrid(src0) {
+function projectStepGrid(src0, viewScale = UNREFINED) {
   const src = src0.trim();
   if (src === "") return no("not-a-pattern");
   let pat;
@@ -27252,13 +27271,15 @@ function projectStepGrid(src0) {
     bounds.push(accW / totalWeight);
     accW += e.weight;
   }
-  let perBar2 = 1;
+  let documentPerBar = 1;
   for (const x of [...perCycle.flat().map((o) => o.pos), ...bounds]) {
     const d = denom(x);
     if (d === 0) return no("irrational-onset");
-    perBar2 = lcm(perBar2, d);
+    documentPerBar = lcm(documentPerBar, d);
   }
-  if (perBar2 * bars > MAX_STEPS) return no("resolution");
+  if (documentPerBar * bars > MAX_STEPS) return no("resolution");
+  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no("view-resolution");
+  const perBar2 = documentPerBar * viewScale;
   if (perBar2 % totalWeight !== 0) return no("element-tiling");
   const divPerUnit = perBar2 / totalWeight;
   const cells = columnsFromOnsets(perCycle, perBar2, bars);
@@ -27529,8 +27550,8 @@ function vacuousLocality(a) {
   return a.regions[0].from === 0 && a.regions[0].to === a.perBar;
 }
 __name(vacuousLocality, "vacuousLocality");
-function projectStepGridDerived(mini, fallbackReason) {
-  const element = projectStepGrid(mini);
+function projectStepGridDerived(mini, fallbackReason, viewScale = UNREFINED) {
+  const element = projectStepGrid(mini, viewScale);
   if (element.ok && !vacuousLocality(element.model.altSource)) return element;
   const leaf = projectStepGridByLeaf(mini);
   if (leaf.ok) return leaf;
@@ -27868,7 +27889,7 @@ function projectionRollEditSafe(model, perBar2, bars, numeric, probes) {
   return true;
 }
 __name(projectionRollEditSafe, "projectionRollEditSafe");
-function projectPianoRoll(src0) {
+function projectPianoRoll(src0, viewScale = UNREFINED) {
   const src = src0.trim();
   if (src === "") return no("not-a-pattern");
   let pat;
@@ -27904,13 +27925,15 @@ function projectPianoRoll(src0) {
     bounds.push(accW / totalWeight);
     accW += e.weight;
   }
-  let perBar2 = 1;
+  let documentPerBar = 1;
   for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur), ...bounds]) {
     const d = denom(x);
     if (d === 0) return no("irrational-onset");
-    perBar2 = lcm(perBar2, d);
+    documentPerBar = lcm(documentPerBar, d);
   }
-  if (perBar2 * bars > MAX_STEPS) return no("resolution");
+  if (documentPerBar * bars > MAX_STEPS) return no("resolution");
+  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no("view-resolution");
+  const perBar2 = documentPerBar * viewScale;
   if (perBar2 % totalWeight !== 0) return no("element-tiling");
   const divPerUnit = perBar2 / totalWeight;
   const notes = barNotes(perCycle, perBar2);
@@ -28128,8 +28151,8 @@ function leafRollViewUsable(model) {
   return false;
 }
 __name(leafRollViewUsable, "leafRollViewUsable");
-function projectPianoRollDerived(mini, fallbackReason) {
-  const element = projectPianoRoll(mini);
+function projectPianoRollDerived(mini, fallbackReason, viewScale = UNREFINED) {
+  const element = projectPianoRoll(mini, viewScale);
   if (element.ok) return element;
   const leaf = projectPianoRollByLeaf(mini);
   if (leaf.ok) return leaf;

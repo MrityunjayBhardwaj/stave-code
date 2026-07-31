@@ -8379,7 +8379,15 @@ interface PianoRollModel {
  *   - `not-a-pattern`      it does not reify at all; the core's own syntax
  *                          message is the better answer and is kept.
  */
-type Gate = 'wrong-surface' | 'no-note-content' | 'unstable-period' | 'mixed-pitch-domain' | 'irrational-onset' | 'resolution' | 'element-tiling' | 'no-leaf-anchor' | 'note-crosses-bar' | 'edit-unsafe' | 'view-unusable' | 'not-a-pattern';
+type Gate = 'wrong-surface' | 'no-note-content' | 'unstable-period' | 'mixed-pitch-domain' | 'irrational-onset' | 'resolution'
+/**
+ * The VIEW asked for more columns than it may draw (#1055). Distinct from
+ * `resolution`, which is the DOCUMENT's own blow-up guard: this one says the
+ * document is fine and the requested magnification is not. Cannot fire while the
+ * view scale is `UNREFINED`, since the document ceiling (64) is below the view
+ * ceiling (256) — see `viewResolution.ts`.
+ */
+ | 'view-resolution' | 'element-tiling' | 'no-leaf-anchor' | 'note-crosses-bar' | 'edit-unsafe' | 'view-unusable' | 'not-a-pattern';
 /**
  * Parse outcome. `ok: false` is a first-class result, not an exception — every
  * panel checks it on open and disables itself (code-only) when the pattern is
