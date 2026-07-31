@@ -321,6 +321,14 @@ export interface StepGridModel {
   /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
   bars?: number
   /**
+   * How much finer than the DOCUMENT this model is drawn (#1055, #1116). Absent =
+   * `UNREFINED` — the document's own resolution, which is what every path that does
+   * not apply a scale reports. That default is what makes `documentSteps(model)`
+   * total: a projection which ignores the scale carries 1, so its document width and
+   * its drawn width are the same number, which is the truth for it.
+   */
+  viewScale?: number
+  /**
    * Lanes in presentation order. `sound` is the whole token incl. any
    * `:variant` (e.g. `bd:3`). `part` is the top-level `,`-stack the lane was
    * written in (absent = 0) — purely syntactic, kept so a hand-written stack

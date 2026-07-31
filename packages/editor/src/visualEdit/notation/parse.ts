@@ -2091,31 +2091,100 @@ export function projectStepGridDerived(
   return refused('grid', fallbackReason, leaf.gate)
 }
 
-export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
-  const core = parseStepGridCore(mini)
-  if (core.ok) return core
-  return projectStepGridDerived(mini, core)
+/**
+ * THE PUBLIC ENTRY, and the only place a caller can express a view resolution.
+ *
+ * #1055 threaded `ViewScale` into the DERIVED projections. But the core answers first
+ * and answers for most patterns — 783 of the 958 corpus units that open the grid,
+ * including `bd ~ sn ~`, the case #1052 is named after — so a scale that stopped at
+ * the derived path could not reach 94% of the free-zone offers it exists to serve
+ * (#1116). The core now carries it too, and the scale enters HERE so both halves get
+ * the same number from the same caller.
+ *
+ * The order is unchanged and deliberately so ([[PK58]]): core, then derived. A view
+ * scale must NOT re-route a pattern to a different projection, because the core and
+ * the derived path build different `source` structures and therefore hand the document
+ * to different writers — zooming would silently swap the writer that owns the user's
+ * bytes. The finer view has to come from whichever writer already owns the pattern.
+ */
+export function parseStepGrid(
+  mini: string,
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<StepGridModel> {
+  const core = parseStepGridCore(mini, viewScale)
+  const result = core.ok ? core : projectStepGridDerived(mini, core, viewScale)
+  return honoursViewScale(result, viewScale)
 }
 
-export function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
+/**
+ * THE TOTAL GATE: a model handed back for a refined request must actually BE refined.
+ *
+ * Several projections legitimately do not carry a view scale — the leaf path anchors
+ * each note to its own source span and has no span to subdivide (#1058), the
+ * whole-cycle `<…>` bar expansion and `gridFromAltElements` have not been taught it
+ * yet. Measured over the corpus, 202 of 958 grid units reach one of those. Left alone,
+ * every one of them answers a refine request with the DOCUMENT's own layout and no
+ * error: the control appears to work and draws exactly what it drew before — the
+ * silent wrong layout this whole parameter exists to make impossible.
+ *
+ * Asked HERE rather than in each projection on purpose. A per-path refusal is a rule
+ * every future path must remember to fire; this is one check that no new path can
+ * escape, because it reads the model's own report of what it did. A projection that
+ * later learns the scale starts passing it with no change here ([[PV260]]: prefer the
+ * shape in which the wrong state cannot be built over the rule that must detect it).
+ */
+function honoursViewScale(
+  result: ParseResult<StepGridModel>,
+  viewScale: ViewScale,
+): ParseResult<StepGridModel> {
+  if (!result.ok || viewScale === UNREFINED) return result
+  if ((result.model.viewScale ?? UNREFINED) === viewScale) return result
+  return { ok: false, reason: 'this pattern does not offer a finer view yet' }
+}
+
+export function parseStepGridCore(
+  mini: string,
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<StepGridModel> {
   const alt = unwrapAlternation(mini)
-  if (alt !== null) return gridFromAlternation(alt)
+  if (alt !== null) return gridFromAlternation(alt, viewScale)
 
   const parts = splitTopLevel(mini)
-  if (parts.length > 1) return gridFromStack(parts)
+  if (parts.length > 1) return gridFromStack(parts, viewScale)
 
+  // ⚠ NOT YET CARRYING THE SCALE (#1116 follow-up). `gridFromAltElements` expands
+  // `bd <sd hh>` across bars with a single global `div`; scaling it needs the same
+  // treatment the other three paths just got, and until it has one an unrefined
+  // model would be drawn for a refined request — the silent-wrong-layout the whole
+  // parameter exists to prevent. Refuse the SCALE, not the pattern: at `UNREFINED`
+  // this path is untouched, so nothing that opens today changes.
   const altEl = gridFromAltElements(mini)
-  if (altEl !== null) return altEl
+  if (altEl !== null) {
+    return viewScale === UNREFINED
+      ? altEl
+      : { ok: false, reason: 'this pattern does not offer a finer view yet' }
+  }
 
   const tok = tokenize(mini)
   if (!tok.ok) return tok
   if (gridHasElongation(tok.steps)) {
     return { ok: false, reason: 'elongation is beyond the drum-grid subset' }
   }
-  const div = division(tok.steps)
-  if (tok.steps.length * div > MAX_STEPS) {
+  // THE DOCUMENT'S OWN resolution and its own ceiling, both asked of the UNSCALED
+  // quantity — `MAX_STEPS` guards a combinatorial blow-up in the NOTATION, which a
+  // view refine does not cause (#1055, #1116).
+  const documentDiv = division(tok.steps)
+  const documentCols = tok.steps.length * documentDiv
+  if (documentCols > MAX_STEPS) {
     return { ok: false, reason: `sub-sequences expand the grid past ${MAX_STEPS} steps` }
   }
+  // …and the VIEW's ceiling, asked of what would actually be drawn.
+  if (!viewScaleFits(documentCols, 1, viewScale)) {
+    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` }
+  }
+  // `toCells` is LINEAR in `div` (a slot's span is `(div / total) * units`), so
+  // scaling it draws the same notation on a finer grid without moving any onset.
+  const div = documentDiv * viewScale
   const cells = toCells(tok.steps, div)
   const src = mini.trim()
   const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)))
@@ -2123,6 +2192,7 @@ export function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
     ok: true,
     model: {
       steps: cells.length,
+      ...(viewScale === UNREFINED ? {} : { viewScale }),
       lanes: lanesFromCells(cells),
       ...(sourceParts
         ? { source: { prefix: '', suffix: '', parts: sourceParts } }
@@ -2139,17 +2209,26 @@ export function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
  * the wrapper. Each element is a bar and owns `div` columns, exactly as in the
  * flat case — the alternation is the same tiling with `<`…`>` around it.
  */
-function gridFromAlternation(inner: string): ParseResult<StepGridModel> {
+function gridFromAlternation(
+  inner: string,
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<StepGridModel> {
   const tok = tokenize(inner)
   if (!tok.ok) return tok
   if (tok.steps.length === 0) return { ok: false, reason: 'empty alternation' }
   if (gridHasElongation(tok.steps)) {
     return { ok: false, reason: 'elongation is beyond the drum-grid subset' }
   }
-  const div = division(tok.steps)
-  if (tok.steps.length * div > MAX_STEPS) {
+  // the DOCUMENT's ceiling on the unscaled expansion, then the VIEW's own on what is
+  // drawn — here each of `tok.steps.length` bars owns `div` columns (#1055, #1116)
+  const documentDiv = division(tok.steps)
+  if (tok.steps.length * documentDiv > MAX_STEPS) {
     return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` }
   }
+  if (!viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
+    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` }
+  }
+  const div = documentDiv * viewScale
   const cells = toCells(tok.steps, div)
   const src = inner.trim()
   const parts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)))
@@ -2158,6 +2237,7 @@ function gridFromAlternation(inner: string): ParseResult<StepGridModel> {
     model: {
       steps: cells.length,
       bars: tok.steps.length,
+      ...(viewScale === UNREFINED ? {} : { viewScale }),
       lanes: lanesFromCells(cells),
       ...(parts
         ? {
@@ -2180,10 +2260,18 @@ function gridFromAlternation(inner: string): ParseResult<StepGridModel> {
  * part's own column space and the `,` (with whatever padding the user put
  * around it) is carried verbatim as the part's `before`.
  */
-function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
+function gridFromStack(
+  parts: string[],
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<StepGridModel> {
   const partCells: ColumnNotes[] = []
   const divs: number[] = []
   const elements: ElementSpan[][] = []
+  // The DOCUMENT's own shared width, needed for the unscaled ceiling below. Every
+  // part's column count scales by exactly `viewScale`, and `lcm(k·a, k·b) = k·lcm(a, b)`,
+  // so the shared total scales by the same factor — which is why the guard can be
+  // asked once, of the document, before any scaling happens (#1116).
+  let documentTotal = 1
   for (const part of parts) {
     if (part.trim() === '') return { ok: false, reason: 'empty stack part' }
     const tok = tokenize(part)
@@ -2191,15 +2279,20 @@ function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
     if (gridHasElongation(tok.steps)) {
       return { ok: false, reason: 'elongation is beyond the drum-grid subset' }
     }
-    const div = division(tok.steps)
+    const documentDiv = division(tok.steps)
+    documentTotal = lcm(documentTotal, tok.steps.length * documentDiv || 1)
+    const div = documentDiv * viewScale
     divs.push(div)
     elements.push(tok.elements)
     partCells.push(toCells(tok.steps, div))
   }
-  const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1)
-  if (total > MAX_STEPS) {
+  if (documentTotal > MAX_STEPS) {
     return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` }
   }
+  if (!viewScaleFits(documentTotal, 1, viewScale)) {
+    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` }
+  }
+  const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1)
   const lanes: StepLane[] = []
   partCells.forEach((cells, part) => {
     const factor = total / (cells.length || 1)
@@ -2217,7 +2310,12 @@ function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
   })
   return {
     ok: true,
-    model: { steps: total, lanes, ...(stackSource(parts, divs, elements, partCells, total) ?? {}) },
+    model: {
+      steps: total,
+      ...(viewScale === UNREFINED ? {} : { viewScale }),
+      lanes,
+      ...(stackSource(parts, divs, elements, partCells, total) ?? {}),
+    },
   }
 }
 

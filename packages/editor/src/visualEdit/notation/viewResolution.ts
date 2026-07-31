@@ -80,6 +80,23 @@ export function isViewScale(k: number): boolean {
 }
 
 /**
+ * The columns the DOCUMENT itself spells, recovered from a model that may be drawn
+ * finer. TOTAL over every model, including every projection that ignores the scale:
+ * those carry no `viewScale`, which reads as `UNREFINED`, so their document width and
+ * their drawn width are the same number — the truth for them.
+ *
+ * ⚠ ASK THIS, NOT `model.steps`, WHENEVER A DECISION MUST NOT DEPEND ON THE CURRENT
+ * VIEW. `model.steps` is what is DRAWN, so at scale 2 on a 4-column document it reads
+ * 8; a resolution control keyed off it would coarsen from 8 rather than from 4 and
+ * produce a different document depending on how closely the user happened to be
+ * looking. Same hazard [[PV260]] dissolves for the stored value, arriving here as a
+ * question about which quantity a caller reads.
+ */
+export function documentSteps(model: { steps: number; viewScale?: ViewScale }): number {
+  return model.steps / (model.viewScale ?? UNREFINED)
+}
+
+/**
  * The columns a view at `scale` would draw for a document of `documentSteps`.
  * Total: defined for every model, which is the point of the multiplier.
  */
