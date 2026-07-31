@@ -78,7 +78,9 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     await expect(slotsControl(drawer).locator('[data-resolution-step]')).toHaveCount(5)
   })
 
-  test('step grid: choosing 8 doubles a 4-step grid and keeps timing', async ({ page }) => {
+  test('step grid: choosing 8 draws 8 columns and leaves the document alone (#1057)', async ({
+    page,
+  }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
     await boot(page)
@@ -93,12 +95,72 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
       'data-resolution-active',
       'true',
     )
+    // …and 8 announces itself as a VIEW before it is pressed, so a user can tell
+    // that it is safe without having to press it and read their file afterwards.
+    await expect(slots.locator('[data-resolution-step="8"]')).toHaveAttribute(
+      'data-resolution-view',
+      'true',
+    )
 
     await slots.locator('[data-resolution-step="8"]').click()
     await page.waitForTimeout(120)
 
+    // THE GRID REFINES…
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
-    expect(await getStrudelCode(page)).toBe('$: s("bd ~ ~ ~ sn ~ ~ ~")')
+    await expect(slots.locator('[data-resolution-step="8"]')).toHaveAttribute(
+      'data-resolution-active',
+      'true',
+    )
+    // …AND THE DOCUMENT IS BYTE-IDENTICAL. This assertion used to read
+    // `'$: s("bd ~ ~ ~ sn ~ ~ ~")'` — the spec encoded the very defect #1057 was
+    // filed against, which is why it had to be changed rather than kept green.
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+
+    // and it is reversible the same way it was entered — still without a write
+    await slots.locator('[data-resolution-step="4"]').click()
+    await page.waitForTimeout(120)
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+    expect(errors).toEqual([])
+  })
+
+  test('step grid: a refined view writes only once you actually place a note (#1057)', async ({
+    page,
+  }) => {
+    // The other half of the rule. Refining must not write — but the finer grid has
+    // to be REAL, and the only proof of that is placing a note the document could
+    // not previously express and seeing it land where it was clicked.
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd ~ sn ~")')
+    const drawer = await openPattern(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    const slots = slotsControl(drawer)
+
+    await slots.locator('[data-resolution-step="8"]').click()
+    await page.waitForTimeout(120)
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")') // still untouched
+
+    // column 1 exists only at the refined resolution — it is between the source's
+    // own columns 0 and 1, so this is a note the document could not previously hold
+    await grid.locator('[data-seq-cell="0:1"]').click()
+    await page.waitForTimeout(150)
+
+    const after = await getStrudelCode(page)
+    expect(after).not.toBe('$: s("bd ~ sn ~")') // NOW it writes
+    // ⚠ OBSERVED, and not what a flattening prediction would say. The writer does NOT
+    // respell the pattern as eight columns — it edits the ONE region the user touched
+    // and leaves `~ sn ~` byte-identical, spelling the new subdivision as a group.
+    // That is the element writer's locality promise doing its job, and the two are the
+    // same music: `[bd bd]` occupies the first quarter, so the onsets are 0 and 1/8,
+    // exactly where `bd bd ~ ~ …` at eight columns would put them. The minimal edit is
+    // the better answer, and the phase did not have to ask for it.
+    expect(after).toBe('$: s("[bd bd] ~ sn ~")')
+    // The refinement is absorbed, and the view stays at eight columns WITHOUT a view
+    // scale — the document now genuinely expresses eighth-note resolution, so the
+    // reader derives eight columns from the onsets themselves.
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
     await expect(slots.locator('[data-resolution-step="8"]')).toHaveAttribute(
       'data-resolution-active',
       'true',
@@ -184,32 +246,44 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     const slots = slotsControl(drawer)
     await expect(grid).toHaveCount(1)
 
-    // 4 → 8 is CONSERVATIVE (#607): each note stays a SINGLE slot, repositioned
-    // proportionally (onsets preserved) — it does NOT stretch to `c3@2 …`.
+    // 4 → 8 is a whole multiple, so it is a VIEW (#1057): the roll draws twice as
+    // finely and the document is untouched. This used to assert
+    // `'$: note("c3 ~ e3 ~ g3 ~ a3 ~")'` — the rewrite the phase removed.
+    await expect(slots.locator('[data-resolution-step="8"]')).toHaveAttribute(
+      'data-resolution-view',
+      'true',
+    )
     await slots.locator('[data-resolution-step="8"]').click()
     await page.waitForTimeout(120)
-    expect(await getStrudelCode(page)).toBe('$: note("c3 ~ e3 ~ g3 ~ a3 ~")')
+    expect(await getStrudelCode(page)).toBe('$: note("c3 e3 g3 a3")')
 
-    // 8 → 4 coarsens back to the byte-identical source.
+    // 8 → 4 returns to the document's own resolution — also a view, also no write.
     await slots.locator('[data-resolution-step="4"]').click()
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: note("c3 e3 g3 a3")')
     expect(errors).toEqual([])
   })
 
-  test('piano roll: adding slots preserves and re-aligns per-note velocities (#607)', async ({
+  test('piano roll: a refined view leaves BOTH the notes and the .gain alone (#1057)', async ({
     page,
   }) => {
+    // This was #607's browser coverage for "velocities re-align when slots are
+    // added". A whole-multiple target no longer adds slots to the document at all,
+    // so the gesture cannot reach that rule any more — and the coordinated write is
+    // exactly what must NOT happen here. `.gain` is the second write-back range, so
+    // it is the sharper of the two assertions: a view that quietly rewrote only the
+    // gain mini would still look right in the roll.
+    //
+    // #607's re-alignment rule is unchanged and still governs `quantizePianoRollTo`
+    // when slots really are added; its coverage is the op-level `#607` cases in
+    // `packages/editor/src/visualEdit/notation/__tests__/resolution.test.ts`.
     await boot(page)
-    await setStrudelCode(page, '$: note("c3 e3 g3 a3").gain("1 0.8 0.6 0.4")')
+    const src = '$: note("c3 e3 g3 a3").gain("1 0.8 0.6 0.4")'
+    await setStrudelCode(page, src)
     const drawer = await openPattern(page)
     const slots = slotsControl(drawer)
     await slots.locator('[data-resolution-step="8"]').click()
     await page.waitForTimeout(120)
-    // each note's velocity follows it to its new proportional slot; the new empty
-    // slots serialize as `~` placeholders — velocities never scramble or drop.
-    expect(await getStrudelCode(page)).toBe(
-      '$: note("c3 ~ e3 ~ g3 ~ a3 ~").gain("1 ~ 0.8 ~ 0.6 ~ 0.4 ~")',
-    )
+    expect(await getStrudelCode(page)).toBe(src)
   })
 })

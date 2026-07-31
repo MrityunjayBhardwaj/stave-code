@@ -19,7 +19,18 @@ import {
   rollSlotState,
   RESOLUTION_PRESETS,
   MAX_RESOLUTION_STEPS,
+  freeZoneScale,
+  collapseStepGridToDocument,
+  collapsePianoRollToDocument,
 } from '../resolution'
+import { setColumnGain, setGroupGain } from '../../panels/inspector'
+import { toggleCell } from '../place'
+import {
+  MAX_VIEW_STEPS,
+  UNREFINED,
+  absorbViewScale,
+  documentSteps,
+} from '../viewResolution'
 import type { StepGridModel, PianoRollModel, StepCell } from '../model'
 
 /** serialize → assert the writer did not decline → return the string */
@@ -417,5 +428,277 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     const mb = step('<bd sn>') // bars 2
     // a lossy target is disabled rather than quantized for multi-bar
     expect(stepSlotState(mb, 4)).not.toBe('quantize')
+  })
+})
+
+/* ── the free zone (#1057) ───────────────────────────────────────────────── */
+
+describe('free zone — refining is a view change, not a rewrite', () => {
+  /** a prover that says every scale draws — stands in for a cooperative parser */
+  const draws = (): boolean => true
+  /** a prover that refuses everything — stands in for the projections of #1117 */
+  const refuses = (): boolean => false
+
+  it('freeZoneScale admits whole multiples at or above the document, and nothing else', () => {
+    expect(freeZoneScale(4, 4)).toBe(UNREFINED) // the document itself — how you come back
+    expect(freeZoneScale(4, 8)).toBe(2)
+    expect(freeZoneScale(4, 16)).toBe(4)
+    expect(freeZoneScale(4, 64)).toBe(16)
+    expect(freeZoneScale(4, 2)).toBeNull() // COARSER — this one edits your document
+    expect(freeZoneScale(5, 8)).toBeNull() // not a whole multiple: 8/5 is not a view
+    expect(freeZoneScale(3, 8)).toBeNull()
+    expect(freeZoneScale(4, MAX_VIEW_STEPS * 2)).toBeNull() // past the VIEW ceiling
+    expect(freeZoneScale(0, 8)).toBeNull()
+  })
+
+  it('THE REPORTED DEFECT: "bd ~ sn ~" + Slots 16 is a view, not a rewrite', () => {
+    // The issue's own example. Before #1057 this returned `lossless` and wrote
+    // `bd ~ ~ ~ ~ ~ ~ ~ sn ~ ~ ~ ~ ~ ~ ~` — fifteen tokens for a preference.
+    const m = step('bd ~ sn ~')
+    expect(stepSlotState(m, 16, draws)).toBe('view')
+    expect(stepSlotState(m, 8, draws)).toBe('view')
+    expect(stepSlotState(m, 32, draws)).toBe('view')
+    // and the document is untouched by asking: the state is a pure question
+    expect(ser(m)).toBe('bd ~ sn ~')
+  })
+
+  it('THE PROOF IS REQUIRED: a refused view falls through to the writing path', () => {
+    // This is the whole reason `canDrawView` exists. Four projections refuse a finer
+    // view (#1117); offering one on arithmetic alone ships a button that does nothing.
+    const m = step('bd ~ sn ~')
+    expect(stepSlotState(m, 16, refuses)).toBe('lossless')
+    // …and with no prover at all, the free zone does not exist — which is what keeps
+    // every pre-#1057 caller behaving exactly as it did.
+    expect(stepSlotState(m, 16)).toBe('lossless')
+  })
+
+  it('the free zone is taken off the writing path BEFORE lossless, not after', () => {
+    // Ordering is the phase. `bd ~ sn ~` → 8 is BOTH a whole multiple and a
+    // power-of-2 ratio, so whichever branch runs first decides whether the user's
+    // file is rewritten. It must be the view.
+    const m = step('bd ~ sn ~')
+    expect(canScaleStepGridTo(m, 8)).toBe(true) // the writing path would take it…
+    expect(stepSlotState(m, 8, draws)).toBe('view') // …and does not get the chance
+  })
+
+  it('coarsening is never a view — the free zone cannot reach it', () => {
+    const m8 = step('bd ~ ~ ~ sn ~ ~ ~')
+    expect(freeZoneScale(8, 4)).toBeNull()
+    // Whatever the writing path decides, it must not be `view`: coarsening changes
+    // what the document says, and #1052's rule is that only refining is free.
+    expect(stepSlotState(m8, 4, draws)).not.toBe('view')
+    // OBSERVED, and it belongs to #1061 rather than here: this particular coarsening
+    // is `disabled`, because halving scales each cell to half a column and P4c's
+    // printer preserves length, so the writer declines and an honest control says so.
+    // Recorded to show the free zone left this path exactly as it found it.
+    expect(stepSlotState(m8, 4, draws)).toBe(stepSlotState(m8, 4))
+  })
+
+  it('a target already being looked at stays `active`, at any scale', () => {
+    // `model.steps` is what is DRAWN, so the live preset is the drawn count.
+    const drawn = parseStepGrid('bd ~ sn ~', 4)
+    expect(drawn.ok).toBe(true)
+    if (!drawn.ok) throw new Error('unreachable')
+    expect(drawn.model.steps).toBe(16)
+    expect(documentSteps(drawn.model)).toBe(4) // …but the DOCUMENT still spells 4
+    expect(stepSlotState(drawn.model, 16, draws)).toBe('active')
+    // and every other preset is reached from the DOCUMENT's 4, not from the drawn 16 —
+    // including coming back down, which is why `freeZoneScale(D, D)` is UNREFINED
+    expect(stepSlotState(drawn.model, 4, draws)).toBe('view')
+    expect(stepSlotState(drawn.model, 8, draws)).toBe('view')
+  })
+
+  it('MULTI-BAR GAINS A REFINE it never had (stated, per #1057)', () => {
+    const mb = step('<bd sn>')
+    // Before: every non-power-of-2 target was `disabled` and refines wrote. A whole
+    // multiple is now a view for multi-bar too — the branch that disables it is below
+    // the free zone, and only non-multiples still reach it.
+    const D = documentSteps(mb)
+    expect(freeZoneScale(D, D * 2)).toBe(2)
+    expect(stepSlotState(mb, D * 2, draws)).toBe('view')
+  })
+
+  it('the roll behaves identically — one rule, both surfaces', () => {
+    const r = roll('c3 ~ e3 ~')
+    expect(rollSlotState(r, 16, draws)).toBe('view')
+    expect(rollSlotState(r, 16, refuses)).toBe('lossless')
+    expect(rollSlotState(r, 16)).toBe('lossless')
+  })
+
+  it('A WRITE FROM A REFINED VIEW PRODUCES THE DOCUMENT-DERIVED RESULT', () => {
+    // The one path where a presentational parameter could still reach a write:
+    // coarsening is NOT in the free zone, so it runs the real op against the model
+    // the panel is holding — and while refined, that model is the DRAWN one.
+    //
+    // The claim is that this is safe because a refinement is an exact k× embedding
+    // and the ops are ratio-based: a hit at document column c sits at k·c when
+    // drawn, and `round(k·c · t / (k·D)) === round(c · t / D)`. Claimed arithmetic is
+    // not evidence, so it is asserted — if it were false, which document you got
+    // would depend on how closely you were looking when you asked.
+    // ⚠ THE FIXTURE IS LOAD-BEARING, AND THE SURFACE IS TOO — both found by measuring
+    // rather than by choosing. The first version used the obvious `bd ~ ~ ~ sn ~ ~ ~`
+    // and was VACUOUS: its only non-free target is 4, coarsening one-column notes
+    // declines (the #1061 class), so the loop compared nothing and passed. The
+    // count at the end is what caught it.
+    //
+    // The repair is not a different grid, because on the GRID the path turns out to
+    // be unreachable: a grid with notes long enough to coarsen cleanly is spelled
+    // with `_`, and a pattern carrying sustains does not refine at all — so
+    // "refinable" and "has a writing coarsening" have empty intersection there. The
+    // roll has both, which makes it the honest place to assert this.
+    const src = 'c3@2 e3@2 g3@2 a3@2' // 8 columns, notes two columns long
+    const doc = roll(src)
+    expect(documentSteps(doc)).toBe(8)
+
+    const refined = parsePianoRoll(src, 2)
+    expect(refined.ok).toBe(true)
+    if (!refined.ok) throw new Error('unreachable')
+    expect(refined.model.steps).toBe(16) // drawn twice as finely…
+    expect(documentSteps(refined.model)).toBe(8) // …over the same document
+
+    let compared = 0
+    for (const target of RESOLUTION_PRESETS) {
+      if (freeZoneScale(8, target) !== null) continue // free targets never write
+      const fromDoc = quantizePianoRollTo(doc, target)
+      const fromView = quantizePianoRollTo(refined.model, target)
+      const declinedDoc = fromDoc === doc
+      const declinedView = fromView === refined.model
+      expect(declinedView, `@${target}: the two paths must agree on whether to write`).toBe(
+        declinedDoc,
+      )
+      if (declinedDoc) continue
+      compared++
+      expect(
+        serializePianoRoll(fromView),
+        `@${target}: a write must not depend on the view scale`,
+      ).toBe(serializePianoRoll(fromDoc))
+    }
+    // …and the comparison was actually REACHED. Without this the whole loop passes
+    // by declining everything, which is the same vacuous green the corpus gate's
+    // population floor exists to prevent.
+    expect(compared, 'at least one real write must have been compared').toBeGreaterThan(0)
+  })
+
+  it('absorbViewScale drops the marker a write makes untrue, and only then', () => {
+    const plain = step('bd ~ sn ~')
+    expect(absorbViewScale(plain)).toBe(plain) // nothing to absorb → same reference
+    const drawn = parseStepGrid('bd ~ sn ~', 2)
+    if (!drawn.ok) throw new Error('unreachable')
+    expect(drawn.model.viewScale).toBe(2)
+    const written = absorbViewScale(drawn.model)
+    expect(written.viewScale).toBeUndefined()
+    // the SHAPE is untouched — absorbing is a change of claim, not of content
+    expect(written.steps).toBe(drawn.model.steps)
+    expect(documentSteps(written)).toBe(written.steps) // …and the claim is now true
+    expect(serializeStepGrid(written)).toBe(serializeStepGrid(drawn.model))
+  })
+})
+
+describe('a write spells the refinement only when it needs to', () => {
+  /**
+   * The free zone stops a VIEW preference reaching the document. This is the other
+   * half: once the user does make a real edit while refined, only an edit that used
+   * a column the document does not have may respell the file. A velocity drag must
+   * not — it changes `gain` and moves no onset.
+   */
+  it('THE DEFECT: a gain-only edit at a refined view must not respell the document', () => {
+    const drawn = parseStepGrid('bd ~ sn ~', 2)
+    if (!drawn.ok) throw new Error('unreachable')
+    const gained = setColumnGain(drawn.model, 0, 0.42)
+
+    // what the model would have written before: the drawn spelling, and a `.gain`
+    // mini widened to match it — two ranges recording how closely someone looked
+    expect(serializeStepGrid(gained)).toBe('bd _ ~ ~ sn _ ~ ~')
+
+    const atDoc = collapseStepGridToDocument(gained)
+    expect(atDoc, 'a gain change stays on the document grid').not.toBeNull()
+    expect(serializeStepGrid(atDoc as StepGridModel)).toBe('bd ~ sn ~')
+    // the gain range collapses WITH the notation — they must agree about the
+    // document's resolution, which is exactly what they did not do
+    expect(serializeStepGain(atDoc as StepGridModel)).toEqual(
+      serializeStepGain(setColumnGain(step('bd ~ sn ~'), 0, 0.42)),
+    )
+    // …and the collapsed model no longer claims to be drawn finer than the file
+    expect((atDoc as StepGridModel).viewScale).toBeUndefined()
+  })
+
+  it('an edit that USES a view-only column still spells the finer grid', () => {
+    const drawn = parseStepGrid('bd ~ sn ~', 2)
+    if (!drawn.ok) throw new Error('unreachable')
+    // drawn column 1 exists only at ×2 — the whole reason to refine
+    const placed = toggleCell(drawn.model, 0, 1, true)
+    expect(placed).not.toBe(drawn.model)
+    expect(collapseStepGridToDocument(placed), 'this one NEEDS the finer spelling').toBeNull()
+    expect(serializeStepGrid(placed)).toBe('[bd bd] ~ sn ~')
+  })
+
+  it('NOTE LENGTH is what discriminates, not the column index', () => {
+    // drawn column 2 IS a document column boundary (2/8 === 1/4), so an index rule
+    // would call this collapsible. It is not: the placed note is one drawn column
+    // long, and no column the document can spell is that short.
+    const drawn = parseStepGrid('bd ~ sn ~', 2)
+    if (!drawn.ok) throw new Error('unreachable')
+    const placed = toggleCell(drawn.model, 0, 2, true)
+    expect(collapseStepGridToDocument(placed)).toBeNull()
+    expect(serializeStepGrid(placed)).toBe('bd [bd ~] sn ~')
+  })
+
+  it('an UNREFINED model is returned unchanged — every pre-#1057 caller lands here', () => {
+    const plain = step('bd ~ sn ~')
+    expect(collapseStepGridToDocument(plain)).toBe(plain) // same reference
+    const r = roll('c3 ~ e3 ~')
+    expect(collapsePianoRollToDocument(r)).toBe(r)
+  })
+
+  it('the roll behaves identically — one rule, both surfaces', () => {
+    const drawn = parsePianoRoll('c3 ~ e3 ~', 2)
+    if (!drawn.ok) throw new Error('unreachable')
+    const gained = setGroupGain(drawn.model, drawn.model.notes[0].start, 0.42)
+    expect(serializePianoRoll(gained)).toBe('c3@2 ~ ~ e3@2 ~ ~') // what it would have written
+    const atDoc = collapsePianoRollToDocument(gained)
+    expect(atDoc).not.toBeNull()
+    expect(serializePianoRoll(atDoc as PianoRollModel)).toBe('c3 ~ e3 ~')
+    expect((atDoc as PianoRollModel).notes[0].gain).toBe(0.42) // the edit survived
+
+    // a note starting on a view-only column cannot be said at the document's grid
+    const odd = {
+      ...drawn.model,
+      notes: [...drawn.model.notes, { pitch: 'd3', start: 1, duration: 1 }],
+    }
+    expect(collapsePianoRollToDocument(odd)).toBeNull()
+  })
+
+  /**
+   * The write half is only sound if the READ half agrees: `.gain` is written at the
+   * resolution the notation is written at, so a model drawn k× finer has to expand
+   * the document's tokens rather than demand `model.steps` of them. Asking for the
+   * drawn count made an ordinary gain FOREIGN the moment the user refined, which
+   * retires the velocity lane for as long as they stay zoomed in — and the round
+   * trip then silently stops working, because a foreign gain is never written back.
+   */
+  it('both surfaces read their own `.gain` back while refined', () => {
+    const docGain = { mini: '0.5 ~ 1 ~', numeric: null, foreign: false }
+
+    const grid = parseStepGrid('bd ~ sn ~', 2)
+    if (!grid.ok) throw new Error('unreachable')
+    const gGained = applyStepGain(grid.model, docGain)
+    expect(gGained.gainForeign, 'a 4-token gain on an 8-column view is not foreign').toBeUndefined()
+    // the value lands on the column that STARTS the note; the rest stay neutral,
+    // which is what keeps the model collapsible (a non-neutral sustain column
+    // reads to the ÷k guard as data it would drop)
+    expect(gGained.gains?.[0]).toBe(0.5)
+    expect(gGained.gains?.[1]).toBe(1)
+    expect(collapseStepGridToDocument(gGained), 'and it still collapses').not.toBeNull()
+
+    const roll = parsePianoRoll('c3 ~ e3 ~', 2)
+    if (!roll.ok) throw new Error('unreachable')
+    const rGained = applyRollGain(roll.model, docGain)
+    expect(rGained.gainForeign, 'the roll cursor walks in document columns').toBeUndefined()
+    // 0.5 belongs to `c3`, and `c3` sits at drawn column 0 — if the cursor stepped
+    // by 1 instead of k the gain would land on a column no note starts at, and the
+    // whole gain would be handed off as foreign
+    expect(rGained.notes[0].gain).toBe(0.5)
+    expect(rGained.notes[1].gain).toBeUndefined()
+    expect(collapsePianoRollToDocument(rGained)).not.toBeNull()
   })
 })

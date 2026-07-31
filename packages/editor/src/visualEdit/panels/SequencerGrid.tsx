@@ -35,9 +35,15 @@ import { canToggleCell, toggleCell, viewPlacesNotes } from '../notation/place'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice } from './drumVoices'
 import { useNoteColorMode, velocityColor } from './noteColor'
-import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
+import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
-import { stepSlotState, quantizeStepGridTo } from '../notation/resolution'
+import {
+  stepSlotState,
+  quantizeStepGridTo,
+  freeZoneScale,
+  collapseStepGridToDocument,
+} from '../notation/resolution'
+import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { setColumnGain } from './inspector'
 
 const SEQ_HINT = 'Click a drum pattern to edit it as a step grid.'
@@ -61,6 +67,10 @@ export interface SequencerGridProps {
 }
 
 export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.ReactElement {
+  // How finely this panel DRAWS the pattern (#1057). Purely a view: nothing here
+  // reaches the document until an actual edit is made, and the first write absorbs
+  // it (`useGridModel` → `absorbViewScale`).
+  const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<StepGridModel>({
     source: 'seq',
     eligible: isStepChunk,
@@ -68,7 +78,19 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     serialize: serializeStepGrid,
     applyGain: applyStepGain,
     serializeGain: serializeStepGain,
+    viewScale,
+    onViewScaleConsumed: () => setViewScale(UNREFINED),
+    collapseToDocument: collapseStepGridToDocument,
   })
+
+  // A refinement belongs to the pattern it was made on. Dropping it when the cursor
+  // moves keeps a leftover zoom from deciding whether the NEXT pattern opens at all —
+  // four projections refuse a finer view (#1117), so a carried scale could send an
+  // perfectly editable pattern to standby with nothing reporting why.
+  const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ''}` : null
+  React.useEffect(() => {
+    setViewScale(UNREFINED)
+  }, [chunkKey])
 
   // The grid's length is always a whole number of columns, so `columnCount` is `steps`
   // here; it is asked anyway so both panels bound the playhead by the same rule (#1087).
@@ -170,21 +192,41 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     [mutate],
   )
 
-  // Grid resolution (#479): set the grid to an absolute slot count — lossless
-  // ×2/÷2 when the ratio allows, else quantize the hits onto the new grid. A
-  // no-op target returns the same model → useGridModel skips the write.
+  // PROVE, DON'T PREDICT: does the parser actually draw this pattern at `scale`?
+  // Asked of `parseStepGrid` itself, because four projections refuse a finer view
+  // (#1117) and an offer made on arithmetic alone is how a control ends up
+  // clickable and inert — the defect #1010 P4c had to repair once already.
+  // Memoized per mini: the control asks once per preset per render, and a real
+  // parse per ask is a per-gesture cost charged at a per-frame rate.
+  const canDrawView = useViewProver(chunk?.miniString, parseStepGrid)
+
+  // Grid resolution (#479, #1057): a target in the free zone changes only how
+  // finely we DRAW — the document is left byte-identical. Everything else keeps
+  // today's behaviour: lossless ×2/÷2 when the ratio allows, else quantize the
+  // hits onto the new grid, with a no-op target returning the same model so
+  // `useGridModel` skips the write.
+  //
+  // The verdict comes from `stepSlotState` — the SAME call that renders the
+  // button — so a target cannot be drawn as a view change and then written, or
+  // shown as a write and then silently absorbed. One authority, asked twice.
   const scaleToSlots = React.useCallback(
     (target: number): void => {
+      if (!model) return
+      if (stepSlotState(model, target, canDrawView) === 'view') {
+        const scale = freeZoneScale(documentSteps(model), target)
+        if (scale !== null) setViewScale(scale)
+        return
+      }
       mutate((prev) => quantizeStepGridTo(prev, target))
     },
-    [mutate],
+    [model, canDrawView, mutate],
   )
 
   // The "Slots" control now lives in the Pattern inspector (#601) — lift this
   // grid's resolution state to it instead of rendering it in the grid header.
   useLiftResolution(
     model?.steps ?? null,
-    (t) => (model ? stepSlotState(model, t) : 'disabled'),
+    (t) => (model ? stepSlotState(model, t, canDrawView) : 'disabled'),
     scaleToSlots,
     onResolution,
   )

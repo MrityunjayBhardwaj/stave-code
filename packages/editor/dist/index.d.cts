@@ -8583,8 +8583,13 @@ declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProp
 /** the snap grids the picker offers; `'grid'` = native cell (no extra snap) */
 type Division = 'grid' | '1/4' | '1/8' | '1/16' | '1/8T' | '1/16T';
 
-/** how setting the grid to `target` slots behaves, for the control's label/state */
-type SlotState = 'active' | 'lossless' | 'quantize' | 'disabled';
+/**
+ * how setting the grid to `target` slots behaves, for the control's label/state.
+ *
+ * `view` is the free zone (#1057): the click changes only how finely the panel DRAWS
+ * the pattern and leaves the document byte-identical. Every other member still writes.
+ */
+type SlotState = 'active' | 'view' | 'lossless' | 'quantize' | 'disabled';
 
 /**
  * ResolutionControl — the "Slots" grid-resolution control shared by both grids
@@ -8593,6 +8598,11 @@ type SlotState = 'active' | 'lossless' | 'quantize' | 'disabled';
  *
  * A target's `SlotState` says how it behaves and how it's drawn:
  *   - `active`   — the current count (highlighted, not clickable);
+ *   - `view`     — the free zone (#1057): a whole multiple of what the DOCUMENT
+ *      spells, so the panel simply draws the same notation more finely and your
+ *      file is not touched at all. Drawn normal, and the tooltip says so — this
+ *      is the only state that writes nothing, and a user deciding whether it is
+ *      safe to press should not have to find that out by pressing it;
  *   - `lossless` — a power-of-2 ratio: pure ×2/÷2, hits keep their position
  *      (haps byte-identical) — drawn normal;
  *   - `quantize` — any other ratio: notes snap to the nearest new slot and
