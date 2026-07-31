@@ -264,25 +264,32 @@ describe('#1116 the view scale, through the public entries', () => {
     ).toEqual([])
   })
 
+  // ── #1117 moved these, by exactly the population it names ──────────────────
+  // Teaching the four bar-expanding projections the scale took the grid from
+  // 836/122 to 869/89 and the roll from 451/93 to 490/54: +33 grid (23 alt-element
+  // expansions + 10 whole-cycle bar projections) and +39 roll (22 + 17), attributed
+  // per path by `_1116-refusal-attribution.spec.ts`. The refusals that REMAIN are
+  // the leaf-anchored path, which has no span to subdivide and is out of scope by
+  // decision, plus a small non-unit-note-length class tracked as #1120.
   it('grid: LIVE, FAITHFUL and SAME-WRITER wherever honoured; REFUSES everywhere else', () => {
     const { honoured, refused, violations } = sweep(parseStepGrid, gridMoved)
     expect(violations).toEqual([])
-    expect(honoured.get(2)).toBe(836)
-    expect(honoured.get(4)).toBe(836)
-    expect(refused.get(2)).toBe(122)
-    expect(refused.get(4)).toBe(122)
+    expect(honoured.get(2)).toBe(869)
+    expect(honoured.get(4)).toBe(869)
+    expect(refused.get(2)).toBe(89)
+    expect(refused.get(4)).toBe(89)
   })
 
   it('roll: LIVE, FAITHFUL and SAME-WRITER wherever honoured; REFUSES everywhere else', () => {
     const { honoured, refused, violations } = sweep(parsePianoRoll, rollMoved)
     expect(violations).toEqual([])
-    expect(honoured.get(2)).toBe(451)
-    expect(refused.get(2)).toBe(93)
+    expect(honoured.get(2)).toBe(490)
+    expect(refused.get(2)).toBe(54)
     // one long pattern crosses the VIEW ceiling at ×4 and not at ×2 — the ceiling
     // doing exactly its job, so the two scales are pinned separately rather than
     // averaged into one number that would hide it
-    expect(honoured.get(4)).toBe(450)
-    expect(refused.get(4)).toBe(94)
+    expect(honoured.get(4)).toBe(489)
+    expect(refused.get(4)).toBe(55)
   })
 
   it('magnifies the case the resolution work is named after, on both surfaces', () => {
