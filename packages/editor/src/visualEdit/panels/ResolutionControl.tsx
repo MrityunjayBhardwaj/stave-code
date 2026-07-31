@@ -63,6 +63,50 @@ export function useLiftResolution(
   }, [onResolution])
 }
 
+/**
+ * A memoized "does the parser really draw this at `scale`?" prover (#1057).
+ *
+ * The free zone is offered only on proof, and the proof is a real parse — the whole
+ * point is that it cannot be predicted. But `slotState` is asked once per preset on
+ * every render of the control, so the naive prover parses five times per render, at a
+ * measured 0.84ms (grid) / 1.74ms (roll) per refined ask. That cost is fine per
+ * GESTURE and wrong per FRAME, and nothing bounds how often this control re-renders.
+ *
+ * So the answers are cached per mini. The cache is keyed by the mini itself and thrown
+ * away whenever it changes, which makes staleness unrepresentable rather than
+ * something to remember to invalidate: a cached answer can only ever be read for the
+ * exact string it was computed from. Bounded by construction — at most one entry per
+ * preset, for one mini at a time.
+ */
+export function useViewProver(
+  mini: string | null | undefined,
+  parse: (mini: string, scale: number) => { ok: boolean },
+): (scale: number) => boolean {
+  const cacheRef = React.useRef<{ mini: string | null; answers: Map<number, boolean> }>({
+    mini: null,
+    answers: new Map(),
+  })
+  const parseRef = React.useRef(parse)
+  parseRef.current = parse
+  const key = mini ?? null
+  return React.useCallback(
+    (scale: number): boolean => {
+      if (key == null) return false
+      const c = cacheRef.current
+      if (c.mini !== key) {
+        c.mini = key
+        c.answers = new Map()
+      }
+      const hit = c.answers.get(scale)
+      if (hit !== undefined) return hit
+      const answer = parseRef.current(key, scale).ok
+      c.answers.set(scale, answer)
+      return answer
+    },
+    [key],
+  )
+}
+
 export interface ResolutionControlProps {
   /** current column count — the active preset */
   steps: number

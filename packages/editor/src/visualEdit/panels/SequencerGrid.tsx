@@ -35,7 +35,7 @@ import { canToggleCell, toggleCell, viewPlacesNotes } from '../notation/place'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice } from './drumVoices'
 import { useNoteColorMode, velocityColor } from './noteColor'
-import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
+import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
 import { stepSlotState, quantizeStepGridTo, freeZoneScale } from '../notation/resolution'
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
@@ -190,13 +190,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // Asked of `parseStepGrid` itself, because four projections refuse a finer view
   // (#1117) and an offer made on arithmetic alone is how a control ends up
   // clickable and inert — the defect #1010 P4c had to repair once already.
-  const canDrawView = React.useCallback(
-    (scale: ViewScale): boolean => {
-      const mini = chunk?.miniString
-      return mini == null ? false : parseStepGrid(mini, scale).ok
-    },
-    [chunk?.miniString],
-  )
+  // Memoized per mini: the control asks once per preset per render, and a real
+  // parse per ask is a per-gesture cost charged at a per-frame rate.
+  const canDrawView = useViewProver(chunk?.miniString, parseStepGrid)
 
   // Grid resolution (#479, #1057): a target in the free zone changes only how
   // finely we DRAW — the document is left byte-identical. Everything else keeps

@@ -36,7 +36,7 @@ import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import { pasteNote, placeNote, resizeNote, viewPlacesNotes } from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
-import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
+import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
 import { rollSlotState, quantizePianoRollTo, freeZoneScale } from '../notation/resolution'
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
@@ -579,10 +579,8 @@ export function PianoRollGrid({
 
   // PROVE, DON'T PREDICT — ask `parsePianoRoll` whether it really draws this
   // pattern at `scale`, never infer it from the arithmetic (#1117 refuses four).
-  const canDrawView = (scale: ViewScale): boolean => {
-    const mini = chunk?.miniString
-    return mini == null ? false : parsePianoRoll(mini, scale).ok
-  }
+  // Memoized per mini; the roll's parse is the dearer of the two (1.74ms/ask).
+  const canDrawView = useViewProver(chunk?.miniString, parsePianoRoll)
 
   // Grid resolution (#479, #1057): a free-zone target changes only how finely we
   // DRAW and leaves the document byte-identical. Everything else is unchanged —

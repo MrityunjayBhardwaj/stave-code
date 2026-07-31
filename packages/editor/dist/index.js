@@ -29080,6 +29080,32 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution) {
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
+function useViewProver(mini, parse4) {
+  const cacheRef = React36.useRef({
+    mini: null,
+    answers: /* @__PURE__ */ new Map()
+  });
+  const parseRef = React36.useRef(parse4);
+  parseRef.current = parse4;
+  const key2 = mini ?? null;
+  return React36.useCallback(
+    (scale) => {
+      if (key2 == null) return false;
+      const c = cacheRef.current;
+      if (c.mini !== key2) {
+        c.mini = key2;
+        c.answers = /* @__PURE__ */ new Map();
+      }
+      const hit = c.answers.get(scale);
+      if (hit !== void 0) return hit;
+      const answer = parseRef.current(key2, scale).ok;
+      c.answers.set(scale, answer);
+      return answer;
+    },
+    [key2]
+  );
+}
+__name(useViewProver, "useViewProver");
 function ResolutionControl({
   steps,
   slotState: slotState2,
@@ -30053,13 +30079,7 @@ function SequencerGrid({ onResolution } = {}) {
     },
     [mutate]
   );
-  const canDrawView = React36.useCallback(
-    (scale) => {
-      const mini = chunk?.miniString;
-      return mini == null ? false : parseStepGrid(mini, scale).ok;
-    },
-    [chunk?.miniString]
-  );
+  const canDrawView = useViewProver(chunk?.miniString, parseStepGrid);
   const scaleToSlots = React36.useCallback(
     (target) => {
       if (!model) return;
@@ -30703,10 +30723,7 @@ function PianoRollGrid({
       return setGroupGain(pasted, sel.start, clip2.gain);
     });
   }, "pasteClip");
-  const canDrawView = /* @__PURE__ */ __name((scale) => {
-    const mini = chunk?.miniString;
-    return mini == null ? false : parsePianoRoll(mini, scale).ok;
-  }, "canDrawView");
+  const canDrawView = useViewProver(chunk?.miniString, parsePianoRoll);
   const scaleToSlots = /* @__PURE__ */ __name((target) => {
     if (!model) return;
     if (rollSlotState(model, target, canDrawView) === "view") {
