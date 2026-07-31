@@ -8210,6 +8210,14 @@ interface StepGridModel {
     /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
     bars?: number;
     /**
+     * How much finer than the DOCUMENT this model is drawn (#1055, #1116). Absent =
+     * `UNREFINED` — the document's own resolution, which is what every path that does
+     * not apply a scale reports. That default is what makes `documentSteps(model)`
+     * total: a projection which ignores the scale carries 1, so its document width and
+     * its drawn width are the same number, which is the truth for it.
+     */
+    viewScale?: number;
+    /**
      * Lanes in presentation order. `sound` is the whole token incl. any
      * `:variant` (e.g. `bd:3`). `part` is the top-level `,`-stack the lane was
      * written in (absent = 0) — purely syntactic, kept so a hand-written stack
@@ -8328,6 +8336,16 @@ interface PianoRollModel {
     leafSource?: RollLeafSource;
     /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
     bars?: number;
+    /**
+     * How much finer than the DOCUMENT this model is drawn — the roll's half of
+     * `StepGridModel.viewScale`, with the same meaning and the same default (#1055,
+     * #1116). Absent = `UNREFINED`, which is the truth for every projection that does
+     * not apply a scale and is what keeps `documentSteps(model)` total.
+     *
+     * ⚠ A ROLL COLUMN IS NOT A GRID COLUMN: `steps` here is a column COUNT that
+     * `start`/`duration` are measured in, so a refine multiplies all three together.
+     */
+    viewScale?: number;
     notes: RollNote[];
     /** see `StepGridModel.gainForeign` — a `.gain` we read but don't manage. */
     gainForeign?: boolean;
@@ -8406,8 +8424,54 @@ type ParseResult<M> = {
     gate?: Gate;
 };
 
-declare function parseStepGrid(mini: string): ParseResult<StepGridModel>;
-declare function parsePianoRoll(mini: string): ParseResult<PianoRollModel>;
+/**
+ * How much finer than the document the view draws. A whole-number multiplier ≥ 1;
+ * `1` is the document's own resolution. Never an absolute column count — see the
+ * header for why that distinction is the whole reset rule.
+ */
+type ViewScale = number;
+
+/**
+ * THE PUBLIC ENTRY, and the only place a caller can express a view resolution.
+ *
+ * #1055 threaded `ViewScale` into the DERIVED projections. But the core answers first
+ * and answers for most patterns — 783 of the 958 corpus units that open the grid,
+ * including `bd ~ sn ~`, the case #1052 is named after — so a scale that stopped at
+ * the derived path could not reach 94% of the free-zone offers it exists to serve
+ * (#1116). The core now carries it too, and the scale enters HERE so both halves get
+ * the same number from the same caller.
+ *
+ * The order is unchanged and deliberately so ([[PK58]]): core, then derived. A view
+ * scale must NOT re-route a pattern to a different projection, because the core and
+ * the derived path build different `source` structures and therefore hand the document
+ * to different writers — zooming would silently swap the writer that owns the user's
+ * bytes. The finer view has to come from whichever writer already owns the pattern.
+ *
+ * ⚠ THAT GUARANTEE IS WHY OWNERSHIP IS ASKED AT `UNREFINED`, ALWAYS, and the first
+ * version of this entry did not have it. Asking the core AT THE SCALE conflates two
+ * different noes: "I do not own this pattern" (fall through to the derived path) and
+ * "I own it but cannot draw it finer yet" (the alt-element path's refusal). Both
+ * arrive as `ok: false`, so the scale refusal fell through and the derived projection
+ * answered instead — measured, **20 grid and 17 roll units changed writer on a zoom**,
+ * and 36 of the 37 were faithful magnifications that would have shipped in silence.
+ * Routing is a property of the PATTERN, so it is decided at the pattern's own
+ * resolution and the scale is applied only by the path that already owns it.
+ */
+declare function parseStepGrid(mini: string, viewScale?: ViewScale): ParseResult<StepGridModel>;
+/**
+ * THE PUBLIC ENTRY for the roll, and the only place a caller can express a view
+ * resolution — the roll's twin of `parseStepGrid`, for the same reason and with the
+ * same ordering guarantee (#1116). 412 of the 544 corpus units that open a roll are
+ * core-parsed, so a scale that stopped at the derived projection was unreachable for
+ * 93% of the free-zone offers it exists to serve.
+ *
+ * Core, then derived, unchanged: a view scale must not re-route a pattern to a
+ * different projection, because the two build different `source` structures and so
+ * hand the document to different writers. Ownership is therefore asked at `UNREFINED`
+ * — see `parseStepGrid` for the measurement that forced this, and for why a core that
+ * refuses the SCALE must not read as a core that refuses the PATTERN.
+ */
+declare function parsePianoRoll(mini: string, viewScale?: ViewScale): ParseResult<PianoRollModel>;
 
 /**
  * Notation models → mini-notation. The round-trip law (golden-tested):
