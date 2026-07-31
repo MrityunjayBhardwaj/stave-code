@@ -5,6 +5,11 @@
  *
  * A target's `SlotState` says how it behaves and how it's drawn:
  *   - `active`   — the current count (highlighted, not clickable);
+ *   - `view`     — the free zone (#1057): a whole multiple of what the DOCUMENT
+ *      spells, so the panel simply draws the same notation more finely and your
+ *      file is not touched at all. Drawn normal, and the tooltip says so — this
+ *      is the only state that writes nothing, and a user deciding whether it is
+ *      safe to press should not have to find that out by pressing it;
  *   - `lossless` — a power-of-2 ratio: pure ×2/÷2, hits keep their position
  *      (haps byte-identical) — drawn normal;
  *   - `quantize` — any other ratio: notes snap to the nearest new slot and
@@ -91,15 +96,17 @@ export function ResolutionControl({
         {RESOLUTION_PRESETS.map((preset, i) => {
           const state = preset === steps ? 'active' : slotState(preset)
           const active = state === 'active'
-          const clickable = state === 'lossless' || state === 'quantize'
+          const clickable = state === 'view' || state === 'lossless' || state === 'quantize'
           const title =
             state === 'active'
               ? `${preset} slots (current)`
-              : state === 'lossless'
-                ? `${preset} slots — keeps timing`
-                : state === 'quantize'
-                  ? `${preset} slots — quantizes notes to the grid (changes timing)`
-                  : `${preset} slots — unavailable`
+              : state === 'view'
+                ? `${preset} slots — view only, your pattern is unchanged`
+                : state === 'lossless'
+                  ? `${preset} slots — keeps timing`
+                  : state === 'quantize'
+                    ? `${preset} slots — quantizes notes to the grid (changes timing)`
+                    : `${preset} slots — unavailable`
           return (
             <button
               key={preset}
@@ -107,6 +114,9 @@ export function ResolutionControl({
               data-resolution-step={preset}
               data-resolution-active={active ? 'true' : undefined}
               data-resolution-quantize={state === 'quantize' ? 'true' : undefined}
+              // the free zone is observable from the DOM: a spec can assert that
+              // pressing this wrote nothing WITHOUT having to infer which state it was in
+              data-resolution-view={state === 'view' ? 'true' : undefined}
               aria-pressed={active}
               aria-label={`${preset} slots`}
               title={title}

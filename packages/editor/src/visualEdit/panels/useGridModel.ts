@@ -31,6 +31,7 @@ import * as React from 'react'
 
 import type { ChunkInfo } from '../chunkDetect'
 import type { ChunkGain, GainWrite, ParseResult } from '../notation/model'
+import { UNREFINED, absorbViewScale, type ViewScale } from '../notation/viewResolution'
 import type { OffsetEdit, WriteSource } from '../writeback'
 import { useActiveChunk } from './useActiveChunk'
 
@@ -39,7 +40,20 @@ export interface GridModelOptions<M> {
   source: WriteSource
   /** does this chunk belong to this panel? (head function / shape gate) */
   eligible: (chunk: ChunkInfo) => boolean
-  parse: (mini: string) => ParseResult<M>
+  parse: (mini: string, viewScale: ViewScale) => ParseResult<M>
+  /**
+   * How finely to DRAW the chunk (#1057). A change here re-parses at the new scale
+   * and writes nothing — that is the free zone's whole mechanism. Defaults to the
+   * document's own resolution, so a panel that never sets it behaves as before.
+   */
+  viewScale?: ViewScale
+  /**
+   * Called after a write-back has actually happened, so the panel can drop its
+   * refinement: the document now spells what was drawn (`absorbViewScale`). Not
+   * called when the transform declined or the result was inexpressible — nothing
+   * was written, so there is nothing to absorb.
+   */
+  onViewScaleConsumed?: () => void
   /** model → mini, or null when the model can't be expressed in the subset */
   serialize: (model: M) => string | null
   /**
@@ -107,7 +121,9 @@ function gainUnchanged(g: GainWrite, cur: ChunkGain): boolean {
   return g.quoted ? cur.mini === g.value : cur.numeric !== null && cur.numeric === parseFloat(g.value)
 }
 
-export function useGridModel<M>(opts: GridModelOptions<M>): GridModel<M> {
+export function useGridModel<M extends { viewScale?: ViewScale }>(
+  opts: GridModelOptions<M>,
+): GridModel<M> {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk()
   const [model, setModel] = React.useState<M | null>(null)
   // Mirror for synchronous reads inside pointer handlers / rapid drags.
@@ -121,6 +137,15 @@ export function useGridModel<M>(opts: GridModelOptions<M>): GridModel<M> {
   const optsRef = React.useRef(opts)
   optsRef.current = opts
 
+  // Read off the LIVE opts rather than the ref: this one has to be a real
+  // dependency, because changing how finely we draw is precisely a reason to
+  // re-parse (#1057) and a ref would swallow it.
+  const viewScale = opts.viewScale ?? UNREFINED
+  // The scale the retained model was actually built at. Without it a scale change
+  // could keep the previous model whenever it happened to serialize back to the
+  // source — retaining a ×2 model for a ×1 view, with no error anywhere.
+  const modelScaleRef = React.useRef<ViewScale>(UNREFINED)
+
   React.useEffect(() => {
     const o = optsRef.current
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
@@ -128,7 +153,7 @@ export function useGridModel<M>(opts: GridModelOptions<M>): GridModel<M> {
       setModel(null)
       return
     }
-    const parsed = o.parse(chunk.miniString)
+    const parsed = o.parse(chunk.miniString, viewScale)
     if (!parsed.ok) {
       modelRef.current = null
       setModel(null)
@@ -137,18 +162,21 @@ export function useGridModel<M>(opts: GridModelOptions<M>): GridModel<M> {
     const chunkGain = readChunkGain(chunk)
     const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain) : parsed.model
 
-    // Keep the in-progress model only when BOTH the mini and the `.gain` still
-    // match what we'd serialize; any external change to either reseeds.
+    // Keep the in-progress model only when the mini, the `.gain` AND the scale it
+    // was drawn at all still match; any external change to either — or any change
+    // to how finely we are drawing — reseeds.
     const prev = modelRef.current
     const sameMini = prev != null && o.serialize(prev) === chunk.miniString
     const sameGain =
       prev == null || !o.serializeGain
         ? true
         : gainUnchanged(o.serializeGain(prev), chunkGain)
-    const next = prev && sameMini && sameGain ? prev : fresh
+    const sameScale = modelScaleRef.current === viewScale
+    const next = prev && sameMini && sameGain && sameScale ? prev : fresh
+    modelScaleRef.current = viewScale
     modelRef.current = next
     setModel(next)
-  }, [chunk])
+  }, [chunk, viewScale])
 
   const mutate = React.useCallback(
     (fn: (m: M) => M): void => {
@@ -159,8 +187,15 @@ export function useGridModel<M>(opts: GridModelOptions<M>): GridModel<M> {
       if (next === prev) return
       const mini = o.serialize(next)
       if (mini == null) return // inexpressible — leave the document untouched
-      modelRef.current = next
-      setModel(next)
+      // Past this point the write IS happening, so the refinement is being spelled
+      // into the document and the model stops being "drawn finer than the file".
+      // Both the marker and the panel's own scale state have to move together —
+      // keeping either alone is a model and a view that disagree (#1057).
+      const written = absorbViewScale(next)
+      modelScaleRef.current = UNREFINED
+      modelRef.current = written
+      setModel(written)
+      o.onViewScaleConsumed?.()
       applyEdit((fresh, wb) => {
         if (!fresh.miniRange) return
         const edits: OffsetEdit[] = [{ range: fresh.miniRange, text: mini }]

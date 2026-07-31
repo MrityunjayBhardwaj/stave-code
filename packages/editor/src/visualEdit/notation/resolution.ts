@@ -28,6 +28,7 @@
 import { cellOn, clampLane, isCellOn, scaleCell } from './model'
 import type { PianoRollModel, RollNote, StepCell, StepGridModel } from './model'
 import { ifGridSpellable, ifRollSpellable } from './serialize'
+import { MAX_VIEW_STEPS, documentSteps, type ViewScale } from './viewResolution'
 
 /** which way the resolution control scales the grid */
 export type ResolutionDir = 'double' | 'halve'
@@ -365,8 +366,54 @@ export function quantizePianoRollTo(model: PianoRollModel, target: number): Pian
   return ifRollSpellable(model, { ...model, steps: target, notes })
 }
 
-/** how setting the grid to `target` slots behaves, for the control's label/state */
-export type SlotState = 'active' | 'lossless' | 'quantize' | 'disabled'
+/* ── the free zone: a finer target is a VIEW change, not a rewrite (#1057) ── */
+
+/**
+ * THE FREE ZONE — where asking to look more closely must not rewrite your file.
+ *
+ * `bd ~ sn ~` + "Slots 16" used to write `bd ~ ~ ~ ~ ~ ~ ~ sn ~ ~ ~ ~ ~ ~ ~`. No note
+ * was placed; the user expressed a VIEW preference and their document was rewritten.
+ * #1052 settled the rule that fixes it: **refining is a view change, coarsening edits
+ * your document.**
+ *
+ * A target is in the free zone when it is the document's own column count or a whole
+ * multiple of it — because that is exactly when the same notation can be DRAWN at the
+ * target without respelling anything. The returned value is the view scale that draws
+ * it, so `target === documentSteps` yields `UNREFINED` and refining is reversible: the
+ * user can always come back to the document's own resolution the same way they left it.
+ *
+ * ⚠ ASKED OF `documentSteps`, NEVER `model.steps`. `model.steps` is what is DRAWN, so at
+ * scale 2 on a 4-column document it reads 8 — and a free zone keyed off it would call
+ * "16" a ×2 refine when it is really ×4, i.e. the offer would depend on how closely the
+ * user happened to be looking. Same hazard [[PV260]] names for the stored value.
+ *
+ * ⚠ ARITHMETIC ONLY — this says a view is REPRESENTABLE, never that the parser will
+ * actually draw it. Four projections refuse a finer view (#1117), so an offer made on
+ * this answer alone would ship exactly the dead buttons #1010 P4c had to repair: a
+ * control whose enabled state was PREDICTED rather than asked. The composed offer lives
+ * in `slotState` behind `canDrawView`, which is the same private-arithmetic /
+ * ask-the-real-subsystem split `structurallyCan*` and `ifGridSpellable` already use
+ * above — and the default is "no free zone", so a caller that cannot prove it never
+ * offers it.
+ *
+ * Bounded by the VIEW ceiling rather than the document's: refining expands nothing in
+ * the notation, so `MAX_STEPS` (a document-expansion guard) is the wrong question and
+ * `MAX_VIEW_STEPS` is the right one — `viewResolution.ts` argues this at length.
+ */
+export function freeZoneScale(docSteps: number, target: number): ViewScale | null {
+  if (!Number.isInteger(docSteps) || docSteps < 1) return null
+  if (target < docSteps || target % docSteps !== 0) return null
+  if (target > MAX_VIEW_STEPS) return null
+  return target / docSteps
+}
+
+/**
+ * how setting the grid to `target` slots behaves, for the control's label/state.
+ *
+ * `view` is the free zone (#1057): the click changes only how finely the panel DRAWS
+ * the pattern and leaves the document byte-identical. Every other member still writes.
+ */
+export type SlotState = 'active' | 'view' | 'lossless' | 'quantize' | 'disabled'
 
 /**
  * `applies` is the DECIDING input, and it is the op itself rather than a prediction of it.
@@ -379,32 +426,68 @@ export type SlotState = 'active' | 'lossless' | 'quantize' | 'disabled'
  */
 function slotState(
   steps: number,
+  docSteps: number,
   bars: number | undefined,
   lossless: boolean,
   applies: boolean,
   target: number,
+  canDrawView: ((scale: ViewScale) => boolean) | undefined,
 ): SlotState {
+  // `steps` is what is DRAWN, so "the one I am already looking at" is the right
+  // reading of `active` — at scale 2 on a 4-column document the user sees 8 columns
+  // and 8 is the live preset.
   if (target === steps) return 'active'
+  // THE FREE ZONE COMES FIRST, and that ordering is the whole phase: every branch
+  // below this line writes to the document, so a target that can be satisfied by
+  // looking more closely must be taken off the writing path before it reaches them.
+  // Offered only when a caller can PROVE the view draws — see `freeZoneScale`.
+  if (canDrawView) {
+    const scale = freeZoneScale(docSteps, target)
+    if (scale !== null && canDrawView(scale)) return 'view'
+  }
   if (lossless) return 'lossless'
-  if ((bars ?? 1) > 1) return 'disabled' // multi-bar can't quantize off the bar grid yet
+  // MULTI-BAR, STATED RATHER THAN INHERITED (#1057 asks for this explicitly): a
+  // `<…>` grid still cannot quantize off the bar grid, so a non-multiple target is
+  // disabled exactly as before. What DID change is that its refines no longer fall
+  // to this branch at all — a whole multiple is a view change above, and multi-bar
+  // patterns are the ones that gained most from that, having never had a refine.
+  if ((bars ?? 1) > 1) return 'disabled'
   return applies ? 'quantize' : 'disabled'
 }
 
-export function stepSlotState(model: StepGridModel, target: number): SlotState {
+/**
+ * `canDrawView` is how the caller PROVES a finer view is really drawable — it is handed
+ * a candidate scale and answers by asking the parser, not by predicting it. Omitting it
+ * disables the free zone entirely, so every existing caller keeps today's behaviour
+ * exactly and no offer is ever made on an unproven claim.
+ */
+export function stepSlotState(
+  model: StepGridModel,
+  target: number,
+  canDrawView?: (scale: ViewScale) => boolean,
+): SlotState {
   return slotState(
     model.steps,
+    documentSteps(model),
     model.bars,
     canScaleStepGridTo(model, target),
     quantizeStepGridTo(model, target) !== model,
     target,
+    canDrawView,
   )
 }
-export function rollSlotState(model: PianoRollModel, target: number): SlotState {
+export function rollSlotState(
+  model: PianoRollModel,
+  target: number,
+  canDrawView?: (scale: ViewScale) => boolean,
+): SlotState {
   return slotState(
     model.steps,
+    documentSteps(model),
     model.bars,
     canScalePianoRollTo(model, target),
     quantizePianoRollTo(model, target) !== model,
     target,
+    canDrawView,
   )
 }

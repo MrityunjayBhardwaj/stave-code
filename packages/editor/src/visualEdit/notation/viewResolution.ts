@@ -105,6 +105,31 @@ export function viewSteps(documentSteps: number, scale: ViewScale): number {
 }
 
 /**
+ * A WRITE ABSORBS THE REFINEMENT (#1057).
+ *
+ * While the view is refined the panel holds a model drawn `k×` finer than the document.
+ * The moment anything is written back, that model IS serialized — so the document now
+ * spells exactly what was on screen, and the same model is no longer "4 columns seen at
+ * ×2" but "8 columns, seen plainly". Dropping the marker is the whole of that change:
+ * every cell, note, gain and column count is already correct.
+ *
+ * Leaving it would be a silent wrong answer rather than a visible one, which is why this
+ * is a function and not a comment. `documentSteps` divides by the marker, so a retained
+ * `viewScale` on a written-through model reports a 8-column document as 4 columns — and
+ * the next resolution click would then compute its free zone against a number the
+ * document stopped having. The user sees no jump at the moment of absorption: the drawn
+ * column count is identical on both sides of it.
+ *
+ * Returns the SAME reference when there is nothing to absorb, matching the `notation/`
+ * convention that an inapplicable transform is detectable by identity.
+ */
+export function absorbViewScale<M extends { viewScale?: ViewScale }>(model: M): M {
+  if (model.viewScale === undefined) return model
+  const { viewScale: _absorbed, ...rest } = model
+  return rest as M
+}
+
+/**
  * May a view at `scale` be drawn for a pattern of `perBar × bars` document columns?
  *
  * Asked of the VIEW ceiling, never the document's. At `UNREFINED` this is implied by

@@ -19,7 +19,14 @@ import {
   rollSlotState,
   RESOLUTION_PRESETS,
   MAX_RESOLUTION_STEPS,
+  freeZoneScale,
 } from '../resolution'
+import {
+  MAX_VIEW_STEPS,
+  UNREFINED,
+  absorbViewScale,
+  documentSteps,
+} from '../viewResolution'
 import type { StepGridModel, PianoRollModel, StepCell } from '../model'
 
 /** serialize → assert the writer did not decline → return the string */
@@ -417,5 +424,114 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     const mb = step('<bd sn>') // bars 2
     // a lossy target is disabled rather than quantized for multi-bar
     expect(stepSlotState(mb, 4)).not.toBe('quantize')
+  })
+})
+
+/* ── the free zone (#1057) ───────────────────────────────────────────────── */
+
+describe('free zone — refining is a view change, not a rewrite', () => {
+  /** a prover that says every scale draws — stands in for a cooperative parser */
+  const draws = (): boolean => true
+  /** a prover that refuses everything — stands in for the projections of #1117 */
+  const refuses = (): boolean => false
+
+  it('freeZoneScale admits whole multiples at or above the document, and nothing else', () => {
+    expect(freeZoneScale(4, 4)).toBe(UNREFINED) // the document itself — how you come back
+    expect(freeZoneScale(4, 8)).toBe(2)
+    expect(freeZoneScale(4, 16)).toBe(4)
+    expect(freeZoneScale(4, 64)).toBe(16)
+    expect(freeZoneScale(4, 2)).toBeNull() // COARSER — this one edits your document
+    expect(freeZoneScale(5, 8)).toBeNull() // not a whole multiple: 8/5 is not a view
+    expect(freeZoneScale(3, 8)).toBeNull()
+    expect(freeZoneScale(4, MAX_VIEW_STEPS * 2)).toBeNull() // past the VIEW ceiling
+    expect(freeZoneScale(0, 8)).toBeNull()
+  })
+
+  it('THE REPORTED DEFECT: "bd ~ sn ~" + Slots 16 is a view, not a rewrite', () => {
+    // The issue's own example. Before #1057 this returned `lossless` and wrote
+    // `bd ~ ~ ~ ~ ~ ~ ~ sn ~ ~ ~ ~ ~ ~ ~` — fifteen tokens for a preference.
+    const m = step('bd ~ sn ~')
+    expect(stepSlotState(m, 16, draws)).toBe('view')
+    expect(stepSlotState(m, 8, draws)).toBe('view')
+    expect(stepSlotState(m, 32, draws)).toBe('view')
+    // and the document is untouched by asking: the state is a pure question
+    expect(ser(m)).toBe('bd ~ sn ~')
+  })
+
+  it('THE PROOF IS REQUIRED: a refused view falls through to the writing path', () => {
+    // This is the whole reason `canDrawView` exists. Four projections refuse a finer
+    // view (#1117); offering one on arithmetic alone ships a button that does nothing.
+    const m = step('bd ~ sn ~')
+    expect(stepSlotState(m, 16, refuses)).toBe('lossless')
+    // …and with no prover at all, the free zone does not exist — which is what keeps
+    // every pre-#1057 caller behaving exactly as it did.
+    expect(stepSlotState(m, 16)).toBe('lossless')
+  })
+
+  it('the free zone is taken off the writing path BEFORE lossless, not after', () => {
+    // Ordering is the phase. `bd ~ sn ~` → 8 is BOTH a whole multiple and a
+    // power-of-2 ratio, so whichever branch runs first decides whether the user's
+    // file is rewritten. It must be the view.
+    const m = step('bd ~ sn ~')
+    expect(canScaleStepGridTo(m, 8)).toBe(true) // the writing path would take it…
+    expect(stepSlotState(m, 8, draws)).toBe('view') // …and does not get the chance
+  })
+
+  it('coarsening is never a view — the free zone cannot reach it', () => {
+    const m8 = step('bd ~ ~ ~ sn ~ ~ ~')
+    expect(freeZoneScale(8, 4)).toBeNull()
+    // Whatever the writing path decides, it must not be `view`: coarsening changes
+    // what the document says, and #1052's rule is that only refining is free.
+    expect(stepSlotState(m8, 4, draws)).not.toBe('view')
+    // OBSERVED, and it belongs to #1061 rather than here: this particular coarsening
+    // is `disabled`, because halving scales each cell to half a column and P4c's
+    // printer preserves length, so the writer declines and an honest control says so.
+    // Recorded to show the free zone left this path exactly as it found it.
+    expect(stepSlotState(m8, 4, draws)).toBe(stepSlotState(m8, 4))
+  })
+
+  it('a target already being looked at stays `active`, at any scale', () => {
+    // `model.steps` is what is DRAWN, so the live preset is the drawn count.
+    const drawn = parseStepGrid('bd ~ sn ~', 4)
+    expect(drawn.ok).toBe(true)
+    if (!drawn.ok) throw new Error('unreachable')
+    expect(drawn.model.steps).toBe(16)
+    expect(documentSteps(drawn.model)).toBe(4) // …but the DOCUMENT still spells 4
+    expect(stepSlotState(drawn.model, 16, draws)).toBe('active')
+    // and every other preset is reached from the DOCUMENT's 4, not from the drawn 16 —
+    // including coming back down, which is why `freeZoneScale(D, D)` is UNREFINED
+    expect(stepSlotState(drawn.model, 4, draws)).toBe('view')
+    expect(stepSlotState(drawn.model, 8, draws)).toBe('view')
+  })
+
+  it('MULTI-BAR GAINS A REFINE it never had (stated, per #1057)', () => {
+    const mb = step('<bd sn>')
+    // Before: every non-power-of-2 target was `disabled` and refines wrote. A whole
+    // multiple is now a view for multi-bar too — the branch that disables it is below
+    // the free zone, and only non-multiples still reach it.
+    const D = documentSteps(mb)
+    expect(freeZoneScale(D, D * 2)).toBe(2)
+    expect(stepSlotState(mb, D * 2, draws)).toBe('view')
+  })
+
+  it('the roll behaves identically — one rule, both surfaces', () => {
+    const r = roll('c3 ~ e3 ~')
+    expect(rollSlotState(r, 16, draws)).toBe('view')
+    expect(rollSlotState(r, 16, refuses)).toBe('lossless')
+    expect(rollSlotState(r, 16)).toBe('lossless')
+  })
+
+  it('absorbViewScale drops the marker a write makes untrue, and only then', () => {
+    const plain = step('bd ~ sn ~')
+    expect(absorbViewScale(plain)).toBe(plain) // nothing to absorb → same reference
+    const drawn = parseStepGrid('bd ~ sn ~', 2)
+    if (!drawn.ok) throw new Error('unreachable')
+    expect(drawn.model.viewScale).toBe(2)
+    const written = absorbViewScale(drawn.model)
+    expect(written.viewScale).toBeUndefined()
+    // the SHAPE is untouched — absorbing is a change of claim, not of content
+    expect(written.steps).toBe(drawn.model.steps)
+    expect(documentSteps(written)).toBe(written.steps) // …and the claim is now true
+    expect(serializeStepGrid(written)).toBe(serializeStepGrid(drawn.model))
   })
 })

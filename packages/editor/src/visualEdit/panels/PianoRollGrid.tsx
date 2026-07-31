@@ -38,7 +38,8 @@ import { pasteNote, placeNote, resizeNote, viewPlacesNotes } from '../notation/p
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
-import { rollSlotState, quantizePianoRollTo } from '../notation/resolution'
+import { rollSlotState, quantizePianoRollTo, freeZoneScale } from '../notation/resolution'
+import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 import { setNoteClip, getNoteClip } from './clipboard'
@@ -182,6 +183,10 @@ export function PianoRollGrid({
   division = DEFAULT_DIVISION,
   onResolution,
 }: PianoRollGridProps = {}): React.ReactElement {
+  // How finely this panel DRAWS the pattern (#1057) — a view only; the first write
+  // absorbs it. A roll length is measured in columns, so a refine magnifies note
+  // DURATIONS alongside their starts and the picture stays proportional.
+  const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<PianoRollModel>({
     source: 'roll',
     eligible: isRollChunk,
@@ -189,7 +194,16 @@ export function PianoRollGrid({
     serialize: serializePianoRoll,
     applyGain: applyRollGain,
     serializeGain: serializeRollGain,
+    viewScale,
+    onViewScaleConsumed: () => setViewScale(UNREFINED),
   })
+
+  // A refinement belongs to the pattern it was made on — see `SequencerGrid` for
+  // why carrying it across a cursor move could send an editable pattern to standby.
+  const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ''}` : null
+  React.useEffect(() => {
+    setViewScale(UNREFINED)
+  }, [chunkKey])
 
   const dragRef = React.useRef<DragState | null>(null)
   // A velocity-lane drag: vertical drag on a note's bar sets that group's gain.
@@ -563,10 +577,26 @@ export function PianoRollGrid({
     })
   }
 
-  // Grid resolution (#479): set the grid to an absolute slot count — lossless
-  // ×2/÷2 when the ratio allows (onsets byte-identical), else quantize the notes
-  // onto the new grid. A no-op target returns the same model → mutate skips.
+  // PROVE, DON'T PREDICT — ask `parsePianoRoll` whether it really draws this
+  // pattern at `scale`, never infer it from the arithmetic (#1117 refuses four).
+  const canDrawView = (scale: ViewScale): boolean => {
+    const mini = chunk?.miniString
+    return mini == null ? false : parsePianoRoll(mini, scale).ok
+  }
+
+  // Grid resolution (#479, #1057): a free-zone target changes only how finely we
+  // DRAW and leaves the document byte-identical. Everything else is unchanged —
+  // lossless ×2/÷2 when the ratio allows (onsets byte-identical), else quantize
+  // the notes onto the new grid, a no-op target returning the same model so
+  // `mutate` skips. The verdict comes from the same `rollSlotState` call that
+  // renders the button, so the control and the click cannot disagree.
   const scaleToSlots = (target: number): void => {
+    if (!model) return
+    if (rollSlotState(model, target, canDrawView) === 'view') {
+      const scale = freeZoneScale(documentSteps(model), target)
+      if (scale !== null) setViewScale(scale)
+      return
+    }
     mutate((prev) => quantizePianoRollTo(prev, target))
   }
 
@@ -576,7 +606,7 @@ export function PianoRollGrid({
   // ref-backed so the lift stays loop-free.)
   useLiftResolution(
     model?.steps ?? null,
-    (t) => (model ? rollSlotState(model, t) : 'disabled'),
+    (t) => (model ? rollSlotState(model, t, canDrawView) : 'disabled'),
     scaleToSlots,
     onResolution,
   )
