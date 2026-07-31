@@ -492,10 +492,20 @@ export function collapsePianoRollToDocument(model: PianoRollModel): PianoRollMod
  * `[from, to)`, and the view content each region remembers), so undoing the refine means
  * undoing it there too — the same rule, asked of the second carrier.
  *
- * `leafSource` is deliberately absent: a leaf-anchored model refuses a refine outright,
- * so it never reaches here. That absence is ASSERTED rather than assumed — the corpus
- * gate checks the shape SET it observes against the shapes it pins, and `leaf` is not
- * among them.
+ * `leafSource` is deliberately absent, and the reason is STRUCTURAL rather than
+ * observed: `parse.ts`'s total gate refuses to hand back any model that does not
+ * report the scale it was asked for, and the leaf path anchors each note to its own
+ * source span so it has no span to subdivide and carries no scale. A leaf model
+ * therefore cannot reach here with a `viewScale` at all — the corpus gate's shape set
+ * (which also has no `leaf` row) confirms that, it does not establish it. If that gate
+ * ever changes, a stale `leafSource` would splice at refined spans, so the two must
+ * move together.
+ *
+ * THE ONE ASSUMPTION LEFT, stated because it is silent if wrong: every quantity here
+ * divides by `k` exactly, because the refine is what multiplied them. A source that
+ * did not come from this refine would yield a fractional `div` — which the writer's
+ * covers-check rejects, so it degrades to the rebuild this fix exists to avoid rather
+ * than to a wrong splice. Wrong-and-loud is not available here; wrong-and-old is.
  *
  * ⚠ K IS A POWER OF TWO, and that is a property of the offers rather than of this code.
  * Every target comes from `RESOLUTION_PRESETS` (all powers of two) and `freeZoneScale`
