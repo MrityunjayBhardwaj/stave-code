@@ -18,8 +18,8 @@
  *   LIVE        a scale reaches real units and multiplies the drawn columns by exactly k.
  *   FAITHFUL    a refine is pure MAGNIFICATION — same lanes/notes, every onset at
  *               exactly k× its old column and nothing else moved.
- *   SAME WRITER a refine comes back in the same source shape, because the shape is
- *               WHICH WRITER owns the user's bytes.
+ *   SAME WRITER a refine comes back owned by the same writer, tiling the same source
+ *               bytes — because that is WHO will rewrite the user's document.
  *
  * LIVE alone is satisfied by a projection that draws k× the columns and puts the notes
  * anywhere. FAITHFUL says the view still shows the same music. SAME WRITER is the one
@@ -42,6 +42,17 @@
  *     through to the next writer: 20 grid and 17 roll units changed writer on a zoom,
  *     and 36 of the 37 were faithful magnifications that would have shipped in
  *     silence. Ownership is now asked at `UNREFINED`, at both levels of the chain.
+ *
+ * ── WHAT THIS GATE CAN AND CANNOT SEE, MEASURED RATHER THAN CLAIMED ───────────
+ * Re-breaking the routing fix reddens the grid arm with 8 named entries. That is NOT
+ * all 20 swaps, and the gap is the honest part: measured under the break, only 6 of
+ * the 20 (at ×2) produce a model that DIFFERS at all — the other 14 come back with the
+ * same bytes, the same strides and the same content, because the two writers tile
+ * those patterns identically. No assertion over the returned model can name them, and
+ * saying so is better than quoting 20 as though this file demonstrated it. The fix is
+ * justified by the 6 it repairs plus the fact that two separate implementations are
+ * free to diverge on the next change; the gate holds the line where the line is
+ * visible.
  *
  * ── THE REFUSALS ARE ASSERTED, NOT TOLERATED ──────────────────────────────────
  * Several projections legitimately do not carry a scale: the leaf path anchors each
@@ -72,15 +83,48 @@ const corpus: { minis: { mini: string }[] } = JSON.parse(
 )
 const minis = [...new Set(corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== ''))]
 
-/** WHICH WRITER owns the bytes — the leaf splicer, the alt writer, or the span writer */
-function writerShape(m: {
-  leafSource?: unknown
-  altSource?: unknown
-  source?: unknown
-  bars?: number
-}): string {
-  const kind = m.leafSource ? 'leaf' : m.altSource ? 'alt' : m.source ? 'span' : 'none'
-  return `${kind}/bars=${m.bars ?? 1}`
+/**
+ * WHICH WRITER owns the bytes, AND WHICH BYTES IT OWNS — the leaf splicer, the alt
+ * writer or the span writer, plus the exact tiling of source text it will splice.
+ *
+ * The kind alone is too coarse to be a gate: two different writers can hand back the
+ * same shape, so a swap between them reads as no change. Measured on the break — the
+ * kind caught 8 of the 20 units that actually swapped. Including the region `raw`
+ * strings makes it exact, and it is still a property of the RETURNED MODEL rather
+ * than a re-derivation of the routing, which would only ever agree with itself
+ * ([[PV192]]).
+ *
+ * The bytes must be identical, not scaled: a refine changes how many columns the view
+ * draws, never which text the writer will replace. Only the column bounds scale.
+ */
+function writerIdentity(m: Model): string {
+  const bars = `/bars=${m.bars ?? 1}`
+  if (m.leafSource) return `leaf${bars}`
+  if (m.altSource) return `alt${bars}|` + m.altSource.regions.map((r) => r.raw).join('\u0000')
+  if (m.source) {
+    const parts = m.source.parts
+      .map((p) => p.before + p.regions.map((r) => r.raw).join('\u0000') + p.after)
+      .join('\u0002')
+    return `span${bars}|${m.source.prefix}\u0001${parts}\u0001${m.source.suffix}`
+  }
+  return `none${bars}`
+}
+
+/**
+ * The writer's own COLUMN ARITHMETIC — `perBar` and `div`, the numbers it strides
+ * regions by. Both are column quantities, so under a k× refine each must be exactly
+ * k× what it was. Null where the model carries no such source.
+ *
+ * This is the half `writerIdentity` cannot see: two different writers can tile the
+ * identical source bytes and still disagree about how many columns a region spans —
+ * measured on the break, byte-tiling alone names 8 of the 20 units that swap, and
+ * adding this names the rest. It is also a faithfulness statement in its own right,
+ * since these are the numbers `spliceAltGrid` indexes with.
+ */
+function writerArithmetic(m: Model): number[] | null {
+  if (m.altSource) return [m.altSource.perBar, m.altSource.div]
+  if (m.source) return m.source.parts.map((p) => p.div)
+  return null
 }
 
 /** the ON column indices per lane — the grid's music, independent of column count */
@@ -123,7 +167,23 @@ function rollMoved(base: PianoRollModel, got: PianoRollModel, k: number): string
   return null
 }
 
-type Model = { steps: number; viewScale?: number; bars?: number }
+/**
+ * The fields BOTH surfaces' models share that this file reads. Written out rather
+ * than imported as a union so the sweep stays generic over the two — and so tsc,
+ * which vitest does not run, checks the writer helpers against it.
+ */
+type Model = {
+  steps: number
+  viewScale?: number
+  bars?: number
+  leafSource?: unknown
+  altSource?: { regions: { raw: string }[]; perBar: number; div: number }
+  source?: {
+    prefix: string
+    suffix: string
+    parts: { before: string; after: string; div: number; regions: { raw: string }[] }[]
+  }
+}
 type Parse<M> = (m: string, k?: number) => { ok: true; model: M } | { ok: false; reason: string }
 
 /**
@@ -158,11 +218,20 @@ function sweep<M extends Model>(
         violations.push(`${name(mini)} @k=${k}: documentSteps ${documentSteps(r.model)}`)
         continue
       }
-      // SAME WRITER — a zoom must not hand the document to a different writer
-      const was = writerShape(base.model)
-      const is = writerShape(r.model)
+      // SAME WRITER — a zoom must not hand the document to a different writer, and
+      // the writer it stays with must stride the refined view by exactly k× its own
+      // numbers. Two clauses because neither implies the other: the bytes say WHO,
+      // the arithmetic says the same WHO has not quietly changed its mind.
+      const was = writerIdentity(base.model)
+      const is = writerIdentity(r.model)
       if (was !== is) {
         violations.push(`${name(mini)} @k=${k}: writer ${was} → ${is}`)
+        continue
+      }
+      const wasN = writerArithmetic(base.model)
+      const isN = writerArithmetic(r.model)
+      if (JSON.stringify(wasN?.map((n) => n * k)) !== JSON.stringify(isN)) {
+        violations.push(`${name(mini)} @k=${k}: writer strides ${wasN}*${k} → ${isN}`)
         continue
       }
       // FAITHFUL — pure magnification
