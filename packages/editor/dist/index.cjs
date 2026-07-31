@@ -27290,6 +27290,7 @@ function projectStepGrid(src0, viewScale = UNREFINED) {
     if (!parts) return no("element-tiling");
     const model2 = {
       steps: perBar2,
+      ...viewScale === UNREFINED ? {} : { viewScale },
       lanes,
       source: { prefix: "", suffix: "", parts }
     };
@@ -27311,6 +27312,7 @@ function projectStepGrid(src0, viewScale = UNREFINED) {
   const model = {
     steps: perBar2 * bars,
     bars,
+    ...viewScale === UNREFINED ? {} : { viewScale },
     lanes,
     altSource: { perBar: perBar2, bars, div: divPerUnit, regions }
   };
@@ -27551,36 +27553,57 @@ function vacuousLocality(a) {
 }
 __name(vacuousLocality, "vacuousLocality");
 function projectStepGridDerived(mini, fallbackReason, viewScale = UNREFINED) {
-  const element = projectStepGrid(mini, viewScale);
-  if (element.ok && !vacuousLocality(element.model.altSource)) return element;
+  const owner = projectStepGrid(mini);
+  const asOwner = /* @__PURE__ */ __name((ok) => {
+    if (viewScale === UNREFINED) return ok;
+    const scaled = projectStepGrid(mini, viewScale);
+    return scaled.ok ? scaled : refused("grid", fallbackReason, scaled.gate);
+  }, "asOwner");
+  if (owner.ok && !vacuousLocality(owner.model.altSource)) return asOwner(owner);
   const leaf = projectStepGridByLeaf(mini);
   if (leaf.ok) return leaf;
-  if (element.ok) return element;
+  if (owner.ok) return asOwner(owner);
   return refused("grid", fallbackReason, leaf.gate);
 }
 __name(projectStepGridDerived, "projectStepGridDerived");
-function parseStepGrid(mini) {
-  const core = parseStepGridCore(mini);
-  if (core.ok) return core;
-  return projectStepGridDerived(mini, core);
+function parseStepGrid(mini, viewScale = UNREFINED) {
+  const owner = parseStepGridCore(mini);
+  if (viewScale === UNREFINED) {
+    return owner.ok ? owner : projectStepGridDerived(mini, owner, UNREFINED);
+  }
+  const result = owner.ok ? parseStepGridCore(mini, viewScale) : projectStepGridDerived(mini, owner, viewScale);
+  return honoursViewScale(result, viewScale);
 }
 __name(parseStepGrid, "parseStepGrid");
-function parseStepGridCore(mini) {
+function honoursViewScale(result, viewScale) {
+  if (!result.ok || viewScale === UNREFINED) return result;
+  if ((result.model.viewScale ?? UNREFINED) === viewScale) return result;
+  return { ok: false, reason: "this pattern does not offer a finer view yet" };
+}
+__name(honoursViewScale, "honoursViewScale");
+function parseStepGridCore(mini, viewScale = UNREFINED) {
   const alt = unwrapAlternation(mini);
-  if (alt !== null) return gridFromAlternation(alt);
+  if (alt !== null) return gridFromAlternation(alt, viewScale);
   const parts = splitTopLevel(mini);
-  if (parts.length > 1) return gridFromStack(parts);
+  if (parts.length > 1) return gridFromStack(parts, viewScale);
   const altEl = gridFromAltElements(mini);
-  if (altEl !== null) return altEl;
+  if (altEl !== null) {
+    return viewScale === UNREFINED ? altEl : { ok: false, reason: "this pattern does not offer a finer view yet" };
+  }
   const tok = tokenize(mini);
   if (!tok.ok) return tok;
   if (gridHasElongation(tok.steps)) {
     return { ok: false, reason: "elongation is beyond the drum-grid subset" };
   }
-  const div = division(tok.steps);
-  if (tok.steps.length * div > MAX_STEPS) {
+  const documentDiv = division(tok.steps);
+  const documentCols = tok.steps.length * documentDiv;
+  if (documentCols > MAX_STEPS) {
     return { ok: false, reason: `sub-sequences expand the grid past ${MAX_STEPS} steps` };
   }
+  if (!viewScaleFits(documentCols, 1, viewScale)) {
+    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` };
+  }
+  const div = documentDiv * viewScale;
   const cells = toCells(tok.steps, div);
   const src = mini.trim();
   const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)));
@@ -27588,23 +27611,28 @@ function parseStepGridCore(mini) {
     ok: true,
     model: {
       steps: cells.length,
+      ...viewScale === UNREFINED ? {} : { viewScale },
       lanes: lanesFromCells(cells),
       ...sourceParts ? { source: { prefix: "", suffix: "", parts: sourceParts } } : {}
     }
   };
 }
 __name(parseStepGridCore, "parseStepGridCore");
-function gridFromAlternation(inner) {
+function gridFromAlternation(inner, viewScale = UNREFINED) {
   const tok = tokenize(inner);
   if (!tok.ok) return tok;
   if (tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
   if (gridHasElongation(tok.steps)) {
     return { ok: false, reason: "elongation is beyond the drum-grid subset" };
   }
-  const div = division(tok.steps);
-  if (tok.steps.length * div > MAX_STEPS) {
+  const documentDiv = division(tok.steps);
+  if (tok.steps.length * documentDiv > MAX_STEPS) {
     return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` };
   }
+  if (!viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
+    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` };
+  }
+  const div = documentDiv * viewScale;
   const cells = toCells(tok.steps, div);
   const src = inner.trim();
   const parts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)));
@@ -27613,6 +27641,7 @@ function gridFromAlternation(inner) {
     model: {
       steps: cells.length,
       bars: tok.steps.length,
+      ...viewScale === UNREFINED ? {} : { viewScale },
       lanes: lanesFromCells(cells),
       ...parts ? {
         source: {
@@ -27625,10 +27654,11 @@ function gridFromAlternation(inner) {
   };
 }
 __name(gridFromAlternation, "gridFromAlternation");
-function gridFromStack(parts) {
+function gridFromStack(parts, viewScale = UNREFINED) {
   const partCells = [];
   const divs = [];
   const elements = [];
+  let documentTotal = 1;
   for (const part of parts) {
     if (part.trim() === "") return { ok: false, reason: "empty stack part" };
     const tok = tokenize(part);
@@ -27636,15 +27666,20 @@ function gridFromStack(parts) {
     if (gridHasElongation(tok.steps)) {
       return { ok: false, reason: "elongation is beyond the drum-grid subset" };
     }
-    const div = division(tok.steps);
+    const documentDiv = division(tok.steps);
+    documentTotal = lcm(documentTotal, tok.steps.length * documentDiv || 1);
+    const div = documentDiv * viewScale;
     divs.push(div);
     elements.push(tok.elements);
     partCells.push(toCells(tok.steps, div));
   }
-  const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1);
-  if (total > MAX_STEPS) {
+  if (documentTotal > MAX_STEPS) {
     return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` };
   }
+  if (!viewScaleFits(documentTotal, 1, viewScale)) {
+    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` };
+  }
+  const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1);
   const lanes = [];
   partCells.forEach((cells, part) => {
     const factor = total / (cells.length || 1);
@@ -27656,7 +27691,12 @@ function gridFromStack(parts) {
   });
   return {
     ok: true,
-    model: { steps: total, lanes, ...stackSource(parts, divs, elements, partCells, total) ?? {} }
+    model: {
+      steps: total,
+      ...viewScale === UNREFINED ? {} : { viewScale },
+      lanes,
+      ...stackSource(parts, divs, elements, partCells, total) ?? {}
+    }
   };
 }
 __name(gridFromStack, "gridFromStack");
@@ -27943,6 +27983,7 @@ function projectPianoRoll(src0, viewScale = UNREFINED) {
     if (!parts) return no("element-tiling");
     const model2 = {
       steps: perBar2,
+      ...viewScale === UNREFINED ? {} : { viewScale },
       notes,
       ...numeric ? { numeric: true } : {},
       source: { prefix: "", suffix: "", parts }
@@ -27965,6 +28006,7 @@ function projectPianoRoll(src0, viewScale = UNREFINED) {
   const model = {
     steps: perBar2 * bars,
     bars,
+    ...viewScale === UNREFINED ? {} : { viewScale },
     notes,
     ...numeric ? { numeric: true } : {},
     altSource: { perBar: perBar2, bars, div: divPerUnit, regions }
@@ -28152,26 +28194,36 @@ function leafRollViewUsable(model) {
 }
 __name(leafRollViewUsable, "leafRollViewUsable");
 function projectPianoRollDerived(mini, fallbackReason, viewScale = UNREFINED) {
-  const element = projectPianoRoll(mini, viewScale);
-  if (element.ok) return element;
+  const owner = projectPianoRoll(mini);
+  const asOwner = /* @__PURE__ */ __name((ok) => {
+    if (viewScale === UNREFINED) return ok;
+    const scaled = projectPianoRoll(mini, viewScale);
+    return scaled.ok ? scaled : refused("roll", fallbackReason, scaled.gate);
+  }, "asOwner");
+  if (owner.ok) return asOwner(owner);
   const leaf = projectPianoRollByLeaf(mini);
   if (leaf.ok) return leaf;
   return refused("roll", fallbackReason, leaf.gate);
 }
 __name(projectPianoRollDerived, "projectPianoRollDerived");
-function parsePianoRoll(mini) {
-  const core = parsePianoRollCore(mini);
-  if (core.ok) return core;
-  return projectPianoRollDerived(mini, core);
+function parsePianoRoll(mini, viewScale = UNREFINED) {
+  const owner = parsePianoRollCore(mini);
+  if (viewScale === UNREFINED) {
+    return owner.ok ? owner : projectPianoRollDerived(mini, owner, UNREFINED);
+  }
+  const result = owner.ok ? parsePianoRollCore(mini, viewScale) : projectPianoRollDerived(mini, owner, viewScale);
+  return honoursViewScale(result, viewScale);
 }
 __name(parsePianoRoll, "parsePianoRoll");
-function parsePianoRollCore(mini) {
+function parsePianoRollCore(mini, viewScale = UNREFINED) {
   const alt = unwrapAlternation(mini);
   if (alt === null) {
     const parts2 = splitTopLevel(mini);
-    if (parts2.length > 1) return parseRollLanes(parts2);
+    if (parts2.length > 1) return parseRollLanes(parts2, viewScale);
     const altEl = rollFromAltElements(mini);
-    if (altEl !== null) return altEl;
+    if (altEl !== null) {
+      return viewScale === UNREFINED ? altEl : { ok: false, reason: "this pattern does not offer a finer view yet" };
+    }
   }
   const tok = tokenize(
     alt ?? mini,
@@ -28180,11 +28232,15 @@ function parsePianoRollCore(mini) {
   );
   if (!tok.ok) return tok;
   if (alt !== null && tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
-  const div = division(tok.steps);
+  const documentDiv = division(tok.steps);
   const bars = tok.steps.reduce((b, s) => b + s.elongation, 0);
-  if ((div > 1 || alt !== null) && bars * div > MAX_STEPS) {
+  if ((documentDiv > 1 || alt !== null) && bars * documentDiv > MAX_STEPS) {
     return { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` };
   }
+  if (!viewScaleFits(documentDiv, bars, viewScale)) {
+    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` };
+  }
+  const div = documentDiv * viewScale;
   const notes = [];
   let col = 0;
   let sawNumeric = false;
@@ -28216,6 +28272,7 @@ function parsePianoRollCore(mini) {
     model: {
       steps: col,
       ...alt !== null ? { bars } : {},
+      ...viewScale === UNREFINED ? {} : { viewScale },
       notes,
       ...sawNumeric ? { numeric: true } : {},
       ...parts ? {
@@ -28229,10 +28286,10 @@ function parsePianoRollCore(mini) {
   };
 }
 __name(parsePianoRollCore, "parsePianoRollCore");
-function parseRollLanes(parts) {
+function parseRollLanes(parts, viewScale = UNREFINED) {
   const models = [];
   for (const part of parts) {
-    const r = parsePianoRollCore(part.trim());
+    const r = parsePianoRollCore(part.trim(), viewScale);
     if (!r.ok) return r;
     if (r.model.bars != null) {
       return { ok: false, reason: "multi-bar parallel note lanes are beyond the editable subset" };
@@ -28250,7 +28307,13 @@ function parseRollLanes(parts) {
   const notes = models.flatMap((m) => m.notes);
   return {
     ok: true,
-    model: { steps, notes, ...numeric ? { numeric: true } : {}, ...rollStackSource(parts, models) ?? {} }
+    model: {
+      steps,
+      ...viewScale === UNREFINED ? {} : { viewScale },
+      notes,
+      ...numeric ? { numeric: true } : {},
+      ...rollStackSource(parts, models) ?? {}
+    }
   };
 }
 __name(parseRollLanes, "parseRollLanes");

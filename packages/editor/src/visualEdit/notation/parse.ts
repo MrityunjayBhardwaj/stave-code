@@ -1523,7 +1523,11 @@ function projectStepGrid(src0: string, viewScale: ViewScale = UNREFINED): Projec
   // A pattern that plays nothing at all is not a grid to offer. Identical to the
   // old `cyc0.length === 0` refusal when the period is 1.
   if (perCycle.every((c) => c.length === 0)) return no('no-note-content')
-  // a whole-cycle `<…>`: bars are its branches, not a flat sequence's columns
+  // a whole-cycle `<…>`: bars are its branches, not a flat sequence's columns.
+  // ⚠ RETURNS BEFORE THE SCALE IS APPLIED, and deliberately so for now: the branch
+  // widths come from the alternation, not from `perBar`, so subdividing them is its
+  // own piece of work (#1116 follow-up). It therefore records no `viewScale`, and the
+  // entry refuses a refine here rather than drawing the document's own layout for it.
   if (whole !== null) {
     return bars > 1 ? projectAltBars(src, whole, perCycle, bars) : no('element-tiling')
   }
@@ -1568,6 +1572,7 @@ function projectStepGrid(src0: string, viewScale: ViewScale = UNREFINED): Projec
     if (!parts) return no('element-tiling')
     const model: StepGridModel = {
       steps: perBar,
+      ...(viewScale === UNREFINED ? {} : { viewScale }),
       lanes,
       source: { prefix: '', suffix: '', parts },
     }
@@ -1588,6 +1593,7 @@ function projectStepGrid(src0: string, viewScale: ViewScale = UNREFINED): Projec
   const model: StepGridModel = {
     steps: perBar * bars,
     bars,
+    ...(viewScale === UNREFINED ? {} : { viewScale }),
     lanes,
     altSource: { perBar, bars, div: divPerUnit, regions },
   }
@@ -2077,45 +2083,158 @@ export function projectStepGridDerived(
   //
   // ⚠ ONLY THE ELEMENT PATH CARRIES THE VIEW SCALE (#1055). The leaf path anchors
   // each note to its own source span, so a finer view has no span to subdivide —
-  // that is #1058's subject, not this phase's. Stated rather than hidden: at a scale
-  // other than `UNREFINED` a leaf-anchored unit returns its document resolution, so
-  // #1057 must decide what the control offers there before it can write a scale.
-  const element = projectStepGrid(mini, viewScale)
-  if (element.ok && !vacuousLocality(element.model.altSource)) return element
+  // that is #1058's subject, not this phase's ([[PV261]]: the leaf path offers no
+  // resolution op at all, so nothing goes dark). A leaf model therefore records no
+  // `viewScale` and the entry refuses a refine on it rather than drawing the
+  // document's own layout for one.
+  //
+  // ⚠ WHICH of the two owns the pattern is asked at `UNREFINED`, for the same reason
+  // `parseStepGrid` asks it there (#1116): `projectStepGrid`'s own gates read the
+  // DRAWN column count — `perBar % totalWeight`, `vacuousLocality`, the edit-safety
+  // probe — so at a finer scale the element path can start succeeding where it
+  // declined, and the leaf writer that owned the user's bytes is silently replaced by
+  // an element re-emit. Measured: one corpus unit did exactly that, and it was found
+  // only because the shape it came back in changed.
+  const owner = projectStepGrid(mini)
+  // Re-ask the OWNING path for the refined view. A decline here is the owner's own
+  // gate — `view-resolution` past the ceiling, or a scaled layout it cannot tile —
+  // and it is reported as such rather than handed on to the next writer.
+  const asOwner = (ok: { ok: true; model: StepGridModel }): ParseResult<StepGridModel> => {
+    if (viewScale === UNREFINED) return ok
+    const scaled = projectStepGrid(mini, viewScale)
+    return scaled.ok ? scaled : refused('grid', fallbackReason, scaled.gate)
+  }
+  if (owner.ok && !vacuousLocality(owner.model.altSource)) return asOwner(owner)
   const leaf = projectStepGridByLeaf(mini)
   if (leaf.ok) return leaf
-  if (element.ok) return element
+  if (owner.ok) return asOwner(owner)
   // …and if nothing opened it, report the gate that actually stopped the general
   // write-back (#990) — not the core's syntactic message, which names the first
   // writer to decline
   return refused('grid', fallbackReason, leaf.gate)
 }
 
-export function parseStepGrid(mini: string): ParseResult<StepGridModel> {
-  const core = parseStepGridCore(mini)
-  if (core.ok) return core
-  return projectStepGridDerived(mini, core)
+/**
+ * THE PUBLIC ENTRY, and the only place a caller can express a view resolution.
+ *
+ * #1055 threaded `ViewScale` into the DERIVED projections. But the core answers first
+ * and answers for most patterns — 783 of the 958 corpus units that open the grid,
+ * including `bd ~ sn ~`, the case #1052 is named after — so a scale that stopped at
+ * the derived path could not reach 94% of the free-zone offers it exists to serve
+ * (#1116). The core now carries it too, and the scale enters HERE so both halves get
+ * the same number from the same caller.
+ *
+ * The order is unchanged and deliberately so ([[PK58]]): core, then derived. A view
+ * scale must NOT re-route a pattern to a different projection, because the core and
+ * the derived path build different `source` structures and therefore hand the document
+ * to different writers — zooming would silently swap the writer that owns the user's
+ * bytes. The finer view has to come from whichever writer already owns the pattern.
+ *
+ * ⚠ THAT GUARANTEE IS WHY OWNERSHIP IS ASKED AT `UNREFINED`, ALWAYS, and the first
+ * version of this entry did not have it. Asking the core AT THE SCALE conflates two
+ * different noes: "I do not own this pattern" (fall through to the derived path) and
+ * "I own it but cannot draw it finer yet" (the alt-element path's refusal). Both
+ * arrive as `ok: false`, so the scale refusal fell through and the derived projection
+ * answered instead — measured, **20 grid and 17 roll units changed writer on a zoom**,
+ * and 36 of the 37 were faithful magnifications that would have shipped in silence.
+ * Routing is a property of the PATTERN, so it is decided at the pattern's own
+ * resolution and the scale is applied only by the path that already owns it.
+ */
+export function parseStepGrid(
+  mini: string,
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<StepGridModel> {
+  const owner = parseStepGridCore(mini)
+  if (viewScale === UNREFINED) {
+    return owner.ok ? owner : projectStepGridDerived(mini, owner, UNREFINED)
+  }
+  const result = owner.ok
+    ? parseStepGridCore(mini, viewScale)
+    : projectStepGridDerived(mini, owner, viewScale)
+  return honoursViewScale(result, viewScale)
 }
 
-export function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
+/**
+ * THE TOTAL GATE: a model handed back for a refined request must actually BE refined.
+ * ONE rule, both surfaces — the property is about the model's own report, and nothing
+ * in it is grid- or roll-specific, so writing it twice would be two things to keep
+ * in step ([[PV200]]).
+ *
+ * Several projections legitimately do not carry a view scale — the leaf path anchors
+ * each note to its own source span and has no span to subdivide (#1058, [[PV261]]),
+ * and the whole-cycle `<…>` bar expansion plus `gridFromAltElements` /
+ * `rollFromAltElements` have not been taught it. Measured over the corpus before this
+ * check existed, 202 of 958 grid units reached one of those, and every one answered a
+ * refine request with the DOCUMENT's own layout and no error: the control appears to
+ * work and draws exactly what it drew before — the silent wrong layout this whole
+ * parameter exists to make impossible.
+ *
+ * Asked HERE rather than in each projection on purpose. A per-path refusal is a rule
+ * every future path must remember to fire; this is one check that no new path can
+ * escape, because it reads the model's own report of what it did. A projection that
+ * later learns the scale starts passing it with no change here ([[PV260]]: prefer the
+ * shape in which the wrong state cannot be built over the rule that must detect it).
+ *
+ * ⚠ THE OBLIGATION THIS CHECK CREATES, and it was discharged in the wrong half first.
+ * Reading a self-report makes *failing to report* indistinguishable from *failing to
+ * refine* — so a path that honours the scale and stays silent is REFUSED, and that
+ * refusal is invisible because it is the safe direction. Measured on the first version
+ * of this gate: 96 of its 198 "honest refusals" were models the element projection had
+ * already drawn at exactly k× the columns, faithfully, and thrown away for saying
+ * nothing. Whoever multiplies by the scale must also record it.
+ */
+function honoursViewScale<M extends { viewScale?: ViewScale }>(
+  result: ParseResult<M>,
+  viewScale: ViewScale,
+): ParseResult<M> {
+  if (!result.ok || viewScale === UNREFINED) return result
+  if ((result.model.viewScale ?? UNREFINED) === viewScale) return result
+  return { ok: false, reason: 'this pattern does not offer a finer view yet' }
+}
+
+export function parseStepGridCore(
+  mini: string,
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<StepGridModel> {
   const alt = unwrapAlternation(mini)
-  if (alt !== null) return gridFromAlternation(alt)
+  if (alt !== null) return gridFromAlternation(alt, viewScale)
 
   const parts = splitTopLevel(mini)
-  if (parts.length > 1) return gridFromStack(parts)
+  if (parts.length > 1) return gridFromStack(parts, viewScale)
 
+  // ⚠ NOT YET CARRYING THE SCALE (#1116 follow-up). `gridFromAltElements` expands
+  // `bd <sd hh>` across bars with a single global `div`; scaling it needs the same
+  // treatment the other three paths just got, and until it has one an unrefined
+  // model would be drawn for a refined request — the silent-wrong-layout the whole
+  // parameter exists to prevent. Refuse the SCALE, not the pattern: at `UNREFINED`
+  // this path is untouched, so nothing that opens today changes.
   const altEl = gridFromAltElements(mini)
-  if (altEl !== null) return altEl
+  if (altEl !== null) {
+    return viewScale === UNREFINED
+      ? altEl
+      : { ok: false, reason: 'this pattern does not offer a finer view yet' }
+  }
 
   const tok = tokenize(mini)
   if (!tok.ok) return tok
   if (gridHasElongation(tok.steps)) {
     return { ok: false, reason: 'elongation is beyond the drum-grid subset' }
   }
-  const div = division(tok.steps)
-  if (tok.steps.length * div > MAX_STEPS) {
+  // THE DOCUMENT'S OWN resolution and its own ceiling, both asked of the UNSCALED
+  // quantity — `MAX_STEPS` guards a combinatorial blow-up in the NOTATION, which a
+  // view refine does not cause (#1055, #1116).
+  const documentDiv = division(tok.steps)
+  const documentCols = tok.steps.length * documentDiv
+  if (documentCols > MAX_STEPS) {
     return { ok: false, reason: `sub-sequences expand the grid past ${MAX_STEPS} steps` }
   }
+  // …and the VIEW's ceiling, asked of what would actually be drawn.
+  if (!viewScaleFits(documentCols, 1, viewScale)) {
+    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` }
+  }
+  // `toCells` is LINEAR in `div` (a slot's span is `(div / total) * units`), so
+  // scaling it draws the same notation on a finer grid without moving any onset.
+  const div = documentDiv * viewScale
   const cells = toCells(tok.steps, div)
   const src = mini.trim()
   const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)))
@@ -2123,6 +2242,7 @@ export function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
     ok: true,
     model: {
       steps: cells.length,
+      ...(viewScale === UNREFINED ? {} : { viewScale }),
       lanes: lanesFromCells(cells),
       ...(sourceParts
         ? { source: { prefix: '', suffix: '', parts: sourceParts } }
@@ -2139,17 +2259,26 @@ export function parseStepGridCore(mini: string): ParseResult<StepGridModel> {
  * the wrapper. Each element is a bar and owns `div` columns, exactly as in the
  * flat case — the alternation is the same tiling with `<`…`>` around it.
  */
-function gridFromAlternation(inner: string): ParseResult<StepGridModel> {
+function gridFromAlternation(
+  inner: string,
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<StepGridModel> {
   const tok = tokenize(inner)
   if (!tok.ok) return tok
   if (tok.steps.length === 0) return { ok: false, reason: 'empty alternation' }
   if (gridHasElongation(tok.steps)) {
     return { ok: false, reason: 'elongation is beyond the drum-grid subset' }
   }
-  const div = division(tok.steps)
-  if (tok.steps.length * div > MAX_STEPS) {
+  // the DOCUMENT's ceiling on the unscaled expansion, then the VIEW's own on what is
+  // drawn — here each of `tok.steps.length` bars owns `div` columns (#1055, #1116)
+  const documentDiv = division(tok.steps)
+  if (tok.steps.length * documentDiv > MAX_STEPS) {
     return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` }
   }
+  if (!viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
+    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` }
+  }
+  const div = documentDiv * viewScale
   const cells = toCells(tok.steps, div)
   const src = inner.trim()
   const parts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)))
@@ -2158,6 +2287,7 @@ function gridFromAlternation(inner: string): ParseResult<StepGridModel> {
     model: {
       steps: cells.length,
       bars: tok.steps.length,
+      ...(viewScale === UNREFINED ? {} : { viewScale }),
       lanes: lanesFromCells(cells),
       ...(parts
         ? {
@@ -2180,10 +2310,18 @@ function gridFromAlternation(inner: string): ParseResult<StepGridModel> {
  * part's own column space and the `,` (with whatever padding the user put
  * around it) is carried verbatim as the part's `before`.
  */
-function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
+function gridFromStack(
+  parts: string[],
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<StepGridModel> {
   const partCells: ColumnNotes[] = []
   const divs: number[] = []
   const elements: ElementSpan[][] = []
+  // The DOCUMENT's own shared width, needed for the unscaled ceiling below. Every
+  // part's column count scales by exactly `viewScale`, and `lcm(k·a, k·b) = k·lcm(a, b)`,
+  // so the shared total scales by the same factor — which is why the guard can be
+  // asked once, of the document, before any scaling happens (#1116).
+  let documentTotal = 1
   for (const part of parts) {
     if (part.trim() === '') return { ok: false, reason: 'empty stack part' }
     const tok = tokenize(part)
@@ -2191,15 +2329,20 @@ function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
     if (gridHasElongation(tok.steps)) {
       return { ok: false, reason: 'elongation is beyond the drum-grid subset' }
     }
-    const div = division(tok.steps)
+    const documentDiv = division(tok.steps)
+    documentTotal = lcm(documentTotal, tok.steps.length * documentDiv || 1)
+    const div = documentDiv * viewScale
     divs.push(div)
     elements.push(tok.elements)
     partCells.push(toCells(tok.steps, div))
   }
-  const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1)
-  if (total > MAX_STEPS) {
+  if (documentTotal > MAX_STEPS) {
     return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` }
   }
+  if (!viewScaleFits(documentTotal, 1, viewScale)) {
+    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` }
+  }
+  const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1)
   const lanes: StepLane[] = []
   partCells.forEach((cells, part) => {
     const factor = total / (cells.length || 1)
@@ -2217,7 +2360,12 @@ function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
   })
   return {
     ok: true,
-    model: { steps: total, lanes, ...(stackSource(parts, divs, elements, partCells, total) ?? {}) },
+    model: {
+      steps: total,
+      ...(viewScale === UNREFINED ? {} : { viewScale }),
+      lanes,
+      ...(stackSource(parts, divs, elements, partCells, total) ?? {}),
+    },
   }
 }
 
@@ -2644,6 +2792,9 @@ function projectPianoRoll(
   // bar, since a later bar can introduce the token that breaks the convention
   const numeric = all.some((o) => o.numeric)
   if (numeric && all.some((o) => !o.numeric)) return no('mixed-pitch-domain')
+  // ⚠ RETURNS BEFORE THE SCALE IS APPLIED, the roll's twin of the grid's whole-cycle
+  // branch: the branch widths come from the alternation rather than from `perBar`, so
+  // it records no `viewScale` and the entry refuses a refine here (#1116 follow-up).
   if (whole !== null) {
     return bars > 1 ? projectAltRollBars(src, whole, perCycle, numeric) : no('element-tiling')
   }
@@ -2680,6 +2831,7 @@ function projectPianoRoll(
     if (!parts) return no('element-tiling')
     const model: PianoRollModel = {
       steps: perBar,
+      ...(viewScale === UNREFINED ? {} : { viewScale }),
       notes,
       ...(numeric ? { numeric: true } : {}),
       source: { prefix: '', suffix: '', parts },
@@ -2701,6 +2853,7 @@ function projectPianoRoll(
   const model: PianoRollModel = {
     steps: perBar * bars,
     bars,
+    ...(viewScale === UNREFINED ? {} : { viewScale }),
     notes,
     ...(numeric ? { numeric: true } : {}),
     altSource: { perBar, bars, div: divPerUnit, regions },
@@ -2993,7 +3146,16 @@ export function projectPianoRollDerived(
 ): ParseResult<PianoRollModel> {
   // the inherited behaviour projection (#924), then the leaf-anchored projection
   // (#986) for the notation no re-emit can spell
-  const element = projectPianoRoll(mini, viewScale)
+  //
+  // ⚠ OWNERSHIP AT `UNREFINED`, the roll's twin of the grid's: `projectPianoRoll`'s
+  // gates read the DRAWN column count, so asking at the scale would let a zoom hand a
+  // leaf-anchored pattern to the element re-emit (#1116).
+  const owner = projectPianoRoll(mini)
+  const asOwner = (ok: { ok: true; model: PianoRollModel }): ParseResult<PianoRollModel> => {
+    if (viewScale === UNREFINED) return ok
+    const scaled = projectPianoRoll(mini, viewScale)
+    return scaled.ok ? scaled : refused('roll', fallbackReason, scaled.gate)
+  }
   // NOT gated on `vacuousLocality` the way the grid is, and that asymmetry is
   // measured rather than assumed: preferring the leaf writer here costs the roll
   // reach outright, because a shared leaf it declines is an edit the element writer
@@ -3009,7 +3171,7 @@ export function projectPianoRollDerived(
   // rather than carrying it forward — the grid's own answer to this same flip
   // (+5 reach, 16 fewer silent length rewrites) is the opposite sign, which is why
   // the two surfaces are decided separately and never by analogy.
-  if (element.ok) return element
+  if (owner.ok) return asOwner(owner)
   const leaf = projectPianoRollByLeaf(mini)
   if (leaf.ok) return leaf
   // …and if nothing opened it, report the gate that actually stopped the general
@@ -3017,33 +3179,79 @@ export function projectPianoRollDerived(
   return refused('roll', fallbackReason, leaf.gate)
 }
 
-export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
-  const core = parsePianoRollCore(mini)
-  if (core.ok) return core
-  return projectPianoRollDerived(mini, core)
+/**
+ * THE PUBLIC ENTRY for the roll, and the only place a caller can express a view
+ * resolution — the roll's twin of `parseStepGrid`, for the same reason and with the
+ * same ordering guarantee (#1116). 412 of the 544 corpus units that open a roll are
+ * core-parsed, so a scale that stopped at the derived projection was unreachable for
+ * 93% of the free-zone offers it exists to serve.
+ *
+ * Core, then derived, unchanged: a view scale must not re-route a pattern to a
+ * different projection, because the two build different `source` structures and so
+ * hand the document to different writers. Ownership is therefore asked at `UNREFINED`
+ * — see `parseStepGrid` for the measurement that forced this, and for why a core that
+ * refuses the SCALE must not read as a core that refuses the PATTERN.
+ */
+export function parsePianoRoll(
+  mini: string,
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<PianoRollModel> {
+  const owner = parsePianoRollCore(mini)
+  if (viewScale === UNREFINED) {
+    return owner.ok ? owner : projectPianoRollDerived(mini, owner, UNREFINED)
+  }
+  const result = owner.ok
+    ? parsePianoRollCore(mini, viewScale)
+    : projectPianoRollDerived(mini, owner, viewScale)
+  return honoursViewScale(result, viewScale)
 }
 
 // exported for the projection stress gate — it sweeps only patterns the CORE
 // refuses, so it must be able to ask which those are (a projected-only filter)
-export function parsePianoRollCore(mini: string): ParseResult<PianoRollModel> {
+export function parsePianoRollCore(
+  mini: string,
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<PianoRollModel> {
   const alt = unwrapAlternation(mini)
   // A top-level `,`-stack = parallel note lanes (independent durations / overlap,
   // #628). Only when NOT an alternation — multi-bar `<...>` lanes are out of scope.
   if (alt === null) {
     const parts = splitTopLevel(mini)
-    if (parts.length > 1) return parseRollLanes(parts)
+    if (parts.length > 1) return parseRollLanes(parts, viewScale)
+    // ⚠ NOT YET CARRYING THE SCALE (#1116 follow-up), exactly as the grid's
+    // `gridFromAltElements` is not: the bar expansion shares one global `div` and
+    // subdividing it is its own piece of work. Refuse the SCALE, not the pattern —
+    // at `UNREFINED` this path is untouched, so nothing that opens today changes.
     const altEl = rollFromAltElements(mini)
-    if (altEl !== null) return altEl
+    if (altEl !== null) {
+      return viewScale === UNREFINED
+        ? altEl
+        : { ok: false, reason: 'this pattern does not offer a finer view yet' }
+    }
   }
   const tok = tokenize(alt ?? mini, /* allowNumeric */ true)
   if (!tok.ok) return tok
   if (alt !== null && tok.steps.length === 0) return { ok: false, reason: 'empty alternation' }
 
-  const div = division(tok.steps)
+  // THE DOCUMENT'S OWN resolution and its own ceiling, both asked of the UNSCALED
+  // quantity — `MAX_STEPS` guards a combinatorial blow-up in the NOTATION, which a
+  // view refine does not cause (#1055, #1116, [[P412]]).
+  const documentDiv = division(tok.steps)
   const bars = tok.steps.reduce((b, s) => b + s.elongation, 0)
-  if ((div > 1 || alt !== null) && bars * div > MAX_STEPS) {
+  if ((documentDiv > 1 || alt !== null) && bars * documentDiv > MAX_STEPS) {
     return { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` }
   }
+  // …and the VIEW's ceiling, asked of what would actually be drawn. The columns this
+  // path emits are `bars × div` — each step contributes `elongation × div` across its
+  // slots — so the drawn width is exactly `bars × documentDiv × viewScale`.
+  if (!viewScaleFits(documentDiv, bars, viewScale)) {
+    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` }
+  }
+  // Every note's `start` and `duration` is derived from `div` by multiplication
+  // (`span = elongation × div × slot.units / total`), so scaling `div` magnifies the
+  // whole roll uniformly: no onset moves relative to the bar, and no duration changes
+  // relative to a column.
+  const div = documentDiv * viewScale
   const notes: RollNote[] = []
   let col = 0
   // A pattern is numeric (`note("60 62")` / `n("0 1 2")`) or note-named
@@ -3082,6 +3290,7 @@ export function parsePianoRollCore(mini: string): ParseResult<PianoRollModel> {
     model: {
       steps: col,
       ...(alt !== null ? { bars } : {}),
+      ...(viewScale === UNREFINED ? {} : { viewScale }),
       notes,
       ...(sawNumeric ? { numeric: true } : {}),
       ...(parts
@@ -3104,12 +3313,18 @@ export function parsePianoRollCore(mini: string): ParseResult<PianoRollModel> {
  * misalign the grids) and one numeric/named convention. Notes union across lanes
  * — cross-lane overlap is the point; each part is itself overlap-free by parse.
  */
-function parseRollLanes(parts: string[]): ParseResult<PianoRollModel> {
+function parseRollLanes(
+  parts: string[],
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<PianoRollModel> {
   const models: PianoRollModel[] = []
   for (const part of parts) {
     // a comma-part stays on the core path — projecting individual lanes is out of
-    // scope, the same way `projectStepGrid`/`projectPianoRoll` decline `,`-stacks
-    const r = parsePianoRollCore(part.trim())
+    // scope, the same way `projectStepGrid`/`projectPianoRoll` decline `,`-stacks.
+    // The scale rides down with it: every part is refined by the same factor, so the
+    // shared-width check below is asked of like against like, and a part that cannot
+    // honour the scale refuses here and takes the whole stack with it (#1116).
+    const r = parsePianoRollCore(part.trim(), viewScale)
     if (!r.ok) return r
     if (r.model.bars != null) {
       return { ok: false, reason: 'multi-bar parallel note lanes are beyond the editable subset' }
@@ -3127,7 +3342,13 @@ function parseRollLanes(parts: string[]): ParseResult<PianoRollModel> {
   const notes = models.flatMap((m) => m.notes)
   return {
     ok: true,
-    model: { steps, notes, ...(numeric ? { numeric: true } : {}), ...(rollStackSource(parts, models) ?? {}) },
+    model: {
+      steps,
+      ...(viewScale === UNREFINED ? {} : { viewScale }),
+      notes,
+      ...(numeric ? { numeric: true } : {}),
+      ...(rollStackSource(parts, models) ?? {}),
+    },
   }
 }
 
