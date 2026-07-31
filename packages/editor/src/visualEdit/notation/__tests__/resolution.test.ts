@@ -521,6 +521,60 @@ describe('free zone — refining is a view change, not a rewrite', () => {
     expect(rollSlotState(r, 16)).toBe('lossless')
   })
 
+  it('A WRITE FROM A REFINED VIEW PRODUCES THE DOCUMENT-DERIVED RESULT', () => {
+    // The one path where a presentational parameter could still reach a write:
+    // coarsening is NOT in the free zone, so it runs the real op against the model
+    // the panel is holding — and while refined, that model is the DRAWN one.
+    //
+    // The claim is that this is safe because a refinement is an exact k× embedding
+    // and the ops are ratio-based: a hit at document column c sits at k·c when
+    // drawn, and `round(k·c · t / (k·D)) === round(c · t / D)`. Claimed arithmetic is
+    // not evidence, so it is asserted — if it were false, which document you got
+    // would depend on how closely you were looking when you asked.
+    // ⚠ THE FIXTURE IS LOAD-BEARING, AND THE SURFACE IS TOO — both found by measuring
+    // rather than by choosing. The first version used the obvious `bd ~ ~ ~ sn ~ ~ ~`
+    // and was VACUOUS: its only non-free target is 4, coarsening one-column notes
+    // declines (the #1061 class), so the loop compared nothing and passed. The
+    // count at the end is what caught it.
+    //
+    // The repair is not a different grid, because on the GRID the path turns out to
+    // be unreachable: a grid with notes long enough to coarsen cleanly is spelled
+    // with `_`, and a pattern carrying sustains does not refine at all — so
+    // "refinable" and "has a writing coarsening" have empty intersection there. The
+    // roll has both, which makes it the honest place to assert this.
+    const src = 'c3@2 e3@2 g3@2 a3@2' // 8 columns, notes two columns long
+    const doc = roll(src)
+    expect(documentSteps(doc)).toBe(8)
+
+    const refined = parsePianoRoll(src, 2)
+    expect(refined.ok).toBe(true)
+    if (!refined.ok) throw new Error('unreachable')
+    expect(refined.model.steps).toBe(16) // drawn twice as finely…
+    expect(documentSteps(refined.model)).toBe(8) // …over the same document
+
+    let compared = 0
+    for (const target of RESOLUTION_PRESETS) {
+      if (freeZoneScale(8, target) !== null) continue // free targets never write
+      const fromDoc = quantizePianoRollTo(doc, target)
+      const fromView = quantizePianoRollTo(refined.model, target)
+      const declinedDoc = fromDoc === doc
+      const declinedView = fromView === refined.model
+      expect(declinedView, `@${target}: the two paths must agree on whether to write`).toBe(
+        declinedDoc,
+      )
+      if (declinedDoc) continue
+      compared++
+      expect(
+        serializePianoRoll(fromView),
+        `@${target}: a write must not depend on the view scale`,
+      ).toBe(serializePianoRoll(fromDoc))
+    }
+    // …and the comparison was actually REACHED. Without this the whole loop passes
+    // by declining everything, which is the same vacuous green the corpus gate's
+    // population floor exists to prevent.
+    expect(compared, 'at least one real write must have been compared').toBeGreaterThan(0)
+  })
+
   it('absorbViewScale drops the marker a write makes untrue, and only then', () => {
     const plain = step('bd ~ sn ~')
     expect(absorbViewScale(plain)).toBe(plain) // nothing to absorb → same reference
