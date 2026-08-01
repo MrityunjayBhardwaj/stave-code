@@ -16,18 +16,30 @@
  *             MUST be exact.
  *
  *   SPELLING  the bytes that come back are the document's own bytes.
- *             NOT clean today, and not because of #1117: the collapse reuses the
- *             resolution op, which legitimately re-emits a flat grid, so a document
- *             with internal structure comes back flattened. Filed as #1121 and
- *             measured on BOTH arms — the shipped element-writer family scores
- *             identically with these four projections taught the scale and without,
- *             so the counts below are a pre-existing property being recorded, not a
- *             cost of this change.
+ *             CLEAN as of #1121. It was not when this gate was written: the collapse
+ *             de-scaled the model's cells but left the SOURCE description at the
+ *             refined resolution, so the writer stopped recognising it and fell to
+ *             the flat rebuild. 362 grid / 263 roll units came back re-spelled; all
+ *             of them now come back byte-identical. The literals below are kept at
+ *             their post-fix values for the same reason they were pinned at their
+ *             pre-fix ones — a number that must be READ if it ever moves.
  *
- * ⚠ THE SPELLING NUMBERS ARE PINNED AS LITERALS ON PURPOSE. They are the size of a
- * known defect, so they must move the day #1121 is fixed and force a reader here.
- * Asserting "no worse than before" instead would let the defect grow quietly, and
- * asserting cleanliness would be a claim no family can meet today.
+ * AND THE CLAUSE THAT MAKES THE THREE ABOVE NON-VACUOUS — an UNEDITED round trip is a
+ * weak question, because the writer copies unedited regions through verbatim at every
+ * scale, so a collapse that did nothing at all would satisfy it. The fourth property
+ * asks the form #1121 actually specifies:
+ *
+ *   EQUIVALENCE  the same edit, made at the document's resolution and made through a
+ *             refined view, produces the same bytes. This is the one that forces the
+ *             collapse to be a real inverse: an edit re-emits the region it touched,
+ *             and the whole question is whether it re-emits it at the resolution the
+ *             document spells or the one the user happened to be looking at.
+ *
+ * ⚠ THE EDIT IS DELIBERATELY ONE THAT STAYS ON THE DOCUMENT'S GRID — a cell the file
+ * already spells, a note starting on a column it already has. An edit that uses a
+ * column only the finer view has SHOULD spell the finer grid, and the collapse
+ * declining is the correct answer there; mixing the two into one population would
+ * make the equivalence unassertable.
  *
  * Shapes are named by the SOURCE STRUCTURE the model carries, not by the function
  * that produced it — `alt-whole` covers both the syntactic whole-cycle alternation
@@ -48,6 +60,7 @@ import {
   serializePianoRoll,
 } from '../../../editor/src/visualEdit/notation/serialize'
 import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
+import { toggleCell, placeNote } from '../../../editor/src/visualEdit/notation/place'
 import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import type {
   StepGridModel,
@@ -104,21 +117,57 @@ interface Tally {
   contentChanged: string[]
   wrongSteps: string[]
   nullCollapse: number
-  respelled: number
+  respelled: string[]
+  /** units where the same document-grid edit applied at both scales, and its verdict */
+  edited: number
+  diverged: string[]
+  /** the edit was admissible at one scale and refused at the other — an asymmetry, reported */
+  editAsymmetric: string[]
+  /** the edit stayed on the document's grid, yet the collapse still declined it */
+  editDeclined: string[]
+  /** units asked the opposite question: an edit that NEEDS the finer spelling */
+  finerAsked: number
+  /** ...and was wrongly collapsed back to the document's resolution anyway */
+  finerAdmitted: string[]
 }
 const blank = (): Tally => ({
   refined: 0,
   contentChanged: [],
   wrongSteps: [],
   nullCollapse: 0,
-  respelled: 0,
+  respelled: [],
+  edited: 0,
+  diverged: [],
+  editAsymmetric: [],
+  editDeclined: [],
+  finerAsked: 0,
+  finerAdmitted: [],
 })
 
-function sweep<M extends { steps: number; viewScale?: number }>(
+/**
+ * The same edit expressed at two scales. Returns the edited pair, or `null` when this
+ * model offers no document-grid edit at all (nothing to compare, and not a failure).
+ * `k` is applied to the COLUMN, because a document column `c` is drawn column `c × k`.
+ */
+type Edit<M> = (model: M, k: number) => M | null
+
+function sweep<
+  M extends {
+    steps: number
+    viewScale?: number
+    altSource?: unknown
+    leafSource?: unknown
+    source?: { prefix?: string }
+  },
+>(
   parse: (mini: string, k?: number) => { ok: true; model: M } | { ok: false },
   collapse: (m: M) => M | null,
-  serialize: (m: M) => string,
+  // the real writers DECLINE by returning null; a declined write is still a
+  // comparable answer here, and folding it to `string` would hide one
+  serialize: (m: M) => string | null,
   contentKey: (m: M) => string,
+  edit: Edit<M>,
+  needsFiner?: (m: M, k: number) => boolean | null,
 ): Map<string, Tally> {
   const byShape = new Map<string, Tally>()
   for (const mini of minis) {
@@ -134,16 +183,114 @@ function sweep<M extends { steps: number; viewScale?: number }>(
     const back = collapse(refined.model)
     if (back === null) {
       t.nullCollapse++
+    } else {
+      // ARITHMETIC — the collapse must land on the document's own column count
+      if (back.steps !== documentSteps(refined.model)) t.wrongSteps.push(mini)
+      // CONTENT — and must still play exactly what the document plays
+      if (contentKey(back) !== contentKey(base.model)) t.contentChanged.push(mini)
+      // SPELLING — the document's own bytes (#1121)
+      if (serialize(back) !== serialize(base.model)) t.respelled.push(mini)
+    }
+
+    // ...and the opposite question, on the same unit: an edit that NEEDS the finer
+    // spelling must be refused, or the guard is admitting everything
+    if (needsFiner) {
+      const verdict = needsFiner(refined.model, K)
+      if (verdict !== null) {
+        t.finerAsked++
+        if (!verdict) t.finerAdmitted.push(mini)
+      }
+    }
+
+    // EQUIVALENCE — the same edit, made plainly and made through the refined view
+    const editedBase = edit(base.model, 1)
+    const editedRefined = edit(refined.model, K)
+    if (editedBase === null && editedRefined === null) continue
+    if (editedBase === null || editedRefined === null) {
+      t.editAsymmetric.push(mini)
       continue
     }
-    // ARITHMETIC — the collapse must land on the document's own column count
-    if (back.steps !== documentSteps(refined.model)) t.wrongSteps.push(mini)
-    // CONTENT — and must still play exactly what the document plays
-    if (contentKey(back) !== contentKey(base.model)) t.contentChanged.push(mini)
-    // SPELLING — may differ today (#1121); counted, never tolerated silently
-    if (serialize(back) !== serialize(base.model)) t.respelled++
+    const editedBack = collapse(editedRefined)
+    if (editedBack === null) {
+      t.editDeclined.push(mini)
+      continue
+    }
+    t.edited++
+    if (serialize(editedBack) !== serialize(editedBase)) t.diverged.push(mini)
   }
   return byShape
+}
+
+/**
+ * The edit each surface makes, at whichever scale it is handed. Chosen to land on a
+ * column the DOCUMENT already spells, so the collapse must admit it — see the header.
+ * Returns `null` when this model offers no such edit, or when the writer refuses one
+ * (an op returns its input by reference when it cannot apply).
+ */
+/**
+ * ⚠ AN ERASE, AND THE REASON IS THE WHOLE DISTINCTION. `toggleCell` paints a hit
+ * lasting exactly the column that was clicked — one DRAWN column, which at a refined
+ * view is shorter than any column the document spells. So a PLACEMENT through a
+ * refined grid legitimately needs the finer spelling and the collapse declines it;
+ * that is #1057's discriminator working, not a defect, and it is asserted below as
+ * its own clause rather than left as a comment. Erasing introduces no length, so it
+ * is the gesture that belongs in the equivalence population.
+ */
+const gridEdit: Edit<StepGridModel> = (model, k) => {
+  const lane = model.lanes[0]
+  if (!lane) return null
+  const docSteps = model.steps / k
+  let doc = -1
+  for (let i = 0; i < docSteps; i++) {
+    if (isCellOn(lane.cells[i * k])) {
+      doc = i
+      break
+    }
+  }
+  if (doc < 0) return null
+  const next = toggleCell(model, 0, doc * k, false)
+  return next === model ? null : next
+}
+
+const rollEdit: Edit<PianoRollModel> = (model, k) => {
+  const first = model.notes[0]
+  if (!first) return null
+  const docSteps = model.steps / k
+  const starts = new Set(model.notes.map((n) => n.start))
+  let doc = -1
+  for (let i = 0; i < docSteps; i++) {
+    if (!starts.has(i * k)) {
+      doc = i
+      break
+    }
+  }
+  if (doc < 0) return null
+  // one DOCUMENT column long, which is `k` drawn ones — the same musical length at
+  // both scales, so a divergence can only come from how it is spelled
+  const next = placeNote(model, first.pitch, doc * k, k)
+  return next === model ? null : next
+}
+
+/**
+ * The other half of the discriminator: a note ONE DRAWN COLUMN long. The document has
+ * no spelling for it, so the collapse must decline and the write must spell the finer
+ * grid. Asserted so that the guard is pinned from both sides — a collapse that simply
+ * admitted everything would pass every clause above and fail this one.
+ */
+function gridNeedsFiner(model: StepGridModel, k: number): boolean | null {
+  if (k === 1) return null
+  const lane = model.lanes[0]
+  if (!lane) return null
+  const docSteps = model.steps / k
+  for (let i = 0; i < docSteps; i++) {
+    // a drawn column the document cannot address at all: the one after a document column
+    const drawn = i * k + 1
+    if (drawn >= model.steps || isCellOn(lane.cells[drawn])) continue
+    const painted = toggleCell(model, 0, drawn, true)
+    if (painted === model) continue
+    return collapseStepGridToDocument(painted) === null
+  }
+  return null
 }
 
 function pinned(byShape: Map<string, Tally>, pins: Record<string, [number, number, number]>) {
@@ -154,58 +301,74 @@ function pinned(byShape: Map<string, Tally>, pins: Record<string, [number, numbe
   expect(new Set(Object.keys(pins)), 'the pinned shapes and the observed shapes must agree').toEqual(
     new Set(byShape.keys()),
   )
-  for (const [shape, [refined, respelled, nulls]] of Object.entries(pins)) {
+  for (const [shape, [refined, edited, nulls]] of Object.entries(pins)) {
     const t = byShape.get(shape)!
     expect(t.refined, `${shape}: units drawing a ×${K} view`).toBe(refined)
-    expect(t.respelled, `${shape}: units re-spelled by the round trip (#1121)`).toBe(respelled)
+    expect(t.edited, `${shape}: units the equivalence arm actually compared`).toBe(edited)
     expect(t.nullCollapse, `${shape}: writes that spell the finer grid instead`).toBe(nulls)
   }
 }
 
+/** the four properties, asserted the same way for both surfaces */
+function assertClean(byShape: Map<string, Tally>, label: string) {
+  for (const [shape, t] of [...byShape].sort()) {
+    console.log(
+      `${label} ${shape.padEnd(12)} refined=${String(t.refined).padStart(4)} ` +
+        `null=${t.nullCollapse} re-spelled=${t.respelled.length} ` +
+        `content-changed=${t.contentChanged.length} wrong-steps=${t.wrongSteps.length} | ` +
+        `edited=${String(t.edited).padStart(4)} diverged=${t.diverged.length} ` +
+        `asym=${t.editAsymmetric.length} edit-declined=${t.editDeclined.length}` +
+        (t.finerAsked ? ` | needs-finer=${t.finerAsked} wrongly-collapsed=${t.finerAdmitted.length}` : ''),
+    )
+    expect(t.contentChanged, `${shape}: the round trip changed what plays`).toEqual([])
+    expect(t.wrongSteps, `${shape}: the round trip landed on the wrong width`).toEqual([])
+    expect(t.respelled, `${shape}: the round trip re-spelled the document (#1121)`).toEqual([])
+    expect(
+      t.diverged,
+      `${shape}: the same edit spelled differently through a refined view (#1121)`,
+    ).toEqual([])
+    expect(
+      t.finerAdmitted,
+      `${shape}: an edit that needs the finer spelling was collapsed away`,
+    ).toEqual([])
+  }
+}
+
 describe('#1117 — coming back from a refined view', () => {
-  it('grid: content and column count survive; spelling is pinned to #1121', () => {
+  it('grid: content, width and spelling survive, and an edit spells the same either way', () => {
     const byShape = sweep<StepGridModel>(
       parseStepGrid as never,
       collapseStepGridToDocument,
       serializeStepGrid,
       gridContentKey,
+      gridEdit,
+      gridNeedsFiner,
     )
-    for (const [shape, t] of [...byShape].sort()) {
-      console.log(
-        `GRID ${shape.padEnd(12)} refined=${String(t.refined).padStart(4)} ` +
-          `null=${t.nullCollapse} re-spelled=${t.respelled} ` +
-          `content-changed=${t.contentChanged.length} wrong-steps=${t.wrongSteps.length}`,
-      )
-      expect(t.contentChanged, `${shape}: the round trip changed what plays`).toEqual([])
-      expect(t.wrongSteps, `${shape}: the round trip landed on the wrong width`).toEqual([])
-    }
+    assertClean(byShape, 'GRID')
     pinned(byShape, GRID_PINS)
   })
 
-  it('roll: content and column count survive; spelling is pinned to #1121', () => {
+  it('roll: content, width and spelling survive, and an edit spells the same either way', () => {
     const byShape = sweep<PianoRollModel>(
       parsePianoRoll as never,
       collapsePianoRollToDocument,
       serializePianoRoll,
       rollContentKey,
+      rollEdit,
     )
-    for (const [shape, t] of [...byShape].sort()) {
-      console.log(
-        `ROLL ${shape.padEnd(12)} refined=${String(t.refined).padStart(4)} ` +
-          `null=${t.nullCollapse} re-spelled=${t.respelled} ` +
-          `content-changed=${t.contentChanged.length} wrong-steps=${t.wrongSteps.length}`,
-      )
-      expect(t.contentChanged, `${shape}: the round trip changed what plays`).toEqual([])
-      expect(t.wrongSteps, `${shape}: the round trip landed on the wrong width`).toEqual([])
-    }
+    assertClean(byShape, 'ROLL')
     pinned(byShape, ROLL_PINS)
   })
 })
 
 /* ── pinned populations, re-measured on THIS tree (never inherited) ──────────
  *
- * shape → [units drawing a ×2 view, of those re-spelled by the round trip (#1121),
+ * shape → [units drawing a ×2 view, of those the EQUIVALENCE arm compared,
  *          of those whose collapse declines so the write spells the finer grid]
+ *
+ * The middle column is what keeps the equivalence assertion honest: `diverged` being
+ * empty means nothing if nothing was compared, and the population that reaches the
+ * comparison is exactly the one an edit is admissible on at BOTH scales.
  *
  * `leaf` is absent by construction: a leaf-anchored model anchors each note to its own
  * source span and so refuses a refine outright, which means it never reaches this
@@ -218,11 +381,24 @@ describe('#1117 — coming back from a refined view', () => {
  */
 const GRID_PINS: Record<string, [number, number, number]> = {
   'alt-element': [57, 57, 0],
-  'alt-whole': [76, 47, 0],
-  element: [736, 258, 0],
+  'alt-whole': [76, 76, 0],
+  element: [736, 735, 0],
 }
 const ROLL_PINS: Record<string, [number, number, number]> = {
-  'alt-element': [52, 52, 0],
-  'alt-whole': [93, 50, 2],
-  element: [345, 161, 2],
+  'alt-element': [52, 36, 0],
+  'alt-whole': [93, 47, 2],
+  element: [345, 118, 2],
 }
+/*
+ * WHY THE ROLL COMPARES FEWER UNITS THAN THE GRID (201 of 490, against 868 of 869).
+ * The roll's gesture places a note, so it needs a document column with no note
+ * starting on it; a densely-written roll offers none and drops out of the population.
+ * The grid's is an erase, which needs only one hit to remove — every roll unit that
+ * drops out does so for a stated reason, not a silent one.
+ *
+ * The residual three are recorded rather than smoothed over: 2 units where the
+ * placement is admissible at one scale and refused at the other (`placeNote` resolves
+ * overlaps against the neighbouring note, and a 1-column note has different
+ * neighbours at each scale), and 1 where the collapse declines an edit that did stay
+ * on the document's grid. None of the three is a spelling divergence.
+ */

@@ -29089,7 +29089,9 @@ function collapseStepGridToDocument(model) {
   const docSteps = documentSteps(model);
   if (docSteps === model.steps) return absorbViewScale(model);
   if (!canScaleStepGridTo(model, docSteps)) return null;
-  return absorbViewScale(scaleStepGridTo(model, docSteps));
+  return absorbViewScale(
+    descaleSource(scaleStepGridTo(model, docSteps), model.viewScale, descaleGridCells)
+  );
 }
 __name(collapseStepGridToDocument, "collapseStepGridToDocument");
 function collapsePianoRollToDocument(model) {
@@ -29097,9 +29099,54 @@ function collapsePianoRollToDocument(model) {
   const docSteps = documentSteps(model);
   if (docSteps === model.steps) return absorbViewScale(model);
   if (!canScalePianoRollTo(model, docSteps)) return null;
-  return absorbViewScale(scalePianoRollTo(model, docSteps));
+  return absorbViewScale(
+    descaleSource(scalePianoRollTo(model, docSteps), model.viewScale, descaleRollNotes)
+  );
 }
 __name(collapsePianoRollToDocument, "collapsePianoRollToDocument");
+function descaleSource(model, k, content) {
+  if (k === UNREFINED) return model;
+  if (model.altSource) {
+    const a = model.altSource;
+    return {
+      ...model,
+      altSource: {
+        ...a,
+        perBar: a.perBar / k,
+        div: a.div / k,
+        regions: a.regions.map((r) => ({
+          ...r,
+          from: r.from / k,
+          to: r.to / k,
+          perBar: r.perBar.map((c) => content(c, k))
+        }))
+      }
+    };
+  }
+  if (model.source) {
+    const s = model.source;
+    return {
+      ...model,
+      source: {
+        ...s,
+        parts: s.parts.map((p) => ({
+          ...p,
+          div: p.div / k,
+          regions: p.regions.map((r) => ({
+            ...r,
+            from: r.from / k,
+            to: r.to / k,
+            content: content(r.content, k)
+          }))
+        }))
+      }
+    };
+  }
+  return model;
+}
+__name(descaleSource, "descaleSource");
+var descaleGridCells = /* @__PURE__ */ __name((cells, k) => cells.filter((_, i) => i % k === 0).map((column) => column.map((cell) => ({ ...cell, duration: cell.duration / k }))), "descaleGridCells");
+var descaleRollNotes = /* @__PURE__ */ __name((notes, k) => notes.map((n) => ({ ...n, start: n.start / k, duration: n.duration / k })), "descaleRollNotes");
 function slotState(steps, docSteps, bars, lossless, applies, target, canDrawView) {
   if (target === steps) return "active";
   if (canDrawView) {

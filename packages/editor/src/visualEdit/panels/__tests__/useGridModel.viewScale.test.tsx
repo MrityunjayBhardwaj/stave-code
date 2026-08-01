@@ -151,6 +151,45 @@ describe('useGridModel — writing from a refined view (#1057)', () => {
     expect(documentSteps(h.model as StepGridModel)).toBe(8)
   })
 
+  /**
+   * ⚠ EVERY OTHER CASE IN THIS FILE USES `bd ~ sn ~`, AND THAT IS HOW #1121 SHIPPED.
+   * A flat pattern spells its content uniquely, so re-spelling it flat is the identity
+   * — these tests drove the whole hook, read real bytes back, and still could not have
+   * failed. This one uses a document whose REPRESENTATION can differ from its VALUE,
+   * which is the only kind that can.
+   *
+   * Stated as an equivalence rather than a literal: the same edit made plainly and made
+   * through a refined view must write the same document. "The notation did not change"
+   * would be satisfied by a control that did nothing at all.
+   *
+   * ⚠ THE EDIT IS AN ERASE, NOT A VELOCITY DRAG, and the reason is worth stating: a
+   * gain edit re-spells a structured pattern flat at EVERY resolution, refined or not
+   * (#1123). That is a different defect on a different write path, and asserting it
+   * here would tie this gate to an unrelated bug — the first draft of this test did,
+   * and failed on a document where both arms were equally flat.
+   */
+  it('#1121: the same edit on a STRUCTURED document spells the same, refined or not', () => {
+    const SRC = 's("bd [hh hh] sn cp")'
+
+    DOC = SRC
+    const plain = render(React.createElement(Harness))
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 0, false))) // erase the `bd`
+    const unrefined = DOC
+    expect(unrefined, 'the control arm really did write').not.toBe(SRC)
+    plain.unmount()
+
+    DOC = SRC
+    render(React.createElement(Harness))
+    act(() => h.setViewScale(2))
+    expect(h.model?.steps, 'the panel really is drawing finer').toBe(16)
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 0, false))) // the same erase
+
+    expect(DOC, 'the grouping the author wrote must survive').toContain('[hh hh]')
+    expect(DOC).toBe(unrefined)
+    // …and the user's zoom survives, because the document's spelling never changed
+    expect(h.viewScale).toBe(2)
+  })
+
   it('a second velocity edit does not drift the document', () => {
     // The write path is asked twice; a rule that only holds on the first ask would
     // show up here as an accumulating respelling.
