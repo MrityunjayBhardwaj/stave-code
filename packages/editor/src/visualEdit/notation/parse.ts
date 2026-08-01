@@ -889,15 +889,41 @@ function buildAltRegions<C>(
  * `bd <sd hh>` — a `<...>` alternation sitting inside the sequence. Each bar is
  * one cycle of the expansion; the source stays the single cycle the user wrote.
  * null → not this shape (the flat path handles it).
+ *
+ * ── DRAWING IT FINER (#1117) ──────────────────────────────────────────────────
+ * The bar widths come from the alternation's own branches, which is why this path
+ * could not simply inherit #1116's threading. But there IS one multipliable
+ * quantity: `div`, the column division every element shares, with
+ * `perBarCols = totalWeight × div`. Both `toCells` and `buildAltRegions` derive
+ * every column they emit from it, so scaling `div` scales the whole layout
+ * uniformly and the region tiling stays exact (`Σ weight × kd = k × perBarCols`).
+ *
+ * Every gate above the multiplication is scale-FREE — `expandAltElements` (which
+ * carries the document's own `MAX_STEPS` ceiling) and the elongation guard both
+ * read the notation, never the view. So ownership is already decided at the
+ * parameter's identity value here without a separate pass ([[PV262]]), and the
+ * only refusal the scale can add is the VIEW's ceiling.
  */
-function gridFromAltElements(mini: string): ParseResult<StepGridModel> | null {
+function gridFromAltElements(
+  mini: string,
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<StepGridModel> | null {
   const exp = expandAltElements(mini, false)
   if (exp === null) return null
   if ('reason' in exp) return { ok: false, reason: exp.reason }
-  const { bars, div, perBarCols, perBarSteps, elemSpans } = exp
+  const { bars, div: documentDiv, perBarCols: documentPerBarCols, perBarSteps, elemSpans } = exp
   if (perBarSteps.some(gridHasElongation)) {
     return { ok: false, reason: 'elongation is beyond the drum-grid subset' }
   }
+  // The VIEW's ceiling, asked of what would be DRAWN. The DOCUMENT's ceiling was
+  // already applied to the unscaled columns inside `expandAltElements`; a refine
+  // expands nothing in the notation, so asking `MAX_STEPS` again here would be the
+  // category error `viewResolution.ts` argues against (#1055).
+  if (!viewScaleFits(documentPerBarCols, bars, viewScale)) {
+    return { ok: false, reason: gateReason('view-resolution', 'grid') }
+  }
+  const div = documentDiv * viewScale
+  const perBarCols = documentPerBarCols * viewScale
   const cells: ColumnNotes = []
   for (const steps of perBarSteps) cells.push(...toCells(steps, div))
   const lanes = lanesFromCells(cells)
@@ -916,7 +942,17 @@ function gridFromAltElements(mini: string): ParseResult<StepGridModel> | null {
   if (!regions) return { ok: false, reason: 'unsupported mini-notation syntax' }
   return {
     ok: true,
-    model: { steps: cells.length, bars, lanes, altSource: { perBar: perBarCols, bars, div, regions } },
+    // ⚠ RECORDING THE SCALE IS NOT OPTIONAL ([[P417]]). The entry check reads this
+    // self-report, so a path that multiplies correctly and stays silent is refused —
+    // and refusal is the safe direction, so nothing looks broken while the reach
+    // quietly disappears. Whoever multiplies by the scale also declares it.
+    model: {
+      steps: cells.length,
+      bars,
+      ...(viewScale === UNREFINED ? {} : { viewScale }),
+      lanes,
+      altSource: { perBar: perBarCols, bars, div, regions },
+    },
   }
 }
 
@@ -1523,13 +1559,12 @@ function projectStepGrid(src0: string, viewScale: ViewScale = UNREFINED): Projec
   // A pattern that plays nothing at all is not a grid to offer. Identical to the
   // old `cyc0.length === 0` refusal when the period is 1.
   if (perCycle.every((c) => c.length === 0)) return no('no-note-content')
-  // a whole-cycle `<…>`: bars are its branches, not a flat sequence's columns.
-  // ⚠ RETURNS BEFORE THE SCALE IS APPLIED, and deliberately so for now: the branch
-  // widths come from the alternation, not from `perBar`, so subdividing them is its
-  // own piece of work (#1116 follow-up). It therefore records no `viewScale`, and the
-  // entry refuses a refine here rather than drawing the document's own layout for it.
+  // a whole-cycle `<…>`: bars are its branches, not a flat sequence's columns. It
+  // carries the scale as of #1117 — the branch widths do come from the alternation,
+  // but the columns WITHIN a branch come from `perBar`, and that is what a refine
+  // multiplies. `projectAltBars` decides ownership at the identity value first.
   if (whole !== null) {
-    return bars > 1 ? projectAltBars(src, whole, perCycle, bars) : no('element-tiling')
+    return bars > 1 ? projectAltBars(src, whole, perCycle, bars, viewScale) : no('element-tiling')
   }
   const spans = topLevelSpans(src)
   if (!spans) return no('element-tiling')
@@ -1623,6 +1658,7 @@ function projectAltBars(
   inner: string,
   perCycle: Onset[][],
   bars: number,
+  viewScale: ViewScale = UNREFINED,
 ): Projection<StepGridModel> {
   const innerSrc = inner.trim()
   const spans = topLevelSpans(innerSrc)
@@ -1630,13 +1666,30 @@ function projectAltBars(
   // one top-level element per BAR — a branch repeated `!n` claims n of them, and
   // the bar count has to come out exactly or the branches don't line up with cycles
   if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return no('element-tiling')
-  let perBar = 1
+  let documentPerBar = 1
   for (const o of perCycle.flat()) {
     const d = denom(o.pos)
     if (d === 0) return no('irrational-onset')
-    perBar = lcm(perBar, d)
+    documentPerBar = lcm(documentPerBar, d)
   }
-  if (perBar * bars > MAX_STEPS) return no('resolution')
+  // THE DOCUMENT'S OWN ceiling, asked of the UNSCALED quantity: a refine expands
+  // nothing in the notation, so `MAX_STEPS` is the wrong question about a view (#1055).
+  if (documentPerBar * bars > MAX_STEPS) return no('resolution')
+  // …and the VIEW's own, asked of what would be drawn.
+  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no('view-resolution')
+  const perBar = documentPerBar * viewScale
+
+  // ⚠ NO IDENTITY-VALUE PRE-PASS HERE, and that is a decision rather than an omission.
+  // Ownership at this seam must be settled at the parameter's identity value
+  // ([[PV262]], [[P418]]) — but it already is, one layer up: `projectStepGridDerived`
+  // picks the owner from `projectStepGrid(mini)` at `UNREFINED` and only then re-asks
+  // that owner for the refined view. Repeating the rule inside each path is the
+  // per-path shape [[P414]] argues against, and it was MEASURED inert here: building
+  // the identity model first and gating on it changed no verdict on the corpus, and
+  // break-testing it moved nothing at all. The reason is worth recording — the span
+  // writer copies UNEDITED regions verbatim, so `serializeStepGrid(model) === src`
+  // holds at every scale, which makes the byte round-trip gate below scale-insensitive
+  // rather than scale-fatal as it first appears.
   const cells = columnsFromOnsets(perCycle, perBar, bars)
   if (cells === null) return no('irrational-onset')
   // a branch spans one bar's worth of columns, so the per-unit division IS perBar
@@ -1645,6 +1698,7 @@ function projectAltBars(
   const model: StepGridModel = {
     steps: perBar * bars,
     bars,
+    ...(viewScale === UNREFINED ? {} : { viewScale }),
     lanes: lanesFromCells(cells),
     source: {
       parts,
@@ -2160,14 +2214,17 @@ export function parseStepGrid(
  * in it is grid- or roll-specific, so writing it twice would be two things to keep
  * in step ([[PV200]]).
  *
- * Several projections legitimately do not carry a view scale — the leaf path anchors
- * each note to its own source span and has no span to subdivide (#1058, [[PV261]]),
- * and the whole-cycle `<…>` bar expansion plus `gridFromAltElements` /
- * `rollFromAltElements` have not been taught it. Measured over the corpus before this
- * check existed, 202 of 958 grid units reached one of those, and every one answered a
- * refine request with the DOCUMENT's own layout and no error: the control appears to
- * work and draws exactly what it drew before — the silent wrong layout this whole
- * parameter exists to make impossible.
+ * One projection legitimately does not carry a view scale: the leaf path anchors each
+ * note to its own source span and so has no span to subdivide (#1058, [[PV261]]).
+ * Measured over the corpus before this check existed, 202 of 958 grid units reached a
+ * scale-blind path, and every one answered a refine request with the DOCUMENT's own
+ * layout and no error: the control appears to work and draws exactly what it drew
+ * before — the silent wrong layout this whole parameter exists to make impossible.
+ *
+ * The four bar-expanding projections were in that population until #1117 taught them
+ * the scale, and this comment is the reason they could be: the gate never enumerated
+ * who was allowed to refine, so teaching a path made it start passing with no edit
+ * here. That is the property the next such path inherits for free.
  *
  * Asked HERE rather than in each projection on purpose. A per-path refusal is a rule
  * every future path must remember to fire; this is one check that no new path can
@@ -2202,18 +2259,11 @@ export function parseStepGridCore(
   const parts = splitTopLevel(mini)
   if (parts.length > 1) return gridFromStack(parts, viewScale)
 
-  // ⚠ NOT YET CARRYING THE SCALE (#1116 follow-up). `gridFromAltElements` expands
-  // `bd <sd hh>` across bars with a single global `div`; scaling it needs the same
-  // treatment the other three paths just got, and until it has one an unrefined
-  // model would be drawn for a refined request — the silent-wrong-layout the whole
-  // parameter exists to prevent. Refuse the SCALE, not the pattern: at `UNREFINED`
-  // this path is untouched, so nothing that opens today changes.
-  const altEl = gridFromAltElements(mini)
-  if (altEl !== null) {
-    return viewScale === UNREFINED
-      ? altEl
-      : { ok: false, reason: 'this pattern does not offer a finer view yet' }
-  }
+  // Carries the scale as of #1117: the bar expansion shares one global `div`, and
+  // scaling that scales every column it emits. It refuses only the VIEW's own
+  // ceiling now, never the request itself.
+  const altEl = gridFromAltElements(mini, viewScale)
+  if (altEl !== null) return altEl
 
   const tok = tokenize(mini)
   if (!tok.ok) return tok
@@ -2547,11 +2597,24 @@ export function applyRollGain(model: PianoRollModel, gain: ChunkGain): PianoRoll
  * not cells) and the numeric/named check are the roll's own. null → not this
  * shape (the flat path handles it).
  */
-function rollFromAltElements(mini: string): ParseResult<PianoRollModel> | null {
+function rollFromAltElements(
+  mini: string,
+  viewScale: ViewScale = UNREFINED,
+): ParseResult<PianoRollModel> | null {
   const exp = expandAltElements(mini, true)
   if (exp === null) return null
   if ('reason' in exp) return { ok: false, reason: exp.reason }
-  const { bars, div, perBarCols, perBarSteps, elemSpans } = exp
+  const { bars, div: documentDiv, perBarCols: documentPerBarCols, perBarSteps, elemSpans } = exp
+  // The grid's half of this argues the reasoning in full (#1117): `div` is the one
+  // multipliable quantity, every gate above it is scale-free, and only the VIEW's
+  // ceiling is a refusal the scale can add. A note's span here is
+  // `elongation × div × units / total`, so it magnifies with `div` exactly as the
+  // grid's columns do — the roll needs no separate rule.
+  if (!viewScaleFits(documentPerBarCols, bars, viewScale)) {
+    return { ok: false, reason: gateReason('view-resolution', 'roll') }
+  }
+  const div = documentDiv * viewScale
+  const perBarCols = documentPerBarCols * viewScale
   const notes: RollNote[] = []
   let col = 0
   let sawNumeric = false
@@ -2600,6 +2663,7 @@ function rollFromAltElements(mini: string): ParseResult<PianoRollModel> | null {
       bars,
       notes,
       ...(sawNumeric ? { numeric: true } : {}),
+      ...(viewScale === UNREFINED ? {} : { viewScale }),
       altSource: { perBar: perBarCols, bars, div, regions },
     },
   }
@@ -2817,11 +2881,13 @@ function projectPianoRoll(
   // bar, since a later bar can introduce the token that breaks the convention
   const numeric = all.some((o) => o.numeric)
   if (numeric && all.some((o) => !o.numeric)) return no('mixed-pitch-domain')
-  // ⚠ RETURNS BEFORE THE SCALE IS APPLIED, the roll's twin of the grid's whole-cycle
-  // branch: the branch widths come from the alternation rather than from `perBar`, so
-  // it records no `viewScale` and the entry refuses a refine here (#1116 follow-up).
+  // Carries the scale as of #1117, the roll's twin of the grid's whole-cycle branch:
+  // the columns WITHIN a branch come from `perBar`, and that is what a refine
+  // multiplies. Ownership is decided at the identity value inside.
   if (whole !== null) {
-    return bars > 1 ? projectAltRollBars(src, whole, perCycle, numeric) : no('element-tiling')
+    return bars > 1
+      ? projectAltRollBars(src, whole, perCycle, numeric, viewScale)
+      : no('element-tiling')
   }
   const spans = topLevelSpans(src)
   if (!spans) return no('element-tiling')
@@ -2923,6 +2989,7 @@ function projectAltRollBars(
   inner: string,
   perCycle: RollOnset[][],
   numeric: boolean,
+  viewScale: ViewScale = UNREFINED,
 ): Projection<PianoRollModel> {
   const bars = perCycle.length
   const innerSrc = inner.trim()
@@ -2930,13 +2997,19 @@ function projectAltRollBars(
   if (!spans) return no('element-tiling')
   if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return no('element-tiling')
   const all = perCycle.flat()
-  let perBar = 1
+  let documentPerBar = 1
   for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
     const d = denom(x)
     if (d === 0) return no('irrational-onset')
-    perBar = lcm(perBar, d)
+    documentPerBar = lcm(documentPerBar, d)
   }
-  if (perBar * bars > MAX_STEPS) return no('resolution')
+  // the DOCUMENT's ceiling, on the unscaled quantity — the grid's half argues why
+  if (documentPerBar * bars > MAX_STEPS) return no('resolution')
+  // …and the VIEW's own. Ownership is settled one layer up at `UNREFINED`, exactly as
+  // for the grid — see `projectAltBars` for why no identity pre-pass belongs here.
+  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no('view-resolution')
+  const perBar = documentPerBar * viewScale
+
   const notes = barNotes(perCycle, perBar)
   if (notes === null) return no('element-tiling')
   const parts = singlePart(innerSrc, spans, perBar, perBar * bars, rollContent(notes))
@@ -2946,6 +3019,7 @@ function projectAltRollBars(
     bars,
     notes,
     ...(numeric ? { numeric: true } : {}),
+    ...(viewScale === UNREFINED ? {} : { viewScale }),
     source: {
       parts,
       prefix: '<' + (/^\s*/.exec(inner)?.[0] ?? ''),
@@ -3243,16 +3317,10 @@ export function parsePianoRollCore(
   if (alt === null) {
     const parts = splitTopLevel(mini)
     if (parts.length > 1) return parseRollLanes(parts, viewScale)
-    // ⚠ NOT YET CARRYING THE SCALE (#1116 follow-up), exactly as the grid's
-    // `gridFromAltElements` is not: the bar expansion shares one global `div` and
-    // subdividing it is its own piece of work. Refuse the SCALE, not the pattern —
-    // at `UNREFINED` this path is untouched, so nothing that opens today changes.
-    const altEl = rollFromAltElements(mini)
-    if (altEl !== null) {
-      return viewScale === UNREFINED
-        ? altEl
-        : { ok: false, reason: 'this pattern does not offer a finer view yet' }
-    }
+    // Carries the scale as of #1117, exactly as the grid's `gridFromAltElements`
+    // does: the bar expansion's one global `div` is what a refine multiplies.
+    const altEl = rollFromAltElements(mini, viewScale)
+    if (altEl !== null) return altEl
   }
   const tok = tokenize(alt ?? mini, /* allowNumeric */ true)
   if (!tok.ok) return tok
