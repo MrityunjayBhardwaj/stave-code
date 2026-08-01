@@ -153,7 +153,11 @@ describe('#1120 — held notes can be refined', () => {
     expect(fine.ok).toBe(true)
     if (!fine.ok) return
     const lanes = fine.model.lanes.map((l) => ({ ...l, cells: [...l.cells] }))
-    lanes[0].cells[0] = { on: true, duration: 1.5 }
+    // `cellOn`, not a literal: a cell is "on" by BEING an object (`isCellOn` is a
+    // `typeof` check), so an `on: true` field is a belief about the shape rather than
+    // part of it — which is why tsc rejected the literal and why the two sibling
+    // cases above already ask the module for their cells.
+    lanes[0].cells[0] = cellOn(1.5)
     expect(serializeStepGrid({ ...fine.model, lanes })).toBeNull()
   })
 })
