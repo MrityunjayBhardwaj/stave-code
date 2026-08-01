@@ -8394,6 +8394,13 @@ interface PianoRollModel {
  *                          misattribution this vocabulary exists to end.
  *   - `edit-unsafe`        the write-back probe and the engine disagreed.
  *   - `view-unusable`      the view opens but no single edit is expressible.
+ *   - `no-finer-view`      a REFINED request came back unrefined: the path that
+ *                          owns the pattern answered, and its answer does not
+ *                          carry the requested scale. Distinct from
+ *                          `view-resolution`, which is the ceiling saying no —
+ *                          here nothing was too large, the owner simply has no
+ *                          finer view to give. Reachable only through a refined
+ *                          ask, which is why it went unnamed until #1132.
  *   - `not-a-pattern`      it does not reify at all; the core's own syntax
  *                          message is the better answer and is kept.
  */
@@ -8405,7 +8412,7 @@ type Gate = 'wrong-surface' | 'no-note-content' | 'unstable-period' | 'mixed-pit
  * view scale is `UNREFINED`, since the document ceiling (64) is below the view
  * ceiling (256) — see `viewResolution.ts`.
  */
- | 'view-resolution' | 'element-tiling' | 'no-leaf-anchor' | 'note-crosses-bar' | 'edit-unsafe' | 'view-unusable' | 'not-a-pattern';
+ | 'view-resolution' | 'element-tiling' | 'no-leaf-anchor' | 'note-crosses-bar' | 'edit-unsafe' | 'view-unusable' | 'no-finer-view' | 'not-a-pattern';
 /**
  * Parse outcome. `ok: false` is a first-class result, not an exception — every
  * panel checks it on open and disables itself (code-only) when the pattern is

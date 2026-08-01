@@ -27089,7 +27089,7 @@ function gridFromAltElements(mini, viewScale = UNREFINED) {
     return { ok: false, reason: "elongation is beyond the drum-grid subset" };
   }
   if (!viewScaleFits(documentPerBarCols, bars, viewScale)) {
-    return { ok: false, reason: gateReason("view-resolution", "grid") };
+    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
   }
   const div = documentDiv * viewScale;
   const perBarCols = documentPerBarCols * viewScale;
@@ -27160,6 +27160,8 @@ function gateReason(gate, surface) {
       return "an edit here would not write back the pattern as shown";
     case "view-unusable":
       return "nothing in this view could be edited on its own";
+    case "no-finer-view":
+      return "this pattern does not offer a finer view yet";
     case "not-a-pattern":
       return "unsupported mini-notation syntax";
   }
@@ -27627,13 +27629,13 @@ function parseStepGrid(mini, viewScale = UNREFINED) {
     return owner.ok ? owner : projectStepGridDerived(mini, owner, UNREFINED);
   }
   const result = owner.ok ? parseStepGridCore(mini, viewScale) : projectStepGridDerived(mini, owner, viewScale);
-  return honoursViewScale(result, viewScale);
+  return honoursViewScale(result, viewScale, "grid");
 }
 __name(parseStepGrid, "parseStepGrid");
-function honoursViewScale(result, viewScale) {
+function honoursViewScale(result, viewScale, surface) {
   if (!result.ok || viewScale === UNREFINED) return result;
   if ((result.model.viewScale ?? UNREFINED) === viewScale) return result;
-  return { ok: false, reason: "this pattern does not offer a finer view yet" };
+  return { ok: false, reason: gateReason("no-finer-view", surface), gate: "no-finer-view" };
 }
 __name(honoursViewScale, "honoursViewScale");
 function parseStepGridCore(mini, viewScale = UNREFINED) {
@@ -27654,7 +27656,7 @@ function parseStepGridCore(mini, viewScale = UNREFINED) {
     return { ok: false, reason: `sub-sequences expand the grid past ${MAX_STEPS} steps` };
   }
   if (!viewScaleFits(documentCols, 1, viewScale)) {
-    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` };
+    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
   }
   const div = documentDiv * viewScale;
   const cells = toCells(tok.steps, div);
@@ -27683,7 +27685,7 @@ function gridFromAlternation(inner, viewScale = UNREFINED) {
     return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` };
   }
   if (!viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
-    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` };
+    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
   }
   const div = documentDiv * viewScale;
   const cells = toCells(tok.steps, div);
@@ -27730,7 +27732,7 @@ function gridFromStack(parts, viewScale = UNREFINED) {
     return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` };
   }
   if (!viewScaleFits(documentTotal, 1, viewScale)) {
-    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` };
+    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
   }
   const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1);
   const lanes = [];
@@ -27856,7 +27858,7 @@ function rollFromAltElements(mini, viewScale = UNREFINED) {
   if ("reason" in exp) return { ok: false, reason: exp.reason };
   const { bars, div: documentDiv, perBarCols: documentPerBarCols, perBarSteps, elemSpans } = exp;
   if (!viewScaleFits(documentPerBarCols, bars, viewScale)) {
-    return { ok: false, reason: gateReason("view-resolution", "roll") };
+    return { ok: false, reason: gateReason("view-resolution", "roll"), gate: "view-resolution" };
   }
   const div = documentDiv * viewScale;
   const perBarCols = documentPerBarCols * viewScale;
@@ -28278,7 +28280,7 @@ function parsePianoRoll(mini, viewScale = UNREFINED) {
     return owner.ok ? owner : projectPianoRollDerived(mini, owner, UNREFINED);
   }
   const result = owner.ok ? parsePianoRollCore(mini, viewScale) : projectPianoRollDerived(mini, owner, viewScale);
-  return honoursViewScale(result, viewScale);
+  return honoursViewScale(result, viewScale, "roll");
 }
 __name(parsePianoRoll, "parsePianoRoll");
 function parsePianoRollCore(mini, viewScale = UNREFINED) {
@@ -28302,7 +28304,7 @@ function parsePianoRollCore(mini, viewScale = UNREFINED) {
     return { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` };
   }
   if (!viewScaleFits(documentDiv, bars, viewScale)) {
-    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` };
+    return { ok: false, reason: gateReason("view-resolution", "roll"), gate: "view-resolution" };
   }
   const div = documentDiv * viewScale;
   const notes = [];

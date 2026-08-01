@@ -95,6 +95,41 @@ for (const r of rows) {
   byGate.set(key, e)
 }
 
+/**
+ * THE REFINED SWEEP (#1132) — and the reason it exists is the sharper half of #1130.
+ *
+ * Everything above asks at UNREFINED, where the gate vocabulary is total: 0 ungated
+ * refusals out of 1559. That total-looking result is a property of the POPULATION,
+ * not of the vocabulary. `view-resolution` cannot fire at UNREFINED at all (the
+ * document ceiling 64 sits below the view ceiling 256), and `no-finer-view` is raised
+ * by a check that returns early unless a scale was asked for. So the two gates that
+ * only a refined ask can reach were exactly the two that went unnamed — 788 ungated
+ * refusals across scales 1/2/3/4/8/16, invisible here because this file never passed
+ * a scale.
+ *
+ * A vocabulary is only as total as the widest ask made of it. This sweep makes the
+ * ask.
+ */
+const REFINED_SCALES = [2, 4, 8, 16] as const
+const refinedRows: Row[] = []
+for (const mini of minis) {
+  for (const k of REFINED_SCALES) {
+    for (const [surface, r] of [
+      ['step', parseStepGrid(mini, k)],
+      ['roll', parsePianoRoll(mini, k)],
+    ] as const) {
+      if (r.ok) continue
+      refinedRows.push({ mini, surface, gate: r.gate ?? null, reason: r.reason })
+    }
+  }
+}
+
+const byRefinedGate = new Map<string, number>()
+for (const r of refinedRows) {
+  const key = r.gate ?? '(ungated)'
+  byRefinedGate.set(key, (byRefinedGate.get(key) ?? 0) + 1)
+}
+
 describe('refusal gates — a refusal names what stopped it, not who spoke first', () => {
   it('reports the anatomy of "no" over the real-world corpus', () => {
     const ranked = [...byGate.entries()].sort(
@@ -191,6 +226,34 @@ describe('refusal gates — a refusal names what stopped it, not who spoke first
     ] as const) {
       const v = byGate.get(g) ?? { step: 0, roll: 0 }
       expect(v.step + v.roll, `gate ${g} never fires — is it still reachable?`).toBeGreaterThan(0)
+    }
+  })
+
+  it('a REFINED refusal names its gate too — the ask the vocabulary was blind to', () => {
+    const ungated = refinedRows.filter((r) => r.gate === null)
+    const sample = [...new Set(ungated.map((r) => r.reason))]
+      .slice(0, 8)
+      .map((reason) => `  ${reason}  (×${ungated.filter((u) => u.reason === reason).length})`)
+    console.log(
+      `\n===== REFINED REFUSAL GATES (scales ${REFINED_SCALES.join('/')}, both surfaces) =====`,
+    )
+    console.log(`  refusals: ${refinedRows.length}`)
+    for (const [g, n] of [...byRefinedGate].sort((a, b) => b[1] - a[1])) {
+      console.log(`  ${g.padEnd(20)} ${String(n).padStart(6)}`)
+    }
+    // Zero, not a percentage. At UNREFINED the sibling assertion tolerates <2% for
+    // strings nothing could reify; every mini here ALREADY reified (it is the same
+    // corpus), so a refined refusal has no honest reason to be anonymous.
+    expect(ungated.length, `ungated refined refusals:\n${sample.join('\n')}`).toBe(0)
+  })
+
+  it('the two refine-only gates actually fire — they are unreachable from the sweep above', () => {
+    // Non-vacuity, and the point of the whole exercise: these two cannot appear in
+    // `byGate` at all, so without this arm they could regress to zero unnoticed —
+    // which is exactly the state #1132 found them in.
+    for (const g of ['view-resolution', 'no-finer-view'] as const) {
+      expect(byRefinedGate.get(g) ?? 0, `refine-only gate ${g} never fires`).toBeGreaterThan(0)
+      expect(byGate.get(g), `${g} is not supposed to be reachable unrefined`).toBeUndefined()
     }
   })
 

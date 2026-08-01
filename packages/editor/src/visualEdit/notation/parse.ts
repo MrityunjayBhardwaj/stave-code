@@ -920,7 +920,7 @@ function gridFromAltElements(
   // expands nothing in the notation, so asking `MAX_STEPS` again here would be the
   // category error `viewResolution.ts` argues against (#1055).
   if (!viewScaleFits(documentPerBarCols, bars, viewScale)) {
-    return { ok: false, reason: gateReason('view-resolution', 'grid') }
+    return { ok: false, reason: gateReason('view-resolution', 'grid'), gate: 'view-resolution' }
   }
   const div = documentDiv * viewScale
   const perBarCols = documentPerBarCols * viewScale
@@ -1138,6 +1138,11 @@ function gateReason(gate: Gate, surface: Surface): string {
       return 'an edit here would not write back the pattern as shown'
     case 'view-unusable':
       return 'nothing in this view could be edited on its own'
+    case 'no-finer-view':
+      // Says nothing about the pattern being unsupported — the owner answered, it
+      // just cannot draw this one any finer. Kept surface-neutral because the
+      // total gate that raises it is generic over both models (#1132).
+      return 'this pattern does not offer a finer view yet'
     case 'not-a-pattern':
       return 'unsupported mini-notation syntax'
   }
@@ -2205,7 +2210,7 @@ export function parseStepGrid(
   const result = owner.ok
     ? parseStepGridCore(mini, viewScale)
     : projectStepGridDerived(mini, owner, viewScale)
-  return honoursViewScale(result, viewScale)
+  return honoursViewScale(result, viewScale, 'grid')
 }
 
 /**
@@ -2243,10 +2248,15 @@ export function parseStepGrid(
 function honoursViewScale<M extends { viewScale?: ViewScale }>(
   result: ParseResult<M>,
   viewScale: ViewScale,
+  surface: Surface,
 ): ParseResult<M> {
   if (!result.ok || viewScale === UNREFINED) return result
   if ((result.model.viewScale ?? UNREFINED) === viewScale) return result
-  return { ok: false, reason: 'this pattern does not offer a finer view yet' }
+  // Named, not just worded (#1132). This is the largest refusal class the refined
+  // entry produces, and it carried no `gate` at all — so every consumer attributing
+  // by gate had to read it as "no projection spoke", which is the opposite of what
+  // happened here: a projection spoke and came back unrefined.
+  return { ok: false, reason: gateReason('no-finer-view', surface), gate: 'no-finer-view' }
 }
 
 export function parseStepGridCore(
@@ -2280,7 +2290,9 @@ export function parseStepGridCore(
   }
   // …and the VIEW's ceiling, asked of what would actually be drawn.
   if (!viewScaleFits(documentCols, 1, viewScale)) {
-    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` }
+    // one gate, one sentence (#1132): this is the VIEW's ceiling, the same refusal
+    // `gateReason` already words — it was simply spelled a second way here.
+    return { ok: false, reason: gateReason('view-resolution', 'grid'), gate: 'view-resolution' }
   }
   // `toCells` is LINEAR in `div` (a slot's span is `(div / total) * units`), so
   // scaling it draws the same notation on a finer grid without moving any onset.
@@ -2326,7 +2338,9 @@ function gridFromAlternation(
     return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` }
   }
   if (!viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
-    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` }
+    // one gate, one sentence (#1132): this is the VIEW's ceiling, the same refusal
+    // `gateReason` already words — it was simply spelled a second way here.
+    return { ok: false, reason: gateReason('view-resolution', 'grid'), gate: 'view-resolution' }
   }
   const div = documentDiv * viewScale
   const cells = toCells(tok.steps, div)
@@ -2390,7 +2404,9 @@ function gridFromStack(
     return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` }
   }
   if (!viewScaleFits(documentTotal, 1, viewScale)) {
-    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` }
+    // one gate, one sentence (#1132): this is the VIEW's ceiling, the same refusal
+    // `gateReason` already words — it was simply spelled a second way here.
+    return { ok: false, reason: gateReason('view-resolution', 'grid'), gate: 'view-resolution' }
   }
   const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1)
   const lanes: StepLane[] = []
@@ -2611,7 +2627,7 @@ function rollFromAltElements(
   // `elongation × div × units / total`, so it magnifies with `div` exactly as the
   // grid's columns do — the roll needs no separate rule.
   if (!viewScaleFits(documentPerBarCols, bars, viewScale)) {
-    return { ok: false, reason: gateReason('view-resolution', 'roll') }
+    return { ok: false, reason: gateReason('view-resolution', 'roll'), gate: 'view-resolution' }
   }
   const div = documentDiv * viewScale
   const perBarCols = documentPerBarCols * viewScale
@@ -3302,7 +3318,7 @@ export function parsePianoRoll(
   const result = owner.ok
     ? parsePianoRollCore(mini, viewScale)
     : projectPianoRollDerived(mini, owner, viewScale)
-  return honoursViewScale(result, viewScale)
+  return honoursViewScale(result, viewScale, 'roll')
 }
 
 // exported for the projection stress gate — it sweeps only patterns the CORE
@@ -3338,7 +3354,9 @@ export function parsePianoRollCore(
   // path emits are `bars × div` — each step contributes `elongation × div` across its
   // slots — so the drawn width is exactly `bars × documentDiv × viewScale`.
   if (!viewScaleFits(documentDiv, bars, viewScale)) {
-    return { ok: false, reason: `that view resolution is past ${MAX_VIEW_STEPS} columns` }
+    // one gate, one sentence (#1132): this is the VIEW's ceiling, the same refusal
+    // `gateReason` already words — it was simply spelled a second way here.
+    return { ok: false, reason: gateReason('view-resolution', 'roll'), gate: 'view-resolution' }
   }
   // Every note's `start` and `duration` is derived from `div` by multiplication
   // (`span = elongation × div × slot.units / total`), so scaling `div` magnifies the
