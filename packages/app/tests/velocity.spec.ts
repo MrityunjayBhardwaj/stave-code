@@ -225,25 +225,50 @@ test.describe('velocity — Piano Roll (#409)', () => {
     await expect(roll.locator('[data-vel-bar="0"]')).toHaveAttribute('data-gain', '1')
   })
 
-  test('a note placed in a NEW slot (after a slot increase) is velocity-editable (#607)', async ({
+  test('a note placed in a slot that only exists at a finer view is velocity-editable (#607)', async ({
     page,
   }) => {
+    // THE RULE IS UNCHANGED; THE GESTURE THAT REACHES IT HAD TO MOVE (#1126).
+    //
+    // This used to refine `note("c3 e3 g3 a3")` to 8 and assert the document had been
+    // rewritten `c3 ~ e3 ~ g3 ~ a3 ~` — the rewrite #1057 removed on purpose. Its two
+    // siblings in `resolution.spec.ts` were corrected then and this third copy was
+    // missed, so it has been red ever since.
+    //
+    // Repairing the assertion alone would not have been enough, and that is the part
+    // worth writing down: refining creates no empty slots any more, because a note now
+    // SPANS the columns it covers. In `c3 e3 g3 a3` at eight columns every column is
+    // covered, so "the new empty slot 1" does not exist — it is c3's own second half,
+    // and clicking it toggles c3 off. (Observed, and it is not a refinement bug: the
+    // same click with NO refinement deletes c3 identically.)
+    //
+    // So the fixture carries a REST, whose second half is a genuine column the document
+    // could not previously address. Placing there is the same locality the grid shows in
+    // `resolution.spec.ts` — the writer edits the one region you touched and spells the
+    // subdivision as a group, rather than respelling the bar.
     await boot(page)
-    await setStrudelCode(page, '$: note("c3 e3 g3 a3")')
+    await setStrudelCode(page, '$: note("c3 ~ e3 ~")')
     const drawer = await openSequencer(page)
     const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
     await drawer.locator('[data-mixer-body] [data-resolution-step="8"]').click()
     await page.waitForTimeout(120)
-    expect(await strudelValue(page)).toBe('$: note("c3 ~ e3 ~ g3 ~ a3 ~")') // conservative (#607)
-    // place a note in the new (empty) slot 1, then soften its velocity — the lane
-    // bar appears and the drag writes a structure-aligned .gain (rests stay `~`).
-    await roll.locator('[data-roll-cell="48:1"]').click() // c3 at the new slot 1
-    await page.waitForTimeout(100)
-    await expect(roll.locator('[data-vel-bar="1"]')).toHaveCount(1)
-    await dragVertical(page, roll.locator('[data-vel-col="1"]'), 40)
-    expect(await strudelValue(page)).toMatch(
-      /^\$: note\("c3 c3 e3 ~ g3 ~ a3 ~"\)\.gain\("1 [\d.]+ 1 ~ 1 ~ 1 ~"\)$/,
-    )
+    // refining is a VIEW: eight columns drawn, document untouched
+    await expect(roll.locator('[data-vel-col]')).toHaveCount(8)
+    expect(await strudelValue(page)).toBe('$: note("c3 ~ e3 ~")')
+
+    // column 3 is the rest's second half — reachable only at this view
+    await roll.locator('[data-roll-cell="48:3"]').click()
+    await page.waitForTimeout(150)
+    expect(await strudelValue(page)).toBe('$: note("c3 [~ c3] e3 ~")')
+
+    // …and the note that lands there is velocity-editable, which is what #607 is about
+    await expect(roll.locator('[data-vel-bar="3"]')).toHaveCount(1)
+    await dragVertical(page, roll.locator('[data-vel-col="3"]'), 40)
+    const after = await strudelValue(page)
+    // the gain is structure-aligned (rests stay `~`, the held notes keep their `@2`)…
+    expect(after).toMatch(/\.gain\("1@2 ~ [\d.]+ 1@2 ~ ~"\)$/)
+    // …and the notation the user wrote is still theirs (#1123)
+    expect(after).toContain('note("c3 [~ c3] e3 ~")')
   })
 
   test("a held note's velocity spans all its slots, and any slot drags it (#628)", async ({
