@@ -179,7 +179,14 @@ test.describe('looking closer and coming back returns the pattern as written (#1
   // width, the writer correctly refused it and rebuilt flat. 362 grid / 263 roll units.
   const GRID = '$: s("bd [hh hh] sn cp")'
 
-  test('grid: refine to 16 and back to 8 leaves the document byte-identical', async ({ page }) => {
+  // ⚠ AN UNEDITED ROUND TRIP IS THE WEAK FORM, AND IT IS LABELLED AS SUCH. The writer
+  // copies unedited regions verbatim at every scale, so a collapse that did nothing
+  // satisfies it. MEASURED here rather than argued: with #1121's fix reverted and the
+  // dist rebuilt, the two `refine and come back` clauses below stay GREEN and only the
+  // EDITED clauses go red. They are kept because they assert a real and separate
+  // property — that looking closer never writes — but they do not cover #1121, and the
+  // clauses that do are the two `a velocity drag made through a REFINED view` cases.
+  test('grid: refine to 16 and back to 8 never writes (the no-write property, not #1121)', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
     await boot(page)
@@ -231,11 +238,69 @@ test.describe('looking closer and coming back returns the pattern as written (#1
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(16)
     expect(await strudelValue(page)).toBe(GRID)
 
-    // at 16 columns the group's first hit sits at column 4
+    // at 16 columns the group's first hit sits at column 4 — asserted, not assumed,
+    // because a drag on an empty cell would write nothing and the clause would pass
+    // for the wrong reason
+    await expect(grid.locator('[data-seq-cell="1:4"]')).toHaveAttribute('aria-pressed', 'true')
     await dragVertical(page, grid.locator('[data-seq-cell="1:4"]'), 40)
     const after = await strudelValue(page)
     expect(after).toMatch(/\.gain\("/)
     expect(headMini(after)).toBe('bd [hh hh] sn cp')
+  })
+
+  test('roll: refine to 16 and back to 8 never writes (the no-write property, not #1121)', async ({ page }) => {
+    // The roll gets its own clause rather than inheriting the grid's. This surface was
+    // measured separately at every step of the arc — its gain mini emits one token per
+    // note GROUP with `@duration`, a coupling the grid's flat run does not have — and
+    // #1121 hit 263 roll units of its own. `c3 [e3 g3] c4 e4` opens at 8 columns
+    // because the group subdivides, so 16 is offered as a view.
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await boot(page)
+    const SRC = '$: note("c3 [e3 g3] c4 e4")'
+    await setStrudelCode(page, SRC)
+    const drawer = await openPattern(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    const slots = slotsControl(drawer)
+    await expect(roll).toHaveCount(1)
+    await expect(roll.locator('[data-vel-col]')).toHaveCount(8)
+
+    await slots.locator('[data-resolution-step="16"]').click()
+    await page.waitForTimeout(150)
+    await expect(roll.locator('[data-vel-col]')).toHaveCount(16)
+    expect(await strudelValue(page)).toBe(SRC)
+
+    await slots.locator('[data-resolution-step="8"]').click()
+    await page.waitForTimeout(150)
+    await expect(roll.locator('[data-vel-col]')).toHaveCount(8)
+    expect(await strudelValue(page)).toBe(SRC)
+    expect(errors).toEqual([])
+  })
+
+  test('roll: a velocity drag made through a REFINED view still writes the original spelling', async ({
+    page,
+  }) => {
+    // The roll's half of the clause that actually covers #1121 — an EDIT made from a
+    // refined view, which is the only form that forces the collapse to hand the writer
+    // a model and so the only one that can catch a stale description. Given its own
+    // clause rather than inherited from the grid, because every step of this arc that
+    // asked the roll separately got a different answer from the grid.
+    await boot(page)
+    const SRC = '$: note("c3 [e3 g3] c4 e4")'
+    await setStrudelCode(page, SRC)
+    const drawer = await openPattern(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    const slots = slotsControl(drawer)
+
+    await slots.locator('[data-resolution-step="16"]').click()
+    await page.waitForTimeout(150)
+    await expect(roll.locator('[data-vel-col]')).toHaveCount(16)
+    expect(await strudelValue(page)).toBe(SRC)
+
+    await dragVertical(page, roll.locator('[data-vel-col="0"]'), 40)
+    const after = await strudelValue(page)
+    expect(after).toMatch(/\.gain\("/)
+    expect(headMini(after)).toBe('c3 [e3 g3] c4 e4')
   })
 })
 
