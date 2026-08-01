@@ -26090,12 +26090,43 @@ var sameCell = /* @__PURE__ */ __name((a, b) => {
 var sameCells = /* @__PURE__ */ __name((a, b) => a.length === b.length && a.every((c, i) => sameCell(c, b[i])), "sameCells");
 function reemitRegion(cols, div) {
   const spelled = sustainTokens(cols, div);
-  if (spelled === null) return null;
+  if (spelled === null) return stackedRegion(cols, div);
   const steps = [];
   for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(spelled.slice(i, i + div)));
   return steps.join(" ");
 }
 __name(reemitRegion, "reemitRegion");
+function stackedRegion(cols, div) {
+  if (div < 2) return null;
+  const slots = cols.length / div;
+  if (!Number.isInteger(slots) || slots < 1) return null;
+  const sounds = [];
+  for (const col of cols) for (const n of col) if (!sounds.includes(n.token)) sounds.push(n.token);
+  if (sounds.length === 0) return null;
+  const parts = [];
+  for (const sound of sounds) {
+    const seq = new Array(cols.length).fill("~");
+    const covered = new Array(cols.length).fill(false);
+    for (let c = 0; c < cols.length; c++) {
+      for (const n of cols[c]) {
+        if (n.token !== sound) continue;
+        const d = Math.round(n.duration);
+        if (Math.abs(n.duration - d) > 1e-6 || d < 1) return null;
+        if (c + d > cols.length) return null;
+        if (seq[c] !== "~" || covered[c]) return null;
+        seq[c] = sound;
+        for (let k = 1; k < d; k++) {
+          if (seq[c + k] !== "~" || covered[c + k]) return null;
+          covered[c + k] = true;
+        }
+      }
+    }
+    for (let c = 0; c < cols.length; c++) if (covered[c]) seq[c] = "_";
+    parts.push(seq.join(" "));
+  }
+  return `[${parts.join(", ")}]` + (slots > 1 ? `@${slots}` : "");
+}
+__name(stackedRegion, "stackedRegion");
 function sustainTokens(cols, div) {
   const out = new Array(cols.length).fill("");
   const covered = new Array(cols.length).fill(false);

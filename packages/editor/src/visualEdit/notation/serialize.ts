@@ -527,10 +527,78 @@ const sameCells = (a: GridCells, b: GridCells): boolean =>
  */
 function reemitRegion(cols: GridCells, div: number): string | null {
   const spelled = sustainTokens(cols, div)
-  if (spelled === null) return null
+  if (spelled === null) return stackedRegion(cols, div)
   const steps: string[] = []
   for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(spelled.slice(i, i + div)))
   return steps.join(' ')
+}
+
+/**
+ * THE FALLBACK WHEN A LENGTH WON'T FIT THE ONE-TOKEN-PER-COLUMN SHAPE (#1120).
+ *
+ * `sustainTokens` spells a length as `_` sustain in the step sequence, and above
+ * `div === 1` that sequence is chopped into `[…]` groups — so a note reaching across
+ * a group boundary needs a `_` in first position, which means nothing there. That is
+ * precisely what REFINING produces: a finer view raises `div`, every source element
+ * becomes a group, and every note longer than one column crosses a boundary. Held
+ * notes were the one class that could not be looked at more closely.
+ *
+ * The way out is to stop asking one sequence to carry every lane. Written as a
+ * `,`-stack — one flat part per sound, at COLUMN granularity — each part is its own
+ * sequence with no internal group boundary, so a `_` always has something before it.
+ * The stack is then weighted to the slot count the region owned, which is what keeps
+ * its neighbours where they were:
+ *
+ *   region = 4 columns / 2 slots, bd held across all four, a hit at column 0
+ *     one sequence   →  `[bd _] [_ _]`              ← `_` leads a group: no meaning
+ *     stacked        →  `[bd _ _ _, zz ~ ~ ~]@2`    ← every part flat, group weighted
+ *
+ * ⚠ THE OBVIOUS SPELLING IS WRONG, and Strudel says so rather than our reading of it.
+ * `[bd _, zz ~] _` looks like the same idea one level up, and it is not: a trailing
+ * `_` elongates the whole GROUP, so the one-column `zz` comes back at 0.25 of a cycle
+ * instead of 0.125. Every candidate here was checked against `queryArc` onsets before
+ * a line of this was written.
+ *
+ * ⚠ FALLBACK ONLY, and that ordering is load-bearing. It runs where the flat sheet
+ * already returned null, so no output that exists today can change shape — the golden
+ * round-trips keep passing because this path is unreachable for anything they cover.
+ * It also DECLINES rather than widening: two notes of the same sound overlapping, or
+ * a length that is not a whole number of columns, have no spelling here either.
+ */
+function stackedRegion(cols: GridCells, div: number): string | null {
+  // a flat region has no group boundary to cross, so nothing here can help it
+  if (div < 2) return null
+  const slots = cols.length / div
+  if (!Number.isInteger(slots) || slots < 1) return null
+
+  // first-appearance order, matching the canonical form the rest of this file writes
+  const sounds: string[] = []
+  for (const col of cols) for (const n of col) if (!sounds.includes(n.token)) sounds.push(n.token)
+  if (sounds.length === 0) return null
+
+  const parts: string[] = []
+  for (const sound of sounds) {
+    const seq: string[] = new Array(cols.length).fill('~')
+    const covered = new Array<boolean>(cols.length).fill(false)
+    for (let c = 0; c < cols.length; c++) {
+      for (const n of cols[c]) {
+        if (n.token !== sound) continue
+        const d = Math.round(n.duration)
+        if (Math.abs(n.duration - d) > 1e-6 || d < 1) return null
+        if (c + d > cols.length) return null // runs past the bytes this call owns
+        if (seq[c] !== '~' || covered[c]) return null // this sound already sounds here
+        seq[c] = sound
+        for (let k = 1; k < d; k++) {
+          if (seq[c + k] !== '~' || covered[c + k]) return null // same sound under the sustain
+          covered[c + k] = true
+        }
+      }
+    }
+    for (let c = 0; c < cols.length; c++) if (covered[c]) seq[c] = '_'
+    parts.push(seq.join(' '))
+  }
+  // a group already fills exactly one slot, so a weight is only written above one
+  return `[${parts.join(', ')}]` + (slots > 1 ? `@${slots}` : '')
 }
 
 /**
