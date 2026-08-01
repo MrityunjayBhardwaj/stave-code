@@ -109,6 +109,13 @@ for (const r of rows) {
  *
  * A vocabulary is only as total as the widest ask made of it. This sweep makes the
  * ask.
+ *
+ * FOUR SCALES, CHOSEN BY MEASUREMENT rather than assumed representative: every scale
+ * 1..16 was swept and each reports ZERO ungated refusals (counts climb 1552 → 1850
+ * across that range, so none of those sweeps is degenerate). Powers of two are kept
+ * because they are what the presets actually ask for, and the odd scales surfaced no
+ * class of their own — so widening this would cost time and find nothing. If a new
+ * refusal site ever appears, re-run the 1..16 check before trusting these four.
  */
 const REFINED_SCALES = [2, 4, 8, 16] as const
 const refinedRows: Row[] = []
