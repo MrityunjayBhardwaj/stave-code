@@ -59,13 +59,23 @@ const minis = [...new Set(corpus.minis.map((o) => o.mini.trim()).filter((m) => m
 type Refusal = { ok: false; reason: string; gate?: Gate }
 
 /**
- * The bucket an ask falls in. A refusal with no `gate` is one the syntactic core
- * answered before any projection ran (`not-a-pattern`, which `refused` passes through
- * verbatim) — reported as its own named class rather than folded into a catch-all, so
- * "no projection spoke" stays distinguishable from "a projection spoke and I did not
- * record which" ([[P417]]: a missing self-report must not read as a verdict).
+ * The bucket an ask falls in.
+ *
+ * ⚠ A MISSING `gate` IS NOT LABELLED AS A CAUSE, and that restraint is the whole
+ * lesson of #1130 applied to this file's own replacement. The tempting label is "the
+ * syntactic core answered before any projection ran" — the one documented case
+ * (`not-a-pattern`, which `refused` passes through verbatim). It would be wrong:
+ * swept over the corpus at scales 1/2/3/4/8/16, **788 refusals carry no gate** (456
+ * grid / 332 roll), and they are the view-resolution family, where a projection did
+ * speak and simply did not record it (#1132). 27 of them carry the `view-resolution`
+ * gate's character-identical sentence while 102 of the same class do carry the field.
+ *
+ * So the reason string is carried through VERBATIM instead. An unattributed ask then
+ * describes itself and stays visibly unattributed, rather than being given a cause
+ * this probe cannot actually know ([[P417]]: a missing self-report must not read as a
+ * verdict — which is exactly how `other` swallowed all 16 asks before).
  */
-const causeOf = (r: Refusal): string => r.gate ?? 'no gate — core answered (syntax)'
+const causeOf = (r: Refusal): string => r.gate ?? `NO GATE (#1132) — ${r.reason}`
 
 function sweep(label: string, parse: (m: string, s?: number) => { ok: boolean; model?: any; reason?: string; gate?: Gate }): void {
   let asks = 0
