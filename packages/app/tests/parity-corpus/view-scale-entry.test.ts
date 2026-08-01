@@ -270,14 +270,22 @@ describe('#1116 the view scale, through the public entries', () => {
   // expansions + 10 whole-cycle bar projections) and +39 roll (22 + 17), attributed
   // per path by `_1116-refusal-attribution.spec.ts`. The refusals that REMAIN are
   // the leaf-anchored path, which has no span to subdivide and is out of scope by
-  // decision, plus a small non-unit-note-length class tracked as #1120.
+  // decision.
+  //
+  // #1120 then closed the non-unit-note-length class this comment used to defer,
+  // taking the grid from 869/89 to 876/82: a held note reaching across a `[…]` group
+  // had no spelling, so the writer declined and the view was refused with it. Seven
+  // units, six of them reachable through the Slots control. `violations` stayed empty
+  // throughout — every one of the seven is a pure magnification by the same writer,
+  // which is the property this file exists to hold and the reason a bare count moving
+  // is safe to accept here.
   it('grid: LIVE, FAITHFUL and SAME-WRITER wherever honoured; REFUSES everywhere else', () => {
     const { honoured, refused, violations } = sweep(parseStepGrid, gridMoved)
     expect(violations).toEqual([])
-    expect(honoured.get(2)).toBe(869)
-    expect(honoured.get(4)).toBe(869)
-    expect(refused.get(2)).toBe(89)
-    expect(refused.get(4)).toBe(89)
+    expect(honoured.get(2)).toBe(876)
+    expect(honoured.get(4)).toBe(876)
+    expect(refused.get(2)).toBe(82)
+    expect(refused.get(4)).toBe(82)
   })
 
   it('roll: LIVE, FAITHFUL and SAME-WRITER wherever honoured; REFUSES everywhere else', () => {

@@ -25914,7 +25914,7 @@ function spliceGrid(model) {
         out += r.raw;
         continue;
       }
-      const re = reemitRegion(now2, sole ? 1 : p.div);
+      const re = reemitRegion(now2, sole ? 1 : p.div, model.viewScale !== void 0);
       if (re === null) return "decline";
       out += r.leading + re + r.trailing;
     }
@@ -26019,15 +26019,15 @@ function spliceAltGrid(model) {
       out += r.raw;
       continue;
     }
-    const re = reemitAltRegion(now2, a.div);
+    const re = reemitAltRegion(now2, a.div, model.viewScale !== void 0);
     if (re === null) return null;
     out += r.leading + re + r.trailing;
   }
   return out;
 }
 __name(spliceAltGrid, "spliceAltGrid");
-function reemitAltRegion(perBar2, div) {
-  const barTokens = perBar2.map((bar2) => reemitRegion(bar2, div));
+function reemitAltRegion(perBar2, div, refined = false) {
+  const barTokens = perBar2.map((bar2) => reemitRegion(bar2, div, refined));
   if (barTokens.some((t) => t === null)) return null;
   return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(" ")}>`;
 }
@@ -26062,9 +26062,9 @@ var sameCell = /* @__PURE__ */ __name((a, b) => {
   return a.length === b.length && a.every((x) => keys.includes(gridCellKey(x)));
 }, "sameCell");
 var sameCells = /* @__PURE__ */ __name((a, b) => a.length === b.length && a.every((c, i) => sameCell(c, b[i])), "sameCells");
-function reemitRegion(cols, div) {
+function reemitRegion(cols, div, refined = false) {
   const spelled = sustainTokens(cols, div);
-  if (spelled === null) return stackedRegion(cols, div);
+  if (spelled === null) return refined ? stackedRegion(cols, div) : null;
   const steps = [];
   for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(spelled.slice(i, i + div)));
   return steps.join(" ");

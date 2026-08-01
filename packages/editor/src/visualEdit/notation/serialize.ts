@@ -220,7 +220,7 @@ function spliceGrid(model: StepGridModel): string | 'rebuild' | 'decline' {
         out += r.raw
         continue
       }
-      const re = reemitRegion(now, sole ? 1 : p.div)
+      const re = reemitRegion(now, sole ? 1 : p.div, model.viewScale !== undefined)
       if (re === null) return 'decline'
       out += r.leading + re + r.trailing
     }
@@ -438,7 +438,7 @@ function spliceAltGrid(model: StepGridModel): string | null {
       out += r.raw
       continue
     }
-    const re = reemitAltRegion(now, a.div)
+    const re = reemitAltRegion(now, a.div, model.viewScale !== undefined)
     if (re === null) return null
     out += r.leading + re + r.trailing
   }
@@ -446,8 +446,8 @@ function spliceAltGrid(model: StepGridModel): string | null {
 }
 
 /** re-emit an edited alt element: `<b0 b1 …>` when its bars differ, plain when equal */
-function reemitAltRegion(perBar: GridCells[], div: number): string | null {
-  const barTokens = perBar.map((bar) => reemitRegion(bar, div))
+function reemitAltRegion(perBar: GridCells[], div: number, refined = false): string | null {
+  const barTokens = perBar.map((bar) => reemitRegion(bar, div, refined))
   if (barTokens.some((t) => t === null)) return null
   return barTokens.every((t) => t === barTokens[0]) ? barTokens[0]! : `<${barTokens.join(' ')}>`
 }
@@ -525,9 +525,9 @@ const sameCells = (a: GridCells, b: GridCells): boolean =>
  * top-level steps, which is exactly the flattening that pushed `hh*2`'s
  * neighbours out of position.
  */
-function reemitRegion(cols: GridCells, div: number): string | null {
+function reemitRegion(cols: GridCells, div: number, refined = false): string | null {
   const spelled = sustainTokens(cols, div)
-  if (spelled === null) return stackedRegion(cols, div)
+  if (spelled === null) return refined ? stackedRegion(cols, div) : null
   const steps: string[] = []
   for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(spelled.slice(i, i + div)))
   return steps.join(' ')
@@ -564,6 +564,16 @@ function reemitRegion(cols: GridCells, div: number): string | null {
  * round-trips keep passing because this path is unreachable for anything they cover.
  * It also DECLINES rather than widening: two notes of the same sound overlapping, or
  * a length that is not a whole number of columns, have no spelling here either.
+ *
+ * ⚠ REFINED VIEWS ONLY, and that gate was added because the corpus caught its absence.
+ * Some patterns already carry `div > 1` at their own resolution, so an ungated fallback
+ * also fired there — and making the writer succeed makes the edit-safety probe pass,
+ * which hands the pattern to the ELEMENT re-emitter instead of the leaf-anchored one.
+ * Measured: leaf grids went 82 → 76 with no gate. That is a writer swap at the
+ * document's own resolution, which #1120 never asked for and which the leaf path's
+ * position as the LAST fallback exists to prevent — it copies every structural byte
+ * rather than re-emitting. Scoped to `model.viewScale !== undefined`, the reach change
+ * is confined to the refined views the issue is about.
  */
 function stackedRegion(cols: GridCells, div: number): string | null {
   // a flat region has no group boundary to cross, so nothing here can help it
