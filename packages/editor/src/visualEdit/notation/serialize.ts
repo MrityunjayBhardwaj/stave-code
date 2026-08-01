@@ -924,7 +924,26 @@ function spliceRoll(model: PianoRollModel): string | null {
 function spliceAltRoll(model: PianoRollModel): string | null {
   const a = model.altSource
   if (!a) return null
-  // a per-note `.gain("…")` can't ride an alternation yet → hands off (#915 class)
+  // A per-note `.gain("…")` reaching an alternation is handed off rather than
+  // spliced (#915 class). KEPT DELIBERATELY, and the reason is not the one this
+  // comment used to give — measured 2026-08-01 (#1128):
+  //
+  // THIS LINE IS CURRENTLY UNREACHABLE FOR THE CASE IT NAMES. An `altSource`
+  // exists only for an alternation used as an ELEMENT (`c3 <e3 g3>`), which
+  // forces `perBar >= 2` and therefore `steps !== bars` — exactly the condition
+  // `serializeRollGain` already skips on (#632: "subdivided bars need a nested
+  // gain mini and stay deferred"). A whole-cycle `<…>` has no `altSource` at all
+  // and takes the `bars` path, which is why a `<c3 e3 g3 c4>` velocity drag
+  // writes `<1 0.5 1 1>` today. Over the corpus: 52 rolls with a fitting
+  // `altSource`, 51 skipped ABOVE here, 1 arrives — and that one has `bars = 1`,
+  // so it is not an alternation either. With this guard removed that unit
+  // splices correctly: 0 re-spelled, 0 play-changed, asked of the engine.
+  //
+  // So it is kept as a BACKSTOP, not as a live refusal: if #632's nested gain
+  // mini lands, `serializeRollGain` stops skipping, real alternations reach this
+  // line, and the alignment concern becomes live again. Anyone landing #632 owes
+  // this guard a re-measurement — and note it DECLINES (returns null, so the
+  // panel leaves the document alone) rather than falling through to a rebuild.
   const gain = serializeRollGain(model)
   if (gain.kind === 'write' && gain.quoted) return null
   // fractional columns don't sit on the integer grid the re-emit walks — an
