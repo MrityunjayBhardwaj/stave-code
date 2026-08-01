@@ -382,35 +382,52 @@ describe('step grid — round-trip identity', () => {
   for (const s of canonical) it(`"${s}"`, () => gridRoundTrips(s))
 })
 
-describe('step grid — velocity still defeats span surgery (#913 known gap)', () => {
+describe('step grid — velocity no longer defeats span surgery (#913 gap CLOSED by #1123)', () => {
   /**
-   * PINNED, NOT HIDDEN. A per-column `.gain("v v v v")` runs 1:1 against the
-   * FLAT column sequence, so a grid carrying one must keep emitting that flat
-   * sequence or the velocities land on the wrong notes — and the notation goes
-   * with it, even on an UNEDITED write.
+   * ⚠ THIS TEST USED TO ASSERT THE OPPOSITE, AND THE REASON IT GAVE WAS WRONG.
    *
-   * This is a strict non-regression (it is what every grid did before #913),
-   * and it is the same defect surviving in the one shape the corpus gates
-   * cannot see: `round-trip.test.ts` sweeps bare mini strings, which never
-   * carry a `.gain`. Closing it means giving the gain mini the same structure
-   * as the notes (`0.5 [1 1] 0.8 1`, not `0.5 ~ 1 1 0.8 ~ 1 ~`) — its own
-   * piece of work, so it is asserted here rather than left to be discovered.
+   * It pinned "a per-column `.gain` forces the flat rebuild" as a known gap, on the
+   * grounds that the gain mini "runs 1:1 against the FLAT column sequence, so a grid
+   * carrying one must keep emitting that flat sequence or the velocities land on the
+   * wrong notes" — and it named the remedy: give the gain mini the same STRUCTURE as
+   * the notes (`0.5 [1 1] 0.8 1` rather than `0.5 ~ 1 1 0.8 ~ 1 ~`), "its own piece of
+   * work".
+   *
+   * The engine says that work is not needed (#1123). The 1:1 relationship is with the
+   * COLUMNS, which a splice preserves exactly; it changes only how they are spelled. In
+   * `bd hh*2 sd cp` the columns are eight uniform eighths either way, so the flat gain
+   * mini lands on exactly the right notes: `bd` at token 0, the two `hh` at 2 and 3,
+   * `sd` at 4, `cp` at 6 — the `~` tokens sit where no note starts. Verified against
+   * Strudel over the whole corpus rather than argued: 220 units where the two spellings
+   * differ, 217 played identically, and zero notes anywhere received a different gain.
+   *
+   * The lesson worth keeping is that the gap was real and its stated CAUSE was not — so
+   * the fix cost a guard removal rather than the gain-mini rewrite it was scoped for.
    */
-  it('a per-column .gain forces the flat rebuild, `*2` and all', () => {
+  it('a per-column .gain keeps the notation, `*2` and all', () => {
     const r = parseStepGrid('bd hh*2 sd cp')
     expect(r.ok).toBe(true)
     if (!r.ok) return
     // no gain → the notation survives
     expect(serializeStepGrid(r.model)).toBe('bd hh*2 sd cp')
-    // per-column velocity → back to the flat rebuild
+    // …and per-column velocity no longer costs it
     const withGain = applyStepGain(r.model, {
       mini: '0.5 ~ 1 1 0.8 ~ 1 ~',
       numeric: null,
       foreign: false,
     })
-    // `bd _ …`, not `bd ~ …` (#1010 P4c): the rebuild spells each note's real length, and
-    // `bd` beside a `hh*2` group owns two of the flattened columns.
-    expect(serializeStepGrid(withGain)).toBe('bd _ hh hh sd _ cp _')
+    expect(serializeStepGrid(withGain)).toBe('bd hh*2 sd cp')
+    // The gain really is carried — this does not pass by dropping it. Asserted on the
+    // COLUMNS the values land on rather than on the whole string, because the rest of
+    // the string is `serializeStepGain`'s own rendering (a sustained column reads
+    // neutral `1`, not `~`) and has nothing to do with which notation was written.
+    const g = serializeStepGain(withGain)
+    expect(g.kind).toBe('write')
+    if (g.kind !== 'write') return
+    const tokens = g.value.split(' ')
+    expect(tokens).toHaveLength(8)
+    expect(tokens[0], '`bd` keeps its velocity').toBe('0.5')
+    expect(tokens[4], '`sd` keeps its velocity').toBe('0.8')
   })
 
   it('a SCALAR .gain does not — it needs no column alignment', () => {
@@ -1101,6 +1118,39 @@ describe('step grid — velocity (.gain)', () => {
     expect(fresh.ok).toBe(true)
     if (!fresh.ok) return
     expect(applyStepGain(fresh.model, strGain(g.value)).gains).toEqual([1, 1, 0.8, 0.5])
+  })
+
+  /**
+   * ⚠ THE ASSERTION ABOVE IS THE RIGHT ONE AND ITS FIXTURE COULD NOT FAIL IT (#1123).
+   * "the head mini is unchanged by velocity" is exactly the property — asserted on
+   * `bd ~ sn hh`, which is already flat, so re-spelling it flat is the identity. The
+   * writer rebuilt every structured pattern in the corpus for years underneath it.
+   *
+   * These fixtures have grouping, an operator, a stack and a held note, so their
+   * representation can differ from their value. Same property, on input that can say so.
+   */
+  it.each([
+    ['a group', 'bd [hh hh] sn cp'],
+    ['an operator', 'bd hh*2 sn cp'],
+    ['a held note', 'bd@2 hh sn'],
+    // NOT a `,`-stack: `serializeStepGain` returns `skip` for those by design, so the
+    // gain never reaches the writer and the fixture would assert nothing.
+  ])('velocity leaves a structured pattern spelled as written — %s', (_shape, mini) => {
+    const seed = parseStepGrid(mini)
+    expect(seed.ok).toBe(true)
+    if (!seed.ok) return
+    const before = serializeStepGrid(seed.model)
+    expect(before).toBe(mini) // the fixture really does round-trip to itself
+
+    const gains = Array<number>(seed.model.steps).fill(1)
+    gains[0] = 0.42
+    const withGain: StepGridModel = { ...seed.model, gains }
+
+    expect(serializeStepGrid(withGain), 'a velocity change is not a notation change').toBe(mini)
+    // …and the velocity really was written, so this is not passing by doing nothing
+    const g = serializeStepGain(withGain)
+    expect(g.kind).toBe('write')
+    if (g.kind === 'write') expect(g.value.startsWith('0.42')).toBe(true)
   })
 
   it('round-trips a scalar base: .gain(0.4) → uniform gains → .gain(0.4)', () => {
