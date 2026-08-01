@@ -170,13 +170,24 @@ export function serializeStepGrid(model: StepGridModel): string | null {
 function spliceGrid(model: StepGridModel): string | 'rebuild' | 'decline' {
   const src = model.source
   if (!src || src.parts.length === 0) return 'rebuild'
-  // A per-column `.gain("…")` runs 1:1 against the FLAT column sequence, so a
-  // grid carrying one has to keep emitting that sequence or the velocities
-  // land on the wrong notes. Asked rather than re-derived, so the two writers
-  // cannot drift apart.
-  const gain = serializeStepGain(model)
-  if (gain.kind === 'write' && gain.quoted) return 'rebuild'
-
+  // ⚠ THERE WAS A GUARD HERE, AND THE ENGINE REFUTED IT (#1123). It rebuilt the whole
+  // grid flat whenever a per-column `.gain("…")` had to be written, reasoning that the
+  // gain mini "runs 1:1 against the FLAT column sequence, so a grid carrying one has to
+  // keep emitting that sequence or the velocities land on the wrong notes."
+  //
+  // The 1:1 relationship is with the COLUMNS, and a splice preserves those exactly — it
+  // changes only how they are SPELLED. A grid model's columns are the uniform expansion
+  // by construction, so a flat per-column gain mini aligns with any notation the model
+  // can represent: in `bd [hh hh] sn cp` the `bd` owns gain tokens 0-1 and each `hh`
+  // owns one, and Strudel samples every note's gain at its own onset either way.
+  //
+  // Settled by asking Strudel rather than by reading either writer ([[P301]]). Over the
+  // 220 corpus units where the two spellings differ: the engine plays 217 identically,
+  // and in the 3 that differ NO note receives a different gain — the difference is the
+  // REBUILD losing content (a deduped chord member, an alternation inside a euclid
+  // argument). Measured against the user's own document, the splice matches on all 220
+  // and the rebuild on 217, so the guard was never protecting a case that existed and on
+  // 3 units it silently changed what plays.
   let out = src.prefix
   for (const p of src.parts) {
     const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part)
@@ -821,12 +832,16 @@ function assignNotes(
 function spliceRoll(model: PianoRollModel): string | null {
   const src = model.source
   if (!src || src.parts.length === 0) return null
-  // A per-note `.gain("…")` mini runs 1:1 against the sequence THIS writer
-  // emits, so a roll carrying one has to keep emitting that sequence or the
-  // velocities land on the wrong notes (#915, the grid's identical case). Asked
-  // rather than re-derived, so the two writers cannot drift apart.
-  const gain = serializeRollGain(model)
-  if (gain.kind === 'write' && gain.quoted) return null
+  // ⚠ THE ROLL'S HALF OF THE SAME REFUTED GUARD (#1123), and it was NOT assumed to be
+  // the grid's case — it was asked separately, because the roll's gain mini emits one
+  // token per note GROUP with `@duration`, mirroring the sequence this writer emits,
+  // which is a real coupling the grid's flat per-column run does not have.
+  //
+  // The engine answered the same way. Over the 156 corpus units where the two spellings
+  // differ: 127 play identically, 29 differ, and in NONE of the 29 does a note receive a
+  // different gain. Against the user's own document the splice matches all 156 and the
+  // rebuild 127 — so on 29 roll units a velocity drag was silently changing what plays,
+  // not merely how it was spelled.
   // The regions were built to tile a grid of some width. If the model's width
   // has moved since — a resolution ×2, a quantize to a new slot count — the
   // source is describing a layout that no longer exists, and splicing against it

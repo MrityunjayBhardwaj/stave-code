@@ -25895,8 +25895,6 @@ __name(serializeStepGrid, "serializeStepGrid");
 function spliceGrid(model) {
   const src = model.source;
   if (!src || src.parts.length === 0) return "rebuild";
-  const gain = serializeStepGain(model);
-  if (gain.kind === "write" && gain.quoted) return "rebuild";
   let out = src.prefix;
   for (const p of src.parts) {
     const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part);
@@ -26213,8 +26211,6 @@ __name(assignNotes, "assignNotes");
 function spliceRoll(model) {
   const src = model.source;
   if (!src || src.parts.length === 0) return null;
-  const gain = serializeRollGain(model);
-  if (gain.kind === "write" && gain.quoted) return null;
   const covers = src.parts.every((p) => {
     const last = p.regions[p.regions.length - 1];
     return last !== void 0 && last.to === model.steps;

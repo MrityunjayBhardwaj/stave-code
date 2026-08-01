@@ -162,11 +162,11 @@ describe('useGridModel — writing from a refined view (#1057)', () => {
    * through a refined view must write the same document. "The notation did not change"
    * would be satisfied by a control that did nothing at all.
    *
-   * ⚠ THE EDIT IS AN ERASE, NOT A VELOCITY DRAG, and the reason is worth stating: a
-   * gain edit re-spells a structured pattern flat at EVERY resolution, refined or not
-   * (#1123). That is a different defect on a different write path, and asserting it
-   * here would tie this gate to an unrelated bug — the first draft of this test did,
-   * and failed on a document where both arms were equally flat.
+   * ⚠ THE EDIT IS AN ERASE, NOT A VELOCITY DRAG, and the reason is worth keeping even
+   * now that #1123 is fixed: the two are different write paths, and a gate that asserts
+   * both cannot say which one broke. The first draft of this test used a velocity drag
+   * and failed on a document where both arms were equally flat — which is how #1123 was
+   * found. Its own hook-level case is the one below.
    */
   it('#1121: the same edit on a STRUCTURED document spells the same, refined or not', () => {
     const SRC = 's("bd [hh hh] sn cp")'
@@ -188,6 +188,23 @@ describe('useGridModel — writing from a refined view (#1057)', () => {
     expect(DOC).toBe(unrefined)
     // …and the user's zoom survives, because the document's spelling never changed
     expect(h.viewScale).toBe(2)
+  })
+
+  /**
+   * #1123 through the real hook. The corpus gate proves the writer; this proves the
+   * bytes that actually reach the file, on a document with structure — the last thing
+   * the issue listed as owed.
+   */
+  it('#1123: a velocity drag leaves a STRUCTURED document spelled as written', () => {
+    DOC = 's("bd [hh hh] sn cp")'
+    render(React.createElement(Harness))
+
+    act(() => h.mutate((prev) => setColumnGain(prev, 0, 0.42)))
+
+    expect(DOC, 'the grouping the author wrote must survive').toContain('[hh hh]')
+    expect(DOC.startsWith('s("bd [hh hh] sn cp")'), DOC).toBe(true)
+    // …and the velocity really landed, so this does not pass by writing nothing
+    expect(DOC).toContain('.gain(')
   })
 
   it('a second velocity edit does not drift the document', () => {

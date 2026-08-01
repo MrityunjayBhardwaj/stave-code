@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest'
 
 import { parseStepGrid, parsePianoRoll, applyStepGain, applyRollGain } from '../parse'
-import { serializeStepGrid, serializePianoRoll, serializeStepGain } from '../serialize'
+import {
+  serializeStepGrid,
+  serializePianoRoll,
+  serializeStepGain,
+  serializeRollGain,
+} from '../serialize'
 import {
   scaleStepGrid,
   scalePianoRoll,
@@ -606,9 +611,16 @@ describe('a write spells the refinement only when it needs to', () => {
     if (!drawn.ok) throw new Error('unreachable')
     const gained = setColumnGain(drawn.model, 0, 0.42)
 
-    // what the model would have written before: the drawn spelling, and a `.gain`
-    // mini widened to match it — two ranges recording how closely someone looked
-    expect(serializeStepGrid(gained)).toBe('bd _ ~ ~ sn _ ~ ~')
+    // ⚠ THIS USED TO BE TWO RANGES AND #1123 CLOSED ONE OF THEM. The uncollapsed write
+    // respelled the NOTATION (`bd _ ~ ~ sn _ ~ ~`) *and* widened the `.gain` mini to
+    // match. The notation half is now safe on its own — a gain edit no longer costs the
+    // splice — so what remains for the collapse to prevent is the gain range alone.
+    expect(serializeStepGrid(gained), 'the notation is already safe (#1123)').toBe('bd ~ sn ~')
+    expect(serializeStepGain(gained), 'but the gain is still at the DRAWN width').toEqual({
+      kind: 'write',
+      value: '0.42 1 ~ ~ 1 1 ~ ~',
+      quoted: true,
+    })
 
     const atDoc = collapseStepGridToDocument(gained)
     expect(atDoc, 'a gain change stays on the document grid').not.toBeNull()
@@ -715,7 +727,13 @@ describe('a write spells the refinement only when it needs to', () => {
     const drawn = parsePianoRoll('c3 ~ e3 ~', 2)
     if (!drawn.ok) throw new Error('unreachable')
     const gained = setGroupGain(drawn.model, drawn.model.notes[0].start, 0.42)
-    expect(serializePianoRoll(gained)).toBe('c3@2 ~ ~ e3@2 ~ ~') // what it would have written
+    // the roll's half of the same split (#1123): notation safe, gain still drawn-width
+    expect(serializePianoRoll(gained)).toBe('c3 ~ e3 ~')
+    expect(serializeRollGain(gained)).toEqual({
+      kind: 'write',
+      value: '0.42@2 ~ ~ 1@2 ~ ~',
+      quoted: true,
+    })
     const atDoc = collapsePianoRollToDocument(gained)
     expect(atDoc).not.toBeNull()
     expect(serializePianoRoll(atDoc as PianoRollModel)).toBe('c3 ~ e3 ~')
