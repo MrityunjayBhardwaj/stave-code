@@ -329,4 +329,49 @@ test.describe('looking closer at an alternation draws it (#1117)', () => {
     expect(await strudelValue(page)).toBe(SRC)
     expect(errors).toEqual([])
   })
+
+  test('grid: `bd@2 sn cp` offers a finer view, and taking it writes nothing (#1120)', async ({
+    page,
+  }) => {
+    // A HELD NOTE, which is the property the fixtures at this seam were missing next.
+    // The three clauses above all use unit-length notes; this one does not.
+    //
+    // ⚠ WHAT GOING RED HERE ACTUALLY LOOKS LIKE, observed rather than assumed. Revert
+    // the writer fix and the "8" button is NOT disabled — it comes back as
+    // `title="8 slots — keeps timing"`, i.e. offered as a lossless WRITE with no
+    // `data-resolution-view`. So on this fixture the pre-fix harm is not "you cannot
+    // look closer", it is "looking closer rewrites your file": the free zone declined,
+    // and the click fell through to the branch below it, which writes. Patterns whose
+    // doubled width is not reachable losslessly get the disabled button the issue
+    // describes instead. One cause, two faces, and the attribute is what tells them
+    // apart — which is why this asserts the attribute and not merely enabledness.
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await boot(page)
+    const SRC = '$: s("bd@2 sn cp")'
+    await setStrudelCode(page, SRC)
+    const drawer = await openPattern(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    const slots = slotsControl(drawer)
+
+    await expect(grid).toHaveCount(1)
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
+
+    // THE CLAUSE THAT GOES RED WITHOUT THE FIX: the target was not offered at all
+    await expect(slots.locator('[data-resolution-step="8"]')).toHaveAttribute(
+      'data-resolution-view',
+      'true',
+    )
+
+    await slots.locator('[data-resolution-step="8"]').click()
+    await page.waitForTimeout(150)
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
+    expect(await strudelValue(page)).toBe(SRC)
+
+    await slots.locator('[data-resolution-step="4"]').click()
+    await page.waitForTimeout(150)
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
+    expect(await strudelValue(page)).toBe(SRC)
+    expect(errors).toEqual([])
+  })
 })

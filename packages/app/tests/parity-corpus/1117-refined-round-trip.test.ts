@@ -378,11 +378,19 @@ describe('#1117 — coming back from a refined view', () => {
  * and they measured identically on `c12b8d0d` with these projections taught the scale
  * and without. They are pinned here so that if a future change to the collapse moves
  * them, it cannot be mistaken for a cost of the alternation work.
+ *
+ * ⚠ THE ELEMENT ROW MOVED, AND THE PIN IS WHY WE KNOW (#1120). Teaching the writer to
+ * spell a held note across a `[…]` boundary took the grid's element path from 736/735
+ * to 743/742 — seven units that used to refuse a finer view now draw one, and six of
+ * those are reachable through the Slots control. The alternation rows and every roll
+ * row are unchanged, so the move is attributable to that one writer change and nothing
+ * else. Every correctness counter on the row stayed at zero: nothing was re-spelled,
+ * no content changed, no width was wrong, and no collapse diverged.
  */
 const GRID_PINS: Record<string, [number, number, number]> = {
   'alt-element': [57, 57, 0],
   'alt-whole': [76, 76, 0],
-  element: [736, 735, 0],
+  element: [743, 742, 0],
 }
 const ROLL_PINS: Record<string, [number, number, number]> = {
   'alt-element': [52, 36, 0],
