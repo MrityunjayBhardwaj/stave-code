@@ -104,11 +104,38 @@ describe('#1120 — held notes can be refined', () => {
     expect(onsets(SRC)).toBe('bd@0.0000+0.5000  cp@0.7500+0.2500  sn@0.5000+0.2500')
   })
 
-  it('LOOK CLOSER — the obvious one-level-up spelling is wrong, and Strudel is why', () => {
+  it('a CHORD region survives an edit through the stacked path', () => {
+    // the stacked form gives every sound its own part, so a chord that the flat sheet
+    // wrote as one `[a,b]` cell token comes back as separate parts. That is a genuinely
+    // different shape, and the corpus unit that exercises it is a four-note chord — so
+    // the property is asserted where it actually lives, in what Strudel plays.
+    const SRC = '[c2, ds3]@2 e3 g3'
+    const fine = parseStepGrid(SRC, 2)
+    expect(fine.ok).toBe(true)
+    if (!fine.ok) return
+
+    const before = onsets(SRC)
+    const lanes = fine.model.lanes.map((l) => ({ ...l, cells: [...l.cells] }))
+    lanes[2].cells[1] = cellOn() // a fine column inside the held chord's span
+    const out = serializeStepGrid({ ...fine.model, lanes })
+    expect(out, 'the chord region must be writable').not.toBeNull()
+
+    const after = onsets(out!)
+    // every note that was already there keeps its onset AND its length
+    for (const note of before.split('  ')) expect(after, `${note} must survive`).toContain(note)
+    // …and exactly one note was added
+    expect(after.split('  ').length).toBe(before.split('  ').length + 1)
+  })
+
+  it('ASSERTS STRUDEL, NOT US — the obvious one-level-up spelling elongates the group', () => {
+    // ⚠ THIS CLAUSE PROVES NOTHING ABOUT THE FIX, and is named so nobody reads it as
+    // coverage: it stays green with `stackedRegion` removed, because it only queries
+    // the engine. It is here to record WHY the spelling is what it is, so the fix
+    // cannot be "simplified" back into the bug.
+    //
     // `[bd _, zz ~] _` reads like the same idea applied to the step sequence. It is
     // not: a trailing `_` elongates the whole GROUP, so the one-column note comes
-    // back at twice the length. This clause is what stops the fix being "simplified"
-    // back into the bug.
+    // back at twice the length.
     const stacked = onsets('[bd _ _ _, zz ~ ~ ~]@2 sn cp')
     const naive = onsets('[bd _, zz ~] _ sn cp')
     expect(stacked).toContain('zz@0.0000+0.1250')
@@ -116,9 +143,12 @@ describe('#1120 — held notes can be refined', () => {
     expect(naive).not.toBe(stacked)
   })
 
-  it('still DECLINES a length with no whole-column spelling', () => {
-    // the fallback widens what can be written, not what can be invented: a note
-    // shorter than a column has no token at this resolution either way
+  it('SCOPE LIMIT — the fallback declines a length with no whole-column spelling', () => {
+    // ⚠ A SCOPE CLAUSE, not a fires-per-cause one. With `stackedRegion` removed it
+    // does redden, but at its SETUP — the refine it needs is the thing being removed —
+    // so it would read as proof of the fix while actually asserting nothing about it.
+    // What it really holds: the fallback widens what can be WRITTEN, never what can be
+    // invented. A note shorter than a column has no token at this resolution either way.
     const fine = parseStepGrid('bd@2 sn cp', 2)
     expect(fine.ok).toBe(true)
     if (!fine.ok) return
