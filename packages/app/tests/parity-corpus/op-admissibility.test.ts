@@ -72,7 +72,10 @@ import {
   quantizePianoRollTo,
   stepSlotState,
   rollSlotState,
+  freeZoneScale,
+  type SlotState,
 } from '../../../editor/src/visualEdit/notation/resolution'
+import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
 import { resizeGrid, resizeRoll } from '../../../editor/src/visualEdit/notation/resize'
 import type {
   PianoRollModel,
@@ -90,9 +93,39 @@ interface Op<M> {
   name: string
   /** the op's result — the SAME reference when it does not apply */
   apply: (m: M) => M
-  /** what the panel asks to enable the control; omitted when identity IS the signal */
-  enabled?: (m: M) => boolean
+  /**
+   * What the panel asks to enable the control; omitted when identity IS the signal.
+   *
+   * ⚠ TAKES THE MINI AS WELL AS THE MODEL, and that is not a convenience (#1059).
+   * The Slots control's real predicate is `stepSlotState(model, target, canDrawView)`
+   * and `canDrawView` is a PARSE of the mini at a candidate scale — it cannot be
+   * derived from the model. Without it this gate evaluated the control with the free
+   * zone switched off, i.e. it asserted the PRE-#1057 control while the panel
+   * rendered the post-#1057 one. Same function, different arity, opposite verdict on
+   * every free-zone target.
+   */
+  enabled?: (m: M, mini: string) => boolean
+  /**
+   * DOES THE CONTROL ACTUALLY ROUTE TO THIS OP HERE? Default: always.
+   *
+   * `enabled` asks "is the button pressable"; this asks the prior question, "is
+   * THIS the op the press would run". They came apart at #1057. `scaleToSlots`
+   * branches — a free-zone target calls `setViewScale` and returns, everything else
+   * calls `quantize<Op>To` — so on a free-zone target the Slots control is pressable
+   * AND `quantizeStepGridTo` is not the op behind it.
+   *
+   * Without this distinction the pairing below compares a control against an op it
+   * does not drive and reports a mismatch on every free-zone target (3006 grid /
+   * 1245 roll, measured). That is not a dead control; it is the gate asking the
+   * wrong question. Skipping the pair is the honest answer, not widening `enabled`
+   * to make the arithmetic come out.
+   */
+  drives?: (m: M, mini: string) => boolean
 }
+
+/** the prover the panel uses — ask the parser at a candidate scale, never predict it */
+const gridProver = (mini: string) => (scale: number) => parseStepGrid(mini, scale).ok
+const rollProver = (mini: string) => (scale: number) => parsePianoRoll(mini, scale).ok
 
 const GRID_OPS: Op<StepGridModel>[] = [
   { name: '×2', apply: (m) => scaleStepGrid(m, 'double'), enabled: canDoubleStepGrid },
@@ -111,7 +144,15 @@ const GRID_OPS: Op<StepGridModel>[] = [
       // the pair a user can see disagree. The first cut of this gate passed no `enabled`
       // here and therefore could not see the one dead button that survived the phase —
       // a gate with a hole exactly where the UI lives ([[P352]]).
-      enabled: (m) => stepSlotState(m, t) !== 'disabled' && stepSlotState(m, t) !== 'active',
+      // ASKED WITH THE PROVER, and restricted to the states that actually run this
+      // op. Post-#1057 the panel branches: a `view` target sets the view scale and
+      // never reaches `quantizeStepGridTo` at all, so pairing it with this `apply`
+      // would compare a control against an op it does not drive.
+      drives: (m, mini) => stepSlotState(m, t, gridProver(mini)) !== 'view',
+      enabled: (m, mini) => {
+        const s = stepSlotState(m, t, gridProver(mini))
+        return s === 'lossless' || s === 'quantize'
+      },
     },
     { name: `resize spread ${t}`, apply: (m) => resizeGrid(m, t, 'spread') },
     { name: `resize pad ${t}`, apply: (m) => resizeGrid(m, t, 'pad') },
@@ -130,7 +171,11 @@ const ROLL_OPS: Op<PianoRollModel>[] = [
     {
       name: `slots ${t}`,
       apply: (m) => quantizePianoRollTo(m, t),
-      enabled: (m) => rollSlotState(m, t) !== 'disabled' && rollSlotState(m, t) !== 'active',
+      drives: (m, mini) => rollSlotState(m, t, rollProver(mini)) !== 'view',
+      enabled: (m, mini) => {
+        const s = rollSlotState(m, t, rollProver(mini))
+        return s === 'lossless' || s === 'quantize'
+      },
     },
     { name: `resize spread ${t}`, apply: (m) => resizeRoll(m, t, 'spread') },
     { name: `resize pad ${t}`, apply: (m) => resizeRoll(m, t, 'pad') },
@@ -158,6 +203,12 @@ function sweep<M>(
     views++
     for (const op of ops) {
       const t = byOp.get(op.name) ?? { applied: 0, dead: 0, enabledButIdentity: 0 }
+      // the control does not route here — pairing it with this op would compare a
+      // button against an op it never runs
+      if (op.drives && !op.drives(model, mini)) {
+        byOp.set(op.name, t)
+        continue
+      }
       const next = op.apply(model)
       if (next !== model) {
         t.applied++
@@ -169,7 +220,7 @@ function sweep<M>(
       }
       // …and the control's enabled-ness must agree with whether the op applies, or the
       // panel offers a button that is a no-op (the other half of the same defect).
-      if (op.enabled && op.enabled(model) !== (next !== model)) t.enabledButIdentity++
+      if (op.enabled && op.enabled(model, mini) !== (next !== model)) t.enabledButIdentity++
       byOp.set(op.name, t)
     }
   }
@@ -307,5 +358,156 @@ describe('op admissibility — an enabled control produces writable notation', (
       escapedOther,
       'a non-leaf grid wrote a sub-column length instead of declining — the printer spells lengths on this path',
     ).toBe(0)
+  })
+})
+
+/**
+ * ── THE FREE / WRITES AXIS (#1059) ────────────────────────────────────────────
+ *
+ * The sweep above pairs a control's enabled-ness with whether its op APPLIES. That
+ * was the whole question while every enabled target wrote. It is no longer: since
+ * #1057 the Slots control has two zones, and the promise the user is given differs
+ * between them. So the axis this adds is not "does it apply" but "does it WRITE":
+ *
+ *   - a FREE-ZONE target must NEVER write — it is satisfied by drawing alone, and
+ *     the panel routes it to `setViewScale` without reaching the writer at all;
+ *   - a WRITES-ZONE target must ALWAYS write — otherwise it is the dead control
+ *     this file exists to catch, wearing the one label that promises an edit.
+ *
+ * ⚠ EVERY STATE HERE IS ASKED WITH THE PROVER. Without it `slotState` skips the free
+ * zone entirely and answers as the pre-#1057 control did, which would make the free
+ * half of this axis unobservable — it would report zero free offers and pass.
+ *
+ * ⚠ THE TARGETS INCLUDE THE RELATIVE ONES. #1059 reshaped the picker to ÷2 / ×2
+ * against the DRAWN count, so a gate that swept only `RESOLUTION_PRESETS` would be
+ * measuring a vocabulary the control no longer offers — the same shape of hole as
+ * the missing `enabled` predicate that let 483 dead buttons through.
+ */
+/**
+ * ⚠ COUNTS AND EXAMPLES ARE SEPARATE FIELDS ON PURPOSE. The example lists are capped
+ * so a red gate prints something readable; if the report derived its totals from
+ * `examples.length` it would print the CAP and call it the population — a detector
+ * that finds N defects and reports 8. The counts are unbounded; only the naming is
+ * capped ([[P428]]).
+ */
+interface ZoneTally {
+  free: number
+  writes: number
+  freeUndrawableN: number
+  writesInertN: number
+  writesUnspellableN: number
+  freeUndrawable: string[]
+  writesInert: string[]
+  writesUnspellable: string[]
+}
+
+function zoneSweep<M extends { steps: number }>(
+  parse: (m: string, k?: number) => { ok: boolean; model?: M },
+  slot: (m: M, t: number, c: (k: number) => boolean) => SlotState,
+  quantizeTo: (m: M, t: number) => M,
+  write: (m: M) => string | null,
+): ZoneTally {
+  const t: ZoneTally = {
+    free: 0,
+    writes: 0,
+    freeUndrawableN: 0,
+    writesInertN: 0,
+    writesUnspellableN: 0,
+    freeUndrawable: [],
+    writesInert: [],
+    writesUnspellable: [],
+  }
+  for (const mini of minis) {
+    const r = parse(mini)
+    if (!r.ok || !r.model) continue
+    const model = r.model
+    const docSteps = documentSteps(model)
+    const prover = (k: number): boolean => parse(mini, k).ok
+    const relative = [model.steps * 2, ...(model.steps % 2 === 0 ? [model.steps / 2] : [])]
+    for (const target of [...RESOLUTION_PRESETS, ...relative]) {
+      const state = slot(model, target, prover)
+      if (state === 'view') {
+        t.free++
+        // "never writes" is TRUE BY ROUTING — the panel sets the view scale and the
+        // writer is not called. What can still be wrong is the OFFER: a target shown
+        // as free that the parser will not actually draw is a button whose promise
+        // fails on press. That is the checkable half, and it is asked of the parser.
+        const scale = freeZoneScale(docSteps, target)
+        if (scale === null || !parse(mini, scale).ok) {
+          t.freeUndrawableN++
+          if (t.freeUndrawable.length < 8) t.freeUndrawable.push(`${target}  ${JSON.stringify(mini)}`)
+        }
+        continue
+      }
+      if (state !== 'lossless' && state !== 'quantize') continue
+      t.writes++
+      const next = quantizeTo(model, target)
+      if (next === model) {
+        t.writesInertN++
+        if (t.writesInert.length < 8) t.writesInert.push(`${target}  ${JSON.stringify(mini)}`)
+        continue
+      }
+      if (write(next) === null) {
+        t.writesUnspellableN++
+        if (t.writesUnspellable.length < 8) {
+          t.writesUnspellable.push(`${target}  ${JSON.stringify(mini)}`)
+        }
+      }
+    }
+  }
+  return t
+}
+
+describe('#1059 — the Slots control has two zones, and they promise different things', () => {
+  const check = (label: string, t: ZoneTally, minFree: number, minWrites: number): void => {
+    console.log(
+      [
+        `\n===== SLOTS ZONES: ${label} =====`,
+        `  free-zone offers                 ${t.free}`,
+        `  writes-zone offers               ${t.writes}`,
+        `  free but NOT drawable            ${t.freeUndrawableN}`,
+        `  writes but INERT                 ${t.writesInertN}`,
+        `  writes but UNSPELLABLE           ${t.writesUnspellableN}`,
+        ...t.freeUndrawable.map((e) => `     FREE-UNDRAWABLE  ${e}`),
+        ...t.writesInert.map((e) => `     WRITES-INERT     ${e}`),
+        ...t.writesUnspellable.map((e) => `     WRITES-DEAD      ${e}`),
+      ].join('\n'),
+    )
+    expect(
+      t.freeUndrawable,
+      'a target shown as FREE that the parser will not draw — the promise fails on press',
+    ).toEqual([])
+    expect(
+      t.writesInert,
+      'a target shown as WRITES that changes nothing — the dead control, wearing the label that promises an edit',
+    ).toEqual([])
+    expect(
+      t.writesUnspellable,
+      'a target shown as WRITES whose result the writer cannot spell',
+    ).toEqual([])
+    // POPULATIONS PINNED. A zone that stops being offered would otherwise turn this
+    // gate green over nothing at all — the failure mode this file was written for.
+    expect(t.free, `${label}: the free zone must be a real population`).toBeGreaterThan(minFree)
+    expect(t.writes, `${label}: the writes zone must be a real population`).toBeGreaterThan(
+      minWrites,
+    )
+  }
+
+  it('step grid: free never writes, writes always writes', () => {
+    check(
+      'step grid',
+      zoneSweep(parseStepGrid, stepSlotState, quantizeStepGridTo, serializeStepGrid),
+      2000,
+      100,
+    )
+  })
+
+  it('piano roll: free never writes, writes always writes', () => {
+    check(
+      'piano roll',
+      zoneSweep(parsePianoRoll, rollSlotState, quantizePianoRollTo, serializePianoRoll),
+      900,
+      100,
+    )
   })
 })

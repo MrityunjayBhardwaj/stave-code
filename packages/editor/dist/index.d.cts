@@ -8607,23 +8607,56 @@ type SlotState = 'active' | 'view' | 'lossless' | 'quantize' | 'disabled';
 
 /**
  * ResolutionControl — the "Slots" grid-resolution control shared by both grids
- * (#479). Absolute slot-count targets (4 / 8 / 16 / 32 / 64): clicking one SETS
- * the grid to that column count.
+ * (#479, reshaped by #1059).
  *
- * A target's `SlotState` says how it behaves and how it's drawn:
+ *     Slots   ÷2   [ 16 ]   ×2
+ *                    ▲ double-click → 4 / 8 / 16 / 32 / 64
+ *
+ * ── WHY RELATIVE STEPS AND NOT ABSOLUTE PRESETS ───────────────────────────────
+ * `RESOLUTION_PRESETS` are absolute counts — the right vocabulary for a document
+ * op ("make this pattern 16 elements"), the wrong one for a VIEW derived from the
+ * pattern's own resolution. A 3-element pattern's clean finer views are 6, 12, 24
+ * and none of them is a preset, so under absolutes every offer it gets is a
+ * rewrite. Measured over the corpus (#1059): 334 grid offers / 219 roll offers
+ * still wrote the file for that reason alone, and a ×k vocabulary converts every
+ * one of them — grid 96 of 96 units, roll 64 of 64, none stranded.
+ *
+ * `freeZoneScale` never needed changing for this: its only shape test is
+ * `target % docSteps`, so it already admits any whole multiple. The picker was the
+ * one layer still speaking absolutes.
+ *
+ * ── GROUNDED IN THE DAW STANDARD, NOT INFERRED ────────────────────────────────
+ * This is Ableton's model. Live drives its grid with *Narrow Grid* (Cmd-1), which
+ * doubles grid density, and *Widen Grid* (Cmd-2), which halves it — relative
+ * stepping is the primary interaction, and the absolute value stays on screen as a
+ * readout rather than as the thing you click. Logic likewise offers a Division
+ * value (1/1 … 1/64) you can also pick directly. So: steps to move, readout to
+ * know where you are, dropdown to jump.
+ *
+ * ⚠ THE READOUT IS A COUNT, NOT A NOTE VALUE, AND THAT IS A DELIBERATE DIVERGENCE.
+ * Every DAW labels this "1/16". That label asserts the cycle is a 4/4 bar, which
+ * Strudel does not guarantee — `cps` is free and a pattern can be any length — so
+ * "1/16" would be true only by coincidence. "16 slots" is what we can actually
+ * warrant.
+ *
+ * ── HOW A TARGET IS DRAWN ─────────────────────────────────────────────────────
+ * Every button asks `slotState` for the target it would apply — the SAME call the
+ * grid runs on click, never a prediction of it. States:
  *   - `active`   — the current count (highlighted, not clickable);
  *   - `view`     — the free zone (#1057): a whole multiple of what the DOCUMENT
  *      spells, so the panel simply draws the same notation more finely and your
- *      file is not touched at all. Drawn normal, and the tooltip says so — this
- *      is the only state that writes nothing, and a user deciding whether it is
- *      safe to press should not have to find that out by pressing it;
- *   - `lossless` — a power-of-2 ratio: pure ×2/÷2, hits keep their position
- *      (haps byte-identical) — drawn normal;
- *   - `quantize` — any other ratio: notes snap to the nearest new slot and
- *      collisions merge, so it works on ANY pattern (a 64-step choir → 16) but
- *      changes timing — drawn dimmer with a "~" cue and an honest tooltip;
- *   - `disabled` — not offered (only multi-bar grids, which can't quantize off
- *      the bar grid yet).
+ *      file is not touched at all. Drawn normal, and the tooltip says so — a user
+ *      deciding whether it is safe to press should not find out by pressing;
+ *   - `lossless` — writes, but every hit keeps its position (haps identical);
+ *   - `quantize` — writes, and notes snap to the nearest new slot, so timing moves;
+ *   - `disabled` — not offered.
+ *
+ * ⚠ THE `~` CUE MEANS ONE THING: THIS IS ABOUT TO REWRITE YOUR FILE (#1059). It
+ * used to mark `quantize` alone, i.e. "this changes your timing". Since Phase 4
+ * refining never writes at all, the honest split is no longer straight-vs-quantized
+ * but FREE-vs-WRITES — and `lossless` is on the writing side of it (2 live offers
+ * on the roll, 0 on the grid). Cueing only `quantize` would leave a file-rewriting
+ * button drawn exactly like a free one.
  */
 
 interface ResolutionControlProps {

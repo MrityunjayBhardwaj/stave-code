@@ -29278,62 +29278,197 @@ function useViewProver(mini, parse4) {
   );
 }
 __name(useViewProver, "useViewProver");
+var writes = /* @__PURE__ */ __name((s) => s === "lossless" || s === "quantize", "writes");
+var pressable = /* @__PURE__ */ __name((s) => s === "view" || writes(s), "pressable");
+function describeTarget(target, state5) {
+  switch (state5) {
+    case "active":
+      return `${target} slots (current)`;
+    case "view":
+      return `${target} slots \u2014 view only, your pattern is unchanged`;
+    case "lossless":
+      return `${target} slots \u2014 rewrites your file, keeps timing`;
+    case "quantize":
+      return `${target} slots \u2014 rewrites your file and snaps notes to the grid (changes timing)`;
+    default:
+      return `${target} slots \u2014 unavailable`;
+  }
+}
+__name(describeTarget, "describeTarget");
+function targetStyle(state5) {
+  const active2 = state5 === "active";
+  return {
+    background: active2 ? "var(--accent, #6ea8fe)" : "transparent",
+    color: active2 ? "#fff" : pressable(state5) ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)",
+    // a writing target is dimmer + italic — the visible half of the `~` cue
+    fontStyle: writes(state5) ? "italic" : "normal",
+    opacity: !active2 && !pressable(state5) ? 0.4 : writes(state5) ? 0.75 : 1,
+    cursor: active2 ? "default" : pressable(state5) ? "pointer" : "not-allowed"
+  };
+}
+__name(targetStyle, "targetStyle");
 function ResolutionControl({
   steps,
   slotState: slotState2,
   onScaleTo
 }) {
+  const [open, setOpen] = React36__namespace.useState(false);
+  const rootRef = React36__namespace.useRef(null);
+  React36__namespace.useEffect(() => {
+    if (!open) return;
+    const onDown = /* @__PURE__ */ __name((e) => {
+      if (!rootRef.current?.contains(e.target)) setOpen(false);
+    }, "onDown");
+    const onKey = /* @__PURE__ */ __name((e) => {
+      if (e.key === "Escape") setOpen(false);
+    }, "onKey");
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const halveTarget = steps % 2 === 0 ? steps / 2 : null;
+  const doubleTarget = steps * 2;
+  const halveState = halveTarget === null ? "disabled" : slotState2(halveTarget);
+  const doubleState = slotState2(doubleTarget);
+  const stepButton = /* @__PURE__ */ __name((dir, target, state5) => {
+    const label = dir === "halve" ? "\xF72" : "\xD72";
+    return /* @__PURE__ */ jsxRuntime.jsx(
+      "button",
+      {
+        type: "button",
+        "data-resolution-halve": dir === "halve" ? "true" : void 0,
+        "data-resolution-double": dir === "double" ? "true" : void 0,
+        "data-resolution-target": target ?? void 0,
+        "data-resolution-writes": writes(state5) ? "true" : void 0,
+        "data-resolution-view": state5 === "view" ? "true" : void 0,
+        "aria-label": dir === "halve" ? "halve slots" : "double slots",
+        title: target === null ? `\xF72 \u2014 unavailable on an odd slot count (${steps})` : describeTarget(target, state5),
+        disabled: !pressable(state5),
+        onClick: () => {
+          if (target !== null && pressable(state5)) onScaleTo(target);
+        },
+        style: {
+          padding: "2px 7px",
+          fontSize: 11,
+          border: "none",
+          background: "transparent",
+          ...targetStyle(state5),
+          // a step button is never "active" — it is a move, not a destination
+          color: pressable(state5) ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)"
+        },
+        children: writes(state5) ? `~${label}` : label
+      }
+    );
+  }, "stepButton");
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
       "data-resolution-control": true,
-      style: { display: "flex", alignItems: "center", gap: 6, fontSize: 11 },
+      ref: rootRef,
+      style: { display: "flex", alignItems: "center", gap: 6, fontSize: 11, position: "relative" },
       children: [
         /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: "Slots" }),
-        /* @__PURE__ */ jsxRuntime.jsx(
+        /* @__PURE__ */ jsxRuntime.jsxs(
           "div",
           {
             role: "group",
             "aria-label": "grid resolution",
             style: {
               display: "inline-flex",
+              alignItems: "stretch",
               border: "1px solid var(--border, #3a3a42)",
               borderRadius: 4,
+              overflow: "visible"
+            },
+            children: [
+              stepButton("halve", halveTarget, halveState),
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-resolution-current": steps,
+                  "data-resolution-presets-open": open ? "true" : void 0,
+                  "aria-haspopup": "listbox",
+                  "aria-expanded": open,
+                  "aria-label": `${steps} slots \u2014 double-click for presets`,
+                  title: `${steps} slots (current) \u2014 double-click for presets`,
+                  onDoubleClick: () => setOpen((v) => !v),
+                  onKeyDown: (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setOpen((v) => !v);
+                    }
+                  },
+                  style: {
+                    padding: "2px 10px",
+                    fontSize: 11,
+                    border: "none",
+                    borderLeft: "1px solid var(--border, #3a3a42)",
+                    borderRight: "1px solid var(--border, #3a3a42)",
+                    background: "var(--accent, #6ea8fe)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    minWidth: 34
+                  },
+                  children: steps
+                }
+              ),
+              stepButton("double", doubleTarget, doubleState)
+            ]
+          }
+        ),
+        open && /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            role: "listbox",
+            "data-resolution-presets": true,
+            "aria-label": "slot presets",
+            style: {
+              position: "absolute",
+              top: "100%",
+              left: 0,
+              marginTop: 4,
+              zIndex: 20,
+              display: "flex",
+              flexDirection: "column",
+              minWidth: 96,
+              border: "1px solid var(--border, #3a3a42)",
+              borderRadius: 4,
+              background: "var(--background-elevated, #26262c)",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
               overflow: "hidden"
             },
-            children: RESOLUTION_PRESETS.map((preset, i) => {
+            children: RESOLUTION_PRESETS.map((preset) => {
               const state5 = preset === steps ? "active" : slotState2(preset);
-              const active2 = state5 === "active";
-              const clickable = state5 === "view" || state5 === "lossless" || state5 === "quantize";
-              const title = state5 === "active" ? `${preset} slots (current)` : state5 === "view" ? `${preset} slots \u2014 view only, your pattern is unchanged` : state5 === "lossless" ? `${preset} slots \u2014 keeps timing` : state5 === "quantize" ? `${preset} slots \u2014 quantizes notes to the grid (changes timing)` : `${preset} slots \u2014 unavailable`;
               return /* @__PURE__ */ jsxRuntime.jsx(
                 "button",
                 {
                   type: "button",
+                  role: "option",
                   "data-resolution-step": preset,
-                  "data-resolution-active": active2 ? "true" : void 0,
+                  "data-resolution-active": state5 === "active" ? "true" : void 0,
                   "data-resolution-quantize": state5 === "quantize" ? "true" : void 0,
+                  "data-resolution-writes": writes(state5) ? "true" : void 0,
                   "data-resolution-view": state5 === "view" ? "true" : void 0,
-                  "aria-pressed": active2,
+                  "aria-selected": state5 === "active",
                   "aria-label": `${preset} slots`,
-                  title,
-                  disabled: !active2 && !clickable,
+                  title: describeTarget(preset, state5),
+                  disabled: state5 !== "active" && !pressable(state5),
                   onClick: () => {
-                    if (clickable) onScaleTo(preset);
+                    if (pressable(state5)) onScaleTo(preset);
+                    setOpen(false);
                   },
                   style: {
-                    padding: "2px 8px",
+                    padding: "3px 10px",
                     fontSize: 11,
                     border: "none",
-                    borderRight: i < RESOLUTION_PRESETS.length - 1 ? "1px solid var(--border, #3a3a42)" : "none",
-                    background: active2 ? "var(--accent, #6ea8fe)" : "transparent",
-                    color: active2 ? "#fff" : clickable ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)",
-                    // quantize targets are dimmer + italic — a visible "this changes timing" cue
-                    fontStyle: state5 === "quantize" ? "italic" : "normal",
-                    opacity: !active2 && !clickable ? 0.4 : state5 === "quantize" ? 0.75 : 1,
-                    cursor: active2 ? "default" : clickable ? "pointer" : "not-allowed"
+                    textAlign: "left",
+                    ...targetStyle(state5)
                   },
-                  children: state5 === "quantize" ? `~${preset}` : preset
+                  children: writes(state5) ? `~${preset}` : preset
                 },
                 preset
               );
