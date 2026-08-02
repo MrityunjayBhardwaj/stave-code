@@ -134,6 +134,12 @@ export function ifRollSpellable(input: PianoRollModel, next: PianoRollModel): Pi
  * the writer has. Reporting a bare count pushes the caller into guessing it back
  * from the model, which is the same second-description mistake one level down.
  *
+ * ⚠ `path` says WHICH WRITER answered, not whether anything was written. `mini` is
+ * null on `'declined'` AND wherever the answering writer had no spelling — a leaf
+ * splice or a rebuild can each return null on their own path. Read `mini` for "did
+ * it write", `path` for "who decided". Testing one for the other is right today
+ * only because no corpus placement reaches the second case.
+ *
  * `regions` is reported alongside the re-emitted count because "one element moved"
  * is only a promise when there is more than one element to choose between. A unit
  * whose source is a SINGLE region covering the whole cycle — `hh(<3,7>,16)`,
@@ -180,6 +186,9 @@ export function serializeStepGridWithExtent(model: StepGridModel): {
   //   'rebuild'  — the regions no longer describe the grid, so `rebuildGrid`
   //                takes over, the way this always worked;
   //   'decline'  — a length this grid carries has no spelling at its resolution.
+  // The last MUST NOT fall through to `rebuildGrid`: the rebuild is exactly the
+  // re-derivation that drops the length, so falling through would turn a refusal
+  // back into the silent corruption it exists to prevent.
   const spliced = spliceGrid(model)
   if (spliced === 'decline') return { mini: null, extent: { path: 'declined' } }
   if (spliced !== 'rebuild')
@@ -213,9 +222,8 @@ export function serializeStepGrid(model: StepGridModel): string | null {
  * Named and split out so `serializeStepGridWithExtent` can report WHICH path
  * answered without duplicating the decision; the body is unchanged.
  *
- * ⚠ A 'decline' from the splice MUST NOT fall through to here: the rebuild is
- * exactly the re-derivation that drops a length, so falling through would turn a
- * refusal back into the silent corruption it exists to prevent (#1010 P4c).
+ * ⚠ Reached only where the splice said `'rebuild'` — never where it DECLINED. The
+ * rule and its reason live at the branch that enforces it, above (#1010 P4c).
  */
 function rebuildGrid(model: StepGridModel): string | null {
   const bars = model.bars ?? 1
