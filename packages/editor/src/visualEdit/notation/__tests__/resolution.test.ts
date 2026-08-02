@@ -486,17 +486,50 @@ describe('free zone — refining is a view change, not a rewrite', () => {
     expect(stepSlotState(m, 8, draws)).toBe('view') // …and does not get the chance
   })
 
-  it('coarsening is never a view — the free zone cannot reach it', () => {
+  it('a target BELOW the document is never a view — the free zone cannot reach it', () => {
     const m8 = step('bd ~ ~ ~ sn ~ ~ ~')
     expect(freeZoneScale(8, 4)).toBeNull()
-    // Whatever the writing path decides, it must not be `view`: coarsening changes
-    // what the document says, and #1052's rule is that only refining is free.
+    // Whatever the writing path decides, it must not be `view`. Note what makes this
+    // one a write: `m8` IS the document, so 4 is below its own column count. The rule
+    // is NOT "downward is a write" — see the bidirectional test below, where ÷2 from a
+    // refined view is free all the way back to the document. The boundary is the
+    // document's own count, and direction of travel has nothing to do with it.
     expect(stepSlotState(m8, 4, draws)).not.toBe('view')
     // OBSERVED, and it belongs to #1061 rather than here: this particular coarsening
     // is `disabled`, because halving scales each cell to half a column and P4c's
     // printer preserves length, so the writer declines and an honest control says so.
     // Recorded to show the free zone left this path exactly as it found it.
     expect(stepSlotState(m8, 4, draws)).toBe(stepSlotState(m8, 4))
+  })
+
+  it('THE ZONE BOUNDARY DOES NOT MOVE WITH THE USER — it sits at the document count', () => {
+    // The half that is easy to get wrong, and the reason ÷2 is not one control but two.
+    // "Up is a view, down is a write" is the natural model and it is false: descending
+    // through a refined view is free all the way back to the document, and only a target
+    // strictly BELOW the document's own count is an edit. So the deciding fact is not
+    // which way the user is travelling — it is where they are standing relative to what
+    // their file actually spells. Measured over every standing a user can occupy (#1059):
+    // ÷2 staying at-or-above the document is 2613 grid / 1438 roll offers, ALL free, not
+    // one write leaking into the descent; ÷2 below it is 546 of 546 disabled on the grid.
+    const mini = 'bd ~ sn ~' // a 4-column DOCUMENT, whatever we are looking at it through
+    const standings = [1, 2, 4].map((k) => {
+      const r = parseStepGrid(mini, k)
+      expect(r.ok).toBe(true)
+      if (!r.ok) throw new Error('unreachable')
+      return r.model
+    })
+    // the document never moves, however finely we draw it
+    expect(standings.map(documentSteps)).toEqual([4, 4, 4])
+    expect(standings.map((m) => m.steps)).toEqual([4, 8, 16])
+
+    for (const m of standings) {
+      // BELOW the document: refused from every standing, at the same place each time
+      expect(stepSlotState(m, 2, draws)).not.toBe('view')
+      // AT or ABOVE it: free from every standing — including 4, which is a DESCENT
+      // from the ×2 and ×4 standings and an `active` no-op from the document itself
+      expect(stepSlotState(m, 8, draws)).toBe(m.steps === 8 ? 'active' : 'view')
+      expect(stepSlotState(m, 4, draws)).toBe(m.steps === 4 ? 'active' : 'view')
+    }
   })
 
   it('a target already being looked at stays `active`, at any scale', () => {

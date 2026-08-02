@@ -8,7 +8,6 @@ SONIC_PI_WEB*.md
 # ──────────────────────────────────────────────────────────────
 # AI tooling + cognitive framework
 # ──────────────────────────────────────────────────────────────
-.anvi/
 .claude/
 .cursor/
 .cursorrules
@@ -123,3 +122,6 @@ SCRATCH.md
 TODO_LOCAL.md
 NOTES.local.md
 *.draft.md
+
+# Ānvīkṣikī — catalogues live in ~/.anvideck (anvi_artifacts); .anvi here is a symlink
+.anvi
