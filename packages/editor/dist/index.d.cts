@@ -8492,6 +8492,13 @@ declare function parsePianoRoll(mini: string, viewScale?: ViewScale): ParseResul
  * null and the panel keeps the document untouched.
  */
 
+/**
+ * The mini a grid model writes back, or null where it has no spelling.
+ *
+ * Every caller that only needs the bytes uses this; the extent above is for the
+ * ones asking how much of the document moved. One implementation, so the two can
+ * never disagree about what was written.
+ */
 declare function serializeStepGrid(model: StepGridModel): string | null;
 declare function serializePianoRoll(model: PianoRollModel): string | null;
 
