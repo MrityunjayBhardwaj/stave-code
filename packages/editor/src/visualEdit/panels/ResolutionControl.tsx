@@ -1,22 +1,55 @@
 /**
  * ResolutionControl — the "Slots" grid-resolution control shared by both grids
- * (#479). Absolute slot-count targets (4 / 8 / 16 / 32 / 64): clicking one SETS
- * the grid to that column count.
+ * (#479, reshaped by #1059).
  *
- * A target's `SlotState` says how it behaves and how it's drawn:
+ *     Slots   ÷2   [ 16 ]   ×2
+ *                    ▲ double-click → 4 / 8 / 16 / 32 / 64
+ *
+ * ── WHY RELATIVE STEPS AND NOT ABSOLUTE PRESETS ───────────────────────────────
+ * `RESOLUTION_PRESETS` are absolute counts — the right vocabulary for a document
+ * op ("make this pattern 16 elements"), the wrong one for a VIEW derived from the
+ * pattern's own resolution. A 3-element pattern's clean finer views are 6, 12, 24
+ * and none of them is a preset, so under absolutes every offer it gets is a
+ * rewrite. Measured over the corpus (#1059): 334 grid offers / 219 roll offers
+ * still wrote the file for that reason alone, and a ×k vocabulary converts every
+ * one of them — grid 96 of 96 units, roll 64 of 64, none stranded.
+ *
+ * `freeZoneScale` never needed changing for this: its only shape test is
+ * `target % docSteps`, so it already admits any whole multiple. The picker was the
+ * one layer still speaking absolutes.
+ *
+ * ── GROUNDED IN THE DAW STANDARD, NOT INFERRED ────────────────────────────────
+ * This is Ableton's model. Live drives its grid with *Narrow Grid* (Cmd-1), which
+ * doubles grid density, and *Widen Grid* (Cmd-2), which halves it — relative
+ * stepping is the primary interaction, and the absolute value stays on screen as a
+ * readout rather than as the thing you click. Logic likewise offers a Division
+ * value (1/1 … 1/64) you can also pick directly. So: steps to move, readout to
+ * know where you are, dropdown to jump.
+ *
+ * ⚠ THE READOUT IS A COUNT, NOT A NOTE VALUE, AND THAT IS A DELIBERATE DIVERGENCE.
+ * Every DAW labels this "1/16". That label asserts the cycle is a 4/4 bar, which
+ * Strudel does not guarantee — `cps` is free and a pattern can be any length — so
+ * "1/16" would be true only by coincidence. "16 slots" is what we can actually
+ * warrant.
+ *
+ * ── HOW A TARGET IS DRAWN ─────────────────────────────────────────────────────
+ * Every button asks `slotState` for the target it would apply — the SAME call the
+ * grid runs on click, never a prediction of it. States:
  *   - `active`   — the current count (highlighted, not clickable);
  *   - `view`     — the free zone (#1057): a whole multiple of what the DOCUMENT
  *      spells, so the panel simply draws the same notation more finely and your
- *      file is not touched at all. Drawn normal, and the tooltip says so — this
- *      is the only state that writes nothing, and a user deciding whether it is
- *      safe to press should not have to find that out by pressing it;
- *   - `lossless` — a power-of-2 ratio: pure ×2/÷2, hits keep their position
- *      (haps byte-identical) — drawn normal;
- *   - `quantize` — any other ratio: notes snap to the nearest new slot and
- *      collisions merge, so it works on ANY pattern (a 64-step choir → 16) but
- *      changes timing — drawn dimmer with a "~" cue and an honest tooltip;
- *   - `disabled` — not offered (only multi-bar grids, which can't quantize off
- *      the bar grid yet).
+ *      file is not touched at all. Drawn normal, and the tooltip says so — a user
+ *      deciding whether it is safe to press should not find out by pressing;
+ *   - `lossless` — writes, but every hit keeps its position (haps identical);
+ *   - `quantize` — writes, and notes snap to the nearest new slot, so timing moves;
+ *   - `disabled` — not offered.
+ *
+ * ⚠ THE `~` CUE MEANS ONE THING: THIS IS ABOUT TO REWRITE YOUR FILE (#1059). It
+ * used to mark `quantize` alone, i.e. "this changes your timing". Since Phase 4
+ * refining never writes at all, the honest split is no longer straight-vs-quantized
+ * but FREE-vs-WRITES — and `lossless` is on the writing side of it (2 live offers
+ * on the roll, 0 on the grid). Cueing only `quantize` would leave a file-rewriting
+ * button drawn exactly like a free one.
  */
 import * as React from 'react'
 
@@ -116,15 +149,127 @@ export interface ResolutionControlProps {
   onScaleTo: (target: number) => void
 }
 
+/** does this state write to the document? `active`/`disabled` do nothing at all. */
+const writes = (s: SlotState): boolean => s === 'lossless' || s === 'quantize'
+/** can the user press it? */
+const pressable = (s: SlotState): boolean => s === 'view' || writes(s)
+
+/**
+ * One sentence per state, and the first clause of a writing one says so. #1059 asks
+ * for the cue to mean "this rewrites your file" — so the copy has to lead with that
+ * rather than with the timing consequence, which is a detail of HOW it rewrites.
+ */
+function describeTarget(target: number, state: SlotState): string {
+  switch (state) {
+    case 'active':
+      return `${target} slots (current)`
+    case 'view':
+      return `${target} slots — view only, your pattern is unchanged`
+    case 'lossless':
+      return `${target} slots — rewrites your file, keeps timing`
+    case 'quantize':
+      return `${target} slots — rewrites your file and snaps notes to the grid (changes timing)`
+    default:
+      return `${target} slots — unavailable`
+  }
+}
+
+/** shared visual language for anything that names a target */
+function targetStyle(state: SlotState): React.CSSProperties {
+  const active = state === 'active'
+  return {
+    background: active ? 'var(--accent, #6ea8fe)' : 'transparent',
+    color: active
+      ? '#fff'
+      : pressable(state)
+        ? 'var(--foreground, #e6e6ea)'
+        : 'var(--foreground-muted, #a0a0aa)',
+    // a writing target is dimmer + italic — the visible half of the `~` cue
+    fontStyle: writes(state) ? 'italic' : 'normal',
+    opacity: !active && !pressable(state) ? 0.4 : writes(state) ? 0.75 : 1,
+    cursor: active ? 'default' : pressable(state) ? 'pointer' : 'not-allowed',
+  }
+}
+
 export function ResolutionControl({
   steps,
   slotState,
   onScaleTo,
 }: ResolutionControlProps): React.ReactElement {
+  const [open, setOpen] = React.useState(false)
+  const rootRef = React.useRef<HTMLDivElement | null>(null)
+
+  // Close on any press outside, and on Escape. Registered only while OPEN so the
+  // control costs nothing in its resting state.
+  React.useEffect(() => {
+    if (!open) return
+    const onDown = (e: PointerEvent): void => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  // ⚠ ASKED OF `slotState`, NEVER COMPUTED. `steps / 2` and `steps * 2` are only
+  // the TARGETS; whether either is free, writes, or is unavailable is the control's
+  // decision and this reads it back. A halve of an odd count is not a target at all
+  // — there is no integer grid to ask about.
+  const halveTarget = steps % 2 === 0 ? steps / 2 : null
+  const doubleTarget = steps * 2
+  const halveState: SlotState = halveTarget === null ? 'disabled' : slotState(halveTarget)
+  const doubleState: SlotState = slotState(doubleTarget)
+
+  const stepButton = (
+    dir: 'halve' | 'double',
+    target: number | null,
+    state: SlotState,
+  ): React.ReactElement => {
+    const label = dir === 'halve' ? '÷2' : '×2'
+    return (
+      <button
+        type="button"
+        data-resolution-halve={dir === 'halve' ? 'true' : undefined}
+        data-resolution-double={dir === 'double' ? 'true' : undefined}
+        data-resolution-target={target ?? undefined}
+        data-resolution-writes={writes(state) ? 'true' : undefined}
+        data-resolution-view={state === 'view' ? 'true' : undefined}
+        aria-label={dir === 'halve' ? 'halve slots' : 'double slots'}
+        title={
+          target === null
+            ? `÷2 — unavailable on an odd slot count (${steps})`
+            : describeTarget(target, state)
+        }
+        disabled={!pressable(state)}
+        onClick={() => {
+          if (target !== null && pressable(state)) onScaleTo(target)
+        }}
+        style={{
+          padding: '2px 7px',
+          fontSize: 11,
+          border: 'none',
+          background: 'transparent',
+          ...targetStyle(state),
+          // a step button is never "active" — it is a move, not a destination
+          color: pressable(state) ? 'var(--foreground, #e6e6ea)' : 'var(--foreground-muted, #a0a0aa)',
+        }}
+      >
+        {writes(state) ? `~${label}` : label}
+      </button>
+    )
+  }
+
   return (
     <div
       data-resolution-control
-      style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}
+      ref={rootRef}
+      style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, position: 'relative' }}
     >
       <span style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>Slots</span>
       <div
@@ -132,67 +277,108 @@ export function ResolutionControl({
         aria-label="grid resolution"
         style={{
           display: 'inline-flex',
+          alignItems: 'stretch',
           border: '1px solid var(--border, #3a3a42)',
           borderRadius: 4,
-          overflow: 'hidden',
+          overflow: 'visible',
         }}
       >
-        {RESOLUTION_PRESETS.map((preset, i) => {
-          const state = preset === steps ? 'active' : slotState(preset)
-          const active = state === 'active'
-          const clickable = state === 'view' || state === 'lossless' || state === 'quantize'
-          const title =
-            state === 'active'
-              ? `${preset} slots (current)`
-              : state === 'view'
-                ? `${preset} slots — view only, your pattern is unchanged`
-                : state === 'lossless'
-                  ? `${preset} slots — keeps timing`
-                  : state === 'quantize'
-                    ? `${preset} slots — quantizes notes to the grid (changes timing)`
-                    : `${preset} slots — unavailable`
-          return (
-            <button
-              key={preset}
-              type="button"
-              data-resolution-step={preset}
-              data-resolution-active={active ? 'true' : undefined}
-              data-resolution-quantize={state === 'quantize' ? 'true' : undefined}
-              // the free zone is observable from the DOM: a spec can assert that
-              // pressing this wrote nothing WITHOUT having to infer which state it was in
-              data-resolution-view={state === 'view' ? 'true' : undefined}
-              aria-pressed={active}
-              aria-label={`${preset} slots`}
-              title={title}
-              disabled={!active && !clickable}
-              onClick={() => {
-                if (clickable) onScaleTo(preset)
-              }}
-              style={{
-                padding: '2px 8px',
-                fontSize: 11,
-                border: 'none',
-                borderRight:
-                  i < RESOLUTION_PRESETS.length - 1
-                    ? '1px solid var(--border, #3a3a42)'
-                    : 'none',
-                background: active ? 'var(--accent, #6ea8fe)' : 'transparent',
-                color: active
-                  ? '#fff'
-                  : clickable
-                    ? 'var(--foreground, #e6e6ea)'
-                    : 'var(--foreground-muted, #a0a0aa)',
-                // quantize targets are dimmer + italic — a visible "this changes timing" cue
-                fontStyle: state === 'quantize' ? 'italic' : 'normal',
-                opacity: !active && !clickable ? 0.4 : state === 'quantize' ? 0.75 : 1,
-                cursor: active ? 'default' : clickable ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {state === 'quantize' ? `~${preset}` : preset}
-            </button>
-          )
-        })}
+        {stepButton('halve', halveTarget, halveState)}
+        {/*
+          THE READOUT. Double-click opens the absolute presets, which is what the
+          design asks for — but a control reachable only by double-click is
+          unreachable from the keyboard, so Enter/Space open it too. That is an
+          addition to the gesture, not a substitute for it.
+        */}
+        <button
+          type="button"
+          data-resolution-current={steps}
+          data-resolution-presets-open={open ? 'true' : undefined}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={`${steps} slots — double-click for presets`}
+          title={`${steps} slots (current) — double-click for presets`}
+          onDoubleClick={() => setOpen((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setOpen((v) => !v)
+            }
+          }}
+          style={{
+            padding: '2px 10px',
+            fontSize: 11,
+            border: 'none',
+            borderLeft: '1px solid var(--border, #3a3a42)',
+            borderRight: '1px solid var(--border, #3a3a42)',
+            background: 'var(--accent, #6ea8fe)',
+            color: '#fff',
+            cursor: 'pointer',
+            minWidth: 34,
+          }}
+        >
+          {steps}
+        </button>
+        {stepButton('double', doubleTarget, doubleState)}
       </div>
+
+      {open && (
+        <div
+          role="listbox"
+          data-resolution-presets
+          aria-label="slot presets"
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            marginTop: 4,
+            zIndex: 20,
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 96,
+            border: '1px solid var(--border, #3a3a42)',
+            borderRadius: 4,
+            background: 'var(--background-elevated, #26262c)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            overflow: 'hidden',
+          }}
+        >
+          {RESOLUTION_PRESETS.map((preset) => {
+            const state: SlotState = preset === steps ? 'active' : slotState(preset)
+            return (
+              <button
+                key={preset}
+                type="button"
+                role="option"
+                data-resolution-step={preset}
+                data-resolution-active={state === 'active' ? 'true' : undefined}
+                data-resolution-quantize={state === 'quantize' ? 'true' : undefined}
+                data-resolution-writes={writes(state) ? 'true' : undefined}
+                // the free zone is observable from the DOM: a spec can assert that
+                // pressing this wrote nothing WITHOUT having to infer which state it was in
+                data-resolution-view={state === 'view' ? 'true' : undefined}
+                aria-selected={state === 'active'}
+                aria-label={`${preset} slots`}
+                title={describeTarget(preset, state)}
+                disabled={state !== 'active' && !pressable(state)}
+                onClick={() => {
+                  if (pressable(state)) onScaleTo(preset)
+                  setOpen(false)
+                }}
+                style={{
+                  padding: '3px 10px',
+                  fontSize: 11,
+                  border: 'none',
+                  textAlign: 'left',
+                  ...targetStyle(state),
+                }}
+              >
+                {writes(state) ? `~${preset}` : preset}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
