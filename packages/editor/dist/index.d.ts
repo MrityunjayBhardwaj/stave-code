@@ -8639,6 +8639,38 @@ type SlotState = 'active' | 'view' | 'lossless' | 'quantize' | 'disabled';
  * "1/16" would be true only by coincidence. "16 slots" is what we can actually
  * warrant.
  *
+ * ── THE TWO ZONES, AND WHERE THE LINE BETWEEN THEM ACTUALLY SITS ──────────────
+ * Every target this control offers falls in one of two zones, and the boundary is
+ * ONE number: the count the DOCUMENT itself spells (`documentSteps`, not `steps` —
+ * `steps` is what is currently drawn, which may be a refined view of it).
+ *
+ *     target  >=  document count   →  FREE.   Nothing is written. The panel just
+ *                                     draws the same notation more or less finely.
+ *     target  <   document count   →  WRITES. This is an edit to the user's file.
+ *
+ * ⚠ THE ZONE IS NOT THE DIRECTION. The natural reading of a ÷2 / ×2 pair is "up is
+ * a view, down is a rewrite", and it is wrong in the half nobody looks at. Coming
+ * back DOWN through a refined view is free the whole way to the document — that is
+ * exactly what makes refining reversible, and `freeZoneScale(D, D)` returns
+ * `UNREFINED` by construction to say so. Only going below the document is an edit.
+ *
+ * So ÷2 is not one control with one meaning. Standing on a ×4 view of a 4-column
+ * pattern, ÷2 is free; standing on the document itself, the same button is an edit
+ * (and on the grid, a refused one). Which is why every button here ASKS `slotState`
+ * for its own target rather than deriving anything from the arrow it is drawn with.
+ *
+ * Measured over every standing a user can occupy (#1059 — 3571 grid standings,
+ * 1982 roll):
+ *   - ×2 upward .................. 3420 free / 82 refused (leaf units, by design)
+ *   - ÷2 staying >= document ..... 2613 grid / 1438 roll, ALL free — not one write
+ *                                  leaks into the descent
+ *   - ÷2 below the document ...... grid 546 of 546 REFUSED; roll 223 live writes
+ *
+ * That last asymmetry is the two surfaces disagreeing honestly, not a bug: the grid
+ * preserves note length, and half a column has no spelling, so the writer declines
+ * and the control says so. The roll carries a duration natively and can write it.
+ * Whether the grid should offer anything there at all is #1061's product call.
+ *
  * ── HOW A TARGET IS DRAWN ─────────────────────────────────────────────────────
  * Every button asks `slotState` for the target it would apply — the SAME call the
  * grid runs on click, never a prediction of it. States:
