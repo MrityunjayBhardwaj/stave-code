@@ -25886,7 +25886,7 @@ function serializeStepGridWithExtent(model) {
         path: "splice",
         regions: spliced.regions,
         regionsReemitted: spliced.regionsReemitted,
-        partsRebuilt: spliced.partsRebuilt
+        rebuiltParts: spliced.rebuiltParts
       }
     };
   return { mini: rebuildGrid(model), extent: { path: "rebuild" } };
@@ -25914,7 +25914,7 @@ function spliceGrid(model) {
   const src = model.source;
   if (!src || src.parts.length === 0) return "rebuild";
   let regionsReemitted = 0;
-  let partsRebuilt = 0;
+  const rebuiltParts = [];
   let out = src.prefix;
   for (const p of src.parts) {
     const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part);
@@ -25922,7 +25922,7 @@ function spliceGrid(model) {
     const last = p.regions[p.regions.length - 1];
     out += p.before;
     if (cols === null || last === void 0 || last.to !== cols.length) {
-      partsRebuilt++;
+      rebuiltParts.push(p.regions.length);
       const rebuilt = gridColumns(lanes, model.steps);
       if (rebuilt === null) return "decline";
       out += rebuilt.join(" ") + p.after;
@@ -25943,7 +25943,7 @@ function spliceGrid(model) {
     out += p.after;
   }
   const regions = src.parts.reduce((n, p) => n + p.regions.length, 0);
-  return { out: out + src.suffix, regions, regionsReemitted, partsRebuilt };
+  return { out: out + src.suffix, regions, regionsReemitted, rebuiltParts };
 }
 __name(spliceGrid, "spliceGrid");
 function anchorsDescribe(model, anchoredWidth) {

@@ -31,7 +31,7 @@ describe('the grid writer reports what it moved', () => {
     // than as "the string came back the same"
     const { mini, extent } = serializeStepGridWithExtent(model('bd ~ sn cp'))
     expect(mini).toBe('bd ~ sn cp')
-    expect(extent).toEqual({ path: 'splice', regions: 4, regionsReemitted: 0, partsRebuilt: 0 })
+    expect(extent).toEqual({ path: 'splice', regions: 4, regionsReemitted: 0, rebuiltParts: [] })
   })
 
   it('a hit on a refined column re-emits ONE region of four', () => {
@@ -41,7 +41,7 @@ describe('the grid writer reports what it moved', () => {
     // the element under the cursor subdivides; the other three come back as the
     // user's own bytes
     expect(mini).toBe('[bd bd] ~ sn ~')
-    expect(extent).toEqual({ path: 'splice', regions: 4, regionsReemitted: 1, partsRebuilt: 0 })
+    expect(extent).toEqual({ path: 'splice', regions: 4, regionsReemitted: 1, rebuiltParts: [] })
   })
 
   it('one of one is reported as one of ONE — locality is vacuous there', () => {
@@ -50,7 +50,7 @@ describe('the grid writer reports what it moved', () => {
     // denominator is what makes that visible to a caller (#994).
     const m = model('hh*8', 2)
     const { extent } = serializeStepGridWithExtent(toggleCell(m, 0, 1, true))
-    expect(extent).toEqual({ path: 'splice', regions: 1, regionsReemitted: 1, partsRebuilt: 0 })
+    expect(extent).toEqual({ path: 'splice', regions: 1, regionsReemitted: 1, rebuiltParts: [] })
   })
 
   it('a leaf-anchored grid says which path answered, and offers no counts', () => {
@@ -86,7 +86,9 @@ describe('the grid writer reports what it moved', () => {
     const { extent } = serializeStepGridWithExtent(toggleCell(m, lane, 1, true))
     expect(extent.path).toBe('splice')
     if (extent.path !== 'splice') return
-    expect(extent.partsRebuilt).toBe(1)
+    // and it says how big that part was, which is what makes "a one-element part
+    // may not be non-local at all" a question a caller can ask (#1137)
+    expect(extent.rebuiltParts).toEqual([3])
     expect(extent.regionsReemitted).toBe(0)
   })
 })

@@ -32,9 +32,12 @@
  * because the writer already decided both facts and threw them away (#1137).
  *
  * ⚠ WHAT THIS GATE DOES NOT ASSERT, stated rather than left to be assumed:
- * lane-add (works on a fixture, no corpus arm), resize and paste at a refined
- * view, and the alternation path's locality — an alt model carries no `source`,
- * so the writer has no regions to report and the question is not defined there.
+ * lane-add (works on a fixture, no corpus arm); resize and paste at a refined
+ * view; the alternation path's locality — an alt model carries no `source`, so the
+ * writer has no regions to report and the question is not defined there; and the
+ * ROLL's locality, which is asserted only as accept-and-spell here. The roll has no
+ * write-extent report yet, so its arm below is deliberately the weaker one and says
+ * so rather than implying the grid's guarantee covers it.
  */
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
@@ -80,10 +83,8 @@ interface GridAsk {
   /** total source regions — "one element moved" is only a promise when this is > 1 */
   regions: number | null
   regionsReemitted: number | null
-  partsRebuilt: number | null
-  /** how many regions the voided parts held — a one-region part-void is the
-   *  candidate-acceptable class, see the locality test */
-  voidedPartRegions: number
+  /** region count of each part the writer rebuilt — its own report, not a guess */
+  rebuiltParts: number[] | null
 }
 
 interface GridSweep {
@@ -126,8 +127,7 @@ function sweepGrid(k: number): GridSweep {
         if (next === m) {
           out.asks.push({
             mini, lane, col, accepted: false, out: null,
-            path: 'declined', regions: null, regionsReemitted: null, partsRebuilt: null,
-            voidedPartRegions: 0,
+            path: 'declined', regions: null, regionsReemitted: null, rebuiltParts: null,
           })
           continue
         }
@@ -136,32 +136,16 @@ function sweepGrid(k: number): GridSweep {
         // the panel asks it (#1057).
         const atDocument = collapseStepGridToDocument(next)
         const { mini: written, extent } = serializeStepGridWithExtent(atDocument ?? next)
-        const voided =
-          extent.path === 'splice' && extent.partsRebuilt > 0
-            ? countVoidedPartRegions(next)
-            : 0
         out.asks.push({
           mini, lane, col, accepted: true, out: written,
           path: extent.path,
           regions: extent.path === 'splice' ? extent.regions : null,
           regionsReemitted: extent.path === 'splice' ? extent.regionsReemitted : null,
-          partsRebuilt: extent.path === 'splice' ? extent.partsRebuilt : null,
-          voidedPartRegions: voided,
+          rebuiltParts: extent.path === 'splice' ? extent.rebuiltParts : null,
         })
       }
   }
   return out
-}
-
-/**
- * How many source regions the rebuilt parts held. Read off the model's OWN
- * `source`, not re-derived: the writer has already said a part was rebuilt, and
- * this only reports how big it was, so the question "is a one-element part-void
- * really non-local?" can be asked with a number (#1137).
- */
-function countVoidedPartRegions(model: { source?: { parts: { regions: unknown[] }[] } }): number {
-  const parts = model.source?.parts ?? []
-  return parts.length === 0 ? 0 : Math.min(...parts.map((p) => p.regions.length))
 }
 
 const SWEPT = new Map<number, GridSweep>(SCALES.map((k) => [k, sweepGrid(k)]))
@@ -233,7 +217,7 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       const s = SWEPT.get(k)!
       const spliced = s.asks.filter((a) => a.accepted && a.path === 'splice')
       const nonLocal = spliced.filter(
-        (a) => !(a.partsRebuilt === 0 && a.regionsReemitted! <= 1),
+        (a) => !(a.rebuiltParts!.length === 0 && a.regionsReemitted! <= 1),
       )
 
       // THE LOAD-BEARING RESULT: not one accepted placement re-emits a second
@@ -243,7 +227,7 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
         nonLocal.filter((a) => a.regionsReemitted! > 1),
         `k=${k}: a second element re-emitted`,
       ).toEqual([])
-      expect(nonLocal.every((a) => a.partsRebuilt! > 0), `k=${k}: all part-rebuilds`).toBe(true)
+      expect(nonLocal.every((a) => a.rebuiltParts!.length > 0), `k=${k}: all part-rebuilds`).toBe(true)
       expect(nonLocal.length, `k=${k} non-local asks`).toBe(278)
 
       // pinned BY UNIT, so a fix to #1137 reads as a named delta and a regression
@@ -253,7 +237,7 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
     }
   })
 
-  it('two thirds of the non-local residual is a ONE-element part — the open call', () => {
+  it('most of the non-local residual is a ONE-element part — the open call', () => {
     // Where the voided part holds a single element, "rebuild the part" and
     // "re-emit that element" produce the same bytes, so this class may well BE
     // local by this issue's words. Reported rather than decided — and it can only
@@ -261,9 +245,12 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
     // cannot see a part-rebuild at all (#1137).
     for (const k of SCALES) {
       const nonLocal = SWEPT.get(k)!.asks.filter(
-        (a) => a.accepted && a.path === 'splice' && a.partsRebuilt! > 0,
+        (a) => a.accepted && a.path === 'splice' && a.rebuiltParts!.length > 0,
       )
-      expect(nonLocal.filter((a) => a.voidedPartRegions === 1).length, `k=${k}`).toBe(186)
+      // EVERY rebuilt part's size comes from the writer, so "was the part a single
+      // element?" is answered rather than inferred from the model afterwards.
+      const singleElement = nonLocal.filter((a) => a.rebuiltParts!.every((n) => n === 1))
+      expect(singleElement.length, `k=${k}`).toBe(SINGLE_ELEMENT_PART_VOIDS)
     }
   })
 
@@ -398,7 +385,7 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
     expect(atDocument).not.toBeNull()
     const { mini, extent } = serializeStepGridWithExtent(atDocument ?? next)
     expect(mini).toBe('[bd bd] [hh hh] sn ~')
-    expect(extent).toEqual({ path: 'splice', regions: 4, regionsReemitted: 1, partsRebuilt: 0 })
+    expect(extent).toEqual({ path: 'splice', regions: 4, regionsReemitted: 1, rebuiltParts: [] })
   })
 
   it('the duplicate-chord loss is the WRITER\'s, at either resolution', () => {
@@ -498,6 +485,16 @@ const NON_LOCAL_UNITS: string[] = [
   "numbers, - piano",
   "~ c5 ~ ~ ,~ f5 ~ ~ ,~ c6*2 ~ ~",
 ]
+
+/**
+ * Non-local writes whose rebuilt parts held a SINGLE element each. Rebuilding such
+ * a part and re-emitting its one element produce the same bytes, so this class may
+ * not be non-local at all by this issue's words — the open call in #1137. The
+ * figure comes from the writer's own report of each rebuilt part's size; the
+ * earlier version of this gate inferred it from the model instead and took the
+ * minimum across ALL parts, which is the wrong part whenever they differ in size.
+ */
+const SINGLE_ELEMENT_PART_VOIDS = 170
 
 /**
  * The corpus unit whose chords carry a duplicate member (`[d4,f4,d4]`). Any

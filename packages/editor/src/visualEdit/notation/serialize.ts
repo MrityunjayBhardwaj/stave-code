@@ -127,6 +127,13 @@ export function ifRollSpellable(input: PianoRollModel, next: PianoRollModel): Pi
  * the opposite of true for a rebuild — so the shape makes the unmeasurable case
  * unrepresentable as a number instead of relying on a caller to remember.
  *
+ * `rebuiltParts` carries HOW MANY REGIONS each rebuilt part held, not just how
+ * many parts there were. A part holding a single element is rebuilt and re-emitted
+ * to the same bytes, so that case may not be non-local at all — and a caller
+ * cannot tell without this, because "which part did you rebuild" is a fact only
+ * the writer has. Reporting a bare count pushes the caller into guessing it back
+ * from the model, which is the same second-description mistake one level down.
+ *
  * `regions` is reported alongside the re-emitted count because "one element moved"
  * is only a promise when there is more than one element to choose between. A unit
  * whose source is a SINGLE region covering the whole cycle — `hh(<3,7>,16)`,
@@ -136,7 +143,7 @@ export function ifRollSpellable(input: PianoRollModel, next: PianoRollModel): Pi
  * parse time; reporting `1 of 1` rather than `1` is what lets a caller see it.
  */
 export type GridWriteExtent =
-  | { path: 'splice'; regions: number; regionsReemitted: number; partsRebuilt: number }
+  | { path: 'splice'; regions: number; regionsReemitted: number; rebuiltParts: number[] }
   | { path: 'leaf' | 'alt' | 'rebuild' | 'declined' }
 
 /**
@@ -182,7 +189,7 @@ export function serializeStepGridWithExtent(model: StepGridModel): {
         path: 'splice',
         regions: spliced.regions,
         regionsReemitted: spliced.regionsReemitted,
-        partsRebuilt: spliced.partsRebuilt,
+        rebuiltParts: spliced.rebuiltParts,
       },
     }
   return { mini: rebuildGrid(model), extent: { path: 'rebuild' } }
@@ -251,11 +258,14 @@ function rebuildGrid(model: StepGridModel): string | null {
  */
 function spliceGrid(
   model: StepGridModel,
-): { out: string; regions: number; regionsReemitted: number; partsRebuilt: number } | 'rebuild' | 'decline' {
+):
+  | { out: string; regions: number; regionsReemitted: number; rebuiltParts: number[] }
+  | 'rebuild'
+  | 'decline' {
   const src = model.source
   if (!src || src.parts.length === 0) return 'rebuild'
   let regionsReemitted = 0
-  let partsRebuilt = 0
+  const rebuiltParts: number[] = []
   // ⚠ THERE WAS A GUARD HERE, AND THE ENGINE REFUTED IT (#1123). It rebuilt the whole
   // grid flat whenever a per-column `.gain("…")` had to be written, reasoning that the
   // gain mini "runs 1:1 against the FLAT column sequence, so a grid carrying one has to
@@ -287,7 +297,7 @@ function spliceGrid(
     const last = p.regions[p.regions.length - 1]
     out += p.before
     if (cols === null || last === undefined || last.to !== cols.length) {
-      partsRebuilt++
+      rebuiltParts.push(p.regions.length)
       const rebuilt = gridColumns(lanes, model.steps)
       if (rebuilt === null) return 'decline'
       out += rebuilt.join(' ') + p.after
@@ -315,7 +325,7 @@ function spliceGrid(
     out += p.after
   }
   const regions = src.parts.reduce((n, p) => n + p.regions.length, 0)
-  return { out: out + src.suffix, regions, regionsReemitted, partsRebuilt }
+  return { out: out + src.suffix, regions, regionsReemitted, rebuiltParts }
 }
 
 /* ── leaf surgery (#986) ───────────────────────────────────────── */
