@@ -232,6 +232,97 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
   })
 
+  /**
+   * #1140 — THE ÷2 / ×2 BUTTONS, THROUGH THE BROWSER.
+   *
+   * #1059 made the relative steps the control's primary gesture and demoted the
+   * presets to a dropdown, but every browser arm above still reaches the control
+   * through that dropdown. So the gesture a user actually makes was verified only
+   * by unit tests driving `ResolutionControl` with a stub `slotState` — which
+   * cannot see the wiring between the button and the real model, and that wiring is
+   * where the enabled-but-inert class has landed every previous time (#1010 P4c:
+   * 483 grid + 123 roll dead targets, whole suite green).
+   */
+  test('step grid: the ×2 / ÷2 walk refines and returns without ever writing (#1059)', async ({
+    page,
+  }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd ~ sn ~")')
+    const drawer = await openPattern(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    const slots = slotsControl(drawer)
+    const up = slots.locator('[data-resolution-double]')
+    const down = slots.locator('[data-resolution-halve]')
+    const readout = slots.locator('[data-resolution-current]')
+
+    // the document's own resolution, and the readout is the only thing telling the
+    // user where they are now that the presets are hidden
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
+    await expect(readout).toHaveText('4')
+    // ×2 announces itself as free BEFORE it is pressed, and carries no write cue
+    await expect(up).toHaveAttribute('data-resolution-view', 'true')
+    await expect(up).not.toHaveAttribute('data-resolution-writes', 'true')
+
+    // ── climb ──────────────────────────────────────────────────────────────
+    await up.click()
+    await page.waitForTimeout(120)
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
+    await expect(readout).toHaveText('8')
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+
+    await up.click()
+    await page.waitForTimeout(120)
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(16)
+    await expect(readout).toHaveText('16')
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+
+    // ── and back down, which is the half the free zone is easiest to get wrong
+    // on: descending through a refined view is a VIEW change all the way to the
+    // document's own count (2613 grid standings measured, not one write), and only
+    // BELOW that count does it become an edit.
+    await down.click()
+    await page.waitForTimeout(120)
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
+    await expect(readout).toHaveText('8')
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+
+    await down.click()
+    await page.waitForTimeout(120)
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
+    await expect(readout).toHaveText('4')
+    // the whole walk, and the file is the bytes the user typed
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+    expect(errors).toEqual([])
+  })
+
+  test('step grid: ÷2 stops at the document\'s own count rather than quietly editing (#1059)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd ~ sn ~")')
+    const drawer = await openPattern(page)
+    const slots = slotsControl(drawer)
+    const down = slots.locator('[data-resolution-halve]')
+
+    // At the document's own resolution, ÷2 would go BELOW it — a real coarsening,
+    // which the writer declines because P4c preserves note length and half a column
+    // has no spelling. Measured over the corpus: 546 of 546 such grid targets are
+    // disabled. The control must say so rather than offer a press that does nothing.
+    await expect(down).toBeDisabled()
+    await expect(down).not.toHaveAttribute('data-resolution-view', 'true')
+
+    // …and after refining, the SAME button becomes free, because now it descends
+    // INTO the free zone instead of out of it. One button, two zones, and the
+    // difference is where the document's own count sits — not which way it points.
+    await slots.locator('[data-resolution-double]').click()
+    await page.waitForTimeout(120)
+    await expect(down).toBeEnabled()
+    await expect(down).toHaveAttribute('data-resolution-view', 'true')
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+  })
+
   test('piano roll: reduce a 64-step melody to 16 (quantize) writes a valid 16-slot pattern', async ({
     page,
   }) => {
