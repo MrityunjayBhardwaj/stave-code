@@ -193,25 +193,59 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     expect(errors).toEqual([])
   })
 
-  test('step grid: a lossless reduce keeps timing and is shown as a normal preset', async ({
+  /**
+   * ── THE TWO COARSENING ARMS, RE-BASED (#1061) ────────────────────────────────
+   *
+   * Both of these used to assert that the grid would coarsen: 8→4 as a lossless
+   * reduce, and 5→4 as a quantize. Neither is the shipped contract any more, and
+   * the change that ended them was P4c (#1047) rather than anything in #1052 —
+   * since the printer preserves a note's LENGTH, a note lasting one column of an
+   * 8-column grid lasts half a column of a 4-column one, and the grid has no
+   * notation for half a column. So the writer declines, the op returns its input
+   * unchanged, and an honest control draws the target as unavailable.
+   *
+   * That is why these two sat red for so long: P4c's own gates measure the ops and
+   * the printer, and this is the layer above both. Re-based here against what the
+   * ops actually do rather than by accepting whatever the button now happens to
+   * report — the unit pins in `resolution.test.ts` assert the same refusal from the
+   * other side, and `quantizeStepGridTo` returning its own input is what both rest on.
+   *
+   * ⚠ EACH ARM CARRIES A CONTROL: a test that only asserts "disabled" would pass just
+   * as happily if the control broke and disabled EVERYTHING. So each also names a
+   * target on the same pattern that must still be live, which is what makes the
+   * refusal specific rather than blanket.
+   *
+   * Coverage is not lost by this: quantize coarsening is still exercised on the roll
+   * below (64→16), where it remains live — 329 offers over 185 units, against 0 on
+   * the grid — and the `lossless` state keeps its unit arm in ResolutionControl.test.tsx.
+   */
+  test('step grid: a target below the document is refused — half a column has no spelling', async ({
     page,
   }) => {
     await boot(page)
-    // hits only on every 4th column → 8→4 is lossless
+    // hits on every 4th column, so 8→4 loses no timing — and is STILL refused, because
+    // what it would lose is each note's LENGTH, not its position.
     await setStrudelCode(page, '$: s("bd ~ ~ ~ sn ~ ~ ~")')
     const drawer = await openPattern(page)
     const slots = slotsControl(drawer)
-    await expect((await preset(slots, 4))).toBeEnabled()
-    await expect((await preset(slots, 4))).not.toHaveAttribute(
-      'data-resolution-quantize',
+
+    await expect((await preset(slots, 4))).toBeDisabled()
+    await expect((await preset(slots, 4))).toHaveAttribute(
+      'title',
+      '4 slots — unavailable',
+    )
+    // CONTROL: the control is alive, and refining the same pattern is free. If this
+    // ever goes disabled too, the arm above stops meaning "coarsening is refused".
+    await expect((await preset(slots, 16))).toBeEnabled()
+    await expect((await preset(slots, 16))).toHaveAttribute(
+      'data-resolution-view',
       'true',
     )
-    await (await preset(slots, 4)).click()
-    await page.waitForTimeout(120)
-    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+    // and the refusal writes nothing at all
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ ~ ~ sn ~ ~ ~")')
   })
 
-  test('step grid: a non-power-of-2 (5-step) pattern can still be reduced (quantize)', async ({
+  test('step grid: a 5-step pattern is refused the same coarsening, but still refines', async ({
     page,
   }) => {
     await boot(page)
@@ -219,17 +253,22 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     const drawer = await openPattern(page)
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
     const slots = slotsControl(drawer)
-    // every preset is OFFERED (quantize), not disabled — and marked as quantize
-    await expect((await preset(slots, 4))).toBeEnabled()
-    await expect((await preset(slots, 4))).toHaveAttribute(
+
+    // 4 is below the document's own 5 → refused, for the same length reason
+    await expect((await preset(slots, 4))).toBeDisabled()
+
+    // CONTROL, and the half of the old test that survives: 5 has no whole multiple
+    // among the presets, so every refine it is offered is a genuine rewrite — cued as
+    // one, and it still works. The refusal is specific to going BELOW the document.
+    await expect((await preset(slots, 8))).toBeEnabled()
+    await expect((await preset(slots, 8))).toHaveAttribute(
       'data-resolution-quantize',
       'true',
     )
-    // reduce 5 → 4: hits snap to the nearest of the 4 slots
-    await (await preset(slots, 4)).click()
-    await page.waitForTimeout(120)
-    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn bd")')
-    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
+    await (await preset(slots, 8)).click()
+    await page.waitForTimeout(150)
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ ~ sn ~ ~ bd ~")')
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
   })
 
   /**
