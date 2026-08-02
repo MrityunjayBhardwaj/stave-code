@@ -104,13 +104,58 @@ export function ifRollSpellable(input: PianoRollModel, next: PianoRollModel): Pi
 
 /* ── drum grid ─────────────────────────────────────────────────── */
 
-export function serializeStepGrid(model: StepGridModel): string | null {
+/**
+ * HOW MUCH OF THE DOCUMENT A GRID WRITE MOVED — reported by the writer, never
+ * reconstructed from its output (#1058).
+ *
+ * "Only the touched element's bytes move" is the property #1052's whole case
+ * rests on, and until now the only way to check it from outside was to walk
+ * `prefix`/`before`/`raw`/`after`/`suffix` back into absolute offsets and read a
+ * byte diff against them. That walk is a SECOND DESCRIPTION of the order
+ * `spliceGrid` concatenates in, and it is wrong in a way its own output cannot
+ * reveal: when a voided `,`-part holds a single element, rebuilding the part and
+ * re-emitting that element produce a diff of the same shape. Measured over 15,200
+ * asks, the walk called 208 part-rebuilds local — 0 errors the other way, so the
+ * whole error runs toward the verdict nobody re-checks (#1137).
+ *
+ * The writer already decides both facts, one `if` each, and threw them away. This
+ * hands them back.
+ *
+ * A UNION RATHER THAN SENTINEL COUNTS, deliberately. Only the splice path has
+ * regions to count; leaf surgery anchors at each note's own span and the rebuilds
+ * re-derive everything. Giving those a `0` would read as "moved nothing", which is
+ * the opposite of true for a rebuild — so the shape makes the unmeasurable case
+ * unrepresentable as a number instead of relying on a caller to remember.
+ *
+ * `regions` is reported alongside the re-emitted count because "one element moved"
+ * is only a promise when there is more than one element to choose between. A unit
+ * whose source is a SINGLE region covering the whole cycle — `hh(<3,7>,16)`,
+ * `amen/4` — re-emits that one region and satisfies every locality rule
+ * vacuously, while the write is in fact a whole-cycle re-derivation. That class
+ * was found by #994's self-review and is what `vacuousLocality` routes around at
+ * parse time; reporting `1 of 1` rather than `1` is what lets a caller see it.
+ */
+export type GridWriteExtent =
+  | { path: 'splice'; regions: number; regionsReemitted: number; partsRebuilt: number }
+  | { path: 'leaf' | 'alt' | 'rebuild' | 'declined' }
+
+/**
+ * `serializeStepGrid`, plus what the write touched.
+ *
+ * This is the implementation and `serializeStepGrid` is the projection of it, so
+ * the extent cannot describe a write the caller did not get ([[PV200]]: one
+ * authority, never two that agree the day they are written).
+ */
+export function serializeStepGridWithExtent(model: StepGridModel): {
+  mini: string | null
+  extent: GridWriteExtent
+} {
   // A leaf-anchored grid (#986) is written by byte surgery at each note's own
   // span and NEVER rebuilt: its notation is precisely what no re-emit of ours can
   // spell, so a rebuild would destroy the pattern the projection opened. An edit
   // it can't express as a byte replacement returns null — the binding layer then
   // leaves the document (and the model) untouched.
-  if (model.leafSource) return spliceByLeaf(model)
+  if (model.leafSource) return { mini: spliceByLeaf(model), extent: { path: 'leaf' } }
 
   // A `<...>`-as-element pattern (`bd <sd hh>`, #920) uses its own span surgery
   // and NEVER the rebuilds below — a rebuild would reshape it into the
@@ -119,21 +164,53 @@ export function serializeStepGrid(model: StepGridModel): string | null {
   // The guard is the #916 covers-check: if a restructure moved the width out from
   // under the source, it no longer describes this grid — fall to the rebuild
   // (reshaped notation, correct haps) rather than splice against stale spans.
-  if (altSourceFits(model.altSource, model.steps)) return spliceAltGrid(model)
+  if (altSourceFits(model.altSource, model.steps))
+    return { mini: spliceAltGrid(model), extent: { path: 'alt' } }
 
   // Span surgery first: it puts back what the user wrote wherever they didn't
   // edit. Three answers, and the third is new in P4c:
-  //   a string   — spliced;
-  //   'rebuild'  — the regions no longer describe the grid, so the rebuilds below
-  //                take over, the way this always worked;
+  //   a record   — spliced, carrying how much of the source it had to re-emit;
+  //   'rebuild'  — the regions no longer describe the grid, so `rebuildGrid`
+  //                takes over, the way this always worked;
   //   'decline'  — a length this grid carries has no spelling at its resolution.
-  // The last MUST NOT fall through to the rebuild: the rebuild is exactly the
-  // re-derivation that drops the length, so falling through would turn a refusal
-  // back into the silent corruption it exists to prevent.
   const spliced = spliceGrid(model)
-  if (spliced === 'decline') return null
-  if (spliced !== 'rebuild') return spliced
+  if (spliced === 'decline') return { mini: null, extent: { path: 'declined' } }
+  if (spliced !== 'rebuild')
+    return {
+      mini: spliced.out,
+      extent: {
+        path: 'splice',
+        regions: spliced.regions,
+        regionsReemitted: spliced.regionsReemitted,
+        partsRebuilt: spliced.partsRebuilt,
+      },
+    }
+  return { mini: rebuildGrid(model), extent: { path: 'rebuild' } }
+}
 
+/**
+ * The mini a grid model writes back, or null where it has no spelling.
+ *
+ * Every caller that only needs the bytes uses this; the extent above is for the
+ * ones asking how much of the document moved. One implementation, so the two can
+ * never disagree about what was written.
+ */
+export function serializeStepGrid(model: StepGridModel): string | null {
+  return serializeStepGridWithExtent(model).mini
+}
+
+/**
+ * Re-derive the whole mini from the model — lossy, and always was. Reached only
+ * where the source regions no longer describe this grid.
+ *
+ * Named and split out so `serializeStepGridWithExtent` can report WHICH path
+ * answered without duplicating the decision; the body is unchanged.
+ *
+ * ⚠ A 'decline' from the splice MUST NOT fall through to here: the rebuild is
+ * exactly the re-derivation that drops a length, so falling through would turn a
+ * refusal back into the silent corruption it exists to prevent (#1010 P4c).
+ */
+function rebuildGrid(model: StepGridModel): string | null {
   const bars = model.bars ?? 1
   if (bars > 1) return gridBars(model, bars)
 
@@ -166,10 +243,19 @@ export function serializeStepGrid(model: StepGridModel): string | null {
  * Returns `'rebuild'` when the regions no longer describe this grid — then the
  * caller rebuilds from the model, which is lossy and always was — and `'decline'`
  * when a length here cannot be spelled, which the caller must NOT rebuild past.
+ *
+ * On success it reports HOW MUCH it had to re-emit alongside the bytes. Both
+ * numbers are already decided by the two branches below; returning them is what
+ * lets a caller check "only the touched element moved" without re-deriving where
+ * the bytes went from the output (#1058, #1137).
  */
-function spliceGrid(model: StepGridModel): string | 'rebuild' | 'decline' {
+function spliceGrid(
+  model: StepGridModel,
+): { out: string; regions: number; regionsReemitted: number; partsRebuilt: number } | 'rebuild' | 'decline' {
   const src = model.source
   if (!src || src.parts.length === 0) return 'rebuild'
+  let regionsReemitted = 0
+  let partsRebuilt = 0
   // ⚠ THERE WAS A GUARD HERE, AND THE ENGINE REFUTED IT (#1123). It rebuilt the whole
   // grid flat whenever a per-column `.gain("…")` had to be written, reasoning that the
   // gain mini "runs 1:1 against the FLAT column sequence, so a grid carrying one has to
@@ -201,6 +287,7 @@ function spliceGrid(model: StepGridModel): string | 'rebuild' | 'decline' {
     const last = p.regions[p.regions.length - 1]
     out += p.before
     if (cols === null || last === undefined || last.to !== cols.length) {
+      partsRebuilt++
       const rebuilt = gridColumns(lanes, model.steps)
       if (rebuilt === null) return 'decline'
       out += rebuilt.join(' ') + p.after
@@ -220,13 +307,15 @@ function spliceGrid(model: StepGridModel): string | 'rebuild' | 'decline' {
         out += r.raw
         continue
       }
+      regionsReemitted++
       const re = reemitRegion(now, sole ? 1 : p.div, model.viewScale !== undefined)
       if (re === null) return 'decline'
       out += r.leading + re + r.trailing
     }
     out += p.after
   }
-  return out + src.suffix
+  const regions = src.parts.reduce((n, p) => n + p.regions.length, 0)
+  return { out: out + src.suffix, regions, regionsReemitted, partsRebuilt }
 }
 
 /* ── leaf surgery (#986) ───────────────────────────────────────── */
