@@ -85,6 +85,22 @@ async function openPattern(page: Page): Promise<Locator> {
 /** The "Slots" control lives in the Pattern inspector (#601), not the grid header. */
 const slotsControl = (drawer: Locator): Locator => drawer.locator('[data-mixer-body]')
 
+/**
+ * #1059 — THE ABSOLUTE PRESETS NOW LIVE BEHIND THE READOUT'S DOUBLE-CLICK.
+ *
+ * The control's resting shape is `÷2 [16] ×2`; the 4/8/16/32/64 list is a dropdown
+ * the readout opens. So a spec that targets a preset has to open it first. Opening
+ * is idempotent — the dropdown stays open until a preset is chosen, Escape, or a
+ * press outside — so this is safe to call before every interaction, including
+ * consecutive ones.
+ */
+async function preset(slots: Locator, n: number): Promise<Locator> {
+  if ((await slots.locator('[data-resolution-presets]').count()) === 0) {
+    await slots.locator('[data-resolution-current]').dblclick()
+  }
+  return slots.locator(`[data-resolution-step="${n}"]`)
+}
+
 /** Press on a cell/bar, drag vertically by `dy` px (down = softer), release. */
 async function dragVertical(page: Page, target: Locator, dy: number): Promise<void> {
   await target.scrollIntoViewIfNeeded()
@@ -198,16 +214,16 @@ test.describe('looking closer and coming back returns the pattern as written (#1
     // the document's own resolution is 8 (the group subdivides), and 16 is offered
     // as a VIEW — it announces that before it is pressed
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
-    await expect(slots.locator('[data-resolution-step="8"]')).toHaveAttribute(
+    await expect((await preset(slots, 8))).toHaveAttribute(
       'data-resolution-active',
       'true',
     )
-    await expect(slots.locator('[data-resolution-step="16"]')).toHaveAttribute(
+    await expect((await preset(slots, 16))).toHaveAttribute(
       'data-resolution-view',
       'true',
     )
 
-    await slots.locator('[data-resolution-step="16"]').click()
+    await (await preset(slots, 16)).click()
     await page.waitForTimeout(150)
     // the view really did refine…
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(16)
@@ -215,7 +231,7 @@ test.describe('looking closer and coming back returns the pattern as written (#1
     expect(await strudelValue(page)).toBe(GRID)
 
     // and coming back returns the pattern AS WRITTEN — not a flattened equivalent
-    await slots.locator('[data-resolution-step="8"]').click()
+    await (await preset(slots, 8)).click()
     await page.waitForTimeout(150)
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
     expect(await strudelValue(page)).toBe(GRID)
@@ -233,7 +249,7 @@ test.describe('looking closer and coming back returns the pattern as written (#1
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
     const slots = slotsControl(drawer)
 
-    await slots.locator('[data-resolution-step="16"]').click()
+    await (await preset(slots, 16)).click()
     await page.waitForTimeout(150)
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(16)
     expect(await strudelValue(page)).toBe(GRID)
@@ -265,12 +281,12 @@ test.describe('looking closer and coming back returns the pattern as written (#1
     await expect(roll).toHaveCount(1)
     await expect(roll.locator('[data-vel-col]')).toHaveCount(8)
 
-    await slots.locator('[data-resolution-step="16"]').click()
+    await (await preset(slots, 16)).click()
     await page.waitForTimeout(150)
     await expect(roll.locator('[data-vel-col]')).toHaveCount(16)
     expect(await strudelValue(page)).toBe(SRC)
 
-    await slots.locator('[data-resolution-step="8"]').click()
+    await (await preset(slots, 8)).click()
     await page.waitForTimeout(150)
     await expect(roll.locator('[data-vel-col]')).toHaveCount(8)
     expect(await strudelValue(page)).toBe(SRC)
@@ -292,7 +308,7 @@ test.describe('looking closer and coming back returns the pattern as written (#1
     const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
     const slots = slotsControl(drawer)
 
-    await slots.locator('[data-resolution-step="16"]').click()
+    await (await preset(slots, 16)).click()
     await page.waitForTimeout(150)
     await expect(roll.locator('[data-vel-col]')).toHaveCount(16)
     expect(await strudelValue(page)).toBe(SRC)
@@ -319,12 +335,12 @@ test.describe('looking closer at an alternation draws it (#1117)', () => {
     await expect(grid).toHaveCount(1)
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
 
-    await slots.locator('[data-resolution-step="8"]').click()
+    await (await preset(slots, 8)).click()
     await page.waitForTimeout(150)
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
     expect(await strudelValue(page)).toBe(SRC)
 
-    await slots.locator('[data-resolution-step="4"]').click()
+    await (await preset(slots, 4)).click()
     await page.waitForTimeout(150)
     expect(await strudelValue(page)).toBe(SRC)
     expect(errors).toEqual([])
@@ -358,17 +374,17 @@ test.describe('looking closer at an alternation draws it (#1117)', () => {
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
 
     // THE CLAUSE THAT GOES RED WITHOUT THE FIX: the target was not offered at all
-    await expect(slots.locator('[data-resolution-step="8"]')).toHaveAttribute(
+    await expect((await preset(slots, 8))).toHaveAttribute(
       'data-resolution-view',
       'true',
     )
 
-    await slots.locator('[data-resolution-step="8"]').click()
+    await (await preset(slots, 8)).click()
     await page.waitForTimeout(150)
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
     expect(await strudelValue(page)).toBe(SRC)
 
-    await slots.locator('[data-resolution-step="4"]').click()
+    await (await preset(slots, 4)).click()
     await page.waitForTimeout(150)
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
     expect(await strudelValue(page)).toBe(SRC)

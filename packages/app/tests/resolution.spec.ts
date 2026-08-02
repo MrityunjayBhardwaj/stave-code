@@ -66,16 +66,41 @@ function slotsControl(drawer: Locator): Locator {
   return drawer.locator('[data-mixer-body]')
 }
 
+/**
+ * #1059 — THE ABSOLUTE PRESETS NOW LIVE BEHIND THE READOUT'S DOUBLE-CLICK.
+ *
+ * The control's resting shape is `÷2 [16] ×2`; the 4/8/16/32/64 list is a dropdown
+ * the readout opens. So a spec that targets a preset has to open it first. Opening
+ * is idempotent — the dropdown stays open until a preset is chosen, Escape, or a
+ * press outside — so this is safe to call before every interaction, including
+ * consecutive ones.
+ */
+async function preset(slots: Locator, n: number): Promise<Locator> {
+  if ((await slots.locator('[data-resolution-presets]').count()) === 0) {
+    await slots.locator('[data-resolution-current]').dblclick()
+  }
+  return slots.locator(`[data-resolution-step="${n}"]`)
+}
+
 test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () => {
   test('the Slots control is in the inspector, not the grid header', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd ~ sn ~")')
     const drawer = await openPattern(page)
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    const slots = slotsControl(drawer)
     // moved out of the grid…
     await expect(grid.locator('[data-resolution-step]')).toHaveCount(0)
-    // …and into the inspector
-    await expect(slotsControl(drawer).locator('[data-resolution-step]')).toHaveCount(5)
+    await expect(grid.locator('[data-resolution-current]')).toHaveCount(0)
+    // …and into the inspector, whose resting shape is `÷2 [n] ×2` (#1059)
+    await expect(slots.locator('[data-resolution-current]')).toHaveCount(1)
+    await expect(slots.locator('[data-resolution-halve]')).toHaveCount(1)
+    await expect(slots.locator('[data-resolution-double]')).toHaveCount(1)
+    // the presets are BEHIND the readout now — none in the DOM until it is opened,
+    // which is the gesture itself and so worth asserting rather than assuming
+    await expect(slots.locator('[data-resolution-step]')).toHaveCount(0)
+    await slots.locator('[data-resolution-current]').dblclick()
+    await expect(slots.locator('[data-resolution-step]')).toHaveCount(5)
   })
 
   test('step grid: choosing 8 draws 8 columns and leaves the document alone (#1057)', async ({
@@ -91,23 +116,23 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
 
     // 4 columns before; "4" is the active preset
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
-    await expect(slots.locator('[data-resolution-step="4"]')).toHaveAttribute(
+    await expect((await preset(slots, 4))).toHaveAttribute(
       'data-resolution-active',
       'true',
     )
     // …and 8 announces itself as a VIEW before it is pressed, so a user can tell
     // that it is safe without having to press it and read their file afterwards.
-    await expect(slots.locator('[data-resolution-step="8"]')).toHaveAttribute(
+    await expect((await preset(slots, 8))).toHaveAttribute(
       'data-resolution-view',
       'true',
     )
 
-    await slots.locator('[data-resolution-step="8"]').click()
+    await (await preset(slots, 8)).click()
     await page.waitForTimeout(120)
 
     // THE GRID REFINES…
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
-    await expect(slots.locator('[data-resolution-step="8"]')).toHaveAttribute(
+    await expect((await preset(slots, 8))).toHaveAttribute(
       'data-resolution-active',
       'true',
     )
@@ -117,7 +142,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
 
     // and it is reversible the same way it was entered — still without a write
-    await slots.locator('[data-resolution-step="4"]').click()
+    await (await preset(slots, 4)).click()
     await page.waitForTimeout(120)
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
     expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
@@ -138,7 +163,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
     const slots = slotsControl(drawer)
 
-    await slots.locator('[data-resolution-step="8"]').click()
+    await (await preset(slots, 8)).click()
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")') // still untouched
 
@@ -161,7 +186,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     // scale — the document now genuinely expresses eighth-note resolution, so the
     // reader derives eight columns from the onsets themselves.
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
-    await expect(slots.locator('[data-resolution-step="8"]')).toHaveAttribute(
+    await expect((await preset(slots, 8))).toHaveAttribute(
       'data-resolution-active',
       'true',
     )
@@ -176,12 +201,12 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     await setStrudelCode(page, '$: s("bd ~ ~ ~ sn ~ ~ ~")')
     const drawer = await openPattern(page)
     const slots = slotsControl(drawer)
-    await expect(slots.locator('[data-resolution-step="4"]')).toBeEnabled()
-    await expect(slots.locator('[data-resolution-step="4"]')).not.toHaveAttribute(
+    await expect((await preset(slots, 4))).toBeEnabled()
+    await expect((await preset(slots, 4))).not.toHaveAttribute(
       'data-resolution-quantize',
       'true',
     )
-    await slots.locator('[data-resolution-step="4"]').click()
+    await (await preset(slots, 4)).click()
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
   })
@@ -195,13 +220,13 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
     const slots = slotsControl(drawer)
     // every preset is OFFERED (quantize), not disabled — and marked as quantize
-    await expect(slots.locator('[data-resolution-step="4"]')).toBeEnabled()
-    await expect(slots.locator('[data-resolution-step="4"]')).toHaveAttribute(
+    await expect((await preset(slots, 4))).toBeEnabled()
+    await expect((await preset(slots, 4))).toHaveAttribute(
       'data-resolution-quantize',
       'true',
     )
     // reduce 5 → 4: hits snap to the nearest of the 4 slots
-    await slots.locator('[data-resolution-step="4"]').click()
+    await (await preset(slots, 4)).click()
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn bd")')
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
@@ -220,12 +245,12 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     const drawer = await openPattern(page)
     const slots = slotsControl(drawer)
     // 16 is below the 64-step current → offered as a quantize target
-    await expect(slots.locator('[data-resolution-step="16"]')).toBeEnabled()
-    await expect(slots.locator('[data-resolution-step="16"]')).toHaveAttribute(
+    await expect((await preset(slots, 16))).toBeEnabled()
+    await expect((await preset(slots, 16))).toHaveAttribute(
       'data-resolution-quantize',
       'true',
     )
-    await slots.locator('[data-resolution-step="16"]').click()
+    await (await preset(slots, 16)).click()
     await page.waitForTimeout(150)
     const code = await getStrudelCode(page)
     // the write happened (source changed) and it's a real 16-slot melody
@@ -249,16 +274,16 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     // 4 → 8 is a whole multiple, so it is a VIEW (#1057): the roll draws twice as
     // finely and the document is untouched. This used to assert
     // `'$: note("c3 ~ e3 ~ g3 ~ a3 ~")'` — the rewrite the phase removed.
-    await expect(slots.locator('[data-resolution-step="8"]')).toHaveAttribute(
+    await expect((await preset(slots, 8))).toHaveAttribute(
       'data-resolution-view',
       'true',
     )
-    await slots.locator('[data-resolution-step="8"]').click()
+    await (await preset(slots, 8)).click()
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: note("c3 e3 g3 a3")')
 
     // 8 → 4 returns to the document's own resolution — also a view, also no write.
-    await slots.locator('[data-resolution-step="4"]').click()
+    await (await preset(slots, 4)).click()
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: note("c3 e3 g3 a3")')
     expect(errors).toEqual([])
@@ -282,7 +307,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     await setStrudelCode(page, src)
     const drawer = await openPattern(page)
     const slots = slotsControl(drawer)
-    await slots.locator('[data-resolution-step="8"]').click()
+    await (await preset(slots, 8)).click()
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe(src)
   })
