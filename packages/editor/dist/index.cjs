@@ -29378,6 +29378,7 @@ function ResolutionControl({
   const doubleState = slotState2(doubleTarget);
   const stepButton = /* @__PURE__ */ __name((dir, target, state5) => {
     const label = dir === "halve" ? "\xF72" : "\xD72";
+    const eff = target === null ? void 0 : effect?.(target);
     return /* @__PURE__ */ jsxRuntime.jsx(
       "button",
       {
@@ -29388,8 +29389,8 @@ function ResolutionControl({
         "data-resolution-writes": writes(state5) ? "true" : void 0,
         "data-resolution-view": state5 === "view" ? "true" : void 0,
         "aria-label": dir === "halve" ? "halve slots" : "double slots",
-        title: target === null ? `\xF72 \u2014 unavailable on an odd slot count (${steps})` : describeTarget(target, state5, effect?.(target)),
-        "data-resolution-lengthens": target !== null && (effect?.(target).lengthened ?? 0) > 0 ? "true" : void 0,
+        title: target === null ? `\xF72 \u2014 unavailable on an odd slot count (${steps})` : describeTarget(target, state5, eff),
+        "data-resolution-lengthens": (eff?.lengthened ?? 0) > 0 ? "true" : void 0,
         disabled: !pressable(state5),
         onClick: () => {
           if (target !== null && pressable(state5)) onScaleTo(target);
@@ -29487,6 +29488,7 @@ function ResolutionControl({
             },
             children: RESOLUTION_PRESETS.map((preset) => {
               const state5 = preset === steps ? "active" : slotState2(preset);
+              const eff = effect?.(preset);
               return /* @__PURE__ */ jsxRuntime.jsx(
                 "button",
                 {
@@ -29497,10 +29499,10 @@ function ResolutionControl({
                   "data-resolution-quantize": state5 === "quantize" ? "true" : void 0,
                   "data-resolution-writes": writes(state5) ? "true" : void 0,
                   "data-resolution-view": state5 === "view" ? "true" : void 0,
-                  "data-resolution-lengthens": (effect?.(preset).lengthened ?? 0) > 0 ? "true" : void 0,
+                  "data-resolution-lengthens": (eff?.lengthened ?? 0) > 0 ? "true" : void 0,
                   "aria-selected": state5 === "active",
                   "aria-label": `${preset} slots`,
-                  title: describeTarget(preset, state5, effect?.(preset)),
+                  title: describeTarget(preset, state5, eff),
                   disabled: state5 !== "active" && !pressable(state5),
                   onClick: () => {
                     if (pressable(state5)) onScaleTo(preset);

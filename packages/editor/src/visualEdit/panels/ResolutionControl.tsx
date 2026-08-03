@@ -323,6 +323,13 @@ export function ResolutionControl({
     state: SlotState,
   ): React.ReactElement => {
     const label = dir === 'halve' ? '÷2' : '×2'
+    // ASKED ONCE PER BUTTON, not once per attribute. `effect` runs the real op — a full
+    // `quantizeStepGridTo` plus a `serializeStepGrid` over every lane — so calling it from
+    // both the tooltip and the marker doubles that for every target on every render. Same
+    // reason `placeable`/`coverage` hang off the model in `SequencerGrid` ([[P380]]): the
+    // cost is invisible until something re-renders in a loop, and then it is the whole
+    // frame budget.
+    const eff = target === null ? undefined : effect?.(target)
     return (
       <button
         type="button"
@@ -335,11 +342,9 @@ export function ResolutionControl({
         title={
           target === null
             ? `÷2 — unavailable on an odd slot count (${steps})`
-            : describeTarget(target, state, effect?.(target))
+            : describeTarget(target, state, eff)
         }
-        data-resolution-lengthens={
-          target !== null && (effect?.(target).lengthened ?? 0) > 0 ? 'true' : undefined
-        }
+        data-resolution-lengthens={(eff?.lengthened ?? 0) > 0 ? 'true' : undefined}
         disabled={!pressable(state)}
         onClick={() => {
           if (target !== null && pressable(state)) onScaleTo(target)
@@ -439,6 +444,7 @@ export function ResolutionControl({
         >
           {RESOLUTION_PRESETS.map((preset) => {
             const state: SlotState = preset === steps ? 'active' : slotState(preset)
+            const eff = effect?.(preset) // once per preset — see `stepButton` for why
             return (
               <button
                 key={preset}
@@ -454,12 +460,10 @@ export function ResolutionControl({
                 // #1061 — a coarsening that holds notes at one column is observable
                 // from the DOM, so a spec asserts the CONSEQUENCE the user was promised
                 // rather than re-deriving it from the pattern that came back.
-                data-resolution-lengthens={
-                  (effect?.(preset).lengthened ?? 0) > 0 ? 'true' : undefined
-                }
+                data-resolution-lengthens={(eff?.lengthened ?? 0) > 0 ? 'true' : undefined}
                 aria-selected={state === 'active'}
                 aria-label={`${preset} slots`}
-                title={describeTarget(preset, state, effect?.(preset))}
+                title={describeTarget(preset, state, eff)}
                 disabled={state !== 'active' && !pressable(state)}
                 onClick={() => {
                   if (pressable(state)) onScaleTo(preset)
