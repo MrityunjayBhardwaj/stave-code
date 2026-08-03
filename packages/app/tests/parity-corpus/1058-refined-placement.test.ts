@@ -313,6 +313,57 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
     )
   })
 
+  it('#1137 — the units whose SPELLING changed still PLAY the same, exhaustively', () => {
+    // Same oracle as PROPERTY 2, same one-net-new-row rule — but over every accepted
+    // ask on the units #1137 re-spelled, rather than a stride sample of the whole
+    // corpus. This is the arm that can actually catch a weight change: `[cr cr] hh bd`
+    // and `cr cr hh _ bd _` both re-parse and both look plausible, and only the engine
+    // says whether `hh` still starts a third of the way through the cycle.
+    const s = SWEPT.get(2)!
+    const asks = s.asks.filter(
+      (a) =>
+        a.accepted &&
+        a.out !== null &&
+        a.path === 'splice' &&
+        UNITS_CHANGED_BY_1137.includes(a.mini),
+    )
+    // the population is stated so a corpus change that empties it cannot read as a pass
+    expect(asks.length, 'asks on the changed units').toBeGreaterThan(200)
+
+    let clean = 0
+    let queried = 0
+    const wrong: string[] = []
+    for (const a of asks) {
+      const parsed = parseStepGrid(a.mini, 2)
+      if (!parsed.ok) continue
+      const bars = parsed.model.bars ?? 1
+      let added: Note[] = []
+      let removed: Note[] = []
+      let queryable = true
+      for (let b = 0; b < bars; b++) {
+        const want = enginePlayedCycle(a.mini, b)
+        const got = enginePlayedCycle(a.out!, b)
+        if (want === null || got === null) { queryable = false; break }
+        const d = diffNotes(want, got)
+        added = added.concat(d.added)
+        removed = removed.concat(d.removed)
+      }
+      if (!queryable) continue
+      queried++
+      if (added.length - removed.length === 1) clean++
+      else wrong.push(a.mini)
+    }
+    // NAMED, NOT FILTERED — the same discipline as PROPERTY 2, so a new loss on these
+    // units arrives as a failure rather than as a smaller percentage.
+    expect([...new Set(wrong)].sort(), 'changed units losing or gaining a row').toEqual([])
+    // ⚠ `clean === queried` IS VACUOUS AT ZERO — if the engine could not answer for any
+    // ask, both are 0 and the equality holds while nothing was checked. The population
+    // bound above counts asks; this one counts asks the ENGINE actually answered, which
+    // is the number the claim rests on.
+    expect(queried, 'asks the engine actually answered').toBeGreaterThan(200)
+    expect(clean, 'every queried ask plays its own document plus one hit').toBe(queried)
+  })
+
   it('PROPERTY 2 — the document plays what the grid says, plus one hit', () => {
     // Sampled deterministically, and the sample is STATED: the engine query is the
     // expensive part and a full sweep is minutes, not seconds.
@@ -506,6 +557,57 @@ const NON_LOCAL_UNITS: string[] = [
  * minimum across ALL parts, which is the wrong part whenever they differ in size.
  */
 const SINGLE_ELEMENT_PART_VOIDS = 16
+
+/**
+ * The units whose write #1137 CHANGED — the pre-fix non-local set, kept by name.
+ *
+ * ⚠ THIS EXISTS BECAUSE PROPERTY 2 IS SAMPLED. That arm strides ~300 asks out of
+ * 15,200, which is the right trade for a standing property but the wrong instrument
+ * for a change: the asks #1137 moved are ~1.6% of the population, so a stride sample
+ * contains a handful of them by luck. "The engine agrees" would then be a claim about
+ * the code that did not change.
+ *
+ * A re-emit that alters an element's WEIGHT is silent data loss that re-parses
+ * perfectly, so re-spelling `cr hh bd` as `[cr cr] hh bd` has to be answered by the
+ * engine, not by reading the notation. These units are asked EXHAUSTIVELY below.
+ *
+ * ⚠ AND THIS ARM STILL CANNOT COVER THE WHOLE CHANGE — measured, not assumed. This
+ * sweep steps `col += k` from 1, so at k=2 it only ever toggles ODD fine columns,
+ * which never collapse to the document. It therefore never asks a DOCUMENT-resolution
+ * placement at all. Breaking the writer's group subdivision (`p.div * growth` back to
+ * `p.div`) changes the bytes of all 244 asks here and this file stays GREEN, because
+ * every one of those re-spellings is hap-EQUIVALENT (`[E2 E2] ~` places E2 exactly
+ * where `[E2 E2 ~ ~]` does, and an `@2` restores the weight the group gave up). The
+ * same break at the document's own resolution produces `cr cr hh bd` — four elements
+ * in a three-element part, so `hh` moves from a third of the cycle to a quarter — and
+ * is caught by the editor's `writeExtent`/`place` arms, which do ask there.
+ *
+ * So the two layers cover disjoint placements and neither is redundant. Recorded
+ * because a green here reads like whole-change coverage and is not.
+ */
+const UNITS_CHANGED_BY_1137: string[] = [
+  "A2 A2, A1 A1, E2, E1",
+  "[a4,c#4,e4,g#4,c#5],[~ f#6 e6]",
+  "[b4,d4,f#4],b5*3 c#6*2",
+  "[bd ~]*2, [~ hh]*2, ~ sd",
+  "bd [bd - bd], sd(2,4,1), hh*6",
+  "bd [bd bd - bd], sd(2,4,1), hh*8",
+  "bd [bd bd - bd], sd(4,4,1), hh*8",
+  "bd bd - bd,hh,sd,cp",
+  "bd bd sd hh,oh",
+  "bd sd cp hh oh cp, cr hh bd",
+  "bd sd hh, gm_overdriven_guitar",
+  "bd sd oh hh hh [oh hh oh], hh ht bd",
+  "bd*4, [- cp]*2, [- hh]*4",
+  "bd*4, cp(7, 16,14)",
+  "bd*4, sd(2,4,1), hh*8",
+  "bd:1 -, - [sd:1:.6 -]",
+  "c2, eb3 g3 [bb3 c4 c3]",
+  "c2, eb3 g3 [bb3 c4]",
+  "hh,hh oh sd",
+  "numbers, - piano",
+  "~ c5 ~ ~ ,~ f5 ~ ~ ,~ c6*2 ~ ~",
+]
 
 /**
  * The corpus unit whose chords carry a duplicate member (`[d4,f4,d4]`). Any
