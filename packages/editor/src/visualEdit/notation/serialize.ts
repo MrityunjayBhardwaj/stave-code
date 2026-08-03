@@ -608,14 +608,23 @@ function columnAtoms(lanes: StepLane[], steps: number): GridCells {
 const soundsOf = (cols: GridCells): string[][] => cols.map((c) => c.map((n) => n.token))
 
 /**
- * ⚠ SOUNDS ONLY, and as of #1010 P4b a cell also carries a LENGTH (#1045). A model
- * whose only difference from parse time is a note's length compares EQUAL here, so
- * the region is copied back verbatim and the edit does nothing. Nothing can reach
- * that state today — no gesture changes a length without also changing positions or
- * sounds, and the ops that rescale lengths drop the regions outright — but P4c makes
- * the printer honour lengths, and honouring them is undetectable while this
- * comparison cannot see them. Decide it there, before the first "my edit did
- * nothing".
+ * SOUNDS **AND LENGTHS** — `gridCellKey` is `token duration`, so a region whose only
+ * change is how long one note sounds compares UNEQUAL and is re-emitted.
+ *
+ * ⚠ THIS COMMENT USED TO SAY THE OPPOSITE, and the gesture it was waiting for has now
+ * arrived. It warned that a length-only difference would compare EQUAL, the region would
+ * be copied back verbatim, and the edit would silently do nothing — "decide it there,
+ * before the first 'my edit did nothing'". That state was never reachable while no
+ * gesture changed a length on its own; #1053's length handle is exactly such a gesture,
+ * and the decision turns out to have been made already, by whoever put `duration` into
+ * `gridCellKey`. Measured rather than re-reasoned: 854 of the corpus's 4729 grid notes
+ * accept a length change through this path — a number only reachable if this comparison
+ * sees the length.
+ *
+ * Rewritten in place rather than deleted, because "we already know this can't work" is
+ * the first thing a reader remembers, and they should meet the reason it stopped applying
+ * in the same place. What DOES still refuse a lengthening is `sustainTokens` below, on
+ * its own stated grounds.
  */
 const sameCell = (a: GridCells[number], b: GridCells[number]): boolean => {
   const keys = b.map(gridCellKey)

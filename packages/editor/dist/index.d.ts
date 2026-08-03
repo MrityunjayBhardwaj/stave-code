@@ -8775,6 +8775,11 @@ declare function Mixer({ division, onDivisionChange, resolution }?: MixerProps):
  * the editable grid subset (`{}`, `/`, …) → standby, code-only — the
  * conservatism rule.
  *
+ * Length: a note is drawn across the columns it covers (#1056) and its trailing
+ * edge carries a handle that sets how long it sounds, in whole columns (#1053) —
+ * the roll's gesture on the other surface. The handle is drawn only where the
+ * writer would take the drag, so it never promises an edit the document refuses.
+ *
  * Velocity: an ON cell shows its level as a bottom-anchored fill; dragging it
  * vertically sets the column's gain (DAW velocity-lane behaviour — drag down to
  * soften). The level is written to a parallel `.gain("…")` mini aligned to the
