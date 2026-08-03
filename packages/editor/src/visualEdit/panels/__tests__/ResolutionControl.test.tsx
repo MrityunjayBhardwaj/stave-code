@@ -24,7 +24,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as React from 'react'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { ResolutionControl } from '../ResolutionControl'
-import type { SlotState } from '../../notation/resolution'
+import type { GridResolutionEffect, SlotState } from '../../notation/resolution'
 
 afterEach(() => cleanup())
 
@@ -181,5 +181,93 @@ describe('ResolutionControl — the preset dropdown', () => {
     expect(presets()).toHaveLength(5)
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(presets()).toHaveLength(0)
+  })
+})
+
+/**
+ * ── THE COST THE CONTROL DECLARES (#1061) ─────────────────────────────────────
+ *
+ * Coarsening below the document's own count is offered again, and it can cost two
+ * INDEPENDENT things: it can move onsets, and it can hold a note at one column
+ * because the new grid cannot spell anything shorter. `SlotState` carries neither —
+ * it names the mechanism the op reaches for — so the control reads them off the
+ * op's own report.
+ *
+ * Every case below drives an explicit effect table, because the point is not what
+ * the ops compute (that is `resolution.test.ts`) but that the control SAYS what it
+ * was told and does not infer a consequence from a state. A `quantize` whose onsets
+ * did not move must not be announced as changing timing, and that is precisely the
+ * sentence a control deriving copy from `state` alone would get wrong.
+ */
+function mountWithEffect(
+  steps: number,
+  table: Record<number, SlotState>,
+  effects: Record<number, GridResolutionEffect>,
+) {
+  const onScaleTo = vi.fn()
+  render(
+    <ResolutionControl
+      steps={steps}
+      slotState={(t) => table[t] ?? 'disabled'}
+      onScaleTo={onScaleTo}
+      effect={(t) => effects[t] ?? { lengthened: 0, snapped: 0, merged: 0 }}
+    />,
+  )
+}
+
+const NOTHING: GridResolutionEffect = { lengthened: 0, snapped: 0, merged: 0 }
+
+describe('ResolutionControl — what a press costs', () => {
+  it('a coarsening that only lengthens says so, and still says it keeps timing', () => {
+    // the `bd ~ ~ ~ sn ~ ~ ~` → 4 case: every onset stays put, both notes floored
+    mountWithEffect(8, { 4: 'quantize' }, { 4: { lengthened: 2, snapped: 0, merged: 0 } })
+    expect(halve().title).toBe('4 slots — rewrites your file, keeps timing, and makes 2 notes longer')
+    expect(halve().getAttribute('data-resolution-lengthens')).toBe('true')
+  })
+
+  it('a coarsening that moves onsets AND lengthens declares both', () => {
+    // The 5 → 4 case, reached through the PRESET list because an odd count has no ÷2
+    // target at all. The two costs are separate facts and the copy carries both.
+    mountWithEffect(5, { 4: 'quantize' }, { 4: { lengthened: 3, snapped: 2, merged: 0 } })
+    fireEvent.doubleClick(readout())
+    const four = presets().find((b) => b.getAttribute('data-resolution-step') === '4')!
+    expect(four.title).toBe(
+      '4 slots — rewrites your file and snaps notes to the grid (changes timing), and makes 3 notes longer',
+    )
+    expect(four.getAttribute('data-resolution-lengthens')).toBe('true')
+  })
+
+  it('CONTROL — a write that costs nothing extra keeps the plain copy and no marker', () => {
+    // Without this arm, a control that appended "makes 0 notes longer" to everything, or
+    // marked every writing target, would pass both assertions above.
+    mountWithEffect(16, { 8: 'quantize' }, { 8: NOTHING })
+    expect(halve().title).toBe('8 slots — rewrites your file, keeps timing')
+    expect(halve().getAttribute('data-resolution-lengthens')).toBeNull()
+  })
+
+  it('CONTROL — a free target costs nothing at all, whatever the effect table says', () => {
+    // Looking closer never writes, so the free zone's copy must be untouched by this
+    // whole mechanism even if a caller reported an effect for it by mistake.
+    mountWithEffect(8, { 16: 'view' }, { 16: { lengthened: 9, snapped: 9, merged: 9 } })
+    expect(double().title).toBe('16 slots — view only, your pattern is unchanged')
+    expect(double().getAttribute('data-resolution-lengthens')).toBe('true')
+  })
+
+  it('one note is singular — the count is read, not pluralised blindly', () => {
+    mountWithEffect(8, { 4: 'quantize' }, { 4: { lengthened: 1, snapped: 0, merged: 0 } })
+    expect(halve().title).toBe('4 slots — rewrites your file, keeps timing, and makes 1 note longer')
+  })
+
+  it('with NO effect reporter the copy falls back to the mechanism alone', () => {
+    // The piano roll supplies none — it carries duration natively and has no floor. A
+    // `quantize` with nothing reported must keep the cautious old wording rather than
+    // claim "keeps timing" about something it never asked.
+    mount(5, { 4: 'quantize' })
+    fireEvent.doubleClick(readout())
+    const four = presets().find((b) => b.getAttribute('data-resolution-step') === '4')!
+    expect(four.title).toBe(
+      '4 slots — rewrites your file and snaps notes to the grid (changes timing)',
+    )
+    expect(four.getAttribute('data-resolution-lengthens')).toBeNull()
   })
 })

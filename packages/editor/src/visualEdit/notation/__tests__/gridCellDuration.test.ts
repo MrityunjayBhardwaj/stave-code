@@ -26,7 +26,8 @@ import { describe, it, expect } from 'vitest'
 import { parseStepGrid } from '../parse'
 import { cellOn, isCellOn } from '../model'
 import type { StepCell, StepGridModel } from '../model'
-import { scaleStepGrid, quantizeStepGridTo } from '../resolution'
+import { scaleStepGrid, quantizeStepGridTo, stepResolutionEffect } from '../resolution'
+import { serializeStepGrid } from '../serialize'
 import { resizeGrid } from '../resize'
 
 /** the lengths of one lane's cells, `null` where the cell is off */
@@ -153,42 +154,67 @@ describe('the grid ops keep a length meaning what it says', () => {
     expect(lens(resizeGrid(m, 4, 'pad'), 'bd')).toEqual([1, null, null, null])
   })
 
-  it('quantize keeps the count when refining; COARSENING is refused where it cannot spell', () => {
+  it('quantize keeps the count when refining, and FLOORS a length coarsening would sink', () => {
     const m = grid('bd hh*2 sd cp')
     // 8 → 16: the note keeps its COLUMN count rather than stretching (#607, the rule
     // the roll already follows), so it occupies less of the cycle than before
     expect(lens(quantizeStepGridTo(m, 16), 'bd')[0]).toBe(2)
     // 8 → 4 halves every length, which is right, and lands the one-column `hh`s on half a
-    // column, which cannot be spelled — so the op declines instead of writing a grid whose
-    // notes are all the wrong length. The scale-down RULE is unchanged; what is new is that
-    // its result has to be writable to be offered.
-    expect(quantizeStepGridTo(m, 4)).toBe(m)
-    // a grid whose lengths survive the halving still coarsens, and still scales:
+    // column — which the grid cannot spell. This USED to make the whole op decline. It now
+    // holds those notes at ONE column instead (#1061): nothing is lost, a length grows to
+    // the coarsest thing the new grid can say, and the panel draws that growth (#1056) so
+    // it is a change the user watches happen rather than one made behind their back.
+    expect(serializeStepGrid(quantizeStepGridTo(m, 4))).toBe('bd hh [hh,sd] cp')
+    // …and the op SAYS so, which is what the control's copy is built from. Exactly the two
+    // one-column `hh`s were floored; `bd`/`sd`/`cp` each had two columns and scaled cleanly.
+    expect(stepResolutionEffect(m, 4).lengthened).toBe(2)
+    // CONTROL — the floor must fire ONLY where the length would sink below a column. A
+    // grid whose lengths all survive the halving has to come out byte-identical to what it
+    // produced before this change, and report NOTHING. Without this arm, a regression that
+    // floored every note would satisfy the assertion above.
     const even: StepGridModel = {
       steps: 4,
       lanes: [{ sound: 'bd', cells: [cellOn(2), false, cellOn(2), false] }],
     }
     expect(lens(quantizeStepGridTo(even, 2), 'bd')).toEqual([1, 1])
+    expect(stepResolutionEffect(even, 2)).toEqual({ lengthened: 0, snapped: 0, merged: 0 })
+    // CONTROL — and the floor is not a licence to write anything. A length that scales to a
+    // NON-INTEGER number of columns (3 of 8 → 1.5 of 4) still has no spelling and is still
+    // refused, rather than rounded into a different pattern.
+    const odd = grid('bd _ _ ~ sn ~ ~ ~')
+    expect(quantizeStepGridTo(odd, 4)).toBe(odd)
+    expect(stepResolutionEffect(odd, 4)).toEqual({ lengthened: 0, snapped: 0, merged: 0 })
   })
 
-  it('quantize MERGING is now unreachable on the grid, and that is a finding not a gap', () => {
-    // The merge rule is unchanged and still correct — collide → keep the SHORTEST, so a
-    // merged note never sounds longer than one it stands for, then clamp to the next hit.
-    // What P4c changed is whether any input can reach it.
+  it('quantize MERGING is reachable again, and the merge rule still keeps the SHORTEST', () => {
+    // This branch was dead for the whole of P4c, and the reason is worth keeping because it
+    // explains why the floor brings it back. Two hits share a bucket only if they are within
+    // `from / target` columns of each other, and hits that close cannot be longer than that
+    // gap without overlapping — so a merging pair is always about ONE column long, and
+    // coarsening scaled one column to less than one, which was never spellable. Every input
+    // that could merge was therefore refused before it ever reached the merge.
     //
-    // Two hits share a bucket only if they are within `from / target` columns of each other,
-    // and hits that close cannot be longer than that gap without overlapping. So a merging
-    // pair is always about one column long, and coarsening scales one column to less than
-    // one — never spellable. The op therefore declines on every input that would merge.
-    //
-    // Left asserted rather than deleted: it records that the branch is dead under the
-    // current printer, so the next reader neither trusts an untested path nor removes one
-    // whose reason they cannot reconstruct.
+    // #1061's floor is exactly what removes that: those one-column notes are now held at one
+    // column of the new grid, so the merge is live and its rule has to be right again.
     const m: StepGridModel = {
       steps: 4,
       lanes: [{ sound: 'bd', cells: [cellOn(3), cellOn(1), false, cellOn(1)] }],
     }
-    expect(quantizeStepGridTo(m, 2)).toBe(m)
+    // `bd@3` scales to 1.5 and needs no floor; the two one-column hits are floored to 1 and
+    // land in the same bucket, where the merge keeps the SHORTEST of the two. `clampLane`
+    // then cuts the first note back to the column before the next hit — so the merged grid
+    // says `bd bd` and not a note sounding through a strike.
+    expect(serializeStepGrid(quantizeStepGridTo(m, 2))).toBe('bd bd')
+    expect(stepResolutionEffect(m, 2)).toEqual({ lengthened: 2, snapped: 2, merged: 1 })
+    // CONTROL — a merge is reported only where one happens. The same shape with its hits
+    // far enough apart to keep their own buckets floors identically and merges nothing, so
+    // a regression that reported `merged` for every coarsening cannot pass both arms.
+    const apart: StepGridModel = {
+      steps: 4,
+      lanes: [{ sound: 'bd', cells: [cellOn(1), false, cellOn(1), false] }],
+    }
+    expect(serializeStepGrid(quantizeStepGridTo(apart, 2))).toBe('bd bd')
+    expect(stepResolutionEffect(apart, 2)).toEqual({ lengthened: 2, snapped: 0, merged: 0 })
   })
 
   it('a length is clamped to the grid it lands on, in resize as in quantize', () => {

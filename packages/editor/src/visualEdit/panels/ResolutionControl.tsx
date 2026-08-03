@@ -85,7 +85,11 @@
  */
 import * as React from 'react'
 
-import { RESOLUTION_PRESETS, type SlotState } from '../notation/resolution'
+import {
+  RESOLUTION_PRESETS,
+  type GridResolutionEffect,
+  type SlotState,
+} from '../notation/resolution'
 
 /**
  * Lift a grid's resolution control up to the Pattern inspector (#601). The grid
@@ -106,20 +110,46 @@ export function useLiftResolution(
   slotState: (target: number) => SlotState,
   onScaleTo: (target: number) => void,
   onResolution?: (r: ResolutionControlProps | null) => void,
+  /**
+   * LAST AND OPTIONAL because it is a surface's offer, not an obligation (#1061). The
+   * grid has a sub-column floor to declare; the piano roll carries duration natively and
+   * has none, so it passes nothing and the copy falls back to the mechanism alone.
+   * Held behind the same ref as the other two so it always reads the CURRENT model —
+   * the lift re-fires on a `steps` change, and a plain closure would keep answering
+   * about the model the grid had when it last resized.
+   */
+  effect?: (target: number) => GridResolutionEffect,
 ): void {
   const slotStateRef = React.useRef(slotState)
   slotStateRef.current = slotState
   const onScaleToRef = React.useRef(onScaleTo)
   onScaleToRef.current = onScaleTo
+  const effectRef = React.useRef(effect)
+  effectRef.current = effect
   const stableSlotState = React.useCallback((t: number) => slotStateRef.current(t), [])
   const stableScaleTo = React.useCallback((t: number) => onScaleToRef.current(t), [])
+  // `undefined` has to survive the wrapper, or the roll would advertise an effect
+  // reporter that answers with zeros — a claim of "no consequence" where the truth is
+  // "not asked". The two must stay distinguishable at the prop.
+  const hasEffect = effect !== undefined
+  const stableEffect = React.useCallback(
+    (t: number) => effectRef.current?.(t) ?? { lengthened: 0, snapped: 0, merged: 0 },
+    [],
+  )
 
   React.useEffect(() => {
     if (!onResolution) return
     onResolution(
-      steps == null ? null : { steps, slotState: stableSlotState, onScaleTo: stableScaleTo },
+      steps == null
+        ? null
+        : {
+            steps,
+            slotState: stableSlotState,
+            onScaleTo: stableScaleTo,
+            ...(hasEffect ? { effect: stableEffect } : {}),
+          },
     )
-  }, [steps, onResolution, stableSlotState, stableScaleTo])
+  }, [steps, onResolution, stableSlotState, stableScaleTo, hasEffect, stableEffect])
 
   // Clear on unmount only (e.g. cursor leaves a grid pattern → grid unmounts) so
   // a steps change re-lifts in place without a null flicker.
@@ -179,6 +209,17 @@ export interface ResolutionControlProps {
   slotState: (target: number) => SlotState
   /** scale the grid to `target` columns */
   onScaleTo: (target: number) => void
+  /**
+   * What pressing `target` would COST, asked of the op (#1061). `slotState` names the
+   * mechanism; this names the consequences, and they are genuinely independent — a
+   * coarsening can keep timing and still lengthen notes, or move timing and lengthen
+   * nothing. Folding both into one label would hide whichever the user cared about.
+   *
+   * Optional, and the copy degrades to the mechanism alone without it: the piano roll
+   * carries note duration natively, so it has no sub-column floor to report. Supplying
+   * it is what a surface does when it has an effect to declare, not a requirement.
+   */
+  effect?: (target: number) => GridResolutionEffect
 }
 
 /** does this state write to the document? `active`/`disabled` do nothing at all. */
@@ -190,17 +231,34 @@ const pressable = (s: SlotState): boolean => s === 'view' || writes(s)
  * One sentence per state, and the first clause of a writing one says so. #1059 asks
  * for the cue to mean "this rewrites your file" — so the copy has to lead with that
  * rather than with the timing consequence, which is a detail of HOW it rewrites.
+ *
+ * #1061 ADDS THE SECOND CONSEQUENCE, and it does not follow from the state. `quantize`
+ * is the mechanism the op reaches for; whether it actually moves an onset, and whether
+ * it holds a note at one column because the new grid cannot spell anything shorter, are
+ * two more facts the op knows and the state does not carry. Reading them off `effect`
+ * rather than inferring them from `state` is the whole point — a coarsening that keeps
+ * every onset in place would otherwise be announced as "changes timing", which is the
+ * kind of wrong that teaches users to ignore the label.
  */
-function describeTarget(target: number, state: SlotState): string {
+function describeTarget(target: number, state: SlotState, effect?: GridResolutionEffect): string {
   switch (state) {
     case 'active':
       return `${target} slots (current)`
     case 'view':
       return `${target} slots — view only, your pattern is unchanged`
     case 'lossless':
-      return `${target} slots — rewrites your file, keeps timing`
-    case 'quantize':
-      return `${target} slots — rewrites your file and snaps notes to the grid (changes timing)`
+    case 'quantize': {
+      // `lossless` is lossless by construction. A `quantize` is only known to move
+      // timing if the op says it did — and with no report we keep the old, cautious
+      // wording rather than promise something we have not asked about.
+      const keepsTiming =
+        state === 'lossless' || (effect !== undefined && effect.snapped === 0 && effect.merged === 0)
+      const n = effect?.lengthened ?? 0
+      const longer = n > 0 ? `, and makes ${n} note${n === 1 ? '' : 's'} longer` : ''
+      return keepsTiming
+        ? `${target} slots — rewrites your file, keeps timing${longer}`
+        : `${target} slots — rewrites your file and snaps notes to the grid (changes timing)${longer}`
+    }
     default:
       return `${target} slots — unavailable`
   }
@@ -227,6 +285,7 @@ export function ResolutionControl({
   steps,
   slotState,
   onScaleTo,
+  effect,
 }: ResolutionControlProps): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const rootRef = React.useRef<HTMLDivElement | null>(null)
@@ -264,6 +323,13 @@ export function ResolutionControl({
     state: SlotState,
   ): React.ReactElement => {
     const label = dir === 'halve' ? '÷2' : '×2'
+    // ASKED ONCE PER BUTTON, not once per attribute. `effect` runs the real op — a full
+    // `quantizeStepGridTo` plus a `serializeStepGrid` over every lane — so calling it from
+    // both the tooltip and the marker doubles that for every target on every render. Same
+    // reason `placeable`/`coverage` hang off the model in `SequencerGrid` ([[P380]]): the
+    // cost is invisible until something re-renders in a loop, and then it is the whole
+    // frame budget.
+    const eff = target === null ? undefined : effect?.(target)
     return (
       <button
         type="button"
@@ -276,8 +342,9 @@ export function ResolutionControl({
         title={
           target === null
             ? `÷2 — unavailable on an odd slot count (${steps})`
-            : describeTarget(target, state)
+            : describeTarget(target, state, eff)
         }
+        data-resolution-lengthens={(eff?.lengthened ?? 0) > 0 ? 'true' : undefined}
         disabled={!pressable(state)}
         onClick={() => {
           if (target !== null && pressable(state)) onScaleTo(target)
@@ -377,6 +444,7 @@ export function ResolutionControl({
         >
           {RESOLUTION_PRESETS.map((preset) => {
             const state: SlotState = preset === steps ? 'active' : slotState(preset)
+            const eff = effect?.(preset) // once per preset — see `stepButton` for why
             return (
               <button
                 key={preset}
@@ -389,9 +457,13 @@ export function ResolutionControl({
                 // the free zone is observable from the DOM: a spec can assert that
                 // pressing this wrote nothing WITHOUT having to infer which state it was in
                 data-resolution-view={state === 'view' ? 'true' : undefined}
+                // #1061 — a coarsening that holds notes at one column is observable
+                // from the DOM, so a spec asserts the CONSEQUENCE the user was promised
+                // rather than re-deriving it from the pattern that came back.
+                data-resolution-lengthens={(eff?.lengthened ?? 0) > 0 ? 'true' : undefined}
                 aria-selected={state === 'active'}
                 aria-label={`${preset} slots`}
-                title={describeTarget(preset, state)}
+                title={describeTarget(preset, state, eff)}
                 disabled={state !== 'active' && !pressable(state)}
                 onClick={() => {
                   if (pressable(state)) onScaleTo(preset)

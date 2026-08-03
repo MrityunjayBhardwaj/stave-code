@@ -39,6 +39,7 @@ import { useLiftResolution, useViewProver, type ResolutionControlProps } from '.
 import { PatternTrackChip } from './PatternTrackChip'
 import {
   stepSlotState,
+  stepResolutionEffect,
   quantizeStepGridTo,
   freeZoneScale,
   collapseStepGridToDocument,
@@ -229,6 +230,14 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     (t) => (model ? stepSlotState(model, t, canDrawView) : 'disabled'),
     scaleToSlots,
     onResolution,
+    // #1061 — what the press would COST, asked of the very op `scaleToSlots` runs, so
+    // the sentence in the tooltip and the write the user gets are the same computation.
+    // A free-zone target never reaches the op, and reports nothing, which is correct:
+    // looking closer costs nothing.
+    (t) =>
+      model && stepSlotState(model, t, canDrawView) !== 'view'
+        ? stepResolutionEffect(model, t)
+        : { lengthened: 0, snapped: 0, merged: 0 },
   )
 
   React.useEffect(() => {
