@@ -193,22 +193,68 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     expect(errors).toEqual([])
   })
 
-  test('step grid: a lossless reduce keeps timing and is shown as a normal preset', async ({
+  /**
+   * #1061 — COARSENING BELOW THE DOCUMENT'S OWN COUNT, AND WHAT THE CONTROL PROMISES.
+   *
+   * This arm has been through the whole argument, and the reason is worth stating once.
+   * P4c (#1047) made the printer preserve a note's LENGTH, which retired grid coarsening:
+   * a note lasting one column of an 8-column grid lasts half a column of a 4-column one,
+   * and the grid has no notation for half a column, so the writer declined and the button
+   * went dead. #1061 makes that a FLOOR rather than a refusal — such a note keeps ONE
+   * column of the new grid, sounds longer, and nothing is lost. It is honest only because
+   * #1056 made the panel DRAW note length, so the growth is something the user watches.
+   *
+   * The consequence for THIS test is that its old title was wrong twice over: 8→4 here is
+   * not "a lossless reduce" any more, because lengths change. It is a write that keeps
+   * every onset and lengthens two notes, and the control has to say exactly that — the
+   * distinction from a genuine lossless reduce is kept by `canScaleStepGridTo`, which
+   * still refuses this one.
+   */
+  test('step grid: a reduce below the document keeps timing, lengthens, and says both', async ({
     page,
   }) => {
     await boot(page)
-    // hits only on every 4th column → 8→4 is lossless
+    // hits only on every 4th column → 8→4 moves NO onset. The only cost is length, and
+    // announcing a timing change here is the copy a control reading `state` alone produces.
     await setStrudelCode(page, '$: s("bd ~ ~ ~ sn ~ ~ ~")')
     const drawer = await openPattern(page)
     const slots = slotsControl(drawer)
-    await expect((await preset(slots, 4))).toBeEnabled()
-    await expect((await preset(slots, 4))).not.toHaveAttribute(
-      'data-resolution-quantize',
-      'true',
+    await expect(await preset(slots, 4)).toBeEnabled()
+    await expect(await preset(slots, 4)).toHaveAttribute('data-resolution-lengthens', 'true')
+    await expect(await preset(slots, 4)).toHaveAttribute(
+      'title',
+      '4 slots — rewrites your file, keeps timing, and makes 2 notes longer',
     )
+
+    // CONTROL: refining the same pattern is still FREE, and free declares no cost. Without
+    // this arm a regression that marked every target as lengthening would satisfy the above.
+    await expect(await preset(slots, 16)).toBeEnabled()
+    await expect(await preset(slots, 16)).toHaveAttribute('data-resolution-view', 'true')
+    await expect(await preset(slots, 16)).not.toHaveAttribute('data-resolution-lengthens', 'true')
+
+    // and the promise is kept — the write is what the tooltip said it would be
     await (await preset(slots, 4)).click()
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+  })
+
+  test('step grid: a reduce that loses NO length is still shown as lossless', async ({ page }) => {
+    // THE OTHER HALF, and the reason the arm above is not simply "coarsening warns now".
+    // Every note here already spans two columns, so halving scales each to exactly one and
+    // the floor never fires. That target stays a genuine lossless reduce, is NOT marked as
+    // a quantize, and declares no lengthening — so `lossless` still means what it says and
+    // the floor has not swallowed the distinction.
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd _ ~ ~ sn _ ~ ~")')
+    const drawer = await openPattern(page)
+    const slots = slotsControl(drawer)
+    await expect(await preset(slots, 4)).toBeEnabled()
+    await expect(await preset(slots, 4)).not.toHaveAttribute('data-resolution-quantize', 'true')
+    await expect(await preset(slots, 4)).not.toHaveAttribute('data-resolution-lengthens', 'true')
+    await expect(await preset(slots, 4)).toHaveAttribute(
+      'title',
+      '4 slots — rewrites your file, keeps timing',
+    )
   })
 
   test('step grid: a non-power-of-2 (5-step) pattern can still be reduced (quantize)', async ({
@@ -225,6 +271,17 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
       'data-resolution-quantize',
       'true',
     )
+    // #1061 — 5 → 4 is not a whole ratio, so onsets move AND every length is floored.
+    // BOTH costs are declared, and the sentence differs from the 8-column arm above,
+    // which is the point of asking the op rather than inferring from the state.
+    await expect((await preset(slots, 4))).toHaveAttribute('data-resolution-lengthens', 'true')
+    await expect((await preset(slots, 4))).toHaveAttribute(
+      'title',
+      '4 slots — rewrites your file and snaps notes to the grid (changes timing), and makes 3 notes longer',
+    )
+    // CONTROL: refining is offered too, is cued as the rewrite it is, and floors nothing.
+    await expect((await preset(slots, 8))).toBeEnabled()
+    await expect((await preset(slots, 8))).not.toHaveAttribute('data-resolution-lengthens', 'true')
     // reduce 5 → 4: hits snap to the nearest of the 4 slots
     await (await preset(slots, 4)).click()
     await page.waitForTimeout(120)
@@ -297,7 +354,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     expect(errors).toEqual([])
   })
 
-  test('step grid: ÷2 stops at the document\'s own count rather than quietly editing (#1059)', async ({
+  test('step grid: ÷2 is an EDIT below the document and FREE above it — one button, two zones (#1059)', async ({
     page,
   }) => {
     await boot(page)
@@ -306,20 +363,38 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     const slots = slotsControl(drawer)
     const down = slots.locator('[data-resolution-halve]')
 
-    // At the document's own resolution, ÷2 would go BELOW it — a real coarsening,
-    // which the writer declines because P4c preserves note length and half a column
-    // has no spelling. Measured over the corpus: 546 of 546 such grid targets are
-    // disabled. The control must say so rather than offer a press that does nothing.
-    await expect(down).toBeDisabled()
+    // At the document's own resolution, ÷2 goes BELOW it — a real coarsening. This used
+    // to be REFUSED (the writer declined, because P4c preserves note length and half a
+    // column has no spelling, and 546 of 546 such grid targets were disabled). #1061 makes
+    // it a floor instead: the notes are held at one column of the new grid, so the press
+    // is offered — and the whole burden shifts onto the control SAYING what it will do.
+    await expect(down).toBeEnabled()
+    await expect(down).toHaveAttribute('data-resolution-writes', 'true')
     await expect(down).not.toHaveAttribute('data-resolution-view', 'true')
+    await expect(down).toHaveAttribute('data-resolution-lengthens', 'true')
+    await expect(down).toHaveAttribute(
+      'title',
+      '2 slots — rewrites your file, keeps timing, and makes 2 notes longer',
+    )
 
     // …and after refining, the SAME button becomes free, because now it descends
     // INTO the free zone instead of out of it. One button, two zones, and the
     // difference is where the document's own count sits — not which way it points.
+    //
+    // THIS IS THE ARM THAT CARRIES THE TEST. With the zones now BOTH live, the
+    // distinction is no longer enabled-vs-disabled — it is what the button promises, so
+    // the free descent must declare no write and no cost, and leave the file untouched.
     await slots.locator('[data-resolution-double]').click()
     await page.waitForTimeout(120)
     await expect(down).toBeEnabled()
     await expect(down).toHaveAttribute('data-resolution-view', 'true')
+    await expect(down).not.toHaveAttribute('data-resolution-writes', 'true')
+    await expect(down).not.toHaveAttribute('data-resolution-lengthens', 'true')
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+
+    // and pressing it really is free: back at the document's own count, byte-identical
+    await down.click()
+    await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
   })
 

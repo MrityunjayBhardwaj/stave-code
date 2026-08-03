@@ -133,6 +133,44 @@ test.describe('a note is drawn across the columns it covers (#1056)', () => {
     await expect(page.locator('[data-seq-cell="0:2"]')).toHaveAttribute('aria-label', 'bd step 3')
   })
 
+  test('the length is still drawn at a REFINED view scale (×2)', async ({ page }) => {
+    /**
+     * WHY THIS ARM EXISTS. Everything above observes the pattern at its own resolution,
+     * and the panel's render is scale-agnostic — it reads `laneCoverage` and nothing else,
+     * so a refined view "obviously" draws the same way. That inference is exactly what
+     * went wrong once already: a probe asked `isCellOn` instead of the coverage the panel
+     * actually draws from, reported a held and a short note as identical at ×1/×2/×4, and
+     * a whole issue was re-scoped on it. `isCellOn` is the trigger; it is not the drawing.
+     *
+     * So the refined view gets its own observation, in pixels, rather than an argument.
+     */
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd _ ~ ~")')
+    const drawer = await openSequencer(page)
+    await expect(page.locator('[data-seq-cell="0:0"]')).toHaveCount(1)
+    expect(await readLane(page, 0, 4)).toBe('#=--')
+
+    // ×2 is a free view here: it changes only how finely the panel draws, and the note
+    // must go on covering the same half of the cycle — now spelled across four columns.
+    await drawer.locator('[data-mixer-body] [data-resolution-double]').click()
+    await expect(page.locator('[data-seq-cell="0:7"]')).toHaveCount(1)
+    const refinedHeld = await readLane(page, 0, 8)
+    console.log(`  bd _ ~ ~  @×2  →  ${refinedHeld}`)
+    expect(refinedHeld).toBe('#===----')
+
+    // CONTROL, and the pair the earlier mistake claimed was identical: the SHORT note on
+    // the same view scale draws a different row. Without this arm, a regression that lit
+    // every column of a refined grid would satisfy the assertion above.
+    await setStrudelCode(page, '$: s("bd ~ ~ ~")')
+    await expect(page.locator('[data-seq-cell="0:0"]')).toHaveCount(1)
+    await drawer.locator('[data-mixer-body] [data-resolution-double]').click()
+    await expect(page.locator('[data-seq-cell="0:7"]')).toHaveCount(1)
+    const refinedShort = await readLane(page, 0, 8)
+    console.log(`  bd ~ ~ ~  @×2  →  ${refinedShort}`)
+    expect(refinedShort).toBe('#=------')
+    expect(refinedShort).not.toBe(refinedHeld)
+  })
+
   test('drawing the length does not disturb an ordinary all-length-1 pattern', async ({ page }) => {
     // The control arm in the live app: where every note lasts its own column, the grid
     // must be exactly the grid it has always been — one full-width box per trigger, no

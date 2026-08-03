@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
+import { cellOn, isCellOn } from '../model'
 import { parseStepGrid, parsePianoRoll, applyStepGain, applyRollGain } from '../parse'
 import {
   serializeStepGrid,
@@ -20,6 +21,7 @@ import {
   canScalePianoRollTo,
   quantizeStepGridTo,
   quantizePianoRollTo,
+  stepResolutionEffect,
   stepSlotState,
   rollSlotState,
   RESOLUTION_PRESETS,
@@ -320,31 +322,79 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     const m4 = step('bd ~ sn ~')
     expect(serializeStepGrid(quantizeStepGridTo(m4, 8))).toBe('bd ~ ~ ~ sn ~ ~ ~') // KEEP
     expect(serializeStepGrid(scaleStepGridTo(m4, 8))).toBe('bd _ ~ ~ sn _ ~ ~') // SCALE
-    // and COARSENING is not offered at all, for the reason the ÷2 block gives
+    // COARSENING BACK DOWN is offered again (#1061) and lands on the round trip's start:
+    // each note would go half a column, so it is held at one instead. Note this is the
+    // inverse of the KEEP line above and not of the SCALE one — the two controls still
+    // disagree on length, which is the divergence this test exists to record.
     const m8 = step('bd ~ ~ ~ sn ~ ~ ~')
-    expect(quantizeStepGridTo(m8, 4)).toBe(m8)
+    expect(serializeStepGrid(quantizeStepGridTo(m8, 4))).toBe('bd ~ sn ~')
+    // and it costs LENGTH only: every onset stays exactly where it was, which is what lets
+    // the control say "keeps timing" about a target it reaches through the quantize path.
+    expect(stepResolutionEffect(m8, 4)).toEqual({ lengthened: 2, snapped: 0, merged: 0 })
+    // CONTROL — ×2 is untouched by the floor. It is the one control the free zone routes
+    // through, and if this moved, the round trip above would no longer be a round trip.
+    expect(scaleStepGridTo(m8, 4)).toBe(m8)
   })
 
-  it('step grid: a NON-power-of-2 REDUCE is not offered (it would lengthen every note)', () => {
-    // 5 → 4 snapped bd@0→0, sn@2→2, bd@4→3 and emitted `bd ~ sn bd`. The onsets were right
-    // and every length was wrong by 5/4, so the op is refused now. REFINING still applies —
-    // it keeps the slot count (#607) and so keeps every length spellable.
+  it('step grid: a NON-power-of-2 REDUCE is offered, and it DOES lengthen every note', () => {
+    // 5 → 4 snaps bd@0→0, sn@2→2, bd@4→3 and emits `bd ~ sn bd`. The onsets move (5/4 is
+    // not a whole ratio) and every length would be 4/5 of a column — under P4c that made
+    // the op decline; under #1061 each is held at one column instead. The title used to say
+    // "it would lengthen every note" as the REASON FOR REFUSING. That is now the feature:
+    // the grid cannot say four-fifths of a column, so it says the shortest thing it can and
+    // the control tells the user both costs before they press it.
     const m5 = step('bd ~ sn ~ bd')
-    expect(quantizeStepGridTo(m5, 4)).toBe(m5)
+    expect(serializeStepGrid(quantizeStepGridTo(m5, 4))).toBe('bd ~ sn bd')
+    // all three notes floored, and two onsets genuinely moved — so this target is described
+    // as changing timing AND lengths, where 8→4 above changes only lengths. The two cases
+    // must not collapse into one label.
+    expect(stepResolutionEffect(m5, 4)).toEqual({ lengthened: 3, snapped: 2, merged: 0 })
+    // CONTROL — REFINING is unaffected. It keeps the slot count (#607), so no length ever
+    // approaches the floor and nothing is reported.
     expect(quantizeStepGridTo(m5, 16)).not.toBe(m5)
     expect(serializeStepGrid(quantizeStepGridTo(m5, 16))).not.toBeNull()
+    expect(stepResolutionEffect(m5, 16).lengthened).toBe(0)
   })
 
-  it('step grid: a lossy reduce is refused rather than merged into wrong lengths', () => {
+  it('step grid: a lossy reduce writes, and every note it floored is reported', () => {
     // The merge rule itself is unchanged and still right (collide → keep the SHORTEST, so a
-    // merged note never sounds longer than one it stands for). What changed is that the
-    // merged lengths are then scaled by 4/8 and land at half a column, which the grid cannot
-    // spell — so the op declines instead of emitting a plausible 4-column grid whose every
-    // note is the wrong length.
+    // merged note never sounds longer than one it stands for). What changed is the fate of
+    // the lengths afterwards: scaled by 4/8 they land at half a column, and rather than
+    // declining the whole write, each is held at one column (#1061).
+    //
+    // This is the most destructive shape the control offers — eight hits into four columns,
+    // stacking three sounds in the last — so it is the one that most needs the user warned,
+    // and every field of the report is non-zero here except `merged`: the collisions are
+    // between DIFFERENT lanes, which stack rather than merge.
     const dense = step('bd sd hh cp bd sd hh cp')
-    expect(quantizeStepGridTo(dense, 4)).toBe(dense)
-    // REFINING the same grid is still offered and still writes
+    expect(ser(quantizeStepGridTo(dense, 4))).toBe('bd [sd,hh] [bd,cp] [sd,hh,cp]')
+    expect(stepResolutionEffect(dense, 4)).toEqual({ lengthened: 8, snapped: 4, merged: 0 })
+    // CONTROL — REFINING the same grid is still offered and still writes 16 columns.
     expect(ser(quantizeStepGridTo(dense, 16)).split(' ').length).toBe(16)
+    expect(stepResolutionEffect(dense, 16).lengthened).toBe(0)
+  })
+
+  it('step grid: the floor is COARSENING-ONLY — refining a sub-column note still declines', () => {
+    // THE ARM ABOVE CANNOT CATCH A FLOOR THAT LEAKED INTO REFINING, and neither can any
+    // assertion of the form `lengthened === 0`: a declined op reports zeros, so a zero is
+    // equally consistent with "nothing was floored" and "nothing happened at all". That is
+    // the same shape as a `toBeDisabled()` with no live control beside it.
+    //
+    // So this asserts the DECLINE itself, which a leak turns into an apply: a half-column
+    // note has no grid spelling, so refining leaves the model alone; floor it and the
+    // result becomes spellable and the op starts writing, which `toBe(sub)` catches.
+    //
+    // BUILT BY HAND, and that is not laziness. The reader opens a nested `[hh ~]` AT the
+    // finer resolution, so a parsed single-bar grid never carries a length below one column
+    // — and the minis that do (`@0.5` weights) come back multi-bar, which routes around the
+    // floor entirely. The only way to stand this case up is to construct it.
+    const sub: StepGridModel = {
+      steps: 2,
+      lanes: [{ sound: 'bd', cells: [cellOn(0.5), false] }],
+    }
+    expect(sub.lanes[0].cells.some((c) => isCellOn(c) && c.duration < 1)).toBe(true) // guard
+    expect(quantizeStepGridTo(sub, 4)).toBe(sub)
+    expect(stepResolutionEffect(sub, 4)).toEqual({ lengthened: 0, snapped: 0, merged: 0 })
   })
 
   it('piano roll: a non-power-of-2 reduce snaps notes and always serializes', () => {
@@ -418,11 +468,18 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     // REFINING at a non-power-of-2 ratio is a quantize and is still offered: it keeps each
     // note's column count (#607), so nothing becomes unspellable.
     expect(stepSlotState(m5, 8)).toBe('quantize')
-    // COARSENING is now `disabled` rather than `quantize` (#1010 P4c). 5→4 scales every
-    // length by 4/5 and the grid can only spell whole columns, so `quantizeStepGridTo`
-    // declines — and a control whose op declines must not be offered, or it is a button the
-    // user can press to no effect. `stepSlotState` asks the op rather than predicting it.
-    expect(stepSlotState(m5, 4)).toBe('disabled')
+    // COARSENING is `quantize` again (#1061). It went `disabled` under P4c because 5→4
+    // scales every length by 4/5 and the grid can only spell whole columns, so the op
+    // declined — and a control whose op declines must not be offered. The floor makes the
+    // op apply, so the control is offered again. What has NOT changed is that
+    // `stepSlotState` asks the op rather than predicting it: this reads `quantize` because
+    // `quantizeStepGridTo` now returns something, not because anything here was widened.
+    expect(stepSlotState(m5, 4)).toBe('quantize')
+    // CONTROL — a target the op still declines is still `disabled`, so the line above is
+    // "the op applies here" and not "coarsening is always offered now". `bd _ _ ~ …` has a
+    // three-column note that scales to 1.5, which the floor does not touch and the grid
+    // cannot spell.
+    expect(stepSlotState(step('bd _ _ ~ sn ~ ~ ~'), 4)).toBe('disabled')
     const m4 = step('bd ~ sn ~')
     expect(stepSlotState(m4, 4)).toBe('active')
     expect(stepSlotState(m4, 8)).toBe('lossless') // power-of-2 ratio

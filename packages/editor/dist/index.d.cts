@@ -8598,6 +8598,34 @@ declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProp
 type Division = 'grid' | '1/4' | '1/8' | '1/16' | '1/8T' | '1/16T';
 
 /**
+ * WHAT SETTING THE GRID TO `target` DID TO THE NOTES — reported by the op, never
+ * reconstructed from its output (#1061).
+ *
+ * The control has to tell the user what a press costs BEFORE they make it, and a
+ * coarsening can cost three different things independently. `SlotState` names the
+ * MECHANISM (`lossless` / `quantize`); this names the CONSEQUENCES, which is what the
+ * copy is actually about. Splitting them is deliberate: one control with one label
+ * covering several effects is what left the last gate certifying a control that no
+ * longer existed, and widening a single verdict until the arithmetic comes out buries
+ * the very distinction the user needs.
+ *
+ * Every field is counted inside the loop that causes it, so a caller cannot describe a
+ * write the op did not make. A DECLINED op reports `NO_EFFECT` — nothing happened, so
+ * nothing is claimed.
+ */
+interface GridResolutionEffect {
+    /**
+     * notes held at one column because scaling would have put them BELOW one, and the
+     * grid has no spelling for half a column. These sound LONGER than they did — the
+     * length grows to the coarsest thing the new grid can say (#1061).
+     */
+    lengthened: number;
+    /** notes whose onset moved off its exact proportional position — i.e. timing changed */
+    snapped: number;
+    /** notes that landed on a column their own lane had already filled, and merged */
+    merged: number;
+}
+/**
  * how setting the grid to `target` slots behaves, for the control's label/state.
  *
  * `view` is the free zone (#1057): the click changes only how finely the panel DRAWS
@@ -8698,6 +8726,17 @@ interface ResolutionControlProps {
     slotState: (target: number) => SlotState;
     /** scale the grid to `target` columns */
     onScaleTo: (target: number) => void;
+    /**
+     * What pressing `target` would COST, asked of the op (#1061). `slotState` names the
+     * mechanism; this names the consequences, and they are genuinely independent — a
+     * coarsening can keep timing and still lengthen notes, or move timing and lengthen
+     * nothing. Folding both into one label would hide whichever the user cared about.
+     *
+     * Optional, and the copy degrades to the mechanism alone without it: the piano roll
+     * carries note duration natively, so it has no sub-column floor to report. Supplying
+     * it is what a surface does when it has an effect to declare, not a requirement.
+     */
+    effect?: (target: number) => GridResolutionEffect;
 }
 
 /**

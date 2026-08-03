@@ -40,12 +40,22 @@
  * codebase sat untouched right next to it.
  *
  * ── WHY NOT CLAMP THE LENGTH INSTEAD, AND KEEP ÷2 WORKING ─────────────────────
- * Because `SequencerGrid.tsx` never reads `duration`. Clamping a coarsened length up to
- * one column keeps the op available and changes every note's length invisibly (1/8 → 1/4),
- * and #1026 already ruled on precisely that: a view that cannot show duration still must
- * not change it, because "edits locally / no silent data loss" is a property of the
- * DOCUMENT, not of the panel. An op the user asked for is not a licence to alter an axis
- * the view cannot show them.
+ * This block used to answer "because `SequencerGrid.tsx` never reads `duration`" — a
+ * coarsened length clamped up to one column would change every note invisibly (1/8 → 1/4),
+ * and #1026 ruled on exactly that: a view that cannot show an axis must not change it,
+ * because "edits locally / no silent data loss" is a property of the DOCUMENT, not of the
+ * panel.
+ *
+ * THE PREMISE DIED AT #1056 AND THE ANSWER FLIPPED WITH IT (#1061). The panel now draws
+ * note length — `laneCoverage` gives each cell the fraction of its column the note sounds
+ * through, a carried column is dimmed and named as held, and `sequencer-note-length.spec.ts`
+ * observes it in pixels at both the document's own scale and a refined one. So the clamp
+ * changes an axis the view CAN show, which is the one condition #1026's rule turns on, and
+ * the coarsening is offered again with the control declaring both of its costs up front.
+ *
+ * The rule is intact; the fact it was applied to moved. Left here in full rather than
+ * deleted, because "we already decided against this" is the first thing a reader will
+ * remember, and they should meet the reason it stopped applying in the same place.
  */
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'

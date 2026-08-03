@@ -29060,18 +29060,31 @@ function canScalePianoRollTo(model, target) {
 __name(canScalePianoRollTo, "canScalePianoRollTo");
 var clampInt = /* @__PURE__ */ __name((v, lo, hi) => Math.max(lo, Math.min(hi, v)), "clampInt");
 var bucket = /* @__PURE__ */ __name((c, from, to) => clampInt(Math.round(c * to / from), 0, to - 1), "bucket");
-function quantizeStepGridTo(model, target) {
-  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model;
-  if ((model.bars ?? 1) > 1) return scaleStepGridTo(model, target);
+var NO_EFFECT = { lengthened: 0, snapped: 0, merged: 0 };
+var COARSEN_FLOOR = 1;
+function quantizeStepGridToWithEffect(model, target) {
+  const unchanged = { model, effect: NO_EFFECT };
+  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return unchanged;
+  if ((model.bars ?? 1) > 1) {
+    const scaled = scaleStepGridTo(model, target);
+    return scaled === model ? unchanged : { model: scaled, effect: NO_EFFECT };
+  }
   const from = model.steps;
   const addingSlots = target > from;
+  let lengthened = 0;
+  let snapped = 0;
+  let merged = 0;
   const lanes = model.lanes.map((lane) => {
     const cells = Array(target).fill(false);
     lane.cells.forEach((cell, c) => {
       if (!isCellOn(cell)) return;
       const b = bucket(c, from, target);
-      const scaled = addingSlots ? cell.duration : cell.duration * (target / from);
+      if (b !== c * target / from) snapped++;
+      const exact = addingSlots ? cell.duration : cell.duration * (target / from);
+      const scaled = addingSlots ? exact : Math.max(COARSEN_FLOOR, exact);
+      if (scaled !== exact) lengthened++;
       const prev = cells[b];
+      if (isCellOn(prev)) merged++;
       cells[b] = cellOn(isCellOn(prev) ? Math.min(prev.duration, scaled) : scaled);
     });
     return { ...lane, cells: clampLane(cells, target) };
@@ -29088,9 +29101,23 @@ function quantizeStepGridTo(model, target) {
       filled.add(b);
     }
   }
-  return ifGridSpellable(model, { ...model, steps: target, lanes, ...gains ? { gains } : {} });
+  const next = ifGridSpellable(model, {
+    ...model,
+    steps: target,
+    lanes,
+    ...gains ? { gains } : {}
+  });
+  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged } };
+}
+__name(quantizeStepGridToWithEffect, "quantizeStepGridToWithEffect");
+function quantizeStepGridTo(model, target) {
+  return quantizeStepGridToWithEffect(model, target).model;
 }
 __name(quantizeStepGridTo, "quantizeStepGridTo");
+function stepResolutionEffect(model, target) {
+  return quantizeStepGridToWithEffect(model, target).effect;
+}
+__name(stepResolutionEffect, "stepResolutionEffect");
 function quantizePianoRollTo(model, target) {
   if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model;
   if ((model.bars ?? 1) > 1) {
@@ -29234,19 +29261,31 @@ function rollSlotState(model, target, canDrawView) {
   );
 }
 __name(rollSlotState, "rollSlotState");
-function useLiftResolution(steps, slotState2, onScaleTo, onResolution) {
+function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
   const slotStateRef = React36__namespace.useRef(slotState2);
   slotStateRef.current = slotState2;
   const onScaleToRef = React36__namespace.useRef(onScaleTo);
   onScaleToRef.current = onScaleTo;
+  const effectRef = React36__namespace.useRef(effect);
+  effectRef.current = effect;
   const stableSlotState = React36__namespace.useCallback((t) => slotStateRef.current(t), []);
   const stableScaleTo = React36__namespace.useCallback((t) => onScaleToRef.current(t), []);
+  const hasEffect = effect !== void 0;
+  const stableEffect = React36__namespace.useCallback(
+    (t) => effectRef.current?.(t) ?? { lengthened: 0, snapped: 0, merged: 0 },
+    []
+  );
   React36__namespace.useEffect(() => {
     if (!onResolution) return;
     onResolution(
-      steps == null ? null : { steps, slotState: stableSlotState, onScaleTo: stableScaleTo }
+      steps == null ? null : {
+        steps,
+        slotState: stableSlotState,
+        onScaleTo: stableScaleTo,
+        ...hasEffect ? { effect: stableEffect } : {}
+      }
     );
-  }, [steps, onResolution, stableSlotState, stableScaleTo]);
+  }, [steps, onResolution, stableSlotState, stableScaleTo, hasEffect, stableEffect]);
   React36__namespace.useEffect(() => {
     return () => onResolution?.(null);
   }, [onResolution]);
@@ -29280,16 +29319,19 @@ function useViewProver(mini, parse4) {
 __name(useViewProver, "useViewProver");
 var writes = /* @__PURE__ */ __name((s) => s === "lossless" || s === "quantize", "writes");
 var pressable = /* @__PURE__ */ __name((s) => s === "view" || writes(s), "pressable");
-function describeTarget(target, state5) {
+function describeTarget(target, state5, effect) {
   switch (state5) {
     case "active":
       return `${target} slots (current)`;
     case "view":
       return `${target} slots \u2014 view only, your pattern is unchanged`;
     case "lossless":
-      return `${target} slots \u2014 rewrites your file, keeps timing`;
-    case "quantize":
-      return `${target} slots \u2014 rewrites your file and snaps notes to the grid (changes timing)`;
+    case "quantize": {
+      const keepsTiming = state5 === "lossless" || effect !== void 0 && effect.snapped === 0 && effect.merged === 0;
+      const n = effect?.lengthened ?? 0;
+      const longer = n > 0 ? `, and makes ${n} note${n === 1 ? "" : "s"} longer` : "";
+      return keepsTiming ? `${target} slots \u2014 rewrites your file, keeps timing${longer}` : `${target} slots \u2014 rewrites your file and snaps notes to the grid (changes timing)${longer}`;
+    }
     default:
       return `${target} slots \u2014 unavailable`;
   }
@@ -29310,7 +29352,8 @@ __name(targetStyle, "targetStyle");
 function ResolutionControl({
   steps,
   slotState: slotState2,
-  onScaleTo
+  onScaleTo,
+  effect
 }) {
   const [open, setOpen] = React36__namespace.useState(false);
   const rootRef = React36__namespace.useRef(null);
@@ -29345,7 +29388,8 @@ function ResolutionControl({
         "data-resolution-writes": writes(state5) ? "true" : void 0,
         "data-resolution-view": state5 === "view" ? "true" : void 0,
         "aria-label": dir === "halve" ? "halve slots" : "double slots",
-        title: target === null ? `\xF72 \u2014 unavailable on an odd slot count (${steps})` : describeTarget(target, state5),
+        title: target === null ? `\xF72 \u2014 unavailable on an odd slot count (${steps})` : describeTarget(target, state5, effect?.(target)),
+        "data-resolution-lengthens": target !== null && (effect?.(target).lengthened ?? 0) > 0 ? "true" : void 0,
         disabled: !pressable(state5),
         onClick: () => {
           if (target !== null && pressable(state5)) onScaleTo(target);
@@ -29453,9 +29497,10 @@ function ResolutionControl({
                   "data-resolution-quantize": state5 === "quantize" ? "true" : void 0,
                   "data-resolution-writes": writes(state5) ? "true" : void 0,
                   "data-resolution-view": state5 === "view" ? "true" : void 0,
+                  "data-resolution-lengthens": (effect?.(preset).lengthened ?? 0) > 0 ? "true" : void 0,
                   "aria-selected": state5 === "active",
                   "aria-label": `${preset} slots`,
-                  title: describeTarget(preset, state5),
+                  title: describeTarget(preset, state5, effect?.(preset)),
                   disabled: state5 !== "active" && !pressable(state5),
                   onClick: () => {
                     if (pressable(state5)) onScaleTo(preset);
@@ -30404,7 +30449,12 @@ function SequencerGrid({ onResolution } = {}) {
     model?.steps ?? null,
     (t) => model ? stepSlotState(model, t, canDrawView) : "disabled",
     scaleToSlots,
-    onResolution
+    onResolution,
+    // #1061 — what the press would COST, asked of the very op `scaleToSlots` runs, so
+    // the sentence in the tooltip and the write the user gets are the same computation.
+    // A free-zone target never reaches the op, and reports nothing, which is correct:
+    // looking closer costs nothing.
+    (t) => model && stepSlotState(model, t, canDrawView) !== "view" ? stepResolutionEffect(model, t) : { lengthened: 0, snapped: 0, merged: 0 }
   );
   React36__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {

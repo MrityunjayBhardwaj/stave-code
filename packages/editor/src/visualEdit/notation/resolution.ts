@@ -259,6 +259,54 @@ const bucket = (c: number, from: number, to: number): number =>
   clampInt(Math.round((c * to) / from), 0, to - 1)
 
 /**
+ * WHAT SETTING THE GRID TO `target` DID TO THE NOTES — reported by the op, never
+ * reconstructed from its output (#1061).
+ *
+ * The control has to tell the user what a press costs BEFORE they make it, and a
+ * coarsening can cost three different things independently. `SlotState` names the
+ * MECHANISM (`lossless` / `quantize`); this names the CONSEQUENCES, which is what the
+ * copy is actually about. Splitting them is deliberate: one control with one label
+ * covering several effects is what left the last gate certifying a control that no
+ * longer existed, and widening a single verdict until the arithmetic comes out buries
+ * the very distinction the user needs.
+ *
+ * Every field is counted inside the loop that causes it, so a caller cannot describe a
+ * write the op did not make. A DECLINED op reports `NO_EFFECT` — nothing happened, so
+ * nothing is claimed.
+ */
+export interface GridResolutionEffect {
+  /**
+   * notes held at one column because scaling would have put them BELOW one, and the
+   * grid has no spelling for half a column. These sound LONGER than they did — the
+   * length grows to the coarsest thing the new grid can say (#1061).
+   */
+  lengthened: number
+  /** notes whose onset moved off its exact proportional position — i.e. timing changed */
+  snapped: number
+  /** notes that landed on a column their own lane had already filled, and merged */
+  merged: number
+}
+
+const NO_EFFECT: GridResolutionEffect = { lengthened: 0, snapped: 0, merged: 0 }
+
+/**
+ * THE COARSENING FLOOR (#1061). Below one column the grid has no spelling for a
+ * length, and until now the whole op declined there — correct about the notation and
+ * wrong as a product: a user typing `bd ~ ~ ~ sn ~ ~ ~` and asking for 4 slots is
+ * asking for `bd ~ sn ~`, and got a greyed button with no explanation.
+ *
+ * So a note that would go sub-column keeps ONE column of the new grid instead. Nothing
+ * is lost — the length grows to the coarsest thing the new grid can spell — and it can
+ * never overlap, because one column is the minimum a note can occupy. The reason this
+ * is honest now and was not before is #1056: the panel DRAWS note length, so a change
+ * to it is a change the user can watch happen rather than one made behind their back.
+ *
+ * A note that already scales cleanly never reaches this — `bd _ ~ ~` → `bd ~` is
+ * byte-identical either way.
+ */
+const COARSEN_FLOOR = 1
+
+/**
  * Set a step grid to exactly `target` columns by quantizing: each ON cell snaps
  * to the nearest target column, several hits in a column collapse to one (OR),
  * and a bucket's gain is the loudest source hit that lands in it. Lossless when
@@ -267,16 +315,32 @@ const bucket = (c: number, from: number, to: number): number =>
  * (a target that isn't bar-aligned can't serialize). Returns the model unchanged
  * for the current count, an invalid target, or multi-bar.
  */
-export function quantizeStepGridTo(model: StepGridModel, target: number): StepGridModel {
-  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model
-  if ((model.bars ?? 1) > 1) return scaleStepGridTo(model, target)
+export function quantizeStepGridToWithEffect(
+  model: StepGridModel,
+  target: number,
+): { model: StepGridModel; effect: GridResolutionEffect } {
+  const unchanged = { model, effect: NO_EFFECT }
+  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return unchanged
+  if ((model.bars ?? 1) > 1) {
+    // A multi-bar grid keeps the strictly-lossless path, which by definition scales
+    // every length cleanly — so there is no floor to apply and nothing to report.
+    const scaled = scaleStepGridTo(model, target)
+    return scaled === model ? unchanged : { model: scaled, effect: NO_EFFECT }
+  }
   const from = model.steps
   const addingSlots = target > from
+  let lengthened = 0
+  let snapped = 0
+  let merged = 0
   const lanes = model.lanes.map((lane) => {
     const cells = Array<StepCell>(target).fill(false)
     lane.cells.forEach((cell, c) => {
       if (!isCellOn(cell)) return
       const b = bucket(c, from, target)
+      // The onset's EXACT proportional position. `bucket` rounds to the nearest column,
+      // so any disagreement here is timing the user will hear move — counted at the one
+      // place that knows both numbers.
+      if (b !== (c * target) / from) snapped++
       // SCALE FIRST, then merge. Coarsening scales every length by `target / from`;
       // merging takes the SHORTEST, so a merged note never sounds longer than one of
       // the notes it stands for (the choice `quantizePianoRollTo` makes for a chord).
@@ -284,8 +348,13 @@ export function quantizeStepGridTo(model: StepGridModel, target: number): StepGr
       // source cell in the same bucket — 1 and 1 columns became 0.25 instead of 0.5.
       // Refining keeps the COLUMN count instead (#607, the roll's rule): the onset is
       // preserved and the note simply no longer spans the widened gap.
-      const scaled = addingSlots ? cell.duration : cell.duration * (target / from)
+      const exact = addingSlots ? cell.duration : cell.duration * (target / from)
+      // …and the floor is applied AFTER the scale and BEFORE the merge, so a merge still
+      // takes the shortest of two lengths the grid can actually spell.
+      const scaled = addingSlots ? exact : Math.max(COARSEN_FLOOR, exact)
+      if (scaled !== exact) lengthened++
       const prev = cells[b]
+      if (isCellOn(prev)) merged++
       cells[b] = cellOn(isCellOn(prev) ? Math.min(prev.duration, scaled) : scaled)
     })
     return { ...lane, cells: clampLane(cells, target) }
@@ -302,9 +371,31 @@ export function quantizeStepGridTo(model: StepGridModel, target: number): StepGr
       filled.add(b)
     }
   }
-  // Coarsening scales every length down, and below one column the grid has no
-  // spelling for it — so the same admissibility rule as ×2/÷2 applies here.
-  return ifGridSpellable(model, { ...model, steps: target, lanes, ...(gains ? { gains } : {}) })
+  // The floor removes the sub-column refusal, not the admissibility rule: a length that
+  // scales to a NON-INTEGER number of columns (3 columns of 8 → 1.5 of 4) still has no
+  // spelling, and is still declined here rather than rounded into a different pattern.
+  const next = ifGridSpellable(model, {
+    ...model,
+    steps: target,
+    lanes,
+    ...(gains ? { gains } : {}),
+  })
+  // A declined op made no write, so it reports no effect — the counters above describe
+  // a candidate, and a candidate the writer refused never reaches the user.
+  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged } }
+}
+
+/** the plain projection of {@link quantizeStepGridToWithEffect} — the model it produced */
+export function quantizeStepGridTo(model: StepGridModel, target: number): StepGridModel {
+  return quantizeStepGridToWithEffect(model, target).model
+}
+
+/**
+ * What pressing `target` would cost, for the control's copy. Asked of the op itself so
+ * the sentence the user reads and the write they get cannot describe different things.
+ */
+export function stepResolutionEffect(model: StepGridModel, target: number): GridResolutionEffect {
+  return quantizeStepGridToWithEffect(model, target).effect
 }
 
 /**
