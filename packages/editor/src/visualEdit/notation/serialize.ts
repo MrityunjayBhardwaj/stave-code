@@ -316,19 +316,33 @@ function spliceGrid(
     // at a finer subdivision. Measured over the corpus: every part-void was this
     // branch, the tiling check below fired zero times, and the usable width was always
     // the shared grid.
-    let cols = partColumns(lanes, model.steps, p.factor)
-    let growth = 1
-    if (cols === null)
+    // ⚠ ADMITTING THE HIT'S POSITION IS NOT THE SAME AS SPELLING ITS LENGTH (#1151).
+    //
+    // This used to take the FIRST — coarsest — divisor `partColumns` accepted and
+    // commit to it. But `partColumns` only answers "does every atom fall on this
+    // grid"; it says nothing about the DURATIONS, which it divides by the same
+    // factor. So a part read at width `g` gives a note covering one shared column a
+    // length of `1/g`, and every writer below refuses a fraction of a column as
+    // unspellable. Measured over the corpus, that one fractional length was the cause
+    // of EVERY remaining part-void: 34 asks across 4 units, at both view scales,
+    // all reaching `sustainTokens`' fractional refusal with `p.factor / growth === 3`.
+    // None of them was the "no notation at this width" or "sustain in unowned bytes"
+    // the residual was assumed to be.
+    //
+    // So the widths are kept as a LIST, coarsest first, and tried in turn — a finer
+    // read makes the same length integral. The coarse read is NOT one of that list
+    // when it succeeds: at the part's own width nothing is read differently than
+    // before, so a refusal there is the refusal the writer has always given and it
+    // must propagate rather than retry (P4c, argued at the decline below).
+    const widths: { cols: GridCells; growth: number }[] = []
+    const own = partColumns(lanes, model.steps, p.factor)
+    if (own !== null) widths.push({ cols: own, growth: 1 })
+    else
       for (let g = p.factor - 1; g >= 1; g--) {
         if (p.factor % g !== 0) continue
         const finer = partColumns(lanes, model.steps, g)
-        if (finer === null) continue
-        cols = finer
-        growth = p.factor / g
-        break
+        if (finer !== null) widths.push({ cols: finer, growth: p.factor / g })
       }
-    /** a region's span, in the column space this part is being read at */
-    const at = (n: number): number => n * growth
     // The regions index the grid they were parsed from. If they no longer describe
     // it even at the finest usable width, ITS regions are void, and ONLY its own: the
     // parts beside it were not touched and keep what the user wrote. Strudel
@@ -336,13 +350,6 @@ function spliceGrid(
     // shared resolution leaves the others sounding exactly as written.
     const last = p.regions[p.regions.length - 1]
     out += p.before
-    if (cols === null || last === undefined || at(last.to) !== cols.length) {
-      rebuiltParts.push(p.regions.length)
-      const rebuilt = gridColumns(lanes, model.steps)
-      if (rebuilt === null) return 'decline'
-      out += rebuilt.join(' ') + p.after
-      continue
-    }
     // A lone element owning the whole line has nothing to stay aligned WITH, so
     // a re-emit can spread across the line as plain steps instead of holding
     // its one step's worth of brackets: rewriting `hh*8` reads `hh ~ hh …`, not
@@ -354,7 +361,12 @@ function spliceGrid(
     // of them fail. Those must not refuse the whole write, because at the coarse width
     // this part already had a working answer — the rebuild. Building the body aside and
     // committing it only on success is what lets the caller below choose between them.
-    const spliceRegions = (): { body: string; reemitted: number } | 'decline' => {
+    const spliceRegions = (
+      cols: GridCells,
+      growth: number,
+    ): { body: string; reemitted: number } | 'decline' => {
+      /** a region's span, in the column space this part is being read at */
+      const at = (n: number): number => n * growth
       let body = ''
       let reemitted = 0
       for (let ri = 0; ri < p.regions.length; ri++) {
@@ -441,8 +453,16 @@ function spliceGrid(
       }
       return { body, reemitted }
     }
-    const spliced = spliceRegions()
-    if (spliced === 'decline') {
+    let written: { body: string; reemitted: number } | null = null
+    for (const w of widths) {
+      // the regions must still tile the part at THIS width; where they do not, the
+      // width cannot describe what the user wrote and the next one is tried
+      if (last === undefined || last.to * w.growth !== w.cols.length) continue
+      const spliced = spliceRegions(w.cols, w.growth)
+      if (spliced !== 'decline') {
+        written = spliced
+        break
+      }
       // WHERE THE FINER READ IS WHAT FAILED, THE COARSE ANSWER IS STILL THERE (#1137).
       //
       // ⚠ ONLY WHERE `growth > 1`, and that bound is the whole safety argument. At
@@ -458,15 +478,27 @@ function spliceGrid(
       // and reaching it costs nothing that was not already being paid. The finer read
       // is an attempt to do better, and one that fails should hand back what it found
       // rather than refuse a placement the user could make yesterday.
-      if (growth === 1) return 'decline'
+      if (w.growth === 1) return 'decline'
+      // A PART HOLDING ONE REGION HAS NO NEIGHBOUR TO PROTECT, so reading it finer
+      // buys nothing (#1151). Locality is a promise about the bytes AROUND the edit;
+      // where the part IS one element, the whole-part rebuild already rewrites exactly
+      // the element the user touched and nothing else. Measured: for `c2, eb3 g3 [bb3
+      // c4]` and its two siblings the finer splice emits the same columns as the
+      // rebuild, differing only by the `[…]` it wraps them in — so retrying would add
+      // brackets and no locality. Stop here and take the rebuild, which is already the
+      // local answer. `sole` above is the same observation for a part that is the
+      // whole line; this is its `,`-stack form.
+      if (p.regions.length < 2) break
+    }
+    if (written === null) {
       rebuiltParts.push(p.regions.length)
       const rebuilt = gridColumns(lanes, model.steps)
       if (rebuilt === null) return 'decline'
       out += rebuilt.join(' ') + p.after
       continue
     }
-    regionsReemitted += spliced.reemitted
-    out += spliced.body + p.after
+    regionsReemitted += written.reemitted
+    out += written.body + p.after
   }
   const regions = src.parts.reduce((n, p) => n + p.regions.length, 0)
   return { out: out + src.suffix, regions, regionsReemitted, rebuiltParts }

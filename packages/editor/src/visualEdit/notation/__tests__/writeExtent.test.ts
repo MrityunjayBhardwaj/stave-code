@@ -105,30 +105,68 @@ describe('the grid writer reports what it moved', () => {
     }
   })
 
-  it('the whole-part rebuild REMAINS where the finer read has no spelling', () => {
-    // The fallback #1137 kept, and the reason the fix could not simply delete the
-    // rebuild: reading a part finer opens spellings that sometimes do not exist, and
-    // a placement the user could make before must not start refusing. This unit is one
-    // of the four the corpus still rebuilds — the writer says so itself, which is the
-    // only way to tell it from a local edit.
-    // ⚠ COLUMN 2, NOT 1, AND THAT IS THE FIXTURE'S WHOLE POINT. At column 1 this very
-    // unit splices locally — the finer read finds a spelling. The fallback is only
-    // reachable where it does not, so a fixture that merely names a "hard" unit would
-    // pass while asserting nothing: it would be measuring the fixed path.
-    const m = model('bd sd oh hh hh [oh hh oh], hh ht bd')
-    const lane = m.lanes.findIndex((l) => (l.part ?? 0) === 1)
-    expect(lane).toBeGreaterThan(-1)
-    const { mini, extent } = serializeStepGridWithExtent(toggleCell(m, lane, 2, true))
+  it('the whole-part rebuild REMAINS, and where it answers the part holds ONE element', () => {
+    // The fallback #1137 kept, and the reason neither fix could simply delete the
+    // rebuild: a placement the user could make before must not start refusing.
+    //
+    // ⚠ THIS ARM USED TO NAME A DIFFERENT UNIT, ON A PREMISE THAT WAS NEVER MEASURED
+    // (#1151). It pinned `bd sd oh hh hh [oh hh oh], hh ht bd` at `rebuiltParts: [3]`,
+    // described as "the finer read has no spelling". Traced at every refusal site, the
+    // real cause was that the width search committed to the coarsest divisor admitting
+    // the hit's POSITION without checking that the resulting LENGTHS were spellable —
+    // the placed note came out a third of a column long, which every writer here
+    // refuses. A finer width spells it, so that unit now splices locally at EVERY
+    // column and could no longer reach this path at all.
+    //
+    // What still reaches it is a part holding ONE region. There the first admitting
+    // width refuses the same way, a finer one would spell it, and it is deliberately
+    // not tried: re-emitting the single element yields the rebuild's own columns with a
+    // `[…]` around them, so the retry would buy brackets and no locality. The rebuild
+    // IS the local answer when the part is one element, which is why this is the shape
+    // the residual converged on.
+    const m = model('c2, eb3 g3 [bb3 c4]')
+    const { mini, extent } = serializeStepGridWithExtent(toggleCell(m, 0, 2, true))
     // it still WRITES — the point of the fallback is that reach is not lost. Before
     // the fallback existed this refused, and the op refuses whatever the writer cannot
     // spell, so the user simply could not place the hit.
-    expect(mini).not.toBeNull()
+    expect(mini).toBe('c2 _ c2 ~ ~ ~, eb3 g3 [bb3 c4]')
     expect(extent.path).toBe('splice')
     if (extent.path !== 'splice') return
-    expect(extent.rebuiltParts).toEqual([3])
-    // and the SAME unit one column over is local, which is what makes the residual a
-    // property of the spelling rather than of the document
-    const local = serializeStepGridWithExtent(toggleCell(m, lane, 1, true)).extent
-    expect(local.path === 'splice' && local.rebuiltParts).toEqual([])
+    // ONE element, reported by the writer — the discriminator between "a part was
+    // flattened" and "the one element the user touched was rewritten"
+    expect(extent.rebuiltParts).toEqual([1])
+    // ⚠ COLUMN 2, NOT 1, AND THAT IS THE FIXTURE'S WHOLE POINT. At column 1 this very
+    // unit splices, because the first width it is read at spells that hit. A fixture
+    // that merely named a "hard" unit would pass while measuring the fixed path.
+    const one = serializeStepGridWithExtent(toggleCell(m, 0, 1, true))
+    expect(one.mini).toBe('[c2 c2 ~ ~ ~ ~], eb3 g3 [bb3 c4]')
+    expect(one.extent.path === 'splice' && one.extent.rebuiltParts).toEqual([])
+  })
+
+  it('a comma-part whose hit needs a FINER width than its first is spliced, not rebuilt', () => {
+    // #1151's worked example, asserted as BYTES. `partColumns` accepts a width when
+    // every atom falls on it and says nothing about durations, which it divides by the
+    // same factor — so the coarsest admitting width gave this hit a length of a third
+    // of a column and the writer refused, voiding the part. The widths are now tried in
+    // turn, and the first that can SPELL the hit answers.
+    //
+    // The neighbours are the assertion: `ht` and `bd` are the user's own bytes and come
+    // back untouched, where the rebuild returned the whole part as flat columns.
+    for (const [scale, want] of [
+      [undefined, 'bd sd oh hh hh [oh hh oh], [hh _ hh ~ ~ ~] ht bd'],
+      // refining supplies more columns, never a different mechanism (#1116)
+      [2, 'bd sd oh hh hh [oh hh oh], [hh _ _ hh ~ ~ ~ ~ ~ ~ ~ ~] ht bd'],
+    ] as [number | undefined, string][]) {
+      const m = model('bd sd oh hh hh [oh hh oh], hh ht bd', scale)
+      const lane = m.lanes.findIndex((l) => (l.part ?? 0) === 1)
+      expect(lane).toBeGreaterThan(-1)
+      const col = scale === undefined ? 2 : 3
+      const { mini, extent } = serializeStepGridWithExtent(toggleCell(m, lane, col, true))
+      expect(mini, `scale=${scale}`).toBe(want)
+      expect(extent.path).toBe('splice')
+      if (extent.path !== 'splice') return
+      expect(extent.rebuiltParts, `scale=${scale} parts rebuilt`).toEqual([])
+      expect(extent.regionsReemitted, `scale=${scale} regions re-emitted`).toBe(1)
+    }
   })
 })
