@@ -295,16 +295,48 @@ function spliceGrid(
   let out = src.prefix
   for (const p of src.parts) {
     const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part)
-    const cols = partColumns(lanes, model.steps, p.factor)
-    // The regions index the grid they were parsed from. If this part can no
-    // longer be written at its own width — the user painted a hit finer than
-    // its notation holds — then ITS regions are void, and ONLY its own: the
+    // READ THE PART AT THE FINEST WIDTH ITS OWN ELEMENTS STILL DESCRIBE (#1137).
+    //
+    // `partColumns` refuses when a hit lands BETWEEN this part's columns — the user
+    // painted finer than the part's notation holds — and that used to void the whole
+    // `,`-part and re-derive it from the model. It is a rebuild wearing a splice's
+    // name: one cell toggle rewrote every byte of the part, including elements the
+    // user never went near (`cr hh bd` came back as `cr _ hh cr bd _`).
+    //
+    // Nothing about the refusal required that. A part stretched onto the shared grid
+    // by `factor` can be re-read at any DIVISOR of it, and the shared grid itself
+    // (`g === 1`) holds every atom by construction — so a width that describes the
+    // hit always exists. Re-reading there costs one thing: each element now spans
+    // `growth` columns instead of one, which is exactly what `reemitRegion`'s `div`
+    // already spells as a group. The element under the hit subdivides — `[cr cr] hh
+    // bd` — and its neighbours are copied through verbatim like any other splice.
+    //
+    // THE ELEMENT COUNT IS UNCHANGED, and that is what makes this local rather than a
+    // finer rebuild. We are not widening the part; we are spelling ONE of its elements
+    // at a finer subdivision. Measured over the corpus: every part-void was this
+    // branch, the tiling check below fired zero times, and the usable width was always
+    // the shared grid.
+    let cols = partColumns(lanes, model.steps, p.factor)
+    let growth = 1
+    if (cols === null)
+      for (let g = p.factor - 1; g >= 1; g--) {
+        if (p.factor % g !== 0) continue
+        const finer = partColumns(lanes, model.steps, g)
+        if (finer === null) continue
+        cols = finer
+        growth = p.factor / g
+        break
+      }
+    /** a region's span, in the column space this part is being read at */
+    const at = (n: number): number => n * growth
+    // The regions index the grid they were parsed from. If they no longer describe
+    // it even at the finest usable width, ITS regions are void, and ONLY its own: the
     // parts beside it were not touched and keep what the user wrote. Strudel
-    // normalizes every `,`-part to its own weight, so re-emitting one of them
-    // at the shared resolution leaves the others sounding exactly as written.
+    // normalizes every `,`-part to its own weight, so re-emitting one of them at the
+    // shared resolution leaves the others sounding exactly as written.
     const last = p.regions[p.regions.length - 1]
     out += p.before
-    if (cols === null || last === undefined || last.to !== cols.length) {
+    if (cols === null || last === undefined || at(last.to) !== cols.length) {
       rebuiltParts.push(p.regions.length)
       const rebuilt = gridColumns(lanes, model.steps)
       if (rebuilt === null) return 'decline'
@@ -317,79 +349,124 @@ function spliceGrid(
     // `[hh ~ hh …]`. Identical to Strudel either way — a bracket around the
     // whole cycle IS the cycle — so this is only about not handing back noise.
     const sole = src.parts.length === 1 && src.prefix === '' && p.regions.length === 1
-    for (let ri = 0; ri < p.regions.length; ri++) {
-      const r = p.regions[ri]
-      const now = cols.slice(r.from, r.to)
-      // untouched → the span's own bytes, verbatim; touched → re-emit, keeping
-      // whatever padding the span carried around it
-      if (sameCells(now, r.content)) {
-        out += r.raw
-        continue
-      }
-      regionsReemitted++
-      const div = sole ? 1 : p.div
-      const re = reemitRegion(now, div, model.viewScale !== undefined)
-      if (re !== null) {
-        out += r.leading + re + r.trailing
-        continue
-      }
-      // ABSORB THE RESTS A HELD NOTE REACHES INTO (#1146). A note longer than its own
-      // element needs its `_` written into the NEXT element's bytes, and regions are
-      // emitted independently — so the flat `bd ~ sd ~` refused a lengthening that the
-      // grouped `[bd ~ sd ~]` accepted, for no reason a user could see. That gap was most
-      // of #1053's ceiling: only 46 of 732 flat corpus units offered a length handle.
-      //
-      // The fix is to widen who owns the bytes, not to abandon them. This call takes over
-      // the following regions the note actually reaches into and re-emits that whole span
-      // as one, so the `_` lands in bytes this call owns. Everything past the note's reach
-      // is still copied verbatim, which is what keeps `[f3 ab3 g3] [eb3 g3 c3] …` from
-      // collapsing into one flat row the way a part-rebuild does.
-      //
-      // ⚠ FALLBACK ONLY, and the ordering is load-bearing exactly as it is for
-      // `stackedRegion` above: this runs where `reemitRegion` already returned null, i.e.
-      // where the write DECLINED. So no output that exists today can change shape — the
-      // golden round-trips keep passing because this path is unreachable for anything they
-      // cover, and the only documents it can affect are ones that previously refused.
-      //
-      // ⚠ ABSORBS ONLY UNCHANGED REGIONS, and only as far as the note reaches. Those are
-      // regions the loop above would have copied verbatim, so the bytes at risk are ones
-      // that say "nothing starts here" and will still say it — plus the sustain. A region
-      // the user edited is never swallowed by its neighbour's re-emit.
-      const reach = noteReach(cols, r.from, r.to)
-      let end = ri
-      while (end + 1 < p.regions.length && p.regions[end].to < reach) {
-        const nxt = p.regions[end + 1]
-        const nxtNow = cols.slice(nxt.from, nxt.to)
-        // WHAT MAY BE SWALLOWED: bytes that are about to be rewritten anyway (the region
-        // CHANGED, so it has a re-emit of its own coming), or bytes that say nothing
-        // happens here (no onset in the span) and will still say it, plus the sustain.
+    // EMITTED INTO A LOCAL, so a refusal can be answered rather than propagated.
+    // Reading the part finer opens spellings the coarse read never attempted, and some
+    // of them fail. Those must not refuse the whole write, because at the coarse width
+    // this part already had a working answer — the rebuild. Building the body aside and
+    // committing it only on success is what lets the caller below choose between them.
+    const spliceRegions = (): { body: string; reemitted: number } | 'decline' => {
+      let body = ''
+      let reemitted = 0
+      for (let ri = 0; ri < p.regions.length; ri++) {
+        const r = p.regions[ri]
+        const now = cols.slice(at(r.from), at(r.to))
+        // untouched → the span's own bytes, verbatim; touched → re-emit, keeping
+        // whatever padding the span carried around it
         //
-        // What may NOT: an UNCHANGED region carrying notes. Merging that one would
-        // re-spell notation the user wrote and did not touch — `hh*2` coming back as
-        // `hh hh` — which is precisely the collateral a splice exists to avoid.
+        // ⚠ COMPARED AT THE WIDTH THE PART IS BEING READ AT. `content` was captured in
+        // the part's own column space; where `growth > 1` we read `growth` times finer,
+        // so the STORED side is stretched to match rather than the live slice squashed —
+        // squashing would have to decide what an atom sitting between the coarse columns
+        // means, and the answer is "it changed", which is the very fact being tested.
+        // Stretching cannot lose one: the columns opened between are empty in the
+        // stretched copy, so a hit landing in one compares UNEQUAL, which is exactly how
+        // the element under the user's finger is identified.
+        if (sameCells(now, growth === 1 ? r.content : stretchCells(r.content, growth))) {
+          body += r.raw
+          continue
+        }
+        reemitted++
+        const div = sole ? 1 : p.div * growth
+        const re = reemitRegion(now, div, model.viewScale !== undefined)
+        if (re !== null) {
+          body += r.leading + re + r.trailing
+          continue
+        }
+        // ABSORB THE RESTS A HELD NOTE REACHES INTO (#1146). A note longer than its own
+        // element needs its `_` written into the NEXT element's bytes, and regions are
+        // emitted independently — so the flat `bd ~ sd ~` refused a lengthening that the
+        // grouped `[bd ~ sd ~]` accepted, for no reason a user could see. That gap was most
+        // of #1053's ceiling: only 46 of 732 flat corpus units offered a length handle.
         //
-        // ⚠ DEFENCE IN DEPTH, AND SAID SO RATHER THAN OVERCLAIMED. Removing this term
-        // alone changes no output on any fixture I could construct: where a sustain
-        // actually reaches into a region, that region has to change anyway, and where it
-        // does not, the `reach` bound above has already stopped the walk. `sustainTokens`
-        // then refuses whatever slips past both. So the arm in `cellResize.test.ts` pins
-        // the direction that IS reachable — an over-strict version, refusing a region the
-        // caller had already changed, which measurably breaks a correct write — and this
-        // half stands unarmed on purpose. It guards the one shape neither bound covers:
-        // the TAIL of a partially-reached region, whose bytes are otherwise re-spelled
-        // for no reason.
-        if (sameCells(nxtNow, nxt.content) && nxtNow.some((col) => col.length > 0)) break
-        end++
+        // The fix is to widen who owns the bytes, not to abandon them. This call takes over
+        // the following regions the note actually reaches into and re-emits that whole span
+        // as one, so the `_` lands in bytes this call owns. Everything past the note's reach
+        // is still copied verbatim, which is what keeps `[f3 ab3 g3] [eb3 g3 c3] …` from
+        // collapsing into one flat row the way a part-rebuild does.
+        //
+        // ⚠ FALLBACK ONLY, and the ordering is load-bearing exactly as it is for
+        // `stackedRegion` above: this runs where `reemitRegion` already returned null, i.e.
+        // where the write DECLINED. So no output that exists today can change shape — the
+        // golden round-trips keep passing because this path is unreachable for anything they
+        // cover, and the only documents it can affect are ones that previously refused.
+        //
+        // ⚠ ABSORBS ONLY UNCHANGED REGIONS, and only as far as the note reaches. Those are
+        // regions the loop above would have copied verbatim, so the bytes at risk are ones
+        // that say "nothing starts here" and will still say it — plus the sustain. A region
+        // the user edited is never swallowed by its neighbour's re-emit.
+        const reach = noteReach(cols, at(r.from), at(r.to))
+        let end = ri
+        while (end + 1 < p.regions.length && at(p.regions[end].to) < reach) {
+          const nxt = p.regions[end + 1]
+          const nxtNow = cols.slice(at(nxt.from), at(nxt.to))
+          // WHAT MAY BE SWALLOWED: bytes that are about to be rewritten anyway (the region
+          // CHANGED, so it has a re-emit of its own coming), or bytes that say nothing
+          // happens here (no onset in the span) and will still say it, plus the sustain.
+          //
+          // What may NOT: an UNCHANGED region carrying notes. Merging that one would
+          // re-spell notation the user wrote and did not touch — `hh*2` coming back as
+          // `hh hh` — which is precisely the collateral a splice exists to avoid.
+          //
+          // ⚠ DEFENCE IN DEPTH, AND SAID SO RATHER THAN OVERCLAIMED. Removing this term
+          // alone changes no output on any fixture I could construct: where a sustain
+          // actually reaches into a region, that region has to change anyway, and where it
+          // does not, the `reach` bound above has already stopped the walk. `sustainTokens`
+          // then refuses whatever slips past both. So the arm in `cellResize.test.ts` pins
+          // the direction that IS reachable — an over-strict version, refusing a region the
+          // caller had already changed, which measurably breaks a correct write — and this
+          // half stands unarmed on purpose. It guards the one shape neither bound covers:
+          // the TAIL of a partially-reached region, whose bytes are otherwise re-spelled
+          // for no reason.
+          const wasNxt = growth === 1 ? nxt.content : stretchCells(nxt.content, growth)
+          if (sameCells(nxtNow, wasNxt) && nxtNow.some((col) => col.length > 0)) break
+          end++
+        }
+        if (end === ri || at(p.regions[end].to) < reach) return 'decline'
+        const last = p.regions[end]
+        const merged = reemitRegion(cols.slice(at(r.from), at(last.to)), div, model.viewScale !== undefined)
+        if (merged === null) return 'decline'
+        reemitted += end - ri
+        body += r.leading + merged + last.trailing
+        ri = end
       }
-      if (end === ri || p.regions[end].to < reach) return 'decline'
-      const last = p.regions[end]
-      const merged = reemitRegion(cols.slice(r.from, last.to), div, model.viewScale !== undefined)
-      if (merged === null) return 'decline'
-      regionsReemitted += end - ri
-      out += r.leading + merged + last.trailing
-      ri = end
+      return { body, reemitted }
     }
-    out += p.after
+    const spliced = spliceRegions()
+    if (spliced === 'decline') {
+      // WHERE THE FINER READ IS WHAT FAILED, THE COARSE ANSWER IS STILL THERE (#1137).
+      //
+      // ⚠ ONLY WHERE `growth > 1`, and that bound is the whole safety argument. At
+      // `growth === 1` nothing about this part was read differently than before, so a
+      // refusal here is the SAME refusal the writer has always given and it must
+      // propagate: P4c's rule is that a decline must never fall through to a rebuild,
+      // because the rebuild is exactly the re-derivation that drops the length the
+      // refusal exists to protect.
+      //
+      // Where `growth > 1` the situation is inverted: this part had NO splice before
+      // this change — it was voided and rebuilt unconditionally. So the rebuild is not
+      // a downgrade from a working write, it is precisely the behaviour that shipped,
+      // and reaching it costs nothing that was not already being paid. The finer read
+      // is an attempt to do better, and one that fails should hand back what it found
+      // rather than refuse a placement the user could make yesterday.
+      if (growth === 1) return 'decline'
+      rebuiltParts.push(p.regions.length)
+      const rebuilt = gridColumns(lanes, model.steps)
+      if (rebuilt === null) return 'decline'
+      out += rebuilt.join(' ') + p.after
+      continue
+    }
+    regionsReemitted += spliced.reemitted
+    out += spliced.body + p.after
   }
   const regions = src.parts.reduce((n, p) => n + p.regions.length, 0)
   return { out: out + src.suffix, regions, regionsReemitted, rebuiltParts }
@@ -692,6 +769,28 @@ const sameCell = (a: GridCells[number], b: GridCells[number]): boolean => {
 
 const sameCells = (a: GridCells, b: GridCells): boolean =>
   a.length === b.length && a.every((c, i) => sameCell(c, b[i]))
+
+/**
+ * The same cells, re-expressed `growth` columns finer (#1137).
+ *
+ * A region's `content` is captured in the part's own column space. When the part has
+ * to be READ finer — a hit landed between its columns — the stored content and the
+ * live slice are in different units, and "did the user change this?" cannot be asked
+ * until they agree. This moves the stored side, which is the safe direction: every
+ * atom keeps its column (`i` → `i * growth`) and the columns opened between them are
+ * empty, so a hit that landed in one compares UNEQUAL and that element re-emits.
+ *
+ * ⚠ THE DURATION IS IN THE UNITS BEING CHANGED, the same trap `partColumns` documents
+ * one level up. A length is counted in the columns of whatever grid it is read on, so
+ * a rescale multiplies it by exactly the factor the index does. Scaling the index and
+ * copying the payload would make every held note compare unequal and re-emit for no
+ * reason the user could see.
+ */
+const stretchCells = (cells: GridCells, growth: number): GridCells =>
+  cells.flatMap((c) => [
+    c.map((n) => ({ token: n.token, duration: n.duration * growth })),
+    ...Array.from({ length: growth - 1 }, (): GridCells[number] => []),
+  ])
 
 /**
  * The furthest column any note STARTING in `[from, to)` sounds through (#1146).

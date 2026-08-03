@@ -376,24 +376,29 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
   })
 
   /**
-   * A `,`-part is an independent voice. Painting into one at a resolution its
-   * own notation cannot hold means THAT part must be rewritten — and it means
-   * nothing whatsoever for the voice beside it.
+   * A `,`-part is an independent voice, and painting into one means nothing
+   * whatsoever for the voice beside it.
    *
    * `bd sd` is two columns against `hh*4`'s four, so the grid shows four and
-   * column 1 is off `bd sd`'s own grid. Part 0 re-emits at the shared
-   * resolution; `hh*4` is not part of that conversation.
+   * column 1 is off `bd sd`'s own grid.
+   *
+   * ⚠ THIS DOCBLOCK USED TO CLAIM THE PART "MUST BE REWRITTEN" at that point, and
+   * #1137 refuted it. The part is now READ at the finest width its own elements
+   * still describe, so only the element under the hit is re-spelled and everything
+   * else in the part is copied through. The old expectation was `bd bd sd _`: the
+   * whole part re-derived, with `sd _` being the printer re-deriving a length it
+   * had to reconstruct. `sd` is now the user's own byte, untouched — which is what
+   * this FILE is about, so the case was arguing against its own thesis.
    */
-  it('grid: painting into one `,`-part does not rewrite the part beside it', () => {
+  it('grid: painting into one `,`-part rewrites neither its neighbour nor its own siblings', () => {
     const r = parseStepGrid('bd sd, hh*4')
     expect(r.ok).toBe(true)
     if (!r.ok) return
     const edited = toggleCell(r.model, 0, 1, true) // lane 0 = bd (part 0)
-    // `sd _`, not `sd ~` (#1010 P4c). `bd sd` gives sd HALF the cycle; on the shared
-    // 4-column grid that is two columns, and the trailing `_` is the printer keeping
-    // that length. The old `sd ~` re-derived it as one column — the note quietly
-    // halved by an edit that never touched it.
-    expect(serializeStepGrid(edited) ?? '<null>').toBe('bd bd sd _, hh*4')
+    // `[bd bd]` — the `bd` element subdivides to hold the new hit, keeping its one
+    // step's worth of the cycle so `sd` still sounds for the other half. `sd` and
+    // `hh*4` are both copied verbatim.
+    expect(serializeStepGrid(edited) ?? '<null>').toBe('[bd bd] sd, hh*4')
   })
 
   /**

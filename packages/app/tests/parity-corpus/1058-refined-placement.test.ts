@@ -31,6 +31,12 @@
  * walk is not merely redundant here, it is unsound, and `GridWriteExtent` exists
  * because the writer already decided both facts and threw them away (#1137).
  *
+ * ⚠ THOSE TWO-INSTRUMENT FIGURES ARE HISTORICAL — taken when the part-void was
+ * unconditional, and kept because they are the ARGUMENT for reporting locality from
+ * the writer rather than a description of today's residual. #1137 has since removed
+ * most of the population they measured (278 non-local asks → 34). Re-taking them
+ * would not re-make the point: the walk's blindness is structural, not a rate.
+ *
  * ⚠ WHAT THIS GATE DOES NOT ASSERT, stated rather than left to be assumed:
  * lane-add (works on a fixture, no corpus arm); resize and paste at a refined
  * view; the alternation path's locality — an alt model carries no `source`, so the
@@ -228,21 +234,29 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
         `k=${k}: a second element re-emitted`,
       ).toEqual([])
       expect(nonLocal.every((a) => a.rebuiltParts!.length > 0), `k=${k}: all part-rebuilds`).toBe(true)
-      expect(nonLocal.length, `k=${k} non-local asks`).toBe(278)
+      expect(nonLocal.length, `k=${k} non-local asks`).toBe(34)
 
       // pinned BY UNIT, so a fix to #1137 reads as a named delta and a regression
       // cannot hide inside a rate
       expect([...new Set(nonLocal.map((a) => a.mini))].sort(), `k=${k}`).toEqual(NON_LOCAL_UNITS)
-      expect(spliced.length - nonLocal.length, `k=${k} local`).toBe(14922)
+      expect(spliced.length - nonLocal.length, `k=${k} local`).toBe(15166)
     }
   })
 
-  it('most of the non-local residual is a ONE-element part — the open call', () => {
-    // Where the voided part holds a single element, "rebuild the part" and
-    // "re-emit that element" produce the same bytes, so this class may well BE
-    // local by this issue's words. Reported rather than decided — and it can only
-    // be reported because the writer says which part it rebuilt; the byte diff
-    // cannot see a part-rebuild at all (#1137).
+  it('the residual is where the FINER spelling does not exist — the fallback, not the rule', () => {
+    // #1137 SETTLED THE OPEN CALL BY REMOVING MOST OF ITS POPULATION. This used to
+    // read "most of the non-local residual is a ONE-element part", and asked whether
+    // rebuilding a one-element part counts as non-local at all — since rebuilding it
+    // and re-emitting its one element produce the same bytes. That question mattered
+    // when it covered 170 of 278 asks. The writer now reads a part at the finest width
+    // its own elements still describe rather than voiding it, so 244 of those 278 are
+    // ordinary splices and the single-element class is 16 of a residual of 34.
+    //
+    // What is left is the honest fallback: the finer read was attempted, produced no
+    // spelling, and the whole-part rebuild answered — which is what shipped before, so
+    // nothing regressed to reach it. Still reported rather than decided, and still only
+    // reportable because the writer says which part it rebuilt; the byte diff cannot
+    // see a part-rebuild at all (#1137).
     for (const k of SCALES) {
       const nonLocal = SWEPT.get(k)!.asks.filter(
         (a) => a.accepted && a.path === 'splice' && a.rebuiltParts!.length > 0,
@@ -456,45 +470,42 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
 })
 
 /**
- * The units whose write rebuilds a whole `,`-part instead of splicing it (#1137).
- * PINNED BY NAME rather than counted, so a fix there reads as a named delta and a
- * regression cannot hide inside a rate. Every one is a `,`-part pattern, and the
- * same set appears at the document's own resolution with no refinement in play —
- * so refining does not open this, it only supplies more columns at which it fires.
+ * The units whose write STILL rebuilds a whole `,`-part instead of splicing it,
+ * after #1137 (was 21 units / 278 asks; now 4 / 34).
+ *
+ * PINNED BY NAME rather than counted, so a change there reads as a named delta and a
+ * regression cannot hide inside a rate. The same set appears at the document's own
+ * resolution with no refinement in play — so refining does not open this, it only
+ * supplies more columns at which it fires.
+ *
+ * ⚠ WHAT LEAVING THIS LIST MEANS, since the direction is not symmetric. A unit
+ * DROPPING off is a part that now splices — the #1137 fix reaching further. A unit
+ * ARRIVING is a part that stopped splicing, which is a regression: the writer had a
+ * local answer for it and lost one. The four below are the residual where reading the
+ * part finer produced no spelling at all, so the pre-#1137 whole-part rebuild
+ * answered. Nothing regressed to reach them; that rebuild is what always shipped.
  */
 const NON_LOCAL_UNITS: string[] = [
-  "A2 A2, A1 A1, E2, E1",
-  "[a4,c#4,e4,g#4,c#5],[~ f#6 e6]",
   "[b4,d4,f#4],b5*3 c#6*2",
-  "[bd ~]*2, [~ hh]*2, ~ sd",
-  "bd [bd - bd], sd(2,4,1), hh*6",
-  "bd [bd bd - bd], sd(2,4,1), hh*8",
-  "bd [bd bd - bd], sd(4,4,1), hh*8",
-  "bd bd - bd,hh,sd,cp",
-  "bd bd sd hh,oh",
-  "bd sd cp hh oh cp, cr hh bd",
-  "bd sd hh, gm_overdriven_guitar",
   "bd sd oh hh hh [oh hh oh], hh ht bd",
-  "bd*4, [- cp]*2, [- hh]*4",
-  "bd*4, cp(7, 16,14)",
-  "bd*4, sd(2,4,1), hh*8",
-  "bd:1 -, - [sd:1:.6 -]",
   "c2, eb3 g3 [bb3 c4 c3]",
   "c2, eb3 g3 [bb3 c4]",
-  "hh,hh oh sd",
-  "numbers, - piano",
-  "~ c5 ~ ~ ,~ f5 ~ ~ ,~ c6*2 ~ ~",
 ]
 
 /**
- * Non-local writes whose rebuilt parts held a SINGLE element each. Rebuilding such
- * a part and re-emitting its one element produce the same bytes, so this class may
- * not be non-local at all by this issue's words — the open call in #1137. The
- * figure comes from the writer's own report of each rebuilt part's size; the
+ * Non-local writes whose rebuilt parts held a SINGLE element each — 16 of the 34
+ * residual, down from 170 of 278 before #1137.
+ *
+ * Rebuilding such a part and re-emitting its one element produce the same bytes, so
+ * this class may not be non-local at all by #1137's words. That was the open call
+ * while it covered most of the residual; it now covers under half of a much smaller
+ * one, which is why the fix went to the mechanism rather than to the definition.
+ *
+ * The figure comes from the writer's own report of each rebuilt part's size; the
  * earlier version of this gate inferred it from the model instead and took the
  * minimum across ALL parts, which is the wrong part whenever they differ in size.
  */
-const SINGLE_ELEMENT_PART_VOIDS = 170
+const SINGLE_ELEMENT_PART_VOIDS = 16
 
 /**
  * The corpus unit whose chords carry a duplicate member (`[d4,f4,d4]`). Any
