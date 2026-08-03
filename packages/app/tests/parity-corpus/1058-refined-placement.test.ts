@@ -234,29 +234,42 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
         `k=${k}: a second element re-emitted`,
       ).toEqual([])
       expect(nonLocal.every((a) => a.rebuiltParts!.length > 0), `k=${k}: all part-rebuilds`).toBe(true)
-      expect(nonLocal.length, `k=${k} non-local asks`).toBe(34)
+      expect(nonLocal.length, `k=${k} non-local asks`).toBe(16)
 
       // pinned BY UNIT, so a fix to #1137 reads as a named delta and a regression
       // cannot hide inside a rate
       expect([...new Set(nonLocal.map((a) => a.mini))].sort(), `k=${k}`).toEqual(NON_LOCAL_UNITS)
-      expect(spliced.length - nonLocal.length, `k=${k} local`).toBe(15166)
+      expect(spliced.length - nonLocal.length, `k=${k} local`).toBe(15184)
     }
   })
 
-  it('the residual is where the FINER spelling does not exist — the fallback, not the rule', () => {
-    // #1137 SETTLED THE OPEN CALL BY REMOVING MOST OF ITS POPULATION. This used to
-    // read "most of the non-local residual is a ONE-element part", and asked whether
-    // rebuilding a one-element part counts as non-local at all — since rebuilding it
-    // and re-emitting its one element produce the same bytes. That question mattered
-    // when it covered 170 of 278 asks. The writer now reads a part at the finest width
-    // its own elements still describe rather than voiding it, so 244 of those 278 are
-    // ordinary splices and the single-element class is 16 of a residual of 34.
+  it('the residual is where a finer read buys NOTHING — every rebuilt part holds one element', () => {
+    // ⚠ THIS GATE USED TO SAY "THE FINER SPELLING DOES NOT EXIST", AND THAT WAS NEVER
+    // MEASURED (#1151). It was the fallback's TRIGGER read as a diagnosis: the finer
+    // re-emit returned null, the rebuild answered, and nobody asked which refusal fired.
     //
-    // What is left is the honest fallback: the finer read was attempted, produced no
-    // spelling, and the whole-part rebuild answered — which is what shipped before, so
-    // nothing regressed to reach it. Still reported rather than decided, and still only
-    // reportable because the writer says which part it rebuilt; the byte diff cannot
-    // see a part-rebuild at all (#1137).
+    // Asked — by tracing every refusal site in the writer rather than reconstructing its
+    // decision from the output — all 34 residual asks, across all four units and both view
+    // scales, gave ONE answer: the placed note's length came out as a THIRD of a column,
+    // and both `sustainTokens` and the `stackedRegion` fallback refuse a fractional
+    // length. Absorption could not rescue it either, because the note is SHORTER than a
+    // column, so its reach never leaves the region and there is nothing to absorb.
+    //
+    // The cause was one line further up. The width search took the coarsest divisor that
+    // admitted the hit's POSITION, and `partColumns` says nothing about durations — it
+    // divides them by the same factor. At `p.factor / growth === 3`, which is what all
+    // four units gave, a note covering one shared column becomes a third of a part
+    // column. Reading finer makes the same length integral, so the spelling did exist
+    // for every one of them; #1151 tries the widths in turn instead of committing to the
+    // first.
+    //
+    // WHAT REMAINS IS NOT UNSPELLABLE — IT IS VACUOUS. Every unit still here holds ONE
+    // region in the rebuilt part, and locality is a promise about the bytes AROUND the
+    // edit: where the part IS one element, the whole-part rebuild already rewrites
+    // exactly what the user touched and nothing else. Measured, the finer splice emits
+    // the same columns as the rebuild for these three, differing only by the `[…]` it
+    // would wrap them in. So the writer stops at one element rather than buying brackets,
+    // and this arm pins that the residual is EXACTLY that class — 16 of 16, not 16 of 34.
     for (const k of SCALES) {
       const nonLocal = SWEPT.get(k)!.asks.filter(
         (a) => a.accepted && a.path === 'splice' && a.rebuiltParts!.length > 0,
@@ -265,6 +278,11 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // element?" is answered rather than inferred from the model afterwards.
       const singleElement = nonLocal.filter((a) => a.rebuiltParts!.every((n) => n === 1))
       expect(singleElement.length, `k=${k}`).toBe(SINGLE_ELEMENT_PART_VOIDS)
+      // THE CLAIM THAT MAKES THE RESIDUAL EXAMINED RATHER THAN LEFTOVER: there is no
+      // rebuilt part left that holds more than one element. A multi-element part
+      // arriving here is a unit whose neighbours are being re-spelled again, which is
+      // the whole defect #1137 and #1151 exist to remove.
+      expect(nonLocal.length, `k=${k}: residual is single-element only`).toBe(singleElement.length)
     }
   })
 
@@ -532,25 +550,41 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
  * ⚠ WHAT LEAVING THIS LIST MEANS, since the direction is not symmetric. A unit
  * DROPPING off is a part that now splices — the #1137 fix reaching further. A unit
  * ARRIVING is a part that stopped splicing, which is a regression: the writer had a
- * local answer for it and lost one. The four below are the residual where reading the
- * part finer produced no spelling at all, so the pre-#1137 whole-part rebuild
- * answered. Nothing regressed to reach them; that rebuild is what always shipped.
+ * local answer for it and lost one.
+ *
+ * ⚠ THE REASON THE THREE BELOW ARE STILL HERE IS NOT THE REASON THE FOUR WERE (#1151).
+ * The list used to be four, and its stated cause — "reading the part finer produced no
+ * spelling at all" — turned out to be the fallback's trigger rather than a measured
+ * diagnosis. `bd sd oh hh hh [oh hh oh], hh ht bd` left when the writer stopped
+ * committing to the first width that admitted the hit's position: its 18 asks were
+ * refused over a note a third of a column long, and a finer read spells that fine. It
+ * now writes `[hh _ _ hh ~ …] ht bd`, with `ht` and `bd` untouched where the rebuild
+ * used to flatten them.
+ *
+ * The three that remain each hold ONE region in the rebuilt part, and there the rebuild
+ * is already the local answer — re-emitting the single element produces the same columns
+ * and only adds brackets. So they are not a gap waiting on a fix; they are the shape for
+ * which this class of fix has nothing to offer, which is why the writer stops rather than
+ * reading them finer. The arm above pins that nothing BUT that shape is left.
  */
 const NON_LOCAL_UNITS: string[] = [
   "[b4,d4,f#4],b5*3 c#6*2",
-  "bd sd oh hh hh [oh hh oh], hh ht bd",
   "c2, eb3 g3 [bb3 c4 c3]",
   "c2, eb3 g3 [bb3 c4]",
 ]
 
 /**
- * Non-local writes whose rebuilt parts held a SINGLE element each — 16 of the 34
- * residual, down from 170 of 278 before #1137.
+ * Non-local writes whose rebuilt parts held a SINGLE element each — now ALL 16 of a
+ * residual of 16, down from 170 of 278 before #1137 and 16 of 34 before #1151.
  *
  * Rebuilding such a part and re-emitting its one element produce the same bytes, so
  * this class may not be non-local at all by #1137's words. That was the open call
- * while it covered most of the residual; it now covers under half of a much smaller
- * one, which is why the fix went to the mechanism rather than to the definition.
+ * while it covered most of the residual. It is now the WHOLE residual, and the two
+ * fixes are why: #1137 stopped voiding a part whose hit fell between its columns, and
+ * #1151 stopped committing to the first width that admitted the hit. What neither
+ * touches is a part that IS one element, because there the rebuild is already local —
+ * so the class that remains is the one where the question is definitional rather than
+ * mechanical, which is the right place for it to have ended up.
  *
  * The figure comes from the writer's own report of each rebuilt part's size; the
  * earlier version of this gate inferred it from the model instead and took the

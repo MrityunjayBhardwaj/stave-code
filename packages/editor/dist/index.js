@@ -25918,29 +25918,20 @@ function spliceGrid(model) {
   let out = src.prefix;
   for (const p of src.parts) {
     const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part);
-    let cols = partColumns(lanes, model.steps, p.factor);
-    let growth = 1;
-    if (cols === null)
+    const widths = [];
+    const own = partColumns(lanes, model.steps, p.factor);
+    if (own !== null) widths.push({ cols: own, growth: 1 });
+    else
       for (let g = p.factor - 1; g >= 1; g--) {
         if (p.factor % g !== 0) continue;
         const finer = partColumns(lanes, model.steps, g);
-        if (finer === null) continue;
-        cols = finer;
-        growth = p.factor / g;
-        break;
+        if (finer !== null) widths.push({ cols: finer, growth: p.factor / g });
       }
-    const at = /* @__PURE__ */ __name((n) => n * growth, "at");
     const last = p.regions[p.regions.length - 1];
     out += p.before;
-    if (cols === null || last === void 0 || at(last.to) !== cols.length) {
-      rebuiltParts.push(p.regions.length);
-      const rebuilt = gridColumns(lanes, model.steps);
-      if (rebuilt === null) return "decline";
-      out += rebuilt.join(" ") + p.after;
-      continue;
-    }
     const sole = src.parts.length === 1 && src.prefix === "" && p.regions.length === 1;
-    const spliceRegions = /* @__PURE__ */ __name(() => {
+    const spliceRegions = /* @__PURE__ */ __name((cols, growth) => {
+      const at = /* @__PURE__ */ __name((n) => n * growth, "at");
       let body = "";
       let reemitted = 0;
       for (let ri = 0; ri < p.regions.length; ri++) {
@@ -25976,17 +25967,26 @@ function spliceGrid(model) {
       }
       return { body, reemitted };
     }, "spliceRegions");
-    const spliced = spliceRegions();
-    if (spliced === "decline") {
-      if (growth === 1) return "decline";
+    let written = null;
+    for (const w of widths) {
+      if (last === void 0 || last.to * w.growth !== w.cols.length) continue;
+      const spliced = spliceRegions(w.cols, w.growth);
+      if (spliced !== "decline") {
+        written = spliced;
+        break;
+      }
+      if (w.growth === 1) return "decline";
+      if (p.regions.length < 2) break;
+    }
+    if (written === null) {
       rebuiltParts.push(p.regions.length);
       const rebuilt = gridColumns(lanes, model.steps);
       if (rebuilt === null) return "decline";
       out += rebuilt.join(" ") + p.after;
       continue;
     }
-    regionsReemitted += spliced.reemitted;
-    out += spliced.body + p.after;
+    regionsReemitted += written.reemitted;
+    out += written.body + p.after;
   }
   const regions = src.parts.reduce((n, p) => n + p.regions.length, 0);
   return { out: out + src.suffix, regions, regionsReemitted, rebuiltParts };
