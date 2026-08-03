@@ -198,6 +198,13 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // column it covers. Memoized on the model beside `placeable`/`coverage` and for the
   // same reason ([[P380]]): `mutate` fires every pointermove, so anything derived per
   // cell is recomputed per frame unless it hangs off the model.
+  //
+  // MEASURED over the 966 corpus models, because [[P380]] is precisely the entry where a
+  // comment called a per-cell map cheap before anyone had timed one: p50 0.0022ms, p99
+  // 0.357ms, worst 1.26ms — against `placeable`'s p50 0.0047ms, p99 2.54ms, worst 14.4ms
+  // on the same run, i.e. **16.1% of its total**. It costs less than the map beside it
+  // despite serializing, because it asks once per NOTE while `placeable` asks once per
+  // EMPTY cell, and grids have far more of those.
   const resizable = React.useMemo(() => {
     if (!model) return null
     return model.lanes.map((lane, li) => {
