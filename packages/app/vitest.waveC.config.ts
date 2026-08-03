@@ -3,16 +3,11 @@
  * Wave C-1 grounding probe (`_waveC-grounding.spec.ts`). Exists so the
  * underscore-prefixed maintainer spec can be invoked WITHOUT widening
  * the CI `vitest.config.ts` `include` globs (the parity/loc CI gate
- * stays exactly as-is). Mirrors vitest.proto.config.ts / vitest.bakery.config.ts.
+ * stays exactly as-is).
+ *
+ * See `vitest.only.ts` — until #1147 this merged its `include` and so
+ * collected 86 files rather than 1.
  */
-import { defineConfig, mergeConfig } from 'vitest/config'
-import base from './vitest.config'
+import { only } from './vitest.only'
 
-export default mergeConfig(
-  base,
-  defineConfig({
-    test: {
-      include: ['tests/parity-corpus/_waveC-grounding.spec.ts'],
-    },
-  }),
-)
+export default only(['tests/parity-corpus/_waveC-grounding.spec.ts'])

@@ -22,18 +22,10 @@
  *     so the pass stays green. That is exactly `_sweep-1034e.spec.ts`, which
  *     defends itself with its own existence check instead. ✗
  *
- * NOT `mergeConfig` for `include`. `mergeConfig` UNIONS array options rather
- * than replacing them, so merging an `include` widens the base globs instead of
- * narrowing to them — which is how `vitest.proto.config.ts` ends up collecting
- * 86 files while its docblock promises 1 (#1147). Everything else is inherited
- * from the base; `include` is assigned explicitly, after the merge, on purpose.
+ * `only()` assigns `include` rather than merging it — see `vitest.only.ts` and
+ * #1147. This file originally did that inline, but assigned in place, which
+ * mutated the imported base config; the helper builds fresh objects.
  */
-import { defineConfig, mergeConfig } from 'vitest/config'
-import base from './vitest.config'
+import { only } from './vitest.only'
 
-const config = mergeConfig(base, defineConfig({}))
-
-config.test.include = ['tests/parity-corpus/_*.spec.{ts,tsx}']
-config.test.exclude = ['node_modules', '.next']
-
-export default config
+export default only(['tests/parity-corpus/_*.spec.{ts,tsx}'])

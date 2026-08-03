@@ -5,16 +5,10 @@
  * an explicit path WITHOUT widening the CI `vitest.config.ts` `include` globs
  * — the parity/loc CI gate stays exactly as-is. This config is never used by
  * `pnpm test` / CI; it is invoked by name from the `test:proto` script.
- * Mirrors vitest.bakery.config.ts verbatim except for the `include` target.
+ *
+ * Until #1147 that promise was not kept: `mergeConfig` unions `include`, so
+ * this collected 86 files rather than 1. `only()` assigns instead of merging.
  */
-import { defineConfig, mergeConfig } from 'vitest/config'
-import base from './vitest.config'
+import { only } from './vitest.only'
 
-export default mergeConfig(
-  base,
-  defineConfig({
-    test: {
-      include: ['tests/parity-corpus/_proto-d01.spec.ts'],
-    },
-  }),
-)
+export default only(['tests/parity-corpus/_proto-d01.spec.ts'])
