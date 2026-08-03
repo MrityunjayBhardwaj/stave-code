@@ -25955,16 +25955,35 @@ function spliceGrid(model) {
       continue;
     }
     const sole = src.parts.length === 1 && src.prefix === "" && p.regions.length === 1;
-    for (const r of p.regions) {
+    for (let ri = 0; ri < p.regions.length; ri++) {
+      const r = p.regions[ri];
       const now2 = cols.slice(r.from, r.to);
       if (sameCells(now2, r.content)) {
         out += r.raw;
         continue;
       }
       regionsReemitted++;
-      const re = reemitRegion(now2, sole ? 1 : p.div, model.viewScale !== void 0);
-      if (re === null) return "decline";
-      out += r.leading + re + r.trailing;
+      const div = sole ? 1 : p.div;
+      const re = reemitRegion(now2, div, model.viewScale !== void 0);
+      if (re !== null) {
+        out += r.leading + re + r.trailing;
+        continue;
+      }
+      const reach = noteReach(cols, r.from, r.to);
+      let end = ri;
+      while (end + 1 < p.regions.length && p.regions[end].to < reach) {
+        const nxt = p.regions[end + 1];
+        const nxtNow = cols.slice(nxt.from, nxt.to);
+        if (sameCells(nxtNow, nxt.content) && nxtNow.some((col) => col.length > 0)) break;
+        end++;
+      }
+      if (end === ri || p.regions[end].to < reach) return "decline";
+      const last2 = p.regions[end];
+      const merged = reemitRegion(cols.slice(r.from, last2.to), div, model.viewScale !== void 0);
+      if (merged === null) return "decline";
+      regionsReemitted += end - ri;
+      out += r.leading + merged + last2.trailing;
+      ri = end;
     }
     out += p.after;
   }
@@ -26111,6 +26130,14 @@ var sameCell = /* @__PURE__ */ __name((a, b) => {
   return a.length === b.length && a.every((x) => keys.includes(gridCellKey(x)));
 }, "sameCell");
 var sameCells = /* @__PURE__ */ __name((a, b) => a.length === b.length && a.every((c, i) => sameCell(c, b[i])), "sameCells");
+function noteReach(cols, from, to) {
+  let reach = to;
+  for (let c = from; c < to; c++) {
+    for (const n of cols[c]) reach = Math.max(reach, c + Math.round(n.duration));
+  }
+  return reach;
+}
+__name(noteReach, "noteReach");
 function reemitRegion(cols, div, refined = false) {
   const spelled = sustainTokens(cols, div);
   if (spelled === null) return refined ? stackedRegion(cols, div) : null;

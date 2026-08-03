@@ -10,9 +10,13 @@
  * `resizeCell` signals "could not apply" by returning its input, so `expect(op(m)).toBe(m)`
  * is satisfied by an op that declines EVERYTHING — including one broken to `return model`
  * on its first line. Each decline is therefore paired with a case that must still apply,
- * and the pairs are chosen so a blanket break cannot pass both: the same four columns,
- * spelled flat and spelled as one `[…]` group, get OPPOSITE verdicts. That split is the
- * evidence the decline is about the notation and not about the op being dead.
+ * chosen so a blanket break cannot pass both. Verified rather than assumed: breaking
+ * `resizeCell` to `return model` reddens EVERY arm in this file.
+ *
+ * ⚠ The pair used to be `bd ~ sn ~` against `[bd ~ sn ~]` — the same four columns, one
+ * spelling accepted and the other refused. #1146 removed that difference on purpose (the
+ * writer now absorbs the rest a sustain needs), so the live/decline pairs here are drawn
+ * on whether there is a REST IN REACH at all: `bd ~ sn ~` accepts, `bd*4` cannot.
  *
  * ── THE ONE THAT WAS FOUND BY FIXTURE, NOT BY REASONING ───────────────────────
  * `[bd ~ ~ ~, hh ~ hh ~]` projects cells that are HALF a column, and setting one to a
@@ -24,7 +28,7 @@
 import { describe, it, expect } from 'vitest'
 import { parseStepGrid } from '../parse'
 import { serializeStepGrid } from '../serialize'
-import { isCellOn, laneCoverage } from '../model'
+import { cellOn, isCellOn, laneCoverage } from '../model'
 import type { StepGridModel } from '../model'
 import { canResizeCell, resizeCell } from '../place'
 
@@ -108,16 +112,56 @@ describe('resizeCell — setting a note’s length in columns', () => {
   })
 
   it('DECLINES a sustain that would land in a neighbouring element’s bytes', () => {
-    // Four columns, one note, same music — spelled flat, each column is its own source
-    // element and the `_` would have to be written into the next one's bytes.
+    // ⚠ THIS ARM USED TO ASSERT THE OPPOSITE, and the change is #1146. Spelled flat, each
+    // column was its own source element, so the `_` had to be written into the NEXT
+    // element's bytes and the writer declined — while the SAME four columns inside one
+    // `[…]` group accepted. Two spellings that sound identical behaved differently for a
+    // reason no user could see. The writer now widens who owns the bytes rather than
+    // refusing, so both spellings accept, and this file records the new rule instead of
+    // keeping a pin on the old limit.
     const flat = grid('bd ~ sn ~')
-    expect(resizeCell(flat, laneOf(flat, 'bd'), 0, 2)).toBe(flat)
+    expect(serializeStepGrid(resizeCell(flat, laneOf(flat, 'bd'), 0, 2))).toBe('bd _ sn ~')
 
-    // CONTROL, and it is the whole point of the pair: the SAME four columns inside one
-    // `[…]` group are one element, the sustain stays in bytes that element owns, and the
-    // op applies. An op broken to decline everything fails here.
     const grouped = grid('[bd ~ sn ~]')
-    expect(resizeCell(grouped, laneOf(grouped, 'bd'), 0, 2)).not.toBe(grouped)
+    expect(serializeStepGrid(resizeCell(grouped, laneOf(grouped, 'bd'), 0, 2))).toBe('bd _ sn ~')
+
+    // ABSORPTION IS BOUNDED BY THE NOTE'S REACH, which is the whole difference between
+    // this and re-laying the part: `sn` and the rests after it keep their own bytes, so a
+    // document loses nothing the edit did not actually need.
+    const wide = grid('bd ~ ~ ~ sn ~ ~ ~')
+    expect(serializeStepGrid(resizeCell(wide, laneOf(wide, 'bd'), 0, 4))).toBe('bd _ _ _ sn ~ ~ ~')
+
+    // …including the SPACING of the elements it did not swallow.
+    const spaced = grid('bd    ~    sn ~')
+    expect(serializeStepGrid(resizeCell(spaced, laneOf(spaced, 'bd'), 0, 2))).toBe('bd _    sn ~')
+
+    // …and their REST SPELLING, which is the arm that isolates the reach bound.
+    //
+    // ⚠ THIS FIXTURE EXISTS BECAUSE THE OTHERS COULD NOT TELL. Absorption is bounded
+    // twice — by the note's reach, and by the guard that refuses to swallow an unchanged
+    // region carrying notes — and on every pattern above the two stop it at the SAME
+    // place, so breaking either one alone changed no output at all. `-` and `~` are the
+    // same rest to the engine and different bytes on the page: the writer emits `~`, so a
+    // `-` survives only by being copied verbatim. Absorb one rest too many and it turns
+    // into a `~` the user never typed.
+    const dashes = grid('bd - - -')
+    expect(serializeStepGrid(resizeCell(dashes, laneOf(dashes, 'bd'), 0, 2))).toBe('bd _ - -')
+  })
+
+  it('STILL DECLINES where there are no rests to absorb', () => {
+    // Absorption only takes bytes that say "nothing starts here". Where every column in
+    // the note's reach carries one, there is nothing to take and the write is still
+    // refused — which is what keeps this from becoming "re-emit whatever is nearby".
+    const dense = grid('bd*4')
+    expect(resizeCell(dense, 0, 0, 2)).toBe(dense)
+
+    const busy = grid('bd hh*2 sn cp')
+    expect(resizeCell(busy, laneOf(busy, 'bd'), 0, 2)).toBe(busy)
+
+    // CONTROL: the same op on a grid that HAS a rest in reach applies, so the two
+    // declines above are facts about the material and not about a dead op.
+    const roomy = grid('bd ~ sn ~')
+    expect(resizeCell(roomy, laneOf(roomy, 'bd'), 0, 2)).not.toBe(roomy)
   })
 
   it('DECLINES an edit the document would not record, even though the model moved', () => {
@@ -154,6 +198,44 @@ describe('resizeCell — setting a note’s length in columns', () => {
     expect(resizeCell(m, laneOf(m, 'bd'), 0, 2)).not.toBe(m)
   })
 
+  it('ABSORPTION NEVER SWALLOWS AN UNCHANGED REGION THAT CARRIES NOTES', () => {
+    // ⚠ HAND-BUILT, because `resizeCell` cannot reach this on its own: `partRoom` caps a
+    // length at the next onset in the part, so a sustain the op produces never runs into
+    // a region carrying a note. The guard is there for the write path, not for this op,
+    // and a guard whose zero has never been shown reachable certifies nothing — so the
+    // model is constructed directly rather than pretending an op-level arm covers it.
+    //
+    // Two regions changed at once (a lengthened `bd` AND a deleted `sn`) is the shape a
+    // future batched edit would produce. The deleted region is going to be re-emitted
+    // anyway, so absorbing it costs nothing and the write must SUCCEED — that is the half
+    // an over-strict guard breaks.
+    const m = grid('bd ~ sn ~')
+    const bd = laneOf(m, 'bd')
+    const sn = laneOf(m, 'sn')
+    const both: StepGridModel = {
+      ...m,
+      lanes: m.lanes.map((l, i) =>
+        i === bd
+          ? { ...l, cells: l.cells.map((c, j) => (j === 0 ? cellOn(3) : c)) }
+          : i === sn
+            ? { ...l, cells: l.cells.map(() => false as const) }
+            : l,
+      ),
+    }
+    expect(serializeStepGrid(both)).toBe('bd _ _ ~')
+
+    // CONTROL: the same reach WITHOUT the second change stops at `sn`'s own bytes, so the
+    // widening above is about that region having been edited and not about absorption
+    // simply running as far as it likes.
+    const one: StepGridModel = {
+      ...m,
+      lanes: m.lanes.map((l, i) =>
+        i === bd ? { ...l, cells: l.cells.map((c, j) => (j === 0 ? cellOn(3) : c)) } : l,
+      ),
+    }
+    expect(serializeStepGrid(one)).toBeNull()
+  })
+
   it('canResizeCell IS the op, not a predicate beside it', () => {
     // Derived rather than reasoned, so the handle cannot promise a drag the writer
     // declines ([[PV241]]). Asserted over a grid with one of each verdict.
@@ -168,7 +250,9 @@ describe('resizeCell — setting a note’s length in columns', () => {
       }
     }
     // CONTROL: the agreement above is not vacuous — both verdicts occur in that set.
+    // (`bd ~ sn ~` was the `false` half until #1146 taught the writer to absorb the rest
+    // it needed; `bd*4` has no rest to absorb and is the honest decline now.)
     expect(canResizeCell(grid('[bd ~ sn ~]'), 0, 0, 2)).toBe(true)
-    expect(canResizeCell(grid('bd ~ sn ~'), 0, 0, 2)).toBe(false)
+    expect(canResizeCell(grid('bd*4'), 0, 0, 2)).toBe(false)
   })
 })

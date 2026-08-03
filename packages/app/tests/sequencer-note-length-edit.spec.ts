@@ -8,11 +8,14 @@
  * geometry, the pointer contract it shares with toggle/paint/velocity, and the write-back
  * all live above every one of those. That whole span is what this file observes.
  *
- * THE DECISIVE PAIR is notation, not pixels: the SAME four columns spelled flat
- * (`bd ~ sd ~`) and spelled as one group (`[bd ~ sd ~]`) get opposite verdicts, because
- * a sustain can only be written into bytes the note's own source element owns. So the
- * flat grid is the control — it must show NO handle — and a test that drew a handle on
- * every note would fail there while passing everything else.
+ * ⚠ THE CONTROL MOVED, and the move is the point of #1146. It used to be the FLAT
+ * spelling `bd ~ sd ~`: every column its own source element, so a sustain had nowhere to
+ * go and no handle was drawn — while the same four columns as `[bd ~ sd ~]` accepted the
+ * drag. Two spellings that sound identical behaved differently for a reason no user could
+ * see, and it was most of this feature's ceiling. The writer now absorbs the rest a note
+ * reaches into, so the flat grid has its own POSITIVE arm here, and the control is a grid
+ * with no rest to absorb at all (`bd*4`). A handle drawn on every note still fails there
+ * and nowhere else.
  */
 import { test, expect, type Page } from '@playwright/test'
 
@@ -147,16 +150,37 @@ test.describe('the grid sets a note’s length (#1053)', () => {
     expect(await readLane(page, 0, 4)).toBe('#---')
   })
 
-  test('CONTROL: no handle where the writer would decline the drag', async ({ page }) => {
-    // The same four columns as the first test, spelled FLAT. Every length change here
-    // would need a `_` in bytes the next source element owns, so `resizeCell` declines
-    // all of them and the panel must draw nothing to grab. A handle rendered on every
-    // note — the obvious wrong implementation — fails exactly here and nowhere else.
+  test('a FLAT grid lengthens too, and its neighbours keep their own bytes', async ({ page }) => {
+    // ⚠ THIS PATTERN USED TO BE THE CONTROL — the spelling where every column is its own
+    // source element, so a sustain had nowhere to go and the panel drew no handle at all.
+    // #1146 taught the writer to absorb the rest the note reaches into, which is what
+    // takes the gesture from 46 to 105 of the 732 flat corpus units. It is asserted here
+    // because it is the case a user meets first: a plain drum row.
     await boot(page)
-    await setStrudelCode(page, '$: s("bd ~ sd ~")')
+    await setStrudelCode(page, '$: s("bd ~ ~ ~ sd ~ ~ ~")')
     await openSequencer(page)
     await expect(page.locator('[data-seq-cell="0:0"]')).toHaveCount(1)
-    expect(await readLane(page, 0, 4)).toBe('#---')
+    expect(await readLane(page, 0, 8)).toBe('#-------')
+
+    await dragHandleTo(page, '[data-seq-resize="0:0"]', '[data-seq-cell="0:2"]')
+
+    const code = await readCode(page)
+    console.log(`  flat grid after drag →  ${code}`)
+    // three columns of bd, and `sd` plus the rests past the note's reach untouched
+    expect(code).toContain('bd _ _ ~ sd ~ ~ ~')
+    expect(await readLane(page, 0, 8)).toBe('#==-----')
+  })
+
+  test('CONTROL: no handle where the writer would decline the drag', async ({ page }) => {
+    // A grid with no rest in reach of anything: every column carries a note, so there is
+    // nothing for the writer to absorb and no length any note can take. The panel must
+    // draw nothing to grab. A handle rendered on every note — the obvious wrong
+    // implementation — fails exactly here and nowhere else.
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd*4")')
+    await openSequencer(page)
+    await expect(page.locator('[data-seq-cell="0:0"]')).toHaveCount(1)
+    expect(await readLane(page, 0, 4)).toBe('####')
 
     expect(await page.locator('[data-seq-resize]').count()).toBe(0)
 

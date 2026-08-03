@@ -267,19 +267,22 @@ function partRoom(model: StepGridModel, laneIndex: number, stepIndex: number): n
  *
  * DECLINES BY RETURNING ITS INPUT, so `canResizeCell` is the op rather than a second
  * predicate beside it ([[PV241]]). Three populations decline, and all three are correct:
- *  - a sustain that would land in bytes a NEIGHBOURING SOURCE ELEMENT owns. This is the
- *    big one, and it is why the same four columns behave differently spelled `bd ~ sd ~`
- *    and `[bd ~ sd ~]`: regions are re-emitted independently and an untouched one is
- *    copied verbatim, so the `_` has nowhere to go.
+ *  - a sustain with NO REST IN REACH to write itself into. The writer will absorb the
+ *    rests a lengthened note runs over, taking bytes that said "nothing starts here"
+ *    (#1146) — but where every column in reach carries a note there is nothing to take,
+ *    and `bd*4` cannot grow at all.
  *  - a length that would sustain under ANOTHER sound in the same `,`-part. `partRoom`
  *    caps rather than declines here, so this only bites where the cap cannot help.
  *  - an edit the DOCUMENT would not record — see the byte comparison below.
  *
- * MEASURED OVER THE 966-UNIT GRID CORPUS: 854 of 4729 notes are offered a handle (390 can
- * grow, 464 can only shorten), spread over 178 units. Every one of those 854 produces
- * writable notation and a document that actually changes — asserted in
- * `op-admissibility.test.ts`, which is also where the 571 dead offers this op used to
- * make are recorded.
+ * MEASURED OVER THE 966-UNIT GRID CORPUS: 1016 of 4729 notes are offered a handle (552
+ * can grow, 464 can only shorten), spread over 240 units. Every one produces writable
+ * notation and a document that actually changes — asserted in `op-admissibility.test.ts`,
+ * which is also where the 571 dead offers this op used to make are recorded.
+ *
+ * ⚠ Those figures were 854 / 390 / 178 before #1146, and the gap was entirely the
+ * neighbouring-bytes decline: on FLAT grids the handle reached 46 of 732 units and now
+ * reaches 105.
  */
 export function resizeCell(
   model: StepGridModel,
