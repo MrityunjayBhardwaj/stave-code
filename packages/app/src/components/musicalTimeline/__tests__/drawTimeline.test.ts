@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { drawTimeline, laneRenderMode, COARSEN_PX, MIN_MARK_W, type DrawTransform, type DrawTheme } from '../drawTimeline'
 import { computeLaneLayout } from '../laneLayout'
-import type { TimelineScene } from '../timelineScene'
+import type { TimelineScene, SceneNote } from '../timelineScene'
 
 const theme: DrawTheme = {
   background: '#000',
@@ -13,10 +13,17 @@ const theme: DrawTheme = {
   clipBorder: '#666',
 }
 
-interface Rect { x: number; y: number; w: number; h: number }
+interface Rect { x: number; y: number; w: number; h: number; style: string; alpha: number }
 
 /** Recording mock 2D context — captures every fillRect (the only primitive the
- *  renderer uses) so tests can assert positions/counts without a real canvas. */
+ *  renderer uses) so tests can assert positions/counts without a real canvas.
+ *
+ *  `style`/`alpha` are captured too (#1100). They were originally dropped, which
+ *  made this harness structurally unable to see a defect of VISIBILITY: the
+ *  silent lane's clip was being drawn all along, at an alpha that composited to
+ *  ~3/255, and every geometry assertion here passed while nothing was on screen.
+ *  A recorder that keeps only positions can only ever answer "was it drawn", and
+ *  that is not the same question as "can it be seen". */
 function mockCtx() {
   const rects: Rect[] = []
   const ctx = {
@@ -24,7 +31,7 @@ function mockCtx() {
     globalAlpha: 1,
     clearRect() {},
     fillRect(x: number, y: number, w: number, h: number) {
-      rects.push({ x, y, w, h })
+      rects.push({ x, y, w, h, style: ctx.fillStyle, alpha: ctx.globalAlpha })
     },
   }
   return { ctx: ctx as unknown as CanvasRenderingContext2D, rects }
@@ -251,5 +258,164 @@ describe('drawClips (#386)', () => {
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, oneClip, { scrollLeft: 0, contentWidth: 400, viewportWidth: vw }, theme, flat)
     expect(rects.some((r) => r.x === 0 && r.w === 400 && r.h === 22)).toBe(true)
+  })
+})
+
+/**
+ * #1100 — a declared-but-silent track (#1099) has a whole-song clip with no
+ * content. Before this, the clip WAS drawn (fill + two verticals) but the fill
+ * composited to ~3/255 and the verticals sat at the song's extreme edges, so the
+ * row read as inert rather than silenced.
+ *
+ * The load-bearing assertion is the HORIZONTAL edges: they are what make a clip
+ * whose verticals are off at the song boundaries visible at all. A geometry-only
+ * check ("some rect exists") would have passed on the broken code too, which is
+ * why these assert the drawn STYLE as well.
+ */
+describe('drawClips — empty clip outline (#1100)', () => {
+  const vw = 400
+  const emptyLane = {
+    ...scene.lanes[0],
+    color: '#0af',
+    // Annotated: a bare `[]` infers `never[]`, which makes every later override
+    // that supplies a note a type error rather than a fixture.
+    notes: [] as readonly SceneNote[],
+    density: [0, 0, 0, 0] as readonly number[],
+    clips: [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }],
+  }
+  const emptyScene: TimelineScene = { ...scene, lanes: [emptyLane] }
+  const draw = (s: TimelineScene, silenced?: ReadonlySet<string>) => {
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, s, { scrollLeft: 0, contentWidth: 400, viewportWidth: vw }, theme, flat, silenced)
+    return rects
+  }
+  /** 1px-tall rects in the lane's own colour = the outline's horizontal edges. */
+  const horizontalEdges = (rects: Rect[], color: string) =>
+    rects.filter((r) => r.h === 1 && r.w > 1 && r.style === color)
+
+  it('outlines an empty clip with BOTH horizontal edges, in the lane colour', () => {
+    const edges = horizontalEdges(draw(emptyScene), '#0af')
+    expect(edges).toHaveLength(2)
+    // Both span the clip's full on-screen width — the whole song.
+    for (const e of edges) {
+      expect(e.x).toBe(0)
+      expect(e.w).toBe(400)
+      expect(e.alpha).toBeGreaterThan(0)
+      expect(e.alpha).toBeLessThan(1)
+    }
+    // Top edge above bottom edge, both inside the 22px band.
+    const [top, bottom] = edges.map((e) => e.y).sort((a, b) => a - b)
+    expect(top).toBeGreaterThanOrEqual(0)
+    expect(bottom).toBeLessThan(22)
+    expect(bottom - top).toBeGreaterThan(0)
+  })
+
+  it('backs the outline with a neutral floor, so legibility does not track the lane hue', () => {
+    // A dark lane colour and a bright one must both clear the same floor: the
+    // neutral pass is drawn in the SAME token a clip seam uses.
+    for (const color of ['#0af', '#101010']) {
+      const rects = draw({ ...scene, lanes: [{ ...emptyLane, color }] })
+      const neutral = rects.filter((r) => r.h === 1 && r.w === 400 && r.style === theme.clipBorder)
+      expect(neutral).toHaveLength(2)
+    }
+  })
+
+  // ⚠ The three arms below assert an ABSENCE, which holds trivially when the
+  // outline is not drawn at all — so each carries a POSITIVE control on the same
+  // scene with only the content removed. Without the control they pass on code
+  // that never outlines anything, and prove nothing about the discriminator.
+  it('leaves a clip WITH content untouched — no outline on a sounding lane', () => {
+    // `scene.lanes[0]` carries density [1,0,2,0]; same clip, same geometry.
+    const clips = [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }]
+    const sounding: TimelineScene = { ...scene, lanes: [{ ...scene.lanes[0], clips }] }
+    expect(horizontalEdges(draw(sounding), scene.lanes[0].color)).toHaveLength(0)
+    // CONTROL: identical but silent → the outline must appear.
+    const silent: TimelineScene = {
+      ...scene,
+      lanes: [{ ...scene.lanes[0], clips, notes: [], density: [0, 0, 0, 0] }],
+    }
+    expect(horizontalEdges(draw(silent), scene.lanes[0].color)).toHaveLength(2)
+  })
+
+  it('counts DENSITY as content even with no notes, and notes with no density', () => {
+    const clips = [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }]
+    const lane = (over: Partial<typeof emptyLane>) =>
+      draw({ ...scene, lanes: [{ ...emptyLane, clips, ...over }] })
+    // Either source alone suppresses the outline…
+    expect(horizontalEdges(lane({ density: [0, 1, 0, 0], notes: [] }), '#0af')).toHaveLength(0)
+    expect(horizontalEdges(
+      lane({ density: [0, 0, 0, 0], notes: [{ cycle: 1, end: 1.5, pitch: 60, gain: 1 }] }), '#0af',
+    )).toHaveLength(0)
+    // CONTROL: …and with BOTH empty it appears, so the two arms above are
+    // reading the sources and not merely never outlining.
+    expect(horizontalEdges(lane({ density: [0, 0, 0, 0], notes: [] }), '#0af')).toHaveLength(2)
+  })
+
+  it('counts a ZERO-DURATION trigger, and does not count one ending ON the seam', () => {
+    const arms = [
+      { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a' },
+      { armIndex: 1, startCycle: 2, endCycle: 4, label: 'b' },
+    ]
+    const withNote = (n: SceneNote) =>
+      horizontalEdges(
+        draw({ ...scene, lanes: [{ ...emptyLane, density: [0, 0, 0, 0], notes: [n], clips: arms }] }),
+        '#0af',
+      )
+    // A percussive trigger at arm 1's very start has end === cycle. It is
+    // content, so only arm 0 is outlined.
+    const zeroDur = withNote({ cycle: 2, end: 2, pitch: null, gain: 1 })
+    expect(zeroDur).toHaveLength(2)
+    for (const e of zeroDur) expect(e.x).toBe(0)
+    // A note ending EXACTLY on the seam contributes nothing past it, so arm 1
+    // is still empty and gets the outline.
+    const endsOnSeam = withNote({ cycle: 1, end: 2, pitch: 60, gain: 1 })
+    expect(endsOnSeam).toHaveLength(2)
+    for (const e of endsOnSeam) expect(e.x).toBe(200)
+  })
+
+  it('outlines only the EMPTY arm of a part-empty arrangement', () => {
+    // Arm 0 [0,2) carries density; arm 1 [2,4) is empty → only arm 1 outlined.
+    const partly: TimelineScene = {
+      ...scene,
+      lanes: [{
+        ...emptyLane,
+        density: [1, 1, 0, 0],
+        clips: [
+          { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a' },
+          { armIndex: 1, startCycle: 2, endCycle: 4, label: 'b' },
+        ],
+      }],
+    }
+    const edges = horizontalEdges(draw(partly), '#0af')
+    expect(edges).toHaveLength(2)
+    for (const e of edges) {
+      expect(e.x).toBe(200) // the empty arm only
+      expect(e.w).toBe(200)
+    }
+  })
+
+  it('a note SUSTAINING across a boundary leaves neither arm reading as empty', () => {
+    const arms = [
+      { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a' },
+      { armIndex: 1, startCycle: 2, endCycle: 4, label: 'b' },
+    ]
+    const withNote = (n: SceneNote) =>
+      draw({ ...scene, lanes: [{ ...emptyLane, density: [0, 0, 0, 0], notes: [n], clips: arms }] })
+    // Straddles the cycle-2 seam → belongs to BOTH arms, neither is empty.
+    expect(horizontalEdges(withNote({ cycle: 1.5, end: 2.5, pitch: 60, gain: 1 }), '#0af')).toHaveLength(0)
+    // CONTROL: the same note pulled back wholly inside arm 0 leaves arm 1 empty,
+    // so the arm above is spared by the OVERLAP rule, not by nothing being drawn.
+    const inArm0 = horizontalEdges(withNote({ cycle: 1.5, end: 1.9, pitch: 60, gain: 1 }), '#0af')
+    expect(inArm0).toHaveLength(2)
+    for (const e of inArm0) expect(e.x).toBe(200)
+  })
+
+  it('is drawn BEFORE the silenced scrim, so a muted lane fades with everything else', () => {
+    const rects = draw(emptyScene, new Set(['lead']))
+    const lastEdge = rects.map((r, i) => ({ r, i })).filter((x) => x.r.h === 1 && x.r.style === '#0af').pop()
+    const scrim = rects.map((r, i) => ({ r, i })).find((x) => x.r.style === theme.background && x.r.alpha < 1)
+    expect(lastEdge).toBeDefined()
+    expect(scrim).toBeDefined()
+    expect(scrim!.i).toBeGreaterThan(lastEdge!.i)
   })
 })

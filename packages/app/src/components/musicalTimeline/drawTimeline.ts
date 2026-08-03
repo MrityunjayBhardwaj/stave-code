@@ -21,7 +21,7 @@
  * (`SongTimelineCanvas`) owns the surface, sizing, and dirty-flagged scheduling.
  */
 
-import type { TimelineScene, SceneLane, SceneNote } from './timelineScene'
+import type { TimelineScene, SceneLane, SceneNote, SceneClip } from './timelineScene'
 import { NO_VOICE } from './timelineScene'
 import type { LaneLayout, LaneBox } from './laneLayout'
 import { BEATS_PER_BAR } from './songAxis'
@@ -202,12 +202,77 @@ export function drawTimeline(
   })
 }
 
+/** Inset above/below an empty clip's outline, so it sits where that clip's
+ *  content WOULD be — the same band `drawDensity` fills (its own `padY`). */
+const EMPTY_CLIP_PAD_Y = 4
+/** Opacity of the LANE-COLOURED pass of an empty clip's outline — identity.
+ *  Sits clearly below content (density blocks run 0.25–1.0) and survives the
+ *  `SILENCED_LANE_SCRIM`, which lands a muted lane's outline at ~`this × 0.45`
+ *  effective. That fade is what distinguishes muted from sounds-but-empty,
+ *  without a second colour. */
+const EMPTY_CLIP_OUTLINE_ALPHA = 0.45
+
+/** Does anything render inside this clip's span? Checks BOTH sources a lane can
+ *  carry content through — `density` (analysis onsets) and `notes` (eval marks) —
+ *  because an IR lane can have onsets with no marks, and the two are populated by
+ *  different layers.
+ *
+ *  DENSITY is tested first deliberately: it is bounded by the clip's cycle count
+ *  (a handful of buckets) whereas the note scan is O(notes in the lane), so the
+ *  common case — a clip that HAS content — returns on the cheap check, and the
+ *  note walk only runs for a span the coarse index already called empty. This
+ *  runs per clip per frame.
+ *
+ *  PRICED rather than assumed. Worst case is a lane at the 2000-mark cap whose
+ *  notes all sit in one arm, with a second EMPTY arm forcing the full scan every
+ *  frame: p50 0.0253ms per whole-scene draw against 0.0127ms when both arms
+ *  short-circuit, i.e. the scan costs ~0.013ms and the entire draw is 0.15% of a
+ *  16.7ms frame. No early-out or memo is warranted at that size.
+ *
+ *  A note belongs to the span if its ONSET falls inside it, or if it started
+ *  earlier and SUSTAINS into it — so a note held across a clip boundary leaves
+ *  neither side reading as empty. Stated as two cases rather than an interval
+ *  overlap because a zero-duration trigger (`end === cycle`, the percussive
+ *  case) is real here and a plain `end > start` test would drop it. */
+function clipHasContent(lane: SceneLane, clip: SceneClip): boolean {
+  // Whole-cycle-aligned clip bounds (see `SceneClip.endCycle`), so the bucket
+  // range is exact rather than a conservative widening.
+  const from = Math.max(0, Math.floor(clip.startCycle))
+  const to = Math.min(lane.density.length, Math.ceil(clip.endCycle))
+  for (let c = from; c < to; c++) {
+    if ((lane.density[c] ?? 0) > 0) return true
+  }
+  for (const n of lane.notes) {
+    const onsetInside = n.cycle >= clip.startCycle && n.cycle < clip.endCycle
+    const sustainsIn = n.cycle < clip.startCycle && n.end > clip.startCycle
+    if (onsetInside || sustainsIn) return true
+  }
+  return false
+}
+
 /** Read-only clip segments for one lane (#386). Each clip is a filled band
  *  (`clipFill`) with bordered left/right edges (`clipBorder`) so an arrangement
  *  reads as discrete movable segments (design §4.2). The single implicit clip of
  *  a bare track spans the whole lane → its edges sit at the song boundaries
  *  (effectively seamless). Pure: positions via the shared `toScreenX` (PV116).
- *  Drawn BEHIND marks so note content stays legible on top. */
+ *  Drawn BEHIND marks so note content stays legible on top.
+ *
+ *  An EMPTY clip additionally gets a full outline (#1100). Measured cause: the
+ *  fill and the two vertical borders are drawn for every clip regardless of
+ *  content — density is never consulted here — but at `clipFill`'s 0.035 alpha
+ *  the body contributes ~3/255, and a whole-song clip's only strong marks are
+ *  its two 1px verticals, which sit at the song's extreme edges flush with the
+ *  frame. So the clip was present and unreadable, and a lane with no content to
+ *  stand in for it (a muted track — #1099) read as inert rather than silenced.
+ *  HORIZONTAL edges are the load-bearing part: they span the clip's width, so a
+ *  whole-song clip becomes visible where verticals alone cannot make it.
+ *
+ *  Scoped to empty clips, so a lane with content is byte-identical to before —
+ *  and MUTED is deliberately NOT drawn differently from sounds-but-empty-here.
+ *  The lane-level `SILENCED_LANE_SCRIM` already washes a muted lane's whole
+ *  band, so the same outline lands dimmer there for free, by the mechanism that
+ *  already expresses "silenced" for marks and density. A second encoding at the
+ *  clip would say the same thing twice and could disagree with the first. */
 function drawClips(
   ctx: CanvasRenderingContext2D,
   lane: SceneLane,
@@ -232,6 +297,35 @@ function drawClips(
     ctx.fillStyle = theme.clipBorder
     if (x0 >= 0 && x0 <= viewportWidth) ctx.fillRect(x0, top, 1, rowHeight)
     if (x1 >= 0 && x1 <= viewportWidth) ctx.fillRect(x1 - 1, top, 1, rowHeight)
+    if (clipHasContent(lane, clip)) continue
+    // Empty clip: outline it in the lane's own colour. Top/bottom run the
+    // CLAMPED width (they follow what's on screen); the verticals stay at the
+    // real edges, matching the border rule directly above — an off-screen edge
+    // must not draw a false one at the viewport margin.
+    const padY = Math.min(EMPTY_CLIP_PAD_Y, Math.floor(rowHeight / 4))
+    const oTop = top + padY
+    const oH = Math.max(1, rowHeight - 2 * padY)
+    const edges = (): void => {
+      ctx.fillRect(left, oTop, width, 1)
+      ctx.fillRect(left, oTop + oH - 1, width, 1)
+      if (x0 >= 0 && x0 <= viewportWidth) ctx.fillRect(x0, oTop, 1, oH)
+      if (x1 >= 0 && x1 <= viewportWidth) ctx.fillRect(x1 - 1, oTop, 1, oH)
+    }
+    // TWO passes. The neutral one first, at full strength, because a single
+    // lane-coloured pass makes legibility track the lane HUE's luminance —
+    // measured over the same clip in the same muted state, an orange lane's
+    // outline stood out 25.6/255 while a crimson one managed 7.0, purely from
+    // which palette slot the track drew. `clipBorder` is reused rather than a
+    // new token: it is already what a clip SEAM is drawn in, so an empty clip's
+    // outline can never read weaker than the boundary between two full ones.
+    ctx.fillStyle = theme.clipBorder
+    ctx.globalAlpha = 1
+    edges()
+    // Then the lane's colour over it, for identity.
+    ctx.fillStyle = lane.color
+    ctx.globalAlpha = EMPTY_CLIP_OUTLINE_ALPHA
+    edges()
+    ctx.globalAlpha = 1
   }
 }
 
