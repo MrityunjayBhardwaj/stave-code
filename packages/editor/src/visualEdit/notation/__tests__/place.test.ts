@@ -107,7 +107,12 @@ describe('toggleCell — the one definition of what a cell click does (#1048)', 
       before.lanes[3].cells[0],
     )
     expect(after.lanes[3], 'an untouched part is the same object').toBe(before.lanes[3])
-    expect(serializeStepGrid(after)).toBe('A2 A2, A1 A1, E2 E2, E1')
+    // ⚠ THE SPELLING CHANGED WITH #1137, THE PROPERTY DID NOT. This read `E2 E2`: the
+    // part could not hold a hit at this column at its own width, so the writer voided
+    // it and re-derived the whole part flat. It now subdivides the one element instead
+    // — which is what the comment above already described — and every other part is
+    // still copied through untouched, which is what this test is about.
+    expect(serializeStepGrid(after)).toBe('A2 A2, A1 A1, [E2 E2], E1')
   })
 
   /**

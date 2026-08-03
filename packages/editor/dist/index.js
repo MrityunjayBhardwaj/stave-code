@@ -25918,10 +25918,21 @@ function spliceGrid(model) {
   let out = src.prefix;
   for (const p of src.parts) {
     const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part);
-    const cols = partColumns(lanes, model.steps, p.factor);
+    let cols = partColumns(lanes, model.steps, p.factor);
+    let growth = 1;
+    if (cols === null)
+      for (let g = p.factor - 1; g >= 1; g--) {
+        if (p.factor % g !== 0) continue;
+        const finer = partColumns(lanes, model.steps, g);
+        if (finer === null) continue;
+        cols = finer;
+        growth = p.factor / g;
+        break;
+      }
+    const at = /* @__PURE__ */ __name((n) => n * growth, "at");
     const last = p.regions[p.regions.length - 1];
     out += p.before;
-    if (cols === null || last === void 0 || last.to !== cols.length) {
+    if (cols === null || last === void 0 || at(last.to) !== cols.length) {
       rebuiltParts.push(p.regions.length);
       const rebuilt = gridColumns(lanes, model.steps);
       if (rebuilt === null) return "decline";
@@ -25929,37 +25940,53 @@ function spliceGrid(model) {
       continue;
     }
     const sole = src.parts.length === 1 && src.prefix === "" && p.regions.length === 1;
-    for (let ri = 0; ri < p.regions.length; ri++) {
-      const r = p.regions[ri];
-      const now2 = cols.slice(r.from, r.to);
-      if (sameCells(now2, r.content)) {
-        out += r.raw;
-        continue;
+    const spliceRegions = /* @__PURE__ */ __name(() => {
+      let body = "";
+      let reemitted = 0;
+      for (let ri = 0; ri < p.regions.length; ri++) {
+        const r = p.regions[ri];
+        const now2 = cols.slice(at(r.from), at(r.to));
+        if (sameCells(now2, growth === 1 ? r.content : stretchCells(r.content, growth))) {
+          body += r.raw;
+          continue;
+        }
+        reemitted++;
+        const div = sole ? 1 : p.div * growth;
+        const re = reemitRegion(now2, div, model.viewScale !== void 0);
+        if (re !== null) {
+          body += r.leading + re + r.trailing;
+          continue;
+        }
+        const reach = noteReach(cols, at(r.from), at(r.to));
+        let end = ri;
+        while (end + 1 < p.regions.length && at(p.regions[end].to) < reach) {
+          const nxt = p.regions[end + 1];
+          const nxtNow = cols.slice(at(nxt.from), at(nxt.to));
+          const wasNxt = growth === 1 ? nxt.content : stretchCells(nxt.content, growth);
+          if (sameCells(nxtNow, wasNxt) && nxtNow.some((col) => col.length > 0)) break;
+          end++;
+        }
+        if (end === ri || at(p.regions[end].to) < reach) return "decline";
+        const last2 = p.regions[end];
+        const merged = reemitRegion(cols.slice(at(r.from), at(last2.to)), div, model.viewScale !== void 0);
+        if (merged === null) return "decline";
+        reemitted += end - ri;
+        body += r.leading + merged + last2.trailing;
+        ri = end;
       }
-      regionsReemitted++;
-      const div = sole ? 1 : p.div;
-      const re = reemitRegion(now2, div, model.viewScale !== void 0);
-      if (re !== null) {
-        out += r.leading + re + r.trailing;
-        continue;
-      }
-      const reach = noteReach(cols, r.from, r.to);
-      let end = ri;
-      while (end + 1 < p.regions.length && p.regions[end].to < reach) {
-        const nxt = p.regions[end + 1];
-        const nxtNow = cols.slice(nxt.from, nxt.to);
-        if (sameCells(nxtNow, nxt.content) && nxtNow.some((col) => col.length > 0)) break;
-        end++;
-      }
-      if (end === ri || p.regions[end].to < reach) return "decline";
-      const last2 = p.regions[end];
-      const merged = reemitRegion(cols.slice(r.from, last2.to), div, model.viewScale !== void 0);
-      if (merged === null) return "decline";
-      regionsReemitted += end - ri;
-      out += r.leading + merged + last2.trailing;
-      ri = end;
+      return { body, reemitted };
+    }, "spliceRegions");
+    const spliced = spliceRegions();
+    if (spliced === "decline") {
+      if (growth === 1) return "decline";
+      rebuiltParts.push(p.regions.length);
+      const rebuilt = gridColumns(lanes, model.steps);
+      if (rebuilt === null) return "decline";
+      out += rebuilt.join(" ") + p.after;
+      continue;
     }
-    out += p.after;
+    regionsReemitted += spliced.reemitted;
+    out += spliced.body + p.after;
   }
   const regions = src.parts.reduce((n, p) => n + p.regions.length, 0);
   return { out: out + src.suffix, regions, regionsReemitted, rebuiltParts };
@@ -26104,6 +26131,10 @@ var sameCell = /* @__PURE__ */ __name((a, b) => {
   return a.length === b.length && a.every((x) => keys.includes(gridCellKey(x)));
 }, "sameCell");
 var sameCells = /* @__PURE__ */ __name((a, b) => a.length === b.length && a.every((c, i) => sameCell(c, b[i])), "sameCells");
+var stretchCells = /* @__PURE__ */ __name((cells, growth) => cells.flatMap((c) => [
+  c.map((n) => ({ token: n.token, duration: n.duration * growth })),
+  ...Array.from({ length: growth - 1 }, () => [])
+]), "stretchCells");
 function noteReach(cols, from, to) {
   let reach = to;
   for (let c = from; c < to; c++) {
