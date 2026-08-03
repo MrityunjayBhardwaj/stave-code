@@ -39,9 +39,15 @@
  * mid-test on "Failed to load url … parseBASE. Does the file exist?", which reads
  * as a broken instrument rather than an unarmed one. It now detects the baseline
  * and declares the precondition instead. The honest cost: a skipped test is green
- * forever, and only the printed skip reason stands against that — weaker than a
- * passing assertion, and the shape #1062 warns about. It is the price of an
- * instrument whose oracle deliberately does not live in the tree.
+ * forever, which is the shape #1062 warns about, and weaker than a passing
+ * assertion. It is the price of an instrument whose oracle deliberately does not
+ * live in the tree.
+ *
+ * What stands against that cost is the explicit warning below — NOT the skip
+ * itself, and not the `describe` title. Checked rather than assumed: the default
+ * reporter prints a skipped file as `↓ … (1 test | 1 skipped)` and shows neither
+ * the title nor any reason, so a bare `skipIf` would have gone quiet in exactly
+ * the way that let this instrument rot unnoticed to begin with.
  */
 import { describe, it, expect } from 'vitest'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
@@ -74,6 +80,24 @@ const minis: string[] = JSON.parse(fs.readFileSync(path.join(dir, 'mini-corpus.j
  * the extension the recipe above writes.
  */
 const HAVE_BASE = fs.existsSync(path.join(dir, `${BASE}.ts`))
+
+/**
+ * Said out loud, because the default reporter will not say it for us. A skipped
+ * test prints as `↓ _sweep-1034e.spec.ts (1 test | 1 skipped)` — the file name
+ * and nothing else. The `describe` title carrying the recipe is never shown, so
+ * without this the instrument would go quiet in exactly the way that let it rot
+ * unnoticed in the first place. A silent skip is not better than a red test; a
+ * loud one is.
+ */
+if (!HAVE_BASE) {
+  console.warn(
+    '\n  [#1034 A/B] SKIPPED — baseline reader absent, so nothing was compared.\n' +
+      '  To arm it, from the repo root:\n' +
+      '    git show b08326cf:packages/editor/src/visualEdit/notation/parse.ts \\\n' +
+      '      > packages/editor/src/visualEdit/notation/parseBASE.ts\n' +
+      '  then re-run, and delete parseBASE.ts afterwards (it must not be committed).\n',
+  )
+}
 
 describe.skipIf(!HAVE_BASE)('#1034 A/B — derived atoms/spans/durs are byte-identical to the old reader (needs parseBASE.ts — see the recipe in this file’s header)', () => {
   it('agrees on every corpus mini across a 4-cycle window', async () => {
