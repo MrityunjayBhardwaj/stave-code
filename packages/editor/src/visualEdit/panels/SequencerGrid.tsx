@@ -8,6 +8,11 @@
  * the editable grid subset (`{}`, `/`, …) → standby, code-only — the
  * conservatism rule.
  *
+ * Length: a note is drawn across the columns it covers (#1056) and its trailing
+ * edge carries a handle that sets how long it sounds, in whole columns (#1053) —
+ * the roll's gesture on the other surface. The handle is drawn only where the
+ * writer would take the drag, so it never promises an edit the document refuses.
+ *
  * Velocity: an ON cell shows its level as a bottom-anchored fill; dragging it
  * vertically sets the column's gain (DAW velocity-lane behaviour — drag down to
  * soften). The level is written to a parallel `.gain("…")` mini aligned to the
@@ -31,7 +36,7 @@ import { isStepChunk } from './patternKind'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import { addLane, removeLane } from '../notation/lane'
-import { canToggleCell, toggleCell, viewPlacesNotes } from '../notation/place'
+import { canResizeCell, canToggleCell, resizeCell, toggleCell, viewPlacesNotes } from '../notation/place'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice } from './drumVoices'
 import { useNoteColorMode, velocityColor } from './noteColor'
@@ -53,6 +58,15 @@ const SEQ_HINT = 'Click a drum pattern to edit it as a step grid.'
 const VELOCITY_FULL_PX = 80
 /** px of movement before a press on an ON cell becomes a drag (not a click) */
 const DRAG_THRESHOLD = 4
+/**
+ * Width of the note-length handle, and the floor on its invisible grab zone (#1053).
+ *
+ * The SAME number the piano roll uses, because this is the same gesture on the other
+ * surface and #1053 asks the two to agree rather than diverge. Kept as its own constant
+ * here rather than imported: the roll's is a private detail of the roll's geometry, and
+ * an import would make either panel's tuning silently retune the other.
+ */
+const RESIZE_ZONE_PX = 8
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v))
 
@@ -106,13 +120,18 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // step entry); an ON cell starts PENDING — a vertical drag past the threshold
   // becomes velocity, a horizontal drag becomes paint-off, and a release with no
   // move is a plain toggle-off. The whole gesture is one undo step.
+  //
+  // A press inside a note's trailing grab zone is 'resize' and is decided BEFORE any
+  // of that (#1053), so it never passes through 'pending' — which is what keeps a
+  // release with no movement from falling through to the toggle-off in `onUp`.
+  // `step` is then the note's OWN start column, not the column pressed.
   const gestureRef = React.useRef<{
     lane: number
     step: number
     startX: number
     startY: number
     startGain: number
-    mode: 'paint' | 'pending' | 'velocity'
+    mode: 'paint' | 'pending' | 'velocity' | 'resize'
     paintValue: boolean
   } | null>(null)
 
@@ -163,6 +182,41 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     () => (model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null),
     [model],
   )
+
+  // PROVE BEFORE OFFER, at the length handle (#1053) — the same rule the cell already
+  // applies, asked of `resizeCell` itself so the handle cannot promise a drag the writer
+  // declines. A note gets a handle exactly when SOME length other than its own is
+  // admissible: one column longer, or one shorter. Both are asked, because the two
+  // decline independently — a note with no room ahead can still be shortened, and a note
+  // already at one column can only grow.
+  //
+  // Asked around the ROUNDED length, since that is the lattice the gesture moves on: a
+  // drag sets a whole number of columns, and a sub-column note (`[hh ~]!16` → 0.5) is
+  // offered the nearest whole lengths rather than a fraction it could not be dragged to.
+  //
+  // Keyed by the note's HEAD column, so a two-column note asks once rather than once per
+  // column it covers. Memoized on the model beside `placeable`/`coverage` and for the
+  // same reason ([[P380]]): `mutate` fires every pointermove, so anything derived per
+  // cell is recomputed per frame unless it hangs off the model.
+  //
+  // MEASURED over the 966 corpus models, because [[P380]] is precisely the entry where a
+  // comment called a per-cell map cheap before anyone had timed one: p50 0.0022ms, p99
+  // 0.357ms, worst 1.26ms — against `placeable`'s p50 0.0047ms, p99 2.54ms, worst 14.4ms
+  // on the same run, i.e. **16.1% of its total**. It costs less than the map beside it
+  // despite serializing, because it asks once per NOTE while `placeable` asks once per
+  // EMPTY cell, and grids have far more of those.
+  const resizable = React.useMemo(() => {
+    if (!model) return null
+    return model.lanes.map((lane, li) => {
+      const out = new Set<number>()
+      lane.cells.forEach((c, si) => {
+        if (!isCellOn(c)) return
+        const d = Math.round(c.duration)
+        if (canResizeCell(model, li, si, d + 1) || canResizeCell(model, li, si, d - 1)) out.add(si)
+      })
+      return out
+    })
+  }, [model])
 
   const paintCell = React.useCallback(
     (laneIndex: number, stepIndex: number, value: boolean): void => {
@@ -312,9 +366,35 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     }
   }
 
+  // Grab a note's trailing handle → set its length. Anchored at the note's own start
+  // column, so the column the pointer reaches IS the new length and the drag never
+  // accumulates: every pointermove re-applies an ABSOLUTE duration to the same note.
+  const onResizeDown = (laneIndex: number, startCol: number): void => {
+    beginGesture()
+    gestureRef.current = {
+      lane: laneIndex,
+      step: startCol,
+      startX: 0,
+      startY: 0,
+      startGain: 1,
+      mode: 'resize',
+      paintValue: false,
+    }
+  }
+
   const onCellEnter = (laneIndex: number, stepIndex: number): void => {
     const g = gestureRef.current
-    if (!g || g.mode !== 'paint') return
+    if (!g) return
+    if (g.mode === 'resize') {
+      // The LANE the pointer wanders into is ignored, exactly as the roll ignores the
+      // row: a resize is a horizontal gesture and a few px of vertical drift should not
+      // silently retarget it. `resizeCell` floors at one column and `clampLane` caps at
+      // the room the note has, so a drag back past the note's own start, or forward past
+      // the next hit, lands on the shortest/longest length rather than doing nothing.
+      mutate((prev) => resizeCell(prev, g.lane, g.step, stepIndex - g.step + 1))
+      return
+    }
+    if (g.mode !== 'paint') return
     paintCell(laneIndex, stepIndex, g.paintValue)
   }
 
@@ -426,6 +506,19 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                 const cov = coverage?.[laneIndex]?.[stepIndex]
                 /** this column is carried by a note that began earlier in the lane */
                 const held = cov !== undefined && cov.start !== stepIndex
+                // THE LAST COLUMN THIS NOTE COVERS, read off the same array that draws
+                // it rather than recomputed from `start + duration` (#1053). The two
+                // would agree only while every model is a `clampLane` fixpoint, and the
+                // drawing is the thing the handle must sit on the end of — so it is the
+                // drawing that has to be asked. `undefined` past the lane end is not the
+                // same note, which is what makes the final column a tail.
+                const isTail =
+                  cov !== undefined && coverage?.[laneIndex]?.[stepIndex + 1]?.start !== cov.start
+                /** the note's own start column, when this cell carries an offerable handle */
+                const resizeStart =
+                  cov !== undefined && isTail && resizable?.[laneIndex]?.has(cov.start)
+                    ? cov.start
+                    : null
                 // A held column shows the HEAD's velocity, not its own: the grid's
                 // gains are per column and a column with no trigger has none, so
                 // reading `stepIndex` would make a long note jump to full height
@@ -464,6 +557,28 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     }
                     onPointerDown={(e) => {
                       e.preventDefault()
+                      // RESIZE INTENT IS DECIDED FIRST, and before the placement guard.
+                      // The grab zone runs inward from the BAR's trailing edge, which on
+                      // a held note is a column the placement gate has already made inert
+                      // (a hit cannot be painted under a sustain) — so a `!canPlace`
+                      // return above this would leave every note longer than one column
+                      // with a handle that is drawn and cannot be pressed.
+                      //
+                      // Zone geometry mirrors the roll's (#1078): proportional to the BAR
+                      // so a short note still gets a zone on the thing it resizes, floored
+                      // so a 2px bar stays aimable, and capped against the CELL so it can
+                      // never swallow more of the cell than the gestures it shares with.
+                      // A grid note always begins AT its column, so the bar's trailing
+                      // edge is simply its extent — the roll's `offset` term is 0 here.
+                      if (resizeStart !== null) {
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        const barW = clamp01(cov!.extent) * rect.width
+                        const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4))
+                        if (e.clientX - rect.left >= barW - zone) {
+                          onResizeDown(laneIndex, resizeStart)
+                          return
+                        }
+                      }
                       if (!canPlace) return
                       onCellDown(laneIndex, stepIndex, on, e)
                     }}
@@ -522,6 +637,45 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                               : voice.color,
                           opacity: held ? 0.7 : 1,
                           pointerEvents: 'none',
+                        }}
+                      />
+                    )}
+                    {resizeStart !== null && (
+                      // THE LENGTH HANDLE (#1053) — the axis #1056 made visible, made
+                      // settable. Same shape as the roll's, because this is the same
+                      // gesture on the other surface and the issue asks the two to agree.
+                      //
+                      // It sits at the BAR's trailing edge rather than the cell's, so a
+                      // note that stops mid-column carries its handle on its own end
+                      // instead of floating in the empty background past it. Width is
+                      // clamped to the bar for the same reason the roll clamps it: a
+                      // handle wider than the note would overhang backwards past the
+                      // note's own start. What that costs a very short note — a very
+                      // small handle — is paid back by the invisible grab zone above.
+                      //
+                      // RENDERED ONLY WHERE A DRAG WOULD DO SOMETHING (`resizable`),
+                      // which is the panel's standing rule for every affordance it draws
+                      // (#1064/#1070): a handle on a note whose every length the writer
+                      // declines is a control the user can press to no effect, and this
+                      // project ranks that worse than not offering it at all.
+                      <span
+                        data-seq-resize={`${laneIndex}:${resizeStart}`}
+                        aria-label={`resize ${lane.sound} step ${resizeStart + 1}`}
+                        onPointerDown={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          onResizeDown(laneIndex, resizeStart)
+                        }}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          bottom: 0,
+                          right: `${(1 - clamp01(cov!.extent)) * 100}%`,
+                          width: `min(${RESIZE_ZONE_PX}px, ${clamp01(cov!.extent) * 100}%)`,
+                          cursor: 'ew-resize',
+                          background: 'var(--foreground, #e6e6ea)',
+                          opacity: 0.45,
+                          borderRadius: '0 2px 2px 0',
                         }}
                       />
                     )}

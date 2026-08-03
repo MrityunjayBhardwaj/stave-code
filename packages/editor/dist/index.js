@@ -25929,16 +25929,35 @@ function spliceGrid(model) {
       continue;
     }
     const sole = src.parts.length === 1 && src.prefix === "" && p.regions.length === 1;
-    for (const r of p.regions) {
+    for (let ri = 0; ri < p.regions.length; ri++) {
+      const r = p.regions[ri];
       const now2 = cols.slice(r.from, r.to);
       if (sameCells(now2, r.content)) {
         out += r.raw;
         continue;
       }
       regionsReemitted++;
-      const re = reemitRegion(now2, sole ? 1 : p.div, model.viewScale !== void 0);
-      if (re === null) return "decline";
-      out += r.leading + re + r.trailing;
+      const div = sole ? 1 : p.div;
+      const re = reemitRegion(now2, div, model.viewScale !== void 0);
+      if (re !== null) {
+        out += r.leading + re + r.trailing;
+        continue;
+      }
+      const reach = noteReach(cols, r.from, r.to);
+      let end = ri;
+      while (end + 1 < p.regions.length && p.regions[end].to < reach) {
+        const nxt = p.regions[end + 1];
+        const nxtNow = cols.slice(nxt.from, nxt.to);
+        if (sameCells(nxtNow, nxt.content) && nxtNow.some((col) => col.length > 0)) break;
+        end++;
+      }
+      if (end === ri || p.regions[end].to < reach) return "decline";
+      const last2 = p.regions[end];
+      const merged = reemitRegion(cols.slice(r.from, last2.to), div, model.viewScale !== void 0);
+      if (merged === null) return "decline";
+      regionsReemitted += end - ri;
+      out += r.leading + merged + last2.trailing;
+      ri = end;
     }
     out += p.after;
   }
@@ -26085,6 +26104,14 @@ var sameCell = /* @__PURE__ */ __name((a, b) => {
   return a.length === b.length && a.every((x) => keys.includes(gridCellKey(x)));
 }, "sameCell");
 var sameCells = /* @__PURE__ */ __name((a, b) => a.length === b.length && a.every((c, i) => sameCell(c, b[i])), "sameCells");
+function noteReach(cols, from, to) {
+  let reach = to;
+  for (let c = from; c < to; c++) {
+    for (const n of cols[c]) reach = Math.max(reach, c + Math.round(n.duration));
+  }
+  return reach;
+}
+__name(noteReach, "noteReach");
 function reemitRegion(cols, div, refined = false) {
   const spelled = sustainTokens(cols, div);
   if (spelled === null) return refined ? stackedRegion(cols, div) : null;
@@ -28672,6 +28699,43 @@ function pasteNote(model, pitch, start, duration) {
 }
 __name(pasteNote, "pasteNote");
 var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value) => toggleCell(model, laneIndex, stepIndex, value) !== model, "canToggleCell");
+function partRoom(model, laneIndex, stepIndex) {
+  const part = model.lanes[laneIndex]?.part ?? 0;
+  let next = model.steps;
+  for (const lane of model.lanes) {
+    if ((lane.part ?? 0) !== part) continue;
+    for (let j = stepIndex + 1; j < lane.cells.length && j < next; j++) {
+      if (isCellOn(lane.cells[j])) {
+        next = j;
+        break;
+      }
+    }
+  }
+  return next - stepIndex;
+}
+__name(partRoom, "partRoom");
+function resizeCell(model, laneIndex, stepIndex, duration) {
+  const cell = model.lanes[laneIndex]?.cells[stepIndex];
+  if (!isCellOn(cell)) return model;
+  const capped = Math.max(1, Math.min(duration, partRoom(model, laneIndex, stepIndex)));
+  const lanes = model.lanes.map(
+    (lane, i) => i === laneIndex ? {
+      ...lane,
+      cells: clampLane(
+        lane.cells.map((c, j) => j === stepIndex ? cellOn(capped) : c),
+        model.steps
+      )
+    } : lane
+  );
+  const next = lanes[laneIndex].cells[stepIndex];
+  if (isCellOn(next) && next.duration === cell.duration) return model;
+  const written = serializeStepGrid({ ...model, lanes });
+  if (written === null) return model;
+  if (written === serializeStepGrid(model)) return model;
+  return { ...model, lanes };
+}
+__name(resizeCell, "resizeCell");
+var canResizeCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, duration) => resizeCell(model, laneIndex, stepIndex, duration) !== model, "canResizeCell");
 function resizeNote(model, start, pitch, duration) {
   if ((model.bars ?? 1) > 1) {
     const nextStart = Math.min(
@@ -30342,6 +30406,7 @@ __name(setColumnGain, "setColumnGain");
 var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
 var VELOCITY_FULL_PX = 80;
 var DRAG_THRESHOLD = 4;
+var RESIZE_ZONE_PX = 8;
 var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function gainInScope(model) {
   if (model.gainForeign || (model.bars ?? 1) > 1) return false;
@@ -30384,6 +30449,18 @@ function SequencerGrid({ onResolution } = {}) {
     () => model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null,
     [model]
   );
+  const resizable = React36.useMemo(() => {
+    if (!model) return null;
+    return model.lanes.map((lane, li) => {
+      const out = /* @__PURE__ */ new Set();
+      lane.cells.forEach((c, si) => {
+        if (!isCellOn(c)) return;
+        const d = Math.round(c.duration);
+        if (canResizeCell(model, li, si, d + 1) || canResizeCell(model, li, si, d - 1)) out.add(si);
+      });
+      return out;
+    });
+  }, [model]);
   const paintCell = React36.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
@@ -30493,9 +30570,26 @@ function SequencerGrid({ onResolution } = {}) {
       paintCell(laneIndex, stepIndex, true);
     }
   }, "onCellDown");
+  const onResizeDown = /* @__PURE__ */ __name((laneIndex, startCol) => {
+    beginGesture();
+    gestureRef.current = {
+      lane: laneIndex,
+      step: startCol,
+      startX: 0,
+      startY: 0,
+      startGain: 1,
+      mode: "resize",
+      paintValue: false
+    };
+  }, "onResizeDown");
   const onCellEnter = /* @__PURE__ */ __name((laneIndex, stepIndex) => {
     const g = gestureRef.current;
-    if (!g || g.mode !== "paint") return;
+    if (!g) return;
+    if (g.mode === "resize") {
+      mutate((prev) => resizeCell(prev, g.lane, g.step, stepIndex - g.step + 1));
+      return;
+    }
+    if (g.mode !== "paint") return;
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
   if (!model) {
@@ -30582,10 +30676,12 @@ function SequencerGrid({ onResolution } = {}) {
               const on = isCellOn(cell);
               const cov = coverage?.[laneIndex]?.[stepIndex];
               const held = cov !== void 0 && cov.start !== stepIndex;
+              const isTail = cov !== void 0 && coverage?.[laneIndex]?.[stepIndex + 1]?.start !== cov.start;
+              const resizeStart = cov !== void 0 && isTail && resizable?.[laneIndex]?.has(cov.start) ? cov.start : null;
               const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
               const isPlaying = stepIndex === playingStep;
               const canPlace = on || (placeable?.[laneIndex]?.[stepIndex] ?? true);
-              return /* @__PURE__ */ jsx(
+              return /* @__PURE__ */ jsxs(
                 "button",
                 {
                   type: "button",
@@ -30599,6 +30695,15 @@ function SequencerGrid({ onResolution } = {}) {
                   title: canPlace ? void 0 : placesNotes ? "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that." : "This pattern edits its existing notes \u2014 add steps in the code view.",
                   onPointerDown: (e) => {
                     e.preventDefault();
+                    if (resizeStart !== null) {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const barW = clamp012(cov.extent) * rect.width;
+                      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4));
+                      if (e.clientX - rect.left >= barW - zone) {
+                        onResizeDown(laneIndex, resizeStart);
+                        return;
+                      }
+                    }
                     if (!canPlace) return;
                     onCellDown(laneIndex, stepIndex, on, e);
                   },
@@ -30618,41 +30723,83 @@ function SequencerGrid({ onResolution } = {}) {
                     background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
                     cursor: !canPlace ? "default" : gainScoped && on ? "ns-resize" : "pointer"
                   },
-                  children: cov && // Two orthogonal axes on one bar, which is how a DAW draws a
-                  // note: WIDTH is how much of this column the note sounds for
-                  // (#1056), HEIGHT is velocity, bottom-anchored and full when
-                  // neutral — so a length-1 note at neutral gain is the same
-                  // solid square it has always been. The hue is the voice
-                  // colour (#471), or a velocity ramp when View ▸ Note Color =
-                  // Velocity (#428).
-                  //
-                  // A carried column is dimmed rather than drawn solid, the
-                  // vocabulary the piano roll already ships for the same fact
-                  // (`opacity: on && !isHead ? 0.7 : 1`) — one held note reads
-                  // as one note, and never as a second trigger.
-                  /* @__PURE__ */ jsx(
-                    "span",
-                    {
-                      "data-seq-fill": true,
-                      "data-seq-sustain": held ? "true" : void 0,
-                      "data-seq-extent": cov.extent !== 1 ? cov.extent.toFixed(4) : void 0,
-                      style: {
-                        position: "absolute",
-                        left: 0,
-                        bottom: 0,
-                        // `minWidth` is a floor on the PIXEL, not on the datum: a
-                        // note whose length rounds to nothing still has to be
-                        // visible, or the grid would silently lose a trigger it
-                        // can spell.
-                        width: `${clamp012(cov.extent) * 100}%`,
-                        minWidth: held ? 0 : 2,
-                        height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
-                        background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
-                        opacity: held ? 0.7 : 1,
-                        pointerEvents: "none"
+                  children: [
+                    cov && // Two orthogonal axes on one bar, which is how a DAW draws a
+                    // note: WIDTH is how much of this column the note sounds for
+                    // (#1056), HEIGHT is velocity, bottom-anchored and full when
+                    // neutral — so a length-1 note at neutral gain is the same
+                    // solid square it has always been. The hue is the voice
+                    // colour (#471), or a velocity ramp when View ▸ Note Color =
+                    // Velocity (#428).
+                    //
+                    // A carried column is dimmed rather than drawn solid, the
+                    // vocabulary the piano roll already ships for the same fact
+                    // (`opacity: on && !isHead ? 0.7 : 1`) — one held note reads
+                    // as one note, and never as a second trigger.
+                    /* @__PURE__ */ jsx(
+                      "span",
+                      {
+                        "data-seq-fill": true,
+                        "data-seq-sustain": held ? "true" : void 0,
+                        "data-seq-extent": cov.extent !== 1 ? cov.extent.toFixed(4) : void 0,
+                        style: {
+                          position: "absolute",
+                          left: 0,
+                          bottom: 0,
+                          // `minWidth` is a floor on the PIXEL, not on the datum: a
+                          // note whose length rounds to nothing still has to be
+                          // visible, or the grid would silently lose a trigger it
+                          // can spell.
+                          width: `${clamp012(cov.extent) * 100}%`,
+                          minWidth: held ? 0 : 2,
+                          height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
+                          background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
+                          opacity: held ? 0.7 : 1,
+                          pointerEvents: "none"
+                        }
                       }
-                    }
-                  )
+                    ),
+                    resizeStart !== null && // THE LENGTH HANDLE (#1053) — the axis #1056 made visible, made
+                    // settable. Same shape as the roll's, because this is the same
+                    // gesture on the other surface and the issue asks the two to agree.
+                    //
+                    // It sits at the BAR's trailing edge rather than the cell's, so a
+                    // note that stops mid-column carries its handle on its own end
+                    // instead of floating in the empty background past it. Width is
+                    // clamped to the bar for the same reason the roll clamps it: a
+                    // handle wider than the note would overhang backwards past the
+                    // note's own start. What that costs a very short note — a very
+                    // small handle — is paid back by the invisible grab zone above.
+                    //
+                    // RENDERED ONLY WHERE A DRAG WOULD DO SOMETHING (`resizable`),
+                    // which is the panel's standing rule for every affordance it draws
+                    // (#1064/#1070): a handle on a note whose every length the writer
+                    // declines is a control the user can press to no effect, and this
+                    // project ranks that worse than not offering it at all.
+                    /* @__PURE__ */ jsx(
+                      "span",
+                      {
+                        "data-seq-resize": `${laneIndex}:${resizeStart}`,
+                        "aria-label": `resize ${lane.sound} step ${resizeStart + 1}`,
+                        onPointerDown: (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onResizeDown(laneIndex, resizeStart);
+                        },
+                        style: {
+                          position: "absolute",
+                          top: 0,
+                          bottom: 0,
+                          right: `${(1 - clamp012(cov.extent)) * 100}%`,
+                          width: `min(${RESIZE_ZONE_PX}px, ${clamp012(cov.extent) * 100}%)`,
+                          cursor: "ew-resize",
+                          background: "var(--foreground, #e6e6ea)",
+                          opacity: 0.45,
+                          borderRadius: "0 2px 2px 0"
+                        }
+                      }
+                    )
+                  ]
                 },
                 stepIndex
               );
@@ -30780,7 +30927,7 @@ var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
-var RESIZE_ZONE_PX = 8;
+var RESIZE_ZONE_PX2 = 8;
 var HOLD_RETRIGGER_MS = AUDITION_DUR_S * 1e3;
 var VELOCITY_READ_ONLY = "Shows this pattern\u2019s velocities \u2014 to change them, use the code view.";
 var LANE_HEIGHT = 48;
@@ -30974,7 +31121,7 @@ function PianoRollGrid({
       const ov = columnOverlap(note.start, note.start + note.duration, step);
       const barEnd = ov ? (ov.offset + ov.extent) * rect.width : rect.width;
       const barW = ov ? ov.extent * rect.width : rect.width;
-      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4));
+      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX2, barW * 0.4));
       if (isTail && e.clientX - rect.left >= barEnd - zone) {
         onResizeDown(note);
         return;
@@ -31378,7 +31525,7 @@ function PianoRollGrid({
                                         top: 0,
                                         bottom: 0,
                                         right: `${(1 - hit.overlap.offset - hit.overlap.extent) * 100}%`,
-                                        width: `min(${RESIZE_ZONE_PX}px, ${hit.overlap.extent * 100}%)`,
+                                        width: `min(${RESIZE_ZONE_PX2}px, ${hit.overlap.extent * 100}%)`,
                                         cursor: "ew-resize",
                                         background: "var(--foreground, #e6e6ea)",
                                         opacity: 0.45,

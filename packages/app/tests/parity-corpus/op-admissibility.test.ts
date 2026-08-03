@@ -87,6 +87,8 @@ import {
 } from '../../../editor/src/visualEdit/notation/resolution'
 import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
 import { resizeGrid, resizeRoll } from '../../../editor/src/visualEdit/notation/resize'
+import { canResizeCell, resizeCell } from '../../../editor/src/visualEdit/notation/place'
+import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import type {
   PianoRollModel,
   StepGridModel,
@@ -314,6 +316,75 @@ describe('op admissibility — an enabled control produces writable notation', (
     expect(undoable, 'a ×2 the user cannot undo is a trap the old dead button at least avoided').toBe(
       doubled,
     )
+  })
+
+  it('THE LENGTH HANDLE IS OFFERED ONLY WHERE THE DOCUMENT ACTUALLY MOVES (#1053)', () => {
+    // The panel draws a note's length handle exactly where `canResizeCell` says a length
+    // one column either side of the current one applies. This is that offer, asked over
+    // the real corpus — the same claim as the rest of this file, at the newest gesture.
+    //
+    // TWO THINGS ARE ASSERTED, and the second is the one that cost a rewrite. Writability
+    // is the file's standing invariant. But a resize can also produce a model that is
+    // perfectly writable and spells the SAME BYTES: on `[bd ~ ~ ~, hh ~ hh ~]` a cell is
+    // half a column, and rounding it up to a whole one changes the model while the
+    // document stands still. `useGridModel` keeps such a model, so the panel would have
+    // redrawn the note longer than the code says it is. Measured before the guard: 571 of
+    // 1425 offered handles were that — a control the user can drag to no effect, which
+    // this project ranks worse than no control at all.
+    let notes = 0
+    let offered = 0
+    let unwritable = 0
+    let inert = 0
+    let disagreeing = 0
+    const bad: string[] = []
+    for (const mini of minis) {
+      const r = parseStepGrid(mini)
+      if (!r.ok) continue
+      const m = r.model
+      const before = serializeStepGrid(m)
+      for (let li = 0; li < m.lanes.length; li++) {
+        for (let si = 0; si < m.lanes[li].cells.length; si++) {
+          const c = m.lanes[li].cells[si]
+          if (!isCellOn(c)) continue
+          notes++
+          const d = Math.round(c.duration)
+          let anyApplied = false
+          for (const target of [d + 1, d - 1]) {
+            const next = resizeCell(m, li, si, target)
+            const applies = next !== m
+            // the predicate the panel calls must agree with the op it stands for
+            if (canResizeCell(m, li, si, target) !== applies) disagreeing++
+            if (!applies) continue
+            anyApplied = true
+            const after = serializeStepGrid(next)
+            if (after === null) {
+              unwritable++
+              if (bad.length < 8) bad.push(`UNWRITABLE ${JSON.stringify(mini).slice(0, 60)}`)
+            } else if (after === before) {
+              inert++
+              if (bad.length < 8) bad.push(`INERT ${JSON.stringify(mini).slice(0, 60)}`)
+            }
+          }
+          if (anyApplied) offered++
+        }
+      }
+    }
+    console.log(
+      [
+        `\n  #1053 length handle: ${offered} of ${notes} notes offered a handle`,
+        `     ...whose result is UNWRITABLE   ${unwritable}`,
+        `     ...whose document is UNCHANGED  ${inert}`,
+        `     canResizeCell disagreeing        ${disagreeing}`,
+      ].join('\n'),
+    )
+    for (const b of bad) console.log(`     ${b}`)
+    expect(unwritable, 'a handle whose drag produces notation the writer cannot spell').toBe(0)
+    expect(inert, 'a handle whose drag leaves the document byte-identical — a dead control').toBe(0)
+    expect(disagreeing, 'canResizeCell disagrees with the op it stands for').toBe(0)
+    // POPULATION, pinned for the same reason every other sweep here pins one ([[P343]]):
+    // a path that stops offering the handle must not turn this gate green over no material.
+    expect(offered, 'the sweep must actually exercise the handle').toBeGreaterThan(700)
+    expect(notes, 'over the whole grid corpus').toBeGreaterThan(4000)
   })
 
   it('CONTROL: the sweep can SEE an unwritable result', () => {

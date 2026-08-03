@@ -20,9 +20,9 @@
  * for what an edit *is*, and it cannot catch a change in the edit — it quietly
  * keeps testing the old one (#1048).
  */
-import { cellOn, clampLane, clampPartAtOnset } from './model'
+import { cellOn, clampLane, clampPartAtOnset, isCellOn } from './model'
 import type { PianoRollModel, StepCell, StepGridModel } from './model'
-import { ifGridSpellable, ifRollSpellable } from './serialize'
+import { ifGridSpellable, ifRollSpellable, serializeStepGrid } from './serialize'
 
 /**
  * Does this view accept a NEW note at all?
@@ -209,6 +209,137 @@ export const canPlaceNote = (
   start: number,
   duration: number,
 ): boolean => placeNote(model, pitch, start, duration) !== model
+
+/**
+ * How many columns a note at (`laneIndex`, `stepIndex`) may occupy, OVER THE SCOPE THE
+ * WRITER CONSTRAINS — the `,`-part's column, not the lane the note sits in.
+ *
+ * This is #1064's rule read in the other direction. Placement resolves a colliding onset
+ * by shortening whatever was sounding through it (`clampPartAtOnset`); a length edit asks
+ * the same question from the other side — how far can this note reach before it meets
+ * one? Both have to use the PART, because the grid writes one token per column per part
+ * and a note sustaining in a SIBLING lane blocks the column just as surely as one in this
+ * lane: `[_,sn]` is a chord containing a token that means nothing there.
+ *
+ * FOUND BY THE GATE, not by reading. Capping with `clampLane` alone — the lane's own
+ * rule, which is what `laneCoverage` reads to DRAW — let a drag ask for a length that
+ * reached under a sibling's onset, and `sustainTokens` then declined the write outright.
+ * The user's drag did not cap at the neighbour; it stopped working when it passed one.
+ *
+ * ⚠ SO THIS DELIBERATELY DIFFERS FROM THE DRAWING'S ROOM RULE, and the asymmetry is
+ * sound: `laneCoverage` is per lane because it renders whatever model it is handed, and
+ * a model that reaches under a sibling onset is unwritable and therefore never reaches it.
+ * The cap is the stricter of the two, so every length this returns is one the panel can
+ * also draw.
+ */
+function partRoom(model: StepGridModel, laneIndex: number, stepIndex: number): number {
+  const part = model.lanes[laneIndex]?.part ?? 0
+  let next = model.steps
+  for (const lane of model.lanes) {
+    if ((lane.part ?? 0) !== part) continue
+    for (let j = stepIndex + 1; j < lane.cells.length && j < next; j++) {
+      if (isCellOn(lane.cells[j])) {
+        next = j
+        break
+      }
+    }
+  }
+  return next - stepIndex
+}
+
+/**
+ * Set the length of the note at (`laneIndex`, `stepIndex`) to `duration` COLUMNS —
+ * `resizeNote`'s half of the pair on the grid, and the gesture #1053 asks for.
+ *
+ * WHY THE GRID GETS ONE AT ALL. The model has carried a cell's length since #1010 P4b,
+ * the printer has preserved it since P4c, and #1056 put it on screen. Length was the one
+ * axis the panel could show and could not set, so the only way to shorten a note was to
+ * leave the view and edit the code — which is the gap the whole code↔view line exists to
+ * close.
+ *
+ * THE CAP IS `partRoom`, not the lane's own room; see its note for why the two differ and
+ * why the drawing legitimately uses the looser one.
+ *
+ * FLOORS AT ONE COLUMN, exactly as `resizeNote` does, and for a sharper reason here: the
+ * grid writes one token per column and a sustain as `_`, so a length below one column has
+ * no spelling at this resolution at all (`sustainTokens` declines it). Flooring is not a
+ * policy choice about small notes; it is the shortest thing the writer can say.
+ *
+ * DECLINES BY RETURNING ITS INPUT, so `canResizeCell` is the op rather than a second
+ * predicate beside it ([[PV241]]). Three populations decline, and all three are correct:
+ *  - a sustain with NO REST IN REACH to write itself into. The writer will absorb the
+ *    rests a lengthened note runs over, taking bytes that said "nothing starts here"
+ *    (#1146) — but where every column in reach carries a note there is nothing to take,
+ *    and `bd*4` cannot grow at all.
+ *  - a length that would sustain under ANOTHER sound in the same `,`-part. `partRoom`
+ *    caps rather than declines here, so this only bites where the cap cannot help.
+ *  - an edit the DOCUMENT would not record — see the byte comparison below.
+ *
+ * MEASURED OVER THE 966-UNIT GRID CORPUS: 1016 of 4729 notes are offered a handle (552
+ * can grow, 464 can only shorten), spread over 240 units. Every one produces writable
+ * notation and a document that actually changes — asserted in `op-admissibility.test.ts`,
+ * which is also where the 571 dead offers this op used to make are recorded.
+ *
+ * ⚠ Those figures were 854 / 390 / 178 before #1146, and the gap was entirely the
+ * neighbouring-bytes decline: on FLAT grids the handle reached 46 of 732 units and now
+ * reaches 105.
+ */
+export function resizeCell(
+  model: StepGridModel,
+  laneIndex: number,
+  stepIndex: number,
+  duration: number,
+): StepGridModel {
+  const cell = model.lanes[laneIndex]?.cells[stepIndex]
+  if (!isCellOn(cell)) return model
+  const capped = Math.max(1, Math.min(duration, partRoom(model, laneIndex, stepIndex)))
+  const lanes = model.lanes.map((lane, i) =>
+    i === laneIndex
+      ? {
+          ...lane,
+          cells: clampLane(
+            lane.cells.map((c, j) => (j === stepIndex ? cellOn(capped) : c)),
+            model.steps,
+          ),
+        }
+      : lane,
+  )
+  // Identity when the clamp lands back on the length that was already there — a drag
+  // held past the next hit reaches the same maximum on every pointermove, and without
+  // this each frame would be a fresh model and a fresh write of identical bytes.
+  //
+  // Compared EXACTLY rather than within an epsilon, because the two sides are the
+  // integers this gesture deals in: the drag asks for a whole number of columns and
+  // `clampLane` caps at a whole number of columns.
+  const next = lanes[laneIndex].cells[stepIndex]
+  if (isCellOn(next) && next.duration === cell.duration) return model
+
+  const written = serializeStepGrid({ ...model, lanes })
+  if (written === null) return model
+  // ...AND IDENTITY WHEN THE DOCUMENT DOES NOT MOVE, which is a second and sharper
+  // question than whether the length changed ([[PV241]] applied to the write, not the op).
+  //
+  // Found by fixture rather than reasoned: on `[bd ~ ~ ~, hh ~ hh ~]` a cell's length is
+  // HALF a column, so setting it to one column changes the model — and serializes to the
+  // very same bytes, because the writer spells this part at its own two-column width and
+  // a half-column note has no shorter spelling to lose. `useGridModel` keeps a model whose
+  // serialization is unchanged (that is what lets an all-rest lane stage before its first
+  // hit), so without this the panel would redraw the note LONGER while the document said
+  // nothing had happened — the view and the code disagreeing about the music, which is the
+  // one outcome the whole code↔view line exists to prevent.
+  //
+  // Cheaper than it looks, and it replaces work rather than adding it: `ifGridSpellable`
+  // would serialize this model anyway, so the null check above IS that gate, inlined.
+  if (written === serializeStepGrid(model)) return model
+  return { ...model, lanes }
+}
+
+export const canResizeCell = (
+  model: StepGridModel,
+  laneIndex: number,
+  stepIndex: number,
+  duration: number,
+): boolean => resizeCell(model, laneIndex, stepIndex, duration) !== model
 
 /**
  * Resize the single note identified by (`start`, `pitch`) to `duration` steps.
