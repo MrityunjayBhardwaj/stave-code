@@ -70,8 +70,20 @@ interface Tally {
   refusedShared: number
   /** accepted deletes on a shared leaf — see the note at the assertion */
   wroteShared: number
+  /** of those, the ones a same-(start, pitch) twin survives — the roll's #1164 residue */
+  wroteSharedTwin: number
+  /** of those, the ones whose document comes back byte-identical to its source */
+  wroteSharedNoOp: number
 }
-const zero = (): Tally => ({ units: 0, asks: 0, refused: 0, refusedShared: 0, wroteShared: 0 })
+const zero = (): Tally => ({
+  units: 0,
+  asks: 0,
+  refused: 0,
+  refusedShared: 0,
+  wroteShared: 0,
+  wroteSharedTwin: 0,
+  wroteSharedNoOp: 0,
+})
 const get = (m: Map<Path, Tally>, p: Path): Tally => {
   const t = m.get(p) ?? zero()
   m.set(p, t)
@@ -172,10 +184,18 @@ for (const mini of minis) {
           .filter((a) => a.start === note.start && a.pitch === note.pitch)
           .some((a) => (fan.get(`${a.span.start}:${a.span.end}`) ?? 0) > 1)
       const dropped = { ...p, notes: p.notes.filter((_, i) => i !== ni) }
-      if (serializePianoRoll(dropped) === null) {
+      const out = serializePianoRoll(dropped)
+      if (out === null) {
         t.refused++
         if (shared) t.refusedShared++
-      } else if (shared) t.wroteShared++
+      } else if (shared) {
+        t.wroteShared++
+        // the residue's CAUSE, carried in the gate rather than left to an inert probe:
+        // a surviving same-(start, pitch) twin, and a document that came back unchanged
+        if (dropped.notes.some((n) => n.start === note.start && n.pitch === note.pitch))
+          t.wroteSharedTwin++
+        if (ls && out === ls.src) t.wroteSharedNoOp++
+      }
     }
   }
 }
@@ -219,22 +239,27 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // refused everything. Zero accepted deletes on a shared leaf makes the predicate
     // decide the answer both ways, which is what lets the property be stated in the
     // docs as a rule rather than as a tendency.
+    //
+    // The POSITIVE CONTROL for this absence is the arm below: the identical measurement
+    // on the roll returns 24, so a zero here is a fact about the grid and not a counter
+    // that never increments.
     expect(gridTally.get('leaf')!.wroteShared).toBe(0)
   })
 
   it('ROLL: sharing is necessary but NOT sufficient — 24 accepted, every one a unison (#1164)', () => {
-    // The roll's residue is pinned WITH its cause rather than tolerated as slack.
+    // The residue is pinned WITH ITS CAUSE, not as a bare count. A count alone lets the
+    // same 24 arrive from somewhere else and read as unchanged — the failure this file's
+    // header calls out, and it would be a poor joke to commit it here.
     //
-    // All 24 are two `,`-stacked parts sounding the same pitch at the same column. The
-    // writer compares pitches at a start as a SET, so dropping one of a unison pair
-    // leaves the pitch present, nothing enters `gone`, every anchor asserts its own
-    // bytes, and the document returns byte-unchanged — reported as a success. Measured,
-    // not reasoned: 24 of 24 have a surviving same-(start, pitch) twin and 24 of 24 come
-    // back identical to their source (`_1160-roll-residue.spec.ts`).
-    //
-    // Pinned exactly so that fixing #1164 breaks this arm and forces the number to be
-    // restated, rather than letting a silent no-op quietly become a silent something.
-    expect(rollTally.get('leaf')!.wroteShared).toBe(24)
+    // The cause: two `,`-stacked parts sound the same pitch at one column. `after` is
+    // built as a SET, so dropping one of a unison pair leaves the pitch present, nothing
+    // enters `gone`, every anchor asserts its own bytes, and the document comes back
+    // byte-identical while reporting success. Both consequences are asserted, so fixing
+    // #1164 must restate the number rather than let a silent no-op become a silent
+    // something.
+    const r = rollTally.get('leaf')!
+    expect({ accepted: r.wroteShared, twinSurvives: r.wroteSharedTwin, unchanged: r.wroteSharedNoOp })
+      .toEqual({ accepted: 24, twinSurvives: 24, unchanged: 24 })
   })
 
   it('POSITIVE CONTROL — the non-leaf paths take the same gesture', () => {
