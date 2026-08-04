@@ -176,6 +176,25 @@ export interface LeafSource {
    * either leaf writer may write. See `RollLeafSource.steps` for why.
    */
   cols: LeafAnchor[][]
+  /**
+   * Per column, the span of the REST (`~` / `-`) occupying it, where there is one.
+   *
+   * Deliberately not an entry in `cols`: an anchor is an atom the grid SHOWS and the
+   * lanes are built from that set, so a rest joining it would draw a `~` lane. This
+   * is the same information for a different purpose — the one span a column can offer
+   * when it has no sounding leaf.
+   *
+   * WHAT IT IS FOR (#1154). Deleting a note on a leaf grid writes `~` over that note's
+   * own bytes, which is right. But a rest produces no hap, so nothing indexed it, and
+   * putting the note back was refused for want of a span — the user could not undo
+   * their own delete anywhere on this path (0 of 402 asks over the corpus). Those bytes
+   * are OURS, written a moment ago over the user's note, so overwriting them again
+   * authors nothing the user did not write. That is why this narrow case is allowed
+   * where adding a note to a column that never had one is still refused.
+   *
+   * Absent, or null at a column, simply means the older refusal still stands there.
+   */
+  rests?: (LeafSpan | null)[]
 }
 
 /**

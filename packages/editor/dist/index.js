@@ -26016,7 +26016,17 @@ function spliceByLeaf(model) {
     const gone = before.filter((a) => !after.includes(a));
     const added = after.filter((a) => !before.includes(a));
     const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1;
-    if (added.length > 0 && !swap) return null;
+    if (added.length > 0 && !swap) {
+      const rest = ls.rests?.[c];
+      if (rest && anchors.length === 0 && added.length === 1 && after.length === 1) {
+        const key2 = `${rest.start}:${rest.end}`;
+        const prev = want.get(key2);
+        if (prev && prev.text !== added[0]) return null;
+        want.set(key2, { span: rest, text: added[0] });
+        continue;
+      }
+      return null;
+    }
     for (const a of anchors) {
       const text = swap ? added[0] : gone.includes(a.atom) ? "~" : a.atom;
       const key2 = `${a.span.start}:${a.span.end}`;
@@ -27518,6 +27528,74 @@ function projectionEditSafe(model, perBar2, bars, base, probeCols) {
   return true;
 }
 __name(projectionEditSafe, "projectionEditSafe");
+function restSpansByColumn(src, perBar2, bars) {
+  let ast;
+  try {
+    ast = parse$1('"' + src + '"');
+  } catch {
+    return null;
+  }
+  const spans = [];
+  const walk3 = /* @__PURE__ */ __name((node) => {
+    if (!node || typeof node !== "object") return;
+    if (node.type_ === "pattern") {
+      for (const el of node.source_ ?? []) walk3(el);
+      return;
+    }
+    if (node.type_ === "element") {
+      const el = node;
+      const inner = el.source_;
+      if (inner && inner.type_ === "atom") {
+        const atom = inner;
+        const loc = el.location_;
+        if (isRestAtom2(atom) && loc) {
+          let s = loc.start.offset - 1;
+          while (s < src.length && /\s/.test(src[s])) s++;
+          if (src.slice(s, s + atom.source_.length) === atom.source_)
+            spans.push({ start: s, end: s + atom.source_.length });
+        }
+      } else walk3(inner);
+      return;
+    }
+  }, "walk");
+  walk3(ast);
+  if (spans.length === 0) return null;
+  const SENTINEL = /* @__PURE__ */ __name((i) => `qzrest${i}`, "SENTINEL");
+  let probeSrc = src;
+  const ordered = [...spans].sort((a, b) => b.start - a.start);
+  for (let i = 0; i < ordered.length; i++) {
+    const s = ordered[i];
+    probeSrc = probeSrc.slice(0, s.start) + SENTINEL(i) + probeSrc.slice(s.end);
+  }
+  let probePat;
+  try {
+    probePat = mini(probeSrc);
+  } catch {
+    return null;
+  }
+  const size = perBar2 * bars;
+  const claims = Array.from({ length: size }, () => /* @__PURE__ */ new Set());
+  const located = /* @__PURE__ */ new Set();
+  for (let b = 0; b < bars; b++) {
+    const read5 = readGridOnsets(probePat, b);
+    if (!read5.ok) return null;
+    for (const o of read5.onsets) {
+      const c = b * perBar2 + Math.round(o.pos * perBar2);
+      if (c < 0 || c >= size) continue;
+      for (const atom of o.atoms) {
+        const m = /^qzrest(\d+)$/.exec(atom);
+        if (!m) continue;
+        const idx = Number(m[1]);
+        if (idx >= ordered.length) continue;
+        claims[c].add(idx);
+        located.add(idx);
+      }
+    }
+  }
+  if (located.size !== ordered.length) return null;
+  return claims.map((s) => s.size === 1 ? ordered[[...s][0]] : null);
+}
+__name(restSpansByColumn, "restSpansByColumn");
 function projectStepGridByLeaf(src0) {
   const src = src0.trim();
   if (src === "") return no("not-a-pattern");
@@ -27549,6 +27627,7 @@ function projectStepGridByLeaf(src0) {
   const cols = anchored.cols;
   const played = columnsFromOnsets(perCycle, perBar2, bars);
   if (played === null) return no("irrational-onset");
+  const rests = restSpansByColumn(src, perBar2, bars);
   const model = {
     steps: perBar2 * bars,
     ...bars > 1 ? { bars } : {},
@@ -27560,7 +27639,7 @@ function projectStepGridByLeaf(src0) {
         }))
       )
     ),
-    leafSource: { src, cols }
+    leafSource: { src, cols, ...rests ? { rests } : {} }
   };
   if (!leafEditSafe(model, perBar2, bars)) return no("edit-unsafe");
   if (!leafViewUsable(model)) return no("view-unusable");

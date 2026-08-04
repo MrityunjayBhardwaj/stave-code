@@ -187,6 +187,112 @@ describe('placement admissibility — the op refuses rather than going inert (#1
 })
 
 /**
+ * UNDOING YOUR OWN DELETE (#1154) — the one add a leaf grid can spell.
+ *
+ * The clear above writes `~` over the note's own bytes. A rest sounds nothing, so
+ * nothing indexed it, and clicking the cell back on was refused for want of a span:
+ * measured over the corpus, NOT ONE leaf ask round-tripped — 0 of 402. The rest's
+ * span is now carried beside the anchors, so the byte replacement exists.
+ *
+ * This does not reopen the boundary the suite above defends. A note placed where the
+ * user never had one would mean AUTHORING a slot inside a structure that is theirs.
+ * A `~` here is not their notation — it is ours, written over their note a moment
+ * ago — so replacing it gives back what they wrote and invents nothing.
+ */
+describe('a leaf grid takes back the note it just erased (#1154)', () => {
+  const SRC = 'bd mt  bd [lt lt] lt lt lt@2'
+
+  it('round-trips a clear and re-place to the original bytes', () => {
+    const m = parse(SRC)
+    expect(m.leafSource, 'fixture must reach the leaf path').toBeTruthy()
+    // a lane with more than one hit, so clearing one cannot empty the lane out of
+    // the document — that is #1161's question, not this one
+    const li = m.lanes.findIndex((l) => l.cells.filter(isCellOn).length > 1)
+    expect(li, 'fixture must have a lane with two hits').toBeGreaterThanOrEqual(0)
+    const col = m.lanes[li].cells.findIndex(isCellOn)
+
+    const cleared = serializeStepGrid(toggleCell(m, li, col, false))
+    expect(cleared, 'the clear must be written').not.toBeNull()
+    expect(cleared).not.toBe(SRC)
+
+    // re-open on what was written — the panel is re-read from the document after
+    // every write, so a test that reuses the model measures a state nobody has
+    const back = parse(cleared!)
+    const lane = back.lanes.findIndex((l) => l.sound === m.lanes[li].sound)
+    expect(lane, 'the lane must survive the clear').toBeGreaterThanOrEqual(0)
+    expect(canToggleCell(back, lane, col, true)).toBe(true)
+    expect(serializeStepGrid(toggleCell(back, lane, col, true))).toBe(SRC)
+  })
+
+  /**
+   * THE BOUNDARY IS UNMOVED, and this is the arm that proves the fix is narrow
+   * rather than a general permission to add. `<bd - - -> *2` has no rest span for
+   * the column being clicked, so the placement is still refused — the same
+   * assertion the admissibility suite above makes, restated here so a future
+   * widening of the rest path has to break it deliberately.
+   */
+  it('still refuses a placement where no note of ours was erased', () => {
+    const m = parse('<bd - - -> *2')
+    expect(canToggleCell(m, 0, 1, true)).toBe(false)
+    expect(serializeStepGrid(toggleCell(m, 0, 1, true))).toBe('<bd - - -> *2')
+  })
+
+  /**
+   * AND IT REFUSES WHEN IT CANNOT SAY WHICH REST A DELETE BLANKED.
+   *
+   * A `,`-stack gives several parts a rest at the same column, so a column can be
+   * reached by two different rests and nothing distinguishes them. Writing to either
+   * would put the user's note into a different voice of their own stack.
+   *
+   * WHAT THIS ARM ACTUALLY PROVES, stated precisely because the first version of this
+   * comment claimed more. Relaxing the unambiguity rule to first-of-set makes this
+   * fixture accept one re-place — the counter below goes to 1 and this test reddens.
+   * That is the contract it holds. It does NOT prove the write would have been wrong:
+   * measured over the whole corpus, first-of-set restores 76 asks instead of 72, all
+   * byte-exact, with no music lost. The rule is kept because "right four times out of
+   * four" is not a reason, not because a defect was observed here.
+   */
+  it('refuses rather than guess which rest a delete blanked', () => {
+    const SRC2 =
+      '<hh ~ hh ~ hh ~ hh ~  hh ~  hh ~  hh ~ <hh oh> ~>*16,\n' +
+      '<~  ~ ~  ~ sd ~ ~  ~  ~  ~  ~  ~  sd ~ ~       ~>*16,\n' +
+      '<bd ~ bd ~ ~  ~ ~  bd bd ~  <bd ~> ~ ~ ~ ~     ~>*16'
+    const m = parse(SRC2)
+    expect(m.leafSource, 'fixture must reach the leaf path').toBeTruthy()
+
+    // THE INVARIANT, stated over every cell rather than the one that happened to
+    // break: on this path a re-place either gives back the exact bytes or refuses.
+    // A third outcome — accepted, different document — is the silent corruption,
+    // and it is what this fixture produced before the completeness guard.
+    let accepted = 0
+    for (let li = 0; li < m.lanes.length; li++) {
+      for (let c = 0; c < m.steps; c++) {
+        if (!isCellOn(m.lanes[li].cells[c])) continue
+        const cleared = serializeStepGrid(toggleCell(m, li, c, false))
+        if (cleared === null || cleared === SRC2) continue
+        const back = parse(cleared)
+        if (back.steps !== m.steps) continue // a different width is a different cell
+        const lane = back.lanes.findIndex((l) => l.sound === m.lanes[li].sound)
+        if (lane < 0) continue
+        // The refusal signal at THIS layer is `canToggleCell`, not a null write: a
+        // refused `toggleCell` returns its input by reference (#1064), so serializing
+        // it yields the CLEARED document rather than null — which reads as a corrupt
+        // write if you check for null. Caught by this arm going red for that reason.
+        if (!canToggleCell(back, lane, c, true)) continue
+        const out = serializeStepGrid(toggleCell(back, lane, c, true))
+        accepted++
+        expect(out, `re-placing ${m.lanes[li].sound}@${c} must restore the document`).toBe(
+          SRC2,
+        )
+      }
+    }
+    // the loop above passes vacuously if nothing is ever accepted, so say so rather
+    // than let a fixture that stopped exercising the path read as a green arm
+    expect(accepted, 'this fixture accepts no re-place; it proves only the refusals').toBe(0)
+  })
+})
+
+/**
  * PASTE IS ONE OP, and this is why. Replace-at-target clears the target note and
  * then places — so if the place is refused and the clear is not taken back, the
  * gesture writes a DELETION the user never asked for. It writes it happily,

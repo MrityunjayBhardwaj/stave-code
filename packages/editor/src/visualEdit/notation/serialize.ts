@@ -585,7 +585,36 @@ function spliceByLeaf(model: StepGridModel): string | null {
     // The one add that IS a byte replacement: a lone atom swapped for another in
     // a lone-atom column. Anything else added has no leaf of its own.
     const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1
-    if (added.length > 0 && !swap) return null
+    if (added.length > 0 && !swap) {
+      // PUTTING BACK A NOTE THIS WRITER ITSELF ERASED (#1154).
+      //
+      // A delete writes `~` over the note's own bytes. A rest sounds nothing, so no
+      // anchor ever indexed it, and clicking the cell back on was refused for want of
+      // a span — measured over the corpus, NOT ONE leaf ask round-tripped (0 of 402).
+      // The rest's span is now carried alongside the anchors, so the byte replacement
+      // exists after all.
+      //
+      // WHY THIS IS NOT THE BOUNDARY REOPENING. The refusal above protects the user's
+      // notation: writing a note where none was would mean AUTHORING a slot inside a
+      // structure whose shape is theirs. A `~` in this position is not their notation —
+      // it is ours, put there in place of their note, and replacing it restores what
+      // they wrote. Every structural byte is still copied, never generated.
+      //
+      // Deliberately the narrowest form of that argument: the column must hold NO
+      // sounding leaf (so nothing is displaced), exactly one sound must be arriving
+      // (never a chord), and a rest span must have been indexed for that column.
+      // Anything else still refuses, including adding a second sound beside an
+      // existing one — which remains authoring a chord and is not this case.
+      const rest = ls.rests?.[c]
+      if (rest && anchors.length === 0 && added.length === 1 && after.length === 1) {
+        const key = `${rest.start}:${rest.end}`
+        const prev = want.get(key)
+        if (prev && prev.text !== added[0]) return null
+        want.set(key, { span: rest, text: added[0] })
+        continue
+      }
+      return null
+    }
     for (const a of anchors) {
       const text = swap ? added[0] : gone.includes(a.atom) ? '~' : a.atom
       const key = `${a.span.start}:${a.span.end}`
