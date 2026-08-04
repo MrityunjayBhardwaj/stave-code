@@ -570,6 +570,27 @@ export function serializeByLeaf(
  *    rewrite cells the user did not touch;
  *  - anchors that no longer describe the grid, which is what a restructure
  *    (resize/quantize) leaves behind.
+ *
+ * HOW BIG THE SHARED-LEAF REFUSAL IS — measured, because a refusal without a number
+ * reads as an edge case and this one is half the surface (#1160). Over all 1527 corpus
+ * minis, clearing every sounding cell of every leaf grid one at a time: 275 of 557
+ * deletes across 82 units are refused — 49.4%. The roll's half is 276 of 591 (46.7%),
+ * two rates derived independently, which is the evidence that this belongs to the leaf
+ * projection rather than to either surface. `delete-admissibility.test.ts` pins both.
+ *
+ * On this surface the predicate is EXACT: a delete is refused iff the cleared cell's
+ * own leaf backs more than one column. Not "its column" — a column holds every lane's
+ * atom, and a leaf shared with a lane the user did not touch decides nothing.
+ *
+ * ⚠ AND THE SHARING IS USUALLY NOT SPELT ON THE TOKEN, which is why `bd*4` above is a
+ * misleading example to reason from. Reading the operator adjacent to each anchor's
+ * span: only 77 of 377 shared-leaf instances (20%) carry the multiplier on the token
+ * (`*n`/`!n`/`@n`); the other 300 are multiplied by something ENCLOSING the token — a
+ * group, an alternation, a `slow`. `bd*4` itself is 36 of 377, under a tenth. So the
+ * recurring proposal to split the shared token instead of refusing would buy back at
+ * most a fifth of these asks, and only by re-spelling notation the user wrote; the
+ * other four fifths would mean re-authoring a construct the token merely sits inside.
+ * The refusal is the cheaper honesty. See #1160 for the full measurement.
  */
 function spliceByLeaf(model: StepGridModel): string | null {
   const ls = model.leafSource
@@ -661,6 +682,22 @@ function spliceByLeaf(model: StepGridModel): string | null {
  *    members the new pitch has no unambiguous leaf to claim);
  *  - two notes sharing one leaf that disagree about the result, where letting the
  *    last writer win would silently rewrite a note the user never touched.
+ *
+ * THE SHARED-LEAF REFUSAL HERE IS THE SAME SIZE AS THE GRID'S, and that is the finding
+ * rather than a coincidence: 276 of 591 note deletes across 54 leaf rolls are refused
+ * (46.7%) against the grid's 275 of 557 (49.4%), measured independently over the same
+ * corpus. Two surfaces with different edit vocabularies refusing at the same rate is
+ * what says the property belongs to the leaf projection itself. #1160 was filed with
+ * this half unmeasured, so the population is 551 asks and not the 275 it records.
+ * Pinned in `delete-admissibility.test.ts`; see `spliceByLeaf` for why splitting the
+ * shared token is not the answer (only a fifth of the sharing is spelt on the token).
+ *
+ * ⚠ ONE RESIDUE, TRACKED AS #1164. Unlike the grid, sharing here is necessary but not
+ * sufficient: 24 deletes on a shared leaf are ACCEPTED. All 24 are unisons — two
+ * `,`-stacked parts at the same pitch and column — where `after` is built as a SET, so
+ * dropping one leaves the pitch present, nothing enters `gone`, every anchor asserts
+ * its own bytes and the document returns byte-unchanged while reporting success. The
+ * set is right for telling chord members apart and cannot represent two of one pitch.
  */
 function spliceRollByLeaf(model: PianoRollModel): string | null {
   const ls = model.leafSource
