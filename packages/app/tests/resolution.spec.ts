@@ -11,6 +11,7 @@
  * the grid.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
+import { slotsControl, preset } from './_resolutionControl'
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
@@ -59,27 +60,6 @@ async function openPattern(page: Page): Promise<Locator> {
   await drawer.locator('role=tab[name="Pattern"]').click()
   await page.waitForTimeout(300)
   return drawer
-}
-
-/** The "Slots" control now lives in the Pattern inspector (#601), not the grid. */
-function slotsControl(drawer: Locator): Locator {
-  return drawer.locator('[data-mixer-body]')
-}
-
-/**
- * #1059 — THE ABSOLUTE PRESETS NOW LIVE BEHIND THE READOUT'S DOUBLE-CLICK.
- *
- * The control's resting shape is `÷2 [16] ×2`; the 4/8/16/32/64 list is a dropdown
- * the readout opens. So a spec that targets a preset has to open it first. Opening
- * is idempotent — the dropdown stays open until a preset is chosen, Escape, or a
- * press outside — so this is safe to call before every interaction, including
- * consecutive ones.
- */
-async function preset(slots: Locator, n: number): Promise<Locator> {
-  if ((await slots.locator('[data-resolution-presets]').count()) === 0) {
-    await slots.locator('[data-resolution-current]').dblclick()
-  }
-  return slots.locator(`[data-resolution-step="${n}"]`)
 }
 
 test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () => {

@@ -16,6 +16,7 @@
  * pass on a grid that lit every column, so the full row is compared both ways.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { slotsControl } from './_resolutionControl'
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
@@ -152,7 +153,7 @@ test.describe('a note is drawn across the columns it covers (#1056)', () => {
 
     // ×2 is a free view here: it changes only how finely the panel draws, and the note
     // must go on covering the same half of the cycle — now spelled across four columns.
-    await drawer.locator('[data-mixer-body] [data-resolution-double]').click()
+    await slotsControl(drawer).locator('[data-resolution-double]').click()
     await expect(page.locator('[data-seq-cell="0:7"]')).toHaveCount(1)
     const refinedHeld = await readLane(page, 0, 8)
     console.log(`  bd _ ~ ~  @×2  →  ${refinedHeld}`)
@@ -163,7 +164,7 @@ test.describe('a note is drawn across the columns it covers (#1056)', () => {
     // every column of a refined grid would satisfy the assertion above.
     await setStrudelCode(page, '$: s("bd ~ ~ ~")')
     await expect(page.locator('[data-seq-cell="0:0"]')).toHaveCount(1)
-    await drawer.locator('[data-mixer-body] [data-resolution-double]').click()
+    await slotsControl(drawer).locator('[data-resolution-double]').click()
     await expect(page.locator('[data-seq-cell="0:7"]')).toHaveCount(1)
     const refinedShort = await readLane(page, 0, 8)
     console.log(`  bd ~ ~ ~  @×2  →  ${refinedShort}`)

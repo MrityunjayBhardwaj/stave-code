@@ -9,6 +9,7 @@
  * The Piano Roll velocity test lives below once the shared path is extended.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
+import { slotsControl, preset } from './_resolutionControl'
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
@@ -235,6 +236,12 @@ test.describe('velocity — Piano Roll (#409)', () => {
     // siblings in `resolution.spec.ts` were corrected then and this third copy was
     // missed, so it has been red ever since.
     //
+    // It was then missed a SECOND time, for a different change: #1059 moved the
+    // absolute presets behind the readout's double-click, and the direct click here
+    // waited out the whole timeout on a locator that never resolves (#1157). Reaching
+    // the control now goes through `_resolutionControl`, which all three specs share,
+    // so a third change to this control cannot miss a copy.
+    //
     // Repairing the assertion alone would not have been enough, and that is the part
     // worth writing down: refining creates no empty slots any more, because a note now
     // SPANS the columns it covers. In `c3 e3 g3 a3` at eight columns every column is
@@ -250,7 +257,7 @@ test.describe('velocity — Piano Roll (#409)', () => {
     await setStrudelCode(page, '$: note("c3 ~ e3 ~")')
     const drawer = await openSequencer(page)
     const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
-    await drawer.locator('[data-mixer-body] [data-resolution-step="8"]').click()
+    await (await preset(slotsControl(drawer), 8)).click()
     await page.waitForTimeout(120)
     // refining is a VIEW: eight columns drawn, document untouched
     await expect(roll.locator('[data-vel-col]')).toHaveCount(8)
