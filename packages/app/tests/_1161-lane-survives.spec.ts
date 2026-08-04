@@ -16,6 +16,15 @@
  *
  * Reading the code cannot settle this — the retention depends on a serialize comparison
  * at runtime. So this drives the real gesture and looks.
+ *
+ * ⚠ THIS FILE OBSERVES; IT DOES NOT GUARD. Both tests below print their finding and
+ * assert nothing about it, which is what an observation probe is for and why it must
+ * not be mistaken for a regression arm. The GUARD is
+ * `sequencer.spec.ts` › "a lane emptied of its last note stays on screen and takes the
+ * note back (#1161)" — in the browser gate's file list, and verified red under two
+ * separate breaks (retention off in `useGridModel`; `toggleCell` pruning empty lanes).
+ * Kept alongside it because this one also records the deliberate BOUNDARY the guard
+ * does not assert: the lane is lost across a statement round-trip, on purpose (#597).
  */
 import { test, expect, type Page } from '@playwright/test'
 
