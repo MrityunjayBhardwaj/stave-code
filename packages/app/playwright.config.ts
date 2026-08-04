@@ -31,8 +31,31 @@ const MEASUREMENT_SPECS = [
   '**/viz-scroll-jank.spec.ts', // jank: no-viz control vs heavy worker viz (env-gated)
 ]
 
+/**
+ * The port is overridable so a collision with another project can be stepped
+ * around rather than fought. It defaults to 3000, which is what every existing
+ * workflow expects; `globalSetup` is what makes reuse safe, not the number.
+ *
+ * ONE knob on purpose. An earlier draft also took a `STAVE_E2E_BASE_URL`, which
+ * let the port Playwright MANAGES and the URL the specs VISIT disagree — the
+ * suite would then run against a server nobody was supervising. That is the same
+ * shape as the bug this file is guarding (#1155), so the second knob is gone and
+ * the URL is derived, where it cannot drift from the port.
+ */
+const PORT = Number(process.env.STAVE_E2E_PORT ?? 3000)
+const BASE_URL = `http://localhost:${PORT}`
+
 export default defineConfig({
   testDir: './tests',
+  /**
+   * Prove the server is Stave before the first spec runs (#1155). `webServer`
+   * below reuses any listener on the port, and a port is not an identity — an
+   * unrelated app answering there produced 15 failed / 0 passed on a spec that
+   * is 15 passed / 0 failed against Stave, with the `[data-bottom-panel="root"]`
+   * signature the `measurement` note attributes to contention. Without this the
+   * two are indistinguishable from the output.
+   */
+  globalSetup: './tests/global-setup.ts',
   // `tests/parity-corpus/` holds the maintainer-only VITEST harnesses (the parse-
   // parity and edit-coverage measurements). They match Playwright's default
   // testMatch (`*.spec.ts` / `*.test.ts`), so without this a bare
@@ -44,7 +67,7 @@ export default defineConfig({
   timeout: 30000,
   retries: 0,
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: BASE_URL,
     headless: true,
   },
   projects: [
@@ -70,10 +93,22 @@ export default defineConfig({
       // ⚠ `dependencies` also means: if the `chromium` project FAILS, this project
       // is SKIPPED ENTIRELY — its 29 tests do not run and are not even reported as
       // skipped. The gate then prints a plausible-looking "375 passed" that is
-      // simply a smaller suite. So ALWAYS reconcile the total: a complete run is
-      // 531 + 29 = 560 (2026-07-20). If the count is short, tests were dropped,
-      // not passed — and re-check this number when specs are added, because a
-      // stale total makes a dropped-test run look like a normal one.
+      // simply a smaller suite. So ALWAYS reconcile the total: if the count is
+      // short, tests were dropped, not passed.
+      //
+      // ⚠ AND THE TOTAL WRITTEN HERE IS THE FIRST THING TO GO STALE. This note
+      // said "531 + 29 = 560 (2026-07-20)" and asked the reader to re-check it —
+      // nobody did, and by 2026-08-04 the measured figure was 594 + 29 = 623, so
+      // the number guarding against a dropped-test run was itself 63 tests adrift
+      // (#1062). A stale total does not fail loudly; it quietly makes a short run
+      // look normal, which is the exact failure it was written to prevent.
+      //
+      // So do not trust the figure below — DERIVE it, every time it matters:
+      //   npx playwright test --project=chromium --list | tail -1
+      //   npx playwright test --project=measurement --list | tail -1   (includes
+      //     the chromium dependency, so `measurement` alone is the difference)
+      // Last derived 2026-08-04: chromium 594 in 176 files, measurement 29,
+      // complete run 623.
       //
       // Also budget for contention: a full parallel run reproducibly reports
       // ~15 failures that pass on a serial re-run of the same files (measured
@@ -86,7 +121,11 @@ export default defineConfig({
   ],
   webServer: {
     command: 'pnpm dev',
-    port: 3000,
+    port: PORT,
+    env: { PORT: String(PORT) },
+    // Reuse stays ON — booting a dev server per run costs more than it saves.
+    // What makes it safe is `globalSetup`, which checks WHOSE server it is
+    // rather than only that something answers (#1155).
     reuseExistingServer: true,
     timeout: 30000,
   },

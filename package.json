@@ -15,7 +15,7 @@
     "gate:editing:editor": "pnpm --filter @stave/editor exec vitest run",
     "gate:editing:instruments": "pnpm --filter @stave/app run test:instruments:collect",
     "gate:editing:app": "pnpm --filter @stave/app exec vitest run tests/parity-corpus",
-    "gate:editing:browser": "pnpm --filter @stave/app exec playwright test tests/sequencer.spec.ts tests/velocity.spec.ts tests/piano-roll.spec.ts tests/visual-edit-tabs.spec.ts --project=chromium --workers=1"
+    "gate:editing:browser": "pnpm --filter @stave/app exec playwright test tests/sequencer.spec.ts tests/velocity.spec.ts tests/piano-roll.spec.ts tests/visual-edit-tabs.spec.ts --project=chromium --workers=1 --reporter=list,./tests/gate-population-reporter.ts"
   },
   "devDependencies": {
     "turbo": "^2.0.0",
