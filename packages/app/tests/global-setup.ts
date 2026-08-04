@@ -31,12 +31,14 @@
  * unreachable server is therefore a real failure, not a case to wave through.
  */
 
+import { E2E_BASE_URL } from './e2e-target'
+
 const STAVE_MARKER = 'data-stave-theme'
 
 export default async function globalSetup(): Promise<void> {
-  // Derived from the same single knob the config uses, so the URL checked here
-  // is by construction the URL the specs visit.
-  const baseURL = `http://localhost:${Number(process.env.STAVE_E2E_PORT ?? 3000)}`
+  // The SAME value the config gives Playwright, imported rather than re-derived,
+  // so the URL vetted here is by construction the URL the specs visit.
+  const baseURL = E2E_BASE_URL
 
   let html: string
   try {

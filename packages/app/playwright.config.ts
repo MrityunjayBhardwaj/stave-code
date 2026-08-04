@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test'
+import { E2E_BASE_URL, E2E_PORT } from './tests/e2e-target'
 
 /**
  * Specs whose ASSERTION IS A MEASUREMENT of real-time rendering — frames per
@@ -32,18 +33,18 @@ const MEASUREMENT_SPECS = [
 ]
 
 /**
- * The port is overridable so a collision with another project can be stepped
- * around rather than fought. It defaults to 3000, which is what every existing
- * workflow expects; `globalSetup` is what makes reuse safe, not the number.
+ * The port is overridable (`STAVE_E2E_PORT`) so a collision with another project
+ * can be stepped around rather than fought. It defaults to 3000, which is what
+ * every existing workflow expects; `globalSetup` is what makes reuse safe, not
+ * the number.
  *
- * ONE knob on purpose. An earlier draft also took a `STAVE_E2E_BASE_URL`, which
- * let the port Playwright MANAGES and the URL the specs VISIT disagree — the
- * suite would then run against a server nobody was supervising. That is the same
- * shape as the bug this file is guarding (#1155), so the second knob is gone and
- * the URL is derived, where it cannot drift from the port.
+ * ONE knob, and ONE definition — both deliberate. An earlier draft also took a
+ * `STAVE_E2E_BASE_URL`, and a later one re-derived the port inside `globalSetup`
+ * from its own copy of the default. Either way the port Playwright MANAGES and
+ * the URL the guard VETS can drift apart, and then the check passes while the
+ * suite runs somewhere nobody meant. That is the same shape as the bug being
+ * guarded, so the target is imported from one module (`tests/e2e-target.ts`).
  */
-const PORT = Number(process.env.STAVE_E2E_PORT ?? 3000)
-const BASE_URL = `http://localhost:${PORT}`
 
 export default defineConfig({
   testDir: './tests',
@@ -67,7 +68,7 @@ export default defineConfig({
   timeout: 30000,
   retries: 0,
   use: {
-    baseURL: BASE_URL,
+    baseURL: E2E_BASE_URL,
     headless: true,
   },
   projects: [
@@ -121,8 +122,8 @@ export default defineConfig({
   ],
   webServer: {
     command: 'pnpm dev',
-    port: PORT,
-    env: { PORT: String(PORT) },
+    port: E2E_PORT,
+    env: { PORT: String(E2E_PORT) },
     // Reuse stays ON — booting a dev server per run costs more than it saves.
     // What makes it safe is `globalSetup`, which checks WHOSE server it is
     // rather than only that something answers (#1155).
