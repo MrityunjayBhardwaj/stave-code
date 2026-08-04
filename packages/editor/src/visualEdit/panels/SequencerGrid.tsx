@@ -137,12 +137,17 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
 
   const gainScoped = model ? gainInScope(model) : false
 
-  // Does this view place notes at all? A leaf-anchored projection writes by byte
-  // surgery at each note's own span, so it can change and delete what exists and
-  // can never create — said ONCE here rather than as a grid full of individually
-  // dead cells (#1070). The per-cell map below would refuse every one of them
-  // anyway; this is what lets the panel give a reason.
-  const placesNotes = model ? viewPlacesNotes(model) : false
+  // Does this view place notes ANYWHERE? Said ONCE here rather than as a grid
+  // full of individually dead cells with no reason on them (#1070) — the per-cell
+  // map below refuses each of them anyway; this is what lets the panel give a
+  // reason for the surface.
+  //
+  // ⚠ It ASKS, and no longer reads the write path. A leaf-anchored projection
+  // used to be creation-incapable by construction; since rests carry a span
+  // (#1154) some leaf grids take a note and most still do not, so the honest
+  // answer is per view and only the view can give it. Memoized for the same
+  // reason `placeable` is: `mutate` fires every pointermove of a drag.
+  const placesNotes = React.useMemo(() => (model ? viewPlacesNotes(model) : false), [model])
 
   // PROVE BEFORE OFFER, at the cell — the gesture this panel exists for.
   // `canToggleCell` runs the real op and asks the real writer, so it cannot
@@ -548,12 +553,28 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     data-playing={isPlaying ? 'true' : undefined}
                     data-seq-cell-inert={canPlace ? undefined : 'true'}
                     aria-disabled={canPlace ? undefined : true}
+                    // WHY THIS CELL IS INERT, and the two reasons are not
+                    // interchangeable. On the element and alt paths every
+                    // remaining refusal is part-relative — a sound sustaining
+                    // through the clicked column, which the corpus gate pins at
+                    // 31 of 11,633, all on `,`-stacked units. On a leaf grid the
+                    // reason is never that: the column simply has no span to
+                    // write through.
+                    //
+                    // ⚠ SO IT CANNOT KEY ON `placesNotes` ANY MORE (#1154). That
+                    // used to be the same question as "is this leaf-anchored?";
+                    // now 17 leaf units place a note somewhere, and keying the
+                    // wording on the view-level answer told ~950 of their refused
+                    // cells that a sound was sustaining through them when none
+                    // was. The affordance is decided by the op; only the sentence
+                    // is decided here, and it reads the path because the path is
+                    // what makes the two reasons different.
                     title={
                       canPlace
                         ? undefined
-                        : placesNotes
-                          ? 'Adding a step here would change how long another sound plays — the grid has no way to write that.'
-                          : 'This pattern edits its existing notes — add steps in the code view.'
+                        : model.leafSource
+                          ? 'This pattern edits its existing notes — add steps in the code view.'
+                          : 'Adding a step here would change how long another sound plays — the grid has no way to write that.'
                     }
                     onPointerDown={(e) => {
                       e.preventDefault()

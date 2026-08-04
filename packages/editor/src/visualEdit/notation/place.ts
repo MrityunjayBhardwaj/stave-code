@@ -22,32 +22,111 @@
  */
 import { cellOn, clampLane, clampPartAtOnset, isCellOn } from './model'
 import type { PianoRollModel, StepCell, StepGridModel } from './model'
+import { midiToPitch, pitchToMidi } from './pitch'
 import { ifGridSpellable, ifRollSpellable, serializeStepGrid } from './serialize'
 
 /**
- * Does this view accept a NEW note at all?
+ * Does this view accept a NEW note ANYWHERE?
  *
- * Not a per-cell question and not a prediction of the writer — it reads WHICH
- * writer the parse chose. A leaf-anchored model (#986) is written by byte
- * surgery at each note's own `location_` span, so changing or deleting a note
- * that exists works, and creating one cannot: a new note has no span to operate
- * on, and `serialize*` correctly returns null every time. Measured over the
- * corpus, leaf placements are refused 3,584/3,584 on the grid and
- * 18,386/18,386 on the roll, while deletes on the same units go through
- * (63 written / 19 refused) — so this is a property of the path, not a bug in
- * the writer and not a stale-anchoring artefact (#1070).
+ * The panel asks so it can state the refusal ONCE — "this view edits the notes
+ * already here" — instead of rendering a surface of individually-greyed cells
+ * with no reason on any of them (#1070). So the question it must answer is
+ * exactly "is every placement on this surface refused?", and the answer is
+ * `true` whenever at least one is taken, or when there is nothing to ask about.
  *
- * The per-cell gate below would already refuse each of those placements. This
- * exists so the panel can say it ONCE, as a view-level fact, rather than render
- * 136 units' worth of individually-greyed cells with no reason given.
+ * ⚠ A VIEW WITH NO EMPTY CELL ANSWERS `true`, deliberately. There is nothing to
+ * grey and nothing to explain on a full grid, and answering `false` there would
+ * put the banner on hundreds of corpus units that refuse nothing.
+ *
+ * ⚠ IT ASKS THE OP, and that is the whole of #1154's second consequence. This
+ * used to return `model.leafSource == null` — a PATH inference, resting on
+ * "byte surgery has no span to create, so a leaf view accepts nothing, by
+ * construction". Indexing rests (#1154) gave those columns a span after all, so
+ * the construction argument is simply false now: 248 of 3,584 leaf grid cells
+ * across 17 of 82 leaf units are placements the writer WILL take, and inferring
+ * from the path would withhold an affordance from every one of them. Derived
+ * from `toggleCell`/`placeNote` for the same reason `can<Op>` is — a view-level
+ * predicate that PREDICTS the op is a second oracle, and it drifts the moment
+ * the op's reach moves, which is exactly what happened here ([[PV241]]).
+ *
+ * The roll's answer has not moved: the roll's leaf writer indexes no rests, so
+ * it still refuses every one of them, and this now MEASURES that rather than
+ * asserting it. Whatever the reach is, the panel reads it instead of assuming it.
+ *
+ * ⚠ THE ROLL ASKS ABOUT ONE ROW IT DOES NOT HOLD, and that is not a flourish —
+ * without it the answer is wrong on real units. The roll's display is PADDED
+ * around the content (`contentRange`), so a roll whose every content cell is
+ * full still shows empty rows and still takes a click on them. Asking only
+ * about content pitches made "the content is full" read as "nothing to ask",
+ * which said "this view places notes" on 4 leaf rolls where every row the user
+ * can actually click is refused.
+ *
+ * It is consulted only once every held cell has refused, so it decides nothing
+ * on a view that places anything. And it is representative rather than lucky,
+ * measured rather than argued: swept over each such view's WHOLE padded range,
+ * the answer is uniform — every element roll takes every padded row, every leaf
+ * roll takes none. `every view answering no refuses its whole padded range` is
+ * pinned in `placement-admissibility.test.ts` so a row that disagrees is a
+ * failure rather than a surprise.
+ *
+ * ⚠ ASKING THE OP ALSO CORRECTS THREE ROLLS IN THE OTHER DIRECTION, and they
+ * are the path rule's error, not the unheld row's — measured by removing the
+ * row and watching them stay caught. `<~ [~@3.5 d2@2 c#2@2.5]>` and two like it
+ * are element-path rolls, so the path rule called them placeable; they refuse
+ * all 267 / 84 / 96 placements over their full padded range, and every one of
+ * those was being offered.
  *
  * ⚠ Distinct from writer REACH, which asks "can this view write back?" — a
  * question every leaf view answers yes to, and the axis #986 raised (grid
  * 80→131, roll 56→85). Those figures are true and unaffected; acceptance of new
- * content is a different axis that nothing measured until now.
+ * content is a different axis.
+ *
+ * COST, measured over the corpus per view: grid p50 0.002ms / p99 0.55ms /
+ * worst 6.7ms, roll p50 0.004ms / p99 1.0ms / worst 5.7ms — against the grid's
+ * own per-cell `placeable` map at p99 2.25ms / worst 13.1ms, which the panel
+ * already pays. It stops at the first placement taken, so every view that
+ * places anything answers in a cell or two and only a surface refusing
+ * everything is scanned in full — which is the surface whose answer needs the
+ * whole scan. Both panels memoize it on the model, because `mutate` fires on
+ * every pointermove of a drag.
+ *
+ * And the memo is not the only thing standing between the full scan and a
+ * per-frame cost, which is worth saying because the memo alone would not be
+ * enough — a drag makes a new model every frame. The view that pays the whole
+ * scan is one that refuses everything, and on the roll that is a leaf view,
+ * which no drag can change: 0 of 54 leaf rolls accept a velocity edit at all,
+ * against 395 of 491 elsewhere. The expensive answer and the draggable surface
+ * are disjoint populations, measured rather than hoped.
  */
-export function viewPlacesNotes(model: { leafSource?: unknown }): boolean {
-  return model.leafSource == null
+export function viewPlacesNotes(model: StepGridModel | PianoRollModel): boolean {
+  let asked = 0
+  if ('lanes' in model) {
+    for (let lane = 0; lane < model.lanes.length; lane++)
+      for (let col = 0; col < model.steps; col++) {
+        if (isCellOn(model.lanes[lane].cells[col])) continue
+        asked++
+        if (canToggleCell(model, lane, col, true)) return true
+      }
+    return asked === 0
+  }
+  // The rows the panel shows: the model's own content, plus one it does not
+  // hold, because the display is padded around the content and an empty padded
+  // row takes a click like any other. Spelled the way the panel spells a row —
+  // bare number on a numeric pattern (#469), note name otherwise — so an
+  // unspellable token cannot be mistaken for an unwritable placement.
+  const pitches = new Set(model.notes.map((n) => n.pitch))
+  const midis = [...pitches].map(pitchToMidi).filter((m): m is number => m !== null)
+  if (midis.length > 0) {
+    const below = Math.min(...midis) - 1
+    pitches.add(model.numeric ? String(below) : midiToPitch(below))
+  }
+  for (const pitch of pitches)
+    for (let step = 0; step < model.steps; step++) {
+      if (model.notes.some((n) => n.pitch === pitch && n.start === step)) continue
+      asked++
+      if (canPlaceNote(model, pitch, step, 1)) return true
+    }
+  return asked === 0
 }
 
 /**

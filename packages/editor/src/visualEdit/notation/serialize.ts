@@ -585,7 +585,46 @@ function spliceByLeaf(model: StepGridModel): string | null {
     // The one add that IS a byte replacement: a lone atom swapped for another in
     // a lone-atom column. Anything else added has no leaf of its own.
     const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1
-    if (added.length > 0 && !swap) return null
+    if (added.length > 0 && !swap) {
+      // A REST'S BYTES SWAPPED FOR A NOTE (#1154).
+      //
+      // What motivated it: a delete writes `~` over the note's own bytes, and putting
+      // the note back was then refused for want of a span, because a rest sounds
+      // nothing and the anchors are built from ENGINE ONSETS. Measured over the
+      // corpus, NOT ONE leaf ask round-tripped (0 of 402) — the user could not undo
+      // their own delete anywhere on this path. Rests are now indexed beside the
+      // anchors, so the byte replacement exists after all.
+      //
+      // ⚠ IT IS NOT SCOPED TO THE REST WE JUST WROTE, AND IT CANNOT BE. That was the
+      // argument this branch was first written under — "those bytes are ours, so
+      // restoring them authors nothing" — and it is unimplementable rather than
+      // wrong: the model is re-read from the document after every write, so nothing
+      // marks a `~` as one this writer produced, and `isOurs(rest)` has no data to
+      // read. Allowing the undo therefore allows placing on ANY indexed rest, and
+      // does: 248 of 3,584 empty cells across 17 of 82 leaf units, on pristine
+      // documents nobody deleted from.
+      //
+      // That is defensible on its own terms rather than by inheritance. Swapping a
+      // rest's bytes for a note is the most basic grid edit there is, every other
+      // write path already does it, and the structure the user wrote is untouched:
+      // one token becomes another in a slot that already existed. What is still
+      // refused is AUTHORING a slot — every structural byte is copied, never
+      // generated.
+      //
+      // Still the narrowest form of the swap: the column must hold NO sounding leaf
+      // (so nothing is displaced), exactly one sound must be arriving (never a
+      // chord), and a rest span must have been indexed for that column. Adding a
+      // second sound beside an existing one is authoring a chord and still refuses.
+      const rest = ls.rests?.[c]
+      if (rest && anchors.length === 0 && added.length === 1 && after.length === 1) {
+        const key = `${rest.start}:${rest.end}`
+        const prev = want.get(key)
+        if (prev && prev.text !== added[0]) return null
+        want.set(key, { span: rest, text: added[0] })
+        continue
+      }
+      return null
+    }
     for (const a of anchors) {
       const text = swap ? added[0] : gone.includes(a.atom) ? '~' : a.atom
       const key = `${a.span.start}:${a.span.end}`

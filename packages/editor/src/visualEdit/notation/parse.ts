@@ -1833,6 +1833,132 @@ function projectionEditSafe(
 /* ── leaf-anchored projection: write-back without a printer (#986) ─ */
 
 /**
+ * Where each REST sits — the span of the `~` (or `-`) occupying a column, per column.
+ *
+ * WHY THIS IS NOT PART OF `leafAnchors`. An anchor is an atom the grid SHOWS, and
+ * lanes are built from the anchor set; a rest shows nothing and must not become a
+ * lane. Rests are also invisible to `leafAnchors`'s input by construction — it reads
+ * ENGINE ONSETS, and a rest produces no hap, which is exactly why an add landing on a
+ * `~` was refused for want of a span (#1154). So they are indexed alongside, in their
+ * own field, and consumed by the one write branch that needs them.
+ *
+ * THE COLUMN IS OBSERVED, NEVER COMPUTED. Working out which column a `~` occupies from
+ * the AST would mean re-deriving Strudel's timing — weights, `*n`, nesting, alternation
+ * — in our own arithmetic, which is the hand-rolled-grammar mistake this whole file
+ * exists to have stopped making. Instead each rest is replaced by a DISTINCT sounding
+ * sentinel and the engine is asked where it lands. The engine decides; we read.
+ *
+ * All rests are probed in ONE substituted string rather than one probe each, so this
+ * costs the same `bars` queries however many rests a unit has.
+ *
+ * Returns nulls throughout (not a refusal) whenever anything is unclear — an
+ * unparseable probe, a sentinel that did not sound, two rests claiming one column. A
+ * missing rest span only means the pre-#1154 refusal still stands for that column, so
+ * being wrong in this direction costs reach and never correctness.
+ */
+function restSpansByColumn(
+  src: string,
+  perBar: number,
+  bars: number,
+): (LeafSpan | null)[] | null {
+  let ast: KPattern
+  try {
+    ast = krillParse('"' + src + '"') as KPattern
+  } catch {
+    return null
+  }
+  // Collect every rest atom's own tight span. The recorded `start` is untrustworthy —
+  // krill's padding lands on either side by syntax — so the token is re-found from the
+  // first non-space at or after it, and its length is the atom's own text.
+  const spans: LeafSpan[] = []
+  const walk = (node: KPattern | KElement | KAtom | undefined): void => {
+    if (!node || typeof node !== 'object') return
+    if (node.type_ === 'pattern') {
+      for (const el of (node as KPattern).source_ ?? []) walk(el)
+      return
+    }
+    if (node.type_ === 'element') {
+      const el = node as KElement
+      const inner = el.source_
+      if (inner && (inner as KAtom).type_ === 'atom') {
+        const atom = inner as KAtom
+        const loc = el.location_
+        if (isRestAtom(atom) && loc) {
+          let s = loc.start.offset - 1
+          while (s < src.length && /\s/.test(src[s])) s++
+          if (src.slice(s, s + atom.source_.length) === atom.source_)
+            spans.push({ start: s, end: s + atom.source_.length })
+        }
+      } else walk(inner as KPattern)
+      return
+    }
+  }
+  walk(ast)
+  if (spans.length === 0) return null
+
+  // One probe string, each rest a distinct sentinel. Substituted back-to-front so the
+  // earlier spans keep their offsets.
+  const SENTINEL = (i: number): string => `qzrest${i}`
+  let probeSrc = src
+  const ordered = [...spans].sort((a, b) => b.start - a.start)
+  for (let i = 0; i < ordered.length; i++) {
+    const s = ordered[i]
+    probeSrc = probeSrc.slice(0, s.start) + SENTINEL(i) + probeSrc.slice(s.end)
+  }
+  let probePat: unknown
+  try {
+    probePat = reifyMini(probeSrc)
+  } catch {
+    return null
+  }
+  // The FORWARD map (rest → the columns it sounds in) is what the engine tells us and
+  // is reliable. The map the writer needs is the INVERSE, and that is only a function
+  // where exactly one rest reaches a column — so claims are collected per column and
+  // resolved afterwards, never first-one-wins.
+  const size = perBar * bars
+  const claims: Array<Set<number>> = Array.from({ length: size }, () => new Set())
+  const located = new Set<number>()
+  for (let b = 0; b < bars; b++) {
+    const read = readGridOnsets(probePat, b)
+    if (!read.ok) return null
+    for (const o of read.onsets) {
+      const c = b * perBar + Math.round(o.pos * perBar)
+      if (c < 0 || c >= size) continue
+      for (const atom of o.atoms) {
+        const m = /^qzrest(\d+)$/.exec(atom)
+        if (!m) continue
+        const idx = Number(m[1])
+        if (idx >= ordered.length) continue
+        claims[c].add(idx)
+        located.add(idx)
+      }
+    }
+  }
+  // ── Two guards, and their measured cost is recorded because only one of them has
+  //    a price. Both were break-tested against the full corpus sweep (#1154).
+  //
+  // (a) EVERY rest must have been located, or the inverse map is built from a partial
+  //     picture: a column can look unambiguous while an unseen rest also sits there.
+  //     A rest inside an alternation arm that does not sound within the detected
+  //     period is exactly such a rest.
+  //     MEASURED: removing this changes NOTHING on the corpus — same 72 restored, same
+  //     zero losses. It is kept as DEFENSIVE, not as a fix for an observed defect, and
+  //     it is honest to say so: it costs no reach, and the hazard it names is real and
+  //     silent. Do not cite it as the thing that fixed a bug; it is not.
+  if (located.size !== ordered.length) return null
+  // (b) A column reached by TWO different rests cannot say which one a delete blanked,
+  //     and picking either would write the user's note into a different voice of their
+  //     own stack.
+  //     MEASURED, and this one has a price: first-of-set instead of unambiguous
+  //     restores 76 asks rather than 72, all byte-exact, losing nothing on this corpus.
+  //     Kept anyway — four extra asks are not worth a rule whose correctness I can only
+  //     state as "it happened to pick right four times out of four". Attributing a rest
+  //     to the stack PART whose lane is being written would earn those four back with a
+  //     reason; that is a widening for its own measurement, not a guess to make here.
+  return claims.map((s) => (s.size === 1 ? ordered[[...s][0]] : null))
+}
+
+/**
  * The LAST fallback for the step grid: project what the pattern plays and anchor
  * every cell to the ATOM's own source span, so an edit replaces that note's bytes
  * and touches nothing else.
@@ -1886,6 +2012,9 @@ function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
   // that does nothing), so every anchor has an onset to take a length from.
   const played = columnsFromOnsets(perCycle, perBar, bars)
   if (played === null) return no('irrational-onset')
+  // Indexed alongside the anchors, never into them (#1154). A null here costs reach
+  // and nothing else, so this never turns a projection down.
+  const rests = restSpansByColumn(src, perBar, bars)
   const model: StepGridModel = {
     steps: perBar * bars,
     ...(bars > 1 ? { bars } : {}),
@@ -1897,7 +2026,7 @@ function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
         })),
       ),
     ),
-    leafSource: { src, cols },
+    leafSource: { src, cols, ...(rests ? { rests } : {}) },
   }
   if (!leafEditSafe(model, perBar, bars)) return no('edit-unsafe')
   if (!leafViewUsable(model)) return no('view-unusable')

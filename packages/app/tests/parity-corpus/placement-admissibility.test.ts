@@ -31,6 +31,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePianoRoll, parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
 import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { midiToPitch, pitchToMidi } from '../../../editor/src/visualEdit/notation/pitch'
 import { ungatedPlace, ungatedToggle } from './ungatedOps'
 import {
   canPlaceNote,
@@ -109,11 +110,13 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     let disagreements = 0
     const examples: string[] = []
     let leafOffered = 0
+    let leafUnitsOffering = 0
     for (const mini of minis) {
       const r = parseStepGrid(mini)
       if (!r.ok) continue
       const p = pathOf(r.model)
       by[p].units++
+      let offeredHere = 0
       for (let lane = 0; lane < r.model.lanes.length; lane++) {
         for (let col = 0; col < r.model.steps; col++) {
           if (isCellOn(r.model.lanes[lane].cells[col])) continue // placement only
@@ -127,9 +130,11 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
               examples.push(`${JSON.stringify(mini)} [${lane},${col}] offered=${offered} writable=${writable}`)
           }
           if (!offered) by[p].refused++
+          if (offered) offeredHere++
           if (p === 'leaf' && offered) leafOffered++
         }
       }
+      if (p === 'leaf' && offeredHere > 0) leafUnitsOffering++
     }
 
     // THE CLAIM: the offer equals what the writer will take, whatever that is.
@@ -146,8 +151,25 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     //
     //   element   1,748 → 31    (15.0% → 0.27% refused)
     //   alt         512 → 0
-    //   leaf      3,584 → 3,584 (unchanged, and must be: byte surgery has no
-    //                            span to create, so #1070 is untouched by this)
+    //   leaf      3,584 → 3,584 (unchanged by the clamp — and then moved by
+    //                            #1154, see below)
+    //
+    // ⚠ THE LEAF FIGURE MOVED IN PHASE 3, AND THE SENTENCE THAT USED TO EXPLAIN
+    // IT WAS FALSIFIED RATHER THAN OUTDATED. It read "byte surgery has no span
+    // to create, so #1070 is untouched by this". A rest is real bytes with a
+    // real span; it produced no hap, so nothing indexed it, and that — not the
+    // nature of byte surgery — is why a leaf column took nothing. #1154 indexes
+    // rests beside the anchors, so a column holding a `~` now has a span to
+    // write through, and 248 of the 3,584 are placements the writer takes:
+    // 3,584 → 3,336 refused, across 17 of the 82 leaf units.
+    //
+    // The scope this was approved under — "only the `~` WE just wrote, undoing
+    // the user's own delete" — turned out not to exist. The model is re-read
+    // from the document after every write, so nothing marks a rest as one this
+    // writer produced, and there is no line of code that could tell the two
+    // apart. The wide version is what the code can express and it is the one
+    // that shipped: a rest's bytes swapped for a note is the most basic grid
+    // edit there is, and every other write path already does it.
     //
     // ⚠ THE 31 ARE THE PREDICTED RESIDUAL, not a leftover. #1064 measured its
     // own population before any fix existed: of 1,748 declines, 1,717 (98.2%)
@@ -185,8 +207,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     ).toEqual({ asks: 11633, refused: 31 })
     expect(
       { asks: by.leaf.asks, refused: by.leaf.refused },
-      'leaf path — 100.0%, refused by construction, unmoved by the clamp',
-    ).toEqual({ asks: 3584, refused: 3584 })
+      'leaf path — 93.1% refused; the 248 taken are the columns holding a rest (#1154)',
+    ).toEqual({ asks: 3584, refused: 3336 })
     expect(
       { asks: by.alt.asks, refused: by.alt.refused },
       'alt path — 512 → 0 refused',
@@ -200,11 +222,20 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // that sits after a failing one never runs, so bundling it into this body would
     // make it evidence for nothing on exactly the breaks that matter.
 
-    // #1070's own invariant: a leaf-anchored grid accepts NO placement. Byte
-    // surgery edits a note's own span, and a new note has no span — so this is a
-    // property of the path, and `viewPlacesNotes` is entitled to answer it once
-    // for the whole view instead of the panel asking 3,584 times.
-    expect(leafOffered, 'a leaf-anchored grid takes no new note at all').toBe(0)
+    // WHICH LEAF PLACEMENTS, not just how many — the same rule the residual
+    // above follows. 248 cells is a number that could arrive from anywhere; that
+    // they cluster on 17 of the 82 leaf units is the shape that says they are
+    // rest columns and not a leak spread thinly across the path.
+    //
+    // ⚠ THIS ASSERTION USED TO READ `leafOffered === 0`, WITH "a leaf-anchored
+    // grid takes no new note at all" on it. That was #1070's invariant and it is
+    // now false — see the phase-3 note above. It is re-pinned rather than deleted
+    // because the number is exactly what would move if the rest index ever
+    // widened past what it was measured to reach.
+    expect(
+      { leafOffered, leafUnitsOffering },
+      'leaf placements the writer takes, and how many units they sit on (#1154)',
+    ).toEqual({ leafOffered: 248, leafUnitsOffering: 17 })
   })
 
   /**
@@ -389,15 +420,38 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // the population must be non-empty, or the comparison above reports on nothing
     expect(compared, 'accepted placements compared').toBeGreaterThan(1000)  })
 
-  it('viewPlacesNotes answers the PATH question, and no non-leaf view lost placement', () => {
+  /**
+   * ⚠ THIS TEST NO LONGER ASKS A PATH QUESTION, and the rename is the finding.
+   *
+   * It used to assert `viewPlacesNotes(model) === !model.leafSource` — a view-level
+   * predicate PREDICTING the op, justified by "byte surgery has no span to create,
+   * so a leaf view accepts nothing, by construction". #1154 gave rest columns a span
+   * and the construction argument became false, at which point the prediction was
+   * withholding the affordance on 248 cells the writer would have taken.
+   *
+   * So the claim is now the one that was always the point of asking at the view:
+   * THE VIEW-LEVEL ANSWER AGREES WITH EVERY CELL ON THAT VIEW. That is what entitles
+   * the panel to state it once instead of greying a surface with no reason on any of
+   * it — and unlike the path rule, it cannot be falsified by the op's reach moving,
+   * because it is derived from the op.
+   *
+   * ⚠ NOT A TAUTOLOGY, though it restates the function's own rule ([[P370]]). The
+   * function EARLY-EXITS on the first acceptance and enumerates its own asks; this
+   * arm counts every cell independently, so a wrong ask set or a wrong exit shows up
+   * as a disagreement. Proven by breaking it: restoring `model.leafSource == null`
+   * turns this red on the first leaf grid that takes a note.
+   */
+  it('viewPlacesNotes agrees with every cell of the view it describes', () => {
     let leafViews = 0
+    let leafViewsPlacing = 0
     let nonLeafWithAnAsk = 0
     let nonLeafWithSomeOffer = 0
+    let viewsWithNoAsk = 0
+    const disagreements: string[] = []
     for (const mini of minis) {
       const r = parseStepGrid(mini)
       if (!r.ok) continue
       const places = viewPlacesNotes(r.model)
-      expect(places, 'viewPlacesNotes must read the write path').toBe(!r.model.leafSource)
       let asks = 0
       let offers = 0
       for (let lane = 0; lane < r.model.lanes.length; lane++)
@@ -406,18 +460,31 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
           asks++
           if (canToggleCell(r.model, lane, col, true)) offers++
         }
-      if (!places) {
+      // THE CLAIM, stated so it holds for every view on every path: the view says
+      // "no" exactly when it was asked something and refused all of it. A view with
+      // no empty cell says "yes" — there is nothing to grey and nothing to explain,
+      // and that branch is not academic: 418 corpus grids have no empty cell at all,
+      // and a naive `some()` would have put the banner on every one of them.
+      if (places !== (asks === 0 || offers > 0) && disagreements.length < 8)
+        disagreements.push(`${JSON.stringify(mini)} view=${places} asks=${asks} offers=${offers}`)
+      if (asks === 0) viewsWithNoAsk++
+      if (r.model.leafSource) {
         leafViews++
-        // The view-level answer and every cell on it must say the same thing —
-        // which is what entitles the panel to say it ONCE instead of greying
-        // 3,584 cells with no reason on them (#1070).
-        expect(offers, 'a leaf view offers no placement anywhere').toBe(0)
+        if (places) leafViewsPlacing++
       } else {
         if (asks > 0) nonLeafWithAnAsk++
         if (offers > 0) nonLeafWithSomeOffer++
       }
     }
+    expect(disagreements.join('\n')).toBe('')
     expect(leafViews, 'leaf grids in the corpus').toBe(82)
+    // WHAT THE PATH RULE WOULD HAVE SAID, pinned as the delta rather than described:
+    // it answered `false` on all 82. 19 of them now answer `true` — the 17 that take
+    // a note on a rest column, plus 2 with no empty cell to ask about.
+    expect(leafViewsPlacing, 'leaf grids that take a note somewhere (#1154)').toBe(19)
+    // The denominators, so none of the above can quietly become a claim about an
+    // empty set — and the positive control for the no-ask branch.
+    expect(viewsWithNoAsk, 'grids with no empty cell at all').toBe(418)
     // THE OTHER HALF OF THE CLAIM, and the one that would catch an over-broad
     // gate: suppressing placement on leaf views must not have suppressed it
     // anywhere else. Every non-leaf view that has an empty cell at all still
@@ -425,5 +492,56 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // greyed a whole surface would show up here as a shortfall.
     expect(nonLeafWithAnAsk, 'non-leaf grids with any empty cell').toBe(468)
     expect(nonLeafWithSomeOffer, 'non-leaf grids that still take a note').toBe(468)
+  })
+
+  /**
+   * THE ROLL'S HALF, and it exists because the roll's ask space is NOT the surface
+   * the panel draws. `contentRange` pads the display around the notes, so a roll
+   * whose every content cell is full still shows empty rows and still takes a click
+   * on them — which means `viewPlacesNotes` cannot read "no empty content cell" as
+   * "nothing to ask". It probes one row the model does not hold for exactly that
+   * reason, and this is the arm that says the one row is representative.
+   *
+   * THE CLAIM: every roll answering "this view places nothing" refuses its WHOLE
+   * padded display range, not merely the row that was probed. The range is rebuilt
+   * here from `contentRange`'s own rule (±2 semitones, which is the panel's) — a
+   * deliberate second oracle used as a control and never to decide anything, the one
+   * use [[PV192]] permits.
+   */
+  it('roll: a view that says it places nothing refuses its whole padded range', () => {
+    let saidNo = 0
+    let rowsSwept = 0
+    const leaks: string[] = []
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok || viewPlacesNotes(r.model)) continue
+      const m = r.model
+      saidNo++
+      const midis = [...new Set(m.notes.map((n) => n.pitch))]
+        .map(pitchToMidi)
+        .filter((x): x is number => x !== null)
+      if (midis.length === 0) continue
+      for (let midi = Math.min(...midis) - 2; midi <= Math.max(...midis) + 2; midi++) {
+        const token = m.numeric ? String(midi) : midiToPitch(midi)
+        for (let step = 0; step < m.steps; step++) {
+          if (m.notes.some((n) => n.pitch === token && n.start === step)) continue
+          rowsSwept++
+          if (canPlaceNote(m, token, step, 1) && leaks.length < 8)
+            leaks.push(`${JSON.stringify(mini)} [${token},${step}] the view said no and the op said yes`)
+        }
+      }
+    }
+    expect(leaks.join('\n')).toBe('')
+    // Sampling depth PINNED, not merely bounded below ([[P364]]) — and pinned
+    // because the unheld row is exactly what this number counts. Drop it from
+    // `viewPlacesNotes` and this goes 57 → 53: the 4 leaf rolls whose content is
+    // full stop answering "no" while every row a user can click on them is still
+    // refused. Measured by removing it, not predicted — the first draft of this
+    // comment claimed 7, on the assumption that the 3 element rolls refusing
+    // their whole range needed the unheld row too. They do not; their content
+    // cells already refuse, so asking the op at all is what catches them.
+    // A `toBeGreaterThan` would have let the 4 vanish quietly.
+    expect(saidNo, 'rolls answering "places nothing"').toBe(57)
+    expect(rowsSwept, 'padded-range placements swept on them').toBeGreaterThan(1000)
   })
 })
