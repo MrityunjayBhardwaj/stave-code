@@ -28780,7 +28780,29 @@ __name(removeLane, "removeLane");
 
 // src/visualEdit/notation/place.ts
 function viewPlacesNotes(model) {
-  return model.leafSource == null;
+  let asked = 0;
+  if ("lanes" in model) {
+    for (let lane = 0; lane < model.lanes.length; lane++)
+      for (let col = 0; col < model.steps; col++) {
+        if (isCellOn(model.lanes[lane].cells[col])) continue;
+        asked++;
+        if (canToggleCell(model, lane, col, true)) return true;
+      }
+    return asked === 0;
+  }
+  const pitches = new Set(model.notes.map((n) => n.pitch));
+  const midis = [...pitches].map(pitchToMidi).filter((m) => m !== null);
+  if (midis.length > 0) {
+    const below = Math.min(...midis) - 1;
+    pitches.add(model.numeric ? String(below) : midiToPitch(below));
+  }
+  for (const pitch of pitches)
+    for (let step = 0; step < model.steps; step++) {
+      if (model.notes.some((n) => n.pitch === pitch && n.start === step)) continue;
+      asked++;
+      if (canPlaceNote(model, pitch, step, 1)) return true;
+    }
+  return asked === 0;
 }
 __name(viewPlacesNotes, "viewPlacesNotes");
 var paint = /* @__PURE__ */ __name((value) => value ? cellOn() : false, "paint");
@@ -28835,6 +28857,7 @@ function pasteNote(model, pitch, start, duration) {
 }
 __name(pasteNote, "pasteNote");
 var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value) => toggleCell(model, laneIndex, stepIndex, value) !== model, "canToggleCell");
+var canPlaceNote = /* @__PURE__ */ __name((model, pitch, start, duration) => placeNote(model, pitch, start, duration) !== model, "canPlaceNote");
 function partRoom(model, laneIndex, stepIndex) {
   const part = model.lanes[laneIndex]?.part ?? 0;
   let next = model.steps;
@@ -30574,7 +30597,7 @@ function SequencerGrid({ onResolution } = {}) {
   const [colorMode] = useNoteColorMode();
   const gestureRef = React36__namespace.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
-  const placesNotes = model ? viewPlacesNotes(model) : false;
+  const placesNotes = React36__namespace.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
   const placeable = React36__namespace.useMemo(
     () => model ? model.lanes.map(
       (lane, li) => lane.cells.map((c, si) => isCellOn(c) ? true : canToggleCell(model, li, si, true))
@@ -30828,7 +30851,7 @@ function SequencerGrid({ onResolution } = {}) {
                   "data-playing": isPlaying ? "true" : void 0,
                   "data-seq-cell-inert": canPlace ? void 0 : "true",
                   "aria-disabled": canPlace ? void 0 : true,
-                  title: canPlace ? void 0 : placesNotes ? "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that." : "This pattern edits its existing notes \u2014 add steps in the code view.",
+                  title: canPlace ? void 0 : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
                   onPointerDown: (e) => {
                     e.preventDefault();
                     if (resizeStart !== null) {
@@ -31153,7 +31176,7 @@ function PianoRollGrid({
       }));
     }
   }, [model]);
-  const placesNotes = model ? viewPlacesNotes(model) : false;
+  const placesNotes = React36__namespace.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
   const cols = model ? columnCount(model) : 0;
   const gainWritable = React36__namespace.useMemo(
     () => model ? serializeRollGain(model).kind !== "skip" : false,

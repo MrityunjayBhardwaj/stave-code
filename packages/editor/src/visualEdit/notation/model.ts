@@ -187,10 +187,14 @@ export interface LeafSource {
    * WHAT IT IS FOR (#1154). Deleting a note on a leaf grid writes `~` over that note's
    * own bytes, which is right. But a rest produces no hap, so nothing indexed it, and
    * putting the note back was refused for want of a span — the user could not undo
-   * their own delete anywhere on this path (0 of 402 asks over the corpus). Those bytes
-   * are OURS, written a moment ago over the user's note, so overwriting them again
-   * authors nothing the user did not write. That is why this narrow case is allowed
-   * where adding a note to a column that never had one is still refused.
+   * their own delete anywhere on this path (0 of 402 asks over the corpus).
+   *
+   * ⚠ IT DOES NOT — AND CANNOT — MARK WHICH RESTS ARE OURS. The model is re-read from
+   * the document after every write, so a `~` this writer produced and one the user
+   * typed are the same bytes with the same span and no way to tell them apart. So this
+   * field enables the undo AND placement on any rest a leaf grid shows: 248 of 3,584
+   * empty cells across 17 of 82 leaf units. What is still refused is a column that
+   * holds no leaf at all, where a note would have to AUTHOR a slot.
    *
    * Absent, or null at a column, simply means the older refusal still stands there.
    */

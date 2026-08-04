@@ -338,11 +338,20 @@ test.describe('Sequencer (#382)', () => {
   /**
    * #1070 — A LEAF-ANCHORED GRID SAYS WHAT IT CANNOT DO, once.
    *
-   * `<bd - - ->*2` is written by byte surgery at each note's own span, so it can
-   * change and delete the notes it holds and can never create one. Before this,
-   * the grid opened looking completely normal and swallowed every click on an
-   * empty cell — no write, no toggle, no message. Corpus-wide that was 3,584 of
-   * 3,584 grid placements and 18,386 of 18,386 roll placements.
+   * `<bd - - ->*2` is written by byte surgery at each note's own span, and no
+   * span the writer can reach covers the clicked column — so it can change and
+   * delete the notes it holds and creates nothing. Before this, the grid opened
+   * looking completely normal and swallowed every click on an empty cell — no
+   * write, no toggle, no message. Corpus-wide that was 3,584 of 3,584 grid
+   * placements and 18,386 of 18,386 roll placements.
+   *
+   * ⚠ THE VIEW-LEVEL MESSAGE IS NOW A MEASUREMENT, NOT A PATH VERDICT (#1154).
+   * `viewPlacesNotes` asks the op instead of reading `leafSource`, because rest
+   * columns became writable and 3,584 refused is now 3,336. THIS fixture is one
+   * of the 65 leaf grids that still refuse everything, which is what keeps the
+   * banner on it — so if the rest index ever reaches these columns, this test
+   * goes red and it is right to. The test below it holds the opposite case, on a
+   * leaf grid where the banner is correctly absent and the click writes.
    *
    * Observed through the REAL gesture on the REAL document, because the whole
    * defect was that the model and the document stayed untouched — which is
@@ -387,6 +396,42 @@ test.describe('Sequencer (#382)', () => {
     await held.click()
     await page.waitForTimeout(100)
     expect(await strudelValue(page), 'delete still writes on a leaf view').not.toBe(before)
+  })
+
+  /**
+   * #1154 — THE SAME PATH, THE OTHER ANSWER: a leaf grid that DOES take a note.
+   *
+   * `<~ oh ~@2 oh ~@3 oh>` is leaf-anchored exactly like the fixture above, and
+   * the path rule greyed it out for that reason alone. Its first column holds a
+   * `~` whose span the writer can reach, so the placement is real — no banner, a
+   * live cell, and a click that writes `<oh oh ~@2 oh ~@3 oh>`.
+   *
+   * OBSERVED THROUGH THE REAL GESTURE, on the real document, for the same reason
+   * the test above is: the whole defect class here is a click that changes
+   * nothing, which is indistinguishable from success unless the document is read
+   * back. And this is the arm the widening needs — the corpus sweeps count 248
+   * such cells, but only this says a user can reach one.
+   */
+  test('a leaf grid whose rest column is writable takes the note (#1154)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("<~ oh ~@2 oh ~@3 oh>")')
+    await placeCursorOn(page, 'oh')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await expect(grid).toHaveCount(1)
+
+    // no view-level refusal: this leaf grid is not creation-incapable
+    await expect(grid.locator('[data-seq-no-placement]')).toHaveCount(0)
+
+    const rest = grid.locator('[data-seq-cell="0:0"]')
+    await expect(rest).toHaveAttribute('aria-pressed', 'false')
+    await expect(rest).not.toHaveAttribute('data-seq-cell-inert', 'true')
+    await rest.click()
+    await page.waitForTimeout(120)
+    expect(await strudelValue(page), "the rest's bytes become a note, the rest of the notation untouched").toBe(
+      '$: s("<oh oh ~@2 oh ~@3 oh>")',
+    )
+    await expect(rest).toHaveAttribute('aria-pressed', 'true')
   })
 
   /**

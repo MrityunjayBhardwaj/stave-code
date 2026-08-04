@@ -175,8 +175,14 @@ describe('placement admissibility — the op refuses rather than going inert (#1
    * DELETES ARE NOT GATED BY THIS DECISION. A leaf view exists to edit what is
    * already there, and byte surgery at an existing note's own span is precisely
    * what it can do — so clearing a hit goes through on the same model that
-   * refuses a placement. This is the split that showed placement is unsupported
-   * BY CONSTRUCTION rather than broken (#1070): 63 deletes written vs 0 places.
+   * refuses a placement. This is the split that showed placement was unsupported
+   * rather than broken (#1070): 63 deletes written vs 0 places.
+   *
+   * ⚠ "0 places" WAS A MEASUREMENT AND IS NO LONGER THE FIGURE. #1070 read it as
+   * a property of byte surgery — no span to create — but the missing span was the
+   * REST's, which produced no hap and so was never indexed. #1154 indexes it, and
+   * 248 of 3,584 leaf placements now go through. The split above still holds: a
+   * column with no leaf and no rest is refused, and every delete is written.
    */
   it('a leaf view still clears the notes it holds', () => {
     const m = parse('<bd - - -> *2')
@@ -194,10 +200,13 @@ describe('placement admissibility — the op refuses rather than going inert (#1
  * measured over the corpus, NOT ONE leaf ask round-tripped — 0 of 402. The rest's
  * span is now carried beside the anchors, so the byte replacement exists.
  *
- * This does not reopen the boundary the suite above defends. A note placed where the
- * user never had one would mean AUTHORING a slot inside a structure that is theirs.
- * A `~` here is not their notation — it is ours, written over their note a moment
- * ago — so replacing it gives back what they wrote and invents nothing.
+ * ⚠ IT IS NOT SCOPED TO THE REST WE JUST WROTE, because it cannot be. The model is
+ * re-read from the document after every write, so nothing marks a `~` as one this
+ * writer produced — "ours" has no implementation. Allowing the undo allows placing
+ * on any indexed rest, and does: 248 of 3,584 empty cells across 17 of 82 leaf
+ * units, on documents nobody deleted from. The arms below say which boundary DID
+ * hold — a column with no leaf and no indexed rest, and a rest no delete can be
+ * attributed to — rather than claiming a narrowness the code does not have.
  */
 describe('a leaf grid takes back the note it just erased (#1154)', () => {
   const SRC = 'bd mt  bd [lt lt] lt lt lt@2'
@@ -225,13 +234,13 @@ describe('a leaf grid takes back the note it just erased (#1154)', () => {
   })
 
   /**
-   * THE BOUNDARY IS UNMOVED, and this is the arm that proves the fix is narrow
-   * rather than a general permission to add. `<bd - - -> *2` has no rest span for
-   * the column being clicked, so the placement is still refused — the same
-   * assertion the admissibility suite above makes, restated here so a future
-   * widening of the rest path has to break it deliberately.
+   * WHERE THE BOUNDARY ACTUALLY IS, now that "a note of ours" turned out not to be
+   * a distinction the code can make: a column with NO INDEXED REST. `<bd - - -> *2`
+   * writes `-` in the clicked column and the index still cannot attribute it to
+   * that column, so the placement is refused — restated here so a future widening
+   * of the rest path has to break it deliberately.
    */
-  it('still refuses a placement where no note of ours was erased', () => {
+  it('still refuses a placement on a column with no indexed rest', () => {
     const m = parse('<bd - - -> *2')
     expect(canToggleCell(m, 0, 1, true)).toBe(false)
     expect(serializeStepGrid(toggleCell(m, 0, 1, true))).toBe('<bd - - -> *2')
@@ -350,10 +359,28 @@ describe('pasteNote — a refused paste takes its own clear back (#528/#1064)', 
   })
 })
 
-describe('viewPlacesNotes — the PATH question, asked once per view (#1070)', () => {
-  it('is false for a leaf-anchored view and true otherwise', () => {
+describe('viewPlacesNotes — asked once per view, and it ASKS (#1070, #1154)', () => {
+  it('is false for a view that refuses everything and true otherwise', () => {
     expect(viewPlacesNotes(parse('<bd - - -> *2'))).toBe(false)
     expect(viewPlacesNotes(parse('bd ~ sd ~'))).toBe(true)
+  })
+
+  /**
+   * ⚠ AND IT IS NOT THE WRITE PATH, which is what this used to assert. Both minis
+   * here are leaf-anchored; the first refuses every cell and the second takes one,
+   * because #1154 indexed the rest's span and `spliceByLeaf` can write through it.
+   * A rule reading `!model.leafSource` answers `false` for both, and on the second
+   * that withholds a placement the writer would have taken.
+   */
+  it('is true for a leaf view whose rest columns take a note (#1154)', () => {
+    const m = parse('<cr@4 ~@5>')
+    expect(m.leafSource, 'the fixture must be on the leaf path or this proves nothing').toBeTruthy()
+    expect(viewPlacesNotes(m)).toBe(true)
+    let offered = 0
+    for (let lane = 0; lane < m.lanes.length; lane++)
+      for (let col = 0; col < m.steps; col++)
+        if (!isCellOn(m.lanes[lane].cells[col]) && canToggleCell(m, lane, col, true)) offered++
+    expect(offered, 'and the view is true BECAUSE a cell is').toBeGreaterThan(0)
   })
 
   /**
@@ -366,5 +393,19 @@ describe('viewPlacesNotes — the PATH question, asked once per view (#1070)', (
     expect(viewPlacesNotes(m)).toBe(false)
     for (let col = 0; col < m.steps; col++)
       if (!isCellOn(m.lanes[0].cells[col])) expect(canToggleCell(m, 0, col, true)).toBe(false)
+  })
+
+  /**
+   * THE BRANCH THAT IS NOT ABOUT REFUSAL AT ALL. A view with no empty cell is
+   * asked nothing, and answering "this view places nothing" there would put the
+   * panel's banner on 418 corpus grids that refuse none. The honest answer is
+   * that there is nothing to say.
+   */
+  it('is true for a view with no empty cell to ask about', () => {
+    // ONE sound, so there is one lane and no empty cell — `bd sd bd sd` looks
+    // full and is not: it opens two lanes, each empty where the other sounds.
+    const m = parse('bd bd bd bd')
+    expect(m.lanes.every((l) => l.cells.every((c) => isCellOn(c)))).toBe(true)
+    expect(viewPlacesNotes(m)).toBe(true)
   })
 })

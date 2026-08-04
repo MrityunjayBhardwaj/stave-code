@@ -275,10 +275,10 @@ export function PianoRollGrid({
   // The roll's half of placement admissibility (#1064/#1070) — the VIEW-level
   // question only, and that asymmetry with the grid is measured, not stylistic.
   //
-  // A leaf-anchored roll writes by byte surgery at each note's own span, so it
-  // cannot create one: 18,386 of 18,386 corpus placements on that path are
-  // refused, which is 96.3% of everything inert on this surface. This one
-  // boolean catches all of it, and costs nothing.
+  // A leaf-anchored roll writes by byte surgery at each note's own span, and the
+  // roll's leaf writer indexes no rest to swap, so it creates nothing: 18,386 of
+  // 18,386 corpus placements on that path are refused, which is 96.3% of
+  // everything inert on this surface. This one boolean catches all of it.
   //
   // The remaining 3.7% would need the grid's per-cell map, and here it does not
   // pay for itself. The roll's own paths are near-clean (element 0.9%, alt
@@ -292,7 +292,14 @@ export function PianoRollGrid({
   // real writer, so a refused click leaves the document untouched exactly as a
   // gated one would. What the 0.9% does not get is the affordance — unchanged
   // from today, and stated rather than quietly dropped.
-  const placesNotes = model ? viewPlacesNotes(model) : false
+  //
+  // ⚠ IT ASKS THE OP NOW rather than reading the write path (#1154). The roll's
+  // leaf writer indexes no rests, so its answer is the same `false` it always
+  // was — but it is measured rather than inferred, and it stops at the first
+  // acceptance, so a roll that places anything answers in one cell. Memoized on
+  // the model, because a leaf roll (which refuses everything and is therefore
+  // scanned in full) would otherwise pay for that scan on every render.
+  const placesNotes = React.useMemo(() => (model ? viewPlacesNotes(model) : false), [model])
   // How many columns this roll DRAWS — not `model.steps`, which is the pattern's length
   // and need not be a whole number of columns (#1087). See `columnCount`.
   const cols = model ? columnCount(model) : 0
