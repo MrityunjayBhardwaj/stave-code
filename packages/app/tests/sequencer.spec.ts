@@ -491,12 +491,16 @@ test.describe('Sequencer (#382)', () => {
 
     // the gesture: clear bd's only hit, emptying its lane
     await grid.locator('[data-seq-cell="0:0"]').click()
-    await page.waitForTimeout(200)
+    // Waited for rather than slept through: this is the write-back landing, and
+    // it is the same value whether or not the lane survives — an all-off lane
+    // writes nothing either way — so it settles the timing without being the
+    // assertion that matters.
+    await expect
+      .poll(() => strudelValue(page), { timeout: 8_000 })
+      .toBe('$: s("~ ~ ~ ~, hh hh hh hh")')
 
-    expect(await strudelValue(page), 'a silent lane writes nothing — the bytes lose bd').toBe(
-      '$: s("~ ~ ~ ~, hh hh hh hh")',
-    )
-    // THE AFFORDANCE: the document no longer names bd, the panel must still draw it.
+    // THE AFFORDANCE, and the reason this test exists: the document no longer
+    // names bd anywhere, so only the retained model can still be drawing it.
     expect(await voices(), 'the emptied bd lane survives in the retained model').toEqual([
       'bd',
       'hh',
@@ -505,9 +509,8 @@ test.describe('Sequencer (#382)', () => {
 
     // ...and it is a live row, not a dead one: the note goes back where it was.
     await grid.locator('[data-seq-cell="0:0"]').click()
-    await page.waitForTimeout(200)
-    expect(await strudelValue(page), 'clicking it back restores the source byte-for-byte').toBe(
-      SOURCE,
-    )
+    await expect
+      .poll(() => strudelValue(page), { timeout: 8_000 })
+      .toBe(SOURCE)
   })
 })
