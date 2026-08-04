@@ -118,8 +118,23 @@ const fanoutOf = (perColumn: { start: number; end: number }[][]): Map<string, nu
   return new Map([...cols].map(([k, seen]) => [k, seen.size]))
 }
 
+/**
+ * WHERE THE MULTIPLIER LIVES — read from the source adjacent to the span, never from the
+ * token, because an anchor's span covers `bd` and the `*4` that does the multiplying sits
+ * outside it. This is the number the decision NOT to split shared tokens rests on, so it
+ * is pinned rather than left in a comment: a justification nobody re-measures is exactly
+ * how a falsified claim survives in prose.
+ */
+// ⚠ NO DIGIT REQUIRED AFTER THE OPERATOR. A first cut demanded one and came out 2 short
+// of the probe on the roll; the two are `*<…>`-style PATTERNED multipliers, where the
+// count is itself a mini. The multiplication is still spelt on the token there, which is
+// the only thing this predicate is asking. The disagreement is why both exist.
+const multiplierOnToken = (src: string, end: number): boolean => /^\s*[*!@]/.test(src.slice(end))
+
 const gridTally = new Map<Path, Tally>()
 const rollTally = new Map<Path, Tally>()
+/** shared-leaf instances behind the refusals, split by where the multiplier is spelt */
+const split = { gridOn: 0, gridOff: 0, rollOn: 0, rollOff: 0 }
 
 for (const mini of minis) {
   let g: StepGridModel | null = null
@@ -151,6 +166,12 @@ for (const mini of minis) {
         if (serializeStepGrid({ ...g, lanes }) === null) {
           t.refused++
           if (shared) t.refusedShared++
+          if (ls && fan)
+            for (const a of ls.cols[c] ?? []) {
+              if ((fan.get(`${a.span.start}:${a.span.end}`) ?? 0) < 2) continue
+              if (multiplierOnToken(ls.src, a.span.end)) split.gridOn++
+              else split.gridOff++
+            }
         } else if (shared) t.wroteShared++
       }
     }
@@ -188,6 +209,13 @@ for (const mini of minis) {
       if (out === null) {
         t.refused++
         if (shared) t.refusedShared++
+        if (ls && fan)
+          for (const a of ls.anchors) {
+            if (a.start !== note.start) continue
+            if ((fan.get(`${a.span.start}:${a.span.end}`) ?? 0) < 2) continue
+            if (multiplierOnToken(ls.src, a.span.end)) split.rollOn++
+            else split.rollOff++
+          }
       } else if (shared) {
         t.wroteShared++
         // the residue's CAUSE, carried in the gate rather than left to an inert probe:
@@ -260,6 +288,17 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     const r = rollTally.get('leaf')!
     expect({ accepted: r.wroteShared, twinSurvives: r.wroteSharedTwin, unchanged: r.wroteSharedNoOp })
       .toEqual({ accepted: 24, twinSurvives: 24, unchanged: 24 })
+  })
+
+  it('only a FIFTH of the sharing is spelt on the token — the figure the design call rests on', () => {
+    // #1160 proposes splitting `bd*4` into `bd bd ~ bd` instead of refusing. That is only
+    // even expressible where the multiplier sits ON the token; everywhere else the token
+    // is multiplied by something enclosing it, and "splitting" would mean re-authoring
+    // notation the user wrote — the thing the leaf path exists to avoid.
+    //
+    // Pinned because it is load-bearing. The recommendation to keep refusing is exactly
+    // as good as this ratio, and prose stating it cannot notice when it stops being true.
+    expect(split).toEqual({ gridOn: 77, gridOff: 300, rollOn: 72, rollOff: 287 })
   })
 
   it('POSITIVE CONTROL — the non-leaf paths take the same gesture', () => {
