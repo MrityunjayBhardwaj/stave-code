@@ -76,7 +76,11 @@ interface Tally {
   refusedShared: number
   /** accepted deletes on a shared leaf — see the note at the assertion */
   wroteShared: number
-  /** of those, the ones a same-(start, pitch) twin survives — the roll's #1164 residue */
+  /**
+   * of those, the ones a same-(start, pitch) twin survives. Was #1164's residue tracker;
+   * now a STRUCTURAL check that the ask still models a click, because a click clears the
+   * whole cell and so cannot leave a twin. Must read 0 — see the assertion.
+   */
   wroteSharedTwin: number
   /** of those, the ones whose document comes back byte-identical to its source */
   wroteSharedNoOp: number
@@ -141,7 +145,7 @@ const gridTally = new Map<Path, Tally>()
 const rollTally = new Map<Path, Tally>()
 /** shared-leaf instances behind the refusals, split by where the multiplier is spelt */
 const split = { gridOn: 0, gridOff: 0, rollOn: 0, rollOff: 0 }
-/** control arm only -- see the note at its increment: the by-index residue the cell gesture replaced */
+/** control arm only — see the note at its increment: the by-index residue the cell gesture replaced */
 let byIndexResidue = 0
 
 for (const mini of minis) {
