@@ -450,4 +450,67 @@ test.describe('Sequencer (#382)', () => {
     await page.waitForTimeout(80)
     expect(await strudelValue(page)).toBe('$: s("bd ~ bd ~")')
   })
+
+  /**
+   * #1161 — CLEARING A LANE'S LAST NOTE MUST NOT TAKE THE LANE WITH IT.
+   *
+   * A lane with no sounding cell contributes no atom, so the writer spells it
+   * away entirely: `bd ~ ~ ~, hh hh hh hh` with bd cleared writes
+   * `~ ~ ~ ~, hh hh hh hh`, which names no bd at all. Re-parsing those bytes
+   * gives one lane. The panel does not re-parse — the model is held in state and
+   * kept whenever it would still write the document's bytes, and a silent lane
+   * writes nothing — so the row stays and the note can be put back. That is the
+   * only thing standing between the user and a one-way delete.
+   *
+   * TWO SINGLE LINES CARRY IT, in two different modules, and until now neither
+   * was asserted anywhere: the retention comparison in `useGridModel` and the
+   * fact that `toggleCell` maps lanes without ever pruning them. Either one
+   * changing removes the affordance silently — nothing throws, nothing else goes
+   * red, and the document is still correct. Hence a browser arm rather than a
+   * unit test: the retention is a runtime serialize comparison, and #1161's own
+   * corpus measurement got the opposite answer precisely by re-parsing instead of
+   * driving the panel. `tests/_1161-lane-survives.spec.ts` is the (inert)
+   * observation record of that; this is the guard.
+   */
+  test('a lane emptied of its last note stays on screen and takes the note back (#1161)', async ({
+    page,
+  }) => {
+    await boot(page)
+    const SOURCE = '$: s("bd ~ ~ ~, hh hh hh hh")'
+    await setStrudelCode(page, SOURCE)
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+
+    const voices = (): Promise<(string | null)[]> =>
+      grid
+        .locator('[data-seq-voice]')
+        .evaluateAll((els) => els.map((e) => e.getAttribute('data-seq-voice')))
+
+    expect(await voices(), 'both lanes drawn to start').toEqual(['bd', 'hh'])
+    await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
+
+    // the gesture: clear bd's only hit, emptying its lane
+    await grid.locator('[data-seq-cell="0:0"]').click()
+    // Waited for rather than slept through: this is the write-back landing, and
+    // it is the same value whether or not the lane survives — an all-off lane
+    // writes nothing either way — so it settles the timing without being the
+    // assertion that matters.
+    await expect
+      .poll(() => strudelValue(page), { timeout: 8_000 })
+      .toBe('$: s("~ ~ ~ ~, hh hh hh hh")')
+
+    // THE AFFORDANCE, and the reason this test exists: the document no longer
+    // names bd anywhere, so only the retained model can still be drawing it.
+    expect(await voices(), 'the emptied bd lane survives in the retained model').toEqual([
+      'bd',
+      'hh',
+    ])
+    await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'false')
+
+    // ...and it is a live row, not a dead one: the note goes back where it was.
+    await grid.locator('[data-seq-cell="0:0"]').click()
+    await expect
+      .poll(() => strudelValue(page), { timeout: 8_000 })
+      .toBe(SOURCE)
+  })
 })
