@@ -574,7 +574,7 @@ export function serializeByLeaf(
  * HOW BIG THE SHARED-LEAF REFUSAL IS — measured, because a refusal without a number
  * reads as an edge case and this one is half the surface (#1160). Over all 1527 corpus
  * minis, clearing every sounding cell of every leaf grid one at a time: 275 of 557
- * deletes across 82 units are refused — 49.4%. The roll's half is 276 of 591 (46.7%),
+ * deletes across 82 units are refused — 49.4%. The roll's half is 288 of 577 (49.9%),
  * two rates derived independently, which is the evidence that this belongs to the leaf
  * projection rather than to either surface. `delete-admissibility.test.ts` pins both.
  *
@@ -684,11 +684,18 @@ function spliceByLeaf(model: StepGridModel): string | null {
  *    last writer win would silently rewrite a note the user never touched.
  *
  * THE SHARED-LEAF REFUSAL HERE IS THE SAME SIZE AS THE GRID'S, and that is the finding
- * rather than a coincidence: 276 of 591 note deletes across 54 leaf rolls are refused
- * (46.7%) against the grid's 275 of 557 (49.4%), measured independently over the same
+ * rather than a coincidence: 288 of 577 cell deletes across 54 leaf rolls are refused
+ * (49.9%) against the grid's 275 of 557 (49.4%), measured independently over the same
  * corpus. Two surfaces with different edit vocabularies refusing at the same rate is
  * what says the property belongs to the leaf projection itself. #1160 was filed with
- * this half unmeasured, so the population is 551 asks and not the 275 it records.
+ * this half unmeasured, so the population is 563 asks and not the 275 it records.
+ *
+ * ⚠ THOSE ROLL FIGURES MOVED WHEN THE ASK WAS CORRECTED, NOT WHEN THE WRITER WAS (#1168).
+ * They were 276 of 591 (46.7%), posed by dropping one NOTE at a time — which `PianoRollGrid`
+ * never does. It deletes by CELL, taking every note at a (pitch, start), and the two differ
+ * on exactly the unisons. Posed as a click, 14 note-asks become 12 cell-asks and 12 of them
+ * refuse, so the rate rose to within half a point of the grid's. The agreement this
+ * paragraph rests on got STRONGER by asking the question the user can actually pose.
  * Pinned in `delete-admissibility.test.ts`; see `spliceByLeaf` for why splitting the
  * shared token is not the answer (only a fifth of the sharing is spelt on the token).
  *
