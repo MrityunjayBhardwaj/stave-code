@@ -218,6 +218,21 @@ describe('buildStripModels — an unlabelled statement takes no engine slot (#11
     expect(liveSlots(['s("bd*4")', 's("hh*8")'].join('\n'))).toEqual([])
   })
 
+  // ⚠ A LIMITATION THIS FIX DOES NOT REMOVE, pinned so it is visible rather than
+  // discovered. Whether a LONE bare pattern can meter still depends on whether the
+  // statement above it happens to be on the denylist, because an unrecognised head
+  // counts as a second track and makes the id ambiguous. `setcps` is listed and the
+  // pattern meters; `cpm` is not and it goes dark. That is pre-existing — the engine
+  // refused both before this change too — but it is now the ONLY thing the denylist
+  // still decides, so this arm is where a fix to the head question lands.
+  it('a lone bare pattern meters under a LISTED head and not under an unlisted one', () => {
+    expect(stripsOf('setcps(0.5)\ns("bd*4")').map((s) => s.captureId)).toEqual(['$0'])
+    // `cpm` is a real transport call the denylist has never heard of, so it is
+    // counted as a track and the pattern below it loses its join. Change this arm
+    // when that is fixed — do not delete it.
+    expect(liveSlots('cpm(120)\ns("bd*4")')).toEqual([])
+  })
+
   it('the live slots are exactly $0..$n-1 over the UNMUTED ANONYMOUS $: statements', () => {
     // The engine's rule restated as a property and checked against the mixer's
     // output, rather than a literal that would pass if both sides moved together.
