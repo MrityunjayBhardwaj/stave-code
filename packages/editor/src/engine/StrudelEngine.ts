@@ -16,22 +16,9 @@ import { getTierFlags, type TierFlags } from './tierFlags'
 import { resolveAlias } from './aliases'
 import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
 import { installMiniStringParser } from './stringParser'
-import { BARE_CAPTURE_ID as BARE_CAPTURE_ID_, resolveBareCaptureId } from './bareCapture'
+import { resolveBareCaptureId } from './bareCapture'
 
 type HapHandler = (event: HapEvent) => void
-
-/**
- * Capture id for the pattern a document with NO `.p()` call plays (#1094).
- *
- * `$0` is the id an anonymous `$:` would have taken, and that is the whole point:
- * the timeline's hap→lane join maps `$N` onto the positional `d{N+1}`, so haps
- * captured under it land on `d1` — the lane the IR already produces for a bare
- * statement. Picking a fresh name would have made an eval-only lane sitting
- * beside the IR one, which is the shape that duplicates a row.
- */
-// Re-exported from the module that OWNS the bare-capture decision, so the id and
-// the rule that refuses to use it cannot drift apart (#1097).
-const BARE_CAPTURE_ID = BARE_CAPTURE_ID_
 
 /**
  * Can this value answer a time query? The bare-capture fallback takes whatever

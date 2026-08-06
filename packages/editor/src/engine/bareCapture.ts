@@ -45,9 +45,14 @@ import { detectAllChunks } from '../visualEdit/chunkDetect'
 import { isTrackChunk } from '../visualEdit/mixer/stripModel'
 
 /**
- * The id an anonymous `$:` in first position would have taken. The hap→lane join
- * maps `$N` to the positional `d{N+1}`, so haps land on `d1` — the lane the IR
- * already produces for a bare statement.
+ * Capture id for the pattern a document with NO `.p()` call plays (#1094).
+ *
+ * `$0` is the id an anonymous `$:` in first position would have taken, and that
+ * is the whole point: the timeline's hap→lane join maps `$N` onto the positional
+ * `d{N+1}`, so haps captured under it land on `d1` — the lane the IR already
+ * produces for a bare statement. Picking a fresh name would have made an
+ * eval-only lane sitting beside the IR one, which is the shape that duplicates a
+ * row.
  */
 export const BARE_CAPTURE_ID = '$0'
 
