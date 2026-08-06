@@ -214,6 +214,20 @@ describe('#1163 — the roll probe ask-space vs the panel surface', () => {
       )
     }
 
+    // WHY THE `columnCount` AXIS IS ANSWER-NEUTRAL — asked rather than concluded from the
+    // break that stayed green. If the note-tail term never binds on this corpus, then
+    // `columnCount === model.steps` everywhere and the axis is defensive here, not
+    // curative; that is a fact about the corpus, not about the guard ([[PV283]]).
+    const tailBinds = models.filter(
+      ({ m }) => columnCount(m) !== columnCount({ steps: m.steps, notes: [] }),
+    ).length
+    const colsDiffer = models.filter(({ m }) => columnCount(m) !== m.steps).length
+    lines.push('')
+    lines.push(
+      `columnCount: note-tail term binds on ${tailBinds} of ${models.length} rolls; ` +
+        `columnCount ≠ steps on ${colsDiffer}`,
+    )
+
     console.log(lines.join('\n'))
   })
 })

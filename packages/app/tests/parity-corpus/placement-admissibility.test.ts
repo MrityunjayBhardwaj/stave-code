@@ -578,10 +578,18 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
    * per-cell map #1070 declined at 21.7ms. Paying that for no measured behaviour is the
    * wrong trade; pinning the equivalence costs nothing at runtime.
    *
-   * ⚠ THE POPULATIONS ARE PINNED, not bounded, because an equality that holds over an
-   * empty or shrinking set holds trivially. `fullSurfaceAsks` is the number this arm
-   * exists to be about — the surface the panel actually offers — and it is ~3× the
-   * probe's own, which is the whole point.
+   * ⚠ THE POPULATIONS ARE PINNED, not bounded, and on this corpus the PIN is the half
+   * that does the work — measured, not assumed. Reconstructing the pre-#1163 tree (drop
+   * the padding AND hardcode the probe back to `min − 1`) leaves every other arm in this
+   * file green, which is exactly what the issue said: nothing could fail. Under that same
+   * drift the equality below still holds, because the answer genuinely is invariant; what
+   * moves is the size of the surface, so `fullSurfaceAsks` is what catches it. The
+   * equality is here for the divergence that has not happened yet — a reach change that
+   * makes one of the four axes stop being answer-neutral.
+   *
+   * ⚠ AND ONE AXIS IS UNEXERCISED, said rather than implied: `columnCount === model.steps`
+   * on all 544 corpus rolls and the note-tail term (#1087) binds on 0 of them, so removing
+   * that term leaves this arm green. It is covered in principle and untested in fact.
    */
   it('roll: the cheap placement probe agrees with the panel’s whole drawn surface (#1163)', () => {
     let rolls = 0

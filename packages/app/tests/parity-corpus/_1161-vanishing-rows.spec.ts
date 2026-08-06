@@ -26,14 +26,13 @@
  *   3. that with the sticky rule applied the roll's number is zero, which is the shape the
  *      grid should be made to match.
  *
- * ⚠ THIS PROBE RE-IMPLEMENTS `contentRange`, AND THAT IS A KNOWN HAZARD, NOT AN OVERSIGHT.
- * The function and its constants (`DEFAULT_LO`/`DEFAULT_HI`/`MIN_SPAN`, ±2 semitones) are
- * module-private to `PianoRollGrid.tsx`, so nothing outside the panel can ask the real one.
- * `placement-admissibility.test.ts` already carries its own copy of the same rule, and
- * #1163 is precisely the defect that arises from having two: the probe row uses `min−1`
- * while the padding uses `min−2`, in two modules, with no arm between them. This is now a
- * THIRD copy. It is written to be obviously derivative and is flagged in #1163 rather than
- * silently added to the pile.
+ * ✅ THE RE-IMPLEMENTATION IS GONE (#1163 fixed). This probe used to carry a third copy of
+ * the panel's private padding rule, because the function and its constants were
+ * module-private to `PianoRollGrid.tsx` and nothing outside the panel could ask the real
+ * one. `rollContentRange` in `notation/model.ts` now owns it, so this asks the real rule
+ * and the figures below are about the panel rather than about a copy of it. The one
+ * remaining restatement is in `placement-admissibility.test.ts`, kept deliberately as a
+ * control arm and labelled there.
  */
 import { describe, it } from 'vitest'
 import fs from 'node:fs'
@@ -44,7 +43,7 @@ import {
   serializePianoRoll,
   serializeStepGrid,
 } from '../../../editor/src/visualEdit/notation/serialize'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { isCellOn, rollContentRange } from '../../../editor/src/visualEdit/notation/model'
 import { pitchToMidi } from '../../../editor/src/visualEdit/notation/pitch'
 import type { StepGridModel, PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
 
@@ -58,16 +57,9 @@ type Path = 'leaf' | 'alt' | 'source'
 const pathOf = (m: { leafSource?: unknown; altSource?: unknown }): Path =>
   m.leafSource ? 'leaf' : m.altSource ? 'alt' : 'source'
 
-/** ⚠ THIRD COPY of the panel's private rule — see the header, and #1163. */
-const DEFAULT_LO = 48
-const DEFAULT_HI = 72
-const MIN_SPAN = 12
-function contentRange(notes: { pitch: string }[]): { lo: number; hi: number } {
-  const midis = notes.map((n) => pitchToMidi(n.pitch)).filter((m): m is number => m !== null)
-  if (midis.length === 0) return { lo: DEFAULT_LO, hi: DEFAULT_HI }
-  const lo = Math.min(...midis) - 2
-  return { lo, hi: Math.max(Math.max(...midis) + 2, lo + MIN_SPAN) }
-}
+/** the panel's own rule, asked rather than restated (#1163) */
+const contentRange = (notes: { pitch: string }[]): { lo: number; hi: number } =>
+  rollContentRange({ notes })
 
 const laneKey = (l: { sound: string; part?: number }): string => `${l.sound}#${l.part ?? 0}`
 const bump = <K,>(m: Map<K, number>, k: K): void => void m.set(k, (m.get(k) ?? 0) + 1)

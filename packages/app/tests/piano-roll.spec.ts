@@ -315,6 +315,72 @@ test.describe('Piano Roll (#383)', () => {
     await expect(grid.locator('[data-roll-cell="72:0"]')).toHaveCount(1)
   })
 
+  /**
+   * THE ROLL'S HALF of "a panel may draw rows the document does not hold, free" — the
+   * same rule the Sequencer's *"a lane emptied of its last note…"* arm pins, satisfied by
+   * a different carrier. The grid keeps an emptied lane by RETAINING its model, because
+   * sound names are categorical and there is no next sound after `bd`. The roll does not
+   * need to: pitch is ORDINAL, so a row below the content is a well-defined row, and the
+   * padded + sticky range simply keeps drawing it.
+   *
+   * ⚠ c6 (midi 84), NOT c5. The neighbouring #391 test above uses c5 = 72, which is
+   * exactly the top of the default c3–c5 range — so its row survives whether or not the
+   * sticky range does anything, and it passes with the stickiness removed. Choosing a
+   * pitch OUTSIDE the default range is the whole difference between an arm and a green
+   * light: after the delete the model holds no pitch at all, so `rollContentRange` falls
+   * back to c3–c5 and row 84 is drawn only because the range never shrank.
+   *
+   * It asserts all three things the grid's arm does, because two of them are separately
+   * losable: the document really does lose the note, the row is still on screen, and
+   * clicking it back restores the source BYTE-FOR-BYTE. The third is what makes the row
+   * an affordance rather than a decoration.
+   */
+  test('a row emptied of its last note stays on screen and takes the note back (#1163)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c6 ~ ~ ~")') // c6 = midi 84, above the c3–c5 default
+    const drawer = await openRoll(page)
+    await enlargeDrawer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(grid.locator('[data-roll-cell="84:0"]')).toHaveCount(1)
+
+    await grid.locator('[data-roll-cell="84:0"]').click() // click the note → removes it
+    await expect.poll(() => strudelValue(page)).toBe('$: note("~ ~ ~ ~")')
+
+    // the row the document no longer holds is still drawn…
+    await expect(grid.locator('[data-roll-cell="84:0"]')).toHaveCount(1)
+    // …and it is still a live cell, not a picture of one
+    await grid.locator('[data-roll-cell="84:0"]').click()
+    await expect.poll(() => strudelValue(page)).toBe('$: note("c6 ~ ~ ~")')
+  })
+
+  /**
+   * THE OTHER CARRIER, and the one #1163 is actually about. The arm above rests on the
+   * sticky range; this one rests on the PADDING, and they are separately losable — the
+   * padded row exists on a freshly-opened pattern where nothing has been deleted and the
+   * stickiness has had nothing to do.
+   *
+   * `viewPlacesNotes` probes exactly this row to decide whether to grey the whole
+   * surface, and until #1163 it took it as `min − 1` on the assumption that the display
+   * pads below. This is the observation that assumption stood in for: the row two
+   * semitones under the content is drawn, takes a click, and writes.
+   *
+   * c4 = 60, so `rollContentRange` gives lo = 58 (a#3) — a row the document does not
+   * mention at all.
+   */
+  test('a padded row below the content is drawn and takes a note (#1163)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c4 ~ ~ ~")') // c4 = midi 60 → padded down to 58
+    const drawer = await openRoll(page)
+    await enlargeDrawer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+
+    await expect(grid.locator('[data-roll-cell="58:1"]')).toHaveCount(1)
+    await grid.locator('[data-roll-cell="58:1"]').click()
+    await expect.poll(() => strudelValue(page)).toBe('$: note("c4 a#3 ~ ~")')
+  })
+
   test('a sound pattern adaptively shows the Sequencer, not the Piano Roll (#398)', async ({
     page,
   }) => {
