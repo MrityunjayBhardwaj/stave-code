@@ -171,17 +171,38 @@ function unjoinableId(index: number): string {
  * it have to come from one rule, or they agree for a while and then silently
  * stop, with a dead meter as the only symptom.
  *
- * Exactly one track, unlabelled → `$0`, where the numbering can only have
- * produced `$0` and the join therefore holds BY CONSTRUCTION. More than one →
- * null: strudel plays the LAST expression while the strips number from the
- * FIRST, so any id here would be a guess, and a meter on the wrong track is
- * worse than a dark one. Binding the multi-statement case to the statement that
- * actually sounds is #1096.
+ * Every track unlabelled → the LAST one, `$<n-1>`. Strudel plays the document's
+ * last expression when nothing registered, so that is the statement the captured
+ * pattern belongs to; a single-track document is the same rule at n = 1.
+ *
+ * Any labelled track → null. A label is what makes a statement reach `.p()`, so
+ * the repl plays the registry rather than a bare expression and this decision
+ * does not apply.
+ *
+ * ⚠ WHY THIS CAN NAME A SLOT AT ALL, given #1174 made an unlabelled statement
+ * take none. That rule exists so this side counts the population the engine's
+ * `anonIndex` counts. In an all-unlabelled document `anonIndex` never
+ * increments — nothing reaches `.p()` — so the `$<n>` namespace is unused and
+ * this is its only writer. The exemption is not new: it is exactly why `$0` was
+ * safe for the single-track case.
+ *
+ * ⚠ IT REFUSED THE MULTI-TRACK CASE UNTIL #1096, and the reason it can stop is
+ * worth stating, because "the strips number from the first while strudel plays
+ * the last" is still true. What changed is that the IR now declares a Track per
+ * statement, so `d<n>` is a lane that exists — the id names a real row instead
+ * of pointing past the end of a one-row document. Naming the last strip was
+ * never the hard part; having something for it to name was.
+ *
+ * The id is positional, so it depends on both sides counting the same
+ * statements. That is what the shared head list is for (#1178), and the two
+ * documents where detection still disagrees are recorded there.
  */
 export function bareCaptureIdFor(tracks: readonly ChunkInfo[]): string | null {
-  if (tracks.length !== 1) return null
-  if (tracks[0].label !== null) return null
-  return BARE_CAPTURE_ID
+  if (tracks.length === 0) return null
+  if (tracks.some((t) => t.label !== null)) return null
+  // The LAST track, because that is the expression strudel plays. `$0` for a
+  // single-track document is this same rule at n = 1, not a separate case.
+  return `$${tracks.length - 1}`
 }
 
 /** the combinator heads whose statement is a group of voices (sub-strips in S6) */
@@ -308,9 +329,15 @@ export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
   let anonLive = 0 // UNMUTED anonymous `$:` only → the engine captureId index
   let ordinal = 0 // 1-based position among tracks → the `d{N}` display key
   const models: StripModel[] = []
-  // The id every UNLABELLED statement shares, decided once for the whole
-  // document (#1174) — `$0` when there is exactly one, otherwise unjoinable.
-  const bareId = bareCaptureIdFor(chunks.filter(isTrackChunk))
+  // The bare-capture id, decided once for the whole document (#1174/#1096), and
+  // the ONE statement it belongs to. Strudel plays the last expression, so the
+  // id names the LAST track and every other unlabelled statement stays
+  // unjoinable — a document with three bare statements has one sounding pattern,
+  // not three, and giving them all the same key would meter the same audio on
+  // every strip.
+  const trackChunks = chunks.filter(isTrackChunk)
+  const bareId = bareCaptureIdFor(trackChunks)
+  const bareOwner = bareId === null ? null : trackChunks[trackChunks.length - 1]
   chunks.forEach((chunk, index) => {
     // Transport/config statements (`setcps`, `samples`, …) are not tracks — skip
     // them BEFORE numbering so the remaining anonymous tracks get `$0…$n` that
@@ -345,7 +372,8 @@ export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
     let captureId: string
     if (bare !== null) captureId = bare
     else if (isMuted(chunk.label)) captureId = `_$${index}`
-    else if (chunk.label === null) captureId = bareId ?? unjoinableId(index)
+    else if (chunk.label === null)
+      captureId = bareId !== null && chunk === bareOwner ? bareId : unjoinableId(index)
     else captureId = `$${anonLive++}`
     models.push(buildStripModel(chunk, index, ordinal, id, captureId))
   })

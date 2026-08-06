@@ -40,13 +40,30 @@ describe('resolveBareCaptureId — accepts only the unambiguous single bare trac
     expect(stripCaptureIds(code)).toEqual([id])
   })
 
-  it('TWO bare statements are refused — strudel plays the last, the mixer numbers from the first', () => {
+  it('TWO bare statements bind to the LAST — the one strudel plays (#1096)', () => {
     const code = 's("bd*4")\ns("hh*8")'
-    expect(resolveBareCaptureId(code)).toBeNull()
-    // The refusal is not fussiness: these are two different strips, and the one
-    // pattern that exists belongs to the SECOND. That binding is #1096.
-    expect(stripCaptureIds(code)).toHaveLength(2)
-    expect(stripCaptureIds(code)[0]).not.toBe(stripCaptureIds(code)[1])
+    const id = resolveBareCaptureId(code)
+    // This case was REFUSED until #1096, and the refusal was right at the time:
+    // the strips number from the first while strudel plays the last, so any id
+    // was a guess and a meter on the wrong track is worse than a dark one. What
+    // changed is not the courage to guess — it is that the id now names the last
+    // statement explicitly, and the IR declares a lane for it to mean.
+    expect(id).not.toBeNull()
+    // THE JOIN, against the real numbering rather than a literal: the id must be
+    // the LAST strip's, and the first must not be joinable at all.
+    const ids = stripCaptureIds(code)
+    expect(ids).toHaveLength(2)
+    expect(ids[ids.length - 1]).toBe(id)
+    expect(ids[0]).not.toBe(id)
+    expect(ids[0]).not.toMatch(/^\$\d+$/)
+  })
+
+  it('THREE bare statements still bind exactly one — the last', () => {
+    // The one pattern that exists is the last expression; giving every bare strip
+    // the same key would meter one sound on three faders.
+    const code = 's("bd*4")\ns("cp*2")\ns("hh*8")'
+    expect(resolveBareCaptureId(code)).toBe('$2')
+    expect(stripCaptureIds(code).filter((c) => /^\$\d+$/.test(c))).toEqual(['$2'])
   })
 
   it('a labelled track is refused — the .p() path owns it', () => {
@@ -70,5 +87,8 @@ describe('resolveBareCaptureId — accepts only the unambiguous single bare trac
 
   it('the id is the first anonymous slot — the value the hap→lane join maps to d1', () => {
     expect(BARE_CAPTURE_ID).toBe('$0')
+    // ...and it is the n = 1 instance of the general rule, not a parallel one:
+    // a single-track document resolves to exactly this value.
+    expect(resolveBareCaptureId('s("bd*4")')).toBe(BARE_CAPTURE_ID)
   })
 })

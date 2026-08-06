@@ -25,12 +25,25 @@
  * produce the same strips with the same captureIds, and only the labelled one
  * ever moves a meter (`_1097-bare-track-maps.spec.ts`).
  *
- * Rather than guess which statement sounded, the ambiguous case is refused.
- * Exactly one track → the numbering can only have produced `$0`, so the join is
- * correct BY CONSTRUCTION rather than by coincidence. More than one → no entry,
- * which leaves today's dark meter rather than a confidently wrong one. Binding a
- * multi-statement bare document to the statement that actually plays is #1096,
- * and when it lands it lands here, once, for all four maps.
+ * The answer is the LAST track, because that is the expression strudel plays.
+ * A single-track document resolving to `$0` is that same rule at n = 1.
+ *
+ * ⚠ THIS USED TO REFUSE EVERYTHING BUT THE SINGLE-TRACK CASE (#1097), and the
+ * refusal was correct at the time rather than merely cautious. The strips number
+ * from the FIRST statement while strudel plays the LAST, so an id was a guess —
+ * and the IR then declared exactly one track no matter how many statements the
+ * document had, so there was no second lane for a truthful id to name. Writing
+ * one would have lit the wrong strip, which is worse than the dark meter it
+ * replaced.
+ *
+ * What changed is the second half of that, not the first. #1096 made the parser
+ * declare a Track per top-level statement, so `d<n>` is a lane that exists, and
+ * naming the last strip now points at something. The rule did not become braver;
+ * the document became describable.
+ *
+ * The id is POSITIONAL, so it is only meaningful while both sides count the same
+ * statements — which is why the head list they classify with is now shared
+ * (#1178) rather than duplicated per package.
  *
  * ⚠ LAYERING, and it moved once for a reason worth recording. Both the rule
  * (`bareCaptureIdFor`) and the predicate (`isTrackChunk`) live in `stripModel`,

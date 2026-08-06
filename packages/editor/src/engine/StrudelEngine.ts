@@ -970,7 +970,9 @@ export class StrudelEngine implements LiveCodingEngine {
         // here and deliberately left the rest; the maps below are the rest, and
         // they are written together precisely so they cannot disagree about
         // which track the bare pattern is. `resolveBareCaptureId` owns that
-        // decision and REFUSES the ambiguous case (see bareCapture.ts).
+        // decision — it resolves to the LAST track, the expression strudel
+        // plays, and refuses any document with a labelled track because there
+        // the `.p()` registry is what sounds (see bareCapture.ts).
         const bareId = capturedSongPatterns.size === 0 && isQueryablePattern(playedPattern)
           ? resolveBareCaptureId(code)
           : null
