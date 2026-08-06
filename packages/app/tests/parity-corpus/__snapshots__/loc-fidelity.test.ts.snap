@@ -1900,6 +1900,10 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-159-NEGATIVE-no-whitespace — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
+    "tag": "Track",
+    "text": "sound("hh hh hh hh")",
+  },
+  {
     "tag": "Seq",
     "text": "hh hh hh hh",
   },
@@ -1918,6 +1922,46 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "hh",
+  },
+  {
+    "tag": "Track",
+    "text": "sound("[bd bd][sd bd] bd sd")",
+  },
+  {
+    "tag": "Seq",
+    "text": "[bd bd][sd bd] bd sd",
+  },
+  {
+    "tag": "Seq",
+    "text": "[bd bd]",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Seq",
+    "text": "[sd bd]",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
   },
 ]
 `;
@@ -1925,6 +1969,10 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-159-tokenizer-whitespace — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
+    "tag": "Track",
+    "text": "sound ("hh hh hh hh")",
+  },
+  {
     "tag": "Seq",
     "text": "hh hh hh hh",
   },
@@ -1943,6 +1991,46 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "hh",
+  },
+  {
+    "tag": "Track",
+    "text": "sound ("[bd bd][sd bd] bd sd")",
+  },
+  {
+    "tag": "Seq",
+    "text": "[bd bd][sd bd] bd sd",
+  },
+  {
+    "tag": "Seq",
+    "text": "[bd bd]",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Seq",
+    "text": "[sd bd]",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
   },
 ]
 `;

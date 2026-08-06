@@ -19,6 +19,7 @@ import { IR, type PatternIR, type ArrangeArm } from './PatternIR'
 import type { SourceLocation } from './IREvent'
 import { parseMini } from './parseMini'
 import { trackIdFromLabel } from './trackId'
+import { NON_TRACK_HEAD_RE } from './statementHeads'
 // #928 (Tier 2) — the deny-list authority. `isControlName(m)` is Strudel's OWN
 // control-registry membership predicate (main names + aliases), queried LIVE so
 // the classifier never drifts from the running @strudel/core version. NEVER
@@ -508,6 +509,26 @@ export function stripParserPrelude(code: string): { body: string; offset: number
  *     resolved subtree map, `finalExpr`/`finalOffset` the trailing
  *     non-binding expression + its absolute offset into ORIGINAL source.
  */
+/**
+ * Characters that CANNOT begin a new statement, so a depth-0 newline before one
+ * is a line continuation rather than a boundary — JS's own ASI rule, which does
+ * not insert a semicolon when the next line opens with any of these.
+ *
+ * `.` (the leading-dot method chain, #148) was the only member for a long time
+ * because this walker fed `buildBindingMap`, whose shape fence rejects anything
+ * odd — so an over-split cost nothing visible. #1096 promoted the walker to
+ * deciding what a bare document's TRACKS are, where an over-split invents a row.
+ * `stack\n(…)` (#901) is the case that surfaced it: `stack` and `(…)` became two
+ * statements, and a legal one-call document grew a second, meaningless track.
+ *
+ * Erring toward CONTINUATION is the safe direction: a missed split falls back to
+ * the single-Track shape this branch has always produced, while a wrong split
+ * fabricates a track the document never declared.
+ */
+const STMT_CONTINUATION_STARTS = new Set([
+  '.', '(', '[', '`', ',', '+', '-', '*', '/', '%', '?', ':', '&', '|', '<', '>', '=',
+])
+
 function splitTopLevelStatements(
   body: string,
   baseOffset: number,
@@ -608,7 +629,7 @@ function splitTopLevelStatements(
       // Either suppression: do not flush, keep walking; the segment
       // accumulates across the physical line break.
       const peek = skipWhitespaceAndLineComments(body, i + 1)
-      if (body[peek] === '.') {
+      if (STMT_CONTINUATION_STARTS.has(body[peek])) {
         i++
         continue
       }
@@ -628,65 +649,26 @@ function splitTopLevelStatements(
   return out
 }
 
-// 20-19 (#158) — buildBindingMap shape-fence relaxation
-//
-// RECOGNISED side-effect-only statement heads. When a top-level
-// statement begins with one of these tokens and a `(`, it is a
-// pure side-effect call (return value DISCARDED at statement
-// level; no Pattern flows to a downstream binding). Such
-// statements are filtered out of `splitTopLevelStatements`'s
-// output BEFORE `buildBindingMap` consumes the array, so a
-// program shape `bindings*, sideEffect, finalExpr` becomes the
-// `bindings*, finalExpr` shape the existing shape guard at
-// `pS:534` already accepts.
-//
-// Upstream source audited at Codeberg SHA
-// f73b395648645aabe699f91ba0989f35a6fd8a3c (the same SHA pinned
-// in packages/app/tests/parity-corpus/CORPUS-SOURCE.md and in
-// the `PRELUDE_CALL_RE` provenance block at pS:167-194). Local
-// installed runtime: @strudel/core@1.2.6, @strudel/tonal@1.2.6,
-// @strudel/webaudio@1.3.0, superdough@1.3.0 — same posture as
-// 20-18 Wave C (controls.mjs line numbers corroborated 1.2.6).
-//
-// Per-token grounding (return value DISCARDED at statement level):
-//   - all              @strudel/core    repl.mjs:153-156  (mutates allTransforms[]; returns silence)
-//   - samples          superdough       sampler.mjs:249-263 (Promise<void>; registers samples)
-//   - setcps / setCps  @strudel/core    repl.mjs:117-120 + 215 alias (returns silence; mutates scheduler)
-//   - setcpm / setCpm  @strudel/core    repl.mjs:132-135 + 217 alias (returns silence; mutates scheduler)
-//   - useRNG           @strudel/core    signal.mjs:279 (returns mode string; mutates RNG_MODE)
-//   - setVoicingRange  @strudel/tonal   voicings.mjs:87 (returns helper result; mutates registry)
-//   - initAudio        superdough       superdough.mjs:259-289 (Promise<void>; boots audio context)
-//   - aliasBank        superdough       superdough.mjs:132 (Promise<void>; registers aliases)
-//
-// R2 ANTI-DRIFT: this set is HAND-MAINTAINED (the upstream
-// export list is not vendored). The mechanism is (a) this
-// comment + SHA pin and (b) one CI fixture per token (Wave C —
-// `bakery-158-<token>-shape-fence.strudel`).
-//
-// The regex anchors to STMT-HEAD (the stmt text is already
-// trimmed by `splitTopLevelStatements`'s `raw.trim()` at
-// `pS:396`). The `^[ \t]*` prefix is defensive — zero
-// behavioural delta on trimmed input, mirrors `PRELUDE_CALL_RE`.
-//
-// Module-scope placement (vs `PRELUDE_CALL_RE`/`GUARDED_BOOT_RE`
-// which are scoped inside `stripParserPrelude`): the new regex
-// is consumed by `stripSideEffectStatements` below, which is
-// itself module-scoped (called from `buildBindingMap`). The
-// scope placement is structural — the helper must see the regex.
-const SIDE_EFFECT_CALL_RE =
-  /^[ \t]*(?:all|samples|setcps|setCps|setcpm|setCpm|useRNG|setVoicingRange|initAudio|aliasBank)\s*\(/
-
 /**
- * 20-19 (#158) — filter recognised side-effect-only statements out of
- * the stmts array BEFORE `buildBindingMap` consumes it. PV49
- * loc-additive by construction (filter() removes items; the remaining
- * items' `offset` fields are untouched; the source string is never
- * mutated).
+ * 20-19 (#158) — filter statements that configure or load rather than play out
+ * of the stmts array BEFORE `buildBindingMap` consumes it, so a program shaped
+ * `bindings*, sideEffect, finalExpr` becomes the `bindings*, finalExpr` shape
+ * the shape guard already accepts. Also the population #1096's bare branch
+ * declares tracks over.
+ *
+ * ⚠ THE LIST LIVES IN `statementHeads.ts`, NOT HERE (#1178). It used to be a
+ * regex spelled out at this line, alongside a DIFFERENT list in the Mixer doing
+ * the same job — and the two disagreed for 14 of 55 bare corpus documents,
+ * which is what a positional meter key cannot survive. One list, two readers;
+ * the grounding for every token lives with the list.
+ *
+ * PV49 loc-additive by construction (filter() removes items; the remaining
+ * items' `offset` fields are untouched; the source string is never mutated).
  */
 function stripSideEffectStatements(
   stmts: { text: string; offset: number }[],
 ): { text: string; offset: number }[] {
-  return stmts.filter((s) => !SIDE_EFFECT_CALL_RE.test(s.text))
+  return stmts.filter((s) => !NON_TRACK_HEAD_RE.test(s.text))
 }
 
 const BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/
@@ -881,6 +863,54 @@ export function parseStrudel(
           return IR.track('d1', inner)
         }
         // else: fall through to the plain parse (whole-program Code).
+      }
+      // #1096 — a bare document with SEVERAL top-level statements declares
+      // several tracks, and every one of them gets a row.
+      //
+      // Until this branch existed, `parseExpression` was handed the whole
+      // body and kept ONE expression, so `s("bd*4")\ns("hh*8")` produced
+      // `Track(d1)[Fast[Play(bd)]]` — statement 2 was not in the IR at all.
+      // Three surfaces then gave three answers: the mixer drew two strips,
+      // the timeline drew one row anchored at `bd`, and strudel played `hh`
+      // (its repl plays the LAST expression when nothing called `.p()`).
+      // Measured over the parity corpus: 27 bare documents are this shape and
+      // all the real ones are multi-part arrangements MEANT to layer — the
+      // largest a five-part song in which only the clap texture sounds.
+      //
+      // The row machinery needs nothing new: PV253's `declaredTracks` already
+      // turns every top-level `Track` node into a row, and a track with no
+      // marks already draws silent. What was missing is an IR that declares
+      // all N tracks, which is all this does.
+      //
+      // Statement splitting REUSES `splitTopLevelStatements` (the depth-,
+      // string-, comment- and line-continuation-aware walker this file already
+      // runs for the binding map) rather than a second, divergent scanner —
+      // a leading-dot chain and a multi-line `stack(` stay ONE statement.
+      // `stripSideEffectStatements` drops recognised transport/boot calls
+      // (`setcps`, `samples`, …): they are not tracks and must not take a row.
+      //
+      // Deliberately NARROW — the multi-track shape is taken only when EVERY
+      // remaining statement is a plain expression. A `let`/`const` binding
+      // means the document needs substitution to be meaningful, and inventing
+      // per-statement binding semantics here would be a second, weaker
+      // `buildBindingMap`; those documents keep the existing single-Track
+      // shape. One candidate keeps the existing path untouched too, body and
+      // all, so every single-statement bare document is byte-identical.
+      const bareStmts = stripSideEffectStatements(
+        splitTopLevelStatements(stripped.body, stripped.offset),
+      )
+      if (bareStmts.length > 1 && !bareStmts.some(s => BINDING_RE.test(s.text))) {
+        return IR.stack(
+          ...bareStmts.map((s, i) =>
+            // Each statement carries its OWN source range, so the timeline can
+            // anchor a hap to the statement that produced it by containment —
+            // the same mechanism a `$:` document uses, not a parallel path.
+            // Synthetic wrapper: no userMethod (there is no `.p()` here).
+            IR.track(`d${i + 1}`, parseExpression(s.text, s.offset, undefined, undefined, opts), {
+              loc: [{ start: s.offset, end: s.offset + s.text.length }],
+            }),
+          ),
+        )
       }
       const inner = parseExpression(stripped.body.trim(), innerOffset, undefined, undefined, opts)
       return IR.track('d1', inner)

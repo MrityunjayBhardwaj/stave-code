@@ -122,13 +122,15 @@ exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-158-u
 
 exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-159-NEGATIVE-no-whitespace: lane anchors match the committed snapshot 1`] = `
 {
-  "d1": "{"dollarPos":null,"sourceOffset":7,"arrangeOffset":7,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+  "d1": "{"dollarPos":0,"sourceOffset":7,"arrangeOffset":7,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+  "d2": "{"dollarPos":21,"sourceOffset":29,"arrangeOffset":28,"leafIndex":null,"armByCycle":null,"armLabels":null}",
 }
 `;
 
 exports[`structuralWalk anchors are frozen over the corpus (#973) > bakery-159-tokenizer-whitespace: lane anchors match the committed snapshot 1`] = `
 {
-  "d1": "{"dollarPos":null,"sourceOffset":8,"arrangeOffset":8,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+  "d1": "{"dollarPos":0,"sourceOffset":8,"arrangeOffset":8,"leafIndex":null,"armByCycle":null,"armLabels":null}",
+  "d2": "{"dollarPos":22,"sourceOffset":31,"arrangeOffset":30,"leafIndex":null,"armByCycle":null,"armLabels":null}",
 }
 `;
 

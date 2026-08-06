@@ -5,7 +5,7 @@
  * `parseStrudel.ts` decides things about JavaScript syntax and about Strudel's
  * vocabulary by hand, in anchored regular expressions. Every other module in
  * the parse path asks an authority instead and has zero. The audit document
- * lists all 43 regex literals in the file — the 36 anchored predicates grouped by
+ * lists all 42 regex literals in the file — the 35 anchored predicates grouped by
  * the question each decides and who owns the answer, plus the 7 unanchored — so that
  * "find the next parser bug" is a finite list rather than a search.
  *
@@ -84,6 +84,18 @@ function tally(sources: string[]): Map<string, number> {
   return counts
 }
 
+/**
+ * ANCHORED — decides what a whole token means, rather than merely locating a
+ * boundary. Module-level because two tests ask it and a second spelling of the
+ * rule is the same drift this file exists to catch. `parseMini.ts` legitimately
+ * keeps two unanchored character scans after its rebuild, which is why the
+ * delegating claim is about anchored regexes only.
+ */
+const isAnchored = (source: string): boolean => {
+  const body = source.replace(/^\//, '').replace(/\/[gimsuy]*$/, '')
+  return body.startsWith('^') || body.endsWith('$')
+}
+
 describe('predicate audit (#959)', () => {
   const actual = censusFromSource()
   const declared = censusFromAudit()
@@ -126,6 +138,52 @@ describe('predicate audit (#959)', () => {
   })
 
   /**
+   * The anchored count is stated in FOUR places and only two of them were
+   * asserted, so #1178 moved one predicate out and left three saying the old
+   * number while the totals table said the new one. A census that disagrees with
+   * itself reads exactly like one that is current — the same failure this file
+   * exists to prevent, one level up.
+   *
+   * Every figure is re-derived here and compared against the SOURCE, never
+   * against another figure in the document. The prose spellings are included
+   * because a number written as a word drifts just as silently as a digit, and
+   * `28 of the 35` is the denominator a reader uses to judge whether the
+   * category breakdown still adds up.
+   */
+  it('every place the audit states the anchored count agrees with the source', () => {
+    const text = readFileSync(AUDIT, 'utf8')
+    const anchored = actual.filter(isAnchored).length
+
+    const words: Record<number, string> = {
+      33: 'thirty-three', 34: 'thirty-four', 35: 'thirty-five',
+      36: 'thirty-six', 37: 'thirty-seven', 38: 'thirty-eight',
+    }
+
+    const perModule = text.match(/\|\s*\*\*`ir\/parseStrudel\.ts`\*\*\s*\|[^|]*\|\s*\*\*(\d+)\*\*/)
+    expect(perModule, 'the per-module table lost its `ir/parseStrudel.ts` row').toBeTruthy()
+    expect(
+      Number((perModule as RegExpMatchArray)[1]),
+      'the per-module table row disagrees with the source',
+    ).toBe(anchored)
+
+    const totals = text.match(/\*\*total anchored regexes\*\*\s*\|\s*\|\s*\*\*(\d+)\*\*/)
+    expect(totals, 'the totals table lost its **total anchored regexes** row').toBeTruthy()
+    expect(Number((totals as RegExpMatchArray)[1])).toBe(anchored)
+
+    expect(
+      text.includes(`has ${words[anchored]} (was `),
+      `the prose still spells the anchored count as something other than "${words[anchored]}"`,
+    ).toBe(true)
+
+    const catA = text.match(/^(\d+) of the (\d+)\./m)
+    expect(catA, 'Category A lost its "N of the M." denominator line').toBeTruthy()
+    expect(
+      Number((catA as RegExpMatchArray)[2]),
+      "Category A's denominator disagrees with the source",
+    ).toBe(anchored)
+  })
+
+  /**
    * The claim the audit rests on, re-measured rather than quoted. It is a
    * negative result about five modules, so it carries a control arm: the same
    * scan must find anchored regexes in parseStrudel.ts itself. A zero from a
@@ -138,16 +196,10 @@ describe('predicate audit (#959)', () => {
       '../visualEdit/chunkDetect.ts',
       '../visualEdit/arrange/parse.ts',
     ]
-    /** ANCHORED only here: the claim is about predicates, and `parseMini.ts`
-     *  legitimately keeps two unanchored character scans after its rebuild. */
-    const isAnchored = (source: string): boolean => {
-      const body = source.replace(/^\//, '').replace(/\/[gimsuy]*$/, '')
-      return body.startsWith('^') || body.endsWith('$')
-    }
     const scan = (rel: string): number =>
       regexLiteralsIn(join(IR_DIR, rel)).filter(isAnchored).length
 
-    expect(scan('parseStrudel.ts'), 'control arm: the scan must find the known anchored predicates').toBe(36)
+    expect(scan('parseStrudel.ts'), 'control arm: the scan must find the known anchored predicates').toBe(35)
     for (const rel of delegating) expect(`${rel}: ${scan(rel)}`).toBe(`${rel}: 0`)
   })
 })

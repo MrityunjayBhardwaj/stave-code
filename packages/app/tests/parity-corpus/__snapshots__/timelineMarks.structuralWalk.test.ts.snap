@@ -222,8 +222,15 @@ exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #9
     "armByCycle": null,
     "armLabels": null,
     "arrangeOffset": 7,
-    "labelOffset": null,
+    "labelOffset": 0,
     "sourceOffset": 7,
+  },
+  "d2": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 28,
+    "labelOffset": 21,
+    "sourceOffset": 29,
   },
 }
 `;
@@ -234,8 +241,15 @@ exports[`collectNoteMarks structure maps are frozen (structuralWalk snapshot, #9
     "armByCycle": null,
     "armLabels": null,
     "arrangeOffset": 8,
-    "labelOffset": null,
+    "labelOffset": 0,
     "sourceOffset": 8,
+  },
+  "d2": {
+    "armByCycle": null,
+    "armLabels": null,
+    "arrangeOffset": 30,
+    "labelOffset": 22,
+    "sourceOffset": 31,
   },
 }
 `;

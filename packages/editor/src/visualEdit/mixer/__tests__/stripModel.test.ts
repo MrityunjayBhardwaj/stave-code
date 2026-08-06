@@ -6,6 +6,7 @@ import {
   statementOffsetForSource,
   otherTrackNames,
   stripContainingOffset,
+  isTrackChunk,
 } from '../stripModel'
 import { colorForTrack } from '../../trackColor'
 
@@ -206,46 +207,81 @@ describe('buildStripModels — an unlabelled statement takes no engine slot (#11
     expect(strips.map((s) => s.captureId).slice(1)).toEqual(['$0', '$1'])
   })
 
-  it('two unjoinable statements do not collide with each other', () => {
+  it('the unjoinable statements do not collide, and only the LAST one joins', () => {
     const ids = stripsOf(['s("bd")', 's("hh")'].join('\n')).map((s) => s.captureId)
     expect(new Set(ids).size).toBe(2)
-    expect(ids.every((c) => !/^\$\d+$/.test(c))).toBe(true)
+    // Strudel plays the last expression, so exactly one of these is a live slot
+    // and it is the last (#1096). Before that landed, BOTH were unjoinable and a
+    // bare document could not meter at all.
+    expect(ids.filter((c) => /^\$\d+$/.test(c))).toEqual(['$1'])
+    expect(ids[0]).not.toMatch(/^\$\d+$/)
   })
 
   it('the lone bare document still joins on $0 — #1097 must survive this', () => {
     expect(stripsOf('s("bd*4")').map((s) => s.captureId)).toEqual(['$0'])
-    // and it stops being joinable the moment a second track makes it ambiguous
-    expect(liveSlots(['s("bd*4")', 's("hh*8")'].join('\n'))).toEqual([])
+    // A second track no longer makes it ambiguous: the id names the LAST track,
+    // which is the one strudel plays (#1096). `$0` is that same rule at n = 1,
+    // not a special case, so this arm and the next describe one rule.
+    expect(liveSlots(['s("bd*4")', 's("hh*8")'].join('\n'))).toEqual(['$1'])
+    // ...and it is the SECOND strip that carries it, not merely some strip.
+    const strips = stripsOf(['s("bd*4")', 's("hh*8")'].join('\n'))
+    expect(strips[strips.length - 1].captureId).toBe('$1')
   })
 
-  // ⚠ A LIMITATION THIS FIX DOES NOT REMOVE, pinned so it is visible rather than
-  // discovered. Whether a LONE bare pattern can meter still depends on whether the
-  // statement above it happens to be on the denylist, because an unrecognised head
-  // counts as a second track and makes the id ambiguous. `setcps` is listed and the
-  // pattern meters; `cpm` is not and it goes dark. That is pre-existing — the engine
-  // refused both before this change too — but it is now the ONLY thing the denylist
-  // still decides, so this arm is where a fix to the head question lands.
-  it('a lone bare pattern meters under a LISTED head and not under an unlisted one', () => {
+  // ⚠ THIS ARM USED TO PIN A LIMITATION, and it now pins its removal — which is
+  // why it was changed rather than deleted (#1177 asked for exactly that).
+  //
+  // It read: whether a lone bare pattern can meter depends on whether the
+  // statement above it happens to be on the denylist, because an unrecognised
+  // head counts as a second track and makes the id ambiguous. `setcps` was listed
+  // and metered; `cpm` was not and went dark.
+  //
+  // Naming the LAST track (#1096) removes that dependency. An unrecognised head
+  // still costs a spurious strip, but the pattern below it meters either way,
+  // because "the last track" is well defined whether or not the head was
+  // recognised. The denylist now decides only how many strips are DRAWN, never
+  // whether the music can be heard on a meter.
+  it('a lone bare pattern meters under a listed head AND under an unlisted one', () => {
     expect(stripsOf('setcps(0.5)\ns("bd*4")').map((s) => s.captureId)).toEqual(['$0'])
-    // `cpm` is a real transport call the denylist has never heard of, so it is
-    // counted as a track and the pattern below it loses its join. Change this arm
-    // when that is fixed — do not delete it.
-    expect(liveSlots('cpm(120)\ns("bd*4")')).toEqual([])
+    // `cpm` is a real transport call the denylist has never heard of. It is still
+    // counted as a track — hence a strip, and the slot shifts to `$1` — but the
+    // pattern below it now joins instead of going dark.
+    expect(liveSlots('cpm(120)\ns("bd*4")')).toEqual(['$1'])
+    // The control that gives that meaning: the joining strip is the PATTERN, not
+    // the transport call.
+    const strips = stripsOf('cpm(120)\ns("bd*4")')
+    expect(strips.find((s) => s.captureId === '$1')?.headFn).toBe('s')
+    expect(strips.find((s) => s.headFn === 'cpm')?.captureId).not.toMatch(/^\$\d+$/)
   })
 
-  it('the live slots are exactly $0..$n-1 over the UNMUTED ANONYMOUS $: statements', () => {
+  it('the live slots are the anonymous $: numbering, OR one bare slot, never both', () => {
     // The engine's rule restated as a property and checked against the mixer's
     // output, rather than a literal that would pass if both sides moved together.
+    //
+    // The property gained a second arm with #1096. An all-unlabelled document now
+    // issues exactly ONE live slot — the last track, the expression strudel plays
+    // — while a document containing any labelled track issues the `$:` numbering
+    // and no bare slot. The two populations cannot overlap, and that is what makes
+    // the bare slot safe: a label is what makes a statement reach `.p()`, so where
+    // the engine's `anonIndex` is counting, this rule is silent, and where this
+    // rule speaks, `anonIndex` never incremented at all.
     for (const doc of [
       '$: s("a")\n$: s("b")',
       's("a")\n$: s("b")',
       'cpm(120)\ns("a")\n$: s("b")\n_$: s("c")\n$: s("d")',
       'drums: s("a")\n$: s("b")\ns("c")',
       's("a")\ns("b")',
+      's("a")',
+      'cpm(120)\ns("a")\ns("b")',
     ]) {
-      const anonLabelled = detectAllChunks(doc).filter((c) => c.label === '$').length
+      const chunks = detectAllChunks(doc)
+      const tracks = chunks.filter(isTrackChunk)
+      const allBare = tracks.length > 0 && tracks.every((c) => c.label === null)
+      const anonLabelled = chunks.filter((c) => c.label === '$').length
       expect(liveSlots(doc), doc).toEqual(
-        Array.from({ length: anonLabelled }, (_, i) => `$${i}`),
+        allBare
+          ? [`$${tracks.length - 1}`]
+          : Array.from({ length: anonLabelled }, (_, i) => `$${i}`),
       )
     }
   })
