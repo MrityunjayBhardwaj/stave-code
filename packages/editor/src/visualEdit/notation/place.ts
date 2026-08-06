@@ -130,9 +130,13 @@ export function viewPlacesNotes(model: StepGridModel | PianoRollModel): boolean 
   // representative of the whole padded range is not assumed either — it is pinned in
   // `placement-admissibility.test.ts`, alongside the arm that fails if this cheap
   // probe and the panel's full surface ever disagree.
+  //
+  // The guard is not "are there notes?" but "is the range derived from CONTENT?".
+  // `rollContentRange` falls back to a default octave when nothing in the model spells a
+  // pitch, and a default row is not a padded one — there is no content for it to sit
+  // beside, and asking about it would be asking about an arbitrary row.
   const pitches = new Set(model.notes.map((n) => n.pitch))
-  const midis = [...pitches].map(pitchToMidi).filter((m): m is number => m !== null)
-  if (midis.length > 0) {
+  if (model.notes.some((n) => pitchToMidi(n.pitch) !== null)) {
     const below = rollContentRange(model).lo
     pitches.add(model.numeric ? String(below) : midiToPitch(below))
   }

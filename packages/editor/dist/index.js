@@ -28775,8 +28775,7 @@ function viewPlacesNotes(model) {
     return asked === 0;
   }
   const pitches = new Set(model.notes.map((n) => n.pitch));
-  const midis = [...pitches].map(pitchToMidi).filter((m) => m !== null);
-  if (midis.length > 0) {
+  if (model.notes.some((n) => pitchToMidi(n.pitch) !== null)) {
     const below = rollContentRange(model).lo;
     pitches.add(model.numeric ? String(below) : midiToPitch(below));
   }

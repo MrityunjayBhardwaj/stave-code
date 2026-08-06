@@ -75,8 +75,14 @@ interface Axes {
 
 /**
  * `viewPlacesNotes`'s roll branch, re-stated so each axis can be switched on alone.
- * With every axis off it is the shipped function; the probe checks that below rather
- * than trusting it, because a re-statement that has drifted measures nothing.
+ *
+ * ⚠ WITH EVERY AXIS OFF THIS IS THE **PRE-#1163** FUNCTION, not the shipped one — the
+ * fix landed `rowFromRange`, so that variant is what ships now. The distinction matters
+ * because the control below would read 0 either way: the answers are invariant across
+ * all four axes, which is the finding, so an equality against the wrong version stays
+ * green and quietly stops meaning anything. The control is therefore stated against the
+ * variant that IS shipped, and the axes-off column is kept as the historical baseline
+ * these deltas are measured from.
  */
 function placesNotes(model: PianoRollModel, ax: Axes): { answer: boolean; asks: number } {
   let asked = 0
@@ -131,15 +137,21 @@ describe('#1163 — the roll probe ask-space vs the panel surface', () => {
       models.push({ mini, m: r.model, p: pathOf(r.model) })
     }
 
-    // CONTROL: the re-statement with every axis off must equal the shipped function on
-    // every unit. If it does not, nothing below is about the product.
+    // CONTROL: the re-statement of the SHIPPED gesture (`rowFromRange`, post-#1163) must
+    // equal the real function on every unit. If it does not, nothing below is about the
+    // product. Reported alongside the pre-fix variant so a drift in either is visible —
+    // they agree today, and saying so is the point, not an omission.
     let restatementDisagrees = 0
+    let preFixDisagrees = 0
     const drift: string[] = []
-    for (const { mini, m } of models)
-      if (placesNotes(m, OFF).answer !== viewPlacesNotes(m)) {
+    for (const { mini, m } of models) {
+      const real = viewPlacesNotes(m)
+      if (placesNotes(m, { ...OFF, rowFromRange: true }).answer !== real) {
         restatementDisagrees++
         if (drift.length < 5) drift.push(JSON.stringify(mini))
       }
+      if (placesNotes(m, OFF).answer !== real) preFixDisagrees++
+    }
 
     const variants: [string, Axes][] = [
       ['rowFromRange (the minimal fix)', { ...OFF, rowFromRange: true }],
@@ -157,7 +169,10 @@ describe('#1163 — the roll probe ask-space vs the panel surface', () => {
           .map((p) => `${p} ${models.filter((x) => x.p === p).length}`)
           .join(' / '),
     )
-    lines.push(`RESTATEMENT CONTROL — units where axes-off ≠ shipped: ${restatementDisagrees}`)
+    lines.push(
+      `RESTATEMENT CONTROL — units where the shipped restatement (rowFromRange) ≠ the real ` +
+        `function: ${restatementDisagrees}; where the PRE-FIX restatement ≠ it: ${preFixDisagrees}`,
+    )
     if (drift.length) lines.push(`  drifted on: ${drift.join(', ')}`)
 
     const base = models.map(({ m }) => placesNotes(m, OFF))
