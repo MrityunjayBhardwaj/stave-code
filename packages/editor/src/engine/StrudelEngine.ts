@@ -16,6 +16,7 @@ import { getTierFlags, type TierFlags } from './tierFlags'
 import { resolveAlias } from './aliases'
 import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
 import { installMiniStringParser } from './stringParser'
+import { BARE_CAPTURE_ID as BARE_CAPTURE_ID_, resolveBareCaptureId } from './bareCapture'
 
 type HapHandler = (event: HapEvent) => void
 
@@ -28,7 +29,9 @@ type HapHandler = (event: HapEvent) => void
  * statement. Picking a fresh name would have made an eval-only lane sitting
  * beside the IR one, which is the shape that duplicates a row.
  */
-const BARE_CAPTURE_ID = '$0'
+// Re-exported from the module that OWNS the bare-capture decision, so the id and
+// the rule that refuses to use it cannot drift apart (#1097).
+const BARE_CAPTURE_ID = BARE_CAPTURE_ID_
 
 /**
  * Can this value answer a time query? The bare-capture fallback takes whatever
@@ -975,8 +978,37 @@ export class StrudelEngine implements LiveCodingEngine {
         // shifting the marks alone would draw them where the sound is not. The
         // song frame is the pre-seek frame by definition (#863), so this is also
         // the frame the entry belongs in.
-        if (capturedSongPatterns.size === 0 && isQueryablePattern(playedPattern)) {
-          capturedSongPatterns.set(BARE_CAPTURE_ID, playedPattern)
+        //
+        // #1097 — ONE CAPTURE POINT, four readers. #1095 wrote the song frame
+        // here and deliberately left the rest; the maps below are the rest, and
+        // they are written together precisely so they cannot disagree about
+        // which track the bare pattern is. `resolveBareCaptureId` owns that
+        // decision and REFUSES the ambiguous case (see bareCapture.ts).
+        const bareId = capturedSongPatterns.size === 0 && isQueryablePattern(playedPattern)
+          ? resolveBareCaptureId(code)
+          : null
+        if (bareId !== null) {
+          capturedSongPatterns.set(bareId, playedPattern)
+          // THE SAME PATTERN OBJECT, unwrapped, into the scheduler frame — and
+          // that is a substantive choice, not a shortcut. The `.p()` path may
+          // wrap with `.orbit()` and `.late()` because there it is wrapping
+          // BEFORE handing the result to strudel to play. Here the pattern has
+          // ALREADY been evaluated and scheduled by the repl, so a wrap would
+          // produce an object that routes differently from the audio the user
+          // can hear — the analyser would tap an orbit nothing plays through
+          // and the meter would query a pattern that is not the sounding one.
+          // Storing it as-is keeps every consumer in the same frame as the
+          // sound, and adds no node to the graph.
+          capturedPatterns.set(bareId, playedPattern)
+          // The inline `.viz()` request, recovered from the chain-viz closure.
+          // `.viz()` sets it and only the `.p()` wrapper clears it, so on this
+          // branch it is still here. Note it gets NO auto-orbit for the reason
+          // above, so a bare track's viz taps the shared orbit-1 bus — which is
+          // already true of every track that is not `.viz`/`.orbit`-isolated
+          // (`useTrackMeters`'s swap test), so this is the existing behaviour
+          // extended by one entry rather than a new class of wrongness.
+          if (pendingChainViz) capturedVizRequests.set(bareId, pendingChainViz)
+          if (pendingChainVizOptions) capturedVizOptions.set(bareId, pendingChainVizOptions)
         }
         // Build PatternSchedulers from captured patterns
         const sched = (this.repl as any).scheduler // eslint-disable-line @typescript-eslint/no-explicit-any
