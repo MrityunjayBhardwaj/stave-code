@@ -26,9 +26,9 @@ the parse path asks somebody who already knows:
 | `ir/parseStrudelStages.ts` | — | **0** | 377 |
 | `visualEdit/chunkDetect.ts` | acorn | **0** | 496 |
 | `visualEdit/arrange/parse.ts` | acorn | **0** | 223 |
-| **`ir/parseStrudel.ts`** | **nobody** | **36** | **3398** |
+| **`ir/parseStrudel.ts`** | **nobody** | **35** | **3398** |
 
-Every module that delegates has zero. The one that does not has thirty-six (was 42 before #965 delegated the pattern-source grid). `parseMini.ts` is
+Every module that delegates has zero. The one that does not has thirty-five (was 42 before #965 delegated the pattern-source grid, and 36 before #1178 moved the side-effect head list to `statementHeads.ts`). `parseMini.ts` is
 the controlled before/after: 512 lines with a hand-rolled tokenizer, 397 lines and no anchored
 regexes after it was rebuilt on krill.
 
@@ -68,7 +68,7 @@ the regex alone without saying so.
 
 ## Category A — JavaScript syntax · owner: **acorn**
 
-28 of the 36. `acorn` is already a dependency and is already used to parse this same source
+28 of the 35. `acorn` is already a dependency and is already used to parse this same source
 text, three times, in `visualEdit/`. The package parses one document two different ways.
 
 ### A1 · "is this token a bare identifier?" — 4 sites
