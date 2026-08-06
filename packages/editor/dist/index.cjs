@@ -25770,6 +25770,42 @@ function useActiveChunk() {
 }
 __name(useActiveChunk, "useActiveChunk");
 
+// src/visualEdit/notation/pitch.ts
+var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
+var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
+var DEFAULT_OCTAVE = 3;
+function pitchToMidi(token) {
+  if (/^-?\d+$/.test(token)) return parseInt(token, 10);
+  const m = token.toLowerCase().match(/^([a-g])(s|#|b)?(-?\d+)?$/);
+  if (!m) return null;
+  const [, letter, accidental, octave] = m;
+  let semitone = SEMITONE_OF[letter];
+  if (accidental === "s" || accidental === "#") semitone += 1;
+  else if (accidental === "b") semitone -= 1;
+  const oct = octave !== void 0 ? parseInt(octave, 10) : DEFAULT_OCTAVE;
+  return (oct + 1) * 12 + semitone;
+}
+__name(pitchToMidi, "pitchToMidi");
+function midiToPitch(midi) {
+  const octave = Math.floor(midi / 12) - 1;
+  return `${SHARP_NAMES[(midi % 12 + 12) % 12]}${octave}`;
+}
+__name(midiToPitch, "midiToPitch");
+function noteDisplayName(midi) {
+  const token = midiToPitch(midi);
+  return token.charAt(0).toUpperCase() + token.slice(1);
+}
+__name(noteDisplayName, "noteDisplayName");
+function isBlackKey(midi) {
+  return SHARP_NAMES[(midi % 12 + 12) % 12].includes("#");
+}
+__name(isBlackKey, "isBlackKey");
+function cLabel(midi) {
+  if ((midi % 12 + 12) % 12 !== 0) return null;
+  return `C${Math.floor(midi / 12) - 1}`;
+}
+__name(cLabel, "cLabel");
+
 // src/visualEdit/notation/model.ts
 var gridCellKey = /* @__PURE__ */ __name((c) => `${c.token} ${c.duration.toFixed(6)}`, "gridCellKey");
 var cellOn = /* @__PURE__ */ __name((duration = 1) => ({ duration }), "cellOn");
@@ -25811,6 +25847,16 @@ function columnCount(model) {
   return Math.max(0, cols);
 }
 __name(columnCount, "columnCount");
+var DEFAULT_LO = 48;
+var DEFAULT_HI = 72;
+var MIN_SPAN = 12;
+function rollContentRange(model) {
+  const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m) => m !== null);
+  if (midis.length === 0) return { lo: DEFAULT_LO, hi: DEFAULT_HI };
+  const lo = Math.min(...midis) - 2;
+  return { lo, hi: Math.max(Math.max(...midis) + 2, lo + MIN_SPAN) };
+}
+__name(rollContentRange, "rollContentRange");
 function columnSplit(width) {
   const whole = Math.floor(width + COLUMN_EPS);
   const remainder = width - whole;
@@ -26696,42 +26742,6 @@ function viewScaleFits(perBar2, bars, scale) {
   return viewSteps(perBar2 * bars, scale) <= MAX_VIEW_STEPS;
 }
 __name(viewScaleFits, "viewScaleFits");
-
-// src/visualEdit/notation/pitch.ts
-var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
-var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
-var DEFAULT_OCTAVE = 3;
-function pitchToMidi(token) {
-  if (/^-?\d+$/.test(token)) return parseInt(token, 10);
-  const m = token.toLowerCase().match(/^([a-g])(s|#|b)?(-?\d+)?$/);
-  if (!m) return null;
-  const [, letter, accidental, octave] = m;
-  let semitone = SEMITONE_OF[letter];
-  if (accidental === "s" || accidental === "#") semitone += 1;
-  else if (accidental === "b") semitone -= 1;
-  const oct = octave !== void 0 ? parseInt(octave, 10) : DEFAULT_OCTAVE;
-  return (oct + 1) * 12 + semitone;
-}
-__name(pitchToMidi, "pitchToMidi");
-function midiToPitch(midi) {
-  const octave = Math.floor(midi / 12) - 1;
-  return `${SHARP_NAMES[(midi % 12 + 12) % 12]}${octave}`;
-}
-__name(midiToPitch, "midiToPitch");
-function noteDisplayName(midi) {
-  const token = midiToPitch(midi);
-  return token.charAt(0).toUpperCase() + token.slice(1);
-}
-__name(noteDisplayName, "noteDisplayName");
-function isBlackKey(midi) {
-  return SHARP_NAMES[(midi % 12 + 12) % 12].includes("#");
-}
-__name(isBlackKey, "isBlackKey");
-function cLabel(midi) {
-  if ((midi % 12 + 12) % 12 !== 0) return null;
-  return `C${Math.floor(midi / 12) - 1}`;
-}
-__name(cLabel, "cLabel");
 
 // src/visualEdit/notation/parse.ts
 var NUMERIC = /^-?\d+$/;
@@ -28793,7 +28803,7 @@ function viewPlacesNotes(model) {
   const pitches = new Set(model.notes.map((n) => n.pitch));
   const midis = [...pitches].map(pitchToMidi).filter((m) => m !== null);
   if (midis.length > 0) {
-    const below = Math.min(...midis) - 1;
+    const below = rollContentRange(model).lo;
     pitches.add(model.numeric ? String(below) : midiToPitch(below));
   }
   for (const pitch of pitches)
@@ -31083,9 +31093,6 @@ function startAudition(sound, note = "c4") {
 }
 __name(startAudition, "startAudition");
 var ROLL_HINT = "Click a melody to edit its notes.";
-var DEFAULT_LO = 48;
-var DEFAULT_HI = 72;
-var MIN_SPAN = 12;
 var RESIZE_ZONE_PX2 = 8;
 var HOLD_RETRIGGER_MS = AUDITION_DUR_S * 1e3;
 var VELOCITY_READ_ONLY = "Shows this pattern\u2019s velocities \u2014 to change them, use the code view.";
@@ -31097,14 +31104,6 @@ function gainInScope2(model) {
 }
 __name(gainInScope2, "gainInScope");
 var tokenForRow = /* @__PURE__ */ __name((numeric, midi) => numeric ? String(midi) : midiToPitch(midi), "tokenForRow");
-function contentRange(model) {
-  const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m) => m !== null);
-  if (midis.length === 0) return { lo: DEFAULT_LO, hi: DEFAULT_HI };
-  let lo = Math.min(...midis) - 2;
-  const hi = Math.max(Math.max(...midis) + 2, lo + MIN_SPAN);
-  return { lo, hi };
-}
-__name(contentRange, "contentRange");
 function overlapAt(model, midi, step) {
   for (const n of model.notes) {
     if (pitchToMidi(n.pitch) !== midi) continue;
@@ -31156,15 +31155,14 @@ function PianoRollGrid({
   const selectedRef = React36__namespace.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range2, setRange] = React36__namespace.useState({
-    lo: DEFAULT_LO,
-    hi: DEFAULT_HI
-  });
+  const [range2, setRange] = React36__namespace.useState(
+    () => rollContentRange({ notes: [] })
+  );
   const stmtIdRef = React36__namespace.useRef(null);
   React36__namespace.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
-    const content = contentRange(model);
+    const content = rollContentRange(model);
     const id = chunk ? chunk.statementRange[0] : null;
     if (stmtIdRef.current !== id) {
       stmtIdRef.current = id;

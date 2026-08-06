@@ -7919,27 +7919,6 @@ declare function insertArm(doc: string, control: PickControl, at: number, armSou
 declare function duplicateArm(doc: string, control: PickControl, i: number): OffsetEdit[];
 
 /**
- * Notation models — the structured shapes the Sequencer and Piano Roll panels
- * own, parsed from and serialized back to mini-notation.
- *
- * These are deliberately a STRICT SUBSET of Strudel mini-notation: `*n` speed,
- * `!n` replicate, and euclid `(k,n[,rot])` EXPAND onto the grid, because a grid
- * of cells is what these panels can draw. Anything richer (`{}` polymeter, `/`
- * slow, `?` degrade, deep nesting) parses to `{ ok: false }` and the panel falls
- * back to code-only editing rather than guess and corrupt the source. This is
- * the conservatism the whole text-writeback substrate depends on (design doc
- * §4, §5.3).
- *
- * THE EXPANSION IS A FACT ABOUT THE VIEW, NOT ABOUT THE USER'S FILE. It used to
- * be both: `*n` was documented as sugar that "serializes back as the expanded
- * sequence", so opening `bd hh*2 sd cp` and nudging any cell rewrote the line as
- * `bd bd hh hh sd ~ cp ~`. That cost a third of everything the grid could open
- * (#913), and a third of what the roll could open for the same reason (#916).
- * Both models now carry the spans they were read from and both writers put
- * unedited ones back verbatim, so the subset bounds what a panel can SHOW and
- * edit — never what survives being looked at.
- */
-/**
  * One top-level element of the source, and the columns it produced.
  *
  * krill's element spans TILE the mini: concatenating them reconstructs the
