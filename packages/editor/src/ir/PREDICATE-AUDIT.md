@@ -1,7 +1,7 @@
 # Predicate audit — `ir/parseStrudel.ts`
 
 Every regular expression in `parseStrudel.ts`, the question it answers, and the system that
-owns the right answer. 36 are anchored predicates (categories A and B); 7 are unanchored
+owns the right answer. 35 are anchored predicates (categories A and B); 7 are unanchored
 (category D), two of which are predicates as well.
 
 This file is a **census, not a plan**. It exists so that "find the next parser bug" becomes
@@ -326,20 +326,31 @@ recognised here at all.
 1x  /^slow\s*\(\s*([0-9.]+)\s*\)$/
 ```
 
-### B5 · "is this statement a setup/side-effect head?" — 2 sites
+### B5 · "is this statement a setup/side-effect head?" — 1 site
 
-`stripParserPrelude:342` (`PRELUDE_CALL_RE`) · module scope `:676` (`SIDE_EFFECT_CALL_RE`)
+`stripParserPrelude:342` (`PRELUDE_CALL_RE`)
 
-Owner: `@strudel/core` `repl.mjs` (the setter/boot surface). **Transcribed** — twice, as two
-lists that are *nearly* the same: `SIDE_EFFECT_CALL_RE` adds `all` and `PRELUDE_CALL_RE` does
-not. Two copies of one vocabulary that have already drifted from each other by one entry.
+Owner: `@strudel/core` `repl.mjs` (the setter/boot surface). **Transcribed.**
+
+⚠ THIS ENTRY USED TO LIST TWO SITES, and the second one LEFT rather than vanished (#1178).
+`SIDE_EFFECT_CALL_RE` moved to `statementHeads.ts`, because the Mixer kept a THIRD copy of
+nearly the same vocabulary and the two disagreed for 14 of 55 bare corpus documents. It is now
+one list with two readers, and the regex there is derived from the set rather than spelled
+beside it. Recorded here rather than merely deleted: a census that drops an entry without
+saying where it went reads the same as one that never had it.
+
+The two remaining lists are NOT redundant, which this entry previously implied by calling them
+"two copies of one vocabulary". They answer different questions, and the difference is exactly
+the entries they disagree on: `PRELUDE_CALL_RE` asks "is this a LEADING boot call I may strip
+before parsing?", and its own docblock reasons that `all` and `hush` are not — `all` takes a
+pattern transform, `hush` stops playback. `statementHeads` asks "is this statement a track?",
+for which both plainly qualify. Merging them would strip `all(...)` as prelude.
 
 Known-incomplete: **observed** — a setup head absent from the list opaques the whole program:
 `setGain(0.5)` + `note("c3")` goes to `Code`, against a control `setcps(0.5)` that parses.
 
 ```regex
 1x  /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/
-1x  /^[ \t]*(?:all|samples|setcps|setCps|setcpm|setCpm|useRNG|setVoicingRange|initAudio|aliasBank)\s*\(/
 ```
 
 ---
@@ -409,12 +420,12 @@ observation — `const n = .5` and `const n = 4` now produce the same IR shape.
 | category | owner | sites |
 |---|---|---|
 | A — JavaScript syntax | acorn | 28 |
-| B — Strudel vocabulary | `controls.mjs` / `signal.mjs` / krill | 8 |
-| **total anchored regexes** | | **36** |
+| B — Strudel vocabulary | `controls.mjs` / `signal.mjs` / krill | 7 |
+| **total anchored regexes** | | **35** |
 | D — unanchored (2 predicates + 5 scans) | acorn / — | 7 |
-| **total regex literals** | | **43** |
+| **total regex literals** | | **42** |
 | distinct sources | | 32 |
 
-Of the 36 anchored predicates, **zero** currently delegate (the pattern-source extraction that #965 removed DID delegate — to acorn — which is why it is no longer a regex). Eleven of the incompleteness claims
+Of the 35 anchored predicates, **zero** currently delegate (the pattern-source extraction that #965 removed DID delegate — to acorn — which is why it is no longer a regex). Eleven of the incompleteness claims
 above are observed against a control arm; the rest are reasoned from the expression and marked
 as such.

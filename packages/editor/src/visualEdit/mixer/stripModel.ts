@@ -19,6 +19,7 @@ import { patternKind } from '../panels/patternKind'
 import { readChainMethod } from '../panels/chainMethod'
 import { trackIdentity } from '../trackColor'
 import { type GainState, readGainState } from './gain'
+import { NON_TRACK_HEADS } from '../../ir/statementHeads'
 
 /** which surface a strip's pattern belongs to (mirrors `ChunkType` + groups). */
 export type StripKind = 'step' | 'roll' | 'group' | 'unknown'
@@ -116,44 +117,21 @@ function bareLabel(label: string | null): string | null {
 }
 
 /**
- * Top-level heads that configure global transport / load resources rather than
- * play a track. They return no pattern and never register a scheduler — the
- * engine numbers anonymous `$:` patterns ONLY inside the wrapped `.p()` method
- * (`StrudelEngine.ts:835-839`), which these calls never reach. So they must NOT
- * become strips (#559): a phantom strip shows a dead meter and clutters the
- * console with a track the document does not have.
- *
- * ⚠ TWO CONSEQUENCES THIS COMMENT USED TO CLAIM ARE NO LONGER ITS TO CARRY, and
- * both are worth stating so the list is not defended by hazards it no longer
- * prevents:
- *
- *  - It said a phantom strip would consume a `$<n>` slot and shift every real
- *    track's join by one. That was true, and it was NOT this list's to prevent —
- *    an ordinary unlabelled pattern did it too, with no unknown head involved.
- *    Fixed at the counter instead (#1174, `buildStripModels` below), so a head
- *    missing from this set can no longer misroute a meter.
- *  - It said such a statement would be wrapped in a JS block comment by the solo
- *    overlay, silencing global tempo on any solo. That described an overlay
- *    (`soloOverlay.ts`) which no longer exists: #735 made solo WRITE `_` mute
- *    markers, and it writes them only to `muteable` strips — which unlabelled
- *    statements are not (`_cpm(...)` would parse as a different identifier). So
- *    solo cannot touch a transport call, whether or not it is on this list.
- *
- * What remains is a display concern, which is the right weight for a denylist
- * that is conservative by design.
- */
-const NON_TRACK_HEADS = new Set([
-  'setcps', 'setCps', 'setcpm', 'setCpm', 'setbpm', 'setBpm',
-  'samples', 'hush', 'all',
-])
-
-/**
  * Whether a detected chunk is a playable track (→ gets a strip) or a global
  * transport/config statement (→ filtered out, #559). A labelled statement
  * (`$:`, `_$:`, `d1:`) is ALWAYS a track — the user explicitly declared one. An
  * unlabelled bare expression is a track unless its head is a known config call;
  * the denylist is conservative on purpose, so an unknown head still shows a strip
  * (today's behaviour) rather than risk hiding a real track.
+ *
+ * ⚠ THE LIST IS SHARED WITH `parseStrudel`, and that is the point (#1178). This
+ * side decides whether a strip is DRAWN; the parser's side decides whether the
+ * IR declares a Track for the same statement. A bare document's meter joins the
+ * two on a POSITIONAL key, so they must count the same population — agreeing on
+ * the rule is not enough if the rule is applied to different sets. They kept
+ * separate lists until now and disagreed for 14 of 55 bare corpus documents,
+ * which showed up as the Mixer naming a random-seed call `d1` while the Song
+ * timeline gave `d1` to the music under it.
  */
 export function isTrackChunk(chunk: ChunkInfo): boolean {
   if (chunk.label !== null) return true
