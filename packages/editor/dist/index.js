@@ -6242,6 +6242,17 @@ function isTrackChunk(chunk) {
   return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn);
 }
 __name(isTrackChunk, "isTrackChunk");
+var BARE_CAPTURE_ID = "$0";
+function unjoinableId(index) {
+  return `~$${index}`;
+}
+__name(unjoinableId, "unjoinableId");
+function bareCaptureIdFor(tracks) {
+  if (tracks.length !== 1) return null;
+  if (tracks[0].label !== null) return null;
+  return BARE_CAPTURE_ID;
+}
+__name(bareCaptureIdFor, "bareCaptureIdFor");
 var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
 function stripKind(chunk) {
   const k = patternKind(chunk);
@@ -6303,6 +6314,7 @@ function buildStripModels(chunks) {
   let anonLive = 0;
   let ordinal = 0;
   const models = [];
+  const bareId = bareCaptureIdFor(chunks.filter(isTrackChunk));
   chunks.forEach((chunk, index) => {
     if (!isTrackChunk(chunk)) return;
     ordinal++;
@@ -6311,6 +6323,7 @@ function buildStripModels(chunks) {
     let captureId;
     if (bare !== null) captureId = bare;
     else if (isMuted(chunk.label)) captureId = `_$${index}`;
+    else if (chunk.label === null) captureId = bareId ?? unjoinableId(index);
     else captureId = `$${anonLive++}`;
     models.push(buildStripModel(chunk, index, ordinal, id, captureId));
   });
@@ -6334,12 +6347,8 @@ function stripContainingOffset(strips, offset) {
 __name(stripContainingOffset, "stripContainingOffset");
 
 // src/engine/bareCapture.ts
-var BARE_CAPTURE_ID = "$0";
 function resolveBareCaptureId(code) {
-  const tracks = detectAllChunks(code).filter(isTrackChunk);
-  if (tracks.length !== 1) return null;
-  if (tracks[0].label !== null) return null;
-  return BARE_CAPTURE_ID;
+  return bareCaptureIdFor(detectAllChunks(code).filter(isTrackChunk));
 }
 __name(resolveBareCaptureId, "resolveBareCaptureId");
 
