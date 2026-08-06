@@ -1237,3 +1237,63 @@ test.describe('Mixer master — retired synthetic output-gain seam (#794)', () =
     expect(mx).toBeGreaterThan(15)
   })
 })
+
+/**
+ * #1097 — a bare document's strip is a real track, not a decoration.
+ *
+ * Strips come from the parsed document, so a bare statement has always drawn one;
+ * the meter comes from `trackSchedulers`, which only the `.p()` hook used to
+ * write. The two therefore disagreed: a strip that could never move. These pin
+ * the join from the user's side — same music, once bare and once labelled.
+ */
+test.describe('bare-document strips meter like any other track (#1097)', () => {
+  /** poll a strip's meter the way the master-meter tests do — playback is live,
+   *  so a single read can land between onsets. */
+  async function peakFill(
+    page: Page,
+    drawer: ReturnType<Page['locator']>,
+    stripId: string,
+  ): Promise<number> {
+    let mx = 0
+    for (let attempt = 0; attempt < 2 && mx < 15; attempt++) {
+      await play(page)
+      await page.waitForTimeout(1200)
+      for (let i = 0; i < 25; i++) {
+        mx = Math.max(mx, await meterFill(page, drawer, stripId))
+        await page.waitForTimeout(33)
+      }
+    }
+    return mx
+  }
+
+  test('a lone bare statement drives its meter', async ({ page }) => {
+    await boot(page)
+    const drawer = await openMixer(page)
+    await setStrudelCode(page, 's("bd*8").gain(0.9)')
+    // the strip exists — true before this fix too, which is the whole point
+    await expect(drawer.locator('[data-mixer-strip-id="#0"]')).toHaveCount(1)
+    expect(await peakFill(page, drawer, '#0')).toBeGreaterThan(15)
+  })
+
+  test('TWO bare statements stay dark — and the labelled twin proves the meter works', async ({
+    page,
+  }) => {
+    await boot(page)
+    const drawer = await openMixer(page)
+
+    // GUARDED CASE: strudel plays only the LAST expression while the strips are
+    // numbered from the first, so binding either one would be a guess. No entry
+    // is written, and the meters stay where they were (#1096 owns the binding).
+    await setStrudelCode(page, 's("bd*8").gain(0.9)\ns("hh*8").gain(0.9)')
+    await expect(drawer.locator('[data-mixer-strip-id="#0"]')).toHaveCount(1)
+    await expect(drawer.locator('[data-mixer-strip-id="#1"]')).toHaveCount(1)
+    expect(await peakFill(page, drawer, '#0')).toBeLessThan(15)
+
+    // POSITIVE CONTROL for that absence: the same two statements, labelled, do
+    // move. Without this the dark meters above would be indistinguishable from a
+    // test that never managed to play anything.
+    await setStrudelCode(page, '$: s("bd*8").gain(0.9)\n$: s("hh*8").gain(0.9)')
+    await expect(drawer.locator('[data-mixer-strip-id="#0"]')).toHaveCount(1)
+    expect(await peakFill(page, drawer, '#0')).toBeGreaterThan(15)
+  })
+})

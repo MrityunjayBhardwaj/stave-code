@@ -4360,1932 +4360,6 @@ function formatFriendlyError(err, runtime, options = {}) {
   };
 }
 __name(formatFriendlyError, "formatFriendlyError");
-
-// src/engine/StrudelEngine.ts
-var BARE_CAPTURE_ID = "$0";
-function isQueryablePattern(p) {
-  return !!p && typeof p.queryArc === "function";
-}
-__name(isQueryablePattern, "isQueryablePattern");
-function extractVizName(rawArg) {
-  if (typeof rawArg === "string") return rawArg || void 0;
-  const pat = rawArg;
-  if (!pat || !pat._Pattern || typeof pat.queryArc !== "function") {
-    return void 0;
-  }
-  const renderHapValue = /* @__PURE__ */ __name((v) => {
-    if (typeof v === "string") return v;
-    if (Array.isArray(v)) return v.join(":");
-    if (v == null) return "";
-    return String(v);
-  }, "renderHapValue");
-  let haps;
-  try {
-    haps = pat.queryArc(0, 1);
-  } catch {
-    return void 0;
-  }
-  if (haps.length === 0) return void 0;
-  if (haps.length === 1) {
-    const out2 = renderHapValue(haps[0].value);
-    return out2 === "" ? void 0 : out2;
-  }
-  const out = haps.map((h) => renderHapValue(h.value)).join(" ");
-  return out === "" ? void 0 : out;
-}
-__name(extractVizName, "extractVizName");
-var STRUDEL_VIZ_METHODS = {
-  pianoroll: "pianoroll",
-  punchcard: "pianoroll",
-  wordfall: "wordfall",
-  scope: "scope",
-  tscope: "scope",
-  fscope: "fscope",
-  spectrum: "spectrum",
-  spiral: "spiral",
-  pitchwheel: "pitchwheel"
-};
-var _StrudelEngine = class _StrudelEngine {
-  constructor() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.repl = null;
-    this.audioCtx = null;
-    this.analyserNode = null;
-    this.hapStream = new HapStream();
-    this.initialized = false;
-    // Resolve function for the current in-flight evaluate() call
-    this.evalResolve = null;
-    // Runtime audio error handler (e.g. "sound X not found" during scheduling)
-    this.runtimeErrorHandler = null;
-    // Sound names registered after init() — used for editor autocompletion
-    this.loadedSoundNames = [];
-    // Per-track PatternSchedulers captured during the last evaluate() call.
-    // These hold the pattern in the SCHEDULER frame — `.late(transportOffset)`
-    // applied — because every consumer (viz, signal bus, meters, the live
-    // playhead) reads them against the wall clock.
-    this.trackSchedulers = /* @__PURE__ */ new Map();
-    // #863 — the same per-track patterns in the SONG frame: captured BEFORE the
-    // `.late(transportOffset)` seek wrap, so cycle 0 is the start of the song
-    // rather than the start of the current scheduler window. The Song timeline
-    // draws static marks on a song-absolute axis against IR-derived lanes, so it
-    // must read from here (`getTimelineEvents`) — a shifted query would drift the
-    // marks off their lanes by the offset after any seek. Kept in lock-step with
-    // `trackSchedulers` (assigned together on a successful evaluate).
-    this.songPatterns = /* @__PURE__ */ new Map();
-    // eslint-disable-line @typescript-eslint/no-explicit-any
-    // Per-track viz requests captured during the last evaluate() call
-    this.vizRequests = /* @__PURE__ */ new Map();
-    // Per-track viz options (the `.pianoroll({...})` argument), keyed by the
-    // same captureId as vizRequests. Empty when no viz call passed an argument.
-    this.vizOptions = /* @__PURE__ */ new Map();
-    // Options for the backdrop viz call (`.pianoroll({...})`), null when none.
-    this.backdropVizOptions = null;
-    // Backdrop viz requested by a non-underscore Strudel viz method (e.g.
-    // `.scope()`, `.pianoroll()`) during the last evaluate(). Strudel's
-    // non-underscore viz methods are its "big"/fullscreen form — we map them
-    // to Stave's backdrop instead of drawing strudel's own fullscreen canvas.
-    // Resolved renderer id (e.g. 'scope', 'pianoroll'); null when none called.
-    this.backdropVizRequest = null;
-    // Reference to superdough audio controller (set during init)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.audioController = null;
-    // Per-track AnalyserNodes keyed by captureId, side-tapped off the
-    // superdough Orbit each captured pattern plays through.
-    this.trackAnalysers = /* @__PURE__ */ new Map();
-    // The orbit each tracked analyser is tapped from — lets re-evaluate reuse
-    // existing analysers when the captureId/orbit pair hasn't changed.
-    this.trackOrbit = /* @__PURE__ */ new Map();
-    // Code from the last successful evaluate() — used by buildVizRequestsWithLines
-    this.lastEvaluatedCode = "";
-    // Pattern IR from the last successful evaluate() — parsed from the user code.
-    this.lastPatternIR = null;
-    // PV38 clause 2 — loc-keyed lookup over the IR's Play leaves (loc → irNodeId);
-    // both queryArc callbacks (per-track + convenience) read this to enrich haps
-    // with `irNodeId`. Built from `buildNodeLocIndex(lastPatternIR)` on eval
-    // success (node identity is a structural property of the IR — #975/#982),
-    // cleared on failure.
-    this.lastIRNodeLocLookup = null;
-    // Phase 20-07 (PK13 step 9) — engine-attached breakpoint registry.
-    // Per-engine scope (PV33). The hit-check in `wrappedOutput` reads
-    // `breakpointStore.has(irNodeId)` on the audio scheduler hot path.
-    this.breakpointStore = new BreakpointStore();
-    // Phase 20-07 — engine-driven pause state. Mirrored to consumers via
-    // `onPausedChanged` listeners. Set when the hit-check pauses the
-    // scheduler (engine pauses ITSELF on hit) and via the public pause()
-    // method. Idempotence guarded by setPaused().
-    this.isPausedState = false;
-    this.pauseChangedListeners = /* @__PURE__ */ new Set();
-    // #384 — transport seek offset, in cycles. The song position the user sees
-    // is `scheduler.now() - transportOffset`; `0` means normal playback (no
-    // seek). Set by `setTransportOffset()` (the runtime's `seekTo` computes
-    // `now - targetCycle`). Applied at the `.p` capture seam inside evaluate()
-    // by wrapping the pattern with `.late(transportOffset)` — the IR-level
-    // transport wrap — so the scheduler plays song-cycle `songPosition` at
-    // wall-clock `now`. This is the ONLY place a time-shift touches
-    // Pattern.prototype; the runtime must never do so (PV2 / P2 source-grep
-    // guard). Exact only for stateless-cyclic patterns; state-accumulating
-    // patterns seek approximately (documented edge, design §7.4).
-    this.transportOffset = 0;
-    // Phase 20-14 α-5 — tier flags read at boot. β-4 wires `midi` to call
-    // enableWebMidi(); the other 7 (csound, tidal, osc, serial, gamepad,
-    // motion, mqtt) land as one follow-up issue each. Mid-session toggle
-    // changes are NOT picked up here — settings modal shows the "Changes
-    // take effect on reload" caption.
-    this.tierFlags = null;
-    // Phase 20-14 β-2 — alias-resolution accumulator. Reset at `evaluate()`
-    // entry; appended to by `wrappedOutput` whenever the alias map rewrites
-    // a hap's `s` field. β-5's friendly-error builder reads this to surface
-    // "tried alias `kick` → `bd` (resolved)" on a related error. Owned by
-    // the engine instance (NOT module state) so concurrent engines don't
-    // collide and a stale accumulator can't leak across evals.
-    this.lastAliasResolutions = [];
-    // Phase 20-14 β-2 — live reference to superdough's `soundMap`. Captured
-    // at init() (when `@strudel/webaudio` resolves). `wrappedOutput` reads
-    // `soundMap.get()[name]` at trigger time to honour the Strategy A guard
-    // — user-registered names always win over the curated alias map.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.soundMapRef = null;
-    /** the destinationGain node our master analyser is currently tapping. */
-    this.taggedDestinationGain = null;
-    /** resolves superdough's GLOBAL audio controller (the live one). */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.superdoughControllerFn = null;
-  }
-  /** Read-only snapshot of the tier flags consumed at this engine's init(). */
-  getTierFlagsSnapshot() {
-    return this.tierFlags;
-  }
-  /**
-   * #384 — set the transport seek offset (cycles). Does NOT re-evaluate by
-   * itself: the runtime's `seekTo` calls this and then `play()`, whose
-   * re-eval re-reads `transportOffset` and applies the `.late()` wrap at the
-   * `.p` seam. Kept off the `LiveCodingEngine` interface (v1) and reached via
-   * `(engine as any).setTransportOffset?.()` so non-Strudel engines no-op,
-   * mirroring the pause/resume delegation convention.
-   */
-  setTransportOffset(offset) {
-    this.transportOffset = Number.isFinite(offset) ? offset : 0;
-  }
-  /** #384 — current transport offset (cycles). `0` when no seek is active. */
-  getTransportOffset() {
-    return this.transportOffset;
-  }
-  /**
-   * Phase 20-14 β-2 — read-only snapshot of alias rewrites that have fired
-   * during the current evaluate() window. Each entry is one hap rewrite;
-   * the same `from → to` pair may appear multiple times if the rewrite
-   * fired across multiple cycles.
-   *
-   * Lifecycle: reset to empty at `evaluate()` entry, appended to by
-   * `wrappedOutput`, read by friendlyErrors at message-build time.
-   */
-  getLastAliasResolutions() {
-    return this.lastAliasResolutions;
-  }
-  async init() {
-    if (this.initialized) return;
-    this.tierFlags = getTierFlags();
-    console.log("[StrudelEngine] tierFlags read at init:", this.tierFlags);
-    const [coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod] = await Promise.all([
-      import('@strudel/core'),
-      import('@strudel/mini'),
-      import('@strudel/tonal'),
-      import('@strudel/webaudio'),
-      import('@strudel/soundfonts'),
-      import('@strudel/xen'),
-      import('@strudel/midi'),
-      // Phase 20-14 α-1: audio-pure addition. Exposes `mondo`, `mondi`,
-      // `mondolang`, `getLocations` on globalThis via evalScope. Verified
-      // exports against upstream npm @strudel/mondo@1.1.6 (dist/mondough.mjs).
-      // @strudel/edo (also called for by upstream loadModules at the pinned SHA)
-      // is intentionally NOT added here — it is not yet published to npm
-      // (registry.npmjs.org returns 404 for @strudel/edo on 2026-05-15).
-      // Tracked as a follow-up when upstream publishes it.
-      import('@strudel/mondo')
-    ]);
-    await coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod);
-    if (this.tierFlags?.midi) {
-      try {
-        const enableWebMidi = midiMod?.enableWebMidi;
-        if (typeof enableWebMidi === "function") {
-          await enableWebMidi();
-        } else {
-          console.warn("[StrudelEngine] tierFlags.midi is ON but @strudel/midi did not export enableWebMidi.");
-        }
-      } catch (err) {
-        console.warn("[StrudelEngine] enableWebMidi() failed; MIDI output unavailable.", err);
-      }
-    }
-    installMiniStringParser({ core: coreMod, mini: miniMod });
-    const { transpiler } = await import('@strudel/transpiler');
-    const { initAudio, getAudioContext: getAudioContext3, webaudioOutput, webaudioRepl } = webaudioMod;
-    await initAudio();
-    webaudioMod.registerSynthSounds();
-    webaudioMod.registerZZFXSounds();
-    soundfontsMod.registerSoundfonts();
-    await webaudioMod.samples("github:tidalcycles/Dirt-Samples/master");
-    const samplesFn = webaudioMod.samples;
-    const baseCDN = "https://strudel.b-cdn.net";
-    const safeSamples = /* @__PURE__ */ __name(async (label, fn) => {
-      try {
-        await fn();
-      } catch (e) {
-        console.warn(`[StrudelEngine] sample manifest "${label}" failed to load; continuing without it.`, e);
-      }
-    }, "safeSamples");
-    await Promise.all([
-      // Salamander piano — unlocks `s("piano")`. Closes the symptom of issue #110.
-      safeSamples("piano", () => samplesFn(`${baseCDN}/piano.json`, `${baseCDN}/piano/`, { prebake: true })),
-      // VCSL orchestral library (CC0).
-      safeSamples("vcsl", () => samplesFn(`${baseCDN}/vcsl.json`, `${baseCDN}/VCSL/`, { prebake: true })),
-      // tidal-drum-machines — unlocks `.bank("tr909")`, `.bank("RolandTR808")`, etc.
-      safeSamples("tidal-drum-machines", () => samplesFn(`${baseCDN}/tidal-drum-machines.json`, `${baseCDN}/tidal-drum-machines/machines/`, { prebake: true, tag: "drum-machines" })),
-      // uzu-drumkit — extra drum banks.
-      safeSamples("uzu-drumkit", () => samplesFn(`${baseCDN}/uzu-drumkit.json`, `${baseCDN}/uzu-drumkit/`, { prebake: true, tag: "drum-machines" })),
-      // uzu-wavetables — wavetable synth fodder.
-      safeSamples("uzu-wavetables", () => samplesFn(`${baseCDN}/uzu-wavetables.json`, `${baseCDN}/uzu-wavetables/`, { prebake: true })),
-      // mridangam — percussion bank.
-      safeSamples("mridangam", () => samplesFn(`${baseCDN}/mridangam.json`, `${baseCDN}/mrid/`, { prebake: true, tag: "drum-machines" })),
-      // Inline Dirt-Samples categories (casio/crow/insect/wind/jazz/metal/east/
-      // space/numbers/num) served from b-cdn. Upstream prebake.mjs:42-155.
-      // The earlier `github:tidalcycles/Dirt-Samples/master` call (above) registers
-      // bd/hh/sd/etc.; soundMap.setKey overwrites on duplicate so this call wins
-      // for shared keys — matches upstream behavior (RESEARCH §1c).
-      safeSamples("dirt-extras", () => samplesFn({
-        casio: ["casio/high.wav", "casio/low.wav", "casio/noise.wav"],
-        crow: ["crow/000_crow.wav", "crow/001_crow2.wav", "crow/002_crow3.wav", "crow/003_crow4.wav"],
-        insect: [
-          "insect/000_everglades_conehead.wav",
-          "insect/001_robust_shieldback.wav",
-          "insect/002_seashore_meadow_katydid.wav"
-        ],
-        wind: [
-          "wind/000_wind1.wav",
-          "wind/001_wind10.wav",
-          "wind/002_wind2.wav",
-          "wind/003_wind3.wav",
-          "wind/004_wind4.wav",
-          "wind/005_wind5.wav",
-          "wind/006_wind6.wav",
-          "wind/007_wind7.wav",
-          "wind/008_wind8.wav",
-          "wind/009_wind9.wav"
-        ],
-        jazz: [
-          "jazz/000_BD.wav",
-          "jazz/001_CB.wav",
-          "jazz/002_FX.wav",
-          "jazz/003_HH.wav",
-          "jazz/004_OH.wav",
-          "jazz/005_P1.wav",
-          "jazz/006_P2.wav",
-          "jazz/007_SN.wav"
-        ],
-        metal: [
-          "metal/000_0.wav",
-          "metal/001_1.wav",
-          "metal/002_2.wav",
-          "metal/003_3.wav",
-          "metal/004_4.wav",
-          "metal/005_5.wav",
-          "metal/006_6.wav",
-          "metal/007_7.wav",
-          "metal/008_8.wav",
-          "metal/009_9.wav"
-        ],
-        east: [
-          "east/000_nipon_wood_block.wav",
-          "east/001_ohkawa_mute.wav",
-          "east/002_ohkawa_open.wav",
-          "east/003_shime_hi.wav",
-          "east/004_shime_hi_2.wav",
-          "east/005_shime_mute.wav",
-          "east/006_taiko_1.wav",
-          "east/007_taiko_2.wav",
-          "east/008_taiko_3.wav"
-        ],
-        space: [
-          "space/000_0.wav",
-          "space/001_1.wav",
-          "space/002_11.wav",
-          "space/003_12.wav",
-          "space/004_13.wav",
-          "space/005_14.wav",
-          "space/006_15.wav",
-          "space/007_16.wav",
-          "space/008_17.wav",
-          "space/009_18.wav",
-          "space/010_2.wav",
-          "space/011_3.wav",
-          "space/012_4.wav",
-          "space/013_5.wav",
-          "space/014_6.wav",
-          "space/015_7.wav",
-          "space/016_8.wav",
-          "space/017_9.wav"
-        ],
-        numbers: [
-          "numbers/0.wav",
-          "numbers/1.wav",
-          "numbers/2.wav",
-          "numbers/3.wav",
-          "numbers/4.wav",
-          "numbers/5.wav",
-          "numbers/6.wav",
-          "numbers/7.wav",
-          "numbers/8.wav"
-        ],
-        num: [
-          "num/00.wav",
-          "num/01.wav",
-          "num/02.wav",
-          "num/03.wav",
-          "num/04.wav",
-          "num/05.wav",
-          "num/06.wav",
-          "num/07.wav",
-          "num/08.wav",
-          "num/09.wav",
-          "num/10.wav",
-          "num/11.wav",
-          "num/12.wav",
-          "num/13.wav",
-          "num/14.wav",
-          "num/15.wav",
-          "num/16.wav",
-          "num/17.wav",
-          "num/18.wav",
-          "num/19.wav",
-          "num/20.wav"
-        ]
-      }, `${baseCDN}/Dirt-Samples/`, { prebake: true }))
-    ]);
-    const soundMapRef = webaudioMod.soundMap;
-    this.soundMapRef = soundMapRef;
-    if (soundMapRef) {
-      globalThis.soundMap = soundMapRef;
-    }
-    const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
-    try {
-      await webaudioMod.aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`);
-    } catch (e) {
-      console.warn("[StrudelEngine] aliasBank fetch failed; .bank() aliases unavailable.", e);
-    }
-    const postAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
-    console.log(`[StrudelEngine] aliasBank: soundMap keys ${preAliasCount} \u2192 ${postAliasCount} (\u0394 ${postAliasCount - preAliasCount}; expect non-negative)`);
-    const soundMapData = webaudioMod.soundMap?.get() ?? {};
-    this.loadedSoundNames = Object.keys(soundMapData).filter((k) => !k.startsWith("_"));
-    this.audioCtx = getAudioContext3();
-    const audioCtx = this.audioCtx;
-    this.analyserNode = audioCtx.createAnalyser();
-    this.analyserNode.fftSize = 2048;
-    this.analyserNode.smoothingTimeConstant = 0.8;
-    const audioController = webaudioMod.getSuperdoughAudioController();
-    this.audioController = audioController;
-    audioController.output.destinationGain.connect(this.analyserNode);
-    this.taggedDestinationGain = audioController.output.destinationGain;
-    this.superdoughControllerFn = webaudioMod.getSuperdoughAudioController ?? null;
-    const hapStream = this.hapStream;
-    const audioCtxRef = audioCtx;
-    const wrappedOutput = /* @__PURE__ */ __name(async (hap, deadline, duration, cps, t) => {
-      perf.inc("audio.triggers");
-      const rawS = hap?.value?.s;
-      if (typeof rawS === "string") {
-        const lower = rawS.toLowerCase();
-        const liveSoundMap = this.soundMapRef?.get?.() ?? void 0;
-        if (!liveSoundMap || liveSoundMap[lower] === void 0) {
-          const aliased = resolveAlias(rawS);
-          if (aliased && aliased !== rawS) {
-            this.lastAliasResolutions.push({ from: rawS, to: aliased });
-            hap.value = { ...hap.value, s: aliased };
-          }
-        }
-      }
-      const enriched = hapStream.emit(hap, t, duration, cps, audioCtxRef.currentTime, this.lastIRNodeLocLookup ?? void 0);
-      if (enriched.irNodeId && this.breakpointStore.has(enriched.irNodeId)) {
-        this.repl?.scheduler?.pause();
-        this.setPaused(true);
-        return;
-      }
-      try {
-        return await webaudioOutput(hap, deadline, duration, cps, t);
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        if (isSoundfontZoneError(error.message)) {
-          const better = soundfontRangeMessage(hap?.value);
-          if (better) error.message = better;
-          const instrument = hap?.value?.s;
-          if (typeof instrument === "string") {
-            error.staveLocateSource = instrument;
-          }
-        }
-        this.runtimeErrorHandler?.(error);
-      }
-    }, "wrappedOutput");
-    this.repl = webaudioRepl({
-      transpiler,
-      defaultOutput: wrappedOutput,
-      onEvalError: /* @__PURE__ */ __name((err) => {
-        this.evalResolve?.({ error: err });
-        this.evalResolve = null;
-      }, "onEvalError")
-    });
-    await Promise.resolve().then(() => (init_piano(), piano_exports));
-    this.initialized = true;
-  }
-  async evaluate(code) {
-    if (!this.initialized) await this.init();
-    this.lastEvaluatedCode = code;
-    this.lastAliasResolutions = [];
-    const capturedPatterns = /* @__PURE__ */ new Map();
-    const capturedSongPatterns = /* @__PURE__ */ new Map();
-    const capturedVizRequests = /* @__PURE__ */ new Map();
-    const capturedVizOptions = /* @__PURE__ */ new Map();
-    let capturedBackdropViz = null;
-    let capturedBackdropVizOptions = null;
-    let pendingChainViz = null;
-    let pendingChainVizOptions = null;
-    let anonIndex = 0;
-    let autoOrbitNext = 100;
-    const transportOffset = this.transportOffset;
-    const probeExplicitOrbit = /* @__PURE__ */ __name((pat) => {
-      try {
-        const haps = pat.queryArc(0, 1);
-        for (const h of haps) {
-          if (h?.value?.orbit !== void 0) return true;
-        }
-        const more = pat.queryArc(0, 4);
-        for (const h of more) {
-          if (h?.value?.orbit !== void 0) return true;
-        }
-      } catch {
-      }
-      return false;
-    }, "probeExplicitOrbit");
-    const { Pattern: Pattern2 } = await import('@strudel/core');
-    const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "p");
-    const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "viz");
-    const savedLegacyDescriptors = /* @__PURE__ */ new Map();
-    Object.defineProperty(Pattern2.prototype, "p", {
-      configurable: true,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      set(strudelFn) {
-        const strudelViz = Pattern2.prototype.viz;
-        Object.defineProperty(Pattern2.prototype, "viz", {
-          configurable: true,
-          writable: true,
-          value: /* @__PURE__ */ __name(function(vizName, opts) {
-            const resolvedName = extractVizName(vizName);
-            const optsObj = opts && typeof opts === "object" ? opts : null;
-            if (resolvedName && optsObj && optsObj.backdrop === true) {
-              capturedBackdropViz = resolvedName;
-              capturedBackdropVizOptions = optsObj;
-              return strudelViz ? strudelViz.call(this, vizName) : this;
-            }
-            const result = strudelViz ? strudelViz.call(this, vizName) : this;
-            if (resolvedName) {
-              result._pendingViz = resolvedName;
-              pendingChainViz = resolvedName;
-            }
-            if (opts && typeof opts === "object") {
-              result._pendingVizOptions = opts;
-              pendingChainVizOptions = opts;
-            }
-            return result;
-          }, "value")
-        });
-        for (const [name, renderer] of Object.entries(STRUDEL_VIZ_METHODS)) {
-          const underscore = `_${name}`;
-          savedLegacyDescriptors.set(underscore, Object.getOwnPropertyDescriptor(Pattern2.prototype, underscore));
-          Object.defineProperty(Pattern2.prototype, underscore, {
-            configurable: true,
-            writable: true,
-            value: /* @__PURE__ */ __name(function(opts) {
-              this._pendingViz = renderer;
-              pendingChainViz = renderer;
-              if (opts && typeof opts === "object") {
-                this._pendingVizOptions = opts;
-                pendingChainVizOptions = opts;
-              }
-              return this;
-            }, "value")
-          });
-          savedLegacyDescriptors.set(name, Object.getOwnPropertyDescriptor(Pattern2.prototype, name));
-          Object.defineProperty(Pattern2.prototype, name, {
-            configurable: true,
-            writable: true,
-            value: /* @__PURE__ */ __name(function(opts) {
-              capturedBackdropViz = renderer;
-              capturedBackdropVizOptions = opts && typeof opts === "object" ? opts : null;
-              return this;
-            }, "value")
-          });
-        }
-        Object.defineProperty(Pattern2.prototype, "p", {
-          configurable: true,
-          writable: true,
-          value: /* @__PURE__ */ __name(function(id) {
-            const chainViz = pendingChainViz;
-            const chainVizOptions = pendingChainVizOptions;
-            pendingChainViz = null;
-            pendingChainVizOptions = null;
-            if (typeof id === "string" && !(id.startsWith("_") || id.endsWith("_"))) {
-              let captureId = id;
-              if (id.includes("$")) {
-                captureId = `$${anonIndex}`;
-                anonIndex++;
-              }
-              let vizName = "";
-              if (this._pendingViz && typeof this._pendingViz === "string") {
-                vizName = this._pendingViz;
-                capturedVizRequests.set(captureId, vizName);
-                delete this._pendingViz;
-              } else if (chainViz) {
-                vizName = chainViz;
-                capturedVizRequests.set(captureId, vizName);
-              }
-              if (this._pendingVizOptions && typeof this._pendingVizOptions === "object") {
-                capturedVizOptions.set(captureId, this._pendingVizOptions);
-                delete this._pendingVizOptions;
-              } else if (chainVizOptions) {
-                capturedVizOptions.set(captureId, chainVizOptions);
-              }
-              let effectivePattern = this;
-              if (vizName && typeof this.orbit === "function" && !probeExplicitOrbit(this)) {
-                const autoOrbit = autoOrbitNext++;
-                try {
-                  effectivePattern = this.orbit(autoOrbit);
-                } catch {
-                }
-              }
-              capturedSongPatterns.set(captureId, effectivePattern);
-              if (transportOffset !== 0 && typeof effectivePattern.late === "function") {
-                try {
-                  effectivePattern = effectivePattern.late(transportOffset);
-                } catch {
-                }
-              }
-              capturedPatterns.set(captureId, effectivePattern);
-              return strudelFn.call(effectivePattern, id);
-            }
-            if (typeof id !== "string") return this;
-            return strudelFn.call(this, id);
-          }, "value")
-        });
-      }
-    });
-    try {
-      let playedPattern;
-      const result = await new Promise((resolve) => {
-        this.evalResolve = resolve;
-        this.repl.evaluate(code).then((pattern) => {
-          playedPattern = pattern;
-          if (this.evalResolve) {
-            this.evalResolve({});
-            this.evalResolve = null;
-          }
-        });
-      });
-      if (!result.error) {
-        if (capturedSongPatterns.size === 0 && isQueryablePattern(playedPattern)) {
-          capturedSongPatterns.set(BARE_CAPTURE_ID, playedPattern);
-        }
-        const sched = this.repl.scheduler;
-        this.trackSchedulers = /* @__PURE__ */ new Map();
-        for (const [id, pattern] of capturedPatterns) {
-          const captured = pattern;
-          const trackId = id;
-          this.trackSchedulers.set(id, {
-            now: /* @__PURE__ */ __name(() => sched.now(), "now"),
-            query: /* @__PURE__ */ __name((begin, end) => {
-              try {
-                return captured.queryArc(begin, end).map((hap) => normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? void 0));
-              } catch {
-                return [];
-              }
-            }, "query")
-          });
-        }
-        this.songPatterns = capturedSongPatterns;
-        this.vizRequests = capturedVizRequests;
-        this.vizOptions = capturedVizOptions;
-        this.backdropVizRequest = capturedBackdropViz;
-        this.backdropVizOptions = capturedBackdropVizOptions;
-        this.rebuildTrackAnalysers(capturedPatterns);
-        this.lastPatternIR = parseStrudel(code);
-        this.lastIRNodeLocLookup = this.lastPatternIR ? buildNodeLocIndex(this.lastPatternIR) : null;
-      } else {
-        this.lastPatternIR = null;
-        this.lastIRNodeLocLookup = null;
-        this.backdropVizRequest = null;
-      }
-      return result;
-    } finally {
-      if (savedDescriptor) {
-        Object.defineProperty(Pattern2.prototype, "p", savedDescriptor);
-      } else {
-        delete Pattern2.prototype.p;
-      }
-      if (savedVizDescriptor) {
-        Object.defineProperty(Pattern2.prototype, "viz", savedVizDescriptor);
-      } else {
-        delete Pattern2.prototype.viz;
-      }
-      for (const [methodName, desc] of savedLegacyDescriptors) {
-        if (desc) {
-          Object.defineProperty(Pattern2.prototype, methodName, desc);
-        } else {
-          delete Pattern2.prototype[methodName];
-        }
-      }
-    }
-  }
-  get components() {
-    const bag = {
-      streaming: { hapStream: this.hapStream }
-    };
-    if (this.analyserNode && this.audioCtx) {
-      bag.audio = {
-        analyser: this.analyserNode,
-        audioCtx: this.audioCtx,
-        trackAnalysers: this.trackAnalysers.size > 0 ? this.trackAnalysers : void 0
-      };
-    }
-    bag.queryable = {
-      scheduler: this.getPatternScheduler(),
-      trackSchedulers: this.trackSchedulers
-    };
-    const hasInlineViz = this.vizRequests.size > 0 && this.lastEvaluatedCode;
-    if (hasInlineViz || this.backdropVizRequest) {
-      bag.inlineViz = {
-        vizRequests: hasInlineViz ? this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode) : /* @__PURE__ */ new Map(),
-        backdropRequest: this.backdropVizRequest ? { vizId: this.backdropVizRequest, options: this.backdropVizOptions ?? void 0 } : void 0
-      };
-    }
-    if (this.lastPatternIR) {
-      bag.ir = {
-        patternIR: this.lastPatternIR,
-        irEvents: []
-      };
-    }
-    return bag;
-  }
-  /**
-   * Scans code for $: blocks and maps each track's viz request to the line
-   * after the last line of that block. Mirrors the line-scanning logic in
-   * viewZones.ts but returns structured data instead of creating DOM zones.
-   */
-  buildVizRequestsWithLines(requests, code) {
-    return scanVizRequestLines(requests, code, this.vizOptions);
-  }
-  play() {
-    this.repl?.scheduler?.start();
-    this.followMasterAnalyser();
-  }
-  /**
-   * Keep the master `AnalyserNode` tapped to the LIVE output node. superdough
-   * RECREATES `destinationGain` on reset (resetGlobalEffects → SuperdoughOutput
-   * .reset(), superdoughoutput.mjs:151-159) — every evaluate swaps it for a fresh
-   * GainNode. The analyser was connected once at init (line 478), so after a swap
-   * it taps a dead node while the live mix flows through the new one and the
-   * master meter freezes. On a swap, detach from the stale node and re-tap the
-   * live one. Read-only side-tap — audio still flows unchanged to the destination
-   * (no routing mutation, V-mixer-3). Master gain is NOT applied here anymore:
-   * the master trim is the document's `all(x => x.gain())` (#794 removed the
-   * synthetic per-file output-gain seam).
-   */
-  followMasterAnalyser() {
-    const ctrl = this.superdoughControllerFn?.() ?? this.audioController;
-    const dg = ctrl?.output?.destinationGain;
-    if (!dg || !this.analyserNode || this.taggedDestinationGain === dg) return;
-    try {
-      this.taggedDestinationGain?.disconnect(this.analyserNode);
-    } catch {
-    }
-    try {
-      dg.connect(this.analyserNode);
-    } catch {
-    }
-    this.taggedDestinationGain = dg;
-  }
-  stop() {
-    this.repl?.scheduler?.stop();
-  }
-  /**
-   * Phase 20-07 (DEC-AMENDED-1) — debugger pause. Calls
-   * `scheduler.pause()` (NOT `.stop()`) — pause preserves cycle position
-   * (cyclist.mjs:112-116), stop rewinds lastEnd to 0 (cyclist.mjs:117-122).
-   * Idempotent: setPaused() guards against double-fire of listeners (T17).
-   */
-  pause() {
-    this.repl?.scheduler?.pause?.();
-    this.setPaused(true);
-  }
-  /**
-   * Phase 20-07 — debugger resume. Calls `scheduler.start()` which uses
-   * the preserved lastEnd from pause (cyclist.mjs:101-111). Idempotent.
-   */
-  resume() {
-    this.repl?.scheduler?.start?.();
-    this.setPaused(false);
-  }
-  /** Current debugger pause state (true after a breakpoint hit). */
-  getPaused() {
-    return this.isPausedState;
-  }
-  /**
-   * Subscribe to engine pause-state transitions. Mirrors the
-   * subscriber-set pattern used by `LiveCodingRuntime.onPlayingChanged`
-   * (RESEARCH Q3). Returns a disposer.
-   */
-  onPausedChanged(listener) {
-    this.pauseChangedListeners.add(listener);
-    let unsubscribed = false;
-    return () => {
-      if (unsubscribed) return;
-      unsubscribed = true;
-      this.pauseChangedListeners.delete(listener);
-    };
-  }
-  /**
-   * Phase 20-07 — accessor onto the engine's BreakpointStore. The
-   * runtime exposes this through its own `getBreakpointStore()` so the
-   * editor's useBreakpoints hook (Wave β) and the Inspector (Wave γ)
-   * share a single store.
-   */
-  getBreakpointStore() {
-    return this.breakpointStore;
-  }
-  /**
-   * Internal — flip pause state and fan out to subscribers, with an
-   * idempotence guard (T17): both Inspector + Monaco "Resume" surfaces
-   * may fire setPaused(false) simultaneously; this short-circuits the
-   * second call so listeners never see a redundant transition.
-   */
-  setPaused(paused) {
-    if (this.isPausedState === paused) return;
-    this.isPausedState = paused;
-    for (const l of this.pauseChangedListeners) {
-      try {
-        l(paused);
-      } catch {
-      }
-    }
-  }
-  async record(durationSeconds) {
-    if (!this.analyserNode || !this.audioCtx) {
-      throw new Error("StrudelEngine not initialized \u2014 call init() first");
-    }
-    return LiveRecorder.capture(this.analyserNode, this.audioCtx, durationSeconds);
-  }
-  async renderOffline(code, duration, sampleRate) {
-    return OfflineRenderer.render(
-      code,
-      duration,
-      sampleRate ?? this.audioCtx?.sampleRate ?? 44100
-    );
-  }
-  async renderStems(stems, duration, onProgress) {
-    const keys = Object.keys(stems);
-    const sampleRate = this.audioCtx?.sampleRate ?? 44100;
-    const blobs = await Promise.all(
-      keys.map(async (key2, i) => {
-        const blob = await OfflineRenderer.render(stems[key2], duration, sampleRate);
-        onProgress?.(key2, i + 1, keys.length);
-        return [key2, blob];
-      })
-    );
-    return Object.fromEntries(blobs);
-  }
-  getAnalyser() {
-    if (!this.analyserNode) throw new Error("StrudelEngine not initialized");
-    return this.analyserNode;
-  }
-  getAudioContext() {
-    if (!this.audioCtx) throw new Error("StrudelEngine not initialized");
-    return this.audioCtx;
-  }
-  on(_event, handler) {
-    this.hapStream.on(handler);
-  }
-  off(_event, handler) {
-    this.hapStream.off(handler);
-  }
-  getHapStream() {
-    return this.hapStream;
-  }
-  /**
-   * Returns a thin PatternScheduler wrapper around the Strudel scheduler.
-   * Only available after evaluate() succeeds (scheduler.pattern is set then).
-   */
-  getPatternScheduler() {
-    const sched = this.repl?.scheduler;
-    const pattern = sched?.pattern;
-    if (!sched || !pattern) return null;
-    return {
-      now: /* @__PURE__ */ __name(() => sched.now(), "now"),
-      query: /* @__PURE__ */ __name((begin, end) => {
-        try {
-          return pattern.queryArc(begin, end).map((hap) => normalizeStrudelHap(hap, void 0, this.lastIRNodeLocLookup ?? void 0));
-        } catch {
-          return [];
-        }
-      }, "query")
-    };
-  }
-  /**
-   * Returns per-track PatternSchedulers captured during the last evaluate() call.
-   * Each $: block gets its own scheduler that queries its Pattern directly via queryArc.
-   * Keys: anonymous "$:" → "$0", "$1"; named "d1:" → "d1".
-   * Empty Map before first evaluate or after evaluate error.
-   */
-  getTrackSchedulers() {
-    return this.trackSchedulers;
-  }
-  /**
-   * Evaluated note events across all tracks over `[0, ceil(cycles))`, for the
-   * Song timeline's DISPLAY marks (#861). Iterates the per-track schedulers
-   * captured during the last evaluate() and concatenates their normalized haps
-   * (`sched.query` → `normalizeStrudelHap`), so every event carries the RESOLVED
-   * note (`n("0 2 4").scale("C:major")` → `note:"C3","E3","G3"`, Strudel applies
-   * the scale at query time) plus its `context.locations`.
-   *
-   * This is the eval-backed source of truth for what PLAYS — distinct from the
-   * static IR (`collectCycles`), which carries the raw source token (`note:"0"`)
-   * and drops `.scale` to an unused param, and so is source-lossy for pitch/scale
-   * (PV174). Display must degrade to evaluation; the IR stays the source of truth
-   * for structure (lanes/clips) and editing. Empty before the first evaluate; a
-   * FAILED evaluate leaves the last good eval's patterns in place (as
-   * `trackSchedulers` does — neither is reassigned outside the success branch),
-   * which the timeline never sees, because it also needs the IR and the engine
-   * DOES clear that on error. A per-track query that throws is skipped.
-   *
-   * SONG FRAME, not the scheduler frame (#863). Queries `songPatterns` — the
-   * patterns as captured BEFORE the `.late(transportOffset)` seek wrap — so
-   * cycle 0 is the start of the SONG. The timeline draws these marks on a
-   * song-absolute axis, inside lanes/clips derived from the (unshifted) static
-   * IR; querying the shifted `trackSchedulers` instead would slide every mark by
-   * the transport offset after a seek and rotate the loop's tail into the window,
-   * desyncing marks from their own lanes. The live surfaces that DO want the
-   * scheduler frame (viz, signal bus, meters, playhead overlay) keep reading
-   * `trackSchedulers` — the two frames coincide only while `transportOffset` is 0.
-   */
-  getTimelineEvents(cycles) {
-    const n = Math.max(1, Math.ceil(Number.isFinite(cycles) ? cycles : 1));
-    const out = [];
-    for (const [trackId, pattern] of this.songPatterns) {
-      try {
-        const haps = pattern.queryArc(0, n);
-        for (const hap of haps) {
-          out.push(normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? void 0));
-        }
-      } catch {
-      }
-    }
-    return out;
-  }
-  /**
-   * The capture keys of every pattern the last evaluate() registered — the SAME
-   * ids `getTimelineEvents` stamps on each hap as `trackId`, in the same order.
-   *
-   * Exists so a caller can tell "this track has not played yet" from "there is no
-   * such track" (#1107). Deriving that from the events alone is impossible: a
-   * track that has not sounded within the queried window contributes nothing to
-   * distinguish itself from one that does not exist. Reading the REGISTERED set
-   * is the only way to know the difference, and this is the one place that knows
-   * it — `songPatterns` is private and mirrors what the repl actually plays, so a
-   * `_`-muted track (never registered, `@strudel/core/repl.mjs:172-175`) is
-   * correctly absent and can never be waited on.
-   */
-  getSongTrackIds() {
-    return [...this.songPatterns.keys()];
-  }
-  /**
-   * Returns per-track viz requests captured during the last evaluate() call.
-   * Maps track keys ("$0", "$1", "d1") to viz descriptor IDs ("pianoroll", "scope").
-   * Only patterns that called .viz("name") in user code appear in this map.
-   * Empty Map before first evaluate or if no patterns use .viz().
-   */
-  getVizRequests() {
-    return this.vizRequests;
-  }
-  /** Register a handler for runtime audio errors (fires during scheduling, not evaluation). */
-  setRuntimeErrorHandler(handler) {
-    this.runtimeErrorHandler = handler;
-  }
-  /** Returns all sound names registered after init() — useful for editor autocompletion. */
-  getSoundNames() {
-    return this.loadedSoundNames;
-  }
-  dispose() {
-    this.repl?.scheduler?.stop();
-    this.hapStream.dispose();
-    this.analyserNode?.disconnect();
-    for (const analyser of this.trackAnalysers.values()) {
-      try {
-        analyser.disconnect();
-      } catch {
-      }
-    }
-    this.trackAnalysers.clear();
-    this.trackOrbit.clear();
-    this.breakpointStore.dispose();
-    this.pauseChangedListeners.clear();
-    this.initialized = false;
-    this.repl = null;
-  }
-  /**
-   * Query a pattern for its first non-silent hap within [0, lookahead) cycles
-   * and return the orbit it uses. Default orbit is 1 (superdough's default).
-   * Returns 1 for silent patterns — falls back to orbit 1 just like superdough.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  resolveOrbit(pattern) {
-    const tryArc = /* @__PURE__ */ __name((begin, end) => {
-      try {
-        const haps = pattern.queryArc(begin, end);
-        for (const h of haps) {
-          const o = h?.value?.orbit;
-          if (typeof o === "number") return o;
-        }
-      } catch {
-      }
-      return null;
-    }, "tryArc");
-    return tryArc(0, 1) ?? tryArc(0, 4) ?? 1;
-  }
-  /**
-   * Reconcile trackAnalysers against capturedPatterns.
-   * - Creates analysers for new captureIds, tapped off their orbit's GainNode.
-   * - Reuses analysers when (captureId, orbit) is unchanged.
-   * - Rewires when a captureId's orbit changed (disconnect old, tap new).
-   * - Removes+disconnects analysers for captureIds no longer present.
-   *
-   * Safe to call repeatedly. No-op if audioController isn't available yet.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  rebuildTrackAnalysers(capturedPatterns) {
-    if (!this.audioController || !this.audioCtx) return;
-    const seen = /* @__PURE__ */ new Set();
-    for (const [captureId, pattern] of capturedPatterns) {
-      seen.add(captureId);
-      const orbit = this.resolveOrbit(pattern);
-      const existingOrbit = this.trackOrbit.get(captureId);
-      const existingAnalyser = this.trackAnalysers.get(captureId);
-      if (existingAnalyser && existingOrbit === orbit) continue;
-      let orbitNode = null;
-      try {
-        orbitNode = this.audioController.getOrbit(orbit, [0, 1]);
-      } catch (err) {
-        console.warn(`[stave] Could not resolve superdough orbit ${orbit} for "${captureId}":`, err);
-      }
-      const orbitOutput = orbitNode?.output;
-      if (!orbitOutput) {
-        continue;
-      }
-      const analyser = existingAnalyser ?? this.audioCtx.createAnalyser();
-      if (!existingAnalyser) {
-        analyser.fftSize = 2048;
-        analyser.smoothingTimeConstant = 0.8;
-      } else {
-        try {
-          analyser.disconnect();
-        } catch {
-        }
-      }
-      try {
-        orbitOutput.connect(analyser);
-      } catch (err) {
-        console.warn(`[stave] Could not tap orbit ${orbit} for "${captureId}":`, err);
-        continue;
-      }
-      this.trackAnalysers.set(captureId, analyser);
-      this.trackOrbit.set(captureId, orbit);
-    }
-    for (const captureId of [...this.trackAnalysers.keys()]) {
-      if (seen.has(captureId)) continue;
-      const a = this.trackAnalysers.get(captureId);
-      if (a) {
-        try {
-          a.disconnect();
-        } catch {
-        }
-      }
-      this.trackAnalysers.delete(captureId);
-      this.trackOrbit.delete(captureId);
-    }
-  }
-};
-__name(_StrudelEngine, "StrudelEngine");
-var StrudelEngine = _StrudelEngine;
-
-// src/engine/engineLog.ts
-var MAX_HISTORY = 500;
-var history = [];
-var dedupeIndex = /* @__PURE__ */ new Map();
-var listeners = /* @__PURE__ */ new Set();
-var fixedMarkers = /* @__PURE__ */ new Map();
-var fixedListeners = /* @__PURE__ */ new Set();
-var idSeq = 0;
-function fixedKey(runtime, source) {
-  return `${runtime}:${source ?? "*"}`;
-}
-__name(fixedKey, "fixedKey");
-function makeId() {
-  idSeq += 1;
-  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
-}
-__name(makeId, "makeId");
-function dedupeKey(p) {
-  return [p.level, p.runtime, p.source ?? "", p.line ?? "", p.message].join("\0");
-}
-__name(dedupeKey, "dedupeKey");
-function emitLog(partial) {
-  const key2 = dedupeKey(partial);
-  const existing = dedupeIndex.get(key2);
-  if (existing) {
-    existing.ts = Date.now();
-    existing.count = (existing.count ?? 1) + 1;
-    queueMicrotask(() => {
-      for (const fn of listeners) {
-        try {
-          fn(existing, history);
-        } catch {
-        }
-      }
-    });
-    return existing;
-  }
-  const entry = {
-    id: makeId(),
-    ts: Date.now(),
-    count: 1,
-    ...partial
-  };
-  history.push(entry);
-  dedupeIndex.set(key2, entry);
-  if (history.length > MAX_HISTORY) {
-    const removed = history.splice(0, history.length - MAX_HISTORY);
-    for (const r of removed) {
-      const rk = dedupeKey(r);
-      if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
-    }
-  }
-  queueMicrotask(() => {
-    for (const fn of listeners) {
-      try {
-        fn(entry, history);
-      } catch {
-      }
-    }
-  });
-  return entry;
-}
-__name(emitLog, "emitLog");
-function subscribeLog(fn) {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-__name(subscribeLog, "subscribeLog");
-function getLogHistory() {
-  return [...history];
-}
-__name(getLogHistory, "getLogHistory");
-function clearLog() {
-  history.length = 0;
-  dedupeIndex.clear();
-  fixedMarkers.clear();
-  for (const fn of listeners) {
-    try {
-      fn(null, history);
-    } catch {
-    }
-  }
-}
-__name(clearLog, "clearLog");
-function emitFixed(input) {
-  const marker = {
-    runtime: input.runtime,
-    source: input.source,
-    ts: Date.now()
-  };
-  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
-  queueMicrotask(() => {
-    for (const fn of fixedListeners) {
-      try {
-        fn(marker, fixedMarkers);
-      } catch {
-      }
-    }
-  });
-  return marker;
-}
-__name(emitFixed, "emitFixed");
-function subscribeFixed(fn) {
-  fixedListeners.add(fn);
-  return () => {
-    fixedListeners.delete(fn);
-  };
-}
-__name(subscribeFixed, "subscribeFixed");
-function getFixedMarkers() {
-  return new Map(fixedMarkers);
-}
-__name(getFixedMarkers, "getFixedMarkers");
-function makeFixedKey(runtime, source) {
-  return fixedKey(runtime, source);
-}
-__name(makeFixedKey, "makeFixedKey");
-
-// src/visualizers/p5FesBridge.ts
-var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
-var FES_LINE_RE = /,\s*line\s+(\d+)\s*\]/;
-var installed = false;
-var currentSource = null;
-var currentLineOffset = 0;
-function buildLogger() {
-  return (msg) => {
-    const raw = String(msg);
-    const clean = raw.replace(P5_PREFIX_RE, "").trim();
-    if (!clean) return;
-    let message = clean.replace(/^\[[^\]]*\]\s*/, "").trim() || clean;
-    let line;
-    const match = raw.match(FES_LINE_RE);
-    if (match) {
-      const wrapped = parseInt(match[1], 10);
-      if (Number.isFinite(wrapped)) {
-        const candidate = currentLineOffset > 0 ? wrapped - currentLineOffset : wrapped;
-        if (candidate >= 1) line = candidate;
-      }
-    }
-    const isLikelyBug = /accidentally written|is not defined|no such/i.test(
-      message
-    );
-    emitLog({
-      runtime: "p5",
-      level: isLikelyBug ? "error" : "warn",
-      source: currentSource ?? void 0,
-      message,
-      line
-    });
-  };
-}
-__name(buildLogger, "buildLogger");
-function installP5FesBridgeWith(p5Ctor) {
-  if (installed) return;
-  installed = true;
-  const ctor = p5Ctor;
-  ctor.disableFriendlyErrors = false;
-  ctor._fesLogger = buildLogger();
-}
-__name(installP5FesBridgeWith, "installP5FesBridgeWith");
-function setCurrentP5Source(source, lineOffset = 0) {
-  currentSource = source;
-  currentLineOffset = source == null ? 0 : lineOffset;
-}
-__name(setCurrentP5Source, "setCurrentP5Source");
-
-// src/visualizers/renderers/VizRendererBase.ts
-var _VizRendererBase = class _VizRendererBase {
-  constructor() {
-    /**
-     * Live options bag from the viz call's argument (`.pianoroll({ labels: 1 })`).
-     * Populated before `onMount`/`onUpdate` run, so subclasses may read it in
-     * either. Read `.current` at USE time, never capture it.
-     */
-    this.optionsRef = { current: {} };
-  }
-  mount(container, components, size, onError) {
-    this.optionsRef.current = components.options ?? {};
-    this.onMount(container, components, size, onError);
-  }
-  update(components) {
-    this.optionsRef.current = components.options ?? {};
-    this.onUpdate(components);
-  }
-};
-__name(_VizRendererBase, "VizRendererBase");
-var VizRendererBase = _VizRendererBase;
-
-// src/visualizers/signals/aliasMap.ts
-var DEFAULT_VIZ_ENGINE = "strudel";
-var BUILTIN_ALIASES = {
-  uKick: { strudel: "bd", sonicpi: "drum_heavy_kick" },
-  uSnare: { strudel: "sd", sonicpi: "drum_snare_hard" },
-  uHat: { strudel: "hh", sonicpi: "drum_cymbal_closed" },
-  uOpenHat: { strudel: "oh", sonicpi: "drum_cymbal_open" },
-  uClap: { strudel: "cp" },
-  uRim: { strudel: "rim" },
-  uTom: {
-    strudel: ["lt", "mt", "ht"],
-    sonicpi: ["drum_tom_lo_hard", "drum_tom_mid_hard", "drum_tom_hi_hard"]
-  }
-};
-function resolveAliasesForEngine(custom, engine) {
-  const out = {};
-  for (const [name, slots] of Object.entries(BUILTIN_ALIASES)) {
-    const v = slots[engine];
-    if (v != null) out[name] = v;
-  }
-  for (const [name, slots] of Object.entries(custom)) {
-    const v = slots[engine];
-    if (v != null) out[name] = v;
-  }
-  return out;
-}
-__name(resolveAliasesForEngine, "resolveAliasesForEngine");
-var ALIAS_MAP = resolveAliasesForEngine(
-  {},
-  DEFAULT_VIZ_ENGINE
-);
-
-// src/visualizers/signals/SignalBus.ts
-var ZERO_AUDIO = {
-  rms: 0,
-  bass: 0,
-  mid: 0,
-  treble: 0,
-  fft: [],
-  wave: []
-};
-var EPSILON = 1e-3;
-var DEFAULT_DECAY = 0.92;
-var FFT_BINS = 32;
-var _SignalBus = class _SignalBus {
-  constructor(aliasMap = ALIAS_MAP) {
-    /** Per-sound envelope levels (0..1), decayed each frame. Keyed on `e.s`. */
-    this.envMap = /* @__PURE__ */ new Map();
-    /** Last-bumped color per sound — the `.color` fallback feed. */
-    this.colorMap = /* @__PURE__ */ new Map();
-    /** Live refs — mutable so `bindScheduler()` rebinds in place
-     *  (mirrors `HydraVizRenderer.update` live-ref discipline, `:369-371`). */
-    this.scheduler = null;
-    this.trackSchedulers = /* @__PURE__ */ new Map();
-    /** Per-frame snapshot of active events from the combined scheduler feed
-     *  (set by `refreshActive`). The instantaneous feed for `sound()`. */
-    this.activeEvents = [];
-    /** Per-frame snapshot of active events per track-key (scheduler key space). */
-    this.activeByTrack = /* @__PURE__ */ new Map();
-    /** Every distinct `e.s` ever bumped — backs `get sounds()`. */
-    this.seenSounds = /* @__PURE__ */ new Set();
-    // ── DSP feed (analyser refs + per-frame cache, Slice 2) ───────────────────
-    /** Live master analyser ref — mutable so `bindAnalysers()` rebinds in place
-     *  (mirrors `bindScheduler`). Null in IR-only / demo mode. */
-    this.masterAnalyser = null;
-    /** Per-track analyser refs, keyed the SAME as `trackSchedulers` (the SCHEDULER
-     *  key space `$0`/`d1`, TRAP §5) — `trackAnalysers` is published with those
-     *  keys by the engine (LiveCodingEngine.ts:25). */
-    this.trackAnalysers = /* @__PURE__ */ new Map();
-    /** Scratch byte buffers per analyser (freq + time), allocated/resized lazily
-     *  keyed on analyser identity so a rebind to a new node re-allocates. */
-    this.freqBufs = /* @__PURE__ */ new WeakMap();
-    this.waveBufs = /* @__PURE__ */ new WeakMap();
-    /** Per-frame derived DSP reading per analyser — filled by `readAudio()`,
-     *  read by the accessors. Cleared each `readAudio()` so a now-unbound
-     *  analyser stops reporting stale data. */
-    this.audioByAnalyser = /* @__PURE__ */ new Map();
-    this.aliasMap = aliasMap;
-    this.decay = DEFAULT_DECAY;
-  }
-  /** Store live scheduler refs (mutable rebind — mirror the renderer's
-   *  in-place update discipline). Pass `null`/empty in demo mode. */
-  bindScheduler(scheduler, trackSchedulers) {
-    this.scheduler = scheduler ?? null;
-    this.trackSchedulers = trackSchedulers ?? /* @__PURE__ */ new Map();
-  }
-  /** Store live analyser refs (mutable rebind — mirror `bindScheduler`). The
-   *  orbit is the shared reference: a sound resolves to its orbit, which has
-   *  BOTH events (the scheduler feed) AND an analyser (this DSP feed). Pass
-   *  `null`/empty in IR-only / demo mode → DSP fields degrade to 0/[]. */
-  bindAnalysers(master, trackAnalysers) {
-    this.masterAnalyser = master ?? null;
-    this.trackAnalysers = trackAnalysers ?? /* @__PURE__ */ new Map();
-  }
-  /** Replace the active alias map in place (mirror `bindScheduler`'s mutable
-   *  rebind). The RENDERER builds the merged map — `{ ...ALIAS_MAP, ...custom }`
-   *  with custom WINNING on collision — and pushes it here at mount. The bus
-   *  stays PURE (P12): it does NOT import `getSignalAliases`; it only stores the
-   *  numbers/maps it is handed. `envValue`/`resolveSounds` resolve ANY key
-   *  through this map, so a freshly-set custom alias resolves with no other
-   *  change. */
-  setAliases(map) {
-    this.aliasMap = map;
-  }
-  // ── .env feed (envelope: bump + decay) ──────────────────────────────────
-  /** Bump the envelope for an event's sound. Mirrors `HapEnergyEnvelope.onHap`
-   *  (`:67-82`): gain clamped 0..1, level = min(1, prev + gain). Keyed on
-   *  `e.s` (NOT a MIDI bin). No-ops for an event with no sound name. */
-  bump(e) {
-    const sound = e.s;
-    if (sound == null) return;
-    const gain = Math.min(1, Math.max(0, e.hap?.value?.gain ?? 1));
-    const prev = this.envMap.get(sound) ?? 0;
-    this.envMap.set(sound, Math.min(1, prev + gain));
-    if (e.color != null) this.colorMap.set(sound, e.color);
-    else if (!this.colorMap.has(sound)) this.colorMap.set(sound, null);
-    this.seenSounds.add(sound);
-  }
-  /** Apply decay to every envelope entry. Call ONCE per frame, BEFORE
-   *  `refreshActive` (mirror `HapEnergyEnvelope.tick`, `:85-89`). */
-  tick() {
-    for (const [sound, level] of this.envMap) {
-      this.envMap.set(sound, level * this.decay);
-    }
-  }
-  // ── instantaneous feed (scheduler query-at-now) ─────────────────────────
-  /** Snapshot the active events at `now` from the combined scheduler and each
-   *  per-track scheduler. Call ONCE per frame, AFTER `tick()`. The window is
-   *  [now, now + ε) — the same tight window `H()` uses (`:175`). */
-  refreshActive(now2) {
-    const begin = now2;
-    const end = now2 + EPSILON;
-    this.activeEvents = this.scheduler ? this.scheduler.query(begin, end) : [];
-    this.activeByTrack.clear();
-    for (const [key2, sched] of this.trackSchedulers) {
-      this.activeByTrack.set(key2, sched.query(begin, end));
-    }
-  }
-  /** Current scheduler time (mirror `H()`'s `sched.now()`), 0 in demo mode. */
-  now() {
-    return this.scheduler ? this.scheduler.now() : 0;
-  }
-  // ── DSP feed (analyser read-at-now) ───────────────────────────────────────
-  /** Snapshot every bound analyser's spectrum + waveform for this frame. Call
-   *  ONCE per frame, AFTER `refreshActive` — `audioFor()` resolves a sound to a
-   *  trackKey via `activeByTrack`, which `refreshActive` populates (ordering is
-   *  the T2 call-site's responsibility). Reads each analyser via
-   *  `getByteFrequencyData` + `getByteTimeDomainData` (mirrors
-   *  `HydraVizRenderer.pumpAudio:445-455`) and caches the derived
-   *  `AudioReading`. An analyser that's no longer bound drops out of the cache. */
-  readAudio() {
-    this.audioByAnalyser.clear();
-    if (this.masterAnalyser) this.readOne(this.masterAnalyser);
-    for (const an of this.trackAnalysers.values()) this.readOne(an);
-  }
-  /** Read one analyser into the per-frame cache (idempotent within a frame). */
-  readOne(an) {
-    if (this.audioByAnalyser.has(an)) return;
-    this.audioByAnalyser.set(an, deriveAudio(an, this.freqBufs, this.waveBufs));
-  }
-  /** Resolve a sound (or alias) → the analyser whose mix it lives in. Find the
-   *  trackKey(s) in `activeByTrack` (SCHEDULER key space, TRAP §5 — NOT
-   *  IREvent.trackId) whose active events include any resolved sound. EXACTLY
-   *  one such track AND that track has a bound analyser → its isolated analyser.
-   *  Otherwise (multi-track, none, or no per-track analyser) → the master
-   *  analyser (the combined mix — still meaningful, never silent-zero-as-bug). */
-  audioFor(soundOrAlias) {
-    const resolved = new Set(this.resolveSounds(soundOrAlias));
-    let onlyKey = null;
-    for (const [key2, events] of this.activeByTrack) {
-      const hit = events.some((e) => e.s != null && resolved.has(e.s));
-      if (!hit) continue;
-      if (onlyKey != null) return this.masterAnalyser;
-      onlyKey = key2;
-    }
-    if (onlyKey != null) {
-      const isolated = this.trackAnalysers.get(onlyKey);
-      if (isolated) return isolated;
-    }
-    return this.masterAnalyser;
-  }
-  /** Cached DSP reading for an analyser (this frame), or the zero reading. */
-  audioReading(an) {
-    if (an == null) return ZERO_AUDIO;
-    return this.audioByAnalyser.get(an) ?? ZERO_AUDIO;
-  }
-  /** Master DSP reading (the combined-mix analyser). Surfaces `u.rms`/`u.fft`
-   *  etc. — the T3 master accessor path. Zero reading if no master bound. */
-  master() {
-    return this.audioReading(this.masterAnalyser);
-  }
-  // ── accessors ───────────────────────────────────────────────────────────
-  /** Resolve an alias OR a raw sound name to a list of concrete sound names.
-   *  `'uKick'` → `['bd']`, `'uTom'` → `['lt','mt','ht']`, `'bd'` → `['bd']`. */
-  resolveSounds(soundOrAlias) {
-    const mapped = this.aliasMap[soundOrAlias];
-    if (mapped == null) return [soundOrAlias];
-    return Array.isArray(mapped) ? mapped : [mapped];
-  }
-  /** Decayed envelope level for a sound or alias. Array aliases (`uTom`)
-   *  resolve as MAX over members. Demo-mode / never-fired → 0. */
-  envValue(soundOrAlias) {
-    let max = 0;
-    for (const sound of this.resolveSounds(soundOrAlias)) {
-      const v = this.envMap.get(sound) ?? 0;
-      if (v > max) max = v;
-    }
-    return max;
-  }
-  /** Find the first active IREvent (combined feed) whose `s` is in `sounds`. */
-  activeEventForSounds(sounds) {
-    const set = new Set(sounds);
-    for (const ev of this.activeEvents) {
-      if (ev.s != null && set.has(ev.s)) return ev;
-    }
-    return void 0;
-  }
-  /** Per-sound reading — merged across tracks via the combined active feed
-   *  (D-03). `.env` from the envelope; `.velocity`/`.note` from the active
-   *  IREvent (NOT the envelope — silent-zero trap §5); `.color` from the
-   *  active IREvent, falling back to the last-bumped hap color. */
-  sound(soundOrAlias) {
-    const sounds = this.resolveSounds(soundOrAlias);
-    const env = this.envValue(soundOrAlias);
-    const ev = this.activeEventForSounds(sounds);
-    const audio = this.audioReading(this.audioFor(soundOrAlias));
-    return {
-      env,
-      velocity: ev?.velocity ?? 0,
-      note: ev?.note ?? null,
-      color: ev?.color ?? this.colorFallback(sounds),
-      ...audio
-    };
-  }
-  /** Last-bumped color over the resolved sounds (the `.color` fallback feed). */
-  colorFallback(sounds) {
-    for (const sound of sounds) {
-      const c = this.colorMap.get(sound);
-      if (c != null) return c;
-    }
-    return null;
-  }
-  /** Per-track reading, keyed on the SCHEDULER key space (TRAP §5 —
-   *  `trackSchedulers.get(id)`, NOT IREvent.trackId). `.env` is the max env over
-   *  the sounds this track fired this frame; `.velocity`/`.note`/`.color` come
-   *  from the track's first active IREvent (scheduler feed). A `sound(s)`
-   *  sub-accessor reads a specific sound within the track. Unknown id → zeros. */
-  track(id) {
-    const events = this.activeByTrack.get(id) ?? [];
-    const first = events[0];
-    const trackSounds = events.map((e) => e.s).filter((s) => s != null);
-    let env = 0;
-    for (const s of trackSounds) {
-      const v = this.envMap.get(s) ?? 0;
-      if (v > env) env = v;
-    }
-    const trackAudio = this.audioReading(
-      this.trackAnalysers.get(id) ?? this.masterAnalyser
-    );
-    const soundIn = /* @__PURE__ */ __name((soundOrAlias) => {
-      const resolved = new Set(this.resolveSounds(soundOrAlias));
-      const ev = events.find((e) => e.s != null && resolved.has(e.s));
-      let sEnv = 0;
-      for (const s of this.resolveSounds(soundOrAlias)) {
-        const v = this.envMap.get(s) ?? 0;
-        if (v > sEnv) sEnv = v;
-      }
-      return {
-        env: sEnv,
-        velocity: ev?.velocity ?? 0,
-        note: ev?.note ?? null,
-        color: ev?.color ?? null,
-        // A specific sound within a named track reads that track's mix.
-        ...trackAudio
-      };
-    }, "soundIn");
-    return {
-      env,
-      velocity: first?.velocity ?? 0,
-      note: first?.note ?? null,
-      color: first?.color ?? null,
-      ...trackAudio,
-      sound: soundIn
-    };
-  }
-  /** Enumerate the published track keys — the SCHEDULER key space
-   *  (`trackSchedulers.keys()`, §5), e.g. `['$0','$1']` or `['d1','drums']`. */
-  get tracks() {
-    return [...this.trackSchedulers.keys()];
-  }
-  /** Enumerate distinct sounds ever bumped through the envelope feed. */
-  get sounds() {
-    return [...this.seenSounds];
-  }
-  /** Normalize a note to a MIDI number (P93 — only when a NUMBER is explicitly
-   *  requested; the raw `.note` preserves the user's name|number form). Returns
-   *  null for percussion sample names / unrecognized input. */
-  noteToMidi(note) {
-    if (note == null) return null;
-    return noteToMidi(note);
-  }
-};
-__name(_SignalBus, "SignalBus");
-var SignalBus = _SignalBus;
-function deriveAudio(an, freqBufs, waveBufs) {
-  const n = an.frequencyBinCount | 0;
-  if (n <= 0) return { ...ZERO_AUDIO, fft: [], wave: [] };
-  let freq = freqBufs.get(an);
-  if (!freq || freq.length !== n) {
-    freq = new Uint8Array(n);
-    freqBufs.set(an, freq);
-  }
-  let time = waveBufs.get(an);
-  if (!time || time.length !== n) {
-    time = new Uint8Array(n);
-    waveBufs.set(an, time);
-  }
-  an.getByteFrequencyData(freq);
-  an.getByteTimeDomainData(time);
-  const fft = new Array(FFT_BINS).fill(0);
-  const binSize = Math.floor(n / FFT_BINS);
-  if (binSize >= 1) {
-    for (let i = 0; i < FFT_BINS; i++) {
-      let sum = 0;
-      for (let j = 0; j < binSize; j++) sum += freq[i * binSize + j];
-      fft[i] = sum / (binSize * 255);
-    }
-  } else {
-    for (let i = 0; i < n; i++) fft[i] = freq[i] / 255;
-  }
-  const third = Math.floor(FFT_BINS / 3);
-  const bass = meanSlice(fft, 0, third);
-  const mid = meanSlice(fft, third, 2 * third);
-  const treble = meanSlice(fft, 2 * third, FFT_BINS);
-  const wave = new Array(n);
-  let sumSq = 0;
-  for (let i = 0; i < n; i++) {
-    const v = (time[i] - 128) / 128;
-    wave[i] = v;
-    sumSq += v * v;
-  }
-  const rms = Math.min(1, Math.max(0, Math.sqrt(sumSq / n)));
-  return { rms, bass, mid, treble, fft, wave };
-}
-__name(deriveAudio, "deriveAudio");
-function meanSlice(arr, from, to) {
-  if (to <= from) return 0;
-  let sum = 0;
-  for (let i = from; i < to; i++) sum += arr[i];
-  return sum / (to - from);
-}
-__name(meanSlice, "meanSlice");
-
-// src/visualizers/vizConfig.ts
-var DEFAULT_VIZ_CONFIG = {
-  // Resolver
-  defaultRenderer: "p5",
-  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
-  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
-  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
-  // automatic fallback when a browser can't offload (no OffscreenCanvas /
-  // transferControlToOffscreen / worker factory). Opt OUT per project via
-  // localStorage['stave.viz.worker'] = '0'.
-  workerRenderer: true,
-  // Worker pacing / resolution (#261 follow-up). 60fps is the perceptual ceiling
-  // for music viz; maxDpr 1 makes the presenting canvas match the worker's actual
-  // 1× render (quality-neutral, ~4× cheaper composite on retina than the prior
-  // upscale-to-2× behaviour). Both are zero-rewrite levers against the blit/
-  // composite wall measured for multi-instance inline viz.
-  maxFps: 60,
-  maxDpr: 1,
-  // Quality / LOD (#269). 1 = full detail, today's behaviour unchanged. Lower
-  // values are opted into via "performance mode" (deriveVizQuality) and read by
-  // sketches as `sig.density`. Marshalled to the worker via the config channel.
-  density: 1,
-  // Inline view zones
-  inlineZoneHeight: 150,
-  // Audio analysis
-  fftSize: 2048,
-  smoothingTimeConstant: 0.8,
-  // Hydra
-  hydraAudioBins: 4,
-  hydraAutoLoop: true,
-  // Pianoroll
-  pianorollWindowSeconds: 6,
-  pianorollCycles: 4,
-  pianorollPlayhead: 0.5,
-  pianorollMidiMin: 24,
-  pianorollMidiMax: 96,
-  // Scope / FScope
-  scopeWindowSeconds: 4,
-  scopeAmplitudeScale: 0.25,
-  scopeBaseline: 0.75,
-  // Spectrum
-  spectrumMinDb: -80,
-  spectrumMaxDb: 0,
-  spectrumScrollSpeed: 2,
-  // Colors
-  backgroundColor: "#090912",
-  accentColor: "#75baff",
-  activeColor: "#FFCA28",
-  playheadColor: "rgba(255,255,255,0.5)"
-};
-function createVizConfig(overrides) {
-  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
-}
-__name(createVizConfig, "createVizConfig");
-var DEFAULT_VIZ_QUALITY = "balanced";
-function deriveVizQuality(level) {
-  switch (level) {
-    case "high":
-      return { resolution: 1024, density: 1 };
-    case "performance":
-      return { resolution: 256, density: 0.5 };
-    case "balanced":
-    default:
-      return { resolution: 512, density: 1 };
-  }
-}
-__name(deriveVizQuality, "deriveVizQuality");
-var _active = { ...DEFAULT_VIZ_CONFIG };
-var _listeners = /* @__PURE__ */ new Set();
-function notify() {
-  for (const cb of Array.from(_listeners)) cb(_active);
-}
-__name(notify, "notify");
-function getVizConfig() {
-  return _active;
-}
-__name(getVizConfig, "getVizConfig");
-function setVizConfig(config) {
-  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
-  notify();
-}
-__name(setVizConfig, "setVizConfig");
-function updateVizConfig(patch) {
-  _active = { ..._active, ...patch };
-  notify();
-}
-__name(updateVizConfig, "updateVizConfig");
-function onVizConfigChange(cb) {
-  _listeners.add(cb);
-  return () => {
-    _listeners.delete(cb);
-  };
-}
-__name(onVizConfigChange, "onVizConfigChange");
-var WORKER_VIZ_CONFIG_KEYS = ["hydraAudioBins", "density"];
-function pickWorkerVizConfig(config = _active) {
-  return WORKER_VIZ_CONFIG_KEYS.reduce((acc, k) => {
-    acc[k] = config[k];
-    return acc;
-  }, {});
-}
-__name(pickWorkerVizConfig, "pickWorkerVizConfig");
-
-// src/visualizers/signals/staveUniforms.ts
-function buildStaveUniforms(bus, onTick) {
-  const sig = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "sig");
-  sig.track = (id) => bus.track(id);
-  Object.defineProperty(sig, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
-  Object.defineProperty(sig, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
-  const env = /* @__PURE__ */ __name((key2) => ({
-    get: /* @__PURE__ */ __name(() => bus.envValue(key2), "get"),
-    enumerable: true
-  }), "env");
-  Object.defineProperty(sig, "kick", env("uKick"));
-  Object.defineProperty(sig, "snare", env("uSnare"));
-  Object.defineProperty(sig, "hat", env("uHat"));
-  Object.defineProperty(sig, "openHat", env("uOpenHat"));
-  Object.defineProperty(sig, "clap", env("uClap"));
-  Object.defineProperty(sig, "rim", env("uRim"));
-  Object.defineProperty(sig, "tom", env("uTom"));
-  Object.defineProperty(sig, "keyVelocity", {
-    get: /* @__PURE__ */ __name(() => {
-      let max = 0;
-      for (const s of bus.sounds) {
-        const v = bus.sound(s).velocity;
-        if (v > max) max = v;
-      }
-      return max;
-    }, "get"),
-    enumerable: true
-  });
-  Object.defineProperty(sig, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
-  Object.defineProperty(sig, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
-  Object.defineProperty(sig, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
-  Object.defineProperty(sig, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
-  Object.defineProperty(sig, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
-  Object.defineProperty(sig, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
-  Object.defineProperty(sig, "density", { get: /* @__PURE__ */ __name(() => getVizConfig().density, "get"), enumerable: true });
-  const uniforms = { sig };
-  Object.defineProperty(uniforms, "__tick", {
-    value: onTick ?? (() => {
-    }),
-    enumerable: false
-  });
-  return uniforms;
-}
-__name(buildStaveUniforms, "buildStaveUniforms");
-
-// src/visualizers/vizFlags.ts
-var VIZ_FLAG_KEYS = {
-  worker: "stave.viz.worker",
-  p5direct: "stave.viz.p5direct",
-  pool: "stave.viz.pool",
-  governor: "stave.viz.governor",
-  pump: "stave.viz.pump",
-  maxFps: "stave.viz.maxFps",
-  maxDpr: "stave.viz.maxDpr"
-};
-function read(key2) {
-  try {
-    if (typeof localStorage === "undefined") return null;
-    return localStorage.getItem(key2);
-  } catch {
-    return null;
-  }
-}
-__name(read, "read");
-function enabledByDefault(key2) {
-  return read(key2) !== "0";
-}
-__name(enabledByDefault, "enabledByDefault");
-function optIn(key2) {
-  return read(key2) === "1";
-}
-__name(optIn, "optIn");
-function triState(key2) {
-  const v = read(key2);
-  return v === "1" ? true : v === "0" ? false : null;
-}
-__name(triState, "triState");
-function numFlag(key2) {
-  const n = Number(read(key2));
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-__name(numFlag, "numFlag");
-function isP5DirectCanvasEnabled() {
-  return enabledByDefault(VIZ_FLAG_KEYS.p5direct);
-}
-__name(isP5DirectCanvasEnabled, "isP5DirectCanvasEnabled");
-function isVizGovernorEnabled() {
-  return enabledByDefault(VIZ_FLAG_KEYS.governor);
-}
-__name(isVizGovernorEnabled, "isVizGovernorEnabled");
-function isVizPumpSharedCacheEnabled() {
-  return enabledByDefault(VIZ_FLAG_KEYS.pump);
-}
-__name(isVizPumpSharedCacheEnabled, "isVizPumpSharedCacheEnabled");
-function isVizWorkerPoolEnabled() {
-  return optIn(VIZ_FLAG_KEYS.pool);
-}
-__name(isVizWorkerPoolEnabled, "isVizWorkerPoolEnabled");
-function getVizWorkerOverride() {
-  return triState(VIZ_FLAG_KEYS.worker);
-}
-__name(getVizWorkerOverride, "getVizWorkerOverride");
-function getVizMaxFpsOverride() {
-  return numFlag(VIZ_FLAG_KEYS.maxFps);
-}
-__name(getVizMaxFpsOverride, "getVizMaxFpsOverride");
-function getVizMaxDprOverride() {
-  return numFlag(VIZ_FLAG_KEYS.maxDpr);
-}
-__name(getVizMaxDprOverride, "getVizMaxDprOverride");
-
-// src/visualizers/vizGovernor.ts
-var HEALTHY_MS = 20;
-var JANK_MS = 45;
-var MIN_FPS = 10;
-var EMA_ALPHA = 0.25;
-var STRESS_RAMP_DOWN = 0.012;
-var IDLE_GAP_MS = 400;
-var RES_MIN_SCALE = 0.5;
-var RES_STRESS_ON = 0.5;
-function computeStress(emaMs, healthy = HEALTHY_MS, jank = JANK_MS) {
-  if (emaMs <= healthy) return 0;
-  if (emaMs >= jank) return 1;
-  return (emaMs - healthy) / (jank - healthy);
-}
-__name(computeStress, "computeStress");
-function maxPerFrame(n, stress) {
-  if (n <= 1) return 1;
-  return Math.max(1, Math.round(n * (1 - stress)));
-}
-__name(maxPerFrame, "maxPerFrame");
-function periodFor(n, stress) {
-  if (n <= 1) return 1;
-  return Math.max(1, Math.ceil(n / maxPerFrame(n, stress)));
-}
-__name(periodFor, "periodFor");
-function minGapMs(stress) {
-  if (stress <= 0) return 0;
-  return stress * (1e3 / MIN_FPS);
-}
-__name(minGapMs, "minGapMs");
-function resolutionScaleFor(stress) {
-  if (stress < RES_STRESS_ON) return 1;
-  const t = (stress - RES_STRESS_ON) / (1 - RES_STRESS_ON);
-  const raw = 1 - t * (1 - RES_MIN_SCALE);
-  return Math.max(RES_MIN_SCALE, Math.round(raw * 4) / 4);
-}
-__name(resolutionScaleFor, "resolutionScaleFor");
-var _VizGovernor = class _VizGovernor {
-  constructor() {
-    this.enabled = true;
-    /** Active (looping) renderer id → its stable round-robin offset. */
-    this.registered = /* @__PURE__ */ new Map();
-    this.lastProduce = /* @__PURE__ */ new Map();
-    this.nextOffset = 0;
-    this.frameIndex = 0;
-    this.lastObserveTs = 0;
-    this.emaMs = HEALTHY_MS;
-    this.stress = 0;
-    this.enabled = isVizGovernorEnabled();
-  }
-  /** Register a renderer when its loop STARTS (resume/mount). Idempotent. */
-  register(id) {
-    if (!this.registered.has(id)) this.registered.set(id, this.nextOffset++);
-  }
-  /** Unregister when the loop STOPS (pause/destroy). Resets stress when the last
-   *  viz leaves so a fresh mount starts from a healthy baseline. */
-  unregister(id) {
-    this.registered.delete(id);
-    this.lastProduce.delete(id);
-    if (this.registered.size === 0) {
-      this.stress = 0;
-      this.emaMs = HEALTHY_MS;
-      this.lastObserveTs = 0;
-    }
-  }
-  /** Feed the cadence monitor — call once per rAF tick from EVERY active loop
-   *  (idempotent per timestamp: only the first call for a new `ts` advances the
-   *  frame + updates stress, so N renderers calling with the same ts is fine). */
-  observeFrame(ts) {
-    if (!this.enabled || this.registered.size === 0) return;
-    if (this.lastObserveTs > 0 && ts > this.lastObserveTs) {
-      const d = ts - this.lastObserveTs;
-      if (d > IDLE_GAP_MS) {
-        this.emaMs = HEALTHY_MS;
-      } else {
-        this.emaMs = this.emaMs * (1 - EMA_ALPHA) + d * EMA_ALPHA;
-      }
-      const target = computeStress(this.emaMs);
-      this.stress = target > this.stress ? target : Math.max(target, this.stress - STRESS_RAMP_DOWN);
-      this.frameIndex++;
-      perf.record("viz.governor.stress", Math.round(this.stress * 100));
-    }
-    if (ts > this.lastObserveTs) this.lastObserveTs = ts;
-  }
-  /** Gate: may renderer `id` produce a frame at `ts`? Composed with (and called
-   *  after) the renderer's own backpressure + maxFps checks. */
-  mayProduce(id, ts) {
-    if (!this.enabled) return true;
-    const n = this.registered.size;
-    if (n === 0 || this.stress <= 0) return true;
-    const gap = minGapMs(this.stress);
-    if (gap > 0) {
-      const last = this.lastProduce.get(id) ?? 0;
-      if (last > 0 && ts - last < gap - 1) return false;
-    }
-    if (n > 1) {
-      const period = periodFor(n, this.stress);
-      if (period > 1) {
-        const offset = this.registered.get(id) ?? 0;
-        if ((this.frameIndex + offset) % period !== 0) return false;
-      }
-    }
-    this.lastProduce.set(id, ts);
-    return true;
-  }
-  /** Render-resolution scale (lever 3) the renderer should apply to its backing
-   *  store at the current stress, in `[RES_MIN_SCALE, 1]`. 1 (full) when disabled
-   *  or smooth — so a renderer multiplying its `resize` w,h by this is a total
-   *  no-op in the common case (transparency, PV91). The `WorkerVizRenderer` reads
-   *  this each rAF and re-posts a scaled `resize` only when the quantized step
-   *  changes (the backing-store realloc is relatively expensive). */
-  resolutionScale() {
-    if (!this.enabled || this.stress <= 0) return 1;
-    return resolutionScaleFor(this.stress);
-  }
-  /** Observability / test hook. */
-  state() {
-    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex, resScale: this.resolutionScale() };
-  }
-  /** Live enable/disable (the "Adaptive performance" toggle, persisted via
-   *  editorRegistry under the SAME `stave.viz.governor` key this reads at
-   *  construction). Unlike `_setEnabledForTest` it KEEPS the registered renderers
-   *  (live viz stay tracked) — it only flips the gate. Disabling resets stress so
-   *  the levers release immediately: `mayProduce` returns true and
-   *  `resolutionScale` returns 1, so each WorkerVizRenderer's next tick re-posts a
-   *  full-resolution resize and stops being throttled. Re-enabling lets stress
-   *  rebuild from the live rAF cadence via observeFrame. */
-  setEnabled(on) {
-    this.enabled = on;
-    if (!on) {
-      this.stress = 0;
-      this.emaMs = HEALTHY_MS;
-      this.lastObserveTs = 0;
-    }
-  }
-  /** Test helper — force enabled state (and reset) deterministically. */
-  _setEnabledForTest(on) {
-    this.enabled = on;
-    this.registered.clear();
-    this.lastProduce.clear();
-    this.nextOffset = 0;
-    this.frameIndex = 0;
-    this.lastObserveTs = 0;
-    this.emaMs = HEALTHY_MS;
-    this.stress = 0;
-  }
-};
-__name(_VizGovernor, "VizGovernor");
-var VizGovernor = _VizGovernor;
-var vizGovernor = new VizGovernor();
 var PICK_METHODS = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
 function parseTopLevel(doc) {
   try {
@@ -6530,175 +4604,477 @@ function classifyChunk(info) {
 }
 __name(classifyChunk, "classifyChunk");
 
-// src/visualEdit/writeback.ts
-var REEVAL_DEBOUNCE_MS = 120;
-function formatNumber(v, maxDecimals = 4) {
-  if (!Number.isFinite(v)) return "0";
-  if (Number.isInteger(v)) return String(v);
-  const fixed = v.toFixed(maxDecimals);
-  return fixed.replace(/\.?0+$/, "");
+// src/visualEdit/panels/patternKind.ts
+function isStepChunk(chunk) {
+  return chunk.miniString !== null && (chunk.headFn === "s" || chunk.headFn === "sound");
 }
-__name(formatNumber, "formatNumber");
-function normalizeEdits(edits) {
-  for (const e of edits) {
-    if (e.range[0] > e.range[1]) {
-      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
-    }
-  }
-  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1].range;
-    const cur = sorted[i].range;
-    if (cur[0] < prev[1]) {
-      throw new Error(
-        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
-      );
-    }
-  }
-  return sorted;
+__name(isStepChunk, "isStepChunk");
+function isRollChunk(chunk) {
+  return chunk.miniString !== null && (chunk.headFn === "note" || chunk.headFn === "n");
 }
-__name(normalizeEdits, "normalizeEdits");
-function applyEdits(doc, edits) {
-  const sorted = normalizeEdits(edits);
-  let out = doc;
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const { range: range2, text } = sorted[i];
-    out = out.slice(0, range2[0]) + text + out.slice(range2[1]);
+__name(isRollChunk, "isRollChunk");
+function patternKind(chunk) {
+  if (!chunk) return null;
+  if (isStepChunk(chunk)) return "step";
+  if (isRollChunk(chunk)) return "roll";
+  return null;
+}
+__name(patternKind, "patternKind");
+
+// src/visualEdit/panels/chainMethod.ts
+function readChainMethod(chunk, names) {
+  const call = chunk.chain.find((c) => names.includes(c.name) && c.args.length >= 1);
+  const arg = call?.args[0];
+  if (!call || !arg) return null;
+  const q = arg.raw[0];
+  if ((q === '"' || q === "'" || q === "`") && arg.raw[arg.raw.length - 1] === q) {
+    return { name: call.name, value: arg.raw.slice(1, -1), range: arg.range };
+  }
+  return null;
+}
+__name(readChainMethod, "readChainMethod");
+
+// src/visualEdit/trackColor.ts
+var TRACK_PALETTE_32 = [
+  // Drums (orange family) — 8 lightness steps
+  "#fed7aa",
+  "#fdba74",
+  "#fb923c",
+  "#f97316",
+  "#ea580c",
+  "#c2410c",
+  "#9a3412",
+  "#7c2d12",
+  // Bass (cyan family) — 8 lightness steps
+  "#a5f3fc",
+  "#67e8f9",
+  "#22d3ee",
+  "#06b6d4",
+  "#0891b2",
+  "#0e7490",
+  "#155e75",
+  "#164e63",
+  // Pad (green family) — 8 lightness steps
+  "#a7f3d0",
+  "#6ee7b7",
+  "#34d399",
+  "#10b981",
+  "#059669",
+  "#047857",
+  "#065f46",
+  "#064e3b",
+  // Melody (purple family) — 8 lightness steps
+  "#ddd6fe",
+  "#c4b5fd",
+  "#a78bfa",
+  "#8b5cf6",
+  "#7c3aed",
+  "#6d28d9",
+  "#5b21b6",
+  "#4c1d95"
+];
+var STEM_PATTERNS = [
+  // Family 0 — drums
+  /^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i,
+  // Family 1 — bass
+  /^(?:bass|sub|808)/i,
+  // Family 2 — pads
+  /^(?:pad|pads)/i,
+  // Family 3 — melody / lead / synth / piano / keys / guitar
+  /^(?:lead|melody|synth|piano|keys|guitar)/i
+];
+function fnv1a32(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h = (h ^ str.charCodeAt(i)) >>> 0;
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+__name(fnv1a32, "fnv1a32");
+function stemHueGroup(sample) {
+  if (!sample) return 3;
+  for (let i = 0; i < STEM_PATTERNS.length; i++) {
+    if (STEM_PATTERNS[i].test(sample)) return i;
+  }
+  return 3;
+}
+__name(stemHueGroup, "stemHueGroup");
+function trackIndexOf(trackId) {
+  const m = trackId.match(/^d(\d+)$/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n >= 1) return ((n - 1) % 32 + 32) % 32;
+  }
+  return fnv1a32(trackId) % 32;
+}
+__name(trackIndexOf, "trackIndexOf");
+function paletteForTrack(trackIndex, sampleHint) {
+  const hueGroup = stemHueGroup(sampleHint);
+  const slot = ((trackIndex * 4 + hueGroup) % 32 + 32) % 32;
+  return TRACK_PALETTE_32[slot];
+}
+__name(paletteForTrack, "paletteForTrack");
+function colorForTrack(key2) {
+  return paletteForTrack(trackIndexOf(key2), key2);
+}
+__name(colorForTrack, "colorForTrack");
+function trackIdentity(key2, customColor) {
+  return { key: key2, name: key2, color: customColor ?? colorForTrack(key2) };
+}
+__name(trackIdentity, "trackIdentity");
+
+// src/visualizers/signals/aliasMap.ts
+var DEFAULT_VIZ_ENGINE = "strudel";
+var BUILTIN_ALIASES = {
+  uKick: { strudel: "bd", sonicpi: "drum_heavy_kick" },
+  uSnare: { strudel: "sd", sonicpi: "drum_snare_hard" },
+  uHat: { strudel: "hh", sonicpi: "drum_cymbal_closed" },
+  uOpenHat: { strudel: "oh", sonicpi: "drum_cymbal_open" },
+  uClap: { strudel: "cp" },
+  uRim: { strudel: "rim" },
+  uTom: {
+    strudel: ["lt", "mt", "ht"],
+    sonicpi: ["drum_tom_lo_hard", "drum_tom_mid_hard", "drum_tom_hi_hard"]
+  }
+};
+function resolveAliasesForEngine(custom, engine) {
+  const out = {};
+  for (const [name, slots] of Object.entries(BUILTIN_ALIASES)) {
+    const v = slots[engine];
+    if (v != null) out[name] = v;
+  }
+  for (const [name, slots] of Object.entries(custom)) {
+    const v = slots[engine];
+    if (v != null) out[name] = v;
   }
   return out;
 }
-__name(applyEdits, "applyEdits");
-var _Writeback = class _Writeback {
-  constructor(editor, monaco) {
-    this.editor = editor;
-    this.monaco = monaco;
-    this.writingSource = null;
-    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
-    this.inGesture = false;
-    /** whether the in-flight gesture has applied any edit — gates the one re-eval
-     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
-    this.gestureDidEdit = false;
-    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
-    this.reevalTimer = null;
+__name(resolveAliasesForEngine, "resolveAliasesForEngine");
+var ALIAS_MAP = resolveAliasesForEngine(
+  {},
+  DEFAULT_VIZ_ENGINE
+);
+
+// src/visualizers/vizFlags.ts
+var VIZ_FLAG_KEYS = {
+  worker: "stave.viz.worker",
+  p5direct: "stave.viz.p5direct",
+  pool: "stave.viz.pool",
+  governor: "stave.viz.governor",
+  pump: "stave.viz.pump",
+  maxFps: "stave.viz.maxFps",
+  maxDpr: "stave.viz.maxDpr"
+};
+function read(key2) {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage.getItem(key2);
+  } catch {
+    return null;
   }
-  /**
-   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
-   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
-   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
-   * the undo grouping is affected. Idempotent if already in a gesture.
-   */
-  beginGesture() {
-    if (this.inGesture) return;
-    const model = this.editor.getModel();
-    if (!model) return;
-    model.pushStackElement();
-    this.inGesture = true;
-    this.gestureDidEdit = false;
+}
+__name(read, "read");
+function enabledByDefault(key2) {
+  return read(key2) !== "0";
+}
+__name(enabledByDefault, "enabledByDefault");
+function optIn(key2) {
+  return read(key2) === "1";
+}
+__name(optIn, "optIn");
+function triState(key2) {
+  const v = read(key2);
+  return v === "1" ? true : v === "0" ? false : null;
+}
+__name(triState, "triState");
+function numFlag(key2) {
+  const n = Number(read(key2));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+__name(numFlag, "numFlag");
+function isP5DirectCanvasEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.p5direct);
+}
+__name(isP5DirectCanvasEnabled, "isP5DirectCanvasEnabled");
+function isVizGovernorEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.governor);
+}
+__name(isVizGovernorEnabled, "isVizGovernorEnabled");
+function isVizPumpSharedCacheEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.pump);
+}
+__name(isVizPumpSharedCacheEnabled, "isVizPumpSharedCacheEnabled");
+function isVizWorkerPoolEnabled() {
+  return optIn(VIZ_FLAG_KEYS.pool);
+}
+__name(isVizWorkerPoolEnabled, "isVizWorkerPoolEnabled");
+function getVizWorkerOverride() {
+  return triState(VIZ_FLAG_KEYS.worker);
+}
+__name(getVizWorkerOverride, "getVizWorkerOverride");
+function getVizMaxFpsOverride() {
+  return numFlag(VIZ_FLAG_KEYS.maxFps);
+}
+__name(getVizMaxFpsOverride, "getVizMaxFpsOverride");
+function getVizMaxDprOverride() {
+  return numFlag(VIZ_FLAG_KEYS.maxDpr);
+}
+__name(getVizMaxDprOverride, "getVizMaxDprOverride");
+
+// src/visualizers/vizGovernor.ts
+var HEALTHY_MS = 20;
+var JANK_MS = 45;
+var MIN_FPS = 10;
+var EMA_ALPHA = 0.25;
+var STRESS_RAMP_DOWN = 0.012;
+var IDLE_GAP_MS = 400;
+var RES_MIN_SCALE = 0.5;
+var RES_STRESS_ON = 0.5;
+function computeStress(emaMs, healthy = HEALTHY_MS, jank = JANK_MS) {
+  if (emaMs <= healthy) return 0;
+  if (emaMs >= jank) return 1;
+  return (emaMs - healthy) / (jank - healthy);
+}
+__name(computeStress, "computeStress");
+function maxPerFrame(n, stress) {
+  if (n <= 1) return 1;
+  return Math.max(1, Math.round(n * (1 - stress)));
+}
+__name(maxPerFrame, "maxPerFrame");
+function periodFor(n, stress) {
+  if (n <= 1) return 1;
+  return Math.max(1, Math.ceil(n / maxPerFrame(n, stress)));
+}
+__name(periodFor, "periodFor");
+function minGapMs(stress) {
+  if (stress <= 0) return 0;
+  return stress * (1e3 / MIN_FPS);
+}
+__name(minGapMs, "minGapMs");
+function resolutionScaleFor(stress) {
+  if (stress < RES_STRESS_ON) return 1;
+  const t = (stress - RES_STRESS_ON) / (1 - RES_STRESS_ON);
+  const raw = 1 - t * (1 - RES_MIN_SCALE);
+  return Math.max(RES_MIN_SCALE, Math.round(raw * 4) / 4);
+}
+__name(resolutionScaleFor, "resolutionScaleFor");
+var _VizGovernor = class _VizGovernor {
+  constructor() {
+    this.enabled = true;
+    /** Active (looping) renderer id → its stable round-robin offset. */
+    this.registered = /* @__PURE__ */ new Map();
+    this.lastProduce = /* @__PURE__ */ new Map();
+    this.nextOffset = 0;
+    this.frameIndex = 0;
+    this.lastObserveTs = 0;
+    this.emaMs = HEALTHY_MS;
+    this.stress = 0;
+    this.enabled = isVizGovernorEnabled();
   }
-  /** Close the gesture, sealing all its edits as one undo step — and, if the
-   * gesture changed anything, make it audible immediately (one re-eval on
-   * release, not per drag frame). */
-  endGesture() {
-    if (!this.inGesture) return;
-    this.inGesture = false;
-    this.editor.getModel()?.pushStackElement();
-    if (this.gestureDidEdit) {
-      this.gestureDidEdit = false;
-      this.requestLiveReeval();
+  /** Register a renderer when its loop STARTS (resume/mount). Idempotent. */
+  register(id) {
+    if (!this.registered.has(id)) this.registered.set(id, this.nextOffset++);
+  }
+  /** Unregister when the loop STOPS (pause/destroy). Resets stress when the last
+   *  viz leaves so a fresh mount starts from a healthy baseline. */
+  unregister(id) {
+    this.registered.delete(id);
+    this.lastProduce.delete(id);
+    if (this.registered.size === 0) {
+      this.stress = 0;
+      this.emaMs = HEALTHY_MS;
+      this.lastObserveTs = 0;
     }
   }
-  /**
-   * The source of the edit currently being applied, or null. The host's
-   * `onDidChangeModelContent` listener reads this synchronously to attribute
-   * the change. It is non-null ONLY for the duration of `apply`.
-   */
-  get currentSource() {
-    return this.writingSource;
+  /** Feed the cadence monitor — call once per rAF tick from EVERY active loop
+   *  (idempotent per timestamp: only the first call for a new `ts` advances the
+   *  frame + updates stress, so N renderers calling with the same ts is fine). */
+  observeFrame(ts) {
+    if (!this.enabled || this.registered.size === 0) return;
+    if (this.lastObserveTs > 0 && ts > this.lastObserveTs) {
+      const d = ts - this.lastObserveTs;
+      if (d > IDLE_GAP_MS) {
+        this.emaMs = HEALTHY_MS;
+      } else {
+        this.emaMs = this.emaMs * (1 - EMA_ALPHA) + d * EMA_ALPHA;
+      }
+      const target = computeStress(this.emaMs);
+      this.stress = target > this.stress ? target : Math.max(target, this.stress - STRESS_RAMP_DOWN);
+      this.frameIndex++;
+      perf.record("viz.governor.stress", Math.round(this.stress * 100));
+    }
+    if (ts > this.lastObserveTs) this.lastObserveTs = ts;
   }
-  /** Replace a single offset range. One undo step. */
-  replaceRange(range2, text, source) {
-    this.apply([{ range: range2, text }], source);
-  }
-  /**
-   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
-   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
-   * the whole gesture).
-   */
-  replaceRanges(edits, source) {
-    this.apply(edits, source);
-  }
-  /** Insert text at an offset (zero-width edit). */
-  insertAt(offset, text, source) {
-    this.apply([{ range: [offset, offset], text }], source);
-  }
-  /** Delete an offset range. */
-  deleteRange(range2, source) {
-    this.apply([{ range: range2, text: "" }], source);
-  }
-  /**
-   * Freshness-guarded write. Re-reads the live model text and refuses the edit
-   * if the chunk's statement no longer matches what it was detected from
-   * (the doc changed under the panel). Returns true if applied, false if stale.
-   * Prefer this over the raw methods on any path that can race a typed edit.
-   */
-  applyFresh(chunk, edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return false;
-    if (!isChunkFresh(model.getValue(), chunk)) return false;
-    this.apply(edits, source);
+  /** Gate: may renderer `id` produce a frame at `ts`? Composed with (and called
+   *  after) the renderer's own backpressure + maxFps checks. */
+  mayProduce(id, ts) {
+    if (!this.enabled) return true;
+    const n = this.registered.size;
+    if (n === 0 || this.stress <= 0) return true;
+    const gap = minGapMs(this.stress);
+    if (gap > 0) {
+      const last = this.lastProduce.get(id) ?? 0;
+      if (last > 0 && ts - last < gap - 1) return false;
+    }
+    if (n > 1) {
+      const period = periodFor(n, this.stress);
+      if (period > 1) {
+        const offset = this.registered.get(id) ?? 0;
+        if ((this.frameIndex + offset) % period !== 0) return false;
+      }
+    }
+    this.lastProduce.set(id, ts);
     return true;
   }
-  apply(edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return;
-    const normalized = normalizeEdits(edits);
-    const ops = normalized.map((e) => {
-      const start = model.getPositionAt(e.range[0]);
-      const end = model.getPositionAt(e.range[1]);
-      return {
-        range: new this.monaco.Range(
-          start.lineNumber,
-          start.column,
-          end.lineNumber,
-          end.column
-        ),
-        text: e.text,
-        forceMoveMarkers: true
-      };
-    });
-    if (!this.inGesture) model.pushStackElement();
-    this.writingSource = source;
-    try {
-      model.pushEditOperations([], ops, () => null);
-    } finally {
-      this.writingSource = null;
-    }
-    if (!this.inGesture) model.pushStackElement();
-    if (this.inGesture) this.gestureDidEdit = true;
-    else this.requestLiveReeval();
+  /** Render-resolution scale (lever 3) the renderer should apply to its backing
+   *  store at the current stress, in `[RES_MIN_SCALE, 1]`. 1 (full) when disabled
+   *  or smooth — so a renderer multiplying its `resize` w,h by this is a total
+   *  no-op in the common case (transparency, PV91). The `WorkerVizRenderer` reads
+   *  this each rAF and re-posts a scaled `resize` only when the quantized step
+   *  changes (the backing-store realloc is relatively expensive). */
+  resolutionScale() {
+    if (!this.enabled || this.stress <= 0) return 1;
+    return resolutionScaleFor(this.stress);
   }
-  /**
-   * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
-   * the moment it commits. Centralised here so every visual surface — sequencer,
-   * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
-   * re-evals only a PLAYING file, and only when live mode isn't already doing
-   * it, so this never auto-starts audio nor double-evaluates.
-   *
-   * Trailing-debounced: rapid successive commits (e.g. clearing several
-   * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
-   * which also lets the Monaco→file-store sync settle so the re-eval reads the
-   * final content rather than racing a not-yet-synced edit.
-   */
-  requestLiveReeval() {
-    if (this.reevalTimer) clearTimeout(this.reevalTimer);
-    this.reevalTimer = setTimeout(() => {
-      this.reevalTimer = null;
-      requestReeval(getFileIdForEditor(this.editor));
-    }, REEVAL_DEBOUNCE_MS);
+  /** Observability / test hook. */
+  state() {
+    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex, resScale: this.resolutionScale() };
+  }
+  /** Live enable/disable (the "Adaptive performance" toggle, persisted via
+   *  editorRegistry under the SAME `stave.viz.governor` key this reads at
+   *  construction). Unlike `_setEnabledForTest` it KEEPS the registered renderers
+   *  (live viz stay tracked) — it only flips the gate. Disabling resets stress so
+   *  the levers release immediately: `mayProduce` returns true and
+   *  `resolutionScale` returns 1, so each WorkerVizRenderer's next tick re-posts a
+   *  full-resolution resize and stops being throttled. Re-enabling lets stress
+   *  rebuild from the live rAF cadence via observeFrame. */
+  setEnabled(on) {
+    this.enabled = on;
+    if (!on) {
+      this.stress = 0;
+      this.emaMs = HEALTHY_MS;
+      this.lastObserveTs = 0;
+    }
+  }
+  /** Test helper — force enabled state (and reset) deterministically. */
+  _setEnabledForTest(on) {
+    this.enabled = on;
+    this.registered.clear();
+    this.lastProduce.clear();
+    this.nextOffset = 0;
+    this.frameIndex = 0;
+    this.lastObserveTs = 0;
+    this.emaMs = HEALTHY_MS;
+    this.stress = 0;
   }
 };
-__name(_Writeback, "Writeback");
-var Writeback = _Writeback;
+__name(_VizGovernor, "VizGovernor");
+var VizGovernor = _VizGovernor;
+var vizGovernor = new VizGovernor();
+
+// src/visualizers/vizConfig.ts
+var DEFAULT_VIZ_CONFIG = {
+  // Resolver
+  defaultRenderer: "p5",
+  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
+  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
+  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
+  // automatic fallback when a browser can't offload (no OffscreenCanvas /
+  // transferControlToOffscreen / worker factory). Opt OUT per project via
+  // localStorage['stave.viz.worker'] = '0'.
+  workerRenderer: true,
+  // Worker pacing / resolution (#261 follow-up). 60fps is the perceptual ceiling
+  // for music viz; maxDpr 1 makes the presenting canvas match the worker's actual
+  // 1× render (quality-neutral, ~4× cheaper composite on retina than the prior
+  // upscale-to-2× behaviour). Both are zero-rewrite levers against the blit/
+  // composite wall measured for multi-instance inline viz.
+  maxFps: 60,
+  maxDpr: 1,
+  // Quality / LOD (#269). 1 = full detail, today's behaviour unchanged. Lower
+  // values are opted into via "performance mode" (deriveVizQuality) and read by
+  // sketches as `sig.density`. Marshalled to the worker via the config channel.
+  density: 1,
+  // Inline view zones
+  inlineZoneHeight: 150,
+  // Audio analysis
+  fftSize: 2048,
+  smoothingTimeConstant: 0.8,
+  // Hydra
+  hydraAudioBins: 4,
+  hydraAutoLoop: true,
+  // Pianoroll
+  pianorollWindowSeconds: 6,
+  pianorollCycles: 4,
+  pianorollPlayhead: 0.5,
+  pianorollMidiMin: 24,
+  pianorollMidiMax: 96,
+  // Scope / FScope
+  scopeWindowSeconds: 4,
+  scopeAmplitudeScale: 0.25,
+  scopeBaseline: 0.75,
+  // Spectrum
+  spectrumMinDb: -80,
+  spectrumMaxDb: 0,
+  spectrumScrollSpeed: 2,
+  // Colors
+  backgroundColor: "#090912",
+  accentColor: "#75baff",
+  activeColor: "#FFCA28",
+  playheadColor: "rgba(255,255,255,0.5)"
+};
+function createVizConfig(overrides) {
+  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
+}
+__name(createVizConfig, "createVizConfig");
+var DEFAULT_VIZ_QUALITY = "balanced";
+function deriveVizQuality(level) {
+  switch (level) {
+    case "high":
+      return { resolution: 1024, density: 1 };
+    case "performance":
+      return { resolution: 256, density: 0.5 };
+    case "balanced":
+    default:
+      return { resolution: 512, density: 1 };
+  }
+}
+__name(deriveVizQuality, "deriveVizQuality");
+var _active = { ...DEFAULT_VIZ_CONFIG };
+var _listeners = /* @__PURE__ */ new Set();
+function notify() {
+  for (const cb of Array.from(_listeners)) cb(_active);
+}
+__name(notify, "notify");
+function getVizConfig() {
+  return _active;
+}
+__name(getVizConfig, "getVizConfig");
+function setVizConfig(config) {
+  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
+  notify();
+}
+__name(setVizConfig, "setVizConfig");
+function updateVizConfig(patch) {
+  _active = { ..._active, ...patch };
+  notify();
+}
+__name(updateVizConfig, "updateVizConfig");
+function onVizConfigChange(cb) {
+  _listeners.add(cb);
+  return () => {
+    _listeners.delete(cb);
+  };
+}
+__name(onVizConfigChange, "onVizConfigChange");
+var WORKER_VIZ_CONFIG_KEYS = ["hydraAudioBins", "density"];
+function pickWorkerVizConfig(config = _active) {
+  return WORKER_VIZ_CONFIG_KEYS.reduce((acc, k) => {
+    acc[k] = config[k];
+    return acc;
+  }, {});
+}
+__name(pickWorkerVizConfig, "pickWorkerVizConfig");
 
 // src/workspace/editorRegistry.ts
 var editors = /* @__PURE__ */ new Map();
@@ -7610,6 +5986,1939 @@ function applyPersistedAdaptivePerf() {
   vizGovernor.setEnabled(readAdaptivePerf());
 }
 __name(applyPersistedAdaptivePerf, "applyPersistedAdaptivePerf");
+
+// src/visualEdit/writeback.ts
+var REEVAL_DEBOUNCE_MS = 120;
+function formatNumber(v, maxDecimals = 4) {
+  if (!Number.isFinite(v)) return "0";
+  if (Number.isInteger(v)) return String(v);
+  const fixed = v.toFixed(maxDecimals);
+  return fixed.replace(/\.?0+$/, "");
+}
+__name(formatNumber, "formatNumber");
+function normalizeEdits(edits) {
+  for (const e of edits) {
+    if (e.range[0] > e.range[1]) {
+      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
+    }
+  }
+  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1].range;
+    const cur = sorted[i].range;
+    if (cur[0] < prev[1]) {
+      throw new Error(
+        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
+      );
+    }
+  }
+  return sorted;
+}
+__name(normalizeEdits, "normalizeEdits");
+function applyEdits(doc, edits) {
+  const sorted = normalizeEdits(edits);
+  let out = doc;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const { range: range2, text } = sorted[i];
+    out = out.slice(0, range2[0]) + text + out.slice(range2[1]);
+  }
+  return out;
+}
+__name(applyEdits, "applyEdits");
+var _Writeback = class _Writeback {
+  constructor(editor, monaco) {
+    this.editor = editor;
+    this.monaco = monaco;
+    this.writingSource = null;
+    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
+    this.inGesture = false;
+    /** whether the in-flight gesture has applied any edit — gates the one re-eval
+     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
+    this.gestureDidEdit = false;
+    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
+    this.reevalTimer = null;
+  }
+  /**
+   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
+   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
+   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
+   * the undo grouping is affected. Idempotent if already in a gesture.
+   */
+  beginGesture() {
+    if (this.inGesture) return;
+    const model = this.editor.getModel();
+    if (!model) return;
+    model.pushStackElement();
+    this.inGesture = true;
+    this.gestureDidEdit = false;
+  }
+  /** Close the gesture, sealing all its edits as one undo step — and, if the
+   * gesture changed anything, make it audible immediately (one re-eval on
+   * release, not per drag frame). */
+  endGesture() {
+    if (!this.inGesture) return;
+    this.inGesture = false;
+    this.editor.getModel()?.pushStackElement();
+    if (this.gestureDidEdit) {
+      this.gestureDidEdit = false;
+      this.requestLiveReeval();
+    }
+  }
+  /**
+   * The source of the edit currently being applied, or null. The host's
+   * `onDidChangeModelContent` listener reads this synchronously to attribute
+   * the change. It is non-null ONLY for the duration of `apply`.
+   */
+  get currentSource() {
+    return this.writingSource;
+  }
+  /** Replace a single offset range. One undo step. */
+  replaceRange(range2, text, source) {
+    this.apply([{ range: range2, text }], source);
+  }
+  /**
+   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
+   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
+   * the whole gesture).
+   */
+  replaceRanges(edits, source) {
+    this.apply(edits, source);
+  }
+  /** Insert text at an offset (zero-width edit). */
+  insertAt(offset, text, source) {
+    this.apply([{ range: [offset, offset], text }], source);
+  }
+  /** Delete an offset range. */
+  deleteRange(range2, source) {
+    this.apply([{ range: range2, text: "" }], source);
+  }
+  /**
+   * Freshness-guarded write. Re-reads the live model text and refuses the edit
+   * if the chunk's statement no longer matches what it was detected from
+   * (the doc changed under the panel). Returns true if applied, false if stale.
+   * Prefer this over the raw methods on any path that can race a typed edit.
+   */
+  applyFresh(chunk, edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return false;
+    if (!isChunkFresh(model.getValue(), chunk)) return false;
+    this.apply(edits, source);
+    return true;
+  }
+  apply(edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return;
+    const normalized = normalizeEdits(edits);
+    const ops = normalized.map((e) => {
+      const start = model.getPositionAt(e.range[0]);
+      const end = model.getPositionAt(e.range[1]);
+      return {
+        range: new this.monaco.Range(
+          start.lineNumber,
+          start.column,
+          end.lineNumber,
+          end.column
+        ),
+        text: e.text,
+        forceMoveMarkers: true
+      };
+    });
+    if (!this.inGesture) model.pushStackElement();
+    this.writingSource = source;
+    try {
+      model.pushEditOperations([], ops, () => null);
+    } finally {
+      this.writingSource = null;
+    }
+    if (!this.inGesture) model.pushStackElement();
+    if (this.inGesture) this.gestureDidEdit = true;
+    else this.requestLiveReeval();
+  }
+  /**
+   * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
+   * the moment it commits. Centralised here so every visual surface — sequencer,
+   * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
+   * re-evals only a PLAYING file, and only when live mode isn't already doing
+   * it, so this never auto-starts audio nor double-evaluates.
+   *
+   * Trailing-debounced: rapid successive commits (e.g. clearing several
+   * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
+   * which also lets the Monaco→file-store sync settle so the re-eval reads the
+   * final content rather than racing a not-yet-synced edit.
+   */
+  requestLiveReeval() {
+    if (this.reevalTimer) clearTimeout(this.reevalTimer);
+    this.reevalTimer = setTimeout(() => {
+      this.reevalTimer = null;
+      requestReeval(getFileIdForEditor(this.editor));
+    }, REEVAL_DEBOUNCE_MS);
+  }
+};
+__name(_Writeback, "Writeback");
+var Writeback = _Writeback;
+
+// src/visualEdit/mixer/gain.ts
+var GAIN_TOKEN = /^(\d+(?:\.\d+)?)(@\d+)?$/;
+function parseManagedGain(raw) {
+  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
+  if (!quote || raw[raw.length - 1] !== quote) return null;
+  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== "");
+  if (tokens.length < 2) return null;
+  let ceiling = 0;
+  for (const t of tokens) {
+    if (t === "~") continue;
+    const m = GAIN_TOKEN.exec(t);
+    if (!m) return null;
+    ceiling = Math.max(ceiling, parseFloat(m[1]));
+  }
+  return { tokens, ceiling, quote };
+}
+__name(parseManagedGain, "parseManagedGain");
+function scaleManagedGain(mg, value) {
+  const factor = mg.ceiling > 0 ? value / mg.ceiling : null;
+  const out = mg.tokens.map((t) => {
+    if (t === "~") return "~";
+    const m = GAIN_TOKEN.exec(t);
+    const nv = factor === null ? value : parseFloat(m[1]) * factor;
+    return formatNumber(Math.max(0, nv)) + (m[2] ?? "");
+  });
+  return mg.quote + out.join(" ") + mg.quote;
+}
+__name(scaleManagedGain, "scaleManagedGain");
+var CHILD_GAIN_HEADS = /* @__PURE__ */ new Set([
+  "pick",
+  "pickRestart",
+  "pickReset",
+  "stack",
+  "cat",
+  "layer",
+  "arrange"
+]);
+function hasChildGain(chunk) {
+  const call = chunk.chain.find((c) => CHILD_GAIN_HEADS.has(c.name));
+  return call ? call.args.some((a) => /\.gain\s*\(/.test(a.raw)) : false;
+}
+__name(hasChildGain, "hasChildGain");
+function readGainState(chunk) {
+  const call = chunk.chain.find((c) => c.name === "gain" && c.args.length >= 1);
+  const arg = call?.args[0];
+  if (!call || !arg) {
+    return hasChildGain(chunk) ? { kind: "foreign" } : { kind: "absent" };
+  }
+  if (arg.numeric !== null) return { kind: "scalar", value: arg.numeric, range: arg.range };
+  const mg = parseManagedGain(arg.raw);
+  if (mg) return { kind: "managed", ceiling: mg.ceiling, mg, range: arg.range };
+  return { kind: "foreign" };
+}
+__name(readGainState, "readGainState");
+
+// src/visualEdit/mixer/stripModel.ts
+function namedLabel(label) {
+  return label && label !== "$" ? label : null;
+}
+__name(namedLabel, "namedLabel");
+function isMuted(label) {
+  return label != null && label.startsWith("_");
+}
+__name(isMuted, "isMuted");
+function bareLabel(label) {
+  if (label == null) return null;
+  return namedLabel(isMuted(label) ? label.slice(1) : label);
+}
+__name(bareLabel, "bareLabel");
+var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
+  "setcps",
+  "setCps",
+  "setcpm",
+  "setCpm",
+  "setbpm",
+  "setBpm",
+  "samples",
+  "hush",
+  "all"
+]);
+function isTrackChunk(chunk) {
+  if (chunk.label !== null) return true;
+  return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn);
+}
+__name(isTrackChunk, "isTrackChunk");
+var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
+function stripKind(chunk) {
+  const k = patternKind(chunk);
+  if (k) return k;
+  if (chunk.headFn && GROUP_HEADS.has(chunk.headFn)) return "group";
+  return "unknown";
+}
+__name(stripKind, "stripKind");
+function readSource(chunk, kind) {
+  if (kind === "step") return readChainMethod(chunk, ["bank"])?.value ?? null;
+  if (kind === "roll") return readChainMethod(chunk, ["sound", "s"])?.value ?? null;
+  return readChainMethod(chunk, ["sound", "s", "bank"])?.value ?? null;
+}
+__name(readSource, "readSource");
+function readScalar(chunk, name) {
+  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
+  const arg = call?.args[0];
+  return arg && arg.numeric !== null ? arg.numeric : null;
+}
+__name(readScalar, "readScalar");
+function isForeign(chunk, name) {
+  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
+  return call !== void 0 && call.args[0].numeric === null;
+}
+__name(isForeign, "isForeign");
+function displayKey(label, ordinal) {
+  return bareLabel(label) ?? `d${ordinal}`;
+}
+__name(displayKey, "displayKey");
+function buildStripModel(chunk, index, ordinal, id, captureId) {
+  const kind = stripKind(chunk);
+  const source = readSource(chunk, kind);
+  const identity = trackIdentity(displayKey(chunk.label, ordinal));
+  return {
+    id,
+    index,
+    kind,
+    label: bareLabel(chunk.label),
+    name: identity.name,
+    headFn: chunk.headFn,
+    miniString: chunk.miniString,
+    source,
+    gain: readGainState(chunk),
+    pan: readScalar(chunk, "pan"),
+    panForeign: isForeign(chunk, "pan"),
+    sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
+    muted: isMuted(chunk.label),
+    muteable: chunk.label != null,
+    color: identity.color,
+    chain: chunk.chain,
+    exprRange: chunk.exprRange,
+    statementRange: chunk.statementRange,
+    captureId
+  };
+}
+__name(buildStripModel, "buildStripModel");
+function buildStripModels(chunks) {
+  let anonAll = 0;
+  let anonLive = 0;
+  let ordinal = 0;
+  const models = [];
+  chunks.forEach((chunk, index) => {
+    if (!isTrackChunk(chunk)) return;
+    ordinal++;
+    const bare = bareLabel(chunk.label);
+    const id = bare ?? `#${anonAll++}`;
+    let captureId;
+    if (bare !== null) captureId = bare;
+    else if (isMuted(chunk.label)) captureId = `_$${index}`;
+    else captureId = `$${anonLive++}`;
+    models.push(buildStripModel(chunk, index, ordinal, id, captureId));
+  });
+  return models;
+}
+__name(buildStripModels, "buildStripModels");
+function statementOffsetForSource(doc, source) {
+  const strip = buildStripModels(detectAllChunks(doc)).find((s) => s.source === source);
+  return strip ? strip.statementRange[0] : null;
+}
+__name(statementOffsetForSource, "statementOffsetForSource");
+function otherTrackNames(doc, selfStatementStart) {
+  return buildStripModels(detectAllChunks(doc)).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
+}
+__name(otherTrackNames, "otherTrackNames");
+function stripContainingOffset(strips, offset) {
+  return strips.find(
+    (s) => s.statementRange[0] <= offset && offset < s.statementRange[1]
+  );
+}
+__name(stripContainingOffset, "stripContainingOffset");
+
+// src/engine/bareCapture.ts
+var BARE_CAPTURE_ID = "$0";
+function resolveBareCaptureId(code) {
+  const tracks = detectAllChunks(code).filter(isTrackChunk);
+  if (tracks.length !== 1) return null;
+  if (tracks[0].label !== null) return null;
+  return BARE_CAPTURE_ID;
+}
+__name(resolveBareCaptureId, "resolveBareCaptureId");
+
+// src/engine/StrudelEngine.ts
+function isQueryablePattern(p) {
+  return !!p && typeof p.queryArc === "function";
+}
+__name(isQueryablePattern, "isQueryablePattern");
+function extractVizName(rawArg) {
+  if (typeof rawArg === "string") return rawArg || void 0;
+  const pat = rawArg;
+  if (!pat || !pat._Pattern || typeof pat.queryArc !== "function") {
+    return void 0;
+  }
+  const renderHapValue = /* @__PURE__ */ __name((v) => {
+    if (typeof v === "string") return v;
+    if (Array.isArray(v)) return v.join(":");
+    if (v == null) return "";
+    return String(v);
+  }, "renderHapValue");
+  let haps;
+  try {
+    haps = pat.queryArc(0, 1);
+  } catch {
+    return void 0;
+  }
+  if (haps.length === 0) return void 0;
+  if (haps.length === 1) {
+    const out2 = renderHapValue(haps[0].value);
+    return out2 === "" ? void 0 : out2;
+  }
+  const out = haps.map((h) => renderHapValue(h.value)).join(" ");
+  return out === "" ? void 0 : out;
+}
+__name(extractVizName, "extractVizName");
+var STRUDEL_VIZ_METHODS = {
+  pianoroll: "pianoroll",
+  punchcard: "pianoroll",
+  wordfall: "wordfall",
+  scope: "scope",
+  tscope: "scope",
+  fscope: "fscope",
+  spectrum: "spectrum",
+  spiral: "spiral",
+  pitchwheel: "pitchwheel"
+};
+var _StrudelEngine = class _StrudelEngine {
+  constructor() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.repl = null;
+    this.audioCtx = null;
+    this.analyserNode = null;
+    this.hapStream = new HapStream();
+    this.initialized = false;
+    // Resolve function for the current in-flight evaluate() call
+    this.evalResolve = null;
+    // Runtime audio error handler (e.g. "sound X not found" during scheduling)
+    this.runtimeErrorHandler = null;
+    // Sound names registered after init() — used for editor autocompletion
+    this.loadedSoundNames = [];
+    // Per-track PatternSchedulers captured during the last evaluate() call.
+    // These hold the pattern in the SCHEDULER frame — `.late(transportOffset)`
+    // applied — because every consumer (viz, signal bus, meters, the live
+    // playhead) reads them against the wall clock.
+    this.trackSchedulers = /* @__PURE__ */ new Map();
+    // #863 — the same per-track patterns in the SONG frame: captured BEFORE the
+    // `.late(transportOffset)` seek wrap, so cycle 0 is the start of the song
+    // rather than the start of the current scheduler window. The Song timeline
+    // draws static marks on a song-absolute axis against IR-derived lanes, so it
+    // must read from here (`getTimelineEvents`) — a shifted query would drift the
+    // marks off their lanes by the offset after any seek. Kept in lock-step with
+    // `trackSchedulers` (assigned together on a successful evaluate).
+    this.songPatterns = /* @__PURE__ */ new Map();
+    // eslint-disable-line @typescript-eslint/no-explicit-any
+    // Per-track viz requests captured during the last evaluate() call
+    this.vizRequests = /* @__PURE__ */ new Map();
+    // Per-track viz options (the `.pianoroll({...})` argument), keyed by the
+    // same captureId as vizRequests. Empty when no viz call passed an argument.
+    this.vizOptions = /* @__PURE__ */ new Map();
+    // Options for the backdrop viz call (`.pianoroll({...})`), null when none.
+    this.backdropVizOptions = null;
+    // Backdrop viz requested by a non-underscore Strudel viz method (e.g.
+    // `.scope()`, `.pianoroll()`) during the last evaluate(). Strudel's
+    // non-underscore viz methods are its "big"/fullscreen form — we map them
+    // to Stave's backdrop instead of drawing strudel's own fullscreen canvas.
+    // Resolved renderer id (e.g. 'scope', 'pianoroll'); null when none called.
+    this.backdropVizRequest = null;
+    // Reference to superdough audio controller (set during init)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.audioController = null;
+    // Per-track AnalyserNodes keyed by captureId, side-tapped off the
+    // superdough Orbit each captured pattern plays through.
+    this.trackAnalysers = /* @__PURE__ */ new Map();
+    // The orbit each tracked analyser is tapped from — lets re-evaluate reuse
+    // existing analysers when the captureId/orbit pair hasn't changed.
+    this.trackOrbit = /* @__PURE__ */ new Map();
+    // Code from the last successful evaluate() — used by buildVizRequestsWithLines
+    this.lastEvaluatedCode = "";
+    // Pattern IR from the last successful evaluate() — parsed from the user code.
+    this.lastPatternIR = null;
+    // PV38 clause 2 — loc-keyed lookup over the IR's Play leaves (loc → irNodeId);
+    // both queryArc callbacks (per-track + convenience) read this to enrich haps
+    // with `irNodeId`. Built from `buildNodeLocIndex(lastPatternIR)` on eval
+    // success (node identity is a structural property of the IR — #975/#982),
+    // cleared on failure.
+    this.lastIRNodeLocLookup = null;
+    // Phase 20-07 (PK13 step 9) — engine-attached breakpoint registry.
+    // Per-engine scope (PV33). The hit-check in `wrappedOutput` reads
+    // `breakpointStore.has(irNodeId)` on the audio scheduler hot path.
+    this.breakpointStore = new BreakpointStore();
+    // Phase 20-07 — engine-driven pause state. Mirrored to consumers via
+    // `onPausedChanged` listeners. Set when the hit-check pauses the
+    // scheduler (engine pauses ITSELF on hit) and via the public pause()
+    // method. Idempotence guarded by setPaused().
+    this.isPausedState = false;
+    this.pauseChangedListeners = /* @__PURE__ */ new Set();
+    // #384 — transport seek offset, in cycles. The song position the user sees
+    // is `scheduler.now() - transportOffset`; `0` means normal playback (no
+    // seek). Set by `setTransportOffset()` (the runtime's `seekTo` computes
+    // `now - targetCycle`). Applied at the `.p` capture seam inside evaluate()
+    // by wrapping the pattern with `.late(transportOffset)` — the IR-level
+    // transport wrap — so the scheduler plays song-cycle `songPosition` at
+    // wall-clock `now`. This is the ONLY place a time-shift touches
+    // Pattern.prototype; the runtime must never do so (PV2 / P2 source-grep
+    // guard). Exact only for stateless-cyclic patterns; state-accumulating
+    // patterns seek approximately (documented edge, design §7.4).
+    this.transportOffset = 0;
+    // Phase 20-14 α-5 — tier flags read at boot. β-4 wires `midi` to call
+    // enableWebMidi(); the other 7 (csound, tidal, osc, serial, gamepad,
+    // motion, mqtt) land as one follow-up issue each. Mid-session toggle
+    // changes are NOT picked up here — settings modal shows the "Changes
+    // take effect on reload" caption.
+    this.tierFlags = null;
+    // Phase 20-14 β-2 — alias-resolution accumulator. Reset at `evaluate()`
+    // entry; appended to by `wrappedOutput` whenever the alias map rewrites
+    // a hap's `s` field. β-5's friendly-error builder reads this to surface
+    // "tried alias `kick` → `bd` (resolved)" on a related error. Owned by
+    // the engine instance (NOT module state) so concurrent engines don't
+    // collide and a stale accumulator can't leak across evals.
+    this.lastAliasResolutions = [];
+    // Phase 20-14 β-2 — live reference to superdough's `soundMap`. Captured
+    // at init() (when `@strudel/webaudio` resolves). `wrappedOutput` reads
+    // `soundMap.get()[name]` at trigger time to honour the Strategy A guard
+    // — user-registered names always win over the curated alias map.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.soundMapRef = null;
+    /** the destinationGain node our master analyser is currently tapping. */
+    this.taggedDestinationGain = null;
+    /** resolves superdough's GLOBAL audio controller (the live one). */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.superdoughControllerFn = null;
+  }
+  /** Read-only snapshot of the tier flags consumed at this engine's init(). */
+  getTierFlagsSnapshot() {
+    return this.tierFlags;
+  }
+  /**
+   * #384 — set the transport seek offset (cycles). Does NOT re-evaluate by
+   * itself: the runtime's `seekTo` calls this and then `play()`, whose
+   * re-eval re-reads `transportOffset` and applies the `.late()` wrap at the
+   * `.p` seam. Kept off the `LiveCodingEngine` interface (v1) and reached via
+   * `(engine as any).setTransportOffset?.()` so non-Strudel engines no-op,
+   * mirroring the pause/resume delegation convention.
+   */
+  setTransportOffset(offset) {
+    this.transportOffset = Number.isFinite(offset) ? offset : 0;
+  }
+  /** #384 — current transport offset (cycles). `0` when no seek is active. */
+  getTransportOffset() {
+    return this.transportOffset;
+  }
+  /**
+   * Phase 20-14 β-2 — read-only snapshot of alias rewrites that have fired
+   * during the current evaluate() window. Each entry is one hap rewrite;
+   * the same `from → to` pair may appear multiple times if the rewrite
+   * fired across multiple cycles.
+   *
+   * Lifecycle: reset to empty at `evaluate()` entry, appended to by
+   * `wrappedOutput`, read by friendlyErrors at message-build time.
+   */
+  getLastAliasResolutions() {
+    return this.lastAliasResolutions;
+  }
+  async init() {
+    if (this.initialized) return;
+    this.tierFlags = getTierFlags();
+    console.log("[StrudelEngine] tierFlags read at init:", this.tierFlags);
+    const [coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod] = await Promise.all([
+      import('@strudel/core'),
+      import('@strudel/mini'),
+      import('@strudel/tonal'),
+      import('@strudel/webaudio'),
+      import('@strudel/soundfonts'),
+      import('@strudel/xen'),
+      import('@strudel/midi'),
+      // Phase 20-14 α-1: audio-pure addition. Exposes `mondo`, `mondi`,
+      // `mondolang`, `getLocations` on globalThis via evalScope. Verified
+      // exports against upstream npm @strudel/mondo@1.1.6 (dist/mondough.mjs).
+      // @strudel/edo (also called for by upstream loadModules at the pinned SHA)
+      // is intentionally NOT added here — it is not yet published to npm
+      // (registry.npmjs.org returns 404 for @strudel/edo on 2026-05-15).
+      // Tracked as a follow-up when upstream publishes it.
+      import('@strudel/mondo')
+    ]);
+    await coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod);
+    if (this.tierFlags?.midi) {
+      try {
+        const enableWebMidi = midiMod?.enableWebMidi;
+        if (typeof enableWebMidi === "function") {
+          await enableWebMidi();
+        } else {
+          console.warn("[StrudelEngine] tierFlags.midi is ON but @strudel/midi did not export enableWebMidi.");
+        }
+      } catch (err) {
+        console.warn("[StrudelEngine] enableWebMidi() failed; MIDI output unavailable.", err);
+      }
+    }
+    installMiniStringParser({ core: coreMod, mini: miniMod });
+    const { transpiler } = await import('@strudel/transpiler');
+    const { initAudio, getAudioContext: getAudioContext3, webaudioOutput, webaudioRepl } = webaudioMod;
+    await initAudio();
+    webaudioMod.registerSynthSounds();
+    webaudioMod.registerZZFXSounds();
+    soundfontsMod.registerSoundfonts();
+    await webaudioMod.samples("github:tidalcycles/Dirt-Samples/master");
+    const samplesFn = webaudioMod.samples;
+    const baseCDN = "https://strudel.b-cdn.net";
+    const safeSamples = /* @__PURE__ */ __name(async (label, fn) => {
+      try {
+        await fn();
+      } catch (e) {
+        console.warn(`[StrudelEngine] sample manifest "${label}" failed to load; continuing without it.`, e);
+      }
+    }, "safeSamples");
+    await Promise.all([
+      // Salamander piano — unlocks `s("piano")`. Closes the symptom of issue #110.
+      safeSamples("piano", () => samplesFn(`${baseCDN}/piano.json`, `${baseCDN}/piano/`, { prebake: true })),
+      // VCSL orchestral library (CC0).
+      safeSamples("vcsl", () => samplesFn(`${baseCDN}/vcsl.json`, `${baseCDN}/VCSL/`, { prebake: true })),
+      // tidal-drum-machines — unlocks `.bank("tr909")`, `.bank("RolandTR808")`, etc.
+      safeSamples("tidal-drum-machines", () => samplesFn(`${baseCDN}/tidal-drum-machines.json`, `${baseCDN}/tidal-drum-machines/machines/`, { prebake: true, tag: "drum-machines" })),
+      // uzu-drumkit — extra drum banks.
+      safeSamples("uzu-drumkit", () => samplesFn(`${baseCDN}/uzu-drumkit.json`, `${baseCDN}/uzu-drumkit/`, { prebake: true, tag: "drum-machines" })),
+      // uzu-wavetables — wavetable synth fodder.
+      safeSamples("uzu-wavetables", () => samplesFn(`${baseCDN}/uzu-wavetables.json`, `${baseCDN}/uzu-wavetables/`, { prebake: true })),
+      // mridangam — percussion bank.
+      safeSamples("mridangam", () => samplesFn(`${baseCDN}/mridangam.json`, `${baseCDN}/mrid/`, { prebake: true, tag: "drum-machines" })),
+      // Inline Dirt-Samples categories (casio/crow/insect/wind/jazz/metal/east/
+      // space/numbers/num) served from b-cdn. Upstream prebake.mjs:42-155.
+      // The earlier `github:tidalcycles/Dirt-Samples/master` call (above) registers
+      // bd/hh/sd/etc.; soundMap.setKey overwrites on duplicate so this call wins
+      // for shared keys — matches upstream behavior (RESEARCH §1c).
+      safeSamples("dirt-extras", () => samplesFn({
+        casio: ["casio/high.wav", "casio/low.wav", "casio/noise.wav"],
+        crow: ["crow/000_crow.wav", "crow/001_crow2.wav", "crow/002_crow3.wav", "crow/003_crow4.wav"],
+        insect: [
+          "insect/000_everglades_conehead.wav",
+          "insect/001_robust_shieldback.wav",
+          "insect/002_seashore_meadow_katydid.wav"
+        ],
+        wind: [
+          "wind/000_wind1.wav",
+          "wind/001_wind10.wav",
+          "wind/002_wind2.wav",
+          "wind/003_wind3.wav",
+          "wind/004_wind4.wav",
+          "wind/005_wind5.wav",
+          "wind/006_wind6.wav",
+          "wind/007_wind7.wav",
+          "wind/008_wind8.wav",
+          "wind/009_wind9.wav"
+        ],
+        jazz: [
+          "jazz/000_BD.wav",
+          "jazz/001_CB.wav",
+          "jazz/002_FX.wav",
+          "jazz/003_HH.wav",
+          "jazz/004_OH.wav",
+          "jazz/005_P1.wav",
+          "jazz/006_P2.wav",
+          "jazz/007_SN.wav"
+        ],
+        metal: [
+          "metal/000_0.wav",
+          "metal/001_1.wav",
+          "metal/002_2.wav",
+          "metal/003_3.wav",
+          "metal/004_4.wav",
+          "metal/005_5.wav",
+          "metal/006_6.wav",
+          "metal/007_7.wav",
+          "metal/008_8.wav",
+          "metal/009_9.wav"
+        ],
+        east: [
+          "east/000_nipon_wood_block.wav",
+          "east/001_ohkawa_mute.wav",
+          "east/002_ohkawa_open.wav",
+          "east/003_shime_hi.wav",
+          "east/004_shime_hi_2.wav",
+          "east/005_shime_mute.wav",
+          "east/006_taiko_1.wav",
+          "east/007_taiko_2.wav",
+          "east/008_taiko_3.wav"
+        ],
+        space: [
+          "space/000_0.wav",
+          "space/001_1.wav",
+          "space/002_11.wav",
+          "space/003_12.wav",
+          "space/004_13.wav",
+          "space/005_14.wav",
+          "space/006_15.wav",
+          "space/007_16.wav",
+          "space/008_17.wav",
+          "space/009_18.wav",
+          "space/010_2.wav",
+          "space/011_3.wav",
+          "space/012_4.wav",
+          "space/013_5.wav",
+          "space/014_6.wav",
+          "space/015_7.wav",
+          "space/016_8.wav",
+          "space/017_9.wav"
+        ],
+        numbers: [
+          "numbers/0.wav",
+          "numbers/1.wav",
+          "numbers/2.wav",
+          "numbers/3.wav",
+          "numbers/4.wav",
+          "numbers/5.wav",
+          "numbers/6.wav",
+          "numbers/7.wav",
+          "numbers/8.wav"
+        ],
+        num: [
+          "num/00.wav",
+          "num/01.wav",
+          "num/02.wav",
+          "num/03.wav",
+          "num/04.wav",
+          "num/05.wav",
+          "num/06.wav",
+          "num/07.wav",
+          "num/08.wav",
+          "num/09.wav",
+          "num/10.wav",
+          "num/11.wav",
+          "num/12.wav",
+          "num/13.wav",
+          "num/14.wav",
+          "num/15.wav",
+          "num/16.wav",
+          "num/17.wav",
+          "num/18.wav",
+          "num/19.wav",
+          "num/20.wav"
+        ]
+      }, `${baseCDN}/Dirt-Samples/`, { prebake: true }))
+    ]);
+    const soundMapRef = webaudioMod.soundMap;
+    this.soundMapRef = soundMapRef;
+    if (soundMapRef) {
+      globalThis.soundMap = soundMapRef;
+    }
+    const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
+    try {
+      await webaudioMod.aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`);
+    } catch (e) {
+      console.warn("[StrudelEngine] aliasBank fetch failed; .bank() aliases unavailable.", e);
+    }
+    const postAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
+    console.log(`[StrudelEngine] aliasBank: soundMap keys ${preAliasCount} \u2192 ${postAliasCount} (\u0394 ${postAliasCount - preAliasCount}; expect non-negative)`);
+    const soundMapData = webaudioMod.soundMap?.get() ?? {};
+    this.loadedSoundNames = Object.keys(soundMapData).filter((k) => !k.startsWith("_"));
+    this.audioCtx = getAudioContext3();
+    const audioCtx = this.audioCtx;
+    this.analyserNode = audioCtx.createAnalyser();
+    this.analyserNode.fftSize = 2048;
+    this.analyserNode.smoothingTimeConstant = 0.8;
+    const audioController = webaudioMod.getSuperdoughAudioController();
+    this.audioController = audioController;
+    audioController.output.destinationGain.connect(this.analyserNode);
+    this.taggedDestinationGain = audioController.output.destinationGain;
+    this.superdoughControllerFn = webaudioMod.getSuperdoughAudioController ?? null;
+    const hapStream = this.hapStream;
+    const audioCtxRef = audioCtx;
+    const wrappedOutput = /* @__PURE__ */ __name(async (hap, deadline, duration, cps, t) => {
+      perf.inc("audio.triggers");
+      const rawS = hap?.value?.s;
+      if (typeof rawS === "string") {
+        const lower = rawS.toLowerCase();
+        const liveSoundMap = this.soundMapRef?.get?.() ?? void 0;
+        if (!liveSoundMap || liveSoundMap[lower] === void 0) {
+          const aliased = resolveAlias(rawS);
+          if (aliased && aliased !== rawS) {
+            this.lastAliasResolutions.push({ from: rawS, to: aliased });
+            hap.value = { ...hap.value, s: aliased };
+          }
+        }
+      }
+      const enriched = hapStream.emit(hap, t, duration, cps, audioCtxRef.currentTime, this.lastIRNodeLocLookup ?? void 0);
+      if (enriched.irNodeId && this.breakpointStore.has(enriched.irNodeId)) {
+        this.repl?.scheduler?.pause();
+        this.setPaused(true);
+        return;
+      }
+      try {
+        return await webaudioOutput(hap, deadline, duration, cps, t);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        if (isSoundfontZoneError(error.message)) {
+          const better = soundfontRangeMessage(hap?.value);
+          if (better) error.message = better;
+          const instrument = hap?.value?.s;
+          if (typeof instrument === "string") {
+            error.staveLocateSource = instrument;
+          }
+        }
+        this.runtimeErrorHandler?.(error);
+      }
+    }, "wrappedOutput");
+    this.repl = webaudioRepl({
+      transpiler,
+      defaultOutput: wrappedOutput,
+      onEvalError: /* @__PURE__ */ __name((err) => {
+        this.evalResolve?.({ error: err });
+        this.evalResolve = null;
+      }, "onEvalError")
+    });
+    await Promise.resolve().then(() => (init_piano(), piano_exports));
+    this.initialized = true;
+  }
+  async evaluate(code) {
+    if (!this.initialized) await this.init();
+    this.lastEvaluatedCode = code;
+    this.lastAliasResolutions = [];
+    const capturedPatterns = /* @__PURE__ */ new Map();
+    const capturedSongPatterns = /* @__PURE__ */ new Map();
+    const capturedVizRequests = /* @__PURE__ */ new Map();
+    const capturedVizOptions = /* @__PURE__ */ new Map();
+    let capturedBackdropViz = null;
+    let capturedBackdropVizOptions = null;
+    let pendingChainViz = null;
+    let pendingChainVizOptions = null;
+    let anonIndex = 0;
+    let autoOrbitNext = 100;
+    const transportOffset = this.transportOffset;
+    const probeExplicitOrbit = /* @__PURE__ */ __name((pat) => {
+      try {
+        const haps = pat.queryArc(0, 1);
+        for (const h of haps) {
+          if (h?.value?.orbit !== void 0) return true;
+        }
+        const more = pat.queryArc(0, 4);
+        for (const h of more) {
+          if (h?.value?.orbit !== void 0) return true;
+        }
+      } catch {
+      }
+      return false;
+    }, "probeExplicitOrbit");
+    const { Pattern: Pattern2 } = await import('@strudel/core');
+    const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "p");
+    const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "viz");
+    const savedLegacyDescriptors = /* @__PURE__ */ new Map();
+    Object.defineProperty(Pattern2.prototype, "p", {
+      configurable: true,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      set(strudelFn) {
+        const strudelViz = Pattern2.prototype.viz;
+        Object.defineProperty(Pattern2.prototype, "viz", {
+          configurable: true,
+          writable: true,
+          value: /* @__PURE__ */ __name(function(vizName, opts) {
+            const resolvedName = extractVizName(vizName);
+            const optsObj = opts && typeof opts === "object" ? opts : null;
+            if (resolvedName && optsObj && optsObj.backdrop === true) {
+              capturedBackdropViz = resolvedName;
+              capturedBackdropVizOptions = optsObj;
+              return strudelViz ? strudelViz.call(this, vizName) : this;
+            }
+            const result = strudelViz ? strudelViz.call(this, vizName) : this;
+            if (resolvedName) {
+              result._pendingViz = resolvedName;
+              pendingChainViz = resolvedName;
+            }
+            if (opts && typeof opts === "object") {
+              result._pendingVizOptions = opts;
+              pendingChainVizOptions = opts;
+            }
+            return result;
+          }, "value")
+        });
+        for (const [name, renderer] of Object.entries(STRUDEL_VIZ_METHODS)) {
+          const underscore = `_${name}`;
+          savedLegacyDescriptors.set(underscore, Object.getOwnPropertyDescriptor(Pattern2.prototype, underscore));
+          Object.defineProperty(Pattern2.prototype, underscore, {
+            configurable: true,
+            writable: true,
+            value: /* @__PURE__ */ __name(function(opts) {
+              this._pendingViz = renderer;
+              pendingChainViz = renderer;
+              if (opts && typeof opts === "object") {
+                this._pendingVizOptions = opts;
+                pendingChainVizOptions = opts;
+              }
+              return this;
+            }, "value")
+          });
+          savedLegacyDescriptors.set(name, Object.getOwnPropertyDescriptor(Pattern2.prototype, name));
+          Object.defineProperty(Pattern2.prototype, name, {
+            configurable: true,
+            writable: true,
+            value: /* @__PURE__ */ __name(function(opts) {
+              capturedBackdropViz = renderer;
+              capturedBackdropVizOptions = opts && typeof opts === "object" ? opts : null;
+              return this;
+            }, "value")
+          });
+        }
+        Object.defineProperty(Pattern2.prototype, "p", {
+          configurable: true,
+          writable: true,
+          value: /* @__PURE__ */ __name(function(id) {
+            const chainViz = pendingChainViz;
+            const chainVizOptions = pendingChainVizOptions;
+            pendingChainViz = null;
+            pendingChainVizOptions = null;
+            if (typeof id === "string" && !(id.startsWith("_") || id.endsWith("_"))) {
+              let captureId = id;
+              if (id.includes("$")) {
+                captureId = `$${anonIndex}`;
+                anonIndex++;
+              }
+              let vizName = "";
+              if (this._pendingViz && typeof this._pendingViz === "string") {
+                vizName = this._pendingViz;
+                capturedVizRequests.set(captureId, vizName);
+                delete this._pendingViz;
+              } else if (chainViz) {
+                vizName = chainViz;
+                capturedVizRequests.set(captureId, vizName);
+              }
+              if (this._pendingVizOptions && typeof this._pendingVizOptions === "object") {
+                capturedVizOptions.set(captureId, this._pendingVizOptions);
+                delete this._pendingVizOptions;
+              } else if (chainVizOptions) {
+                capturedVizOptions.set(captureId, chainVizOptions);
+              }
+              let effectivePattern = this;
+              if (vizName && typeof this.orbit === "function" && !probeExplicitOrbit(this)) {
+                const autoOrbit = autoOrbitNext++;
+                try {
+                  effectivePattern = this.orbit(autoOrbit);
+                } catch {
+                }
+              }
+              capturedSongPatterns.set(captureId, effectivePattern);
+              if (transportOffset !== 0 && typeof effectivePattern.late === "function") {
+                try {
+                  effectivePattern = effectivePattern.late(transportOffset);
+                } catch {
+                }
+              }
+              capturedPatterns.set(captureId, effectivePattern);
+              return strudelFn.call(effectivePattern, id);
+            }
+            if (typeof id !== "string") return this;
+            return strudelFn.call(this, id);
+          }, "value")
+        });
+      }
+    });
+    try {
+      let playedPattern;
+      const result = await new Promise((resolve) => {
+        this.evalResolve = resolve;
+        this.repl.evaluate(code).then((pattern) => {
+          playedPattern = pattern;
+          if (this.evalResolve) {
+            this.evalResolve({});
+            this.evalResolve = null;
+          }
+        });
+      });
+      if (!result.error) {
+        const bareId = capturedSongPatterns.size === 0 && isQueryablePattern(playedPattern) ? resolveBareCaptureId(code) : null;
+        if (bareId !== null) {
+          capturedSongPatterns.set(bareId, playedPattern);
+          capturedPatterns.set(bareId, playedPattern);
+          if (pendingChainViz) capturedVizRequests.set(bareId, pendingChainViz);
+          if (pendingChainVizOptions) capturedVizOptions.set(bareId, pendingChainVizOptions);
+        }
+        const sched = this.repl.scheduler;
+        this.trackSchedulers = /* @__PURE__ */ new Map();
+        for (const [id, pattern] of capturedPatterns) {
+          const captured = pattern;
+          const trackId = id;
+          this.trackSchedulers.set(id, {
+            now: /* @__PURE__ */ __name(() => sched.now(), "now"),
+            query: /* @__PURE__ */ __name((begin, end) => {
+              try {
+                return captured.queryArc(begin, end).map((hap) => normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? void 0));
+              } catch {
+                return [];
+              }
+            }, "query")
+          });
+        }
+        this.songPatterns = capturedSongPatterns;
+        this.vizRequests = capturedVizRequests;
+        this.vizOptions = capturedVizOptions;
+        this.backdropVizRequest = capturedBackdropViz;
+        this.backdropVizOptions = capturedBackdropVizOptions;
+        this.rebuildTrackAnalysers(capturedPatterns);
+        this.lastPatternIR = parseStrudel(code);
+        this.lastIRNodeLocLookup = this.lastPatternIR ? buildNodeLocIndex(this.lastPatternIR) : null;
+      } else {
+        this.lastPatternIR = null;
+        this.lastIRNodeLocLookup = null;
+        this.backdropVizRequest = null;
+      }
+      return result;
+    } finally {
+      if (savedDescriptor) {
+        Object.defineProperty(Pattern2.prototype, "p", savedDescriptor);
+      } else {
+        delete Pattern2.prototype.p;
+      }
+      if (savedVizDescriptor) {
+        Object.defineProperty(Pattern2.prototype, "viz", savedVizDescriptor);
+      } else {
+        delete Pattern2.prototype.viz;
+      }
+      for (const [methodName, desc] of savedLegacyDescriptors) {
+        if (desc) {
+          Object.defineProperty(Pattern2.prototype, methodName, desc);
+        } else {
+          delete Pattern2.prototype[methodName];
+        }
+      }
+    }
+  }
+  get components() {
+    const bag = {
+      streaming: { hapStream: this.hapStream }
+    };
+    if (this.analyserNode && this.audioCtx) {
+      bag.audio = {
+        analyser: this.analyserNode,
+        audioCtx: this.audioCtx,
+        trackAnalysers: this.trackAnalysers.size > 0 ? this.trackAnalysers : void 0
+      };
+    }
+    bag.queryable = {
+      scheduler: this.getPatternScheduler(),
+      trackSchedulers: this.trackSchedulers
+    };
+    const hasInlineViz = this.vizRequests.size > 0 && this.lastEvaluatedCode;
+    if (hasInlineViz || this.backdropVizRequest) {
+      bag.inlineViz = {
+        vizRequests: hasInlineViz ? this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode) : /* @__PURE__ */ new Map(),
+        backdropRequest: this.backdropVizRequest ? { vizId: this.backdropVizRequest, options: this.backdropVizOptions ?? void 0 } : void 0
+      };
+    }
+    if (this.lastPatternIR) {
+      bag.ir = {
+        patternIR: this.lastPatternIR,
+        irEvents: []
+      };
+    }
+    return bag;
+  }
+  /**
+   * Scans code for $: blocks and maps each track's viz request to the line
+   * after the last line of that block. Mirrors the line-scanning logic in
+   * viewZones.ts but returns structured data instead of creating DOM zones.
+   */
+  buildVizRequestsWithLines(requests, code) {
+    return scanVizRequestLines(requests, code, this.vizOptions);
+  }
+  play() {
+    this.repl?.scheduler?.start();
+    this.followMasterAnalyser();
+  }
+  /**
+   * Keep the master `AnalyserNode` tapped to the LIVE output node. superdough
+   * RECREATES `destinationGain` on reset (resetGlobalEffects → SuperdoughOutput
+   * .reset(), superdoughoutput.mjs:151-159) — every evaluate swaps it for a fresh
+   * GainNode. The analyser was connected once at init (line 478), so after a swap
+   * it taps a dead node while the live mix flows through the new one and the
+   * master meter freezes. On a swap, detach from the stale node and re-tap the
+   * live one. Read-only side-tap — audio still flows unchanged to the destination
+   * (no routing mutation, V-mixer-3). Master gain is NOT applied here anymore:
+   * the master trim is the document's `all(x => x.gain())` (#794 removed the
+   * synthetic per-file output-gain seam).
+   */
+  followMasterAnalyser() {
+    const ctrl = this.superdoughControllerFn?.() ?? this.audioController;
+    const dg = ctrl?.output?.destinationGain;
+    if (!dg || !this.analyserNode || this.taggedDestinationGain === dg) return;
+    try {
+      this.taggedDestinationGain?.disconnect(this.analyserNode);
+    } catch {
+    }
+    try {
+      dg.connect(this.analyserNode);
+    } catch {
+    }
+    this.taggedDestinationGain = dg;
+  }
+  stop() {
+    this.repl?.scheduler?.stop();
+  }
+  /**
+   * Phase 20-07 (DEC-AMENDED-1) — debugger pause. Calls
+   * `scheduler.pause()` (NOT `.stop()`) — pause preserves cycle position
+   * (cyclist.mjs:112-116), stop rewinds lastEnd to 0 (cyclist.mjs:117-122).
+   * Idempotent: setPaused() guards against double-fire of listeners (T17).
+   */
+  pause() {
+    this.repl?.scheduler?.pause?.();
+    this.setPaused(true);
+  }
+  /**
+   * Phase 20-07 — debugger resume. Calls `scheduler.start()` which uses
+   * the preserved lastEnd from pause (cyclist.mjs:101-111). Idempotent.
+   */
+  resume() {
+    this.repl?.scheduler?.start?.();
+    this.setPaused(false);
+  }
+  /** Current debugger pause state (true after a breakpoint hit). */
+  getPaused() {
+    return this.isPausedState;
+  }
+  /**
+   * Subscribe to engine pause-state transitions. Mirrors the
+   * subscriber-set pattern used by `LiveCodingRuntime.onPlayingChanged`
+   * (RESEARCH Q3). Returns a disposer.
+   */
+  onPausedChanged(listener) {
+    this.pauseChangedListeners.add(listener);
+    let unsubscribed = false;
+    return () => {
+      if (unsubscribed) return;
+      unsubscribed = true;
+      this.pauseChangedListeners.delete(listener);
+    };
+  }
+  /**
+   * Phase 20-07 — accessor onto the engine's BreakpointStore. The
+   * runtime exposes this through its own `getBreakpointStore()` so the
+   * editor's useBreakpoints hook (Wave β) and the Inspector (Wave γ)
+   * share a single store.
+   */
+  getBreakpointStore() {
+    return this.breakpointStore;
+  }
+  /**
+   * Internal — flip pause state and fan out to subscribers, with an
+   * idempotence guard (T17): both Inspector + Monaco "Resume" surfaces
+   * may fire setPaused(false) simultaneously; this short-circuits the
+   * second call so listeners never see a redundant transition.
+   */
+  setPaused(paused) {
+    if (this.isPausedState === paused) return;
+    this.isPausedState = paused;
+    for (const l of this.pauseChangedListeners) {
+      try {
+        l(paused);
+      } catch {
+      }
+    }
+  }
+  async record(durationSeconds) {
+    if (!this.analyserNode || !this.audioCtx) {
+      throw new Error("StrudelEngine not initialized \u2014 call init() first");
+    }
+    return LiveRecorder.capture(this.analyserNode, this.audioCtx, durationSeconds);
+  }
+  async renderOffline(code, duration, sampleRate) {
+    return OfflineRenderer.render(
+      code,
+      duration,
+      sampleRate ?? this.audioCtx?.sampleRate ?? 44100
+    );
+  }
+  async renderStems(stems, duration, onProgress) {
+    const keys = Object.keys(stems);
+    const sampleRate = this.audioCtx?.sampleRate ?? 44100;
+    const blobs = await Promise.all(
+      keys.map(async (key2, i) => {
+        const blob = await OfflineRenderer.render(stems[key2], duration, sampleRate);
+        onProgress?.(key2, i + 1, keys.length);
+        return [key2, blob];
+      })
+    );
+    return Object.fromEntries(blobs);
+  }
+  getAnalyser() {
+    if (!this.analyserNode) throw new Error("StrudelEngine not initialized");
+    return this.analyserNode;
+  }
+  getAudioContext() {
+    if (!this.audioCtx) throw new Error("StrudelEngine not initialized");
+    return this.audioCtx;
+  }
+  on(_event, handler) {
+    this.hapStream.on(handler);
+  }
+  off(_event, handler) {
+    this.hapStream.off(handler);
+  }
+  getHapStream() {
+    return this.hapStream;
+  }
+  /**
+   * Returns a thin PatternScheduler wrapper around the Strudel scheduler.
+   * Only available after evaluate() succeeds (scheduler.pattern is set then).
+   */
+  getPatternScheduler() {
+    const sched = this.repl?.scheduler;
+    const pattern = sched?.pattern;
+    if (!sched || !pattern) return null;
+    return {
+      now: /* @__PURE__ */ __name(() => sched.now(), "now"),
+      query: /* @__PURE__ */ __name((begin, end) => {
+        try {
+          return pattern.queryArc(begin, end).map((hap) => normalizeStrudelHap(hap, void 0, this.lastIRNodeLocLookup ?? void 0));
+        } catch {
+          return [];
+        }
+      }, "query")
+    };
+  }
+  /**
+   * Returns per-track PatternSchedulers captured during the last evaluate() call.
+   * Each $: block gets its own scheduler that queries its Pattern directly via queryArc.
+   * Keys: anonymous "$:" → "$0", "$1"; named "d1:" → "d1".
+   * Empty Map before first evaluate or after evaluate error.
+   */
+  getTrackSchedulers() {
+    return this.trackSchedulers;
+  }
+  /**
+   * Evaluated note events across all tracks over `[0, ceil(cycles))`, for the
+   * Song timeline's DISPLAY marks (#861). Iterates the per-track schedulers
+   * captured during the last evaluate() and concatenates their normalized haps
+   * (`sched.query` → `normalizeStrudelHap`), so every event carries the RESOLVED
+   * note (`n("0 2 4").scale("C:major")` → `note:"C3","E3","G3"`, Strudel applies
+   * the scale at query time) plus its `context.locations`.
+   *
+   * This is the eval-backed source of truth for what PLAYS — distinct from the
+   * static IR (`collectCycles`), which carries the raw source token (`note:"0"`)
+   * and drops `.scale` to an unused param, and so is source-lossy for pitch/scale
+   * (PV174). Display must degrade to evaluation; the IR stays the source of truth
+   * for structure (lanes/clips) and editing. Empty before the first evaluate; a
+   * FAILED evaluate leaves the last good eval's patterns in place (as
+   * `trackSchedulers` does — neither is reassigned outside the success branch),
+   * which the timeline never sees, because it also needs the IR and the engine
+   * DOES clear that on error. A per-track query that throws is skipped.
+   *
+   * SONG FRAME, not the scheduler frame (#863). Queries `songPatterns` — the
+   * patterns as captured BEFORE the `.late(transportOffset)` seek wrap — so
+   * cycle 0 is the start of the SONG. The timeline draws these marks on a
+   * song-absolute axis, inside lanes/clips derived from the (unshifted) static
+   * IR; querying the shifted `trackSchedulers` instead would slide every mark by
+   * the transport offset after a seek and rotate the loop's tail into the window,
+   * desyncing marks from their own lanes. The live surfaces that DO want the
+   * scheduler frame (viz, signal bus, meters, playhead overlay) keep reading
+   * `trackSchedulers` — the two frames coincide only while `transportOffset` is 0.
+   */
+  getTimelineEvents(cycles) {
+    const n = Math.max(1, Math.ceil(Number.isFinite(cycles) ? cycles : 1));
+    const out = [];
+    for (const [trackId, pattern] of this.songPatterns) {
+      try {
+        const haps = pattern.queryArc(0, n);
+        for (const hap of haps) {
+          out.push(normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? void 0));
+        }
+      } catch {
+      }
+    }
+    return out;
+  }
+  /**
+   * The capture keys of every pattern the last evaluate() registered — the SAME
+   * ids `getTimelineEvents` stamps on each hap as `trackId`, in the same order.
+   *
+   * Exists so a caller can tell "this track has not played yet" from "there is no
+   * such track" (#1107). Deriving that from the events alone is impossible: a
+   * track that has not sounded within the queried window contributes nothing to
+   * distinguish itself from one that does not exist. Reading the REGISTERED set
+   * is the only way to know the difference, and this is the one place that knows
+   * it — `songPatterns` is private and mirrors what the repl actually plays, so a
+   * `_`-muted track (never registered, `@strudel/core/repl.mjs:172-175`) is
+   * correctly absent and can never be waited on.
+   */
+  getSongTrackIds() {
+    return [...this.songPatterns.keys()];
+  }
+  /**
+   * Returns per-track viz requests captured during the last evaluate() call.
+   * Maps track keys ("$0", "$1", "d1") to viz descriptor IDs ("pianoroll", "scope").
+   * Only patterns that called .viz("name") in user code appear in this map.
+   * Empty Map before first evaluate or if no patterns use .viz().
+   */
+  getVizRequests() {
+    return this.vizRequests;
+  }
+  /** Register a handler for runtime audio errors (fires during scheduling, not evaluation). */
+  setRuntimeErrorHandler(handler) {
+    this.runtimeErrorHandler = handler;
+  }
+  /** Returns all sound names registered after init() — useful for editor autocompletion. */
+  getSoundNames() {
+    return this.loadedSoundNames;
+  }
+  dispose() {
+    this.repl?.scheduler?.stop();
+    this.hapStream.dispose();
+    this.analyserNode?.disconnect();
+    for (const analyser of this.trackAnalysers.values()) {
+      try {
+        analyser.disconnect();
+      } catch {
+      }
+    }
+    this.trackAnalysers.clear();
+    this.trackOrbit.clear();
+    this.breakpointStore.dispose();
+    this.pauseChangedListeners.clear();
+    this.initialized = false;
+    this.repl = null;
+  }
+  /**
+   * Query a pattern for its first non-silent hap within [0, lookahead) cycles
+   * and return the orbit it uses. Default orbit is 1 (superdough's default).
+   * Returns 1 for silent patterns — falls back to orbit 1 just like superdough.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resolveOrbit(pattern) {
+    const tryArc = /* @__PURE__ */ __name((begin, end) => {
+      try {
+        const haps = pattern.queryArc(begin, end);
+        for (const h of haps) {
+          const o = h?.value?.orbit;
+          if (typeof o === "number") return o;
+        }
+      } catch {
+      }
+      return null;
+    }, "tryArc");
+    return tryArc(0, 1) ?? tryArc(0, 4) ?? 1;
+  }
+  /**
+   * Reconcile trackAnalysers against capturedPatterns.
+   * - Creates analysers for new captureIds, tapped off their orbit's GainNode.
+   * - Reuses analysers when (captureId, orbit) is unchanged.
+   * - Rewires when a captureId's orbit changed (disconnect old, tap new).
+   * - Removes+disconnects analysers for captureIds no longer present.
+   *
+   * Safe to call repeatedly. No-op if audioController isn't available yet.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rebuildTrackAnalysers(capturedPatterns) {
+    if (!this.audioController || !this.audioCtx) return;
+    const seen = /* @__PURE__ */ new Set();
+    for (const [captureId, pattern] of capturedPatterns) {
+      seen.add(captureId);
+      const orbit = this.resolveOrbit(pattern);
+      const existingOrbit = this.trackOrbit.get(captureId);
+      const existingAnalyser = this.trackAnalysers.get(captureId);
+      if (existingAnalyser && existingOrbit === orbit) continue;
+      let orbitNode = null;
+      try {
+        orbitNode = this.audioController.getOrbit(orbit, [0, 1]);
+      } catch (err) {
+        console.warn(`[stave] Could not resolve superdough orbit ${orbit} for "${captureId}":`, err);
+      }
+      const orbitOutput = orbitNode?.output;
+      if (!orbitOutput) {
+        continue;
+      }
+      const analyser = existingAnalyser ?? this.audioCtx.createAnalyser();
+      if (!existingAnalyser) {
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.8;
+      } else {
+        try {
+          analyser.disconnect();
+        } catch {
+        }
+      }
+      try {
+        orbitOutput.connect(analyser);
+      } catch (err) {
+        console.warn(`[stave] Could not tap orbit ${orbit} for "${captureId}":`, err);
+        continue;
+      }
+      this.trackAnalysers.set(captureId, analyser);
+      this.trackOrbit.set(captureId, orbit);
+    }
+    for (const captureId of [...this.trackAnalysers.keys()]) {
+      if (seen.has(captureId)) continue;
+      const a = this.trackAnalysers.get(captureId);
+      if (a) {
+        try {
+          a.disconnect();
+        } catch {
+        }
+      }
+      this.trackAnalysers.delete(captureId);
+      this.trackOrbit.delete(captureId);
+    }
+  }
+};
+__name(_StrudelEngine, "StrudelEngine");
+var StrudelEngine = _StrudelEngine;
+
+// src/engine/engineLog.ts
+var MAX_HISTORY = 500;
+var history = [];
+var dedupeIndex = /* @__PURE__ */ new Map();
+var listeners = /* @__PURE__ */ new Set();
+var fixedMarkers = /* @__PURE__ */ new Map();
+var fixedListeners = /* @__PURE__ */ new Set();
+var idSeq = 0;
+function fixedKey(runtime, source) {
+  return `${runtime}:${source ?? "*"}`;
+}
+__name(fixedKey, "fixedKey");
+function makeId() {
+  idSeq += 1;
+  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
+}
+__name(makeId, "makeId");
+function dedupeKey(p) {
+  return [p.level, p.runtime, p.source ?? "", p.line ?? "", p.message].join("\0");
+}
+__name(dedupeKey, "dedupeKey");
+function emitLog(partial) {
+  const key2 = dedupeKey(partial);
+  const existing = dedupeIndex.get(key2);
+  if (existing) {
+    existing.ts = Date.now();
+    existing.count = (existing.count ?? 1) + 1;
+    queueMicrotask(() => {
+      for (const fn of listeners) {
+        try {
+          fn(existing, history);
+        } catch {
+        }
+      }
+    });
+    return existing;
+  }
+  const entry = {
+    id: makeId(),
+    ts: Date.now(),
+    count: 1,
+    ...partial
+  };
+  history.push(entry);
+  dedupeIndex.set(key2, entry);
+  if (history.length > MAX_HISTORY) {
+    const removed = history.splice(0, history.length - MAX_HISTORY);
+    for (const r of removed) {
+      const rk = dedupeKey(r);
+      if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
+    }
+  }
+  queueMicrotask(() => {
+    for (const fn of listeners) {
+      try {
+        fn(entry, history);
+      } catch {
+      }
+    }
+  });
+  return entry;
+}
+__name(emitLog, "emitLog");
+function subscribeLog(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+__name(subscribeLog, "subscribeLog");
+function getLogHistory() {
+  return [...history];
+}
+__name(getLogHistory, "getLogHistory");
+function clearLog() {
+  history.length = 0;
+  dedupeIndex.clear();
+  fixedMarkers.clear();
+  for (const fn of listeners) {
+    try {
+      fn(null, history);
+    } catch {
+    }
+  }
+}
+__name(clearLog, "clearLog");
+function emitFixed(input) {
+  const marker = {
+    runtime: input.runtime,
+    source: input.source,
+    ts: Date.now()
+  };
+  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
+  queueMicrotask(() => {
+    for (const fn of fixedListeners) {
+      try {
+        fn(marker, fixedMarkers);
+      } catch {
+      }
+    }
+  });
+  return marker;
+}
+__name(emitFixed, "emitFixed");
+function subscribeFixed(fn) {
+  fixedListeners.add(fn);
+  return () => {
+    fixedListeners.delete(fn);
+  };
+}
+__name(subscribeFixed, "subscribeFixed");
+function getFixedMarkers() {
+  return new Map(fixedMarkers);
+}
+__name(getFixedMarkers, "getFixedMarkers");
+function makeFixedKey(runtime, source) {
+  return fixedKey(runtime, source);
+}
+__name(makeFixedKey, "makeFixedKey");
+
+// src/visualizers/p5FesBridge.ts
+var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
+var FES_LINE_RE = /,\s*line\s+(\d+)\s*\]/;
+var installed = false;
+var currentSource = null;
+var currentLineOffset = 0;
+function buildLogger() {
+  return (msg) => {
+    const raw = String(msg);
+    const clean = raw.replace(P5_PREFIX_RE, "").trim();
+    if (!clean) return;
+    let message = clean.replace(/^\[[^\]]*\]\s*/, "").trim() || clean;
+    let line;
+    const match = raw.match(FES_LINE_RE);
+    if (match) {
+      const wrapped = parseInt(match[1], 10);
+      if (Number.isFinite(wrapped)) {
+        const candidate = currentLineOffset > 0 ? wrapped - currentLineOffset : wrapped;
+        if (candidate >= 1) line = candidate;
+      }
+    }
+    const isLikelyBug = /accidentally written|is not defined|no such/i.test(
+      message
+    );
+    emitLog({
+      runtime: "p5",
+      level: isLikelyBug ? "error" : "warn",
+      source: currentSource ?? void 0,
+      message,
+      line
+    });
+  };
+}
+__name(buildLogger, "buildLogger");
+function installP5FesBridgeWith(p5Ctor) {
+  if (installed) return;
+  installed = true;
+  const ctor = p5Ctor;
+  ctor.disableFriendlyErrors = false;
+  ctor._fesLogger = buildLogger();
+}
+__name(installP5FesBridgeWith, "installP5FesBridgeWith");
+function setCurrentP5Source(source, lineOffset = 0) {
+  currentSource = source;
+  currentLineOffset = source == null ? 0 : lineOffset;
+}
+__name(setCurrentP5Source, "setCurrentP5Source");
+
+// src/visualizers/renderers/VizRendererBase.ts
+var _VizRendererBase = class _VizRendererBase {
+  constructor() {
+    /**
+     * Live options bag from the viz call's argument (`.pianoroll({ labels: 1 })`).
+     * Populated before `onMount`/`onUpdate` run, so subclasses may read it in
+     * either. Read `.current` at USE time, never capture it.
+     */
+    this.optionsRef = { current: {} };
+  }
+  mount(container, components, size, onError) {
+    this.optionsRef.current = components.options ?? {};
+    this.onMount(container, components, size, onError);
+  }
+  update(components) {
+    this.optionsRef.current = components.options ?? {};
+    this.onUpdate(components);
+  }
+};
+__name(_VizRendererBase, "VizRendererBase");
+var VizRendererBase = _VizRendererBase;
+
+// src/visualizers/signals/SignalBus.ts
+var ZERO_AUDIO = {
+  rms: 0,
+  bass: 0,
+  mid: 0,
+  treble: 0,
+  fft: [],
+  wave: []
+};
+var EPSILON = 1e-3;
+var DEFAULT_DECAY = 0.92;
+var FFT_BINS = 32;
+var _SignalBus = class _SignalBus {
+  constructor(aliasMap = ALIAS_MAP) {
+    /** Per-sound envelope levels (0..1), decayed each frame. Keyed on `e.s`. */
+    this.envMap = /* @__PURE__ */ new Map();
+    /** Last-bumped color per sound — the `.color` fallback feed. */
+    this.colorMap = /* @__PURE__ */ new Map();
+    /** Live refs — mutable so `bindScheduler()` rebinds in place
+     *  (mirrors `HydraVizRenderer.update` live-ref discipline, `:369-371`). */
+    this.scheduler = null;
+    this.trackSchedulers = /* @__PURE__ */ new Map();
+    /** Per-frame snapshot of active events from the combined scheduler feed
+     *  (set by `refreshActive`). The instantaneous feed for `sound()`. */
+    this.activeEvents = [];
+    /** Per-frame snapshot of active events per track-key (scheduler key space). */
+    this.activeByTrack = /* @__PURE__ */ new Map();
+    /** Every distinct `e.s` ever bumped — backs `get sounds()`. */
+    this.seenSounds = /* @__PURE__ */ new Set();
+    // ── DSP feed (analyser refs + per-frame cache, Slice 2) ───────────────────
+    /** Live master analyser ref — mutable so `bindAnalysers()` rebinds in place
+     *  (mirrors `bindScheduler`). Null in IR-only / demo mode. */
+    this.masterAnalyser = null;
+    /** Per-track analyser refs, keyed the SAME as `trackSchedulers` (the SCHEDULER
+     *  key space `$0`/`d1`, TRAP §5) — `trackAnalysers` is published with those
+     *  keys by the engine (LiveCodingEngine.ts:25). */
+    this.trackAnalysers = /* @__PURE__ */ new Map();
+    /** Scratch byte buffers per analyser (freq + time), allocated/resized lazily
+     *  keyed on analyser identity so a rebind to a new node re-allocates. */
+    this.freqBufs = /* @__PURE__ */ new WeakMap();
+    this.waveBufs = /* @__PURE__ */ new WeakMap();
+    /** Per-frame derived DSP reading per analyser — filled by `readAudio()`,
+     *  read by the accessors. Cleared each `readAudio()` so a now-unbound
+     *  analyser stops reporting stale data. */
+    this.audioByAnalyser = /* @__PURE__ */ new Map();
+    this.aliasMap = aliasMap;
+    this.decay = DEFAULT_DECAY;
+  }
+  /** Store live scheduler refs (mutable rebind — mirror the renderer's
+   *  in-place update discipline). Pass `null`/empty in demo mode. */
+  bindScheduler(scheduler, trackSchedulers) {
+    this.scheduler = scheduler ?? null;
+    this.trackSchedulers = trackSchedulers ?? /* @__PURE__ */ new Map();
+  }
+  /** Store live analyser refs (mutable rebind — mirror `bindScheduler`). The
+   *  orbit is the shared reference: a sound resolves to its orbit, which has
+   *  BOTH events (the scheduler feed) AND an analyser (this DSP feed). Pass
+   *  `null`/empty in IR-only / demo mode → DSP fields degrade to 0/[]. */
+  bindAnalysers(master, trackAnalysers) {
+    this.masterAnalyser = master ?? null;
+    this.trackAnalysers = trackAnalysers ?? /* @__PURE__ */ new Map();
+  }
+  /** Replace the active alias map in place (mirror `bindScheduler`'s mutable
+   *  rebind). The RENDERER builds the merged map — `{ ...ALIAS_MAP, ...custom }`
+   *  with custom WINNING on collision — and pushes it here at mount. The bus
+   *  stays PURE (P12): it does NOT import `getSignalAliases`; it only stores the
+   *  numbers/maps it is handed. `envValue`/`resolveSounds` resolve ANY key
+   *  through this map, so a freshly-set custom alias resolves with no other
+   *  change. */
+  setAliases(map) {
+    this.aliasMap = map;
+  }
+  // ── .env feed (envelope: bump + decay) ──────────────────────────────────
+  /** Bump the envelope for an event's sound. Mirrors `HapEnergyEnvelope.onHap`
+   *  (`:67-82`): gain clamped 0..1, level = min(1, prev + gain). Keyed on
+   *  `e.s` (NOT a MIDI bin). No-ops for an event with no sound name. */
+  bump(e) {
+    const sound = e.s;
+    if (sound == null) return;
+    const gain = Math.min(1, Math.max(0, e.hap?.value?.gain ?? 1));
+    const prev = this.envMap.get(sound) ?? 0;
+    this.envMap.set(sound, Math.min(1, prev + gain));
+    if (e.color != null) this.colorMap.set(sound, e.color);
+    else if (!this.colorMap.has(sound)) this.colorMap.set(sound, null);
+    this.seenSounds.add(sound);
+  }
+  /** Apply decay to every envelope entry. Call ONCE per frame, BEFORE
+   *  `refreshActive` (mirror `HapEnergyEnvelope.tick`, `:85-89`). */
+  tick() {
+    for (const [sound, level] of this.envMap) {
+      this.envMap.set(sound, level * this.decay);
+    }
+  }
+  // ── instantaneous feed (scheduler query-at-now) ─────────────────────────
+  /** Snapshot the active events at `now` from the combined scheduler and each
+   *  per-track scheduler. Call ONCE per frame, AFTER `tick()`. The window is
+   *  [now, now + ε) — the same tight window `H()` uses (`:175`). */
+  refreshActive(now2) {
+    const begin = now2;
+    const end = now2 + EPSILON;
+    this.activeEvents = this.scheduler ? this.scheduler.query(begin, end) : [];
+    this.activeByTrack.clear();
+    for (const [key2, sched] of this.trackSchedulers) {
+      this.activeByTrack.set(key2, sched.query(begin, end));
+    }
+  }
+  /** Current scheduler time (mirror `H()`'s `sched.now()`), 0 in demo mode. */
+  now() {
+    return this.scheduler ? this.scheduler.now() : 0;
+  }
+  // ── DSP feed (analyser read-at-now) ───────────────────────────────────────
+  /** Snapshot every bound analyser's spectrum + waveform for this frame. Call
+   *  ONCE per frame, AFTER `refreshActive` — `audioFor()` resolves a sound to a
+   *  trackKey via `activeByTrack`, which `refreshActive` populates (ordering is
+   *  the T2 call-site's responsibility). Reads each analyser via
+   *  `getByteFrequencyData` + `getByteTimeDomainData` (mirrors
+   *  `HydraVizRenderer.pumpAudio:445-455`) and caches the derived
+   *  `AudioReading`. An analyser that's no longer bound drops out of the cache. */
+  readAudio() {
+    this.audioByAnalyser.clear();
+    if (this.masterAnalyser) this.readOne(this.masterAnalyser);
+    for (const an of this.trackAnalysers.values()) this.readOne(an);
+  }
+  /** Read one analyser into the per-frame cache (idempotent within a frame). */
+  readOne(an) {
+    if (this.audioByAnalyser.has(an)) return;
+    this.audioByAnalyser.set(an, deriveAudio(an, this.freqBufs, this.waveBufs));
+  }
+  /** Resolve a sound (or alias) → the analyser whose mix it lives in. Find the
+   *  trackKey(s) in `activeByTrack` (SCHEDULER key space, TRAP §5 — NOT
+   *  IREvent.trackId) whose active events include any resolved sound. EXACTLY
+   *  one such track AND that track has a bound analyser → its isolated analyser.
+   *  Otherwise (multi-track, none, or no per-track analyser) → the master
+   *  analyser (the combined mix — still meaningful, never silent-zero-as-bug). */
+  audioFor(soundOrAlias) {
+    const resolved = new Set(this.resolveSounds(soundOrAlias));
+    let onlyKey = null;
+    for (const [key2, events] of this.activeByTrack) {
+      const hit = events.some((e) => e.s != null && resolved.has(e.s));
+      if (!hit) continue;
+      if (onlyKey != null) return this.masterAnalyser;
+      onlyKey = key2;
+    }
+    if (onlyKey != null) {
+      const isolated = this.trackAnalysers.get(onlyKey);
+      if (isolated) return isolated;
+    }
+    return this.masterAnalyser;
+  }
+  /** Cached DSP reading for an analyser (this frame), or the zero reading. */
+  audioReading(an) {
+    if (an == null) return ZERO_AUDIO;
+    return this.audioByAnalyser.get(an) ?? ZERO_AUDIO;
+  }
+  /** Master DSP reading (the combined-mix analyser). Surfaces `u.rms`/`u.fft`
+   *  etc. — the T3 master accessor path. Zero reading if no master bound. */
+  master() {
+    return this.audioReading(this.masterAnalyser);
+  }
+  // ── accessors ───────────────────────────────────────────────────────────
+  /** Resolve an alias OR a raw sound name to a list of concrete sound names.
+   *  `'uKick'` → `['bd']`, `'uTom'` → `['lt','mt','ht']`, `'bd'` → `['bd']`. */
+  resolveSounds(soundOrAlias) {
+    const mapped = this.aliasMap[soundOrAlias];
+    if (mapped == null) return [soundOrAlias];
+    return Array.isArray(mapped) ? mapped : [mapped];
+  }
+  /** Decayed envelope level for a sound or alias. Array aliases (`uTom`)
+   *  resolve as MAX over members. Demo-mode / never-fired → 0. */
+  envValue(soundOrAlias) {
+    let max = 0;
+    for (const sound of this.resolveSounds(soundOrAlias)) {
+      const v = this.envMap.get(sound) ?? 0;
+      if (v > max) max = v;
+    }
+    return max;
+  }
+  /** Find the first active IREvent (combined feed) whose `s` is in `sounds`. */
+  activeEventForSounds(sounds) {
+    const set = new Set(sounds);
+    for (const ev of this.activeEvents) {
+      if (ev.s != null && set.has(ev.s)) return ev;
+    }
+    return void 0;
+  }
+  /** Per-sound reading — merged across tracks via the combined active feed
+   *  (D-03). `.env` from the envelope; `.velocity`/`.note` from the active
+   *  IREvent (NOT the envelope — silent-zero trap §5); `.color` from the
+   *  active IREvent, falling back to the last-bumped hap color. */
+  sound(soundOrAlias) {
+    const sounds = this.resolveSounds(soundOrAlias);
+    const env = this.envValue(soundOrAlias);
+    const ev = this.activeEventForSounds(sounds);
+    const audio = this.audioReading(this.audioFor(soundOrAlias));
+    return {
+      env,
+      velocity: ev?.velocity ?? 0,
+      note: ev?.note ?? null,
+      color: ev?.color ?? this.colorFallback(sounds),
+      ...audio
+    };
+  }
+  /** Last-bumped color over the resolved sounds (the `.color` fallback feed). */
+  colorFallback(sounds) {
+    for (const sound of sounds) {
+      const c = this.colorMap.get(sound);
+      if (c != null) return c;
+    }
+    return null;
+  }
+  /** Per-track reading, keyed on the SCHEDULER key space (TRAP §5 —
+   *  `trackSchedulers.get(id)`, NOT IREvent.trackId). `.env` is the max env over
+   *  the sounds this track fired this frame; `.velocity`/`.note`/`.color` come
+   *  from the track's first active IREvent (scheduler feed). A `sound(s)`
+   *  sub-accessor reads a specific sound within the track. Unknown id → zeros. */
+  track(id) {
+    const events = this.activeByTrack.get(id) ?? [];
+    const first = events[0];
+    const trackSounds = events.map((e) => e.s).filter((s) => s != null);
+    let env = 0;
+    for (const s of trackSounds) {
+      const v = this.envMap.get(s) ?? 0;
+      if (v > env) env = v;
+    }
+    const trackAudio = this.audioReading(
+      this.trackAnalysers.get(id) ?? this.masterAnalyser
+    );
+    const soundIn = /* @__PURE__ */ __name((soundOrAlias) => {
+      const resolved = new Set(this.resolveSounds(soundOrAlias));
+      const ev = events.find((e) => e.s != null && resolved.has(e.s));
+      let sEnv = 0;
+      for (const s of this.resolveSounds(soundOrAlias)) {
+        const v = this.envMap.get(s) ?? 0;
+        if (v > sEnv) sEnv = v;
+      }
+      return {
+        env: sEnv,
+        velocity: ev?.velocity ?? 0,
+        note: ev?.note ?? null,
+        color: ev?.color ?? null,
+        // A specific sound within a named track reads that track's mix.
+        ...trackAudio
+      };
+    }, "soundIn");
+    return {
+      env,
+      velocity: first?.velocity ?? 0,
+      note: first?.note ?? null,
+      color: first?.color ?? null,
+      ...trackAudio,
+      sound: soundIn
+    };
+  }
+  /** Enumerate the published track keys — the SCHEDULER key space
+   *  (`trackSchedulers.keys()`, §5), e.g. `['$0','$1']` or `['d1','drums']`. */
+  get tracks() {
+    return [...this.trackSchedulers.keys()];
+  }
+  /** Enumerate distinct sounds ever bumped through the envelope feed. */
+  get sounds() {
+    return [...this.seenSounds];
+  }
+  /** Normalize a note to a MIDI number (P93 — only when a NUMBER is explicitly
+   *  requested; the raw `.note` preserves the user's name|number form). Returns
+   *  null for percussion sample names / unrecognized input. */
+  noteToMidi(note) {
+    if (note == null) return null;
+    return noteToMidi(note);
+  }
+};
+__name(_SignalBus, "SignalBus");
+var SignalBus = _SignalBus;
+function deriveAudio(an, freqBufs, waveBufs) {
+  const n = an.frequencyBinCount | 0;
+  if (n <= 0) return { ...ZERO_AUDIO, fft: [], wave: [] };
+  let freq = freqBufs.get(an);
+  if (!freq || freq.length !== n) {
+    freq = new Uint8Array(n);
+    freqBufs.set(an, freq);
+  }
+  let time = waveBufs.get(an);
+  if (!time || time.length !== n) {
+    time = new Uint8Array(n);
+    waveBufs.set(an, time);
+  }
+  an.getByteFrequencyData(freq);
+  an.getByteTimeDomainData(time);
+  const fft = new Array(FFT_BINS).fill(0);
+  const binSize = Math.floor(n / FFT_BINS);
+  if (binSize >= 1) {
+    for (let i = 0; i < FFT_BINS; i++) {
+      let sum = 0;
+      for (let j = 0; j < binSize; j++) sum += freq[i * binSize + j];
+      fft[i] = sum / (binSize * 255);
+    }
+  } else {
+    for (let i = 0; i < n; i++) fft[i] = freq[i] / 255;
+  }
+  const third = Math.floor(FFT_BINS / 3);
+  const bass = meanSlice(fft, 0, third);
+  const mid = meanSlice(fft, third, 2 * third);
+  const treble = meanSlice(fft, 2 * third, FFT_BINS);
+  const wave = new Array(n);
+  let sumSq = 0;
+  for (let i = 0; i < n; i++) {
+    const v = (time[i] - 128) / 128;
+    wave[i] = v;
+    sumSq += v * v;
+  }
+  const rms = Math.min(1, Math.max(0, Math.sqrt(sumSq / n)));
+  return { rms, bass, mid, treble, fft, wave };
+}
+__name(deriveAudio, "deriveAudio");
+function meanSlice(arr, from, to) {
+  if (to <= from) return 0;
+  let sum = 0;
+  for (let i = from; i < to; i++) sum += arr[i];
+  return sum / (to - from);
+}
+__name(meanSlice, "meanSlice");
+
+// src/visualizers/signals/staveUniforms.ts
+function buildStaveUniforms(bus, onTick) {
+  const sig = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "sig");
+  sig.track = (id) => bus.track(id);
+  Object.defineProperty(sig, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+  Object.defineProperty(sig, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+  const env = /* @__PURE__ */ __name((key2) => ({
+    get: /* @__PURE__ */ __name(() => bus.envValue(key2), "get"),
+    enumerable: true
+  }), "env");
+  Object.defineProperty(sig, "kick", env("uKick"));
+  Object.defineProperty(sig, "snare", env("uSnare"));
+  Object.defineProperty(sig, "hat", env("uHat"));
+  Object.defineProperty(sig, "openHat", env("uOpenHat"));
+  Object.defineProperty(sig, "clap", env("uClap"));
+  Object.defineProperty(sig, "rim", env("uRim"));
+  Object.defineProperty(sig, "tom", env("uTom"));
+  Object.defineProperty(sig, "keyVelocity", {
+    get: /* @__PURE__ */ __name(() => {
+      let max = 0;
+      for (const s of bus.sounds) {
+        const v = bus.sound(s).velocity;
+        if (v > max) max = v;
+      }
+      return max;
+    }, "get"),
+    enumerable: true
+  });
+  Object.defineProperty(sig, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
+  Object.defineProperty(sig, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
+  Object.defineProperty(sig, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
+  Object.defineProperty(sig, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
+  Object.defineProperty(sig, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+  Object.defineProperty(sig, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
+  Object.defineProperty(sig, "density", { get: /* @__PURE__ */ __name(() => getVizConfig().density, "get"), enumerable: true });
+  const uniforms = { sig };
+  Object.defineProperty(uniforms, "__tick", {
+    value: onTick ?? (() => {
+    }),
+    enumerable: false
+  });
+  return uniforms;
+}
+__name(buildStaveUniforms, "buildStaveUniforms");
 
 // src/visualizers/renderers/P5VizRenderer.ts
 var p5PerfSeq = 0;
@@ -19165,302 +19474,6 @@ function ensureStrudelLintCodeActionProvider(monaco, languageId) {
   return strudelLintProviderDisposable;
 }
 __name(ensureStrudelLintCodeActionProvider, "ensureStrudelLintCodeActionProvider");
-
-// src/visualEdit/panels/patternKind.ts
-function isStepChunk(chunk) {
-  return chunk.miniString !== null && (chunk.headFn === "s" || chunk.headFn === "sound");
-}
-__name(isStepChunk, "isStepChunk");
-function isRollChunk(chunk) {
-  return chunk.miniString !== null && (chunk.headFn === "note" || chunk.headFn === "n");
-}
-__name(isRollChunk, "isRollChunk");
-function patternKind(chunk) {
-  if (!chunk) return null;
-  if (isStepChunk(chunk)) return "step";
-  if (isRollChunk(chunk)) return "roll";
-  return null;
-}
-__name(patternKind, "patternKind");
-
-// src/visualEdit/panels/chainMethod.ts
-function readChainMethod(chunk, names) {
-  const call = chunk.chain.find((c) => names.includes(c.name) && c.args.length >= 1);
-  const arg = call?.args[0];
-  if (!call || !arg) return null;
-  const q = arg.raw[0];
-  if ((q === '"' || q === "'" || q === "`") && arg.raw[arg.raw.length - 1] === q) {
-    return { name: call.name, value: arg.raw.slice(1, -1), range: arg.range };
-  }
-  return null;
-}
-__name(readChainMethod, "readChainMethod");
-
-// src/visualEdit/trackColor.ts
-var TRACK_PALETTE_32 = [
-  // Drums (orange family) — 8 lightness steps
-  "#fed7aa",
-  "#fdba74",
-  "#fb923c",
-  "#f97316",
-  "#ea580c",
-  "#c2410c",
-  "#9a3412",
-  "#7c2d12",
-  // Bass (cyan family) — 8 lightness steps
-  "#a5f3fc",
-  "#67e8f9",
-  "#22d3ee",
-  "#06b6d4",
-  "#0891b2",
-  "#0e7490",
-  "#155e75",
-  "#164e63",
-  // Pad (green family) — 8 lightness steps
-  "#a7f3d0",
-  "#6ee7b7",
-  "#34d399",
-  "#10b981",
-  "#059669",
-  "#047857",
-  "#065f46",
-  "#064e3b",
-  // Melody (purple family) — 8 lightness steps
-  "#ddd6fe",
-  "#c4b5fd",
-  "#a78bfa",
-  "#8b5cf6",
-  "#7c3aed",
-  "#6d28d9",
-  "#5b21b6",
-  "#4c1d95"
-];
-var STEM_PATTERNS = [
-  // Family 0 — drums
-  /^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i,
-  // Family 1 — bass
-  /^(?:bass|sub|808)/i,
-  // Family 2 — pads
-  /^(?:pad|pads)/i,
-  // Family 3 — melody / lead / synth / piano / keys / guitar
-  /^(?:lead|melody|synth|piano|keys|guitar)/i
-];
-function fnv1a32(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h = (h ^ str.charCodeAt(i)) >>> 0;
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h >>> 0;
-}
-__name(fnv1a32, "fnv1a32");
-function stemHueGroup(sample) {
-  if (!sample) return 3;
-  for (let i = 0; i < STEM_PATTERNS.length; i++) {
-    if (STEM_PATTERNS[i].test(sample)) return i;
-  }
-  return 3;
-}
-__name(stemHueGroup, "stemHueGroup");
-function trackIndexOf(trackId) {
-  const m = trackId.match(/^d(\d+)$/);
-  if (m) {
-    const n = parseInt(m[1], 10);
-    if (n >= 1) return ((n - 1) % 32 + 32) % 32;
-  }
-  return fnv1a32(trackId) % 32;
-}
-__name(trackIndexOf, "trackIndexOf");
-function paletteForTrack(trackIndex, sampleHint) {
-  const hueGroup = stemHueGroup(sampleHint);
-  const slot = ((trackIndex * 4 + hueGroup) % 32 + 32) % 32;
-  return TRACK_PALETTE_32[slot];
-}
-__name(paletteForTrack, "paletteForTrack");
-function colorForTrack(key2) {
-  return paletteForTrack(trackIndexOf(key2), key2);
-}
-__name(colorForTrack, "colorForTrack");
-function trackIdentity(key2, customColor) {
-  return { key: key2, name: key2, color: customColor ?? colorForTrack(key2) };
-}
-__name(trackIdentity, "trackIdentity");
-
-// src/visualEdit/mixer/gain.ts
-var GAIN_TOKEN = /^(\d+(?:\.\d+)?)(@\d+)?$/;
-function parseManagedGain(raw) {
-  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
-  if (!quote || raw[raw.length - 1] !== quote) return null;
-  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== "");
-  if (tokens.length < 2) return null;
-  let ceiling = 0;
-  for (const t of tokens) {
-    if (t === "~") continue;
-    const m = GAIN_TOKEN.exec(t);
-    if (!m) return null;
-    ceiling = Math.max(ceiling, parseFloat(m[1]));
-  }
-  return { tokens, ceiling, quote };
-}
-__name(parseManagedGain, "parseManagedGain");
-function scaleManagedGain(mg, value) {
-  const factor = mg.ceiling > 0 ? value / mg.ceiling : null;
-  const out = mg.tokens.map((t) => {
-    if (t === "~") return "~";
-    const m = GAIN_TOKEN.exec(t);
-    const nv = factor === null ? value : parseFloat(m[1]) * factor;
-    return formatNumber(Math.max(0, nv)) + (m[2] ?? "");
-  });
-  return mg.quote + out.join(" ") + mg.quote;
-}
-__name(scaleManagedGain, "scaleManagedGain");
-var CHILD_GAIN_HEADS = /* @__PURE__ */ new Set([
-  "pick",
-  "pickRestart",
-  "pickReset",
-  "stack",
-  "cat",
-  "layer",
-  "arrange"
-]);
-function hasChildGain(chunk) {
-  const call = chunk.chain.find((c) => CHILD_GAIN_HEADS.has(c.name));
-  return call ? call.args.some((a) => /\.gain\s*\(/.test(a.raw)) : false;
-}
-__name(hasChildGain, "hasChildGain");
-function readGainState(chunk) {
-  const call = chunk.chain.find((c) => c.name === "gain" && c.args.length >= 1);
-  const arg = call?.args[0];
-  if (!call || !arg) {
-    return hasChildGain(chunk) ? { kind: "foreign" } : { kind: "absent" };
-  }
-  if (arg.numeric !== null) return { kind: "scalar", value: arg.numeric, range: arg.range };
-  const mg = parseManagedGain(arg.raw);
-  if (mg) return { kind: "managed", ceiling: mg.ceiling, mg, range: arg.range };
-  return { kind: "foreign" };
-}
-__name(readGainState, "readGainState");
-
-// src/visualEdit/mixer/stripModel.ts
-function namedLabel(label) {
-  return label && label !== "$" ? label : null;
-}
-__name(namedLabel, "namedLabel");
-function isMuted(label) {
-  return label != null && label.startsWith("_");
-}
-__name(isMuted, "isMuted");
-function bareLabel(label) {
-  if (label == null) return null;
-  return namedLabel(isMuted(label) ? label.slice(1) : label);
-}
-__name(bareLabel, "bareLabel");
-var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
-  "setcps",
-  "setCps",
-  "setcpm",
-  "setCpm",
-  "setbpm",
-  "setBpm",
-  "samples",
-  "hush",
-  "all"
-]);
-function isTrackChunk(chunk) {
-  if (chunk.label !== null) return true;
-  return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn);
-}
-__name(isTrackChunk, "isTrackChunk");
-var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
-function stripKind(chunk) {
-  const k = patternKind(chunk);
-  if (k) return k;
-  if (chunk.headFn && GROUP_HEADS.has(chunk.headFn)) return "group";
-  return "unknown";
-}
-__name(stripKind, "stripKind");
-function readSource(chunk, kind) {
-  if (kind === "step") return readChainMethod(chunk, ["bank"])?.value ?? null;
-  if (kind === "roll") return readChainMethod(chunk, ["sound", "s"])?.value ?? null;
-  return readChainMethod(chunk, ["sound", "s", "bank"])?.value ?? null;
-}
-__name(readSource, "readSource");
-function readScalar(chunk, name) {
-  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
-  const arg = call?.args[0];
-  return arg && arg.numeric !== null ? arg.numeric : null;
-}
-__name(readScalar, "readScalar");
-function isForeign(chunk, name) {
-  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
-  return call !== void 0 && call.args[0].numeric === null;
-}
-__name(isForeign, "isForeign");
-function displayKey(label, ordinal) {
-  return bareLabel(label) ?? `d${ordinal}`;
-}
-__name(displayKey, "displayKey");
-function buildStripModel(chunk, index, ordinal, id, captureId) {
-  const kind = stripKind(chunk);
-  const source = readSource(chunk, kind);
-  const identity = trackIdentity(displayKey(chunk.label, ordinal));
-  return {
-    id,
-    index,
-    kind,
-    label: bareLabel(chunk.label),
-    name: identity.name,
-    headFn: chunk.headFn,
-    miniString: chunk.miniString,
-    source,
-    gain: readGainState(chunk),
-    pan: readScalar(chunk, "pan"),
-    panForeign: isForeign(chunk, "pan"),
-    sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
-    muted: isMuted(chunk.label),
-    muteable: chunk.label != null,
-    color: identity.color,
-    chain: chunk.chain,
-    exprRange: chunk.exprRange,
-    statementRange: chunk.statementRange,
-    captureId
-  };
-}
-__name(buildStripModel, "buildStripModel");
-function buildStripModels(chunks) {
-  let anonAll = 0;
-  let anonLive = 0;
-  let ordinal = 0;
-  const models = [];
-  chunks.forEach((chunk, index) => {
-    if (!isTrackChunk(chunk)) return;
-    ordinal++;
-    const bare = bareLabel(chunk.label);
-    const id = bare ?? `#${anonAll++}`;
-    let captureId;
-    if (bare !== null) captureId = bare;
-    else if (isMuted(chunk.label)) captureId = `_$${index}`;
-    else captureId = `$${anonLive++}`;
-    models.push(buildStripModel(chunk, index, ordinal, id, captureId));
-  });
-  return models;
-}
-__name(buildStripModels, "buildStripModels");
-function statementOffsetForSource(doc, source) {
-  const strip = buildStripModels(detectAllChunks(doc)).find((s) => s.source === source);
-  return strip ? strip.statementRange[0] : null;
-}
-__name(statementOffsetForSource, "statementOffsetForSource");
-function otherTrackNames(doc, selfStatementStart) {
-  return buildStripModels(detectAllChunks(doc)).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
-}
-__name(otherTrackNames, "otherTrackNames");
-function stripContainingOffset(strips, offset) {
-  return strips.find(
-    (s) => s.statementRange[0] <= offset && offset < s.statementRange[1]
-  );
-}
-__name(stripContainingOffset, "stripContainingOffset");
 var EMPTY_META_MAP = /* @__PURE__ */ new Map();
 function useTrackMetaMap(fileId) {
   const subscribe7 = useCallback(
