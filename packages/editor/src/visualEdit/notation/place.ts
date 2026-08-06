@@ -20,7 +20,7 @@
  * for what an edit *is*, and it cannot catch a change in the edit — it quietly
  * keeps testing the old one (#1048).
  */
-import { cellOn, clampLane, clampPartAtOnset, isCellOn } from './model'
+import { cellOn, clampLane, clampPartAtOnset, isCellOn, rollContentRange } from './model'
 import type { PianoRollModel, StepCell, StepGridModel } from './model'
 import { midiToPitch, pitchToMidi } from './pitch'
 import { ifGridSpellable, ifRollSpellable, serializeStepGrid } from './serialize'
@@ -55,7 +55,7 @@ import { ifGridSpellable, ifRollSpellable, serializeStepGrid } from './serialize
  *
  * ⚠ THE ROLL ASKS ABOUT ONE ROW IT DOES NOT HOLD, and that is not a flourish —
  * without it the answer is wrong on real units. The roll's display is PADDED
- * around the content (`contentRange`), so a roll whose every content cell is
+ * around the content (`rollContentRange`), so a roll whose every content cell is
  * full still shows empty rows and still takes a click on them. Asking only
  * about content pitches made "the content is full" read as "nothing to ask",
  * which said "this view places notes" on 4 leaf rolls where every row the user
@@ -109,15 +109,35 @@ export function viewPlacesNotes(model: StepGridModel | PianoRollModel): boolean 
       }
     return asked === 0
   }
-  // The rows the panel shows: the model's own content, plus one it does not
-  // hold, because the display is padded around the content and an empty padded
-  // row takes a click like any other. Spelled the way the panel spells a row —
-  // bare number on a numeric pattern (#469), note name otherwise — so an
-  // unspellable token cannot be mistaken for an unwritable placement.
+  // The rows the panel shows: the model's own content, plus one it does not hold,
+  // because the display is padded around the content and an empty padded row takes a
+  // click like any other. Spelled the way the panel spells a row — bare number on a
+  // numeric pattern (#469), note name otherwise — so an unspellable token cannot be
+  // mistaken for an unwritable placement.
+  //
+  // ⚠ THE PADDED ROW IS READ FROM THE RULE THAT DRAWS IT, NEVER GUESSED AT (#1163).
+  // This used to probe `min − 1` — a row that happens to be padding because
+  // `contentRange` pads by two, a constant that lived in `PianoRollGrid.tsx` with
+  // nothing between them. Either could have moved alone: drop the padding and this
+  // asks about a row nobody can click, widen it and this under-asks, and no arm could
+  // fail either way. `rollContentRange` now owns the rule and both read it.
+  //
+  // ONE row, not the whole padded range, and that is measured rather than conceded:
+  // sweeping every drawn row changes the answer on 0 of 544 corpus rolls and costs
+  // 7× (p99 0.5 → 5.4ms, worst 2.5 → 18.0ms per view — the neighbourhood of the
+  // per-cell map #1070 declined at 21.7ms). Taking the row FROM the range costs
+  // nothing at all: identical ask count, identical answers. That the one row is
+  // representative of the whole padded range is not assumed either — it is pinned in
+  // `placement-admissibility.test.ts`, alongside the arm that fails if this cheap
+  // probe and the panel's full surface ever disagree.
+  //
+  // The guard is not "are there notes?" but "is the range derived from CONTENT?".
+  // `rollContentRange` falls back to a default octave when nothing in the model spells a
+  // pitch, and a default row is not a padded one — there is no content for it to sit
+  // beside, and asking about it would be asking about an arbitrary row.
   const pitches = new Set(model.notes.map((n) => n.pitch))
-  const midis = [...pitches].map(pitchToMidi).filter((m): m is number => m !== null)
-  if (midis.length > 0) {
-    const below = Math.min(...midis) - 1
+  if (model.notes.some((n) => pitchToMidi(n.pitch) !== null)) {
+    const below = rollContentRange(model).lo
     pitches.add(model.numeric ? String(below) : midiToPitch(below))
   }
   for (const pitch of pitches)

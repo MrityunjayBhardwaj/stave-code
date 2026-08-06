@@ -25,6 +25,7 @@ import {
   columnCount,
   columnOverlap,
   headColumn,
+  rollContentRange,
   sequentialColumnGroups,
   tailColumn,
 } from '../notation/model'
@@ -53,10 +54,6 @@ import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
 
 const ROLL_HINT = 'Click a melody to edit its notes.'
-
-const DEFAULT_LO = 48 // c3
-const DEFAULT_HI = 72 // c5
-const MIN_SPAN = 12
 
 /**
  * The right-edge grab zone of a note's tail cell, in px (#530). The visible
@@ -112,17 +109,6 @@ function gainInScope(model: PianoRollModel): boolean {
  */
 const tokenForRow = (numeric: boolean, midi: number): string =>
   numeric ? String(midi) : midiToPitch(midi)
-
-/** content pitch range padded around the notes */
-function contentRange(model: PianoRollModel): { lo: number; hi: number } {
-  const midis = model.notes
-    .map((n) => pitchToMidi(n.pitch))
-    .filter((m): m is number => m !== null)
-  if (midis.length === 0) return { lo: DEFAULT_LO, hi: DEFAULT_HI }
-  let lo = Math.min(...midis) - 2
-  const hi = Math.max(Math.max(...midis) + 2, lo + MIN_SPAN)
-  return { lo, hi }
-}
 
 /**
  * The note covering (midi, step), if any — asked as an INTERVAL, not as an integer walk
@@ -238,10 +224,11 @@ export function PianoRollGrid({
 
   // Sticky pitch range: expand to fit, never shrink within a binding; reset on
   // statement change (#391).
-  const [range, setRange] = React.useState<{ lo: number; hi: number }>({
-    lo: DEFAULT_LO,
-    hi: DEFAULT_HI,
-  })
+  // Seeded from the same rule that will reseed it — a model with nothing spellable
+  // in it is exactly what the panel shows before one arrives.
+  const [range, setRange] = React.useState<{ lo: number; hi: number }>(() =>
+    rollContentRange({ notes: [] }),
+  )
   const stmtIdRef = React.useRef<number | null>(null)
   React.useEffect(() => {
     if (!model) return
@@ -249,7 +236,7 @@ export function PianoRollGrid({
     // shift every row, so the cell under the pointer would change midi and the
     // drag would run away. The range catches up once the drag ends.
     if (dragRef.current) return
-    const content = contentRange(model)
+    const content = rollContentRange(model)
     const id = chunk ? chunk.statementRange[0] : null
     if (stmtIdRef.current !== id) {
       stmtIdRef.current = id

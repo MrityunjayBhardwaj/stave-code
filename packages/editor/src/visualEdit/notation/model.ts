@@ -19,6 +19,7 @@
  * unedited ones back verbatim, so the subset bounds what a panel can SHOW and
  * edit — never what survives being looked at.
  */
+import { pitchToMidi } from './pitch'
 
 /**
  * One top-level element of the source, and the columns it produced.
@@ -604,6 +605,43 @@ export function columnCount(model: {
   // also fractional but its tail holds a rest, so it stays at one.
   for (const n of model.notes ?? []) cols = Math.max(cols, tailColumn(n) + 1)
   return Math.max(0, cols)
+}
+
+/** the roll's rows when it has nothing to show: c3–c5, and never fewer than an octave */
+const DEFAULT_LO = 48 // c3
+const DEFAULT_HI = 72 // c5
+const MIN_SPAN = 12
+
+/**
+ * Which pitch rows the roll DRAWS — the row axis's answer to `columnCount`, and here for
+ * the same reason: it is not a fact about the notation, it is a fact about the surface,
+ * and everything that has to agree about the surface must read it from one place (#1163).
+ *
+ * The rows are the content PADDED by two semitones on each side (floored at an octave),
+ * because a roll you cannot place a note above or below is a roll you cannot write a
+ * melody in. A model with no spellable pitch draws c3–c5 rather than nothing.
+ *
+ * ⚠ THIS IS THE PANEL'S MINIMUM, NOT ITS EXACT EXTENT, and the difference is deliberate.
+ * The panel holds a STICKY range (#391): this seeds it on a statement change and it only
+ * ever grows from there within the binding, so the rows on screen are a superset of these
+ * and no pure function of the model can know which. Every row it does return is drawn.
+ *
+ * WHY IT LIVES HERE rather than in the panel that renders it. `viewPlacesNotes` has to ask
+ * about the rows a user can click, and while this rule lived in `PianoRollGrid.tsx` it
+ * could not: it probed one row below the content on the ASSUMPTION that the display pads
+ * below, an assumption two modules apart from the `− 2` that made it true, with no arm
+ * that could fail if either moved (#1163). A promise about a surface computed alongside
+ * the surface instead of from it is the shape that has already shipped four times.
+ */
+export function rollContentRange(model: {
+  notes: readonly { pitch: string }[]
+}): { lo: number; hi: number } {
+  const midis = model.notes
+    .map((n) => pitchToMidi(n.pitch))
+    .filter((m): m is number => m !== null)
+  if (midis.length === 0) return { lo: DEFAULT_LO, hi: DEFAULT_HI }
+  const lo = Math.min(...midis) - 2
+  return { lo, hi: Math.max(Math.max(...midis) + 2, lo + MIN_SPAN) }
 }
 
 /** A span of columns, split into the whole ones it contains and the fraction left over. */

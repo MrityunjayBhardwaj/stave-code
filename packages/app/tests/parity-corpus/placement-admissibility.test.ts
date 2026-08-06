@@ -30,7 +30,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePianoRoll, parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import {
+  columnCount,
+  columnOverlap,
+  isCellOn,
+  rollContentRange,
+} from '../../../editor/src/visualEdit/notation/model'
 import { midiToPitch, pitchToMidi } from '../../../editor/src/visualEdit/notation/pitch'
 import { ungatedPlace, ungatedToggle } from './ungatedOps'
 import {
@@ -543,5 +548,108 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // A `toBeGreaterThan` would have let the 4 vanish quietly.
     expect(saidNo, 'rolls answering "places nothing"').toBe(57)
     expect(rowsSwept, 'padded-range placements swept on them').toBeGreaterThan(1000)
+  })
+
+  /**
+   * #1163 — THE CHEAP PROBE MUST ANSWER WHAT THE WHOLE SURFACE ANSWERS.
+   *
+   * `viewPlacesNotes` decides whether the roll greys every empty cell, and it decides it
+   * from a fraction of the surface: the model's own content rows plus ONE padded row,
+   * over `model.steps` columns, skipping only the cells where a note STARTS. The panel
+   * draws something else — every row of `rollContentRange`, `columnCount(model)` columns
+   * (#1087), and a cell is held when a note OVERLAPS it (#1074). Four differences, and
+   * until this arm existed nothing compared them: the probe's padded row was `min − 1`,
+   * true only because `contentRange` padded by two, a constant that lived in
+   * `PianoRollGrid.tsx` with no arm between them. Either could have moved alone.
+   *
+   * The extraction of `rollContentRange` removed the guess. This removes the rest of the
+   * exposure, because reading the same range is not the same as sweeping the same cells:
+   * the columns and the held-rule are still stated twice, and this is the arm that fails
+   * when any of the four stops agreeing.
+   *
+   * ⚠ IT IS AN INDEPENDENT SWEEP, NOT A RE-CALL. It rebuilds the panel's ask-space from
+   * `rollContentRange` / `columnCount` / `columnOverlap` and asks `canPlaceNote` directly,
+   * so it is a second oracle used purely as a control — the one use [[PV192]] permits.
+   * Comparing `viewPlacesNotes` against itself would be green forever ([[P370]]).
+   *
+   * ⚠ WHY THE PANEL IS NOT SIMPLY GIVEN THE WHOLE SURFACE, since that would make the arm
+   * unnecessary: measured, it changes the answer on 0 of 544 corpus rolls and costs 7×
+   * (p99 0.5 → 5.4ms, worst 2.5 → 18.0ms per view), which is the neighbourhood of the
+   * per-cell map #1070 declined at 21.7ms. Paying that for no measured behaviour is the
+   * wrong trade; pinning the equivalence costs nothing at runtime.
+   *
+   * ⚠ THE POPULATIONS ARE PINNED, not bounded, and on this corpus the PIN is the half
+   * that does the work — measured, not assumed. Reconstructing the pre-#1163 tree (drop
+   * the padding AND hardcode the probe back to `min − 1`) leaves every other arm in this
+   * file green, which is exactly what the issue said: nothing could fail. Under that same
+   * drift the equality below still holds, because the answer genuinely is invariant; what
+   * moves is the size of the surface, so `fullSurfaceAsks` is what catches it. The
+   * equality is here for the divergence that has not happened yet — a reach change that
+   * makes one of the four axes stop being answer-neutral.
+   *
+   * ⚠ AND ONE AXIS IS UNEXERCISED, said rather than implied: `columnCount === model.steps`
+   * on all 544 corpus rolls and the note-tail term (#1087) binds on 0 of them, so removing
+   * that term leaves this arm green. It is covered in principle and untested in fact.
+   */
+  it('roll: the cheap placement probe agrees with the panel’s whole drawn surface (#1163)', () => {
+    let rolls = 0
+    let saidNothing = 0
+    let probeAsks = 0
+    let fullSurfaceAsks = 0
+    const disagreements: string[] = []
+
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok) continue
+      const m = r.model
+      rolls++
+
+      // THE PANEL'S SURFACE, rebuilt from the three rules the panel renders with.
+      const { lo, hi } = rollContentRange(m)
+      const cols = columnCount(m)
+      let asked = 0
+      let accepts = false
+      for (let midi = lo; midi <= hi; midi++) {
+        // spelled the way `tokenForRow` spells a row: bare number on a numeric
+        // pattern (#469), note name otherwise
+        const token = m.numeric ? String(midi) : midiToPitch(midi)
+        for (let step = 0; step < cols; step++) {
+          const held = m.notes.some(
+            (n) =>
+              pitchToMidi(n.pitch) === midi &&
+              columnOverlap(n.start, n.start + n.duration, step) !== null,
+          )
+          if (held) continue
+          asked++
+          if (!accepts && canPlaceNote(m, token, step, 1)) accepts = true
+        }
+      }
+      const surfaceAnswer = accepts || asked === 0
+      fullSurfaceAsks += asked
+
+      // the probe's own ask count, for the ratio this arm reports
+      const probePitches = new Set(m.notes.map((n) => n.pitch))
+      if (probePitches.size > 0) probePitches.add(m.numeric ? String(lo) : midiToPitch(lo))
+      for (const pitch of probePitches)
+        for (let step = 0; step < m.steps; step++)
+          if (!m.notes.some((n) => n.pitch === pitch && n.start === step)) probeAsks++
+
+      const probeAnswer = viewPlacesNotes(m)
+      if (!probeAnswer) saidNothing++
+      if (probeAnswer !== surfaceAnswer && disagreements.length < 8)
+        disagreements.push(
+          `${JSON.stringify(mini)} probe=${probeAnswer} surface=${surfaceAnswer}`,
+        )
+    }
+
+    expect(disagreements.join('\n')).toBe('')
+    // asserted as ONE clause so every part carries its own denominator and a
+    // later assertion cannot be skipped by an earlier failure
+    expect({ rolls, saidNothing, probeAsks, fullSurfaceAsks }).toEqual({
+      rolls: 545,
+      saidNothing: 57,
+      probeAsks: 41021,
+      fullSurfaceAsks: 119794,
+    })
   })
 })
