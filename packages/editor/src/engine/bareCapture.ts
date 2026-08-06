@@ -25,52 +25,43 @@
  * produce the same strips with the same captureIds, and only the labelled one
  * ever moves a meter (`_1097-bare-track-maps.spec.ts`).
  *
- * Rather than guess which statement sounded, this refuses the ambiguous case.
+ * Rather than guess which statement sounded, the ambiguous case is refused.
  * Exactly one track → the numbering can only have produced `$0`, so the join is
- * correct BY CONSTRUCTION rather than by coincidence, and `bareCapture.test.ts`
- * pins that against `buildStripModels` itself so the two cannot drift apart.
- * More than one → no entry, which leaves today's dark meter rather than a
- * confidently wrong one. Binding a multi-statement bare document to the
- * statement that actually plays is #1096, and when it lands it lands here, once,
- * for all four maps.
+ * correct BY CONSTRUCTION rather than by coincidence. More than one → no entry,
+ * which leaves today's dark meter rather than a confidently wrong one. Binding a
+ * multi-statement bare document to the statement that actually plays is #1096,
+ * and when it lands it lands here, once, for all four maps.
  *
- * ⚠ LAYERING. `isTrackChunk` lives in the mixer because that is what first
- * needed it, but it is a document-level predicate, not a mixer concern. It is
- * imported rather than re-implemented deliberately: a second copy of "what
- * counts as a track" is exactly the drift this module exists to prevent — the
- * guard has to be computed from the same rule that assigns the ids it is
- * guarding, not from a parallel one that merely agrees today.
+ * ⚠ LAYERING, and it moved once for a reason worth recording. Both the rule
+ * (`bareCaptureIdFor`) and the predicate (`isTrackChunk`) live in `stripModel`,
+ * and this module IMPORTS them rather than restating them. They are
+ * document-level facts rather than mixer concerns, so the mixer is an odd home
+ * — but it is the right one, because the mixer is what ASSIGNS these ids when it
+ * numbers its strips. A join key belongs with its assignment; the reader asks.
+ *
+ * The first version of this module spelled the rule out here instead, alongside
+ * an identical copy in `buildStripModels`. They agreed on every document anyone
+ * tried. #1174 is what that shape costs when it stops agreeing: a strip joins on
+ * a key the engine never wrote, nothing throws, and a meter shows the neighbour's
+ * level.
  */
 import { detectAllChunks } from '../visualEdit/chunkDetect'
-import { isTrackChunk } from '../visualEdit/mixer/stripModel'
-
-/**
- * Capture id for the pattern a document with NO `.p()` call plays (#1094).
- *
- * `$0` is the id an anonymous `$:` in first position would have taken, and that
- * is the whole point: the timeline's hap→lane join maps `$N` onto the positional
- * `d{N+1}`, so haps captured under it land on `d1` — the lane the IR already
- * produces for a bare statement. Picking a fresh name would have made an
- * eval-only lane sitting beside the IR one, which is the shape that duplicates a
- * row.
- */
-export const BARE_CAPTURE_ID = '$0'
+import { bareCaptureIdFor, isTrackChunk } from '../visualEdit/mixer/stripModel'
 
 /**
  * The captureId a bare document's played pattern belongs to, or `null` when the
  * document is not an unambiguous single bare track.
  *
- * Refused, each for a stated reason rather than for tidiness:
- *  - more than one track — strudel plays the last, and which strip that is is
- *    #1096's question, not this one's;
- *  - a LABELLED track (`$:`, `d1:`, or `_$:`) — the `.p()` path owns those. A
- *    `_`-muted one reaches here (its capture is skipped) and must STAY dark:
- *    the mixer keys it `_$<index>`, which is deliberately never a live
- *    scheduler key, so writing an entry would contradict the mute.
+ * ⚠ THE DECISION ITSELF LIVES IN `stripModel`, NOT HERE, and the direction is
+ * deliberate: the mixer ASSIGNS these ids when it numbers its strips, so the
+ * engine has to ask what was assigned rather than re-derive it. This function is
+ * the code→chunks adapter and nothing more.
+ *
+ * It was written the other way first — the same two clauses spelled out on both
+ * sides of the join — and they agreed, which is exactly why that shape is worth
+ * naming: independently-derived keys agree until one side moves, and the failure
+ * then surfaces as a widget that quietly shows nothing (#1174).
  */
 export function resolveBareCaptureId(code: string): string | null {
-  const tracks = detectAllChunks(code).filter(isTrackChunk)
-  if (tracks.length !== 1) return null
-  if (tracks[0].label !== null) return null
-  return BARE_CAPTURE_ID
+  return bareCaptureIdFor(detectAllChunks(code).filter(isTrackChunk))
 }

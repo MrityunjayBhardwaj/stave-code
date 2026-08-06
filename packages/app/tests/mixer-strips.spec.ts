@@ -1297,3 +1297,86 @@ test.describe('bare-document strips meter like any other track (#1097)', () => {
     expect(await peakFill(page, drawer, '#0')).toBeGreaterThan(15)
   })
 })
+
+/**
+ * #1174 — a strip's `$<n>` must be the slot the ENGINE assigned, not a count of
+ * statements.
+ *
+ * The mixer numbered every unmuted anonymous track, including bare ones; the
+ * engine numbers only what reaches `.p()`, which a bare statement never does. So
+ * a bare statement above a labelled one shifted the labelled track's join by one
+ * and it metered its neighbour.
+ *
+ * These use DELIBERATELY CONTRASTING gains, because a meter that merely moves
+ * does not say which track it belongs to — and the whole defect was a meter
+ * moving with the wrong track's signal. Loud ≈ 82, quiet ≈ 35 on the scale the
+ * fill height is painted in, so the two are distinguishable by value.
+ */
+test.describe('a strip joins the slot the engine assigned (#1174)', () => {
+  const LOUD = 's("bd*8").gain(0.9)'
+  const QUIET = 's("hh*16").gain(0.03)'
+
+  /** peak fill per strip id over live playback */
+  async function peaks(
+    page: Page,
+    drawer: ReturnType<Page['locator']>,
+  ): Promise<Record<string, number>> {
+    const out: Record<string, number> = {}
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await play(page)
+      await page.waitForTimeout(1200)
+      for (let i = 0; i < 30; i++) {
+        const reads = await drawer.evaluate((root) =>
+          [...root.querySelectorAll('[data-mixer-strip-id]')].map((el) => {
+            const f = el.querySelector('[data-mixer-meter-fill]') as HTMLElement | null
+            const h = f ? parseFloat(f.style.height) || parseFloat(f.style.width) || 0 : 0
+            return { id: el.getAttribute('data-mixer-strip-id') ?? '?', h }
+          }),
+        )
+        for (const r of reads) out[r.id] = Math.max(out[r.id] ?? 0, r.h)
+        await page.waitForTimeout(33)
+      }
+      if (Object.values(out).some((v) => v > 15)) break
+    }
+    return out
+  }
+
+  test('a bare statement above a labelled one does not steal its meter', async ({ page }) => {
+    await boot(page)
+    const drawer = await openMixer(page)
+    // Only the labelled statement sounds here — strudel plays the `.p()` registry
+    // once anything registers — so the QUIET hi-hat is the only signal present.
+    await setStrudelCode(page, `${LOUD}\n$: ${QUIET}`)
+    const p = await peaks(page, drawer)
+    // the labelled track carries it...
+    expect(p['#1']).toBeGreaterThan(15)
+    // ...and the bare statement, which is not playing, stays dark. Before the
+    // fix these were the other way round: #0 read the hi-hat and #1 read nothing.
+    expect(p['#0'] ?? 0).toBeLessThan(15)
+  })
+
+  test('a transport head outside the denylist does not shift the meters either', async ({
+    page,
+  }) => {
+    await boot(page)
+    const drawer = await openMixer(page)
+    // `cpm` is not in NON_TRACK_HEADS and still draws a strip — the point is that
+    // it can no longer displace the tracks below it.
+    await setStrudelCode(page, `cpm(120)\n$: ${LOUD}\n$: ${QUIET}`)
+    const p = await peaks(page, drawer)
+    expect(p['#1']).toBeGreaterThan(60) // the loud track, on its own strip
+    expect(p['#2']).toBeGreaterThan(15) // the quiet track, on its own strip
+    expect(p['#2']).toBeLessThan(60) // and it is the QUIET one, not the loud one
+    expect(p['#0'] ?? 0).toBeLessThan(15) // the tempo statement meters nothing
+  })
+
+  test('positive control — two labelled tracks each meter their own level', async ({ page }) => {
+    await boot(page)
+    const drawer = await openMixer(page)
+    await setStrudelCode(page, `$: ${LOUD}\n$: ${QUIET}`)
+    const p = await peaks(page, drawer)
+    expect(p['#0']).toBeGreaterThan(60)
+    expect(p['#1']).toBeGreaterThan(15)
+    expect(p['#1']).toBeLessThan(60)
+  })
+})

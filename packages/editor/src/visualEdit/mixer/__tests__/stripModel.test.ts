@@ -166,6 +166,76 @@ describe('buildStripModels — transport/config statements are not tracks (#559)
   })
 })
 
+// #1174 — the `$<n>` counter must count the SAME statements the engine's
+// `anonIndex` counts. The engine increments only inside `.p()`, which an
+// UNLABELLED statement never reaches — so a bare statement consuming a slot
+// pushed every track after it onto its neighbour's meter. Measured on the real
+// surface: a bare drum statement's strip showed the hi-hat's level while the
+// hi-hat sat dark. The #559 denylist above is one route to this; a bare
+// statement is another, which is why the repair is on the counter.
+describe('buildStripModels — an unlabelled statement takes no engine slot (#1174)', () => {
+  /** the `$<n>` ids the mixer hands out, in source order */
+  const liveSlots = (src: string) =>
+    stripsOf(src)
+      .map((s) => s.captureId)
+      .filter((c) => /^\$\d+$/.test(c))
+
+  it('a bare statement above a labelled one leaves the labelled track at $0', () => {
+    const strips = stripsOf(['s("bd*8")', '$: s("hh*16")'].join('\n'))
+    expect(strips).toHaveLength(2)
+    // The engine registers only the `$:` statement, and it registers it FIRST —
+    // so the labelled strip must join on `$0`. It used to get `$1` and therefore
+    // read the scheduler belonging to nothing at all.
+    expect(strips[1].captureId).toBe('$0')
+    // ...and the bare statement joins on nothing live.
+    expect(strips[0].captureId).not.toMatch(/^\$\d+$/)
+  })
+
+  it('several bare statements do not push a labelled track along', () => {
+    const strips = stripsOf(['s("bd*8")', 's("cp*4")', '$: s("hh*16")'].join('\n'))
+    expect(strips).toHaveLength(3)
+    expect(strips[2].captureId).toBe('$0')
+    expect(liveSlots(['s("bd*8")', 's("cp*4")', '$: s("hh*16")'].join('\n'))).toEqual(['$0'])
+  })
+
+  it('a transport head the denylist has never heard of also takes no slot', () => {
+    // `cpm` is absent from NON_TRACK_HEADS and so still draws a strip — but it is
+    // unlabelled, so it can no longer displace the real tracks' meters. This is
+    // the head case fixed WITHOUT extending the list.
+    const strips = stripsOf(['cpm(120)', '$: s("bd*8")', '$: s("hh*16")'].join('\n'))
+    expect(strips.map((s) => s.captureId).slice(1)).toEqual(['$0', '$1'])
+  })
+
+  it('two unjoinable statements do not collide with each other', () => {
+    const ids = stripsOf(['s("bd")', 's("hh")'].join('\n')).map((s) => s.captureId)
+    expect(new Set(ids).size).toBe(2)
+    expect(ids.every((c) => !/^\$\d+$/.test(c))).toBe(true)
+  })
+
+  it('the lone bare document still joins on $0 — #1097 must survive this', () => {
+    expect(stripsOf('s("bd*4")').map((s) => s.captureId)).toEqual(['$0'])
+    // and it stops being joinable the moment a second track makes it ambiguous
+    expect(liveSlots(['s("bd*4")', 's("hh*8")'].join('\n'))).toEqual([])
+  })
+
+  it('the live slots are exactly $0..$n-1 over the UNMUTED ANONYMOUS $: statements', () => {
+    // The engine's rule restated as a property and checked against the mixer's
+    // output, rather than a literal that would pass if both sides moved together.
+    for (const doc of [
+      '$: s("a")\n$: s("b")',
+      's("a")\n$: s("b")',
+      'cpm(120)\ns("a")\n$: s("b")\n_$: s("c")\n$: s("d")',
+      'drums: s("a")\n$: s("b")\ns("c")',
+      's("a")\ns("b")',
+    ]) {
+      const anonLabelled = detectAllChunks(doc).filter((c) => c.label === '$').length
+      expect(liveSlots(doc), doc).toEqual(
+        Array.from({ length: anonLabelled }, (_, i) => `$${i}`),
+      )
+    }
+  })
+})
+
 describe('buildStripModels — per-strip read model', () => {
   it('reads source: .bank for drums, .sound/.s for melody', () => {
     const [drum] = stripsOf('$: s("bd sn").bank("RolandTR909")')

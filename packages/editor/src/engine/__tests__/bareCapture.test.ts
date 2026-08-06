@@ -11,9 +11,12 @@
  */
 import { describe, it, expect } from 'vitest'
 
-import { resolveBareCaptureId, BARE_CAPTURE_ID } from '../bareCapture'
+import { resolveBareCaptureId } from '../bareCapture'
 import { detectAllChunks } from '../../visualEdit/chunkDetect'
-import { buildStripModels } from '../../visualEdit/mixer/stripModel'
+// BARE_CAPTURE_ID is imported from the mixer, not from `bareCapture`, because
+// that is where the id is ASSIGNED (#1174). Importing it from the engine side
+// would be reading the answer from the party that only asks the question.
+import { buildStripModels, BARE_CAPTURE_ID } from '../../visualEdit/mixer/stripModel'
 
 /** the captureIds the mixer will draw for this document, in source order */
 const stripCaptureIds = (code: string): string[] =>

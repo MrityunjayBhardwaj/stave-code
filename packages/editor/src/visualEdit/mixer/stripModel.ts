@@ -119,11 +119,28 @@ function bareLabel(label: string | null): string | null {
  * Top-level heads that configure global transport / load resources rather than
  * play a track. They return no pattern and never register a scheduler — the
  * engine numbers anonymous `$:` patterns ONLY inside the wrapped `.p()` method
- * (`StrudelEngine.ts:735-739`), which these calls never reach. So they must NOT
- * become strips (#559): a phantom strip would (1) show a dead meter, (2) consume
- * a `$<n>` slot and shift every real track's positional `captureId` by one (an
- * off-by-one meter join), and (3) be wrapped in a JS block comment by the solo
- * overlay (`soloOverlay.ts`), silencing the global tempo on any solo.
+ * (`StrudelEngine.ts:835-839`), which these calls never reach. So they must NOT
+ * become strips (#559): a phantom strip shows a dead meter and clutters the
+ * console with a track the document does not have.
+ *
+ * ⚠ TWO CONSEQUENCES THIS COMMENT USED TO CLAIM ARE NO LONGER ITS TO CARRY, and
+ * both are worth stating so the list is not defended by hazards it no longer
+ * prevents:
+ *
+ *  - It said a phantom strip would consume a `$<n>` slot and shift every real
+ *    track's join by one. That was true, and it was NOT this list's to prevent —
+ *    an ordinary unlabelled pattern did it too, with no unknown head involved.
+ *    Fixed at the counter instead (#1174, `buildStripModels` below), so a head
+ *    missing from this set can no longer misroute a meter.
+ *  - It said such a statement would be wrapped in a JS block comment by the solo
+ *    overlay, silencing global tempo on any solo. That described an overlay
+ *    (`soloOverlay.ts`) which no longer exists: #735 made solo WRITE `_` mute
+ *    markers, and it writes them only to `muteable` strips — which unlabelled
+ *    statements are not (`_cpm(...)` would parse as a different identifier). So
+ *    solo cannot touch a transport call, whether or not it is on this list.
+ *
+ * What remains is a display concern, which is the right weight for a denylist
+ * that is conservative by design.
  */
 const NON_TRACK_HEADS = new Set([
   'setcps', 'setCps', 'setcpm', 'setCpm', 'setbpm', 'setBpm',
@@ -141,6 +158,52 @@ const NON_TRACK_HEADS = new Set([
 export function isTrackChunk(chunk: ChunkInfo): boolean {
   if (chunk.label !== null) return true
   return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn)
+}
+
+/**
+ * Capture id for the pattern a document with NO `.p()` call plays (#1094).
+ *
+ * `$0` is the id an anonymous `$:` in first position would have taken, and that
+ * is the whole point: the timeline's hap→lane join maps `$N` onto the positional
+ * `d{N+1}`, so haps captured under it land on `d1` — the lane the IR already
+ * produces for a bare statement.
+ */
+export const BARE_CAPTURE_ID = '$0'
+
+/**
+ * A captureId no live scheduler can ever be filed under, for an unlabelled
+ * statement whose id would be a GUESS (#1174). Indexed by source position so two
+ * such statements never collide.
+ *
+ * The engine writes only user labels and `$<n>`; a `~` prefix is not a legal
+ * identifier start, so this can never equal a real key, and the meter simply
+ * paints dark — the documented behaviour for a captureId with no scheduler.
+ */
+function unjoinableId(index: number): string {
+  return `~$${index}`
+}
+
+/**
+ * The captureId an UNLABELLED statement joins the engine on, or null when the
+ * document gives no unambiguous answer (#1097).
+ *
+ * ⚠ THIS IS THE ONLY PLACE THAT DECIDES IT, and the engine reads it from here
+ * rather than computing its own. The two used to be derived independently and
+ * that is precisely how they drifted: a view's join key and the map key feeding
+ * it have to come from one rule, or they agree for a while and then silently
+ * stop, with a dead meter as the only symptom.
+ *
+ * Exactly one track, unlabelled → `$0`, where the numbering can only have
+ * produced `$0` and the join therefore holds BY CONSTRUCTION. More than one →
+ * null: strudel plays the LAST expression while the strips number from the
+ * FIRST, so any id here would be a guess, and a meter on the wrong track is
+ * worse than a dark one. Binding the multi-statement case to the statement that
+ * actually sounds is #1096.
+ */
+export function bareCaptureIdFor(tracks: readonly ChunkInfo[]): string | null {
+  if (tracks.length !== 1) return null
+  if (tracks[0].label !== null) return null
+  return BARE_CAPTURE_ID
 }
 
 /** the combinator heads whose statement is a group of voices (sub-strips in S6) */
@@ -264,9 +327,12 @@ function buildStripModel(
  */
 export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
   let anonAll = 0 // ALL anonymous tracks (muted + unmuted) → the stable id index
-  let anonLive = 0 // UNMUTED anonymous only → the engine captureId index
+  let anonLive = 0 // UNMUTED anonymous `$:` only → the engine captureId index
   let ordinal = 0 // 1-based position among tracks → the `d{N}` display key
   const models: StripModel[] = []
+  // The id every UNLABELLED statement shares, decided once for the whole
+  // document (#1174) — `$0` when there is exactly one, otherwise unjoinable.
+  const bareId = bareCaptureIdFor(chunks.filter(isTrackChunk))
   chunks.forEach((chunk, index) => {
     // Transport/config statements (`setcps`, `samples`, …) are not tracks — skip
     // them BEFORE numbering so the remaining anonymous tracks get `$0…$n` that
@@ -280,12 +346,28 @@ export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
     // included). Invariant across a mute toggle — muting prefixes a `_` but never
     // adds/removes an anonymous statement, so this index never shifts on mute.
     const id = bare ?? `#${anonAll++}`
-    // Positional engine-join key: counts only UNMUTED anonymous tracks, mirroring
-    // the engine's anonIndex (which skips `_`-muted ids); a muted anonymous track
-    // gets `_$<index>` (never a live scheduler key → dark meter).
+    // Positional engine-join key, counting the SAME population the engine's
+    // `anonIndex` counts — which is the whole correctness condition here, and
+    // what this used to get wrong (#1174).
+    //
+    // The engine increments only inside the `.p()` wrapper, and only for an id
+    // containing `$` that is not `_`-prefixed (`StrudelEngine.ts:835-839`). So:
+    //   named label  → `.p("drums")`, no `$`  → no increment. Keyed by name.
+    //   muted `_$:`  → refused outright      → no increment. `_$<index>`.
+    //   anon `$:`    → `$<anonIndex>`        → increment.
+    //   UNLABELLED   → never reaches `.p()`  → NO INCREMENT.
+    //
+    // That last line is the fix. A bare statement was consuming a slot the
+    // engine never assigns, so every track after it joined one slot high and
+    // metered its neighbour — measured as a drum strip showing the hi-hat's
+    // level while the hi-hat sat dark. It was reachable two ways (a bare
+    // statement above a labelled one, and a transport call the head denylist
+    // had not heard of), which is why the repair belongs on the counter rather
+    // than on the list.
     let captureId: string
     if (bare !== null) captureId = bare
     else if (isMuted(chunk.label)) captureId = `_$${index}`
+    else if (chunk.label === null) captureId = bareId ?? unjoinableId(index)
     else captureId = `$${anonLive++}`
     models.push(buildStripModel(chunk, index, ordinal, id, captureId))
   })
