@@ -1591,6 +1591,26 @@ function trackIdFromLabel(label, index) {
   return bare && bare !== "$" ? bare : `d${index + 1}`;
 }
 __name(trackIdFromLabel, "trackIdFromLabel");
+
+// src/ir/statementHeads.ts
+var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
+  "all",
+  "samples",
+  "setcps",
+  "setCps",
+  "setcpm",
+  "setCpm",
+  "setbpm",
+  "setBpm",
+  "hush",
+  "useRNG",
+  "setVoicingRange",
+  "initAudio",
+  "aliasBank"
+]);
+var NON_TRACK_HEAD_RE = new RegExp(
+  `^[ \\t]*(?:${[...NON_TRACK_HEADS].sort((a, b) => b.length - a.length).join("|")})\\s*\\(`
+);
 function tagMeta(method, callSiteRange) {
   const [start, end] = callSiteRange;
   return {
@@ -1722,6 +1742,25 @@ function stripParserPrelude(code) {
   return { body: code.slice(i), offset: i };
 }
 __name(stripParserPrelude, "stripParserPrelude");
+var STMT_CONTINUATION_STARTS = /* @__PURE__ */ new Set([
+  ".",
+  "(",
+  "[",
+  "`",
+  ",",
+  "+",
+  "-",
+  "*",
+  "/",
+  "%",
+  "?",
+  ":",
+  "&",
+  "|",
+  "<",
+  ">",
+  "="
+]);
 function splitTopLevelStatements(body, baseOffset) {
   const out = [];
   let depth = 0;
@@ -1787,7 +1826,7 @@ function splitTopLevelStatements(body, baseOffset) {
     }
     if (depth === 0 && ch === "\n") {
       const peek = skipWhitespaceAndLineComments(body, i + 1);
-      if (body[peek] === ".") {
+      if (STMT_CONTINUATION_STARTS.has(body[peek])) {
         i++;
         continue;
       }
@@ -1807,9 +1846,8 @@ function splitTopLevelStatements(body, baseOffset) {
   return out;
 }
 __name(splitTopLevelStatements, "splitTopLevelStatements");
-var SIDE_EFFECT_CALL_RE = /^[ \t]*(?:all|samples|setcps|setCps|setcpm|setCpm|useRNG|setVoicingRange|initAudio|aliasBank)\s*\(/;
 function stripSideEffectStatements(stmts) {
-  return stmts.filter((s) => !SIDE_EFFECT_CALL_RE.test(s.text));
+  return stmts.filter((s) => !NON_TRACK_HEAD_RE.test(s.text));
 }
 __name(stripSideEffectStatements, "stripSideEffectStatements");
 var BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/;
@@ -1884,6 +1922,24 @@ function parseStrudel(code, _opts) {
         if (!innerIsBareCode) {
           return IR.track("d1", inner2);
         }
+      }
+      const bareStmts = stripSideEffectStatements(
+        splitTopLevelStatements(stripped.body, stripped.offset)
+      );
+      if (bareStmts.length > 1 && !bareStmts.some((s) => BINDING_RE.test(s.text))) {
+        return IR.stack(
+          ...bareStmts.map(
+            (s, i) => (
+              // Each statement carries its OWN source range, so the timeline can
+              // anchor a hap to the statement that produced it by containment —
+              // the same mechanism a `$:` document uses, not a parallel path.
+              // Synthetic wrapper: no userMethod (there is no `.p()` here).
+              IR.track(`d${i + 1}`, parseExpression(s.text, s.offset, void 0, void 0, opts), {
+                loc: [{ start: s.offset, end: s.offset + s.text.length }]
+              })
+            )
+          )
+        );
       }
       const inner = parseExpression(stripped.body.trim(), innerOffset, void 0, void 0, opts);
       return IR.track("d1", inner);
@@ -6252,31 +6308,19 @@ function bareLabel(label) {
   return namedLabel(isMuted(label) ? label.slice(1) : label);
 }
 __name(bareLabel, "bareLabel");
-var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
-  "setcps",
-  "setCps",
-  "setcpm",
-  "setCpm",
-  "setbpm",
-  "setBpm",
-  "samples",
-  "hush",
-  "all"
-]);
 function isTrackChunk(chunk) {
   if (chunk.label !== null) return true;
   return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn);
 }
 __name(isTrackChunk, "isTrackChunk");
-var BARE_CAPTURE_ID = "$0";
 function unjoinableId(index) {
   return `~$${index}`;
 }
 __name(unjoinableId, "unjoinableId");
 function bareCaptureIdFor(tracks) {
-  if (tracks.length !== 1) return null;
-  if (tracks[0].label !== null) return null;
-  return BARE_CAPTURE_ID;
+  if (tracks.length === 0) return null;
+  if (tracks.some((t) => t.label !== null)) return null;
+  return `$${tracks.length - 1}`;
 }
 __name(bareCaptureIdFor, "bareCaptureIdFor");
 var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
@@ -6340,7 +6384,9 @@ function buildStripModels(chunks) {
   let anonLive = 0;
   let ordinal = 0;
   const models = [];
-  const bareId = bareCaptureIdFor(chunks.filter(isTrackChunk));
+  const trackChunks = chunks.filter(isTrackChunk);
+  const bareId = bareCaptureIdFor(trackChunks);
+  const bareOwner = bareId === null ? null : trackChunks[trackChunks.length - 1];
   chunks.forEach((chunk, index) => {
     if (!isTrackChunk(chunk)) return;
     ordinal++;
@@ -6349,7 +6395,8 @@ function buildStripModels(chunks) {
     let captureId;
     if (bare !== null) captureId = bare;
     else if (isMuted(chunk.label)) captureId = `_$${index}`;
-    else if (chunk.label === null) captureId = bareId ?? unjoinableId(index);
+    else if (chunk.label === null)
+      captureId = bareId !== null && chunk === bareOwner ? bareId : unjoinableId(index);
     else captureId = `$${anonLive++}`;
     models.push(buildStripModel(chunk, index, ordinal, id, captureId));
   });
