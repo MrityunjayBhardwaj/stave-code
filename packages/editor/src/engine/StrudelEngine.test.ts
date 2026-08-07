@@ -631,3 +631,59 @@ describe('StrudelEngine.getTimelineEvents (song frame, #863)', () => {
     engine.dispose()
   })
 })
+
+/**
+ * #815 — `init()` is guarded by a flag set at the END of a long async body, so
+ * without an in-flight promise every overlapping caller passes the gate and
+ * runs the whole body. That is not merely wasteful: the body assigns
+ * `this.repl` near its end, so the LAST init to finish replaces whatever repl
+ * the engine was holding — including one that `play()` has already started. The
+ * abandoned repl keeps producing sound while every transport reader sees a
+ * scheduler that was never started, which is how #1185 / #1171 present.
+ *
+ * ⚠ THE CONCURRENT ARM IS NOT HERE, AND THAT IS A HARNESS LIMIT, NOT A CHOICE.
+ * `init()` pulls its eight strudel modules with a single `Promise.all`, and
+ * vitest's mocker is not re-entrant for concurrent dynamic imports of the same
+ * mocked specifier — it evaluates the REAL module instead. Driving five
+ * overlapping inits here dies inside `@strudel/mondo`, then `@strudel/soundfonts`,
+ * on missing exports and CJS interop, never reaching the assertion. Stubbing far
+ * enough to get past that means rebuilding the ecosystem inside this file.
+ * The concurrent arm therefore lives in the browser, against the real modules:
+ * `packages/app/tests/engine-init-race-playhead.spec.ts`.
+ *
+ * What these two DO guard is the fix's own risk. Sharing an in-flight promise
+ * is only safe if a rejected one is dropped; a fix that caches the promise
+ * unconditionally would leave every later caller re-awaiting a failure with no
+ * way back, and the retry test below is what catches that.
+ */
+describe('StrudelEngine.init() guard (#815)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('a second init() after one has completed does not rebuild the repl', async () => {
+    // Imported here, not at module top: the `@strudel/webaudio` factory closes
+    // over MockPattern, and a top-level import of a mocked module runs that
+    // factory before the class declaration is initialised.
+    const { webaudioRepl } = await import('@strudel/webaudio')
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.init()
+    expect(vi.mocked(webaudioRepl)).toHaveBeenCalledTimes(1)
+    engine.dispose()
+  })
+
+  it('a FAILED init does not poison the engine — a retry can still initialise', async () => {
+    const { webaudioRepl } = await import('@strudel/webaudio')
+    const { evalScope } = await import('@strudel/core')
+    const engine = new StrudelEngine()
+    vi.mocked(evalScope).mockRejectedValueOnce(new Error('init blew up'))
+
+    await expect(engine.init()).rejects.toThrow('init blew up')
+    expect(vi.mocked(webaudioRepl)).toHaveBeenCalledTimes(0)
+
+    await expect(engine.init()).resolves.toBeUndefined()
+    expect(vi.mocked(webaudioRepl)).toHaveBeenCalledTimes(1)
+    engine.dispose()
+  })
+})
