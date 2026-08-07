@@ -209,19 +209,19 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     expect(
       { asks: by.element.asks, refused: by.element.refused },
       'element path — 1,748 → 31 refused, the causes #1064 did not name',
-    ).toEqual({ asks: 11633, refused: 31 })
+    ).toEqual({ asks: 15054, refused: 31 })
     expect(
       { asks: by.leaf.asks, refused: by.leaf.refused },
-      'leaf path — 93.1% refused; the 248 taken are the columns holding a rest (#1154)',
-    ).toEqual({ asks: 3584, refused: 3336 })
+      'leaf path — 92.7% refused; the 302 taken are the columns holding a rest (#1154)',
+    ).toEqual({ asks: 4136, refused: 3834 })
     expect(
       { asks: by.alt.asks, refused: by.alt.refused },
       'alt path — 512 → 0 refused',
-    ).toEqual({ asks: 3427, refused: 0 })
+    ).toEqual({ asks: 3604, refused: 0 })
     expect(
       { leaf: by.leaf.units, alt: by.alt.units, element: by.element.units },
       'parseable units per path',
-    ).toEqual({ leaf: 82, alt: 57, element: 827 })
+    ).toEqual({ leaf: 83, alt: 59, element: 839 })
 
     // The residual's SHAPE is asserted in its own test below, not here — an assertion
     // that sits after a failing one never runs, so bundling it into this body would
@@ -240,7 +240,7 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     expect(
       { leafOffered, leafUnitsOffering },
       'leaf placements the writer takes, and how many units they sit on (#1154)',
-    ).toEqual({ leafOffered: 248, leafUnitsOffering: 17 })
+    ).toEqual({ leafOffered: 302, leafUnitsOffering: 18 })
   })
 
   /**
@@ -482,11 +482,14 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       }
     }
     expect(disagreements.join('\n')).toBe('')
-    expect(leafViews, 'leaf grids in the corpus').toBe(82)
+    expect(leafViews, 'leaf grids in the corpus').toBe(83)
     // WHAT THE PATH RULE WOULD HAVE SAID, pinned as the delta rather than described:
-    // it answered `false` on all 82. 19 of them now answer `true` — the 17 that take
+    // it answered `false` on all 82. 20 of them now answer `true` — the 18 that take
     // a note on a rest column, plus 2 with no empty cell to ask about.
-    expect(leafViewsPlacing, 'leaf grids that take a note somewhere (#1154)').toBe(19)
+    //
+    // 19 → 20 (#1066): the one extra leaf grid the widened onset snap grid admits. It
+    // takes a note, so it joins the rest-column group rather than the no-ask pair.
+    expect(leafViewsPlacing, 'leaf grids that take a note somewhere (#1154)').toBe(20)
     // The denominators, so none of the above can quietly become a claim about an
     // empty set — and the positive control for the no-ask branch.
     expect(viewsWithNoAsk, 'grids with no empty cell at all').toBe(418)
@@ -495,8 +498,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // anywhere else. Every non-leaf view that has an empty cell at all still
     // offers at least one — 468 of 468, no exceptions. A gate that quietly
     // greyed a whole surface would show up here as a shortfall.
-    expect(nonLeafWithAnAsk, 'non-leaf grids with any empty cell').toBe(468)
-    expect(nonLeafWithSomeOffer, 'non-leaf grids that still take a note').toBe(468)
+    expect(nonLeafWithAnAsk, 'non-leaf grids with any empty cell').toBe(482)
+    expect(nonLeafWithSomeOffer, 'non-leaf grids that still take a note').toBe(482)
   })
 
   /**

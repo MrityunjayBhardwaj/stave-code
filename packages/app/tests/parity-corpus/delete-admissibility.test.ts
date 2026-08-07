@@ -279,11 +279,19 @@ for (const mini of minis) {
 }
 
 describe('#1160 — a leaf surface refuses the delete when one token backs several columns', () => {
-  it('GRID: the leaf path refuses 275 of 557 deletes across 82 units', () => {
+  it('GRID: the leaf path refuses 275 of 581 deletes across 83 units', () => {
+    // 82 → 83 units and 557 → 581 asks (#1066): one more document reaches the leaf
+    // projection now that the onset snap grid can express a thirty-second, and it
+    // brings its own asks with it.
+    //
+    // `refused` is UNMOVED at 275, and that is the load-bearing half of this arm. A
+    // widening that also broke something would show up here as new refusals; instead
+    // every added ask is admitted. The rate falls 275/557 → 275/581 purely because the
+    // denominator grew.
     const t = gridTally.get('leaf')!
     expect({ units: t.units, asks: t.asks, refused: t.refused }).toEqual({
-      units: 82,
-      asks: 557,
+      units: 83,
+      asks: 581,
       refused: 275,
     })
   })
@@ -384,8 +392,8 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
       gridAlt: { asks: ga.asks, refused: ga.refused },
       rollAlt: { asks: ra.asks, refused: ra.refused },
     }).toEqual({
-      gridSource: { asks: 3579, refused: 0 },
-      gridAlt: { asks: 582, refused: 0 },
+      gridSource: { asks: 4062, refused: 0 },
+      gridAlt: { asks: 597, refused: 0 },
       rollAlt: { asks: 736, refused: 0 },
     })
     // The roll's `source` path refuses a little, and it is NOT this issue's branch —

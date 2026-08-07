@@ -162,7 +162,7 @@ a4      [a4 a4] [c5 a4]  [g4 g4]  [- d4]  -        -      [-  d4]
     "roll": "ok",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "
 [[e3,a3,c4]@2 [e3,a3,c4] [e3,a3,c4]
 [e3,a3,d4]@2 [e3,a3,d4] [e3,a3,d4]
@@ -177,7 +177,7 @@ a4      [a4 a4] [c5 a4]  [g4 g4]  [- d4]  -        -      [-  d4]
     "roll": "ok",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "
 [c5@0.5 f4@0.5 f5@3]
 [eb5@0.5 f5@0.5 bb4@3]
@@ -187,7 +187,7 @@ a4      [a4 a4] [c5 a4]  [g4 g4]  [- d4]  -        -      [-  d4]
     "roll": "ok",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "
 [d1@2 d1 d2@2 d1 g1 a1]
 [g1@2 g1 g2@2 g1 b1 c2]
@@ -202,7 +202,7 @@ a4      [a4 a4] [c5 a4]  [g4 g4]  [- d4]  -        -      [-  d4]
     "roll": "ok",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "
 [eb4 g3 d4 c4@2 d4 eb4 c4]
 [d4 eb4 g3 d4 c4@2 d4 eb4]
@@ -230,7 +230,7 @@ a4      [a4 a4] [c5 a4]  [g4 g4]  [- d4]  -        -      [-  d4]
     "roll": "ok",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "
 [f4 g4 f4 g4 ab4 g4 f4@2]
 [eb4 f4 eb4 f4 c4 db4 eb4@2]
@@ -406,7 +406,7 @@ f#5 c#6 a#5 f6 c#6 g#6 f6 ~
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "the pattern needs more than 64 steps",
     "mini": " hh hh [hh hh] hh [hh hh hh] hh hh [hh hh hh hh]",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -421,7 +421,7 @@ f#5 c#6 a#5 f6 c#6 g#6 f6 ~
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern does not repeat within 12 bars",
+    "grid": "an onset does not land on any step column",
     "mini": "- - d4 - - d4 - - d4 - - d4 - - d4 - - d4 - d4 - - d4@3 - d4 - - d4 - - e4 - - f4 - - f#4 - - g4 - a4 - - d5@3 - d5 - - d5 - - d5 - - d5 - - d5 - - d5 - d5  - - d5@3  - d5 - - d5 - - c5 - - b4 - - a4 - - g4 - f#4 - - d4@2 ",
     "roll": "ok",
   },
@@ -451,7 +451,7 @@ f#5 c#6 a#5 f6 c#6 g#6 f6 ~
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "- c3 - g#2 - g2 - [c2 [g2 d3]]",
     "roll": "ok",
   },
@@ -2882,7 +2882,7 @@ a5 e5 c#5
     "roll": "ok",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "the pattern needs more than 64 steps",
     "mini": "<c2*32 d2*32 eb1*32 d1*32>",
     "roll": "the pattern needs more than 64 steps",
   },
@@ -4056,7 +4056,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "[[c2 ~ ~ c2 ~ ~ c2 ~] [~ c2!3 f2!2 e2 ~]] [[c2 ~ ~ c2 ~ ~ c2 ~] [~ c2!3 d2!3 ~]] [[a2 ~ ~ a2 ~ ~ a2 ~] [~ a2!3 b2!2 b2 ~]] [[g2 ~ ~ g2 ~ ~ g2 ~] [~]] ",
     "roll": "ok",
   },
@@ -4106,7 +4106,7 @@ a5 e5 c#5
     "roll": "ok",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "[as3, d3, f3, a3](4,8,1)[c3, ds3, as3, fs3](4,8,1)[f3,a3,c3,ds3](4,8,1)[as3, d3, f3, a3](4,8,1)
 [b3,ds3,f3,a3](4,8,1)[as3, d3, f3, a3](4,8,1)[gs3,c3,ds3,fs3](4,8,1)[as3, d3, f3, a3](4,8,1)",
     "roll": "ok",
@@ -4364,7 +4364,7 @@ a5 e5 c#5
     "roll": "ok",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "[e3(3,8)] [g3!5 ~ g3!2][[a3(3,4,2)] [as3(3,8,5)]] [b3!8]",
     "roll": "ok",
   },
@@ -4379,7 +4379,7 @@ a5 e5 c#5
     "roll": "ok",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "[g, c4, e4]@3 [b, d4, g4] [g, c4, e4]@3 [a, c4, f4] [g, c4, e4]@4 [[g, b, d4] ~ ~ [g, b, d4] ~ ~ [g, b, d]~]@2 [~]@2 ",
     "roll": "ok",
   },
@@ -4399,7 +4399,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "[g5 ~ ~ f5 ~ ~ e5 ~ c5 ~@7]!2 [c6 ~ ~ b5 ~ ~ g5 ~ ~@8] [b5 ~ ~ g5 ~ ~ d5 ~ ~@8]",
     "roll": "ok",
   },
@@ -4714,7 +4714,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern does not repeat within 12 bars",
+    "grid": "an onset does not land on any step column",
     "mini": "bassdrum*16 basedrum*88 bassdrum basedrum*99, hihat*16",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4799,12 +4799,12 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "the pattern needs more than 64 steps",
     "mini": "bd [hh hh] sd [hh hh] [bd rim] [hh hh] rim <hh*4 hh*8 bd*8 bd*8>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "the pattern needs more than 64 steps",
     "mini": "bd [hh hh] sd [hh hh] [bd rim] [hh hh] rim <hh*4 sd*8 rim*8 bd*8>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -4834,7 +4834,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "bd bd bd <bd [bd!3 bd*2]>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -5069,7 +5069,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "bd!2 [bd*4]!2 bd!4",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -5274,7 +5274,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "bd:4 [sd . ~ bd:4] [~ cp] hh(3,8)",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -6805,7 +6805,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "the pattern needs more than 64 steps",
     "mini": "hh*2 [~ bd*3] hh*2 bd*8",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
@@ -8045,7 +8045,7 @@ a5 e5 c#5
     "roll": "the pattern does not repeat within 4 bars",
   },
   {
-    "grid": "an onset does not land on any step column",
+    "grid": "ok",
     "mini": "~ <sd [sd sd:1@15]>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },

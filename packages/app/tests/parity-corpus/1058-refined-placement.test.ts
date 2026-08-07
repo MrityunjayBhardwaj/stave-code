@@ -191,18 +191,18 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
   it('CALIBRATION — the population is what the corpus holds, at every scale', () => {
     for (const k of SCALES) {
       const s = SWEPT.get(k)!
-      expect(s.opensAtDocument, `k=${k} opens`).toBe(958)
-      expect(s.admitsFinerView, `k=${k} admits`).toBe(876)
+      expect(s.opensAtDocument, `k=${k} opens`).toBe(973)
+      expect(s.admitsFinerView, `k=${k} admits`).toBe(890)
       // ONE refusal gate, and it is the leaf path saying so by name: a leaf model
       // anchors each note to its own source span, so there is no span to
       // subdivide, and the entry refuses a refine rather than quietly drawing the
       // document's own layout for one.
-      expect([...s.refusesFinerView.entries()], `k=${k} gates`).toEqual([['no-finer-view', 82]])
-      expect(s.asks.length, `k=${k} asks`).toBe(19221)
+      expect([...s.refusesFinerView.entries()], `k=${k} gates`).toEqual([['no-finer-view', 83]])
+      expect(s.asks.length, `k=${k} asks`).toBe(23317)
       // IDENTICAL AT EVERY SCALE, and that is the point rather than a coincidence:
       // the population, the routing and the refusals are properties of the
       // PATTERN, so a view multiplier must not move any of them (#1116).
-      expect(pathCounts(s), `k=${k} paths`).toEqual({ splice: 15200, alt: 4009, declined: 12 })
+      expect(pathCounts(s), `k=${k} paths`).toEqual({ splice: 19104, alt: 4201, declined: 12 })
     }
   })
 
@@ -239,7 +239,7 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // pinned BY UNIT, so a fix to #1137 reads as a named delta and a regression
       // cannot hide inside a rate
       expect([...new Set(nonLocal.map((a) => a.mini))].sort(), `k=${k}`).toEqual(NON_LOCAL_UNITS)
-      expect(spliced.length - nonLocal.length, `k=${k} local`).toBe(15184)
+      expect(spliced.length - nonLocal.length, `k=${k} local`).toBe(19088)
     }
   })
 
@@ -505,9 +505,20 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
 
   it('TERMINATION — repeated placement widens the group and never nests deeper', () => {
     // The issue asked for this to be capped or measured. Measured: the element
-    // becomes a wider flat group, never a group inside a group, and the document
-    // stops opening after the third gesture (#1066). Bounded, and the bound is
-    // the reader's, not a cap invented here.
+    // becomes a wider flat group, never a group inside a group, and the sequence
+    // terminates. Bounded, and the bound is the reader's, not a cap invented here.
+    //
+    // ⚠ THE BOUND MOVED 3 → 5 GESTURES, and the reason it stops is now a different
+    // one (#1066). It used to stop at the third because the onset snap grid could
+    // not express a thirty-second: a rational position was rounded into an
+    // irrational one and refused, so the writer was emitting documents its own
+    // reader would not reopen. That was the defect, not the bound.
+    //
+    // The sixth gesture is a REAL ceiling. Thirty-two slots inside one of four
+    // top-level elements puts the next onset at 1/128, and `denom(x, MAX_STEPS)`
+    // caps at 64 — so no `d <= 64` makes it integral and the refusal is honest.
+    // The gate still spells that `irrational-onset` rather than `resolution`,
+    // which is a naming question this arm deliberately does not settle.
     let mini = 'bd ~ sn ~'
     const trace: string[] = []
     for (let i = 0; i < 6; i++) {
@@ -531,6 +542,8 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       '[bd bd] ~ sn ~',
       '[bd bd bd _] ~ sn ~',
       '[bd bd bd _ bd _ _ _] ~ sn ~',
+      '[bd bd bd _ bd _ _ _ bd _ _ _ _ _ _ _] ~ sn ~',
+      '[bd bd bd _ bd _ _ _ bd _ _ _ _ _ _ _ bd _ _ _ _ _ _ _ _ _ _ _ _ _ _ _] ~ sn ~',
       'refused:irrational-onset',
     ])
     // depth never exceeds one: no group ever opens inside a group
