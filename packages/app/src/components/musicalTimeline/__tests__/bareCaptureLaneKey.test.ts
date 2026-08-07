@@ -2,12 +2,21 @@
  * The engine's BARE-CAPTURE id ↔ the timeline's lane key (#1094).
  *
  * A document that never calls `.p()` plays its last expression, and the engine
- * now captures that pattern under the id an anonymous `$:` would have taken
- * (`BARE_CAPTURE_ID = '$0'` in `StrudelEngine.ts`). That choice is only correct
- * because of what THIS side does with it: a bare statement has no `dollarPos`,
- * so the containment index is empty and the hap falls through to the positional
- * mapping, which must land it on `d1` — the lane the IR produces for a bare
- * statement.
+ * captures that pattern under the id an anonymous `$:` would have taken. The
+ * rule is decided by `bareCaptureIdFor` in
+ * `packages/editor/src/visualEdit/mixer/stripModel.ts` — the mixer owns it,
+ * because the mixer is what ASSIGNS these ids while numbering its strips.
+ *
+ * ⚠ THE RULE IS "THE LAST TRACK", `$<n-1>` — NOT `'$0'`. Since #1096 a bare
+ * document declares a Track per top-level statement, so a two-statement
+ * document has strips `$0` and `$1` and the pattern strudel plays belongs to
+ * `$1`. `'$0'` is that same rule at n = 1, which is the case this file pins;
+ * it is not the rule itself.
+ *
+ * That choice is only correct because of what THIS side does with it: a bare
+ * statement has no `dollarPos`, so the containment index is empty and the hap
+ * falls through to the positional mapping, which lands `$<n-1>` on `d<n>` —
+ * the lane the IR produces for the nth bare statement.
  *
  * The two halves live in different packages and nothing else holds them
  * together. Pinned here so a change to either is a failing test rather than a
@@ -22,7 +31,17 @@ vi.mock('@stave/editor', () => ({
 
 import { laneKeyForHap } from '../timelineMarks'
 
-/** Kept in step with `BARE_CAPTURE_ID` in packages/editor/src/engine/StrudelEngine.ts. */
+/**
+ * The id a SINGLE-statement bare document resolves to — `bareCaptureIdFor`'s
+ * `$<n-1>` at n = 1. Kept in step with
+ * `packages/editor/src/visualEdit/mixer/stripModel.ts`.
+ *
+ * ⚠ DELIBERATELY A LITERAL, not an import. Importing the real constant means
+ * importing `@stave/editor` in an app test, and the barrel drags gifenc (CJS)
+ * in — which is why this file already `vi.mock`s it below. The literal is the
+ * price of that mock, so the citation above is the only thing keeping the two
+ * sides in step. Re-point it if the rule moves house again.
+ */
 const BARE_CAPTURE_ID = '$0'
 
 const hap = (trackId: string, start?: number) =>
@@ -52,10 +71,21 @@ describe('#1094 — the bare capture lands on the IR lane, not beside it', () =>
     expect(laneKeyForHap(hap('$0', 10), anchors)).toBe('d1')
   })
 
-  it('the positional mapping is what does the work — a different id would NOT land on d1', () => {
-    // The control arm: if the engine ever keyed the bare capture as something
-    // else, this is the row the timeline would grow beside the IR lane.
+  it('the positional mapping is what does the work — the id is read, not assumed', () => {
+    // The control arm. A NON-positional id has no lane to map to and falls
+    // through as itself: if the engine ever keyed the bare capture like this,
+    // that is the row the timeline would grow beside the IR lane.
     expect(laneKeyForHap(hap('bare'), [])).toBe('bare')
+  })
+
+  it('a multi-statement bare document maps its LAST slot to the LAST lane', () => {
+    // ⚠ THIS USED TO BE PART OF THE CONTROL ARM ABOVE, framed as the failure
+    // mode — "a different id would NOT land on d1". Since #1096 it is the
+    // intended behaviour, not the hazard: a two-statement bare document
+    // declares d1 and d2, resolves to `$1`, and `$1` must reach d2 or the
+    // meter lands on the neighbour. Left in the negative framing it would tell
+    // the next reader that a `$1` sighting is a bug, which is now backwards.
     expect(laneKeyForHap(hap('$1'), [])).toBe('d2')
+    expect(laneKeyForHap(hap('$2'), [])).toBe('d3')
   })
 })
