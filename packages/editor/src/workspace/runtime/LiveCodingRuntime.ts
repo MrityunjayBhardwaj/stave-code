@@ -234,6 +234,16 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
    */
   private evalGate: Promise<unknown> = Promise.resolve()
 
+  /**
+   * Diagnostics from the last SPECULATIVE evaluate (#1172) — the one run to
+   * refresh timeline marks from a document the user is still typing. Kept
+   * rather than discarded, because `console.error` is muted for that call and
+   * information that is silenced without being recorded is information lost.
+   * Read via {@link getTimelineEvalDiagnostics}.
+   */
+  private lastTimelineEvalError: Error | null = null
+  private suppressedConsoleErrors: readonly string[] = []
+
   private readonly errorListeners = new Set<(err: Error) => void>()
   private readonly playingChangedListeners = new Set<(playing: boolean) => void>()
   private readonly evaluateSuccessListeners = new Set<(code: string) => void>()
@@ -368,10 +378,86 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
       // Re-check after the init await — a play()/dispose may have landed.
       if (this.isDisposed || this.isPlayingState) return
       const code = this.getFileContent()
-      await this.runExclusiveEval(() => this.engine.evaluate(code))
+      // ⚠ THE SILENCING GOES INSIDE THE GATE, NOT AROUND IT (#1172).
+      // `runExclusiveEval` first AWAITS any in-flight evaluate. Wrapping the
+      // whole call would leave `console.error` stubbed while play()'s evaluate
+      // is still running, and swallow ITS errors — which are real, and the
+      // user's. Inside the callback the gate has already granted exclusivity,
+      // so the quiet window covers exactly our own speculative evaluate.
+      const result = await this.runExclusiveEval(() =>
+        this.evaluateQuietly(() => this.engine.evaluate(code)),
+      )
+      this.lastTimelineEvalError = result?.error ?? null
     } catch {
       // Best-effort: on any failure the timeline keeps its collect fallback.
     }
+  }
+
+  /**
+   * Run the speculative evaluate with `console.error` muted (#1172).
+   *
+   * WHY THIS IS NOT SUPPRESSING A SYMPTOM. This path is handed whatever the
+   * document says WHILE THE USER IS STILL TYPING IT, so a failure here is the
+   * expected case, not news: `s("bd` is a parse error on the way to
+   * `s("bd sd")`, and `arrang` is a ReferenceError on the way to `arrange`.
+   * Reporting those through the same channel as a real error is what makes the
+   * console useless — a console where an error means nothing cannot warn anyone
+   * about anything.
+   *
+   * WHY IT HAS TO BE DONE HERE RATHER THAN BY CATCHING. The write is not ours.
+   * Strudel's repl logs the failure itself and does not rethrow
+   * (`@strudel/core/repl.mjs`, the `evaluate` catch: `logger(…, 'error')` then
+   * an unconditional `console.error(err)`), so no try/catch on our side can
+   * reach it. Note it is NOT dev-gated the way `errorLogger` is, so this floods
+   * production users' consoles too, not just ours.
+   *
+   * WHY NOTHING IS LOST. The same error arrives structurally through the repl's
+   * `onEvalError` and comes back as `{ error }`, which the caller now records on
+   * `lastTimelineEvalError` instead of discarding. Anything else that printed
+   * during the window is kept verbatim on `suppressedConsoleErrors` rather than
+   * dropped — see `getTimelineEvalDiagnostics()`.
+   *
+   * THE WINDOW IS AS NARROW AS IT CAN BE, AND ITS ONE RESIDUAL RISK IS STATED.
+   * It spans a single `engine.evaluate` under the eval gate, so no other
+   * evaluate of ours can run inside it. An unrelated subsystem logging
+   * asynchronously in that window is still captured rather than printed —
+   * which is why it is captured rather than dropped.
+   */
+  private async evaluateQuietly<T>(fn: () => Promise<T>): Promise<T> {
+    const captured: string[] = []
+    const original = console.error
+    const stub = (...args: unknown[]): void => {
+      captured.push(
+        args.map((a) => (a instanceof Error ? `${a.name}: ${a.message}` : String(a))).join(' '),
+      )
+    }
+    console.error = stub as unknown as typeof console.error
+    try {
+      return await fn()
+    } finally {
+      // Restore ONLY if ours is still the installed one. If something nested
+      // swapped it after us, putting `original` back would clobber that wrapper
+      // and leak this one — better to leave the newer chain intact.
+      if ((console.error as unknown) === stub) console.error = original
+      this.suppressedConsoleErrors = captured
+    }
+  }
+
+  /**
+   * What the last speculative timeline evaluate hit, if anything (#1172).
+   *
+   * `error` is the repl's own eval error, which used to be discarded here.
+   * `suppressedConsoleErrors` is everything that tried to reach `console.error`
+   * during that evaluate — normally the same failure, phrased by Strudel. Both
+   * are diagnostics, not control flow: a failed speculative evaluate is a
+   * routine consequence of evaluating a half-typed document, and the timeline
+   * simply keeps its previous marks.
+   */
+  getTimelineEvalDiagnostics(): {
+    readonly error: Error | null
+    readonly suppressedConsoleErrors: readonly string[]
+  } {
+    return { error: this.lastTimelineEvalError, suppressedConsoleErrors: this.suppressedConsoleErrors }
   }
 
   /**

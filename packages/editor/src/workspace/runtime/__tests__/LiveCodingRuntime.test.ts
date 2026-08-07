@@ -1159,3 +1159,131 @@ describe('LiveCodingRuntime', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------------------
+// #1172 — the SPECULATIVE evaluate must not report through the error channel.
+//
+// `evaluateForTimeline()` is handed the document WHILE THE USER IS TYPING IT,
+// so a failure is the expected case: `s("bd` is a parse error on the way to
+// `s("bd sd")`. Strudel's repl logs those itself — `logger(…, 'error')` then an
+// unconditional `console.error(err)` — and does NOT rethrow, so no try/catch of
+// ours can reach them. The mock below therefore prints the way the real repl
+// does; a mock that merely returned `{ error }` would pass these tests without
+// exercising the thing they exist to pin.
+// ---------------------------------------------------------------------------
+describe('speculative timeline evaluate is quiet (#1172)', () => {
+  /** An engine whose evaluate fails the way Strudel's does: prints, then reports. */
+  function engineThatPrintsOnEvalError(): MockEngine {
+    const engine = createMockEngine()
+    engine.evaluate = vi.fn(async (_code: string) => {
+      console.error(new SyntaxError('Unexpected end of input'))
+      return { error: new SyntaxError('Unexpected end of input') }
+    })
+    return engine
+  }
+
+  it('mutes console.error for the speculative evaluate and records what it silenced', async () => {
+    const engine = engineThatPrintsOnEvalError()
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const runtime = new LiveCodingRuntime('quiet-1', engine, () => 's("bd')
+
+    await runtime.evaluateForTimeline()
+
+    expect(spy, 'a half-typed document reported through the error channel').not.toHaveBeenCalled()
+
+    // Silenced is not the same as lost.
+    const diag = runtime.getTimelineEvalDiagnostics()
+    expect(diag.error?.message).toBe('Unexpected end of input')
+    expect(diag.suppressedConsoleErrors.join(' ')).toContain('Unexpected end of input')
+
+    spy.mockRestore()
+    runtime.dispose()
+  })
+
+  it('CONTROL: the identical failure from play() still reaches console.error', async () => {
+    // Without this arm, the test above passes just as well if the mute were
+    // global — which would swallow the errors a user actually needs.
+    const engine = engineThatPrintsOnEvalError()
+    engine.setComponents({
+      streaming: makeStreamingComponent(),
+      audio: makeAudioComponent(),
+    })
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const runtime = new LiveCodingRuntime('quiet-2', engine, () => 's("bd')
+
+    await runtime.play()
+
+    expect(spy, 'play() is the user asking — its errors must stay visible').toHaveBeenCalled()
+    spy.mockRestore()
+    runtime.dispose()
+  })
+
+  it('restores console.error afterwards, including when the evaluate throws', async () => {
+    const engine = createMockEngine()
+    engine.evaluate = vi.fn(async (_code: string) => {
+      throw new Error('evaluate blew up')
+    })
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const runtime = new LiveCodingRuntime('quiet-3', engine, () => 'code')
+
+    await runtime.evaluateForTimeline()
+
+    expect(console.error, 'console.error was left stubbed after a throwing evaluate').toBe(spy)
+    spy.mockRestore()
+    runtime.dispose()
+  })
+
+  it('a SUCCEEDING speculative evaluate leaves no error behind', async () => {
+    const engine = createMockEngine()
+    const runtime = new LiveCodingRuntime('quiet-4', engine, () => 'note("c3")')
+    await runtime.evaluateForTimeline()
+    expect(runtime.getTimelineEvalDiagnostics().error).toBeNull()
+    runtime.dispose()
+  })
+
+  it('CONTROL: play()\'s error survives a speculative evaluate QUEUED BEHIND it', async () => {
+    // This is the arm that pins WHERE the mute goes. `runExclusiveEval` first
+    // AWAITS any in-flight evaluate, so a mute wrapped around the whole call
+    // stays installed while PLAY'S evaluate is still running — and swallows an
+    // error the user needs. Wrapped inside the callback, the gate has already
+    // granted exclusivity and the quiet window covers only our own evaluate.
+    // Without this arm both placements pass.
+    const engine = createMockEngine()
+    engine.setComponents({
+      streaming: makeStreamingComponent(),
+      audio: makeAudioComponent(),
+    })
+    const releases: Array<() => void> = []
+    engine.evaluate = vi.fn(async (_code: string) => {
+      await new Promise<void>((res) => releases.push(res))
+      console.error(new SyntaxError('play-path failure'))
+      return { error: new SyntaxError('play-path failure') }
+    })
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const runtime = new LiveCodingRuntime('quiet-5', engine, () => 's("bd')
+    const flush = async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve()
+    }
+
+    const pPlay = runtime.play()
+    await flush()
+    // Queued behind play's evaluate, which is still in flight.
+    const pSpec = runtime.evaluateForTimeline()
+    await flush()
+
+    // Drain as each evaluate reaches its deferred.
+    for (let round = 0; round < 6; round++) {
+      releases.splice(0).forEach((r) => r())
+      await flush()
+    }
+    await pPlay
+    await pSpec
+
+    expect(
+      spy,
+      "the speculative mute leaked outside its gate and swallowed play()'s error",
+    ).toHaveBeenCalled()
+    spy.mockRestore()
+    runtime.dispose()
+  })
+})
