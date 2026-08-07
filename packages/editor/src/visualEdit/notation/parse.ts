@@ -72,7 +72,52 @@ const isAtomToken = (t: string, allowNumeric: boolean): boolean =>
   allowNumeric || !NUMERIC.test(t)
 
 /** ceiling on expanded columns so `[7 hits][11 hits]` can't blow up the grid */
-const MAX_STEPS = 64
+/* exported so the #1066 invariant (`ONSET_GRID % MAX_STEPS === 0`) can be asserted
+   against both real values rather than against a copy of either */
+export const MAX_STEPS = 64
+
+/**
+ * The grid every played onset is snapped to before it is asked for a denominator
+ * (#1066).
+ *
+ * A hap's `begin` is a float. Two onsets that are musically the same instant can
+ * differ in the last bits, so they are rounded onto a fixed rational grid before
+ * being compared or given a denominator — that rounding is what lets `byCol`
+ * group occurrences and what makes `onsetKey`/`rollKey` compare periods at all.
+ *
+ * ⚠ THE GRID MUST BE DIVISIBLE BY `MAX_STEPS`, AND THAT IS THE WHOLE POINT.
+ * `denom(x, MAX_STEPS)` is the acceptance test every projection runs: an onset
+ * is editable iff some `d <= MAX_STEPS` makes `x·d` integral. A position this
+ * grid cannot express exactly is therefore rejected by a test it was never able
+ * to pass — the refusal reports `irrational-onset` about a perfectly rational
+ * position that the snapping made irrational.
+ *
+ * That is not hypothetical: the previous value was `720720` = `LCM(1..16)` =
+ * `2^4 · 3^2 · 5 · 7 · 11 · 13`, which carries only four factors of two, so
+ * neither 32 nor 64 divides it. A thirty-second landed like this:
+ *
+ *     9/32 · 720720       = 202702.5
+ *     Math.round(…)       = 202703        (JS rounds half away from zero)
+ *     202703 / 720720     = 0.2812506937506937
+ *     denom(…, 64)        = 0             -> irrational-onset
+ *
+ * So the projection advertised 64 columns while the grid feeding it topped out
+ * at sixteenths for powers of two, and every behaviour-path document needing a
+ * 32nd or 64th was unreachable. `bd [~ bd bd _ bd _ _ _] sn ~` — which the grid
+ * writer itself emits after three subdivisions — is one of them.
+ *
+ * `2882880` = `720720 · 4` = `2^6 · 3^2 · 5 · 7 · 11 · 13`. It is a strict
+ * WIDENING: 720720 divides it, so every position expressible before still is,
+ * and no document that opened can start refusing.
+ *
+ * ⚠ It does NOT express every `d <= MAX_STEPS`, and cannot — that would need
+ * `LCM(1..64)`, which is ~5e26 and past `Number.MAX_SAFE_INTEGER`. Denominators
+ * with a factor this grid lacks (27, 25, 49, primes above 13) still snap to a
+ * neighbour and are still refused, exactly as before. The invariant worth
+ * holding is the one asserted in the tests: the finest UNIFORM grid the system
+ * permits, `MAX_STEPS`, must be exactly expressible.
+ */
+export const ONSET_GRID = 2882880
 
 const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
 const lcm = (a: number, b: number): number => (a / gcd(a, b)) * b
@@ -1481,7 +1526,7 @@ export function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
     } else return no('no-note-content')
     if (NUMERIC.test(token)) return no('wrong-surface') // a bare number is the roll's
     const pos = h.whole.begin.valueOf() - cyc
-    const key = Math.round(pos * 720720)
+    const key = Math.round(pos * ONSET_GRID)
     // EVERY hap is recorded, unconditionally (#1034). The note's own leaf loc is
     // the #986 write-back anchor and its length is read the way the roll reads it,
     // so the two surfaces cannot disagree about what a note's length IS.
@@ -1503,7 +1548,7 @@ export function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
   return {
     ok: true,
     onsets: [...byCol.entries()].map(([k, occ]) => ({
-      pos: k / 720720,
+      pos: k / ONSET_GRID,
       occ,
       ...deriveColumn(occ),
     })),
@@ -1511,7 +1556,7 @@ export function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
 }
 
 const onsetKey = (o: Onset[]): string =>
-  JSON.stringify(o.map((x) => [Math.round(x.pos * 720720), [...x.atoms].sort()]).sort())
+  JSON.stringify(o.map((x) => [Math.round(x.pos * ONSET_GRID), [...x.atoms].sort()]).sort())
 
 /**
  * The inherited fallback for the step grid (#922): when the syntactic parse
@@ -2903,7 +2948,7 @@ function readRollOnsets(pat: unknown, cyc: number): Read<RollOnset[]> {
 
 const rollKey = (o: Array<{ pos: number; dur: number; pitch: string }>): string =>
   JSON.stringify(
-    o.map((x) => [Math.round(x.pos * 720720), Math.round(x.dur * 720720), x.pitch]).sort(),
+    o.map((x) => [Math.round(x.pos * ONSET_GRID), Math.round(x.dur * ONSET_GRID), x.pitch]).sort(),
   )
 
 /** the roll's probe pitches — same single-atom requirement as `PROBE_SOUND` (#994) */
