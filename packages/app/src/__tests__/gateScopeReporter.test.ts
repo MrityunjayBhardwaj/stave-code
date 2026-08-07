@@ -104,7 +104,15 @@ describe('#1183 — the gate reporter states the population it actually covered'
     // The honest limit, pinned so nobody re-asserts otherwise: with zero matches
     // vitest prints "No test files found" and exits before any reporter hook runs.
     // An absent scope line therefore does NOT mean "nothing was narrowed".
-    const out = runVitest(['--changed', 'HEAD'])
+    //
+    // ⚠ ZERO MATCHES IS SUMMONED DIRECTLY, NOT VIA `--changed HEAD` (#1192). That was
+    // the first version, and it asks GIT what changed: with a clean tree nothing has,
+    // so the arm passed — and with uncommitted work in the tree the fixture runs and
+    // it failed. The gate then reddened for anyone mid-edit, which is precisely when
+    // gates get run. Its break test had passed too, because break and verification
+    // shared the same clean tree. A filter that cannot match anything needs no help
+    // from the environment.
+    const out = runVitest(['no-such-file.test.ts'])
     expect(out).toContain('No test files found')
     expect(out).not.toContain('scope:')
   }, 120_000)
