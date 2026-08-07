@@ -38885,11 +38885,26 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    * presses Play (#977). Runs init (idempotent) + `engine.evaluate` and stops
    * there: no bus publish, no `scheduler.start()`, no playing-state flip.
    *
-   * The AudioContext stays suspended — `evaluate()` captures patterns via the
-   * `.p` setter and queryArcs them offline; the scheduler start that produces
-   * sound lives in `play()` (step 8), which this never reaches. Reusing the
-   * real `engine.evaluate` means pre-play marks come from the SAME eval oracle
-   * as playback — there is no second interpreter to drift.
+   * ⚠ THE SCHEDULER-FREE CLAIM IS ENFORCED NOW, NOT ASSUMED (#1186). It used to
+   * be false. `engine.evaluate` called Strudel's `repl.evaluate(code)` with a
+   * single argument, and that function's `autostart` parameter DEFAULTS TO TRUE
+   * (@strudel/core/repl.mjs:222 → setPattern :272/:105-107 →
+   * cyclist.mjs:123-126) — so this path started the transport, and merely
+   * mounting the Song view made the app emit notes with no user gesture. The
+   * engine now passes `autostart = false`, which leaves the start to `play()`
+   * step 8 alone. `evaluate()` captures patterns via the `.p` setter and
+   * queryArcs them offline. Reusing the real `engine.evaluate` means pre-play
+   * marks come from the SAME eval oracle as playback — there is no second
+   * interpreter to drift.
+   *
+   * ⚠ AND WHAT THIS DOCBLOCK NO LONGER CLAIMS. It used to open with "the
+   * AudioContext stays suspended". That was never measured, and it is not what
+   * the fix establishes — Chrome grants user activation for a BROWSER-INITIATED
+   * navigation, so a freshly loaded page can already hold a running context
+   * before anything is clicked. The verified claim is narrower, and it is the
+   * one that matters: no scheduler start, and no note events emitted. Measured
+   * 45 → 0 in `packages/app/tests/pre-gesture-transport.spec.ts`. If you need
+   * the context's state, measure it; do not read it out of this comment.
    *
    * Silent by design: does NOT fire `onError` / `evaluateSuccess`. A failed
    * evaluate (mid-edit invalid code) simply leaves `songPatterns` empty and the
