@@ -687,3 +687,55 @@ describe('StrudelEngine.init() guard (#815)', () => {
     engine.dispose()
   })
 })
+
+/**
+ * #1186 — evaluating must never start the transport.
+ *
+ * Strudel's `evaluate(code, autostart = true, …)` (@strudel/core/repl.mjs:222)
+ * forwards the flag into `cyclist.setPattern(pat, autostart)`, which starts the
+ * clock (cyclist.mjs:123-126). Calling it with one argument therefore meant
+ * every evaluate started playback — including the one the Song view runs to
+ * draw its pre-play marks, so the app emitted notes with no user gesture.
+ *
+ * Starting playback belongs to `play()` (step 8 of the play lifecycle) and
+ * nowhere else. The argument is easy to lose in a refactor and its default is
+ * the wrong one, so it is pinned here rather than left to the browser arm — the
+ * browser spec proves the CONSEQUENCE, this proves the CALL.
+ */
+describe('StrudelEngine.evaluate() does not autostart (#1186)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('passes autostart=false to the repl, so only play() can start the clock', async () => {
+    const { webaudioRepl } = await import('@strudel/webaudio')
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('one-track')
+
+    const repl = vi.mocked(webaudioRepl).mock.results[0]?.value as {
+      evaluate: ReturnType<typeof vi.fn>
+    }
+    expect(repl.evaluate).toHaveBeenCalledWith('one-track', false)
+    engine.dispose()
+  })
+
+  it('play() is what starts the scheduler', async () => {
+    const { webaudioRepl } = await import('@strudel/webaudio')
+    const engine = new StrudelEngine()
+    await engine.init()
+
+    const repl = vi.mocked(webaudioRepl).mock.results[0]?.value as {
+      scheduler: { start: ReturnType<typeof vi.fn> }
+    }
+    await engine.evaluate('one-track')
+    const beforePlay = repl.scheduler.start.mock.calls.length
+
+    engine.play()
+    expect(
+      repl.scheduler.start.mock.calls.length,
+      'play() must be the thing that starts the clock',
+    ).toBe(beforePlay + 1)
+    engine.dispose()
+  })
+})

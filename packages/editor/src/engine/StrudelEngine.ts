@@ -958,7 +958,27 @@ export class StrudelEngine implements LiveCodingEngine {
       let playedPattern: unknown
       const result = await new Promise<{ error?: Error }>((resolve) => {
         this.evalResolve = resolve
-        this.repl.evaluate(code).then((pattern: unknown) => {
+        // ⚠ THE SECOND ARGUMENT IS `autostart`, AND ITS DEFAULT IS `true` (#1186).
+        // Strudel's `evaluate(code, autostart = true, shouldHush = true)`
+        // (@strudel/core/repl.mjs:222) forwards the flag through `setPattern`
+        // (:272 → :105-107) into `cyclist.setPattern(pat, autostart)`, which
+        // starts the clock outright (cyclist.mjs:123-126). Omitting it meant
+        // evaluating STARTED THE TRANSPORT — so merely mounting the Song view,
+        // which evaluates to draw its pre-play marks, made the app emit notes
+        // with no Play, no click and no keystroke (measured: 45 note events).
+        //
+        // Starting playback belongs to `play()` and nowhere else — it is step 8
+        // of the play lifecycle, and `play()` calls `scheduler.start()` itself.
+        // That is not only tidiness: play()'s step-3b supersession gate aborts
+        // BEFORE step 8 precisely so a Stop landing mid-evaluate cannot leave
+        // audio running (#811), and an evaluate that starts the scheduler on its
+        // own walks straight past that gate.
+        //
+        // Passing `false` is inert once playing: `setPattern` only starts when
+        // `!this.started`, so a live-coding re-evaluate mid-playback is
+        // unaffected. The only behaviour that changes is the one nobody asked
+        // for.
+        this.repl.evaluate(code, false).then((pattern: unknown) => {
           playedPattern = pattern
           // If onEvalError didn't fire, evaluation succeeded
           if (this.evalResolve) { this.evalResolve({}); this.evalResolve = null }
