@@ -89,6 +89,26 @@ describe('#1183 — the gate reporter states the population it actually covered'
     expect(out).toContain('covered 1 of the 2 file(s)')
   }, 120_000)
 
+  it('narrowing is detected by a mechanism that is not a CLI path — --shard', () => {
+    // The whole claim of this reporter is that it DETECTS narrowing rather than
+    // being told about it. One filtering mechanism cannot demonstrate that: the
+    // first draft "detected" CLI paths by asking for them, and was wrong. `--shard`
+    // narrows through an entirely different route and must land in the same branch.
+    const out = runVitest(['--shard=1/2'])
+    expect(out).toContain('scope: a SUBSET')
+    expect(out).toContain('covered 1 of the 2 file(s)')
+    expect(out).not.toContain('scope: the WHOLE configured package')
+  }, 120_000)
+
+  it('a filter matching NO files produces no scope line at all — vitest exits first', () => {
+    // The honest limit, pinned so nobody re-asserts otherwise: with zero matches
+    // vitest prints "No test files found" and exits before any reporter hook runs.
+    // An absent scope line therefore does NOT mean "nothing was narrowed".
+    const out = runVitest(['--changed', 'HEAD'])
+    expect(out).toContain('No test files found')
+    expect(out).not.toContain('scope:')
+  }, 120_000)
+
   it('a run that executes nothing says so, instead of reading as a pass', () => {
     // `-t '$^'` matches no test name: every file is imported, none is executed.
     // This is `gate:editing:instruments`, whose "67 skipped" summary reads in a

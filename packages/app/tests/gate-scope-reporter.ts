@@ -45,7 +45,16 @@
  * The denominator now comes from `project.globTestFiles()` — vitest resolving its own
  * `include` against the filesystem, at run time. Ran-files vs collectable-files is a
  * comparison the reporter can actually make, so narrowing is DETECTED rather than
- * declared, whatever caused it (CLI paths, `--shard`, `--changed`, a watch filter).
+ * declared, independently of what caused it. Verified for two unrelated mechanisms:
+ * positional CLI paths (1 of 87) and `--shard=1/2` (1 of 2, 50.0%).
+ *
+ * ⚠ ONE NARROWING IT CANNOT REPORT, STATED BECAUSE AN EARLIER DRAFT OF THIS COMMENT
+ * CLAIMED OTHERWISE. If a filter matches NO files at all — `--changed HEAD` with
+ * nothing changed — vitest prints "No test files found" and exits before any
+ * reporter hook runs, so this file stays silent rather than saying "0 of N". The
+ * silence is vitest's, not a judgement of ours, and it is the one case where a
+ * narrowed run produces no scope line. Do not read the absence of a scope line as
+ * the absence of narrowing.
  *
  * NOTHING IS HARDCODED, ESPECIALLY NOT A TOTAL. Its sibling
  * `gate-population-reporter.ts` makes the same point for the browser gate
@@ -92,6 +101,12 @@ class VitestScopeReporter implements Reporter {
    * the denominator: how many files this CONFIG would collect, unnarrowed.
    * Returns null if the API shape is not what we expect, so an unknown denominator
    * is reported as unknown rather than silently becoming a confident ratio.
+   *
+   * ⚠ The null path is DEFENSIVE AND UNEXERCISED — it fires only if a future vitest
+   * drops or reshapes `globTestFiles`, which cannot be provoked without mocking the
+   * internals this reporter exists to observe honestly. It is written to degrade to
+   * "reach UNKNOWN" rather than to "whole", because the failure that matters is a
+   * narrowed run reading as a complete one. Treat it as untested code.
    */
   private async collectableFiles(): Promise<number | null> {
     const projects = this.ctx?.projects
