@@ -15,7 +15,8 @@
     "gate:editing:editor": "pnpm --filter @stave/editor exec vitest run --reporter=default --reporter=../app/tests/gate-scope-reporter.ts",
     "gate:editing:instruments": "pnpm --filter @stave/app run test:instruments:collect",
     "gate:editing:app": "pnpm --filter @stave/app exec vitest run --reporter=default --reporter=../app/tests/gate-scope-reporter.ts",
-    "gate:editing:browser": "pnpm --filter @stave/app exec playwright test tests/sequencer.spec.ts tests/velocity.spec.ts tests/piano-roll.spec.ts tests/visual-edit-tabs.spec.ts --project=chromium --workers=1 --reporter=list,./tests/gate-population-reporter.ts"
+    "gate:editing:browser": "pnpm --filter @stave/app exec playwright test tests/sequencer.spec.ts tests/velocity.spec.ts tests/piano-roll.spec.ts tests/visual-edit-tabs.spec.ts --project=chromium --workers=1 --reporter=list,./tests/gate-population-reporter.ts",
+    "gate:editing:browser:full": "pnpm --filter @stave/app exec playwright test --project=chromium --reporter=list,./tests/gate-population-reporter.ts"
   },
   "devDependencies": {
     "turbo": "^2.0.0",
