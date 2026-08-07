@@ -7035,7 +7035,7 @@ var _StrudelEngine = class _StrudelEngine {
       let playedPattern;
       const result = await new Promise((resolve) => {
         this.evalResolve = resolve;
-        this.repl.evaluate(code).then((pattern) => {
+        this.repl.evaluate(code, false).then((pattern) => {
           playedPattern = pattern;
           if (this.evalResolve) {
             this.evalResolve({});
