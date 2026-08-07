@@ -641,6 +641,8 @@ declare class StrudelEngine implements LiveCodingEngine {
     private analyserNode;
     private hapStream;
     private initialized;
+    /** The one in-flight `init()`, shared by every overlapping caller (#815). */
+    private initPromise;
     private evalResolve;
     private runtimeErrorHandler;
     private loadedSoundNames;
@@ -689,7 +691,31 @@ declare class StrudelEngine implements LiveCodingEngine {
         from: string;
         to: string;
     }>;
+    /**
+     * Initialise the engine, at most once, no matter how many callers overlap.
+     *
+     * The flag alone was not enough (#815). `initInternal` sets `initialized`
+     * only at the very END of a long async body, so every caller that arrives
+     * before that point passes the `if (this.initialized) return` gate and runs
+     * the whole body — and the body assigns `this.repl` near its own end. With
+     * several inits in flight the last one to finish wins, which is fine right up
+     * until `play()` has already started the scheduler on an earlier repl: the
+     * engine then holds a repl nobody started, while the abandoned one keeps
+     * making sound. Measured in the real app as five concurrent inits on one
+     * engine, a scheduler reporting `started === false` mid-playback, and no
+     * playhead (#1185, #1171).
+     *
+     * A flag is a sequential guard. Mutual exclusion needs the in-flight promise
+     * itself, so late callers join the run already happening instead of starting
+     * their own.
+     *
+     * The rejection path clears the cached promise deliberately: a failed init
+     * must not be remembered, or every later caller re-awaits the same failure
+     * with no way to retry. Cleared here, the next `init()` starts a fresh
+     * attempt — which is what `StrudelEngine.test.ts` pins.
+     */
     init(): Promise<void>;
+    private initInternal;
     evaluate(code: string): Promise<{
         error?: Error;
     }>;
