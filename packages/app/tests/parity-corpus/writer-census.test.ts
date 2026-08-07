@@ -472,10 +472,21 @@ describe('writer census — how much of the syntactic core transfers to the deri
     //     the view is no longer offered. That is the ranking this project already held:
     //     a view that never opens beats one that opens and mis-writes.
     // So transfers gains 9 while untransferable loses 9 (its no-view half rises 67 → 69,
-    // its corrupting half falls 11 → 0). The rate is 1035/1204 = 86.0%, over the SAME
+    // its corrupting half falls 11 → 0). The rate was 1035/1204 = 86.0%, over the SAME
     // population as 1026/1204 = 85.2%, so those two ARE comparable — unlike the #1037 pair.
-    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(1035)
-    expect(untransferable.length, 'untransferable' + why).toBe(69)
+    //
+    // ⚠ THE MECHANISM THAT MOVED NEXT: the ONSET SNAP GRID (#1066). It was
+    // `LCM(1..16)`, which carries only 2^4, so it could not express a thirty-second —
+    // a rational onset was rounded into an irrational one and refused by the very
+    // MAX_STEPS test it should have passed. Widening it to `2^6·3^2·5·7·11·13` admits
+    // 6 more rows, all `no-view/irrational-onset → transfers`, and they are ordinary
+    // sixteenth-note patterns in a two-bar alternation rather than exotica.
+    // Transfers 1035 → 1041, untransferable 69 → 63; the rate is 1041/1204 = 86.5%,
+    // again over the same 1204 population, so it remains comparable to both figures
+    // above. No row moved the other way, which is what says this is a widening and not
+    // a trade.
+    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(1041)
+    expect(untransferable.length, 'untransferable' + why).toBe(63)
     expect(all.filter((r) => r.outcome === 'no-probe').length, 'unverified' + why).toBe(100)
     // The reclassification is asserted by MECHANISM as well as by total, so that a
     // future change cannot hold the totals steady while moving asks between buckets.
@@ -513,7 +524,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // patterns, so fixing the printer returns exactly the views worth quoting, just as
     // breaking the oracle had removed exactly those. The half of the number this line
     // exists to keep honest is the half that moved, in the good direction this time.
-    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(633)
+    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(639)
 
     // THIS USED TO SAY "NOTHING CORRUPTS", and it said why that mattered: both derived
     // writers refuse rather than mis-write, which is what made the untransferable set
@@ -577,7 +588,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // in a comment has no gate on it ([[P356]]); the pin is the record and the comment
     // must be re-read whenever the pin moves, in both directions.
     expect(untransferable.filter((r) => r.arrayValue).length).toBe(8)
-    expect(untransferable.filter((r) => !r.arrayValue).length).toBe(61)
+    expect(untransferable.filter((r) => !r.arrayValue).length).toBe(55)
 
     // THE NUMBER P6 IS SCOPED AGAINST, and it is a CONJUNCTION. "46 have a
     // structured core view" and "45 have a verified core edit" are different
@@ -624,9 +635,9 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // expect of a cap whose reach the roll sweep found flat; the grid half moved with
     // the corpus.)
     const structural = untransferable.filter((r) => !r.arrayValue)
-    expect(structural.filter((r) => r.coreStructured).length).toBe(56)
-    expect(structural.filter((r) => r.coreProbe === 'ok').length).toBe(55)
-    expect(structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length).toBe(54)
+    expect(structural.filter((r) => r.coreStructured).length).toBe(50)
+    expect(structural.filter((r) => r.coreProbe === 'ok').length).toBe(49)
+    expect(structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length).toBe(48)
   }, 900_000)
 
   /**
@@ -649,7 +660,13 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // the shipped caps, taken from the writer rather than copied beside it (#1025)
       const CAP = { step: PROJECTION_PERIOD_BOUNDS.leaf.grid, roll: PROJECTION_PERIOD_BOUNDS.leaf.roll } as const
       const rows = structural.filter((r) => r.gate === 'unstable-period')
-      expect(rows.length).toBe(36)
+      // 36 → 35 (#1066), and this one falls rather than rises, which is worth a word.
+      // Period detection compares cycles through the same snap grid. When the grid
+      // could not express a position exactly, the SAME musical instant in two cycles
+      // could round to two different keys, and a periodic pattern read as aperiodic.
+      // One unit was being refused that way; an exact grid lets its cycles compare
+      // equal. So the widening repaired a detection error as well as a resolution one.
+      expect(rows.length).toBe(35)
 
       const withinCap: string[] = []
       let past = 0
@@ -674,7 +691,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // (and #1020 with it) would be wrong.
       expect(withinCap, withinCap.join('\n')).toEqual([])
       expect(past).toBe(34)
-      expect(aperiodic).toBe(2)
+      expect(aperiodic).toBe(1)
       expect(rollBlockedByItsOwnCap).toBe(23)
     }, 900_000)
 

@@ -26816,6 +26816,7 @@ __name(viewScaleFits, "viewScaleFits");
 var NUMERIC = /^-?\d+$/;
 var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => allowNumeric || !NUMERIC.test(t), "isAtomToken");
 var MAX_STEPS = 64;
+var ONSET_GRID = 2882880;
 var gcd = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcd(b, a % b), "gcd");
 var lcm = /* @__PURE__ */ __name((a, b) => a / gcd(a, b) * b, "lcm");
 var stepUnits = /* @__PURE__ */ __name((s) => s.sub ? s.sub.reduce((n, slot) => n + slot.units, 0) : 1, "stepUnits");
@@ -27442,7 +27443,7 @@ function readGridOnsets(pat, cyc) {
     } else return no("no-note-content");
     if (NUMERIC.test(token)) return no("wrong-surface");
     const pos = h.whole.begin.valueOf() - cyc;
-    const key2 = Math.round(pos * 720720);
+    const key2 = Math.round(pos * ONSET_GRID);
     const cell = byCol.get(key2) ?? [];
     cell.push({
       token,
@@ -27454,14 +27455,14 @@ function readGridOnsets(pat, cyc) {
   return {
     ok: true,
     onsets: [...byCol.entries()].map(([k, occ]) => ({
-      pos: k / 720720,
+      pos: k / ONSET_GRID,
       occ,
       ...deriveColumn(occ)
     }))
   };
 }
 __name(readGridOnsets, "readGridOnsets");
-var onsetKey = /* @__PURE__ */ __name((o) => JSON.stringify(o.map((x) => [Math.round(x.pos * 720720), [...x.atoms].sort()]).sort()), "onsetKey");
+var onsetKey = /* @__PURE__ */ __name((o) => JSON.stringify(o.map((x) => [Math.round(x.pos * ONSET_GRID), [...x.atoms].sort()]).sort()), "onsetKey");
 function projectStepGrid(src0, viewScale = UNREFINED) {
   const src = src0.trim();
   if (src === "") return no("not-a-pattern");
@@ -28194,7 +28195,7 @@ function readRollOnsets(pat, cyc) {
 }
 __name(readRollOnsets, "readRollOnsets");
 var rollKey = /* @__PURE__ */ __name((o) => JSON.stringify(
-  o.map((x) => [Math.round(x.pos * 720720), Math.round(x.dur * 720720), x.pitch]).sort()
+  o.map((x) => [Math.round(x.pos * ONSET_GRID), Math.round(x.dur * ONSET_GRID), x.pitch]).sort()
 ), "rollKey");
 var PROBE_NOTE = "c9";
 var PROBE_NUM = "999";

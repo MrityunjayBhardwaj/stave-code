@@ -221,11 +221,17 @@ describe('the step cell carries a length the engine actually played', () => {
     //     of population; that is why `derived` drops 20 while the total drops only 10.
     // Syntactic is UNMOVED at 783, which is the control inside the split: the core path
     // never consults the writer, so a printer change must not touch it.
-    expect(units.length).toBe(958)
+    //
+    // 958 → 973 (#1066): fifteen units the onset snap grid used to refuse. It could not
+    // express a thirty-second, so a rational position was rounded into an irrational one
+    // and rejected by the very MAX_STEPS test it should have passed. These arrive on the
+    // DERIVED paths — syntactic stays 783, which is the same control working twice: the
+    // core never snaps, so a snapping change must not touch it either.
+    expect(units.length).toBe(973)
     expect(byPath.get('syntactic')).toBe(783)
-    expect(byPath.get('derived')).toBe(93)
-    expect(byPath.get('derived+leaf')).toBe(82)
-    expect(cells).toBe(4718)
+    expect(byPath.get('derived')).toBe(107)
+    expect(byPath.get('derived+leaf')).toBe(83)
+    expect(cells).toBe(5240)
   })
 
   it('CONTROL: a reader that returns 1 for every length is caught', () => {

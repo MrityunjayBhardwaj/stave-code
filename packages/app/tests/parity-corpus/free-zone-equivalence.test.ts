@@ -90,7 +90,7 @@ const minis = [...new Set(corpus.minis.map((o) => o.mini.trim()).filter((m) => m
  * which is the same 4-ask gap (free zone 1245 vs denominator 1241) that was derived
  * by hand when the denominator was pinned. Two independent routes to one number.
  */
-const GRID_DENOMINATOR = 2967
+const GRID_DENOMINATOR = 2973
 const ROLL_DENOMINATOR = 1241
 
 /**

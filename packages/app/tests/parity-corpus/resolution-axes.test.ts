@@ -316,22 +316,22 @@ describe('#1054 — document, layout and haps are three separate readings', () =
       ...grid.byOutcome,
       hapsUnevaluable: grid.hapsUnevaluable,
     }).toEqual({
-      units: 958,
-      asks: 7326,
-      coarsenSkipped: 1127,
+      units: 973,
+      asks: 7338,
+      coarsenSkipped: 1196,
       'no-offer': 1058,
       unwritable: 0,
-      measured: 6268,
+      measured: 6280,
       hapsUnevaluable: 0,
     })
     // TODAY'S ANSWER. Every grid refine that reaches the writer rewrites the document —
     // there is no `---` key here. Phase 4 (#1057) turns the `doc` half of all four keys
     // into `---` while leaving the `layout` and haps halves exactly as they stand.
     expect(grid.triples).toEqual({
-      'lossless (doc,layout,----)': 2763,
+      'lossless (doc,layout,----)': 2769,
       'lossless (doc,layout,haps)': 204,
       'quantize (doc,layout,----)': 99,
-      'quantize (doc,layout,haps)': 3202,
+      'quantize (doc,layout,haps)': 3208,
     })
   })
 

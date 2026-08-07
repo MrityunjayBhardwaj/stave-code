@@ -156,7 +156,7 @@ const rollSurface: Surface<PianoRollModel> = {
  * Pinned so the clauses above cannot go quietly vacuous: a spelling assertion over
  * zero units is green and says nothing, which is how this class reached production.
  */
-const ASKED = { grid: 957, roll: 540 }
+const ASKED = { grid: 972, roll: 540 }
 
 describe('#1123 — a velocity drag leaves the notation alone', () => {
   it('grid', () => {

@@ -54,6 +54,40 @@ exports[`round-trip — an unedited open→write must not change the text > grid
   [d#2@0.5 g#1@0.5 c2 c2]
   ",
   "
+[[e3,a3,c4]@2 [e3,a3,c4] [e3,a3,c4]
+[e3,a3,d4]@2 [e3,a3,d4] [e3,a3,d4]
+[e3,a3,b3]@2 [e3,a3,b3] [e3,a3,b3]
+[e3,a3,c4]@2 [e3,a3,c4] [e3,a3,c4]]!3
+
+[[e3,a3,e4]@2 [e3,a3,e4] [e3,a3,e4]
+[e3,a3,f4]@2 [e3,a3,f4] [e3,a3,f4]
+[e3,a3,g4]@2 [e3,a3,g4] [e3,a3,g4]
+[e3,a3,d4]@2 [e3,a3,d4] [e3,a3,d4]]
+",
+  "
+[c5@0.5 f4@0.5 f5@3]
+[eb5@0.5 f5@0.5 bb4@3]
+[db5@0.5 c5@0.5 f4@3]
+[f4@0.5 g4@0.5 bb4 ab4 g4]
+",
+  "
+[d1@2 d1 d2@2 d1 g1 a1]
+[g1@2 g1 g2@2 g1 b1 c2]
+[a1@2 a1 a2@2 a1 c2 d2]!2
+
+[d1@2 d1 d2@2 d1 g1 a1]
+[g1@2 g1 g2@2 g1 b1 c2]
+[a1@2 a1 a2@2 a1 c2 d2]
+[a1@2 a1 a2@2 a1 c3 b2]
+
+",
+  "
+[eb4 g3 d4 c4@2 d4 eb4 c4]
+[d4 eb4 g3 d4 c4@2 d4 eb4]
+[c4 d4 eb4 g3 d4 c4@2 d4]
+[eb4 c4 d4 eb4 g3 d4 c4@2]
+",
+  "
 [f1 ~ ~ f1 ~ ~ f1 ~ ~ f1 ~ ~ f1 ~ ~ f1]
 [db1 ~ ~ db1 ~ ~ db1 ~ ~ eb1 ~ ~ eb1 ~ ~ eb1]
 ",
@@ -62,6 +96,12 @@ exports[`round-trip — an unedited open→write must not change the text > grid
 [eb3 g3 c3]
 [f3 bb3 ab3]
 [eb3 c3 g3 f3]
+",
+  "
+[f4 g4 f4 g4 ab4 g4 f4@2]
+[eb4 f4 eb4 f4 c4 db4 eb4@2]
+[f4 g4 f4 g4 bb4 g4 ab4@2]
+[~ eb4 c4 bb3@2 g4@2 f4]
 ",
   "
 [f4,e5]
@@ -106,6 +146,7 @@ f#5 c#6 a#5 f6 c#6 g#6 f6 ~
   "- - - [timp timp]",
   "- - f*2 - -",
   "- [misc:5*2 -]",
+  "- c3 - g#2 - g2 - [c2 [g2 d3]]",
   "- cp",
   "- hh - sd",
   "- move",
@@ -332,6 +373,7 @@ f#5 c#6 a#5 f6 c#6 g#6 f6 ~
   "[C3*3 -] [A2*3 -] [G3*3 -]",
   "[G, Ab, Bb] ~ [G, Ab, Bb] ~ [G, Ab, Bb] ~ [G, Ab, Bb] ~ [G, Ab, Bb] [G, Ab, Bb4] [G, Ab, Ab4] [G, Ab, Db4]",
   "[G4, C4] [G4, Eb4] [F4, A3, Eb4]",
+  "[[c2 ~ ~ c2 ~ ~ c2 ~] [~ c2!3 f2!2 e2 ~]] [[c2 ~ ~ c2 ~ ~ c2 ~] [~ c2!3 d2!3 ~]] [[a2 ~ ~ a2 ~ ~ a2 ~] [~ a2!3 b2!2 b2 ~]] [[g2 ~ ~ g2 ~ ~ g2 ~] [~]] ",
   "[[sh hh*2 [<~ oh>] rim]]",
   "[a1][a1][e1][fs1] [d1][fs1][d1][e1]",
   "[a2, e3, cs3][a2, e3, c3][e2, g3, b3][fs2, cs3, as3]  [d2, f3, a3][fs2, cs3, as3][d2, f3, a3][e2, gs3, b3, d3]",
@@ -340,6 +382,8 @@ f#5 c#6 a#5 f6 c#6 g#6 f6 ~
   "[a4,c#4,e4,g#4,c#5],[~ f#6 e6]",
   "[a4,c#4,e4,g#4,c#5],c#6",
   "[a4,c#4,e4],[a5@2 b5 c#6@3]",
+  "[as3, d3, f3, a3](4,8,1)[c3, ds3, as3, fs3](4,8,1)[f3,a3,c3,ds3](4,8,1)[as3, d3, f3, a3](4,8,1)
+[b3,ds3,f3,a3](4,8,1)[as3, d3, f3, a3](4,8,1)[gs3,c3,ds3,fs3](4,8,1)[as3, d3, f3, a3](4,8,1)",
   "[as3, d3, f3, a3][c3, ds3, as3, fs3][f3,a3,c3,ds3][as3, d3, f3, a3] 
 [b3,ds3,f3,a3][as3, d3, f3, a3][gs3,c3,ds3,fs3][as3, d3, f3, a3]",
   "[b4,d4,f#4],b5*3 c#6*2",
@@ -382,11 +426,14 @@ f#5 c#6 a#5 f6 c#6 g#6 f6 ~
   "[e f]*4",
   "[e1 f2 [e3 f1]] [f2 f3] [g2 g2]",
   "[e2, g3, b3, d4]@3 [g2, b3, d4, e4] [a2, c3, e3, g3]@3 [b1, d3, f#3, a3]",
+  "[e3(3,8)] [g3!5 ~ g3!2][[a3(3,4,2)] [as3(3,8,5)]] [b3!8]",
   "[g#2][f2][c#2][c2]",
   "[g#4 -] [g#4 - ] c# d# - g#3 g#5 - - - - - - - - -",
+  "[g, c4, e4]@3 [b, d4, g4] [g, c4, e4]@3 [a, c4, f4] [g, c4, e4]@4 [[g, b, d4] ~ ~ [g, b, d4] ~ ~ [g, b, d]~]@2 [~]@2 ",
   "[g,b,d]",
   "[g4,g#4,c5,d5,d#5][f4,a4,b4,c5,e5][c#4,f4,g4,g#4,c5][c4,e4,g4,b4]",
   "[g5 c4] [d5 fb4] [gm4 c5] [a4]",
+  "[g5 ~ ~ f5 ~ ~ e5 ~ c5 ~@7]!2 [c6 ~ ~ b5 ~ ~ g5 ~ ~@8] [b5 ~ ~ g5 ~ ~ d5 ~ ~@8]",
   "[hh [hh hh]]!4",
   "[hh(5,18)] [^hh]",
   "[hh*8]",
@@ -461,6 +508,7 @@ f#5 c#6 a#5 f6 c#6 g#6 f6 ~
   "bd bd - <- - - [- bd, sd]>",
   "bd bd - bd,hh,sd,cp",
   "bd bd bd",
+  "bd bd bd <bd [bd!3 bd*2]>",
   "bd bd bd bd",
   "bd bd bd bd bd bd bd bd",
   "bd bd bd bd, - hh - hh",
@@ -503,6 +551,7 @@ f#5 c#6 a#5 f6 c#6 g#6 f6 ~
   "bd ~ hh oh bd <hh sd> ~ oh",
   "bd ~ sd ~ bd ~ ~ sd",
   "bd ~ ~ bd ~ ~ ~ ~",
+  "bd!2 [bd*4]!2 bd!4",
   "bd!3 sd",
   "bd!4",
   "bd(1,16)",
@@ -535,6 +584,7 @@ f#5 c#6 a#5 f6 c#6 g#6 f6 ~
   "bd:1 sd:1 bd:1 sax:1",
   "bd:2",
   "bd:3",
+  "bd:4 [sd . ~ bd:4] [~ cp] hh(3,8)",
   "bd:6(3,8) -",
   "bd:7 [sd ~ ~ bd:7] [<bd [lt,sd]>  bd:7] [sd <~ bd>]",
   "bd@3 <bd [~ bd]>",
@@ -1033,6 +1083,7 @@ f#5 c#6 a#5 f6 c#6 g#6 f6 ~
   "{~ perc ~}%16",
   "~",
   "~  bd  ~ bd",
+  "~ <sd [sd sd:1@15]>",
   "~ G4 ~ D4 ~ C4",
   "~ [rim, sd:<1 3>]",
   "~ [rim, sd:<2 3>]",

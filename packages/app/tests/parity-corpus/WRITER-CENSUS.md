@@ -23,8 +23,32 @@ eleven corrupting asks are the *only* rows that moved.
 | --- | --- | --- | --- |
 | corpus units | 1535 | **1535** | — |
 | core-served asks | 1204 (791 grid / 413 roll) | **1204** | — |
-| transfers | 1026 = 85.2% | **1035** = 86.0% | +9 recovered from `view-corrupts` |
-| untransferable | 78 | **69** | −9; its `no-view` half rises 67 → **69**, its corrupting half falls 11 → **0** |
+| transfers | 1026 = 85.2% | **1041** = 86.5% | +9 from `view-corrupts` (#1010 P4c), then +6 from `irrational-onset` (#1066) |
+| untransferable | 78 | **63** | −15; its corrupting half fell 11 → **0** at #1010 P4c, its `no-view` half 67 → 69 → **63** at #1066 |
+
+> **#1066 — the onset snap grid, +6 transfers.** The grid every played onset is
+> rounded onto before it is asked for a denominator was `LCM(1..16)` =
+> `2^4·3^2·5·7·11·13`. It carries only four factors of two, so neither 32 nor 64
+> divides it — while `MAX_STEPS`, the acceptance ceiling, is **64**. A thirty-second
+> onset (`9/32`) rounded to `0.2812506937506937`, which no `d ≤ 64` makes integral,
+> so `denom` refused it as `irrational-onset`. The projection advertised 64 columns
+> while the grid feeding it topped out at sixteenths for powers of two, and the
+> refusal blamed the pattern for a position the snapping had made irrational.
+>
+> Widened to `2^6·3^2·5·7·11·13`. It is a strict widening — the old grid divides the
+> new one — so no row could move the other way, and none did. What moved, over the
+> whole corpus verdict pin: **20 rows leave `irrational-onset`** — 15 to `ok`, 5 to
+> `the pattern needs more than 64 steps`, which is the honest refusal those five
+> always deserved. Two more leave `unstable-period` for `irrational-onset`: an
+> inexact grid could round the same musical instant to different keys in different
+> cycles, so period detection failed before the onset check was ever reached.
+> **Zero rows lost a view.**
+>
+> The population is ordinary rather than exotic — sixteenth-note figures inside a
+> two-bar alternation, e.g. `[~ ~ ~ hh ~ ~ hh ~ …] <[…] […]>` and
+> `[f1 ~ ~ f1 …][db1 ~ ~ db1 …]`. It also lifts repeated subdivision from three
+> gestures to five: the grid writer was emitting documents its own reader refused
+> to reopen (#1066).
 | **view-corrupts** | 11 | **0** | the printer keeps the length |
 | structured transfers | 624 | **633** | all 9 recovered asks are structured |
 | unverified (no-probe) | 100 | **100** | — |

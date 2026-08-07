@@ -20,9 +20,11 @@
     {
       "mini": "[~ ~ ~ hh ~ ~ hh ~ ~ ~ ~ ~ ~ ~ ~ ~]\n    < [~ ~ ~ hh hh hh hh ~ ~ ~ hh ~ ~ ~ ~ ~ ]\n      [~ ~ ~ ~ ~ ~ ~ ~ ~ hh hh hh hh hh hh ~ ] >",
       "surface": "step",
-      "outcome": "no-view",
-      "gate": "irrational-onset",
+      "outcome": "transfers",
+      "writer": "element",
       "coreProbe": "ok",
+      "structured": true,
+      "sameShape": true,
       "shape": "alternation",
       "arrayValue": false,
       "coreStructured": true
@@ -52,9 +54,11 @@
     {
       "mini": "[f1 ~ ~ f1 ~ ~ f1 ~ ~ f1 ~ ~ f1 ~ ~ f1]\n[db1 ~ ~ db1 ~ ~ db1 ~ ~ eb1 ~ ~ eb1 ~ ~ eb1]",
       "surface": "step",
-      "outcome": "no-view",
-      "gate": "irrational-onset",
+      "outcome": "transfers",
+      "writer": "element",
       "coreProbe": "ok",
+      "structured": true,
+      "sameShape": true,
       "shape": "nested-group",
       "arrayValue": false,
       "coreStructured": true
@@ -134,9 +138,11 @@
     {
       "mini": "[ a4 ~ ~ a4] [ a4 ~ a4 ~]  [ a4 ~ ~ a4 ]  [ a4 ~ a4 a4 ]*2",
       "surface": "step",
-      "outcome": "no-view",
-      "gate": "irrational-onset",
+      "outcome": "transfers",
+      "writer": "element",
       "coreProbe": "ok",
+      "structured": true,
+      "sameShape": true,
       "shape": "shared-leaf",
       "arrayValue": false,
       "coreStructured": true
@@ -2498,9 +2504,11 @@
     {
       "mini": "a b c2 d1 e3 f4 g5 f4 a a b b b c c d d e e e e f f f f g g g g a a a",
       "surface": "step",
-      "outcome": "no-view",
-      "gate": "irrational-onset",
+      "outcome": "transfers",
+      "writer": "element",
       "coreProbe": "ok",
+      "structured": true,
+      "sameShape": true,
       "shape": "flat-sequence",
       "arrayValue": false,
       "coreStructured": true
@@ -2772,9 +2780,11 @@
     {
       "mini": "as1*8 c2*8 f2*8 as1*8 b1*8 as1*8 gs1*8 as1*8",
       "surface": "step",
-      "outcome": "no-view",
-      "gate": "irrational-onset",
+      "outcome": "transfers",
+      "writer": "element",
       "coreProbe": "ok",
+      "structured": true,
+      "sameShape": true,
       "shape": "shared-leaf",
       "arrayValue": false,
       "coreStructured": true
@@ -4800,9 +4810,11 @@
     {
       "mini": "e1!8 g1!8 a1!4 as1!4 b1!8",
       "surface": "step",
-      "outcome": "no-view",
-      "gate": "irrational-onset",
+      "outcome": "transfers",
+      "writer": "element",
       "coreProbe": "ok",
+      "structured": true,
+      "sameShape": true,
       "shape": "shared-leaf",
       "arrayValue": false,
       "coreStructured": true
@@ -9695,7 +9707,7 @@
       "mini": "- - d4 - - d4 - - d4 - - d4 - - d4 - - d4 - d4 - - d4@3 - d4 - - d4 - - e4 - - f4 - - f#4 - - g4 - a4 - - d5@3 - d5 - - d5 - - d5 - - d5 - - d5 - - d5 - d5  - - d5@3  - d5 - - d5 - - c5 - - b4 - - a4 - - g4 - f#4 - - d4@2",
       "surface": "roll",
       "outcome": "no-view",
-      "gate": "unstable-period",
+      "gate": "irrational-onset",
       "coreProbe": "ok",
       "shape": "shared-leaf",
       "arrayValue": false,

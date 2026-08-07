@@ -211,12 +211,18 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // PINNED rather than asserted non-zero: a regression that quietly reverts to
     // one-box-per-trigger fails here instead of going green over nothing ([[P353]]).
     //
-    // 1489 columns are lit that were dark before, and 12 are drawn narrower than a full
+    // 1853 columns are lit that were dark before, and 12 are drawn narrower than a full
     // column (8 heads — genuinely sub-column notes — and 4 tails of a fractional length).
     // Both figures moved once during this phase, from 1550/73, when the float-sliver rule
     // below was added; the 61 removed are the same 61 in each, which is what says they
     // were one cause and not a drift.
-    expect(carried).toBe(1489)
+    //
+    // 1489 → 1853 (#1066): the onset snap grid could not express a thirty-second, so
+    // every document needing one was refused outright and contributed no columns at all.
+    // Widening the grid admits them, and each arrives with its full carry. `partial` is
+    // UNMOVED at 12, which is the control that says this is new population rather than
+    // existing notes being redrawn: a redraw would have moved both.
+    expect(carried).toBe(1853)
     expect(partial).toBe(12)
   })
 

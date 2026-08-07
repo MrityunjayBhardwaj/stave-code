@@ -248,7 +248,7 @@ describe('#1116 the view scale, through the public entries', () => {
     const rolls = minis.filter((m) => parsePianoRoll(m).ok)
 
     // The denominators are pinned, so a gate cannot quietly go green over less material.
-    expect(grids.length).toBe(958)
+    expect(grids.length).toBe(973)
     expect(rolls.length).toBe(544)
     // …and the split that motivates this file: the core answers for most of them.
     expect(grids.filter((m) => parseStepGridCore(m).ok).length).toBe(783)
@@ -282,10 +282,10 @@ describe('#1116 the view scale, through the public entries', () => {
   it('grid: LIVE, FAITHFUL and SAME-WRITER wherever honoured; REFUSES everywhere else', () => {
     const { honoured, refused, violations } = sweep(parseStepGrid, gridMoved)
     expect(violations).toEqual([])
-    expect(honoured.get(2)).toBe(876)
-    expect(honoured.get(4)).toBe(876)
-    expect(refused.get(2)).toBe(82)
-    expect(refused.get(4)).toBe(82)
+    expect(honoured.get(2)).toBe(890)
+    expect(honoured.get(4)).toBe(890)
+    expect(refused.get(2)).toBe(83)
+    expect(refused.get(4)).toBe(83)
   })
 
   it('roll: LIVE, FAITHFUL and SAME-WRITER wherever honoured; REFUSES everywhere else', () => {

@@ -319,14 +319,14 @@ const POPULATION = {
  * changed. The sibling arm's equivalent move is +9 over its 1204 asks — a different
  * number over a different population, as it should be, and neither is the other's check.
  */
-const ALL_RESOLVED = { coreServed: 500, transfers: 431, untransferable: 29, unverified: 40 }
+const ALL_RESOLVED = { coreServed: 500, transfers: 435, untransferable: 25, unverified: 40 }
 
 /**
  * the counterfactual over ONLY the slice `mini-corpus.json` does not contain
  *
  * ⚠ MOVED 76/7 → 77/6 at #1010 P4c — one of the four above falls in this slice.
  */
-const NEWLY_ADMITTED = { coreServed: 93, transfers: 77, untransferable: 6, unverified: 10 }
+const NEWLY_ADMITTED = { coreServed: 93, transfers: 78, untransferable: 5, unverified: 10 }
 
 /**
  * The sibling arm's headline, pinned here too even though it is DERIVED from
@@ -334,7 +334,7 @@ const NEWLY_ADMITTED = { coreServed: 93, transfers: 77, untransferable: 6, unver
  * the sibling's own movement visible from this side, which is the failure that
  * started this — 965/1217 sat here across three merges of someone else's change.
  */
-const MINI_CORPUS_ARM = { transfers: 1035, asks: 1204 }
+const MINI_CORPUS_ARM = { transfers: 1041, asks: 1204 }
 // ⚠ MOVED 1055/1217 -> 1026/1204 at #1037, when the harvester was rebuilt and the
 // corpus went 1500 -> 1535 units. This pin FIRED on that change, which is the whole
 // reason it exists: the sibling arm moved and this side found out immediately
