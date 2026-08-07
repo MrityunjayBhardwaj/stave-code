@@ -12,9 +12,9 @@
     "edit:coverage": "pnpm --filter @stave/app exec vitest run --config vitest.edit-coverage.config.ts",
     "edit:coverage:bakery": "node packages/app/scripts/edit-coverage-bakery.mjs",
     "gate:editing": "pnpm gate:editing:editor; e=$?; pnpm gate:editing:app; a=$?; pnpm gate:editing:instruments; i=$?; pnpm gate:editing:browser; b=$?; exit $((e|a|i|b))",
-    "gate:editing:editor": "pnpm --filter @stave/editor exec vitest run",
+    "gate:editing:editor": "pnpm --filter @stave/editor exec vitest run --reporter=default --reporter=../app/tests/gate-scope-reporter.ts",
     "gate:editing:instruments": "pnpm --filter @stave/app run test:instruments:collect",
-    "gate:editing:app": "pnpm --filter @stave/app exec vitest run",
+    "gate:editing:app": "pnpm --filter @stave/app exec vitest run --reporter=default --reporter=../app/tests/gate-scope-reporter.ts",
     "gate:editing:browser": "pnpm --filter @stave/app exec playwright test tests/sequencer.spec.ts tests/velocity.spec.ts tests/piano-roll.spec.ts tests/visual-edit-tabs.spec.ts --project=chromium --workers=1 --reporter=list,./tests/gate-population-reporter.ts"
   },
   "devDependencies": {
