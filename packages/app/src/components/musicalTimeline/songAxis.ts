@@ -10,38 +10,73 @@
  */
 
 /**
- * Map a song cycle to an x-pixel within `[0, width]`. The cycle is clamped to
- * `[0, displayCycles]` first, so an out-of-range playhead pins to an edge
- * rather than drawing off-canvas. Degenerate inputs (width ≤ 0,
- * displayCycles ≤ 0, non-finite cycle) map to 0.
+ * The stretch of song the view is currently showing (#1108).
+ *
+ * ── WHY ORIGIN AND SPAN TRAVEL TOGETHER ─────────────────────────────────────
+ * Every helper below needs both, and they are only meaningful as a pair: a span
+ * measured from the wrong origin puts every mark at the right WIDTH in the wrong
+ * PLACE, which draws a plausible timeline of the wrong part of the song. Passing
+ * one object makes them impossible to pass inconsistently, and makes "which
+ * window is this?" a single value the view owns rather than two that have to be
+ * kept in step at every call site.
+ *
+ * ⚠ EVERY CYCLE CROSSING THIS BOUNDARY IS SONG-ABSOLUTE — the cycle you hand to
+ * `songCycleToX` and the cycle `xToSongCycle` hands back are both absolute song
+ * positions, never window offsets. That is deliberate and load-bearing: scene
+ * clips carry absolute cycles into the EDIT path (`SceneClip.startCycle` feeds
+ * clip write-back), so a view that thought in window offsets would write edits
+ * to the wrong bar. The origin is applied HERE, at the pixel boundary, and
+ * nowhere else.
  */
-export function songCycleToX(
-  cycle: number | null | undefined,
-  displayCycles: number,
-  width: number,
-): number {
-  if (cycle == null || !Number.isFinite(cycle)) return 0
-  if (width <= 0 || displayCycles <= 0) return 0
-  const clamped = Math.max(0, Math.min(displayCycles, cycle))
-  return (clamped / displayCycles) * width
+export interface SongWindow {
+  /** First cycle of the window (inclusive, song-absolute). 0 for an unpaged view. */
+  readonly originCycle: number
+  /** Width of the window in cycles — the span the viewport maps across. */
+  readonly spanCycles: number
+}
+
+/** The window an unpaged view uses: the whole span, anchored at cycle 0. */
+export function wholeSongWindow(spanCycles: number): SongWindow {
+  return { originCycle: 0, spanCycles }
 }
 
 /**
- * Inverse of `songCycleToX`: turn a click x-pixel into a target song cycle in
- * `[0, displayCycles)`. Clamps x to `[0, width]` so clicks on the ruler's edge
- * padding still resolve. Returns 0 for degenerate inputs.
+ * Map a SONG-ABSOLUTE cycle to an x-pixel within `[0, width]`. The cycle is
+ * clamped to the window first, so a mark outside it pins to an edge rather than
+ * drawing off-canvas. Degenerate inputs (width ≤ 0, span ≤ 0, non-finite cycle)
+ * map to 0.
+ */
+export function songCycleToX(
+  cycle: number | null | undefined,
+  win: SongWindow,
+  width: number,
+): number {
+  if (cycle == null || !Number.isFinite(cycle)) return 0
+  const { originCycle, spanCycles } = win
+  if (width <= 0 || spanCycles <= 0) return 0
+  const clamped = Math.max(originCycle, Math.min(originCycle + spanCycles, cycle))
+  return ((clamped - originCycle) / spanCycles) * width
+}
+
+/**
+ * Inverse of `songCycleToX`: turn a click x-pixel into a SONG-ABSOLUTE target
+ * cycle inside the window. Clamps x to `[0, width]` so clicks on the ruler's
+ * edge padding still resolve. Returns the window origin for degenerate inputs
+ * — the nearest position that is actually in view, rather than cycle 0, which
+ * for a paged window is somewhere else entirely.
  */
 export function xToSongCycle(
   x: number,
-  displayCycles: number,
+  win: SongWindow,
   width: number,
 ): number {
-  if (width <= 0 || displayCycles <= 0 || !Number.isFinite(x)) return 0
+  const { originCycle, spanCycles } = win
+  if (width <= 0 || spanCycles <= 0 || !Number.isFinite(x)) return originCycle
   const clampedX = Math.max(0, Math.min(width, x))
-  const cycle = (clampedX / width) * displayCycles
-  // Keep strictly below displayCycles so a click on the far edge seeks to the
-  // last cycle of the loop, not one past it (which would wrap to 0 audibly).
-  return Math.min(cycle, Math.max(0, displayCycles - 1e-6))
+  const cycle = originCycle + (clampedX / width) * spanCycles
+  // Keep strictly below the window end so a click on the far edge seeks to the
+  // last cycle in view, not one past it (which would wrap to 0 audibly).
+  return Math.min(cycle, Math.max(originCycle, originCycle + spanCycles - 1e-6))
 }
 
 /**
@@ -69,17 +104,34 @@ export function xToSongCycle(
  * The flag is REQUIRED rather than defaulting to `true`. A default would let a
  * new caller inherit the wrap silently, which is exactly how the assumption
  * became invisible in the first place; every caller now says which it means.
+ *
+ * ── AND WHY IT NOW TAKES A WINDOW (#1108) ───────────────────────────────────
+ * With paging, "past the span" and "before the span" are both possible, and both
+ * mean the same thing: the playhead is not in this view. A position of cycle 100
+ * while the window shows `[256, 512)` is a transport the user has paged AHEAD
+ * of — pinning it to the left edge would state a position the transport does not
+ * have, which is the same falsehood this function was rewritten to remove.
+ *
+ * The returned position is SONG-ABSOLUTE, like everything else crossing this
+ * boundary; `songCycleToX` applies the origin.
  */
 export function wrapSongPosition(
   songPosition: number | null | undefined,
-  displayCycles: number,
+  win: SongWindow,
   looping: boolean,
 ): number | null {
   if (songPosition == null || !Number.isFinite(songPosition)) return null
-  if (displayCycles <= 0) return null
-  if (!looping) return songPosition < displayCycles ? Math.max(0, songPosition) : null
-  const wrapped = songPosition % displayCycles
-  return wrapped < 0 ? wrapped + displayCycles : wrapped
+  const { originCycle, spanCycles } = win
+  if (spanCycles <= 0) return null
+  if (!looping) {
+    // A negative clock reading is a transport that has not started rather than a
+    // real song position, so it clamps to 0 first (#1105 chose 0 over wrapping
+    // to the tail). Then the only question is whether it lands in THIS window.
+    const pos = Math.max(0, songPosition)
+    return pos >= originCycle && pos < originCycle + spanCycles ? pos : null
+  }
+  const wrapped = (songPosition - originCycle) % spanCycles
+  return originCycle + (wrapped < 0 ? wrapped + spanCycles : wrapped)
 }
 
 // ── Zoom (#412) ────────────────────────────────────────────────────────────
@@ -231,11 +283,12 @@ export interface RulerTick {
  *   the first bar) with beat ticks at multiples of 1/BEATS_PER_BAR.
  */
 export function rulerTicks(
-  displayCycles: number,
+  win: SongWindow,
   pxPerCycle: number,
   mode: 'cycles' | 'bars',
 ): RulerTick[] {
-  if (displayCycles <= 0 || !Number.isFinite(pxPerCycle) || pxPerCycle <= 0) return []
+  const { originCycle, spanCycles } = win
+  if (spanCycles <= 0 || !Number.isFinite(pxPerCycle) || pxPerCycle <= 0) return []
   const MIN_MAJOR_PX = 40
   const BEAT_MIN_PX = 14
   let step = 1
@@ -244,15 +297,23 @@ export function rulerTicks(
   // (e.g. 256 cycles × 4 beats). Thin majors by powers of two until the major
   // count fits the budget, and only show beats if they fit too — so the total
   // tick count never exceeds MAX_TICKS regardless of zoom/horizon.
-  while (displayCycles / step > MAX_TICKS) step *= 2
-  const majorCount = Math.ceil(displayCycles / step)
+  while (spanCycles / step > MAX_TICKS) step *= 2
+  const majorCount = Math.ceil(spanCycles / step)
   const showBeats =
     mode === 'bars' &&
     step === 1 &&
     pxPerCycle / BEATS_PER_BAR >= BEAT_MIN_PX &&
     majorCount * BEATS_PER_BAR <= MAX_TICKS
   const ticks: RulerTick[] = []
-  for (let c = 0; c < displayCycles; c += step) {
+  // Majors land on ABSOLUTE multiples of `step`, not on offsets from the window
+  // start (#1108). Anchoring to the window would relabel the same musical
+  // position differently depending on where the user happened to page from, and
+  // put "bar 1" in the middle of the piece. Aligning absolutely means a window
+  // may open with a partial gap before its first major, which is correct: the
+  // ruler describes the song, not the viewport.
+  const first = Math.ceil(originCycle / step) * step
+  const end = originCycle + spanCycles
+  for (let c = first; c < end; c += step) {
     ticks.push({ cycle: c, label: mode === 'bars' ? String(c + 1) : String(c), major: true })
     if (showBeats) {
       for (let b = 1; b < BEATS_PER_BAR; b++) {

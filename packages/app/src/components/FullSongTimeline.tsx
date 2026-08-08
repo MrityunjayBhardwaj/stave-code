@@ -60,6 +60,7 @@ import {
   rulerTicks,
   MIN_ZOOM,
   ZOOM_STEP,
+  type SongWindow,
 } from './musicalTimeline/songAxis'
 
 const TAB_ID = 'musical-timeline'
@@ -316,6 +317,22 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   dragSpanRef.current = dragSpanCycles
   const loopCyclesRef = useRef(loopCycles)
   loopCyclesRef.current = loopCycles
+  // #1108 — the axis helpers now take a WINDOW (origin + span) rather than a
+  // bare span, so a paged view can map ABSOLUTE song cycles across a stretch
+  // that does not start at 0. This component still builds every window at
+  // origin 0, so nothing about the view changes yet; what changes is that the
+  // origin is now a value the axis reads instead of an assumption baked into it.
+  //
+  // TWO windows, mirroring the two spans that were already distinct: the LOOP
+  // span drives the playhead wrap, the DISPLAY span drives pixels and can be
+  // wider mid-drag. Collapsing them would silently re-introduce the drag bug
+  // `dragSpanCycles` exists to avoid.
+  const loopWindow = useMemo<SongWindow>(
+    () => ({ originCycle: 0, spanCycles: loopCycles }),
+    [loopCycles],
+  )
+  const loopWindowRef = useRef(loopWindow)
+  loopWindowRef.current = loopWindow
   // Is `loopCycles` an actual LOOP, or the point where period detection gave up?
   // `reachedCap` means the analysis grew to its 256-cycle cap without confirming
   // a period, so the span is a stopping point and nothing about the song repeats
@@ -392,6 +409,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   followRef.current = follow
   const displayCyclesRef = useRef(displayCycles)
   displayCyclesRef.current = displayCycles
+  const songWindow = useMemo<SongWindow>(
+    () => ({ originCycle: 0, spanCycles: displayCycles }),
+    [displayCycles],
+  )
+  const songWindowRef = useRef(songWindow)
+  songWindowRef.current = songWindow
   // Suspends follow until this timestamp (set on user scroll/seek).
   const userScrollUntilRef = useRef(0)
   // The last scrollLeft *we* wrote to the DOM — lets the scroll handler tell a
@@ -408,7 +431,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       ? (restContentWidth * dragSpanCycles) / loopCycles
       : restContentWidth
   const pxPerCycle = displayCycles > 0 ? contentWidth / displayCycles : 0
-  const ticks = rulerTicks(displayCycles, pxPerCycle, units)
+  const ticks = rulerTicks(songWindow, pxPerCycle, units)
 
   // Content width as the pointer handlers see it: rest width (zoom-scaled),
   // scaled by the live (grown) drag span so the handler math matches the
@@ -525,12 +548,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const applyFollow = (pos: number | null): void => {
       if (!followRef.current || pos == null) return
       if (Date.now() < userScrollUntilRef.current) return
-      const dc = displayCyclesRef.current
       const vw = areaWidthRef.current
       const cw = dragAwareContentWidth(vw)
       const ph = songCycleToX(
-        wrapSongPosition(pos, loopCyclesRef.current, loopingRef.current),
-        dc,
+        wrapSongPosition(pos, loopWindowRef.current, loopingRef.current),
+        songWindowRef.current,
         cw,
       )
       const target = followScrollLeft(ph, vw, cw, scrollLeftRef.current)
@@ -577,10 +599,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
 
   // Wrap the playhead at the TRUE period (not the padded extend span) so it
   // loops with the audio, never into the transient trailing room (#487).
-  const wrappedPos = wrapSongPosition(songPos, loopCycles, looping)
+  const wrappedPos = wrapSongPosition(songPos, loopWindow, looping)
   // Playhead lives in CONTENT space (inside the scrolled/translated inner div),
   // so it maps against contentWidth, not the viewport width.
-  const playheadX = songCycleToX(wrappedPos, displayCycles, contentWidth)
+  const playheadX = songCycleToX(wrappedPos, songWindow, contentWidth)
   const playheadVisible = wrappedPos != null
 
   // ── Click → seek (relaxes DV-10) ─────────────────────────────────────────
@@ -593,7 +615,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (!el) return
       const rect = el.getBoundingClientRect()
       const contentX = clientX - rect.left + scrollLeftRef.current
-      const cycle = xToSongCycle(contentX, displayCycles, dragAwareContentWidth(rect.width))
+      const cycle = xToSongCycle(contentX, songWindow, dragAwareContentWidth(rect.width))
       // A manual seek is user navigation — suspend follow briefly so it doesn't
       // immediately yank the view back as the sought playhead resumes. Clamp to
       // the true song end so a click in the transient extend room (past the song)
@@ -955,7 +977,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (laneKey == null) return null
       const lane = sceneRef.current.lanes.find((l) => l.laneKey === laneKey)
       if (!lane) return null
-      const cyc = xToSongCycle(contentX, displayCycles, cw)
+      const cyc = xToSongCycle(contentX, songWindow, cw)
       const clip = clipAtCycle(lane, cyc)
       if (!clip || (clip.armIndex < 0 && !includeBare)) return null
       return { lane, clip }
@@ -1000,7 +1022,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         // (bareSong === false) has its span pinned by the other tracks — that
         // harder case is deferred, so its edge stays inert.
         if (clip.armIndex < 0 && !bareSong) continue
-        const dist = Math.abs(contentX - songCycleToX(clip.endCycle, displayCycles, cw))
+        const dist = Math.abs(contentX - songCycleToX(clip.endCycle, songWindow, cw))
         if (dist <= bestDist) {
           best = clip
           bestDist = dist
@@ -1037,7 +1059,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         setDragSpanCycles(needed)
       }
       const gcw = dragAwareContentWidth(rect.width)
-      setTrimEdgeX(songCycleToX(newEnd, dragSpanRef.current ?? loopCyclesRef.current, gcw))
+      setTrimEdgeX(songCycleToX(newEnd, { originCycle: 0, spanCycles: dragSpanRef.current ?? loopCyclesRef.current }, gcw))
     },
     [restPxPerCycle, dragAwareContentWidth],
   )
@@ -1151,7 +1173,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         lastClientX: e.clientX,
       }
       const cw = dragAwareContentWidth(areaRef.current!.getBoundingClientRect().width)
-      setTrimEdgeX(songCycleToX(hit.clip.endCycle, displayCycles, cw))
+      setTrimEdgeX(songCycleToX(hit.clip.endCycle, songWindow, cw))
     },
     [clipEdgeAt, clipBodyAt, jumpToLaneAtClientY, displayCycles, dragAwareContentWidth, onDeleteClip, onMoveClip],
   )
@@ -1187,7 +1209,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         if (!mv.dragging && Math.abs(e.clientX - mv.startClientX) < CLIP_MOVE_THRESHOLD_PX) return
         mv.dragging = true
         const contentX = e.clientX - rect.left + scrollLeftRef.current
-        const cyc = xToSongCycle(contentX, displayCycles, cw)
+        const cyc = xToSongCycle(contentX, songWindow, cw)
         const box = layoutRef.current.boxes.find((b) => b.laneKey === mv.laneKey)
         const spans = armSpansNow()
         let to = mv.armIndex
@@ -1202,8 +1224,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         mv.toIndex = to
         const tgt = spans.find((s) => s.armIndex === to)
         if (box && tgt) {
-          const left = songCycleToX(tgt.startCycle, displayCycles, cw)
-          const right = songCycleToX(tgt.endCycle, displayCycles, cw)
+          const left = songCycleToX(tgt.startCycle, songWindow, cw)
+          const right = songCycleToX(tgt.endCycle, songWindow, cw)
           setMoveGhost({ left, width: Math.max(2, right - left), top: box.top, height: box.height })
         }
         return
@@ -1293,7 +1315,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             const cw = dragAwareContentWidth(rect.width)
             const contentX = e.clientX - rect.left + scrollLeftRef.current
             // Read the LIVE span via the ref (this fires imperatively on pointer-up).
-            const cyc = Math.floor(xToSongCycle(contentX, displayCyclesRef.current, cw))
+            const cyc = Math.floor(xToSongCycle(contentX, songWindowRef.current, cw))
             barCycle = Math.max(mv.startCycle, Math.min(cyc, mv.endCycle - 1))
           }
         }
@@ -1417,8 +1439,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const isBareBar = clip.armIndex < 0 && selected.barCycle != null
     const startCycle = isBareBar ? (selected.barCycle as number) : clip.startCycle
     const endCycle = isBareBar ? (selected.barCycle as number) + 1 : clip.endCycle
-    const left = songCycleToX(startCycle, displayCycles, contentWidth)
-    const right = songCycleToX(endCycle, displayCycles, contentWidth)
+    const left = songCycleToX(startCycle, songWindow, contentWidth)
+    const right = songCycleToX(endCycle, songWindow, contentWidth)
     return { left, width: Math.max(1, right - left), top: box.top, height: box.height }
   }, [selected, scene, layout, displayCycles, contentWidth])
 
@@ -1544,7 +1566,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   data-full-song-tick={t.major ? 'major' : 'beat'}
                   style={{
                     ...(t.major ? styles.tickMajor : styles.tickBeat),
-                    left: songCycleToX(t.cycle, displayCycles, contentWidth),
+                    left: songCycleToX(t.cycle, songWindow, contentWidth),
                   }}
                 >
                   {t.label != null && <span style={styles.tickLabel}>{t.label}</span>}

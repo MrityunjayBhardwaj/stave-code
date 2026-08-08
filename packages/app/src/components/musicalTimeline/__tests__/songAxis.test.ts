@@ -14,103 +14,108 @@ import {
   MAX_RESTORE_ZOOM,
   BEATS_PER_BAR,
   MAX_TICKS,
+  wholeSongWindow,
 } from '../songAxis'
+
+/** Terse window literal for the origin-0 arms — every pre-#1108 case is a
+ *  window anchored at cycle 0, so these read exactly as they did before. */
+const win = (spanCycles: number, originCycle = 0) => ({ originCycle, spanCycles })
 
 describe('songCycleToX', () => {
   it('maps a cycle linearly across the width', () => {
-    expect(songCycleToX(0, 8, 800)).toBe(0)
-    expect(songCycleToX(4, 8, 800)).toBe(400)
-    expect(songCycleToX(8, 8, 800)).toBe(800)
+    expect(songCycleToX(0, win(8), 800)).toBe(0)
+    expect(songCycleToX(4, win(8), 800)).toBe(400)
+    expect(songCycleToX(8, win(8), 800)).toBe(800)
   })
 
   it('clamps out-of-range cycles to the edges', () => {
-    expect(songCycleToX(-2, 8, 800)).toBe(0)
-    expect(songCycleToX(20, 8, 800)).toBe(800)
+    expect(songCycleToX(-2, win(8), 800)).toBe(0)
+    expect(songCycleToX(20, win(8), 800)).toBe(800)
   })
 
   it('returns 0 for degenerate inputs', () => {
-    expect(songCycleToX(null, 8, 800)).toBe(0)
-    expect(songCycleToX(4, 0, 800)).toBe(0)
-    expect(songCycleToX(4, 8, 0)).toBe(0)
-    expect(songCycleToX(Number.NaN, 8, 800)).toBe(0)
+    expect(songCycleToX(null, win(8), 800)).toBe(0)
+    expect(songCycleToX(4, win(0), 800)).toBe(0)
+    expect(songCycleToX(4, win(8), 0)).toBe(0)
+    expect(songCycleToX(Number.NaN, win(8), 800)).toBe(0)
   })
 })
 
 describe('xToSongCycle', () => {
   it('inverts songCycleToX', () => {
-    expect(xToSongCycle(0, 8, 800)).toBe(0)
-    expect(xToSongCycle(400, 8, 800)).toBeCloseTo(4)
+    expect(xToSongCycle(0, win(8), 800)).toBe(0)
+    expect(xToSongCycle(400, win(8), 800)).toBeCloseTo(4)
   })
 
   it('clamps x to the canvas and keeps the result below displayCycles', () => {
-    expect(xToSongCycle(-50, 8, 800)).toBe(0)
+    expect(xToSongCycle(-50, win(8), 800)).toBe(0)
     // far edge → just below 8 (so it seeks the last cycle, not a wrap to 0)
-    const atEdge = xToSongCycle(800, 8, 800)
+    const atEdge = xToSongCycle(800, win(8), 800)
     expect(atEdge).toBeLessThan(8)
     expect(atEdge).toBeGreaterThan(7.9)
   })
 
   it('returns 0 for degenerate inputs', () => {
-    expect(xToSongCycle(100, 0, 800)).toBe(0)
-    expect(xToSongCycle(100, 8, 0)).toBe(0)
+    expect(xToSongCycle(100, win(0), 800)).toBe(0)
+    expect(xToSongCycle(100, win(8), 0)).toBe(0)
   })
 
   it('round-trips a mid cycle through both directions', () => {
-    const x = songCycleToX(3, 8, 800)
-    expect(xToSongCycle(x, 8, 800)).toBeCloseTo(3)
+    const x = songCycleToX(3, win(8), 800)
+    expect(xToSongCycle(x, win(8), 800)).toBeCloseTo(3)
   })
 })
 
 describe('wrapSongPosition', () => {
   it('wraps a position past the loop length back into [0, displayCycles)', () => {
-    expect(wrapSongPosition(2, 8, true)).toBe(2)
-    expect(wrapSongPosition(10, 8, true)).toBe(2)
-    expect(wrapSongPosition(8, 8, true)).toBe(0)
+    expect(wrapSongPosition(2, win(8), true)).toBe(2)
+    expect(wrapSongPosition(10, win(8), true)).toBe(2)
+    expect(wrapSongPosition(8, win(8), true)).toBe(0)
   })
 
   it('handles negative positions', () => {
-    expect(wrapSongPosition(-1, 8, true)).toBe(7)
+    expect(wrapSongPosition(-1, win(8), true)).toBe(7)
   })
 
   it('returns null for null / non-finite / degenerate', () => {
-    expect(wrapSongPosition(null, 8, true)).toBeNull()
-    expect(wrapSongPosition(Number.NaN, 8, true)).toBeNull()
-    expect(wrapSongPosition(4, 0, true)).toBeNull()
+    expect(wrapSongPosition(null, win(8), true)).toBeNull()
+    expect(wrapSongPosition(Number.NaN, win(8), true)).toBeNull()
+    expect(wrapSongPosition(4, win(0), true)).toBeNull()
   })
 
   // #1105 — when the span is the analysis cap rather than a loop, the modulo
   // would assert a repeat the song does not have.
   describe('non-looping span (the analysis gave up at the cap)', () => {
     it('passes a position INSIDE the span straight through', () => {
-      expect(wrapSongPosition(0, 256, false)).toBe(0)
-      expect(wrapSongPosition(200, 256, false)).toBe(200)
-      expect(wrapSongPosition(255.9, 256, false)).toBeCloseTo(255.9)
+      expect(wrapSongPosition(0, win(256), false)).toBe(0)
+      expect(wrapSongPosition(200, win(256), false)).toBe(200)
+      expect(wrapSongPosition(255.9, win(256), false)).toBeCloseTo(255.9)
     })
 
     it('withholds the playhead PAST the span instead of wrapping it', () => {
       // The whole point: 257 must NOT come back as 1.
-      expect(wrapSongPosition(257, 256, false)).toBeNull()
-      expect(wrapSongPosition(256, 256, false)).toBeNull()
-      expect(wrapSongPosition(5000, 256, false)).toBeNull()
+      expect(wrapSongPosition(257, win(256), false)).toBeNull()
+      expect(wrapSongPosition(256, win(256), false)).toBeNull()
+      expect(wrapSongPosition(5000, win(256), false)).toBeNull()
     })
 
     it('differs from the looping arm exactly where the loop claim is false', () => {
       // Same inputs, both arms — inside the span they agree, past it they must not.
-      expect(wrapSongPosition(100, 256, false)).toBe(wrapSongPosition(100, 256, true))
-      expect(wrapSongPosition(257, 256, true)).toBe(1)
-      expect(wrapSongPosition(257, 256, false)).toBeNull()
+      expect(wrapSongPosition(100, win(256), false)).toBe(wrapSongPosition(100, win(256), true))
+      expect(wrapSongPosition(257, win(256), true)).toBe(1)
+      expect(wrapSongPosition(257, win(256), false)).toBeNull()
     })
 
     it('still returns null for null / non-finite / degenerate', () => {
-      expect(wrapSongPosition(null, 256, false)).toBeNull()
-      expect(wrapSongPosition(Number.NaN, 256, false)).toBeNull()
-      expect(wrapSongPosition(4, 0, false)).toBeNull()
+      expect(wrapSongPosition(null, win(256), false)).toBeNull()
+      expect(wrapSongPosition(Number.NaN, win(256), false)).toBeNull()
+      expect(wrapSongPosition(4, win(0), false)).toBeNull()
     })
 
     it('clamps a negative position to 0 rather than wrapping it to the tail', () => {
       // Wrapping -1 to 255 would place the playhead at the far edge of a span
       // that does not loop — the same false claim from the other direction.
-      expect(wrapSongPosition(-1, 256, false)).toBe(0)
+      expect(wrapSongPosition(-1, win(256), false)).toBe(0)
     })
   })
 })
@@ -230,12 +235,12 @@ describe('followScrollLeft (center-lock, #505)', () => {
 
 describe('rulerTicks', () => {
   it('emits a 0-indexed major per cycle when there is room (CYCLES)', () => {
-    const ticks = rulerTicks(4, 200, 'cycles')
+    const ticks = rulerTicks(win(4), 200, 'cycles')
     expect(ticks.map((t) => t.label)).toEqual(['0', '1', '2', '3'])
     expect(ticks.every((t) => t.major)).toBe(true)
   })
   it('uses 1-indexed bar labels and adds beat ticks when zoomed in (BARS)', () => {
-    const ticks = rulerTicks(2, 200, 'bars') // 200px/cycle → 50px/beat ≥ 14
+    const ticks = rulerTicks(win(2), 200, 'bars') // 200px/cycle → 50px/beat ≥ 14
     const majors = ticks.filter((t) => t.major)
     expect(majors.map((t) => t.label)).toEqual(['1', '2'])
     const beats = ticks.filter((t) => !t.major)
@@ -245,18 +250,18 @@ describe('rulerTicks', () => {
     expect(beats.every((t) => t.label === null)).toBe(true)
   })
   it('drops beat ticks when each beat is too narrow', () => {
-    const ticks = rulerTicks(2, 40, 'bars') // 40/4 = 10px/beat < 14 → no beats
+    const ticks = rulerTicks(win(2), 40, 'bars') // 40/4 = 10px/beat < 14 → no beats
     expect(ticks.every((t) => t.major)).toBe(true)
   })
   it('thins majors by powers of two when zoomed out', () => {
     // 64 cycles across 800px → 12.5px/cycle; step doubles until ≥40 → step 4.
-    const ticks = rulerTicks(64, 12.5, 'cycles')
+    const ticks = rulerTicks(win(64), 12.5, 'cycles')
     expect(ticks.map((t) => t.cycle)).toEqual([0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60])
   })
   it('caps the total tick count on a long song at high zoom (#415)', () => {
     // 4000 cycles × 1000px/cycle would emit 4000 majors uncapped → thin by
     // powers of two until majors fit the budget.
-    const ticks = rulerTicks(4000, 1000, 'cycles')
+    const ticks = rulerTicks(win(4000), 1000, 'cycles')
     expect(ticks.length).toBeLessThanOrEqual(MAX_TICKS)
     // step doubled to 8 (4000/8 = 500 ≤ 600) → first majors are 0, 8, 16…
     expect(ticks.slice(0, 3).map((t) => t.cycle)).toEqual([0, 8, 16])
@@ -264,15 +269,93 @@ describe('rulerTicks', () => {
 
   it('drops beats when they would blow the budget, keeping only majors', () => {
     // 256 bars at step 1 with wide beats: 256×4 = 1024 > MAX_TICKS → beats off.
-    const ticks = rulerTicks(256, 250, 'bars')
+    const ticks = rulerTicks(win(256), 250, 'bars')
     expect(ticks.every((t) => t.major)).toBe(true)
     expect(ticks.length).toBe(256)
     expect(ticks.length).toBeLessThanOrEqual(MAX_TICKS)
   })
 
   it('returns [] for degenerate inputs', () => {
-    expect(rulerTicks(0, 100, 'cycles')).toEqual([])
-    expect(rulerTicks(4, 0, 'cycles')).toEqual([])
-    expect(rulerTicks(4, Number.NaN, 'cycles')).toEqual([])
+    expect(rulerTicks(win(0), 100, 'cycles')).toEqual([])
+    expect(rulerTicks(win(4), 0, 'cycles')).toEqual([])
+    expect(rulerTicks(win(4), Number.NaN, 'cycles')).toEqual([])
+  })
+})
+
+// ── Windowed axis (#1108) ────────────────────────────────────────────────────
+//
+// Every arm above sits at origin 0, where the window and the song coincide and
+// an origin bug is invisible. These are the arms that can see one.
+
+describe('the axis under a non-zero window origin (#1108)', () => {
+  const w1 = win(256, 256) // the second page: [256, 512)
+
+  it('wholeSongWindow is the unpaged window', () => {
+    expect(wholeSongWindow(256)).toEqual({ originCycle: 0, spanCycles: 256 })
+  })
+
+  it('maps ABSOLUTE cycles across the window, not offsets from it', () => {
+    expect(songCycleToX(256, w1, 800)).toBe(0)
+    expect(songCycleToX(384, w1, 800)).toBe(400)
+    expect(songCycleToX(512, w1, 800)).toBe(800)
+    // The bug this catches: treating the cycle as an offset would put 256 at
+    // the far edge instead of the near one.
+    expect(songCycleToX(256, w1, 800)).not.toBe(songCycleToX(256, win(256), 800))
+  })
+
+  it('clamps a cycle outside the window to the nearer edge', () => {
+    expect(songCycleToX(0, w1, 800)).toBe(0)
+    expect(songCycleToX(9999, w1, 800)).toBe(800)
+  })
+
+  it('inverts back to an ABSOLUTE cycle', () => {
+    expect(xToSongCycle(0, w1, 800)).toBe(256)
+    expect(xToSongCycle(400, w1, 800)).toBeCloseTo(384)
+    const atEdge = xToSongCycle(800, w1, 800)
+    expect(atEdge).toBeLessThan(512)
+    expect(atEdge).toBeGreaterThan(511.9)
+  })
+
+  it('round-trips an absolute cycle through both directions', () => {
+    const x = songCycleToX(300, w1, 800)
+    expect(xToSongCycle(x, w1, 800)).toBeCloseTo(300)
+  })
+
+  it('resolves a degenerate inversion to the window origin, not to cycle 0', () => {
+    // Cycle 0 is not even in view here; answering 0 would seek the transport to
+    // a different part of the song than the one the user clicked in.
+    expect(xToSongCycle(100, win(0, 256), 800)).toBe(256)
+    expect(xToSongCycle(100, w1, 0)).toBe(256)
+    expect(xToSongCycle(Number.NaN, w1, 800)).toBe(256)
+  })
+
+  it('withholds the playhead BEFORE the window, not just past it', () => {
+    // The paging-specific half: the user has paged ahead of the transport.
+    expect(wrapSongPosition(100, w1, false)).toBeNull()
+    expect(wrapSongPosition(255.9, w1, false)).toBeNull()
+    // In view → the absolute position, unchanged.
+    expect(wrapSongPosition(256, w1, false)).toBe(256)
+    expect(wrapSongPosition(400, w1, false)).toBe(400)
+    // Past it → still null, as before.
+    expect(wrapSongPosition(512, w1, false)).toBeNull()
+  })
+
+  it('labels the ruler with ABSOLUTE cycle numbers', () => {
+    const ticks = rulerTicks(win(4, 256), 200, 'cycles')
+    expect(ticks.map((t) => t.label)).toEqual(['256', '257', '258', '259'])
+    // BARS mode stays 1-indexed off the absolute cycle, so bar 1 cannot appear
+    // in the middle of the piece.
+    expect(rulerTicks(win(4, 256), 200, 'bars').filter((t) => t.major).map((t) => t.label))
+      .toEqual(['257', '258', '259', '260'])
+  })
+
+  it('aligns majors to ABSOLUTE multiples of the step, not to the window start', () => {
+    // 64-cycle window from 250, thinned to step 4: the first major is 252, not
+    // 250. Anchoring to the window would relabel the same musical position
+    // differently depending on where the user paged from.
+    const ticks = rulerTicks(win(64, 250), 12.5, 'cycles')
+    expect(ticks[0].cycle).toBe(252)
+    expect(ticks.every((t) => t.cycle % 4 === 0)).toBe(true)
+    expect(ticks.every((t) => t.cycle >= 250 && t.cycle < 314)).toBe(true)
   })
 })
