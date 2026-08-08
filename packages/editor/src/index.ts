@@ -6,7 +6,7 @@ export { IR, toStrudel, patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSIO
 export { structuralWalk, aggregateLaneItems } from './ir'
 export type { LaneSkeleton, LaneItem } from './ir'
 // Full-song analysis (#385)
-export { analyzeSong, analyzeEvents, accumulateLanes, cycleFingerprints, detectPeriod, computeSections, laneKeyOf } from './ir'
+export { analyzeSong, analyzeEvents, accumulateLanes, cycleFingerprints, detectPeriod, computeSections, laneKeyOf, analyzeWindow, accumulateLanesInWindow, computeSectionsInWindow } from './ir'
 export type { SongAnalysis, LaneActivity, SongSection, AnalyzeSongOptions } from './ir'
 export { parseMini, parseStrudel, classifyLiteralRhs } from './ir'
 

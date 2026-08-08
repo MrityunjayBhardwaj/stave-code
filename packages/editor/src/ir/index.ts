@@ -32,12 +32,19 @@ export {
   detectPeriod,
   computeSections,
   laneKeyOf,
+  // Windowed collection (#1108) — paging past the first span on the branch
+  // where no period was found.
+  analyzeWindow,
+  accumulateLanesInWindow,
+  computeSectionsInWindow,
 } from './songAnalysis'
 export type {
   SongAnalysis,
   LaneActivity,
   SongSection,
   AnalyzeSongOptions,
+  WindowAnalysis,
+  AnalyzeWindowOptions,
 } from './songAnalysis'
 
 // Event identity (#1102) — exported so the NEXT consumer asking "are these two

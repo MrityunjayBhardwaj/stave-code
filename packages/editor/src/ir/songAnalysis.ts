@@ -115,19 +115,61 @@ export function accumulateLanes(
   events: readonly IREvent[],
   horizon: number,
 ): LaneActivity[] {
+  return accumulateLanesInWindow(events, 0, horizon)
+}
+
+/**
+ * `accumulateLanes` over an arbitrary window `[originCycle, originCycle + spanCycles)`
+ * (#1108). `onsetsByCycle[i]` is the onset count at ABSOLUTE cycle
+ * `originCycle + i` — the array is window-relative, everything else the view
+ * holds stays song-absolute, and the scene carries the one conversion.
+ *
+ * ── `pinnedLaneKeys` IS THE POINT OF THIS FUNCTION ──────────────────────────
+ * The header above warns that a lane exists only by having an onset inside the
+ * window, so narrowing the window filters MEMBERSHIP and not merely counts. At
+ * the period-trim call that is safe by an invariant — `displayPeriodRule`
+ * refuses any period whose span leaves a known lane empty (#1107). **A paged
+ * window has no such invariant**: nothing refuses window `[256, 512)` because
+ * some track happens to be silent through it. Without a pin, paging re-opens
+ * #1098/#1107 exactly — a track playing thousands of notes elsewhere in the
+ * song draws as an empty, unmarked row, indistinguishable from silence.
+ *
+ * Membership is the UNION of the pin and what this window heard, which is the
+ * only rule that avoids BOTH failures:
+ *   - pinned but silent here  → an empty row, present and legible as silent
+ *     (drop it and the track vanishes — the #1098 defect)
+ *   - heard here but unpinned → appended
+ *     (drop it and a track entering at cycle 300 is invisible forever, which is
+ *      the same defect mirrored, and the one a strict pin would introduce)
+ * Pinned keys come first, in the order given, so rows do not reorder as the
+ * user pages; newly-seen lanes follow in first-seen order.
+ */
+export function accumulateLanesInWindow(
+  events: readonly IREvent[],
+  originCycle: number,
+  spanCycles: number,
+  pinnedLaneKeys?: readonly string[],
+): LaneActivity[] {
+  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0))
+  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0))
   const order: string[] = []
   const byLane = new Map<string, number[]>()
-  for (const ev of events) {
-    const cycle = Math.floor(ev.begin)
-    if (!Number.isFinite(cycle) || cycle < 0 || cycle >= horizon) continue
-    const key = laneKeyOf(ev)
+  const ensure = (key: string): number[] => {
     let counts = byLane.get(key)
     if (!counts) {
-      counts = new Array<number>(horizon).fill(0)
+      counts = new Array<number>(span).fill(0)
       byLane.set(key, counts)
       order.push(key)
     }
-    counts[cycle] += 1
+    return counts
+  }
+  // Seed the pin FIRST so its order is the row order, and so a pinned lane with
+  // no onset in this window still produces a row (all-zero, not absent).
+  if (pinnedLaneKeys) for (const key of pinnedLaneKeys) ensure(key)
+  for (const ev of events) {
+    const cycle = Math.floor(ev.begin)
+    if (!Number.isFinite(cycle) || cycle < origin || cycle >= origin + span) continue
+    ensure(laneKeyOf(ev))[cycle - origin] += 1
   }
   return order.map((laneKey) => ({ laneKey, onsetsByCycle: byLane.get(laneKey)! }))
 }
@@ -418,10 +460,31 @@ export function computeSections(
   lanes: readonly LaneActivity[],
   horizon: number,
 ): SongSection[] {
-  if (horizon <= 0) return []
-  const signatureAt = (cycle: number): string[] =>
+  return computeSectionsInWindow(lanes, 0, horizon)
+}
+
+/**
+ * `computeSections` over `[originCycle, originCycle + spanCycles)` (#1108).
+ *
+ * ⚠ TWO FRAMES, DELIBERATELY. It READS `onsetsByCycle` window-relative (index 0
+ * is the origin, matching `accumulateLanesInWindow`) and EMITS `startCycle` /
+ * `endCycle` song-ABSOLUTE. That asymmetry is not an oversight: section bounds
+ * become ruler chips on an axis whose labels must keep meaning absolute song
+ * position, or a user cannot tell which part of the piece they are looking at.
+ * The relative half is an implementation detail of the counts array; the
+ * absolute half is what every consumer of a `SongSection` already assumes.
+ */
+export function computeSectionsInWindow(
+  lanes: readonly LaneActivity[],
+  originCycle: number,
+  spanCycles: number,
+): SongSection[] {
+  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0))
+  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0))
+  if (span <= 0) return []
+  const signatureAt = (index: number): string[] =>
     lanes
-      .filter((l) => (l.onsetsByCycle[cycle] ?? 0) > 0)
+      .filter((l) => (l.onsetsByCycle[index] ?? 0) > 0)
       .map((l) => l.laneKey)
       .sort()
 
@@ -429,17 +492,17 @@ export function computeSections(
   let start = 0
   let sig = signatureAt(0)
   let sigKey = sig.join('|')
-  for (let c = 1; c < horizon; c++) {
-    const nextSig = signatureAt(c)
+  for (let i = 1; i < span; i++) {
+    const nextSig = signatureAt(i)
     const nextKey = nextSig.join('|')
     if (nextKey !== sigKey) {
-      sections.push({ startCycle: start, endCycle: c, laneKeys: sig })
-      start = c
+      sections.push({ startCycle: origin + start, endCycle: origin + i, laneKeys: sig })
+      start = i
       sig = nextSig
       sigKey = nextKey
     }
   }
-  sections.push({ startCycle: start, endCycle: horizon, laneKeys: sig })
+  sections.push({ startCycle: origin + start, endCycle: origin + span, laneKeys: sig })
   return sections
 }
 
@@ -681,4 +744,112 @@ export async function analyzeSong(
 
   // Aborted path — analyze what was collected.
   return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule)
+}
+
+// ---------------------------------------------------------------------------
+// Windowed collection (#1108) — reaching material past the first span
+// ---------------------------------------------------------------------------
+
+/**
+ * One window of a song that has no loop. Deliberately NOT a `SongAnalysis`.
+ *
+ * ── WHY THERE IS NO `periodCycles` FIELD ────────────────────────────────────
+ * The period is a property of the SONG, detected once over `[0, cap)`. Paging
+ * exists only on the branch where that detection FAILED — when a period was
+ * found, cycle 257 genuinely is cycle 1 and there is nothing to the right to
+ * reach. So a window can never contribute a period, and the decision recorded
+ * on #1108 is that it must never try: a song aperiodic in `[0, 256)` is not
+ * re-judged as an 8-cycle loop in `[256, 512)`, because that would change the
+ * view's span underneath the user as they page and make the density heatmap's
+ * scale incomparable between windows.
+ *
+ * Expressed as a MISSING FIELD rather than a flag on purpose. A
+ * `periodCycles: null` that callers must remember to ignore is a rule kept in
+ * step by hand; a type with nowhere to put a period cannot drift.
+ */
+export interface WindowAnalysis {
+  /** First cycle of this window (inclusive, song-absolute). */
+  readonly originCycle: number
+  /** Window width in cycles. `onsetsByCycle` arrays have exactly this length. */
+  readonly spanCycles: number
+  /** Per-lane onset activity across the window; index 0 is `originCycle`. */
+  readonly lanes: readonly LaneActivity[]
+  /** Sections partitioning the window, with song-ABSOLUTE bounds. */
+  readonly sections: readonly SongSection[]
+  /** False when collection was aborted before the whole window was gathered —
+   *  the lanes then describe only a prefix of it, and the caller must not
+   *  present a partial window as a complete one. */
+  readonly complete: boolean
+}
+
+export interface AnalyzeWindowOptions {
+  /** Cycles collected per slice before a budget check (default 4). */
+  sliceCycles?: number
+  /** Wall-clock budget (ms) between yields to the event loop (default 10). */
+  sliceBudgetMs?: number
+  /** Collector — the band accessor (#1197). With none, the window is empty. */
+  collectFn?: (startCycle: number, endCycle: number) => IREvent[]
+  /** Clock — defaults to `performance.now()`. Injected in tests. */
+  now?: () => number
+  /** Yield to the event loop between budgeted slices. Default = macrotask. */
+  yieldFn?: () => Promise<void>
+  /** Cooperative cancellation; checked between slices. */
+  signal?: { readonly aborted: boolean }
+  /**
+   * Lane keys that must appear as rows even when silent through this window —
+   * normally the first window's lane set, or the document's track set. See
+   * `accumulateLanesInWindow`: without this, a track silent here CEASES TO
+   * EXIST rather than going empty, and the display rebuilds its row without the
+   * silenced treatment (#1098/#1107).
+   */
+  pinnedLaneKeys?: readonly string[]
+}
+
+/**
+ * Collect and accumulate ONE window `[originCycle, originCycle + spanCycles)`.
+ *
+ * Same budgeted, abortable slicing discipline as `analyzeSong` — but no
+ * progressive horizon and no period rule, because a window neither grows nor
+ * decides. It is the "keep looking further into a song we already know does not
+ * repeat" half of #1108.
+ */
+export async function analyzeWindow(
+  originCycle: number,
+  spanCycles: number,
+  opts: AnalyzeWindowOptions = {},
+): Promise<WindowAnalysis> {
+  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0))
+  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0))
+  const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE))
+  const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS
+  const collectFn = opts.collectFn ?? (() => [])
+  const now = opts.now ?? defaultNow
+  const yieldFn = opts.yieldFn ?? defaultYield
+  const signal = opts.signal
+
+  const events: IREvent[] = []
+  let collectedTo = origin
+  let lastYield = now()
+  let complete = true
+
+  while (collectedTo < origin + span) {
+    if (signal?.aborted) {
+      complete = false
+      break
+    }
+    const sliceEnd = Math.min(collectedTo + slice, origin + span)
+    events.push(...collectFn(collectedTo, sliceEnd))
+    collectedTo = sliceEnd
+    if (now() - lastYield >= budgetMs && collectedTo < origin + span) {
+      await yieldFn()
+      lastYield = now()
+    }
+  }
+
+  // Accumulate over the span REQUESTED, not the span reached: a window aborted
+  // halfway keeps its full width so the view's geometry does not silently
+  // shrink mid-page. `complete` is what tells the caller the difference.
+  const lanes = accumulateLanesInWindow(events, origin, span, opts.pinnedLaneKeys)
+  const sections = computeSectionsInWindow(lanes, origin, span)
+  return { originCycle: origin, spanCycles: span, lanes, sections, complete }
 }
