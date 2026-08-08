@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
@@ -19,6 +19,25 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    /**
+     * An underscore-prefixed file is a PROBE, not a gate (#1113).
+     *
+     * This package sets no `include`, so it uses vitest's default, which collects
+     * both `*.test.ts` and `*.spec.ts` anywhere under the package. That is why the
+     * app package's convention does not transfer: over there `include` matches only
+     * `*.test.ts`, so renaming a probe to `_name.spec.ts` makes it inert, and 19
+     * files rely on that. Here a rename would change nothing — so the convention has
+     * to be established rather than borrowed (#1111 is the app-side counterpart).
+     *
+     * What it costs to lack one: `_coverageDecomp.analysis.test.ts` says in its own
+     * header that "the assertion is trivial so the run always passes". It contributed
+     * a green that cannot mean anything, plus a console dump, to a gate suite.
+     *
+     * ⚠ `exclude` REPLACES vitest's defaults rather than extending them, so
+     * `configDefaults.exclude` is spread first. Writing the bare array here would
+     * silently start collecting `node_modules` and `dist`.
+     */
+    exclude: [...configDefaults.exclude, '**/_*.{test,spec}.{ts,tsx}'],
     server: {
       // Force vite-node to transform these packages instead of externalising
       // them through Node's resolver — Node ignores Vite aliases for
