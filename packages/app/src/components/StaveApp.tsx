@@ -588,6 +588,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // ref-closure shape as getHapStreamRef; default returns [] until a runtime
   // attaches (non-Strudel runtimes never populate it).
   const getTimelineEventsRef = useRef<(cycles: number) => IREvent[]>(() => []);
+  // #1197 — the same events over a BAND rather than a prefix from zero, so the
+  // song analysis stops re-querying the whole prefix on every horizon slice.
+  // Same ref-closure shape and same default as the prefix accessor above.
+  const getTimelineEventsBandRef = useRef<(startCycle: number, endCycle: number) => IREvent[]>(
+    () => [],
+  );
   // #1107 — the registered track ids behind those events. The song analysis
   // needs both to tell "this track has not played yet" from "there is no such
   // track"; default `[]` makes no claim, which is right for a runtime that has
@@ -632,6 +638,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             getHapStream?: () => HapStream | null;
             // #861 — evaluated timeline events for the eval-backed DISPLAY marks.
             getTimelineEvents?: (cycles: number) => IREvent[];
+            // #1197 — the same events over a band rather than a prefix.
+            getTimelineEventsBand?: (startCycle: number, endCycle: number) => IREvent[];
             // #1107 — registered track ids behind those events.
             getSongTrackIds?: () => string[];
             // #384/#385 — transport seek accessors (Strudel only).
@@ -656,6 +664,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       getCpsRef.current = s?.getCps ?? (() => null);
       getHapStreamRef.current = s?.getHapStream ?? (() => null);
       getTimelineEventsRef.current = s?.getTimelineEvents ?? (() => []);
+      getTimelineEventsBandRef.current = s?.getTimelineEventsBand ?? (() => []);
       getSongTrackIdsRef.current = s?.getSongTrackIds ?? (() => []);
       getSongPositionRef.current = s?.getSongPosition ?? (() => null);
       onSeekRef.current = s?.onSeek ?? (() => {});
@@ -700,6 +709,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           getCps={() => getCpsRef.current()}
           getHapStream={() => getHapStreamRef.current()}
           getTimelineEvents={(cycles) => getTimelineEventsRef.current(cycles)}
+          getTimelineEventsBand={(startCycle, endCycle) =>
+            getTimelineEventsBandRef.current(startCycle, endCycle)
+          }
           getSongTrackIds={() => getSongTrackIdsRef.current()}
           getSongPosition={() => getSongPositionRef.current()}
           onSeek={(cycle) => onSeekRef.current(cycle)}

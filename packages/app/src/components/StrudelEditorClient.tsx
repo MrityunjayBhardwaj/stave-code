@@ -275,6 +275,12 @@ interface StrudelEditorClientProps {
      */
     getTimelineEvents: (cycles: number) => IREvent[];
     /**
+     * #1197 — the same events over a BAND `[startCycle, endCycle)` rather than a
+     * prefix from zero, so the song analysis stops re-querying (and discarding)
+     * the whole prefix on every slice of its progressive horizon.
+     */
+    getTimelineEventsBand: (startCycle: number, endCycle: number) => IREvent[];
+    /**
      * #1107 — the capture keys of every registered track, so the song analysis
      * can tell "this track has not played yet" from "there is no such track".
      * Same closure-bound shape; `[]` for a non-Strudel runtime, which correctly
@@ -1535,6 +1541,10 @@ export default function StrudelEditorClient({
       // Closure-bound through runtimesRef like getHapStream.
       getTimelineEvents: (cycles: number) =>
         runtimesRef.current.get(accessorFid)?.getTimelineEvents?.(cycles) ?? [],
+      // #1197 — the banded form, from the SAME runtime as the prefix form above
+      // so a caller can never mix frames between the two.
+      getTimelineEventsBand: (startCycle: number, endCycle: number) =>
+        runtimesRef.current.get(accessorFid)?.getTimelineEventsBand?.(startCycle, endCycle) ?? [],
       // #1107 — the registered track ids, read from the same runtime as the
       // events above so the two can never describe different track sets.
       getSongTrackIds: () =>
@@ -1709,6 +1719,11 @@ export default function StrudelEditorClient({
             runtimesRef.current
               .get(accessorFid)
               ?.getTimelineEvents?.(cycles) ?? [],
+          // #1197 — the banded form (same shape as the builder above).
+          getTimelineEventsBand: (startCycle: number, endCycle: number) =>
+            runtimesRef.current
+              .get(accessorFid)
+              ?.getTimelineEventsBand?.(startCycle, endCycle) ?? [],
           // #1107 — registered track ids (same shape as the builder above).
           getSongTrackIds: () =>
             runtimesRef.current.get(accessorFid)?.getSongTrackIds?.() ?? [],

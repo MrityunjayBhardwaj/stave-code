@@ -1287,3 +1287,65 @@ describe('speculative timeline evaluate is quiet (#1172)', () => {
     runtime.dispose()
   })
 })
+
+/**
+ * #1197 — the band accessor's degradation path.
+ *
+ * `getTimelineEventsBand` is optional on the engine. The obvious wiring —
+ * `engine.getTimelineEventsBand?.(a, b) ?? []` — is WRONG for the one engine
+ * shape that matters: one that has the events but not the band form. There the
+ * caller asks an engine that HAS onsets and receives silence, so the Song
+ * analysis sees an empty song and the view draws blank, with nothing thrown.
+ *
+ * No engine in this repo is that shape today (StrudelEngine implements both), so
+ * this path is unreachable from any other test and would ship unexercised.
+ */
+describe('LiveCodingRuntime.getTimelineEventsBand degradation (#1197)', () => {
+  beforeEach(() => {
+    __resetWorkspaceAudioBusForTests()
+  })
+
+  const EVENTS = [
+    { begin: 0, end: 0.5, trackId: '$0', s: 'bd' },
+    { begin: 5, end: 5.5, trackId: '$0', s: 'sd' },
+  ]
+
+  it('uses the engine band accessor when the engine has one', () => {
+    const engine = createMockEngine()
+    const bandFn = vi.fn(() => EVENTS)
+    Object.assign(engine, { getTimelineEventsBand: bandFn, getTimelineEvents: () => [] })
+    const runtime = new LiveCodingRuntime('f1', engine, () => '')
+
+    expect(runtime.getTimelineEventsBand(4, 8)).toEqual(EVENTS)
+    // Passed through verbatim — not silently re-based to a prefix.
+    expect(bandFn).toHaveBeenCalledWith(4, 8)
+    runtime.dispose()
+  })
+
+  it('FALLS BACK to the prefix accessor when the engine lacks the band form, rather than reporting silence', () => {
+    const engine = createMockEngine()
+    const prefixFn = vi.fn(() => EVENTS)
+    // Deliberately NO getTimelineEventsBand — the shape the naive wiring breaks on.
+    Object.assign(engine, { getTimelineEvents: prefixFn })
+    const runtime = new LiveCodingRuntime('f2', engine, () => '')
+
+    const got = runtime.getTimelineEventsBand(4, 8)
+    // The events are returned, NOT []. This is the assertion that separates the
+    // fallback from the optional-chain-to-empty version; every other assertion
+    // in this file passes under both.
+    expect(got).toEqual(EVENTS)
+    expect(got.length).toBeGreaterThan(0)
+    // Asked for the band's END as the prefix length, so nothing in the band is
+    // missing; the caller filters the prefix down to its own band as before.
+    expect(prefixFn).toHaveBeenCalledWith(8)
+    runtime.dispose()
+  })
+
+  it('reports silence only when the engine has NO event source at all', () => {
+    const engine = createMockEngine()
+    // Neither accessor — a non-Strudel runtime. Here [] is the honest answer.
+    const runtime = new LiveCodingRuntime('f3', engine, () => '')
+    expect(runtime.getTimelineEventsBand(4, 8)).toEqual([])
+    runtime.dispose()
+  })
+})
