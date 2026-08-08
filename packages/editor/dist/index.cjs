@@ -844,23 +844,32 @@ function laneKeyOf(ev) {
 }
 __name(laneKeyOf, "laneKeyOf");
 function accumulateLanes(events, horizon) {
+  return accumulateLanesInWindow(events, 0, horizon);
+}
+__name(accumulateLanes, "accumulateLanes");
+function accumulateLanesInWindow(events, originCycle, spanCycles, pinnedLaneKeys) {
+  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
+  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
   const order = [];
   const byLane = /* @__PURE__ */ new Map();
-  for (const ev of events) {
-    const cycle = Math.floor(ev.begin);
-    if (!Number.isFinite(cycle) || cycle < 0 || cycle >= horizon) continue;
-    const key2 = laneKeyOf(ev);
+  const ensure = /* @__PURE__ */ __name((key2) => {
     let counts = byLane.get(key2);
     if (!counts) {
-      counts = new Array(horizon).fill(0);
+      counts = new Array(span).fill(0);
       byLane.set(key2, counts);
       order.push(key2);
     }
-    counts[cycle] += 1;
+    return counts;
+  }, "ensure");
+  if (pinnedLaneKeys) for (const key2 of pinnedLaneKeys) ensure(key2);
+  for (const ev of events) {
+    const cycle = Math.floor(ev.begin);
+    if (!Number.isFinite(cycle) || cycle < origin || cycle >= origin + span) continue;
+    ensure(laneKeyOf(ev))[cycle - origin] += 1;
   }
   return order.map((laneKey) => ({ laneKey, onsetsByCycle: byLane.get(laneKey) }));
 }
-__name(accumulateLanes, "accumulateLanes");
+__name(accumulateLanesInWindow, "accumulateLanesInWindow");
 function cycleFingerprints(events, horizon) {
   const perCycle = Array.from({ length: horizon }, () => []);
   for (const ev of events) {
@@ -957,26 +966,32 @@ function displayPeriodRule(events, horizon, cap, hasUnheardTrack) {
 }
 __name(displayPeriodRule, "displayPeriodRule");
 function computeSections(lanes, horizon) {
-  if (horizon <= 0) return [];
-  const signatureAt = /* @__PURE__ */ __name((cycle) => lanes.filter((l) => (l.onsetsByCycle[cycle] ?? 0) > 0).map((l) => l.laneKey).sort(), "signatureAt");
+  return computeSectionsInWindow(lanes, 0, horizon);
+}
+__name(computeSections, "computeSections");
+function computeSectionsInWindow(lanes, originCycle, spanCycles) {
+  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
+  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
+  if (span <= 0) return [];
+  const signatureAt = /* @__PURE__ */ __name((index) => lanes.filter((l) => (l.onsetsByCycle[index] ?? 0) > 0).map((l) => l.laneKey).sort(), "signatureAt");
   const sections = [];
   let start = 0;
   let sig = signatureAt(0);
   let sigKey = sig.join("|");
-  for (let c = 1; c < horizon; c++) {
-    const nextSig = signatureAt(c);
+  for (let i = 1; i < span; i++) {
+    const nextSig = signatureAt(i);
     const nextKey = nextSig.join("|");
     if (nextKey !== sigKey) {
-      sections.push({ startCycle: start, endCycle: c, laneKeys: sig });
-      start = c;
+      sections.push({ startCycle: origin + start, endCycle: origin + i, laneKeys: sig });
+      start = i;
       sig = nextSig;
       sigKey = nextKey;
     }
   }
-  sections.push({ startCycle: start, endCycle: horizon, laneKeys: sig });
+  sections.push({ startCycle: origin + start, endCycle: origin + span, laneKeys: sig });
   return sections;
 }
-__name(computeSections, "computeSections");
+__name(computeSectionsInWindow, "computeSectionsInWindow");
 function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn) {
   const periodOf = detectPeriodFn ?? ((evs, h) => displayPeriodRule(evs, h, reachedCap ? h : Number.POSITIVE_INFINITY, false));
   const lanes = accumulateLanes(events, horizon);
@@ -1042,6 +1057,37 @@ async function analyzeSong(ir, opts = {}) {
   return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule);
 }
 __name(analyzeSong, "analyzeSong");
+async function analyzeWindow(originCycle, spanCycles, opts = {}) {
+  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
+  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
+  const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE));
+  const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS;
+  const collectFn = opts.collectFn ?? (() => []);
+  const now2 = opts.now ?? defaultNow;
+  const yieldFn = opts.yieldFn ?? defaultYield;
+  const signal = opts.signal;
+  const events = [];
+  let collectedTo = origin;
+  let lastYield = now2();
+  let complete = true;
+  while (collectedTo < origin + span) {
+    if (signal?.aborted) {
+      complete = false;
+      break;
+    }
+    const sliceEnd = Math.min(collectedTo + slice, origin + span);
+    events.push(...collectFn(collectedTo, sliceEnd));
+    collectedTo = sliceEnd;
+    if (now2() - lastYield >= budgetMs && collectedTo < origin + span) {
+      await yieldFn();
+      lastYield = now2();
+    }
+  }
+  const lanes = accumulateLanesInWindow(events, origin, span, opts.pinnedLaneKeys);
+  const sections = computeSectionsInWindow(lanes, origin, span);
+  return { originCycle: origin, spanCycles: span, lanes, sections, complete };
+}
+__name(analyzeWindow, "analyzeWindow");
 
 // src/ir/serialize.ts
 var PATTERN_IR_SCHEMA_VERSION = "1.0";
@@ -44148,10 +44194,12 @@ exports.WorkerVizRenderer = WorkerVizRenderer;
 exports.WorkspaceShell = WorkspaceShell;
 exports.Writeback = Writeback;
 exports.accumulateLanes = accumulateLanes;
+exports.accumulateLanesInWindow = accumulateLanesInWindow;
 exports.adaptMasterChunk = adaptMasterChunk;
 exports.aggregateLaneItems = aggregateLaneItems;
 exports.analyzeEvents = analyzeEvents;
 exports.analyzeSong = analyzeSong;
+exports.analyzeWindow = analyzeWindow;
 exports.applyEdits = applyEdits;
 exports.applyEvalSourceTransform = applyEvalSourceTransform;
 exports.applyOffsetEditsToFile = applyOffsetEditsToFile;
@@ -44182,6 +44230,7 @@ exports.clearShellState = clearShellState;
 exports.commitWorkspace = commitWorkspace;
 exports.compilePreset = compilePreset;
 exports.computeSections = computeSections;
+exports.computeSectionsInWindow = computeSectionsInWindow;
 exports.createBranchAt = createBranchAt;
 exports.createPostMessageReader = createPostMessageReader;
 exports.createPostMessageWriter = createPostMessageWriter;
