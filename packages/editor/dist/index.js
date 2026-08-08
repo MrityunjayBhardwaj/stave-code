@@ -7307,10 +7307,45 @@ var _StrudelEngine = class _StrudelEngine {
    */
   getTimelineEvents(cycles) {
     const n = Math.max(1, Math.ceil(Number.isFinite(cycles) ? cycles : 1));
+    return this.getTimelineEventsBand(0, n);
+  }
+  /**
+   * The same events over an ARBITRARY BAND `[startCycle, endCycle)` instead of a
+   * prefix from zero. Same song frame, same normalisation, same `trackId`
+   * stamping as `getTimelineEvents` — only the queried arc differs.
+   *
+   * ── WHY THIS EXISTS (#1197) ─────────────────────────────────────────────────
+   * `analyzeSong`'s collector interface is already band-limited
+   * (`(startCycle, endCycle) => IREvent[]`) and it collects the progressive
+   * horizon in `sliceCycles`-sized bands. But with only a prefix accessor to call,
+   * the app's collector had to query `[0, endCycle)` for every slice and discard
+   * everything before the band. Derived over the production defaults (hint 8,
+   * cap 256, slice 4), a document that runs to the cap queried 8320 cycles to
+   * cover 256 — 32.5× the work for an identical answer, paid on every re-eval and
+   * heaviest on exactly the documents that are most expensive to analyse.
+   *
+   * ⚠ THE CALLER STILL OWNS ONSET ATTRIBUTION, and must keep filtering.
+   * `queryArc` returns every hap OVERLAPPING the arc, so a hap beginning at cycle
+   * 3.5 is returned by both `queryArc(0, 4)` and `queryArc(4, 8)`. Analysis
+   * buckets an onset by `floor(begin)` (`accumulateLanes`), so a caller walking
+   * adjacent bands must drop haps whose `floor(begin)` precedes its band or it
+   * will count that onset twice — which changes fingerprints, and therefore the
+   * detected period. Deliberately NOT done here: overlap is `queryArc`'s honest
+   * answer about what sounds during the band, and only the caller knows whether
+   * it is walking bands or asking a one-off question.
+   *
+   * Equivalence to the prefix path it replaces, which is what makes the swap
+   * safe: a hap with `floor(begin) ∈ [start, end)` has `begin ∈ [start, end)` and
+   * so necessarily overlaps the band — every event that survived the old
+   * `queryArc(0, end)` + filter survives `queryArc(start, end)` + the same filter.
+   */
+  getTimelineEventsBand(startCycle, endCycle) {
+    const from = Math.max(0, Math.floor(Number.isFinite(startCycle) ? startCycle : 0));
+    const to = Math.max(from + 1, Math.ceil(Number.isFinite(endCycle) ? endCycle : from + 1));
     const out = [];
     for (const [trackId, pattern] of this.songPatterns) {
       try {
-        const haps = pattern.queryArc(0, n);
+        const haps = pattern.queryArc(from, to);
         for (const hap of haps) {
           out.push(normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? void 0));
         }
@@ -39347,6 +39382,24 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    */
   getTimelineEvents(cycles) {
     return this.engine.getTimelineEvents?.(cycles) ?? [];
+  }
+  /**
+   * The same events over a BAND `[startCycle, endCycle)` rather than a prefix
+   * from zero (#1197) — read-through in the same shape, from the same engine, so
+   * the two can never describe different frames. `[]` for a non-Strudel runtime.
+   *
+   * Consumed by the Song analysis collector, which walks adjacent bands as the
+   * progressive horizon grows. ⚠ That caller must keep dropping haps whose
+   * `floor(begin)` precedes its band — `queryArc` returns overlaps, and analysis
+   * buckets by `floor(begin)`, so an onset straddling a band boundary would
+   * otherwise be counted in both. The engine's own doc carries the full argument.
+   */
+  getTimelineEventsBand(startCycle, endCycle) {
+    const engine = this.engine;
+    if (typeof engine.getTimelineEventsBand === "function") {
+      return engine.getTimelineEventsBand(startCycle, endCycle);
+    }
+    return engine.getTimelineEvents?.(endCycle) ?? [];
   }
   /**
    * The capture keys behind those events (#1107) — read-through in the same

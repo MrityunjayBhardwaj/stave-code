@@ -95,6 +95,14 @@ export interface MusicalTimelineProps {
    */
   readonly getTimelineEvents?: (cycles: number) => IREvent[]
   /**
+   * #1197 — the same events over a BAND `[startCycle, endCycle)`. The analysis
+   * collector below walks adjacent bands as the progressive horizon grows;
+   * without this it had to ask for `[0, endCycle)` each time and discard the
+   * prefix. Optional like its sibling — a caller that does not thread it falls
+   * back to the prefix accessor, which is correct but does the old amount of work.
+   */
+  readonly getTimelineEventsBand?: (startCycle: number, endCycle: number) => IREvent[]
+  /**
    * #1107 — the capture keys of every track the engine registered, the same ids
    * `getTimelineEvents` stamps as `trackId`. Lets the analysis refuse a period
    * accepted before a declared track has been heard at all. Optional: without it
@@ -233,6 +241,10 @@ export function MusicalTimeline(
   // songPatterns, so the accessor returns real haps by the time we query.
   const getTimelineEventsRef = React.useRef(props.getTimelineEvents)
   getTimelineEventsRef.current = props.getTimelineEvents
+  // #1197 — the banded accessor, held in a ref for the same reason as its
+  // sibling above (the prop is a fresh closure every render).
+  const getTimelineEventsBandRef = React.useRef(props.getTimelineEventsBand)
+  getTimelineEventsBandRef.current = props.getTimelineEventsBand
   // #1107 — same latest-value ref shape, for the same reason (fresh closure per
   // render; the analyze effect stays keyed on `snapshot` alone).
   const getSongTrackIdsRef = React.useRef(props.getSongTrackIds)
@@ -263,6 +275,7 @@ export function MusicalTimeline(
     // duplicates every row (PV175). Anchors are built once per analysis run
     // (cheap; dollarPos is a source offset, so the cycle count is irrelevant).
     const getEvents = getTimelineEventsRef.current
+    const getEventsBand = getTimelineEventsBandRef.current
     const getTrackIds = getSongTrackIdsRef.current
     let collectFn:
       | ((startCycle: number, endCycle: number) => IREvent[])
@@ -276,10 +289,27 @@ export function MusicalTimeline(
     // capture space every registered pattern that sounds at all stamps its own
     // key, so an unheard key means an unheard TRACK.
     const heard = new Set<string>()
-    if (getEvents) {
+    if (getEvents || getEventsBand) {
       const anchors = buildLaneAnchors(ir, 1)
-      collectFn = (startCycle, endCycle) =>
-        getEvents(endCycle)
+      collectFn = (startCycle, endCycle) => {
+        // #1197 — ask for the BAND when that accessor is threaded. The prefix
+        // form is the fallback for a caller that has not wired it (and for
+        // non-Strudel runtimes); it returns the same events, just after querying
+        // — and discarding — every cycle before `startCycle`. `analyzeSong`
+        // walks adjacent bands as its horizon grows, so on the prefix path a
+        // document running to the 256 cap queried 8320 cycles to cover 256.
+        const raw = getEventsBand
+          ? getEventsBand(startCycle, endCycle)
+          : getEvents!(endCycle)
+        return raw
+          // ⚠ LOAD-BEARING ON BOTH PATHS, and for DIFFERENT reasons. On the
+          // prefix path it selects the band out of `[0, endCycle)`. On the band
+          // path the query is already narrowed, but `queryArc` returns every hap
+          // OVERLAPPING the arc — so a hap beginning at cycle 3.5 comes back
+          // from both `[0, 4)` and `[4, 8)`. Analysis buckets an onset by
+          // `floor(begin)`, so without this the straddling onset is counted in
+          // two bands, which changes the cycle fingerprints and can move the
+          // detected period. Do not delete it as redundant with the band.
           .filter((ev) => {
             const c = Math.floor(ev.begin)
             return c >= startCycle && c < endCycle
@@ -288,12 +318,13 @@ export function MusicalTimeline(
             if (ev.trackId !== undefined) heard.add(ev.trackId)
             return { ...ev, trackId: laneKeyForHap(ev, anchors) }
           })
+      }
     }
     // Asked at DECISION time, so it reflects everything collected up to the
     // horizon being judged. Only claims an unheard track when BOTH accessors are
     // threaded — a registered set with no event source would report every track
     // unheard and stall every document at the cap.
-    const hasUnheardTrack = getEvents && getTrackIds
+    const hasUnheardTrack = (getEvents || getEventsBand) && getTrackIds
       ? () => getTrackIds().some((id) => !heard.has(id))
       : undefined
     const signal = { aborted: false }

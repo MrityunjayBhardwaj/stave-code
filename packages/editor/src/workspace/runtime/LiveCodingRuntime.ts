@@ -949,6 +949,35 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   }
 
   /**
+   * The same events over a BAND `[startCycle, endCycle)` rather than a prefix
+   * from zero (#1197) — read-through in the same shape, from the same engine, so
+   * the two can never describe different frames. `[]` for a non-Strudel runtime.
+   *
+   * Consumed by the Song analysis collector, which walks adjacent bands as the
+   * progressive horizon grows. ⚠ That caller must keep dropping haps whose
+   * `floor(begin)` precedes its band — `queryArc` returns overlaps, and analysis
+   * buckets by `floor(begin)`, so an onset straddling a band boundary would
+   * otherwise be counted in both. The engine's own doc carries the full argument.
+   */
+  getTimelineEventsBand(startCycle: number, endCycle: number): IREvent[] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const engine = this.engine as any
+    if (typeof engine.getTimelineEventsBand === 'function') {
+      return engine.getTimelineEventsBand(startCycle, endCycle)
+    }
+    // ⚠ FALL BACK TO THE PREFIX ACCESSOR, never to `[]`. An engine that
+    // implements `getTimelineEvents` but not the band form is the one case where
+    // optional-chaining to `[]` would be actively WRONG rather than merely
+    // uninformative: the caller asked an engine that HAS the events and got
+    // silence, so the analysis sees no onsets and the Song view draws blank —
+    // no error, no warning. `[]` is the right answer only for a runtime with no
+    // event source at all, and the prefix accessor already returns exactly that
+    // for one. The caller filters to its band regardless, so this is correct,
+    // just as expensive as before the band existed.
+    return engine.getTimelineEvents?.(endCycle) ?? []
+  }
+
+  /**
    * The capture keys behind those events (#1107) — read-through in the same
    * shape, from the same engine, so the two can never describe different track
    * sets. Lets the Song analysis tell "this track has not played yet" from

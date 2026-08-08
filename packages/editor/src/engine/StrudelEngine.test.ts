@@ -630,6 +630,64 @@ describe('StrudelEngine.getTimelineEvents (song frame, #863)', () => {
     expect(engine.getTimelineEvents(4)[0].begin).toBe(0)
     engine.dispose()
   })
+
+  // #1197 — the BAND form. These assert the arc the engine actually passes to
+  // `queryArc`, not a count of what came back: the mock echoes its arc into the
+  // hap it returns, so `begin` IS the observed `startCycle`. That distinction is
+  // the whole point — a band accessor wired to `queryArc(0, end)` returns events
+  // that pass every content assertion while doing all the work the band was
+  // added to avoid.
+  it('queries the BAND it was given, not a prefix from zero', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('one-track')
+
+    // The band form asks for [4, 8) — observed as the returned hap's own arc.
+    const band = engine.getTimelineEventsBand(4, 8)
+    expect(band.length).toBe(1)
+    expect(band[0].begin).toBe(4)
+
+    // The control: the prefix form over the same end cycle still asks from 0.
+    // If the band method regressed to a prefix query these two would agree, and
+    // this is the arm that separates them.
+    const prefix = engine.getTimelineEvents(8)
+    expect(prefix.length).toBe(1)
+    expect(prefix[0].begin).toBe(0)
+    expect(band[0].begin).not.toBe(prefix[0].begin)
+    engine.dispose()
+  })
+
+  it('the band form stays in the SONG frame after a seek, exactly as the prefix form does', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    engine.setTransportOffset(2)
+    await engine.evaluate('one-track')
+
+    // Song-absolute: band [4, 8) is still song cycles 4..8, unshifted by the
+    // seek. Reading `trackSchedulers` here instead would return 6, which is the
+    // #863 defect one accessor over.
+    expect(engine.getTimelineEventsBand(4, 8)[0].begin).toBe(4)
+    expect(engine.getTrackSchedulers().get('$0')!.query(4, 8)[0].begin).toBe(6)
+    engine.dispose()
+  })
+
+  it('returns no band events before the first evaluate', () => {
+    const engine = new StrudelEngine()
+    expect(engine.getTimelineEventsBand(4, 8)).toEqual([])
+    engine.dispose()
+  })
+
+  it('normalises a degenerate band to a non-empty arc rather than querying backwards', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('one-track')
+    // end <= start, negatives and non-finite inputs must not reach queryArc as
+    // an inverted or NaN arc — Strudel's behaviour there is not ours to assume.
+    expect(engine.getTimelineEventsBand(5, 5)[0].begin).toBe(5)
+    expect(engine.getTimelineEventsBand(-3, 2)[0].begin).toBe(0)
+    expect(engine.getTimelineEventsBand(Number.NaN, 4)[0].begin).toBe(0)
+    engine.dispose()
+  })
 })
 
 /**
