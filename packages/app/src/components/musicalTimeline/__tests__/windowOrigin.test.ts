@@ -125,7 +125,7 @@ function draw(scene: ReturnType<typeof buildTimelineScene>) {
 
 describe('the scene at a non-zero window origin (#1201)', () => {
   it('carries the origin, so a consumer can tell which cycles its density covers', () => {
-    const scene = buildTimelineScene(analysisAtOrigin(windowDensity({ 0: 1 })), ORIGIN, null, marksWith([]))
+    const scene = buildTimelineScene(analysisAtOrigin(windowDensity({ 0: 1 })), WIN, null, null, marksWith([]))
     expect(scene.windowOriginCycles).toBe(ORIGIN)
     // The span is unchanged by paging — a window is as wide as it is, wherever it sits.
     expect(scene.displayCycles).toBe(SPAN)
@@ -134,8 +134,7 @@ describe('the scene at a non-zero window origin (#1201)', () => {
   it("gives a bare track's implicit clip the window's ABSOLUTE bounds, not [0, span)", () => {
     // No clipsByLane → the builder synthesises the implicit clip.
     const scene = buildTimelineScene(
-      analysisAtOrigin(windowDensity({ 0: 1 })),
-      ORIGIN, null,
+      analysisAtOrigin(windowDensity({ 0: 1 })), WIN, null, null,
       marksWith([], false),
     )
     expect(scene.lanes[0]!.clips).toEqual([
@@ -151,7 +150,7 @@ describe('the scene at a non-zero window origin (#1201)', () => {
       ...marksWith([]),
       marksByLane: new Map([['evalLane', [note(ORIGIN), note(ORIGIN), note(ORIGIN + 5)]]]),
     }
-    const scene = buildTimelineScene(null, ORIGIN, null, evalMarks, SPAN)
+    const scene = buildTimelineScene(null, WIN, null, null, evalMarks)
     const lane = scene.lanes.find((l) => l.laneKey === 'evalLane')!
     expect(lane.density[0]).toBe(2)
     expect(lane.density[5]).toBe(1)
@@ -165,14 +164,14 @@ describe('the density colour scale’s basis (#1201)', () => {
   const quiet = () => analysisAtOrigin(windowDensity({ 0: 2, 8: 1 }))
 
   it('normalises over this window alone when no basis is carried', () => {
-    const scene = buildTimelineScene(quiet(), ORIGIN, null, marksWith([]))
+    const scene = buildTimelineScene(quiet(), WIN, null, null, marksWith([]))
     expect(scene.peakDensity).toBe(2)
   })
 
   it('honours a carried basis so a quieter window does not silently rescale', () => {
     // The same quiet window, told that the song peaks at 8 elsewhere. Its cells
     // must stay dim relative to that, not be stretched to full intensity.
-    const scene = buildTimelineScene(quiet(), ORIGIN, 8, marksWith([]))
+    const scene = buildTimelineScene(quiet(), WIN, null, 8, marksWith([]))
     expect(scene.peakDensity).toBe(8)
   })
 
@@ -180,8 +179,7 @@ describe('the density colour scale’s basis (#1201)', () => {
     // The carried value is a FLOOR, not a ceiling — clipping a busy window to a
     // stale peak would push its loudest cells past full intensity.
     const scene = buildTimelineScene(
-      analysisAtOrigin(windowDensity({ 0: 20 })),
-      ORIGIN,
+      analysisAtOrigin(windowDensity({ 0: 20 })), WIN, null,
       8,
       marksWith([]),
     )
@@ -192,7 +190,7 @@ describe('the density colour scale’s basis (#1201)', () => {
 describe('the renderer at a non-zero window origin (#1201)', () => {
   it('draws section bands at their place in the window, not off-screen', () => {
     const rects = draw(
-      buildTimelineScene(analysisAtOrigin(windowDensity({ 0: 1 })), ORIGIN, null, marksWith([])),
+      buildTimelineScene(analysisAtOrigin(windowDensity({ 0: 1 })), WIN, null, null, marksWith([])),
     )
     const bands = rects.filter((r) => r.fill === THEME.section || r.fill === THEME.sectionAlt)
     expect(bands.length).toBe(2)
@@ -205,7 +203,7 @@ describe('the renderer at a non-zero window origin (#1201)', () => {
 
   it('draws clip segments at their place in the window, not off-screen', () => {
     const rects = draw(
-      buildTimelineScene(analysisAtOrigin(windowDensity({ 0: 1 })), ORIGIN, null, marksWith([])),
+      buildTimelineScene(analysisAtOrigin(windowDensity({ 0: 1 })), WIN, null, null, marksWith([])),
     )
     const fills = rects.filter((r) => r.fill === THEME.clipFill)
     expect(fills.length).toBe(1)
@@ -215,8 +213,7 @@ describe('the renderer at a non-zero window origin (#1201)', () => {
 
   it('places density cells where the axis puts their absolute cycle', () => {
     const scene = buildTimelineScene(
-      analysisAtOrigin(windowDensity({ 0: 4, 16: 2 })),
-      ORIGIN, null,
+      analysisAtOrigin(windowDensity({ 0: 4, 16: 2 })), WIN, null, null,
       marksWith([]),
     )
     const rects = draw(scene)
@@ -237,8 +234,7 @@ describe('the renderer at a non-zero window origin (#1201)', () => {
     // keep the mark near the window start so it is genuinely on screen.
     const wideW = SPAN * 30
     const scene = buildTimelineScene(
-      analysisAtOrigin(windowDensity({ 0: 1 })),
-      ORIGIN, null,
+      analysisAtOrigin(windowDensity({ 0: 1 })), WIN, null, null,
       marksWith([{ cycle: ORIGIN + 0.5, end: ORIGIN + 1, pitch: 48, gain: 1 }]),
     )
     const layout = computeLaneLayout([{ laneKey: 'bass' }], new Set(), 24, 80)
@@ -264,8 +260,7 @@ describe('the renderer at a non-zero window origin (#1201)', () => {
     const wideW = SPAN * 30
     const note: SceneNote = { cycle: ORIGIN + 0.5, end: ORIGIN + 1, pitch: 48, gain: 1 }
     const scene = buildTimelineScene(
-      analysisAtOrigin(windowDensity({ 0: 1 })),
-      ORIGIN, null,
+      analysisAtOrigin(windowDensity({ 0: 1 })), WIN, null, null,
       marksWith([note]),
     )
     const layout = computeLaneLayout([{ laneKey: 'bass' }], new Set(), 24, 80)
@@ -290,13 +285,58 @@ describe('the renderer at a non-zero window origin (#1201)', () => {
     // A density-only lane (no note marks): the ONLY way to know the clip has
     // content is the density loop, which is the one that silently never ran.
     const withContent = draw(
-      buildTimelineScene(analysisAtOrigin(windowDensity({ 3: 5 })), ORIGIN, null, marksWith([])),
+      buildTimelineScene(analysisAtOrigin(windowDensity({ 3: 5 })), WIN, null, null, marksWith([])),
     ).filter((r) => r.fill === THEME.clipBorder).length
     const empty = draw(
-      buildTimelineScene(analysisAtOrigin(windowDensity({})), ORIGIN, null, marksWith([])),
+      buildTimelineScene(analysisAtOrigin(windowDensity({})), WIN, null, null, marksWith([])),
     ).filter((r) => r.fill === THEME.clipBorder).length
     // An empty clip gets the extra outline pass; a clip with content does not.
     expect(withContent).toBe(2)
     expect(empty).toBeGreaterThan(withContent)
+  })
+})
+
+/**
+ * THE POINT OF THE SEAM (#1201). Everything above proves the scene handles a
+ * non-zero origin; these two prove it no longer needs a whole SONG to do it.
+ *
+ * A real `analyzeWindow` result is passed straight in, with no adapter and no
+ * synthesised period or display span. If that ever requires a conversion step
+ * again, these stop compiling — which is the outcome worth protecting, because
+ * the conversion that would be reached for is precisely the one that puts a
+ * `periodCycles: null` on a window and lets a paged view re-decide the period.
+ */
+describe('the scene accepts a windowed analysis directly (#1201)', () => {
+  /** Shaped exactly as `analyzeWindow` returns: no period, no display span. */
+  const windowAnalysis = {
+    originCycle: ORIGIN,
+    spanCycles: SPAN,
+    lanes: [{ laneKey: 'bass', onsetsByCycle: windowDensity({ 0: 3, 8: 1 }) }],
+    sections: [{ startCycle: ORIGIN, endCycle: ORIGIN + SPAN, laneKeys: ['bass'] }],
+    complete: true,
+  }
+
+  it('draws from a WindowAnalysis with no adapter and no invented period', () => {
+    // It is its OWN window descriptor — origin and span under the names the axis
+    // already uses, so nothing has to be restated at the call site.
+    const scene = buildTimelineScene(windowAnalysis, windowAnalysis, null, null, marksWith([]))
+    expect(scene.windowOriginCycles).toBe(ORIGIN)
+    expect(scene.displayCycles).toBe(SPAN)
+    expect(scene.lanes.map((l) => l.laneKey)).toEqual(['bass'])
+    expect(scene.peakDensity).toBe(3)
+    // A window cannot claim a period, and the scene does not invent one for it.
+    expect(scene.period).toBeNull()
+  })
+
+  it('places its density at the SONG-ABSOLUTE cycle, not the array index', () => {
+    const scene = buildTimelineScene(windowAnalysis, windowAnalysis, null, null, marksWith([]))
+    const rects = draw(scene)
+    // `onsetsByCycle[8]` is song cycle ORIGIN + 8 — the axis says where that is,
+    // and re-deriving it here would agree with a renderer wrong the same way.
+    const expected = songCycleToX(ORIGIN + 8, WIN, CONTENT_W)
+    expect(rects.some((r) => Math.abs(r.x - expected) < 1.5)).toBe(true)
+    // ...and NOT at the index read as an absolute cycle, which is off-window.
+    const wrong = songCycleToX(8, WIN, CONTENT_W)
+    expect(Math.abs(expected - wrong)).toBeGreaterThan(10)
   })
 })
