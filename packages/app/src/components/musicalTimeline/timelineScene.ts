@@ -295,11 +295,19 @@ export function buildTimelineScene(
   // split (#489 D3). When provided, it drives both the bare clip's `endCycle` and
   // `scene.displayCycles`, keeping the clip rect and the geometry transform in
   // lock-step. Absent (tests / density-only callers) → the per-loop default.
+  //
+  // That default asks `displaySpan`, never `periodCycles ?? horizonCycles`. The
+  // two are value-identical today — `displaySpan` IS that expression, paired with
+  // the kind that says which of the pair answered — so this is not a behaviour
+  // change. It is the convention being total: the erasing idiom was removed from
+  // every consumer that decides geometry, and a survivor here is what the next
+  // person copies. The raw fields stay legitimate for instruments that MEASURE
+  // (the parity sweep records both); they are the wrong thing for deciding a span.
   const displayCycles =
     displayCyclesOverride != null && displayCyclesOverride >= 1
       ? Math.max(1, Math.round(displayCyclesOverride))
       : analysis
-        ? Math.max(1, analysis.periodCycles ?? analysis.horizonCycles)
+        ? Math.max(1, analysis.displaySpan.cycles)
         : 1
   const lanesIn = analysis?.lanes ?? []
   const analysisKeys = new Set(lanesIn.map((l) => l.laneKey))

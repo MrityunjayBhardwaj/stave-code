@@ -59,10 +59,33 @@ describe('buildTimelineScene', () => {
   })
 
   it('falls back to the horizon when no period was found', () => {
-    const noPeriod: SongAnalysis = { ...analysisFixture, periodCycles: null, horizonCycles: 8 }
+    // `displaySpan` moves with the raw pair — spreading the fixture and nulling
+    // `periodCycles` without it would leave a state the analysis cannot produce.
+    const noPeriod: SongAnalysis = {
+      ...analysisFixture,
+      periodCycles: null,
+      horizonCycles: 8,
+      displaySpan: { kind: 'horizon', cycles: 8 },
+    }
     const scene = buildTimelineScene(noPeriod, 0, null)
     expect(scene.displayCycles).toBe(8)
     expect(scene.period).toBeNull()
+  })
+
+  // CONVENTION PIN, not a behaviour test. `displaySpan.cycles` and
+  // `periodCycles ?? horizonCycles` are value-identical for every analysis the
+  // real constructor emits, so nothing built from it can tell which field the
+  // scene read. This fixture is deliberately a state analysis cannot produce —
+  // the two disagree — which is the only way to make the choice observable.
+  it('takes its default span from displaySpan, not from the raw period/horizon pair', () => {
+    const disagreeing: SongAnalysis = {
+      ...analysisFixture,
+      periodCycles: 4,
+      horizonCycles: 8,
+      displaySpan: { kind: 'horizon', cycles: 8 },
+    }
+    const scene = buildTimelineScene(disagreeing, 0, null)
+    expect(scene.displayCycles).toBe(8) // reading the raw pair would give 4
   })
 
   it('merges note marks and computes per-lane pitch range', () => {
