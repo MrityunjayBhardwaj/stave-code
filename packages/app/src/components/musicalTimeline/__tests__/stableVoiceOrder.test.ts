@@ -11,7 +11,7 @@ import { applyStableVoiceOrder, EMPTY_VOICE_ORDER } from '../stableVoiceOrder'
 const analysis: SongAnalysis = {
   periodCycles: 8,
   horizonCycles: 8,
-  reachedCap: false,
+  displaySpan: { kind: 'loop', cycles: 8 },
   lanes: [{ laneKey: 'drums', onsetsByCycle: [1, 1, 1, 1, 1, 1, 1, 1] }],
   sections: [],
 }

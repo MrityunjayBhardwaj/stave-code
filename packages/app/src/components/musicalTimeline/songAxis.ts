@@ -88,7 +88,8 @@ export function xToSongCycle(
  * The modulo is only meaningful when `displayCycles` IS a loop: cycle 257 of an
  * 8-cycle song really does sound like cycle 1, so drawing it at the left edge is
  * true. When the span is instead the point where period detection gave up (the
- * 256-cycle cap, `SongAnalysis.reachedCap`), there is no loop and the modulo
+ * 256-cycle cap — `SongAnalysis.displaySpan.kind === 'capped'`), there is no
+ * loop and the modulo
  * asserts a repeat that does not exist — the playhead would jump to the left
  * edge and retrace material the transport has long since passed. Measured: 27 of
  * the 32 single-lane aperiodic corpus documents have no structural period even

@@ -231,10 +231,12 @@ const MIN_BARE_SPAN = 4
  *  — is the floor, so a tight 2-bar working area is reachable. */
 const MIN_BARE_SPLIT_SPAN = 2
 
-/** The natural display span: one loop period, or the analyzed horizon. ≥ 1. */
+/** The natural display span: one loop period, or the analyzed horizon. ≥ 1.
+ *  The choice between those two is the ANALYSIS's to make and it already made
+ *  it — this only applies the floor. */
 function naturalSpan(analysis: SongAnalysis | null): number {
   if (!analysis) return 1
-  return Math.max(1, analysis.periodCycles ?? analysis.horizonCycles)
+  return Math.max(1, analysis.displaySpan.cycles)
 }
 
 /** Display span in cycles. The natural span, but a pure bare loop is floored to
@@ -334,12 +336,16 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const loopWindowRef = useRef(loopWindow)
   loopWindowRef.current = loopWindow
   // Is `loopCycles` an actual LOOP, or the point where period detection gave up?
-  // `reachedCap` means the analysis grew to its 256-cycle cap without confirming
-  // a period, so the span is a stopping point and nothing about the song repeats
+  // `capped` means the analysis grew to its 256-cycle cap without confirming a
+  // period, so the span is a stopping point and nothing about the song repeats
   // at it (#1105). Everything that treats the span as cyclic — the playhead wrap
   // above all — has to ask this rather than assume. Derived ONCE here so the
   // render path and the imperative rAF follow loop cannot disagree about it.
-  const looping = analysis == null || !analysis.reachedCap
+  //
+  // ⚠ A `horizon` span (analysis ended early with no period) counts as looping
+  // here. That is the pre-existing behaviour, preserved deliberately rather than
+  // corrected in passing — it is a separate question from where the window sits.
+  const looping = analysis == null || analysis.displaySpan.kind !== 'capped'
   const loopingRef = useRef(looping)
   loopingRef.current = looping
 
@@ -1444,20 +1450,22 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     return { left, width: Math.max(1, right - left), top: box.top, height: box.height }
   }, [selected, scene, layout, displayCycles, contentWidth])
 
+  // The three readouts are the three span kinds — one branch each, so a new
+  // kind is a compile error here rather than a silently reused label.
   const periodLabel =
     analysis == null
       ? '—'
-      : analysis.periodCycles != null
-        ? `loop ${analysis.periodCycles}`
-        : analysis.reachedCap
-          ? `${analysis.horizonCycles}+ cycles`
-          : `${analysis.horizonCycles} cycles`
+      : analysis.displaySpan.kind === 'loop'
+        ? `loop ${analysis.displaySpan.cycles}`
+        : analysis.displaySpan.kind === 'capped'
+          ? `${analysis.displaySpan.cycles}+ cycles`
+          : `${analysis.displaySpan.cycles} cycles`
 
   // The span is where the analysis STOPPED LOOKING, not the song's length, and
   // until now nothing said so: `periodLabel` above is written to a `display:none`
   // attribute for Playwright and rendered nowhere (#1105). A song that never
   // repeats got a 256-cycle timeline that reads exactly like a measured 256-cycle
-  // loop. Shown only for `reachedCap`, because that is the only case where the
+  // loop. Shown only for a `capped` span, because that is the only case where the
   // number means something other than what it appears to mean.
   //
   // The second clause is the complement of not wrapping the playhead: once the

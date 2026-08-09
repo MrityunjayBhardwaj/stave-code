@@ -132,7 +132,7 @@ describe('analyzeEvents', () => {
     expect(a.horizonCycles).toBe(4)
     expect(a.periodCycles).toBe(2) // hh every other cycle → period 2
     expect(a.lanes.map((l) => l.laneKey)).toEqual(['bd', 'hh'])
-    expect(a.reachedCap).toBe(false)
+    expect(a.displaySpan).toEqual({ kind: 'loop', cycles: 2 })
   })
 
   it('uses the LONGEST single lane (max), not the global lcm, for differing lengths (#488)', () => {
@@ -261,7 +261,7 @@ describe('detectDisplayPeriodAtCap (#1104 — a lane with no loop abstains, at t
       capCycles: 64,
     })
     expect(a.periodCycles).toBe(12) // the slow lane's loop, not the hi-hat's 4
-    expect(a.reachedCap).toBe(false)
+    expect(a.displaySpan).toEqual({ kind: 'loop', cycles: 12 })
   })
 })
 
@@ -290,10 +290,10 @@ describe('analyzeSong (budgeted progressive horizon)', () => {
     // (cells, playhead wrap, and audible loop all coincide).
     expect(a.horizonCycles).toBe(4)
     expect(a.lanes[0]?.onsetsByCycle.length).toBe(4)
-    expect(a.reachedCap).toBe(false)
+    expect(a.displaySpan).toEqual({ kind: 'loop', cycles: 4 })
   })
 
-  it('doubles the horizon to the cap when no period is found, flagging reachedCap', async () => {
+  it('doubles the horizon to the cap when no period is found, reporting a capped span', async () => {
     const a = await analyzeSong(null, {
       hintCycles: 4,
       capCycles: 16,
@@ -302,7 +302,7 @@ describe('analyzeSong (budgeted progressive horizon)', () => {
     })
     expect(a.periodCycles).toBeNull()
     expect(a.horizonCycles).toBe(16)
-    expect(a.reachedCap).toBe(true)
+    expect(a.displaySpan).toEqual({ kind: 'capped', cycles: 16 })
   })
 
   it('yields to the event loop when a slice exceeds the time budget', async () => {
@@ -438,7 +438,7 @@ describe('displayPeriodRule (#1107 — a period that leaves a track empty is not
     // it is drawn aperiodic (#1105) with every track present, rather than as a
     // one-cycle loop with six of seven tracks erased.
     expect(after.periodCycles).toBeNull()
-    expect(after.reachedCap).toBe(true)
+    expect(after.displaySpan.kind).toBe('capped')
   })
 
   it('every shipped lane has an onset inside the span (what accumulateLanes relies on)', async () => {

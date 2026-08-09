@@ -5,9 +5,12 @@
  * ── WHY THIS EXISTS BEFORE ANY FIX ───────────────────────────────────────────
  * `cycleFingerprints` decides the display span, the mark window, the sections,
  * the playhead wrap and every clip extent. A stricter fingerprint can only
- * LENGTHEN detected periods or null them ([[PV255]]), and `reachedCap` drives
- * only a LABEL (`FullSongTimeline.tsx:1409-1417`) while the span itself takes
- * `periodCycles ?? horizonCycles`, cap 256 — so a document reading period 1
+ * LENGTHEN detected periods or null them ([[PV255]]), and the span the view
+ * shows is `SongAnalysis.displaySpan` — one value carrying both the cycles and
+ * WHICH of period/horizon supplied them, cap 256. (It was `periodCycles ??
+ * horizonCycles` re-derived at each consumer, with a `reachedCap` boolean
+ * alongside that reached only a label; #1201 gave that idiom one home.) So a
+ * document reading period 1
  * today can land on a 256-cycle-wide timeline after a fix that is locally
  * correct. That risk is not analysable from the diff; it has to be swept.
  *
@@ -331,9 +334,13 @@ export async function periodOfTracks(
   })
   const shipped = new Set(analysis.lanes.map((l) => l.laneKey))
   return {
+    // The raw MEASUREMENTS stay measurements here — this instrument's job is to
+    // record what the analysis found. `span` and `reachedCap` are the view's
+    // reading of them, so both now come from the analysis's own answer rather
+    // than being re-derived; the recorded row shape is unchanged.
     period: analysis.periodCycles,
-    span: analysis.periodCycles ?? analysis.horizonCycles,
-    reachedCap: analysis.reachedCap,
+    span: analysis.displaySpan.cycles,
+    reachedCap: analysis.displaySpan.kind === 'capped',
     lanes: analysis.lanes.length,
     lostLanes: [...heard].filter((id) => !shipped.has(id)).length,
     events,

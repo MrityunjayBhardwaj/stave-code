@@ -74,7 +74,7 @@ async function runArm(
     calls,
     periodCycles: result.periodCycles,
     horizonCycles: result.horizonCycles,
-    reachedCap: result.reachedCap,
+    reachedCap: result.displaySpan.kind === 'capped',
     laneKeys: result.lanes.map((l) => l.laneKey),
     onsetTotal: result.lanes.reduce(
       (s, l) => s + l.onsetsByCycle.reduce((a, b) => a + b, 0),
