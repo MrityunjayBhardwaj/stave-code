@@ -24,7 +24,7 @@
 import type { TimelineScene, SceneLane, SceneNote, SceneClip } from './timelineScene'
 import { NO_VOICE } from './timelineScene'
 import type { LaneLayout, LaneBox } from './laneLayout'
-import { BEATS_PER_BAR } from './songAxis'
+import { BEATS_PER_BAR, songCycleToXUnclamped, type SongWindow } from './songAxis'
 
 /** The HORIZONTAL view transform + viewport, all in CSS pixels. Vertical
  *  geometry (per-lane top/height, total height) lives in the `LaneLayout`. */
@@ -119,10 +119,26 @@ export function drawTimeline(
   if (dc <= 0 || contentWidth <= 0 || viewportWidth <= 0) return
 
   const pxPerCycle = contentWidth / dc
-  const toScreenX = (cycle: number): number => (cycle / dc) * contentWidth - scrollLeft
-  // Visible cycle window — clamp the per-lane loops to what's on screen.
-  const firstCycle = Math.max(0, Math.floor(scrollLeft / pxPerCycle))
-  const lastCycle = Math.min(dc, Math.ceil((scrollLeft + viewportWidth) / pxPerCycle))
+  // ONE cycle→pixel map, and it is the AXIS's. This renderer used to compute its
+  // own — `(cycle / dc) * contentWidth` — which silently assumed the window
+  // started at cycle 0. It stayed correct only while that was true; at an origin
+  // of 256 it placed every section and clip ~2560px off-screen, so they were
+  // culled and simply never drawn. The axis answers in content space (origin
+  // applied); the only thing added here is the scroll offset.
+  const win: SongWindow = { originCycle: scene.windowOriginCycles, spanCycles: dc }
+  const toScreenX = (cycle: number): number =>
+    songCycleToXUnclamped(cycle, win, contentWidth) - scrollLeft
+
+  // ── TWO visible ranges, because the scene carries two frames ───────────────
+  // The scrolled viewport picks out a stretch of the WINDOW, and that stretch has
+  // two names. As density INDICES it addresses `lane.density`, which starts at the
+  // window origin. As CYCLES it is song-absolute, which is what note marks, clip
+  // bounds and the beat grid are expressed in. At origin 0 the two are equal —
+  // which is why one variable served both jobs and nothing complained.
+  const firstDensityIndex = Math.max(0, Math.floor(scrollLeft / pxPerCycle))
+  const lastDensityIndex = Math.min(dc, Math.ceil((scrollLeft + viewportWidth) / pxPerCycle))
+  const firstCycle = scene.windowOriginCycles + firstDensityIndex
+  const lastCycle = scene.windowOriginCycles + lastDensityIndex
 
   ctx.fillStyle = theme.background
   ctx.fillRect(0, 0, viewportWidth, height)
@@ -161,13 +177,24 @@ export function drawTimeline(
     // Read-only clip segments (#386) — behind the note marks. A bare track has
     // one implicit clip (no visible seams); an arrangement track shows a rect
     // per arm with bordered edges.
-    drawClips(ctx, lane, top, rowHeight, viewportWidth, theme, toScreenX)
+    drawClips(ctx, lane, top, rowHeight, viewportWidth, theme, scene.windowOriginCycles, toScreenX)
     const mode = laneRenderMode(pxPerCycle, lane.notes.length > 0, expanded)
     if (expanded) {
       drawBeatGrid(ctx, top, rowHeight, pxPerCycle, firstCycle, lastCycle, viewportWidth, theme, toScreenX)
     }
     if (mode === 'density') {
-      drawDensity(ctx, lane, top, rowHeight, pxPerCycle, scene.peakDensity, firstCycle, lastCycle, toScreenX)
+      drawDensity(
+      ctx,
+      lane,
+      top,
+      rowHeight,
+      pxPerCycle,
+      scene.peakDensity,
+      firstDensityIndex,
+      lastDensityIndex,
+      scene.windowOriginCycles,
+      toScreenX,
+    )
     } else {
       // Marks: one band per voice sub-row (expanded multi-voice lane #424 — each
       // voice keeps its own pitch-Y spread / percussive baseline so a drum stack's
@@ -234,11 +261,15 @@ const EMPTY_CLIP_OUTLINE_ALPHA = 0.45
  *  neither side reading as empty. Stated as two cases rather than an interval
  *  overlap because a zero-duration trigger (`end === cycle`, the percussive
  *  case) is real here and a plain `end > start` test would drop it. */
-function clipHasContent(lane: SceneLane, clip: SceneClip): boolean {
+function clipHasContent(lane: SceneLane, clip: SceneClip, windowOriginCycles: number): boolean {
   // Whole-cycle-aligned clip bounds (see `SceneClip.endCycle`), so the bucket
   // range is exact rather than a conservative widening.
-  const from = Math.max(0, Math.floor(clip.startCycle))
-  const to = Math.min(lane.density.length, Math.ceil(clip.endCycle))
+  // `clip.*Cycle` is song-absolute, `lane.density` is indexed from the window
+  // origin — convert once, here. Before the origin existed these two frames were
+  // the same and this read the array directly; at a non-zero origin that made the
+  // loop bounds nonsense (`from` past the array end) so it never executed.
+  const from = Math.max(0, Math.floor(clip.startCycle) - windowOriginCycles)
+  const to = Math.min(lane.density.length, Math.ceil(clip.endCycle) - windowOriginCycles)
   for (let c = from; c < to; c++) {
     if ((lane.density[c] ?? 0) > 0) return true
   }
@@ -280,6 +311,7 @@ function drawClips(
   rowHeight: number,
   viewportWidth: number,
   theme: DrawTheme,
+  windowOriginCycles: number,
   toScreenX: (cycle: number) => number,
 ): void {
   for (const clip of lane.clips) {
@@ -297,7 +329,7 @@ function drawClips(
     ctx.fillStyle = theme.clipBorder
     if (x0 >= 0 && x0 <= viewportWidth) ctx.fillRect(x0, top, 1, rowHeight)
     if (x1 >= 0 && x1 <= viewportWidth) ctx.fillRect(x1 - 1, top, 1, rowHeight)
-    if (clipHasContent(lane, clip)) continue
+    if (clipHasContent(lane, clip, windowOriginCycles)) continue
     // Empty clip: outline it in the lane's own colour. Top/bottom run the
     // CLAMPED width (they follow what's on screen); the verticals stay at the
     // real edges, matching the border rule directly above — an off-screen edge
@@ -363,8 +395,11 @@ function drawDensity(
   rowHeight: number,
   pxPerCycle: number,
   peak: number,
-  firstCycle: number,
-  lastCycle: number,
+  /** Visible range as DENSITY INDICES (`lane.density` starts at the origin). */
+  firstDensityIndex: number,
+  lastDensityIndex: number,
+  /** Added back to turn an index into the song-absolute cycle `toScreenX` wants. */
+  windowOriginCycles: number,
   toScreenX: (c: number) => number,
 ): void {
   const padY = 4
@@ -373,11 +408,12 @@ function drawDensity(
   const cellH = Math.max(1, rowHeight - 2 * padY)
   const denom = peak > 0 ? peak : 1
   ctx.fillStyle = lane.color
-  for (let c = firstCycle; c < lastCycle; c++) {
-    const count = lane.density[c] ?? 0
+  for (let i = firstDensityIndex; i < lastDensityIndex; i++) {
+    const count = lane.density[i] ?? 0
     if (count <= 0) continue
     ctx.globalAlpha = 0.25 + 0.75 * Math.min(1, count / denom)
-    ctx.fillRect(toScreenX(c), top + padY, cellW, cellH)
+    // Index in, absolute cycle out — the conversion happens here and only here.
+    ctx.fillRect(toScreenX(windowOriginCycles + i), top + padY, cellW, cellH)
   }
   ctx.globalAlpha = 1
 }

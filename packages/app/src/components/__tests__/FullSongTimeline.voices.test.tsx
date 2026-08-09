@@ -66,7 +66,7 @@ afterEach(() => cleanup())
 const analysis: SongAnalysis = {
   periodCycles: 2,
   horizonCycles: 4,
-  reachedCap: false,
+  displaySpan: { kind: 'loop', cycles: 2 },
   lanes: [{ laneKey: 'drums', onsetsByCycle: [3, 0] }],
   sections: [{ startCycle: 0, endCycle: 2, laneKeys: ['drums'] }],
 }

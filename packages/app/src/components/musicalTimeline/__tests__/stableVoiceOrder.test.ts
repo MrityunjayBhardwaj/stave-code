@@ -11,7 +11,7 @@ import { applyStableVoiceOrder, EMPTY_VOICE_ORDER } from '../stableVoiceOrder'
 const analysis: SongAnalysis = {
   periodCycles: 8,
   horizonCycles: 8,
-  reachedCap: false,
+  displaySpan: { kind: 'loop', cycles: 8 },
   lanes: [{ laneKey: 'drums', onsetsByCycle: [1, 1, 1, 1, 1, 1, 1, 1] }],
   sections: [],
 }
@@ -49,22 +49,22 @@ describe('applyStableVoiceOrder (#480)', () => {
   it('groupVoices reshuffles on clip swap — the bug being fixed', () => {
     // Establishes the precondition: without the stable pass, the raw scene's
     // voice order DOES flip when clips are reordered.
-    expect(voiceKeys(buildTimelineScene(analysis, beforeSwap))).toEqual(['bd', 'hh', 'sn'])
-    expect(voiceKeys(buildTimelineScene(analysis, afterSwap))).toEqual(['hh', 'bd', 'sn'])
+    expect(voiceKeys(buildTimelineScene(analysis, 0, null, beforeSwap))).toEqual(['bd', 'hh', 'sn'])
+    expect(voiceKeys(buildTimelineScene(analysis, 0, null, afterSwap))).toEqual(['hh', 'bd', 'sn'])
   })
 
   it('pins voice order across a clip swap (drag or code-edit)', () => {
-    const first = applyStableVoiceOrder(buildTimelineScene(analysis, beforeSwap), EMPTY_VOICE_ORDER)
+    const first = applyStableVoiceOrder(buildTimelineScene(analysis, 0, null, beforeSwap), EMPTY_VOICE_ORDER)
     expect(voiceKeys(first.scene)).toEqual(['bd', 'hh', 'sn'])
 
     // Re-eval after the swap, threading the pinned order back.
-    const second = applyStableVoiceOrder(buildTimelineScene(analysis, afterSwap), first.order)
+    const second = applyStableVoiceOrder(buildTimelineScene(analysis, 0, null, afterSwap), first.order)
     expect(voiceKeys(second.scene)).toEqual(['bd', 'hh', 'sn']) // UNCHANGED rows
   })
 
   it('reflects the swapped CONTENT while holding the row order', () => {
-    const first = applyStableVoiceOrder(buildTimelineScene(analysis, beforeSwap), EMPTY_VOICE_ORDER)
-    const second = applyStableVoiceOrder(buildTimelineScene(analysis, afterSwap), first.order)
+    const first = applyStableVoiceOrder(buildTimelineScene(analysis, 0, null, beforeSwap), EMPTY_VOICE_ORDER)
+    const second = applyStableVoiceOrder(buildTimelineScene(analysis, 0, null, afterSwap), first.order)
     const bd = second.scene.lanes[0].voices.find((v) => v.key === 'bd')!
     const hh = second.scene.lanes[0].voices.find((v) => v.key === 'hh')!
     // Rows held, but the marks moved: after the swap hh leads in time, bd follows.
@@ -76,26 +76,26 @@ describe('applyStableVoiceOrder (#480)', () => {
   })
 
   it('appends a genuinely new voice at the end (not alphabetical)', () => {
-    const first = applyStableVoiceOrder(buildTimelineScene(analysis, beforeSwap), EMPTY_VOICE_ORDER)
+    const first = applyStableVoiceOrder(buildTimelineScene(analysis, 0, null, beforeSwap), EMPTY_VOICE_ORDER)
     // Add 'cp' (alphabetically before sn/hh) — it must land LAST, not sorted in.
     const withNew = marks([note(0, 'bd'), note(1, 'cp'), note(2, 'hh'), note(4, 'sn')])
-    const second = applyStableVoiceOrder(buildTimelineScene(analysis, withNew), first.order)
+    const second = applyStableVoiceOrder(buildTimelineScene(analysis, 0, null, withNew), first.order)
     expect(voiceKeys(second.scene)).toEqual(['bd', 'hh', 'sn', 'cp'])
   })
 
   it('keeps a vanished voice reserved so re-adding returns it to its slot', () => {
-    const first = applyStableVoiceOrder(buildTimelineScene(analysis, beforeSwap), EMPTY_VOICE_ORDER)
+    const first = applyStableVoiceOrder(buildTimelineScene(analysis, 0, null, beforeSwap), EMPTY_VOICE_ORDER)
     // hh disappears this eval.
     const without = marks([note(0, 'bd'), note(4, 'sn')])
-    const second = applyStableVoiceOrder(buildTimelineScene(analysis, without), first.order)
+    const second = applyStableVoiceOrder(buildTimelineScene(analysis, 0, null, without), first.order)
     expect(voiceKeys(second.scene)).toEqual(['bd', 'sn'])
     // hh comes back — it returns to its original slot (between bd and sn), not the end.
-    const third = applyStableVoiceOrder(buildTimelineScene(analysis, beforeSwap), second.order)
+    const third = applyStableVoiceOrder(buildTimelineScene(analysis, 0, null, beforeSwap), second.order)
     expect(voiceKeys(third.scene)).toEqual(['bd', 'hh', 'sn'])
   })
 
   it('returns the same scene identity on a no-op re-eval (no churn)', () => {
-    const built = buildTimelineScene(analysis, beforeSwap)
+    const built = buildTimelineScene(analysis, 0, null, beforeSwap)
     const first = applyStableVoiceOrder(built, EMPTY_VOICE_ORDER)
     // Stable already → identity preserved so downstream useMemos don't recompute.
     const again = applyStableVoiceOrder(first.scene, first.order)
@@ -104,7 +104,7 @@ describe('applyStableVoiceOrder (#480)', () => {
 
   it('leaves single-voice lanes untouched', () => {
     const single = marks([note(0, 'bd'), note(1, 'bd')])
-    const built = buildTimelineScene(analysis, single)
+    const built = buildTimelineScene(analysis, 0, null, single)
     const out = applyStableVoiceOrder(built, EMPTY_VOICE_ORDER)
     expect(out.scene).toBe(built) // no reorder, same identity
     expect(voiceKeys(out.scene)).toEqual(['bd'])

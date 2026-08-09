@@ -231,10 +231,12 @@ const MIN_BARE_SPAN = 4
  *  — is the floor, so a tight 2-bar working area is reachable. */
 const MIN_BARE_SPLIT_SPAN = 2
 
-/** The natural display span: one loop period, or the analyzed horizon. ≥ 1. */
+/** The natural display span: one loop period, or the analyzed horizon. ≥ 1.
+ *  The choice between those two is the ANALYSIS's to make and it already made
+ *  it — this only applies the floor. */
 function naturalSpan(analysis: SongAnalysis | null): number {
   if (!analysis) return 1
-  return Math.max(1, analysis.periodCycles ?? analysis.horizonCycles)
+  return Math.max(1, analysis.displaySpan.cycles)
 }
 
 /** Display span in cycles. The natural span, but a pure bare loop is floored to
@@ -327,19 +329,32 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // span drives the playhead wrap, the DISPLAY span drives pixels and can be
   // wider mid-drag. Collapsing them would silently re-introduce the drag bug
   // `dragSpanCycles` exists to avoid.
+  // ── THE VIEW'S WINDOW ORIGIN, in one place ────────────────────────────────
+  // The first song cycle this view is showing. It is 0 today because nothing
+  // advances it yet: the analysis collects `[0, span)` and the view draws that.
+  // The value is named and threaded rather than written as a literal at each
+  // consumer because it has THREE — the loop window (playhead wrap), the display
+  // window (all geometry), and the scene builder (density indexing). An origin
+  // they disagree about draws marks at the right width in the wrong place.
+  // Whatever eventually moves the window sets this, and all three follow.
+  const songOriginCycles = 0
   const loopWindow = useMemo<SongWindow>(
-    () => ({ originCycle: 0, spanCycles: loopCycles }),
-    [loopCycles],
+    () => ({ originCycle: songOriginCycles, spanCycles: loopCycles }),
+    [songOriginCycles, loopCycles],
   )
   const loopWindowRef = useRef(loopWindow)
   loopWindowRef.current = loopWindow
   // Is `loopCycles` an actual LOOP, or the point where period detection gave up?
-  // `reachedCap` means the analysis grew to its 256-cycle cap without confirming
-  // a period, so the span is a stopping point and nothing about the song repeats
+  // `capped` means the analysis grew to its 256-cycle cap without confirming a
+  // period, so the span is a stopping point and nothing about the song repeats
   // at it (#1105). Everything that treats the span as cyclic — the playhead wrap
   // above all — has to ask this rather than assume. Derived ONCE here so the
   // render path and the imperative rAF follow loop cannot disagree about it.
-  const looping = analysis == null || !analysis.reachedCap
+  //
+  // ⚠ A `horizon` span (analysis ended early with no period) counts as looping
+  // here. That is the pre-existing behaviour, preserved deliberately rather than
+  // corrected in passing — it is a separate question from where the window sits.
+  const looping = analysis == null || analysis.displaySpan.kind !== 'capped'
   const loopingRef = useRef(looping)
   loopingRef.current = looping
 
@@ -410,8 +425,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const displayCyclesRef = useRef(displayCycles)
   displayCyclesRef.current = displayCycles
   const songWindow = useMemo<SongWindow>(
-    () => ({ originCycle: 0, spanCycles: displayCycles }),
-    [displayCycles],
+    () => ({ originCycle: songOriginCycles, spanCycles: displayCycles }),
+    [songOriginCycles, displayCycles],
   )
   const songWindowRef = useRef(songWindow)
   songWindowRef.current = songWindow
@@ -621,9 +636,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // the true song end so a click in the transient extend room (past the song)
       // seeks to the end, not into empty space (#487).
       userScrollUntilRef.current = Date.now() + USER_SCROLL_GUARD_MS
-      onSeek(Math.min(cycle, loopCycles))
+      // The end of the SONG-ABSOLUTE stretch in view. `cycle` came back absolute
+      // from the axis, so clamping it against a bare span would send a click near
+      // the end of a paged window back to the start of the song.
+      onSeek(Math.min(cycle, songOriginCycles + loopCycles))
     },
-    [displayCycles, loopCycles, dragAwareContentWidth, onSeek],
+    [displayCycles, songOriginCycles, loopCycles, dragAwareContentWidth, onSeek],
   )
 
   // Canvas scene: per-lane density (from analysis) + capped mini-note marks
@@ -707,6 +725,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const scene = useMemo(() => {
     const raw = buildTimelineScene(
       analysis,
+      songOriginCycles,
+      // This view shows exactly ONE window, so its own busiest cell is the right
+      // full-intensity reference and there is nothing to be comparable WITH. A
+      // view that pages has to revisit this — see the note at `peakDensity`.
+      null,
       marks,
       displayCycles,
       source,
@@ -716,7 +739,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const { scene: ordered, order } = applyStableVoiceOrder(raw, voiceOrderRef.current)
     voiceOrderRef.current = order
     return ordered
-  }, [analysis, marks, displayCycles, source, customColorByName, trackOrder])
+  }, [analysis, songOriginCycles, marks, displayCycles, source, customColorByName, trackOrder])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind
@@ -1059,7 +1082,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         setDragSpanCycles(needed)
       }
       const gcw = dragAwareContentWidth(rect.width)
-      setTrimEdgeX(songCycleToX(newEnd, { originCycle: 0, spanCycles: dragSpanRef.current ?? loopCyclesRef.current }, gcw))
+      setTrimEdgeX(songCycleToX(newEnd, { originCycle: songOriginCycles, spanCycles: dragSpanRef.current ?? loopCyclesRef.current }, gcw))
     },
     [restPxPerCycle, dragAwareContentWidth],
   )
@@ -1444,27 +1467,30 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     return { left, width: Math.max(1, right - left), top: box.top, height: box.height }
   }, [selected, scene, layout, displayCycles, contentWidth])
 
+  // The three readouts are the three span kinds — one branch each, so a new
+  // kind is a compile error here rather than a silently reused label.
   const periodLabel =
     analysis == null
       ? '—'
-      : analysis.periodCycles != null
-        ? `loop ${analysis.periodCycles}`
-        : analysis.reachedCap
-          ? `${analysis.horizonCycles}+ cycles`
-          : `${analysis.horizonCycles} cycles`
+      : analysis.displaySpan.kind === 'loop'
+        ? `loop ${analysis.displaySpan.cycles}`
+        : analysis.displaySpan.kind === 'capped'
+          ? `${analysis.displaySpan.cycles}+ cycles`
+          : `${analysis.displaySpan.cycles} cycles`
 
   // The span is where the analysis STOPPED LOOKING, not the song's length, and
   // until now nothing said so: `periodLabel` above is written to a `display:none`
   // attribute for Playwright and rendered nowhere (#1105). A song that never
   // repeats got a 256-cycle timeline that reads exactly like a measured 256-cycle
-  // loop. Shown only for `reachedCap`, because that is the only case where the
+  // loop. Shown only for a `capped` span, because that is the only case where the
   // number means something other than what it appears to mean.
   //
   // The second clause is the complement of not wrapping the playhead: once the
   // transport passes the span the playhead is withheld (`wrapSongPosition`), so
   // without a word here the view would look stopped. Read from the SAME `looping`
   // and `songPos` the playhead uses, so the two cannot contradict each other.
-  const beyondSpan = !looping && songPos != null && songPos >= loopCycles
+  // Absolute position against the absolute end of the window, not against its width.
+  const beyondSpan = !looping && songPos != null && songPos >= songOriginCycles + loopCycles
   const fallbackNotice = !looping
     ? beyondSpan
       ? `no repeat · playing past cycle ${Math.floor(loopCycles)}`

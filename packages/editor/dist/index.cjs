@@ -997,7 +997,8 @@ function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn) {
   const lanes = accumulateLanes(events, horizon);
   const periodCycles = periodOf(events, horizon);
   const sections = computeSections(lanes, horizon);
-  return { periodCycles, horizonCycles: horizon, lanes, sections, reachedCap };
+  const displaySpan = periodCycles != null ? { kind: "loop", cycles: periodCycles } : { kind: reachedCap ? "capped" : "horizon", cycles: horizon };
+  return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan };
 }
 __name(analyzeEvents, "analyzeEvents");
 var DEFAULT_HINT = 8;
@@ -1047,7 +1048,13 @@ async function analyzeSong(ir, opts = {}) {
     if (period !== null) {
       const lanes = accumulateLanes(events, period);
       const sections = computeSections(lanes, period);
-      return { periodCycles: period, horizonCycles: period, lanes, sections, reachedCap: false };
+      return {
+        periodCycles: period,
+        horizonCycles: period,
+        lanes,
+        sections,
+        displaySpan: { kind: "loop", cycles: period }
+      };
     }
     if (horizon >= cap) {
       return analyzeEvents(events, cap, true, periodRule);

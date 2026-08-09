@@ -30,7 +30,8 @@ export const NO_VOICE = '\0'
 
 /** A single read-only mini-note mark within a lane. */
 export interface SceneNote {
-  /** Fractional song cycle of the onset (event `begin`), in `[0, displayCycles)`. */
+  /** Fractional SONG-ABSOLUTE cycle of the onset (event `begin`). Absolute, not
+   *  window-relative: this cycle reaches the edit path. */
   readonly cycle: number
   /** Fractional song cycle of the offset (event `end`), `≥ cycle`. The mark's
    *  width is `(end − cycle) × pxPerCycle` — DURATION-proportional, mirroring the
@@ -126,7 +127,8 @@ export interface SceneLane {
    *  only this name — and `color`, derived from it — resolves to the label. */
   readonly displayName: string
   readonly color: string
-  /** `onsetsByCycle` — onset count per integer cycle (the coarse density). */
+  /** `onsetsByCycle` — onset count per integer cycle. ⚠ The ONE window-relative
+   *  array on the scene: `density[i]` is cycle `windowOriginCycles + i`. */
   readonly density: readonly number[]
   /** Capped mini-note marks; empty when no IR / not collected. */
   readonly notes: readonly SceneNote[]
@@ -141,7 +143,7 @@ export interface SceneLane {
   readonly voices: readonly SceneVoice[]
   /** Ordered read-only clips (#386). At least one entry: an arrangement track
    *  has one clip per `arrange`/`cat` arm; a bare track has a single implicit
-   *  clip spanning `[0, displayCycles)`. Drawn as segment rects behind the
+   *  clip spanning the whole window, in absolute cycles. Drawn as segment rects behind the
    *  lane's note marks (design §4.2); hit-testable for the later edit ops. */
   readonly clips: readonly SceneClip[]
   /** Source-character offset of a representative event for this lane (the first
@@ -172,6 +174,11 @@ export interface TimelineScene {
   readonly sections: readonly SongSection[]
   /** Display span in cycles (one loop period, or the analyzed horizon). ≥ 1. */
   readonly displayCycles: number
+  /** First cycle of the window this scene shows (song-absolute); 0 unpaged.
+   *  Every OTHER cycle on this scene is song-absolute; `SceneLane.density` is the
+   *  single exception, indexed from here. Renderers convert once, at this field,
+   *  and never subtract the origin at individual use sites. */
+  readonly windowOriginCycles: number
   /** Detected loop period, or null. */
   readonly period: number | null
   /** Peak onset count across all lanes — normalises density intensity. ≥ 1. */
@@ -231,6 +238,24 @@ export const EMPTY_MARKS: CollectedMarks = {
  */
 export function buildTimelineScene(
   analysis: SongAnalysis | null,
+  /** First cycle of the window this analysis covers (song-absolute); 0 for an
+   *  unpaged view. REQUIRED rather than defaulted on purpose: a forgotten origin
+   *  is not a crash, it is a plausible timeline of the wrong part of the song,
+   *  so the compiler asks every caller instead of guessing zero for them.
+   *
+   *  ⚠ This is the ONE frame conversion in the scene. `LaneActivity.onsetsByCycle`
+   *  is indexed FROM the origin (an array cannot start at 256 without wasting the
+   *  prefix), while every cycle the scene EXPORTS — clip bounds, note cycles,
+   *  section bounds — stays song-absolute, because those feed the edit path and a
+   *  window-relative cycle would write the edit to the wrong bar. So the scene
+   *  carries the origin and `density` is the only thing indexed relative to it. */
+  windowOriginCycles: number,
+  /** Normalisation floor for the density colour scale, or null to normalise over
+   *  THIS window alone. Required — see the trade-off where `peakDensity` is
+   *  computed. A single-window view passes null and gets the historical
+   *  behaviour; anything that pages has to state which it means, because the two
+   *  differ silently and only in how the same music is coloured. */
+  carriedPeakDensity: number | null,
   marks: CollectedMarks = EMPTY_MARKS,
   displayCyclesOverride?: number,
   /** Raw user source (#579 STEP 2) — read at each lane's `labelOffset`
@@ -270,11 +295,19 @@ export function buildTimelineScene(
   // split (#489 D3). When provided, it drives both the bare clip's `endCycle` and
   // `scene.displayCycles`, keeping the clip rect and the geometry transform in
   // lock-step. Absent (tests / density-only callers) → the per-loop default.
+  //
+  // That default asks `displaySpan`, never `periodCycles ?? horizonCycles`. The
+  // two are value-identical today — `displaySpan` IS that expression, paired with
+  // the kind that says which of the pair answered — so this is not a behaviour
+  // change. It is the convention being total: the erasing idiom was removed from
+  // every consumer that decides geometry, and a survivor here is what the next
+  // person copies. The raw fields stay legitimate for instruments that MEASURE
+  // (the parity sweep records both); they are the wrong thing for deciding a span.
   const displayCycles =
     displayCyclesOverride != null && displayCyclesOverride >= 1
       ? Math.max(1, Math.round(displayCyclesOverride))
       : analysis
-        ? Math.max(1, analysis.periodCycles ?? analysis.horizonCycles)
+        ? Math.max(1, analysis.displaySpan.cycles)
         : 1
   const lanesIn = analysis?.lanes ?? []
   const analysisKeys = new Set(lanesIn.map((l) => l.laneKey))
@@ -290,7 +323,10 @@ export function buildTimelineScene(
   const evalLaneKeys = [...marks.marksByLane.keys()].filter((k) => !analysisKeys.has(k))
   const evalDensities = new Map<string, number[]>()
   for (const key of evalLaneKeys) {
-    evalDensities.set(key, densityFromNotes(marks.marksByLane.get(key) ?? [], nCycles))
+    evalDensities.set(
+      key,
+      densityFromNotes(marks.marksByLane.get(key) ?? [], nCycles, windowOriginCycles),
+    )
   }
 
   // Declared-but-silent lanes (#1098): a track the DOCUMENT declares that
@@ -375,7 +411,24 @@ export function buildTimelineScene(
     .map(([id]) => id)
 
   // Peak onset across ALL lanes (IR + eval, ≥1) so the busiest cell is full-intensity.
-  let peakDensity = 1
+  //
+  // ⚠ THE DOMAIN OF THIS MAXIMUM IS THE DOMAIN OF THE COLOUR SCALE, and once the
+  // view can page they stop being obviously the same thing. A window-local max
+  // means the busiest cell in view is always full-intensity, so paging to a
+  // quieter stretch silently BRIGHTENS it: identical music reads as a different
+  // density depending on what else happens to be on screen, with nothing saying
+  // the scale moved. `carriedPeakDensity` is how a caller that shows more than
+  // one window says "normalise against this instead".
+  //
+  // Neither answer is free, and the caller is the only one that can choose:
+  //   · window-local (null) — every page uses its full colour range, and no two
+  //     pages are comparable.
+  //   · carried — pages are comparable, but the scale then depends on which
+  //     windows have been VISITED, so the same page can render differently
+  //     depending on how the user got there. A carried value should therefore
+  //     come from something stable (the song's own peak), not from a running
+  //     maximum accumulated by browsing.
+  let peakDensity = Math.max(1, carriedPeakDensity ?? 1)
   for (const lane of lanesIn) {
     for (const c of lane.onsetsByCycle) if (c > peakDensity) peakDensity = c
   }
@@ -397,7 +450,12 @@ export function buildTimelineScene(
     // whole song (design §5 option b). The implicit clip is synthesised here
     // (the pure builder owns `displayCycles`) so every lane has ≥1 clip.
     const clips: SceneClip[] = marks.clipsByLane.get(laneKey) ?? [
-      { armIndex: -1, startCycle: 0, endCycle: displayCycles, label: null },
+      {
+        armIndex: -1,
+        startCycle: windowOriginCycles,
+        endCycle: windowOriginCycles + displayCycles,
+        label: null,
+      },
     ]
     // Display name (#579 STEP 2): a NAMED track's source label, else the
     // positional `d{N}`. Both the name AND the colour key on it, so a named
@@ -436,7 +494,9 @@ export function buildTimelineScene(
     // length rule (one bucket per displayed cycle) is stated in one place.
     // No notes, no clips of its own → `buildLane` gives it the whole-song
     // implicit clip, so the row is present and empty rather than degenerate.
-    ...declaredSilentKeys.map((key) => buildLane(key, densityFromNotes([], nCycles))),
+    ...declaredSilentKeys.map((key) =>
+      buildLane(key, densityFromNotes([], nCycles, windowOriginCycles)),
+    ),
   ]
   // Source order (#871): rank IR-backed and eval-backed lanes TOGETHER by the
   // IR's track list, so each lane sits where the user wrote it regardless of
@@ -476,6 +536,7 @@ export function buildTimelineScene(
     lanes,
     sections: analysis?.sections ?? [],
     displayCycles,
+    windowOriginCycles,
     period: analysis?.periodCycles ?? null,
     peakDensity,
     notesCapped: marks.capped,
@@ -504,10 +565,16 @@ export function clipAtCycle(lane: SceneLane, cycle: number): SceneClip | null {
  * (the display span); onsets outside `[0, nCycles)` are ignored, mirroring the
  * IR path. PURE — operates on already-collected marks only.
  */
-function densityFromNotes(notes: readonly SceneNote[], nCycles: number): number[] {
+function densityFromNotes(
+  notes: readonly SceneNote[],
+  nCycles: number,
+  windowOriginCycles: number,
+): number[] {
   const density = new Array<number>(Math.max(0, nCycles)).fill(0)
   for (const n of notes) {
-    const c = Math.floor(n.cycle)
+    // `n.cycle` is song-absolute; `density` is indexed from the window origin.
+    // This is the same conversion the IR path gets from `accumulateLanesInWindow`.
+    const c = Math.floor(n.cycle) - windowOriginCycles
     if (c >= 0 && c < density.length) density[c] += 1
   }
   return density

@@ -39,6 +39,7 @@ function mockCtx() {
 
 const scene: TimelineScene = {
   displayCycles: 4,
+  windowOriginCycles: 0,
   period: 4,
   peakDensity: 2,
   notesCapped: false,

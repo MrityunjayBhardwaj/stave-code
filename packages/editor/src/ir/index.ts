@@ -40,6 +40,7 @@ export {
 } from './songAnalysis'
 export type {
   SongAnalysis,
+  DisplaySpan,
   LaneActivity,
   SongSection,
   AnalyzeSongOptions,

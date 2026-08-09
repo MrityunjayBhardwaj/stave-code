@@ -60,6 +60,7 @@ function sceneFixture(): TimelineScene {
     ],
     sections: [],
     displayCycles: 4,
+    windowOriginCycles: 0,
     period: null,
     peakDensity: 1,
     notesCapped: false,

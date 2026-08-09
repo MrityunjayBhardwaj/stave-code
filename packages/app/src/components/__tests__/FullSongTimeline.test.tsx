@@ -118,7 +118,7 @@ afterEach(() => cleanup())
 const analysisFixture: SongAnalysis = {
   periodCycles: 4,
   horizonCycles: 8,
-  reachedCap: false,
+  displaySpan: { kind: 'loop', cycles: 4 },
   lanes: [
     { laneKey: 'bd', onsetsByCycle: [2, 0, 2, 0] },
     { laneKey: 'hh', onsetsByCycle: [1, 1, 1, 1] },
@@ -133,7 +133,7 @@ const analysisFixture: SongAnalysis = {
 const nestedAnalysis: SongAnalysis = {
   periodCycles: 3,
   horizonCycles: 6,
-  reachedCap: false,
+  displaySpan: { kind: 'loop', cycles: 3 },
   lanes: [{ laneKey: 'song', onsetsByCycle: [1, 1, 1] }],
   sections: [{ startCycle: 0, endCycle: 3, laneKeys: ['song'] }],
 }
@@ -800,7 +800,7 @@ describe('FullSongTimeline — resize a bare loop (#662, set display span; optio
   const bareAnalysis: SongAnalysis = {
     periodCycles: 1,
     horizonCycles: 1,
-    reachedCap: false,
+    displaySpan: { kind: 'loop', cycles: 1 },
     lanes: [{ laneKey: 'bd', onsetsByCycle: [4] }],
     sections: [{ startCycle: 0, endCycle: 1, laneKeys: ['bd'] }],
   }

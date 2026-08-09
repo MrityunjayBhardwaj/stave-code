@@ -76,18 +76,54 @@ export interface SongSection {
   readonly laneKeys: readonly string[]
 }
 
+/**
+ * The span the view should show, together with WHAT IT MEANS — the analysis's
+ * own answer, not a number a consumer has to interpret.
+ *
+ * ── WHY THIS IS ONE VALUE AND NOT A NUMBER PLUS A BOOLEAN ───────────────────
+ * `periodCycles` is a MEASUREMENT; a horizon is where the analysis STOPPED
+ * LOOKING. They are different kinds of fact and they were previously told apart
+ * by a sibling boolean that reached almost no consumer, so `periodCycles ??
+ * horizonCycles` — the idiom that erases the difference — spread through the
+ * view instead. Carrying the span and its meaning in one value makes the
+ * distinction impossible to drop by accident: you cannot read `cycles` without
+ * having `kind` in your hand.
+ *
+ * The three kinds are the three the view already distinguished by hand:
+ *   `loop`    — a period was DETECTED. `cycles` is that period and the lanes
+ *               span exactly one of them. This is the only cyclic kind: it is
+ *               the only one where cycle `n + cycles` genuinely sounds like `n`.
+ *   `capped`  — the horizon grew to its cap without confirming a period.
+ *               `cycles` is where we gave up, not a property of the song.
+ *   `horizon` — analysis ended before the cap with no period (collection was
+ *               aborted, or there was nothing to analyze). `cycles` is what was
+ *               actually looked at.
+ *
+ * ⚠ `capped` and `horizon` both mean "no period was found", and only `capped`
+ * says the search was exhausted. They are kept apart because the view says
+ * different things about them ("N+ cycles" vs "N cycles"), and collapsing them
+ * would reintroduce exactly the erasure this type exists to prevent.
+ */
+export interface DisplaySpan {
+  readonly kind: 'loop' | 'capped' | 'horizon'
+  /** The span in cycles the view spans. For `loop`, the detected period. */
+  readonly cycles: number
+}
+
 export interface SongAnalysis {
-  /** Detected loop period in cycles, or `null` if none within the horizon. */
+  /** Detected loop period in cycles, or `null` if none within the horizon.
+   *  A MEASUREMENT — for anything asking what the analysis found. A consumer
+   *  choosing what to DISPLAY wants `displaySpan` instead. */
   readonly periodCycles: number | null
-  /** Number of cycles actually analyzed. */
+  /** Number of cycles actually analyzed. A MEASUREMENT — see `periodCycles`. */
   readonly horizonCycles: number
   /** Per-lane onset activity across the horizon, in first-seen lane order. */
   readonly lanes: readonly LaneActivity[]
   /** Contiguous sections partitioning `[0, horizonCycles)` by active-lane set. */
   readonly sections: readonly SongSection[]
-  /** True when the progressive horizon reached the cap before a period was
-   *  found (e.g. RNG/stateful patterns with no clean loop). */
-  readonly reachedCap: boolean
+  /** The span to show and what it means — the single answer for every consumer
+   *  deciding geometry, wrapping, or what to tell the user. */
+  readonly displaySpan: DisplaySpan
 }
 
 // ---------------------------------------------------------------------------
@@ -541,7 +577,14 @@ export function analyzeEvents(
   // phase and the view spans the longest single loop (#488, see detectDisplayPeriod).
   const periodCycles = periodOf(events, horizon)
   const sections = computeSections(lanes, horizon)
-  return { periodCycles, horizonCycles: horizon, lanes, sections, reachedCap }
+  // THE ONE PLACE the span and its meaning are decided. `periodCycles ??
+  // horizonCycles` used to live at every consumer; it lives here now, paired
+  // with the kind that says which of the two answered.
+  const displaySpan: DisplaySpan =
+    periodCycles != null
+      ? { kind: 'loop', cycles: periodCycles }
+      : { kind: reachedCap ? 'capped' : 'horizon', cycles: horizon }
+  return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan }
 }
 
 // ---------------------------------------------------------------------------
@@ -734,7 +777,13 @@ export async function analyzeSong(
       // [0, period) would find null, since one loop has no internal repetition).
       const lanes = accumulateLanes(events, period)
       const sections = computeSections(lanes, period)
-      return { periodCycles: period, horizonCycles: period, lanes, sections, reachedCap: false }
+      return {
+        periodCycles: period,
+        horizonCycles: period,
+        lanes,
+        sections,
+        displaySpan: { kind: 'loop', cycles: period },
+      }
     }
     if (horizon >= cap) {
       return analyzeEvents(events, cap, true, periodRule)
