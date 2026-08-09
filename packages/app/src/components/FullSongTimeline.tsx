@@ -753,14 +753,29 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // song-absolute, a paged window's marks landed to the left of the viewport
   // and were culled, so it drew its heatmap with no note marks and the first
   // window's clips.
-  const marks = useMemo(() => {
-    const events = readEventsInBand(
-      { getTimelineEventsBand: props.getTimelineEventsBand, getTimelineEvents: props.getTimelineEvents },
-      loopWindow.originCycle,
-      loopWindow.originCycle + loopCycles,
-    )
-    return collectNoteMarks(events, props.ir ?? null, loopWindow)
-  }, [props.ir, loopCycles, loopWindow, props.getTimelineEvents, props.getTimelineEventsBand])
+  //
+  // Both readers below go through ONE definition of "the haps this window
+  // shows". Written out twice it is three lines of duplication that a later
+  // edit only has to touch one of — and the consumer that drifts is the PROBE,
+  // so the divergence would be invisible in the app and misleading in the test
+  // that trusts it. Both accessors are bound once by the owner, so this closure
+  // is stable and its presence in a dep list never re-fires anything on its own.
+  const readWindowEvents = useCallback(
+    () =>
+      readEventsInBand(
+        {
+          getTimelineEventsBand: props.getTimelineEventsBand,
+          getTimelineEvents: props.getTimelineEvents,
+        },
+        loopWindow.originCycle,
+        loopWindow.originCycle + loopCycles,
+      ),
+    [props.getTimelineEventsBand, props.getTimelineEvents, loopWindow, loopCycles],
+  )
+  const marks = useMemo(
+    () => collectNoteMarks(readWindowEvents(), props.ir ?? null, loopWindow),
+    [props.ir, loopWindow, readWindowEvents],
+  )
   // #977 — test-only observation of the computed marks. Marks are canvas-drawn,
   // so a browser e2e can't read them from the DOM; this publishes a per-lane
   // onset summary + whether the marks are EVAL-backed (haps present) or the
@@ -778,11 +793,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     if (!on) return
     // The SAME read the memo above made, so the probe reports the marks the
     // view actually drew rather than a differently-scoped second query.
-    const events = readEventsInBand(
-      { getTimelineEventsBand: props.getTimelineEventsBand, getTimelineEvents: props.getTimelineEvents },
-      loopWindow.originCycle,
-      loopWindow.originCycle + loopCycles,
-    )
+    const events = readWindowEvents()
     const byLane: Record<
       string,
       { count: number; onsets: number[]; pitches: Array<number | null> }
@@ -802,7 +813,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       laneCount: marks.marksByLane.size,
       byLane,
     }
-  }, [marks, loopCycles, loopWindow, props.getTimelineEvents, props.getTimelineEventsBand])
+  }, [marks, readWindowEvents])
   // #871 — the lane order the user WROTE, read off the IR's track list. Lane
   // order is structure, and structure is IR-owned: the IR carries a Track node
   // per statement even when that track emits no static-IR events (a signal, a
