@@ -725,14 +725,20 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const { customColorByName } = props
   const scene = useMemo(() => {
     const raw = buildTimelineScene(
+      // `SongAnalysis` satisfies the narrower `SceneActivity` structurally — the
+      // scene only ever wanted lanes and sections. The period travels separately
+      // below precisely because the other shape that fits here, a windowed
+      // analysis, has none to give.
       analysis,
-      songOriginCycles,
+      // Origin and span as ONE value, which is the same object the axis and the
+      // renderers are handed, so the view cannot tell them different stories.
+      songWindow,
+      analysis?.periodCycles ?? null,
       // This view shows exactly ONE window, so its own busiest cell is the right
       // full-intensity reference and there is nothing to be comparable WITH. A
       // view that pages has to revisit this — see the note at `peakDensity`.
       null,
       marks,
-      displayCycles,
       source,
       customColorByName,
       trackOrder,
@@ -740,7 +746,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const { scene: ordered, order } = applyStableVoiceOrder(raw, voiceOrderRef.current)
     voiceOrderRef.current = order
     return ordered
-  }, [analysis, songOriginCycles, marks, displayCycles, source, customColorByName, trackOrder])
+  }, [analysis, songWindow, marks, source, customColorByName, trackOrder])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind

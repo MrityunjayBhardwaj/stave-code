@@ -17,6 +17,7 @@
  */
 
 import type { SongAnalysis, SongSection } from '@stave/editor'
+import type { SongWindow } from './songAxis'
 import { trackIdentity } from './colors'
 import { containingAnchor } from './laneIdentity'
 import { resolveLaneName } from './trackLabel'
@@ -219,7 +220,22 @@ export const EMPTY_MARKS: CollectedMarks = {
 }
 
 /**
- * Build the render scene from the analysis (density, sections, span, period)
+ * What the scene needs in order to DRAW: onset activity per lane, and the
+ * sections partitioning what is on screen. Structurally satisfied by both
+ * `SongAnalysis` (the whole song) and `WindowAnalysis` (one page of it), which
+ * is the entire point — the scene never needed the difference between them.
+ *
+ * Everything a window cannot answer is a separate parameter: the period, which
+ * belongs to the song rather than the page, and the span, which the window
+ * itself carries.
+ */
+export interface SceneActivity {
+  readonly lanes: SongAnalysis['lanes']
+  readonly sections: readonly SongSection[]
+}
+
+/**
+ * Build the render scene from the activity (density, sections, span, period)
  * merged with the collected note marks. PURE — no IR walk, no canvas. Lanes keep
  * `analyzeSong`'s key, so the canvas rows line up with the DOM lane labels
  * exactly; their ORDER is the caller's `declaredTracks` when given (#871),
@@ -237,11 +253,23 @@ export const EMPTY_MARKS: CollectedMarks = {
  * instead of fading — silently, since an absent row reads as a valid state.
  */
 export function buildTimelineScene(
-  analysis: SongAnalysis | null,
-  /** First cycle of the window this analysis covers (song-absolute); 0 for an
-   *  unpaged view. REQUIRED rather than defaulted on purpose: a forgotten origin
-   *  is not a crash, it is a plausible timeline of the wrong part of the song,
-   *  so the compiler asks every caller instead of guessing zero for them.
+  /** The onset activity and sections to draw. Deliberately NARROWER than
+   *  `SongAnalysis`: these two fields are all the scene ever read from it, and
+   *  asking for only them is what lets a `WindowAnalysis` drive the scene without
+   *  first being dressed up as a whole song. A window has no period and no
+   *  display span, and the alternative — synthesising them so it satisfies
+   *  `SongAnalysis` — would put a `periodCycles: null` on a window, which is the
+   *  one thing that type exists to make impossible. */
+  activity: SceneActivity | null,
+  /** WHICH window is on screen — origin and span together, never as two loose
+   *  numbers. The same `SongWindow` the axis takes, and the same shape
+   *  `WindowAnalysis` already publishes.
+   *
+   *  ⚠ ONE OBJECT ON PURPOSE. Origin and span are both plain cycle counts, so as
+   *  separate positional arguments a swap type-checks and yields a plausible
+   *  timeline of the wrong part of the song — the exact failure the origin was
+   *  made required to avoid, reintroduced by argument order instead of by
+   *  omission. Bundled, the swap cannot be written.
    *
    *  ⚠ This is the ONE frame conversion in the scene. `LaneActivity.onsetsByCycle`
    *  is indexed FROM the origin (an array cannot start at 256 without wasting the
@@ -249,7 +277,13 @@ export function buildTimelineScene(
    *  section bounds — stays song-absolute, because those feed the edit path and a
    *  window-relative cycle would write the edit to the wrong bar. So the scene
    *  carries the origin and `density` is the only thing indexed relative to it. */
-  windowOriginCycles: number,
+  songWindow: SongWindow,
+  /** The detected loop period, or null when the song has none. Passed EXPLICITLY
+   *  rather than read off the activity, because a window cannot answer it: the
+   *  period is a property of the whole song, decided once, and a paged view only
+   *  exists on the branch where that decision came back empty. A window therefore
+   *  passes null structurally rather than by remembering to. */
+  period: number | null,
   /** Normalisation floor for the density colour scale, or null to normalise over
    *  THIS window alone. Required — see the trade-off where `peakDensity` is
    *  computed. A single-window view passes null and gets the historical
@@ -257,7 +291,6 @@ export function buildTimelineScene(
    *  differ silently and only in how the same music is coloured. */
   carriedPeakDensity: number | null,
   marks: CollectedMarks = EMPTY_MARKS,
-  displayCyclesOverride?: number,
   /** Raw user source (#579 STEP 2) — read at each lane's `labelOffset`
    *  (`dollarPos`) to resolve a NAMED track's display label. Absent → every
    *  lane keeps its positional `d{N}` name (the pre-STEP-2 behaviour). */
@@ -290,26 +323,21 @@ export function buildTimelineScene(
    *  reconciliation below. Ordering reads only the ids. */
   declaredTracks?: readonly DeclaredTrack[],
 ): TimelineScene {
-  // The caller (FullSongTimeline) owns the authoritative span — it floors a bare
-  // loop to a minimum arrangement length so the single implicit clip has room to
-  // split (#489 D3). When provided, it drives both the bare clip's `endCycle` and
-  // `scene.displayCycles`, keeping the clip rect and the geometry transform in
-  // lock-step. Absent (tests / density-only callers) → the per-loop default.
+  // The span comes from the window, always — there is no longer a fallback that
+  // infers it from the analysis. The caller owns the authoritative span because
+  // it floors a bare loop to a minimum arrangement length so the single implicit
+  // clip has room to split (#489 D3), and it drives both the bare clip's
+  // `endCycle` and `scene.displayCycles`, keeping the clip rect and the geometry
+  // transform in lock-step.
   //
-  // That default asks `displaySpan`, never `periodCycles ?? horizonCycles`. The
-  // two are value-identical today — `displaySpan` IS that expression, paired with
-  // the kind that says which of the pair answered — so this is not a behaviour
-  // change. It is the convention being total: the erasing idiom was removed from
-  // every consumer that decides geometry, and a survivor here is what the next
-  // person copies. The raw fields stay legitimate for instruments that MEASURE
-  // (the parity sweep records both); they are the wrong thing for deciding a span.
-  const displayCycles =
-    displayCyclesOverride != null && displayCyclesOverride >= 1
-      ? Math.max(1, Math.round(displayCyclesOverride))
-      : analysis
-        ? Math.max(1, analysis.displaySpan.cycles)
-        : 1
-  const lanesIn = analysis?.lanes ?? []
+  // The removed fallback read `displaySpan`, which a window does not have. Rather
+  // than give windows a synthetic one, the inference moved OUT of production: it
+  // was only ever exercised by tests and density-only callers (`FullSongTimeline`
+  // has always passed an explicit span), so it lives in the test helper now,
+  // where being a convenience is honest.
+  const displayCycles = Math.max(1, Math.round(songWindow.spanCycles) || 1)
+  const windowOriginCycles = songWindow.originCycle
+  const lanesIn = activity?.lanes ?? []
   const analysisKeys = new Set(lanesIn.map((l) => l.laneKey))
   const nCycles = Math.ceil(displayCycles)
 
@@ -534,10 +562,10 @@ export function buildTimelineScene(
 
   return {
     lanes,
-    sections: analysis?.sections ?? [],
+    sections: activity?.sections ?? [],
     displayCycles,
     windowOriginCycles,
-    period: analysis?.periodCycles ?? null,
+    period,
     peakDensity,
     notesCapped: marks.capped,
   }

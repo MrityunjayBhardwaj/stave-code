@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import type { SongAnalysis } from '@stave/editor'
-import { buildTimelineScene, clipAtCycle, type SceneNote, type SceneClip, type SceneLane, type CollectedMarks } from '../timelineScene'
+import { clipAtCycle, type SceneNote, type SceneClip, type SceneLane, type CollectedMarks } from '../timelineScene'
 import type { DeclaredTrack } from '../trackOrder'
+import { sceneOf } from './sceneHelpers'
 
 const analysisFixture: SongAnalysis = {
   periodCycles: 4,
@@ -40,7 +41,7 @@ function marks(
 
 describe('buildTimelineScene', () => {
   it('returns an empty scene for null analysis', () => {
-    const scene = buildTimelineScene(null, 0, null)
+    const scene = sceneOf(null, 0, null)
     expect(scene.lanes).toEqual([])
     expect(scene.displayCycles).toBe(1)
     expect(scene.period).toBeNull()
@@ -49,7 +50,7 @@ describe('buildTimelineScene', () => {
   })
 
   it('spans one loop period and carries density + peak', () => {
-    const scene = buildTimelineScene(analysisFixture, 0, null)
+    const scene = sceneOf(analysisFixture, 0, null)
     expect(scene.displayCycles).toBe(4) // periodCycles wins over horizon
     expect(scene.period).toBe(4)
     expect(scene.lanes.map((l) => l.laneKey)).toEqual(['bd', 'lead']) // first-seen order
@@ -67,7 +68,7 @@ describe('buildTimelineScene', () => {
       horizonCycles: 8,
       displaySpan: { kind: 'horizon', cycles: 8 },
     }
-    const scene = buildTimelineScene(noPeriod, 0, null)
+    const scene = sceneOf(noPeriod, 0, null)
     expect(scene.displayCycles).toBe(8)
     expect(scene.period).toBeNull()
   })
@@ -84,12 +85,12 @@ describe('buildTimelineScene', () => {
       horizonCycles: 8,
       displaySpan: { kind: 'horizon', cycles: 8 },
     }
-    const scene = buildTimelineScene(disagreeing, 0, null)
+    const scene = sceneOf(disagreeing, 0, null)
     expect(scene.displayCycles).toBe(8) // reading the raw pair would give 4
   })
 
   it('merges note marks and computes per-lane pitch range', () => {
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       analysisFixture, 0, null,
       marks({
         bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }], // percussive → no pitch range
@@ -111,7 +112,7 @@ describe('buildTimelineScene', () => {
   })
 
   it('assigns a stable color per lane and leaves note-less lanes empty', () => {
-    const scene = buildTimelineScene(analysisFixture, 0, null, marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] }))
+    const scene = sceneOf(analysisFixture, 0, null, marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] }))
     expect(typeof scene.lanes[0].color).toBe('string')
     expect(scene.lanes[0].color.length).toBeGreaterThan(0)
     const lead = scene.lanes.find((l) => l.laneKey === 'lead')!
@@ -119,7 +120,7 @@ describe('buildTimelineScene', () => {
   })
 
   it('propagates the capped flag', () => {
-    const scene = buildTimelineScene(analysisFixture, 0, null, marks({ bd: [] }, true))
+    const scene = sceneOf(analysisFixture, 0, null, marks({ bd: [] }, true))
     expect(scene.notesCapped).toBe(true)
   })
 
@@ -140,7 +141,7 @@ describe('buildTimelineScene', () => {
       sections: [],
       displaySpan: { kind: 'loop', cycles: 1 },
     }
-    const scene = buildTimelineScene(analysis, 0, null, marks({}, false, {}, {}, {}, { d1: 0, d2: 14 }), undefined, code)
+    const scene = sceneOf(analysis, 0, null, marks({}, false, {}, {}, {}, { d1: 0, d2: 14 }), undefined, code)
     const d1 = scene.lanes.find((l) => l.laneKey === 'd1')!
     const d2 = scene.lanes.find((l) => l.laneKey === 'd2')!
     // Named track: name + colour resolve to the LABEL, not `d1`.
@@ -170,7 +171,7 @@ describe('buildTimelineScene', () => {
       ['bass', '#123456'],
       ['d2', '#abcdef'],
     ])
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       analysis, 0, null,
       marks({}, false, {}, {}, {}, { d1: 0, d2: 14 }),
       undefined,
@@ -186,7 +187,7 @@ describe('buildTimelineScene', () => {
     expect(d1.displayName).toBe('bass')
     expect(d2.displayName).toBe('d2')
     // A lane with NO override keeps the palette colour (clear-to-default path).
-    const noOverride = buildTimelineScene(
+    const noOverride = sceneOf(
       analysis, 0, null,
       marks({}, false, {}, {}, {}, { d1: 0, d2: 14 }),
       undefined,
@@ -206,12 +207,12 @@ describe('buildTimelineScene', () => {
       sections: [],
       displaySpan: { kind: 'loop', cycles: 1 },
     }
-    const scene = buildTimelineScene(analysis, 0, null, marks({}, false, {}, {}, { d1: 0 }))
+    const scene = sceneOf(analysis, 0, null, marks({}, false, {}, {}, { d1: 0 }))
     expect(scene.lanes[0].displayName).toBe('d1')
   })
 
   it('merges the per-lane source offset for binding (null when absent)', () => {
-    const scene = buildTimelineScene(analysisFixture, 0, null, marks({}, false, { bd: 42 }))
+    const scene = sceneOf(analysisFixture, 0, null, marks({}, false, { bd: 42 }))
     const bd = scene.lanes.find((l) => l.laneKey === 'bd')!
     const lead = scene.lanes.find((l) => l.laneKey === 'lead')!
     expect(bd.sourceOffset).toBe(42) // bound to source char offset 42
@@ -219,14 +220,14 @@ describe('buildTimelineScene', () => {
   })
 
   it('leaves every lane source offset null when no marks were collected', () => {
-    const scene = buildTimelineScene(analysisFixture, 0, null)
+    const scene = sceneOf(analysisFixture, 0, null)
     expect(scene.lanes.every((l) => l.sourceOffset === null)).toBe(true)
   })
 
   // ── Per-voice grouping (#424) ──────────────────────────────────────────────
 
   it('groups a lane’s marks into ordered voice sub-groups by sample name', () => {
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       analysisFixture, 0, null,
       marks({
         // 'bd' lane carries a $: drum stack: distinct s per voice, percussive.
@@ -246,7 +247,7 @@ describe('buildTimelineScene', () => {
   })
 
   it('marks a pitched voice melodic with its own pitch range', () => {
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       analysisFixture, 0, null,
       marks({
         lead: [
@@ -261,7 +262,7 @@ describe('buildTimelineScene', () => {
   })
 
   it('pools marks with no sample name into a single voice', () => {
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       analysisFixture, 0, null,
       marks({
         lead: [
@@ -276,7 +277,7 @@ describe('buildTimelineScene', () => {
   })
 
   it('gives a note-less lane an empty voices list', () => {
-    const scene = buildTimelineScene(analysisFixture, 0, null)
+    const scene = sceneOf(analysisFixture, 0, null)
     expect(scene.lanes.every((l) => l.voices.length === 0)).toBe(true)
   })
 })
@@ -289,7 +290,7 @@ describe('buildTimelineScene', () => {
 
 describe('clips (#386)', () => {
   it('synthesises ONE implicit clip per bare track spanning the whole song', () => {
-    const scene = buildTimelineScene(analysisFixture, 0, null) // no clipsByLane
+    const scene = sceneOf(analysisFixture, 0, null) // no clipsByLane
     for (const lane of scene.lanes) {
       expect(lane.clips).toEqual([
         { armIndex: -1, startCycle: 0, endCycle: 4, label: null },
@@ -302,7 +303,7 @@ describe('clips (#386)', () => {
       { armIndex: 0, startCycle: 0, endCycle: 2, label: 'bd' },
       { armIndex: 1, startCycle: 2, endCycle: 4, label: 'sd' },
     ]
-    const scene = buildTimelineScene(analysisFixture, 0, null, marks({}, false, {}, { bd: bdClips }))
+    const scene = sceneOf(analysisFixture, 0, null, marks({}, false, {}, { bd: bdClips }))
     const bd = scene.lanes.find((l) => l.laneKey === 'bd')!
     expect(bd.clips).toEqual(bdClips)
     // the other lane has no derived clips → still one implicit clip
@@ -334,7 +335,7 @@ describe('eval-backed lanes (#864 / P1b)', () => {
   it('renders a lane for a marks key not present in the analysis, appended after IR lanes', () => {
     // `d2` is an eval-only lane (a signal/bare-ref track the IR analysis missed):
     // it appears in the marks but NOT in `analysisFixture.lanes` (bd, lead).
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       analysisFixture, 0, null,
       marks({
         bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }],
@@ -359,7 +360,7 @@ describe('eval-backed lanes (#864 / P1b)', () => {
   })
 
   it('folds eval-lane density into peakDensity', () => {
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       analysisFixture, 0, null, // IR peak is 3 (bd cell)
       marks({
         d2: [
@@ -374,7 +375,7 @@ describe('eval-backed lanes (#864 / P1b)', () => {
   })
 
   it('adds no lanes when every marks key is an IR lane (no regression)', () => {
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       analysisFixture, 0, null,
       marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] }),
     )
@@ -397,7 +398,7 @@ describe('source lane order (#871)', () => {
   // track adds no row, which is why every arm below still asks about the lanes it
   // already draws.
   const keys = (analysis: SongAnalysis, order?: readonly string[]) =>
-    buildTimelineScene(
+    sceneOf(
       analysis, 0, null,
       evalFirst(),
       undefined,
@@ -416,7 +417,7 @@ describe('source lane order (#871)', () => {
 
   it('leaves an IR-only song untouched (its analysis order already follows the IR)', () => {
     const irOnly = marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] })
-    const scene = buildTimelineScene(analysisFixture, 0, null, irOnly, undefined, undefined, undefined, [
+    const scene = sceneOf(analysisFixture, 0, null, irOnly, undefined, undefined, undefined, [
       { id: 'bd' },
       { id: 'lead' },
     ])
@@ -465,7 +466,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
     ts.map(([id, offset]) => (offset === undefined ? { id } : { id, offset }))
 
   const keysWithOrder = (order?: readonly DeclaredTrack[], m: CollectedMarks = irMarks()) =>
-    buildTimelineScene(analysisFixture, 0, null, m, undefined, undefined, undefined, order).lanes.map(
+    sceneOf(analysisFixture, 0, null, m, undefined, undefined, undefined, order).lanes.map(
       (l) => l.laneKey,
     )
 
@@ -491,7 +492,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
     // The all-muted document. Pre-#1098 this rendered the "no song" empty state
     // over tracks the user had actually written.
     const silent: SongAnalysis = { ...analysisFixture, lanes: [], sections: [] }
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       silent, 0, null,
       marks({}),
       undefined,
@@ -503,7 +504,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
   })
 
   it('builds the silent row as present-and-empty, not degenerate', () => {
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       analysisFixture, 0, null,
       irMarks(),
       undefined,
@@ -529,7 +530,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
   })
 
   it('does not disturb the peak density', () => {
-    const withSilent = buildTimelineScene(
+    const withSilent = sceneOf(
       analysisFixture, 0, null,
       irMarks(),
       undefined,
@@ -537,7 +538,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
       undefined,
       decl(['bd', 0], ['mute', 20], ['lead', 40]),
     )
-    const without = buildTimelineScene(
+    const without = sceneOf(
       analysisFixture, 0, null,
       irMarks(),
       undefined,
@@ -553,7 +554,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
     // `_bass:` at offset 0 — identity is already mute-invariant (`bass`), and the
     // display deriver strips the marker too, so the silent row reads `bass`.
     const code = '_bass: s("e1*2")\nbd: s("bd*4")'
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       analysisFixture, 0, null,
       marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] }, false, {}, {}, {}, { bass: 0, bd: 17 }),
       undefined,
@@ -614,7 +615,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
       { ghost: 12 },
       { ghost: 12, bd: 0, lead: 40 },
     )
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       analysisFixture, 0, null,
       annotated,
       undefined,
@@ -642,7 +643,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
       lanes: [{ laneKey: 'kick', onsetsByCycle: [4] }],
       sections: [],
     }
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       oneTrackNamedByProducer, 0, null,
       marks({ kick: [{ cycle: 0, end: 0.25, pitch: null, gain: 1 }] }, false, {}, {}, {}, { kick: 0 }),
       undefined,
@@ -668,7 +669,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
       lanes: [{ laneKey: 'kick', onsetsByCycle: [4] }],
       sections: [],
     }
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       withProducerName, 0, null,
       marks({ kick: [{ cycle: 0, end: 0.25, pitch: null, gain: 1 }] }, false, {}, {}, {}, { kick: 0 }),
       undefined,
@@ -692,7 +693,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
       lanes: [{ laneKey: 'kick', onsetsByCycle: [4] }],
       sections: [],
     }
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       bareWithProducerName, 0, null,
       marks({ kick: [{ cycle: 0, end: 0.25, pitch: null, gain: 1 }] }, false, {}, {}, {}, { kick: 9 }),
       undefined,
@@ -749,7 +750,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
     // statement is also unlabelled, so it declares no offset and is owed no
     // structural row either way — ONE row.
     const bare: SongAnalysis = { periodCycles: 1, horizonCycles: 1, displaySpan: { kind: 'loop', cycles: 1 }, lanes: [], sections: [] }
-    const scene = buildTimelineScene(
+    const scene = sceneOf(
       bare, 0, null,
       marks({ d1: [{ cycle: 0, end: 0.25, pitch: null, gain: 1 }] }),
       undefined,
