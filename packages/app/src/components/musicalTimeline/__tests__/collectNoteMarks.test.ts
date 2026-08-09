@@ -31,14 +31,17 @@ vi.mock('@stave/editor', async () => {
   // #974 — lane STRUCTURE (incl. `labelOffsetByLane`, the containment anchors these tests
   // exercise) now comes from `structuralWalk`, not collect events. Reduce the SAME IR_EVENTS
   // through the REAL production reducer so d1/d2 keep their dollarPos anchors (PV192).
-  const { skeletonsFromEvents } = await import('./structuralWalkTestStub')
+  const { skeletonsFromEvents, wholeWalkWindow } = await import('./structuralWalkTestStub')
   return {
-    structuralWalk: (_ir: unknown, nCycles: number) => skeletonsFromEvents(IR_EVENTS, nCycles),
+    structuralWalk: (_ir: unknown, window: { originCycle: number; spanCycles: number }) =>
+      skeletonsFromEvents(IR_EVENTS, window),
+    wholeWalkWindow,
     laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
   }
 })
 
 import { collectNoteMarks } from '../timelineMarks'
+import { wholeSongWindow } from '../songAxis'
 
 // C3 = 48, E3 = 52, G3 = 55 (C4 = 60 convention, per pitch.ts).
 const C3 = 48
@@ -54,7 +57,7 @@ describe('collectNoteMarks — eval-backed marks (#861)', () => {
       { begin: 0.5, end: 1, trackId: '$1', note: 'E3', gain: 1, loc: [{ start: 42, end: 44 }] },
     ] as unknown as Parameters<typeof collectNoteMarks>[0]
 
-    const marks = collectNoteMarks(haps, { fake: true } as never, 4)
+    const marks = collectNoteMarks(haps, { fake: true } as never, wholeSongWindow(4))
 
     // Containment: hap at char 12 → largest dollarPos ≤ 12 is 0 → lane d1;
     // hap at char 42 → largest ≤ 42 is 30 → lane d2.
@@ -75,7 +78,7 @@ describe('collectNoteMarks — eval-backed marks (#861)', () => {
       { begin: 0, end: 0.5, trackId: '$9', note: 'E3', gain: 1, loc: [{ start: 45, end: 47 }] },
     ] as unknown as Parameters<typeof collectNoteMarks>[0]
 
-    const marks = collectNoteMarks(haps, { fake: true } as never, 4)
+    const marks = collectNoteMarks(haps, { fake: true } as never, wholeSongWindow(4))
 
     expect(marks.marksByLane.get('d1')?.map((n) => n.pitch)).toEqual([C3])
     expect(marks.marksByLane.get('d2')?.map((n) => n.pitch)).toEqual([E3])
@@ -89,7 +92,7 @@ describe('collectNoteMarks — eval-backed marks (#861)', () => {
       { begin: 0, end: 1, trackId: '$1', note: 'C3', gain: 1 },
     ] as unknown as Parameters<typeof collectNoteMarks>[0]
 
-    const marks = collectNoteMarks(haps, { fake: true } as never, 4)
+    const marks = collectNoteMarks(haps, { fake: true } as never, wholeSongWindow(4))
 
     // Its own eval lane `d2` (`$1` → d{1+1}); the IR lanes d1/d2 got no marks
     // (d2 here is the EVAL lane, disjoint from any IR lane — the mock IR has
@@ -106,7 +109,7 @@ describe('collectNoteMarks — eval-backed marks (#861)', () => {
       { begin: 0, end: 1, trackId: 'bass', note: 'E3', gain: 1 },
     ] as unknown as Parameters<typeof collectNoteMarks>[0]
 
-    const marks = collectNoteMarks(haps, { fake: true } as never, 4)
+    const marks = collectNoteMarks(haps, { fake: true } as never, wholeSongWindow(4))
 
     expect(marks.marksByLane.get('bass')?.map((n) => n.pitch)).toEqual([E3])
   })
@@ -116,7 +119,7 @@ describe('collectNoteMarks — eval-backed marks (#861)', () => {
     // fallback was removed with the collect interpreter (#975). So a lane draws
     // its STRUCTURE but carries no marks until eval fills them (#978), instead of
     // the old source-lossy IR marks.
-    const marks = collectNoteMarks(null, { fake: true } as never, 4)
+    const marks = collectNoteMarks(null, { fake: true } as never, wholeSongWindow(4))
 
     expect(marks.marksByLane.get('d1')).toBeUndefined()
     expect(marks.marksByLane.get('d2')).toBeUndefined()
@@ -130,7 +133,7 @@ describe('collectNoteMarks — eval-backed marks (#861)', () => {
       { begin: 0, end: 0.5, trackId: '$0', note: 'C3', gain: 1, loc: [{ start: 12, end: 14 }] },
     ] as unknown as Parameters<typeof collectNoteMarks>[0]
 
-    const marks = collectNoteMarks(haps, { fake: true } as never, 4)
+    const marks = collectNoteMarks(haps, { fake: true } as never, wholeSongWindow(4))
 
     // dollarPos (label offset) comes from the IR, regardless of the mark source.
     expect(marks.labelOffsetByLane.get('d1')).toBe(0)

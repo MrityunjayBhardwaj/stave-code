@@ -441,7 +441,18 @@ function collapseToMini(children) {
 __name(collapseToMini, "collapseToMini");
 
 // src/ir/structuralWalk.ts
-function aggregateLaneItems(items, nCycles) {
+function wholeWalkWindow(nCycles) {
+  return { originCycle: 0, spanCycles: nCycles };
+}
+__name(wholeWalkWindow, "wholeWalkWindow");
+function normalizeWindow(window2) {
+  const origin = Math.max(0, Math.floor(Number.isFinite(window2.originCycle) ? window2.originCycle : 0));
+  const span = Math.max(0, Math.floor(Number.isFinite(window2.spanCycles) ? window2.spanCycles : 0));
+  return { origin, span };
+}
+__name(normalizeWindow, "normalizeWindow");
+function aggregateLaneItems(items, window2) {
+  const { origin: originCycle, span: nCycles } = normalizeWindow(window2);
   const order = [];
   const byKey = /* @__PURE__ */ new Map();
   const armByCycle = /* @__PURE__ */ new Map();
@@ -475,7 +486,8 @@ function aggregateLaneItems(items, nCycles) {
         byCycle = new Array(nCycles);
         armByCycle.set(it.laneKey, byCycle);
       }
-      if (it.cycle >= 0 && it.cycle < nCycles) byCycle[it.cycle] = it.armIndex;
+      const slot = it.cycle - originCycle;
+      if (slot >= 0 && slot < nCycles) byCycle[slot] = it.armIndex;
       let labels = armLabels.get(it.laneKey);
       if (!labels) {
         labels = /* @__PURE__ */ new Map();
@@ -749,8 +761,13 @@ function walkCycle(ir, ctx) {
 }
 __name(walkCycle, "walkCycle");
 function walkLeafItems(ir, nCycles) {
+  return walkLeafItemsInWindow(ir, wholeWalkWindow(nCycles));
+}
+__name(walkLeafItems, "walkLeafItems");
+function walkLeafItemsInWindow(ir, window2) {
+  const { origin, span } = normalizeWindow(window2);
   const items = [];
-  for (let c = 0; c < nCycles; c++) {
+  for (let c = origin; c < origin + span; c++) {
     try {
       items.push(...walkCycle(ir, { cycle: c, outputCycle: c, params: {} }));
     } catch {
@@ -758,9 +775,9 @@ function walkLeafItems(ir, nCycles) {
   }
   return items;
 }
-__name(walkLeafItems, "walkLeafItems");
-function structuralWalk(ir, nCycles) {
-  return aggregateLaneItems(walkLeafItems(ir, nCycles), nCycles);
+__name(walkLeafItemsInWindow, "walkLeafItemsInWindow");
+function structuralWalk(ir, window2) {
+  return aggregateLaneItems(walkLeafItemsInWindow(ir, window2), window2);
 }
 __name(structuralWalk, "structuralWalk");
 
@@ -44581,6 +44598,7 @@ exports.useTrackMetaMap = useTrackMetaMap;
 exports.useWorkspaceFile = useWorkspaceFile;
 exports.validatePersistedState = validatePersistedState;
 exports.warmMonaco = warmMonaco;
+exports.wholeWalkWindow = wholeWalkWindow;
 exports.withStructBatch = withStructBatch;
 exports.workspaceAudioBus = workspaceAudioBus;
 exports.workspaceFileIdForPreset = workspaceFileIdForPreset;

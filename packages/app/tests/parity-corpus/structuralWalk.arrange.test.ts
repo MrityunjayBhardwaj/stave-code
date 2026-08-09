@@ -13,10 +13,10 @@
  */
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
-import { structuralWalk } from '../../../editor/src/ir/structuralWalk'
+import { structuralWalk, wholeWalkWindow } from '../../../editor/src/ir/structuralWalk'
 
 function walkArmByCycle(code: string, laneKey: string, n: number): Array<number | null> {
-  const lane = structuralWalk(parseStrudel(code), n).find((l) => l.laneKey === laneKey)
+  const lane = structuralWalk(parseStrudel(code), wholeWalkWindow(n)).find((l) => l.laneKey === laneKey)
   return (lane?.armByCycle ?? new Array<number | undefined>(n)).map((x) => x ?? null)
 }
 

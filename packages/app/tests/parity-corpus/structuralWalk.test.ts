@@ -17,7 +17,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
-import { structuralWalk, type LaneSkeleton } from '../../../editor/src/ir/structuralWalk'
+import { structuralWalk, wholeWalkWindow, type LaneSkeleton } from '../../../editor/src/ir/structuralWalk'
 
 const N = 4
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
@@ -40,7 +40,7 @@ function canon(l: LaneSkeleton): string {
 
 /** Per-tune snapshot payload: lane key → canonical anchors, order-independent. */
 function walkSnapshot(code: string): Record<string, string> {
-  const lanes = structuralWalk(parseStrudel(code), N)
+  const lanes = structuralWalk(parseStrudel(code), wholeWalkWindow(N))
   return Object.fromEntries(lanes.map((l) => [l.laneKey, canon(l)]))
 }
 

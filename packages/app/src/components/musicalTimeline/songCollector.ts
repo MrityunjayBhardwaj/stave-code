@@ -19,7 +19,7 @@
  * time — see below.
  */
 import type { IREvent, PatternIR } from '@stave/editor'
-import { buildLaneAnchors, laneKeyForHap } from './timelineMarks'
+import { buildLaneAnchors, laneKeyForHap, readEventsInBand } from './timelineMarks'
 
 /** The runtime accessors a collector reads through. All optional: with none
  *  threaded (tests / non-Strudel runtimes) there is no collector and analysis
@@ -74,22 +74,14 @@ export function createSongCollector(
   if (getEvents || getEventsBand) {
     const anchors = buildLaneAnchors(ir, 1)
     collectFn = (startCycle, endCycle) => {
-      // #1197 — ask for the BAND when that accessor is threaded. The prefix
-      // form is the fallback for a caller that has not wired it (and for
-      // non-Strudel runtimes); it returns the same events, just after querying
-      // — and discarding — every cycle before `startCycle`. `analyzeSong`
-      // walks adjacent bands as its horizon grows, so on the prefix path a
-      // document running to the 256 cap queried 8320 cycles to cover 256.
-      //
-      // ⚠ #1201 — a WINDOW at a non-zero origin has no prefix path worth
-      // taking: `getEvents(endCycle)` would query `[0, endCycle)` to serve
-      // `[256, 288)`. It still returns the RIGHT events (the filter below
-      // narrows them), so this stays a correctness-preserving fallback rather
-      // than a guard — but a paged view without the band accessor is slow by
-      // construction, not broken.
-      const raw = getEventsBand
-        ? getEventsBand(startCycle, endCycle)
-        : getEvents!(endCycle)
+      // #1197 — ask for the BAND when that accessor is threaded, else the
+      // prefix form. `analyzeSong` walks adjacent bands as its horizon grows,
+      // so on the prefix path a document running to the 256 cap queried 8320
+      // cycles to cover 256. The choice itself lives in `readEventsInBand`
+      // (#1209), shared with the marks reader — the two must never disagree
+      // about which events exist for a band. Its header carries the fallback's
+      // exact semantics; the filter below is what narrows a prefix.
+      const raw = readEventsInBand({ getTimelineEventsBand: getEventsBand, getTimelineEvents: getEvents }, startCycle, endCycle) ?? []
       return raw
         // ⚠ LOAD-BEARING ON BOTH PATHS, and for DIFFERENT reasons. On the
         // prefix path it selects the band out of `[0, endCycle)`. On the band

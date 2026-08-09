@@ -782,6 +782,7 @@ export function MusicalTimeline(
           source={snapshot?.code ?? null}
           getHapStream={props.getHapStream}
           getTimelineEvents={props.getTimelineEvents}
+          getTimelineEventsBand={props.getTimelineEventsBand}
           getSongPosition={props.getSongPosition ?? (() => null)}
           onSeek={props.onSeek ?? (() => {})}
           getDrawerOpen={props.getDrawerOpen}

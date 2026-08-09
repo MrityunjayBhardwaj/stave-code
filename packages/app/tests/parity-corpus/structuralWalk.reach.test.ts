@@ -15,11 +15,11 @@
  */
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
-import { structuralWalk, type LaneSkeleton } from '../../../editor/src/ir/structuralWalk'
+import { structuralWalk, wholeWalkWindow, type LaneSkeleton } from '../../../editor/src/ir/structuralWalk'
 import { IR, type PatternIR } from '../../../editor/src/ir/PatternIR'
 
 const N = 4
-const walk = (code: string): LaneSkeleton[] => structuralWalk(parseStrudel(code), N)
+const walk = (code: string): LaneSkeleton[] => structuralWalk(parseStrudel(code), wholeWalkWindow(N))
 const keys = (lanes: LaneSkeleton[]): string[] => lanes.map((l) => l.laneKey)
 
 describe('structuralWalk keeps a lane skeleton for mid-edit / semantically-invalid code (PV212, #974)', () => {
@@ -66,7 +66,7 @@ describe('structuralWalk keeps a lane skeleton for mid-edit / semantically-inval
     const stack: PatternIR = { tag: 'Stack', tracks: [good, bad] } as PatternIR
     let lanes: LaneSkeleton[] = []
     expect(() => {
-      lanes = structuralWalk(stack, N)
+      lanes = structuralWalk(stack, wholeWalkWindow(N))
     }).not.toThrow()
     expect(keys(lanes)).toContain('d1')
   })

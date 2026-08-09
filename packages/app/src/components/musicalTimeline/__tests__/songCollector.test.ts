@@ -17,6 +17,7 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('@stave/editor', () => ({
   structuralWalk: () => [],
+  wholeWalkWindow: (nCycles: number) => ({ originCycle: 0, spanCycles: nCycles }),
   laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 

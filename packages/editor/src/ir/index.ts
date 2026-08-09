@@ -15,8 +15,14 @@ export { toStrudel } from './toStrudel'
 // Structural walk (#945/#974) — lane anchors from source structure alone, no onsets. The
 // "keep" half of the collect split: the timeline joins queryArc haps to these lanes by
 // source-span containment, and the walk survives mid-edit code where evaluate() throws.
-export { structuralWalk, aggregateLaneItems, walkLeafItems } from './structuralWalk'
-export type { LaneSkeleton, LaneItem } from './structuralWalk'
+export {
+  structuralWalk,
+  aggregateLaneItems,
+  walkLeafItems,
+  walkLeafItemsInWindow,
+  wholeWalkWindow,
+} from './structuralWalk'
+export type { LaneSkeleton, LaneItem, WalkWindow } from './structuralWalk'
 // Node identity — content-addressed irNodeIds for IR nodes (a structural
 // property, not a behavioural one). `buildNodeLocIndex` is the eval-path
 // loc→irNodeId lookup the engine feeds to `normalizeStrudelHap`, replacing the

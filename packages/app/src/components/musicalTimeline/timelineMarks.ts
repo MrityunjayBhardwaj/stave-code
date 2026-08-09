@@ -10,9 +10,10 @@
  */
 
 import type { IREvent, PatternIR } from '@stave/editor'
-import { structuralWalk } from '@stave/editor'
+import { structuralWalk, wholeWalkWindow } from '@stave/editor'
 import { extractPitch } from './pitch'
 import { containingAnchor } from './laneIdentity'
+import type { SongWindow } from './songAxis'
 import {
   downsampleMarksToCap,
   EMPTY_MARKS,
@@ -28,6 +29,36 @@ export const NOTE_MARK_CAP_PER_LANE = 2000
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 1
   return n < 0 ? 0 : n > 1 ? 1 : n
+}
+
+/** The runtime hap accessors a windowed reader can go through. Both optional:
+ *  with neither threaded (tests / non-Strudel runtimes) there are no haps. */
+export interface TimelineEventAccessors {
+  readonly getTimelineEventsBand?: ((startCycle: number, endCycle: number) => IREvent[]) | undefined
+  readonly getTimelineEvents?: ((cycles: number) => IREvent[]) | undefined
+}
+
+/**
+ * Read haps for `[startCycle, endCycle)` through whichever accessor is wired —
+ * ONE definition of that choice, shared by the marks and by the analysis
+ * collector, because they must never disagree about which events exist.
+ *
+ * ⚠ The prefix form is a correctness-preserving FALLBACK, not an equivalent.
+ * `getTimelineEvents(endCycle)` returns `[0, endCycle)` — a superset — so every
+ * caller still has to narrow the result itself. What it costs is the prefix: to
+ * serve `[256, 288)` it queries 288 cycles and discards 256 of them. A paged
+ * view without the band accessor is slow by construction, never wrong.
+ *
+ * `null` when no accessor is threaded at all, which callers read as "pre-eval".
+ */
+export function readEventsInBand(
+  accessors: TimelineEventAccessors,
+  startCycle: number,
+  endCycle: number,
+): IREvent[] | null {
+  if (accessors.getTimelineEventsBand) return accessors.getTimelineEventsBand(startCycle, endCycle)
+  if (accessors.getTimelineEvents) return accessors.getTimelineEvents(endCycle)
+  return null
 }
 
 /**
@@ -61,9 +92,18 @@ function declaredTrackAnchors(ir: PatternIR): Array<[string, number]> {
 }
 
 /**
- * Collect read-only mini-note marks for the display span by querying the IR
- * directly (`collectCycles`), grouped by the SAME `laneKeyOf` identity the
- * analysis lanes use, capped per lane. `null` IR / non-positive span → empty.
+ * Collect read-only mini-note marks for the WINDOW on screen, grouped by the
+ * SAME `laneKeyOf` identity the analysis lanes use, capped per lane. `null` IR
+ * / non-positive span → empty.
+ *
+ * ── WHY A WINDOW AND NOT A SPAN (#1209) ─────────────────────────────────────
+ * This used to take a bare `displayCycles` and derive everything over
+ * `[0, span)`. That is correct only while the view starts at cycle 0. Once the
+ * Song view pages, the analysis follows the window but this did not — and
+ * because `SceneNote.cycle` is song-ABSOLUTE, marks collected over `[0, 256)`
+ * map to negative x at origin 256 and are culled, so a paged window drew its
+ * density heatmap with NO note marks at all and the FIRST window's clips. The
+ * span and the origin are only meaningful as a pair, so they arrive as one.
  *
  * Deterministic for a given IR. Returns marks keyed by lane so the pure scene
  * builder can merge them onto the matching analysis lanes.
@@ -71,10 +111,15 @@ function declaredTrackAnchors(ir: PatternIR): Array<[string, number]> {
 export function collectNoteMarks(
   events: IREvent[] | null,
   ir: PatternIR | null,
-  displayCycles: number,
+  window: SongWindow,
   capPerLane: number = NOTE_MARK_CAP_PER_LANE,
 ): CollectedMarks {
+  const displayCycles = window.spanCycles
   if (!ir || !Number.isFinite(displayCycles) || displayCycles <= 0) return EMPTY_MARKS
+  const originCycle = Math.max(
+    0,
+    Math.floor(Number.isFinite(window.originCycle) ? window.originCycle : 0),
+  )
   // Display fidelity requires the EVAL path when it's available: an evaluated
   // hap carries the RESOLVED note (`n("0 2 4").scale("C:major")` → "C3"/"E3"/"G3"
   // — Strudel applies the scale at query time) plus `context.locations`, while
@@ -145,13 +190,41 @@ export function collectNoteMarks(
   // rows by key (timelineScene builds rows from `analysis.lanes` + eval-mark keys), so an extra
   // resilience lane the walk reaches — collect never does on valid code — cannot add a phantom
   // row; it simply has no annotation consumer until a hap lands in it.
-  for (const lane of structuralWalk(ir, nCycles)) {
+  for (const lane of structuralWalk(ir, { originCycle, spanCycles: nCycles })) {
     const key = lane.laneKey
     if (lane.sourceOffset !== undefined) sourceByLane.set(key, lane.sourceOffset)
     if (lane.dollarPos !== undefined) labelOffsetByLane.set(key, lane.dollarPos)
     if (lane.arrangeOffset !== undefined) arrangeByLane.set(key, lane.arrangeOffset)
     if (lane.armByCycle) armByCycleByLane.set(key, lane.armByCycle)
     if (lane.armLabels) armLabelByLane.set(key, lane.armLabels)
+  }
+  // #1209 — ANCHORS for lanes this window never reaches. A lane silent through
+  // the visible stretch (an `arrange` arm that rests, a track that has not
+  // entered yet) still gets a ROW: the analysis pins lane membership to the
+  // song's lane set, so a silent track stays a silenced row rather than ceasing
+  // to exist. Without this pass that row would page in with no label, no bind
+  // anchor and no clip-gesture anchor — and worse, a missing entry in the
+  // containment index folds an unrelated hap onto the PREVIOUS lane (PV175).
+  //
+  // Only the ANCHORS are backfilled, never `armByCycle`: the clips belong to the
+  // window and a lane with no arm here genuinely has no clip here.
+  //
+  // Skipped entirely at origin 0, where the two walks are the same walk — so the
+  // unpaged path costs exactly what it always did, and a paged one costs twice
+  // that regardless of how deep it sits.
+  if (originCycle > 0) {
+    for (const lane of structuralWalk(ir, wholeWalkWindow(nCycles))) {
+      const key = lane.laneKey
+      if (lane.sourceOffset !== undefined && !sourceByLane.has(key)) {
+        sourceByLane.set(key, lane.sourceOffset)
+      }
+      if (lane.dollarPos !== undefined && !labelOffsetByLane.has(key)) {
+        labelOffsetByLane.set(key, lane.dollarPos)
+      }
+      if (lane.arrangeOffset !== undefined && !arrangeByLane.has(key)) {
+        arrangeByLane.set(key, lane.arrangeOffset)
+      }
+    }
   }
   // MARKS come solely from eval haps now (`collectHapMarks` under `useEval`). The
   // pre-eval `collectCycles` fallback was removed with the collect interpreter
@@ -175,7 +248,7 @@ export function collectNoteMarks(
   // (NOT trackId equality, which diverges for anon `$:` — PV175). Structure
   // (source/arrange/label offsets, clips) stays IR-owned above.
   const activeMarksByLane = useEval
-    ? collectHapMarks(events as IREvent[], displayCycles, labelOffsetByLane)
+    ? collectHapMarks(events as IREvent[], { originCycle, spanCycles: displayCycles }, labelOffsetByLane)
     : marksByLane
   // Bound each lane to `capPerLane` marks by downsampling ACROSS its span (keep
   // every Nth), not by dropping the tail. A dense lane (e.g. a drum stack at
@@ -194,12 +267,22 @@ export function collectNoteMarks(
   // yields one clip per arm-occurrence per period (so a song shown over
   // multiple periods repeats its clips, matching the timeline). Silent cycles
   // inside an arm split it — acceptable for read-only display this PR.
+  //
+  // ⚠ THIS IS THE ONE PLACE THE ORIGIN GOES BACK ON (#1209, PV300). `armByCycle`
+  // is window-relative — slot `i` is song cycle `originCycle + i` — but
+  // `SceneClip.startCycle` is song-ABSOLUTE and feeds clip WRITE-BACK, so a
+  // window-relative clip cycle escaping here would edit a different bar than the
+  // one the user dragged. Every cycle published below is `originCycle + slot`.
   const clipsByLane = new Map<string, SceneClip[]>()
   for (const [key, byCycle] of armByCycleByLane) {
     const labels = armLabelByLane.get(key)
     const clips: SceneClip[] = []
     let runArm: number | undefined
-    let runStart = 0
+    // Never read: `runArm` starts undefined, so the first slot always opens a
+    // run and reassigns this before any clip is flushed. Written as the origin
+    // rather than 0 so it cannot be mistaken for the window-relative frame —
+    // the two LIVE sites are both inside the loop below.
+    let runStart = originCycle
     const flush = (endCycle: number): void => {
       if (runArm !== undefined) {
         clips.push({
@@ -210,15 +293,15 @@ export function collectNoteMarks(
         })
       }
     }
-    for (let c = 0; c < nCycles; c++) {
-      const arm = byCycle[c]
+    for (let i = 0; i < nCycles; i++) {
+      const arm = byCycle[i]
       if (arm !== runArm) {
-        flush(c)
+        flush(originCycle + i)
         runArm = arm
-        runStart = c
+        runStart = originCycle + i
       }
     }
-    flush(nCycles)
+    flush(originCycle + nCycles)
     if (clips.length > 0) clipsByLane.set(key, clips)
   }
   return { marksByLane: activeMarksByLane, sourceByLane, arrangeByLane, labelOffsetByLane, clipsByLane, capped }
@@ -258,7 +341,11 @@ export function buildLaneAnchors(
   if (!ir) return []
   const labelOffsetByLane = new Map<string, number>()
   const nCycles = Math.max(1, Math.ceil(displayCycles))
-  for (const lane of structuralWalk(ir, nCycles)) {
+  // Deliberately the WHOLE-SONG window, at every page (#1209): this index is the
+  // capture-space join the ANALYSIS reads through, and a hap must resolve to the
+  // same lane wherever the view happens to be looking. Narrowing it to the
+  // visible window would make a hap's lane depend on the page.
+  for (const lane of structuralWalk(ir, wholeWalkWindow(nCycles))) {
     if (lane.dollarPos !== undefined) labelOffsetByLane.set(lane.laneKey, lane.dollarPos)
   }
   if (ir.tag === 'Stack') {
@@ -309,15 +396,20 @@ export function laneKeyForHap(
  */
 function collectHapMarks(
   events: readonly IREvent[],
-  displayCycles: number,
+  window: SongWindow,
   labelOffsetByLane: ReadonlyMap<string, number>,
 ): Map<string, SceneNote[]> {
   const out = new Map<string, SceneNote[]>()
   // (laneKey, dollarPos) pairs ascending by dollarPos — the containment index.
   const anchors = [...labelOffsetByLane].sort((a, b) => a[1] - b[1])
+  // #1209 — the band the window shows, not a width measured from zero. The
+  // caller may hand us a whole-song prefix (the fallback accessor returns
+  // `[0, end)`), so this is what narrows it to what is on screen.
+  const firstCycle = window.originCycle
+  const endCycle = window.originCycle + window.spanCycles
   for (const ev of events) {
     const cycle = ev.begin
-    if (!Number.isFinite(cycle) || cycle < 0 || cycle >= displayCycles) continue
+    if (!Number.isFinite(cycle) || cycle < firstCycle || cycle >= endCycle) continue
     // The ONE join (`laneKeyForHap`): containment first (keeps a hap on its
     // named/positional IR lane), else an eval-backed lane keyed by the hap's own
     // producer id (#864 / P1b). Shared with the song-analysis remap (#980).

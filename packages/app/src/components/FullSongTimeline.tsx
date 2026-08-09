@@ -27,6 +27,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { SongAnalysis, PatternIR, HapStream, IREvent } from '@stave/editor'
 import {
   structuralWalk,
+  wholeWalkWindow,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
 } from '@stave/editor'
@@ -46,7 +47,7 @@ import {
   EMPTY_VOICE_ORDER,
   type VoiceOrderByLane,
 } from './musicalTimeline/stableVoiceOrder'
-import { collectNoteMarks } from './musicalTimeline/timelineMarks'
+import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import {
@@ -128,6 +129,18 @@ export interface FullSongTimelineProps {
    *  owns lanes/clips (structure). Absent / returns `[]` (pre-eval, non-Strudel)
    *  → the static-IR marks fallback (source-lossy for degree/scale — PV174). */
   readonly getTimelineEvents?: (cycles: number) => IREvent[]
+  /**
+   * #1197 — the BANDED form of the accessor above: haps over
+   * `[startCycle, endCycle)` rather than a prefix from zero.
+   *
+   * This is the one the marks want (#1209). A paged view asking the prefix form
+   * for `[256, 512)` has to request `[0, 512)` and throw half of it away, which
+   * is exactly the cost the band accessor was introduced to remove. Optional —
+   * without it the marks fall back to the prefix form, which returns the right
+   * events after querying every cycle to the window's left: slow when paged,
+   * never wrong.
+   */
+  readonly getTimelineEventsBand?: (startCycle: number, endCycle: number) => IREvent[]
   /** Transport-offset-aware song position (cycles), or null when stopped. */
   readonly getSongPosition: () => number | null
   /** Seek the transport to an absolute song cycle. */
@@ -317,7 +330,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     // structural walk sets it from the same source structure `collectCycles` did, so this is
     // the byte-identical successor to the old `evs.some(e => armIndex)` check, without needing
     // the behaviour engine and resilient on mid-edit code.
-    const lanes = structuralWalk(props.ir, Math.max(1, Math.ceil(natCycles)))
+    // Deliberately the WHOLE song, at every page (#1209): "does this document
+    // contain an arrangement at all" is a property of the DOCUMENT, and it
+    // decides the display span — so a window in which every arm happens to rest
+    // must not make a real arrangement read as a bare loop.
+    const lanes = structuralWalk(props.ir, wholeWalkWindow(Math.max(1, Math.ceil(natCycles))))
     return !lanes.some((l) => l.armByCycle !== undefined)
   }, [props.ir, natCycles])
   // The user's resized display span for a pure bare loop (#662, option B). A
@@ -729,10 +746,21 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // lock-step, so keying the memo on `props.ir` refreshes the events too. The
   // `getTimelineEvents` closure is stable (StaveApp binds it once), so its
   // presence in the deps never re-fires the memo on its own.
+  // #1209 — over the WINDOW, not over a span measured from zero. `loopWindow`
+  // is the true content length at the origin the view is showing, which is
+  // exactly the stretch the marks and the clips belong to. Before this, both
+  // were derived over `[0, span)` at every origin: because `SceneNote.cycle` is
+  // song-absolute, a paged window's marks landed to the left of the viewport
+  // and were culled, so it drew its heatmap with no note marks and the first
+  // window's clips.
   const marks = useMemo(() => {
-    const events = props.getTimelineEvents?.(loopCycles) ?? null
-    return collectNoteMarks(events, props.ir ?? null, loopCycles)
-  }, [props.ir, loopCycles, props.getTimelineEvents])
+    const events = readEventsInBand(
+      { getTimelineEventsBand: props.getTimelineEventsBand, getTimelineEvents: props.getTimelineEvents },
+      loopWindow.originCycle,
+      loopWindow.originCycle + loopCycles,
+    )
+    return collectNoteMarks(events, props.ir ?? null, loopWindow)
+  }, [props.ir, loopCycles, loopWindow, props.getTimelineEvents, props.getTimelineEventsBand])
   // #977 — test-only observation of the computed marks. Marks are canvas-drawn,
   // so a browser e2e can't read them from the DOM; this publishes a per-lane
   // onset summary + whether the marks are EVAL-backed (haps present) or the
@@ -748,7 +776,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       on = false
     }
     if (!on) return
-    const events = props.getTimelineEvents?.(loopCycles) ?? null
+    // The SAME read the memo above made, so the probe reports the marks the
+    // view actually drew rather than a differently-scoped second query.
+    const events = readEventsInBand(
+      { getTimelineEventsBand: props.getTimelineEventsBand, getTimelineEvents: props.getTimelineEvents },
+      loopWindow.originCycle,
+      loopWindow.originCycle + loopCycles,
+    )
     const byLane: Record<
       string,
       { count: number; onsets: number[]; pitches: Array<number | null> }
@@ -768,7 +802,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       laneCount: marks.marksByLane.size,
       byLane,
     }
-  }, [marks, loopCycles, props.getTimelineEvents])
+  }, [marks, loopCycles, loopWindow, props.getTimelineEvents, props.getTimelineEventsBand])
   // #871 — the lane order the user WROTE, read off the IR's track list. Lane
   // order is structure, and structure is IR-owned: the IR carries a Track node
   // per statement even when that track emits no static-IR events (a signal, a
