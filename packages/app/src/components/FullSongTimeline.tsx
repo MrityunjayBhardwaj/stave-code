@@ -1129,7 +1129,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (!clip || (clip.armIndex < 0 && !includeBare)) return null
       return { lane, clip }
     },
-    [displayCycles, dragAwareContentWidth],
+    // #1210 — `songWindow`, not `displayCycles`. Paging moves the window's
+    // ORIGIN and leaves its span alone, so keying on the span left this closure
+    // mapping x through a window anchored at cycle 0: at origin 256 a click on
+    // cycle 288 was read as 32, no clip contained it, and every clip gesture in
+    // a paged window silently did nothing. The window is memoised on origin +
+    // span, so naming it subsumes the span entry.
+    [songWindow, dragAwareContentWidth],
   )
 
   // The combinator's arms as time-spans, in arm order — gathered across ALL
@@ -1177,7 +1183,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       }
       return best ? { lane, clip: best } : null
     },
-    [onTrimClip, bareSong, displayCycles, dragAwareContentWidth],
+    // #1210 — see `clipBodyAt`: the ORIGIN is what paging moves, and this
+    // closure maps x through the window too.
+    [onTrimClip, bareSong, songWindow, dragAwareContentWidth],
   )
 
   // Apply an extend at a given clientX: map the cursor to a whole-cycle weight at
@@ -1398,7 +1406,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           ? 'grab'
           : ''
     },
-    [clipEdgeAt, clipBodyAt, armSpansNow, displayCycles, dragAwareContentWidth, applyTrim, extendAutoScrollTick, stopExtendAutoScroll, onMoveClip],
+    // #1210 — `songWindow`, not `displayCycles`: this handler maps the pointer
+    // through the window itself (the move-target highlight), so a paged origin
+    // has to re-create it.
+    [clipEdgeAt, clipBodyAt, armSpansNow, songWindow, dragAwareContentWidth, applyTrim, extendAutoScrollTick, stopExtendAutoScroll, onMoveClip],
   )
 
   const endTrimDrag = React.useCallback(
