@@ -45,7 +45,8 @@ function scene(): TimelineScene {
       clips: [{ armIndex: -1, startCycle: 0, endCycle: 1, label: null }],
       sourceOffset: null, arrangeOffset: null, labelOffset: null,
     }],
-    sections: [], displayCycles: 1, period: null, peakDensity: 1, notesCapped: false,
+    sections: [], displayCycles: 1, windowOriginCycles: 0, period: null, peakDensity: 1,
+    notesCapped: false,
   }
 }
 

@@ -329,9 +329,18 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // span drives the playhead wrap, the DISPLAY span drives pixels and can be
   // wider mid-drag. Collapsing them would silently re-introduce the drag bug
   // `dragSpanCycles` exists to avoid.
+  // ── THE VIEW'S WINDOW ORIGIN, in one place ────────────────────────────────
+  // The first song cycle this view is showing. It is 0 today because nothing
+  // advances it yet: the analysis collects `[0, span)` and the view draws that.
+  // The value is named and threaded rather than written as a literal at each
+  // consumer because it has THREE — the loop window (playhead wrap), the display
+  // window (all geometry), and the scene builder (density indexing). An origin
+  // they disagree about draws marks at the right width in the wrong place.
+  // Whatever eventually moves the window sets this, and all three follow.
+  const songOriginCycles = 0
   const loopWindow = useMemo<SongWindow>(
-    () => ({ originCycle: 0, spanCycles: loopCycles }),
-    [loopCycles],
+    () => ({ originCycle: songOriginCycles, spanCycles: loopCycles }),
+    [songOriginCycles, loopCycles],
   )
   const loopWindowRef = useRef(loopWindow)
   loopWindowRef.current = loopWindow
@@ -416,8 +425,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const displayCyclesRef = useRef(displayCycles)
   displayCyclesRef.current = displayCycles
   const songWindow = useMemo<SongWindow>(
-    () => ({ originCycle: 0, spanCycles: displayCycles }),
-    [displayCycles],
+    () => ({ originCycle: songOriginCycles, spanCycles: displayCycles }),
+    [songOriginCycles, displayCycles],
   )
   const songWindowRef = useRef(songWindow)
   songWindowRef.current = songWindow
@@ -713,6 +722,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const scene = useMemo(() => {
     const raw = buildTimelineScene(
       analysis,
+      songOriginCycles,
       marks,
       displayCycles,
       source,
@@ -722,7 +732,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const { scene: ordered, order } = applyStableVoiceOrder(raw, voiceOrderRef.current)
     voiceOrderRef.current = order
     return ordered
-  }, [analysis, marks, displayCycles, source, customColorByName, trackOrder])
+  }, [analysis, songOriginCycles, marks, displayCycles, source, customColorByName, trackOrder])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind
@@ -1065,7 +1075,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         setDragSpanCycles(needed)
       }
       const gcw = dragAwareContentWidth(rect.width)
-      setTrimEdgeX(songCycleToX(newEnd, { originCycle: 0, spanCycles: dragSpanRef.current ?? loopCyclesRef.current }, gcw))
+      setTrimEdgeX(songCycleToX(newEnd, { originCycle: songOriginCycles, spanCycles: dragSpanRef.current ?? loopCyclesRef.current }, gcw))
     },
     [restPxPerCycle, dragAwareContentWidth],
   )

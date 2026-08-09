@@ -55,7 +55,33 @@ export function songCycleToX(
   const { originCycle, spanCycles } = win
   if (width <= 0 || spanCycles <= 0) return 0
   const clamped = Math.max(originCycle, Math.min(originCycle + spanCycles, cycle))
-  return ((clamped - originCycle) / spanCycles) * width
+  return songCycleToXUnclamped(clamped, win, width)
+}
+
+/**
+ * `songCycleToX` WITHOUT the clamp — the raw affine map from a song-absolute
+ * cycle to content-space x.
+ *
+ * ── WHY THE UNCLAMPED FORM IS EXPORTED ──────────────────────────────────────
+ * The canvas renderer culls off-screen work by asking whether a shape's x range
+ * has left the viewport, and a clamped x can never leave it: everything past the
+ * window's edge would pin to that edge and draw as a sliver instead of being
+ * skipped. So the renderer needs the unclamped map — but it must not reimplement
+ * it, because then TWO places would know where the window starts. (They did, and
+ * the renderer's copy never learned: at a window origin of 256 it placed every
+ * section and clip ~2560px off-screen, so they silently stopped being drawn.)
+ *
+ * One origin, two exposures: clamp for seek/placement, raw for culling.
+ */
+export function songCycleToXUnclamped(
+  cycle: number | null | undefined,
+  win: SongWindow,
+  width: number,
+): number {
+  if (cycle == null || !Number.isFinite(cycle)) return 0
+  const { originCycle, spanCycles } = win
+  if (width <= 0 || spanCycles <= 0) return 0
+  return ((cycle - originCycle) / spanCycles) * width
 }
 
 /**
@@ -88,9 +114,9 @@ export function xToSongCycle(
  * The modulo is only meaningful when `displayCycles` IS a loop: cycle 257 of an
  * 8-cycle song really does sound like cycle 1, so drawing it at the left edge is
  * true. When the span is instead the point where period detection gave up (the
- * 256-cycle cap — `SongAnalysis.displaySpan.kind === 'capped'`), there is no
- * loop and the modulo
- * asserts a repeat that does not exist — the playhead would jump to the left
+ * 256-cycle cap — `SongAnalysis.displaySpan.kind === 'capped'`), there is no loop
+ * and the modulo asserts a repeat that does not exist — the playhead would jump
+ * to the left
  * edge and retrace material the transport has long since passed. Measured: 27 of
  * the 32 single-lane aperiodic corpus documents have no structural period even
  * with every shaping dimension removed, so this is the common case for them, not

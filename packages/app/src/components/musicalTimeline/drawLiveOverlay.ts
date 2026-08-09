@@ -17,6 +17,7 @@
 import type { TimelineScene, SceneNote } from './timelineScene'
 import type { LaneLayout } from './laneLayout'
 import { laneMarkBands, markRect, laneRenderMode, type DrawTransform } from './drawTimeline'
+import { songCycleToXUnclamped, type SongWindow } from './songAxis'
 
 export interface LiveOverlayTheme {
   /** Bright core of a lit mark. */
@@ -125,9 +126,20 @@ export function drawLiveOverlay(
   if (activeSigs.size === 0) return
 
   const pxPerCycle = contentWidth / dc
-  const toScreenX = (cycle: number): number => (cycle / dc) * contentWidth - scrollLeft
-  const firstCycle = Math.max(0, Math.floor(scrollLeft / pxPerCycle))
-  const lastCycle = Math.min(dc, Math.ceil((scrollLeft + viewportWidth) / pxPerCycle))
+  // Same window arithmetic as the base draw, and deliberately the same SOURCE:
+  // this overlay must place a lit mark exactly over the base mark it lights, so
+  // any divergence between the two transforms shows up as a glow offset from its
+  // note. Both go through the axis, so there is one origin, not two agreeing by
+  // coincidence. `playheadCycle` and `SceneNote.cycle` are both song-absolute.
+  const win: SongWindow = { originCycle: scene.windowOriginCycles, spanCycles: dc }
+  const toScreenX = (cycle: number): number =>
+    songCycleToXUnclamped(cycle, win, contentWidth) - scrollLeft
+  // Song-absolute visible range — `markRect` compares it against note cycles.
+  // (No density here: the overlay only draws in marks mode, so unlike the base
+  // renderer it needs the absolute range alone.)
+  const firstCycle = scene.windowOriginCycles + Math.max(0, Math.floor(scrollLeft / pxPerCycle))
+  const lastCycle =
+    scene.windowOriginCycles + Math.min(dc, Math.ceil((scrollLeft + viewportWidth) / pxPerCycle))
 
   scene.lanes.forEach((lane, idx) => {
     const box = layout.boxes[idx]
