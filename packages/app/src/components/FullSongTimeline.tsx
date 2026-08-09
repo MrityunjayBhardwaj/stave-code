@@ -51,6 +51,7 @@ import { SongTimelineCanvas } from './SongTimelineCanvas'
 import {
   songCycleToX,
   xToSongCycle,
+  trimExtent,
   wrapSongPosition,
   clampZoom,
   clampRestoreZoom,
@@ -1074,9 +1075,22 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // loop never shrinks below a splittable 2 bars; a real arm keeps its ≥ 1
       // cycle weight (startCycle + 1). Bare startCycle is 0, so newEnd === span.
       const floor = drag.armIndex < 0 ? MIN_BARE_SPLIT_SPAN : drag.startCycle + 1
-      const newEnd = Math.max(floor, Math.round(contentX / ppc))
+      // `contentX / ppc` is cycles from the LEFT EDGE OF THE WINDOW and carries
+      // no origin, while `drag.startCycle` is song-absolute (scene cycles stay
+      // absolute so clip write-back lands on the bar the user dragged). The two
+      // frames coincide only at origin 0, which is why this read correctly for
+      // as long as there was one window — see #1203. The axis owns the
+      // conversion, and returns the span alongside the end so the position and
+      // the length cannot pick up the origin independently of each other.
+      const { endCycle: newEnd, spanCycles: needed } = trimExtent({
+        contentX,
+        pxPerCycle: ppc,
+        originCycle: songOriginCycles,
+        floorCycle: floor,
+        marginCycles: EXTEND_MARGIN_CYCLES,
+        minSpanCycles: loopCyclesRef.current,
+      })
       drag.weight = newEnd - drag.startCycle
-      const needed = Math.max(loopCyclesRef.current, newEnd + EXTEND_MARGIN_CYCLES)
       if (dragSpanRef.current == null || needed > dragSpanRef.current) {
         dragSpanRef.current = needed
         setDragSpanCycles(needed)
@@ -1084,7 +1098,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const gcw = dragAwareContentWidth(rect.width)
       setTrimEdgeX(songCycleToX(newEnd, { originCycle: songOriginCycles, spanCycles: dragSpanRef.current ?? loopCyclesRef.current }, gcw))
     },
-    [restPxPerCycle, dragAwareContentWidth],
+    [restPxPerCycle, dragAwareContentWidth, songOriginCycles],
   )
 
   const stopExtendAutoScroll = React.useCallback((): void => {

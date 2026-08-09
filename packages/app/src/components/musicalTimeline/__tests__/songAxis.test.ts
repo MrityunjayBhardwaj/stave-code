@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   songCycleToX,
   xToSongCycle,
+  trimExtent,
   wrapSongPosition,
   clampZoom,
   clampRestoreZoom,
@@ -357,5 +358,85 @@ describe('the axis under a non-zero window origin (#1108)', () => {
     expect(ticks[0].cycle).toBe(252)
     expect(ticks.every((t) => t.cycle % 4 === 0)).toBe(true)
     expect(ticks.every((t) => t.cycle >= 250 && t.cycle < 314)).toBe(true)
+  })
+})
+
+/**
+ * `trimExtent` (#1203) — the extend drag's inverse.
+ *
+ * Every arm below is at a NON-ZERO origin on purpose. At origin 0 the
+ * window-relative and song-absolute frames coincide, so the defect this
+ * function exists to remove is invisible: the old inline arithmetic passes
+ * every origin-0 assertion that could be written about it.
+ */
+describe('trimExtent', () => {
+  const base = {
+    pxPerCycle: 10,
+    originCycle: 256,
+    floorCycle: 0,
+    marginCycles: 2,
+    minSpanCycles: 32,
+  }
+
+  it('returns a SONG-ABSOLUTE end cycle — the origin plus the cursor offset', () => {
+    // 80px at 10px/cycle is 8 cycles INTO the window, and the window starts at
+    // 256, so the user is asking for cycle 264 — not cycle 8.
+    expect(trimExtent({ ...base, contentX: 80 }).endCycle).toBe(264)
+  })
+
+  it('returns a WINDOW-RELATIVE span — the same measurement from the other side', () => {
+    // 264 absolute is 8 into the window, +2 margin = 10; the floor of 32 wins.
+    expect(trimExtent({ ...base, contentX: 80 }).spanCycles).toBe(32)
+    // Past the floor the margin decides, and the origin must NOT be in it:
+    // 500px = 50 cycles in = cycle 306 absolute, span 50 + 2 = 52.
+    const far = trimExtent({ ...base, contentX: 500 })
+    expect(far.endCycle).toBe(306)
+    expect(far.spanCycles).toBe(52)
+  })
+
+  it('the end and the span differ by exactly the origin, at any cursor position', () => {
+    // The property the two-number return exists to guarantee. Deriving them
+    // separately is how one gained the origin and the other kept it.
+    //
+    // Both floors are released (margin 0, minSpan 0) on purpose: with either of
+    // them binding, the span stops tracking the end and the identity is simply
+    // not the property — as written with `minSpanCycles: 1` this arm failed at
+    // contentX 0 for that reason, and the code was right.
+    for (const contentX of [0, 37, 250, 1000, 4096]) {
+      const { endCycle, spanCycles } = trimExtent({ ...base, contentX, minSpanCycles: 0, marginCycles: 0 })
+      expect(endCycle - spanCycles).toBe(base.originCycle)
+    }
+  })
+
+  it('clamps to the floor, which is itself song-absolute', () => {
+    // A clip starting at cycle 300 may not be trimmed below 301, even though
+    // the cursor is far to the left of it inside the window.
+    expect(trimExtent({ ...base, contentX: 0, floorCycle: 301 }).endCycle).toBe(301)
+  })
+
+  it('can ask for a cycle PAST the window end — this is why the clamped inverse cannot serve it', () => {
+    // The window is [256, 288). 900px is 90 cycles in → 346, well beyond it.
+    // `xToSongCycle` would clamp this to just under 288 and the extend drag
+    // could never grow the span at all.
+    const { endCycle } = trimExtent({ ...base, contentX: 900 })
+    expect(endCycle).toBe(346)
+    expect(endCycle).toBeGreaterThan(base.originCycle + 32)
+  })
+
+  it('never lets the span shrink below the current one', () => {
+    expect(trimExtent({ ...base, contentX: 0, minSpanCycles: 64 }).spanCycles).toBe(64)
+  })
+
+  it('degenerate scale falls back to the floor and the current span', () => {
+    expect(trimExtent({ ...base, contentX: 80, pxPerCycle: 0 })).toEqual({ endCycle: 0, spanCycles: 32 })
+    expect(trimExtent({ ...base, contentX: Number.NaN })).toEqual({ endCycle: 0, spanCycles: 32 })
+  })
+
+  it('CONTROL — at origin 0 the two frames coincide, which is why this went unseen', () => {
+    // Documents the blind spot rather than covering behaviour: this arm passes
+    // against the origin-blind arithmetic too.
+    const { endCycle, spanCycles } = trimExtent({ ...base, originCycle: 0, contentX: 500, minSpanCycles: 1 })
+    expect(endCycle).toBe(50)
+    expect(spanCycles).toBe(52)
   })
 })
