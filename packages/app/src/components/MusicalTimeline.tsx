@@ -64,8 +64,10 @@ import {
   pickDuplicateArm,
   pickSplitArm,
   analyzeSong,
+  analyzeWindow,
   useSilencedTrackNames,
   type SongAnalysis,
+  type WindowAnalysis,
 } from '@stave/editor'
 import { FullSongTimeline } from './FullSongTimeline'
 import { createSongCollector } from './musicalTimeline/songCollector'
@@ -230,6 +232,23 @@ export function MusicalTimeline(
   // live overlay (#500). The Live/Song `viewMode` fork and its DOM Live
   // renderer were retired in U5.
   const [analysis, setAnalysis] = useState<SongAnalysis | null>(null)
+  /**
+   * The paged window (#1201 item 3), or null while the view is showing the
+   * song's own first span.
+   *
+   * ── WHY THIS IS NOT FOLDED INTO `analysis` ──────────────────────────────
+   * A window is deliberately NOT a `SongAnalysis` — it has no period and no
+   * displaySpan, because paging exists only on the branch where period
+   * detection FAILED and a window must never re-judge one. The view keeps
+   * reading `analysis` for the things that are properties of the SONG (its
+   * span, whether that span loops, the readout) and reads this only for the
+   * activity it draws. Two values, because they answer two questions.
+   */
+  const [windowAnalysis, setWindowAnalysis] = useState<WindowAnalysis | null>(null)
+  /** The origin the view is currently showing. 0 until something pages. */
+  const [windowOrigin, setWindowOrigin] = useState(0)
+  const analysisRef = React.useRef<SongAnalysis | null>(null)
+  analysisRef.current = analysis
 
   // #980 — latest-value ref for the runtime's queryArc event accessor. The
   // analyze effect sources onsets from EVAL haps (getTimelineEvents → queryArc)
@@ -255,6 +274,12 @@ export function MusicalTimeline(
   // cadence can't pile up overlapping budgeted collections.
   useEffect(() => {
     const ir = snapshot?.ir ?? null
+    // #1201 — a new snapshot is a new document: the page the user was on no
+    // longer describes it, and a stale window would draw the old song's
+    // activity at the new song's origin. Reset BEFORE the early return so an
+    // edit that empties the IR clears the page too.
+    setWindowAnalysis(null)
+    setWindowOrigin(0)
     if (!ir) {
       // Reset derived analysis when the snapshot has no IR (intentional).
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -295,6 +320,81 @@ export function MusicalTimeline(
       signal.aborted = true
     }
   }, [snapshot])
+
+  /**
+   * Page to a window (#1201 item 3) — the request `FullSongTimeline` makes when
+   * the playhead nears the end of what it is showing.
+   *
+   * ── WHY A PREFETCH AND NOT A RECOMPUTE AT THE BOUNDARY ────────────────────
+   * #1201 predicted the recompute would be the hard part — a stall, or a
+   * refresh landing after the boundary had passed. Measured over the 56 corpus
+   * documents that can page, it is not: window cost is FLAT with depth (0.98x
+   * from cycle 0 to 4096, bought by the band accessor) at a 383ms median,
+   * against a window that lasts 128-512 seconds of playback. That is 100-1000x
+   * headroom, so asking early and letting it land is ample and no budget
+   * negotiation is needed. The same measurement says a SMALLER window would buy
+   * nothing — the worst single slice is flat with span — so the span stays a UX
+   * choice.
+   *
+   * Requests are idempotent by origin: the trigger fires on a frame condition
+   * that stays true for many frames, so re-requesting the origin already shown
+   * or already in flight must be a no-op rather than a cancel-and-restart.
+   */
+  const pagingRef = React.useRef<{ inFlight: number | null; signal: { aborted: boolean } | null }>({
+    inFlight: null,
+    signal: null,
+  })
+  const snapshotRef = React.useRef(snapshot)
+  snapshotRef.current = snapshot
+  const windowOriginRef = React.useRef(windowOrigin)
+  windowOriginRef.current = windowOrigin
+
+  const handleRequestWindow = React.useCallback((originCycle: number, spanCycles: number) => {
+    const origin = Math.max(0, Math.floor(originCycle))
+    const span = Math.max(1, Math.floor(spanCycles))
+    // Already showing it, or already fetching it.
+    if (origin === windowOriginRef.current && origin !== 0) return
+    if (pagingRef.current.inFlight === origin) return
+    const ir = snapshotRef.current?.ir ?? null
+    if (!ir) return
+
+    // Supersede any older in-flight page — the user has moved on from it.
+    if (pagingRef.current.signal) pagingRef.current.signal.aborted = true
+    const signal = { aborted: false }
+    pagingRef.current = { inFlight: origin, signal }
+
+    // The SAME collector definition the whole-song pass reads through, so a
+    // window cannot disagree with the song about what an onset is or which
+    // lane it belongs to. `hasUnheardTrack` is deliberately not passed: a
+    // window neither detects nor may contribute a period.
+    const { collectFn } = createSongCollector(ir, {
+      getTimelineEvents: getTimelineEventsRef.current,
+      getTimelineEventsBand: getTimelineEventsBandRef.current,
+      getSongTrackIds: getSongTrackIdsRef.current,
+    })
+    // Pin lane membership to the lanes the SONG knows about, so a track silent
+    // through this window stays a (silenced) row instead of ceasing to exist —
+    // and a track first entering inside this window still appears, because
+    // membership is the UNION of the pin and what the window heard.
+    const pinnedLaneKeys = analysisRef.current?.lanes.map((l) => l.laneKey)
+
+    analyzeWindow(origin, span, { signal, collectFn, pinnedLaneKeys })
+      .then((result) => {
+        if (signal.aborted) return
+        pagingRef.current.inFlight = null
+        // ⚠ `complete: false` now means ABORTED, never "ran out of budget" —
+        // analyzeWindow has no budget ceiling, only a cooperative signal. A
+        // partial window must not be presented as a whole one, so keep the
+        // page the user is already looking at and let the trigger ask again.
+        if (!result.complete) return
+        setWindowAnalysis(result)
+        setWindowOrigin(origin)
+      })
+      .catch(() => {
+        pagingRef.current.inFlight = null
+        /* paging is best-effort; the current window stays on screen */
+      })
+  }, [])
 
   // #980 — test-only observation of the eval-backed analysis (consumer 4).
   // Gated on the same debug flag as the marks probe (FullSongTimeline), so
@@ -675,6 +775,9 @@ export function MusicalTimeline(
     >
         <FullSongTimeline
           analysis={analysis}
+          windowActivity={windowAnalysis}
+          windowOriginCycles={windowOrigin}
+          onRequestWindow={handleRequestWindow}
           ir={snapshot?.ir ?? null}
           source={snapshot?.code ?? null}
           getHapStream={props.getHapStream}
