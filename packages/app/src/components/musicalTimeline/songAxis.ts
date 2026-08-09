@@ -106,6 +106,59 @@ export function xToSongCycle(
 }
 
 /**
+ * The extend/trim drag's own inverse: cursor x → the SONG-ABSOLUTE end cycle the
+ * user is asking for, plus the window span that end requires.
+ *
+ * ── WHY THIS IS NOT `xToSongCycle` (#1203) ──────────────────────────────────
+ * Two independent reasons, either of which alone rules it out:
+ *
+ *  1. `xToSongCycle` CLAMPS — x into `[0, width]`, and its result to just under
+ *     the window end. The extend drag exists precisely to ask for a cycle PAST
+ *     the current edge, which a clamped inverse can never express.
+ *  2. It maps at the window's scale, which GROWS during the drag as the span
+ *     extends. The trim maps at the constant rest px/cycle instead, so the
+ *     dragged edge follows the cursor 1:1 with no jump as the span grows.
+ *
+ * So this is a THIRD exposure of the one origin, not a duplicate of the second
+ * — the same shape as the clamped/unclamped split above. The alternative, doing
+ * the arithmetic at the call site, is what once put the forward map's origin in
+ * three places, two of which never learned about windows.
+ *
+ * ── WHY IT RETURNS BOTH NUMBERS ─────────────────────────────────────────────
+ * `endCycle` is a POSITION — song-absolute, compared against
+ * `SceneClip.startCycle` and written back as a clip weight. `spanCycles` is a
+ * LENGTH — window-relative, feeding the drag-aware content width. They are one
+ * measurement seen from either side of the origin, and deriving them separately
+ * is exactly how they drifted: the end gained the origin while the span kept it,
+ * so every extend at a non-zero origin inflated the content width by the origin.
+ * Returning both from one place makes that particular drift unexpressible.
+ */
+export function trimExtent(params: {
+  /** Cursor position in CONTENT space (viewport x + scrollLeft). */
+  contentX: number
+  /** The CONSTANT rest px/cycle — deliberately not the drag-aware scale. */
+  pxPerCycle: number
+  /** First cycle of the displayed window (song-absolute). */
+  originCycle: number
+  /** Lowest end cycle this drag may produce (song-absolute). */
+  floorCycle: number
+  /** Room kept past the dragged edge so there is somewhere to drag into. */
+  marginCycles: number
+  /** The span never shrinks below this (the current loop/display span). */
+  minSpanCycles: number
+}): { endCycle: number; spanCycles: number } {
+  const { contentX, pxPerCycle, originCycle, floorCycle, marginCycles, minSpanCycles } = params
+  if (!(pxPerCycle > 0) || !Number.isFinite(contentX)) {
+    return { endCycle: floorCycle, spanCycles: minSpanCycles }
+  }
+  const endCycle = Math.max(floorCycle, originCycle + Math.round(contentX / pxPerCycle))
+  return {
+    endCycle,
+    spanCycles: Math.max(minSpanCycles, endCycle - originCycle + marginCycles),
+  }
+}
+
+/**
  * Wrap a monotonically-increasing song position into the `[0, displayCycles)`
  * display range. The transport clock keeps advancing after a seek; the
  * full-song playhead shows the within-loop position.
