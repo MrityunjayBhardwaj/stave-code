@@ -636,9 +636,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // the true song end so a click in the transient extend room (past the song)
       // seeks to the end, not into empty space (#487).
       userScrollUntilRef.current = Date.now() + USER_SCROLL_GUARD_MS
-      onSeek(Math.min(cycle, loopCycles))
+      // The end of the SONG-ABSOLUTE stretch in view. `cycle` came back absolute
+      // from the axis, so clamping it against a bare span would send a click near
+      // the end of a paged window back to the start of the song.
+      onSeek(Math.min(cycle, songOriginCycles + loopCycles))
     },
-    [displayCycles, loopCycles, dragAwareContentWidth, onSeek],
+    [displayCycles, songOriginCycles, loopCycles, dragAwareContentWidth, onSeek],
   )
 
   // Canvas scene: per-lane density (from analysis) + capped mini-note marks
@@ -723,6 +726,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const raw = buildTimelineScene(
       analysis,
       songOriginCycles,
+      // This view shows exactly ONE window, so its own busiest cell is the right
+      // full-intensity reference and there is nothing to be comparable WITH. A
+      // view that pages has to revisit this — see the note at `peakDensity`.
+      null,
       marks,
       displayCycles,
       source,
@@ -1482,7 +1489,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // transport passes the span the playhead is withheld (`wrapSongPosition`), so
   // without a word here the view would look stopped. Read from the SAME `looping`
   // and `songPos` the playhead uses, so the two cannot contradict each other.
-  const beyondSpan = !looping && songPos != null && songPos >= loopCycles
+  // Absolute position against the absolute end of the window, not against its width.
+  const beyondSpan = !looping && songPos != null && songPos >= songOriginCycles + loopCycles
   const fallbackNotice = !looping
     ? beyondSpan
       ? `no repeat · playing past cycle ${Math.floor(loopCycles)}`

@@ -250,6 +250,12 @@ export function buildTimelineScene(
    *  window-relative cycle would write the edit to the wrong bar. So the scene
    *  carries the origin and `density` is the only thing indexed relative to it. */
   windowOriginCycles: number,
+  /** Normalisation floor for the density colour scale, or null to normalise over
+   *  THIS window alone. Required — see the trade-off where `peakDensity` is
+   *  computed. A single-window view passes null and gets the historical
+   *  behaviour; anything that pages has to state which it means, because the two
+   *  differ silently and only in how the same music is coloured. */
+  carriedPeakDensity: number | null,
   marks: CollectedMarks = EMPTY_MARKS,
   displayCyclesOverride?: number,
   /** Raw user source (#579 STEP 2) — read at each lane's `labelOffset`
@@ -397,7 +403,24 @@ export function buildTimelineScene(
     .map(([id]) => id)
 
   // Peak onset across ALL lanes (IR + eval, ≥1) so the busiest cell is full-intensity.
-  let peakDensity = 1
+  //
+  // ⚠ THE DOMAIN OF THIS MAXIMUM IS THE DOMAIN OF THE COLOUR SCALE, and once the
+  // view can page they stop being obviously the same thing. A window-local max
+  // means the busiest cell in view is always full-intensity, so paging to a
+  // quieter stretch silently BRIGHTENS it: identical music reads as a different
+  // density depending on what else happens to be on screen, with nothing saying
+  // the scale moved. `carriedPeakDensity` is how a caller that shows more than
+  // one window says "normalise against this instead".
+  //
+  // Neither answer is free, and the caller is the only one that can choose:
+  //   · window-local (null) — every page uses its full colour range, and no two
+  //     pages are comparable.
+  //   · carried — pages are comparable, but the scale then depends on which
+  //     windows have been VISITED, so the same page can render differently
+  //     depending on how the user got there. A carried value should therefore
+  //     come from something stable (the song's own peak), not from a running
+  //     maximum accumulated by browsing.
+  let peakDensity = Math.max(1, carriedPeakDensity ?? 1)
   for (const lane of lanesIn) {
     for (const c of lane.onsetsByCycle) if (c > peakDensity) peakDensity = c
   }
