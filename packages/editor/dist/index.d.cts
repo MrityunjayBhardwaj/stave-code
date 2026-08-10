@@ -801,6 +801,13 @@ declare function setTierFlag(name: TierName, on: boolean): void;
 declare function listTiers(): readonly TierName[];
 
 type HapHandler = (event: HapEvent) => void;
+/**
+ * Single source of truth for audio in Stave.
+ * Wraps @strudel/webaudio (which wraps superdough) via webaudioRepl().
+ *
+ * API surface matches ARCHITECTURE.md.
+ * One instance per page. Must be init()'d after a user gesture.
+ */
 declare class StrudelEngine implements LiveCodingEngine {
     private repl;
     private audioCtx;

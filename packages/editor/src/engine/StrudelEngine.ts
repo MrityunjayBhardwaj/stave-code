@@ -116,13 +116,6 @@ export const STRUDEL_VIZ_METHODS: Record<string, string> = {
 }
 
 /**
- * Single source of truth for audio in Stave.
- * Wraps @strudel/webaudio (which wraps superdough) via webaudioRepl().
- *
- * API surface matches ARCHITECTURE.md.
- * One instance per page. Must be init()'d after a user gesture.
- */
-/**
  * Deadline for any third-party manifest fetch during engine boot (#1214).
  *
  * Chosen against the measured shape of the failure, not by feel: a healthy
@@ -195,6 +188,13 @@ async function withBootDeadline<T>(
   }
 }
 
+/**
+ * Single source of truth for audio in Stave.
+ * Wraps @strudel/webaudio (which wraps superdough) via webaudioRepl().
+ *
+ * API surface matches ARCHITECTURE.md.
+ * One instance per page. Must be init()'d after a user gesture.
+ */
 export class StrudelEngine implements LiveCodingEngine {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private repl: any = null
@@ -473,11 +473,11 @@ export class StrudelEngine implements LiveCodingEngine {
     // Load Dirt-Samples manifest so bd, hh, sd, cp, rim, cr, rd etc. resolve at runtime.
     // Individual samples are lazy-loaded on first play; only the index JSON is fetched here.
     // Worklet-based effects (crush, coarse, distort, djf, bytebeat) are loaded by initAudio() above.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // #1214: bounded. This was the specific call that wedged boot — it was also
     // the only manifest load here with no protection at all, while every b-cdn
     // sibling below at least had a catch. The catch was never the missing part.
     await withBootDeadline('Dirt-Samples', () =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (webaudioMod as any).samples('github:tidalcycles/Dirt-Samples/master'),
     )
 
@@ -594,14 +594,14 @@ export class StrudelEngine implements LiveCodingEngine {
       ;(globalThis as unknown as { soundMap?: unknown }).soundMap = soundMapRef
     }
     const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0
-    try {
+    // #1214: no try/catch here any more, and its absence is the point —
+    // `withBootDeadline` already swallows and warns, so a catch around it could
+    // never fire. Leaving one in place would read as live protection at exactly
+    // the site whose real hazard is a request that never answers at all.
+    await withBootDeadline('tidal-drum-machines aliases', () =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await withBootDeadline('tidal-drum-machines aliases', () =>
-        (webaudioMod as any).aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`),
-      )
-    } catch (e) {
-      console.warn('[StrudelEngine] aliasBank fetch failed; .bank() aliases unavailable.', e)
-    }
+      (webaudioMod as any).aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`),
+    )
     const postAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0
     // Dev-only observation log — α-7 SUMMARY cites this for the merge-vs-replace
     // gate. Drop noisily if a future review wants quieter boot — keep the

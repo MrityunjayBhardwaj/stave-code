@@ -6750,7 +6750,10 @@ var _StrudelEngine = class _StrudelEngine {
     soundfontsMod.registerSoundfonts();
     await withBootDeadline(
       "Dirt-Samples",
-      () => webaudioMod.samples("github:tidalcycles/Dirt-Samples/master")
+      () => (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        webaudioMod.samples("github:tidalcycles/Dirt-Samples/master")
+      )
     );
     const samplesFn = webaudioMod.samples;
     const baseCDN = "https://strudel.b-cdn.net";
@@ -6888,14 +6891,13 @@ var _StrudelEngine = class _StrudelEngine {
       globalThis.soundMap = soundMapRef;
     }
     const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
-    try {
-      await withBootDeadline(
-        "tidal-drum-machines aliases",
-        () => webaudioMod.aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`)
-      );
-    } catch (e) {
-      console.warn("[StrudelEngine] aliasBank fetch failed; .bank() aliases unavailable.", e);
-    }
+    await withBootDeadline(
+      "tidal-drum-machines aliases",
+      () => (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        webaudioMod.aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`)
+      )
+    );
     const postAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
     console.log(`[StrudelEngine] aliasBank: soundMap keys ${preAliasCount} \u2192 ${postAliasCount} (\u0394 ${postAliasCount - preAliasCount}; expect non-negative)`);
     const soundMapData = webaudioMod.soundMap?.get() ?? {};
