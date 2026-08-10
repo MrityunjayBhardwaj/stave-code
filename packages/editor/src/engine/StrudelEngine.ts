@@ -154,6 +154,101 @@ const MANIFEST_DEADLINE_MS = 3_000
 const MANIFEST_BUDGET_MS = 4_000
 
 /**
+ * Ceiling on ALL of engine boot (#1215).
+ *
+ * The manifest budget bounds the optional half of init. This bounds the whole
+ * of it, including the nine module imports, `evalScope` and `initAudio` — the
+ * steps there is no engine without. Same derivation as its siblings, from the
+ * consumer side: the app and its suite widely allow ten seconds for "the song
+ * has drawn", so boot must fail or finish inside that with room, and six leaves
+ * the manifest phase its full four while a required stall still gives up in
+ * three. Healthy boot spends a small fraction of it — measured end to end at
+ * roughly a second.
+ *
+ * Every bounded step takes `min(its own ceiling, what remains of this)`, so
+ * adding a step can never extend boot past this number. That is the property
+ * #1217 had to be re-fixed to get, and it is why nothing here gets an
+ * independent deadline of its own.
+ */
+const INIT_BUDGET_MS = 6_000
+
+/**
+ * Ceiling on one REQUIRED boot step — a module import, `evalScope`, `initAudio`.
+ *
+ * Same bimodal argument as the manifest deadline: a chunk request either
+ * answers quickly or does not answer, and there is no population in between, so
+ * three seconds is far past healthy and still far short of forever.
+ *
+ * ⚠ THE FAILURE MODE IS DIFFERENT FROM ITS SIBLINGS, AND THAT IS THE POINT.
+ * A missing sample bank degrades; a missing `@strudel/core` does not — there is
+ * nothing to continue with. So a required step that runs out of time THROWS
+ * rather than warning and returning null. That is not a worse outcome than the
+ * hang it replaces, it is a categorically better one: `init()` clears its
+ * memoised promise on rejection, so a bounded failure can be retried by
+ * evaluating again, while a hang is joined by every later caller forever. The
+ * rule from #1214 was never "don't fail" — it was "can this fail to ANSWER?".
+ */
+const REQUIRED_STEP_MS = 3_000
+
+/**
+ * A shrinking allowance. `remaining()` is what is left of `totalMs` since the
+ * budget was opened, and it goes negative once spent — callers clamp.
+ *
+ * Opened per boot rather than per module, so a second engine or a re-init after
+ * dispose starts from full. A module-level clock would mean the first page load
+ * spends the allowance and every later one believes it has none.
+ */
+function openBudget(totalMs: number): () => number {
+  const startedAt = Date.now()
+  return () => totalMs - (Date.now() - startedAt)
+}
+
+/**
+ * Run one REQUIRED boot step under the init budget, and reject if it stalls.
+ *
+ * The warning is emitted here, before the throw, deliberately: whoever catches
+ * this upstream may well be a best-effort path that swallows it, and #1214 cost
+ * what it cost because nothing on the path said anything. The step knows which
+ * step it was; the catcher does not.
+ */
+function createRequiredStep(
+  initRemaining: () => number,
+): <T>(label: string, fn: () => Promise<T>) => Promise<T> {
+  return async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
+    const deadlineMs = Math.min(REQUIRED_STEP_MS, initRemaining())
+    const fail = (why: string): Error =>
+      new Error(
+        `[StrudelEngine] boot step "${label}" ${why}. This is usually a network, proxy or ` +
+          `service-worker problem rather than a code fault — evaluating again starts a fresh attempt.`,
+      )
+
+    if (deadlineMs <= 0) {
+      const err = fail(`was not attempted: boot's ${INIT_BUDGET_MS}ms budget was already spent`)
+      console.warn(err.message)
+      throw err
+    }
+
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        fn(),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(fail(`did not answer within ${deadlineMs}ms`)), deadlineMs)
+        }),
+      ])
+    } catch (err) {
+      console.warn(
+        `[StrudelEngine] boot step "${label}" failed; the engine cannot start without it.`,
+        err,
+      )
+      throw err
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+}
+
+/**
  * ⚠ THE TWO NUMBERS ABOVE HAVE TO BE READ TOGETHER, and the gap between them is
  * load-bearing. A shared budget raises an obvious worry: the first stalled host
  * spends it, and every manifest after it — reachable ones included — is skipped,
@@ -198,29 +293,31 @@ const MANIFEST_BUDGET_MS = 4_000
 type BoundedManifestLoad = <T>(label: string, fn: () => Promise<T>) => Promise<T | null>
 
 /**
- * Open a budget for one boot's manifest phase and return the loader for it.
+ * Return a loader for OPTIONAL boot steps — the ones boot is allowed to lose.
  *
- * The clock starts here and is shared by every call made through the returned
- * function, which is what stops the deadlines stacking (#1217). Each call waits
- * for whichever is smallest: its own ceiling, or what is left of the phase —
- * floored so a single stalled host cannot starve the reachable ones.
+ * Every call waits for whichever is smallest: its own ceiling, what is left of
+ * boot's overall budget, and (when the caller supplies one) what is left of a
+ * phase sub-budget. The sub-budget is what stops a group of sibling steps
+ * stacking their deadlines against each other (#1217); the init budget is what
+ * stops the group outliving boot as a whole (#1215).
  *
- * One budget per boot, not per module: a second engine, or a re-init after
- * dispose, gets a fresh clock. A module-level start time would mean the first
- * page load spends the budget and every later one thinks it has none.
+ * Budgets are opened per boot, not per module: a second engine, or a re-init
+ * after dispose, gets fresh clocks. A module-level start time would mean the
+ * first page load spends the allowance and every later one believes it has none.
  */
-function createManifestBudget(): BoundedManifestLoad {
-  const startedAt = Date.now()
-
+function createOptionalStep(
+  initRemaining: () => number,
+  phaseRemaining?: () => number,
+): BoundedManifestLoad {
   return async <T>(label: string, fn: () => Promise<T>): Promise<T | null> => {
-    const remaining = MANIFEST_BUDGET_MS - (Date.now() - startedAt)
+    const remaining = Math.min(phaseRemaining?.() ?? Number.POSITIVE_INFINITY, initRemaining())
     if (remaining <= 0) {
       // Skip WITHOUT calling fn: with nothing left there is no wait to give it,
       // and starting a request we will not await only adds a connection to a
       // host that has already proved unreachable.
       console.warn(
-        `[StrudelEngine] sample manifest "${label}" did not load; continuing without it.`,
-        new Error("boot's manifest budget was already spent"),
+        `[StrudelEngine] optional boot step "${label}" did not load; continuing without it.`,
+        new Error("boot's budget was already spent"),
       )
       return null
     }
@@ -239,7 +336,7 @@ function createManifestBudget(): BoundedManifestLoad {
       ])
     } catch (err) {
       console.warn(
-        `[StrudelEngine] sample manifest "${label}" did not load; continuing without it.`,
+        `[StrudelEngine] optional boot step "${label}" did not load; continuing without it.`,
         err,
       )
       return null
@@ -440,12 +537,25 @@ export class StrudelEngine implements LiveCodingEngine {
     // eslint-disable-next-line no-console
     console.log('[StrudelEngine] tierFlags read at init:', this.tierFlags)
 
+    // #1215: one clock for the whole of boot, opened before the first await.
+    // Every bounded step below draws from it, so no step — present or future —
+    // can extend boot past `INIT_BUDGET_MS`. `required` rejects when it runs
+    // out (there is no engine without those steps, and a rejection is
+    // retryable); the manifest loader warns and degrades.
+    const initRemaining = openBudget(INIT_BUDGET_MS)
+    const required = createRequiredStep(initRemaining)
+    const optional = createOptionalStep(initRemaining)
+
     // Load all strudel modules up-front so evalScope can register their
     // exports (note, s, gain, stack, etc.) into globalThis.  The eval'd user
     // code runs inside Function() with no special scope, so every function it
     // calls must be a global.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod] = await Promise.all([
+    // #1215: bounded as ONE step. These are same-origin chunk requests, which
+    // usually reject rather than hang — but a proxy, a captive portal or a
+    // stuck service worker holds the connection open instead, and then this is
+    // #1214 at a different await: unbounded, memoised, never rejecting.
+    const [coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod] = await required('strudel modules', () => Promise.all([
       import('@strudel/core') as Promise<any>,
       import('@strudel/mini') as Promise<any>,
       import('@strudel/tonal') as Promise<any>,
@@ -461,7 +571,7 @@ export class StrudelEngine implements LiveCodingEngine {
       // (registry.npmjs.org returns 404 for @strudel/edo on 2026-05-15).
       // Tracked as a follow-up when upstream publishes it.
       import('@strudel/mondo') as Promise<any>,
-    ])
+    ]))
 
     // Register all module exports into globalThis so eval'd patterns can use them
     // (note, s, gain, stack, etc. must be globals — user code runs in Function())
@@ -473,7 +583,9 @@ export class StrudelEngine implements LiveCodingEngine {
     // into document.body (id="test-canvas") the first time any draw function runs.
     // Stave uses its own visualizer system, so strudel's canvas draw functions
     // (pianoroll, drawFrequencyScope, etc.) are not exposed to user code.
-    await coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod)
+    await required('evalScope', () =>
+      coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod),
+    )
 
     // Phase 20-14 β-4: thread the `midi` tier flag through engine init.
     // When the flag is ON, call `enableWebMidi()` after evalScope resolves so
@@ -488,18 +600,19 @@ export class StrudelEngine implements LiveCodingEngine {
     // motion/mqtt) are NOT threaded here — each has its own follow-up issue
     // (#124-#130) from β-3.
     if (this.tierFlags?.midi) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const enableWebMidi = (midiMod as any)?.enableWebMidi
-        if (typeof enableWebMidi === 'function') {
-          await enableWebMidi()
-        } else {
-          console.warn('[StrudelEngine] tierFlags.midi is ON but @strudel/midi did not export enableWebMidi.')
-        }
-      } catch (err) {
-        // Browser-permission denial throws here. Log + continue — engine
-        // boot must succeed even if MIDI is unavailable.
-        console.warn('[StrudelEngine] enableWebMidi() failed; MIDI output unavailable.', err)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const enableWebMidi = (midiMod as any)?.enableWebMidi
+      if (typeof enableWebMidi === 'function') {
+        // #1215: bounded, and this is the likeliest hang in the whole function
+        // even though the issue did not list it. `enableWebMidi()` raises a
+        // browser permission prompt, and a user who simply never answers it
+        // leaves the promise pending forever — boot then waits on a dialog
+        // nobody is looking at. The try/catch that used to sit here caught a
+        // DENIAL, which was never the dangerous case: a denial rejects, and a
+        // rejection is survivable. Silence is not.
+        await optional('enableWebMidi', () => enableWebMidi())
+      } else {
+        console.warn('[StrudelEngine] tierFlags.midi is ON but @strudel/midi did not export enableWebMidi.')
       }
     }
 
@@ -514,11 +627,17 @@ export class StrudelEngine implements LiveCodingEngine {
 
     // Transpiler converts $: pattern syntax → pattern.p("$") and handles
     // mini-notation template literals. Required for $: to work correctly.
-    const { transpiler } = await import('@strudel/transpiler')
+    const { transpiler } = await required('@strudel/transpiler', () => import('@strudel/transpiler'))
 
     const { initAudio, getAudioContext, webaudioOutput, webaudioRepl } = webaudioMod
 
-    await initAudio()
+    // #1215: `initAudio`'s worklet is a data: URL in our bundle, so it is NOT a
+    // network wait — that part of the issue's premise did not survive checking.
+    // It is bounded anyway because it awaits `audioContext.resume()`, which can
+    // sit pending when the context cannot start, and because the point of a
+    // budget is that it does not depend on today's inventory of what inside it
+    // might block.
+    await required('initAudio', () => initAudio())
     // Register built-in oscillator synths (sine, sawtooth, square, triangle, user, one)
     // and noise generators (pink, white, brown, crackle).
     // Without this, superdough throws "sound sine not found! Is it loaded?"
@@ -538,7 +657,7 @@ export class StrudelEngine implements LiveCodingEngine {
     // here. Individually bounding each fetch was not enough — the loads are
     // sequential, so per-call ceilings add up when more than one host is
     // unreachable. The clock has to start before the first of them.
-    const bounded = createManifestBudget()
+    const bounded = createOptionalStep(initRemaining, openBudget(MANIFEST_BUDGET_MS))
     // #1214: bounded. This was the specific call that wedged boot — it was also
     // the only manifest load here with no protection at all, while every b-cdn
     // sibling below at least had a catch. The catch was never the missing part.
