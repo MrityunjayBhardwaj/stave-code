@@ -137,6 +137,56 @@ const TIMELINE_VISIBILITY_POLL_MS = 500;
 const SNAPSHOT_REFRESH_DEBOUNCE_MS = 300;
 
 /**
+ * #1193 — how long the snapshot publish will wait for the eval-on-load in
+ * front of it before going ahead without eval haps.
+ *
+ * WHY THERE IS A CEILING AT ALL. `refreshTimelineMarks` awaits
+ * `evaluateForTimeline()` and then publishes, and its own docblock calls that
+ * publish UNCONDITIONAL — which it was not: a statement sequenced after an
+ * unbounded await is conditional on that await returning. When the engine's
+ * evaluate hung, the publish never ran, so no IR ever reached the Song view and
+ * it sat reading "No song to map yet — press play." about a loaded document,
+ * permanently and with nothing logged. Measured directly: three refreshes
+ * entered, zero publishes, no early return and no throw.
+ *
+ * BOTH BOUNDS, because a ceiling that only satisfies one is how the last one
+ * had to be corrected. BELOW: a healthy eval-on-load is far quicker than this —
+ * the cold path is documented at ~2.5s and the observed shell-to-lanes time is
+ * ~600ms — so the ordering #977 wants (eval haps populated BEFORE the publish)
+ * is untouched in every healthy case; this only fires when something is wrong.
+ * ABOVE: every consumer of the drawn lanes allows 10s, so publishing at worst
+ * 5s in leaves a full 5s of margin rather than trading one deadline for another.
+ */
+const TIMELINE_EVAL_WAIT_MS = 5_000;
+
+/**
+ * Await `p`, but never longer than `ms`. Resolves either way — the caller is
+ * choosing to proceed without the result, not to learn whether it arrived.
+ * The underlying promise is left running; nothing here cancels it.
+ */
+function raceWithDeadline(p: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    void p.then(
+      () => {
+        clearTimeout(timer);
+        finish();
+      },
+      () => {
+        clearTimeout(timer);
+        finish();
+      },
+    );
+  });
+}
+
+/**
  * Parse the file's current source into IR and publish an IRSnapshot for the
  * Inspector + full-song timeline. parseStrudel is pure and cheap on the source
  * string, so this is safe to call outside the eval lifecycle — both the
@@ -895,7 +945,11 @@ export default function StrudelEditorClient({
     const rt = runtimesRef.current.get(fid);
     const st = runtimeStatesRef.current.get(fid);
     if (rt && !st?.isPlaying && isSongTimelineVisible()) {
-      await rt.evaluateForTimeline();
+      // #1193 — bounded, so the publish below is unconditional in fact and not
+      // only in its docblock. A hung evaluate costs eval-backed marks; it must
+      // not cost the snapshot, because the snapshot is what carries the IR that
+      // every lane, clip and section is drawn from.
+      await raceWithDeadline(rt.evaluateForTimeline(), TIMELINE_EVAL_WAIT_MS);
     }
     captureAndPublishSnapshot(
       fid,
