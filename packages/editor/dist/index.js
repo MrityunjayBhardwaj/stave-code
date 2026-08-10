@@ -6513,29 +6513,42 @@ var STRUDEL_VIZ_METHODS = {
   pitchwheel: "pitchwheel"
 };
 var MANIFEST_DEADLINE_MS = 3e3;
-async function withBootDeadline(label, fn) {
-  let timer;
-  try {
-    return await Promise.race([
-      fn(),
-      new Promise((_resolve, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`timed out after ${MANIFEST_DEADLINE_MS}ms`)),
-          MANIFEST_DEADLINE_MS
-        );
-      })
-    ]);
-  } catch (err) {
-    console.warn(
-      `[StrudelEngine] sample manifest "${label}" did not load; continuing without it.`,
-      err
-    );
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+var MANIFEST_BUDGET_MS = 4e3;
+function createManifestBudget() {
+  const startedAt = Date.now();
+  return async (label, fn) => {
+    const remaining = MANIFEST_BUDGET_MS - (Date.now() - startedAt);
+    if (remaining <= 0) {
+      console.warn(
+        `[StrudelEngine] sample manifest "${label}" did not load; continuing without it.`,
+        new Error("boot's manifest budget was already spent")
+      );
+      return null;
+    }
+    const deadlineMs = Math.min(MANIFEST_DEADLINE_MS, remaining);
+    let timer;
+    try {
+      return await Promise.race([
+        fn(),
+        new Promise((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`timed out after ${deadlineMs}ms`)),
+            deadlineMs
+          );
+        })
+      ]);
+    } catch (err) {
+      console.warn(
+        `[StrudelEngine] sample manifest "${label}" did not load; continuing without it.`,
+        err
+      );
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 }
-__name(withBootDeadline, "withBootDeadline");
+__name(createManifestBudget, "createManifestBudget");
 var _StrudelEngine = class _StrudelEngine {
   constructor() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -6748,7 +6761,8 @@ var _StrudelEngine = class _StrudelEngine {
     webaudioMod.registerSynthSounds();
     webaudioMod.registerZZFXSounds();
     soundfontsMod.registerSoundfonts();
-    await withBootDeadline(
+    const bounded = createManifestBudget();
+    await bounded(
       "Dirt-Samples",
       () => (
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -6757,7 +6771,7 @@ var _StrudelEngine = class _StrudelEngine {
     );
     const samplesFn = webaudioMod.samples;
     const baseCDN = "https://strudel.b-cdn.net";
-    const safeSamples = withBootDeadline;
+    const safeSamples = bounded;
     await Promise.all([
       // Salamander piano — unlocks `s("piano")`. Closes the symptom of issue #110.
       safeSamples("piano", () => samplesFn(`${baseCDN}/piano.json`, `${baseCDN}/piano/`, { prebake: true })),
@@ -6891,7 +6905,7 @@ var _StrudelEngine = class _StrudelEngine {
       globalThis.soundMap = soundMapRef;
     }
     const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
-    await withBootDeadline(
+    await bounded(
       "tidal-drum-machines aliases",
       () => (
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
