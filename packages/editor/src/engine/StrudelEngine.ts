@@ -122,28 +122,6 @@ export const STRUDEL_VIZ_METHODS: Record<string, string> = {
  * API surface matches ARCHITECTURE.md.
  * One instance per page. Must be init()'d after a user gesture.
  */
-/**
- * #1214 INSTRUMENTATION — NOT A FIX. Remove with the fix.
- *
- * About 1 page load in 10 boots into a permanently dead evaluation. The
- * instance-stamp run showed the IR store is a single instance and that NOTHING
- * upstream of it ever fires on a dead page — no eval-success, and not even the
- * mount-path snapshot refreshes that run three times before the keypress on a
- * healthy page. Every one of those paths awaits `engine.init()`, so the marks
- * below bisect init to the individual `await` that fails to settle. A hang is
- * invisible to a try/catch, which is why it has to be marked at boundaries
- * rather than caught.
- *
- * Reads `window` fresh on every call. Duplicated rather than exported so the
- * whole probe deletes cleanly.
- */
-function mark1214(phase: string, detail?: unknown): void {
-  if (typeof window === 'undefined') return
-  const w = window as unknown as { __stave1214?: Record<string, unknown>[] }
-  if (!w.__stave1214) w.__stave1214 = []
-  w.__stave1214.push({ phase, detail: detail === undefined ? null : String(detail) })
-}
-
 export class StrudelEngine implements LiveCodingEngine {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private repl: any = null
@@ -309,15 +287,10 @@ export class StrudelEngine implements LiveCodingEngine {
    * attempt — which is what `StrudelEngine.test.ts` pins.
    */
   async init(): Promise<void> {
-    mark1214(
-      'init-call',
-      `initialized=${this.initialized} inflight=${this.initPromise ? 'yes' : 'no'}`,
-    )
     if (this.initialized) return
     if (!this.initPromise) {
       this.initPromise = this.initInternal().catch((err: unknown) => {
         this.initPromise = null
-        mark1214('init-rejected', err instanceof Error ? `${err.name}: ${err.message}` : err)
         throw err
       })
     }
@@ -325,7 +298,6 @@ export class StrudelEngine implements LiveCodingEngine {
   }
 
   private async initInternal(): Promise<void> {
-    mark1214('initI-enter')
     // Phase 20-14 α-5: tier-flag consume-at-init contract. Read ONCE here
     // and stash on the instance. β-4 (MIDI wiring) reads from
     // `this.tierFlags`. The dev-console log is the consumed-at-init
@@ -356,7 +328,6 @@ export class StrudelEngine implements LiveCodingEngine {
       // Tracked as a follow-up when upstream publishes it.
       import('@strudel/mondo') as Promise<any>,
     ])
-    mark1214('initI-imports')
 
     // Register all module exports into globalThis so eval'd patterns can use them
     // (note, s, gain, stack, etc. must be globals — user code runs in Function())
@@ -369,7 +340,6 @@ export class StrudelEngine implements LiveCodingEngine {
     // Stave uses its own visualizer system, so strudel's canvas draw functions
     // (pianoroll, drawFrequencyScope, etc.) are not exposed to user code.
     await coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod)
-    mark1214('initI-evalscope')
 
     // Phase 20-14 β-4: thread the `midi` tier flag through engine init.
     // When the flag is ON, call `enableWebMidi()` after evalScope resolves so
@@ -411,12 +381,10 @@ export class StrudelEngine implements LiveCodingEngine {
     // Transpiler converts $: pattern syntax → pattern.p("$") and handles
     // mini-notation template literals. Required for $: to work correctly.
     const { transpiler } = await import('@strudel/transpiler')
-    mark1214('initI-transpiler')
 
     const { initAudio, getAudioContext, webaudioOutput, webaudioRepl } = webaudioMod
 
     await initAudio()
-    mark1214('initI-initaudio')
     // Register built-in oscillator synths (sine, sawtooth, square, triangle, user, one)
     // and noise generators (pink, white, brown, crackle).
     // Without this, superdough throws "sound sine not found! Is it loaded?"
@@ -434,7 +402,6 @@ export class StrudelEngine implements LiveCodingEngine {
     // Worklet-based effects (crush, coarse, distort, djf, bytebeat) are loaded by initAudio() above.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (webaudioMod as any).samples('github:tidalcycles/Dirt-Samples/master')
-    mark1214('initI-dirt')
 
     // Phase 20-14 α-2: mirror upstream `prebake.mjs` sample-manifest fetches.
     // Upstream b-cdn manifests unlock `s("piano")` (Salamander), `.bank("tr909")`
@@ -520,7 +487,6 @@ export class StrudelEngine implements LiveCodingEngine {
         ],
       }, `${baseCDN}/Dirt-Samples/`, { prebake: true })),
     ])
-    mark1214('initI-cdn')
 
     // Phase 20-14 α-3: aliasBank() registers 69 bank-name aliases (e.g.
     //   RolandTR909 → 909, KorgKR55 → KR55) so users can spell drum-machine
@@ -556,7 +522,6 @@ export class StrudelEngine implements LiveCodingEngine {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (webaudioMod as any).aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`)
-    mark1214('initI-aliasbank')
     } catch (e) {
       console.warn('[StrudelEngine] aliasBank fetch failed; .bank() aliases unavailable.', e)
     }
@@ -693,7 +658,6 @@ export class StrudelEngine implements LiveCodingEngine {
       }
     }
 
-    mark1214('initI-prerepl')
     this.repl = webaudioRepl({
       transpiler,
       defaultOutput: wrappedOutput,
@@ -709,10 +673,8 @@ export class StrudelEngine implements LiveCodingEngine {
     // prototype exists to extend. NOT re-imported per evaluate (UV2 / P2
     // safe — `.piano` is not in the injectPatternMethods overwrite list).
     await import('./vendored/piano')
-    mark1214('initI-piano')
 
     this.initialized = true
-    mark1214('initI-done')
   }
 
   async evaluate(code: string): Promise<{ error?: Error }> {

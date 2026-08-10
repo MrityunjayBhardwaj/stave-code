@@ -801,6 +801,13 @@ declare function setTierFlag(name: TierName, on: boolean): void;
 declare function listTiers(): readonly TierName[];
 
 type HapHandler = (event: HapEvent) => void;
+/**
+ * Single source of truth for audio in Stave.
+ * Wraps @strudel/webaudio (which wraps superdough) via webaudioRepl().
+ *
+ * API surface matches ARCHITECTURE.md.
+ * One instance per page. Must be init()'d after a user gesture.
+ */
 declare class StrudelEngine implements LiveCodingEngine {
     private repl;
     private audioCtx;
@@ -6653,6 +6660,23 @@ declare const workspaceAudioBus: WorkspaceAudioBus;
  * disposer is called by the runtime when it tears down the subscription.
  */
 type SubscribeToRuntimeFile = (cb: () => void) => () => void;
+/**
+ * Constructor argument shape. Kept as a positional triple rather than an
+ * options object because the contract is small and stable: a runtime is
+ * defined entirely by its file id, the engine it wraps, and the function
+ * that returns the file's current content at evaluate time.
+ *
+ * @param fileId - The workspace file id this runtime publishes under.
+ *   Used both as the bus key and as the address for `dispose()` cleanup.
+ * @param engine - The engine instance this runtime wraps. The runtime
+ *   takes ownership; the caller MUST NOT dispose this engine independently.
+ * @param getFileContent - Closure that returns the current file content
+ *   at the moment `play()` is called. Passing a closure (rather than a
+ *   string) lets the runtime stay decoupled from `useWorkspaceFile` /
+ *   the workspace store — tests can pass a static string, the live
+ *   compat shim can pass `() => getFile(fileId)?.content ?? ''`. This
+ *   keeps the runtime testable in a plain Node environment.
+ */
 declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     readonly engine: LiveCodingEngine;
     readonly fileId: string;

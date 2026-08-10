@@ -196,22 +196,6 @@ export function extractBpmFromCode(code: string): number | undefined {
  *   compat shim can pass `() => getFile(fileId)?.content ?? ''`. This
  *   keeps the runtime testable in a plain Node environment.
  */
-/**
- * #1214 INSTRUMENTATION — NOT A FIX. Remove with the fix.
- *
- * `evaluateForTimeline` is the mount-path producer of the timeline's snapshot,
- * and on a dead page its caller never reaches the publish that follows it. Two
- * readings fit and need different fixes: the caller never ran, or this await
- * chain never returned. Marks at each boundary separate them; a hang cannot be
- * caught, only bracketed.
- */
-function mark1214(phase: string, detail?: unknown): void {
-  if (typeof window === 'undefined') return
-  const w = window as unknown as { __stave1214?: Record<string, unknown>[] }
-  if (!w.__stave1214) w.__stave1214 = []
-  w.__stave1214.push({ phase, detail: detail === undefined ? null : String(detail) })
-}
-
 export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   readonly engine: LiveCodingEngine
   readonly fileId: string
@@ -385,23 +369,14 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
    * fresh, so re-evaluating mid-play would be redundant churn.
    */
   async evaluateForTimeline(): Promise<void> {
-    mark1214(
-      'eft-enter',
-      `disposed=${this.isDisposed} playing=${this.isPlayingState} inited=${this.isInitialized}`,
-    )
     if (this.isDisposed || this.isPlayingState) return
     try {
       if (!this.isInitialized) {
-        mark1214('eft-init-await')
         await this.engine.init()
-        mark1214('eft-init-done')
         this.isInitialized = true
       }
       // Re-check after the init await — a play()/dispose may have landed.
-      if (this.isDisposed || this.isPlayingState) {
-        mark1214('eft-superseded')
-        return
-      }
+      if (this.isDisposed || this.isPlayingState) return
       const code = this.getFileContent()
       // ⚠ THE SILENCING GOES INSIDE THE GATE, NOT AROUND IT (#1172).
       // `runExclusiveEval` first AWAITS any in-flight evaluate. Wrapping the
@@ -409,14 +384,11 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
       // is still running, and swallow ITS errors — which are real, and the
       // user's. Inside the callback the gate has already granted exclusivity,
       // so the quiet window covers exactly our own speculative evaluate.
-      mark1214('eft-eval-await', `codeLen=${code.length}`)
       const result = await this.runExclusiveEval(() =>
         this.evaluateQuietly(() => this.engine.evaluate(code)),
       )
-      mark1214('eft-eval-done', result?.error ? `error=${String(result.error)}` : 'ok')
       this.lastTimelineEvalError = result?.error ?? null
-    } catch (err) {
-      mark1214('eft-catch', err instanceof Error ? `${err.name}: ${err.message}` : err)
+    } catch {
       // Best-effort: on any failure the timeline keeps its collect fallback.
     }
   }

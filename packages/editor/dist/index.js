@@ -6512,13 +6512,6 @@ var STRUDEL_VIZ_METHODS = {
   spiral: "spiral",
   pitchwheel: "pitchwheel"
 };
-function mark1214(phase, detail) {
-  if (typeof window === "undefined") return;
-  const w = window;
-  if (!w.__stave1214) w.__stave1214 = [];
-  w.__stave1214.push({ phase, detail: detail === void 0 ? null : String(detail) });
-}
-__name(mark1214, "mark1214");
 var _StrudelEngine = class _StrudelEngine {
   constructor() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -6682,22 +6675,16 @@ var _StrudelEngine = class _StrudelEngine {
    * attempt — which is what `StrudelEngine.test.ts` pins.
    */
   async init() {
-    mark1214(
-      "init-call",
-      `initialized=${this.initialized} inflight=${this.initPromise ? "yes" : "no"}`
-    );
     if (this.initialized) return;
     if (!this.initPromise) {
       this.initPromise = this.initInternal().catch((err) => {
         this.initPromise = null;
-        mark1214("init-rejected", err instanceof Error ? `${err.name}: ${err.message}` : err);
         throw err;
       });
     }
     return this.initPromise;
   }
   async initInternal() {
-    mark1214("initI-enter");
     this.tierFlags = getTierFlags();
     console.log("[StrudelEngine] tierFlags read at init:", this.tierFlags);
     const [coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod] = await Promise.all([
@@ -6717,9 +6704,7 @@ var _StrudelEngine = class _StrudelEngine {
       // Tracked as a follow-up when upstream publishes it.
       import('@strudel/mondo')
     ]);
-    mark1214("initI-imports");
     await coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod);
-    mark1214("initI-evalscope");
     if (this.tierFlags?.midi) {
       try {
         const enableWebMidi = midiMod?.enableWebMidi;
@@ -6734,15 +6719,12 @@ var _StrudelEngine = class _StrudelEngine {
     }
     installMiniStringParser({ core: coreMod, mini: miniMod });
     const { transpiler } = await import('@strudel/transpiler');
-    mark1214("initI-transpiler");
     const { initAudio, getAudioContext: getAudioContext3, webaudioOutput, webaudioRepl } = webaudioMod;
     await initAudio();
-    mark1214("initI-initaudio");
     webaudioMod.registerSynthSounds();
     webaudioMod.registerZZFXSounds();
     soundfontsMod.registerSoundfonts();
     await webaudioMod.samples("github:tidalcycles/Dirt-Samples/master");
-    mark1214("initI-dirt");
     const samplesFn = webaudioMod.samples;
     const baseCDN = "https://strudel.b-cdn.net";
     const safeSamples = /* @__PURE__ */ __name(async (label, fn) => {
@@ -6879,7 +6861,6 @@ var _StrudelEngine = class _StrudelEngine {
         ]
       }, `${baseCDN}/Dirt-Samples/`, { prebake: true }))
     ]);
-    mark1214("initI-cdn");
     const soundMapRef = webaudioMod.soundMap;
     this.soundMapRef = soundMapRef;
     if (soundMapRef) {
@@ -6888,7 +6869,6 @@ var _StrudelEngine = class _StrudelEngine {
     const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
     try {
       await webaudioMod.aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`);
-      mark1214("initI-aliasbank");
     } catch (e) {
       console.warn("[StrudelEngine] aliasBank fetch failed; .bank() aliases unavailable.", e);
     }
@@ -6943,7 +6923,6 @@ var _StrudelEngine = class _StrudelEngine {
         this.runtimeErrorHandler?.(error);
       }
     }, "wrappedOutput");
-    mark1214("initI-prerepl");
     this.repl = webaudioRepl({
       transpiler,
       defaultOutput: wrappedOutput,
@@ -6953,9 +6932,7 @@ var _StrudelEngine = class _StrudelEngine {
       }, "onEvalError")
     });
     await Promise.resolve().then(() => (init_piano(), piano_exports));
-    mark1214("initI-piano");
     this.initialized = true;
-    mark1214("initI-done");
   }
   async evaluate(code) {
     if (!this.initialized) await this.init();
@@ -21867,19 +21844,6 @@ __name(setCaptureCapacity, "setCaptureCapacity");
 // src/engine/irInspector.ts
 var current = null;
 var listeners3 = /* @__PURE__ */ new Set();
-var __inst1214 = (() => {
-  if (typeof window === "undefined") return "ssr";
-  const w = window;
-  w.__stave1214Inst = (w.__stave1214Inst ?? 0) + 1;
-  return `i${w.__stave1214Inst}`;
-})();
-function mark12142(phase, detail) {
-  if (typeof window === "undefined") return;
-  const w = window;
-  if (!w.__stave1214) w.__stave1214 = [];
-  w.__stave1214.push({ phase, detail: detail === void 0 ? null : String(detail) });
-}
-__name(mark12142, "mark1214");
 function enrichWithLookups(snap) {
   const idLookup = /* @__PURE__ */ new Map();
   const locLookup = /* @__PURE__ */ new Map();
@@ -21919,7 +21883,6 @@ function countLines(code, offset) {
 }
 __name(countLines, "countLines");
 function publishIRSnapshot(snap, meta) {
-  mark12142("pub", `inst=${__inst1214} listeners=${listeners3.size}`);
   const enriched = enrichWithLookups(snap);
   current = enriched;
   captureSnapshot(enriched, {
@@ -21935,7 +21898,6 @@ function publishIRSnapshot(snap, meta) {
 }
 __name(publishIRSnapshot, "publishIRSnapshot");
 function clearIRSnapshot() {
-  mark12142("clear", `inst=${__inst1214} listeners=${listeners3.size}`);
   current = null;
   for (const l of listeners3) {
     try {
@@ -21951,7 +21913,6 @@ function getIRSnapshot() {
 __name(getIRSnapshot, "getIRSnapshot");
 function subscribeIRSnapshot(fn) {
   listeners3.add(fn);
-  mark12142("sub", `inst=${__inst1214} listeners=${listeners3.size}`);
   return () => listeners3.delete(fn);
 }
 __name(subscribeIRSnapshot, "subscribeIRSnapshot");
@@ -38928,13 +38889,6 @@ function extractBpmFromCode(code) {
   return void 0;
 }
 __name(extractBpmFromCode, "extractBpmFromCode");
-function mark12143(phase, detail) {
-  if (typeof window === "undefined") return;
-  const w = window;
-  if (!w.__stave1214) w.__stave1214 = [];
-  w.__stave1214.push({ phase, detail: detail === void 0 ? null : String(detail) });
-}
-__name(mark12143, "mark1214");
 var _LiveCodingRuntime = class _LiveCodingRuntime {
   constructor(fileId, engine, getFileContent, subscribeToFile = null) {
     this.bufferedSchedulerRef = null;
@@ -39076,31 +39030,19 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    * fresh, so re-evaluating mid-play would be redundant churn.
    */
   async evaluateForTimeline() {
-    mark12143(
-      "eft-enter",
-      `disposed=${this.isDisposed} playing=${this.isPlayingState} inited=${this.isInitialized}`
-    );
     if (this.isDisposed || this.isPlayingState) return;
     try {
       if (!this.isInitialized) {
-        mark12143("eft-init-await");
         await this.engine.init();
-        mark12143("eft-init-done");
         this.isInitialized = true;
       }
-      if (this.isDisposed || this.isPlayingState) {
-        mark12143("eft-superseded");
-        return;
-      }
+      if (this.isDisposed || this.isPlayingState) return;
       const code = this.getFileContent();
-      mark12143("eft-eval-await", `codeLen=${code.length}`);
       const result = await this.runExclusiveEval(
         () => this.evaluateQuietly(() => this.engine.evaluate(code))
       );
-      mark12143("eft-eval-done", result?.error ? `error=${String(result.error)}` : "ok");
       this.lastTimelineEvalError = result?.error ?? null;
-    } catch (err) {
-      mark12143("eft-catch", err instanceof Error ? `${err.name}: ${err.message}` : err);
+    } catch {
     }
   }
   /**

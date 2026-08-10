@@ -137,33 +137,6 @@ const TIMELINE_VISIBILITY_POLL_MS = 500;
 const SNAPSHOT_REFRESH_DEBOUNCE_MS = 300;
 
 /**
- * #1214 INSTRUMENTATION — NOT A FIX. Remove with the fix.
- *
- * About 1 page load in 10 boots into a permanently dead evaluation. Phase 0
- * showed the Song timeline subscribes correctly and is then never delivered an
- * IR snapshot. This side of the boundary is the publisher, and it has FOUR ways
- * to reach no-publish without a word logged: the caller's own
- * `runtimeId === "strudel" && fileNow` gate, `getFile` returning nothing, a
- * non-Strudel language, and the bare `catch {}` around the parse. All four are
- * marked separately here, because they need four different fixes and an
- * absence cannot tell them apart.
- *
- * Writes to `window.__stave1214`, read fresh on every call so a second module
- * instance appends to the same array. Mirrors the helper in
- * `irInspector.ts` — duplicated deliberately rather than exported, so the
- * whole probe deletes cleanly.
- */
-function mark1214(phase: string, detail?: unknown): void {
-  if (typeof window === "undefined") return;
-  const w = window as unknown as { __stave1214?: Record<string, unknown>[] };
-  if (!w.__stave1214) w.__stave1214 = [];
-  w.__stave1214.push({
-    phase,
-    detail: detail === undefined ? null : String(detail),
-  });
-}
-
-/**
  * Parse the file's current source into IR and publish an IRSnapshot for the
  * Inspector + full-song timeline. parseStrudel is pure and cheap on the source
  * string, so this is safe to call outside the eval lifecycle — both the
@@ -189,18 +162,11 @@ function captureAndPublishSnapshot(
   cycleCount: number | null,
   runtime: LiveCodingRuntime | null,
 ): void {
-  mark1214("cap-enter", `cycle=${cycleCount}`);
   const fileNow = getFile(fileId);
-  if (!fileNow) {
-    mark1214("cap-nofile", fileId);
-    return;
-  }
+  if (!fileNow) return;
   const runtimeId: RuntimeId =
     fileNow.language === "sonicpi" ? "sonicpi" : "strudel";
-  if (runtimeId !== "strudel") {
-    mark1214("cap-nonstrudel", fileNow.language);
-    return;
-  }
+  if (runtimeId !== "strudel") return;
   try {
     // Phase 19-07 (#79) — pre-pass-0 seed: wrap raw source as a Code node so
     // pass 0 (RAW) reads input.code and runs extractTracks. finalIR is the `ir`
@@ -213,10 +179,6 @@ function captureAndPublishSnapshot(
     // song patterns; trackId stays the raw engine key ($N / d{N}) — the table
     // is a flat raw view, not lane-grouped, so no lane-key remap is needed.
     const events = runtime?.getTimelineEvents(TIMELINE_WINDOW_CYCLES) ?? [];
-    mark1214(
-      "cap-prepublish",
-      `codeLen=${fileNow.content.length} passes=${passes.length} events=${events.length}`,
-    );
     publishIRSnapshot(
       {
         ts: Date.now(),
@@ -229,13 +191,7 @@ function captureAndPublishSnapshot(
       },
       { cycleCount },
     );
-  } catch (err) {
-    // #1214 instrumentation — this bare catch is one of the ways the publish
-    // can silently never happen, so it must be a labelled datum, not silence.
-    mark1214(
-      "cap-threw",
-      err instanceof Error ? `${err.name}: ${err.message}` : err,
-    );
+  } catch {
     // parseStrudel guarantees graceful fallback to Code node; collect is
     // total. Anything thrown here is unexpected — stay quiet.
   }
@@ -938,18 +894,8 @@ export default function StrudelEditorClient({
   const refreshTimelineMarks = useCallback(async (fid: string) => {
     const rt = runtimesRef.current.get(fid);
     const st = runtimeStatesRef.current.get(fid);
-    // #1214 instrumentation. The publish below is UNCONDITIONAL, so on a dead
-    // page — where no `cap-enter` ever appears — either this callback never
-    // ran, or the await never returned. Those need different fixes and only a
-    // mark on each side of the await can tell them apart.
-    mark1214(
-      "rtm-enter",
-      `rt=${rt ? "yes" : "no"} playing=${st?.isPlaying ? "yes" : "no"} visible=${isSongTimelineVisible() ? "yes" : "no"}`,
-    );
     if (rt && !st?.isPlaying && isSongTimelineVisible()) {
-      mark1214("rtm-eft-await");
       await rt.evaluateForTimeline();
-      mark1214("rtm-eft-done");
     }
     captureAndPublishSnapshot(
       fid,
@@ -1167,13 +1113,6 @@ export default function StrudelEditorClient({
       // is the workspace fileId (NOT the human-visible path) because
       // revealLineInFile keys by id; the Inspector's click-to-source
       // handler depends on this lookup matching.
-      // #1214 instrumentation — this gate is the last place the publish can be
-      // skipped upstream of captureAndPublishSnapshot, so it emits a datum
-      // either way rather than leaving an absence to be interpreted.
-      mark1214(
-        "eval-success",
-        `runtimeId=${runtimeId} file=${fileNow ? "yes" : "no"}`,
-      );
       if (runtimeId === "strudel" && fileNow) {
         // IR Inspector + full-song timeline snapshot. Factored into
         // captureAndPublishSnapshot (module scope) so the on-demand
