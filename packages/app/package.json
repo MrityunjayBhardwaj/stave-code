@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:proto": "vitest run --config vitest.proto.config.ts",
+    "population": "node scripts/run-browser-population.mjs",
     "test:instruments:collect": "vitest run --config vitest.instruments.config.ts -t '$^' --reporter=default --reporter=./tests/gate-scope-reporter.ts"
   },
   "dependencies": {
