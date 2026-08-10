@@ -128,11 +128,19 @@ export const STRUDEL_VIZ_METHODS: Record<string, string> = {
  * Chosen against the measured shape of the failure, not by feel: a healthy
  * manifest load settles in a few hundred milliseconds, and a stalled one never
  * settles at all — the distribution is bimodal with nothing in between. So the
- * cut only has to sit clear of "slow but working". Eight seconds is generous
- * enough that a genuinely slow connection still gets its samples, and short
- * enough that a stall costs the user a pause instead of the session.
+ * cut only has to sit clear of "slow but working", and buying extra seconds
+ * beyond that buys nothing: there is no population of loads that take four
+ * seconds. Three is already more than ten times the healthy median.
+ *
+ * ⚠ IT IS ALSO A CEILING ON HOW LONG A STALL COSTS, which is what set the final
+ * number. An earlier 8s draft worked — boot completed and the timeline drew —
+ * but measured 9.8s end to end under a held-open manifest, which is longer than
+ * the ten-second budget much of the app and its suite allow for "the song has
+ * drawn". A deadline that keeps the app alive but blows every downstream wait
+ * has only moved the failure. At 3s the same path lands near 4.5s, inside those
+ * budgets with room to spare.
  */
-const MANIFEST_DEADLINE_MS = 8_000
+const MANIFEST_DEADLINE_MS = 3_000
 
 /**
  * Run one third-party boot fetch with a deadline, and never let it be fatal.

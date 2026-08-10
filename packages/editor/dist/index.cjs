@@ -6538,7 +6538,7 @@ var STRUDEL_VIZ_METHODS = {
   spiral: "spiral",
   pitchwheel: "pitchwheel"
 };
-var MANIFEST_DEADLINE_MS = 8e3;
+var MANIFEST_DEADLINE_MS = 3e3;
 async function withBootDeadline(label, fn) {
   let timer;
   try {
