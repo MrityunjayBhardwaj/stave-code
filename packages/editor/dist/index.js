@@ -6512,6 +6512,30 @@ var STRUDEL_VIZ_METHODS = {
   spiral: "spiral",
   pitchwheel: "pitchwheel"
 };
+var MANIFEST_DEADLINE_MS = 8e3;
+async function withBootDeadline(label, fn) {
+  let timer;
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`timed out after ${MANIFEST_DEADLINE_MS}ms`)),
+          MANIFEST_DEADLINE_MS
+        );
+      })
+    ]);
+  } catch (err) {
+    console.warn(
+      `[StrudelEngine] sample manifest "${label}" did not load; continuing without it.`,
+      err
+    );
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+__name(withBootDeadline, "withBootDeadline");
 var _StrudelEngine = class _StrudelEngine {
   constructor() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -6724,16 +6748,13 @@ var _StrudelEngine = class _StrudelEngine {
     webaudioMod.registerSynthSounds();
     webaudioMod.registerZZFXSounds();
     soundfontsMod.registerSoundfonts();
-    await webaudioMod.samples("github:tidalcycles/Dirt-Samples/master");
+    await withBootDeadline(
+      "Dirt-Samples",
+      () => webaudioMod.samples("github:tidalcycles/Dirt-Samples/master")
+    );
     const samplesFn = webaudioMod.samples;
     const baseCDN = "https://strudel.b-cdn.net";
-    const safeSamples = /* @__PURE__ */ __name(async (label, fn) => {
-      try {
-        await fn();
-      } catch (e) {
-        console.warn(`[StrudelEngine] sample manifest "${label}" failed to load; continuing without it.`, e);
-      }
-    }, "safeSamples");
+    const safeSamples = withBootDeadline;
     await Promise.all([
       // Salamander piano — unlocks `s("piano")`. Closes the symptom of issue #110.
       safeSamples("piano", () => samplesFn(`${baseCDN}/piano.json`, `${baseCDN}/piano/`, { prebake: true })),
@@ -6868,7 +6889,10 @@ var _StrudelEngine = class _StrudelEngine {
     }
     const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
     try {
-      await webaudioMod.aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`);
+      await withBootDeadline(
+        "tidal-drum-machines aliases",
+        () => webaudioMod.aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`)
+      );
     } catch (e) {
       console.warn("[StrudelEngine] aliasBank fetch failed; .bank() aliases unavailable.", e);
     }
