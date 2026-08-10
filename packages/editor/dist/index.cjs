@@ -6540,14 +6540,51 @@ var STRUDEL_VIZ_METHODS = {
 };
 var MANIFEST_DEADLINE_MS = 3e3;
 var MANIFEST_BUDGET_MS = 4e3;
-function createManifestBudget() {
+var INIT_BUDGET_MS = 6e3;
+var REQUIRED_STEP_MS = 3e3;
+function openBudget(totalMs) {
   const startedAt = Date.now();
+  return () => totalMs - (Date.now() - startedAt);
+}
+__name(openBudget, "openBudget");
+function createRequiredStep(initRemaining) {
   return async (label, fn) => {
-    const remaining = MANIFEST_BUDGET_MS - (Date.now() - startedAt);
+    const deadlineMs = Math.min(REQUIRED_STEP_MS, initRemaining());
+    const fail = /* @__PURE__ */ __name((why) => new Error(
+      `[StrudelEngine] boot step "${label}" ${why}. This is usually a network, proxy or service-worker problem rather than a code fault \u2014 evaluating again starts a fresh attempt.`
+    ), "fail");
+    if (deadlineMs <= 0) {
+      const err = fail(`was not attempted: boot's ${INIT_BUDGET_MS}ms budget was already spent`);
+      console.warn(err.message);
+      throw err;
+    }
+    let timer;
+    try {
+      return await Promise.race([
+        fn(),
+        new Promise((_resolve, reject) => {
+          timer = setTimeout(() => reject(fail(`did not answer within ${deadlineMs}ms`)), deadlineMs);
+        })
+      ]);
+    } catch (err) {
+      console.warn(
+        `[StrudelEngine] boot step "${label}" failed; the engine cannot start without it.`,
+        err
+      );
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+__name(createRequiredStep, "createRequiredStep");
+function createOptionalStep(initRemaining, phaseRemaining) {
+  return async (label, fn) => {
+    const remaining = Math.min(phaseRemaining?.() ?? Number.POSITIVE_INFINITY, initRemaining());
     if (remaining <= 0) {
       console.warn(
-        `[StrudelEngine] sample manifest "${label}" did not load; continuing without it.`,
-        new Error("boot's manifest budget was already spent")
+        `[StrudelEngine] optional boot step "${label}" did not load; continuing without it.`,
+        new Error("boot's budget was already spent")
       );
       return null;
     }
@@ -6565,7 +6602,7 @@ function createManifestBudget() {
       ]);
     } catch (err) {
       console.warn(
-        `[StrudelEngine] sample manifest "${label}" did not load; continuing without it.`,
+        `[StrudelEngine] optional boot step "${label}" did not load; continuing without it.`,
         err
       );
       return null;
@@ -6574,7 +6611,7 @@ function createManifestBudget() {
     }
   };
 }
-__name(createManifestBudget, "createManifestBudget");
+__name(createOptionalStep, "createOptionalStep");
 var _StrudelEngine = class _StrudelEngine {
   constructor() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -6750,7 +6787,10 @@ var _StrudelEngine = class _StrudelEngine {
   async initInternal() {
     this.tierFlags = getTierFlags();
     console.log("[StrudelEngine] tierFlags read at init:", this.tierFlags);
-    const [coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod] = await Promise.all([
+    const initRemaining = openBudget(INIT_BUDGET_MS);
+    const required = createRequiredStep(initRemaining);
+    const optional = createOptionalStep(initRemaining);
+    const [coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod] = await required("strudel modules", () => Promise.all([
       import('@strudel/core'),
       import('@strudel/mini'),
       import('@strudel/tonal'),
@@ -6766,28 +6806,27 @@ var _StrudelEngine = class _StrudelEngine {
       // (registry.npmjs.org returns 404 for @strudel/edo on 2026-05-15).
       // Tracked as a follow-up when upstream publishes it.
       import('@strudel/mondo')
-    ]);
-    await coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod);
+    ]));
+    await required(
+      "evalScope",
+      () => coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod)
+    );
     if (this.tierFlags?.midi) {
-      try {
-        const enableWebMidi = midiMod?.enableWebMidi;
-        if (typeof enableWebMidi === "function") {
-          await enableWebMidi();
-        } else {
-          console.warn("[StrudelEngine] tierFlags.midi is ON but @strudel/midi did not export enableWebMidi.");
-        }
-      } catch (err) {
-        console.warn("[StrudelEngine] enableWebMidi() failed; MIDI output unavailable.", err);
+      const enableWebMidi = midiMod?.enableWebMidi;
+      if (typeof enableWebMidi === "function") {
+        await optional("enableWebMidi", () => enableWebMidi());
+      } else {
+        console.warn("[StrudelEngine] tierFlags.midi is ON but @strudel/midi did not export enableWebMidi.");
       }
     }
     installMiniStringParser({ core: coreMod, mini: miniMod });
-    const { transpiler } = await import('@strudel/transpiler');
+    const { transpiler } = await required("@strudel/transpiler", () => import('@strudel/transpiler'));
     const { initAudio, getAudioContext: getAudioContext3, webaudioOutput, webaudioRepl } = webaudioMod;
-    await initAudio();
+    await required("initAudio", () => initAudio());
     webaudioMod.registerSynthSounds();
     webaudioMod.registerZZFXSounds();
     soundfontsMod.registerSoundfonts();
-    const bounded = createManifestBudget();
+    const bounded = createOptionalStep(initRemaining, openBudget(MANIFEST_BUDGET_MS));
     await bounded(
       "Dirt-Samples",
       () => (
