@@ -6512,6 +6512,43 @@ var STRUDEL_VIZ_METHODS = {
   spiral: "spiral",
   pitchwheel: "pitchwheel"
 };
+var MANIFEST_DEADLINE_MS = 3e3;
+var MANIFEST_BUDGET_MS = 4e3;
+function createManifestBudget() {
+  const startedAt = Date.now();
+  return async (label, fn) => {
+    const remaining = MANIFEST_BUDGET_MS - (Date.now() - startedAt);
+    if (remaining <= 0) {
+      console.warn(
+        `[StrudelEngine] sample manifest "${label}" did not load; continuing without it.`,
+        new Error("boot's manifest budget was already spent")
+      );
+      return null;
+    }
+    const deadlineMs = Math.min(MANIFEST_DEADLINE_MS, remaining);
+    let timer;
+    try {
+      return await Promise.race([
+        fn(),
+        new Promise((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`timed out after ${deadlineMs}ms`)),
+            deadlineMs
+          );
+        })
+      ]);
+    } catch (err) {
+      console.warn(
+        `[StrudelEngine] sample manifest "${label}" did not load; continuing without it.`,
+        err
+      );
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+__name(createManifestBudget, "createManifestBudget");
 var _StrudelEngine = class _StrudelEngine {
   constructor() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -6724,16 +6761,17 @@ var _StrudelEngine = class _StrudelEngine {
     webaudioMod.registerSynthSounds();
     webaudioMod.registerZZFXSounds();
     soundfontsMod.registerSoundfonts();
-    await webaudioMod.samples("github:tidalcycles/Dirt-Samples/master");
+    const bounded = createManifestBudget();
+    await bounded(
+      "Dirt-Samples",
+      () => (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        webaudioMod.samples("github:tidalcycles/Dirt-Samples/master")
+      )
+    );
     const samplesFn = webaudioMod.samples;
     const baseCDN = "https://strudel.b-cdn.net";
-    const safeSamples = /* @__PURE__ */ __name(async (label, fn) => {
-      try {
-        await fn();
-      } catch (e) {
-        console.warn(`[StrudelEngine] sample manifest "${label}" failed to load; continuing without it.`, e);
-      }
-    }, "safeSamples");
+    const safeSamples = bounded;
     await Promise.all([
       // Salamander piano — unlocks `s("piano")`. Closes the symptom of issue #110.
       safeSamples("piano", () => samplesFn(`${baseCDN}/piano.json`, `${baseCDN}/piano/`, { prebake: true })),
@@ -6867,11 +6905,13 @@ var _StrudelEngine = class _StrudelEngine {
       globalThis.soundMap = soundMapRef;
     }
     const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
-    try {
-      await webaudioMod.aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`);
-    } catch (e) {
-      console.warn("[StrudelEngine] aliasBank fetch failed; .bank() aliases unavailable.", e);
-    }
+    await bounded(
+      "tidal-drum-machines aliases",
+      () => (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        webaudioMod.aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`)
+      )
+    );
     const postAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
     console.log(`[StrudelEngine] aliasBank: soundMap keys ${preAliasCount} \u2192 ${postAliasCount} (\u0394 ${postAliasCount - preAliasCount}; expect non-negative)`);
     const soundMapData = webaudioMod.soundMap?.get() ?? {};

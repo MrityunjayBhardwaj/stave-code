@@ -116,6 +116,140 @@ export const STRUDEL_VIZ_METHODS: Record<string, string> = {
 }
 
 /**
+ * Deadline for any third-party manifest fetch during engine boot (#1214).
+ *
+ * Chosen against the measured shape of the failure, not by feel: a healthy
+ * manifest load settles in a few hundred milliseconds, and a stalled one never
+ * settles at all — the distribution is bimodal with nothing in between. So the
+ * cut only has to sit clear of "slow but working", and buying extra seconds
+ * beyond that buys nothing: there is no population of loads that take four
+ * seconds. Three is already more than ten times the healthy median.
+ *
+ * ⚠ IT IS ALSO A CEILING ON HOW LONG A STALL COSTS, which is what set the final
+ * number. An earlier 8s draft worked — boot completed and the timeline drew —
+ * but measured 9.8s end to end under a held-open manifest, which is longer than
+ * the ten-second budget much of the app and its suite allow for "the song has
+ * drawn". A deadline that keeps the app alive but blows every downstream wait
+ * has only moved the failure. At 3s the same path lands near 4.5s, inside those
+ * budgets with room to spare.
+ */
+const MANIFEST_DEADLINE_MS = 3_000
+
+/**
+ * Ceiling on the manifest phase AS A WHOLE (#1217).
+ *
+ * The per-call deadline above bounds one fetch. It does not bound boot, because
+ * the loads run in sequence — the Dirt-Samples index, then the b-cdn banks,
+ * then the alias table — so with only a per-call ceiling a total outage pays
+ * one wait per stage. Measured on the unfixed path: one unreachable host added
+ * 3.55s to boot, all of them added 8.14s. The second number is what downstream
+ * waits actually see when a machine is offline or behind a captive portal, and
+ * it does not fit in the ten seconds they allow.
+ *
+ * Four seconds is derived from the consumer side, same as its sibling: it keeps
+ * a total outage near 4.5s end to end, which leaves the same margin under those
+ * waits that a single stall was given. It is NOT derived from how slow the
+ * network might be — that question is what the per-call deadline answers.
+ */
+const MANIFEST_BUDGET_MS = 4_000
+
+/**
+ * ⚠ THE TWO NUMBERS ABOVE HAVE TO BE READ TOGETHER, and the gap between them is
+ * load-bearing. A shared budget raises an obvious worry: the first stalled host
+ * spends it, and every manifest after it — reachable ones included — is skipped,
+ * silently costing the user the piano and the drum machines to save a few
+ * hundred milliseconds. That worry is why an explicit per-call floor was drafted
+ * here and then removed: with a 4s budget and a 3s ceiling, one stall always
+ * leaves a full second, which is several times what a healthy manifest needs.
+ * The gap IS the floor, so a second constant could never change an outcome — it
+ * could only lengthen a total outage. The arm in
+ * `boot-survives-stalled-sample-manifest.spec.ts` asserting that no REACHABLE
+ * manifest is skipped is what holds this together; if the two numbers are ever
+ * moved closer, that arm is the one that will notice.
+ */
+
+/**
+ * Run one third-party boot fetch with a deadline, and never let it be fatal.
+ *
+ * WHY THIS EXISTS (#1214). `initInternal` loads sample manifests over the
+ * network, and the loader beneath them (`superdough/sampler.mjs`) issues its
+ * fetches with no AbortController, no signal and no timeout. A stalled request
+ * therefore produced an await that never settled — and because `init()`
+ * memoises its in-flight promise so callers join one run, every later caller
+ * joined the same dead promise instead of retrying. The engine never
+ * initialised, nothing threw, nothing logged, and the app sat there with a
+ * blank timeline and no way back but a reload. Roughly one page load in ten.
+ *
+ * THE RULE THIS ENFORCES. An init that every feature path awaits may not
+ * contain an unbounded wait on anything it does not control. The question to
+ * ask of such a call is not "can it fail?" — a rejection was always survivable
+ * here — but "can it fail to ANSWER?". Silence is the case that needs the
+ * deadline, and it is the case a try/catch cannot see.
+ *
+ * ⚠ WHAT THIS DOES NOT DO. `Promise.race` does not cancel the losing side, and
+ * `samples()` accepts no abort signal, so a stalled request stays pending in
+ * the background after we walk away from it. That is deliberate and it is the
+ * best available: a pending request nobody awaits is inert, whereas the awaited
+ * one was fatal. If superdough ever takes a signal, pass one and drop this note.
+ *
+ * Returns null when the step timed out or threw. Every caller treats that as
+ * "these samples are unavailable", which is a content gap, not a broken engine.
+ */
+type BoundedManifestLoad = <T>(label: string, fn: () => Promise<T>) => Promise<T | null>
+
+/**
+ * Open a budget for one boot's manifest phase and return the loader for it.
+ *
+ * The clock starts here and is shared by every call made through the returned
+ * function, which is what stops the deadlines stacking (#1217). Each call waits
+ * for whichever is smallest: its own ceiling, or what is left of the phase —
+ * floored so a single stalled host cannot starve the reachable ones.
+ *
+ * One budget per boot, not per module: a second engine, or a re-init after
+ * dispose, gets a fresh clock. A module-level start time would mean the first
+ * page load spends the budget and every later one thinks it has none.
+ */
+function createManifestBudget(): BoundedManifestLoad {
+  const startedAt = Date.now()
+
+  return async <T>(label: string, fn: () => Promise<T>): Promise<T | null> => {
+    const remaining = MANIFEST_BUDGET_MS - (Date.now() - startedAt)
+    if (remaining <= 0) {
+      // Skip WITHOUT calling fn: with nothing left there is no wait to give it,
+      // and starting a request we will not await only adds a connection to a
+      // host that has already proved unreachable.
+      console.warn(
+        `[StrudelEngine] sample manifest "${label}" did not load; continuing without it.`,
+        new Error("boot's manifest budget was already spent"),
+      )
+      return null
+    }
+    const deadlineMs = Math.min(MANIFEST_DEADLINE_MS, remaining)
+
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        fn(),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`timed out after ${deadlineMs}ms`)),
+            deadlineMs,
+          )
+        }),
+      ])
+    } catch (err) {
+      console.warn(
+        `[StrudelEngine] sample manifest "${label}" did not load; continuing without it.`,
+        err,
+      )
+      return null
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+}
+
+/**
  * Single source of truth for audio in Stave.
  * Wraps @strudel/webaudio (which wraps superdough) via webaudioRepl().
  *
@@ -400,8 +534,18 @@ export class StrudelEngine implements LiveCodingEngine {
     // Load Dirt-Samples manifest so bd, hh, sd, cp, rim, cr, rd etc. resolve at runtime.
     // Individual samples are lazy-loaded on first play; only the index JSON is fetched here.
     // Worklet-based effects (crush, coarse, distort, djf, bytebeat) are loaded by initAudio() above.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (webaudioMod as any).samples('github:tidalcycles/Dirt-Samples/master')
+    // #1214/#1217: every manifest load below goes through ONE budget, opened
+    // here. Individually bounding each fetch was not enough — the loads are
+    // sequential, so per-call ceilings add up when more than one host is
+    // unreachable. The clock has to start before the first of them.
+    const bounded = createManifestBudget()
+    // #1214: bounded. This was the specific call that wedged boot — it was also
+    // the only manifest load here with no protection at all, while every b-cdn
+    // sibling below at least had a catch. The catch was never the missing part.
+    await bounded('Dirt-Samples', () =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (webaudioMod as any).samples('github:tidalcycles/Dirt-Samples/master'),
+    )
 
     // Phase 20-14 α-2: mirror upstream `prebake.mjs` sample-manifest fetches.
     // Upstream b-cdn manifests unlock `s("piano")` (Salamander), `.bank("tr909")`
@@ -416,13 +560,10 @@ export class StrudelEngine implements LiveCodingEngine {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const samplesFn = (webaudioMod as any).samples
     const baseCDN = 'https://strudel.b-cdn.net'  // upstream prebake.mjs:11
-    const safeSamples = async (label: string, fn: () => Promise<unknown>) => {
-      try { await fn() }
-      catch (e) {
-        // Boot-time soft failure: log + continue. Bd/hh/etc. still work.
-        console.warn(`[StrudelEngine] sample manifest "${label}" failed to load; continuing without it.`, e)
-      }
-    }
+    // #1214: was try/catch only. A catch is blind to a request that never
+    // answers, and every one of these calls could wedge boot the same way the
+    // Dirt-Samples index did. They now share the budget opened above.
+    const safeSamples = bounded
     await Promise.all([
       // Salamander piano — unlocks `s("piano")`. Closes the symptom of issue #110.
       safeSamples('piano', () => samplesFn(`${baseCDN}/piano.json`, `${baseCDN}/piano/`, { prebake: true })),
@@ -519,12 +660,14 @@ export class StrudelEngine implements LiveCodingEngine {
       ;(globalThis as unknown as { soundMap?: unknown }).soundMap = soundMapRef
     }
     const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0
-    try {
+    // #1214: no try/catch here any more, and its absence is the point —
+    // the bounded loader already swallows and warns, so a catch around it could
+    // never fire. Leaving one in place would read as live protection at exactly
+    // the site whose real hazard is a request that never answers at all.
+    await bounded('tidal-drum-machines aliases', () =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (webaudioMod as any).aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`)
-    } catch (e) {
-      console.warn('[StrudelEngine] aliasBank fetch failed; .bank() aliases unavailable.', e)
-    }
+      (webaudioMod as any).aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`),
+    )
     const postAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0
     // Dev-only observation log — α-7 SUMMARY cites this for the merge-vs-replace
     // gate. Drop noisily if a future review wants quieter boot — keep the
