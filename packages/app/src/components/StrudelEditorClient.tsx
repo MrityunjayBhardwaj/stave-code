@@ -150,12 +150,16 @@ const SNAPSHOT_REFRESH_DEBOUNCE_MS = 300;
  * entered, zero publishes, no early return and no throw.
  *
  * BOTH BOUNDS, because a ceiling that only satisfies one is how the last one
- * had to be corrected. BELOW: a healthy eval-on-load is far quicker than this —
- * the cold path is documented at ~2.5s and the observed shell-to-lanes time is
- * ~600ms — so the ordering #977 wants (eval haps populated BEFORE the publish)
- * is untouched in every healthy case; this only fires when something is wrong.
- * ABOVE: every consumer of the drawn lanes allows 10s, so publishing at worst
- * 5s in leaves a full 5s of margin rather than trading one deadline for another.
+ * had to be corrected. BELOW: the healthy case must never reach this ceiling,
+ * or the ordering #977 wants (eval haps populated BEFORE the publish) would be
+ * quietly dropped on working machines. What is MEASURED is the whole path a
+ * spec waits on — 44 trials, page load to lanes drawn, p50 54ms and max 59ms
+ * with no tail; the eval sits inside that, so it is an upper bound on the eval
+ * and this ceiling is ~85x it. The often-quoted "~2.5s cold eval" is from
+ * #394's docblock and was NOT re-measured here — it is not what the number
+ * rests on. ABOVE: every consumer of the drawn lanes allows 10s, so publishing
+ * at worst 5s in leaves a full 5s of margin rather than trading one deadline
+ * for another.
  */
 const TIMELINE_EVAL_WAIT_MS = 5_000;
 
