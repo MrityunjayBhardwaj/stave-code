@@ -213,17 +213,54 @@ function collectTrackBodies(node: PatternIR): Map<string, PatternIR> {
  */
 export const __test_collectTrackBodies = collectTrackBodies
 
+/**
+ * #1214 PHASE 0 — INSTRUMENTATION, NOT A FIX. Remove with the fix.
+ *
+ * ~1 page load in 10 ends with a permanently blank timeline and NOTHING logged.
+ * The first pass at this marked only around `analyzeSong`, and every dead page
+ * came back with no marks at all — which is ambiguous three ways: the component
+ * never mounted, the analyze effect never ran, or it ran and returned early on a
+ * null IR. Those are three different bugs, so the marks now start at mount and
+ * record the IR's presence at every step that can drop it.
+ */
+function mark1214(phase: string, detail?: unknown): void {
+  if (typeof window === 'undefined') return
+  const w = window as unknown as { __stave1214?: Record<string, unknown>[] }
+  if (!w.__stave1214) w.__stave1214 = []
+  w.__stave1214.push({ phase, detail: detail === undefined ? null : String(detail) })
+}
+
 export function MusicalTimeline(
   props: MusicalTimelineProps,
 ): React.ReactElement {
   // ── Snapshot subscription (Trap NEW-4: re-sync after subscribe) ─────────
   const [snapshot, setSnapshot] = useState<IRSnapshot | null>(getIRSnapshot)
   useEffect(() => {
-    const unsub = subscribeIRSnapshot(setSnapshot)
+    mark1214('mounted', `initialIr=${getIRSnapshot()?.ir ? 'yes' : 'no'}`)
+    // #1214 — dead pages get ZERO `published` marks though the subscriber is
+    // definitely registered, and the store cannot skip a registered listener.
+    // Two causes remain and they need OPPOSITE fixes: publish was never called,
+    // or the publisher holds a DIFFERENT instance of this module-singleton store.
+    //
+    // ⚠ A `getIRSnapshot()` POLL WAS TRIED HERE AND IS THE WRONG INSTRUMENT.
+    // It cannot separate them: if the publisher writes to instance B, then this
+    // instance's `current` stays null AND its listeners go uncalled — identical
+    // to a publish that never happened. Both hypotheses predict the same trace.
+    // It also cost wall-clock time on the racing path and MOVED the phenomenon
+    // (dead rate ~10% -> 40%, failures turning near-periodic), so no rate taken
+    // with it attached is comparable to the baseline. The discriminating
+    // measurement lives in `irInspector.ts` instead: a per-module-instance id
+    // stamped at load and marked at BOTH publish and subscribe.
+    const unsub = subscribeIRSnapshot((s) => {
+      mark1214('published', `ir=${s?.ir ? 'yes' : 'no'}`)
+      setSnapshot(s)
+    })
     // Re-sync in case publishIRSnapshot raced our mount — an intentional
     // external-store sync, not a render-driven cascade.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSnapshot(getIRSnapshot())
+    const resync = getIRSnapshot()
+    mark1214('resync', `ir=${resync?.ir ? 'yes' : 'no'}`)
+    setSnapshot(resync)
     return unsub
   }, [])
 
@@ -274,6 +311,9 @@ export function MusicalTimeline(
   // cadence can't pile up overlapping budgeted collections.
   useEffect(() => {
     const ir = snapshot?.ir ?? null
+    // #1214 — BEFORE the early return, or a null IR is indistinguishable from
+    // an effect that never ran. That ambiguity is what the first pass hit.
+    mark1214('analyze-effect', `snapshot=${snapshot ? 'yes' : 'no'} ir=${ir ? 'yes' : 'no'}`)
     // #1201 — a new snapshot is a new document: the page the user was on no
     // longer describes it, and a stale window would draw the old song's
     // activity at the new song's origin. Reset BEFORE the early return so an
@@ -309,11 +349,29 @@ export function MusicalTimeline(
       getSongTrackIds: getSongTrackIdsRef.current,
     })
     const signal = { aborted: false }
+    // #1214 PHASE 0 — INSTRUMENTATION, NOT A FIX. About 1 page load in 10 ends
+    // with a permanently blank timeline: `analysis` stays null, so the probe
+    // reads `periodCycles: null / horizonCycles: 0 / lanes: []` through the
+    // `??` fallbacks below, with NOTHING logged anywhere.
+    //
+    // Three outcomes are indistinguishable from outside this promise, and they
+    // call for three different fixes, so all three are recorded separately:
+    //   ENTERED but neither settled -> analyzeSong never settles (a hang)
+    //   REJECTED                    -> the catch below is eating the reason
+    //   RESOLVED                    -> the failure is downstream of here
+    // Without this split, "the catch is swallowing it" is a guess that fits.
+    mark1214('analyze-started')
     analyzeSong(ir, { signal, collectFn, hasUnheardTrack })
       .then((result) => {
+        mark1214('resolved', `lanes=${result?.lanes?.length ?? 'n/a'} horizon=${result?.horizonCycles ?? 'n/a'}`)
         if (!signal.aborted) setAnalysis(result)
+        else mark1214('resolved-but-aborted')
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        // The bare swallow this replaces is why the failure has been invisible.
+        mark1214('rejected', err instanceof Error ? `${err.name}: ${err.message}` : err)
+        // eslint-disable-next-line no-console
+        console.error('[stave#1214] analyzeSong REJECTED — timeline will stay blank:', err)
         /* analysis is best-effort; leave the prior result in place */
       })
     return () => {

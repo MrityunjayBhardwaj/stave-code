@@ -56,6 +56,51 @@ type Listener = (snap: IRSnapshot | null) => void
 let current: IRSnapshot | null = null
 const listeners = new Set<Listener>()
 
+/**
+ * #1214 INSTRUMENTATION — NOT A FIX. Remove with the fix.
+ *
+ * About 1 page load in 10 boots into a permanently dead evaluation: the Song
+ * timeline stays blank, nothing is logged, and re-evaluating never recovers it.
+ * Phase 0 localised the failure to THIS store's delivery: the subscriber mounts
+ * and registers, and the snapshot is then never delivered to it. The store
+ * cannot skip a registered listener (plain Set, delete-own unsub, per-listener
+ * try/catch), which leaves exactly two candidates needing OPPOSITE fixes:
+ *
+ *   (a) `publishIRSnapshot` was never called at all, or
+ *   (b) publisher and subscriber hold DIFFERENT INSTANCES of this module —
+ *       the singleton is duplicated, and the fan-out iterates a Set the
+ *       subscriber is not in.
+ *
+ * A poll of `getIRSnapshot()` from the subscriber's own instance was tried and
+ * CANNOT separate them: under (b) this instance's `current` stays null AND its
+ * listeners go uncalled, which is byte-for-byte what (a) produces. The stamp
+ * below is what discriminates — a load-time id per module instance, marked at
+ * BOTH ends of the store, so the ids can be COMPARED rather than inferred:
+ *
+ *   different ids at `sub` and `pub`  => (b), the singleton is duplicated
+ *   no `pub` mark at all              => (a), go upstream to the eval hook
+ *   same id, listeners>0, no delivery => impossible; the instrument is broken
+ *
+ * `window.__stave1214Inst` doubles as a bare count of how many times this
+ * module was evaluated on the page — 1 on a healthy graph.
+ */
+const __inst1214: string = (() => {
+  if (typeof window === 'undefined') return 'ssr'
+  const w = window as unknown as { __stave1214Inst?: number }
+  w.__stave1214Inst = (w.__stave1214Inst ?? 0) + 1
+  return `i${w.__stave1214Inst}`
+})()
+
+/** #1214 instrumentation. Reads `window` fresh on every call so a SECOND
+ *  module instance appends to the same array rather than to a private copy —
+ *  which is the whole point of the measurement. */
+function mark1214(phase: string, detail?: unknown): void {
+  if (typeof window === 'undefined') return
+  const w = window as unknown as { __stave1214?: Record<string, unknown>[] }
+  if (!w.__stave1214) w.__stave1214 = []
+  w.__stave1214.push({ phase, detail: detail === undefined ? null : String(detail) })
+}
+
 /** Build the two lookup tables from snap.events. Pure function; returns
  *  a NEW IRSnapshot with the lookups attached. Original `snap` is unchanged
  *  (PV33 alignment — caller's input shape is never mutated). */
@@ -124,6 +169,9 @@ export function publishIRSnapshot(
 ): void {
   // Enrich BEFORE storing/capturing/notifying so all consumers see the
   // same lookup tables. PV33: lookups join the immutable snapshot.
+  // #1214 instrumentation — BEFORE any work, so a throw inside enrichWithLookups
+  // cannot make a publish that DID happen look like one that never did.
+  mark1214('pub', `inst=${__inst1214} listeners=${listeners.size}`)
   const enriched = enrichWithLookups(snap)
   current = enriched
   // PK9 step 8a — timeline capture fan-out (Phase 19-08).
@@ -138,6 +186,9 @@ export function publishIRSnapshot(
 }
 
 export function clearIRSnapshot(): void {
+  // #1214 instrumentation — a clear landing between publish and read would
+  // also produce a null snapshot, so it must be visible in the same trace.
+  mark1214('clear', `inst=${__inst1214} listeners=${listeners.size}`)
   current = null
   for (const l of listeners) {
     try { l(null) } catch { /* swallow */ }
@@ -150,5 +201,7 @@ export function getIRSnapshot(): IRSnapshot | null {
 
 export function subscribeIRSnapshot(fn: Listener): () => void {
   listeners.add(fn)
+  // #1214 instrumentation — the id here is compared against the one at `pub`.
+  mark1214('sub', `inst=${__inst1214} listeners=${listeners.size}`)
   return () => listeners.delete(fn)
 }
