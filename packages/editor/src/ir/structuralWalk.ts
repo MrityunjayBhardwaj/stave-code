@@ -54,8 +54,12 @@ export interface LaneSkeleton {
   /** Voice-row index within a `stack(...)` (`leafIndex`; `collect.ts:651`). Absent for a
    *  single-voice lane. */
   leafIndex?: number
-  /** Active arrange arm (clip) per integer cycle, index by cycle (`armByCycleByLane`). Absent
-   *  for a lane with no arrangement combinator. Length == `nCycles`. */
+  /** Active arrange arm (clip) per integer cycle (`armByCycleByLane`). Absent for a lane with
+   *  no arrangement combinator. Length == the window's `spanCycles`, and index 0 is the
+   *  window's `originCycle` — WINDOW-RELATIVE, the same deliberate asymmetry
+   *  `LaneActivity.onsetsByCycle` carries (an array cannot be indexed from 256 without wasting
+   *  the prefix). Every cycle the consumer then PUBLISHES is song-absolute, so the one place
+   *  that adds the origin back is the clip run-length encoder in `timelineMarks`. */
   armByCycle?: Array<number | undefined>
   /** Arm index → its display label (first arm event's sample/note; `armLabelByLane`). */
   armLabels?: Map<number, string>
@@ -79,11 +83,49 @@ export interface LaneItem {
 }
 
 /**
+ * The stretch of song a walk covers (#1209).
+ *
+ * ── WHY ORIGIN AND SPAN TRAVEL AS ONE VALUE ─────────────────────────────────
+ * They are both bare cycle counts, so as two positional arguments a swap
+ * type-checks and yields a plausible skeleton of the wrong part of the song —
+ * the exact failure this parameter was added to prevent, reintroduced through
+ * argument order instead of omission. Bundled, it cannot be written.
+ *
+ * Structurally identical to the view's `SongWindow`, deliberately: the app hands
+ * its own window straight in, with no adapter and nothing to keep in step.
+ */
+export interface WalkWindow {
+  /** First cycle of the window (inclusive, song-absolute). */
+  readonly originCycle: number
+  /** Width of the window in cycles. */
+  readonly spanCycles: number
+}
+
+/** The window a whole-song walk uses: `[0, nCycles)`. Named rather than written
+ *  as an object literal at each caller so "this one really is the whole song"
+ *  is a statement instead of two numbers that happen to start at zero. */
+export function wholeWalkWindow(nCycles: number): WalkWindow {
+  return { originCycle: 0, spanCycles: nCycles }
+}
+
+/** Normalise a window to whole, non-negative cycles — one definition, so the leaf walk and
+ *  the aggregation can never disagree about which cycles the window contains. */
+function normalizeWindow(window: WalkWindow): { origin: number; span: number } {
+  const origin = Math.max(0, Math.floor(Number.isFinite(window.originCycle) ? window.originCycle : 0))
+  const span = Math.max(0, Math.floor(Number.isFinite(window.spanCycles) ? window.spanCycles : 0))
+  return { origin, span }
+}
+
+/**
  * Reduce raw leaf items to per-lane skeletons, first-seen lane order, FIRST-WINS on every
  * anchor — the exact reduction `timelineMarks.ts:133-200` runs over collect's events. Shared
  * between structuralWalk and the corpus gate's oracle so neither can drift from the other.
+ *
+ * `armByCycle` is sized and indexed against `window`: slot `i` is song cycle
+ * `originCycle + i`. An item outside the window is dropped rather than clamped.
  */
-export function aggregateLaneItems(items: readonly LaneItem[], nCycles: number): LaneSkeleton[] {
+export function aggregateLaneItems(items: readonly LaneItem[], window: WalkWindow): LaneSkeleton[] {
+  const { origin: originCycle, span: nCycles } = normalizeWindow(window)
   const order: string[] = []
   const byKey = new Map<string, LaneSkeleton>()
   const armByCycle = new Map<string, Array<number | undefined>>()
@@ -121,7 +163,9 @@ export function aggregateLaneItems(items: readonly LaneItem[], nCycles: number):
         byCycle = new Array<number | undefined>(nCycles)
         armByCycle.set(it.laneKey, byCycle)
       }
-      if (it.cycle >= 0 && it.cycle < nCycles) byCycle[it.cycle] = it.armIndex
+      // `it.cycle` is a song-ABSOLUTE output cycle; the array is window-relative.
+      const slot = it.cycle - originCycle
+      if (slot >= 0 && slot < nCycles) byCycle[slot] = it.armIndex
       let labels = armLabels.get(it.laneKey)
       if (!labels) {
         labels = new Map()
@@ -475,8 +519,22 @@ function walkCycle(ir: PatternIR, ctx: StructCtx): LaneItem[] {
  * by leaf loc → irNodeId. Sharing one traversal means the two cannot drift.
  */
 export function walkLeafItems(ir: PatternIR, nCycles: number): LaneItem[] {
+  return walkLeafItemsInWindow(ir, wholeWalkWindow(nCycles))
+}
+
+/**
+ * Walk the IR over `[originCycle, originCycle + spanCycles)` — the same leaf walk, started
+ * where the view is actually looking (#1209).
+ *
+ * ⚠ NOT a prefix walk that discards its left end. Every selector in the walk is a pure
+ * function of the cycle (`Arrange` picks its arm by `cycle % period`), so cycle 256 can be
+ * walked without walking 0-255 first. That is what keeps a deep page's cost flat with depth,
+ * the same property the banded event accessor buys on the onset side.
+ */
+export function walkLeafItemsInWindow(ir: PatternIR, window: WalkWindow): LaneItem[] {
+  const { origin, span } = normalizeWindow(window)
   const items: LaneItem[] = []
-  for (let c = 0; c < nCycles; c++) {
+  for (let c = origin; c < origin + span; c++) {
     try {
       items.push(...walkCycle(ir, { cycle: c, outputCycle: c, params: {} }))
     } catch {
@@ -487,9 +545,15 @@ export function walkLeafItems(ir: PatternIR, nCycles: number): LaneItem[] {
 }
 
 /**
- * Walk the IR for lane STRUCTURE over `[0, nCycles)`. Anchors only — never computes onsets.
+ * Walk the IR for lane STRUCTURE over `window`. Anchors only — never computes onsets.
  * Per-node resilient: a bad sub-node degrades its own lane, never the whole walk.
+ *
+ * The window is REQUIRED rather than defaulted (#1209): every previous caller passed a bare
+ * span and got `[0, span)`, which is correct only while nothing pages. A default would let the
+ * next caller inherit that assumption silently — and at origin 0 an origin-blind walk and a
+ * correct one return the same thing, so no test would ever tell them apart. Callers that
+ * genuinely mean the whole song say so with `wholeWalkWindow`.
  */
-export function structuralWalk(ir: PatternIR, nCycles: number): LaneSkeleton[] {
-  return aggregateLaneItems(walkLeafItems(ir, nCycles), nCycles)
+export function structuralWalk(ir: PatternIR, window: WalkWindow): LaneSkeleton[] {
+  return aggregateLaneItems(walkLeafItemsInWindow(ir, window), window)
 }

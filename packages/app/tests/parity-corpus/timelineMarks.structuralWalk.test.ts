@@ -17,7 +17,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
-import { structuralWalk } from '../../../editor/src/ir/structuralWalk'
+import { structuralWalk, wholeWalkWindow } from '../../../editor/src/ir/structuralWalk'
 
 const N = 4
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
@@ -30,7 +30,7 @@ const corpusFiles = fs
  *  as an order-independent plain object keyed by lane for a stable snapshot. */
 function walkMapsSnapshot(ir: Parameters<typeof structuralWalk>[0], nCycles: number): Record<string, unknown> {
   const byLane: Record<string, unknown> = {}
-  for (const lane of structuralWalk(ir, nCycles)) {
+  for (const lane of structuralWalk(ir, wholeWalkWindow(nCycles))) {
     byLane[lane.laneKey] = {
       sourceOffset: lane.sourceOffset ?? null,
       labelOffset: lane.dollarPos ?? null,

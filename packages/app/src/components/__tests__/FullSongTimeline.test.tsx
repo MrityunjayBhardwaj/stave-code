@@ -57,13 +57,19 @@ vi.mock('@stave/editor', async () => {
   // source, no gifenc), so structure + marks stay in sync and the stub can't drift (PV192).
   // Only vi.hoisted values (the fixtures) are safe to reference here — the factory is hoisted
   // above every top-level const, so `eventsForIr` lives inside it.
-  const { skeletonsFromEvents } = await import('../musicalTimeline/__tests__/structuralWalkTestStub')
+  const { skeletonsFromEvents, wholeWalkWindow } = await import(
+    '../musicalTimeline/__tests__/structuralWalkTestStub'
+  )
   const eventsForIr = (ir: { bare?: boolean; nested?: boolean } | null) =>
     ir?.bare ? BARE_EVENTS : ir?.nested ? NESTED_EVENTS : ir ? TRIM_EVENTS : []
   return {
     collectCycles: (ir: { bare?: boolean; nested?: boolean } | null) => eventsForIr(ir),
-    structuralWalk: (ir: { bare?: boolean; nested?: boolean } | null, nCycles: number) =>
-      skeletonsFromEvents(eventsForIr(ir), nCycles),
+    structuralWalk: (ir: { bare?: boolean; nested?: boolean } | null, window: { originCycle: number; spanCycles: number }) =>
+      skeletonsFromEvents(eventsForIr(ir), window),
+    // Production calls this (the bare-song probe). A barrel mock that omits it
+    // hands the component `undefined` — invisible to tsc, because a vi.mock
+    // factory is untyped.
+    wholeWalkWindow,
     laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
     // #459 — Song view now reads the shared timeline row-height setting. Mock it
     // to 22 (the height these layout assertions were written for) + a no-op
@@ -914,5 +920,55 @@ describe('FullSongTimeline — resize a bare loop (#662, set display span; optio
     fireEvent.keyDown(grid, { key: 's' })
     expect(onSplitClip).toHaveBeenCalledTimes(1)
     expect(onSplitClip.mock.calls[0][0]).toMatchObject({ armIndex: -1, firstWeight: 3, span: 6 })
+  })
+})
+
+describe('FullSongTimeline — the marks are read for the WINDOW on screen (#1209)', () => {
+  // The view's marks used to be read as a PREFIX (`getTimelineEvents(span)`)
+  // and derived over `[0, span)`, whatever the origin. Once the view pages that
+  // is the wrong stretch of song twice over: it asks for events the window does
+  // not contain, and it discards the ones it does. These arms drive the real
+  // memo through a real render, so they fail if production stops threading the
+  // window — which is what separates them from arms that restate the rule.
+  function renderAtOrigin(originCycle: number) {
+    const band = vi.fn(() => [] as never[])
+    const prefix = vi.fn(() => [] as never[])
+    renderFull({
+      ir: {} as never,
+      windowOriginCycles: originCycle,
+      getTimelineEventsBand: band as never,
+      getTimelineEvents: prefix as never,
+    })
+    return { band, prefix }
+  }
+
+  it('asks the BAND accessor for the window, not for a prefix from cycle 0', () => {
+    // The fixture's display span is 4, so the second page is [4, 8).
+    const { band, prefix } = renderAtOrigin(4)
+
+    expect(band).toHaveBeenCalled()
+    expect(band.mock.calls[0]).toEqual([4, 8])
+    // ⚠ The whole point of the band accessor: a deep page must not query and
+    // discard everything to its left. If the prefix form is still reached while
+    // a band accessor is wired, that cost is back.
+    expect(prefix).not.toHaveBeenCalled()
+  })
+
+  it('at origin 0 it asks for [0, span) — the unpaged behaviour, unchanged', () => {
+    const { band } = renderAtOrigin(0)
+    expect(band.mock.calls[0]).toEqual([0, 4])
+  })
+
+  it('falls back to the PREFIX accessor when no band accessor is wired', () => {
+    // Correct, just slow: the prefix returns a superset and `collectNoteMarks`
+    // narrows it to the window.
+    const prefix = vi.fn(() => [] as never[])
+    renderFull({
+      ir: {} as never,
+      windowOriginCycles: 4,
+      getTimelineEvents: prefix as never,
+    })
+    expect(prefix).toHaveBeenCalled()
+    expect(prefix.mock.calls[0]).toEqual([8])
   })
 })

@@ -27,12 +27,19 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { SongAnalysis, PatternIR, HapStream, IREvent } from '@stave/editor'
 import {
   structuralWalk,
+  wholeWalkWindow,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
 } from '@stave/editor'
 import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
-import { buildTimelineScene, clipAtCycle } from './musicalTimeline/timelineScene'
+import { buildTimelineScene, clipAtCycle, type SceneActivity } from './musicalTimeline/timelineScene'
+import {
+  nextWindowOriginFor,
+  clampSeekToWindow,
+  isBeyondWindow,
+  windowNotice,
+} from './musicalTimeline/windowPaging'
 import { TrackSwatchPopover } from './TrackSwatchPopover'
 import { useRulerUnits } from '../state/rulerUnits'
 import {
@@ -40,7 +47,7 @@ import {
   EMPTY_VOICE_ORDER,
   type VoiceOrderByLane,
 } from './musicalTimeline/stableVoiceOrder'
-import { collectNoteMarks } from './musicalTimeline/timelineMarks'
+import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import {
@@ -84,6 +91,26 @@ const FONT_MONO = 'var(--font-mono), ui-monospace, monospace'
 export interface FullSongTimelineProps {
   /** Whole-song analysis, or null before the first analysis completes. */
   readonly analysis: SongAnalysis | null
+  /**
+   * The activity of the PAGED window, or null while showing the song's own
+   * first span (#1201).
+   *
+   * Deliberately narrower than the analysis: only the scene follows the
+   * window. The view's SPAN, whether that span loops, and the readout are
+   * properties of the SONG and keep reading `analysis` — a window has no
+   * period to answer them with, and must never invent one.
+   */
+  readonly windowActivity?: SceneActivity | null
+  /** First song cycle currently on screen. 0 until something pages. */
+  readonly windowOriginCycles?: number
+  /**
+   * Ask the owner to page to `[originCycle, originCycle + spanCycles)`.
+   *
+   * Travels UPWARD, the same direction as `onSeek`, because the analysis and
+   * its collector live with the owner. Called on a frame condition that stays
+   * true for many frames, so it must be idempotent by origin on the far side.
+   */
+  readonly onRequestWindow?: (originCycle: number, spanCycles: number) => void
   /** The evaluated IR snapshot — source of the mini-note marks the canvas draws
    *  (collected app-side over the display span). Null before the first eval. */
   readonly ir?: PatternIR | null
@@ -102,6 +129,18 @@ export interface FullSongTimelineProps {
    *  owns lanes/clips (structure). Absent / returns `[]` (pre-eval, non-Strudel)
    *  → the static-IR marks fallback (source-lossy for degree/scale — PV174). */
   readonly getTimelineEvents?: (cycles: number) => IREvent[]
+  /**
+   * #1197 — the BANDED form of the accessor above: haps over
+   * `[startCycle, endCycle)` rather than a prefix from zero.
+   *
+   * This is the one the marks want (#1209). A paged view asking the prefix form
+   * for `[256, 512)` has to request `[0, 512)` and throw half of it away, which
+   * is exactly the cost the band accessor was introduced to remove. Optional —
+   * without it the marks fall back to the prefix form, which returns the right
+   * events after querying every cycle to the window's left: slow when paged,
+   * never wrong.
+   */
+  readonly getTimelineEventsBand?: (startCycle: number, endCycle: number) => IREvent[]
   /** Transport-offset-aware song position (cycles), or null when stopped. */
   readonly getSongPosition: () => number | null
   /** Seek the transport to an absolute song cycle. */
@@ -276,6 +315,7 @@ const EXTEND_AUTOSCROLL_STEP_PX = 7
 
 export function FullSongTimeline(props: FullSongTimelineProps): React.ReactElement {
   const { analysis, onSeek } = props
+  const windowActivity = props.windowActivity ?? null
   // A pure bare loop gets a floored, splittable display span (#489 D3); a real
   // arrangement keeps its own length. "Bare" = NO collected event carries an
   // `armIndex` (no `arrange`/`cat` combinator). We probe over the natural span so
@@ -290,7 +330,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     // structural walk sets it from the same source structure `collectCycles` did, so this is
     // the byte-identical successor to the old `evs.some(e => armIndex)` check, without needing
     // the behaviour engine and resilient on mid-edit code.
-    const lanes = structuralWalk(props.ir, Math.max(1, Math.ceil(natCycles)))
+    // Deliberately the WHOLE song, at every page (#1209): "does this document
+    // contain an arrangement at all" is a property of the DOCUMENT, and it
+    // decides the display span — so a window in which every arm happens to rest
+    // must not make a real arrangement read as a bare loop.
+    const lanes = structuralWalk(props.ir, wholeWalkWindow(Math.max(1, Math.ceil(natCycles))))
     return !lanes.some((l) => l.armByCycle !== undefined)
   }, [props.ir, natCycles])
   // The user's resized display span for a pure bare loop (#662, option B). A
@@ -338,7 +382,18 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // window (all geometry), and the scene builder (density indexing). An origin
   // they disagree about draws marks at the right width in the wrong place.
   // Whatever eventually moves the window sets this, and all three follow.
-  const songOriginCycles = 0
+  // #1201 — the origin is now a VALUE the owner advances, not a constant. It
+  // is still 0 for every song that loops (there is nothing to the right to
+  // reach) and for the first page of one that does not.
+  const songOriginCycles = props.windowOriginCycles ?? 0
+  // #1201 — the paging trigger runs inside the rAF loop, whose deps are `[]`
+  // so it is never re-created. Everything it reads must therefore come through
+  // a latest-value ref, or it would page against the origin and span that were
+  // current when the drawer opened.
+  const songOriginRef = useRef(songOriginCycles)
+  songOriginRef.current = songOriginCycles
+  const onRequestWindowRef = useRef(props.onRequestWindow)
+  onRequestWindowRef.current = props.onRequestWindow
   const loopWindow = useMemo<SongWindow>(
     () => ({ originCycle: songOriginCycles, spanCycles: loopCycles }),
     [songOriginCycles, loopCycles],
@@ -580,6 +635,35 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       el.scrollLeft = target
       setScrollLeft((prev) => (prev === target ? prev : target))
     }
+    /**
+     * PREFETCH the next window when the playhead enters the last quarter of
+     * the one on screen (#1201 item 3).
+     *
+     * ── WHY A QUARTER AHEAD, AND WHY THAT IS GENEROUS ────────────────────────
+     * A window is 128-512 seconds of playback and costs a 383ms median to
+     * build, flat with depth. A quarter of it is tens of seconds of warning
+     * for a sub-second job, so the page lands long before the boundary and the
+     * "refresh arriving late" #1201 feared cannot occur. Asking EARLY rather
+     * than AT the boundary is the whole design: nothing has to be recomputed
+     * under time pressure.
+     *
+     * Only a song with no measured period pages. When a period was found,
+     * cycle 257 genuinely IS cycle 1 — there is nothing to the right to reach,
+     * and asking would re-analyse the same music forever.
+     *
+     * Fires on every frame the condition holds; the owner makes it idempotent
+     * by origin rather than this side tracking what it already asked for,
+     * because the owner is what knows whether a page is in flight.
+     */
+    const maybePageAhead = (pos: number | null): void => {
+      if (pos == null) return
+      const request = onRequestWindowRef.current
+      if (!request) return
+      const span = loopCyclesRef.current
+      const next = nextWindowOriginFor(pos, songOriginRef.current, span, loopingRef.current)
+      if (next != null) request(next, span)
+    }
+
     const tick = (): void => {
       if (cancelled) return
       const a = accessorsRef.current
@@ -590,6 +674,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const pos = a.getSongPosition()
       setSongPos((prev) => (prev === pos ? prev : pos))
       applyFollow(pos)
+      maybePageAhead(pos)
       raf = requestAnimationFrame(tick)
     }
     if (props.getDrawerOpen() && props.getActiveTabId() === TAB_ID) {
@@ -640,7 +725,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // The end of the SONG-ABSOLUTE stretch in view. `cycle` came back absolute
       // from the axis, so clamping it against a bare span would send a click near
       // the end of a paged window back to the start of the song.
-      onSeek(Math.min(cycle, songOriginCycles + loopCycles))
+      onSeek(clampSeekToWindow(cycle, loopWindow))
     },
     [displayCycles, songOriginCycles, loopCycles, dragAwareContentWidth, onSeek],
   )
@@ -661,10 +746,36 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // lock-step, so keying the memo on `props.ir` refreshes the events too. The
   // `getTimelineEvents` closure is stable (StaveApp binds it once), so its
   // presence in the deps never re-fires the memo on its own.
-  const marks = useMemo(() => {
-    const events = props.getTimelineEvents?.(loopCycles) ?? null
-    return collectNoteMarks(events, props.ir ?? null, loopCycles)
-  }, [props.ir, loopCycles, props.getTimelineEvents])
+  // #1209 — over the WINDOW, not over a span measured from zero. `loopWindow`
+  // is the true content length at the origin the view is showing, which is
+  // exactly the stretch the marks and the clips belong to. Before this, both
+  // were derived over `[0, span)` at every origin: because `SceneNote.cycle` is
+  // song-absolute, a paged window's marks landed to the left of the viewport
+  // and were culled, so it drew its heatmap with no note marks and the first
+  // window's clips.
+  //
+  // Both readers below go through ONE definition of "the haps this window
+  // shows". Written out twice it is three lines of duplication that a later
+  // edit only has to touch one of — and the consumer that drifts is the PROBE,
+  // so the divergence would be invisible in the app and misleading in the test
+  // that trusts it. Both accessors are bound once by the owner, so this closure
+  // is stable and its presence in a dep list never re-fires anything on its own.
+  const readWindowEvents = useCallback(
+    () =>
+      readEventsInBand(
+        {
+          getTimelineEventsBand: props.getTimelineEventsBand,
+          getTimelineEvents: props.getTimelineEvents,
+        },
+        loopWindow.originCycle,
+        loopWindow.originCycle + loopCycles,
+      ),
+    [props.getTimelineEventsBand, props.getTimelineEvents, loopWindow, loopCycles],
+  )
+  const marks = useMemo(
+    () => collectNoteMarks(readWindowEvents(), props.ir ?? null, loopWindow),
+    [props.ir, loopWindow, readWindowEvents],
+  )
   // #977 — test-only observation of the computed marks. Marks are canvas-drawn,
   // so a browser e2e can't read them from the DOM; this publishes a per-lane
   // onset summary + whether the marks are EVAL-backed (haps present) or the
@@ -680,7 +791,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       on = false
     }
     if (!on) return
-    const events = props.getTimelineEvents?.(loopCycles) ?? null
+    // The SAME read the memo above made, so the probe reports the marks the
+    // view actually drew rather than a differently-scoped second query.
+    const events = readWindowEvents()
     const byLane: Record<
       string,
       { count: number; onsets: number[]; pitches: Array<number | null> }
@@ -700,7 +813,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       laneCount: marks.marksByLane.size,
       byLane,
     }
-  }, [marks, loopCycles, props.getTimelineEvents])
+  }, [marks, readWindowEvents])
   // #871 — the lane order the user WROTE, read off the IR's track list. Lane
   // order is structure, and structure is IR-owned: the IR carries a Track node
   // per statement even when that track emits no static-IR events (a signal, a
@@ -729,7 +842,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // scene only ever wanted lanes and sections. The period travels separately
       // below precisely because the other shape that fits here, a windowed
       // analysis, has none to give.
-      analysis,
+      //
+      // #1201 — and that is exactly what arrives once the view pages: a
+      // `WindowAnalysis` drives the scene with no adapter. Only the SCENE
+      // follows the window; span, `looping` and the readout stay with the song.
+      windowActivity ?? analysis,
       // Origin and span as ONE value, which is the same object the axis and the
       // renderers are handed, so the view cannot tell them different stories.
       songWindow,
@@ -746,7 +863,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const { scene: ordered, order } = applyStableVoiceOrder(raw, voiceOrderRef.current)
     voiceOrderRef.current = order
     return ordered
-  }, [analysis, songWindow, marks, source, customColorByName, trackOrder])
+  }, [analysis, windowActivity, songWindow, marks, source, customColorByName, trackOrder])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind
@@ -1012,7 +1129,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (!clip || (clip.armIndex < 0 && !includeBare)) return null
       return { lane, clip }
     },
-    [displayCycles, dragAwareContentWidth],
+    // #1210 — `songWindow`, not `displayCycles`. Paging moves the window's
+    // ORIGIN and leaves its span alone, so keying on the span left this closure
+    // mapping x through a window anchored at cycle 0: at origin 256 a click on
+    // cycle 288 was read as 32, no clip contained it, and every clip gesture in
+    // a paged window silently did nothing. The window is memoised on origin +
+    // span, so naming it subsumes the span entry.
+    [songWindow, dragAwareContentWidth],
   )
 
   // The combinator's arms as time-spans, in arm order — gathered across ALL
@@ -1060,7 +1183,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       }
       return best ? { lane, clip: best } : null
     },
-    [onTrimClip, bareSong, displayCycles, dragAwareContentWidth],
+    // #1210 — see `clipBodyAt`: the ORIGIN is what paging moves, and this
+    // closure maps x through the window too.
+    [onTrimClip, bareSong, songWindow, dragAwareContentWidth],
   )
 
   // Apply an extend at a given clientX: map the cursor to a whole-cycle weight at
@@ -1281,7 +1406,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           ? 'grab'
           : ''
     },
-    [clipEdgeAt, clipBodyAt, armSpansNow, displayCycles, dragAwareContentWidth, applyTrim, extendAutoScrollTick, stopExtendAutoScroll, onMoveClip],
+    // #1210 — `songWindow`, not `displayCycles`: this handler maps the pointer
+    // through the window itself (the move-target highlight), so a paged origin
+    // has to re-create it.
+    [clipEdgeAt, clipBodyAt, armSpansNow, songWindow, dragAwareContentWidth, applyTrim, extendAutoScrollTick, stopExtendAutoScroll, onMoveClip],
   )
 
   const endTrimDrag = React.useCallback(
@@ -1510,12 +1638,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // without a word here the view would look stopped. Read from the SAME `looping`
   // and `songPos` the playhead uses, so the two cannot contradict each other.
   // Absolute position against the absolute end of the window, not against its width.
-  const beyondSpan = !looping && songPos != null && songPos >= songOriginCycles + loopCycles
-  const fallbackNotice = !looping
-    ? beyondSpan
-      ? `no repeat · playing past cycle ${Math.floor(loopCycles)}`
-      : `no repeat · showing first ${Math.floor(loopCycles)} cycles`
-    : null
+  const beyondSpan = !looping && isBeyondWindow(songPos, loopWindow)
+  const fallbackNotice = !looping ? windowNotice(loopWindow, beyondSpan) : null
 
   const zoomPercent = Math.round(zoom * 100)
 

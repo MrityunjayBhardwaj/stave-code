@@ -3,11 +3,11 @@ export type { IREvent, SourceLocation, IRPattern } from './ir'
 export { merge, transpose, timestretch, filter, scaleGain } from './ir'
 export type { PatternIR, PlayParams } from './ir'
 export { IR, toStrudel, patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './ir'
-export { structuralWalk, aggregateLaneItems } from './ir'
-export type { LaneSkeleton, LaneItem } from './ir'
+export { structuralWalk, aggregateLaneItems, wholeWalkWindow } from './ir'
+export type { LaneSkeleton, LaneItem, WalkWindow } from './ir'
 // Full-song analysis (#385)
 export { analyzeSong, analyzeEvents, accumulateLanes, cycleFingerprints, detectPeriod, computeSections, laneKeyOf, analyzeWindow, accumulateLanesInWindow, computeSectionsInWindow } from './ir'
-export type { SongAnalysis, DisplaySpan, LaneActivity, SongSection, AnalyzeSongOptions } from './ir'
+export type { SongAnalysis, DisplaySpan, LaneActivity, SongSection, AnalyzeSongOptions, WindowAnalysis, AnalyzeWindowOptions } from './ir'
 export { parseMini, parseStrudel, classifyLiteralRhs } from './ir'
 
 // Phase 19-07 (#79) — parser stage helpers. PK10 propagation: re-exported

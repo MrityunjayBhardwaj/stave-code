@@ -9,11 +9,16 @@
 import {
   aggregateLaneItems,
   structuralWalk,
+  wholeWalkWindow,
   type LaneItem,
+  type WalkWindow,
 } from '../../../../../editor/src/ir/structuralWalk'
 import type { IREvent } from '../../../../../editor/src/ir/IREvent'
 
-export { structuralWalk }
+// `wholeWalkWindow` is re-exported because production calls it (the bare-song
+// probe), and a barrel mock that omits it hands the component `undefined` —
+// which tsc cannot see, since a `vi.mock` factory is untyped.
+export { structuralWalk, wholeWalkWindow }
 
 /**
  * Reduce collect-style events to lane skeletons exactly as `structuralWalk` aggregates its own
@@ -23,7 +28,7 @@ export { structuralWalk }
  */
 export function skeletonsFromEvents(
   events: readonly Partial<IREvent>[],
-  nCycles: number,
+  window: WalkWindow,
 ): ReturnType<typeof aggregateLaneItems> {
   const items: LaneItem[] = events.map((ev) => ({
     laneKey: ev.trackId ?? ev.s ?? '$default',
@@ -34,5 +39,7 @@ export function skeletonsFromEvents(
     ...(ev.loc ? { loc: ev.loc } : {}),
     labelValue: ev.s ?? (ev.note != null ? String(ev.note) : undefined),
   }))
-  return aggregateLaneItems(items, nCycles)
+  // The window travels straight through — a mock that dropped it would report
+  // the same skeletons at every origin, which is the defect #1209 fixed.
+  return aggregateLaneItems(items, window)
 }

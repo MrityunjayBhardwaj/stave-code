@@ -29,10 +29,15 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('@stave/editor', async () => ({
   collectCycles: () => [],
   structuralWalk: (await import('./structuralWalkTestStub')).structuralWalk,
+  // Production calls this (the whole-song anchor pass); a barrel mock that omits
+  // it hands `undefined` to a call site tsc cannot check, because a vi.mock
+  // factory is untyped.
+  wholeWalkWindow: (await import('./structuralWalkTestStub')).wholeWalkWindow,
   laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 
 import { collectNoteMarks } from '../timelineMarks'
+import { wholeSongWindow } from '../songAxis'
 import { IR, type PatternIR } from '../../../../../editor/src/ir/PatternIR'
 import {
   runRawStage,
@@ -72,7 +77,7 @@ describe('stack-arm mark attribution (#950)', () => {
       typeof collectNoteMarks
     >[0]
 
-    const marks = collectNoteMarks(haps, pipeline('$: s("bd, cp")'), 4)
+    const marks = collectNoteMarks(haps, pipeline('$: s("bd, cp")'), wholeSongWindow(4))
 
     expect(marks.marksByLane.get('d1')).toHaveLength(1)
     expect(marks.marksByLane.get('d2')).toHaveLength(1)
@@ -84,7 +89,7 @@ describe('stack-arm mark attribution (#950)', () => {
     // Anchor seeding only runs on the EVAL path (it exists to place located
     // haps), so this needs at least one hap to exercise it.
     const haps = [hapAt(6, 'C3')] as unknown as Parameters<typeof collectNoteMarks>[0]
-    const marks = collectNoteMarks(haps, pipeline('$: s("bd, cp")'), 4)
+    const marks = collectNoteMarks(haps, pipeline('$: s("bd, cp")'), wholeSongWindow(4))
     expect([...marks.labelOffsetByLane]).toEqual([
       ['d1', 6],
       ['d2', 10],
@@ -100,7 +105,7 @@ describe('stack-arm mark attribution (#950)', () => {
       typeof collectNoteMarks
     >[0]
 
-    const marks = collectNoteMarks(haps, pipeline('$: s("bd*2, ~ sd, hh*4")'), 4)
+    const marks = collectNoteMarks(haps, pipeline('$: s("bd*2, ~ sd, hh*4")'), wholeSongWindow(4))
 
     expect(marks.marksByLane.get('d1')).toHaveLength(1)
     expect(marks.marksByLane.get('d2')).toHaveLength(1)
@@ -109,7 +114,7 @@ describe('stack-arm mark attribution (#950)', () => {
 
   it('renders the bracketed and comma spellings identically (they are one pattern)', () => {
     const haps = [hapAt(7, 'C3')] as unknown as Parameters<typeof collectNoteMarks>[0]
-    const bracketed = collectNoteMarks(haps, pipeline('$: s("[bd,cp]")'), 4)
+    const bracketed = collectNoteMarks(haps, pipeline('$: s("[bd,cp]")'), wholeSongWindow(4))
     // Same arm count, each separately anchored — only the offsets differ by the
     // bracket character.
     expect([...bracketed.labelOffsetByLane]).toEqual([
