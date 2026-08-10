@@ -4,6 +4,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
 import { promptAndCreateFile } from "../lib/newFile";
 import { BackdropPopover } from "./BackdropPopover";
+import {
+  TIMELINE_EVAL_WAIT_MS,
+  publishSnapshotAfterBoundedEval,
+} from "./timelineSnapshotRefresh";
 import { PopoutPreviewController } from "./PopoutPreviewController";
 import { registerVizWorker } from "../visualizers/registerVizWorker";
 import {
@@ -135,60 +139,6 @@ const TIMELINE_VISIBILITY_POLL_MS = 500;
 // the Song timeline / IR Inspector track the source as the user types without
 // thrashing analyzeSong on every keystroke. ~one comfortable typing pause.
 const SNAPSHOT_REFRESH_DEBOUNCE_MS = 300;
-
-/**
- * #1193 — how long the snapshot publish will wait for the eval-on-load in
- * front of it before going ahead without eval haps.
- *
- * WHY THERE IS A CEILING AT ALL. `refreshTimelineMarks` awaits
- * `evaluateForTimeline()` and then publishes, and its own docblock calls that
- * publish UNCONDITIONAL — which it was not: a statement sequenced after an
- * unbounded await is conditional on that await returning. When the engine's
- * evaluate hung, the publish never ran, so no IR ever reached the Song view and
- * it sat reading "No song to map yet — press play." about a loaded document,
- * permanently and with nothing logged. Measured directly: three refreshes
- * entered, zero publishes, no early return and no throw.
- *
- * BOTH BOUNDS, because a ceiling that only satisfies one is how the last one
- * had to be corrected. BELOW: the healthy case must never reach this ceiling,
- * or the ordering #977 wants (eval haps populated BEFORE the publish) would be
- * quietly dropped on working machines. What is MEASURED is the whole path a
- * spec waits on — 44 trials, page load to lanes drawn, p50 54ms and max 59ms
- * with no tail; the eval sits inside that, so it is an upper bound on the eval
- * and this ceiling is ~85x it. The often-quoted "~2.5s cold eval" is from
- * #394's docblock and was NOT re-measured here — it is not what the number
- * rests on. ABOVE: every consumer of the drawn lanes allows 10s, so publishing
- * at worst 5s in leaves a full 5s of margin rather than trading one deadline
- * for another.
- */
-const TIMELINE_EVAL_WAIT_MS = 5_000;
-
-/**
- * Await `p`, but never longer than `ms`. Resolves either way — the caller is
- * choosing to proceed without the result, not to learn whether it arrived.
- * The underlying promise is left running; nothing here cancels it.
- */
-function raceWithDeadline(p: Promise<unknown>, ms: number): Promise<void> {
-  return new Promise<void>((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      resolve();
-    };
-    const timer = setTimeout(finish, ms);
-    void p.then(
-      () => {
-        clearTimeout(timer);
-        finish();
-      },
-      () => {
-        clearTimeout(timer);
-        finish();
-      },
-    );
-  });
-}
 
 /**
  * Parse the file's current source into IR and publish an IRSnapshot for the
@@ -945,21 +895,29 @@ export default function StrudelEditorClient({
   // stopped-gated and serialized with play(), so a Play pressed mid-refresh is
   // race-safe. The snapshot publish is UNCONDITIONAL: it drives both the
   // timeline re-query and the IR inspector, which want it regardless of eval.
+  // ⚠ That sentence used to be a claim only — the publish sat after an
+  // unbounded await, so a hung evaluate silently cancelled it (#1193). It is
+  // now enforced by the helper below rather than asserted here.
   const refreshTimelineMarks = useCallback(async (fid: string) => {
     const rt = runtimesRef.current.get(fid);
     const st = runtimeStatesRef.current.get(fid);
-    if (rt && !st?.isPlaying && isSongTimelineVisible()) {
-      // #1193 — bounded, so the publish below is unconditional in fact and not
-      // only in its docblock. A hung evaluate costs eval-backed marks; it must
-      // not cost the snapshot, because the snapshot is what carries the IR that
-      // every lane, clip and section is drawn from.
-      await raceWithDeadline(rt.evaluateForTimeline(), TIMELINE_EVAL_WAIT_MS);
-    }
-    captureAndPublishSnapshot(
-      fid,
-      runtimesRef.current.get(fid)?.getCurrentCycle?.() ?? null,
-      rt ?? null,
-    );
+    // #1193/#1221 — the wait-then-publish ORDERING lives in one tested unit
+    // (`publishSnapshotAfterBoundedEval`), because that ordering is what broke
+    // and inline here nothing could reach it. What is decided here is only
+    // WHETHER an eval is wanted; the publish is the helper's to sequence, and
+    // it runs on every path including a hung one.
+    const evalRuntime =
+      rt && !st?.isPlaying && isSongTimelineVisible() ? rt : null;
+    await publishSnapshotAfterBoundedEval({
+      evaluate: evalRuntime ? () => evalRuntime.evaluateForTimeline() : null,
+      publish: () =>
+        captureAndPublishSnapshot(
+          fid,
+          runtimesRef.current.get(fid)?.getCurrentCycle?.() ?? null,
+          rt ?? null,
+        ),
+      waitMs: TIMELINE_EVAL_WAIT_MS,
+    });
   }, []);
 
   // #457 — keep the Song timeline + IR Inspector snapshot in sync with the
