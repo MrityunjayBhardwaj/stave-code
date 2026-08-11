@@ -21,6 +21,13 @@ export type DialogState =
       title: string;
       description?: string;
       confirmLabel?: string;
+      /**
+       * Label for the dismissing button. Defaults to "Cancel", which is right
+       * for a confirm that UNDOES something and wrong for one that offers a
+       * choice between two ways forward — "Continue without audio" is not a
+       * cancellation of anything (#1218).
+       */
+      cancelLabel?: string;
       danger?: boolean;
       resolve: (value: boolean) => void;
     };
@@ -109,6 +116,7 @@ export function showConfirm(opts: {
   title: string;
   description?: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   danger?: boolean;
 }): Promise<boolean> {
   return new Promise((resolve) => {
@@ -118,6 +126,7 @@ export function showConfirm(opts: {
       title: opts.title,
       description: opts.description,
       confirmLabel: opts.confirmLabel ?? "OK",
+      cancelLabel: opts.cancelLabel,
       danger: opts.danger,
       resolve,
     };

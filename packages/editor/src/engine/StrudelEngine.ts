@@ -204,6 +204,50 @@ function openBudget(totalMs: number): () => number {
 }
 
 /**
+ * A required boot step that did not complete. The engine cannot start.
+ *
+ * ⚠ THE STEP KNOWS WHICH STEP IT WAS; THE CATCHER DOES NOT — and until #1218
+ * the only way to recover that upstream was to match the message text, which
+ * is a second copy of a rule that lives here and drifts the first time the
+ * wording is improved. The label and the deadline now ride on the error as
+ * DATA, so a caller can decide what to show without re-deriving anything.
+ */
+export interface BootStepFailure extends Error {
+  /** the step's own label — `@strudel/transpiler`, `evalScope`, `initAudio` */
+  readonly bootStep: string
+  /** the ceiling it was given, or 0 when the budget was already spent */
+  readonly bootStepDeadlineMs: number
+}
+
+/**
+ * Is this a required-boot-step failure?
+ *
+ * ⚠ BRANDED, NOT `instanceof` — deliberately. This package ships ESM and CJS,
+ * and a page that ends up holding both copies gets two of every class, so an
+ * `instanceof` check would answer `false` for a perfectly real failure and the
+ * app would silently fall back to the generic error path. An own-property brand
+ * survives duplicate module instances, which is the failure this codebase has
+ * already been bitten by once.
+ */
+export function isBootStepFailure(err: unknown): err is BootStepFailure {
+  return (
+    err instanceof Error &&
+    typeof (err as Partial<BootStepFailure>).bootStep === 'string'
+  )
+}
+
+/** Attach the brand to whatever a step threw, without replacing the error. */
+function asBootStepFailure(err: unknown, step: string, deadlineMs: number): BootStepFailure {
+  const e = (err instanceof Error ? err : new Error(String(err))) as Error & {
+    bootStep: string
+    bootStepDeadlineMs: number
+  }
+  e.bootStep = step
+  e.bootStepDeadlineMs = deadlineMs
+  return e
+}
+
+/**
  * Run one REQUIRED boot step under the init budget, and reject if it stalls.
  *
  * The warning is emitted here, before the throw, deliberately: whoever catches
@@ -216,10 +260,22 @@ function createRequiredStep(
 ): <T>(label: string, fn: () => Promise<T>) => Promise<T> {
   return async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
     const deadlineMs = Math.min(REQUIRED_STEP_MS, initRemaining())
-    const fail = (why: string): Error =>
-      new Error(
-        `[StrudelEngine] boot step "${label}" ${why}. This is usually a network, proxy or ` +
-          `service-worker problem rather than a code fault — evaluating again starts a fresh attempt.`,
+    // ⚠ THE CLOSING CLAUSE USED TO SAY "evaluating again starts a fresh
+    // attempt", and #1218 measured that to be FALSE for the case that
+    // dominates here. `init()` does clear its memo on rejection, so a retry
+    // genuinely re-enters — and a stalled module import still cannot succeed,
+    // because the module registry hands back the same dead pending request and
+    // issues no second fetch. The old sentence told the user to do the one
+    // thing that cannot work; this one names what actually recovers.
+    const fail = (why: string): BootStepFailure =>
+      asBootStepFailure(
+        new Error(
+          `[StrudelEngine] boot step "${label}" ${why}. This is usually a network, proxy or ` +
+            `service-worker problem rather than a code fault. A stalled load cannot be retried ` +
+            `in place — reload the page to start over.`,
+        ),
+        label,
+        Math.max(0, deadlineMs),
       )
 
     if (deadlineMs <= 0) {
@@ -241,7 +297,11 @@ function createRequiredStep(
         `[StrudelEngine] boot step "${label}" failed; the engine cannot start without it.`,
         err,
       )
-      throw err
+      // Branded on the way out, not only on the deadline path: a step that
+      // REJECTS on its own (a 404 chunk, a transpiler that throws) is just as
+      // fatal to boot as one that never answers, and the caller deciding what
+      // to show must not have to tell those two apart.
+      throw asBootStepFailure(err, label, Math.max(0, deadlineMs))
     } finally {
       clearTimeout(timer)
     }

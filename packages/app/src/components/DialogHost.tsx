@@ -75,7 +75,9 @@ function DialogBody({ dialog }: { dialog: DialogState }) {
           />
         )}
         <div style={styles.actions}>
-          <button style={styles.cancel} onClick={cancel}>Cancel</button>
+          <button style={styles.cancel} onClick={cancel}>
+            {(dialog.kind === "confirm" && dialog.cancelLabel) || "Cancel"}
+          </button>
           <button
             style={
               dialog.kind === "confirm" && dialog.danger

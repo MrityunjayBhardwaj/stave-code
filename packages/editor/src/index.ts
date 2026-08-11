@@ -28,6 +28,10 @@ export type { LiveCodingEditorProps } from './LiveCodingEditor'
 
 // Engine
 export { StrudelEngine } from './engine/StrudelEngine'
+// A required boot step that failed, and the branded predicate for it — the app
+// needs both to tell "the engine cannot start" apart from every other runtime
+// error and offer the reload that is the only thing that recovers it (#1218).
+export { isBootStepFailure, type BootStepFailure } from './engine/StrudelEngine'
 export { DemoEngine } from './engine/DemoEngine'
 export { SonicPiEngine } from './engine/sonicpi'
 export type { LiveCodingEngine, EngineComponents, IRComponent } from './engine/LiveCodingEngine'

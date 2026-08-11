@@ -235,7 +235,7 @@ vi.mock('@strudel/transpiler', () => ({
 // Import the module under test (after mocks are set up)
 // ---------------------------------------------------------------------------
 
-import { StrudelEngine } from './StrudelEngine'
+import { StrudelEngine, isBootStepFailure, type BootStepFailure } from './StrudelEngine'
 import type { LiveCodingEngine } from './LiveCodingEngine'
 import { Pattern } from '@strudel/core'
 
@@ -783,6 +783,42 @@ describe('StrudelEngine.init() guard (#815)', () => {
 
     await expect(engine.init()).resolves.toBeUndefined()
     expect(vi.mocked(webaudioRepl)).toHaveBeenCalledTimes(1)
+    engine.dispose()
+  })
+
+  /**
+   * #1218 — a failed REQUIRED step arrives branded, carrying which step it was.
+   *
+   * The app has to tell "the engine cannot start" apart from every other
+   * runtime error to decide whether to offer a reload, and the only other way
+   * to do that is to match the message text — a second copy of a rule that
+   * lives in `createRequiredStep`, which drifts the first time the wording is
+   * improved. This arm is what makes the brand a contract rather than a detail:
+   * it drives the real producer, so a rename here reddens instead of silently
+   * dropping the app back to the generic error path.
+   */
+  it('a failed required step is branded with the step that failed (#1218)', async () => {
+    // Reached through a cast rather than the destructure the test above uses:
+    // that spelling carries a known `evalScope does not exist on type` error
+    // (#1204's 63-error baseline), and that count is being used as a control
+    // elsewhere — a new arm should not quietly add to it.
+    const core = (await import('@strudel/core')) as unknown as {
+      evalScope: { mockRejectedValueOnce: (e: Error) => void }
+    }
+    const engine = new StrudelEngine()
+    core.evalScope.mockRejectedValueOnce(new Error('init blew up'))
+
+    const err: unknown = await engine.init().then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(isBootStepFailure(err)).toBe(true)
+    expect((err as BootStepFailure).bootStep).toBe('evalScope')
+    // the underlying error is annotated, never replaced — the cause survives
+    expect((err as Error).message).toBe('init blew up')
+    // and an ordinary failure is NOT a boot-step failure, or the app would
+    // offer a reload for a typo in the user's pattern
+    expect(isBootStepFailure(new Error('reference error'))).toBe(false)
     engine.dispose()
   })
 })
