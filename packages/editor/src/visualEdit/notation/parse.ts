@@ -2310,6 +2310,19 @@ function leafExpected(
  * cost is paid on the derived path alone and never for a pattern the syntactic core
  * answers (783 of the 958 corpus units that open a grid).
  *
+ * WHAT THAT COSTS, measured rather than asserted — the claim above is about WHERE the
+ * cost lands and says nothing about its size, which is the half a reader will assume:
+ *
+ *     path          without overlay   with overlay
+ *     core-opened        62.3us           60.4us     unchanged (noise)
+ *     derived           2396us           3816us      +59%
+ *
+ * A second full projection of the same mini is most of it. The core path is untouched,
+ * which is the property this placement was chosen for, and the derived path was already
+ * the expensive one — but +59% of 2.4ms is a real number and belongs beside the claim
+ * rather than in a commit message. Memoising the projection per mini is the obvious
+ * lever if it ever matters; it is not taken here because nothing has shown it does.
+ *
  * ⚠ ATTACHED AT EVERY SCALE, AND USABLE ONLY AT THE DOCUMENT'S — which is one fact,
  * not two, because the spans index the document's own bytes and carry one entry per
  * DOCUMENT column. At a refined width `anchorsDescribe` refuses them and the element
