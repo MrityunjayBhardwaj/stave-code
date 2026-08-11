@@ -592,6 +592,29 @@ export function collapsePianoRollToDocument(model: PianoRollModel): PianoRollMod
  * ever changes, a stale `leafSource` would splice at refined spans, so the two must
  * move together.
  *
+ * ⚠ `surgical` IS REACHABLE HERE WITH A `viewScale`, AND IT IS THE FIRST THING THAT EVER
+ * WAS (#1010 P4d). The paragraph above was written when leaf spans and the leaf VIEW were
+ * the same field, so "cannot carry a scale" followed from the projection. `surgical`
+ * separates them: it overlays leaf spans on a view the element writer owns, and that view
+ * refines normally, so a refined model now arrives here carrying spans indexed to the
+ * DOCUMENT's columns.
+ *
+ * It is deliberately NOT scaled by the halves below, and that is the safe direction rather
+ * than an omission. The spans index source BYTES and hold one entry per document column,
+ * so there is nothing in them a refine could have multiplied — scaling them is what would
+ * make them wrong. What decides whether they may be used is `anchorsDescribe`
+ * (`serialize.ts`), which requires the anchored width to still describe the model: at the
+ * refined width it does not, so the write refuses and the element writer answers exactly
+ * as before; after this collapse the model is back at the document's own width and the
+ * spans fit again. That is also what makes an edit spell the same whether or not the user
+ * zoomed — attaching the overlay only at the unrefined scale broke that equivalence on
+ * five corpus units before this was understood.
+ *
+ * So the invariant to keep is the WIDTH GUARD, not the absence of the field. If
+ * `anchorsDescribe` is ever weakened to something that does not pin the layout, this
+ * carrier starts splicing at refined spans — the failure the paragraph above predicts,
+ * arriving through the field it does not name.
+ *
  * THE ONE ASSUMPTION LEFT, stated because it is silent if wrong: every quantity here
  * divides by `k` exactly, because the refine is what multiplied them. A source that
  * did not come from this refine would yield a fractional `div` — which the writer's
