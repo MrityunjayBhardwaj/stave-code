@@ -26228,7 +26228,12 @@ function ifRollSpellable(input, next) {
 }
 __name(ifRollSpellable, "ifRollSpellable");
 function serializeStepGridWithExtent(model) {
-  if (model.leafSource) return { mini: spliceByLeaf(model), extent: { path: "leaf" } };
+  const spans = model.leafSource ?? model.surgical;
+  if (spans) {
+    const surgical = spliceByLeaf(model, spans);
+    if (surgical !== null) return { mini: surgical, extent: { path: "leaf" } };
+    if (model.leafSource) return { mini: null, extent: { path: "leaf" } };
+  }
   if (altSourceFits(model.altSource, model.steps))
     return { mini: spliceAltGrid(model), extent: { path: "alt" } };
   const spliced = spliceGrid(model);
@@ -26358,8 +26363,7 @@ function serializeByLeaf(src, edits) {
   return out;
 }
 __name(serializeByLeaf, "serializeByLeaf");
-function spliceByLeaf(model) {
-  const ls = model.leafSource;
+function spliceByLeaf(model, ls) {
   if (!ls || !anchorsDescribe(model, ls.cols.length)) return null;
   const now2 = columnAtoms(model.lanes, model.steps);
   const want = /* @__PURE__ */ new Map();
@@ -28057,6 +28061,13 @@ function leafExpected(cols, perBar2, bars, span, text) {
   return out;
 }
 __name(leafExpected, "leafExpected");
+function withSurgery(mini, r) {
+  if (!r.ok) return r;
+  const leaf = projectStepGridByLeaf(mini);
+  if (!leaf.ok) return r;
+  return { ok: true, model: { ...r.model, surgical: leaf.model.leafSource } };
+}
+__name(withSurgery, "withSurgery");
 function vacuousLocality(a) {
   if (!a || a.bars <= 1 || a.regions.length !== 1) return false;
   return a.regions[0].from === 0 && a.regions[0].to === a.perBar;
@@ -28069,7 +28080,7 @@ function projectStepGridDerived(mini, fallbackReason, viewScale = UNREFINED) {
     const scaled = projectStepGrid(mini, viewScale);
     return scaled.ok ? scaled : refused("grid", fallbackReason, scaled.gate);
   }, "asOwner");
-  if (owner.ok && !vacuousLocality(owner.model.altSource)) return asOwner(owner);
+  if (owner.ok && !vacuousLocality(owner.model.altSource)) return withSurgery(mini, asOwner(owner));
   const leaf = projectStepGridByLeaf(mini);
   if (leaf.ok) return leaf;
   if (owner.ok) return asOwner(owner);

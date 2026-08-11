@@ -13,6 +13,7 @@ import type {
   AltSource,
   GainWrite,
   GridCells,
+  LeafSource,
   LeafSpan,
   NotationSource,
   PianoRollModel,
@@ -168,7 +169,32 @@ export function serializeStepGridWithExtent(model: StepGridModel): {
   // spell, so a rebuild would destroy the pattern the projection opened. An edit
   // it can't express as a byte replacement returns null — the binding layer then
   // leaves the document (and the model) untouched.
-  if (model.leafSource) return { mini: spliceByLeaf(model), extent: { path: 'leaf' } }
+  // BYTE SURGERY FIRST, WHEREVER SPANS EXIST (#1010 P4d). Two fields reach it and
+  // they differ in what a REFUSAL means, which is the whole of the safety argument:
+  //
+  //   `leafSource`  — the leaf projection OWNS this view. Terminal: an edit it cannot
+  //                   express is refused and the document is left alone, because the
+  //                   re-emit is precisely what would destroy the notation this view
+  //                   was opened to preserve. Falling back here would hand the re-emit
+  //                   the 275 shared-leaf deletes #1160 declines, and would answer
+  //                   `amen/4`'s only cell with `<~ ~ ~ ~>` — the case `vacuousLocality`
+  //                   exists to route around.
+  //   `surgical`    — the ELEMENT writer owns this view and these spans are overlaid on
+  //                   it. A refusal falls through to the element paths below, which is
+  //                   exactly what this model did before P4d, so the fallback can only
+  //                   restore today's behaviour and never introduce a write.
+  //
+  // ⚠ A STALE OVERLAY CANNOT MIS-WRITE. `anchorsDescribe` requires the anchored width
+  // to still describe the model before either leaf writer may write, so an overlay that
+  // no longer fits (a restructure moved the layout, or the element projection drew a
+  // different column count) REFUSES and the element writer answers. The guard predates
+  // this and is the same one both leaf writers already call (#916, #990).
+  const spans = model.leafSource ?? model.surgical
+  if (spans) {
+    const surgical = spliceByLeaf(model, spans)
+    if (surgical !== null) return { mini: surgical, extent: { path: 'leaf' } }
+    if (model.leafSource) return { mini: null, extent: { path: 'leaf' } }
+  }
 
   // A `<...>`-as-element pattern (`bd <sd hh>`, #920) uses its own span surgery
   // and NEVER the rebuilds below — a rebuild would reshape it into the
@@ -592,8 +618,7 @@ export function serializeByLeaf(
  * other four fifths would mean re-authoring a construct the token merely sits inside.
  * The refusal is the cheaper honesty. See #1160 for the full measurement.
  */
-function spliceByLeaf(model: StepGridModel): string | null {
-  const ls = model.leafSource
+function spliceByLeaf(model: StepGridModel, ls: LeafSource | undefined): string | null {
   if (!ls || !anchorsDescribe(model, ls.cols.length)) return null
   const now = columnAtoms(model.lanes, model.steps)
   const want = new Map<string, { span: LeafSpan; text: string }>()

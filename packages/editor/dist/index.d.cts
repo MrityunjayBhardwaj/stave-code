@@ -8546,6 +8546,35 @@ interface StepGridModel {
      * edit it cannot express as a byte replacement is refused instead.
      */
     leafSource?: LeafSource;
+    /**
+     * The same leaf spans, overlaid on a view the ELEMENT writer owns (#1010 P4d) —
+     * a write channel, never a projection.
+     *
+     * `leafSource` above answers two questions at once: which writer owns the view,
+     * and where that writer's spans are. Those are different questions, and binding
+     * them is what made P4d a routing problem. Routing is decided once per model;
+     * both writers answer per EDIT. So a per-model choice between them is silently
+     * wrong for half the gestures either way — measured, the leaf-first form buys 17
+     * more faithful documents and costs 1,763 placements and the finer view on the
+     * same views, because a leaf-anchored view takes a new note only where a rest was
+     * indexed (#1154) and has no span to subdivide for a refine (#1058).
+     *
+     * This field asks only the second question. The view stays the element
+     * projection — its columns, its placements, its view scale are untouched — and
+     * the writer tries byte surgery at the note's own span FIRST, falling back to the
+     * element re-emit for any edit surgery cannot express. Nothing restates the leaf
+     * writer's refusal rule anywhere; it is simply asked.
+     *
+     * ⚠ NOT INTERCHANGEABLE WITH `leafSource`, and the asymmetry is the safety
+     * property. A leaf-PROJECTED view is terminal: an edit it cannot express is
+     * REFUSED, because the re-emit is exactly what would destroy the notation that
+     * view was opened to preserve (`amen/4` clearing its only cell comes back as
+     * `<~ ~ ~ ~>`, and the 275 shared-leaf deletes #1160 declines would start being
+     * written by the other writer). Falling back is permitted only here, where the
+     * element writer was already the incumbent and the fallback restores exactly
+     * today's behaviour.
+     */
+    surgical?: LeafSource;
     /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
     bars?: number;
     /**

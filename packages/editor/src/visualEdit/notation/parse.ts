@@ -2284,6 +2284,62 @@ function leafExpected(
  * costs the roll a unit of committed writer-reach, while the 13 grid units the
  * element writer would otherwise claim move across with no verdict changing.
  */
+/**
+ * Overlay the leaf spans onto a view the ELEMENT writer owns, so a delete can be
+ * written as byte surgery while everything the view IS stays the element projection
+ * (#1010 P4d).
+ *
+ * The view is not touched — same columns, same lanes, same placements, same view
+ * scale — so this cannot change what the panel offers. It only gives the writer a
+ * second, better way to answer, and `serializeStepGridWithExtent` falls back to the
+ * element paths for any edit surgery cannot express (`serialize.ts`, where the
+ * asymmetry between this field and `leafSource` is stated).
+ *
+ * ⚠ WHY THIS IS NOT THE ROUTING CHANGE P4d WAS FILED AS. Handing these views to the
+ * leaf PROJECTION was measured over the corpus and it is a real trade in both
+ * directions: 17 documents come back strictly more faithful, and the same views lose
+ * 1,763 placements (a leaf view takes a new note only where a rest was indexed, #1154)
+ * and the finer view (the leaf path has no span to subdivide, #1058). Both halves
+ * follow from deciding ONCE PER MODEL what both writers answer PER EDIT. Overlaying
+ * asks per edit and gives up neither half.
+ *
+ * ⚠ AND IT MUST NOT BE APPLIED WHERE THE LEAF PROJECTION ALREADY OWNS THE VIEW. There
+ * a refusal is the promise — see `serializeStepGridWithExtent`.
+ *
+ * Asked only where the element writer already owns the view, so the leaf projection's
+ * cost is paid on the derived path alone and never for a pattern the syntactic core
+ * answers (783 of the 958 corpus units that open a grid).
+ *
+ * WHAT THAT COSTS, measured rather than asserted — the claim above is about WHERE the
+ * cost lands and says nothing about its size, which is the half a reader will assume:
+ *
+ *     path          without overlay   with overlay
+ *     core-opened        62.3us           60.4us     unchanged (noise)
+ *     derived           2396us           3816us      +59%
+ *
+ * A second full projection of the same mini is most of it. The core path is untouched,
+ * which is the property this placement was chosen for, and the derived path was already
+ * the expensive one — but +59% of 2.4ms is a real number and belongs beside the claim
+ * rather than in a commit message. Memoising the projection per mini is the obvious
+ * lever if it ever matters; it is not taken here because nothing has shown it does.
+ *
+ * ⚠ ATTACHED AT EVERY SCALE, AND USABLE ONLY AT THE DOCUMENT'S — which is one fact,
+ * not two, because the spans index the document's own bytes and carry one entry per
+ * DOCUMENT column. At a refined width `anchorsDescribe` refuses them and the element
+ * writer answers, exactly as today. After `collapseStepGridToDocument` the model is
+ * back at that width and they fit again, which is what makes the same edit spell the
+ * same whether or not the user zoomed (#1121). Attaching only at the unrefined scale
+ * broke that: five units wrote surgically when edited plainly and re-emitted when
+ * edited through a ×2 view. Nothing here decides when the spans apply — the width
+ * guard both leaf writers already call does.
+ */
+function withSurgery(mini: string, r: ParseResult<StepGridModel>): ParseResult<StepGridModel> {
+  if (!r.ok) return r
+  const leaf = projectStepGridByLeaf(mini)
+  if (!leaf.ok) return r
+  return { ok: true, model: { ...r.model, surgical: leaf.model.leafSource } }
+}
+
 function vacuousLocality(a: AltSource<unknown> | undefined): boolean {
   if (!a || a.bars <= 1 || a.regions.length !== 1) return false
   return a.regions[0].from === 0 && a.regions[0].to === a.perBar
@@ -2337,7 +2393,7 @@ export function projectStepGridDerived(
     const scaled = projectStepGrid(mini, viewScale)
     return scaled.ok ? scaled : refused('grid', fallbackReason, scaled.gate)
   }
-  if (owner.ok && !vacuousLocality(owner.model.altSource)) return asOwner(owner)
+  if (owner.ok && !vacuousLocality(owner.model.altSource)) return withSurgery(mini, asOwner(owner))
   const leaf = projectStepGridByLeaf(mini)
   if (leaf.ok) return leaf
   if (owner.ok) return asOwner(owner)
