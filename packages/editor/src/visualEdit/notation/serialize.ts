@@ -18,6 +18,7 @@ import type {
   NotationSource,
   PianoRollModel,
   RollLeafAnchor,
+  RollLeafSource,
   RollNote,
   StepGridModel,
   StepLane,
@@ -731,8 +732,7 @@ function spliceByLeaf(model: StepGridModel, ls: LeafSource | undefined): string 
  * its own bytes and the document returns byte-unchanged while reporting success. The
  * set is right for telling chord members apart and cannot represent two of one pitch.
  */
-function spliceRollByLeaf(model: PianoRollModel): string | null {
-  const ls = model.leafSource
+function spliceRollByLeaf(model: PianoRollModel, ls: RollLeafSource | undefined): string | null {
   if (!ls || !anchorsDescribe(model, ls.steps)) return null
   // group the anchors by the column they start on — a chord contributes several here,
   // each with its own disjoint leaf
@@ -1279,11 +1279,32 @@ export function serializePianoRollWithExtent(model: PianoRollModel): {
   mini: string | null
   extent: RollWriteExtent
 } {
-  // A leaf-anchored roll (#986 P1b) is TERMINAL — it edits the user's own bytes and
-  // never falls through to a rebuild, because a rebuild is exactly what would respell
-  // the notation it was opened to preserve. It returns null for an edit it cannot
-  // express as a byte replacement, and then the document is left alone.
-  if (model.leafSource) return { mini: spliceRollByLeaf(model), extent: { path: 'leaf' } }
+  // BYTE SURGERY FIRST, WHEREVER SPANS EXIST (#1010 P4e) — the roll's half of the
+  // grid's overlay, and the same two fields reach it, differing in what a REFUSAL
+  // means. That difference is the whole of the safety argument:
+  //
+  //   `leafSource`  — the leaf projection OWNS this view. TERMINAL: an edit it cannot
+  //                   express is refused and the document is left alone, because the
+  //                   rebuild is precisely what would respell the notation this view
+  //                   was opened to preserve. Falling back here would hand the re-emit
+  //                   the shared-leaf deletes #1160 declines — 288 of 577 on this
+  //                   surface, half of it, not an edge case.
+  //   `surgical`    — the ELEMENT writer owns this view and these spans are overlaid on
+  //                   it. A refusal falls through to the element paths below, which is
+  //                   exactly what this model did before P4e, so the fallback can only
+  //                   restore today's behaviour and never introduce a write.
+  //
+  // ⚠ A STALE OVERLAY CANNOT MIS-WRITE. `anchorsDescribe` requires the anchored width
+  // to still describe the model before either leaf writer may write, so an overlay that
+  // no longer fits (a restructure moved the layout, or the element projection drew a
+  // different column count) REFUSES and the element writer answers. The guard predates
+  // this and is the one both leaf writers already called (#989, #990).
+  const spans = model.leafSource ?? model.surgical
+  if (spans) {
+    const surgical = spliceRollByLeaf(model, spans)
+    if (surgical !== null) return { mini: surgical, extent: { path: 'leaf' } }
+    if (model.leafSource) return { mini: null, extent: { path: 'leaf' } }
+  }
 
   // A `<...>`-as-element pattern (`0 <2 3> 5`, #920) uses its own span surgery and
   // NEVER the rebuilds below — a rebuild would reshape it into the whole-cycle

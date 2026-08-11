@@ -26425,8 +26425,7 @@ function spliceByLeaf(model, ls) {
   return serializeByLeaf(ls.src, edits);
 }
 __name(spliceByLeaf, "spliceByLeaf");
-function spliceRollByLeaf(model) {
-  const ls = model.leafSource;
+function spliceRollByLeaf(model, ls) {
   if (!ls || !anchorsDescribe(model, ls.steps)) return null;
   const byStart = /* @__PURE__ */ new Map();
   for (const a of ls.anchors) {
@@ -26675,7 +26674,12 @@ function buildGroups(model) {
 }
 __name(buildGroups, "buildGroups");
 function serializePianoRollWithExtent(model) {
-  if (model.leafSource) return { mini: spliceRollByLeaf(model), extent: { path: "leaf" } };
+  const spans = model.leafSource ?? model.surgical;
+  if (spans) {
+    const surgical = spliceRollByLeaf(model, spans);
+    if (surgical !== null) return { mini: surgical, extent: { path: "leaf" } };
+    if (model.leafSource) return { mini: null, extent: { path: "leaf" } };
+  }
   if (altSourceFits(model.altSource, model.steps))
     return { mini: spliceAltRoll(model), extent: { path: "alt" } };
   const spliced = spliceRoll(model);
@@ -28756,6 +28760,13 @@ function leafRollViewUsable(model) {
   return false;
 }
 __name(leafRollViewUsable, "leafRollViewUsable");
+function withRollSurgery(mini, r) {
+  if (!r.ok) return r;
+  const leaf = projectPianoRollByLeaf(mini);
+  if (!leaf.ok) return r;
+  return { ok: true, model: { ...r.model, surgical: leaf.model.leafSource } };
+}
+__name(withRollSurgery, "withRollSurgery");
 function projectPianoRollDerived(mini, fallbackReason, viewScale = UNREFINED) {
   const owner = projectPianoRoll(mini);
   const asOwner = /* @__PURE__ */ __name((ok) => {
@@ -28763,7 +28774,7 @@ function projectPianoRollDerived(mini, fallbackReason, viewScale = UNREFINED) {
     const scaled = projectPianoRoll(mini, viewScale);
     return scaled.ok ? scaled : refused("roll", fallbackReason, scaled.gate);
   }, "asOwner");
-  if (owner.ok) return asOwner(owner);
+  if (owner.ok) return withRollSurgery(mini, asOwner(owner));
   const leaf = projectPianoRollByLeaf(mini);
   if (leaf.ok) return leaf;
   return refused("roll", fallbackReason, leaf.gate);

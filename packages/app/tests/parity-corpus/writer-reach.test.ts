@@ -227,8 +227,31 @@ const FLOOR_SURGICAL = 103
  *
  * The 21 declines are the leaf projection's own refusals — a shared leaf it cannot
  * write is left alone rather than re-emitted, which is the promise, not a gap.
+ *
+ * ⚠⚠ RAISED 20 → 46 BY #1232, in the same commit as the gain, which is what makes the
+ * pin above worth having: the baseline was set on the unchanged writer one commit
+ * earlier, so this is a paired differential rather than a floor arriving with the change
+ * it scores.
+ *
+ * AND THE DELTA IS NOT THE GAIN — the two differ and the gap has a name. This census
+ * counts deletes ANSWERED BY the leaf path; the product claim is deletes whose BYTES
+ * change. Measured per unit in `_p4e-roll-overlay.spec.ts`, both arms taken on this tree
+ * in one session:
+ *
+ *     +26 answered by surgery  =  22 whose bytes change  +  4 identical (routing only)
+ *
+ * So #1232 preserves 22 documents, not 26, and quoting the census delta as documents
+ * preserved would overstate it by four. The 4 are deletes the element writer already
+ * spelled exactly as surgery does; they change who answered and nothing a user sees.
+ *
+ * ⚠ THE REMAINING HALF IS NOT REACHED BY THIS CHANGE, and the census cannot show that.
+ * `withRollSurgery` attaches on the DERIVED path only, mirroring #1229's placement, so
+ * all 69 core-opened non-local deletes still carry no overlay at all. #1232's own "done
+ * when" asked for 35; 21 of that 35 was the derived half and is what landed. The other
+ * 14 need the overlay on the core-opened path, which is a cost problem rather than a
+ * routing one and belongs to #1233.
  */
-const FLOOR_ROLL_SURGICAL = 20
+const FLOOR_ROLL_SURGICAL = 46
 
 /**
  * The units whose edit survives the engine on every axis EXCEPT duration.

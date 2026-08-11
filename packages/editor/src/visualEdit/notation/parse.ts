@@ -3478,6 +3478,46 @@ function leafRollViewUsable(model: PianoRollModel): boolean {
 }
 
 /**
+ * Overlay the leaf spans onto a roll view the ELEMENT writer owns, so a delete can be
+ * written as byte surgery while everything the view IS stays the element projection
+ * (#1010 P4e). The roll's twin of `withSurgery`, and deliberately a separate function
+ * rather than a shared generic: the two surfaces carry different anchor shapes
+ * (`LeafSource.cols` per column, `RollLeafSource.anchors` per note) and have already
+ * answered the same routing question with opposite signs, so a shared helper would be
+ * the first place a future asymmetry gets silently flattened.
+ *
+ * The view is not touched — same notes, same columns, same view scale — so this cannot
+ * change what the panel offers. It only gives the writer a second, better way to
+ * answer, and `serializePianoRollWithExtent` falls back to the element paths for any
+ * edit surgery cannot express (`serialize.ts`, where the asymmetry against `leafSource`
+ * is stated).
+ *
+ * ⚠ AND IT MUST NOT BE APPLIED WHERE THE LEAF PROJECTION ALREADY OWNS THE VIEW. There a
+ * refusal is the promise, not a fall-through — see `serializePianoRollWithExtent`. This
+ * is reached only on the `owner.ok` branch below, which is exactly the case where the
+ * element writer was already the incumbent.
+ *
+ * ⚠ ASKED ONLY WHERE THE ELEMENT WRITER OWNS THE VIEW, so the second projection's cost
+ * is paid on the derived path alone and never for a pattern the roll's syntactic core
+ * answers (412 of the 544 corpus units that open a roll are core-parsed). The
+ * core-opened half is a cost problem rather than a routing one and is #1233's subject,
+ * not this one's: on the grid the same overlay measured x25.5 on the core path against
+ * +59% on the derived one, because a roughly constant absolute cost lands on bases an
+ * order of magnitude apart. Nothing about that figure transfers to this surface
+ * unmeasured — it is recorded here as the reason for the placement, not as this path's
+ * price.
+ */
+function withRollSurgery(
+  mini: string,
+  r: ParseResult<PianoRollModel>,
+): ParseResult<PianoRollModel> {
+  if (!r.ok) return r
+  const leaf = projectPianoRollByLeaf(mini)
+  if (!leaf.ok) return r
+  return { ok: true, model: { ...r.model, surgical: leaf.model.leafSource } }
+}
+
+/**
  * THE DERIVED WRITERS FOR THE ROLL, in the order `parsePianoRoll` asks them — the
  * roll's counterpart to `projectStepGridDerived`, and the only place this order is
  * written. See that function for why the census needs it split out; note that the
@@ -3516,7 +3556,7 @@ export function projectPianoRollDerived(
   // rather than carrying it forward — the grid's own answer to this same flip
   // (+5 reach, 16 fewer silent length rewrites) is the opposite sign, which is why
   // the two surfaces are decided separately and never by analogy.
-  if (owner.ok) return asOwner(owner)
+  if (owner.ok) return withRollSurgery(mini, asOwner(owner))
   const leaf = projectPianoRollByLeaf(mini)
   if (leaf.ok) return leaf
   // …and if nothing opened it, report the gate that actually stopped the general

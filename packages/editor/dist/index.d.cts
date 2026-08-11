@@ -8702,6 +8702,31 @@ interface PianoRollModel {
      * preserve. An edit it cannot express as a byte replacement is refused instead.
      */
     leafSource?: RollLeafSource;
+    /**
+     * The same leaf spans overlaid on a view the ELEMENT writer owns (#1010 P4e) — the
+     * roll's half of `StepGridModel.surgical`, with the same meaning and the same
+     * asymmetry against `leafSource` above.
+     *
+     * `leafSource` answers two questions at once: which writer owns the view, and where
+     * that writer's spans are. This field asks only the second. The view stays the
+     * element projection — its columns, its notes, its view scale untouched — and
+     * `serializePianoRollWithExtent` tries byte surgery at each note's own span FIRST,
+     * falling back to the element paths for anything surgery cannot express.
+     *
+     * ⚠ NOT INTERCHANGEABLE WITH `leafSource`, and the asymmetry is the safety property.
+     * A leaf-PROJECTED roll is terminal: an edit it cannot express is REFUSED, because
+     * the rebuild is what would destroy the notation the view was opened to preserve, and
+     * falling back would hand the re-emit the shared-leaf deletes #1160 declines. Falling
+     * back is permitted only here, where the element writer was already the incumbent, so
+     * it can only restore today's behaviour and never introduce a write.
+     *
+     * ⚠ DECIDED ON THE ROLL, NEVER BY ANALOGY WITH THE GRID. `projectPianoRollDerived`
+     * records the two surfaces answering the same routing flip with opposite signs — the
+     * roll loses ten units of reach where the grid gains five — which is exactly why P4d's
+     * result could not simply be assumed here and why every figure behind this field was
+     * taken on the roll.
+     */
+    surgical?: RollLeafSource;
     /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
     bars?: number;
     /**
