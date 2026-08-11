@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
+import { reportBootFailure } from "../dialogs/bootFailureNotice";
 import { promptAndCreateFile } from "../lib/newFile";
 import { BackdropPopover } from "./BackdropPopover";
 import {
@@ -998,6 +999,11 @@ export default function StrudelEditorClient({
       });
     });
     runtime.onError((err: Error) => {
+      // A required boot step failed — the engine cannot start, and nothing the
+      // user does in the editor will change that (#1218). The console row and
+      // toast below still happen, because they are where a developer looks;
+      // this adds the one surface that carries the only action that works.
+      reportBootFailure(err);
       setRuntimeStates(prev => {
         const next = new Map(prev);
         const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
@@ -1630,7 +1636,14 @@ export default function StrudelEditorClient({
       const warm = () => {
         void getOrCreateRuntime(fid)
           ?.init()
-          .catch(() => {}); // warm-up is best-effort; Play still inits on demand
+          // Warm-up is best-effort for everything EXCEPT a required boot step
+          // (#1218): that one means the engine cannot start at all, and this is
+          // usually the first place on the page to learn it — a bare swallow
+          // here is why a dead engine used to reach the user as silence. The
+          // notice fires once per document; anything else stays best-effort.
+          .catch((err: unknown) => {
+            reportBootFailure(err);
+          });
       };
       const w = window as unknown as {
         requestIdleCallback?: (cb: () => void) => number;

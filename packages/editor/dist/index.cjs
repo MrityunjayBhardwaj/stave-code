@@ -6547,11 +6547,26 @@ function openBudget(totalMs) {
   return () => totalMs - (Date.now() - startedAt);
 }
 __name(openBudget, "openBudget");
+function isBootStepFailure(err) {
+  return err instanceof Error && typeof err.bootStep === "string";
+}
+__name(isBootStepFailure, "isBootStepFailure");
+function asBootStepFailure(err, step, deadlineMs) {
+  const e = err instanceof Error ? err : new Error(String(err));
+  e.bootStep = step;
+  e.bootStepDeadlineMs = deadlineMs;
+  return e;
+}
+__name(asBootStepFailure, "asBootStepFailure");
 function createRequiredStep(initRemaining) {
   return async (label, fn) => {
     const deadlineMs = Math.min(REQUIRED_STEP_MS, initRemaining());
-    const fail = /* @__PURE__ */ __name((why) => new Error(
-      `[StrudelEngine] boot step "${label}" ${why}. This is usually a network, proxy or service-worker problem rather than a code fault \u2014 evaluating again starts a fresh attempt.`
+    const fail = /* @__PURE__ */ __name((why) => asBootStepFailure(
+      new Error(
+        `[StrudelEngine] boot step "${label}" ${why}. This is usually a network, proxy or service-worker problem rather than a code fault. A stalled load cannot be retried in place \u2014 reload the page to start over.`
+      ),
+      label,
+      Math.max(0, deadlineMs)
     ), "fail");
     if (deadlineMs <= 0) {
       const err = fail(`was not attempted: boot's ${INIT_BUDGET_MS}ms budget was already spent`);
@@ -6571,7 +6586,7 @@ function createRequiredStep(initRemaining) {
         `[StrudelEngine] boot step "${label}" failed; the engine cannot start without it.`,
         err
       );
-      throw err;
+      throw asBootStepFailure(err, label, Math.max(0, deadlineMs));
     } finally {
       clearTimeout(timer);
     }
@@ -44459,6 +44474,7 @@ exports.insertArm = insertArm;
 exports.installEngineLogMarkers = installEngineLogMarkers;
 exports.installGlobalErrorCatch = installGlobalErrorCatch;
 exports.isBlackKey = isBlackKey;
+exports.isBootStepFailure = isBootStepFailure;
 exports.isBundledPresetId = isBundledPresetId;
 exports.isChunkFresh = isChunkFresh;
 exports.isDocReady = isDocReady;
