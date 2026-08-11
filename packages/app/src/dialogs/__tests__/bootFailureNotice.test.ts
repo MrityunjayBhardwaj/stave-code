@@ -29,9 +29,18 @@ import { join } from 'node:path'
  * path jsdom can resolve.
  */
 vi.mock('@stave/editor', async () => {
-  const real = await vi.importActual<typeof import('../../../../editor/src/engine/StrudelEngine')>(
-    '../../../../editor/src/engine/StrudelEngine',
-  )
+  // ⚠ THE PATH IS A RUNTIME STRING AND MUST NOT BECOME A TYPE REFERENCE. Typing
+  // this as `typeof import('…/editor/src/engine/StrudelEngine')` pulls the
+  // editor's SOURCE into the app's TypeScript program — which then type-checks
+  // files that are not the app's to check, and surfaces two long-standing
+  // editor errors (`piano.ts`, part of #1204's 63) as app build failures. That
+  // passes `vitest` and fails `next build`, which is the one check that reads
+  // the whole program. Cast the shape instead; the VALUE is still production's
+  // own function, so this stays a resolution shim rather than a stub, and a
+  // removed export fails loudly at the first call.
+  const real = (await vi.importActual('../../../../editor/src/engine/StrudelEngine')) as {
+    isBootStepFailure: (err: unknown) => boolean
+  }
   return { isBootStepFailure: real.isBootStepFailure }
 })
 
