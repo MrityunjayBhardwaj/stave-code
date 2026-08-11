@@ -26674,18 +26674,23 @@ function buildGroups(model) {
   return groups;
 }
 __name(buildGroups, "buildGroups");
-function serializePianoRoll(model) {
-  if (model.leafSource) return spliceRollByLeaf(model);
-  if (altSourceFits(model.altSource, model.steps)) return spliceAltRoll(model);
+function serializePianoRollWithExtent(model) {
+  if (model.leafSource) return { mini: spliceRollByLeaf(model), extent: { path: "leaf" } };
+  if (altSourceFits(model.altSource, model.steps))
+    return { mini: spliceAltRoll(model), extent: { path: "alt" } };
   const spliced = spliceRoll(model);
-  if (spliced !== null) return spliced;
+  if (spliced !== null) return { mini: spliced, extent: { path: "splice" } };
   const bars = model.bars ?? 1;
   if (bars > 1) {
     const groups = buildGroups(model);
-    if (groups === null) return null;
-    return rollBars(groups, model.steps, bars);
+    if (groups === null) return { mini: null, extent: { path: "rebuild" } };
+    return { mini: rollBars(groups, model.steps, bars), extent: { path: "rebuild" } };
   }
-  return serializeRollLanes(model);
+  return { mini: serializeRollLanes(model), extent: { path: "rebuild" } };
+}
+__name(serializePianoRollWithExtent, "serializePianoRollWithExtent");
+function serializePianoRoll(model) {
+  return serializePianoRollWithExtent(model).mini;
 }
 __name(serializePianoRoll, "serializePianoRoll");
 var noteKey = /* @__PURE__ */ __name((n) => `${n.pitch}:${n.start}:${n.duration}`, "noteKey");

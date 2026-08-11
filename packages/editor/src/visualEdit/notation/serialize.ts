@@ -1247,35 +1247,81 @@ function buildGroups(model: PianoRollModel): Map<number, Group> | null {
   return groups
 }
 
-export function serializePianoRoll(model: PianoRollModel): string | null {
+export type RollWriteExtent = { path: 'leaf' | 'alt' | 'splice' | 'rebuild' }
+
+/**
+ * `serializePianoRoll`, plus WHICH WRITER answered — the roll's half of
+ * `serializeStepGridWithExtent` (#1231).
+ *
+ * WHY IT HAD TO EXIST BEFORE THE ROLL'S HALF OF #1010 COULD BE JUDGED. `writer-reach`
+ * asks the ENGINE on both sides: expected is what the pattern plays minus the deleted
+ * note, got is what the edited document plays. A roll document that comes back
+ * hap-equivalent and notation-DESTROYED therefore scores exactly like one that comes
+ * back untouched — `[f3 ab3 g3]` re-emitted as `[~ ~ ~ ~ ab3@4 g3@4]` is a clean
+ * round-trip by that measure. So every gate the roll has was structurally blind to the
+ * whole of what a write-path change buys, and a change nothing can score is a change
+ * whose revert nothing can detect.
+ *
+ * ⚠ THE ALTERNATIVE IS A SECOND ORACLE, which is why this is a report and not a rule
+ * written in a test. The dispatch order below is the only place that decides who
+ * writes; a test that re-derived it would agree with the writer exactly until the day
+ * one of them moved, and would then be wrong in the reassuring direction.
+ *
+ * ⚠ `path` says WHO DECIDED, never whether anything was written — the grid's caveat,
+ * and it is load-bearing on the roll too because two of these paths are TERMINAL and
+ * answer a refusal with `null` on their own path. Read `mini` for "did it write".
+ *
+ * SIMPLER THAN THE GRID'S UNION, and deliberately: only the grid's splice counts
+ * regions it had to re-emit, because only the grid reports them. Giving the roll a
+ * `regions: 0` would state a measurement nobody took.
+ */
+export function serializePianoRollWithExtent(model: PianoRollModel): {
+  mini: string | null
+  extent: RollWriteExtent
+} {
   // A leaf-anchored roll (#986 P1b) is TERMINAL — it edits the user's own bytes and
   // never falls through to a rebuild, because a rebuild is exactly what would respell
   // the notation it was opened to preserve. It returns null for an edit it cannot
   // express as a byte replacement, and then the document is left alone.
-  if (model.leafSource) return spliceRollByLeaf(model)
+  if (model.leafSource) return { mini: spliceRollByLeaf(model), extent: { path: 'leaf' } }
 
   // A `<...>`-as-element pattern (`0 <2 3> 5`, #920) uses its own span surgery and
   // NEVER the rebuilds below — a rebuild would reshape it into the whole-cycle
   // `<[0 2 5] [0 3 5]>`. It returns null (keep the document) for an edit it can't
   // express, never wrong bytes.
-  if (altSourceFits(model.altSource, model.steps)) return spliceAltRoll(model)
+  if (altSourceFits(model.altSource, model.steps))
+    return { mini: spliceAltRoll(model), extent: { path: 'alt' } }
 
   // Span surgery first — same rule as the grid: put back what the user wrote
   // wherever they didn't edit. It declines (null) whenever the regions no longer
   // describe the notes, and the rebuilds below take over, the way this always
   // worked.
+  //
+  // ⚠ AND THAT NULL IS NOT A REFUSAL, unlike the two paths above. It is a
+  // fall-through, so it is reported as the path that ACTUALLY answered — the
+  // rebuild — rather than as a splice that wrote nothing.
   const spliced = spliceRoll(model)
-  if (spliced !== null) return spliced
+  if (spliced !== null) return { mini: spliced, extent: { path: 'splice' } }
 
   const bars = model.bars ?? 1
   if (bars > 1) {
     // Multi-bar `<...>` keeps the shared-duration chord path (parallel lanes are
     // single-bar only for now, #628): chord members must share a duration there.
     const groups = buildGroups(model)
-    if (groups === null) return null
-    return rollBars(groups, model.steps, bars)
+    if (groups === null) return { mini: null, extent: { path: 'rebuild' } }
+    return { mini: rollBars(groups, model.steps, bars), extent: { path: 'rebuild' } }
   }
-  return serializeRollLanes(model)
+  return { mini: serializeRollLanes(model), extent: { path: 'rebuild' } }
+}
+
+/**
+ * The mini a roll model writes back, or null where it has no spelling.
+ *
+ * A projection of the function above, never a second implementation, so the bytes a
+ * caller gets and the path the census reads can never describe different writes.
+ */
+export function serializePianoRoll(model: PianoRollModel): string | null {
+  return serializePianoRollWithExtent(model).mini
 }
 
 /* ── span surgery, the roll (#916) ─────────────────────────────── */

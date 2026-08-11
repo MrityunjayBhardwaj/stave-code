@@ -8868,6 +8868,12 @@ declare function parsePianoRoll(mini: string, viewScale?: ViewScale): ParseResul
  * never disagree about what was written.
  */
 declare function serializeStepGrid(model: StepGridModel): string | null;
+/**
+ * The mini a roll model writes back, or null where it has no spelling.
+ *
+ * A projection of the function above, never a second implementation, so the bytes a
+ * caller gets and the path the census reads can never describe different writes.
+ */
 declare function serializePianoRoll(model: PianoRollModel): string | null;
 
 /**

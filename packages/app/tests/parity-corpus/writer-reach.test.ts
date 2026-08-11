@@ -63,7 +63,10 @@ import type {
 } from '../../../editor/src/visualEdit/notation/model'
 import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
-import { serializeStepGridWithExtent } from '../../../editor/src/visualEdit/notation/serialize'
+import {
+  serializePianoRollWithExtent,
+  serializeStepGridWithExtent,
+} from '../../../editor/src/visualEdit/notation/serialize'
 import {
   GRID_SURFACE,
   ROLL_SURFACE,
@@ -197,6 +200,35 @@ const FLOOR_ROLL = 85
  * this figure attributable to the write path rather than to the corpus.
  */
 const FLOOR_SURGICAL = 103
+
+/**
+ * THE ROLL'S HALF OF THE SAME SCORE (#1231), and it starts as a BASELINE rather than
+ * as a gain: the roll has never had per-edit byte surgery, so this is what its writers
+ * do today, pinned before anything changes them.
+ *
+ * WHY IT IS SET ON THE UNCHANGED WRITER, deliberately. A floor introduced together
+ * with the change it scores cannot show that it would have caught the change's absence
+ * — the two arrive as one commit and the gate has no history. Pinning today's number
+ * first makes the next commit a paired differential: the census moves, this floor is
+ * raised in the same commit as the gain, and a revert reddens exactly here.
+ *
+ * ⚠ WHAT THIS NUMBER IS NOT. It is not "how much of the roll is written well". A roll
+ * whose splice already replaces only the deleted note's bytes is perfectly local and
+ * counts as `splice`, not `leaf` — measured over the corpus, 326 of 455 roll deletes
+ * are already local. The gap is the 129 that move more, of which 69 have no leaf span
+ * to anchor to at all and 25 the leaf writer refuses. So the reachable prize is 35,
+ * not 129, and this floor should be read against that ceiling rather than against the
+ * denominator.
+ *
+ * OBSERVED on the merged tip `03a85279`: 545 units open a roll, 478 deletes posed, and
+ * the paths that answered them are
+ *
+ *     splice 384 · alt 49 · leaf 20 · leaf declined 21 · rebuild 2 · rebuild declined 2
+ *
+ * The 21 declines are the leaf projection's own refusals — a shared leaf it cannot
+ * write is left alone rather than re-emitted, which is the promise, not a gap.
+ */
+const FLOOR_ROLL_SURGICAL = 20
 
 /**
  * The units whose edit survives the engine on every axis EXCEPT duration.
@@ -399,6 +431,49 @@ function surgeryCensus(): { units: number; asked: number; byPath: Map<string, nu
   return { units, asked, byPath }
 }
 
+/**
+ * The same census, the other surface — one delete per roll unit and WHICH WRITER
+ * answered it (#1231).
+ *
+ * ⚠ THE DELETE IS MODELLED HERE, and that is a real difference from the grid's arm
+ * above rather than a shortcut. The grid has a production op (`toggleCell`) the census
+ * can drive; the roll's delete lives inline in `PianoRollGrid` —
+ * `notes.filter((n) => !(n.pitch === sel.pitch && n.start === sel.start))` — with no
+ * shared function to call. On a column holding exactly ONE note, which is the only
+ * target this census takes, filtering by (pitch, start) and filtering that note out are
+ * the same operation, so what is posed here is the panel's gesture. If the roll ever
+ * grows a real op, this should call it instead.
+ *
+ * The target rule is `engineEditOracle.deleteFromRoll`'s: the first column holding
+ * exactly one note, so the delete removes exactly one sounding thing.
+ */
+function rollSurgeryCensus(): { units: number; asked: number; byPath: Map<string, number> } {
+  const byPath = new Map<string, number>()
+  let units = 0
+  let asked = 0
+  for (const mini of minis) {
+    const r = parsePianoRoll(mini)
+    if (!r.ok) continue
+    const m = r.model as PianoRollModel
+    units++
+    const starts = [...new Set(m.notes.map((n) => n.start))].sort((a, b) => a - b)
+    const col = starts.find((c) => m.notes.filter((n) => n.start === c).length === 1)
+    if (col === undefined) {
+      byPath.set('(no single-note target)', (byPath.get('(no single-note target)') ?? 0) + 1)
+      continue
+    }
+    const gone = m.notes.find((n) => n.start === col)!
+    asked++
+    const { mini: out, extent } = serializePianoRollWithExtent({
+      ...m,
+      notes: m.notes.filter((n) => n !== gone),
+    })
+    const key = out === null ? `${extent.path} (declined)` : extent.path
+    byPath.set(key, (byPath.get(key) ?? 0) + 1)
+  }
+  return { units, asked, byPath }
+}
+
 describe('writer-reach — the projection makes real refused units editable, and edits survive', () => {
   const step = sweep(SURFACES[0])
   const roll = sweep(SURFACES[1])
@@ -451,5 +526,24 @@ describe('writer-reach — the projection makes real refused units editable, and
       surgical,
       `surgical deletes ${surgical} fell below floor ${FLOOR_SURGICAL} — a write path that used to splice the note's own bytes is re-emitting notation again`,
     ).toBeGreaterThanOrEqual(FLOOR_SURGICAL)
+  })
+
+  it('piano roll: deletes written as byte surgery hold at or above the floor', () => {
+    const c = rollSurgeryCensus()
+    const surgical = c.byPath.get('leaf') ?? 0
+    console.log(`\n===== SURGERY: piano roll (#1231) (${minis.length} corpus units) =====`)
+    console.log(`  units opening a roll:           ${c.units}`)
+    console.log(`  deletes the panel performed:    ${c.asked}`)
+    console.log(
+      `  written as BYTE SURGERY:        ${surgical}   (floor ${FLOOR_ROLL_SURGICAL}, margin ${surgical - FLOOR_ROLL_SURGICAL})`,
+    )
+    console.log(`  -- by the path that answered --`)
+    for (const [k, v] of [...c.byPath.entries()].sort((a, b) => b[1] - a[1]))
+      console.log(`     ${String(v).padStart(4)}x  ${k}`)
+    expect(c.asked, 'the census must actually pose deletes').toBeGreaterThan(300)
+    expect(
+      surgical,
+      `roll surgical deletes ${surgical} fell below floor ${FLOOR_ROLL_SURGICAL} — a write path that used to splice the note's own bytes is re-emitting notation again`,
+    ).toBeGreaterThanOrEqual(FLOOR_ROLL_SURGICAL)
   })
 })
