@@ -61,6 +61,9 @@ import type {
   PianoRollModel,
   StepGridModel,
 } from '../../../editor/src/visualEdit/notation/model'
+import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
+import { serializeStepGridWithExtent } from '../../../editor/src/visualEdit/notation/serialize'
 import {
   GRID_SURFACE,
   ROLL_SURFACE,
@@ -149,6 +152,51 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
  */
 const FLOOR_STEP = 153
 const FLOOR_ROLL = 85
+
+/**
+ * THE OTHER HALF OF THE SCORE: how many deletes are written as BYTE SURGERY (#1010 P4d).
+ *
+ * WHY THIS FLOOR HAD TO EXIST BEFORE P4d COULD SHIP. Everything above scores what a
+ * write-path change COSTS — reach is the engine on both sides, so a document that comes
+ * back hap-equivalent and notation-destroyed scores exactly like one that comes back
+ * untouched. `[bd@0.5 - - - …]` re-emitted as forty-eight flat cells is a clean
+ * round-trip by that oracle. So the gate that P4d is judged by was blind to the whole
+ * of P4d's benefit, and the only number anyone could quote for it came from a
+ * throwaway. A change measured only by its cost will always look like a loss.
+ *
+ * WHAT IT COUNTS, and why the writer's own report rather than a byte comparison: a
+ * document diff can only say the bytes moved, not that they moved LOCALLY, and any rule
+ * written here for "local enough" would be a second copy of what the writer already
+ * decided. `serializeStepGridWithExtent` reports which path answered, and `path: 'leaf'`
+ * means the write was a splice at the edited note's own span — every other byte copied,
+ * by construction. That is the property, stated by the only thing that knows it.
+ *
+ * POPULATION: every corpus mini that opens a step grid with a sounding cell, at the
+ * DOCUMENT's own resolution — 981 units, far wider than the reach sweep above (which
+ * asks only about units the syntactic core refused), because surgery is not a property
+ * of the derived path. One ask per unit: clear the first sounding cell, through the
+ * production toggle.
+ *
+ * ⚠ A FLOOR, AND IT IS RAISED IN THE SAME COMMIT AS THE GAIN — the discipline this file
+ * learned the expensive way at #1225, where twelve units of slack accumulated under a
+ * rule that policed only lowering. The margin is printed beside the bound on every run
+ * so the slack is readable rather than inferred.
+ *
+ * SET FROM THE OBSERVATION, and proven as a paired differential on one tree in one
+ * session rather than quoted — a floor you cannot show catching something is just a
+ * number. Same denominator on both arms (981 units open a grid, 961 deletes performed,
+ * the same 19 the panel refuses), so the whole delta is which writer answered:
+ *
+ *     arm                                  surgery   splice   alt
+ *     studio tip (element re-emit)              64      838    59
+ *     P4d (surgery tried first)                103      805    53
+ *
+ * The 39 are deletes that used to re-spell a whole element and now replace the note's
+ * own bytes. Reverting the overlay attachment reads 64 and reddens here; reverting the
+ * splice reads 0. Nothing else in the suite moves on either break, which is what makes
+ * this figure attributable to the write path rather than to the corpus.
+ */
+const FLOOR_SURGICAL = 103
 
 /**
  * The units whose edit survives the engine on every axis EXCEPT duration.
@@ -316,6 +364,41 @@ function report(name: string, t: Tally, floor: number): void {
   }
 }
 
+/**
+ * One delete per grid unit, and WHICH WRITER answered it — the surgery census.
+ *
+ * The edit is the production toggle, never a hand-modelled one: modelling it here
+ * would quietly keep measuring an edit the panel no longer performs.
+ */
+function surgeryCensus(): { units: number; asked: number; byPath: Map<string, number> } {
+  const byPath = new Map<string, number>()
+  let units = 0
+  let asked = 0
+  for (const mini of minis) {
+    const r = parseStepGrid(mini)
+    if (!r.ok) continue
+    const m = r.model as StepGridModel
+    units++
+    let done = false
+    for (let col = 0; col < m.steps && !done; col++)
+      for (let lane = 0; lane < m.lanes.length && !done; lane++) {
+        if (!isCellOn(m.lanes[lane].cells[col])) continue
+        done = true
+        const next = toggleCell(m, lane, col, false)
+        // the op returns its input by reference when the panel refuses the gesture
+        if (next === m) {
+          byPath.set('(op refused)', (byPath.get('(op refused)') ?? 0) + 1)
+          break
+        }
+        asked++
+        const { mini: out, extent } = serializeStepGridWithExtent(next)
+        const key = out === null ? `${extent.path} (declined)` : extent.path
+        byPath.set(key, (byPath.get(key) ?? 0) + 1)
+      }
+  }
+  return { units, asked, byPath }
+}
+
 describe('writer-reach — the projection makes real refused units editable, and edits survive', () => {
   const step = sweep(SURFACES[0])
   const roll = sweep(SURFACES[1])
@@ -346,5 +429,27 @@ describe('writer-reach — the projection makes real refused units editable, and
     // the edit did something other than restore the grid's missing axis.
     expect(roll.losses, roll.losses.map((l) => l.mini).join('\n')).toEqual([])
     expect(roll.editOk, `roll writer-reach ${roll.editOk} fell below floor ${FLOOR_ROLL}`).toBeGreaterThanOrEqual(FLOOR_ROLL)
+  })
+
+  it('step grid: deletes written as byte surgery hold at or above the floor', () => {
+    const c = surgeryCensus()
+    const surgical = c.byPath.get('leaf') ?? 0
+    console.log(`\n===== SURGERY: step grid (#1010 P4d) (${minis.length} corpus units) =====`)
+    console.log(`  units opening a grid:           ${c.units}`)
+    console.log(`  deletes the panel performed:    ${c.asked}`)
+    console.log(
+      `  written as BYTE SURGERY:        ${surgical}   (floor ${FLOOR_SURGICAL}, margin ${surgical - FLOOR_SURGICAL})   <-- what P4d buys`,
+    )
+    console.log(`  -- by the path that answered --`)
+    for (const [k, v] of [...c.byPath.entries()].sort((a, b) => b[1] - a[1]))
+      console.log(`     ${String(v).padStart(4)}x  ${k}`)
+    // The denominator is asserted beside the figure: a census that quietly stopped
+    // asking would drive the numerator to zero and read as a regression in the writer,
+    // while a census that stopped RUNNING would read as nothing at all.
+    expect(c.asked, 'the census must actually pose deletes').toBeGreaterThan(400)
+    expect(
+      surgical,
+      `surgical deletes ${surgical} fell below floor ${FLOOR_SURGICAL} — a write path that used to splice the note's own bytes is re-emitting notation again`,
+    ).toBeGreaterThanOrEqual(FLOOR_SURGICAL)
   })
 })

@@ -131,8 +131,16 @@ describe('#920 grid — <...> as a sequence element', () => {
         ...m,
         lanes: m.lanes.map((l) => (l.sound === 'sd' ? { ...l, cells } : l)),
       }
-      // the edited element expands to spell its bars; `hh` rides back untouched
-      expect(serializeStepGrid(edited)).toBe('<bd bd bd ~> hh')
+      // The edited element keeps the user's own bytes and `hh` rides back untouched.
+      //
+      // ⚠ THIS PINNED THE ELEMENT WRITER'S EXPANSION UNTIL #1010 P4d — `<bd bd bd ~> hh`,
+      // with the comment "the edited element expands to spell its bars". Both spellings
+      // play the identical four bars; the old one re-derived the whole element from a
+      // cell model and spent the `!3` doing it, which is the compaction the two arms
+      // above assert survives an UNEDITED open→write. The edited path was destroying
+      // exactly what the unedited path was asserted to preserve, and this assertion is
+      // what made that read as intended behaviour.
+      expect(serializeStepGrid(edited)).toBe('<bd!3 ~> hh')
     })
   })
 })

@@ -65,6 +65,7 @@ import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/no
 import {
   serializeStepGrid,
   serializePianoRoll,
+  serializeStepGridWithExtent,
 } from '../../../editor/src/visualEdit/notation/serialize'
 import {
   RESOLUTION_PRESETS,
@@ -419,8 +420,16 @@ describe('op admissibility — an enabled control produces writable notation', (
       const next = bad.apply(r.model)
       if (next === r.model) continue
       applied++
-      if (serializeStepGrid(next) === null) caught++
-      else if (r.model.leafSource) escapedLeaf++
+      // ⚠ ASKED OF THE WRITE, NOT OF THE MODEL'S SHAPE (#1010 P4d). This used to read
+      // `r.model.leafSource` as a proxy for "written by byte surgery", which was exact
+      // while surgery was a property of the VIEW. It is now a property of the EDIT: an
+      // element-projected model can carry leaf spans and splice through them, so 52
+      // models with no `leafSource` are surgery-written and escape for precisely the
+      // reason stated below. `extent.path` is the writer's own report of who answered,
+      // so this classification cannot drift from what actually happened.
+      const { mini: written, extent } = serializeStepGridWithExtent(next)
+      if (written === null) caught++
+      else if (extent.path === 'leaf') escapedLeaf++
       else escapedOther++
     }
     console.log(
