@@ -7164,6 +7164,11 @@ var _StrudelEngine = class _StrudelEngine {
             this.evalResolve({});
             this.evalResolve = null;
           }
+        }).catch((err) => {
+          if (this.evalResolve) {
+            this.evalResolve({ error: err instanceof Error ? err : new Error(String(err)) });
+            this.evalResolve = null;
+          }
         });
       });
       if (!result.error) {

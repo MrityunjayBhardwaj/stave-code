@@ -4,6 +4,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
 import { promptAndCreateFile } from "../lib/newFile";
 import { BackdropPopover } from "./BackdropPopover";
+import {
+  TIMELINE_EVAL_WAIT_MS,
+  publishSnapshotAfterBoundedEval,
+} from "./timelineSnapshotRefresh";
 import { PopoutPreviewController } from "./PopoutPreviewController";
 import { registerVizWorker } from "../visualizers/registerVizWorker";
 import {
@@ -891,17 +895,29 @@ export default function StrudelEditorClient({
   // stopped-gated and serialized with play(), so a Play pressed mid-refresh is
   // race-safe. The snapshot publish is UNCONDITIONAL: it drives both the
   // timeline re-query and the IR inspector, which want it regardless of eval.
+  // ⚠ That sentence used to be a claim only — the publish sat after an
+  // unbounded await, so a hung evaluate silently cancelled it (#1193). It is
+  // now enforced by the helper below rather than asserted here.
   const refreshTimelineMarks = useCallback(async (fid: string) => {
     const rt = runtimesRef.current.get(fid);
     const st = runtimeStatesRef.current.get(fid);
-    if (rt && !st?.isPlaying && isSongTimelineVisible()) {
-      await rt.evaluateForTimeline();
-    }
-    captureAndPublishSnapshot(
-      fid,
-      runtimesRef.current.get(fid)?.getCurrentCycle?.() ?? null,
-      rt ?? null,
-    );
+    // #1193/#1221 — the wait-then-publish ORDERING lives in one tested unit
+    // (`publishSnapshotAfterBoundedEval`), because that ordering is what broke
+    // and inline here nothing could reach it. What is decided here is only
+    // WHETHER an eval is wanted; the publish is the helper's to sequence, and
+    // it runs on every path including a hung one.
+    const evalRuntime =
+      rt && !st?.isPlaying && isSongTimelineVisible() ? rt : null;
+    await publishSnapshotAfterBoundedEval({
+      evaluate: evalRuntime ? () => evalRuntime.evaluateForTimeline() : null,
+      publish: () =>
+        captureAndPublishSnapshot(
+          fid,
+          runtimesRef.current.get(fid)?.getCurrentCycle?.() ?? null,
+          rt ?? null,
+        ),
+      waitMs: TIMELINE_EVAL_WAIT_MS,
+    });
   }, []);
 
   // #457 — keep the Song timeline + IR Inspector snapshot in sync with the

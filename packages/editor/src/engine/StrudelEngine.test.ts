@@ -117,6 +117,14 @@ vi.mock('@strudel/webaudio', () => {
           return
         }
 
+        // #1193 — the case the engine's own comment said could not happen:
+        // repl.evaluate REJECTS instead of routing the failure through
+        // onEvalError. Nothing in Strudel promises it never does, and when it
+        // did, the engine's bridge promise never settled.
+        if (code === 'reject-code') {
+          throw new Error('Simulated repl.evaluate rejection')
+        }
+
         if (code === 'two-anon' || evalBehavior === 'two-anon') {
           const p0 = new MockPattern()
           const p1 = new MockPattern()
@@ -310,6 +318,39 @@ describe('StrudelEngine.getTrackSchedulers', () => {
     await engine.evaluate('error-code')
     const desc = Object.getOwnPropertyDescriptor(MockPattern.prototype, 'p')
     expect(desc?.set).toBeUndefined()
+  })
+
+  /**
+   * #1193 — REGRESSION GUARD. `evaluate()` must SETTLE when `repl.evaluate`
+   * rejects, rather than waiting forever for a success callback that will
+   * never come.
+   *
+   * WHY THIS IS THE ARM AND NOT A TIMING ONE. The bridge promise used to have
+   * exactly one settle path — the `.then` — because a comment asserted that
+   * repl.evaluate never rejects. That is a claim about someone else's
+   * function, and the whole failure follows from it being false ONCE: the
+   * promise never settles, `runExclusiveEval` holds its gate against every
+   * later caller, and the snapshot publish sequenced behind it never runs. The
+   * Song view then reads "No song to map yet — press play." about a loaded
+   * document, permanently, with nothing logged anywhere.
+   *
+   * ⚠ On the unfixed engine this test does not fail with a wrong value — it
+   * HANGS, and vitest's own timeout is what reddens it. That is the honest
+   * shape: the defect is a promise that never settles, so the assertion is
+   * that control returns at all.
+   */
+  it('settles instead of hanging when repl.evaluate REJECTS (#1193)', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+
+    // Reaching the next line at all is the property under test.
+    await engine.evaluate('reject-code')
+
+    // And the gate must be free afterwards: a second evaluate has to run, or
+    // the hang has merely moved from the first caller to every later one.
+    evalBehavior = 'one-track'
+    await engine.evaluate('one-track')
+    expect(engine.getTrackSchedulers().size).toBeGreaterThan(0)
   })
 
   it('skips muted patterns _x and x_ (TRACK-04)', async () => {

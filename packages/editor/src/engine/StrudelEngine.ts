@@ -1244,6 +1244,27 @@ export class StrudelEngine implements LiveCodingEngine {
           playedPattern = pattern
           // If onEvalError didn't fire, evaluation succeeded
           if (this.evalResolve) { this.evalResolve({}); this.evalResolve = null }
+        }).catch((err: unknown) => {
+          // ⚠ THE ONLY SETTLE PATH USED TO BE THE SUCCESS CALLBACK (#1193).
+          // The comment above says repl.evaluate never rejects, and errors
+          // arrive via onEvalError instead. That is a claim about someone
+          // else's function, and if it is ever false — a throw before the
+          // repl's own try/catch is installed, a transpile failure that
+          // escapes it — `evalResolve` is never called and THIS PROMISE NEVER
+          // SETTLES. `evaluate()` then hangs forever, `runExclusiveEval` holds
+          // its gate against every later caller, and the snapshot publish that
+          // is sequenced behind it never happens: no IR, no lanes, a Song view
+          // permanently reading "press play" about a loaded document, and not
+          // one error anywhere. Measured as the cause of a rotating ~0.1%
+          // failure across the browser suite.
+          //
+          // So this does not TRUST the claim, it makes it not matter: a
+          // rejection resolves the bridge with the error, the same shape
+          // onEvalError produces, and every caller carries on.
+          if (this.evalResolve) {
+            this.evalResolve({ error: err instanceof Error ? err : new Error(String(err)) })
+            this.evalResolve = null
+          }
         })
       })
 
