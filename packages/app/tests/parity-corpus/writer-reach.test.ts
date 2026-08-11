@@ -124,8 +124,30 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
  *
  * Neither number may be quoted against a pre-#1037 one without saying so: they are
  * over different populations ([[P343]]).
+ *
+ * ⚠ RAISED 141 -> 153 at #1225, and this one IS reach the product bought — the first
+ * of these notes that is. P4c set 141; roughly a dozen commits landed real reach in
+ * `visualEdit` after it (#1053/#1146 note length from the step grid, #1061/#1144
+ * coarsening holding a note, #1137/#1150, #1151/#1153, #1154/#1162, #1160/#1165,
+ * #1163/#1170, #1066/#1184) and not one of them raised the number that protects it.
+ * This is also the "returns toward 155" predicted in `DURATION_LOSSES` below: P4c
+ * emptied that array, and the reach came back as the mechanism said it would.
+ *
+ * THE ASYMMETRY IS THE DEFECT, and it is worth more than the twelve units. The rule
+ * above — "raise it, never lower it silently" — polices one direction. Nothing
+ * polices the other, and a floor protects only as well as it is CURRENT: every unit
+ * of slack between the floor and the observed reach is a unit that can go dark with
+ * the gate still green. Raise it in the SAME commit as the gain, or the gain quietly
+ * buys nothing but headroom for a future regression.
+ *
+ * DEMONSTRATED, not asserted, because a raise you cannot show catching something is
+ * just a larger number. Paired differential on one tree in one session: dropping
+ * `LEAF_PROJECT_BARS.grid` 12 -> 8 is a genuine regression worth six units (153 ->
+ * 147). At floor 141 the gate PASSES on it. At 153 it reddens — "147 fell below floor
+ * 153". The roll arm stays green through all three runs, which is the control: the
+ * break is grid-only and only the grid arm moved.
  */
-const FLOOR_STEP = 141
+const FLOOR_STEP = 153
 const FLOOR_ROLL = 85
 
 /**
