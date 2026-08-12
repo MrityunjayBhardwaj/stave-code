@@ -26229,7 +26229,7 @@ function ifRollSpellable(input, next) {
 }
 __name(ifRollSpellable, "ifRollSpellable");
 function serializeStepGridWithExtent(model) {
-  const spans = model.leafSource ?? model.surgical;
+  const spans = model.leafSource ?? model.surgical?.spans();
   if (spans) {
     const surgical = spliceByLeaf(model, spans);
     if (surgical !== null) return { mini: surgical, extent: { path: "leaf" } };
@@ -26659,7 +26659,7 @@ function buildGroups(model) {
 }
 __name(buildGroups, "buildGroups");
 function serializePianoRollWithExtent(model) {
-  const spans = model.leafSource ?? model.surgical;
+  const spans = model.leafSource ?? model.surgical?.spans();
   if (spans) {
     const surgical = spliceRollByLeaf(model, spans);
     if (surgical !== null) return { mini: surgical, extent: { path: "leaf" } };
@@ -28083,17 +28083,28 @@ function leafExpected(cols, perBar2, bars, span, text) {
 __name(leafExpected, "leafExpected");
 function withSurgery(mini, r) {
   if (!r.ok) return r;
-  const leaf = projectStepGridByLeaf(mini);
-  if (!leaf.ok || !leaf.model.leafSource) return r;
   return {
     ok: true,
-    model: {
-      ...r.model,
-      surgical: { ...leaf.model.leafSource, attachedSteps: documentSteps(r.model) }
-    }
+    model: { ...r.model, surgical: lazyGridLeaf(mini, documentSteps(r.model)) }
   };
 }
 __name(withSurgery, "withSurgery");
+function lazyGridLeaf(mini, attachedSteps) {
+  let computed = false;
+  let spans;
+  return {
+    attachedSteps,
+    spans: /* @__PURE__ */ __name(() => {
+      if (!computed) {
+        computed = true;
+        const leaf = projectStepGridByLeaf(mini);
+        spans = leaf.ok && leaf.model.leafSource ? { ...leaf.model.leafSource, attachedSteps } : void 0;
+      }
+      return spans;
+    }, "spans")
+  };
+}
+__name(lazyGridLeaf, "lazyGridLeaf");
 function vacuousLocality(a) {
   if (!a || a.bars <= 1 || a.regions.length !== 1) return false;
   return a.regions[0].from === 0 && a.regions[0].to === a.perBar;
@@ -28116,9 +28127,9 @@ __name(projectStepGridDerived, "projectStepGridDerived");
 function parseStepGrid(mini, viewScale = UNREFINED) {
   const owner = parseStepGridCore(mini);
   if (viewScale === UNREFINED) {
-    return owner.ok ? owner : projectStepGridDerived(mini, owner, UNREFINED);
+    return owner.ok ? withSurgery(mini, owner) : projectStepGridDerived(mini, owner, UNREFINED);
   }
-  const result = owner.ok ? parseStepGridCore(mini, viewScale) : projectStepGridDerived(mini, owner, viewScale);
+  const result = owner.ok ? withSurgery(mini, parseStepGridCore(mini, viewScale)) : projectStepGridDerived(mini, owner, viewScale);
   return honoursViewScale(result, viewScale, "grid");
 }
 __name(parseStepGrid, "parseStepGrid");
@@ -28753,17 +28764,28 @@ function leafRollViewUsable(model) {
 __name(leafRollViewUsable, "leafRollViewUsable");
 function withRollSurgery(mini, r) {
   if (!r.ok) return r;
-  const leaf = projectPianoRollByLeaf(mini);
-  if (!leaf.ok || !leaf.model.leafSource) return r;
   return {
     ok: true,
-    model: {
-      ...r.model,
-      surgical: { ...leaf.model.leafSource, attachedSteps: documentSteps(r.model) }
-    }
+    model: { ...r.model, surgical: lazyRollLeaf(mini, documentSteps(r.model)) }
   };
 }
 __name(withRollSurgery, "withRollSurgery");
+function lazyRollLeaf(mini, attachedSteps) {
+  let computed = false;
+  let spans;
+  return {
+    attachedSteps,
+    spans: /* @__PURE__ */ __name(() => {
+      if (!computed) {
+        computed = true;
+        const leaf = projectPianoRollByLeaf(mini);
+        spans = leaf.ok && leaf.model.leafSource ? { ...leaf.model.leafSource, attachedSteps } : void 0;
+      }
+      return spans;
+    }, "spans")
+  };
+}
+__name(lazyRollLeaf, "lazyRollLeaf");
 function projectPianoRollDerived(mini, fallbackReason, viewScale = UNREFINED) {
   const owner = projectPianoRoll(mini);
   const asOwner = /* @__PURE__ */ __name((ok) => {
@@ -28780,9 +28802,9 @@ __name(projectPianoRollDerived, "projectPianoRollDerived");
 function parsePianoRoll(mini, viewScale = UNREFINED) {
   const owner = parsePianoRollCore(mini);
   if (viewScale === UNREFINED) {
-    return owner.ok ? owner : projectPianoRollDerived(mini, owner, UNREFINED);
+    return owner.ok ? withRollSurgery(mini, owner) : projectPianoRollDerived(mini, owner, UNREFINED);
   }
-  const result = owner.ok ? parsePianoRollCore(mini, viewScale) : projectPianoRollDerived(mini, owner, viewScale);
+  const result = owner.ok ? withRollSurgery(mini, parsePianoRollCore(mini, viewScale)) : projectPianoRollDerived(mini, owner, viewScale);
   return honoursViewScale(result, viewScale, "roll");
 }
 __name(parsePianoRoll, "parsePianoRoll");
