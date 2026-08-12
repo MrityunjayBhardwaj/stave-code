@@ -44,6 +44,7 @@ import type {
   RollLeafSource,
   StepGridModel,
   PianoRollModel,
+  SurgicalOverlay,
 } from '../../../editor/src/visualEdit/notation/model'
 import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import { resizeCell, resizeNote } from '../../../editor/src/visualEdit/notation/place'
@@ -51,6 +52,17 @@ import {
   serializeStepGridWithExtent,
   serializePianoRollWithExtent,
 } from '../../../editor/src/visualEdit/notation/serialize'
+
+/**
+ * Wrap resolved spans as an OVERLAY the writer will accept (#1233 made the field lazy).
+ * The width is re-stamped for the model the spans land on, which is what `withSurgery`
+ * does — an instrument that attached naively would measure a change nobody proposed.
+ */
+const asOverlay = <S>(spans: S, attachedSteps: number): SurgicalOverlay<S> => ({
+  attachedSteps,
+  spans: () => spans,
+})
+
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -63,14 +75,14 @@ function gridSpans(mini: string): LeafSource | undefined {
   const d = projectStepGridDerived(mini, { ok: false, reason: 'probe' })
   if (!d.ok) return undefined
   const m = d.model as StepGridModel
-  return m.surgical ?? m.leafSource
+  return m.surgical?.spans() ?? m.leafSource
 }
 
 function rollSpans(mini: string): RollLeafSource | undefined {
   const d = projectPianoRollDerived(mini, { ok: false, reason: 'probe' })
   if (!d.ok) return undefined
   const m = d.model as PianoRollModel
-  return m.surgical ?? m.leafSource
+  return m.surgical?.spans() ?? m.leafSource
 }
 
 interface Tally {
@@ -138,7 +150,10 @@ describe('#1235 instrument — length edits the leaf writer returns unchanged', 
               record(m.leafSource ? own : shipping, mini, control, got.mini, got.extent.path)
             }
             if (core && spans) {
-              const got = serializeStepGridWithExtent({ ...next, surgical: spans } as StepGridModel)
+              const got = serializeStepGridWithExtent({
+                ...next,
+                surgical: asOverlay(spans, next.steps),
+              } as StepGridModel)
               record(simulated, mini, control, got.mini, got.extent.path)
             }
           }
@@ -205,7 +220,10 @@ describe('#1235 instrument — length edits the leaf writer returns unchanged', 
             record(m.leafSource ? own : shipping, mini, control, got.mini, got.extent.path)
           }
           if (core && spans) {
-            const got = serializePianoRollWithExtent({ ...next, surgical: spans } as PianoRollModel)
+            const got = serializePianoRollWithExtent({
+              ...next,
+              surgical: asOverlay(spans, next.steps),
+            } as PianoRollModel)
             record(simulated, mini, control, got.mini, got.extent.path)
           }
         }
@@ -262,7 +280,7 @@ describe('#1235 instrument — length edits the leaf writer returns unchanged', 
     const withCore = count((m, mini) => {
       if (m.leafSource || m.surgical) return m
       const spans = gridSpans(mini)
-      return spans ? ({ ...m, surgical: spans } as StepGridModel) : m
+      return spans ? ({ ...m, surgical: asOverlay(spans, m.steps) } as StepGridModel) : m
     })
 
     console.log(`\n===== #1235 · #1053 LENGTH HANDLES OFFERED, one tree, three attachments =====`)

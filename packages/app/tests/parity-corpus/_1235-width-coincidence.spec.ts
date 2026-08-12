@@ -23,6 +23,19 @@
  * model and reintroduces exactly the defect, which is why both arms are reported: the
  * gap between them is the measure of how load-bearing the re-stamp is, and it is the one
  * thing #1233 must not get wrong when it attaches on the core path.
+ *
+ * ⚠⚠ SINCE #1233 SHIPPED, THE `simulated` AND `naive` ARMS ARE VACUOUS AND THE `shipping`
+ * ARM IS THE MEASUREMENT. Every model now carries an overlay, so the `else if (spans)`
+ * branch those two arms live in is never reached and they print `0 of 0` — which reads
+ * like "nothing swallowed" and means "nothing asked". Read the DENOMINATOR, not the count.
+ *
+ * ⚠⚠ AND THE SIMULATION UNDER-REPORTED WHILE IT WAS LIVE. It attached spans fetched from
+ * `projectStepGridDerived`, which carry the DERIVED path's `attachedSteps` — a stamp that
+ * usually disagrees with the core model they were being pasted onto, so the simulated
+ * overlay was refused for a reason the real attachment never has. It read 2 grid + 2 roll;
+ * breaking the re-stamp on the BUILT change reads 13 + 2. The lesson outlives this file: a
+ * simulation that does not reproduce the field the guard reads is not measuring the guard,
+ * and the number it produces is confidently wrong rather than obviously missing.
  */
 import { describe, it } from 'vitest'
 import fs from 'node:fs'
@@ -39,12 +52,24 @@ import type {
   RollLeafSource,
   PianoRollModel,
   StepGridModel,
+  SurgicalOverlay,
 } from '../../../editor/src/visualEdit/notation/model'
 import { scaleStepGrid, scalePianoRoll } from '../../../editor/src/visualEdit/notation/resolution'
 import {
   serializeStepGridWithExtent,
   serializePianoRollWithExtent,
 } from '../../../editor/src/visualEdit/notation/serialize'
+
+/**
+ * Wrap resolved spans as an OVERLAY the writer will accept (#1233 made the field lazy).
+ * The width is re-stamped for the model the spans land on, which is what `withSurgery`
+ * does — an instrument that attached naively would measure a change nobody proposed.
+ */
+const asOverlay = <S>(spans: S, attachedSteps: number): SurgicalOverlay<S> => ({
+  attachedSteps,
+  spans: () => spans,
+})
+
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -55,12 +80,12 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 const gridSpans = (mini: string): LeafSource | undefined => {
   const d = projectStepGridDerived(mini, { ok: false, reason: 'probe' })
   if (!d.ok) return undefined
-  return (d.model as StepGridModel).surgical ?? (d.model as StepGridModel).leafSource
+  return (d.model as StepGridModel).surgical?.spans() ?? (d.model as StepGridModel).leafSource
 }
 const rollSpans = (mini: string): RollLeafSource | undefined => {
   const d = projectPianoRollDerived(mini, { ok: false, reason: 'probe' })
   if (!d.ok) return undefined
-  return (d.model as PianoRollModel).surgical ?? (d.model as PianoRollModel).leafSource
+  return (d.model as PianoRollModel).surgical?.spans() ?? (d.model as PianoRollModel).leafSource
 }
 
 describe('#1235 instrument — is the width coincidence reachable?', () => {
@@ -77,9 +102,9 @@ describe('#1235 instrument — is the width coincidence reachable?', () => {
       else if (spans) {
         arms.push(['simulated', {
           ...m,
-          surgical: { ...spans, attachedSteps: m.steps },
+          surgical: asOverlay({ ...spans, attachedSteps: m.steps }, m.steps),
         } as StepGridModel])
-        arms.push(['naive', { ...m, surgical: spans } as StepGridModel])
+        arms.push(['naive', { ...m, surgical: asOverlay(spans, spans.attachedSteps) } as StepGridModel])
       }
       for (const [arm, model] of arms)
         for (const dir of ['halve', 'double'] as const) {
@@ -91,7 +116,7 @@ describe('#1235 instrument — is the width coincidence reachable?', () => {
             tally[arm]++
             if (rows.length < 15)
               rows.push(
-                `  ${arm}  ${dir}  ${JSON.stringify(mini).slice(0, 80)}\n      steps ${model.steps} -> ${next.steps}, anchored width ${(model.leafSource ?? model.surgical)!.cols.length}, wrote the source back`,
+                `  ${arm}  ${dir}  ${JSON.stringify(mini).slice(0, 80)}\n      steps ${model.steps} -> ${next.steps}, anchored width ${(model.leafSource ?? model.surgical!.spans()!).cols.length}, wrote the source back`,
               )
           }
         }
@@ -116,9 +141,9 @@ describe('#1235 instrument — is the width coincidence reachable?', () => {
       else if (spans) {
         arms.push(['simulated', {
           ...m,
-          surgical: { ...spans, attachedSteps: m.steps },
+          surgical: asOverlay({ ...spans, attachedSteps: m.steps }, m.steps),
         } as PianoRollModel])
-        arms.push(['naive', { ...m, surgical: spans } as PianoRollModel])
+        arms.push(['naive', { ...m, surgical: asOverlay(spans, spans.attachedSteps) } as PianoRollModel])
       }
       for (const [arm, model] of arms)
         for (const dir of ['halve', 'double'] as const) {
@@ -130,7 +155,7 @@ describe('#1235 instrument — is the width coincidence reachable?', () => {
             tally[arm]++
             if (rows.length < 15)
               rows.push(
-                `  ${arm}  ${dir}  ${JSON.stringify(mini).slice(0, 80)}\n      steps ${model.steps} -> ${next.steps}, anchored width ${(model.leafSource ?? model.surgical)!.steps}, wrote the source back`,
+                `  ${arm}  ${dir}  ${JSON.stringify(mini).slice(0, 80)}\n      steps ${model.steps} -> ${next.steps}, anchored width ${(model.leafSource ?? model.surgical!.spans()!).steps}, wrote the source back`,
               )
           }
         }

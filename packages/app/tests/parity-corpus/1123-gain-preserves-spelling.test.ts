@@ -155,8 +155,17 @@ const rollSurface: Surface<PianoRollModel> = {
 /* ── pinned populations, measured on THIS tree ──────────────────────────────
  * Pinned so the clauses above cannot go quietly vacuous: a spelling assertion over
  * zero units is green and says nothing, which is how this class reached production.
+ *
+ * ⚠ ROLL 540 → 541 AT #1233, AND IT IS A GAIN RATHER THAN DRIFT. Attaching the surgical
+ * overlay on the core-opened path made one more roll unit's velocity drag writable at all.
+ * Identified per unit rather than inferred from the delta — with the overlay that unit
+ * reports `ASKED:same` (the write round-trips and the notation does not move, which is this
+ * file's whole property), and with the overlay stripped `serializePianoRoll` returns null,
+ * so it never entered the population at all. The mini is the four-line
+ * `<[b4, g#4, e4, c#4]> …` stack. `respelled` and `play-changed` stayed at 0 on both
+ * surfaces, so nothing was traded for it.
  */
-const ASKED = { grid: 972, roll: 540 }
+const ASKED = { grid: 972, roll: 541 }
 
 describe('#1123 — a velocity drag leaves the notation alone', () => {
   it('grid', () => {

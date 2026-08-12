@@ -203,7 +203,11 @@ export function serializeStepGridWithExtent(model: StepGridModel): {
   //   shared-leaf refusals 275, unchanged — 27 documents preserved
   //
   // Placing a NEW rung last inherits the proof for free. Placing it here does not.
-  const spans = model.leafSource ?? model.surgical
+  // ⚠ `spans()` IS THE PROJECTION, PAID HERE AND NOT AT PARSE (#1233). It runs at most
+  // once per model and only on a write, which is the whole point: a parse that never
+  // writes never pays it. The source it hands back already carries the overlay's
+  // attach-time width, so `anchorsAreFor` below stays the one place that rule is enforced.
+  const spans = model.leafSource ?? model.surgical?.spans()
   if (spans) {
     const surgical = spliceByLeaf(model, spans)
     if (surgical !== null) return { mini: surgical, extent: { path: 'leaf' } }
@@ -600,6 +604,19 @@ function anchorsDescribe(model: { steps: number }, anchoredWidth: number | undef
  * Measured before it was built: unreachable on the overlay as it ships (0 of 52 grid and
  * 0 of 43 roll restructures), 13 grid and 2 roll under #1233's core attachment. So this
  * costs nothing today and is here because #1235 exists to gate that change.
+ *
+ * ⚠ RE-MEASURED WHEN #1233 WAS ACTUALLY BUILT, ON THE BUILT THING, and the 13 + 2 holds:
+ * dropping the re-stamp in `lazyGridLeaf`/`lazyRollLeaf` swallows exactly 13 grid and 2
+ * roll restructures, and re-stamping makes it 0 and 0. One unit test sees it — the
+ * restructure arm in `leafLengthRefusal.test.ts` — and nothing else in either package does.
+ *
+ * ⚠⚠ A CHEAPER READING SAID 2 + 2 AND THE INSTRUMENT WAS AT FAULT, which is the part worth
+ * carrying. Before the attachment existed it could only be SIMULATED, by spreading spans
+ * fetched from the derived projection onto a core model — and those spans carry the derived
+ * path's own `attachedSteps`, which usually disagrees with the model they are pasted onto.
+ * The simulated overlay was therefore refused for a reason the real change never has, and
+ * the cost came out five times too low. A simulation that does not reproduce the field the
+ * guard reads is not measuring the guard.
  */
 const anchorsAreFor = (model: { steps: number }, ls: { attachedSteps: number }): boolean =>
   ls.attachedSteps === model.steps
@@ -1415,7 +1432,11 @@ export function serializePianoRollWithExtent(model: PianoRollModel): {
   //
   // ⚠ SO: anyone adding a rung to this ladder must place it LAST to inherit the proof,
   // or re-run the corpus above. Do not read this rung's position as licence.
-  const spans = model.leafSource ?? model.surgical
+  // ⚠ `spans()` IS THE PROJECTION, PAID HERE AND NOT AT PARSE (#1233). It runs at most
+  // once per model and only on a write, which is the whole point: a parse that never
+  // writes never pays it. The source it hands back already carries the overlay's
+  // attach-time width, so `anchorsAreFor` below stays the one place that rule is enforced.
+  const spans = model.leafSource ?? model.surgical?.spans()
   if (spans) {
     const surgical = spliceRollByLeaf(model, spans)
     if (surgical !== null) return { mini: surgical, extent: { path: 'leaf' } }

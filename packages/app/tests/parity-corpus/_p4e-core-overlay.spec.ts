@@ -35,10 +35,25 @@ import {
   parseStepGridCore,
   projectStepGridDerived,
 } from '../../../editor/src/visualEdit/notation/parse'
-import type { LeafSource, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+import type {
+  LeafSource,
+  StepGridModel,
+  SurgicalOverlay,
+} from '../../../editor/src/visualEdit/notation/model'
 import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
 import { serializeStepGridWithExtent } from '../../../editor/src/visualEdit/notation/serialize'
+
+/**
+ * Wrap resolved spans as an OVERLAY the writer will accept (#1233 made the field lazy).
+ * The width is re-stamped for the model the spans land on, which is what `withSurgery`
+ * does — an instrument that attached naively would measure a change nobody proposed.
+ */
+const asOverlay = <S>(spans: S, attachedSteps: number): SurgicalOverlay<S> => ({
+  attachedSteps,
+  spans: () => spans,
+})
+
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -51,7 +66,7 @@ function leafSpansFor(mini: string): LeafSource | undefined {
   const d = projectStepGridDerived(mini, { ok: false, reason: 'probe' })
   if (!d.ok) return undefined
   const m = d.model as StepGridModel
-  return m.surgical ?? m.leafSource
+  return m.surgical?.spans() ?? m.leafSource
 }
 
 /** how many bytes actually moved: the range between the common prefix and common suffix */
@@ -116,7 +131,10 @@ function census(): { units: number; asked: number; byPath: Map<string, number>; 
         if (!spans) {
           row.verdict = 'no leaf spans exist for this mini'
         } else {
-          const overlaid = serializeStepGridWithExtent({ ...next, surgical: spans } as StepGridModel)
+          const overlaid = serializeStepGridWithExtent({
+            ...next,
+            surgical: asOverlay(spans, next.steps),
+          } as StepGridModel)
           if (overlaid.extent.path !== 'leaf' || overlaid.mini === null) {
             row.verdict = `overlay refused → ${overlaid.extent.path}${overlaid.mini === null ? ' (no spelling)' : ''}`
           } else {

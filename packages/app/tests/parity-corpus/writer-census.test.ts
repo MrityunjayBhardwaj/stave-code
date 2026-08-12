@@ -777,7 +777,9 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // whenever the core succeeds. That is one line of `parse.ts` — and reading a
       // line is inference. Verify it against the real entry point instead.
       const mismatches: string[] = []
+      const missingOverlay: string[] = []
       let checked = 0
+      let overlaid = 0
       for (const s of [
         { k: 'grid', core: parseStepGridCore, full: parseStepGrid },
         { k: 'roll', core: parsePianoRollCore, full: parsePianoRoll },
@@ -795,13 +797,38 @@ describe('writer census — how much of the syntactic core transfers to the deri
           // a projection answered where the core should have — the census would then
           // be measuring a counterfactual against the wrong incumbent
           if (fm.leafSource) mismatches.push(`${s.k}: leaf writer answered a core-served ask: ${mini}`)
-          else if (JSON.stringify(fm) !== JSON.stringify(core.model))
-            mismatches.push(`${s.k}: shipped model differs from the core's: ${mini}`)
+          else {
+            // ⚠ SINCE #1233 THE SHIPPED PATH ADDS EXACTLY ONE FIELD: the surgical overlay,
+            // attached at the public entry so that the CORE stays a pure description of what
+            // the syntactic core read. So the comparison is "identical apart from `surgical`",
+            // and both halves of that are asserted — the field must BE there, and everything
+            // else must match.
+            //
+            // ⚠⚠ STRIPPING ALONE WOULD BE A GATE GOING BLIND. `surgical.spans` is a function
+            // and `JSON.stringify` drops function-valued properties, so a comparison that
+            // merely ignored the field would also stop being able to see an overlay that was
+            // never attached — it would go green for the change AND for the change being
+            // unwired. The presence check is what keeps it honest, and `overlaid` below is
+            // asserted against the same denominator the population count uses.
+            if (!fm.surgical) missingOverlay.push(`${s.k}: no overlay on a core-served ask: ${mini}`)
+            else overlaid++
+            const { surgical: _f, ...fmBare } = fm
+            const { surgical: _c, ...coreBare } = core.model as StepGridModel & PianoRollModel
+            if (JSON.stringify(fmBare) !== JSON.stringify(coreBare))
+              mismatches.push(`${s.k}: shipped model differs from the core's: ${mini}`)
+          }
         }
       }
-      console.log(`\n  shipped path vs core over ${checked} core-served asks: ${mismatches.length} mismatches`)
+      console.log(
+        `\n  shipped path vs core over ${checked} core-served asks: ${mismatches.length} mismatches,` +
+          ` ${overlaid} carrying #1233's overlay`,
+      )
       expect(mismatches, mismatches.slice(0, 5).join('\n')).toEqual([])
+      expect(missingOverlay, missingOverlay.slice(0, 5).join('\n')).toEqual([])
       expect(checked).toBe(1204)
+      // the field the comparison above is allowed to ignore must be on EVERY one of them —
+      // otherwise "identical apart from `surgical`" is satisfied by never attaching it
+      expect(overlaid, 'the overlay is not reaching the core-served asks').toBe(1204)
     }, 900_000)
 
     it('RED TEST: the census distinguishes the two writers — it is not measuring one twice', () => {

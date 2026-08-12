@@ -33,12 +33,16 @@ import type {
   Gate,
   GridCell,
   GridCells,
+  LazyLeafSource,
+  LazyRollLeafSource,
   LeafAnchor,
+  LeafSource,
   LeafSpan,
   NotationSource,
   ParseResult,
   PianoRollModel,
   RollLeafAnchor,
+  RollLeafSource,
   RollNote,
   SourcePart,
   SourceRegion,
@@ -2348,8 +2352,6 @@ function leafExpected(
  */
 function withSurgery(mini: string, r: ParseResult<StepGridModel>): ParseResult<StepGridModel> {
   if (!r.ok) return r
-  const leaf = projectStepGridByLeaf(mini)
-  if (!leaf.ok || !leaf.model.leafSource) return r
   // ⚠ THE ATTACHED WIDTH IS RE-STAMPED, and it is the one field that must not travel
   // through unchanged (#1235). It arrives describing the LEAF model's layout; overlaid, it
   // has to describe the model it is being attached to, or the writer's validity check
@@ -2365,9 +2367,41 @@ function withSurgery(mini: string, r: ParseResult<StepGridModel>): ParseResult<S
   // on 5 corpus units, caught by `1117-refined-round-trip` and by nothing else.
   return {
     ok: true,
-    model: {
-      ...r.model,
-      surgical: { ...leaf.model.leafSource, attachedSteps: documentSteps(r.model) },
+    model: { ...r.model, surgical: lazyGridLeaf(mini, documentSteps(r.model)) },
+  }
+}
+
+/**
+ * The grid's leaf projection of `mini`, run at most once and only if someone asks (#1233).
+ *
+ * The contract, the memo and both hazards are on `SurgicalOverlay` (`model.ts`); this is
+ * the grid's instance of it. Two things are worth reading HERE rather than there:
+ *
+ * ⚠ THE RE-STAMP HAPPENS ON THE WAY OUT, so every consumer of `spans()` gets a source
+ * whose `attachedSteps` describes the model the overlay was attached to rather than the
+ * leaf model it was projected from. That keeps the width rule in `anchorsAreFor` alone
+ * ([[PV319]]) — no caller has to remember it, and there is no second place to forget it.
+ *
+ * ⚠ A PRESENT `surgical` NO LONGER MEANS SPANS EXIST. Attaching used to run the
+ * projection and skip the field when it failed, so the field's presence answered both
+ * questions. It cannot, now: knowing whether spans exist IS the expensive projection this
+ * shape exists to defer. Presence means "an overlay was offered here"; whether it can
+ * spell anything is `spans()`. Anything counting attachments is counting the offer.
+ */
+function lazyGridLeaf(mini: string, attachedSteps: number): LazyLeafSource {
+  let computed = false
+  let spans: LeafSource | undefined
+  return {
+    attachedSteps,
+    spans: () => {
+      if (!computed) {
+        computed = true
+        const leaf = projectStepGridByLeaf(mini)
+        spans = leaf.ok && leaf.model.leafSource
+          ? { ...leaf.model.leafSource, attachedSteps }
+          : undefined
+      }
+      return spans
     },
   }
 }
@@ -2465,12 +2499,26 @@ export function parseStepGrid(
   mini: string,
   viewScale: ViewScale = UNREFINED,
 ): ParseResult<StepGridModel> {
+  // ⚠ THE CORE-OPENED HALF GETS THE OVERLAY HERE, AND NOT INSIDE THE CORE (#1233).
+  // `parseStepGridCore` stays a pure description of what the syntactic core read, which is
+  // what lets `writer-census.test.ts` keep asking whether the shipped path hands back the
+  // core's own result: the two now differ by exactly this field and by nothing else, and
+  // that gate asserts precisely that. Attaching inside the core would make the difference
+  // vanish by putting it on both sides — a green gate bought with blindness rather than
+  // with sameness.
+  //
+  // The 805 deletes this half still answered through the region splice are what #1233 is
+  // for: 505 of them re-emit the same bytes surgery would write (the splice already copies
+  // everything outside the touched element), 195 have no leaf spans at all, 33 the overlay
+  // refuses — and 41 come back DIFFERENT, moving 101 bytes where the splice moves 427.
+  // Those 41 are the destruction class this arc exists for: `[C Eb]` re-emitted as
+  // `[~ ~ ~ Eb _ _]` against surgery's `[~ Eb]`.
   const owner = parseStepGridCore(mini)
   if (viewScale === UNREFINED) {
-    return owner.ok ? owner : projectStepGridDerived(mini, owner, UNREFINED)
+    return owner.ok ? withSurgery(mini, owner) : projectStepGridDerived(mini, owner, UNREFINED)
   }
   const result = owner.ok
-    ? parseStepGridCore(mini, viewScale)
+    ? withSurgery(mini, parseStepGridCore(mini, viewScale))
     : projectStepGridDerived(mini, owner, viewScale)
   return honoursViewScale(result, viewScale, 'grid')
 }
@@ -3544,15 +3592,29 @@ function withRollSurgery(
   r: ParseResult<PianoRollModel>,
 ): ParseResult<PianoRollModel> {
   if (!r.ok) return r
-  const leaf = projectPianoRollByLeaf(mini)
-  if (!leaf.ok || !leaf.model.leafSource) return r
   // the attached width is re-stamped for the model it lands on, at the DOCUMENT's width
   // rather than the drawn one — see `withSurgery` for both halves and what each costs (#1235)
   return {
     ok: true,
-    model: {
-      ...r.model,
-      surgical: { ...leaf.model.leafSource, attachedSteps: documentSteps(r.model) },
+    model: { ...r.model, surgical: lazyRollLeaf(mini, documentSteps(r.model)) },
+  }
+}
+
+/** The roll's half of `lazyGridLeaf`, with the same contract — see there and `SurgicalOverlay`. */
+function lazyRollLeaf(mini: string, attachedSteps: number): LazyRollLeafSource {
+  let computed = false
+  let spans: RollLeafSource | undefined
+  return {
+    attachedSteps,
+    spans: () => {
+      if (!computed) {
+        computed = true
+        const leaf = projectPianoRollByLeaf(mini)
+        spans = leaf.ok && leaf.model.leafSource
+          ? { ...leaf.model.leafSource, attachedSteps }
+          : undefined
+      }
+      return spans
     },
   }
 }
@@ -3621,12 +3683,17 @@ export function parsePianoRoll(
   mini: string,
   viewScale: ViewScale = UNREFINED,
 ): ParseResult<PianoRollModel> {
+  // Attached HERE and not in the core, for the reason spelled out on `parseStepGrid`.
+  // The roll's core-opened half was enumerated with the grid's (#1231): of its 129 deletes
+  // that move more than the note, asking the writer per unit gives 69 with no spans, 25 the
+  // overlay refuses, and 35 winnable — of which #1232 shipped the 21 on the derived path
+  // and these are the rest.
   const owner = parsePianoRollCore(mini)
   if (viewScale === UNREFINED) {
-    return owner.ok ? owner : projectPianoRollDerived(mini, owner, UNREFINED)
+    return owner.ok ? withRollSurgery(mini, owner) : projectPianoRollDerived(mini, owner, UNREFINED)
   }
   const result = owner.ok
-    ? parsePianoRollCore(mini, viewScale)
+    ? withRollSurgery(mini, parsePianoRollCore(mini, viewScale))
     : projectPianoRollDerived(mini, owner, viewScale)
   return honoursViewScale(result, viewScale, 'roll')
 }

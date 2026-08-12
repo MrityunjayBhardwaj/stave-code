@@ -698,7 +698,24 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
     const note = r.model.notes.find((n) => n.start === 9)! // the `0` in [0 1@2]@2
     const out = serializePianoRoll(dragPitch(r.model, note, '7'))
     // only the edited element changes; every other element byte-identical
-    expect(out).toBe('[1@2 2] [3@2 4] 2 [7@2 1@4]@2 - - -')
+    //
+    // ⚠ THIS EXPECTATION WAS THE ELEMENT WRITER'S RE-SPELLING UNTIL #1233, and the
+    // difference is worth stating because updating an expectation is how a defect gets
+    // frozen as ground truth ([[P483]]). The old value was `[7@2 1@4]@2` — same music, but
+    // re-emitted at TWICE the document's internal resolution, because the element writer
+    // rebuilds the group onto its own grid. Verified by re-parsing all three strings rather
+    // than by reading them:
+    //
+    //     source   0:2:1 | 2:1:2 | 3:2:3 | 5:1:4 | 6:3:2 | 9:2:0 | 11:4:1
+    //     surgery  0:2:1 | 2:1:2 | 3:2:3 | 5:1:4 | 6:3:2 | 9:2:7 | 11:4:1
+    //     re-emit  0:4:1 | 4:2:2 | 6:4:3 | 10:2:4 | 12:6:2 | 18:4:7 | 22:8:1
+    //
+    // Surgery's answer differs from the SOURCE in exactly one place — the pitch the drag
+    // asked for — while the re-emit doubles every start and duration in the line. Bytes
+    // moved from the source: 1 against 7. So this arm's own stated property, "only the
+    // edited element changes", is satisfied strictly harder than it was before, and the
+    // number that had to move was the oracle rather than the writer.
+    expect(out).toBe('[1@2 2] [3@2 4] 2 [7 1@2]@2 - - -')
   })
 
   /**

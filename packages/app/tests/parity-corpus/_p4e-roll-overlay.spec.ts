@@ -101,7 +101,7 @@ describe('P4e instrument — what an overlay would win on the roll', () => {
       // Same bytes — two different reasons, and they are worth telling apart. Ask
       // surgery in isolation by moving the spans into the terminal field, which
       // suppresses the fall-through.
-      const alone = serializePianoRoll({ ...bare, notes: kept, leafSource: surgical })
+      const alone = serializePianoRoll({ ...bare, notes: kept, leafSource: surgical.spans() })
       bump(
         alone === null
           ? `${owner} · overlay REFUSES, falls back (safe)`
@@ -163,7 +163,7 @@ describe('P4e instrument — what an overlay would win on the roll', () => {
       if (was === null) continue
       // did surgery answer this delete at all? (terminal field suppresses the fallback)
       const alone = surgical
-        ? serializePianoRoll({ ...bare, notes: kept, leafSource: surgical })
+        ? serializePianoRoll({ ...bare, notes: kept, leafSource: surgical.spans() })
         : null
       if (alone === null) continue
       switched++
