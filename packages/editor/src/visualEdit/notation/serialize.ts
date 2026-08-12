@@ -190,6 +190,19 @@ export function serializeStepGridWithExtent(model: StepGridModel): {
   // no longer fits (a restructure moved the layout, or the element projection drew a
   // different column count) REFUSES and the element writer answers. The guard predates
   // this and is the same one both leaf writers already call (#916, #990).
+  //
+  // ⚠⚠ THIS RUNG IS HOISTED, AND THAT FORFEITS THE LADDER'S FREE SAFETY PROOF — stated
+  // in full on `serializePianoRollWithExtent`, and it applies here first because P4d is
+  // where the hoist was introduced. Every other widening of this writer (`stackedRegion`
+  // #1120, absorption #1146) runs only where the previous rung returned null and is
+  // therefore safe by construction; this one runs FIRST and can pre-empt alt / splice /
+  // rebuild, so it is safe only by the corpus:
+  //
+  //   surgical deletes  64 -> 103     placements  18,929 -> 18,929 (unchanged)
+  //   writer-reach      153 / 85      view scale  890 -> 890 honoured
+  //   shared-leaf refusals 275, unchanged — 27 documents preserved
+  //
+  // Placing a NEW rung last inherits the proof for free. Placing it here does not.
   const spans = model.leafSource ?? model.surgical
   if (spans) {
     const surgical = spliceByLeaf(model, spans)
@@ -1299,6 +1312,27 @@ export function serializePianoRollWithExtent(model: PianoRollModel): {
   // no longer fits (a restructure moved the layout, or the element projection drew a
   // different column count) REFUSES and the element writer answers. The guard predates
   // this and is the one both leaf writers already called (#989, #990).
+  //
+  // ⚠⚠ THIS RUNG IS HOISTED, AND THAT FORFEITS THE LADDER'S FREE SAFETY PROOF. Every
+  // other widening of these writers — `stackedRegion` (#1120), absorption (#1146) — was
+  // safe by one structural argument: it runs only where the previous rung returned null,
+  // so no document that produces output today can change shape, and the proof costs
+  // nothing to check. This rung runs FIRST and can pre-empt alt / splice / rebuild, so
+  // it inherits none of that. Its safety is bought by MEASUREMENT instead, and the
+  // measurement is the price of the placement rather than a formality:
+  //
+  //   corpus deletes switching to surgery   26  =  22 whose bytes change  +  4 identical
+  //   writer-reach (engine oracle)          153 / 85, unchanged
+  //   WRITER-CENSUS.json                    regenerates byte-identical — no verdict moves
+  //   parity-corpus                         442 arms green, incl. placement, locality,
+  //                                         round-trip and view-scale
+  //
+  // A note that MOVED or was RESIZED lands where no anchor holds and `spliceRollByLeaf`
+  // returns null, so those gestures still fall through — that is what keeps the
+  // pre-emption confined to edits surgery can express exactly.
+  //
+  // ⚠ SO: anyone adding a rung to this ladder must place it LAST to inherit the proof,
+  // or re-run the corpus above. Do not read this rung's position as licence.
   const spans = model.leafSource ?? model.surgical
   if (spans) {
     const surgical = spliceRollByLeaf(model, spans)
