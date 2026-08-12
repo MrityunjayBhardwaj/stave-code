@@ -384,7 +384,15 @@ describe('op admissibility — an enabled control produces writable notation', (
     expect(disagreeing, 'canResizeCell disagrees with the op it stands for').toBe(0)
     // POPULATION, pinned for the same reason every other sweep here pins one ([[P343]]):
     // a path that stops offering the handle must not turn this gate green over no material.
-    expect(offered, 'the sweep must actually exercise the handle').toBeGreaterThan(700)
+    //
+    // ⚠ RAISED 700 → 1200 IN THE COMMIT THAT EARNED IT (#1235), because a floor policed in
+    // one direction only decays into headroom for the next regression. The observed count
+    // went 1003 → 1273 when the leaf writer learned to refuse a length it cannot spell:
+    // every one of those 270 handles was being suppressed by `resizeCell`'s own
+    // perceptibility guard, because the writer answered the drag with the source bytes
+    // unchanged. This gate was the only one that saw the defect at all, and at a floor of
+    // 700 it had 300 units of slack to lose before it would have said so.
+    expect(offered, 'the sweep must actually exercise the handle').toBeGreaterThan(1200)
     expect(notes, 'over the whole grid corpus').toBeGreaterThan(4000)
   })
 

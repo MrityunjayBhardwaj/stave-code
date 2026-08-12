@@ -26089,7 +26089,8 @@ function cLabel(midi) {
 __name(cLabel, "cLabel");
 
 // src/visualEdit/notation/model.ts
-var gridCellKey = /* @__PURE__ */ __name((c) => `${c.token} ${c.duration.toFixed(6)}`, "gridCellKey");
+var gridCellKey = /* @__PURE__ */ __name((c) => `${c.token} ${cellLengthKey(c.duration)}`, "gridCellKey");
+var cellLengthKey = /* @__PURE__ */ __name((duration) => duration.toFixed(6), "cellLengthKey");
 var cellOn = /* @__PURE__ */ __name((duration = 1) => ({ duration }), "cellOn");
 var isCellOn = /* @__PURE__ */ __name((cell) => typeof cell === "object" && cell !== null, "isCellOn");
 var scaleCell = /* @__PURE__ */ __name((cell, factor) => isCellOn(cell) ? cellOn(cell.duration * factor) : false, "scaleCell");
@@ -26355,6 +26356,7 @@ function anchorsDescribe(model, anchoredWidth) {
   return anchoredWidth === model.steps;
 }
 __name(anchorsDescribe, "anchorsDescribe");
+var anchorsAreFor = /* @__PURE__ */ __name((model, ls) => ls.attachedSteps === model.steps, "anchorsAreFor");
 function serializeByLeaf(src, edits) {
   let out = src;
   for (const e of [...edits].sort((a, b) => b.span.start - a.span.start)) {
@@ -26364,8 +26366,17 @@ function serializeByLeaf(src, edits) {
 }
 __name(serializeByLeaf, "serializeByLeaf");
 function spliceByLeaf(model, ls) {
-  if (!ls || !anchorsDescribe(model, ls.cols.length)) return null;
+  if (!ls || !anchorsAreFor(model, ls) || !anchorsDescribe(model, ls.cols.length)) return null;
   const now2 = columnAtoms(model.lanes, model.steps);
+  for (let c = 0; c < model.steps; c++) {
+    const avail = ls.cols[c].map((a) => cellLengthKey(a.duration));
+    if (avail.length === 0) continue;
+    for (const n of now2[c]) {
+      const i = avail.indexOf(cellLengthKey(n.duration));
+      if (i < 0) return null;
+      avail.splice(i, 1);
+    }
+  }
   const want = /* @__PURE__ */ new Map();
   for (let c = 0; c < model.steps; c++) {
     const anchors = ls.cols[c];
@@ -26400,7 +26411,7 @@ function spliceByLeaf(model, ls) {
 }
 __name(spliceByLeaf, "spliceByLeaf");
 function spliceRollByLeaf(model, ls) {
-  if (!ls || !anchorsDescribe(model, ls.steps)) return null;
+  if (!ls || !anchorsAreFor(model, ls) || !anchorsDescribe(model, ls.steps)) return null;
   const byStart = /* @__PURE__ */ new Map();
   for (const a of ls.anchors) {
     const here = byStart.get(a.start);
@@ -27956,22 +27967,22 @@ function projectStepGridByLeaf(src0) {
   if (perBar2 * bars > MAX_STEPS) return no("resolution");
   const anchored = leafAnchors(src, perCycle, perBar2, bars);
   if (!anchored.ok) return anchored;
-  const cols = anchored.cols;
   const played = columnsFromOnsets(perCycle, perBar2, bars);
   if (played === null) return no("irrational-onset");
+  const cols = anchored.cols.map(
+    (col, i) => col.map((a) => ({
+      ...a,
+      duration: played[i].find((n) => n.token === a.atom)?.duration ?? 1
+    }))
+  );
   const rests = restSpansByColumn(src, perBar2, bars);
   const model = {
     steps: perBar2 * bars,
     ...bars > 1 ? { bars } : {},
     lanes: lanesFromCells(
-      cols.map(
-        (col, i) => col.map((a) => ({
-          token: a.atom,
-          duration: played[i].find((n) => n.token === a.atom)?.duration ?? 1
-        }))
-      )
+      cols.map((col) => col.map((a) => ({ token: a.atom, duration: a.duration })))
     ),
-    leafSource: { src, cols, ...rests ? { rests } : {} }
+    leafSource: { src, cols, attachedSteps: perBar2 * bars, ...rests ? { rests } : {} }
   };
   if (!leafEditSafe(model, perBar2, bars)) return no("edit-unsafe");
   if (!leafViewUsable(model)) return no("view-unusable");
@@ -28073,8 +28084,14 @@ __name(leafExpected, "leafExpected");
 function withSurgery(mini, r) {
   if (!r.ok) return r;
   const leaf = projectStepGridByLeaf(mini);
-  if (!leaf.ok) return r;
-  return { ok: true, model: { ...r.model, surgical: leaf.model.leafSource } };
+  if (!leaf.ok || !leaf.model.leafSource) return r;
+  return {
+    ok: true,
+    model: {
+      ...r.model,
+      surgical: { ...leaf.model.leafSource, attachedSteps: documentSteps(r.model) }
+    }
+  };
 }
 __name(withSurgery, "withSurgery");
 function vacuousLocality(a) {
@@ -28649,7 +28666,7 @@ function projectPianoRollByLeaf(src0) {
     // that write it back can never describe different music
     notes: anchors.map((a) => ({ pitch: a.pitch, start: a.start, duration: a.duration })),
     ...numeric ? { numeric: true } : {},
-    leafSource: { src, anchors, steps: perBar2 * bars }
+    leafSource: { src, anchors, steps: perBar2 * bars, attachedSteps: perBar2 * bars }
   };
   if (!leafRollEditSafe(model, perBar2, bars, numeric)) return no("edit-unsafe");
   if (!leafRollViewUsable(model)) return no("view-unusable");
@@ -28737,8 +28754,14 @@ __name(leafRollViewUsable, "leafRollViewUsable");
 function withRollSurgery(mini, r) {
   if (!r.ok) return r;
   const leaf = projectPianoRollByLeaf(mini);
-  if (!leaf.ok) return r;
-  return { ok: true, model: { ...r.model, surgical: leaf.model.leafSource } };
+  if (!leaf.ok || !leaf.model.leafSource) return r;
+  return {
+    ok: true,
+    model: {
+      ...r.model,
+      surgical: { ...leaf.model.leafSource, attachedSteps: documentSteps(r.model) }
+    }
+  };
 }
 __name(withRollSurgery, "withRollSurgery");
 function projectPianoRollDerived(mini, fallbackReason, viewScale = UNREFINED) {

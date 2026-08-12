@@ -210,10 +210,27 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       { asks: by.element.asks, refused: by.element.refused },
       'element path — 1,748 → 31 refused, the causes #1064 did not name',
     ).toEqual({ asks: 15054, refused: 31 })
+    // ⚠ 3834 → 3842 IN #1235, AND THE 8 WERE NEVER PLACEMENTS. The leaf writer used to
+    // compare TOKENS only, so it could not see that `clampLane` had SHORTENED a note
+    // sustaining through the clicked column — it wrote the rest's bytes for the new sound
+    // and left the neighbour's length alone. Every one of those writes produced a
+    // document that does not project back to the model the user was looking at: measured
+    // over all 9 such asks (2 minis), 9 diverged and 0 matched, and the divergence is not
+    // subtle — one places a note the view draws one column long into a document that says
+    // it sustains for twenty-four. They were offers whose result disagreed with the view,
+    // which is the one thing this file claims we do not do.
+    //
+    // ⚠ IT READ 3860 FIRST, AND 18 OF THAT 26 WERE FLOAT NOISE, not a refusal anyone
+    // wanted. `clampLane` re-clamps the whole lane on every edit and turns
+    // `1.0000000000000018` into exactly `1`, so a raw length comparison called a resize
+    // on placements that moved nothing. Quantising through `cellLengthKey` — the rounding
+    // `gridCellKey` has done since P4b, shared rather than restated — removed all 18 and
+    // put the surgery census back on its floor. A refusal count that looks defensible is
+    // not thereby right: the first reading had a mechanism story too.
     expect(
       { asks: by.leaf.asks, refused: by.leaf.refused },
-      'leaf path — 92.7% refused; the 302 taken are the columns holding a rest (#1154)',
-    ).toEqual({ asks: 4136, refused: 3834 })
+      'leaf path — the 294 taken are columns holding a rest (#1154) whose placement moves no other length (#1235)',
+    ).toEqual({ asks: 4136, refused: 3842 })
     expect(
       { asks: by.alt.asks, refused: by.alt.refused },
       'alt path — 512 → 0 refused',
@@ -237,10 +254,13 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // now false — see the phase-3 note above. It is re-pinned rather than deleted
     // because the number is exactly what would move if the rest index ever
     // widened past what it was measured to reach.
+    // 302 → 294 / 18 → 17 in #1235: the placements that also shortened a sustaining
+    // neighbour, which this writer has no bytes to say. See the note on the leaf refusal
+    // count above for the measurement that says all 9 disagreed with the view.
     expect(
       { leafOffered, leafUnitsOffering },
       'leaf placements the writer takes, and how many units they sit on (#1154)',
-    ).toEqual({ leafOffered: 302, leafUnitsOffering: 18 })
+    ).toEqual({ leafOffered: 294, leafUnitsOffering: 17 })
   })
 
   /**
@@ -489,7 +509,12 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     //
     // 19 → 20 (#1066): the one extra leaf grid the widened onset snap grid admits. It
     // takes a note, so it joins the rest-column group rather than the no-ask pair.
-    expect(leafViewsPlacing, 'leaf grids that take a note somewhere (#1154)').toBe(20)
+    //
+    // 20 → 19 (#1235): one of those grids took a note ONLY on columns where the placement
+    // also shortened a sustaining neighbour, which the writer cannot spell. Its writes did
+    // not project back to the view, so it now correctly says it places nothing; the pair
+    // with no empty cell to ask about is untouched.
+    expect(leafViewsPlacing, 'leaf grids that take a note somewhere (#1154)').toBe(19)
     // The denominators, so none of the above can quietly become a claim about an
     // empty set — and the positive control for the no-ask branch.
     expect(viewsWithNoAsk, 'grids with no empty cell at all').toBe(418)

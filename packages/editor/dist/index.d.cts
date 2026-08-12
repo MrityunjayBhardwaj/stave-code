@@ -8354,10 +8354,28 @@ interface LeafSpan {
     start: number;
     end: number;
 }
-/** one atom sounding in a column, paired with the source leaf it was read from */
+/**
+ * one atom sounding in a column, paired with the source leaf it was read from
+ *
+ * ⚠ `duration` IS HERE SO THE WRITER CAN REFUSE, NOT SO IT CAN WRITE (#1235). This
+ * anchor's whole point is a byte replacement at `span`, and a note's LENGTH has no
+ * bytes of its own to replace — it is spelled by what surrounds the token (`_`, `@n`,
+ * a bracket group), which is notation this writer must never author. Carrying the
+ * length anyway is what lets `spliceByLeaf` NOTICE that a length changed and decline,
+ * instead of comparing tokens, finding no difference, and returning the source bytes
+ * as a successful write. A writer's contract has to state what it can notice, not only
+ * what it can spell.
+ *
+ * Read from the same expression that fills the lane cells (`projectStepGridByLeaf`),
+ * never derived a second time: the comparison is only meaningful if both sides come
+ * from one rule. `RollLeafAnchor` has carried its own for the same reason since #989,
+ * which is why the roll never had this defect.
+ */
 interface LeafAnchor {
     atom: string;
     span: LeafSpan;
+    /** length in COLUMNS, the units of `StepNote.duration` */
+    duration: number;
 }
 /**
  * The source of a LEAF-ANCHORED projection (#986) — the third write-back shape,
@@ -8409,6 +8427,26 @@ interface LeafSource {
      * Absent, or null at a column, simply means the older refusal still stands there.
      */
     rests?: (LeafSpan | null)[];
+    /**
+     * The width of the model these spans were ATTACHED to — `RollLeafSource.attachedSteps`
+     * is the same field on the roll, and both exist for one reason (#1235, [[PV319]]).
+     *
+     * ⚠ IT IS NOT `cols.length`, AND THAT DIFFERENCE IS THE WHOLE POINT. `anchorsDescribe`
+     * compares `cols.length` against the model's `steps`, and where these spans are
+     * OVERLAID (`StepGridModel.surgical`) those two numbers are computed by different code
+     * from different premises: the leaf path anchors per ATOM, the element path counts
+     * EXPANDED columns. So their equality is evidence of nothing, and coincidence is
+     * reachable by an ordinary gesture — a `÷2` moves the element model's width onto the
+     * overlay's, the guard passes against spans describing a different layout, surgery
+     * writes the pre-halved bytes back, and the user's divide-by-two silently does nothing.
+     * Measured: unreachable on the overlay as it ships (0 of 52 grid and 0 of 43 roll
+     * restructures), and 13 grid + 2 roll under #1233's core attachment.
+     *
+     * Recording the width at ATTACH time makes "valid" mean "this is the model those spans
+     * were read from", which is the property actually needed. `anchorsDescribe` stays: it
+     * is still NECESSARY, it was only never sufficient.
+     */
+    attachedSteps: number;
 }
 /**
  * One played note, paired with the source leaf its PITCH was read from.
@@ -8469,6 +8507,8 @@ interface RollLeafSource {
      * leaf writers call ([[P329]], #990).
      */
     steps: number;
+    /** the width of the model these anchors were ATTACHED to — see `LeafSource` (#1235) */
+    attachedSteps: number;
 }
 /**
  * One `,`-separated part of the source, and the columns it produced.

@@ -23,7 +23,7 @@ import type {
   StepGridModel,
   StepLane,
 } from './model'
-import { columnSplit, gridCellKey, isCellOn } from './model'
+import { cellLengthKey, columnSplit, gridCellKey, isCellOn } from './model'
 
 /**
  * An `altSource` still describes a model only while its single-cycle width times
@@ -579,6 +579,31 @@ function anchorsDescribe(model: { steps: number }, anchoredWidth: number | undef
   return anchoredWidth === model.steps
 }
 
+/**
+ * …and are these anchors even FOR this model? — the second half of the same guard, and
+ * the one that cannot be got from the spans themselves (#1235, [[PV319]]).
+ *
+ * `anchorsDescribe` compares two quantities computed by different code from different
+ * premises wherever the spans are OVERLAID: the leaf path anchors per ATOM, the element
+ * path counts EXPANDED columns. Equality between two such numbers is evidence of nothing,
+ * and coincidence is reachable by an ordinary gesture — halving `c3@2 e3@2` moves the
+ * element model's four columns onto the overlay's two, the width check passes against
+ * spans describing a different layout, and the write puts the pre-halved bytes back so
+ * the user's ÷2 silently does nothing.
+ *
+ * The width recorded at ATTACH time is not derived from the spans at all, so comparing it
+ * says "this is the model those spans were read from" — the property actually wanted.
+ * Both checks stay: this one bounds WHICH MODEL an overlay may answer for, `anchorsDescribe`
+ * bounds whether that model still has the layout the spans index, and neither implies the
+ * other.
+ *
+ * Measured before it was built: unreachable on the overlay as it ships (0 of 52 grid and
+ * 0 of 43 roll restructures), 13 grid and 2 roll under #1233's core attachment. So this
+ * costs nothing today and is here because #1235 exists to gate that change.
+ */
+const anchorsAreFor = (model: { steps: number }, ls: { attachedSteps: number }): boolean =>
+  ls.attachedSteps === model.steps
+
 export function serializeByLeaf(
   src: string,
   edits: Array<{ span: LeafSpan; text: string }>,
@@ -600,8 +625,20 @@ export function serializeByLeaf(
  * untouched atom asserts its own token so a leaf shared by several columns can be
  * checked for agreement.
  *
- * Returns null — the document is left alone — for the three edits that have no
- * span to write through, all of which are the one bijection stated four ways:
+ * WHICH AXES IT READS, and what it does about the others (#1235). The model carries a
+ * cell's SOUND and its LENGTH. Only the sound has bytes of its own — the length is
+ * spelled by what surrounds the token (`_`, `@n`, a bracket group), which is notation
+ * this writer must never author. So it can write one axis and not the other, and the
+ * axis it cannot write it must still be able to NOTICE: a comparison that reads only
+ * tokens finds no difference on a resize, writes the source bytes back, and reports
+ * them as a successful write. That is worse than throwing, because every gate
+ * downstream reads the output and the output is the user's own valid document.
+ *
+ * Anything the model grows that the anchors do not carry has to be added here at the
+ * same time, or it becomes the next silent-success path.
+ *
+ * Returns null — the document is left alone — for the four edits that have no
+ * span to write through, three of which are the one bijection stated over again:
  *  - a hit added where no leaf exists (or a second sound stacked onto a column):
  *    writing it would mean AUTHORING notation, which is the line between adapter
  *    and printer;
@@ -609,7 +646,8 @@ export function serializeByLeaf(
  *    token cannot be two things, and letting the last writer win would silently
  *    rewrite cells the user did not touch;
  *  - anchors that no longer describe the grid, which is what a restructure
- *    (resize/quantize) leaves behind.
+ *    (resize/quantize) leaves behind;
+ *  - a note whose LENGTH moved, per the paragraph above.
  *
  * HOW BIG THE SHARED-LEAF REFUSAL IS — measured, because a refusal without a number
  * reads as an edge case and this one is half the surface (#1160). Over all 1527 corpus
@@ -633,8 +671,52 @@ export function serializeByLeaf(
  * The refusal is the cheaper honesty. See #1160 for the full measurement.
  */
 function spliceByLeaf(model: StepGridModel, ls: LeafSource | undefined): string | null {
-  if (!ls || !anchorsDescribe(model, ls.cols.length)) return null
+  if (!ls || !anchorsAreFor(model, ls) || !anchorsDescribe(model, ls.cols.length)) return null
   const now = columnAtoms(model.lanes, model.steps)
+  // THE LENGTH AXIS, WHICH THIS WRITER READS ONLY IN ORDER TO DECLINE (#1235).
+  //
+  // Every note still drawn must sound for a length some anchor in its column already
+  // played. A note the user LENGTHENED or SHORTENED has none, so this refuses and the
+  // caller falls back — which for an overlaid model is the element writer answering, and
+  // for a model the leaf projection OWNS is the document left alone. Both are honest;
+  // the alternative is not, because with no length in the token comparison a resize
+  // reads as no change at all and the source bytes go back out as a write.
+  //
+  // Matched as a MULTISET rather than "some anchor here has this length", so resizing a
+  // note to a SIBLING's length is caught too — otherwise it slips through as a silent
+  // no-op instead of a refusal. This is `spliceRollByLeaf`'s check, which is why the
+  // roll never had this defect; the grid was the surface out of step.
+  //
+  // ⚠ SCOPED TO COLUMNS THAT HOLD AN ANCHOR, and that residue is real rather than
+  // overlooked: a note ARRIVING on an indexed rest (#1154) has no anchor to be measured
+  // against, because a rest sounds nothing and nothing indexed its length. The branch
+  // below writes those by replacing the rest's own bytes, and the length it comes back
+  // at is the rest's, not the one the panel asked for. Placement writes immediately and
+  // the model is re-read from the document, so the next gesture on that note DOES meet
+  // an anchor; a place-and-resize inside one model update would not, and no gesture in
+  // the panel produces one.
+  // ⚠ COMPARED THROUGH `cellLengthKey`, NOT AS RAW NUMBERS, and that is not tidiness.
+  // One musical length reaches the two sides down different paths: `clampLane` re-clamps
+  // the whole lane on every edit and turns `1.0000000000000018` into exactly `1`, so a
+  // DELETE that touched no length at all reads as a resize and the write is refused. It
+  // cost one corpus unit before the rounding went in. `gridCellKey` has quantised this
+  // way since P4b for the same reason and this shares its quantiser rather than a second
+  // one that agrees today.
+  //
+  // ⚠ LENGTHS ONLY, deliberately: a rename must pass here so the swap branch below can
+  // answer it, so the sounds are compared there and not in this loop. That leaves one
+  // theoretical hole — two notes in a column resized so the MULTISET is unchanged — which
+  // is not a gesture the panel can produce (each drag resizes one cell and writes) and
+  // which `spliceRollByLeaf` has had since #989 for the same reason. Named, not built for.
+  for (let c = 0; c < model.steps; c++) {
+    const avail = ls.cols[c].map((a) => cellLengthKey(a.duration))
+    if (avail.length === 0) continue
+    for (const n of now[c]) {
+      const i = avail.indexOf(cellLengthKey(n.duration))
+      if (i < 0) return null
+      avail.splice(i, 1)
+    }
+  }
   const want = new Map<string, { span: LeafSpan; text: string }>()
   for (let c = 0; c < model.steps; c++) {
     const anchors = ls.cols[c]
@@ -746,7 +828,7 @@ function spliceByLeaf(model: StepGridModel, ls: LeafSource | undefined): string 
  * set is right for telling chord members apart and cannot represent two of one pitch.
  */
 function spliceRollByLeaf(model: PianoRollModel, ls: RollLeafSource | undefined): string | null {
-  if (!ls || !anchorsDescribe(model, ls.steps)) return null
+  if (!ls || !anchorsAreFor(model, ls) || !anchorsDescribe(model, ls.steps)) return null
   // group the anchors by the column they start on — a chord contributes several here,
   // each with its own disjoint leaf
   const byStart = new Map<number, RollLeafAnchor[]>()
