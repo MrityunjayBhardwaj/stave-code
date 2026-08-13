@@ -20,6 +20,36 @@
  * so it must be editable now too. A run where both arms fail is a broken
  * harness, not a broken feature — and one where only the control passes is the
  * pre-#1240 tree.
+ *
+ * ── TWO MECHANISMS, TWO KINDS OF ARM (#1249) ──────────────────────────────
+ * #1240 is two decisions in sequence, and the first three arms reach only the
+ * first of them:
+ *
+ *   1. WHICH SPAN does this unit own?   `chunkDetect.resolveMini`
+ *   2. WHICH SURFACE does that span open?  `panels/surfaceRoute.chunkSurface`
+ *
+ * `patternKind.isStepChunk` returns `step` the moment `miniString !== null &&
+ * headFn === 's'`, so every fixture with a CONTENT head routes at
+ * `chunkSurface`'s first line and the resolver branch below it is never
+ * reached. Unwiring mechanism 2 therefore leaves the three arms above GREEN —
+ * which reads as "these arms are decoration" and is the opposite of the truth.
+ *
+ * The last two arms carry a SILENT head (`seq`), so the head decides nothing
+ * and the content is asked. They come in a pair on purpose: drums must reach
+ * the grid and notes must reach the roll, so the pair pins the DISCRIMINATION
+ * rather than merely that a view opened. Either one alone would pass against a
+ * router that always answered the same surface.
+ *
+ * ⚠ The fixture has to be a BOUND reference, not an inline string. A literal on
+ * a silent head (`seq("bd sd hh cp")`) is `miniVia: 'literal'`, which
+ * `chunkSurface` deliberately excludes — that shape has always landed in
+ * standby and moving it is a separate decision with its own measurement.
+ *
+ * BREAK SIGNATURES, sorted for containment rather than assumed disjoint:
+ *   unwire `chunkSurface`'s resolver branch -> the last two arms only
+ *   unwire `resolveMini`                    -> four of five (all but CONTROL)
+ * The break must reach `packages/editor/dist`, not just `src`, or the browser
+ * stays green for a reason that has nothing to do with coverage.
  */
 import { test, expect, type Page } from '@playwright/test'
 
@@ -135,6 +165,46 @@ test.describe('#1240 — a resolver-named span opens a grid in the real app', ()
       timeout: 15_000,
     })
     // The two surfaces are exclusive: seeing roll cells must mean no grid cells.
+    expect(await page.locator(`${grid} [data-seq-cell]`).count()).toBe(0)
+  })
+
+  // ── the SURFACE half (#1249) ────────────────────────────────────────────
+  // `seq` is not a content head, so `patternKind` answers null and the routing
+  // falls through to `routeSurface`, which asks the content. These are the only
+  // two arms in this file that execute that branch.
+
+  test('a SILENT head with drum words opens the step grid', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+    })
+
+    await boot(page)
+    // No content head anywhere: `seq` says nothing about drums vs notes, and
+    // the reference carries no literal. Only the CONTENT can decide this.
+    await typeAndPoint(page, 'const drums = "bd sd hh cp"\n$: seq(drums).lpf(400)', '.lpf')
+
+    const cells = page.locator(`${grid} [data-seq-cell]`)
+    await expect(cells.first()).toBeVisible({ timeout: 15_000 })
+    expect(await cells.count()).toBeGreaterThanOrEqual(16)
+    // Exclusive, same as the head-routed pair — a router that opened both would
+    // satisfy the visibility assertion above and mean nothing.
+    expect(await page.locator(`${grid} [data-roll-cell]`).count()).toBe(0)
+
+    expect(errors).toEqual([])
+  })
+
+  test('a SILENT head with note names opens the piano roll', async ({ page }) => {
+    await boot(page)
+    // Identical shape, different content. This is the arm that makes the pair a
+    // test of DISCRIMINATION: a router hard-wired to `step` passes the previous
+    // arm and fails this one.
+    await typeAndPoint(page, 'const mel = "c3 e3 g3"\n$: seq(mel).room(2)', '.room')
+
+    await expect(page.locator(`${grid} [data-roll-cell]`).first()).toBeVisible({
+      timeout: 15_000,
+    })
     expect(await page.locator(`${grid} [data-seq-cell]`).count()).toBe(0)
   })
 })
