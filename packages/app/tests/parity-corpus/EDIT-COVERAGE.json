@@ -2,28 +2,30 @@
   "tunes": 57,
   "tuneLevel": {
     "fully": 24,
-    "partial": 8,
-    "anyEditable": 32,
+    "partial": 9,
+    "anyEditable": 33,
     "knobsOnly": 19,
-    "codeOnly": 5,
+    "codeOnly": 4,
     "unparseable": 1,
-    "anyEditablePct": 56.1
+    "anyEditablePct": 57.9
   },
   "unitLevel": {
     "totalUnits": 101,
-    "note": 54,
+    "note": 55,
     "clip": 0,
     "master": 1,
-    "structurallyEditable": 55,
-    "noteBroken": 4,
+    "structurallyEditable": 56,
+    "noteBroken": 3,
     "knobs": 31,
     "codeOnly": 11,
     "setup": 36,
     "nonMusical": 1,
-    "structurallyEditablePct": 54.5
+    "structurallyEditablePct": 55.4
   },
   "brokenReasons": {
-    "step: no-note-content": 4
+    "step: unstable-period": 1,
+    "step: resolution": 1,
+    "step: no-leaf-anchor": 1
   },
   "codeOnlyHeads": {
     "chord": 3,
@@ -501,14 +503,14 @@
       "units": 2,
       "setup": 0,
       "nonMusical": 0,
-      "noteEditable": 0,
+      "noteEditable": 1,
       "clip": 0,
       "master": 0,
-      "noteBroken": 2,
+      "noteBroken": 1,
       "knobs": 0,
       "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "structurallyEditable": 1,
+      "tuneClass": "partial"
     },
     {
       "file": "bakery-G1-let-binding.strudel",

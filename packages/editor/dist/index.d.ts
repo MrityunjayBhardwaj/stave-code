@@ -8354,10 +8354,28 @@ interface LeafSpan {
     start: number;
     end: number;
 }
-/** one atom sounding in a column, paired with the source leaf it was read from */
+/**
+ * one atom sounding in a column, paired with the source leaf it was read from
+ *
+ * ⚠ `duration` IS HERE SO THE WRITER CAN REFUSE, NOT SO IT CAN WRITE (#1235). This
+ * anchor's whole point is a byte replacement at `span`, and a note's LENGTH has no
+ * bytes of its own to replace — it is spelled by what surrounds the token (`_`, `@n`,
+ * a bracket group), which is notation this writer must never author. Carrying the
+ * length anyway is what lets `spliceByLeaf` NOTICE that a length changed and decline,
+ * instead of comparing tokens, finding no difference, and returning the source bytes
+ * as a successful write. A writer's contract has to state what it can notice, not only
+ * what it can spell.
+ *
+ * Read from the same expression that fills the lane cells (`projectStepGridByLeaf`),
+ * never derived a second time: the comparison is only meaningful if both sides come
+ * from one rule. `RollLeafAnchor` has carried its own for the same reason since #989,
+ * which is why the roll never had this defect.
+ */
 interface LeafAnchor {
     atom: string;
     span: LeafSpan;
+    /** length in COLUMNS, the units of `StepNote.duration` */
+    duration: number;
 }
 /**
  * The source of a LEAF-ANCHORED projection (#986) — the third write-back shape,
@@ -8409,6 +8427,26 @@ interface LeafSource {
      * Absent, or null at a column, simply means the older refusal still stands there.
      */
     rests?: (LeafSpan | null)[];
+    /**
+     * The width of the model these spans were ATTACHED to — `RollLeafSource.attachedSteps`
+     * is the same field on the roll, and both exist for one reason (#1235, [[PV319]]).
+     *
+     * ⚠ IT IS NOT `cols.length`, AND THAT DIFFERENCE IS THE WHOLE POINT. `anchorsDescribe`
+     * compares `cols.length` against the model's `steps`, and where these spans are
+     * OVERLAID (`StepGridModel.surgical`) those two numbers are computed by different code
+     * from different premises: the leaf path anchors per ATOM, the element path counts
+     * EXPANDED columns. So their equality is evidence of nothing, and coincidence is
+     * reachable by an ordinary gesture — a `÷2` moves the element model's width onto the
+     * overlay's, the guard passes against spans describing a different layout, surgery
+     * writes the pre-halved bytes back, and the user's divide-by-two silently does nothing.
+     * Measured: unreachable on the overlay as it ships (0 of 52 grid and 0 of 43 roll
+     * restructures), and 13 grid + 2 roll under #1233's core attachment.
+     *
+     * Recording the width at ATTACH time makes "valid" mean "this is the model those spans
+     * were read from", which is the property actually needed. `anchorsDescribe` stays: it
+     * is still NECESSARY, it was only never sufficient.
+     */
+    attachedSteps: number;
 }
 /**
  * One played note, paired with the source leaf its PITCH was read from.
@@ -8469,6 +8507,8 @@ interface RollLeafSource {
      * leaf writers call ([[P329]], #990).
      */
     steps: number;
+    /** the width of the model these anchors were ATTACHED to — see `LeafSource` (#1235) */
+    attachedSteps: number;
 }
 /**
  * One `,`-separated part of the source, and the columns it produced.
@@ -8702,6 +8742,31 @@ interface PianoRollModel {
      * preserve. An edit it cannot express as a byte replacement is refused instead.
      */
     leafSource?: RollLeafSource;
+    /**
+     * The same leaf spans overlaid on a view the ELEMENT writer owns (#1010 P4e) — the
+     * roll's half of `StepGridModel.surgical`, with the same meaning and the same
+     * asymmetry against `leafSource` above.
+     *
+     * `leafSource` answers two questions at once: which writer owns the view, and where
+     * that writer's spans are. This field asks only the second. The view stays the
+     * element projection — its columns, its notes, its view scale untouched — and
+     * `serializePianoRollWithExtent` tries byte surgery at each note's own span FIRST,
+     * falling back to the element paths for anything surgery cannot express.
+     *
+     * ⚠ NOT INTERCHANGEABLE WITH `leafSource`, and the asymmetry is the safety property.
+     * A leaf-PROJECTED roll is terminal: an edit it cannot express is REFUSED, because
+     * the rebuild is what would destroy the notation the view was opened to preserve, and
+     * falling back would hand the re-emit the shared-leaf deletes #1160 declines. Falling
+     * back is permitted only here, where the element writer was already the incumbent, so
+     * it can only restore today's behaviour and never introduce a write.
+     *
+     * ⚠ DECIDED ON THE ROLL, NEVER BY ANALOGY WITH THE GRID. `projectPianoRollDerived`
+     * records the two surfaces answering the same routing flip with opposite signs — the
+     * roll loses ten units of reach where the grid gains five — which is exactly why P4d's
+     * result could not simply be assumed here and why every figure behind this field was
+     * taken on the roll.
+     */
+    surgical?: RollLeafSource;
     /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
     bars?: number;
     /**
@@ -8868,6 +8933,12 @@ declare function parsePianoRoll(mini: string, viewScale?: ViewScale): ParseResul
  * never disagree about what was written.
  */
 declare function serializeStepGrid(model: StepGridModel): string | null;
+/**
+ * The mini a roll model writes back, or null where it has no spelling.
+ *
+ * A projection of the function above, never a second implementation, so the bytes a
+ * caller gets and the path the census reads can never describe different writes.
+ */
 declare function serializePianoRoll(model: PianoRollModel): string | null;
 
 /**

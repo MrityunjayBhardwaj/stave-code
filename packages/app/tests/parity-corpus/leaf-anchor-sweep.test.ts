@@ -299,9 +299,10 @@ describe('#986 P2 — the bijection holds on every shipped leaf view', () => {
       lanes: [{ sound: 'bd', cells: [cellOn(), cellOn()] }],
       leafSource: {
         src: 'bd*2',
+        attachedSteps: 2,
         cols: [
-          [{ atom: 'bd', span: { start: 0, end: 2 } }],
-          [{ atom: 'bd', span: { start: 0, end: 2 } }],
+          [{ atom: 'bd', span: { start: 0, end: 2 }, duration: 1 }],
+          [{ atom: 'bd', span: { start: 0, end: 2 }, duration: 1 }],
         ],
       },
     }

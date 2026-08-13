@@ -2050,13 +2050,24 @@ function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
   if (perBar * bars > MAX_STEPS) return no('resolution')
   const anchored = leafAnchors(src, perCycle, perBar, bars)
   if (!anchored.ok) return anchored
-  const cols = anchored.cols
   // The lanes come from the ANCHORS — that atom set is what this path can write back
   // — and the lengths from what was PLAYED, matched per column. The anchors are total
   // over drawn cells (`leaf-anchor-sweep`: a drawn cell with no anchor is a control
   // that does nothing), so every anchor has an onset to take a length from.
   const played = columnsFromOnsets(perCycle, perBar, bars)
   if (played === null) return no('irrational-onset')
+  // ONE DERIVATION, TWO CONSUMERS (#1235). The length lands on the ANCHOR and the lane
+  // cell is projected from it, rather than each reading `played` for itself. The writer
+  // compares those two to decide whether a length changed, and a comparison between two
+  // independently-derived numbers establishes nothing — it is exactly the mistake
+  // `anchorsDescribe` makes when an overlay's width is checked against a model's ([[PV319]]).
+  // This is the shape the roll has always had: its model's notes ARE its anchors.
+  const cols: LeafAnchor[][] = anchored.cols.map((col, i) =>
+    col.map((a) => ({
+      ...a,
+      duration: played[i].find((n) => n.token === a.atom)?.duration ?? 1,
+    })),
+  )
   // Indexed alongside the anchors, never into them (#1154). A null here costs reach
   // and nothing else, so this never turns a projection down.
   const rests = restSpansByColumn(src, perBar, bars)
@@ -2064,14 +2075,9 @@ function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
     steps: perBar * bars,
     ...(bars > 1 ? { bars } : {}),
     lanes: lanesFromCells(
-      cols.map((col, i) =>
-        col.map((a) => ({
-          token: a.atom,
-          duration: played[i].find((n) => n.token === a.atom)?.duration ?? 1,
-        })),
-      ),
+      cols.map((col) => col.map((a) => ({ token: a.atom, duration: a.duration }))),
     ),
-    leafSource: { src, cols, ...(rests ? { rests } : {}) },
+    leafSource: { src, cols, attachedSteps: perBar * bars, ...(rests ? { rests } : {}) },
   }
   if (!leafEditSafe(model, perBar, bars)) return no('edit-unsafe')
   if (!leafViewUsable(model)) return no('view-unusable')
@@ -2156,6 +2162,9 @@ function claimLeafSpan(
   return { ok: true, span }
 }
 
+/** an anchor before its length is attached — see `leafAnchors` */
+type Unmeasured = Omit<LeafAnchor, 'duration'>
+
 /**
  * Pair every column with the atoms sounding there and each atom's own leaf span.
  *
@@ -2163,14 +2172,18 @@ function claimLeafSpan(
  * an onset outside the grid it was measured for is a LAYOUT refusal, reported as
  * `note-crosses-bar` so the anchor count stays an honest measure of the
  * write-back guard (#990).
+ *
+ * Returns anchors WITHOUT their lengths — the caller adds those from
+ * `columnsFromOnsets`, which owns the file's one cycles→columns conversion, so the
+ * length reaches the anchor and the lane cell from a single expression (#1235).
  */
 function leafAnchors(
   src: string,
   perCycle: Onset[][],
   perBar: number,
   bars: number,
-): { ok: true; cols: LeafAnchor[][] } | { ok: false; gate: Gate } {
-  const cols: LeafAnchor[][] = Array.from({ length: perBar * bars }, () => [])
+): { ok: true; cols: Unmeasured[][] } | { ok: false; gate: Gate } {
+  const cols: Unmeasured[][] = Array.from({ length: perBar * bars }, () => [])
   const seen: LeafSpan[] = []
   for (let b = 0; b < bars; b++) {
     for (const o of perCycle[b]) {
@@ -2336,8 +2349,27 @@ function leafExpected(
 function withSurgery(mini: string, r: ParseResult<StepGridModel>): ParseResult<StepGridModel> {
   if (!r.ok) return r
   const leaf = projectStepGridByLeaf(mini)
-  if (!leaf.ok) return r
-  return { ok: true, model: { ...r.model, surgical: leaf.model.leafSource } }
+  if (!leaf.ok || !leaf.model.leafSource) return r
+  // ⚠ THE ATTACHED WIDTH IS RE-STAMPED, and it is the one field that must not travel
+  // through unchanged (#1235). It arrives describing the LEAF model's layout; overlaid, it
+  // has to describe the model it is being attached to, or the writer's validity check
+  // compares the leaf projection's width against the element projection's — two numbers
+  // derived from different premises, whose equality says nothing ([[PV319]]).
+  //
+  // ⚠⚠ AND IT IS THE DOCUMENT'S WIDTH, NEVER `model.steps`. These spans hold one entry per
+  // DOCUMENT column, so the width they belong to must not depend on how closely the user
+  // happens to be looking. Stamping the drawn width instead makes the overlay valid only
+  // at the scale it was parsed at: after `collapseStepGridToDocument` the model is back at
+  // the document's width and the stamp still says the refined one, so surgery refuses and
+  // the same edit spells differently through a refined view — #1121's equivalence, broken
+  // on 5 corpus units, caught by `1117-refined-round-trip` and by nothing else.
+  return {
+    ok: true,
+    model: {
+      ...r.model,
+      surgical: { ...leaf.model.leafSource, attachedSteps: documentSteps(r.model) },
+    },
+  }
 }
 
 function vacuousLocality(a: AltSource<unknown> | undefined): boolean {
@@ -3333,7 +3365,7 @@ function projectPianoRollByLeaf(src0: string): Projection<PianoRollModel> {
     // that write it back can never describe different music
     notes: anchors.map((a) => ({ pitch: a.pitch, start: a.start, duration: a.duration })),
     ...(numeric ? { numeric: true } : {}),
-    leafSource: { src, anchors, steps: perBar * bars },
+    leafSource: { src, anchors, steps: perBar * bars, attachedSteps: perBar * bars },
   }
   if (!leafRollEditSafe(model, perBar, bars, numeric)) return no('edit-unsafe')
   if (!leafRollViewUsable(model)) return no('view-unusable')
@@ -3478,6 +3510,54 @@ function leafRollViewUsable(model: PianoRollModel): boolean {
 }
 
 /**
+ * Overlay the leaf spans onto a roll view the ELEMENT writer owns, so a delete can be
+ * written as byte surgery while everything the view IS stays the element projection
+ * (#1010 P4e). The roll's twin of `withSurgery`, and deliberately a separate function
+ * rather than a shared generic: the two surfaces carry different anchor shapes
+ * (`LeafSource.cols` per column, `RollLeafSource.anchors` per note) and have already
+ * answered the same routing question with opposite signs, so a shared helper would be
+ * the first place a future asymmetry gets silently flattened.
+ *
+ * The view is not touched — same notes, same columns, same view scale — so this cannot
+ * change what the panel offers. It only gives the writer a second, better way to
+ * answer, and `serializePianoRollWithExtent` falls back to the element paths for any
+ * edit surgery cannot express (`serialize.ts`, where the asymmetry against `leafSource`
+ * is stated).
+ *
+ * ⚠ AND IT MUST NOT BE APPLIED WHERE THE LEAF PROJECTION ALREADY OWNS THE VIEW. There a
+ * refusal is the promise, not a fall-through — see `serializePianoRollWithExtent`. This
+ * is reached only on the `owner.ok` branch below, which is exactly the case where the
+ * element writer was already the incumbent.
+ *
+ * ⚠ ASKED ONLY WHERE THE ELEMENT WRITER OWNS THE VIEW, so the second projection's cost
+ * is paid on the derived path alone and never for a pattern the roll's syntactic core
+ * answers (412 of the 544 corpus units that open a roll are core-parsed). The
+ * core-opened half is a cost problem rather than a routing one and is #1233's subject,
+ * not this one's: on the grid the same overlay measured x25.5 on the core path against
+ * +59% on the derived one, because a roughly constant absolute cost lands on bases an
+ * order of magnitude apart. Nothing about that figure transfers to this surface
+ * unmeasured — it is recorded here as the reason for the placement, not as this path's
+ * price.
+ */
+function withRollSurgery(
+  mini: string,
+  r: ParseResult<PianoRollModel>,
+): ParseResult<PianoRollModel> {
+  if (!r.ok) return r
+  const leaf = projectPianoRollByLeaf(mini)
+  if (!leaf.ok || !leaf.model.leafSource) return r
+  // the attached width is re-stamped for the model it lands on, at the DOCUMENT's width
+  // rather than the drawn one — see `withSurgery` for both halves and what each costs (#1235)
+  return {
+    ok: true,
+    model: {
+      ...r.model,
+      surgical: { ...leaf.model.leafSource, attachedSteps: documentSteps(r.model) },
+    },
+  }
+}
+
+/**
  * THE DERIVED WRITERS FOR THE ROLL, in the order `parsePianoRoll` asks them — the
  * roll's counterpart to `projectStepGridDerived`, and the only place this order is
  * written. See that function for why the census needs it split out; note that the
@@ -3516,7 +3596,7 @@ export function projectPianoRollDerived(
   // rather than carrying it forward — the grid's own answer to this same flip
   // (+5 reach, 16 fewer silent length rewrites) is the opposite sign, which is why
   // the two surfaces are decided separately and never by analogy.
-  if (owner.ok) return asOwner(owner)
+  if (owner.ok) return withRollSurgery(mini, asOwner(owner))
   const leaf = projectPianoRollByLeaf(mini)
   if (leaf.ok) return leaf
   // …and if nothing opened it, report the gate that actually stopped the general

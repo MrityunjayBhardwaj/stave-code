@@ -18,11 +18,12 @@ import type {
   NotationSource,
   PianoRollModel,
   RollLeafAnchor,
+  RollLeafSource,
   RollNote,
   StepGridModel,
   StepLane,
 } from './model'
-import { columnSplit, gridCellKey, isCellOn } from './model'
+import { cellLengthKey, columnSplit, gridCellKey, isCellOn } from './model'
 
 /**
  * An `altSource` still describes a model only while its single-cycle width times
@@ -189,6 +190,19 @@ export function serializeStepGridWithExtent(model: StepGridModel): {
   // no longer fits (a restructure moved the layout, or the element projection drew a
   // different column count) REFUSES and the element writer answers. The guard predates
   // this and is the same one both leaf writers already call (#916, #990).
+  //
+  // ⚠⚠ THIS RUNG IS HOISTED, AND THAT FORFEITS THE LADDER'S FREE SAFETY PROOF — stated
+  // in full on `serializePianoRollWithExtent`, and it applies here first because P4d is
+  // where the hoist was introduced. Every other widening of this writer (`stackedRegion`
+  // #1120, absorption #1146) runs only where the previous rung returned null and is
+  // therefore safe by construction; this one runs FIRST and can pre-empt alt / splice /
+  // rebuild, so it is safe only by the corpus:
+  //
+  //   surgical deletes  64 -> 103     placements  18,929 -> 18,929 (unchanged)
+  //   writer-reach      153 / 85      view scale  890 -> 890 honoured
+  //   shared-leaf refusals 275, unchanged — 27 documents preserved
+  //
+  // Placing a NEW rung last inherits the proof for free. Placing it here does not.
   const spans = model.leafSource ?? model.surgical
   if (spans) {
     const surgical = spliceByLeaf(model, spans)
@@ -565,6 +579,31 @@ function anchorsDescribe(model: { steps: number }, anchoredWidth: number | undef
   return anchoredWidth === model.steps
 }
 
+/**
+ * …and are these anchors even FOR this model? — the second half of the same guard, and
+ * the one that cannot be got from the spans themselves (#1235, [[PV319]]).
+ *
+ * `anchorsDescribe` compares two quantities computed by different code from different
+ * premises wherever the spans are OVERLAID: the leaf path anchors per ATOM, the element
+ * path counts EXPANDED columns. Equality between two such numbers is evidence of nothing,
+ * and coincidence is reachable by an ordinary gesture — halving `c3@2 e3@2` moves the
+ * element model's four columns onto the overlay's two, the width check passes against
+ * spans describing a different layout, and the write puts the pre-halved bytes back so
+ * the user's ÷2 silently does nothing.
+ *
+ * The width recorded at ATTACH time is not derived from the spans at all, so comparing it
+ * says "this is the model those spans were read from" — the property actually wanted.
+ * Both checks stay: this one bounds WHICH MODEL an overlay may answer for, `anchorsDescribe`
+ * bounds whether that model still has the layout the spans index, and neither implies the
+ * other.
+ *
+ * Measured before it was built: unreachable on the overlay as it ships (0 of 52 grid and
+ * 0 of 43 roll restructures), 13 grid and 2 roll under #1233's core attachment. So this
+ * costs nothing today and is here because #1235 exists to gate that change.
+ */
+const anchorsAreFor = (model: { steps: number }, ls: { attachedSteps: number }): boolean =>
+  ls.attachedSteps === model.steps
+
 export function serializeByLeaf(
   src: string,
   edits: Array<{ span: LeafSpan; text: string }>,
@@ -586,8 +625,20 @@ export function serializeByLeaf(
  * untouched atom asserts its own token so a leaf shared by several columns can be
  * checked for agreement.
  *
- * Returns null — the document is left alone — for the three edits that have no
- * span to write through, all of which are the one bijection stated four ways:
+ * WHICH AXES IT READS, and what it does about the others (#1235). The model carries a
+ * cell's SOUND and its LENGTH. Only the sound has bytes of its own — the length is
+ * spelled by what surrounds the token (`_`, `@n`, a bracket group), which is notation
+ * this writer must never author. So it can write one axis and not the other, and the
+ * axis it cannot write it must still be able to NOTICE: a comparison that reads only
+ * tokens finds no difference on a resize, writes the source bytes back, and reports
+ * them as a successful write. That is worse than throwing, because every gate
+ * downstream reads the output and the output is the user's own valid document.
+ *
+ * Anything the model grows that the anchors do not carry has to be added here at the
+ * same time, or it becomes the next silent-success path.
+ *
+ * Returns null — the document is left alone — for the four edits that have no
+ * span to write through, three of which are the one bijection stated over again:
  *  - a hit added where no leaf exists (or a second sound stacked onto a column):
  *    writing it would mean AUTHORING notation, which is the line between adapter
  *    and printer;
@@ -595,7 +646,8 @@ export function serializeByLeaf(
  *    token cannot be two things, and letting the last writer win would silently
  *    rewrite cells the user did not touch;
  *  - anchors that no longer describe the grid, which is what a restructure
- *    (resize/quantize) leaves behind.
+ *    (resize/quantize) leaves behind;
+ *  - a note whose LENGTH moved, per the paragraph above.
  *
  * HOW BIG THE SHARED-LEAF REFUSAL IS — measured, because a refusal without a number
  * reads as an edge case and this one is half the surface (#1160). Over all 1527 corpus
@@ -619,8 +671,52 @@ export function serializeByLeaf(
  * The refusal is the cheaper honesty. See #1160 for the full measurement.
  */
 function spliceByLeaf(model: StepGridModel, ls: LeafSource | undefined): string | null {
-  if (!ls || !anchorsDescribe(model, ls.cols.length)) return null
+  if (!ls || !anchorsAreFor(model, ls) || !anchorsDescribe(model, ls.cols.length)) return null
   const now = columnAtoms(model.lanes, model.steps)
+  // THE LENGTH AXIS, WHICH THIS WRITER READS ONLY IN ORDER TO DECLINE (#1235).
+  //
+  // Every note still drawn must sound for a length some anchor in its column already
+  // played. A note the user LENGTHENED or SHORTENED has none, so this refuses and the
+  // caller falls back — which for an overlaid model is the element writer answering, and
+  // for a model the leaf projection OWNS is the document left alone. Both are honest;
+  // the alternative is not, because with no length in the token comparison a resize
+  // reads as no change at all and the source bytes go back out as a write.
+  //
+  // Matched as a MULTISET rather than "some anchor here has this length", so resizing a
+  // note to a SIBLING's length is caught too — otherwise it slips through as a silent
+  // no-op instead of a refusal. This is `spliceRollByLeaf`'s check, which is why the
+  // roll never had this defect; the grid was the surface out of step.
+  //
+  // ⚠ SCOPED TO COLUMNS THAT HOLD AN ANCHOR, and that residue is real rather than
+  // overlooked: a note ARRIVING on an indexed rest (#1154) has no anchor to be measured
+  // against, because a rest sounds nothing and nothing indexed its length. The branch
+  // below writes those by replacing the rest's own bytes, and the length it comes back
+  // at is the rest's, not the one the panel asked for. Placement writes immediately and
+  // the model is re-read from the document, so the next gesture on that note DOES meet
+  // an anchor; a place-and-resize inside one model update would not, and no gesture in
+  // the panel produces one.
+  // ⚠ COMPARED THROUGH `cellLengthKey`, NOT AS RAW NUMBERS, and that is not tidiness.
+  // One musical length reaches the two sides down different paths: `clampLane` re-clamps
+  // the whole lane on every edit and turns `1.0000000000000018` into exactly `1`, so a
+  // DELETE that touched no length at all reads as a resize and the write is refused. It
+  // cost one corpus unit before the rounding went in. `gridCellKey` has quantised this
+  // way since P4b for the same reason and this shares its quantiser rather than a second
+  // one that agrees today.
+  //
+  // ⚠ LENGTHS ONLY, deliberately: a rename must pass here so the swap branch below can
+  // answer it, so the sounds are compared there and not in this loop. That leaves one
+  // theoretical hole — two notes in a column resized so the MULTISET is unchanged — which
+  // is not a gesture the panel can produce (each drag resizes one cell and writes) and
+  // which `spliceRollByLeaf` has had since #989 for the same reason. Named, not built for.
+  for (let c = 0; c < model.steps; c++) {
+    const avail = ls.cols[c].map((a) => cellLengthKey(a.duration))
+    if (avail.length === 0) continue
+    for (const n of now[c]) {
+      const i = avail.indexOf(cellLengthKey(n.duration))
+      if (i < 0) return null
+      avail.splice(i, 1)
+    }
+  }
   const want = new Map<string, { span: LeafSpan; text: string }>()
   for (let c = 0; c < model.steps; c++) {
     const anchors = ls.cols[c]
@@ -731,9 +827,8 @@ function spliceByLeaf(model: StepGridModel, ls: LeafSource | undefined): string 
  * its own bytes and the document returns byte-unchanged while reporting success. The
  * set is right for telling chord members apart and cannot represent two of one pitch.
  */
-function spliceRollByLeaf(model: PianoRollModel): string | null {
-  const ls = model.leafSource
-  if (!ls || !anchorsDescribe(model, ls.steps)) return null
+function spliceRollByLeaf(model: PianoRollModel, ls: RollLeafSource | undefined): string | null {
+  if (!ls || !anchorsAreFor(model, ls) || !anchorsDescribe(model, ls.steps)) return null
   // group the anchors by the column they start on — a chord contributes several here,
   // each with its own disjoint leaf
   const byStart = new Map<number, RollLeafAnchor[]>()
@@ -1247,35 +1342,123 @@ function buildGroups(model: PianoRollModel): Map<number, Group> | null {
   return groups
 }
 
-export function serializePianoRoll(model: PianoRollModel): string | null {
-  // A leaf-anchored roll (#986 P1b) is TERMINAL — it edits the user's own bytes and
-  // never falls through to a rebuild, because a rebuild is exactly what would respell
-  // the notation it was opened to preserve. It returns null for an edit it cannot
-  // express as a byte replacement, and then the document is left alone.
-  if (model.leafSource) return spliceRollByLeaf(model)
+export type RollWriteExtent = { path: 'leaf' | 'alt' | 'splice' | 'rebuild' }
+
+/**
+ * `serializePianoRoll`, plus WHICH WRITER answered — the roll's half of
+ * `serializeStepGridWithExtent` (#1231).
+ *
+ * WHY IT HAD TO EXIST BEFORE THE ROLL'S HALF OF #1010 COULD BE JUDGED. `writer-reach`
+ * asks the ENGINE on both sides: expected is what the pattern plays minus the deleted
+ * note, got is what the edited document plays. A roll document that comes back
+ * hap-equivalent and notation-DESTROYED therefore scores exactly like one that comes
+ * back untouched — `[f3 ab3 g3]` re-emitted as `[~ ~ ~ ~ ab3@4 g3@4]` is a clean
+ * round-trip by that measure. So every gate the roll has was structurally blind to the
+ * whole of what a write-path change buys, and a change nothing can score is a change
+ * whose revert nothing can detect.
+ *
+ * ⚠ THE ALTERNATIVE IS A SECOND ORACLE, which is why this is a report and not a rule
+ * written in a test. The dispatch order below is the only place that decides who
+ * writes; a test that re-derived it would agree with the writer exactly until the day
+ * one of them moved, and would then be wrong in the reassuring direction.
+ *
+ * ⚠ `path` says WHO DECIDED, never whether anything was written — the grid's caveat,
+ * and it is load-bearing on the roll too because two of these paths are TERMINAL and
+ * answer a refusal with `null` on their own path. Read `mini` for "did it write".
+ *
+ * SIMPLER THAN THE GRID'S UNION, and deliberately: only the grid's splice counts
+ * regions it had to re-emit, because only the grid reports them. Giving the roll a
+ * `regions: 0` would state a measurement nobody took.
+ */
+export function serializePianoRollWithExtent(model: PianoRollModel): {
+  mini: string | null
+  extent: RollWriteExtent
+} {
+  // BYTE SURGERY FIRST, WHEREVER SPANS EXIST (#1010 P4e) — the roll's half of the
+  // grid's overlay, and the same two fields reach it, differing in what a REFUSAL
+  // means. That difference is the whole of the safety argument:
+  //
+  //   `leafSource`  — the leaf projection OWNS this view. TERMINAL: an edit it cannot
+  //                   express is refused and the document is left alone, because the
+  //                   rebuild is precisely what would respell the notation this view
+  //                   was opened to preserve. Falling back here would hand the re-emit
+  //                   the shared-leaf deletes #1160 declines — 288 of 577 on this
+  //                   surface, half of it, not an edge case.
+  //   `surgical`    — the ELEMENT writer owns this view and these spans are overlaid on
+  //                   it. A refusal falls through to the element paths below, which is
+  //                   exactly what this model did before P4e, so the fallback can only
+  //                   restore today's behaviour and never introduce a write.
+  //
+  // ⚠ A STALE OVERLAY CANNOT MIS-WRITE. `anchorsDescribe` requires the anchored width
+  // to still describe the model before either leaf writer may write, so an overlay that
+  // no longer fits (a restructure moved the layout, or the element projection drew a
+  // different column count) REFUSES and the element writer answers. The guard predates
+  // this and is the one both leaf writers already called (#989, #990).
+  //
+  // ⚠⚠ THIS RUNG IS HOISTED, AND THAT FORFEITS THE LADDER'S FREE SAFETY PROOF. Every
+  // other widening of these writers — `stackedRegion` (#1120), absorption (#1146) — was
+  // safe by one structural argument: it runs only where the previous rung returned null,
+  // so no document that produces output today can change shape, and the proof costs
+  // nothing to check. This rung runs FIRST and can pre-empt alt / splice / rebuild, so
+  // it inherits none of that. Its safety is bought by MEASUREMENT instead, and the
+  // measurement is the price of the placement rather than a formality:
+  //
+  //   corpus deletes switching to surgery   26  =  22 whose bytes change  +  4 identical
+  //   writer-reach (engine oracle)          153 / 85, unchanged
+  //   WRITER-CENSUS.json                    regenerates byte-identical — no verdict moves
+  //   parity-corpus                         442 arms green, incl. placement, locality,
+  //                                         round-trip and view-scale
+  //
+  // A note that MOVED or was RESIZED lands where no anchor holds and `spliceRollByLeaf`
+  // returns null, so those gestures still fall through — that is what keeps the
+  // pre-emption confined to edits surgery can express exactly.
+  //
+  // ⚠ SO: anyone adding a rung to this ladder must place it LAST to inherit the proof,
+  // or re-run the corpus above. Do not read this rung's position as licence.
+  const spans = model.leafSource ?? model.surgical
+  if (spans) {
+    const surgical = spliceRollByLeaf(model, spans)
+    if (surgical !== null) return { mini: surgical, extent: { path: 'leaf' } }
+    if (model.leafSource) return { mini: null, extent: { path: 'leaf' } }
+  }
 
   // A `<...>`-as-element pattern (`0 <2 3> 5`, #920) uses its own span surgery and
   // NEVER the rebuilds below — a rebuild would reshape it into the whole-cycle
   // `<[0 2 5] [0 3 5]>`. It returns null (keep the document) for an edit it can't
   // express, never wrong bytes.
-  if (altSourceFits(model.altSource, model.steps)) return spliceAltRoll(model)
+  if (altSourceFits(model.altSource, model.steps))
+    return { mini: spliceAltRoll(model), extent: { path: 'alt' } }
 
   // Span surgery first — same rule as the grid: put back what the user wrote
   // wherever they didn't edit. It declines (null) whenever the regions no longer
   // describe the notes, and the rebuilds below take over, the way this always
   // worked.
+  //
+  // ⚠ AND THAT NULL IS NOT A REFUSAL, unlike the two paths above. It is a
+  // fall-through, so it is reported as the path that ACTUALLY answered — the
+  // rebuild — rather than as a splice that wrote nothing.
   const spliced = spliceRoll(model)
-  if (spliced !== null) return spliced
+  if (spliced !== null) return { mini: spliced, extent: { path: 'splice' } }
 
   const bars = model.bars ?? 1
   if (bars > 1) {
     // Multi-bar `<...>` keeps the shared-duration chord path (parallel lanes are
     // single-bar only for now, #628): chord members must share a duration there.
     const groups = buildGroups(model)
-    if (groups === null) return null
-    return rollBars(groups, model.steps, bars)
+    if (groups === null) return { mini: null, extent: { path: 'rebuild' } }
+    return { mini: rollBars(groups, model.steps, bars), extent: { path: 'rebuild' } }
   }
-  return serializeRollLanes(model)
+  return { mini: serializeRollLanes(model), extent: { path: 'rebuild' } }
+}
+
+/**
+ * The mini a roll model writes back, or null where it has no spelling.
+ *
+ * A projection of the function above, never a second implementation, so the bytes a
+ * caller gets and the path the census reads can never describe different writes.
+ */
+export function serializePianoRoll(model: PianoRollModel): string | null {
+  return serializePianoRollWithExtent(model).mini
 }
 
 /* ── span surgery, the roll (#916) ─────────────────────────────── */

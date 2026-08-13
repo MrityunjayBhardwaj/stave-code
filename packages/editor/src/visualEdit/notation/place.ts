@@ -382,6 +382,15 @@ function partRoom(model: StepGridModel, laneIndex: number, stepIndex: number): n
  * ⚠ Those figures were 854 / 390 / 178 before #1146, and the gap was entirely the
  * neighbouring-bytes decline: on FLAT grids the handle reached 46 of 732 units and now
  * reaches 105.
+ *
+ * ⚠⚠ NOW 1273 OF 5251, AND THE RISE IS A DEFECT BEING REMOVED RATHER THAN REACH BEING
+ * ADDED (#1235). The identity below is what made that defect invisible: the leaf writer
+ * compared TOKENS only, so it answered a resize with the source bytes unchanged, and this
+ * function dutifully reported "the document did not move" and withdrew the handle. 270
+ * handles were dark that way — every one on a model carrying leaf spans — and nothing
+ * anywhere reported a problem, because from here a swallowed write and an inexpressible
+ * length are the same observation. The writer refuses the length now and the element
+ * writer answers it. (The denominator moved 4729 → 5251 with the corpus, not with this.)
  */
 export function resizeCell(
   model: StepGridModel,
