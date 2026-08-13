@@ -126,3 +126,72 @@ describe('chunkSurface routes resolver spans, and only those', () => {
     expect(chunkSurface(detectChunk(doc, doc.indexOf('gain'))!)).toBeNull()
   })
 })
+
+/**
+ * #1243 — a MELODIC head whose own roll declines the content.
+ *
+ * Head-first is still the rule; this is the one clause under it. The bounds are
+ * measured and both of them are load-bearing, so each has its own arm and each
+ * arm fails on a DIFFERENT widening of the rule:
+ *
+ *   drop the `wrong-surface` test  -> the capacity arm reddens (melodies get
+ *                                     drawn as drum grids)
+ *   drop `chordLanes`              -> the stray-token arm reddens (a melody the
+ *                                     roll refused over one bad token gets a
+ *                                     one-lane-per-note diagonal)
+ *
+ * Together they are why the rule is not "the head's surface declined, so ask the
+ * other one", which is the rule the issue proposed and the corpus refuted.
+ */
+describe('a melodic head falls through to the grid ONLY for a chord chart', () => {
+  it('sends a chord progression under note() to the grid', () => {
+    // The case #1243 was filed about: `note(chordProgression)` where the
+    // progression is chord names. The roll declines it on vocabulary, and the
+    // grid draws a lane per chord. Measured live in `bakery-152-block-comment`.
+    expect(routeSurface('note', '<Gsus G7 Em7 D7>')).toBe('step')
+    expect(routeSurface('n', '<am dm em>')).toBe('step')
+  })
+
+  it('keeps an ordinary melody on the roll, which accepts it', () => {
+    // The overwhelming majority: nothing about this clause may touch them.
+    expect(routeSurface('note', 'c3 e3 g3')).toBe('roll')
+    expect(routeSurface('note', '<c4 e4> g4')).toBe('roll')
+    expect(routeSurface('n', '0 2 4')).toBe('roll')
+  })
+
+  it('⚠ keeps a CAPACITY refusal on the roll, where the grid asks less', () => {
+    // `<a1 c2>/2` is refused by the roll for crossing a bar, and the grid would
+    // take it — but the grid accepting a melody means it asks LESS, not that it
+    // is the right editor. Seven of the twelve declined-and-grid-would-accept
+    // units in the corpora are this class, so a rule that skipped the gate test
+    // would draw seven melodies as drum grids to fix one chord chart. This arm
+    // is what fails if the `roll.gate !== 'wrong-surface'` line goes.
+    expect(routeSurface('note', '<a1 c2>/2')).toBe('roll')
+  })
+
+  it('⚠ keeps a melody the roll refused over ONE stray token on the roll', () => {
+    // `note("f5 p1 c6 e3")` — `p1` is not a note, so the roll refuses the whole
+    // string on vocabulary, which passes the gate test above. Only `chordLanes`
+    // stops it, and without that it becomes four lanes with one note each.
+    // Measured in `500/3TJgkfX7SveM`.
+    expect(routeSurface('note', 'f5 p1 c6 e3')).toBe('roll')
+    expect(routeSurface('note', 'F# E D C# C Bm1 Am1 G')).toBe('roll')
+  })
+
+  it('routes a note-headed chord chart through chunkSurface, not just the rule', () => {
+    // ⚠ THE CALL-SITE ARM. #1240's B5 and #1250 both came from a rule that was
+    // tested while the path reaching it was not — `chunkSurface` used to return
+    // `patternKind`'s head answer directly and never consult the router for a
+    // content head. An arm on `routeSurface` alone cannot see that.
+    const doc = 'const harm = "<Gsus G7 Em7 D7>"\n$: note(harm).s("piano")'
+    const c = detectChunk(doc, doc.indexOf('note'))!
+    expect(c.headFn).toBe('note')
+    expect(c.miniString).toBe('<Gsus G7 Em7 D7>')
+    expect(chunkSurface(c)).toBe('step')
+  })
+
+  it('a note-headed MELODY still reaches the roll through chunkSurface', () => {
+    const doc = '$: note("c3 e3 g3").s("piano")'
+    expect(chunkSurface(detectChunk(doc, doc.indexOf('note'))!)).toBe('roll')
+  })
+})

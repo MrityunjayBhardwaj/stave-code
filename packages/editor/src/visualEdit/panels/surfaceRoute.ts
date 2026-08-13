@@ -25,7 +25,16 @@
  * The dependency line IS the boundary, so the modules are split along it.
  *
  * ── THE RULE ─────────────────────────────────────────────────────────────
- * Head first, and only where the head is silent, ask the ROLL — never the grid.
+ * Head first; where the head is silent ask the ROLL, never the grid; and where
+ * a melodic head's own roll declines the CONTENT, ask whether the content is a
+ * chord chart before letting it fall to code (#1243).
+ *
+ * That last clause is narrow on purpose and its bounds are measured, not
+ * guessed — `rollUnlessChordChart` below carries both halves of why. The short
+ * version: of twelve melodic units the roll declines and the grid would take,
+ * seven are declined on CAPACITY rather than content, and of the five declined
+ * on content only one is actually a chord chart. A rule any wider than this one
+ * draws melodies as drum grids.
  *
  * The grid has no WORD vocabulary: every word-like token is a sound name, which
  * is correct for a drum grid where sample names are arbitrary. So it opens for
@@ -45,11 +54,15 @@
  *
  * A chord progression drawn as a lane-per-chord-name grid IS a real editable
  * surface and counts as one — it parses, serialises, and a delete on a chord
- * lane really does remove that chord. What it lacks is chrome saying so, which
- * is a labelling gap tracked separately, not a routing one.
+ * lane really does remove that chord. It now also says what it is: the grid
+ * asks `chordLanes` and drops its drum chrome when every lane is a chord
+ * symbol (#1241). That was a labelling gap, and the same predicate turned out
+ * to be what the routing clause above needed too, which is why one exists
+ * rather than two.
  */
 import type { ChunkInfo } from '../chunkDetect'
-import { parsePianoRoll } from '../notation/parse'
+import { parsePianoRoll, parseStepGrid } from '../notation/parse'
+import { chordLanes } from './chordLanes'
 import { patternKind, type PatternKind } from './patternKind'
 
 /** A decided surface. `routeSurface` always reaches one, so it never returns null. */
@@ -63,12 +76,42 @@ export type Surface = Exclude<PatternKind, null>
  */
 export function routeSurface(headFn: string | null, mini: string): Surface {
   if (headFn === 's' || headFn === 'sound') return 'step'
-  if (headFn === 'note' || headFn === 'n') return 'roll'
+  if (headFn === 'note' || headFn === 'n') return rollUnlessChordChart(mini)
   // The head is silent — ask the surface that can discriminate word patterns.
   // `step` here means "the grid is the right place to ASK", not "the grid will
   // open": it declines numerics itself, and a pattern both refuse (`"bd 3 hh"`)
   // correctly ends up with no editor and a named gate.
   return parsePianoRoll(mini).ok ? 'roll' : 'step'
+}
+
+/**
+ * A melodic head keeps its roll — unless the roll declines on VOCABULARY and
+ * what it declined is a chord chart (#1243).
+ *
+ * ── WHY THE GATE IS CHECKED AND NOT JUST THE REFUSAL ─────────────────────
+ * "The head's own surface declined, so ask the other one" is the tempting rule
+ * and it is wrong. Measured over 207 documents, twelve `note`/`n` units are
+ * declined by the roll while the grid would accept, and only five of those are
+ * declined on CONTENT. The other seven are capacity refusals — `unstable-period`,
+ * `note-crosses-bar` — where the grid accepting means it asks LESS, not that it
+ * is the right editor. Falling through on those draws melodies as drum grids.
+ * So only `wrong-surface` is eligible: the roll saying "these values are not
+ * mine" is a routing fact, and every other gate is the roll saying "these are
+ * mine and I cannot draw them", which is code's answer, not the grid's.
+ *
+ * ── AND WHY THE CONTENT IS ASKED AFTER THAT ──────────────────────────────
+ * Of those five, only one is a chord chart. The rest are melodies the roll
+ * refuses over a stray token (`p1`, `p7`, `a3:0.7`), and the grid would draw
+ * them as one lane per note — a clean diagonal, the right SHAPE and the wrong
+ * KIND, which no fidelity gate downstream can tell from a real drum grid
+ * (#1244). `chordLanes` is what separates the case the musician meant from the
+ * case that merely parses.
+ */
+function rollUnlessChordChart(mini: string): Surface {
+  const roll = parsePianoRoll(mini)
+  if (roll.ok || roll.gate !== 'wrong-surface') return 'roll'
+  const grid = parseStepGrid(mini)
+  return grid.ok && chordLanes(grid.model.lanes.map((l) => l.sound)) ? 'step' : 'roll'
 }
 
 /**
@@ -84,9 +127,15 @@ export function routeSurface(headFn: string | null, mini: string): Surface {
  * admission, not a re-route of everything that owns a string.
  */
 export function chunkSurface(chunk: ChunkInfo | null): PatternKind {
-  const byHead = patternKind(chunk)
-  if (byHead || !chunk || chunk.miniString === null) return byHead
-  return chunk.miniVia === 'resolver' ? routeSurface(chunk.headFn, chunk.miniString) : null
+  if (!chunk || chunk.miniString === null) return patternKind(chunk)
+  // WHETHER to ask is still the head's question plus the resolver scoping; WHICH
+  // surface is `routeSurface`'s, for every chunk we ask about. It used to short
+  // out here and return `patternKind`'s answer directly for a content head,
+  // which was harmless while the two agreed by construction and stopped being so
+  // the moment a melodic head could route to the grid (#1243). One decision, one
+  // expression of it — the same property #1250 had to restore one layer down.
+  if (!patternKind(chunk) && chunk.miniVia !== 'resolver') return null
+  return routeSurface(chunk.headFn, chunk.miniString)
 }
 
 /**
