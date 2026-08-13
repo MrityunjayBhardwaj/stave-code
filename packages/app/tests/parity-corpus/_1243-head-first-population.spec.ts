@@ -37,6 +37,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { unitsWithStatus } from './editCoverage'
+import { chunkSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
 import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
 import { loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
 
@@ -68,6 +69,7 @@ function measure(docs: { name: string; code: string }[]) {
   let contentHeadUnits = 0
   let served = 0
   let duplicates = 0
+  let rescued = 0
   const refused: Row[] = []
   const disagreements: string[] = []
 
@@ -98,12 +100,30 @@ function measure(docs: { name: string; code: string }[]) {
       const sibling = toRoll ? parseStepGrid(mini) : parsePianoRoll(mini)
 
       // SECOND READING THAT MUST AGREE: the harness's own classification of the
-      // same unit. If `own.ok` and the status disagree, this probe is measuring
-      // something other than what the gates score.
+      // same unit. If the two disagree, this probe is measuring something other
+      // than what the gates score.
+      //
+      // ⚠ COMPARED AGAINST THE *ROUTED* SURFACE, NOT THE HEAD'S NOMINAL ONE, and
+      // that distinction is the whole point of this file. The first version
+      // asked whether the harness agreed with `own` — the parse of the surface
+      // the HEAD names — which was the same question only while the head decided
+      // everything. It stopped being so the moment a `note()` chord chart could
+      // route to the grid, and this assertion then failed on exactly the unit
+      // the measurement had argued about. The probe's own subject
+      // (`own`/`sibling`, keyed on the head) is deliberately unchanged, because
+      // "what would the head's surface have done" is the question #1243 asks.
+      const routed = chunkSurface(unit)
+      const routedParse = routed === null ? null : routed === 'roll' ? parsePianoRoll(mini) : parseStepGrid(mini)
       const harnessSaysServed = status.status === 'note'
-      if (harnessSaysServed !== own.ok) {
-        disagreements.push(`${doc.name} head=${head} status=${status.status} own.ok=${own.ok} :: ${mini}`)
+      if (harnessSaysServed !== (routedParse?.ok ?? false)) {
+        disagreements.push(
+          `${doc.name} head=${head} status=${status.status} routed=${routed} routedOk=${routedParse?.ok} :: ${mini}`,
+        )
       }
+      // What the shipped router RESCUES: the head's own surface declined and a
+      // view opens anyway. Zero before #1243, and the arithmetic below is
+      // unchanged by it — `own`/`sibling` read the parsers directly.
+      if (!own.ok && routedParse?.ok) rescued++
 
       if (own.ok) {
         served++
@@ -125,11 +145,11 @@ function measure(docs: { name: string; code: string }[]) {
       })
     }
   }
-  return { contentHeadUnits, served, refused, disagreements, duplicates }
+  return { contentHeadUnits, served, refused, disagreements, duplicates, rescued }
 }
 
 function report(label: string, docs: { name: string; code: string }[]) {
-  const { contentHeadUnits, served, refused, disagreements, duplicates } = measure(docs)
+  const { contentHeadUnits, served, refused, disagreements, duplicates, rescued } = measure(docs)
   const population = refused.filter((r) => r.siblingOk)
   const bothRefuse = refused.filter((r) => !r.siblingOk)
 
@@ -145,6 +165,7 @@ function report(label: string, docs: { name: string; code: string }[]) {
   console.log(`  refused by their own surface                  : ${refused.length}`)
   console.log(`    ├─ SIBLING WOULD ACCEPT  ← #1243's population: ${population.length}`)
   console.log(`    └─ refused by both (correctly no editor)     : ${bothRefuse.length}`)
+  console.log(`    └─ of those, RESCUED by the shipped router  : ${rescued}`)
   console.log(`duplicate spans dropped (harness double-collects)   : ${duplicates}`)
   console.log(`harness/parser disagreements (must be 0)         : ${disagreements.length}`)
   for (const d of disagreements) console.log(`    ⚠ ${d}`)
