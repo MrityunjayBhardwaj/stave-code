@@ -298,7 +298,21 @@ const POPULATION = {
   units: 1039,
   resolvedUnits: 898,
   resolvedMinis: 671,
-  // ⚠ newlyAdmitted MOVED 266 → 269 at #1010 P4c, and it is the only field of this
+  // ⚠⚠ newlyAdmitted MOVED 269 → 220 at #1240, and again it is the only field of this
+  // population that moved — the same slice, moved by the same mechanism from the other
+  // direction. `status.status !== 'note'` means "the coverage harness offers this unit no
+  // note view today", so WIRING the resolver into `chunkDetect` is precisely the thing
+  // that empties this set: 49 distinct minis stopped qualifying because a view now opens
+  // on them. The drop IS the deliverable, and it is the only pin here that a reach change
+  // should ever move. Its counterpart figures live in `miniSource-calibration`
+  // (known-content 534 → 600) and are asserted in this same commit.
+  //
+  // ⚠ Do NOT read 269 - 220 = 49 as "49 units gained a view": this arm counts DISTINCT
+  // MINIS, the calibration counts UNITS, and one mini can serve several units. Both
+  // denominators are named because a figure quoted without one is how this file's own
+  // header went wrong three times ([[P549]]).
+  //
+  // ⚠ newlyAdmitted MOVED 266 → 269 at #1010 P4c, and it was the only field of this
   // population that moved. The mechanism is the PRINTER, reaching a population figure
   // through the parse side: `status.status !== 'note'` means "the coverage harness offers
   // this unit no note view today", and the parser asks the writer before it offers one
@@ -307,7 +321,7 @@ const POPULATION = {
   // those 10 are in this arm's eval-resolved set, so they cross into `newlyAdmitted`:
   // `[hh ~]!16`, `lp:6/4`, `~ ~ ~ bd(<2 4!2>, 8)`. Observed by intersecting this set with
   // the 10 the attribution sweep named, not deduced from the delta being 3.
-  newlyAdmitted: 269,
+  newlyAdmitted: 220,
 }
 
 /**
@@ -324,9 +338,26 @@ const ALL_RESOLVED = { coreServed: 500, transfers: 435, untransferable: 25, unve
 /**
  * the counterfactual over ONLY the slice `mini-corpus.json` does not contain
  *
+ * ⚠⚠ MOVED 93/78/5/10 → 32/22/1/9 at #1240, and the SHAPE of that move is the
+ * finding. The slice itself shrank only 18% (269 → 220 minis), but `coreServed`
+ * fell 65% and `transfers` 72% — so the minis that left are overwhelmingly the
+ * ones a writer could already serve. That is the wiring working exactly as
+ * intended: "a writer can serve this" and "a view now opens on it" are close to
+ * the same predicate, so admitting them into the product is precisely what
+ * removes them from a slice defined as "no note view today". The residual is
+ * the harder tail, which is why its rate is worse and should be.
+ *
+ * ⚠ It is NOT evidence that anything got worse. The check that says so is
+ * `ALL_RESOLVED` directly above: over every eval-resolved mini it is UNMOVED
+ * (500/435/25/40). Same writers, same answers, same population — only the
+ * partition between "already offered" and "newly admitted" moved. A drop here
+ * with `ALL_RESOLVED` also moving would be a regression; a drop here alone is
+ * the transfer this issue exists to cause. Read the pair, never this line
+ * alone.
+ *
  * ⚠ MOVED 76/7 → 77/6 at #1010 P4c — one of the four above falls in this slice.
  */
-const NEWLY_ADMITTED = { coreServed: 93, transfers: 78, untransferable: 5, unverified: 10 }
+const NEWLY_ADMITTED = { coreServed: 32, transfers: 22, untransferable: 1, unverified: 9 }
 
 /**
  * The sibling arm's headline, pinned here too even though it is DERIVED from

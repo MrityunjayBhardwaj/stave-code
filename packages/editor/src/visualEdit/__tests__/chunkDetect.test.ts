@@ -285,6 +285,8 @@ describe('chunkDetect — classification', () => {
     headFn: null,
     miniRange: null,
     miniString: null,
+    miniVia: null,
+    miniAnchor: null,
     chain: [],
     type: 'unknown',
     nested: false,

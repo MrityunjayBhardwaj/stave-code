@@ -15,7 +15,9 @@
  * was detected from. `isChunkFresh` MUST gate every write — stale offsets
  * corrupt unrelated code.
  */
-import { parse } from 'acorn'
+import { parseTopLevel } from './astParse'
+import { resolveMiniSource } from './miniSource/resolveMiniSource'
+import { SpanIndex } from './miniSource/spanRole'
 
 // acorn's node types are intentionally loose; we walk untyped nodes here.
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -59,9 +61,37 @@ export interface ChunkInfo {
   label: string | null
   /** head function name, e.g. `s`, `note`, `stack` */
   headFn: string | null
-  /** contents of the head call's first string literal, quotes excluded */
+  /** contents of the mini string, quotes excluded — see `miniVia` for who found it */
   miniRange: [number, number] | null
   miniString: string | null
+  /**
+   * WHO FOUND `miniRange` (#1240). `literal` — the head call's first string
+   * argument, the rule this module has always used. `resolver` — `miniSource`
+   * named the span after the literal walk found nothing: a bound reference, a
+   * chained argument, a root literal, a head that is not a content head.
+   *
+   * Carried rather than inferred because the two are DIFFERENT CONFIDENCE
+   * LEVELS and a coverage table that blurs them cannot be read. `null` when
+   * there is no mini span at all.
+   */
+  miniVia: 'literal' | 'resolver' | null
+  /**
+   * The freshness guard for a mini span that lies OUTSIDE `statementRange` —
+   * `s(drums)` whose content is declared in `const drums = "bd sd"` two
+   * statements up. Null whenever the span is inside the unit's own statement,
+   * which is every `literal` chunk and most resolver ones.
+   *
+   * WHY IT EXISTS. This module's contract is that `isChunkFresh` gates every
+   * write, and it did that by watching `statementRange` — sound while the only
+   * writable span was inside it. A resolver span breaks that premise: the guard
+   * would watch the unit's statement while the write lands in a different one,
+   * so an edit to the declaration between detect and write corrupts unrelated
+   * code and every existing check still passes. The invariant is "every byte we
+   * may write is freshness-guarded", and its span is now two statements — so
+   * the guard widens rather than the feature narrowing (refusing these instead
+   * costs 43 of 125 resolver units, including every `s`/`sound` one).
+   */
+  miniAnchor: { range: [number, number]; text: string } | null
   /** calls in source order, head first */
   chain: ChainCall[]
   type: ChunkType
@@ -74,31 +104,25 @@ export interface ChunkInfo {
   nested: boolean
 }
 
-/** Top-level statement nodes, or null when the doc doesn't parse
- * (mid-keystroke syntax error — the caller keeps the last good chunk). */
-export function parseTopLevel(doc: string): any[] | null {
-  try {
-    const program = parse(doc, {
-      ecmaVersion: 'latest',
-      allowAwaitOutsideFunction: true,
-    }) as any
-    return program.body
-  } catch {
-    return null
-  }
-}
-
-/** Does the doc parse at all? Distinguishes "no statement here" from "broken doc". */
-export function docParses(doc: string): boolean {
-  return parseTopLevel(doc) !== null
-}
+// Re-exported so every existing `from './chunkDetect'` import keeps resolving;
+// they live in `astParse.ts` to keep this module off `spanRole`'s import path
+// (see that file's header for the cycle it broke).
+export { parseTopLevel, docParses } from './astParse'
 
 /**
  * A chunk's ranges are only valid against the exact doc it was detected from.
  * Every write MUST check this first.
  */
 export function isChunkFresh(doc: string, chunk: ChunkInfo): boolean {
-  return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText
+  if (doc.slice(chunk.statementRange[0], chunk.statementRange[1]) !== chunk.statementText) {
+    return false
+  }
+  // A resolver span in another statement is guarded HERE and nowhere else
+  // (#1240) — this function is the one gate every write goes through, so
+  // widening it covers every write path by construction rather than by an
+  // audit of callers. See `ChunkInfo.miniAnchor`.
+  const anchor = chunk.miniAnchor
+  return anchor === null || doc.slice(anchor.range[0], anchor.range[1]) === anchor.text
 }
 
 /**
@@ -170,6 +194,7 @@ function buildMaybeResolved(
   stmtRange: [number, number],
   index: BindingIndex,
   nested = false,
+  getIndex?: () => SpanIndex | null,
 ): ChunkInfo {
   const resolved = resolveBinding(expr, index)
   if (resolved) {
@@ -183,9 +208,10 @@ function buildMaybeResolved(
       label,
       [resolved.declStmt.start, resolved.declStmt.end],
       nested,
+      getIndex,
     )
   }
-  return buildChunkFromExpr(doc, expr, label, stmtRange, nested)
+  return buildChunkFromExpr(doc, expr, label, stmtRange, nested, getIndex)
 }
 
 /**
@@ -197,6 +223,7 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
   const statements = parseTopLevel(doc)
   if (!statements) return null
   const bindings = buildBindingIndex(statements)
+  const getIndex = lazySpanIndex(doc)
   for (const node of statements) {
     if (pos >= node.start && pos <= node.end) {
       // #868 — a `const/let/var x = <expr>` declaration yields a chunk for its
@@ -218,8 +245,8 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
         // resolves to the whole RHS — exactly the render-time chunk.
         const initTarget = innermostChainUnder(doc, decl.init, pos, bindings)
         return initTarget === decl.init
-          ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings)
-          : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true)
+          ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings, false, getIndex)
+          : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true, getIndex)
       }
       let label: string | null = null
       let body = node
@@ -236,8 +263,8 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
       // target (`$: bass`, or a `stack(beat, …)` arm) is resolved to its
       // binding's definition inside buildMaybeResolved (#866).
       return target === topExpr
-        ? buildMaybeResolved(doc, topExpr, label, [node.start, node.end], bindings)
-        : buildMaybeResolved(doc, target, null, [target.start, target.end], bindings, true)
+        ? buildMaybeResolved(doc, topExpr, label, [node.start, node.end], bindings, false, getIndex)
+        : buildMaybeResolved(doc, target, null, [target.start, target.end], bindings, true, getIndex)
     }
   }
   return null
@@ -248,12 +275,18 @@ export function detectAllChunks(doc: string): ChunkInfo[] {
   const statements = parseTopLevel(doc)
   if (!statements) return []
   const bindings = buildBindingIndex(statements)
+  const getIndex = lazySpanIndex(doc)
   return statements
-    .map((node: any) => buildChunk(doc, node, bindings))
+    .map((node: any) => buildChunk(doc, node, bindings, getIndex))
     .filter((c: ChunkInfo | null): c is ChunkInfo => c !== null)
 }
 
-function buildChunk(doc: string, node: any, bindings: BindingIndex): ChunkInfo | null {
+function buildChunk(
+  doc: string,
+  node: any,
+  bindings: BindingIndex,
+  getIndex?: () => SpanIndex | null,
+): ChunkInfo | null {
   let label: string | null = null
   let body = node
   if (node.type === 'LabeledStatement') {
@@ -264,13 +297,39 @@ function buildChunk(doc: string, node: any, bindings: BindingIndex): ChunkInfo |
   // A whole-track bare-ref (`$: bass`) resolves to its binding's voice (#866);
   // a `const bass = …` declaration itself is a VariableDeclaration, not an
   // ExpressionStatement, so it never yields its own chunk (no double).
-  return buildMaybeResolved(doc, body.expression, label, [node.start, node.end], bindings)
+  return buildMaybeResolved(doc, body.expression, label, [node.start, node.end], bindings, false, getIndex)
+}
+
+/**
+ * A `SpanIndex` built AT MOST ONCE per detect call, and only if some unit
+ * actually asks for it (#1240).
+ *
+ * Both halves matter. `SpanIndex.build` re-parses the document, and
+ * `detectChunk` runs on every cursor move — so building it eagerly would double
+ * the parse on a path where most chunks never need it (a `note("…")` head finds
+ * its literal without asking). Sharing one across a `detectAllChunks` sweep is
+ * what keeps that O(statements) rather than O(statements²).
+ */
+function lazySpanIndex(doc: string): () => SpanIndex | null {
+  let built = false
+  let index: SpanIndex | null = null
+  return () => {
+    if (!built) {
+      built = true
+      index = SpanIndex.build(doc)
+    }
+    return index
+  }
 }
 
 /**
  * Build a ChunkInfo from a pattern expression node. `stmtRange` is the source
  * span the freshness guard watches: the whole statement (incl. `$:`) for a
  * top-level chunk, or just the expression for a nested one (#395).
+ *
+ * `getIndex` is the resolver's lazily-built document index. Omitted, the mini
+ * span comes from the first-literal walk alone — the pre-#1240 behaviour, kept
+ * for callers that build a chunk outside a detect sweep.
  */
 function buildChunkFromExpr(
   doc: string,
@@ -278,6 +337,7 @@ function buildChunkFromExpr(
   label: string | null,
   stmtRange: [number, number],
   nested = false,
+  getIndex?: () => SpanIndex | null,
 ): ChunkInfo {
   const headNode = { ref: null as any }
   const chain = collectChain(doc, expr, headNode)
@@ -304,12 +364,66 @@ function buildChunkFromExpr(
     headFn,
     miniRange,
     miniString,
+    miniVia: miniRange ? 'literal' : null,
+    miniAnchor: null,
     chain,
     type: 'unknown',
     nested,
   }
+  if (info.miniRange === null && getIndex) resolveMini(doc, info, getIndex)
   info.type = classifyChunk(info)
   return info
+}
+
+/**
+ * THE RESOLVER FALLBACK (#1240) — fill a unit's mini span when the first-literal
+ * walk found none, mutating `info` in place.
+ *
+ * The literal walk answers "the head call's first string argument", which is
+ * silent for every shape where the content is somewhere else: a bound reference
+ * (`s(drums)`), a chained argument, a root literal, a head that is not a content
+ * head at all. `resolveMiniSource` answers the same question structurally and
+ * has been gated against 150 real tunes since #1015 — it just had no caller.
+ *
+ * TWO REFUSALS, and neither is conservatism for its own sake:
+ *
+ *  - AMBIGUITY. This path runs the PARSE proposer only, because `detectChunk` is
+ *    synchronous (it runs on cursor move) and evaluation is not. Parse-only
+ *    hands every literal exactly one proposal, so the resolver's most-evidence
+ *    ranking degenerates to source order wherever a unit has more than one
+ *    `source` literal — and it then picks confidently and wrongly. Measured over
+ *    the 150-tune corpus against the eval proposer as oracle: of 148 parse-only
+ *    resolutions, 125 have no alternatives and ALL 125 agree with eval exactly;
+ *    all 14 disagreements are among the 23 with alternatives. So `alternatives`
+ *    is not a hint here, it is the soundness condition, and refusing on it buys
+ *    a wrong-anchor rate of zero at a cost of 9 units that would have agreed.
+ *
+ *  - NO ANCHOR STATEMENT. A span outside the unit's statement needs one to guard
+ *    it (see `ChunkInfo.miniAnchor`); if no top-level statement contains it, the
+ *    write could not be made fresh and the span is dropped rather than written
+ *    unguarded.
+ */
+function resolveMini(doc: string, info: ChunkInfo, getIndex: () => SpanIndex | null): void {
+  const index = getIndex()
+  if (!index) return
+  const r = resolveMiniSource(doc, info, { index })
+  // `alternatives` non-empty ⇒ the parse walk is guessing. See the header.
+  if (!r.ok || r.alternatives.length > 0) return
+
+  let anchor: ChunkInfo['miniAnchor'] = null
+  const inside = r.range[0] >= info.statementRange[0] && r.range[1] <= info.statementRange[1]
+  if (!inside) {
+    const stmt = (parseTopLevel(doc) ?? []).find(
+      (s: any) => r.range[0] >= s.start && r.range[1] <= s.end,
+    )
+    if (!stmt) return
+    anchor = { range: [stmt.start, stmt.end], text: doc.slice(stmt.start, stmt.end) }
+  }
+
+  info.miniRange = r.range
+  info.miniString = r.text
+  info.miniVia = 'resolver'
+  info.miniAnchor = anchor
 }
 
 /**

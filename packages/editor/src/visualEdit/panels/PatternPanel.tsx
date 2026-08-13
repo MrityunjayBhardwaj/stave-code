@@ -2,10 +2,12 @@
  * Pattern — the single adaptive visual-editing panel (#398).
  *
  * One tab that follows the cursor instead of three the musician has to choose
- * between. The chain head decides which grid editor the focused pattern needs
- * (`patternKind`): a drum pattern (`s`/`sound`) gets the Sequencer step grid, a
- * melody (`note`/`n`) gets the Piano Roll, and anything else shows a standby
- * hint. The Mixer is pinned on the right for whatever is focused — it edits the
+ * between. `chunkSurface` decides which grid editor the focused pattern needs:
+ * a drum pattern (`s`/`sound`) gets the Sequencer step grid, a melody
+ * (`note`/`n`) gets the Piano Roll, and — since #1240 — a unit whose content
+ * span the RESOLVER named is routed on its content, because its head (`lpf`,
+ * `seq`, `pick`, or none) says nothing about which view the values belong to.
+ * Anything with no content span still shows a standby hint. The Mixer is pinned on the right for whatever is focused — it edits the
  * numeric chain args of any pattern, so it stays constant across the switch.
  *
  * This is pure composition: SequencerGrid / PianoRollGrid / Mixer keep their
@@ -13,13 +15,13 @@
  * active chunk independently through useActiveChunk, so they all converge on
  * the same pattern under the cursor; this panel only picks which grid mounts.
  *
- * There is no "both grids at once" case — a chunk is drum XOR melody, and the
- * cursor→chunk binding resolves exactly one chain.
+ * There is no "both grids at once" case — `chunkSurface` returns exactly one
+ * surface, and the cursor→chunk binding resolves exactly one chain.
  */
 import * as React from 'react'
 
 import { useActiveChunk } from './useActiveChunk'
-import { patternKind } from './patternKind'
+import { chunkSurface } from './surfaceRoute'
 import { SequencerGrid } from './SequencerGrid'
 import { PianoRollGrid } from './PianoRollGrid'
 import { MixerPanel } from '../mixer/MixerPanel'
@@ -37,7 +39,7 @@ const MIXER_WIDTH = 220
 
 export function PatternPanel(): React.ReactElement {
   const { chunk } = useActiveChunk()
-  const kind = patternKind(chunk)
+  const kind = chunkSurface(chunk)
 
   // The copy/paste selection (#528) — a ⌘/Ctrl-clicked cell on the Piano Roll.
   // Owned here so it survives the grid's own re-renders. Cleared when the cursor

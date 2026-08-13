@@ -154,6 +154,8 @@ function emptyMasterChunk(doc: string): ChunkInfo {
     headFn: null,
     miniRange: null,
     miniString: null,
+    miniVia: null,
+    miniAnchor: null,
     chain: [{ name: 'x', args: [], range: [pos, pos] }],
     type: 'knobs',
     nested: false,
