@@ -123,8 +123,85 @@ export const MAX_STEPS = 64
  */
 export const ONSET_GRID = 2882880
 
-const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
-const lcm = (a: number, b: number): number => (a / gcd(a, b)) * b
+/**
+ * The value the resolution folds saturate at (#1239).
+ *
+ * Every consumer of an `lcm` fold in this file asks one question of it —
+ * `… > MAX_STEPS`? — and refuses above the cap. So the exact value above the cap
+ * cannot change a verdict, while computing it exactly is what used to blow up:
+ * `lcm(1..43)` is 9.4e18, four orders of magnitude past `Number.MAX_SAFE_INTEGER`,
+ * and it arises from ordinary notation (`"1*1, 2*2, … 43*43"`).
+ *
+ * ⚠ FINITE, and deliberately so. An unbounded sentinel — `Infinity`, or simply
+ * the exact value — escapes into loops and allocations that this file sizes FROM
+ * the fold before any cap is consulted: `bars` is folded with `lcm` at the
+ * alternation site below and then drives `for (let b = 0; b < bars; b++)`, and
+ * the column builders allocate `perBar × bars`. A crash traded for a hang is not
+ * a fix.
+ *
+ * MEASURED, by removing this saturation and keeping everything else: the 43-part
+ * case stops throwing and starts HANGING instead — it enters `parsePianoRoll` and
+ * does not return, and because the spin is synchronous no test timeout can
+ * interrupt it. So this is the half that carries the fix.
+ *
+ * ⚠ THE CAP IS THE VIEW'S, NOT THE DOCUMENT'S, AND THE DIFFERENCE IS LOAD-BEARING.
+ * Twelve of the thirteen folds here take unscaled quantities and refuse above
+ * `MAX_STEPS`, so `MAX_STEPS + 1` would serve them. The thirteenth — the shared
+ * width across a stack's parts — folds over columns that have ALREADY been scaled
+ * by `viewScale`, and a refined view may legitimately be 256 columns wide. Cutting
+ * that fold off at 65 does not refuse such a view: it returns a total the parts do
+ * not divide, so `factor` goes fractional and the lanes come back wrong — measured,
+ * a ×4 view of a three-part stack drew 65 columns where it owes 96. Saturating at
+ * the view ceiling instead is invisible to every legitimate value — that fold is
+ * already bounded by the `viewScaleFits` check above it — while still bounding the
+ * growth, because anything past `MAX_STEPS` refuses whether it reads 65 or 257.
+ *
+ * Caught by `1058-refined-placement` and `view-scale-entry` in the app package and
+ * by nothing in this one: no editor arm drew a multi-part stack at a refined scale.
+ * There is one now, directly below the crash arms it belongs beside.
+ */
+const OVER_CAP = MAX_VIEW_STEPS + 1
+
+/**
+ * Iterative Euclid.
+ *
+ * The recursion is what turned an unrepresentable fold into a stack overflow
+ * rather than merely a wrong number: past the safe-integer range the operands
+ * stop being exact integers, so `a % b` never reaches 0 and there is no base case
+ * left to reach (#1239).
+ *
+ * ⚠ DEFENSIVE, and measured to be. `lcm` saturates on entry, so by the time this
+ * is called both operands are at most `MAX_STEPS` and Euclid on those cannot
+ * recurse more than a handful of frames — restoring the recursive form with the
+ * saturation in place reddens nothing at all (73 arms, all green). It is kept
+ * because the shape it removes is a whole class rather than one input, and
+ * because the cost is four lines; not because anything currently depends on it.
+ */
+const gcd = (a: number, b: number): number => {
+  while (b !== 0) {
+    const r = a % b
+    a = b
+    b = r
+  }
+  return a
+}
+
+/**
+ * Least common multiple, saturating at `OVER_CAP`.
+ *
+ * VERDICT-PRESERVING, and the argument is short enough to state: `lcm(a, b)` is
+ * never less than `max(a, b)`, so an input already past the cap forces a result
+ * past it too — saturating on entry can only agree with the exact answer. Below
+ * the cap both operands are at most `MAX_STEPS`, so the product is at most
+ * `64 · 63` and is computed exactly. Hence `saturated ≤ MAX_STEPS` exactly when
+ * `exact ≤ MAX_STEPS`, and the two are equal whenever that holds — which is the
+ * only range any caller reads a value from rather than refusing it.
+ */
+const lcm = (a: number, b: number): number => {
+  if (a >= OVER_CAP || b >= OVER_CAP) return OVER_CAP
+  const r = (a / gcd(a, b)) * b
+  return r >= OVER_CAP ? OVER_CAP : r
+}
 
 /**
  * The euclid distribution + rotation now live in ONE place (`ir/euclid.ts`) —
