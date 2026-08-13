@@ -130,9 +130,14 @@ test.describe('#1243 — a chord chart under note() reaches the grid', () => {
     // and has decided nothing.
     expect(await page.locator(`${panel} [data-roll-cell]`).count()).toBe(0)
 
-    // #1241 — the panel says what it is holding, and does not offer a drum kit.
-    await expect(page.locator(`${panel} [data-seq-chord-chart]`)).toBeVisible()
-    expect(await page.locator(`${panel} [data-seq-add-voice]`).count()).toBe(0)
+    // ⚠ THE CHROME IS DELIBERATELY NOT ASSERTED HERE, and that is a property of
+    // the matrix rather than an omission. This fixture depends on BOTH changes:
+    // break the routing and the grid never opens, so a chrome assertion on it
+    // would redden for the chrome break AND the routing break, and the two
+    // signatures would nest instead of separating ([[P558]] — distinct is not
+    // disjoint). The chrome lives on the silent-head arm below, whose routing
+    // predates this change and cannot be disturbed by the routing break. Same
+    // code path, one caller each, and a matrix that can say which broke.
 
     expect(errors).toEqual([])
   })
