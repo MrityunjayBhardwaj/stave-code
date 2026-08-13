@@ -871,3 +871,132 @@ describe('a write spells the refinement only when it needs to', () => {
     expect(collapsePianoRollToDocument(rGained)).not.toBeNull()
   })
 })
+
+/**
+ * #1239 — the resolution fold must REFUSE, never throw.
+ *
+ * `parsePianoRoll("1*1, 2*2, … 43*43")` used to raise
+ * `RangeError: Maximum call stack size exceeded`. `gcd` was recursive Euclid and
+ * `lcm` folds across parts; past the safe-integer range the operands stop being
+ * exact integers, `a % b` never reaches 0, and the recursion has no base case
+ * left to reach. `lcm(1..43)` is 9.4e18.
+ *
+ * It is not an exotic shape — it came out of a real corpus tune whose root
+ * literal is 100 comma-parts of `k*k`, and it is reachable by typing the same
+ * string into `note(...)`. Every other unparseable mini gets a quiet refusal;
+ * this one got an exception the callers were never told to expect.
+ *
+ * The boundary is the point of these arms: 1–6 open, 7–42 already refused
+ * cleanly, and only 43+ crashed. So the fix has to leave two behaviours alone
+ * and change exactly one.
+ */
+describe('#1239 resolution — an unrepresentable fold refuses instead of throwing', () => {
+  /** `"1*1, 2*2, … n*n"` — n comma-parts with n distinct replication factors */
+  const parts = (n: number) =>
+    Array.from({ length: n }, (_, i) => `${i + 1}*${i + 1}`).join(', ')
+
+  it('does not throw at any part count, on either surface', () => {
+    for (let n = 1; n <= 100; n++) {
+      const mini = parts(n)
+      expect(() => parseStepGrid(mini), `step @ ${n} parts`).not.toThrow()
+      expect(() => parsePianoRoll(mini), `roll @ ${n} parts`).not.toThrow()
+    }
+  })
+
+  it('refuses past the cap with a stated gate, not with an exception', () => {
+    // 43 is where it used to die; 100 is the real corpus tune's own width.
+    //
+    // ⚠ THE GATE IS NOT THE SAME ONE AT BOTH ENDS, and that is a property of the
+    // notation rather than a gap in the fix. At 43 the onsets are still expressible
+    // and it is the fold that goes past the cap, so `resolution` answers. By 100 the
+    // parts are coprime enough that some onset lands where no denominator `d ≤ 64`
+    // makes `x·d` integral, and `irrational-onset` fires FIRST — inside the same
+    // loop, one line before the fold is even consulted. Pinned per count so that a
+    // change in which gate answers is visible instead of being absorbed by a
+    // permissive "some refusal happened" assertion.
+    const expected: [number, string][] = [
+      [43, 'resolution'],
+      [44, 'resolution'],
+      [64, 'resolution'],
+      [100, 'irrational-onset'],
+    ]
+    for (const [n, gate] of expected) {
+      const r = parsePianoRoll(parts(n))
+      expect(r.ok, `${n} parts must not open a view`).toBe(false)
+      if (r.ok) throw new Error('unreachable')
+      expect(r.gate, `${n} parts must refuse for a stated reason`).toBe(gate)
+    }
+  })
+
+  it('leaves the two behaviours either side of the boundary exactly as they were', () => {
+    // BELOW: these open, and their column counts are the value the exact fold
+    // produced — saturation must not disturb anything it can represent.
+    const opens: [number, number][] = [
+      [1, 1],
+      [2, 2],
+      [3, 6],
+      [4, 12],
+      [5, 60],
+      [6, 60],
+    ]
+    for (const [n, steps] of opens) {
+      const r = parsePianoRoll(parts(n))
+      expect(r.ok, `${n} parts used to open`).toBe(true)
+      if (!r.ok) throw new Error('unreachable')
+      expect(r.model.steps, `${n} parts drew ${steps} columns`).toBe(steps)
+    }
+    // BETWEEN: already refused cleanly before the fix, and by the same gate.
+    for (const n of [7, 20, 42]) {
+      const r = parsePianoRoll(parts(n))
+      expect(r.ok, `${n} parts already refused`).toBe(false)
+      if (r.ok) throw new Error('unreachable')
+      expect(r.gate, `${n} parts refused for the same reason as before`).toBe('resolution')
+    }
+  })
+
+  it('leaves a REFINED multi-part stack exact — the fold is capped at the view ceiling', () => {
+    // THE ARM THAT WAS MISSING, and its absence is why the first cut of this fix
+    // shipped a defect past 3329 green editor arms.
+    //
+    // Twelve of the thirteen folds in `parse.ts` take unscaled quantities and
+    // refuse above `MAX_STEPS`. The shared width across a stack's parts does not:
+    // it folds over columns ALREADY multiplied by `viewScale`, so a legitimate
+    // refined view reaches well past 64. Capping that fold at 65 does not refuse
+    // it — it returns a total the parts do not divide, and the lanes come back
+    // wrong. Only the app package's refined-placement and view-scale corpora saw
+    // it; nothing here drew a multi-part stack at a scale other than 1.
+    const mini = 'bd ~ sn ~, hh*3, cp ~ ~ ~ cp ~ ~ ~'
+    const unrefined = parseStepGrid(mini)
+    expect(unrefined.ok, 'the stack opens unrefined').toBe(true)
+    if (!unrefined.ok) throw new Error('unreachable')
+
+    for (const scale of [2, 4] as const) {
+      const r = parseStepGrid(mini, scale)
+      expect(r.ok, `the stack opens at ×${scale}`).toBe(true)
+      if (!r.ok) throw new Error('unreachable')
+      // the drawn width is exactly the document's, scaled — the property the
+      // clamp broke, and it breaks it by returning a width no part divides
+      expect(r.model.steps, `×${scale} draws the document width scaled`).toBe(
+        unrefined.model.steps * scale,
+      )
+      // every lane is the full width: a fractional `factor` leaves short lanes
+      for (const lane of r.model.lanes) {
+        expect(lane.cells.length, `lane ${lane.sound} spans the whole grid at ×${scale}`).toBe(
+          r.model.steps,
+        )
+      }
+    }
+  })
+
+  it('bounds the alternation fold too — a saturating `bars` must refuse, not spin', () => {
+    // `bars` is folded with the same `lcm` and then drives `for (b = 0; b < bars; b++)`,
+    // which is why the saturation value is finite: an infinite one would hang here
+    // rather than reach the refusal one line later. Coprime alternation lengths are
+    // what make that fold grow.
+    const mini = Array.from({ length: 12 }, (_, i) =>
+      `<${Array.from({ length: i + 2 }, (_, k) => `c${(k % 7) + 1}`).join(' ')}>`,
+    ).join(' ')
+    expect(() => parsePianoRoll(mini)).not.toThrow()
+    expect(() => parseStepGrid(mini)).not.toThrow()
+  })
+})

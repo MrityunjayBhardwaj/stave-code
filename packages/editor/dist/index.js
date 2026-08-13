@@ -27054,8 +27054,20 @@ var NUMERIC = /^-?\d+$/;
 var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => allowNumeric || !NUMERIC.test(t), "isAtomToken");
 var MAX_STEPS = 64;
 var ONSET_GRID = 2882880;
-var gcd = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcd(b, a % b), "gcd");
-var lcm = /* @__PURE__ */ __name((a, b) => a / gcd(a, b) * b, "lcm");
+var OVER_CAP = MAX_VIEW_STEPS + 1;
+var gcd = /* @__PURE__ */ __name((a, b) => {
+  while (b !== 0) {
+    const r = a % b;
+    a = b;
+    b = r;
+  }
+  return a;
+}, "gcd");
+var lcm = /* @__PURE__ */ __name((a, b) => {
+  if (a >= OVER_CAP || b >= OVER_CAP) return OVER_CAP;
+  const r = a / gcd(a, b) * b;
+  return r >= OVER_CAP ? OVER_CAP : r;
+}, "lcm");
 var stepUnits = /* @__PURE__ */ __name((s) => s.sub ? s.sub.reduce((n, slot) => n + slot.units, 0) : 1, "stepUnits");
 var division = /* @__PURE__ */ __name((steps) => steps.reduce((d, s) => lcm(d, stepUnits(s)), 1), "division");
 function splitTopLevel(src) {
