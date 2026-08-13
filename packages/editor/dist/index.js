@@ -29445,11 +29445,7 @@ __name(isKnownDrumVoice, "isKnownDrumVoice");
 // src/visualEdit/panels/chordLanes.ts
 function isChordSymbol(token) {
   if (isKnownDrumVoice(token)) return false;
-  try {
-    return !get(token).empty;
-  } catch {
-    return false;
-  }
+  return !get(token).empty;
 }
 __name(isChordSymbol, "isChordSymbol");
 function chordLanes(laneSounds) {
@@ -29460,10 +29456,22 @@ __name(chordLanes, "chordLanes");
 // src/visualEdit/panels/surfaceRoute.ts
 function routeSurface(headFn, mini) {
   if (headFn === "s" || headFn === "sound") return "step";
-  if (headFn === "note" || headFn === "n") return rollUnlessChordChart(mini);
+  if (headFn === "note" || headFn === "n") return memoised(headFn, mini, rollUnlessChordChart);
   return parsePianoRoll(mini).ok ? "roll" : "step";
 }
 __name(routeSurface, "routeSurface");
+var CACHE_CAP = 32;
+var routed = /* @__PURE__ */ new Map();
+function memoised(headFn, mini, compute) {
+  const key2 = `${headFn}\0${mini}`;
+  const hit = routed.get(key2);
+  if (hit !== void 0) return hit;
+  const answer = compute(mini);
+  if (routed.size >= CACHE_CAP) routed.clear();
+  routed.set(key2, answer);
+  return answer;
+}
+__name(memoised, "memoised");
 function rollUnlessChordChart(mini) {
   const roll = parsePianoRoll(mini);
   if (roll.ok || roll.gate !== "wrong-surface") return "roll";

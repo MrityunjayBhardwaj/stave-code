@@ -41,6 +41,19 @@ import { isKnownDrumVoice } from './drumVoices'
 /**
  * Is one lane token a chord symbol?
  *
+ * ⚠ NO try/catch, AND THAT IS A MEASUREMENT RATHER THAN AN OVERSIGHT. The first
+ * draft wrapped the grammar call defensively — it is third-party code on a
+ * render path, and an exception here would take the panel down with it. Then
+ * the break-check could not be written: `Chord.get` was fed sixteen malformed
+ * strings (empty, whitespace, `~`, `[`, `C#####`, 500 characters, `///`) and
+ * five non-string values including `undefined` and `null`, and threw on none of
+ * them. A guard whose failing case cannot be constructed is a comment with a
+ * value attached, and it hides the one thing worth knowing: the grammar reports
+ * refusal by returning `empty`, not by throwing. What would reopen this is an
+ * UPGRADE whose throw surface differs — the pinned 4.x line already differs
+ * from 6.x in what it accepts (6.x reads `cb` as C-flat major and 4.x does
+ * not), so re-run the probe rather than assuming it travels.
+ *
  * The drum vocabulary is consulted FIRST and is authoritative — see the `cb`
  * note above. The token is passed to the chord grammar RAW, with no `:variant`
  * stripping: `C:major` is a scale, not a chord, and the grammar rejects it,
@@ -49,14 +62,7 @@ import { isKnownDrumVoice } from './drumVoices'
  */
 export function isChordSymbol(token: string): boolean {
   if (isKnownDrumVoice(token)) return false
-  try {
-    return !getChord(token).empty
-  } catch {
-    // The grammar is someone else's and its throw surface is not ours to
-    // enumerate. A token it cannot read is not a chord — which is the same
-    // answer as `empty`, reached without trusting it not to throw.
-    return false
-  }
+  return !getChord(token).empty
 }
 
 /**

@@ -76,12 +76,49 @@ export type Surface = Exclude<PatternKind, null>
  */
 export function routeSurface(headFn: string | null, mini: string): Surface {
   if (headFn === 's' || headFn === 'sound') return 'step'
-  if (headFn === 'note' || headFn === 'n') return rollUnlessChordChart(mini)
+  if (headFn === 'note' || headFn === 'n') return memoised(headFn, mini, rollUnlessChordChart)
   // The head is silent — ask the surface that can discriminate word patterns.
   // `step` here means "the grid is the right place to ASK", not "the grid will
   // open": it declines numerics itself, and a pattern both refuse (`"bd 3 hh"`)
   // correctly ends up with no editor and a named gate.
   return parsePianoRoll(mini).ok ? 'roll' : 'step'
+}
+
+/**
+ * The answers already computed, keyed on the two arguments that decide one.
+ *
+ * ⚠ THIS IS A COST FIX AND IT IS NOT OPTIONAL. Before #1243 a melodic head
+ * answered by comparing a string — measured at 0.1us — and it now has to PARSE,
+ * because "did the roll decline, and on what" is not answerable any other way.
+ * Measured per call on this machine: 104us for `c3 e3 g3`, 255us for a four
+ * chord chart, and **2542us for `<c4 e4 g4 b4> <d4 f4 a4> e4 [g4 a4]`**. Three
+ * components ask per render — the panel that routes, and each grid deciding
+ * whether it is eligible — so an unmemoised melodic route spends more than half
+ * a frame budget on a question whose answer cannot have changed.
+ *
+ * Sound because `routeSurface` is pure in its two arguments: the parsers it
+ * calls read nothing but the mini string. Capped rather than unbounded, and
+ * cleared wholesale at the cap — an LRU here would be more machinery than the
+ * hit rate justifies, since in practice every entry is the chunk under the
+ * cursor and its neighbours.
+ *
+ * ⚠ NOTHING GATES THIS. A memo's only symptom is WORK, and work leaves models,
+ * bytes and verdicts identical — every arm in this file passes with the cache
+ * removed, and a timing assertion here would be flaky. Stated rather than
+ * guarded, which is the same call #1237 reached at the same seam; the honest
+ * instrument if it ever needs one is an invocation COUNT, not a clock.
+ */
+const CACHE_CAP = 32
+const routed = new Map<string, Surface>()
+
+function memoised(headFn: string, mini: string, compute: (mini: string) => Surface): Surface {
+  const key = `${headFn}\u0000${mini}`
+  const hit = routed.get(key)
+  if (hit !== undefined) return hit
+  const answer = compute(mini)
+  if (routed.size >= CACHE_CAP) routed.clear()
+  routed.set(key, answer)
+  return answer
 }
 
 /**
