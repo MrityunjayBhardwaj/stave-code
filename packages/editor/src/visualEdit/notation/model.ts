@@ -241,8 +241,21 @@ export interface LeafSource {
    * reachable by an ordinary gesture — a `÷2` moves the element model's width onto the
    * overlay's, the guard passes against spans describing a different layout, surgery
    * writes the pre-halved bytes back, and the user's divide-by-two silently does nothing.
-   * Measured: unreachable on the overlay as it ships (0 of 52 grid and 0 of 43 roll
-   * restructures), and 13 grid + 2 roll under #1233's core attachment.
+   * Measured before #1233: unreachable on the overlay as it ships (0 of 52 grid and 0 of 43
+   * roll restructures), and 13 grid + 2 roll under its core attachment.
+   *
+   * ⚠ THAT 13 + 2 WAS CONFIRMED WHEN #1233 SHIPPED, BY BREAKING THE REAL THING — and the
+   * confirmation is worth recording because a cheaper reading disagreed with it. Dropping
+   * the re-stamp in `lazyGridLeaf`/`lazyRollLeaf` on the built change swallows exactly 13
+   * grid and 2 roll restructures; re-stamping makes it 0 and 0.
+   *
+   * ⚠⚠ THE CHEAPER READING SAID 2 + 2, AND IT WAS THE INSTRUMENT THAT WAS WRONG. Before
+   * the attachment existed, `_1235-width-coincidence.spec.ts` SIMULATED it by spreading
+   * spans fetched from `projectStepGridDerived` — which carry the DERIVED path's own
+   * `attachedSteps`. That stamp usually disagrees with the core model they were being
+   * pasted onto, so the simulated overlay was refused for a reason the real change never
+   * has, and the figure came out five times too low. A simulation that does not reproduce
+   * the field the guard reads is not measuring the guard. Break the built thing.
    *
    * Recording the width at ATTACH time makes "valid" mean "this is the model those spans
    * were read from", which is the property actually needed. `anchorsDescribe` stays: it
@@ -250,6 +263,69 @@ export interface LeafSource {
    */
   attachedSteps: number
 }
+
+/**
+ * A leaf-span OVERLAY: the width the spans were attached to, plus the spans themselves
+ * behind a thunk that projects them on first use (#1233).
+ *
+ * WHY THE SPANS ARE DEFERRED, and it is a cost fact rather than a style one. Building
+ * them is a second full projection of the mini. They are read only when the writer
+ * answers an EDIT — one write per many parses, and most parses never write at all — so
+ * built eagerly the cost lands on every parse instead of on the writes that use it.
+ * Measured on the path this field exists to reach: attaching eagerly where the syntactic
+ * core answers takes a parse from 57.2us to 1459.8us, x25.5, on the parse that serves 791
+ * of 958 corpus units and re-runs on every keystroke. Deferred, a parse pays one closure
+ * and the projection is paid once by the write that needs it.
+ *
+ * ⚠ THE MEMO IS PART OF THE CONTRACT, NOT AN OPTIMISATION. A writer may ask more than
+ * once, and a fresh projection per ask would put back the cost this shape exists to move.
+ * A FAILED projection memoises too — `undefined` is an answer ("this mini has no leaf
+ * spans"), not an absence — so the flag is separate from the value rather than a null
+ * check, which would re-run the whole projection on every write to rediscover it.
+ *
+ * ⚠ AND IT IS GATED, by counting projections rather than by timing them (#1237). Losing
+ * either the laziness or the memo changes no output, no count and no verdict — only
+ * work — so no gate that reads models can see it, and a wall-clock assertion would be
+ * flaky. `parse.ts` keeps a projection counter for exactly this and nothing else;
+ * `surgicalMemo.test.ts` reads it as a delta around a parse and around repeated asks,
+ * including the failing-projection case that the separate flag exists to serve.
+ *
+ * ⚠ IT IS MEMOISED PER MODEL, NOT PER MINI. A cache keyed on the mini string would help
+ * only repeated parses of unchanged text, and the hot case is TYPING, where the mini
+ * differs every keystroke and every lookup would miss.
+ *
+ * ⚠ `spans()` RETURNS A SOURCE ALREADY STAMPED WITH `attachedSteps` BELOW, so the width
+ * rule stays in the one place that enforces it (`anchorsAreFor`, `serialize.ts`) and no
+ * caller has to remember to re-check it. A source arrives from the leaf projection
+ * describing the LEAF model's layout; overlaid it must describe the model it is landing
+ * on, or the writer compares two independently-derived numbers and their agreement means
+ * nothing ([[PV319]]).
+ *
+ * ⚠⚠ `spans` IS A FUNCTION, AND `JSON.stringify` DROPS FUNCTION-VALUED PROPERTIES. Any
+ * gate that compares models structurally sees this field shrink to `attachedSteps` alone
+ * rather than seeing it disappear — which is why that number stays a plain field. A gate
+ * comparing an overlaid model against a bare one still sees a difference; one comparing
+ * two overlaid models no longer sees their spans differ. `writer-census.test.ts` is the
+ * gate that does this, and it strips the overlay from both sides explicitly rather than
+ * letting `JSON.stringify` decide what it can see — a gate that passes because it went
+ * blind reads exactly like one that passes because nothing changed.
+ */
+export interface SurgicalOverlay<S> {
+  /**
+   * The width of the model this overlay was attached to. The writer refuses unless the
+   * model still has it — see `LeafSource.attachedSteps` for the restructure that makes a
+   * bare width comparison unsound.
+   */
+  attachedSteps: number
+  /** the spans, projected on first call and remembered — including a failure */
+  spans: () => S | undefined
+}
+
+/** The grid's overlay — see `SurgicalOverlay` for the contract and both hazards. */
+export type LazyLeafSource = SurgicalOverlay<LeafSource>
+
+/** The roll's overlay, with the same contract and the same hazards. */
+export type LazyRollLeafSource = SurgicalOverlay<RollLeafSource>
 
 /**
  * One played note, paired with the source leaf its PITCH was read from.
@@ -420,8 +496,13 @@ export interface StepGridModel {
    * written by the other writer). Falling back is permitted only here, where the
    * element writer was already the incumbent and the fallback restores exactly
    * today's behaviour.
+   *
+   * ⚠ ASKED THROUGH `spans()`, WHICH PROJECTS ON FIRST USE — see `SurgicalOverlay`. The
+   * field became a thunk when #1233 attached it on the CORE path too, where a second
+   * eager projection is x25.5 rather than the derived path's +59%, because the core parse
+   * is cheap enough that the extra projection IS the cost.
    */
-  surgical?: LeafSource
+  surgical?: LazyLeafSource
   /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
   bars?: number
   /**
@@ -1015,8 +1096,11 @@ export interface PianoRollModel {
    * roll loses ten units of reach where the grid gains five — which is exactly why P4d's
    * result could not simply be assumed here and why every figure behind this field was
    * taken on the roll.
+   *
+   * ⚠ ASKED THROUGH `spans()`, exactly as the grid's is — see `SurgicalOverlay` for why
+   * the projection is deferred and what the memo guarantees.
    */
-  surgical?: RollLeafSource
+  surgical?: LazyRollLeafSource
   /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
   bars?: number
   /**

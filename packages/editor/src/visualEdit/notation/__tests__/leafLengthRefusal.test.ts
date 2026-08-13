@@ -32,9 +32,30 @@ const model = (mini: string): StepGridModel => {
 const spansFor = (mini: string): LeafSource => {
   const d = projectStepGridDerived(mini, { ok: false, reason: 'test' })
   if (!d.ok) throw new Error(`${mini} has no derived projection`)
-  const spans = d.model.surgical ?? d.model.leafSource
+  const spans = d.model.surgical?.spans() ?? d.model.leafSource
   if (!spans) throw new Error(`${mini} carries no leaf spans`)
   return spans
+}
+
+/**
+ * The model as production builds it, with the overlay asserted PRESENT.
+ *
+ * ⚠ THESE FIXTURES USED TO HAND-ATTACH THE OVERLAY, and since #1233 they do not have to:
+ * `parseStepGrid` attaches it on the core-opened half, which is where all of these live.
+ * Asking production for it means these arms would redden if the attachment were unwired —
+ * a hand-built overlay is a second oracle that passes with production's own attach site
+ * deleted ([[P519]]).
+ */
+const overlaidModel = (mini: string): StepGridModel => {
+  const m = model(mini)
+  if (!m.surgical) throw new Error(`${mini} was not given an overlay by parseStepGrid`)
+  return m
+}
+
+/** the same model with nothing overlaid — the incumbent's own answer, for the control arms */
+const bare = (m: StepGridModel): StepGridModel => {
+  const { surgical: _dropped, ...rest } = m
+  return rest as StepGridModel
 }
 
 /** set one cell's length with no op-level gate in front of it */
@@ -51,8 +72,7 @@ describe('#1235 — a length the leaf writer cannot spell is a refusal, not a si
   it('OVERLAID: lengthening a note falls through to the splice, which can spell it', () => {
     // the issue's own repro. Without the overlay the splice writes `bd _ sn cp`; with it,
     // the leaf writer used to answer `path: 'leaf'` and hand back `bd ~ sn cp` unchanged.
-    const m = model(MINI)
-    const overlaid = { ...m, surgical: spansFor(MINI) }
+    const overlaid = overlaidModel(MINI)
     const longer = lengthen(overlaid, 0, 0, 2)
 
     const got = serializeStepGridWithExtent(longer)
@@ -61,15 +81,14 @@ describe('#1235 — a length the leaf writer cannot spell is a refusal, not a si
     // and it is the SAME answer the model gives with no overlay at all — the overlay's
     // refusal restores the incumbent exactly, which is the whole safety argument for
     // hoisting this rung ([[PV315]]).
-    expect(got.mini).toBe(serializeStepGridWithExtent(lengthen(m, 0, 0, 2)).mini)
+    expect(got.mini).toBe(serializeStepGridWithExtent(lengthen(bare(overlaid), 0, 0, 2)).mini)
   })
 
   it('CONTROL: the same overlay still answers a DELETE, so the refusal is axis-scoped', () => {
     // Without this arm the test above passes just as well on an overlay that was never
     // attached, or on one the width guard already rejects — "refused" and "never present"
     // read identically from the outside ([[P521]]).
-    const m = model(MINI)
-    const overlaid = { ...m, surgical: spansFor(MINI) }
+    const overlaid = overlaidModel(MINI)
     const got = serializeStepGridWithExtent(toggleCell(overlaid, 0, 0, false))
     expect(got.extent.path).toBe('leaf')
     expect(got.mini).toBe('~ ~ sn cp')
@@ -79,7 +98,7 @@ describe('#1235 — a length the leaf writer cannot spell is a refusal, not a si
     // `resizeCell` returns its input when the document would not move, so a swallowed
     // length is not corruption the user can see: it is a handle that stops being drawn.
     // That is what made this defect invisible for as long as it was.
-    const overlaid = { ...model(MINI), surgical: spansFor(MINI) }
+    const overlaid = overlaidModel(MINI)
     expect(resizeCell(overlaid, 0, 0, 2)).not.toBe(overlaid)
   })
 
@@ -103,16 +122,16 @@ describe('#1235 — a length the leaf writer cannot spell is a refusal, not a si
     // passes against spans describing a different layout, and the write puts the
     // pre-halved bytes back. The width recorded at ATTACH time is not derived from the
     // spans, so comparing it says what was actually wanted.
-    const m = model('bd ~ bd ~')
-    const overlaid = { ...m, surgical: spansFor('bd ~ bd ~') }
-    expect(overlaid.surgical.cols.length, 'the fixture must anchor a DIFFERENT width').not.toBe(
+    const overlaid = overlaidModel('bd ~ bd ~')
+    const m = bare(overlaid)
+    expect(spansFor('bd ~ bd ~').cols.length, 'the fixture must anchor a DIFFERENT width').not.toBe(
       m.steps,
     )
 
     // The coincidence is real on this fixture: four drawn columns, two anchored, and a
     // halve lands the first onto the second. Asserted so the arm cannot pass by asking
     // nothing ([[P521]]).
-    expect(m.steps).toBe(2 * overlaid.surgical.cols.length)
+    expect(m.steps).toBe(2 * spansFor('bd ~ bd ~').cols.length)
 
     // ⚠ AND THE CLAIM IS EQUIVALENCE, NOT "THE ÷2 GOES THROUGH". That was written here
     // first and it was my assumption rather than the mechanism: with no overlay at all

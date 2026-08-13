@@ -29,9 +29,29 @@ describe('the grid writer reports what it moved', () => {
   it('an unedited round trip re-emits NOTHING — every region is copied verbatim', () => {
     // the baseline the whole splice path exists for, stated as a number rather
     // than as "the string came back the same"
-    const { mini, extent } = serializeStepGridWithExtent(model('bd ~ sn cp'))
+    //
+    // ⚠ ASKED OF THE SPLICE PATH EXPLICITLY SINCE #1233. The shipped model now carries the
+    // surgical overlay on this core-opened pattern and surgery answers first, so reading the
+    // extent off `parseStepGrid`'s own model would quietly stop exercising the counts this
+    // arm exists for. Stripping the overlay keeps that coverage; the arm below records what
+    // the shipped path answers instead, so neither fact is lost to the other.
+    const m = model('bd ~ sn cp')
+    const { surgical: _overlay, ...spliceOnly } = m
+    const { mini, extent } = serializeStepGridWithExtent(spliceOnly as typeof m)
     expect(mini).toBe('bd ~ sn cp')
     expect(extent).toEqual({ path: 'splice', regions: 4, regionsReemitted: 0, rebuiltParts: [] })
+  })
+
+  it('…and the SHIPPED model answers that same round trip with surgery (#1233)', () => {
+    // Not a restatement of the arm above. That one now strips the overlay, so on its own it
+    // would read `splice` whether or not the core attachment exists — this is what pins that
+    // the overlay REACHES an ordinary core-opened pattern. Unwire the attachment and this
+    // reddens while the arm above stays green, which is the whole reason both are here.
+    const m = model('bd ~ sn cp')
+    expect(m.surgical, 'the core-opened attachment is not reaching this pattern').toBeTruthy()
+    const { mini, extent } = serializeStepGridWithExtent(m)
+    expect(mini).toBe('bd ~ sn cp')
+    expect(extent).toEqual({ path: 'leaf' })
   })
 
   it('a hit on a refined column re-emits ONE region of four', () => {

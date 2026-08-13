@@ -993,8 +993,15 @@ describe('resizeNote (single-note `@n` duration)', () => {
     // compare the VIEW, not the bytes: a re-parse carries the `source` it read
     // (#916 span surgery), which a from-scratch model has no reason to hold —
     // "same notes, different provenance" is the same view.
+    //
+    // ⚠ `surgical` JOINED `source` IN THAT CATEGORY AT #1233. A re-parse of a core-opened
+    // pattern now also carries the leaf-span overlay, which is provenance for the same
+    // reason: it says where this model's bytes came from, and a hand-built model has none.
+    // Asserted present rather than merely dropped, so this arm cannot go green by the
+    // attachment disappearing.
     if (reparsed.ok) {
-      const { source: _s, ...view } = reparsed.model
+      expect(reparsed.model.surgical, 'the overlay should reach a re-parsed roll').toBeTruthy()
+      const { source: _s, surgical: _o, ...view } = reparsed.model
       expect(view).toEqual(resized)
     }
   })

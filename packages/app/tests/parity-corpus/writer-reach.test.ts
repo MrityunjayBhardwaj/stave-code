@@ -198,8 +198,22 @@ const FLOOR_ROLL = 85
  * own bytes. Reverting the overlay attachment reads 64 and reddens here; reverting the
  * splice reads 0. Nothing else in the suite moves on either break, which is what makes
  * this figure attributable to the write path rather than to the corpus.
+ *
+ * ⚠⚠ #1233 TOOK THIS TO 657, AND THE JUMP IS MOSTLY NOT A GAIN ([[PV320]]). Attaching the
+ * overlay on the CORE-opened half as well moves 554 more deletes onto the leaf writer —
+ * but the region splice already copies every byte outside the touched element, so most of
+ * those were already writing the bytes surgery writes. Asked as a paired A/B per unit
+ * (`_1233-byte-change.spec.ts`, the same model with `surgical` stripped), the overlay
+ * changes the OUTPUT of 775 grid deletes, 444 of them on the core-opened half this issue
+ * added; document churn on those falls from 14,980 bytes to 1,715.
+ *
+ * So this number is a FLOOR and not the claim. It is still worth holding — it reddens if
+ * the attachment is unwired — but it can rise while the writer swallows edits, which is
+ * exactly what happened at #1235, and no figure that only goes up can catch that. The
+ * claim lives in the byte-change sweep, and what asks "did the document actually move?"
+ * is `op-admissibility`'s handle count.
  */
-const FLOOR_SURGICAL = 103
+const FLOOR_SURGICAL = 657
 
 /**
  * THE ROLL'S HALF OF THE SAME SCORE (#1231), and it starts as a BASELINE rather than
@@ -250,8 +264,18 @@ const FLOOR_SURGICAL = 103
  * when" asked for 35; 21 of that 35 was the derived half and is what landed. The other
  * 14 need the overlay on the core-opened path, which is a cost problem rather than a
  * routing one and belongs to #1233.
+ *
+ * ⚠⚠ RAISED 46 → 334 BY #1233, which attached the overlay on that core-opened path. The
+ * same warning as the grid's applies and applies harder here: 288 more deletes are
+ * ANSWERED by surgery, and the paired A/B per unit
+ * (`_1233-byte-change.spec.ts`) puts the OUTPUT change at 927 roll deletes, 602 of them
+ * core-opened. Document churn on the changed ones falls from 19,076 bytes to 1,648.
+ *
+ * The two figures are not comparable line for line — this census asks one delete per unit
+ * and the sweep asks every note — which is itself the reason to keep both and to quote the
+ * sweep when the question is what a user's document does.
  */
-const FLOOR_ROLL_SURGICAL = 46
+const FLOOR_ROLL_SURGICAL = 334
 
 /**
  * The units whose edit survives the engine on every axis EXCEPT duration.
