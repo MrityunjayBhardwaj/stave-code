@@ -283,6 +283,13 @@ export interface LeafSource {
  * spans"), not an absence — so the flag is separate from the value rather than a null
  * check, which would re-run the whole projection on every write to rediscover it.
  *
+ * ⚠ AND IT IS GATED, by counting projections rather than by timing them (#1237). Losing
+ * either the laziness or the memo changes no output, no count and no verdict — only
+ * work — so no gate that reads models can see it, and a wall-clock assertion would be
+ * flaky. `parse.ts` keeps a projection counter for exactly this and nothing else;
+ * `surgicalMemo.test.ts` reads it as a delta around a parse and around repeated asks,
+ * including the failing-projection case that the separate flag exists to serve.
+ *
  * ⚠ IT IS MEMOISED PER MODEL, NOT PER MINI. A cache keyed on the mini string would help
  * only repeated parses of unchanged text, and the hot case is TYPING, where the mini
  * differs every keystroke and every lookup would miss.

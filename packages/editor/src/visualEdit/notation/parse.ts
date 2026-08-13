@@ -2372,6 +2372,42 @@ function withSurgery(mini: string, r: ParseResult<StepGridModel>): ParseResult<S
 }
 
 /**
+ * How many times a surgical overlay has actually run its deferred projection (#1237).
+ *
+ * WHY THIS SHIPS. The memo in `lazyGridLeaf`/`lazyRollLeaf` is the whole reason #1233 is
+ * affordable, and it is the one property of the overlay whose regression is otherwise
+ * INVISIBLE: an edit that makes `spans()` re-project per call changes no output, no
+ * count and no verdict — it puts 1459.8us back on a parse that re-runs on every
+ * keystroke, and every suite stays green. Laziness has the same shape. So the witness
+ * cannot read the models; it has to read the WORK, and the honest reading of work here
+ * is a discrete invocation count rather than a wall clock. A timing assertion on a
+ * developer machine would be flaky, and a flaky gate teaches people to ignore it.
+ *
+ * ⚠ IT COULD NOT LIVE IN THE TEST. Both projections are defined in this module and
+ * called from the thunks in this module, so the call never crosses a module boundary and
+ * no mock can intercept it. The alternative — injecting a projector into the two lazy
+ * helpers — would gate the helpers while going blind to `withSurgery`/`withRollSurgery`,
+ * which is where the attachment that has to stay lazy actually happens ([[P540]]).
+ *
+ * ⚠ READ IT AS A DELTA, NEVER AS AN ABSOLUTE. There is deliberately no reset: a resettable
+ * global is shared state between arms, and a delta needs nothing from its neighbours.
+ * `surgicalMemo.test.ts` is the gate.
+ *
+ * ⚠ IT COSTS THE SHIPPED RUNTIME NOTHING, and that is a fact about the BARREL rather than
+ * about this file. `surgicalProjectionCount` is not re-exported from `src/index.ts`, so
+ * nothing the bundle retains ever reads the variable and tsup drops it along with both
+ * increments: rebuilding after this change left `dist/index.js` and `dist/index.cjs`
+ * BYTE-IDENTICAL, with only the sourcemaps and the emitted docs moving. Export the
+ * accessor from the barrel and that stops being true — the increments start shipping.
+ */
+let surgicalProjections = 0
+
+/** See `surgicalProjections` — a monotonic count, to be read as a delta around the work. */
+export function surgicalProjectionCount(): number {
+  return surgicalProjections
+}
+
+/**
  * The grid's leaf projection of `mini`, run at most once and only if someone asks (#1233).
  *
  * The contract, the memo and both hazards are on `SurgicalOverlay` (`model.ts`); this is
@@ -2396,6 +2432,7 @@ function lazyGridLeaf(mini: string, attachedSteps: number): LazyLeafSource {
     spans: () => {
       if (!computed) {
         computed = true
+        surgicalProjections++
         const leaf = projectStepGridByLeaf(mini)
         spans = leaf.ok && leaf.model.leafSource
           ? { ...leaf.model.leafSource, attachedSteps }
@@ -3609,6 +3646,7 @@ function lazyRollLeaf(mini: string, attachedSteps: number): LazyRollLeafSource {
     spans: () => {
       if (!computed) {
         computed = true
+        surgicalProjections++
         const leaf = projectPianoRollByLeaf(mini)
         spans = leaf.ok && leaf.model.leafSource
           ? { ...leaf.model.leafSource, attachedSteps }
