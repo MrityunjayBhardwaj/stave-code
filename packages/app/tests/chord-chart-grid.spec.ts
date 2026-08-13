@@ -44,6 +44,7 @@
  *
  * BREAK SIGNATURES, sorted for containment rather than assumed disjoint:
  *   drop the `note`-head chord clause -> the ROUTING arm only
+ *   drop the `wrong-surface` gate test -> the CAPACITY control only
  *   drop the `isChordChart` chrome    -> both CAPTION arms, routing still green
  *   make `chordLanes` always true     -> the DRUM control only
  */
@@ -144,11 +145,33 @@ test.describe('#1243 — a chord chart under note() reaches the grid', () => {
 
   test('CONTROL: an ordinary melody stays on the piano roll', async ({ page }) => {
     await boot(page)
-    // The rule this arm bounds: "the head's surface declined, so ask the other
-    // one" would send declined melodies to the grid. This one is not even
-    // declined, and must never move.
+    // The common case, which nothing here may disturb.
     await typeAndPoint(page, 'const mel = "c3 e3 g3"\n$: note(mel).room(2)', '.room')
     await expect(page.locator(`${panel} [data-roll-cell]`).first()).toBeVisible({ timeout: 15_000 })
+    expect(await page.locator(`${panel} [data-seq-cell]`).count()).toBe(0)
+  })
+
+  test('⚠ CONTROL: a melody the roll refuses on CAPACITY gets code, not a grid', async ({ page }) => {
+    await boot(page)
+    // THE ARM THAT BOUNDS THE NARROWING, and the reason the rule tests the gate
+    // rather than the refusal. `<a1 c2>/2` crosses a bar, so the roll declines
+    // it — and the step grid would happily draw it. Under the rule this issue
+    // proposed ("the head's surface declined, so ask the other one") this
+    // becomes a drum grid, and so do six more like it in the corpora. It has to
+    // stay code: the grid accepting a melody means the grid asks LESS, not that
+    // it is the right editor.
+    //
+    // ⚠ Written because the plain-melody control above reddened under NONE of
+    // the three breaks — it pins a case no break can move, which is a real
+    // guarantee and not a discriminating arm. This one reddens the moment the
+    // gate test is dropped.
+    await typeAndPoint(page, 'const mel = "<a1 c2>/2"\n$: note(mel).room(2)', '.room')
+    // Observed rather than assumed: the unit stays with the ROLL, which then
+    // declines it in its own words. The first draft of this arm asserted the
+    // generic standby surface and failed — a capacity refusal is the roll
+    // speaking, not the panel giving up on routing.
+    await expect(page.getByText(/isn't grid-editable/)).toBeVisible({ timeout: 15_000 })
+    // The claim that matters: it did NOT become a drum grid.
     expect(await page.locator(`${panel} [data-seq-cell]`).count()).toBe(0)
   })
 })
