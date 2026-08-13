@@ -10,6 +10,7 @@ import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw, { loader, DiffEditor as DiffEditor$1 } from '@monaco-editor/react';
 import * as Y3 from 'yjs';
 import { mini } from '@strudel/mini/mini.mjs';
+import { get } from '@tonaljs/chord';
 import { createPortal } from 'react-dom';
 import { getAudioContext, superdough } from '@strudel/webaudio';
 
@@ -29403,17 +29404,85 @@ function rollStackSource(parts, models) {
 }
 __name(rollStackSource, "rollStackSource");
 
+// src/visualEdit/panels/drumVoices.ts
+var VOICE_FALLBACK_COLOR = "#9ca3af";
+var VOICE_MAP = {
+  bd: { label: "Kick", color: "#e0407f" },
+  kick: { label: "Kick", color: "#e0407f" },
+  sd: { label: "Snare", color: "#f97316" },
+  sn: { label: "Snare", color: "#f97316" },
+  snare: { label: "Snare", color: "#f97316" },
+  rim: { label: "Rim", color: "#f59e0b" },
+  cp: { label: "Clap", color: "#fb7185" },
+  clap: { label: "Clap", color: "#fb7185" },
+  hh: { label: "Hi-Hat", color: "#14b8a6" },
+  hat: { label: "Hi-Hat", color: "#14b8a6" },
+  oh: { label: "Open Hi-Hat", color: "#22d3ee" },
+  cr: { label: "Crash", color: "#38bdf8" },
+  crash: { label: "Crash", color: "#38bdf8" },
+  rd: { label: "Ride", color: "#60a5fa" },
+  ride: { label: "Ride", color: "#60a5fa" },
+  sh: { label: "Shaker", color: "#a855f7" },
+  cb: { label: "Cowbell", color: "#8b5cf6" },
+  lt: { label: "Low Tom", color: "#22c55e" },
+  mt: { label: "Mid Tom", color: "#84cc16" },
+  ht: { label: "High Tom", color: "#a3e635" },
+  perc: { label: "Perc", color: "#10b981" },
+  tb: { label: "Tambourine", color: "#d946ef" }
+};
+function sampleVoice(sound) {
+  const base = sound.split(":", 1)[0];
+  const voice = VOICE_MAP[base.toLowerCase()];
+  if (voice) return voice;
+  return { label: sound, color: VOICE_FALLBACK_COLOR };
+}
+__name(sampleVoice, "sampleVoice");
+function isKnownDrumVoice(sound) {
+  return VOICE_MAP[sound.split(":", 1)[0].toLowerCase()] !== void 0;
+}
+__name(isKnownDrumVoice, "isKnownDrumVoice");
+
+// src/visualEdit/panels/chordLanes.ts
+function isChordSymbol(token) {
+  if (isKnownDrumVoice(token)) return false;
+  return !get(token).empty;
+}
+__name(isChordSymbol, "isChordSymbol");
+function chordLanes(laneSounds) {
+  return laneSounds.length > 0 && laneSounds.every(isChordSymbol);
+}
+__name(chordLanes, "chordLanes");
+
 // src/visualEdit/panels/surfaceRoute.ts
 function routeSurface(headFn, mini) {
   if (headFn === "s" || headFn === "sound") return "step";
-  if (headFn === "note" || headFn === "n") return "roll";
+  if (headFn === "note" || headFn === "n") return memoised(headFn, mini, rollUnlessChordChart);
   return parsePianoRoll(mini).ok ? "roll" : "step";
 }
 __name(routeSurface, "routeSurface");
+var CACHE_CAP = 32;
+var routed = /* @__PURE__ */ new Map();
+function memoised(headFn, mini, compute) {
+  const key2 = `${headFn}\0${mini}`;
+  const hit = routed.get(key2);
+  if (hit !== void 0) return hit;
+  const answer = compute(mini);
+  if (routed.size >= CACHE_CAP) routed.clear();
+  routed.set(key2, answer);
+  return answer;
+}
+__name(memoised, "memoised");
+function rollUnlessChordChart(mini) {
+  const roll = parsePianoRoll(mini);
+  if (roll.ok || roll.gate !== "wrong-surface") return "roll";
+  const grid = parseStepGrid(mini);
+  return grid.ok && chordLanes(grid.model.lanes.map((l) => l.sound)) ? "step" : "roll";
+}
+__name(rollUnlessChordChart, "rollUnlessChordChart");
 function chunkSurface(chunk) {
-  const byHead = patternKind(chunk);
-  if (byHead || !chunk || chunk.miniString === null) return byHead;
-  return chunk.miniVia === "resolver" ? routeSurface(chunk.headFn, chunk.miniString) : null;
+  if (!chunk || chunk.miniString === null) return patternKind(chunk);
+  if (!patternKind(chunk) && chunk.miniVia !== "resolver") return null;
+  return routeSurface(chunk.headFn, chunk.miniString);
 }
 __name(chunkSurface, "chunkSurface");
 function opensStepGrid(chunk) {
@@ -29915,40 +29984,6 @@ var DRUM_SOUNDS = [
   { value: "perc", label: "Perc (perc)" },
   { value: "tb", label: "Tambourine (tb)" }
 ];
-
-// src/visualEdit/panels/drumVoices.ts
-var VOICE_FALLBACK_COLOR = "#9ca3af";
-var VOICE_MAP = {
-  bd: { label: "Kick", color: "#e0407f" },
-  kick: { label: "Kick", color: "#e0407f" },
-  sd: { label: "Snare", color: "#f97316" },
-  sn: { label: "Snare", color: "#f97316" },
-  snare: { label: "Snare", color: "#f97316" },
-  rim: { label: "Rim", color: "#f59e0b" },
-  cp: { label: "Clap", color: "#fb7185" },
-  clap: { label: "Clap", color: "#fb7185" },
-  hh: { label: "Hi-Hat", color: "#14b8a6" },
-  hat: { label: "Hi-Hat", color: "#14b8a6" },
-  oh: { label: "Open Hi-Hat", color: "#22d3ee" },
-  cr: { label: "Crash", color: "#38bdf8" },
-  crash: { label: "Crash", color: "#38bdf8" },
-  rd: { label: "Ride", color: "#60a5fa" },
-  ride: { label: "Ride", color: "#60a5fa" },
-  sh: { label: "Shaker", color: "#a855f7" },
-  cb: { label: "Cowbell", color: "#8b5cf6" },
-  lt: { label: "Low Tom", color: "#22c55e" },
-  mt: { label: "Mid Tom", color: "#84cc16" },
-  ht: { label: "High Tom", color: "#a3e635" },
-  perc: { label: "Perc", color: "#10b981" },
-  tb: { label: "Tambourine", color: "#d946ef" }
-};
-function sampleVoice(sound) {
-  const base = sound.split(":", 1)[0];
-  const voice = VOICE_MAP[base.toLowerCase()];
-  if (voice) return voice;
-  return { label: sound, color: VOICE_FALLBACK_COLOR };
-}
-__name(sampleVoice, "sampleVoice");
 var NOTE_COLOR_MODE_KEY = "stave:visualEdit.noteColorMode";
 var DEFAULT_MODE = "off";
 var clamp01 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
@@ -31460,6 +31495,11 @@ function SequencerGrid({ onResolution } = {}) {
   const gestureRef = React36.useRef(null);
   const gainScoped = model ? gainInScope(model) : false;
   const placesNotes = React36.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
+  const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
+  const isChordChart = React36.useMemo(
+    () => chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
+    [laneKey]
+  );
   const placeable = React36.useMemo(
     () => model ? model.lanes.map(
       (lane, li) => lane.cells.map((c, si) => isCellOn(c) ? true : canToggleCell(model, li, si, true))
@@ -31636,6 +31676,18 @@ function SequencerGrid({ onResolution } = {}) {
       },
       children: /* @__PURE__ */ jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: "100%" }, children: [
         /* @__PURE__ */ jsx("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 4 }, children: /* @__PURE__ */ jsx(PatternTrackChip, {}) }),
+        isChordChart && /* @__PURE__ */ jsx(
+          "div",
+          {
+            "data-seq-chord-chart": true,
+            style: {
+              fontSize: 11,
+              color: "var(--foreground-muted, #a0a0aa)",
+              paddingBottom: 2
+            },
+            children: "Chord chart \u2014 each lane is a chord, not a sound."
+          }
+        ),
         !placesNotes && /* @__PURE__ */ jsx(
           "div",
           {
@@ -31827,7 +31879,7 @@ function SequencerGrid({ onResolution } = {}) {
             }) })
           ] }, `${lane.sound}:${lane.part ?? 0}`);
         }),
-        /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 4 }, children: [
+        !isChordChart && /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 4 }, children: [
           /* @__PURE__ */ jsx("span", { style: { width: 72, flex: "0 0 auto" } }),
           /* @__PURE__ */ jsxs(
             "select",

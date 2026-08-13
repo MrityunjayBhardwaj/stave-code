@@ -69,3 +69,21 @@ export function sampleVoice(sound: string): DrumVoice {
   if (voice) return voice
   return { label: sound, color: VOICE_FALLBACK_COLOR }
 }
+
+/**
+ * Is this token a drum voice this map knows?
+ *
+ * Exported for `chordLanes.ts`, which needs the two vocabularies ordered rather
+ * than merely consulted: `cb` is Cowbell here AND a legal C-flat chord in the
+ * chord grammar, and it is the only such overlap in the 85 tokens of the
+ * curated drum + instrument catalogues. A lane's tokens are sounds by default,
+ * so where the two collide this map wins and a chord reading has to displace it.
+ *
+ * Deliberately asked of THIS map rather than of `sampleVoice`'s result: a
+ * fallback label is byte-identical to the token it fell back from, so "did the
+ * lookup hit?" cannot be recovered from the label ([[P512]]'s shape — a check
+ * whose two outcomes read the same).
+ */
+export function isKnownDrumVoice(sound: string): boolean {
+  return VOICE_MAP[sound.split(':', 1)[0].toLowerCase()] !== undefined
+}

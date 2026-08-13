@@ -25,7 +25,7 @@ import {
   type ChunkInfo,
 } from '../../../editor/src/visualEdit/chunkDetect'
 import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import { routeSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
+import { chunkSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
 import { detectAllArrangeCalls } from '../../../editor/src/visualEdit/arrange/parse'
 import { detectAllPickControls } from '../../../editor/src/visualEdit/pickControl/parse'
 import { detectMasterAll } from '../../../editor/src/visualEdit/mixer/masterEdit'
@@ -256,33 +256,26 @@ function classifyUnit(
   if (plumbing.nonMusical.some((r) => overlaps(r, u.exprRange))) {
     return { status: 'non-musical', head: head ?? '(no-head)' }
   }
-  if (mini !== null && (head === 'note' || head === 'n')) {
-    const r = parsePianoRoll(mini)
-    return r.ok
-      ? { status: 'note', kind: 'roll' }
-      : { status: 'note-broken', kind: 'roll', reason: r.reason, gate: r.gate, head: head! }
-  }
-  if (mini !== null && (head === 's' || head === 'sound')) {
-    const r = parseStepGrid(mini)
-    return r.ok
-      ? { status: 'note', kind: 'step' }
-      : { status: 'note-broken', kind: 'step', reason: r.reason, gate: r.gate, head: head! }
-  }
-  // #1240 — a mini span the RESOLVER named, on a head that says nothing about
-  // which view its values belong to. Scored through `routeSurface`, the panel's
-  // own rule, so this harness cannot drift from what the app mounts ([[P519]]:
-  // a second copy of a routing rule answers confidently and diverges silently).
+  // WHICH SURFACE, ASKED ONCE, OF THE FUNCTION THE PANEL ITSELF ASKS.
   //
-  // Scoped to `miniVia === 'resolver'` on purpose. A head-call literal on a
-  // non-content head (`lpf("0 1 2")`) has always landed in knobs/code-only, and
-  // moving it is a separate decision with its own measurement — this arm is the
-  // wiring of admission, not a re-route of everything that owns a string.
-  if (mini !== null && u.miniVia === 'resolver') {
-    const kind = routeSurface(head, mini)
-    const r = kind === 'roll' ? parsePianoRoll(mini) : parseStepGrid(mini)
+  // This was three branches — `note`/`n` straight to the roll, `s`/`sound`
+  // straight to the grid, and only the RESOLVER case routed through the shared
+  // rule. That was safe exactly while the head decided everything, because then
+  // the two agreed by construction. #1243 ends that: a melodic head whose roll
+  // declines a chord chart on vocabulary now routes to the grid, and a harness
+  // still reading the head would have scored those units as refusals while the
+  // app drew them. Two derivations of one decision is the defect #1250 was, one
+  // layer down ([[PV327]]) — so there is one derivation and the harness shares it.
+  //
+  // `chunkSurface` also carries the SCOPING, which is why the `miniVia` test is
+  // gone from here rather than duplicated: a head-call literal on a non-content
+  // head (`lpf("0 1 2")`) still answers null and still lands in knobs/code-only.
+  const surface = mini !== null ? chunkSurface(u) : null
+  if (surface !== null && mini !== null) {
+    const r = surface === 'roll' ? parsePianoRoll(mini) : parseStepGrid(mini)
     return r.ok
-      ? { status: 'note', kind }
-      : { status: 'note-broken', kind, reason: r.reason, gate: r.gate, head: head ?? '(no-head)' }
+      ? { status: 'note', kind: surface }
+      : { status: 'note-broken', kind: surface, reason: r.reason, gate: r.gate, head: head ?? '(no-head)' }
   }
   if (arrangeRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'clip', kind: 'arrange' }
   if (pickRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'clip', kind: 'pick' }

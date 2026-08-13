@@ -9503,7 +9503,16 @@ declare function patternKind(chunk: ChunkInfo | null): PatternKind;
  * The dependency line IS the boundary, so the modules are split along it.
  *
  * ── THE RULE ─────────────────────────────────────────────────────────────
- * Head first, and only where the head is silent, ask the ROLL — never the grid.
+ * Head first; where the head is silent ask the ROLL, never the grid; and where
+ * a melodic head's own roll declines the CONTENT, ask whether the content is a
+ * chord chart before letting it fall to code (#1243).
+ *
+ * That last clause is narrow on purpose and its bounds are measured, not
+ * guessed — `rollUnlessChordChart` below carries both halves of why. The short
+ * version: of twelve melodic units the roll declines and the grid would take,
+ * seven are declined on CAPACITY rather than content, and of the five declined
+ * on content only one is actually a chord chart. A rule any wider than this one
+ * draws melodies as drum grids.
  *
  * The grid has no WORD vocabulary: every word-like token is a sound name, which
  * is correct for a drum grid where sample names are arbitrary. So it opens for
@@ -9523,8 +9532,11 @@ declare function patternKind(chunk: ChunkInfo | null): PatternKind;
  *
  * A chord progression drawn as a lane-per-chord-name grid IS a real editable
  * surface and counts as one — it parses, serialises, and a delete on a chord
- * lane really does remove that chord. What it lacks is chrome saying so, which
- * is a labelling gap tracked separately, not a routing one.
+ * lane really does remove that chord. It now also says what it is: the grid
+ * asks `chordLanes` and drops its drum chrome when every lane is a chord
+ * symbol (#1241). That was a labelling gap, and the same predicate turned out
+ * to be what the routing clause above needed too, which is why one exists
+ * rather than two.
  */
 
 /** A decided surface. `routeSurface` always reaches one, so it never returns null. */

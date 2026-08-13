@@ -39,6 +39,7 @@ import { addLane, removeLane } from '../notation/lane'
 import { canResizeCell, canToggleCell, resizeCell, toggleCell, viewPlacesNotes } from '../notation/place'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice } from './drumVoices'
+import { chordLanes } from './chordLanes'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
@@ -148,6 +149,18 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // answer is per view and only the view can give it. Memoized for the same
   // reason `placeable` is: `mutate` fires every pointermove of a drag.
   const placesNotes = React.useMemo(() => (model ? viewPlacesNotes(model) : false), [model])
+
+  // Is this a CHORD CHART rather than a drum kit (#1241)? Asked of the lane
+  // tokens, because the route cannot answer it: seven of the thirteen units
+  // that reach this grid without an `s()` head are ordinary drum patterns whose
+  // sound is assigned further down the chain, so "the head was silent" would
+  // relabel them all. Memoized on the lane names rather than the model, since
+  // every drag rebuilds the model and none of them renames a lane.
+  const laneKey = model ? model.lanes.map((l) => l.sound).join('\u0000') : ''
+  const isChordChart = React.useMemo(
+    () => chordLanes(laneKey === '' ? [] : laneKey.split('\u0000')),
+    [laneKey],
+  )
 
   // PROVE BEFORE OFFER, at the cell — the gesture this panel exists for.
   // `canToggleCell` runs the real op and asks the real writer, so it cannot
@@ -443,6 +456,24 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             grid of dead cells with no reason on them (#1070). The notes that are
             here still edit, delete and take velocity — which is what this view
             was opened for. */}
+        {/* THE LANES ARE CHORD SYMBOLS, AND NOTHING ELSE HERE SAYS SO (#1241).
+            Every other affordance in this panel reads as a drum machine — that is
+            what a step grid has always been — so a musician who wrote a chord
+            chart is looking at one and has no way to tell it understood. The
+            edits are already correct; a delete on a chord lane removes that
+            chord. This is the sentence that was missing, not a new capability. */}
+        {isChordChart && (
+          <div
+            data-seq-chord-chart
+            style={{
+              fontSize: 11,
+              color: 'var(--foreground-muted, #a0a0aa)',
+              paddingBottom: 2,
+            }}
+          >
+            Chord chart — each lane is a chord, not a sound.
+          </div>
+        )}
         {!placesNotes && (
           <div
             data-seq-no-placement
@@ -707,6 +738,12 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
           </div>
           )
         })}
+        {/* The drum catalogue is the wrong menu for a chord chart — it would
+            offer Kick and Snare as things to add to a progression. Withdrawn
+            rather than restocked: a chord picker is a different feature, and
+            offering the wrong one is worse than offering none. Every other
+            gesture in the grid keeps working. */}
+        {!isChordChart && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
           <span style={{ width: 72, flex: '0 0 auto' }} />
           <select
@@ -734,6 +771,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             ))}
           </select>
         </div>
+        )}
       </div>
     </div>
   )
