@@ -625,6 +625,10 @@ export {
   patternKind,
   isStepChunk,
   isRollChunk,
+  // #1240 — the CONTENT-aware router. `patternKind` still answers the HEAD
+  // question and is unchanged; this is the one the Pattern panel mounts on.
+  chunkSurface,
+  routeSurface,
   Knob,
   knobRangeFor,
   VISUAL_EDIT_TABS,
@@ -710,6 +714,7 @@ export type {
   VisualEditStandbyProps,
   VisualEditTabDef,
   PatternKind,
+  Surface,
 } from './visualEdit'
 export {
   BOTTOM_PANEL_HEIGHT_KEY,

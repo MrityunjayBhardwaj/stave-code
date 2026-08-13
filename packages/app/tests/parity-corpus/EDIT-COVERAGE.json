@@ -1,39 +1,36 @@
 {
   "tunes": 57,
   "tuneLevel": {
-    "fully": 24,
-    "partial": 9,
-    "anyEditable": 33,
-    "knobsOnly": 19,
-    "codeOnly": 4,
+    "fully": 32,
+    "partial": 8,
+    "anyEditable": 40,
+    "knobsOnly": 13,
+    "codeOnly": 3,
     "unparseable": 1,
-    "anyEditablePct": 57.9
+    "anyEditablePct": 70.2
   },
   "unitLevel": {
     "totalUnits": 101,
-    "note": 55,
+    "note": 73,
     "clip": 0,
     "master": 1,
-    "structurallyEditable": 56,
-    "noteBroken": 3,
-    "knobs": 31,
-    "codeOnly": 11,
+    "structurallyEditable": 74,
+    "noteBroken": 6,
+    "knobs": 18,
+    "codeOnly": 3,
     "setup": 36,
     "nonMusical": 1,
-    "structurallyEditablePct": 55.4
+    "structurallyEditablePct": 73.3
   },
   "brokenReasons": {
+    "roll: wrong-surface": 2,
+    "step: wrong-surface": 1,
     "step: unstable-period": 1,
     "step: resolution": 1,
     "step: no-leaf-anchor": 1
   },
   "codeOnlyHeads": {
-    "chord": 3,
-    "color": 3,
-    "note": 2,
-    "fast": 1,
-    "sound": 1,
-    "(no-head)": 1
+    "chord": 3
   },
   "perTune": [
     {
@@ -41,13 +38,13 @@
       "units": 5,
       "setup": 2,
       "nonMusical": 0,
-      "noteEditable": 3,
+      "noteEditable": 4,
       "clip": 0,
       "master": 0,
       "noteBroken": 0,
-      "knobs": 2,
+      "knobs": 1,
       "codeOnly": 0,
-      "structurallyEditable": 3,
+      "structurallyEditable": 4,
       "tuneClass": "partial"
     },
     {
@@ -55,42 +52,42 @@
       "units": 1,
       "setup": 2,
       "nonMusical": 0,
-      "noteEditable": 0,
+      "noteEditable": 1,
       "clip": 0,
       "master": 0,
       "noteBroken": 0,
-      "knobs": 1,
+      "knobs": 0,
       "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "knobs-only"
+      "structurallyEditable": 1,
+      "tuneClass": "fully"
     },
     {
       "file": "bakery-132-recursive-args.strudel",
       "units": 1,
       "setup": 0,
       "nonMusical": 0,
-      "noteEditable": 0,
+      "noteEditable": 1,
       "clip": 0,
       "master": 0,
       "noteBroken": 0,
-      "knobs": 1,
+      "knobs": 0,
       "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "knobs-only"
+      "structurallyEditable": 1,
+      "tuneClass": "fully"
     },
     {
       "file": "bakery-140-binding-transitive.strudel",
       "units": 2,
       "setup": 0,
       "nonMusical": 0,
-      "noteEditable": 0,
+      "noteEditable": 2,
       "clip": 0,
       "master": 0,
       "noteBroken": 0,
       "knobs": 0,
-      "codeOnly": 2,
-      "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "codeOnly": 0,
+      "structurallyEditable": 2,
+      "tuneClass": "fully"
     },
     {
       "file": "bakery-141-arith-rhs.strudel",
@@ -212,11 +209,11 @@
       "noteEditable": 0,
       "clip": 0,
       "master": 0,
-      "noteBroken": 0,
-      "knobs": 1,
+      "noteBroken": 1,
+      "knobs": 0,
       "codeOnly": 0,
       "structurallyEditable": 0,
-      "tuneClass": "knobs-only"
+      "tuneClass": "code-only"
     },
     {
       "file": "bakery-148-leading-dot-chain.strudel",
@@ -237,14 +234,14 @@
       "units": 2,
       "setup": 0,
       "nonMusical": 0,
-      "noteEditable": 1,
+      "noteEditable": 2,
       "clip": 0,
       "master": 0,
       "noteBroken": 0,
       "knobs": 0,
-      "codeOnly": 1,
-      "structurallyEditable": 1,
-      "tuneClass": "partial"
+      "codeOnly": 0,
+      "structurallyEditable": 2,
+      "tuneClass": "fully"
     },
     {
       "file": "bakery-151-comment-only.strudel",
@@ -268,9 +265,9 @@
       "noteEditable": 0,
       "clip": 0,
       "master": 0,
-      "noteBroken": 0,
+      "noteBroken": 2,
       "knobs": 0,
-      "codeOnly": 2,
+      "codeOnly": 0,
       "structurallyEditable": 0,
       "tuneClass": "code-only"
     },
@@ -643,14 +640,14 @@
       "units": 1,
       "setup": 0,
       "nonMusical": 0,
-      "noteEditable": 0,
+      "noteEditable": 1,
       "clip": 0,
       "master": 0,
       "noteBroken": 0,
-      "knobs": 1,
+      "knobs": 0,
       "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "knobs-only"
+      "structurallyEditable": 1,
+      "tuneClass": "fully"
     },
     {
       "file": "bassFuge.strudel",
@@ -671,13 +668,13 @@
       "units": 7,
       "setup": 2,
       "nonMusical": 0,
-      "noteEditable": 3,
+      "noteEditable": 5,
       "clip": 0,
       "master": 0,
       "noteBroken": 0,
-      "knobs": 4,
+      "knobs": 2,
       "codeOnly": 0,
-      "structurallyEditable": 3,
+      "structurallyEditable": 5,
       "tuneClass": "partial"
     },
     {
@@ -713,13 +710,13 @@
       "units": 5,
       "setup": 4,
       "nonMusical": 0,
-      "noteEditable": 3,
+      "noteEditable": 4,
       "clip": 0,
       "master": 0,
       "noteBroken": 0,
-      "knobs": 1,
+      "knobs": 0,
       "codeOnly": 1,
-      "structurallyEditable": 3,
+      "structurallyEditable": 4,
       "tuneClass": "partial"
     },
     {
@@ -741,28 +738,28 @@
       "units": 5,
       "setup": 1,
       "nonMusical": 0,
-      "noteEditable": 3,
+      "noteEditable": 5,
       "clip": 0,
       "master": 0,
       "noteBroken": 0,
-      "knobs": 2,
+      "knobs": 0,
       "codeOnly": 0,
-      "structurallyEditable": 3,
-      "tuneClass": "partial"
+      "structurallyEditable": 5,
+      "tuneClass": "fully"
     },
     {
       "file": "holyflute.strudel",
       "units": 1,
       "setup": 1,
       "nonMusical": 0,
-      "noteEditable": 0,
+      "noteEditable": 1,
       "clip": 0,
       "master": 0,
       "noteBroken": 0,
-      "knobs": 1,
+      "knobs": 0,
       "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "knobs-only"
+      "structurallyEditable": 1,
+      "tuneClass": "fully"
     },
     {
       "file": "juxUndTollerei.strudel",
@@ -783,14 +780,14 @@
       "units": 4,
       "setup": 2,
       "nonMusical": 0,
-      "noteEditable": 0,
+      "noteEditable": 2,
       "clip": 0,
       "master": 0,
       "noteBroken": 1,
-      "knobs": 3,
+      "knobs": 1,
       "codeOnly": 0,
-      "structurallyEditable": 0,
-      "tuneClass": "knobs-only"
+      "structurallyEditable": 2,
+      "tuneClass": "partial"
     },
     {
       "file": "orbit.strudel",
@@ -825,14 +822,14 @@
       "units": 3,
       "setup": 1,
       "nonMusical": 0,
-      "noteEditable": 0,
+      "noteEditable": 3,
       "clip": 0,
       "master": 0,
       "noteBroken": 0,
       "knobs": 0,
-      "codeOnly": 3,
-      "structurallyEditable": 0,
-      "tuneClass": "code-only"
+      "codeOnly": 0,
+      "structurallyEditable": 3,
+      "tuneClass": "fully"
     }
   ]
 }

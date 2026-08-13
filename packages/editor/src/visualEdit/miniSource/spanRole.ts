@@ -20,7 +20,7 @@
  * "Linn9000"` is judged by how `drums` is USED, so `.bank(drums)` disposes as an
  * argument exactly as `.bank("Linn9000")` does.
  */
-import { parseTopLevel } from '../chunkDetect'
+import { parseTopLevel } from '../astParse'
 import type { Span, SpanRole } from './types'
 
 // acorn's node types are intentionally loose; we walk untyped nodes here.

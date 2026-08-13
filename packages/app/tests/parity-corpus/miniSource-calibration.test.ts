@@ -211,7 +211,10 @@ describe('miniSource calibration over 150 real tunes', () => {
       '500/3HvvWoaCyciz',
       '500/3L25jxCjZ235',
     ])
-    expect(known).toBeGreaterThanOrEqual(515)
+    // #1240 raised this by 66 (534 → 600): units whose content span the resolver
+    // names now classify as `note`, so they enter this population. Raised in the
+    // same commit as the gain it measures.
+    expect(known).toBeGreaterThanOrEqual(580)
     // Exactness: no wrong answers, nothing withheld.
     expect(wrong).toBe(0)
     expect(refused).toBe(0)
@@ -221,11 +224,22 @@ describe('miniSource calibration over 150 real tunes', () => {
     // A span was RESOLVED for this many of the units no view is offered for
     // today. Read it as nothing more than that. It is not reach: opening a view,
     // the view having structure, and a modelled edit surviving the engine are
-    // three further gates, and the last measurement of that chain converted 173
-    // unoffered units to 97 with a mini, 65 with a view, 47 that survived an
-    // edit. A one-cell view of an instrument name is a CORRECT resolution and a
-    // useless surface, so counting resolutions as reach is the error this
-    // number is most likely to be used to make.
-    expect(unofferedResolved).toBeGreaterThanOrEqual(115)
+    // three further gates. A one-cell view of an instrument name is a CORRECT
+    // resolution and a useless surface, so counting resolutions as reach is the
+    // error this number is most likely to be used to make.
+    //
+    // ⚠ THE FLOOR DROPPED FROM 115 TO 45 AND THAT IS THE FEATURE, NOT A LOSS
+    // (#1240). This counts units that are STILL unoffered, so wiring the
+    // resolver into `chunkDetect` consumes its own population: 97 units left
+    // the unoffered pool (173 → 76) because they now get asked — 66 opened a
+    // view and became known-content, 31 were asked and refused with a named
+    // gate. The number that GREW is `known` above, 534 → 600, and it is
+    // asserted in the same commit as the drop so the pair is readable
+    // ([[P541]]: a floor moved without its gain beside it is just slack).
+    //
+    // Set below the observed 51 rather than at it, because the residual is a
+    // remainder — it moves with anything that changes routing — while `known`
+    // and `exact` are the load-bearing pins. Re-derive both together.
+    expect(unofferedResolved).toBeGreaterThanOrEqual(45)
   }, 600_000)
 })

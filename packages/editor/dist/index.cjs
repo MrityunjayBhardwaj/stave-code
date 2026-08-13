@@ -4512,7 +4512,6 @@ function formatFriendlyError(err, runtime, options = {}) {
   };
 }
 __name(formatFriendlyError, "formatFriendlyError");
-var PICK_METHODS = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
 function parseTopLevel(doc) {
   try {
     const program = acorn.parse(doc, {
@@ -4529,8 +4528,431 @@ function docParses(doc) {
   return parseTopLevel(doc) !== null;
 }
 __name(docParses, "docParses");
+
+// src/visualEdit/miniSource/spanRole.ts
+var NOTE_OVERRIDE = /* @__PURE__ */ new Set(["note", "n"]);
+function walk(node, parent, ctx) {
+  if (!node || typeof node.type !== "string") return;
+  ctx.parent.set(node, parent);
+  if (isMiniLiteral(node)) ctx.literals.push(node);
+  for (const key2 of Object.keys(node)) {
+    if (key2 === "type" || key2 === "start" || key2 === "end") continue;
+    const v = node[key2];
+    if (Array.isArray(v)) v.forEach((c) => walk(c, node, ctx));
+    else if (v && typeof v === "object" && typeof v.type === "string") walk(v, node, ctx);
+  }
+}
+__name(walk, "walk");
+function isMiniLiteral(node) {
+  if (node.type === "Literal" && typeof node.value === "string") return true;
+  if (node.type === "TemplateLiteral") return true;
+  return false;
+}
+__name(isMiniLiteral, "isMiniLiteral");
+function literalInterior(node) {
+  return [node.start + 1, node.end - 1];
+}
+__name(literalInterior, "literalInterior");
+function containedIn(node, ranges) {
+  return ranges.some((r) => node.start >= r[0] && node.end <= r[1]);
+}
+__name(containedIn, "containedIn");
+var _SpanIndex = class _SpanIndex {
+  constructor(ctx) {
+    /**
+     * How many times the mixed-use tie-break actually DECIDED a role — a binding
+     * referenced both ways within one unit's boundary. Scoping the question to the
+     * unit is expected to make this rare or zero; if it is zero over the corpus the
+     * tie-break is DEFENSIVE, and saying so is more honest than leaving a comment
+     * claiming it carries weight.
+     */
+    this.tieBreakFired = 0;
+    this.ctx = ctx;
+  }
+  /** Build the index for a document, or null when it does not parse. */
+  static build(doc) {
+    const program = parseTopLevel(doc);
+    if (!program) return null;
+    const ctx = {
+      parent: /* @__PURE__ */ new Map(),
+      literals: [],
+      bindings: /* @__PURE__ */ new Map(),
+      refs: /* @__PURE__ */ new Map()
+    };
+    for (const stmt of program) walk(stmt, null, ctx);
+    const dropped = /* @__PURE__ */ new Set();
+    for (const stmt of program) {
+      if (stmt?.type !== "VariableDeclaration" || !Array.isArray(stmt.declarations)) continue;
+      for (const decl of stmt.declarations) {
+        if (decl?.id?.type !== "Identifier" || !decl.init) continue;
+        const name = decl.id.name;
+        if (ctx.bindings.has(name) || dropped.has(name)) {
+          ctx.bindings.delete(name);
+          dropped.add(name);
+          continue;
+        }
+        ctx.bindings.set(name, decl);
+      }
+    }
+    for (const [node, parent] of ctx.parent) {
+      if (node?.type !== "Identifier") continue;
+      if (parent?.type === "VariableDeclarator" && parent.id === node) continue;
+      if (parent?.type === "MemberExpression" && parent.property === node && !parent.computed) continue;
+      if (parent?.type === "Property" && parent.key === node && !parent.computed) continue;
+      if (parent?.type === "LabeledStatement" && parent.label === node) continue;
+      const list = ctx.refs.get(node.name);
+      if (list) list.push(node);
+      else ctx.refs.set(node.name, [node]);
+    }
+    return new _SpanIndex(ctx);
+  }
+  /** Every mini literal in the document, innermost-last. */
+  get literals() {
+    return this.ctx.literals;
+  }
+  /** The innermost mini literal whose INTERIOR contains `span`, or null. */
+  literalFor(span) {
+    let best = null;
+    for (const lit of this.ctx.literals) {
+      const [s, e] = literalInterior(lit);
+      if (span[0] >= s && span[1] <= e) {
+        if (!best || lit.start >= best.start) best = lit;
+      }
+    }
+    return best;
+  }
+  /** The role of the literal enclosing `span`, or `unknown` when there is none. */
+  roleOfSpan(span, boundary) {
+    const lit = this.literalFor(span);
+    return lit ? this.roleOfNode(lit, boundary) : "unknown";
+  }
+  /**
+   * The role of a VALUE-producing node, decided by its syntactic position.
+   *
+   * Every arm is a position, not a name, with the single stated exception of
+   * `NOTE_OVERRIDE`. Positions the rule does not claim to judge return
+   * `unknown` and are never treated as content.
+   */
+  roleOfNode(node, boundary, seen = /* @__PURE__ */ new Set()) {
+    return this.computeRole(node, boundary, seen);
+  }
+  computeRole(node, boundary, seen) {
+    let child = node;
+    let parent = this.ctx.parent.get(child);
+    for (let guard = 0; parent && guard < 64; guard++) {
+      if (parent.type !== "VariableDeclarator" && !containedIn(parent, boundary)) return "source";
+      switch (parent.type) {
+        case "CallExpression": {
+          if (parent.callee === child) {
+            child = parent;
+            parent = this.ctx.parent.get(child);
+            continue;
+          }
+          if (Array.isArray(parent.arguments) && parent.arguments.includes(child)) {
+            const callee = parent.callee;
+            if (callee?.type === "Identifier") {
+              return this.roleOfNode(parent, boundary, seen);
+            }
+            if (callee?.type === "MemberExpression" && callee.property?.type === "Identifier") {
+              if (NOTE_OVERRIDE.has(callee.property.name) && !this.chainRootIsCall(parent)) {
+                return this.roleOfNode(parent, boundary, seen);
+              }
+              return "argument";
+            }
+            return "unknown";
+          }
+          return "unknown";
+        }
+        case "TaggedTemplateExpression":
+          return parent.quasi === child ? this.roleOfNode(parent, boundary, seen) : "unknown";
+        case "MemberExpression": {
+          if (parent.object !== child) return "unknown";
+          if (isMiniLiteral(child) && this.chainOverridesRoot(parent)) return "argument";
+          child = parent;
+          parent = this.ctx.parent.get(child);
+          continue;
+        }
+        case "VariableDeclarator": {
+          if (parent.init !== child) return "unknown";
+          if (boundary.length > 0 && containedIn(parent.init, [boundary[0]])) return "source";
+          const name = parent.id?.type === "Identifier" ? parent.id.name : null;
+          if (!name || seen.has(name)) return "unknown";
+          seen.add(name);
+          return this.roleOfBinding(name, boundary);
+        }
+        case "ExpressionStatement":
+        case "LabeledStatement":
+          return "source";
+        case "ArrayExpression":
+        case "Property":
+        case "ObjectExpression":
+        case "ParenthesizedExpression":
+        case "AwaitExpression":
+        case "SequenceExpression":
+        case "ConditionalExpression":
+        // A pattern-producing helper (`let bass = (lpf) => n("…").lpf(lpf)`) is
+        // called where a pattern is wanted, so the body's role is the role of
+        // the CALL. Transparency is what carries that through — and it is not a
+        // way in for lambdas that are themselves control arguments, because
+        // `.sometimes(x => x.note("c3"))`'s literal is decided at `.note`'s own
+        // chain long before the arrow is reached.
+        case "ArrowFunctionExpression":
+        case "FunctionExpression":
+        case "ReturnStatement":
+        case "BlockStatement":
+          child = parent;
+          parent = this.ctx.parent.get(child);
+          continue;
+        default:
+          return "unknown";
+      }
+    }
+    return "unknown";
+  }
+  /**
+   * Does the chain containing `call` bottom out at a CALL (`sound("hh").note(…)`)
+   * rather than at a bare literal or identifier (`"gm_pad_warm".note(…)`)?
+   *
+   * A chain with a head call already has its source — the head's argument — so a
+   * mid-chain `note`/`n` there is an ordinary control. Only a chain rooted at a
+   * bare value has no source of its own for the override to replace.
+   */
+  chainRootIsCall(call) {
+    let node = call;
+    for (let guard = 0; node && guard < 64; guard++) {
+      if (node.type === "CallExpression") {
+        const callee = node.callee;
+        if (callee?.type === "Identifier") return true;
+        if (callee?.type === "MemberExpression") {
+          node = callee.object;
+          continue;
+        }
+        return false;
+      }
+      if (node.type === "MemberExpression") {
+        node = node.object;
+        continue;
+      }
+      return false;
+    }
+    return false;
+  }
+  /**
+   * Does the member chain rooted at `member` apply a note-content control?
+   * Walks OUTWARD from the root member expression through the call spine.
+   */
+  chainOverridesRoot(member) {
+    let node = member;
+    let parent = this.ctx.parent.get(node);
+    for (let guard = 0; parent && guard < 64; guard++) {
+      if (parent.type === "CallExpression" && parent.callee === node) {
+        const prop = node.type === "MemberExpression" ? node.property : null;
+        if (prop?.type === "Identifier" && NOTE_OVERRIDE.has(prop.name)) {
+          if ((parent.arguments ?? []).length > 0) return true;
+        }
+        node = parent;
+        parent = this.ctx.parent.get(node);
+        continue;
+      }
+      if (parent.type === "MemberExpression" && parent.object === node) {
+        node = parent;
+        parent = this.ctx.parent.get(node);
+        continue;
+      }
+      return false;
+    }
+    return false;
+  }
+  /**
+   * The role of a BOUND value, decided by how the binding is USED.
+   *
+   * `const drums = "Linn9000"` is content or a bank name depending entirely on
+   * whether `drums` appears as `s(drums)` or as `.bank(drums)`. Judging the
+   * initialiser by its own position gets this wrong in the direction that
+   * matters: `const x = "…"` is not syntactically anybody's argument, so a
+   * position-only rule keeps every bound control argument.
+   *
+   * THE QUESTION IS SCOPED TO THE UNIT, because a role is a property of a
+   * REFERENCE and a unit only ever sees its own. Asking it of the whole document
+   * manufactures ties that do not exist locally, and the ranking then resolves
+   * them by source order: `var ch = "[Am C G <Em F>]/8"` is a pattern source in
+   * `chord(ch).voicing()` and a control argument in
+   * `n("[0 1 <- 2>…]*2").chord(ch)`, and a document-wide verdict of `source`
+   * hands the second unit the first one's chord progression as its own content —
+   * because `ch` is declared at the top of the file and the ranking breaks ties
+   * on source order. `boundary` is the unit's own expression plus the initialiser
+   * of every binding it reaches, so filtering references to it asks only about
+   * the uses this unit can actually see.
+   *
+   * A binding used both ways WITHIN one unit still resolves as `source`: losing
+   * real content is the worse error of the two. That tie-break is a JUDGEMENT
+   * CALL, so `mixedUseBindings()` reports the population it could apply to and
+   * `tieBreakFired` counts how often it actually decides — a guard believed
+   * load-bearing is a false claim about the code.
+   */
+  roleOfBinding(name, boundary) {
+    const all = this.ctx.refs.get(name) ?? [];
+    const mine = boundary.length ? all.filter((r) => boundary.some(([s, e]) => r.start >= s && r.end <= e)) : all;
+    const refs = mine.length ? mine : all;
+    let sawArgument = false;
+    let sawSource = false;
+    for (const ref of refs) {
+      const r = this.roleOfRef(ref);
+      if (r === "source") sawSource = true;
+      else if (r === "argument") sawArgument = true;
+    }
+    if (sawSource && sawArgument) this.tieBreakFired++;
+    if (sawSource) return "source";
+    return sawArgument ? "argument" : "unknown";
+  }
+  /**
+   * Bindings referenced BOTH as a pattern and as a control argument SOMEWHERE in
+   * the document. This is the population the tie-break could apply to, not the
+   * set it decides: `roleOfBinding` scopes the question to one unit's references,
+   * so a binding can be mixed-use document-wide and unambiguous in every unit
+   * that reads it. Compare with `tieBreakFired`, which counts the decisions.
+   */
+  mixedUseBindings() {
+    const out = [];
+    for (const [name] of this.ctx.bindings) {
+      let src = false;
+      let arg = false;
+      for (const ref of this.ctx.refs.get(name) ?? []) {
+        const r = this.roleOfRef(ref);
+        if (r === "source") src = true;
+        else if (r === "argument") arg = true;
+      }
+      if (src && arg) out.push(name);
+    }
+    return out;
+  }
+  /**
+   * The role of ONE reference to a binding, from the position that consumes it.
+   * Transparent wrappers are stepped through; nothing else is climbed.
+   */
+  roleOfRef(ref) {
+    let child = ref;
+    let parent = this.ctx.parent.get(child);
+    for (let guard = 0; parent && guard < 32; guard++) {
+      switch (parent.type) {
+        case "CallExpression": {
+          if (!Array.isArray(parent.arguments) || !parent.arguments.includes(child)) return "source";
+          const callee = parent.callee;
+          if (callee?.type === "MemberExpression" && callee.property?.type === "Identifier") {
+            return NOTE_OVERRIDE.has(callee.property.name) ? "source" : "argument";
+          }
+          return "source";
+        }
+        case "ArrayExpression":
+        case "Property":
+        case "ObjectExpression":
+        case "ParenthesizedExpression":
+        case "AwaitExpression":
+        case "SequenceExpression":
+          child = parent;
+          parent = this.ctx.parent.get(child);
+          continue;
+        default:
+          return "source";
+      }
+    }
+    return "source";
+  }
+  /**
+   * Ranges a span may live in and still belong to `exprRange`: the expression
+   * itself, plus the initialiser of every binding it references, transitively.
+   * This is what lets an eval-proposed span in ANOTHER top-level statement be
+   * attributed to the unit that plays it.
+   *
+   * Walks REFERENCES, not every identifier that happens to spell a binding's
+   * name. Method names are identifiers too, and Strudel's vocabulary collides
+   * with the names people give their patterns constantly — `.cpm(…)` beside
+   * `let cpm`, and `.p1`/`.d1` (the repl's pattern getters) beside `let p1`,
+   * `let d1`, which is a real document in the corpus. A name-based scan pulls
+   * those unrelated initialisers into the unit's reachable set, and a span
+   * belonging to another statement then becomes admissible content for this one.
+   * Measured: 37 of 148 documents contain at least one such collision.
+   */
+  reachableRanges(exprRange) {
+    const out = [exprRange];
+    const seen = /* @__PURE__ */ new Set();
+    const queue = [exprRange];
+    while (queue.length) {
+      const [s, e] = queue.shift();
+      for (const [name, refs] of this.ctx.refs) {
+        if (seen.has(name)) continue;
+        if (!refs.some((r) => r.start >= s && r.end <= e)) continue;
+        const decl = this.ctx.bindings.get(name);
+        if (!decl) continue;
+        seen.add(name);
+        const range2 = [decl.init.start, decl.init.end];
+        out.push(range2);
+        queue.push(range2);
+      }
+    }
+    return out;
+  }
+};
+__name(_SpanIndex, "SpanIndex");
+var SpanIndex = _SpanIndex;
+
+// src/visualEdit/miniSource/resolveMiniSource.ts
+var within = /* @__PURE__ */ __name((inner, outer) => inner[0] >= outer[0] && inner[1] <= outer[1], "within");
+function resolveMiniSource(doc, unit, opts = {}) {
+  const index = opts.index !== void 0 ? opts.index : SpanIndex.build(doc);
+  if (!index) return { ok: false, reason: "doc-unparsed" };
+  const reachable = index.reachableRanges(unit.exprRange);
+  const evalFirst = opts.proposals?.length ? attempt(doc, index, reachable, unit, opts.proposals) : null;
+  if (evalFirst?.ok) return evalFirst;
+  const walk4 = attempt(
+    doc,
+    index,
+    reachable,
+    unit,
+    index.literals.map((lit) => ({ span: literalInterior(lit), via: "parse" }))
+  );
+  return walk4.ok ? walk4 : evalFirst ?? walk4;
+}
+__name(resolveMiniSource, "resolveMiniSource");
+function attempt(doc, index, reachable, unit, proposals) {
+  const via = proposals[0]?.via ?? "parse";
+  const mine = proposals.filter((p) => reachable.some((r) => within(p.span, r)));
+  if (mine.length === 0) return { ok: false, reason: "no-candidate" };
+  const groups = /* @__PURE__ */ new Map();
+  for (const p of mine) {
+    if (index.roleOfSpan(p.span, reachable) !== "source") continue;
+    const lit = index.literalFor(p.span);
+    if (!lit) continue;
+    const g = groups.get(lit);
+    if (g) g.spans.push(p.span);
+    else groups.set(lit, { lit, spans: [p.span] });
+  }
+  if (groups.size === 0) return { ok: false, reason: "no-source-span" };
+  const ranked = [...groups.values()].sort(
+    (a, b) => b.spans.length - a.spans.length || a.lit.start - b.lit.start
+  );
+  const best = ranked[0];
+  const range2 = literalInterior(best.lit);
+  return {
+    ok: true,
+    via,
+    range: range2,
+    text: doc.slice(range2[0], range2[1]),
+    spans: best.spans,
+    alternatives: ranked.slice(1).map((g) => literalInterior(g.lit)),
+    crossesBinding: !within(range2, unit.exprRange)
+  };
+}
+__name(attempt, "attempt");
+
+// src/visualEdit/chunkDetect.ts
+var PICK_METHODS = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
 function isChunkFresh(doc, chunk) {
-  return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText;
+  if (doc.slice(chunk.statementRange[0], chunk.statementRange[1]) !== chunk.statementText) {
+    return false;
+  }
+  const anchor = chunk.miniAnchor;
+  return anchor === null || doc.slice(anchor.range[0], anchor.range[1]) === anchor.text;
 }
 __name(isChunkFresh, "isChunkFresh");
 function buildBindingIndex(statements) {
@@ -4564,7 +4986,7 @@ function resolveBinding(node, index, seen = /* @__PURE__ */ new Set()) {
   return b;
 }
 __name(resolveBinding, "resolveBinding");
-function buildMaybeResolved(doc, expr, label, stmtRange, index, nested = false) {
+function buildMaybeResolved(doc, expr, label, stmtRange, index, nested = false, getIndex) {
   const resolved = resolveBinding(expr, index);
   if (resolved) {
     return buildChunkFromExpr(
@@ -4572,16 +4994,18 @@ function buildMaybeResolved(doc, expr, label, stmtRange, index, nested = false) 
       resolved.rhs,
       label,
       [resolved.declStmt.start, resolved.declStmt.end],
-      nested
+      nested,
+      getIndex
     );
   }
-  return buildChunkFromExpr(doc, expr, label, stmtRange, nested);
+  return buildChunkFromExpr(doc, expr, label, stmtRange, nested, getIndex);
 }
 __name(buildMaybeResolved, "buildMaybeResolved");
 function detectChunk(doc, pos) {
   const statements = parseTopLevel(doc);
   if (!statements) return null;
   const bindings = buildBindingIndex(statements);
+  const getIndex = lazySpanIndex(doc);
   for (const node of statements) {
     if (pos >= node.start && pos <= node.end) {
       if (node.type === "VariableDeclaration") {
@@ -4590,7 +5014,7 @@ function detectChunk(doc, pos) {
         const decl = decls[0];
         if (decl?.id?.type !== "Identifier" || !decl.init) return null;
         const initTarget = innermostChainUnder(doc, decl.init, pos, bindings);
-        return initTarget === decl.init ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings) : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true);
+        return initTarget === decl.init ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings, false, getIndex) : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true, getIndex);
       }
       let label = null;
       let body = node;
@@ -4601,7 +5025,7 @@ function detectChunk(doc, pos) {
       if (body.type !== "ExpressionStatement") return null;
       const topExpr = body.expression;
       const target = innermostChainUnder(doc, topExpr, pos, bindings);
-      return target === topExpr ? buildMaybeResolved(doc, topExpr, label, [node.start, node.end], bindings) : buildMaybeResolved(doc, target, null, [target.start, target.end], bindings, true);
+      return target === topExpr ? buildMaybeResolved(doc, topExpr, label, [node.start, node.end], bindings, false, getIndex) : buildMaybeResolved(doc, target, null, [target.start, target.end], bindings, true, getIndex);
     }
   }
   return null;
@@ -4611,10 +5035,11 @@ function detectAllChunks(doc) {
   const statements = parseTopLevel(doc);
   if (!statements) return [];
   const bindings = buildBindingIndex(statements);
-  return statements.map((node) => buildChunk(doc, node, bindings)).filter((c) => c !== null);
+  const getIndex = lazySpanIndex(doc);
+  return statements.map((node) => buildChunk(doc, node, bindings, getIndex)).filter((c) => c !== null);
 }
 __name(detectAllChunks, "detectAllChunks");
-function buildChunk(doc, node, bindings) {
+function buildChunk(doc, node, bindings, getIndex) {
   let label = null;
   let body = node;
   if (node.type === "LabeledStatement") {
@@ -4622,10 +5047,22 @@ function buildChunk(doc, node, bindings) {
     body = node.body;
   }
   if (body.type !== "ExpressionStatement") return null;
-  return buildMaybeResolved(doc, body.expression, label, [node.start, node.end], bindings);
+  return buildMaybeResolved(doc, body.expression, label, [node.start, node.end], bindings, false, getIndex);
 }
 __name(buildChunk, "buildChunk");
-function buildChunkFromExpr(doc, expr, label, stmtRange, nested = false) {
+function lazySpanIndex(doc) {
+  let built = false;
+  let index = null;
+  return () => {
+    if (!built) {
+      built = true;
+      index = SpanIndex.build(doc);
+    }
+    return index;
+  };
+}
+__name(lazySpanIndex, "lazySpanIndex");
+function buildChunkFromExpr(doc, expr, label, stmtRange, nested = false, getIndex) {
   const headNode = { ref: null };
   const chain = collectChain(doc, expr, headNode);
   const headFn = chain.length > 0 ? chain[0].name : null;
@@ -4648,14 +5085,37 @@ function buildChunkFromExpr(doc, expr, label, stmtRange, nested = false) {
     headFn,
     miniRange,
     miniString,
+    miniVia: miniRange ? "literal" : null,
+    miniAnchor: null,
     chain,
     type: "unknown",
     nested
   };
+  if (info.miniRange === null && getIndex) resolveMini(doc, info, getIndex);
   info.type = classifyChunk(info);
   return info;
 }
 __name(buildChunkFromExpr, "buildChunkFromExpr");
+function resolveMini(doc, info, getIndex) {
+  const index = getIndex();
+  if (!index) return;
+  const r = resolveMiniSource(doc, info, { index });
+  if (!r.ok || r.alternatives.length > 0) return;
+  let anchor = null;
+  const inside = r.range[0] >= info.statementRange[0] && r.range[1] <= info.statementRange[1];
+  if (!inside) {
+    const stmt = (parseTopLevel(doc) ?? []).find(
+      (s) => r.range[0] >= s.start && r.range[1] <= s.end
+    );
+    if (!stmt) return;
+    anchor = { range: [stmt.start, stmt.end], text: doc.slice(stmt.start, stmt.end) };
+  }
+  info.miniRange = r.range;
+  info.miniString = r.text;
+  info.miniVia = "resolver";
+  info.miniAnchor = anchor;
+}
+__name(resolveMini, "resolveMini");
 function innermostChainUnder(doc, expr, pos, bindings) {
   const pickSection = pickSectionUnder(expr, pos);
   if (pickSection) return innermostChainUnder(doc, pickSection, pos, bindings);
@@ -23293,14 +23753,14 @@ function headOf(h, branch = h.currentBranch) {
 }
 __name(headOf, "headOf");
 function getFileContentAt(h, fileId, commitId) {
-  let walk3 = commitId;
-  while (walk3 !== null) {
-    const c = h.commits[walk3];
+  let walk4 = commitId;
+  while (walk4 !== null) {
+    const c = h.commits[walk4];
     if (!c) break;
     if (Object.prototype.hasOwnProperty.call(c.files, fileId)) {
       return c.files[fileId];
     }
-    walk3 = c.parent;
+    walk4 = c.parent;
   }
   return null;
 }
@@ -23308,15 +23768,15 @@ __name(getFileContentAt, "getFileContentAt");
 function snapshotAt(h, commitId) {
   const files = {};
   let order;
-  let walk3 = commitId;
-  while (walk3 !== null) {
-    const c = h.commits[walk3];
+  let walk4 = commitId;
+  while (walk4 !== null) {
+    const c = h.commits[walk4];
     if (!c) break;
     for (const f of Object.keys(c.files)) {
       if (!Object.prototype.hasOwnProperty.call(files, f)) files[f] = c.files[f];
     }
     if (order === void 0 && c.order !== void 0) order = c.order;
-    walk3 = c.parent;
+    walk4 = c.parent;
   }
   return { files, order };
 }
@@ -23325,12 +23785,12 @@ function listCommits(h, branch = h.currentBranch) {
   const head = h.branches[branch]?.head;
   if (!head) return [];
   const out = [];
-  let walk3 = head;
-  while (walk3 !== null) {
-    const c = h.commits[walk3];
+  let walk4 = head;
+  while (walk4 !== null) {
+    const c = h.commits[walk4];
     if (!c) break;
     if (!c.pinned) out.push(c);
-    walk3 = c.parent;
+    walk4 = c.parent;
   }
   return out;
 }
@@ -23350,24 +23810,24 @@ function fileHistory(h, fileId) {
 }
 __name(fileHistory, "fileHistory");
 function nearestWriter(h, fromCommit, fileId) {
-  let walk3 = fromCommit;
-  while (walk3 !== null) {
-    const c = h.commits[walk3];
+  let walk4 = fromCommit;
+  while (walk4 !== null) {
+    const c = h.commits[walk4];
     if (!c) break;
-    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk3;
-    walk3 = c.parent;
+    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk4;
+    walk4 = c.parent;
   }
   return null;
 }
 __name(nearestWriter, "nearestWriter");
 function filesAliveAt(h, commitId) {
   const alive = /* @__PURE__ */ new Set();
-  let walk3 = commitId;
-  while (walk3 !== null) {
-    const c = h.commits[walk3];
+  let walk4 = commitId;
+  while (walk4 !== null) {
+    const c = h.commits[walk4];
     if (!c) break;
     for (const f of Object.keys(c.files)) alive.add(f);
-    walk3 = c.parent;
+    walk4 = c.parent;
   }
   return alive;
 }
@@ -23494,9 +23954,9 @@ function prune(h, now2, opts = {}) {
   }
   const keep = /* @__PURE__ */ new Set([...display, ...needed]);
   const nearestKeptAncestor = /* @__PURE__ */ __name((start) => {
-    let walk3 = start;
-    while (walk3 !== null && !keep.has(walk3)) walk3 = h.commits[walk3]?.parent ?? null;
-    return walk3;
+    let walk4 = start;
+    while (walk4 !== null && !keep.has(walk4)) walk4 = h.commits[walk4]?.parent ?? null;
+    return walk4;
   }, "nearestKeptAncestor");
   let mutated = keep.size !== all.length;
   const commits = {};
@@ -27917,10 +28377,10 @@ function restSpansByColumn(src, perBar2, bars) {
     return null;
   }
   const spans = [];
-  const walk3 = /* @__PURE__ */ __name((node) => {
+  const walk4 = /* @__PURE__ */ __name((node) => {
     if (!node || typeof node !== "object") return;
     if (node.type_ === "pattern") {
-      for (const el of node.source_ ?? []) walk3(el);
+      for (const el of node.source_ ?? []) walk4(el);
       return;
     }
     if (node.type_ === "element") {
@@ -27935,11 +28395,11 @@ function restSpansByColumn(src, perBar2, bars) {
           if (src.slice(s, s + atom.source_.length) === atom.source_)
             spans.push({ start: s, end: s + atom.source_.length });
         }
-      } else walk3(inner);
+      } else walk4(inner);
       return;
     }
   }, "walk");
-  walk3(ast);
+  walk4(ast);
   if (spans.length === 0) return null;
   const SENTINEL = /* @__PURE__ */ __name((i) => `qzrest${i}`, "SENTINEL");
   let probeSrc = src;
@@ -28968,6 +29428,20 @@ function rollStackSource(parts, models) {
   return { source: { prefix: "", suffix: "", parts: out } };
 }
 __name(rollStackSource, "rollStackSource");
+
+// src/visualEdit/panels/surfaceRoute.ts
+function routeSurface(headFn, mini) {
+  if (headFn === "s" || headFn === "sound") return "step";
+  if (headFn === "note" || headFn === "n") return "roll";
+  return parsePianoRoll(mini).ok ? "roll" : "step";
+}
+__name(routeSurface, "routeSurface");
+function chunkSurface(chunk) {
+  const byHead = patternKind(chunk);
+  if (byHead || !chunk || chunk.miniString === null) return byHead;
+  return chunk.miniVia === "resolver" ? routeSurface(chunk.headFn, chunk.miniString) : null;
+}
+__name(chunkSurface, "chunkSurface");
 function VisualEditStandby({
   panel,
   hint,
@@ -30237,6 +30711,8 @@ function adaptMasterChunk(doc, m) {
     headFn: null,
     miniRange: null,
     miniString: null,
+    miniVia: null,
+    miniAnchor: null,
     chain: [head, ...m.chain],
     type: "knobs",
     nested: false
@@ -30333,6 +30809,8 @@ function emptyMasterChunk(doc) {
     headFn: null,
     miniRange: null,
     miniString: null,
+    miniVia: null,
+    miniAnchor: null,
     chain: [{ name: "x", args: [], range: [pos, pos] }],
     type: "knobs",
     nested: false
@@ -35374,7 +35852,7 @@ __name(MixerPanel, "MixerPanel");
 var MIXER_WIDTH = 220;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
-  const kind = patternKind(chunk);
+  const kind = chunkSurface(chunk);
   const [selected, setSelected] = React36__namespace.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
   const stmtRef = React36__namespace.useRef(stmtId);
@@ -43576,20 +44054,20 @@ function isCombinatorCall(node) {
   return node && node.type === "CallExpression" && node.callee?.type === "Identifier" && COMBINATORS.has(node.callee.name);
 }
 __name(isCombinatorCall, "isCombinatorCall");
-function walk(node, visit) {
+function walk2(node, visit) {
   if (!node || typeof node !== "object") return;
   if (typeof node.type === "string" && typeof node.start === "number") visit(node);
   for (const key2 of Object.keys(node)) {
     if (key2 === "type" || key2 === "start" || key2 === "end") continue;
     const child = node[key2];
     if (Array.isArray(child)) {
-      for (const c of child) walk(c, visit);
+      for (const c of child) walk2(c, visit);
     } else if (child && typeof child === "object") {
-      walk(child, visit);
+      walk2(child, visit);
     }
   }
 }
-__name(walk, "walk");
+__name(walk2, "walk");
 function armFromArg(mode, arg) {
   if (mode === "arrange") {
     if (arg.type !== "ArrayExpression" || arg.elements.length < 2) return null;
@@ -43633,7 +44111,7 @@ function detectArrangeAt(doc, pos) {
   const program = parseProgram(doc);
   if (!program) return null;
   let best = null;
-  walk(program, (n) => {
+  walk2(program, (n) => {
     if (!isCombinatorCall(n)) return;
     if (pos < n.start || pos > n.end) return;
     if (!best || n.start > best.start) best = n;
@@ -43645,7 +44123,7 @@ function detectAllArrangeCalls(doc) {
   const program = parseProgram(doc);
   if (!program) return [];
   const nodes = [];
-  walk(program, (n) => {
+  walk2(program, (n) => {
     if (isCombinatorCall(n)) nodes.push(n);
   });
   nodes.sort((a, b) => a.start - b.start);
@@ -43661,7 +44139,7 @@ function detectBarePattern(doc, pos) {
     const expr = exprStmt.expression;
     if (!expr || pos < expr.start || pos > expr.end) continue;
     let hasCombinator = false;
-    walk(expr, (n) => {
+    walk2(expr, (n) => {
       if (isCombinatorCall(n)) hasCombinator = true;
     });
     if (hasCombinator) return null;
@@ -43796,17 +44274,17 @@ function isPickCall(node) {
   return node && node.type === "CallExpression" && node.callee?.type === "MemberExpression" && node.callee.property?.type === "Identifier" && PICK_METHODS2.has(node.callee.property.name) && node.callee.object?.type === "Literal" && typeof node.callee.object.value === "string";
 }
 __name(isPickCall, "isPickCall");
-function walk2(node, visit) {
+function walk3(node, visit) {
   if (!node || typeof node !== "object") return;
   if (typeof node.type === "string" && typeof node.start === "number") visit(node);
   for (const key2 of Object.keys(node)) {
     if (key2 === "type" || key2 === "start" || key2 === "end") continue;
     const child = node[key2];
-    if (Array.isArray(child)) for (const c of child) walk2(c, visit);
-    else if (child && typeof child === "object") walk2(child, visit);
+    if (Array.isArray(child)) for (const c of child) walk3(c, visit);
+    else if (child && typeof child === "object") walk3(child, visit);
   }
 }
-__name(walk2, "walk");
+__name(walk3, "walk");
 function scanControlArms(raw, litStart) {
   const open = raw.indexOf("<");
   if (open < 0) return null;
@@ -43893,7 +44371,7 @@ function detectPickControlAt(doc, pos) {
   const program = parseProgram2(doc);
   if (!program) return null;
   let best = null;
-  walk2(program, (n) => {
+  walk3(program, (n) => {
     if (!isPickCall(n)) return;
     if (pos < n.start || pos > n.end) return;
     if (!best || n.start > best.start) best = n;
@@ -43905,7 +44383,7 @@ function detectAllPickControls(doc) {
   const program = parseProgram2(doc);
   if (!program) return [];
   const nodes = [];
-  walk2(program, (n) => {
+  walk3(program, (n) => {
     if (isPickCall(n)) nodes.push(n);
   });
   nodes.sort((a, b) => a.start - b.start);
@@ -44428,6 +44906,7 @@ exports.bundledPresetId = bundledPresetId;
 exports.canRedo = canRedo;
 exports.canUndo = canUndo;
 exports.captureSnapshot = captureSnapshot;
+exports.chunkSurface = chunkSurface;
 exports.classifyChunk = classifyChunk;
 exports.classifyLiteralRhs = classifyLiteralRhs;
 exports.clearCapture = clearCapture;
@@ -44685,6 +45164,7 @@ exports.restoreSnapshot = restoreSnapshot;
 exports.revealLineInFile = revealLineInFile;
 exports.revealOffsetInFile = revealOffsetInFile;
 exports.revertFileToSeed = revertFileToSeed;
+exports.routeSurface = routeSurface;
 exports.runChainAppliedStage = runChainAppliedStage;
 exports.runFinalStage = runFinalStage;
 exports.runMiniExpandedStage = runMiniExpandedStage;

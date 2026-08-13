@@ -222,6 +222,8 @@ export function adaptMasterChunk(doc: string, m: MasterAll): ChunkInfo {
     headFn: null,
     miniRange: null,
     miniString: null,
+    miniVia: null,
+    miniAnchor: null,
     chain: [head, ...m.chain],
     type: 'knobs',
     nested: false,

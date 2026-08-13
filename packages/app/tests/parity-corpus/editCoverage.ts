@@ -25,6 +25,7 @@ import {
   type ChunkInfo,
 } from '../../../editor/src/visualEdit/chunkDetect'
 import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { routeSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
 import { detectAllArrangeCalls } from '../../../editor/src/visualEdit/arrange/parse'
 import { detectAllPickControls } from '../../../editor/src/visualEdit/pickControl/parse'
 import { detectMasterAll } from '../../../editor/src/visualEdit/mixer/masterEdit'
@@ -266,6 +267,22 @@ function classifyUnit(
     return r.ok
       ? { status: 'note', kind: 'step' }
       : { status: 'note-broken', kind: 'step', reason: r.reason, gate: r.gate, head: head! }
+  }
+  // #1240 — a mini span the RESOLVER named, on a head that says nothing about
+  // which view its values belong to. Scored through `routeSurface`, the panel's
+  // own rule, so this harness cannot drift from what the app mounts ([[P519]]:
+  // a second copy of a routing rule answers confidently and diverges silently).
+  //
+  // Scoped to `miniVia === 'resolver'` on purpose. A head-call literal on a
+  // non-content head (`lpf("0 1 2")`) has always landed in knobs/code-only, and
+  // moving it is a separate decision with its own measurement — this arm is the
+  // wiring of admission, not a re-route of everything that owns a string.
+  if (mini !== null && u.miniVia === 'resolver') {
+    const kind = routeSurface(head, mini)
+    const r = kind === 'roll' ? parsePianoRoll(mini) : parseStepGrid(mini)
+    return r.ok
+      ? { status: 'note', kind }
+      : { status: 'note-broken', kind, reason: r.reason, gate: r.gate, head: head ?? '(no-head)' }
   }
   if (arrangeRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'clip', kind: 'arrange' }
   if (pickRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'clip', kind: 'pick' }
