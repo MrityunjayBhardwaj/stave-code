@@ -32,7 +32,7 @@ import { columnCount, isCellOn, laneCoverage } from '../notation/model'
 import type { StepGridModel } from '../notation/model'
 import { VisualEditStandby } from './VisualEditStandby'
 import { SEQUENCER_TAB_ID } from './tabs'
-import { isStepChunk } from './patternKind'
+import { opensStepGrid } from './surfaceRoute'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import { addLane, removeLane } from '../notation/lane'
@@ -88,7 +88,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<StepGridModel>({
     source: 'seq',
-    eligible: isStepChunk,
+    eligible: opensStepGrid,
     parse: parseStepGrid,
     serialize: serializeStepGrid,
     applyGain: applyStepGain,
@@ -406,7 +406,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   if (!model) {
     return React.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
-      hint: chunk && isStepChunk(chunk)
+      hint: chunk && opensStepGrid(chunk)
         ? "This pattern isn't grid-editable — edit it as code."
         : SEQ_HINT,
       icon: 'symbol-array',

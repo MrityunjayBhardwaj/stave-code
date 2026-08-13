@@ -29442,6 +29442,14 @@ function chunkSurface(chunk) {
   return chunk.miniVia === "resolver" ? routeSurface(chunk.headFn, chunk.miniString) : null;
 }
 __name(chunkSurface, "chunkSurface");
+function opensStepGrid(chunk) {
+  return chunkSurface(chunk) === "step";
+}
+__name(opensStepGrid, "opensStepGrid");
+function opensPianoRoll(chunk) {
+  return chunkSurface(chunk) === "roll";
+}
+__name(opensPianoRoll, "opensPianoRoll");
 function VisualEditStandby({
   panel,
   hint,
@@ -31456,7 +31464,7 @@ function SequencerGrid({ onResolution } = {}) {
   const [viewScale, setViewScale] = React36__namespace.useState(UNREFINED);
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "seq",
-    eligible: isStepChunk,
+    eligible: opensStepGrid,
     parse: parseStepGrid,
     serialize: serializeStepGrid,
     applyGain: applyStepGain,
@@ -31634,7 +31642,7 @@ function SequencerGrid({ onResolution } = {}) {
   if (!model) {
     return React36__namespace.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
-      hint: chunk && isStepChunk(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
+      hint: chunk && opensStepGrid(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
     });
   }
@@ -31996,7 +32004,7 @@ function PianoRollGrid({
   const [viewScale, setViewScale] = React36__namespace.useState(UNREFINED);
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "roll",
-    eligible: isRollChunk,
+    eligible: opensPianoRoll,
     parse: parsePianoRoll,
     serialize: serializePianoRoll,
     applyGain: applyRollGain,
@@ -32251,7 +32259,7 @@ function PianoRollGrid({
   if (!model) {
     return React36__namespace.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
-      hint: chunk && isRollChunk(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
+      hint: chunk && opensPianoRoll(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
     });
   }

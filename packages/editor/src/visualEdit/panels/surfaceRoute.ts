@@ -88,3 +88,39 @@ export function chunkSurface(chunk: ChunkInfo | null): PatternKind {
   if (byHead || !chunk || chunk.miniString === null) return byHead
   return chunk.miniVia === 'resolver' ? routeSurface(chunk.headFn, chunk.miniString) : null
 }
+
+/**
+ * Does this chunk belong to the step grid / to the piano roll?
+ *
+ * ⚠ THESE EXIST BECAUSE ONE DECISION WAS DERIVED TWICE, AND THE SECOND
+ * DERIVATION QUIETLY WON (#1250). `PatternPanel` routed with `chunkSurface`
+ * above — content-aware since #1240 — and then each grid re-decided with the
+ * HEAD-ONLY `isStepChunk`/`isRollChunk`. For every silent head the panel mounted
+ * the right grid and `useGridModel` immediately nulled the model, so the surface
+ * half of #1240 reached no user: the page rendered "Click a drum pattern to edit
+ * it as a step grid" to someone already sitting on one.
+ *
+ * Both sides were tested and the SEAM was not — `chunkSurface`'s only production
+ * caller is `PatternPanel`, which no vitest arm mounts, and the coverage harness
+ * calls `routeSurface` directly. It is also why #1240's break B5 reddened
+ * nothing: the resolver scoping cannot matter while the grid refuses these
+ * patterns regardless.
+ *
+ * So the grids ask the SAME function the panel routed with. Two derivations of
+ * one decision is the defect; a second predicate that merely agrees today would
+ * reintroduce it. `isStepChunk`/`isRollChunk` stay for the callers that really do
+ * want the head alone (the mixer strip, sound assignment).
+ *
+ * No behaviour change for a literal chunk: `s("bd sd")` answers `step` either
+ * way, and a literal on a silent head (`lpf("0 1 2")`) is excluded by
+ * `chunkSurface`'s `miniVia` scoping exactly as `isStepChunk` excluded it. The
+ * delta is precisely the resolver-named silent-head population.
+ */
+export function opensStepGrid(chunk: ChunkInfo): boolean {
+  return chunkSurface(chunk) === 'step'
+}
+
+/** Sibling of `opensStepGrid` — see its header for why these exist. */
+export function opensPianoRoll(chunk: ChunkInfo): boolean {
+  return chunkSurface(chunk) === 'roll'
+}

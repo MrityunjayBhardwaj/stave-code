@@ -32,7 +32,7 @@ import {
 import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../notation/pitch'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID } from './tabs'
-import { isRollChunk } from './patternKind'
+import { opensPianoRoll } from './surfaceRoute'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import { pasteNote, placeNote, resizeNote, viewPlacesNotes } from '../notation/place'
@@ -180,7 +180,7 @@ export function PianoRollGrid({
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<PianoRollModel>({
     source: 'roll',
-    eligible: isRollChunk,
+    eligible: opensPianoRoll,
     parse: parsePianoRoll,
     serialize: serializePianoRoll,
     applyGain: applyRollGain,
@@ -613,7 +613,7 @@ export function PianoRollGrid({
     return React.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint:
-        chunk && isRollChunk(chunk)
+        chunk && opensPianoRoll(chunk)
           ? "This melody isn't grid-editable — edit it as code."
           : ROLL_HINT,
       icon: 'music',
