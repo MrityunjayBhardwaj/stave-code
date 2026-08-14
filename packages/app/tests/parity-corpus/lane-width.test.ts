@@ -255,8 +255,12 @@ describe('the roll writer emits what the model says, on whole columns and off th
     // are flat; the reason this arm cannot fire is the third number, and it is stated so
     // that a corpus refresh which introduces fractional material re-opens the question
     // rather than passing quietly.
-    expect(rolls).toBe(544)
-    expect(flat.length).toBe(94)
+    // ⚠ 544 -> 596 at #1242 — the corpus widened 1535 -> 1633 units
+    // (98 arrivals, 0 departures): the harvest gained the product's own
+    // resolver, so every figure here is over a wider population. Upward only.
+    expect(rolls).toBe(596)
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    expect(flat.length).toBe(98)
     expect(fractionalRolls).toBe(4) // and NONE of the 4 is flat — see the next arm
     expect(checked).toBeGreaterThan(2000)
   })

@@ -388,13 +388,13 @@ describe('#1117 — coming back from a refined view', () => {
  * no content changed, no width was wrong, and no collapse diverged.
  */
 const GRID_PINS: Record<string, [number, number, number]> = {
-  'alt-element': [59, 59, 0],
-  'alt-whole': [76, 76, 0],
-  element: [755, 754, 0],
+  'alt-element': [61, 61, 0],
+  'alt-whole': [85, 85, 0],
+  element: [781, 754, 0],
 }
 const ROLL_PINS: Record<string, [number, number, number]> = {
-  'alt-element': [52, 36, 0],
-  'alt-whole': [93, 47, 2],
+  'alt-element': [56, 39, 0],
+  'alt-whole': [105, 47, 2],
   element: [345, 118, 2],
 }
 /*

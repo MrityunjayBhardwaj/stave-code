@@ -191,13 +191,18 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
   it('CALIBRATION — the population is what the corpus holds, at every scale', () => {
     for (const k of SCALES) {
       const s = SWEPT.get(k)!
-      expect(s.opensAtDocument, `k=${k} opens`).toBe(973)
-      expect(s.admitsFinerView, `k=${k} admits`).toBe(890)
+      // ⚠ 973 -> 1013 at #1242 — the corpus widened 1535 -> 1633 units
+      // (98 arrivals, 0 departures): the harvest gained the product's own
+      // resolver, so every figure here is over a wider population. Upward only.
+      expect(s.opensAtDocument, `k=${k} opens`).toBe(1013)
+      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+      expect(s.admitsFinerView, `k=${k} admits`).toBe(927)
       // ONE refusal gate, and it is the leaf path saying so by name: a leaf model
       // anchors each note to its own source span, so there is no span to
       // subdivide, and the entry refuses a refine rather than quietly drawing the
       // document's own layout for one.
-      expect([...s.refusesFinerView.entries()], `k=${k} gates`).toEqual([['no-finer-view', 83]])
+      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+      expect([...s.refusesFinerView.entries()], `k=${k} gates`).toEqual([['no-finer-view', 86]])
       expect(s.asks.length, `k=${k} asks`).toBe(23317)
       // IDENTICAL AT EVERY SCALE, and that is the point rather than a coincidence:
       // the population, the routing and the refusals are properties of the
@@ -239,7 +244,10 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // pinned BY UNIT, so a fix to #1137 reads as a named delta and a regression
       // cannot hide inside a rate
       expect([...new Set(nonLocal.map((a) => a.mini))].sort(), `k=${k}`).toEqual(NON_LOCAL_UNITS)
-      expect(spliced.length - nonLocal.length, `k=${k} local`).toBe(19088)
+      // ⚠ 19088 -> 21531 at #1242 — the corpus widened 1535 -> 1633 units
+      // (98 arrivals, 0 departures): the harvest gained the product's own
+      // resolver, so every figure here is over a wider population. Upward only.
+      expect(spliced.length - nonLocal.length, `k=${k} local`).toBe(21531)
     }
   })
 
@@ -295,8 +303,12 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
     for (const k of SCALES) {
       const spliced = SWEPT.get(k)!.asks.filter((a) => a.accepted && a.path === 'splice')
       const vacuous = spliced.filter((a) => a.regions === 1)
-      expect(vacuous.length, `k=${k} vacuous asks`).toBe(1562)
-      expect([...new Set(vacuous.map((a) => a.mini))].length, `k=${k} vacuous units`).toBe(412)
+      // ⚠ 1562 -> 1587 at #1242 — the corpus widened 1535 -> 1633 units
+      // (98 arrivals, 0 departures): the harvest gained the product's own
+      // resolver, so every figure here is over a wider population. Upward only.
+      expect(vacuous.length, `k=${k} vacuous asks`).toBe(1587)
+      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+      expect([...new Set(vacuous.map((a) => a.mini))].length, `k=${k} vacuous units`).toBe(421)
     }
   })
 
@@ -693,9 +705,14 @@ describe('#1058 — the roll, gated separately', () => {
             if (serializePianoRoll(collapsePianoRollToDocument(next) ?? next) !== null) written++
           }
       }
-      expect(opens, `k=${k} opens`).toBe(542)
-      expect(admits, `k=${k} admits`).toBe(k === 2 ? 488 : 487)
-      expect(gates.get('no-finer-view'), `k=${k} leaf refusals`).toBe(54)
+      // ⚠ 542 -> 594 at #1242 — the corpus widened 1535 -> 1633 units
+      // (98 arrivals, 0 departures): the harvest gained the product's own
+      // resolver, so every figure here is over a wider population. Upward only.
+      expect(opens, `k=${k} opens`).toBe(594)
+      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+      expect(admits, `k=${k} admits`).toBe(k === 2 ? 538 : 537)
+      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+      expect(gates.get('no-finer-view'), `k=${k} leaf refusals`).toBe(56)
       expect(asks, `k=${k} asks`).toBeGreaterThan(4000)
       // the roll's notes carry a duration natively, so a finer column is never
       // unspellable for it the way a `_` run can be for the grid

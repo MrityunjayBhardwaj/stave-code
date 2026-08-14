@@ -165,7 +165,8 @@ const rollSurface: Surface<PianoRollModel> = {
  * `<[b4, g#4, e4, c#4]> …` stack. `respelled` and `play-changed` stayed at 0 on both
  * surfaces, so nothing was traded for it.
  */
-const ASKED = { grid: 972, roll: 541 }
+// ⚠ 972/541 -> 1012/593 at #1242 — the corpus widened 1535 -> 1633 units.
+const ASKED = { grid: 1012, roll: 593 }
 
 describe('#1123 — a velocity drag leaves the notation alone', () => {
   it('grid', () => {

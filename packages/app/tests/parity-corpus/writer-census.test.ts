@@ -439,8 +439,13 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // stopped approximating the transpiler with a regex. Every figure in this file
     // is therefore over a different population than a pre-#1037 one and the two
     // must never be quoted side by side.
-    expect(grid.length).toBe(1535 - 744)
-    expect(roll.length).toBe(1535 - 1122)
+    // ⚠ THE CORPUS MOVED AGAIN at #1242 — 1535 -> 1633 units, as the harvest gained
+    // the product's own resolver (98 arrivals, 0 departures). Same warning as #1037
+    // below: every figure in this file is over a wider population than a pre-#1242 one
+    // and the two must never be quoted side by side.
+    expect(grid.length).toBe(1633 - 813)
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    expect(roll.length).toBe(1633 - 1180)
 
     // A BAND, NOT A FLOOR. This is a measurement, so a move in EITHER direction is
     // a finding and should turn this red rather than pass quietly upward.
@@ -485,7 +490,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // again over the same 1204 population, so it remains comparable to both figures
     // above. No row moved the other way, which is what says this is a widening and not
     // a trade.
-    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(1041)
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(1096)
     expect(untransferable.length, 'untransferable' + why).toBe(63)
     expect(all.filter((r) => r.outcome === 'no-probe').length, 'unverified' + why).toBe(100)
     // The reclassification is asserted by MECHANISM as well as by total, so that a
@@ -666,7 +672,10 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // could round to two different keys, and a periodic pattern read as aperiodic.
       // One unit was being refused that way; an exact grid lets its cycles compare
       // equal. So the widening repaired a detection error as well as a resolution one.
-      expect(rows.length).toBe(35)
+      // ⚠ 35 -> 39 at #1242 — the corpus widened 1535 -> 1633 units
+      // (98 arrivals, 0 departures): the harvest gained the product's own
+      // resolver, so every figure here is over a wider population. Upward only.
+      expect(rows.length).toBe(39)
 
       const withinCap: string[] = []
       let past = 0
@@ -690,8 +699,10 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // cap would mean the gate is misattributing, and the whole mechanism claim
       // (and #1020 with it) would be wrong.
       expect(withinCap, withinCap.join('\n')).toEqual([])
-      expect(past).toBe(34)
-      expect(aperiodic).toBe(1)
+      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+      expect(past).toBe(36)
+      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+      expect(aperiodic).toBe(3)
       expect(rollBlockedByItsOwnCap).toBe(23)
     }, 900_000)
 
@@ -761,12 +772,16 @@ describe('writer census — how much of the syntactic core transfers to the deri
         `\n  array-value asks still untransferable (${rows.length}):\n` +
           rows.map((r) => `     ${r.surface}  ${r.gate}  ${JSON.stringify(r.mini).slice(0, 70)}`).join('\n'),
       )
-      expect(rows.length).toBe(8)
+      // ⚠ 8 -> 9 at #1242 — the corpus widened 1535 -> 1633 units
+      // (98 arrivals, 0 departures): the harvest gained the product's own
+      // resolver, so every figure here is over a wider population. Upward only.
+      expect(rows.length).toBe(9)
       expect(rows.filter((r) => r.gate === 'no-note-content')).toEqual([])
       // six `,`-stacks with no leaf anchor, one past the period cap — both are the
       // SAME bounds the non-array residual is made of, which is what makes these
       // structural residual that happens to contain a `:` rather than naming misses.
-      expect(rows.filter((r) => r.gate === 'no-leaf-anchor').length).toBe(7)
+      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+      expect(rows.filter((r) => r.gate === 'no-leaf-anchor').length).toBe(8)
       expect(rows.filter((r) => r.gate === 'unstable-period').length).toBe(1)
     }, 900_000)
 
@@ -825,10 +840,14 @@ describe('writer census — how much of the syntactic core transfers to the deri
       )
       expect(mismatches, mismatches.slice(0, 5).join('\n')).toEqual([])
       expect(missingOverlay, missingOverlay.slice(0, 5).join('\n')).toEqual([])
-      expect(checked).toBe(1204)
+      // ⚠ 1204 -> 1273 at #1242 — the corpus widened 1535 -> 1633 units
+      // (98 arrivals, 0 departures): the harvest gained the product's own
+      // resolver, so every figure here is over a wider population. Upward only.
+      expect(checked).toBe(1273)
       // the field the comparison above is allowed to ignore must be on EVERY one of them —
       // otherwise "identical apart from `surgical`" is satisfied by never attaching it
-      expect(overlaid, 'the overlay is not reaching the core-served asks').toBe(1204)
+      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+      expect(overlaid, 'the overlay is not reaching the core-served asks').toBe(1273)
     }, 900_000)
 
     it('RED TEST: the census distinguishes the two writers — it is not measuring one twice', () => {

@@ -315,23 +315,29 @@ describe('#1054 — document, layout and haps are three separate readings', () =
       coarsenSkipped: grid.coarsenSkipped,
       ...grid.byOutcome,
       hapsUnevaluable: grid.hapsUnevaluable,
+    // ⚠ MOVED at #1242 — the corpus widened 1535 -> 1633 units (98 arrivals, 0
+    // departures). `unwritable` and `hapsUnevaluable` stay at ZERO, which is the
+    // half that matters: 248 new asks, none of them unwritable.
     }).toEqual({
-      units: 973,
-      asks: 7338,
-      coarsenSkipped: 1196,
-      'no-offer': 1058,
+      units: 1013,
+      asks: 7586,
+      coarsenSkipped: 1272,
+      'no-offer': 1081,
       unwritable: 0,
-      measured: 6280,
+      measured: 6505,
       hapsUnevaluable: 0,
     })
     // TODAY'S ANSWER. Every grid refine that reaches the writer rewrites the document —
     // there is no `---` key here. Phase 4 (#1057) turns the `doc` half of all four keys
     // into `---` while leaving the `layout` and haps halves exactly as they stand.
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633). All four keys rise and NO NEW KEY
+    // appears — the widening added asks to the axes that already existed rather
+    // than reaching a combination the taxonomy had never seen.
     expect(grid.triples).toEqual({
-      'lossless (doc,layout,----)': 2769,
-      'lossless (doc,layout,haps)': 204,
-      'quantize (doc,layout,----)': 99,
-      'quantize (doc,layout,haps)': 3208,
+      'lossless (doc,layout,----)': 2852,
+      'lossless (doc,layout,haps)': 230,
+      'quantize (doc,layout,----)': 101,
+      'quantize (doc,layout,haps)': 3322,
     })
   })
 
@@ -343,13 +349,14 @@ describe('#1054 — document, layout and haps are three separate readings', () =
       coarsenSkipped: roll.coarsenSkipped,
       ...roll.byOutcome,
       hapsUnevaluable: roll.hapsUnevaluable,
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633); `unwritable` stays ZERO across +304 asks.
     }).toEqual({
-      units: 544,
-      asks: 3464,
-      coarsenSkipped: 988,
-      'no-offer': 763,
+      units: 596,
+      asks: 3768,
+      coarsenSkipped: 1096,
+      'no-offer': 813,
       unwritable: 0,
-      measured: 2701,
+      measured: 2955,
       hapsUnevaluable: 0,
     })
     // A FINDING, not a prediction — this key was written expecting `[]` and the corpus
@@ -368,11 +375,11 @@ describe('#1054 — document, layout and haps are three separate readings', () =
     // worlds are already indistinguishable — which makes them a poor place to look for
     // Phase 4 regressions, and a good place to look for what the target feels like.
     expect(roll.triples).toEqual({
-      'lossless (---,layout,----)': 83,
-      'lossless (doc,layout,----)': 1071,
+      'lossless (---,layout,----)': 92,
+      'lossless (doc,layout,----)': 1182,
       'lossless (doc,layout,haps)': 87,
       'quantize (doc,layout,----)': 5,
-      'quantize (doc,layout,haps)': 1455,
+      'quantize (doc,layout,haps)': 1589,
     })
   })
 
