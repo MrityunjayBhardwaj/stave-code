@@ -9,7 +9,65 @@ enumerated below is exactly what that deletion would cost.
 
 ---
 
-## ⚠ RE-BASED AGAIN AT #1010 P4c — the duration class is CLOSED
+## ⚠ RE-BASED AT #1242 — the corpus widened, and the P6 number in this doc was ALREADY STALE
+
+The mini-corpus harvest became the UNION of a literal walk and the product's own unit
+walk: **1535 → 1633 units, 98 arrivals, 0 departures**. Every figure below this section
+was taken over the 1535-row corpus and is superseded by the table here.
+
+Measured as a PAIRED DIFFERENTIAL on one tree in one session — the census run twice,
+once with `mini-corpus.json` checked out at `studio_v0.2.0` and once with the union —
+so the move is attributable to the population and to nothing else:
+
+| figure | corpus 1535 | **corpus 1633** | mechanism |
+| --- | --- | --- | --- |
+| corpus units | 1535 | **1633** | union of two proposers (#1242) |
+| core-served asks | 1204 (991 distinct minis) | **1273** (1037 distinct minis) | +69 asks over +46 minis |
+| transfers | 1041 | **1096** | +55 |
+| untransferable | 63 (57 minis) | **68** (62 minis) | +5 |
+| unverified (no-probe) | 100 | **109** | +9 |
+| structured transfers | 633 | **684** | +51 |
+| array-value residual | 8 | **9** | +1 |
+| structural untransferable | 55 | **59** | +4 |
+| …core view has STRUCTURE | 50 | **53** | +3 |
+| …core edit VERIFIED ok | 49 | **53** | +4 |
+| **the P6 blocker set** | **48** (grid 18 + roll 30) | **51** (grid 18 + roll 33) | **+3, ENTIRELY ON THE ROLL** |
+
+> ⚠⚠ **THE "54" THIS DOCUMENT QUOTES BELOW IS TWO CHANGES BEHIND THE GATE, AND WAS
+> ALREADY WRONG BEFORE #1242 TOUCHED ANYTHING.** Re-measured on `studio_v0.2.0` over
+> the unchanged 1535-row corpus, the blocker reads **48**, not 54.
+>
+> The figure IS gated — it is the `coreStructured && coreProbe === 'ok'` pin in
+> `writer-census.test.ts` — so this is not an ungated number. It is the worse and
+> more ordinary thing: **a document that TRANSCRIBES a gated figure and then drifts
+> from it.** Traced: the pin read `toBe(54)` from #1015 until **#1066** (the onset
+> snap grid, `44a97960`) moved it to `toBe(48)`. That PR updated the pin and left the
+> table below reading `54 | 54 | unmoved — see below`, directly under its own
+> blockquote explaining what #1066 changed. #1242 then moves it 48 → 51.
+>
+> **#1046 IS THIS EXACT COMPLAINT AND IS STILL OPEN.** It was filed on 2026-07-26
+> about the sibling document (`ROLL-CAP-SWEEP.md`), it names these same four rows,
+> and it already prescribes the right fix: *derive the table from
+> `WRITER-CENSUS.json`, do not transcribe it.* Correcting 54 → 51 by hand only resets
+> the clock, which is why this box states the trail instead of quietly editing the
+> digit. **Anything scoping #1012 against 54 must be re-derived** — take the number
+> from a run, never from this file.
+>
+> **The move itself is clean and is the useful half.** The grid blocker is UNMOVED at
+> 18 across the whole widening; all three new blockers are roll asks. A population
+> that grew 6.4% did not enlarge the grid's irreplaceable set at all, which is what
+> says the grid half is a property of the notation rather than of how much of it we
+> happened to harvest. The roll half rising is the ordinary reading — the roll's cap
+> of 4 is the binding constraint, and more material means more asks past it.
+>
+> ⚠ **NOT re-measured at roll cap 12.** The "39 (24 grid + 15 roll)" figure below is a
+> 1535-corpus observation and is left standing rather than scaled, because that figure
+> was OBSERVED by running the census with `LEAF_PROJECT_BARS.roll = 12` and a derived
+> replacement would be exactly the kind of unmeasured number this box is about.
+
+---
+
+## ⚠ RE-BASED AGAIN AT #1010 P4c — the duration class is CLOSED (figures below are pre-#1242)
 
 The step-grid printer now **preserves** a note's length instead of re-deriving it from
 the columns. That retires class 2 of the five-part anatomy below ("11 duration loss →

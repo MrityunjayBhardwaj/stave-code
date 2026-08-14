@@ -248,11 +248,20 @@ describe('#1116 the view scale, through the public entries', () => {
     const rolls = minis.filter((m) => parsePianoRoll(m).ok)
 
     // The denominators are pinned, so a gate cannot quietly go green over less material.
-    expect(grids.length).toBe(973)
-    expect(rolls.length).toBe(544)
+    // ⚠ 973 -> 1013 at #1242 — the corpus widened 1535 -> 1633 units
+    // (98 arrivals, 0 departures): the harvest gained the product's own
+    // resolver, so every figure here is over a wider population. Upward only.
     // …and the split that motivates this file: the core answers for most of them.
-    expect(grids.filter((m) => parseStepGridCore(m).ok).length).toBe(783)
-    expect(rolls.filter((m) => parsePianoRollCore(m).ok).length).toBe(412)
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    // Folded into one array assertion so all four denominators report in a single
+    // run — `expect` aborts at its first failure, and a population change moves
+    // every one of these at once.
+    expect([
+      grids.length,
+      rolls.length,
+      grids.filter((m) => parseStepGridCore(m).ok).length,
+      rolls.filter((m) => parsePianoRollCore(m).ok).length,
+    ]).toEqual([1013, 596, 812, 452])
 
     expect(
       grids.filter((m) => JSON.stringify(parseStepGrid(m, 1)) !== JSON.stringify(parseStepGrid(m))),
@@ -282,22 +291,34 @@ describe('#1116 the view scale, through the public entries', () => {
   it('grid: LIVE, FAITHFUL and SAME-WRITER wherever honoured; REFUSES everywhere else', () => {
     const { honoured, refused, violations } = sweep(parseStepGrid, gridMoved)
     expect(violations).toEqual([])
-    expect(honoured.get(2)).toBe(890)
-    expect(honoured.get(4)).toBe(890)
-    expect(refused.get(2)).toBe(83)
-    expect(refused.get(4)).toBe(83)
+    // ⚠ 890 -> 927 at #1242 — the corpus widened 1535 -> 1633 units
+    // (98 arrivals, 0 departures): the harvest gained the product's own
+    // resolver, so every figure here is over a wider population. Upward only.
+    // Folded into one array assertion so both scales report in a single run.
+    // Each pair sums to `grids.length` = 1013, and NOTHING crosses the ceiling
+    // between ×2 and ×4 on this surface — which is the roll's story, not the
+    // grid's, and stays visible only because the two scales are pinned apart.
+    expect([honoured.get(2), refused.get(2), honoured.get(4), refused.get(4)]).toEqual([
+      927, 86, 927, 86,
+    ])
   })
 
   it('roll: LIVE, FAITHFUL and SAME-WRITER wherever honoured; REFUSES everywhere else', () => {
     const { honoured, refused, violations } = sweep(parsePianoRoll, rollMoved)
     expect(violations).toEqual([])
-    expect(honoured.get(2)).toBe(490)
-    expect(refused.get(2)).toBe(54)
+    // ⚠ 490 -> 540 at #1242 — the corpus widened 1535 -> 1633 units
+    // (98 arrivals, 0 departures): the harvest gained the product's own
+    // resolver, so every figure here is over a wider population. Upward only.
     // one long pattern crosses the VIEW ceiling at ×4 and not at ×2 — the ceiling
     // doing exactly its job, so the two scales are pinned separately rather than
-    // averaged into one number that would hide it
-    expect(honoured.get(4)).toBe(489)
-    expect(refused.get(4)).toBe(55)
+    // averaged into one number that would hide it. Still exactly ONE after the
+    // widening: 540/56 at ×2 against 539/57 at ×4, each pair summing to
+    // `rolls.length` = 596.
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    // Folded into one array assertion so both scales report in a single run.
+    expect([honoured.get(2), refused.get(2), honoured.get(4), refused.get(4)]).toEqual([
+      540, 56, 539, 57,
+    ])
   })
 
   it('magnifies the case the resolution work is named after, on both surfaces', () => {

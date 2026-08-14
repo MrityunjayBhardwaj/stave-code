@@ -289,10 +289,14 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // every added ask is admitted. The rate falls 275/557 → 275/581 purely because the
     // denominator grew.
     const t = gridTally.get('leaf')!
+    // ⚠ 83/581/275 -> 86/623/285 at #1242 — the corpus widened 1535 -> 1633 units.
+    // `refused` moves with the population for the first time (275 -> 285): the 3 new
+    // leaf units bring 42 asks and 10 refusals, which is the same shared-leaf branch,
+    // not a new one — the arm below re-derives every refusal from the source.
     expect({ units: t.units, asks: t.asks, refused: t.refused }).toEqual({
-      units: 83,
-      asks: 581,
-      refused: 275,
+      units: 86,
+      asks: 623,
+      refused: 285,
     })
   })
 
@@ -300,10 +304,14 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // The half #1160 was filed without. Same branch, same rate — so the property is
     // about the leaf projection itself, not about either surface's edit vocabulary.
     const t = rollTally.get('leaf')!
+    // ⚠ 54/577/288 -> 56/659/369 at #1242. The roll moves hardest of anything in
+    // this PR: +2 units carry +82 asks and +81 refusals, because the newly admitted
+    // melodic strings are long multi-cycle chord charts where one token backs many
+    // columns — exactly the shape this arm is about. The rate goes 50% -> 56%.
     expect({ units: t.units, asks: t.asks, refused: t.refused }).toEqual({
-      units: 54,
-      asks: 577,
-      refused: 288,
+      units: 56,
+      asks: 659,
+      refused: 369,
     })
   })
 
@@ -317,7 +325,10 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // matter.
     const g = gridTally.get('leaf')!
     const r = rollTally.get('leaf')!
-    expect({ grid: g.refusedShared, roll: r.refusedShared }).toEqual({ grid: 275, roll: 288 })
+    // ⚠ 275/288 -> 285/369 at #1242, and this is the load-bearing half: recomputed
+    // from the SOURCE without consulting the writer, it still equals the writer's own
+    // refusal count on both surfaces. The widening added asks, not a new branch.
+    expect({ grid: g.refusedShared, roll: r.refusedShared }).toEqual({ grid: 285, roll: 369 })
   })
 
   it('GRID: sharing is not merely necessary but SUFFICIENT — an exact iff, no residue', () => {
@@ -365,7 +376,10 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // population was 12 real asks double-counted. A first cut of this arm asserted 24
     // straight from the issue and this gate caught it, which is the arm doing its job on
     // its first run.
-    expect(byIndexResidue).toBe(12)
+    // ⚠ 12 -> 20 at #1242 — the corpus widened 1535 -> 1633 units
+    // (98 arrivals, 0 departures): the harvest gained the product's own
+    // resolver, so every figure here is over a wider population. Upward only.
+    expect(byIndexResidue).toBe(20)
   })
 
   it('only a FIFTH of the sharing is spelt on the token — the figure the design call rests on', () => {
@@ -376,7 +390,11 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     //
     // Pinned because it is load-bearing. The recommendation to keep refusing is exactly
     // as good as this ratio, and prose stating it cannot notice when it stops being true.
-    expect(split).toEqual({ gridOn: 77, gridOff: 300, rollOn: 72, rollOff: 303 })
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633). The ratio the design call rests on is
+    // essentially unchanged on the grid (77/300 -> 81/306, a fifth either way) and
+    // FALLS on the roll (72/303 -> 90/506, 19% -> 15%) — the new material is more
+    // enclosing-multiplier, not less, so "keep refusing" reads stronger, not weaker.
+    expect(split).toEqual({ gridOn: 81, gridOff: 306, rollOn: 90, rollOff: 506 })
   })
 
   it('POSITIVE CONTROL — the non-leaf paths take the same gesture', () => {
@@ -392,13 +410,18 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
       gridAlt: { asks: ga.asks, refused: ga.refused },
       rollAlt: { asks: ra.asks, refused: ra.refused },
     }).toEqual({
-      gridSource: { asks: 4062, refused: 0 },
-      gridAlt: { asks: 597, refused: 0 },
-      rollAlt: { asks: 736, refused: 0 },
+      // ⚠ MOVED at #1242 (corpus 1535 -> 1633). Every `refused` stays ZERO, which
+      // is what this control exists to show: the widening added asks to the accepting
+      // paths too, so the leaf refusal rate above is not an artefact of a shrinking
+      // positive control.
+      gridSource: { asks: 4443, refused: 0 },
+      gridAlt: { asks: 619, refused: 0 },
+      rollAlt: { asks: 790, refused: 0 },
     })
     // The roll's `source` path refuses a little, and it is NOT this issue's branch —
     // these sit outside both leaf splicers. Pinned here so the residue has a number
     // instead of hiding inside a "non-leaf accepts everything" claim that is false.
-    expect({ asks: rs.asks, refused: rs.refused }).toEqual({ asks: 3509, refused: 31 })
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    expect({ asks: rs.asks, refused: rs.refused }).toEqual({ asks: 3956, refused: 31 })
   })
 })

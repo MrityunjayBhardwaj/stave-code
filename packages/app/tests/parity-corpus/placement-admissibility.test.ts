@@ -107,7 +107,10 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     expect(
       { refused, onMultiPart, distinctMinis: refusingMinis.size, multiPartUnits },
       'the part-relative causes `partColumns` owns — and 64 multi-part units exist to refuse, so this is not a claim about an empty set',
-    ).toEqual({ refused: 31, onMultiPart: 31, distinctMinis: 9, multiPartUnits: 64 })
+    // ⚠ multiPartUnits 64 -> 67 at #1242 (corpus 1535 -> 1633). The refusals do NOT
+    // move — 31 over the same 9 minis — so the widening added multi-part units that
+    // this cause does not reach, which is the honest direction for a non-vacuity clause.
+    ).toEqual({ refused: 31, onMultiPart: 31, distinctMinis: 9, multiPartUnits: 67 })
   })
 
   it('grid: the offer matches the writer on every cell, split by write path', () => {
@@ -209,7 +212,9 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     expect(
       { asks: by.element.asks, refused: by.element.refused },
       'element path — 1,748 → 31 refused, the causes #1064 did not name',
-    ).toEqual({ asks: 15054, refused: 31 })
+    // ⚠ asks 15054 -> 17116 at #1242 (corpus 1535 -> 1633). `refused` UNMOVED at 31:
+    // 2,062 new element-path placements, every one of them admitted.
+    ).toEqual({ asks: 17116, refused: 31 })
     // ⚠ 3834 → 3842 IN #1235, AND THE 8 WERE NEVER PLACEMENTS. The leaf writer used to
     // compare TOKENS only, so it could not see that `clampLane` had SHORTENED a note
     // sustaining through the clicked column — it wrote the rest's bytes for the new sound
@@ -230,15 +235,18 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     expect(
       { asks: by.leaf.asks, refused: by.leaf.refused },
       'leaf path — the 294 taken are columns holding a rest (#1154) whose placement moves no other length (#1235)',
-    ).toEqual({ asks: 4136, refused: 3842 })
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    ).toEqual({ asks: 4466, refused: 4172 })
     expect(
       { asks: by.alt.asks, refused: by.alt.refused },
       'alt path — 512 → 0 refused',
-    ).toEqual({ asks: 3604, refused: 0 })
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    ).toEqual({ asks: 3934, refused: 0 })
     expect(
       { leaf: by.leaf.units, alt: by.alt.units, element: by.element.units },
       'parseable units per path',
-    ).toEqual({ leaf: 83, alt: 59, element: 839 })
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    ).toEqual({ leaf: 86, alt: 61, element: 874 })
 
     // The residual's SHAPE is asserted in its own test below, not here — an assertion
     // that sits after a failing one never runs, so bundling it into this body would
@@ -502,7 +510,10 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       }
     }
     expect(disagreements.join('\n')).toBe('')
-    expect(leafViews, 'leaf grids in the corpus').toBe(83)
+    // ⚠ 83 -> 86 at #1242 — the corpus widened 1535 -> 1633 units
+    // (98 arrivals, 0 departures): the harvest gained the product's own
+    // resolver, so every figure here is over a wider population. Upward only.
+    expect(leafViews, 'leaf grids in the corpus').toBe(86)
     // WHAT THE PATH RULE WOULD HAVE SAID, pinned as the delta rather than described:
     // it answered `false` on all 82. 20 of them now answer `true` — the 18 that take
     // a note on a rest column, plus 2 with no empty cell to ask about.
@@ -517,14 +528,21 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     expect(leafViewsPlacing, 'leaf grids that take a note somewhere (#1154)').toBe(19)
     // The denominators, so none of the above can quietly become a claim about an
     // empty set — and the positive control for the no-ask branch.
-    expect(viewsWithNoAsk, 'grids with no empty cell at all').toBe(418)
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    expect(viewsWithNoAsk, 'grids with no empty cell at all').toBe(429)
     // THE OTHER HALF OF THE CLAIM, and the one that would catch an over-broad
     // gate: suppressing placement on leaf views must not have suppressed it
     // anywhere else. Every non-leaf view that has an empty cell at all still
     // offers at least one — 468 of 468, no exceptions. A gate that quietly
     // greyed a whole surface would show up here as a shortfall.
-    expect(nonLeafWithAnAsk, 'non-leaf grids with any empty cell').toBe(482)
-    expect(nonLeafWithSomeOffer, 'non-leaf grids that still take a note').toBe(482)
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    // Folded, because the CLAIM is the equality — "every non-leaf view that has an
+    // empty cell still offers at least one" is 508 of 508, and asserting the two
+    // apart lets a shortfall report as a single moved number instead of a gap.
+    expect(
+      [nonLeafWithAnAsk, nonLeafWithSomeOffer],
+      'non-leaf grids with any empty cell, and of those the ones that still take a note',
+    ).toEqual([508, 508])
   })
 
   /**
@@ -574,7 +592,10 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // their whole range needed the unheld row too. They do not; their content
     // cells already refuse, so asking the op at all is what catches them.
     // A `toBeGreaterThan` would have let the 4 vanish quietly.
-    expect(saidNo, 'rolls answering "places nothing"').toBe(57)
+    // ⚠ 57 -> 59 at #1242 — the corpus widened 1535 -> 1633 units
+    // (98 arrivals, 0 departures): the harvest gained the product's own
+    // resolver, so every figure here is over a wider population. Upward only.
+    expect(saidNo, 'rolls answering "places nothing"').toBe(59)
     expect(rowsSwept, 'padded-range placements swept on them').toBeGreaterThan(1000)
   })
 
@@ -673,11 +694,12 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     expect(disagreements.join('\n')).toBe('')
     // asserted as ONE clause so every part carries its own denominator and a
     // later assertion cannot be skipped by an earlier failure
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633), every part upward and in proportion.
     expect({ rolls, saidNothing, probeAsks, fullSurfaceAsks }).toEqual({
-      rolls: 545,
-      saidNothing: 57,
-      probeAsks: 41021,
-      fullSurfaceAsks: 119794,
+      rolls: 597,
+      saidNothing: 59,
+      probeAsks: 46159,
+      fullSurfaceAsks: 134340,
     })
   })
 })

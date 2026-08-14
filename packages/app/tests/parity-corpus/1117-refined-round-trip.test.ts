@@ -301,12 +301,20 @@ function pinned(byShape: Map<string, Tally>, pins: Record<string, [number, numbe
   expect(new Set(Object.keys(pins)), 'the pinned shapes and the observed shapes must agree').toEqual(
     new Set(byShape.keys()),
   )
-  for (const [shape, [refined, edited, nulls]] of Object.entries(pins)) {
+  // ONE comparison over the WHOLE table, not three per shape. `expect` aborts a
+  // test at its first failure, so a per-shape loop reports only the first cell
+  // that moved — and a population change (#1242) moves most of them at once,
+  // turning one measurement into one round of the gate per cell. Folded, a
+  // single run prints the entire observed table against the entire pinned one.
+  const observed: Record<string, [number, number, number]> = {}
+  for (const shape of Object.keys(pins)) {
     const t = byShape.get(shape)!
-    expect(t.refined, `${shape}: units drawing a ×${K} view`).toBe(refined)
-    expect(t.edited, `${shape}: units the equivalence arm actually compared`).toBe(edited)
-    expect(t.nullCollapse, `${shape}: writes that spell the finer grid instead`).toBe(nulls)
+    observed[shape] = [t.refined, t.edited, t.nullCollapse]
   }
+  expect(
+    observed,
+    `[units drawing a ×${K} view, units the equivalence arm compared, writes that spell the finer grid]`,
+  ).toEqual(pins)
 }
 
 /** the four properties, asserted the same way for both surfaces */
@@ -388,14 +396,14 @@ describe('#1117 — coming back from a refined view', () => {
  * no content changed, no width was wrong, and no collapse diverged.
  */
 const GRID_PINS: Record<string, [number, number, number]> = {
-  'alt-element': [59, 59, 0],
-  'alt-whole': [76, 76, 0],
-  element: [755, 754, 0],
+  'alt-element': [61, 61, 0],
+  'alt-whole': [85, 85, 0],
+  element: [781, 780, 0],
 }
 const ROLL_PINS: Record<string, [number, number, number]> = {
-  'alt-element': [52, 36, 0],
-  'alt-whole': [93, 47, 2],
-  element: [345, 118, 2],
+  'alt-element': [56, 39, 0],
+  'alt-whole': [105, 54, 2],
+  element: [379, 136, 2],
 }
 /*
  * WHY THE ROLL COMPARES FEWER UNITS THAN THE GRID (201 of 490, against 868 of 869).

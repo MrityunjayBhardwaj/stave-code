@@ -172,14 +172,69 @@ describe('#1036 — an accepted unit keeps every note the engine played', () => 
   it('pins the population and the window, so a re-scope cannot pass silently', () => {
     // These are the numbers the two arms above are a statement ABOUT. Without them
     // the gate still passes on a corpus of one mini over zero cycles.
-    expect(minis.length).toBe(1535)
+    // ⚠ 1535 -> 1633 at #1242 — the corpus widened 1535 -> 1633 units
+    // (98 arrivals, 0 departures): the harvest gained the product's own
+    // resolver, so every figure here is over a wider population. Upward only.
+    expect(minis.length).toBe(1633)
     expect(CYCLES).toHaveLength(16)
     const grid = sweep(GRID)
     const roll = sweep(ROLL)
-    expect(grid.accepted).toBe(GRID_ACCEPTED)
-    expect(grid.kept).toBe(GRID_KEPT)
-    expect(roll.accepted).toBe(ROLL_ACCEPTED)
-    expect(roll.kept).toBe(ROLL_KEPT)
+    expect([grid.accepted, grid.kept, roll.accepted, roll.kept]).toEqual([
+      GRID_ACCEPTED,
+      GRID_KEPT,
+      ROLL_ACCEPTED,
+      ROLL_KEPT,
+    ])
+  })
+
+  /**
+   * WHY `ROLL_KEPT` IS THE SIZE IT IS — asserted, not narrated (#1242).
+   *
+   * A pin whose value nobody can account for is a pin nobody can defend: the next
+   * person to move it has no way to tell a real regression from the population
+   * shifting under them. Half of this arm's job is therefore the SECOND assertion —
+   * that with the one dominating unit removed, what remains is proportionate. That
+   * is the claim "the widening did not change how many notes a unit keeps", and it
+   * is the one a bare total cannot make.
+   */
+  it('one unit accounts for 90% of ROLL_KEPT, and the rest of the corpus is ordinary', () => {
+    const roll = sweep(ROLL)
+    const outlier = minis.filter((m) => m.startsWith(ONE_UNIT_MINI))
+    // The population restriction is asserted first: if the unit ever leaves the
+    // corpus this arm must fail LOUDLY rather than quietly measure an empty set.
+    expect(outlier, `the ${ONE_UNIT_MINI}… stack is no longer in the corpus`).toHaveLength(1)
+
+    let kept = 0
+    let accepted = 0
+    const pat = reifyMini(outlier[0])
+    for (const cyc of CYCLES) {
+      const r = rollOnsets(pat, cyc)
+      if (r === null) continue
+      accepted++
+      kept += r.length
+    }
+    expect([accepted, kept], 'the outlier’s own contribution').toEqual([
+      CYCLES.length,
+      ONE_UNIT_KEPT,
+    ])
+
+    // AND THE HALF THAT MATTERS: everything else, per accepted pair, is unremarkable.
+    //
+    // ⚠ TAKEN FROM THE SWEEP, NOT FROM THE PINS ABOVE. Deriving this as
+    // `(ROLL_KEPT - ONE_UNIT_KEPT) / (ROLL_ACCEPTED - 16)` reads identically and is
+    // worth nothing: every term would be a constant declared in this file, so the
+    // bound could not fail while the pins held and would be satisfied by arithmetic
+    // rather than by the corpus ([[P519]] — the assertion's subject must not be
+    // constructed beside the assertion). `sweep` is memoized and the other arms have
+    // already paid for it, so measuring costs nothing here.
+    //
+    // Observed 2026-08-14: 81,536 over 13,523 pairs = 6.03, against the 1,535-row
+    // corpus's 6.0 before the widening. That near-identity is the claim — the
+    // arrivals keep notes at the same rate the survivors do, and the +123% total is
+    // one pathological unit rather than a change in what a unit costs.
+    const rest = (roll.kept - kept) / (roll.accepted - accepted)
+    expect(rest, 'notes per accepted pair, outlier excluded').toBeGreaterThan(5)
+    expect(rest, 'notes per accepted pair, outlier excluded').toBeLessThan(7)
   })
 })
 
@@ -197,7 +252,39 @@ describe('#1036 — an accepted unit keeps every note the engine played', () => 
  * belongs in the assertion and not in a sentence someone can quote without.)
  * Pinned here so the figure can never drift unremarked again.
  */
-const GRID_ACCEPTED = 18825
-const GRID_KEPT = 85536
-const ROLL_ACCEPTED = 12230
-const ROLL_KEPT = 72920
+const GRID_ACCEPTED = 19900
+const GRID_KEPT = 92155
+const ROLL_ACCEPTED = 13539
+/**
+ * ⚠ 72920 -> 162336 at #1242 (+123%) — the one figure in that PR not roughly
+ * proportional to its +6.4% population. VERIFIED, and the first guess was wrong in
+ * KIND, which is why it was worth measuring rather than reasoning about: it is not
+ * "long multi-cycle chord charts", and it is not a property of the widening at all.
+ *
+ * ONE arrival carries 80,800 of the +89,416 — `1*1, 2*2, … 100*100`, a hundred-voice
+ * `,`-stack in which voice k plays k notes per cycle. Sum(1..100) = 5,050 per cycle,
+ * over the 16-cycle window = 80,800, which closes the arithmetic exactly rather than
+ * approximately. The gate `ONE_UNIT_KEPT` below is that number, so the explanation is
+ * asserted rather than narrated ([[P356]] — a figure only named in a comment has no
+ * gate on it).
+ *
+ * The other 97 arrivals carry 8,616 between them: 5.5 notes per accepted unit×cycle
+ * pair against the 1,535 survivors' 6.0. They are ORDINARY, and that is the half of
+ * this note that matters — without the outlier the figure would read 81,536, or
+ * +11.8%, in line with `ROLL_ACCEPTED`'s +10.7%. A population that grew by 6.4% did
+ * not start keeping twice as many notes per unit; it admitted one pathological unit.
+ *
+ * MEASURED by `_1242-roll-kept.spec.ts`, whose control is what makes the attribution
+ * sound: the same sweep re-run over the PRE-widening rows reproduces 12230 / 72920
+ * exactly, and departures are zero — so the whole delta belongs to the arrivals and
+ * nothing about the survivors moved.
+ */
+const ROLL_KEPT = 162336
+
+/**
+ * The outlier's own contribution, pinned so the paragraph above cannot rot into a
+ * story. If this unit ever leaves the corpus, `ROLL_KEPT` falls by exactly this and
+ * the drop is explained on arrival instead of being re-investigated from scratch.
+ */
+const ONE_UNIT_MINI = '1*1, 2*2,'
+const ONE_UNIT_KEPT = 80800

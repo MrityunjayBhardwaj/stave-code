@@ -227,11 +227,20 @@ describe('the step cell carries a length the engine actually played', () => {
     // and rejected by the very MAX_STEPS test it should have passed. These arrive on the
     // DERIVED paths — syntactic stays 783, which is the same control working twice: the
     // core never snaps, so a snapping change must not touch it either.
-    expect(units.length).toBe(973)
-    expect(byPath.get('syntactic')).toBe(783)
-    expect(byPath.get('derived')).toBe(107)
-    expect(byPath.get('derived+leaf')).toBe(83)
-    expect(cells).toBe(5240)
+    // ⚠ 973 -> 1013 at #1242 — the corpus widened 1535 -> 1633 units
+    // (98 arrivals, 0 departures): the harvest gained the product's own
+    // resolver, so every figure here is over a wider population. Upward only.
+    expect(units.length).toBe(1013)
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    // Folded so the whole split reports in one run: the three paths must sum to
+    // `units`, and asserting them apart means a population change reports the
+    // first one that moved and hides the rest.
+    expect({
+      syntactic: byPath.get('syntactic'),
+      derived: byPath.get('derived'),
+      'derived+leaf': byPath.get('derived+leaf'),
+      cells,
+    }).toEqual({ syntactic: 812, derived: 115, 'derived+leaf': 86, cells: 5685 })
   })
 
   it('CONTROL: a reader that returns 1 for every length is caught', () => {
