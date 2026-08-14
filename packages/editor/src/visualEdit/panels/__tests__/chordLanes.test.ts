@@ -17,7 +17,7 @@
  */
 import { describe, it, expect } from 'vitest'
 
-import { chordLanes, isChordSymbol } from '../chordLanes'
+import { chordLanes, isChordSymbol, forcesChordReading } from '../chordLanes'
 
 describe('isChordSymbol reads the chord grammar', () => {
   it('recognises the chord spellings that appear in the corpora', () => {
@@ -92,5 +92,74 @@ describe('chordLanes needs EVERY lane, not a majority', () => {
     // `[].every(...)` is true, which would make a lane-less model a chord chart
     // and drop the drum chrome from a grid that has not drawn anything yet.
     expect(chordLanes([])).toBe(false)
+  })
+})
+
+/**
+ * #1257 — the chord reading needs evidence, not merely permission.
+ *
+ * ⚠ EVERY ARM ABOVE THIS POINT PASSES WITH THE `some(forcesChordReading)` CLAUSE
+ * DELETED. That is why this block exists and is stated rather than left for
+ * someone to discover: the file it guards was fully green while a shaker line
+ * captioned itself as a chord chart and lost its drum picker.
+ */
+describe('the chord reading has to be FORCED by a lane nothing else explains (#1257)', () => {
+  it('a note spelling is not evidence of a chord, whatever its octave', () => {
+    // The collision itself: the chord grammar reads a trailing digit as a
+    // quality, so each of these IS a legal chord symbol and none of them is
+    // evidence of one.
+    for (const tok of ['a4', 'c4', 'c5', 'c6', 'c7', 'g7', 'd7', 'bb4', 'f#5', 'c', 'a', 'C']) {
+      expect(isChordSymbol(tok), `${tok} is a legal chord symbol`).toBe(true)
+      expect(forcesChordReading(tok), `${tok} must not be evidence`).toBe(false)
+    }
+  })
+
+  it('a chord that is not also a note spelling IS evidence', () => {
+    for (const tok of ['Gsus', 'Em7', 'Am9', 'Em11', 'am', 'dm', 'em']) {
+      expect(forcesChordReading(tok), tok).toBe(true)
+    }
+  })
+
+  it('⚠ the same music one octave apart used to get opposite answers', () => {
+    // `c4 e4 g4` and `c3 e3 g3` are the same three notes in different registers.
+    // Octave 4 is a sus4 to the chord grammar and octave 3 is nothing, so the
+    // predicate answered true and false on identical music. Both are melodies.
+    expect(chordLanes(['c4', 'e4', 'g4'])).toBe(false)
+    expect(chordLanes(['c3', 'e3', 'g3'])).toBe(false)
+  })
+
+  it('the twelve real mislabelled lane sets, taken from the corpora', () => {
+    // Every one of these is a real grid from a real document, and every one was
+    // captioned "Chord chart — each lane is a chord, not a sound" before #1257.
+    const melodies = [
+      ['a4'], //                                   .sound("shaker_large"), twice over
+      ['c5', 'f5', 'a5'], //                        gm_trumpet
+      ['f4', 'a4', 'c5', 'f5', 'e5', 'd5', 'bb4', 'g4'],
+      ['c5', 'bb4', 'a4', 'g4', 'f4'],
+      ['a4', 'c5', 'f5', 'a5', 'g5', 'e5', 'g4'],
+      ['a4', 'bb4', 'c5', 'd5', 'e5', 'f5'],
+      ['f5', 'e5', 'd5', 'c5', 'bb4', 'a4'],
+      ['f5', 'a5', 'c6', 'e5', 'd5', 'c5', 'f4'],
+      ['c4', 'f4', 'a4', 'g4', 'e4', 'd4'],
+      ['a4', 'g4'],
+      ['a', 'b', 'c'], //                           sample names, not pitches and not chords
+    ]
+    for (const lanes of melodies) expect(chordLanes(lanes), JSON.stringify(lanes)).toBe(false)
+  })
+
+  it('and the three real charts keep their caption — the reason it exists', () => {
+    // `<Gsus G7 Em7 D7>`, the lane set behind all three surviving captions.
+    expect(chordLanes(['Gsus', 'G7', 'Em7', 'D7'])).toBe(true)
+    // A progression with one unambiguous lane is still a chart; the clause asks
+    // for ONE piece of evidence, not for every lane to carry it.
+    expect(chordLanes(['am', 'F', 'C', 'G'])).toBe(true)
+  })
+
+  it('⚠ the stated limit: an all-ambiguous progression is NOT captioned', () => {
+    // `<C F G>` is three major triads and three plausible sample names, and
+    // nothing in the tokens can separate them. The default wins, which is this
+    // module's own precedence rule rather than a gap in it. Pinned so that if
+    // someone later decides differently, they change a test that says why.
+    expect(chordLanes(['C', 'F', 'G'])).toBe(false)
   })
 })
