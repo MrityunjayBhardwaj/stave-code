@@ -93,6 +93,29 @@ function hasStructure(
  */
 type Kind = 'diagonal' | 'one-cell' | 'chord' | 'ordinary'
 
+/**
+ * A note-shaped lane token — `c3`, `Bb4`, `f`, `a#2`.
+ *
+ * ⚠ A PROBE SIGNATURE, NOT A RULE, and deliberately not `isChordSymbol`: that
+ * function reads a trailing octave digit as a chord quality and is wrong on 125
+ * of 210 note spellings (#1257), so using it here would inherit the defect this
+ * census is partly measuring. Spelled out because nothing in the tree answers
+ * "is this token a pitch" — which is itself part of the finding.
+ */
+const PITCH = /^[a-gA-G][#b]?-?\d?$/
+
+/**
+ * TERM 3'S SECOND HALF — content that belongs on the OTHER surface.
+ *
+ * `hasStructure` catches "the view has nothing in it". It cannot catch "the view
+ * is the wrong kind of view", because a melody drawn as one lane per pitch has
+ * plenty of structure. Both are term 3; only the first is measurable with a rule
+ * the repo already has, so this half is filtered here and hand-read below.
+ */
+function pitchLanesOnGrid(lanes: string[], siblingAccepts: boolean): boolean {
+  return lanes.length > 1 && siblingAccepts && lanes.every((l) => PITCH.test(l))
+}
+
 interface Row {
   doc: string
   head: string
@@ -308,6 +331,32 @@ function report(label: string, docs: { name: string; code: string }[]) {
   console.log(
     `  STRUCTURAL restated, as a RANGE      : ${lo}–${hi}/${a.totalUnits}` +
       ` = ${((100 * lo) / a.totalUnits).toFixed(1)}%–${((100 * hi) / a.totalUnits).toFixed(1)}%`,
+  )
+
+  // ── TERM 3'S SECOND HALF, AND MY OWN MEASUREMENT WAS SHORT WITHOUT IT ────
+  // Found in self-review. The bucket ordering above checks `chord` before
+  // `diagonal`, and because the chord test is broken (#1257) it absorbed a run
+  // of trumpet melodies that are drawn as step grids — one lane per pitch, real
+  // structure, and the wrong surface entirely. `hasStructure` passes every one
+  // of them. So 154 is a FLOOR on term 3, not its size.
+  const wrongSurfaceKind = rows.filter(
+    (r) => r.structured && pitchLanesOnGrid(r.lanes, r.siblingAccepts),
+  )
+  console.log(`\n  — TERM 3, SECOND HALF: structured grids whose lanes are all pitches —`)
+  console.log(`  (the roll accepts the same string, so the content has a home)`)
+  console.log(`  candidates : ${wrongSurfaceKind.length}`)
+  for (const r of wrongSurfaceKind) {
+    console.log(`\n     ${r.doc}  head=${r.head}  via=${r.via}  steps=${r.steps}`)
+    console.log(`     mini      : ${JSON.stringify(r.mini)}`)
+    console.log(`     lanes     : ${JSON.stringify(r.lanes)}  hits=${JSON.stringify(r.hitsPerLane)}`)
+    console.log(`     statement : ${JSON.stringify(r.statement.replace(/\s+/g, ' ').slice(0, 130))}`)
+  }
+  console.log(
+    `\n  term 3 FLOOR (structure only)     : ${gridUnstructured.length + rollUnstructured.length}`,
+  )
+  console.log(
+    `  term 3 with the second half added : ${gridUnstructured.length + rollUnstructured.length + wrongSurfaceKind.length}` +
+      `  ⚠ the second half needs hand-reading — a downstream .sound() reassigns the voice`,
   )
 
   console.log(`\n  — roll rows with one note or fewer, for hand-reading —`)
