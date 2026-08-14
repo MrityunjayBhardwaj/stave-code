@@ -14,11 +14,14 @@
  * is the product call #1256 exists to put in front of someone. They pin what is
  * on screen, so the call is made against the thing rather than against a count.
  *
- * ⚠ ONE OF THESE IS A DEFECT AND IS FILED SEPARATELY (#1257). A shaker line
- * captions itself as a chord chart because the chord grammar reads a trailing
- * octave digit as a chord quality. The arm is written to pass on TODAY's wrong
- * behaviour and says so, so that it records the defect instead of hiding it;
- * when #1257 lands, this arm is what should redden.
+ * ✅ ONE OF THESE WAS A DEFECT AND IS NOW FIXED (#1257). A shaker line captioned
+ * itself as a chord chart because the chord grammar reads a trailing octave
+ * digit as a chord quality. The arm was deliberately written to assert that
+ * wrong behaviour so the fix would have an arm to FLIP rather than a paragraph
+ * to re-derive — and it has been flipped, in the commit that fixed it. Its
+ * octave-3 control now agrees with it instead of contradicting it, and a third
+ * arm was added for a real chord chart, without which "never caption anything"
+ * would satisfy every other arm in the file.
  *
  * Run (single invocation, per the population runner's contract):
  *   STAVE_E2E_PORT=3123 pnpm --filter @stave/app exec playwright test \
@@ -148,11 +151,18 @@ test.describe('#1256 — what the counted-but-empty views look like', () => {
     await page.screenshot({ path: 'test-results/1256-real-roll.png' })
   })
 
-  test('⚠ DEFECT #1257 — a shaker line calls itself a chord chart', async ({ page }) => {
+  test('✅ FIXED #1257 — a shaker line is a shaker line, and keeps its drum picker', async ({ page }) => {
     await boot(page)
-    // `a4` is a legal chord symbol (A dominant-ish quality on a trailing 4), so
-    // every lane passes the chord test and the grid captions itself. This is a
-    // real line from the corpus, not a constructed one.
+    // `a4` is a legal chord symbol (the chord grammar reads the trailing 4 as a
+    // sus4 quality), so every lane passed the chord test and the grid captioned
+    // itself and withdrew the picker. This is a real line from the corpus, not a
+    // constructed one.
+    //
+    // ⚠ THIS ARM USED TO ASSERT THE DEFECT — `expect(captioned).toBe(1)` and
+    // `expect(picker).toBe(0)` — deliberately, so the fix would have an arm to
+    // flip rather than a paragraph to re-derive. This is the flip. What changed
+    // is that a chord reading now needs a lane no pitch reading explains, and
+    // `a4` is not one.
     await typeAndPoint(page, '$: sound("a4 a4 a4 a4").sound("shaker_large")', '.sound("shaker')
 
     await expect(page.locator(`${panel} [data-seq-cell]`).first()).toBeVisible({ timeout: 15_000 })
@@ -161,25 +171,41 @@ test.describe('#1256 — what the counted-but-empty views look like', () => {
     const picker = await page.locator(`${panel} [data-seq-add-voice]`).count()
     // eslint-disable-next-line no-console
     console.log(`  shaker line → chord caption present: ${captioned}, drum picker present: ${picker}`)
-    // ⚠ ASSERTS THE DEFECT, DELIBERATELY. Today the caption appears and the
-    // picker is withdrawn. Recorded as the current behaviour so #1257 has a
-    // failing arm to flip rather than a paragraph to re-derive.
-    expect(captioned).toBe(1)
-    expect(picker).toBe(0)
-    await page.screenshot({ path: 'test-results/1257-shaker-as-chord-chart.png' })
+    expect(captioned).toBe(0)
+    expect(picker).toBe(1)
+    await page.screenshot({ path: 'test-results/1257-shaker-keeps-its-picker.png' })
   })
 
-  test('CONTROL: the same shape an octave lower is NOT captioned', async ({ page }) => {
+  test('CONTROL: the same shape an octave lower behaves identically', async ({ page }) => {
     await boot(page)
-    // `a3` is not a chord symbol; `a4` is. Same music, one octave apart. This is
-    // the arm that shows the caption is keyed on the octave digit rather than on
-    // anything musical — and it is what makes #1257 a mechanism rather than an
-    // anecdote.
+    // `a3` was never a chord symbol; `a4` was. Same music, one octave apart, and
+    // before #1257 they got opposite answers — which is what made it a mechanism
+    // rather than an anecdote. The two arms now agree, and that agreement is the
+    // thing being pinned: this control fails if the fix is keyed on the digit
+    // instead of on the evidence.
     await typeAndPoint(page, '$: sound("a3 a3 a3 a3").sound("shaker_large")', '.sound("shaker')
     await expect(page.locator(`${panel} [data-seq-cell]`).first()).toBeVisible({ timeout: 15_000 })
     const captioned = await page.locator(`${panel} [data-seq-chord-chart]`).count()
+    const picker = await page.locator(`${panel} [data-seq-add-voice]`).count()
     // eslint-disable-next-line no-console
-    console.log(`  same line at octave 3 → chord caption present: ${captioned}`)
+    console.log(`  same line at octave 3 → chord caption present: ${captioned}, drum picker: ${picker}`)
     expect(captioned).toBe(0)
+    expect(picker).toBe(1)
+  })
+
+  test('and a REAL chord chart still says so — the reason the caption exists', async ({ page }) => {
+    await boot(page)
+    // `Gsus` and `Em7` are chords under every reading and pitches under none, so
+    // this is the evidence the new clause asks for. Without this arm the fix
+    // could be "never caption anything" and every other arm here would pass.
+    await typeAndPoint(page, '$: sound("<Gsus G7 Em7 D7>")', 'sound("<Gsus')
+    await expect(page.locator(`${panel} [data-seq-cell]`).first()).toBeVisible({ timeout: 15_000 })
+    const captioned = await page.locator(`${panel} [data-seq-chord-chart]`).count()
+    const picker = await page.locator(`${panel} [data-seq-add-voice]`).count()
+    // eslint-disable-next-line no-console
+    console.log(`  real chord chart → chord caption present: ${captioned}, drum picker: ${picker}`)
+    expect(captioned).toBe(1)
+    expect(picker).toBe(0)
+    await page.screenshot({ path: 'test-results/1257-real-chart-keeps-caption.png' })
   })
 })

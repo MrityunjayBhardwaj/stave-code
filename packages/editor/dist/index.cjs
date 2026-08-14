@@ -29474,8 +29474,12 @@ function isChordSymbol(token) {
   return !chord.get(token).empty;
 }
 __name(isChordSymbol, "isChordSymbol");
+function forcesChordReading(token) {
+  return isChordSymbol(token) && pitchToMidi(token) === null;
+}
+__name(forcesChordReading, "forcesChordReading");
 function chordLanes(laneSounds) {
-  return laneSounds.length > 0 && laneSounds.every(isChordSymbol);
+  return laneSounds.length > 0 && laneSounds.every(isChordSymbol) && laneSounds.some(forcesChordReading);
 }
 __name(chordLanes, "chordLanes");
 
