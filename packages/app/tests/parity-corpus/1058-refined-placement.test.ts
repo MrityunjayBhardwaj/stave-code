@@ -203,11 +203,19 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // document's own layout for one.
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
       expect([...s.refusesFinerView.entries()], `k=${k} gates`).toEqual([['no-finer-view', 86]])
-      expect(s.asks.length, `k=${k} asks`).toBe(23317)
       // IDENTICAL AT EVERY SCALE, and that is the point rather than a coincidence:
       // the population, the routing and the refusals are properties of the
       // PATTERN, so a view multiplier must not move any of them (#1116).
-      expect(pathCounts(s), `k=${k} paths`).toEqual({ splice: 19104, alt: 4201, declined: 12 })
+      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+      // The total and its split are folded into ONE assertion: they are the same
+      // measurement, the split must sum to the total, and asserting them apart
+      // means a population change reports the total and hides which path took it.
+      expect({ asks: s.asks.length, ...pathCounts(s) }, `k=${k} asks by path`).toEqual({
+        asks: 26112,
+        splice: 21547,
+        alt: 4553,
+        declined: 12,
+      })
     }
   })
 

@@ -491,9 +491,18 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // above. No row moved the other way, which is what says this is a widening and not
     // a trade.
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    expect(all.filter((r) => r.outcome === 'transfers').length, 'transfers' + why).toBe(1096)
-    expect(untransferable.length, 'untransferable' + why).toBe(63)
-    expect(all.filter((r) => r.outcome === 'no-probe').length, 'unverified' + why).toBe(100)
+    // Folded so the WHOLE census reports in one run. These three partition the
+    // population, so a corpus change moves all of them together — asserted apart,
+    // each round of the gate reveals exactly one and hides the partition, which is
+    // the only thing that makes the three numbers mean anything.
+    expect(
+      {
+        transfers: all.filter((r) => r.outcome === 'transfers').length,
+        untransferable: untransferable.length,
+        unverified: all.filter((r) => r.outcome === 'no-probe').length,
+      },
+      'the census partition' + why,
+    ).toEqual({ transfers: 1096, untransferable: 68, unverified: 109 })
     // The reclassification is asserted by MECHANISM as well as by total, so that a
     // future change cannot hold the totals steady while moving asks between buckets.
     // ⚠ 11 → 0 at #1010 P4c. The printer preserves lengths, so nothing in the census
@@ -530,7 +539,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // patterns, so fixing the printer returns exactly the views worth quoting, just as
     // breaking the oracle had removed exactly those. The half of the number this line
     // exists to keep honest is the half that moved, in the good direction this time.
-    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(639)
+    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(684)
 
     // THIS USED TO SAY "NOTHING CORRUPTS", and it said why that mattered: both derived
     // writers refuse rather than mis-write, which is what made the untransferable set
@@ -593,8 +602,20 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // so for one phase the prose said "61" beside a pin that read 70. A figure only named
     // in a comment has no gate on it ([[P356]]); the pin is the record and the comment
     // must be re-read whenever the pin moves, in both directions.
-    expect(untransferable.filter((r) => r.arrayValue).length).toBe(8)
-    expect(untransferable.filter((r) => !r.arrayValue).length).toBe(55)
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures):
+    // array 8 → 9, structural 55 → 59, summing to `untransferable` = 68. BOTH
+    // columns moved this time, which is the honest reading of a POPULATION change
+    // and not of a mechanism change — the widening adds material of both kinds,
+    // so the #1019 claim above (that naming the `:`-variant left the structural
+    // column alone) is untouched: it is about a code change holding one column
+    // still, and nothing here re-tests it.
+    // Folded into one array assertion so BOTH columns report in a single run —
+    // `expect` aborts a test at its first failure, and the whole point of this
+    // pair is the split between the columns, which one value cannot show.
+    expect([
+      untransferable.filter((r) => r.arrayValue).length,
+      untransferable.filter((r) => !r.arrayValue).length,
+    ]).toEqual([9, 59])
 
     // THE NUMBER P6 IS SCOPED AGAINST, and it is a CONJUNCTION. "46 have a
     // structured core view" and "45 have a verified core edit" are different
@@ -640,10 +661,25 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // grid 19 + roll 15. The roll half is unchanged at 15, which is what you would
     // expect of a cap whose reach the roll sweep found flat; the grid half moved with
     // the corpus.)
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures):
+    // coreStructured 50 -> 53, coreEdits 49 -> 53, the conjunction 48 -> 51. All
+    // three rise together and the mechanism is the CORPUS, exactly as at #1037 —
+    // the widening admits structural units of the same kinds already present, not a
+    // new kind. ⚠ THE PROSE ABOVE IS A HISTORICAL TRAIL AND IS NOW BEHIND THE PINS
+    // (its "55", "65 -> 56" and the P6 figure of 54 are pre-#1242 readings, and 54
+    // is carried in this comment ONLY — no assertion holds it, which is the very
+    // thing [[P356]] warns about). Re-derive it against these pins before quoting
+    // any of it, and do not scope #1012 against 54 without re-measuring.
+    // Folded into one object so all three report in a single run: the CONJUNCTION is
+    // the number P6 is scoped against, and it only means anything read beside its two
+    // conjuncts. Asserted apart, a population change reports the first and hides
+    // whether the conjunction moved with it or independently of it.
     const structural = untransferable.filter((r) => !r.arrayValue)
-    expect(structural.filter((r) => r.coreStructured).length).toBe(50)
-    expect(structural.filter((r) => r.coreProbe === 'ok').length).toBe(49)
-    expect(structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length).toBe(48)
+    expect({
+      coreStructured: structural.filter((r) => r.coreStructured).length,
+      coreEdits: structural.filter((r) => r.coreProbe === 'ok').length,
+      both: structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length,
+    }).toEqual({ coreStructured: 53, coreEdits: 53, both: 51 })
   }, 900_000)
 
   /**
@@ -700,10 +736,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // (and #1020 with it) would be wrong.
       expect(withinCap, withinCap.join('\n')).toEqual([])
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-      expect(past).toBe(36)
-      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-      expect(aperiodic).toBe(3)
-      expect(rollBlockedByItsOwnCap).toBe(23)
+      // Folded into one array assertion so all three report in a single run.
+      expect([past, aperiodic, rollBlockedByItsOwnCap]).toEqual([36, 3, 24])
     }, 900_000)
 
     it('naming a `:`-variant is the exact INVERSE of krill lowering it, and the whole tail is load-bearing', () => {

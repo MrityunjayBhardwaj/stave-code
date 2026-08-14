@@ -787,11 +787,14 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     expect(cols).toBe(4470)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    expect(groups).toBe(2751)
     // THE REACH. Before this, 2503 of 2508 groups owned a bar; the 5 that did not all
     // began mid-column and all sat in a column another group headed. Every one is now
     // drawn — measured 5/5, which is why this phase is worth its 8 columns.
-    expect(represented).toBe(2508)
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    // Folded so both report in one run, and so the EQUALITY between them is the
+    // thing on the page: every group the wider corpus adds owns a bar too, which
+    // is the reach claim holding over material it was not measured on.
+    expect([groups, represented]).toEqual([2751, 2751])
     // THE BOUND. Only the sequential columns split; the 129 polyphonic ones are #1088.
     //
     // THREE minis, not two — and the difference is the point rather than a typo. TWO minis

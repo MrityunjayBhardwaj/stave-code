@@ -245,7 +245,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     expect(
       { leaf: by.leaf.units, alt: by.alt.units, element: by.element.units },
       'parseable units per path',
-    ).toEqual({ leaf: 83, alt: 59, element: 839 })
+    // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
+    ).toEqual({ leaf: 86, alt: 61, element: 874 })
 
     // The residual's SHAPE is asserted in its own test below, not here — an assertion
     // that sits after a failing one never runs, so bundling it into this body would
@@ -535,8 +536,13 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // offers at least one — 468 of 468, no exceptions. A gate that quietly
     // greyed a whole surface would show up here as a shortfall.
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    expect(nonLeafWithAnAsk, 'non-leaf grids with any empty cell').toBe(508)
-    expect(nonLeafWithSomeOffer, 'non-leaf grids that still take a note').toBe(482)
+    // Folded, because the CLAIM is the equality — "every non-leaf view that has an
+    // empty cell still offers at least one" is 508 of 508, and asserting the two
+    // apart lets a shortfall report as a single moved number instead of a gap.
+    expect(
+      [nonLeafWithAnAsk, nonLeafWithSomeOffer],
+      'non-leaf grids with any empty cell, and of those the ones that still take a note',
+    ).toEqual([508, 508])
   })
 
   /**

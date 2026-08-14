@@ -186,6 +186,39 @@ describe('#1036 — an accepted unit keeps every note the engine played', () => 
       ROLL_KEPT,
     ])
   })
+
+  /**
+   * WHY `ROLL_KEPT` IS THE SIZE IT IS — asserted, not narrated (#1242).
+   *
+   * A pin whose value nobody can account for is a pin nobody can defend: the next
+   * person to move it has no way to tell a real regression from the population
+   * shifting under them. Half of this arm's job is therefore the SECOND assertion —
+   * that with the one dominating unit removed, what remains is proportionate. That
+   * is the claim "the widening did not change how many notes a unit keeps", and it
+   * is the one a bare total cannot make.
+   */
+  it('one unit accounts for 90% of ROLL_KEPT, and the rest of the corpus is ordinary', () => {
+    const outlier = minis.filter((m) => m.startsWith(ONE_UNIT_MINI))
+    // The population restriction is asserted first: if the unit ever leaves the
+    // corpus this arm must fail LOUDLY rather than quietly measure an empty set.
+    expect(outlier, `the ${ONE_UNIT_MINI}… stack is no longer in the corpus`).toHaveLength(1)
+
+    let kept = 0
+    const pat = reifyMini(outlier[0])
+    for (const cyc of CYCLES) {
+      const r = rollOnsets(pat, cyc)
+      if (r !== null) kept += r.length
+    }
+    expect(kept, 'the outlier’s own contribution').toBe(ONE_UNIT_KEPT)
+
+    // AND THE HALF THAT MATTERS: everything else, per accepted pair, is unremarkable.
+    // 5.9 notes across the whole corpus — the same order as the 6.0 the 1,535-row
+    // corpus read before the widening, which is what says the arrivals are ordinary
+    // material and the total is skewed by exactly one unit.
+    const rest = (ROLL_KEPT - ONE_UNIT_KEPT) / (ROLL_ACCEPTED - CYCLES.length)
+    expect(rest).toBeGreaterThan(5)
+    expect(rest).toBeLessThan(7)
+  })
 })
 
 /**
@@ -205,9 +238,36 @@ describe('#1036 — an accepted unit keeps every note the engine played', () => 
 const GRID_ACCEPTED = 19900
 const GRID_KEPT = 92155
 const ROLL_ACCEPTED = 13539
-// ⚠⚠ 72920 -> 162336 at #1242 — the ONE figure in this PR that is not roughly
-// proportional to the +6.4% population (+123%). NOT yet explained: the likely cause
-// is that the newly admitted strings are long multi-cycle chord charts and this arm
-// counts notes over 16 cycles, so a handful of units can dominate. VERIFY before
-// trusting it — an unexplained pin move is the thing this file exists to surface.
+/**
+ * ⚠ 72920 -> 162336 at #1242 (+123%) — the one figure in that PR not roughly
+ * proportional to its +6.4% population. VERIFIED, and the first guess was wrong in
+ * KIND, which is why it was worth measuring rather than reasoning about: it is not
+ * "long multi-cycle chord charts", and it is not a property of the widening at all.
+ *
+ * ONE arrival carries 80,800 of the +89,416 — `1*1, 2*2, … 100*100`, a hundred-voice
+ * `,`-stack in which voice k plays k notes per cycle. Sum(1..100) = 5,050 per cycle,
+ * over the 16-cycle window = 80,800, which closes the arithmetic exactly rather than
+ * approximately. The gate `ONE_UNIT_KEPT` below is that number, so the explanation is
+ * asserted rather than narrated ([[P356]] — a figure only named in a comment has no
+ * gate on it).
+ *
+ * The other 97 arrivals carry 8,616 between them: 5.5 notes per accepted unit×cycle
+ * pair against the 1,535 survivors' 6.0. They are ORDINARY, and that is the half of
+ * this note that matters — without the outlier the figure would read 81,536, or
+ * +11.8%, in line with `ROLL_ACCEPTED`'s +10.7%. A population that grew by 6.4% did
+ * not start keeping twice as many notes per unit; it admitted one pathological unit.
+ *
+ * MEASURED by `_1242-roll-kept.spec.ts`, whose control is what makes the attribution
+ * sound: the same sweep re-run over the PRE-widening rows reproduces 12230 / 72920
+ * exactly, and departures are zero — so the whole delta belongs to the arrivals and
+ * nothing about the survivors moved.
+ */
 const ROLL_KEPT = 162336
+
+/**
+ * The outlier's own contribution, pinned so the paragraph above cannot rot into a
+ * story. If this unit ever leaves the corpus, `ROLL_KEPT` falls by exactly this and
+ * the drop is explained on arrival instead of being re-investigated from scratch.
+ */
+const ONE_UNIT_MINI = '1*1, 2*2,'
+const ONE_UNIT_KEPT = 80800
