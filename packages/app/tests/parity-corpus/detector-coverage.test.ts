@@ -117,28 +117,43 @@ describe('the coverage harness asks every shipped editor', () => {
     })
   })
 
-  it('a view holding one thing is excluded from the fraction, not counted against it', () => {
-    // INVARIANT 3'S THIRD TERM, at the smallest scale that shows all of it
-    // (#1256/#1260). `s("piano")` routes to a grid and round-trips perfectly —
-    // terms 1 and 2 both hold — and what it draws is one grey box. The same for
-    // `note("c3")` on the roll: one dot.
-    //
-    // Shape B: these leave the DENOMINATOR as well as the numerator, which is
-    // what separates them from `knobs`. `knobs` means "a musical unit we have no
-    // view for yet, and it counts against us"; these got a view, and there is no
-    // melody in them for a better view to have drawn.
+  // ── THE NEXT TWO ARMS ARE SPLIT ON PURPOSE ─────────────────────────────
+  // Term 3 is two decisions — "ask whether the view holds more than one thing"
+  // and "put the ones that do not outside the denominator" — and as ONE arm
+  // asserting one record they could not be told apart: dropping the question
+  // and keeping the units in the fraction reddened the identical arm set, which
+  // is the signature of an arm that catches two mechanisms and separates
+  // neither ([[P558]]). Split, the first arm reddens only when the QUESTION is
+  // gone; the second reddens for either. The containment is the discrimination.
+
+  it('a view holding one thing is not counted as an editable surface', () => {
+    // INVARIANT 3'S THIRD TERM, at the smallest scale that shows it (#1256).
+    // `s("piano")` routes to a grid and round-trips perfectly — terms 1 and 2
+    // both hold — and what it draws is one grey box. `note("c3")` on the roll:
+    // one dot. Neither is a surface anyone can edit music in.
     const one = measureDocs([{ name: 's', code: 's("piano")\nnote("c3")\n' }]).tunes[0]
     expect({
-      units: one.units, note: one.noteEditable, single: one.noteSingle,
+      note: one.noteEditable, single: one.noteSingle,
       broken: one.noteBroken, knobs: one.knobs, code: one.codeOnly,
-    }).toEqual({ units: 0, note: 0, single: 2, broken: 0, knobs: 0, code: 0 })
+    }).toEqual({ note: 0, single: 2, broken: 0, knobs: 0, code: 0 })
 
     // The control that stops the rule from being "exclude everything": the same
-    // two heads with real content stay fully counted. Without this arm, term 3
-    // returning `false` unconditionally satisfies the assertion above.
+    // two heads with real content stay fully counted. Without it, term 3
+    // answering `false` unconditionally satisfies the assertion above.
     const many = measureDocs([{ name: 'm', code: 's("bd sd")\nnote("c3 e3 g3")\n' }]).tunes[0]
-    expect({ units: many.units, note: many.noteEditable, single: many.noteSingle })
-      .toEqual({ units: 2, note: 2, single: 0 })
+    expect({ note: many.noteEditable, single: many.noteSingle }).toEqual({ note: 2, single: 0 })
+  })
+
+  it('…and it leaves the denominator too, not only the numerator', () => {
+    // Shape B, the call recorded in #1256 — and what separates these units from
+    // `knobs`. `knobs` means "a musical unit we have no view for yet, and it
+    // counts against us"; these got a view, and there is no melody in them for a
+    // better view to have drawn. Counting them would mean the number can only
+    // improve by building a surface for content that has none.
+    const one = measureDocs([{ name: 's', code: 's("piano")\nnote("c3")\n' }]).tunes[0]
+    expect(one.units).toBe(0)
+    const many = measureDocs([{ name: 'm', code: 's("bd sd")\nnote("c3 e3 g3")\n' }]).tunes[0]
+    expect(many.units).toBe(2)
   })
 
   it('a tune with nothing to measure is not a tune we failed to serve', () => {
