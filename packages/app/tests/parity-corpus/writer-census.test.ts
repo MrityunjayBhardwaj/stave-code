@@ -665,11 +665,22 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // coreStructured 50 -> 53, coreEdits 49 -> 53, the conjunction 48 -> 51. All
     // three rise together and the mechanism is the CORPUS, exactly as at #1037 —
     // the widening admits structural units of the same kinds already present, not a
-    // new kind. ⚠ THE PROSE ABOVE IS A HISTORICAL TRAIL AND IS NOW BEHIND THE PINS
-    // (its "55", "65 -> 56" and the P6 figure of 54 are pre-#1242 readings, and 54
-    // is carried in this comment ONLY — no assertion holds it, which is the very
-    // thing [[P356]] warns about). Re-derive it against these pins before quoting
-    // any of it, and do not scope #1012 against 54 without re-measuring.
+    // new kind.
+    //
+    // ⚠⚠ THE PROSE ABOVE IS A HISTORICAL TRAIL AND ITS "54" IS SIMPLY WRONG — and
+    // was wrong BEFORE #1242. Re-measured on `studio_v0.2.0` over the unchanged
+    // 1535-row corpus, the P6 blocker reads 48 (grid 18 + roll 30). No assertion has
+    // ever held 54: it lives in this comment and in WRITER-CENSUS.md and nowhere
+    // else, so it drifted silently through everything that landed after it was
+    // written. That is precisely what [[P356]] says happens to a figure known only
+    // to prose. **Do not scope #1012 against 54.**
+    //
+    // #1242 then moves the blocker 48 -> 51, and the shape of that move is the
+    // finding: the GRID half is UNMOVED at 18 across the whole widening and all
+    // three new blockers are roll asks. The grid's irreplaceable set did not grow
+    // with the corpus, which is evidence it is a property of the notation rather
+    // than of how much of it we happened to harvest. Measured as a paired
+    // differential in WRITER-CENSUS.md's #1242 section.
     // Folded into one object so all three report in a single run: the CONJUNCTION is
     // the number P6 is scoped against, and it only means anything read beside its two
     // conjuncts. Asserted apart, a population change reports the first and hides

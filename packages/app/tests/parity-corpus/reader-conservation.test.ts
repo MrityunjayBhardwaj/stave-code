@@ -198,26 +198,43 @@ describe('#1036 — an accepted unit keeps every note the engine played', () => 
    * is the one a bare total cannot make.
    */
   it('one unit accounts for 90% of ROLL_KEPT, and the rest of the corpus is ordinary', () => {
+    const roll = sweep(ROLL)
     const outlier = minis.filter((m) => m.startsWith(ONE_UNIT_MINI))
     // The population restriction is asserted first: if the unit ever leaves the
     // corpus this arm must fail LOUDLY rather than quietly measure an empty set.
     expect(outlier, `the ${ONE_UNIT_MINI}… stack is no longer in the corpus`).toHaveLength(1)
 
     let kept = 0
+    let accepted = 0
     const pat = reifyMini(outlier[0])
     for (const cyc of CYCLES) {
       const r = rollOnsets(pat, cyc)
-      if (r !== null) kept += r.length
+      if (r === null) continue
+      accepted++
+      kept += r.length
     }
-    expect(kept, 'the outlier’s own contribution').toBe(ONE_UNIT_KEPT)
+    expect([accepted, kept], 'the outlier’s own contribution').toEqual([
+      CYCLES.length,
+      ONE_UNIT_KEPT,
+    ])
 
     // AND THE HALF THAT MATTERS: everything else, per accepted pair, is unremarkable.
-    // 5.9 notes across the whole corpus — the same order as the 6.0 the 1,535-row
-    // corpus read before the widening, which is what says the arrivals are ordinary
-    // material and the total is skewed by exactly one unit.
-    const rest = (ROLL_KEPT - ONE_UNIT_KEPT) / (ROLL_ACCEPTED - CYCLES.length)
-    expect(rest).toBeGreaterThan(5)
-    expect(rest).toBeLessThan(7)
+    //
+    // ⚠ TAKEN FROM THE SWEEP, NOT FROM THE PINS ABOVE. Deriving this as
+    // `(ROLL_KEPT - ONE_UNIT_KEPT) / (ROLL_ACCEPTED - 16)` reads identically and is
+    // worth nothing: every term would be a constant declared in this file, so the
+    // bound could not fail while the pins held and would be satisfied by arithmetic
+    // rather than by the corpus ([[P519]] — the assertion's subject must not be
+    // constructed beside the assertion). `sweep` is memoized and the other arms have
+    // already paid for it, so measuring costs nothing here.
+    //
+    // Observed 2026-08-14: 81,536 over 13,523 pairs = 6.03, against the 1,535-row
+    // corpus's 6.0 before the widening. That near-identity is the claim — the
+    // arrivals keep notes at the same rate the survivors do, and the +123% total is
+    // one pathological unit rather than a change in what a unit costs.
+    const rest = (roll.kept - kept) / (roll.accepted - accepted)
+    expect(rest, 'notes per accepted pair, outlier excluded').toBeGreaterThan(5)
+    expect(rest, 'notes per accepted pair, outlier excluded').toBeLessThan(7)
   })
 })
 
