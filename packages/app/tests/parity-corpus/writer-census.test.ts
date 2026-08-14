@@ -61,7 +61,7 @@ import {
   tailToken,
   PROJECTION_PERIOD_BOUNDS,
 } from '../../../editor/src/visualEdit/notation/parse'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { hasStructure } from '../../../editor/src/visualEdit/notation/model'
 import type {
   ParseResult,
   PianoRollModel,
@@ -190,22 +190,14 @@ function playsArrayValue(m: string): boolean {
   }
 }
 
-/**
- * More than one cell / note — a one-cell view round-trips perfectly and is useless
- * ([[P338]] clause 2).
+/*
+ * "More than one cell / note" — `hasStructure`, now imported from
+ * `notation/model.ts` rather than defined here (#1259).
  *
- * The two surfaces get DIFFERENT predicates on purpose, and the asymmetry is worth
- * stating because it is easy to read as an oversight: the grid is a cell instrument,
- * so "useful" means more than one column with at least one hit in it; the roll is a
- * note instrument with no columns of its own to be empty, so "useful" means more
- * than one note. Applying the grid's predicate to the roll would count a
- * single-note roll spanning 16 steps as structured.
+ * It lived here, module-private, and was copied twice because of that: into
+ * `roll-cap-sweep.test.ts` and into the #1256 kind census. Its docblock — including
+ * why the two surfaces get different clauses — moved with it to the one home.
  */
-function hasStructure(m: StepGridModel & PianoRollModel, key: 'step' | 'roll'): boolean {
-  if (key === 'roll') return (m.notes?.length ?? 0) > 1
-  const hits = m.lanes.reduce((n, l) => n + l.cells.filter(isCellOn).length, 0)
-  return m.steps > 1 && hits >= 1
-}
 
 const shapeKey = (m: StepGridModel & PianoRollModel, key: 'step' | 'roll'): string =>
   key === 'roll'

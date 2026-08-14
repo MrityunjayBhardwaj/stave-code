@@ -30,8 +30,11 @@
  * honest refusal ([[PV222]]). So every view this reports carries `liveness` (the
  * fraction of its cleanly-singleton notes whose own delete round-trips through the
  * engine) and `structured` (more than one note — a one-note roll is a correct model and
- * a useless surface). Both come from `engineEditOracle.ts`, so the sweep and the reach
- * gate cannot disagree about what "an edit survived" means.
+ * a useless surface). `liveness` comes from `engineEditOracle.ts`, so the sweep and the
+ * reach gate cannot disagree about what "an edit survived" means; `structured` comes
+ * from `notation/model.ts`'s `hasStructure`, so this sweep and the writer census cannot
+ * disagree about what "worth showing" means (#1259 — it used to be spelled here, which
+ * is what that sentence originally papered over by naming one source for both).
  *
  * HOW A SWEEP IS RUN. The cap is a module constant, deliberately — it is a shipped
  * bound, not a knob, and threading a parameter through the writer to sweep it would mean
@@ -54,6 +57,7 @@ import {
   parsePianoRollCore,
   projectPianoRollDerived,
 } from '../../../editor/src/visualEdit/notation/parse'
+import { hasStructure } from '../../../editor/src/visualEdit/notation/model'
 import type { PianoRollModel, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
 import { ROLL_SURFACE, liveness, probeEdit } from './engineEditOracle'
 import { truePeriod } from './enginePeriod'
@@ -103,12 +107,11 @@ interface Row {
   /**
    * More than one note — a one-note roll is a correct model and a useless surface.
    *
-   * The same predicate the census applies to this surface (`hasStructure`, roll clause).
-   * Restated rather than shared because the census's version is surface-generic and
-   * unexported, and this file only ever asks about the roll — but the two must agree, and
-   * the coupling is here rather than nowhere. If the roll's notion of "structured" ever
-   * becomes more than a note count, these move together or the two documents start
-   * quoting different gains from the same run.
+   * SHARED, not restated (#1259). This was a copy: the census's `hasStructure` was
+   * surface-generic and unexported, so its roll clause was spelled out again here with
+   * a note saying the two must move together or the two documents start quoting
+   * different gains from the same run. That coupling is now structural — the predicate
+   * has one home in `notation/model.ts` and this file calls it with `'roll'`.
    */
   structured?: boolean
   notes?: number
@@ -161,7 +164,7 @@ function sweep(pop: Pop): Row[] {
       outcome:
         probe.verdict === 'ok' ? 'transfers' : probe.verdict === 'corrupt' ? 'view-corrupts' : 'no-probe',
       writer,
-      structured: (m.notes?.length ?? 0) > 1,
+      structured: hasStructure(m, 'roll'),
       notes: m.notes?.length ?? 0,
       ...(live ? { alive: live.alive, probed: live.probed, liveCorrupt: live.corrupt } : {}),
       // a leaf-served view is one the cap could have decided; the element writer's own

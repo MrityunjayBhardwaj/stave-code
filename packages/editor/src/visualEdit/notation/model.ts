@@ -805,6 +805,55 @@ export function rollContentRange(model: {
   return { lo, hi: Math.max(Math.max(...midis) + 2, lo + MIN_SPAN) }
 }
 
+/**
+ * Is there more than one thing in this view? — the rule invariant 3's third term is
+ * built on (#1256), and the reason it has a home at all (#1259).
+ *
+ * A one-cell grid or a one-note roll round-trips perfectly and is useless: `s("piano")`
+ * draws a single grey box, `note("C3")` a single dot. Both are correct models and
+ * neither is a surface anyone can edit music in, so a coverage number that counts them
+ * as served is an upper bound rather than a measurement ([[P338]] clause 2).
+ *
+ * THE TWO SURFACES GET DIFFERENT CLAUSES ON PURPOSE, and the asymmetry is worth stating
+ * because it is easy to read as an oversight. The grid is a CELL instrument, so "useful"
+ * means more than one column with at least one hit in it; the roll is a NOTE instrument
+ * with no columns of its own to be empty, so "useful" means more than one note. Applying
+ * the grid's clause to the roll would count a single-note roll spanning 16 steps as
+ * structured — one dot in a wide empty field, which is the exact case this exists to
+ * exclude.
+ *
+ * ⚠ NOT THE SAME QUESTION AS `leafViewUsable` (`parse.ts`, gate `view-unusable`), and
+ * they must not be merged. That guard asks whether any single edit is EXPRESSIBLE — a
+ * grid whose every column shares one leaf refuses every click, so it is refused up front.
+ * This asks whether there is more than one thing to edit. A one-cell grid whose cell
+ * clears cleanly passes that guard and fails this one; the two are independent and both
+ * are real.
+ *
+ * ⚠ THE SURFACE KEY SELECTS THE CLAUSE — pass the model that surface parsed. The
+ * parameter is a structural subset (the convention `columnCount` and `rollContentRange`
+ * already follow here) so that a `StepGridModel`, a `PianoRollModel` and the sweeps'
+ * intersection type all satisfy it without a cast; it cannot also enforce the pairing.
+ *
+ * WHY IT LIVES HERE. It was module-private inside `writer-census.test.ts` and had been
+ * copied twice by the time anyone counted — into `roll-cap-sweep.test.ts` (whose own
+ * docblock recorded that it had to restate the rule because this one was unexported, and
+ * that the two must move together) and into the #1256 kind census. Three copies that
+ * agree today and diverge silently tomorrow is the shape this seam has already shipped:
+ * a decision derived twice, where the second derivation quietly won.
+ */
+export function hasStructure(
+  model: {
+    steps: number
+    lanes?: readonly { cells: readonly StepCell[] }[]
+    notes?: readonly unknown[]
+  },
+  surface: 'step' | 'roll',
+): boolean {
+  if (surface === 'roll') return (model.notes?.length ?? 0) > 1
+  const hits = (model.lanes ?? []).reduce((n, l) => n + l.cells.filter(isCellOn).length, 0)
+  return model.steps > 1 && hits >= 1
+}
+
 /** A span of columns, split into the whole ones it contains and the fraction left over. */
 export interface ColumnSplit {
   /** how many whole columns fit in the span; NEGATIVE when the span itself is */
