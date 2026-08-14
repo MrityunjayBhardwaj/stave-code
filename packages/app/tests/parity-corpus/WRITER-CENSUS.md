@@ -33,14 +33,25 @@ so the move is attributable to the population and to nothing else:
 | …core edit VERIFIED ok | 49 | **53** | +4 |
 | **the P6 blocker set** | **48** (grid 18 + roll 30) | **51** (grid 18 + roll 33) | **+3, ENTIRELY ON THE ROLL** |
 
-> ⚠⚠ **THE "54" THIS DOCUMENT QUOTES BELOW IS WRONG, AND WAS WRONG BEFORE #1242
-> TOUCHED ANYTHING.** Re-measured on `studio_v0.2.0` over the unchanged 1535-row
-> corpus, the blocker reads **48**, not 54. No assertion has ever held that 54 — it
-> is carried in this document and in a comment in `writer-census.test.ts`, and
-> nowhere else, so it drifted silently through the changes that landed after it was
-> written. This is the exact failure mode the census file's own docblock names: a
-> figure known only to prose has no gate on it, and the trail beside it decays into
-> confident-looking history. **Anything scoping #1012 against 54 must be re-derived.**
+> ⚠⚠ **THE "54" THIS DOCUMENT QUOTES BELOW IS TWO CHANGES BEHIND THE GATE, AND WAS
+> ALREADY WRONG BEFORE #1242 TOUCHED ANYTHING.** Re-measured on `studio_v0.2.0` over
+> the unchanged 1535-row corpus, the blocker reads **48**, not 54.
+>
+> The figure IS gated — it is the `coreStructured && coreProbe === 'ok'` pin in
+> `writer-census.test.ts` — so this is not an ungated number. It is the worse and
+> more ordinary thing: **a document that TRANSCRIBES a gated figure and then drifts
+> from it.** Traced: the pin read `toBe(54)` from #1015 until **#1066** (the onset
+> snap grid, `44a97960`) moved it to `toBe(48)`. That PR updated the pin and left the
+> table below reading `54 | 54 | unmoved — see below`, directly under its own
+> blockquote explaining what #1066 changed. #1242 then moves it 48 → 51.
+>
+> **#1046 IS THIS EXACT COMPLAINT AND IS STILL OPEN.** It was filed on 2026-07-26
+> about the sibling document (`ROLL-CAP-SWEEP.md`), it names these same four rows,
+> and it already prescribes the right fix: *derive the table from
+> `WRITER-CENSUS.json`, do not transcribe it.* Correcting 54 → 51 by hand only resets
+> the clock, which is why this box states the trail instead of quietly editing the
+> digit. **Anything scoping #1012 against 54 must be re-derived** — take the number
+> from a run, never from this file.
 >
 > **The move itself is clean and is the useful half.** The grid blocker is UNMOVED at
 > 18 across the whole widening; all three new blockers are roll asks. A population

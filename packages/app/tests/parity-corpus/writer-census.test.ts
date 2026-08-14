@@ -667,13 +667,18 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // the widening admits structural units of the same kinds already present, not a
     // new kind.
     //
-    // ⚠⚠ THE PROSE ABOVE IS A HISTORICAL TRAIL AND ITS "54" IS SIMPLY WRONG — and
-    // was wrong BEFORE #1242. Re-measured on `studio_v0.2.0` over the unchanged
-    // 1535-row corpus, the P6 blocker reads 48 (grid 18 + roll 30). No assertion has
-    // ever held 54: it lives in this comment and in WRITER-CENSUS.md and nowhere
-    // else, so it drifted silently through everything that landed after it was
-    // written. That is precisely what [[P356]] says happens to a figure known only
-    // to prose. **Do not scope #1012 against 54.**
+    // ⚠⚠ THE PROSE ABOVE IS A HISTORICAL TRAIL AND ITS "54" IS TWO CHANGES BEHIND
+    // THIS PIN — already wrong BEFORE #1242. Re-measured on `studio_v0.2.0` over the
+    // unchanged 1535-row corpus, the P6 blocker reads 48 (grid 18 + roll 30).
+    //
+    // ⚠ AND THE HONEST DIAGNOSIS IS NOT "UNGATED". The blocker IS this file's
+    // `coreStructured && coreProbe === 'ok'` pin, which read `toBe(54)` from #1015
+    // until #1066 (the onset snap grid, `44a97960`) moved it to `toBe(48)` — and
+    // that PR updated the pin while leaving the doc's table saying "54 | 54 |
+    // unmoved". So the failure is a DOCUMENT TRANSCRIBING A GATED FIGURE and then
+    // drifting from it, which is what #1046 (open, filed 2026-07-26 about the
+    // sibling sweep doc) already names and already prescribes the fix for: derive
+    // the table, do not transcribe it. **Do not scope #1012 against 54.**
     //
     // #1242 then moves the blocker 48 -> 51, and the shape of that move is the
     // finding: the GRID half is UNMOVED at 18 across the whole widening and all
