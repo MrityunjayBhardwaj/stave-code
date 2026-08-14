@@ -61,10 +61,13 @@
  * the corpus takes BOTH, and each entry records which proposer found it.
  *
  * ── WHAT THE UNIT WALK IS FILTERED BY, AND WHY BOTH FILTERS ARE LOAD-BEARING ─
- *  1. SURFACE. Only units the panel would route to a notation surface, i.e.
- *     `unitsWithStatus` status `note` or `note-broken` — which is exactly
- *     `chunkSurface(unit) !== null`, the one predicate the panel itself asks
- *     ([[PV327]]). Unfiltered, the walk admits 448 rather than 97, of which 284
+ *  1. SURFACE. Only units the panel would route to a notation surface —
+ *     `routesToNotation`, which is exactly `chunkSurface(unit) !== null`, the
+ *     one predicate the panel itself asks ([[PV327]]). NOT "the coverage number
+ *     counts it": a unit whose view holds a single note still hands a reader a
+ *     real mini string, and #1260's third term is about whether that view is
+ *     worth drawing, not about whether the string exists.
+ *     Unfiltered, the walk admits 448 rather than 97, of which 284
  *     are `samples("github:…")` bank URLs. A corpus that gates the NOTE-CONTENT
  *     readers must not be scored on sample-bank paths.
  *  2. REIFIABILITY. Only spans the transpiler actually turns into a Pattern.
@@ -145,7 +148,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { unitsWithStatus } from './editCoverage'
+import { unitsWithStatus, routesToNotation } from './editCoverage'
 import { parseTopLevel } from '../../../editor/src/visualEdit/chunkDetect'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -160,8 +163,20 @@ const HEADS = new Set(['s', 'sound', 'note', 'n'])
 /** the OLD net, kept for documents acorn cannot parse — never the primary path */
 const MINI_ARG_FALLBACK = /\b(?:s|sound|note|n)\(\s*"([^"\\]*)"/g
 
-/** statuses whose content a notation surface is asked to open — `chunkSurface(u) !== null` */
-const ASKED = new Set(['note', 'note-broken'])
+/**
+ * Statuses whose content a notation surface is asked to open — i.e. exactly
+ * `chunkSurface(u) !== null`, asked through the oracle's own named predicate.
+ *
+ * ⚠ IT WAS A LITERAL SET `{note, note-broken}` UNTIL #1260, and that was a
+ * latent departure of 154 strings. Term 3 split `note` into "a view opened and
+ * is worth drawing" and "a view opened and holds one thing", and a set spelled
+ * by hand here would have kept only the first — so the next `.bakery-runs/`
+ * refresh would have quietly removed every `s("piano")`-shaped mini from the
+ * corpus 24 gates read, in a diff that looks like the refresh. This filter's
+ * question is "did the panel route a notation surface", which term 3 does not
+ * touch, so it asks that question by name and cannot drift from it again.
+ */
+const routedToNotation = routesToNotation
 
 /**
  * The string a chained first argument is rooted at. `"<a b>".slow(64)` parses as
@@ -248,7 +263,7 @@ function minisIn(code: string): { found: Found[]; unparsed: boolean } {
   // PROPOSER 2 — the product's unit walk, through the harness's own enumerator
   // so there is no second copy of `collectUnits`/`classifyUnit` beside it.
   for (const { unit, status } of unitsWithStatus(code)) {
-    if (!ASKED.has(status.status)) continue
+    if (!routedToNotation(status)) continue
     if (unit.miniString === null || unit.miniRange === null) continue
     if (!reified.has(`${unit.miniRange[0]}-${unit.miniRange[1]}`)) continue
     found.push({ mini: unit.miniString, via: 'unit' })

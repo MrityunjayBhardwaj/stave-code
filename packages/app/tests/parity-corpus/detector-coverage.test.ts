@@ -19,7 +19,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { measureDocs } from './editCoverage'
+import { measureDocs, aggregate } from './editCoverage'
 
 const visualEditDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -93,7 +93,15 @@ describe('the coverage harness asks every shipped editor', () => {
   })
 
   it('credits the master strip with exactly the line it edits', () => {
-    const plain = measureDocs([{ name: 'm', code: 's("bd")\nall(x=>x.gain(1.5))\n' }]).tunes[0]
+    // ⚠ THE COMPANION LINE IS `s("bd sd")`, NOT `s("bd")`, SINCE #1260, and the
+    // change is to the fixture rather than to what the arm claims. This arm is
+    // about the MASTER strip; the note line beside it only has to be a unit the
+    // grid counts, and `s("bd")` stopped being one when term 3 landed — a single
+    // grey box is now `note-single` and leaves the denominator. Two steps make
+    // it a pattern again and the arm asks exactly what it always asked. The
+    // behaviour that displaced it is pinned in its own arm below, so this is not
+    // a fixture edited until a gate went quiet.
+    const plain = measureDocs([{ name: 'm', code: 's("bd sd")\nall(x=>x.gain(1.5))\n' }]).tunes[0]
     expect({ master: plain.master, note: plain.noteEditable, knobs: plain.knobs }).toEqual({
       master: 1, note: 1, knobs: 0,
     })
@@ -102,11 +110,62 @@ describe('the coverage harness asks every shipped editor', () => {
     // edits the whole line, so anything it swallowed twice would inflate the
     // numerator — the failure this file exists to stop, in the other direction.
     const nested = measureDocs([
-      { name: 'n', code: 's("bd")\nall(x=>x.add(stack(s("hh"), gain(0.5))))\n' },
+      { name: 'n', code: 's("bd sd")\nall(x=>x.add(stack(s("hh cp"), gain(0.5))))\n' },
     ]).tunes[0]
     expect({ units: nested.units, master: nested.master, note: nested.noteEditable }).toEqual({
       units: 2, master: 1, note: 1,
     })
+  })
+
+  it('a view holding one thing is excluded from the fraction, not counted against it', () => {
+    // INVARIANT 3'S THIRD TERM, at the smallest scale that shows all of it
+    // (#1256/#1260). `s("piano")` routes to a grid and round-trips perfectly —
+    // terms 1 and 2 both hold — and what it draws is one grey box. The same for
+    // `note("c3")` on the roll: one dot.
+    //
+    // Shape B: these leave the DENOMINATOR as well as the numerator, which is
+    // what separates them from `knobs`. `knobs` means "a musical unit we have no
+    // view for yet, and it counts against us"; these got a view, and there is no
+    // melody in them for a better view to have drawn.
+    const one = measureDocs([{ name: 's', code: 's("piano")\nnote("c3")\n' }]).tunes[0]
+    expect({
+      units: one.units, note: one.noteEditable, single: one.noteSingle,
+      broken: one.noteBroken, knobs: one.knobs, code: one.codeOnly,
+    }).toEqual({ units: 0, note: 0, single: 2, broken: 0, knobs: 0, code: 0 })
+
+    // The control that stops the rule from being "exclude everything": the same
+    // two heads with real content stay fully counted. Without this arm, term 3
+    // returning `false` unconditionally satisfies the assertion above.
+    const many = measureDocs([{ name: 'm', code: 's("bd sd")\nnote("c3 e3 g3")\n' }]).tunes[0]
+    expect({ units: many.units, note: many.noteEditable, single: many.noteSingle })
+      .toEqual({ units: 2, note: 2, single: 0 })
+  })
+
+  it('a tune with nothing to measure is not a tune we failed to serve', () => {
+    // The tune-level half of the same decision, and the thing that made it
+    // necessary: wiring term 3 sent 5 vendored fixtures into the `musical === 0`
+    // branch — which was unreachable in that corpus before — and it filed them
+    // as `code-only`. That reads as "we have no view for this yet" and it took
+    // the corpus headline from 41/57 to 34/57 by reclassifying tunes that pose
+    // no question. Exactly the mislabel #998 removed at unit level.
+    const nothing = measureDocs([{ name: 'n', code: 's("piano")\n' }]).tunes[0]
+    expect({ units: nothing.units, cls: nothing.tuneClass })
+      .toEqual({ units: 0, cls: 'no-musical-units' })
+
+    // `code-only` keeps meaning what it meant: this tune HAS a musical unit and
+    // no view opens on it. Without this arm the branch above could swallow the
+    // real failure class whole.
+    const real = measureDocs([{ name: 'c', code: 'pick(order, sections)\n' }]).tunes[0]
+    expect({ units: real.units, cls: real.tuneClass }).toEqual({ units: 1, cls: 'code-only' })
+
+    // …and the tunes with nothing to measure leave the tune-level denominator,
+    // rather than sitting in it as failures.
+    const m = aggregate(measureDocs([
+      { name: 'a', code: 's("bd sd")\n' },
+      { name: 'b', code: 's("piano")\n' },
+    ]))
+    expect({ n: m.n, measurable: m.measurable, any: m.anyEditable, pct: m.anyEditablePct })
+      .toEqual({ n: 2, measurable: 1, any: 1, pct: 100 })
   })
 
   it('every NOT_CONSULTED entry still exists and still carries a reason', () => {

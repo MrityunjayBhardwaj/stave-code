@@ -25,6 +25,7 @@ import {
   type ChunkInfo,
 } from '../../../editor/src/visualEdit/chunkDetect'
 import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { hasStructure } from '../../../editor/src/visualEdit/notation/model'
 import { chunkSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
 import { detectAllArrangeCalls } from '../../../editor/src/visualEdit/arrange/parse'
 import { detectAllPickControls } from '../../../editor/src/visualEdit/pickControl/parse'
@@ -213,11 +214,44 @@ export type UnitStatus =
   | { status: 'setup'; head: string }
   | { status: 'non-musical'; head: string }
   | { status: 'note'; kind: 'roll' | 'step' }
+  | { status: 'note-single'; kind: 'roll' | 'step'; head: string }
   | { status: 'note-broken'; kind: 'roll' | 'step'; reason: string; gate?: string; head: string }
   | { status: 'clip'; kind: string }
   | { status: 'master' }
   | { status: 'knobs' }
   | { status: 'code-only'; head: string }
+
+/**
+ * ── THE THREE QUESTIONS `status === 'note'` USED TO ANSWER AT ONCE ──────────
+ *
+ * Until #1260 there was one notation verdict, so every consumer that wanted ANY
+ * of these wrote `status === 'note'` and got all three for free:
+ *
+ *   1. a notation surface ROUTED for this unit            `routesToNotation`
+ *   2. …and its parser returned a model, so the unit's
+ *      content span is KNOWN                              `hasKnownContent`
+ *   3. …and that model is worth drawing                   `status === 'note'`
+ *
+ * Term 3 splits them, and the split is the whole hazard of this change: three
+ * `.test.ts` gates and the corpus harvest were asking questions 1 and 2 through
+ * a string that now also answers question 3. Left alone, each of them would
+ * have moved for a reason that has nothing to do with what it measures — the
+ * calibration's known-content population would have fallen 600 → 446, the
+ * census's "no view opens on this" set would have GROWN by the same 154, and
+ * the next corpus refresh would have silently dropped those units' minis.
+ *
+ * So the two lower questions get names. A consumer that means "did a view open"
+ * says so, and cannot be moved by a change to what counts as worth drawing.
+ * ([[P572]]: ask what a rule is indexed BY before agreeing two uses are one.)
+ */
+
+/** A notation surface routed for this unit — the panel asked, whatever came back. */
+export const routesToNotation = (s: UnitStatus): boolean =>
+  s.status === 'note' || s.status === 'note-single' || s.status === 'note-broken'
+
+/** …and the parser returned a model, so this unit's content span is known. */
+export const hasKnownContent = (s: UnitStatus): boolean =>
+  s.status === 'note' || s.status === 'note-single'
 
 /**
  * How a broken unit is BUCKETED in the blocker histogram (#990).
@@ -273,9 +307,27 @@ function classifyUnit(
   const surface = mini !== null ? chunkSurface(u) : null
   if (surface !== null && mini !== null) {
     const r = surface === 'roll' ? parsePianoRoll(mini) : parseStepGrid(mini)
-    return r.ok
+    if (!r.ok) {
+      return { status: 'note-broken', kind: surface, reason: r.reason, gate: r.gate, head: head ?? '(no-head)' }
+    }
+    // INVARIANT 3'S THIRD TERM, ASKED HERE FOR THE FIRST TIME (#1256 → #1260).
+    //
+    // The two lines above are the invariant's first two terms — a surface
+    // routed, and the string round-tripped into a model. That is all this
+    // returned `note` for, and #1256 measured what it was letting through:
+    // 154 of the 591 units it counted on 150 real tunes draw a single grey box
+    // or a single dot. `s("piano")` is a correct model of a correct string and
+    // is not a surface anyone can edit music in.
+    //
+    // The predicate is `hasStructure`, IMPORTED — it is the writer census's own
+    // rule, given one home in #1259 precisely so this could ask it rather than
+    // spell a fourth copy. Its grid/roll asymmetry is deliberate and documented
+    // at the definition; the surface key selects the clause, and `surface` here
+    // is the same value that chose the parser one line up, so the model and the
+    // clause cannot come apart.
+    return hasStructure(r.model, surface)
       ? { status: 'note', kind: surface }
-      : { status: 'note-broken', kind: surface, reason: r.reason, gate: r.gate, head: head ?? '(no-head)' }
+      : { status: 'note-single', kind: surface, head: head ?? '(no-head)' }
   }
   if (arrangeRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'clip', kind: 'arrange' }
   if (pickRanges.some((r) => overlaps(r, u.exprRange))) return { status: 'clip', kind: 'pick' }
@@ -333,6 +385,12 @@ export interface TuneReport {
   setup: number
   /** host plumbing: hydra init, video, render, logging, guards, re-exports (#998) */
   nonMusical: number
+  /**
+   * invariant 3's third term: a view opened and round-tripped, and holds a
+   * single sound or a single note. Excluded from the denominator, NOT counted
+   * as a failure — see the note above `measureDocs` (#1256/#1260).
+   */
+  noteSingle: number
   noteEditable: number
   clip: number
   /** master `all(x => …)` lines, edited through the mixer's master strip (#1003) */
@@ -342,7 +400,22 @@ export interface TuneReport {
   codeOnly: number
   /** structurally editable = note OR clip OR master (real view editing, not just a knob) */
   structurallyEditable: number
-  tuneClass: 'fully' | 'partial' | 'knobs-only' | 'code-only' | 'unparseable'
+  /**
+   * ⚠ `no-musical-units` IS NOT A FAILURE CLASS, and separating it from
+   * `code-only` is #998's own argument one level up (#1260).
+   *
+   * A tune whose every statement is setup, host plumbing, or a single sound has
+   * nothing for this measurement to be about. Before term 3 that branch was
+   * unreachable in the vendored corpus; wiring it made 5 fixtures land there,
+   * and they were arriving as `code-only` — which reads as "we have no view for
+   * this yet" and dropped the tune-level headline from 41/57 to 34/57 by
+   * reclassifying tunes that contain no question.
+   *
+   * `code-only` still means what it always meant: this tune HAS musical units
+   * and not one of them has a view. Two of the seven fixtures that moved really
+   * are that, and they stay there.
+   */
+  tuneClass: 'fully' | 'partial' | 'knobs-only' | 'code-only' | 'no-musical-units' | 'unparseable'
 }
 
 export interface Measurement {
@@ -351,7 +424,25 @@ export interface Measurement {
   codeOnlyHeads: Map<string, number>
 }
 
-/** The measurement core — shared by corpus and live modes. */
+/**
+ * The measurement core — shared by corpus and live modes.
+ *
+ * ── WHY `note-single` LEAVES THE DENOMINATOR (#1256, shape B) ──────────────
+ * A unit whose whole content is one sound or one note is not one we are FAILING
+ * to serve. `s("piano")` is a timbre, and the thing that edits a timbre is the
+ * mixer strip and the code line itself; there is no melody in it for a grid to
+ * have drawn. Counting it in the denominator would mean the coverage number can
+ * only be improved by building a view nobody wants for content that has none.
+ *
+ * That is exactly the argument #998 accepted when it took host plumbing out of
+ * this same denominator, which is why the exclusion sits BESIDE `non-musical`
+ * rather than folded into `knobs`: `knobs` means "a real musical unit we have
+ * no view for yet, and it counts against us". These units DID get a view.
+ *
+ * ⚠ THE EXCLUSION IS THE PRODUCT CALL, NOT A ROUNDING. It moves the headline
+ * both ways — numerator and denominator — so it is reported as its own column
+ * everywhere the number appears, and never quietly netted off.
+ */
 export function measureDocs(docs: { name: string; code: string }[]): Measurement {
   const tunes: TuneReport[] = []
   const brokenReasons = new Map<string, number>()
@@ -361,7 +452,7 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
   for (const { name, code } of docs) {
     if (!docParses(code)) {
       tunes.push({
-        file: name, units: 0, setup: 0, nonMusical: 0, noteEditable: 0, clip: 0, master: 0,
+        file: name, units: 0, setup: 0, nonMusical: 0, noteSingle: 0, noteEditable: 0, clip: 0, master: 0,
         noteBroken: 0, knobs: 0, codeOnly: 0, structurallyEditable: 0, tuneClass: 'unparseable',
       })
       continue
@@ -369,10 +460,12 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
     const allUnits = unitsWithStatus(code)
 
     let note = 0, clip = 0, master = 0, broken = 0, knobs = 0, codeOnly = 0, setup = 0, nonMusical = 0
+    let noteSingle = 0
     for (const { status: s } of allUnits) {
       switch (s.status) {
         case 'setup': setup++; break
         case 'non-musical': nonMusical++; break
+        case 'note-single': noteSingle++; break
         case 'note': note++; break
         case 'clip': clip++; break
         case 'master': master++; break
@@ -381,17 +474,17 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
         case 'code-only': codeOnly++; bump(codeOnlyHeads, s.head); break
       }
     }
-    const musical = allUnits.length - setup - nonMusical
+    const musical = allUnits.length - setup - nonMusical - noteSingle
     const structural = note + clip + master
     const tuneClass: TuneReport['tuneClass'] =
-      musical === 0 ? 'code-only'
+      musical === 0 ? 'no-musical-units'
       : structural === musical ? 'fully'
       : structural > 0 ? 'partial'
       : knobs > 0 ? 'knobs-only'
       : 'code-only'
 
     tunes.push({
-      file: name, units: musical, setup, nonMusical, noteEditable: note, clip, master,
+      file: name, units: musical, setup, nonMusical, noteSingle, noteEditable: note, clip, master,
       noteBroken: broken, knobs, codeOnly, structurallyEditable: structural, tuneClass,
     })
   }
@@ -410,18 +503,24 @@ export function aggregate(m: Measurement) {
   const fully = cls('fully')
   const partial = cls('partial')
   const anyEditable = fully + partial
+  const noMusicalUnits = cls('no-musical-units')
+  // Shape B at TUNE level: a tune with no musical units leaves this denominator
+  // for the same reason its statements left the unit one. `unparseable` stays
+  // IN — a document we cannot read is a real failure, not an absent question.
+  const measurable = n - noMusicalUnits
   const totalUnits = sum((t) => t.units)
   const uNote = sum((t) => t.noteEditable)
   const uClip = sum((t) => t.clip)
   const uMaster = sum((t) => t.master)
   return {
-    n, fully, partial, anyEditable,
+    n, measurable, fully, partial, anyEditable, noMusicalUnits,
     knobsOnly: cls('knobs-only'), codeOnlyTunes: cls('code-only'), unparseable: cls('unparseable'),
-    totalUnits, uSetup: sum((t) => t.setup), uNonMusical: sum((t) => t.nonMusical), uNote, uClip,
+    totalUnits, uSetup: sum((t) => t.setup), uNonMusical: sum((t) => t.nonMusical),
+    uNoteSingle: sum((t) => t.noteSingle), uNote, uClip,
     uMaster,
     uStructural: uNote + uClip + uMaster, uBroken: sum((t) => t.noteBroken),
     uKnobs: sum((t) => t.knobs), uCode: sum((t) => t.codeOnly),
-    anyEditablePct: Number(pct(anyEditable, n)),
+    anyEditablePct: Number(pct(anyEditable, measurable)),
     structuralPct: Number(pct(uNote + uClip + uMaster, totalUnits)),
   }
 }
@@ -431,11 +530,12 @@ export function summaryLines(label: string, m: Measurement): string[] {
   const lines = [
     `══════════ EDIT-COVERAGE (${label}) ══════════`,
     `tunes: ${a.n}`,
-    `TUNE  any-editable: ${a.anyEditable}/${a.n} (${a.anyEditablePct}%)  ` +
-      `[fully ${a.fully} · partial ${a.partial} · knobs ${a.knobsOnly} · code ${a.codeOnlyTunes} · unparse ${a.unparseable}]`,
+    `TUNE  any-editable: ${a.anyEditable}/${a.measurable} (${a.anyEditablePct}%)  ` +
+      `[fully ${a.fully} · partial ${a.partial} · knobs ${a.knobsOnly} · code ${a.codeOnlyTunes} · unparse ${a.unparseable}]  ` +
+      `(of ${a.n} tunes; ${a.noMusicalUnits} have no musical unit to measure)`,
     `UNIT  structural: ${a.uStructural}/${a.totalUnits} (${a.structuralPct}%)  ` +
       `[note ${a.uNote} · clip ${a.uClip} · master ${a.uMaster} · broken ${a.uBroken} · knobs ${a.uKnobs} · code ${a.uCode}]  ` +
-      `(excluded: setup ${a.uSetup} · host plumbing ${a.uNonMusical})`,
+      `(excluded: setup ${a.uSetup} · host plumbing ${a.uNonMusical} · single sound/note ${a.uNoteSingle})`,
     'top note-broken reasons:',
     ...rank(m.brokenReasons).slice(0, 6).map(([k, c]) => `   ${c}×  ${k}`),
     'top code-only heads:',
@@ -452,23 +552,32 @@ export function renderMarkdown(m: Measurement, title: string): string {
   md.push(`Generated by \`tests/parity-corpus/edit-coverage.spec.ts\`. ${a.n} tunes.`)
   md.push('')
   md.push('> **What "editable" means:** a unit is *structurally editable* when its note')
-  md.push('> string round-trips into a StepGrid/PianoRoll model (the app\'s own')
-  md.push('> `useGridModel` gate), **or** it is an `arrange`/`pickRestart` clip control,')
-  md.push('> **or** it is a master `all(x => …)` line the mixer\'s master strip edits.')
+  md.push('> string round-trips into a StepGrid/PianoRoll model **that holds more than one')
+  md.push('> thing** (the app\'s own `useGridModel` gate, plus invariant 3\'s third term —')
+  md.push('> #1256), **or** it is an `arrange`/`pickRestart` clip control, **or** it is a')
+  md.push('> master `all(x => …)` line the mixer\'s master strip edits.')
   md.push('> `note-broken` = the app would OFFER a grid/roll editor but the string does')
   md.push('> not round-trip (the "offered but blank" class). `knobs`-only = numeric')
-  md.push('> params but no note/clip structure. Setup/boilerplate heads excluded.')
+  md.push('> params but no note/clip structure. Setup/boilerplate heads excluded, and so')
+  md.push('> are units whose whole content is a single sound or a single note.')
   md.push('')
   md.push('## Tune-level')
   md.push('')
+  md.push(`Percentages are over the **${a.measurable}** tunes that have at least one musical`)
+  md.push(`unit. The other **${a.noMusicalUnits}** are setup, host plumbing, or a single sound`)
+  md.push('end to end — they are listed below but are not a question this measurement can')
+  md.push('answer, and filing them as `code-only` said we had no view for something that')
+  md.push('has no content (#1260).')
+  md.push('')
   md.push('| Class | Tunes | % |')
   md.push('|---|---:|---:|')
-  md.push(`| Fully editable (every unit note/clip) | ${a.fully} | ${pct(a.fully, a.n)} |`)
-  md.push(`| Partially editable (≥1 note/clip unit) | ${a.partial} | ${pct(a.partial, a.n)} |`)
-  md.push(`| **Any editable surface (fully+partial)** | **${a.anyEditable}** | **${pct(a.anyEditable, a.n)}** |`)
-  md.push(`| Knobs-only | ${a.knobsOnly} | ${pct(a.knobsOnly, a.n)} |`)
-  md.push(`| Code-only (no view edit) | ${a.codeOnlyTunes} | ${pct(a.codeOnlyTunes, a.n)} |`)
-  md.push(`| Unparseable | ${a.unparseable} | ${pct(a.unparseable, a.n)} |`)
+  md.push(`| Fully editable (every unit note/clip) | ${a.fully} | ${pct(a.fully, a.measurable)} |`)
+  md.push(`| Partially editable (≥1 note/clip unit) | ${a.partial} | ${pct(a.partial, a.measurable)} |`)
+  md.push(`| **Any editable surface (fully+partial)** | **${a.anyEditable}** | **${pct(a.anyEditable, a.measurable)}** |`)
+  md.push(`| Knobs-only | ${a.knobsOnly} | ${pct(a.knobsOnly, a.measurable)} |`)
+  md.push(`| Code-only (no view edit) | ${a.codeOnlyTunes} | ${pct(a.codeOnlyTunes, a.measurable)} |`)
+  md.push(`| Unparseable | ${a.unparseable} | ${pct(a.unparseable, a.measurable)} |`)
+  md.push(`| *No musical unit — excluded from the above* | *${a.noMusicalUnits}* | — |`)
   md.push('')
   md.push('## Unit-level')
   md.push('')
@@ -483,6 +592,14 @@ export function renderMarkdown(m: Measurement, title: string): string {
   md.push('`code-only`, which reads as "no view for this yet" (#998). Deliberately still')
   md.push('counted AGAINST us: `silence`, `all(x => …)`, `chord(…)`, `seq(…)`, `pick(…)` and')
   md.push('`mask(…)` — real musical units with no view yet.')
+  md.push('')
+  md.push(`Also excluded: **${plural(a.uNoteSingle, 'single-sound/single-note unit')}** —`)
+  md.push('invariant 3\'s third term (#1256). A view opened for these and the string')
+  md.push('round-tripped, and what it drew is one grey box (`s("piano")`) or one dot')
+  md.push('(`note("C3")`). There is no melody in them for a grid to have drawn, so they are')
+  md.push('not units we are failing to serve — the mixer strip and the code line are their')
+  md.push('editor, which is the same argument #998 used for host plumbing. Reported as its')
+  md.push('own column, never netted off, because the exclusion moves the fraction both ways.')
   md.push('')
   md.push('| Status | Units | % |')
   md.push('|---|---:|---:|')
@@ -522,11 +639,11 @@ export function renderMarkdown(m: Measurement, title: string): string {
   md.push('')
   md.push('## Per-tune')
   md.push('')
-  md.push('| Tune | units | note | clip | master | broken | knobs | code | class |')
-  md.push('|---|---:|---:|---:|---:|---:|---:|---:|---|')
+  md.push('| Tune | units | note | clip | master | broken | knobs | code | single | class |')
+  md.push('|---|---:|---:|---:|---:|---:|---:|---:|---:|---|')
   for (const t of m.tunes) {
     md.push(
-      `| ${t.file} | ${t.units} | ${t.noteEditable} | ${t.clip} | ${t.master} | ${t.noteBroken} | ${t.knobs} | ${t.codeOnly} | ${t.tuneClass} |`,
+      `| ${t.file} | ${t.units} | ${t.noteEditable} | ${t.clip} | ${t.master} | ${t.noteBroken} | ${t.knobs} | ${t.codeOnly} | ${t.noteSingle} | ${t.tuneClass} |`,
     )
   }
   md.push('')
@@ -539,15 +656,16 @@ export function resultJson(m: Measurement, extra: Record<string, unknown> = {}) 
     ...extra,
     tunes: a.n,
     tuneLevel: {
-      fully: a.fully, partial: a.partial, anyEditable: a.anyEditable,
+      measurable: a.measurable, fully: a.fully, partial: a.partial, anyEditable: a.anyEditable,
       knobsOnly: a.knobsOnly, codeOnly: a.codeOnlyTunes, unparseable: a.unparseable,
+      noMusicalUnits: a.noMusicalUnits,
       anyEditablePct: a.anyEditablePct,
     },
     unitLevel: {
       totalUnits: a.totalUnits, note: a.uNote, clip: a.uClip, master: a.uMaster,
       structurallyEditable: a.uStructural,
       noteBroken: a.uBroken, knobs: a.uKnobs, codeOnly: a.uCode, setup: a.uSetup,
-      nonMusical: a.uNonMusical,
+      nonMusical: a.uNonMusical, noteSingle: a.uNoteSingle,
       structurallyEditablePct: a.structuralPct,
     },
     brokenReasons: Object.fromEntries(rank(m.brokenReasons)),

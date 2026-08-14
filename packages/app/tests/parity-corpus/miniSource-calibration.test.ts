@@ -68,7 +68,7 @@
  *    non-empty, the eval proposer has a real hole.
  */
 import { describe, it, expect } from 'vitest'
-import { unitsWithStatus } from './editCoverage'
+import { unitsWithStatus, hasKnownContent } from './editCoverage'
 import { boot, evalLocations, loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
 import { admitProposals } from '../../../editor/src/visualEdit/miniSource/evalProposals'
 import { QUERY_CYCLES } from '../../../editor/src/visualEdit/miniSource/evalProposals'
@@ -119,7 +119,15 @@ describe('miniSource calibration over 150 real tunes', () => {
       mixedUse += index?.mixedUseBindings().length ?? 0
 
       for (const { unit, status } of units) {
-        if (status.status === 'note' && unit.miniRange) {
+        // `hasKnownContent`, not `status === 'note'` — the two were the same
+        // string until #1260 and are two questions. This arm asks whether the
+        // resolver names the span a unit's CONTENT lives in; a view that opened
+        // on a single note has a content span exactly as much as one that opened
+        // on a melody, and whether that view is worth drawing (term 3) says
+        // nothing about where its bytes are. Left as `=== 'note'` this
+        // population would have fallen 600 → 446 and this gate would have
+        // reported a resolver regression that never happened.
+        if (hasKnownContent(status) && unit.miniRange) {
           // EVERY known-content unit counts, including the ones in documents
           // that did not evaluate — the parse walk serves those, and skipping
           // them made this gate a statement about the EASY documents while the

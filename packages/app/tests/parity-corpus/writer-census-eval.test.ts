@@ -79,7 +79,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { unitsWithStatus } from './editCoverage'
+import { unitsWithStatus, hasKnownContent } from './editCoverage'
 import {
   boot,
   evalLocations,
@@ -181,7 +181,14 @@ describe('the reach transfer over the EVAL-FIRST ask population', () => {
         // A unit the coverage harness offers no view for today: its mini is not in
         // the parse-side snapshot, so this is the part of the population the
         // mini-corpus excludes.
-        if (status.status !== 'note') newlyAdmitted.add(text)
+        //
+        // `!hasKnownContent`, not `!== 'note'` — the same string until #1260,
+        // and this arm means the first. A view DOES open on a single-note unit,
+        // so term 3 declining to count it in the coverage fraction must not push
+        // it into "no view opens on this": that would have grown this set by
+        // exactly the 154 units term 3 excluded and read as a reach REGRESSION
+        // in the one field of this population a reach change is allowed to move.
+        if (!hasKnownContent(status)) newlyAdmitted.add(text)
       }
     }
 
@@ -321,6 +328,14 @@ const POPULATION = {
   // those 10 are in this arm's eval-resolved set, so they cross into `newlyAdmitted`:
   // `[hh ~]!16`, `lp:6/4`, `~ ~ ~ bd(<2 4!2>, 8)`. Observed by intersecting this set with
   // the 10 the attribution sweep named, not deduced from the delta being 3.
+  // ⚠ UNMOVED AT #1260, AND THAT IS THE RESULT, NOT A NON-EVENT. That change
+  // split `note` into two statuses, so the two notes above — both of which
+  // explain this field in terms of the literal string `status.status !== 'note'`
+  // — describe a test the code no longer spells that way. The membership rule is
+  // now `!hasKnownContent(status)`, which is what those notes always MEANT: "no
+  // view opens on this unit". Reading the old spelling forward would have grown
+  // this set by 154 and reported a reach regression from a change that touched
+  // no resolver. Left at 220, verified in the same run as the wiring.
   newlyAdmitted: 220,
 }
 
