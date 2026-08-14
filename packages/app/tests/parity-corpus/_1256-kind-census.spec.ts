@@ -116,6 +116,27 @@ function pitchLanesOnGrid(lanes: string[], siblingAccepts: boolean): boolean {
   return lanes.length > 1 && siblingAccepts && lanes.every((l) => PITCH.test(l))
 }
 
+/**
+ * The hand-read verdict on the filter above — the count cannot answer this and
+ * is not asked to.
+ *
+ * Of the 14 candidates on the 150-tune corpus, 13 are genuine (one tune's
+ * `gm_trumpet` / `gm_french_horn` / `gm_tuba` lines, each a melody in a step
+ * grid) and ONE is not: `sound("a!4 b!2 a@4 a@2 c*2 b*2")`, whose lanes `a`,
+ * `b`, `c` are bare letters that really are sample names with no downstream
+ * `.sound()` to reassign them.
+ *
+ * ⚠ EXCLUDED BY ITS OWN PROPERTY rather than by subtracting one. A bare `-1`
+ * would silently become wrong the moment the corpus moves, and would read as
+ * arithmetic when it is a judgement. Single-letter lanes are the property that
+ * separated it, so that is what is tested — and if a future corpus adds a
+ * genuine single-letter melody this over-excludes and the dump above is where
+ * that shows up.
+ */
+function handReadWrongSurface(rows: Row[]): number {
+  return rows.filter((r) => !r.lanes.every((l) => /^[a-gA-G]$/.test(l))).length
+}
+
 interface Row {
   doc: string
   head: string
@@ -357,6 +378,41 @@ function report(label: string, docs: { name: string; code: string }[]) {
   console.log(
     `  term 3 with the second half added : ${gridUnstructured.length + rollUnstructured.length + wrongSurfaceKind.length}` +
       `  ⚠ the second half needs hand-reading — a downstream .sound() reassigns the voice`,
+  )
+
+  // ── THE CHOSEN TARGET SHAPE, DERIVED ────────────────────────────────────
+  // Decision 2026-08-14: term 3 filters the DENOMINATOR as well as the
+  // numerator. A unit whose content is a single sound or a single note is not
+  // one we are failing to serve — code, and the mixer strip that already gives
+  // it a kit and effects, is its editor. That is the same argument #998 accepted
+  // when it took host plumbing out of this denominator.
+  //
+  // Computed here rather than written into prose, because a percentage typed
+  // into a document beside a gate that owns it is exactly the failure #1046 is
+  // about. Two readings, from term 3's floor and from its hand-read value, so
+  // the spread is visible instead of a single digit implying precision.
+  const shapeB = (drop: number) => {
+    const num = a.uStructural - drop
+    const den = a.totalUnits - drop
+    const ceil = a.uStructural + a.uBroken - drop
+    return { num, den, ceil, need: Math.ceil(0.9 * den) }
+  }
+  console.log(`\n  ══ TARGET SHAPE B — term 3 filters numerator AND denominator ══`)
+  for (const [name, drop] of [
+    ['floor      (structure only, 154)', gridUnstructured.length + rollUnstructured.length],
+    ['hand-read  (+ wrong surface)     ', gridUnstructured.length + rollUnstructured.length + handReadWrongSurface(wrongSurfaceKind)],
+  ] as [string, number][]) {
+    const b = shapeB(drop)
+    console.log(
+      `  ${name}: today ${b.num}/${b.den} = ${((100 * b.num) / b.den).toFixed(1)}%` +
+        ` · ceiling ${b.ceil}/${b.den} = ${((100 * b.ceil) / b.den).toFixed(1)}%` +
+        ` · 90% needs ${b.need} (${b.ceil >= b.need ? 'REACHABLE' : `short by ${b.need - b.ceil}`})`,
+    )
+  }
+  console.log(
+    `  ⚠ the ceiling here is a LOWER BOUND: a refused unit has no model, so the\n` +
+      `     ones that would themselves be single-sound once repaired cannot be\n` +
+      `     identified and are credited to the denominator. Removing them raises it.`,
   )
 
   console.log(`\n  — roll rows with one note or fewer, for hand-reading —`)
