@@ -1,7 +1,7 @@
 /**
  * gate-population-reporter — make every browser figure state its population.
  *
- * `gate:editing:browser` names four spec files. It is a fast loop gate, and that
+ * `gate:editing:browser:quick` names a few spec files. It is a fast loop gate, and that
  * is a deliberate choice — but the count it prints ("57 passed") looks exactly
  * like a whole-suite count, so work quoting it has been reporting a green gate
  * that could not have contained the specs it was green about (#1062). The specs
@@ -24,7 +24,7 @@ import type { Reporter, Suite } from '@playwright/test/reporter'
  * What narrowed this run, read off the actual invocation (#1190).
  *
  * ⚠ THE WORD "SUBSET" USED TO BE HARDCODED HERE, and that was right for exactly as
- * long as this reporter had one caller. `gate:editing:browser:full` runs the whole
+ * long as this reporter had one caller. `gate:editing:browser` runs the whole
  * chromium project, and a reporter that calls every run a SUBSET would mislabel it
  * in the opposite direction — a complete run reading as partial teaches the reader
  * to discount a figure that deserved trust, which is how a green full suite ends up

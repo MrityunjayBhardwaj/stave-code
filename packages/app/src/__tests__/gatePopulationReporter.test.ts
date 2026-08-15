@@ -2,7 +2,7 @@
  * gate-population-reporter — the browser gate's scope line is derived, not asserted (#1190).
  *
  * The word "SUBSET" used to be hardcoded in this reporter, which was correct for as
- * long as it had exactly one caller. `gate:editing:browser:full` runs the whole
+ * long as it had exactly one caller. `gate:editing:browser` runs the whole
  * chromium project, and a reporter calling that a SUBSET mislabels it in the other
  * direction — a complete run reading as partial teaches the reader to discount a
  * figure that deserved trust, which is one way a green full suite comes to be ignored.
