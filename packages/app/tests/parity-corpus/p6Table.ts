@@ -132,6 +132,38 @@ export interface P6CapObservation {
 }
 
 /**
+ * Is the committed observation internally coherent?
+ *
+ * The expiry check below cannot see the observed column at all — that column is the thing
+ * no gate can re-derive, which is the whole reason it is committed. A break matrix made
+ * that concrete: corrupting `observed.both.blocker` reddened nothing anywhere.
+ *
+ * This closes the realistic half of that hole. The failure to worry about is not a
+ * fabricated run; it is someone editing one digit to make a document read the way they
+ * expect — precisely the reset-the-clock move #1046 exists to stop. Every additive column
+ * must reconcile across the surface split, so a single hand-edited field cannot survive.
+ * A wholly self-consistent fabrication still can, and no check short of re-running the
+ * script would catch it.
+ */
+export function assertObservationCoherent(obs: P6CapObservation): void {
+  const wrong: string[] = []
+  for (const side of ['observed', 'companion'] as const) {
+    const r = obs[side]
+    for (const k of Object.keys(r.both) as (keyof P6Columns)[])
+      if (r.grid[k] + r.roll[k] !== r.both[k])
+        wrong.push(`${side}.${k}: grid ${r.grid[k]} + roll ${r.roll[k]} !== both ${r.both[k]}`)
+  }
+  if (obs.observed.cap === obs.companion.cap)
+    wrong.push(`both readings are at cap ${obs.observed.cap} — there is no second cap here`)
+  if (wrong.length)
+    throw new Error(
+      `P6-CAP12.json does not reconcile with itself — a field was edited rather than observed:\n` +
+        wrong.map((s) => `    ${s}`).join('\n') +
+        `\n  Re-take it:  ${obs.script}`,
+    )
+}
+
+/**
  * Is the committed cap-12 observation still about this tree?
  *
  * Throws with the script to re-run rather than returning a boolean, because the only

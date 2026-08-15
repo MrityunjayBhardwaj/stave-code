@@ -76,6 +76,7 @@ import {
 } from './engineEditOracle'
 import { truePeriod } from './enginePeriod'
 import {
+  assertObservationCoherent,
   assertObservationCurrent,
   p6Columns,
   readP6,
@@ -778,6 +779,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
     const observation: P6CapObservation = JSON.parse(
       fs.readFileSync(path.join(corpusDir, 'P6-CAP12.json'), 'utf8'),
     )
+    assertObservationCoherent(observation)
     assertObservationCurrent(observation, allAsks, p6.cap, minis.length)
   })
 
