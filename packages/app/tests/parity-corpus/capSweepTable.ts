@@ -208,7 +208,8 @@ export function renderSweepTable(obs: SweepObservation, live: SweepReading): str
     row('B leaf notes live', (r) => `${r.B.leafAlive}/${r.B.leafProbed} ${pct(r.B.leafAlive, r.B.leafProbed)}`),
     row('views that CORRUPT (must be 0)', (r) => String(r.A.viewCorrupts + r.B.viewCorrupts)),
     ``,
-    `- **Population A's reach moves by ${aReach[aReach.length - 1] - aReach[0]} ask(s) across the whole range** ` +
+    `- **Population A's reach moves by ${aReach[aReach.length - 1] - aReach[0]} ` +
+      `${aReach[aReach.length - 1] - aReach[0] === 1 ? 'ask' : 'asks'} across the whole range** ` +
       `(${aReach.join(' → ')}). It is the population production reaches today, and it is the ` +
       `reason the cap has not been raised: the gain there is a rounding error.`,
     `- **Population B gains ${bReach[bReach.length - 1] - bReach[0]} transfers** ` +
