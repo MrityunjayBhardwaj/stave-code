@@ -96,9 +96,17 @@ describe('edit-parity — view-editability over the vendored corpus', () => {
     const editable = m.tunes.reduce((n, t) => n + t.structurallyEditable, 0)
     const total = m.tunes.reduce((n, t) => n + t.units, 0)
     expect(total).toBeGreaterThan(0)
-    // MEASURED 48/98 (49.0%) at the time of writing (#903 A1) — the number the
-    // committed EDIT-COVERAGE.md reports, not a remembered one. The floor sits
-    // below it so an honest widening never trips it, but a collapse does.
-    expect(editable).toBeGreaterThanOrEqual(44)
+    // MEASURED 60/86 (69.8%) on this tree, re-derived in the run that changed
+    // it — not the 48/98 this comment carried from #903 A1, which had been true
+    // and then wrong for a long time while the floor below it stayed at 44.
+    //
+    // ⚠ THE FLOOR MOVES UP IN A COMMIT THAT MOVES THE VALUE DOWN, and both
+    // halves belong in the same place. #1260 wired invariant 3's third term, so
+    // 15 of this corpus's units left both sides of the fraction: 75/101 → 60/86.
+    // A floor of 44 against an observed 60 is 16 units of headroom a regression
+    // could disappear into with the gate still green ([[P541]]); 56 keeps the
+    // slack this floor was originally written with. Still a floor and not an
+    // equality, so adding a fixture does not need it touched.
+    expect(editable).toBeGreaterThanOrEqual(56)
   })
 })

@@ -36,7 +36,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { unitsWithStatus, measureDocs, aggregate } from './editCoverage'
+import { unitsWithStatus, measureDocs, aggregate, hasKnownContent } from './editCoverage'
 import { chunkSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
 import { chordLanes } from '../../../editor/src/visualEdit/panels/chordLanes'
 import {
@@ -197,8 +197,23 @@ function survey(docs: { name: string; code: string }[]) {
 
   for (const doc of docs) {
     for (const { unit, status } of unitsWithStatus(doc.code)) {
-      // The ACCEPTED set — what invariant 3 counts today.
-      if (status.status !== 'note') continue
+      // The set invariant 3's first two terms accept: a surface routed and the
+      // string round-tripped.
+      //
+      // ⚠ THIS WAS `status.status !== 'note'` AND HAD TO CHANGE WHEN #1260
+      // SHIPPED, or this instrument would have measured its own subject. Once
+      // the oracle enforces term 3, `note` no longer means "terms 1+2 held" —
+      // it means "all three held" — so the old filter would have excluded
+      // exactly the rows this file exists to count and every term-3 pool below
+      // would have read 0. That is not the instrument agreeing with the wiring;
+      // it is the instrument being unable to disagree ([[P556]]: once the real
+      // thing lands, read the DENOMINATOR, not the count).
+      //
+      // Asking `hasKnownContent` keeps the population fixed across the change,
+      // which is what makes the before/after a paired differential: the pools
+      // below must hold their pre-wiring sizes, and the arm at the bottom
+      // requires them to equal the units the oracle now calls `note-single`.
+      if (!hasKnownContent(status)) continue
       const mini = unit.miniString
       if (mini === null) continue
       // ⚠ The harness double-collects some spans (an argument walk unioned with
@@ -273,7 +288,22 @@ function report(label: string, docs: { name: string; code: string }[]) {
   // this arc's history that went stale did so by being typed once and quoted
   // afterwards; the invariant's own percentage is exactly that kind of number,
   // so it is recomputed here from the same oracle in the same process.
-  const a = aggregate(measureDocs(docs))
+  const shipped = aggregate(measureDocs(docs))
+  // ── THE TERMS-1+2 WORLD, RECONSTRUCTED (#1260) ───────────────────────────
+  // The oracle ENFORCES term 3 now, so `aggregate` already reports the restated
+  // figure — its `note` no longer holds these units and its denominator no
+  // longer counts them. Every label below says "today" and means terms 1+2, so
+  // the pool is added back to BOTH sides to rebuild that world. This is what
+  // makes the file a paired differential rather than a description of the
+  // change's own output: the reconstruction must land on the same numbers this
+  // printed before the wiring (624/889 · 75/101), and the arm at the bottom
+  // requires the reconstruction to be exact rather than approximately right.
+  const a = {
+    ...shipped,
+    totalUnits: shipped.totalUnits + shipped.uNoteSingle,
+    uStructural: shipped.uStructural + shipped.uNoteSingle,
+    uNote: shipped.uNote + shipped.uNoteSingle,
+  }
   const restated = a.uStructural - (gridUnstructured.length + rollUnstructured.length)
 
   console.log(`\n════════ ${label} — ${docs.length} documents ════════`)
@@ -297,6 +327,17 @@ function report(label: string, docs: { name: string; code: string }[]) {
     `\n  STRUCTURAL, restated with term 3 applied      : ${restated}/${a.totalUnits}` +
       ` = ${((100 * restated) / a.totalUnits).toFixed(1)}%` +
       `   (today's figure is ${((100 * a.uStructural) / a.totalUnits).toFixed(1)}%)`,
+  )
+  // THE SHIPPED ORACLE'S OWN ANSWER, printed beside the reconstruction so the
+  // two can be compared by eye as well as by the assertion at the bottom. Under
+  // shape B this is the restated numerator over the SHRUNK denominator, which is
+  // a different (larger) percentage than the line above — the line above holds
+  // the denominator fixed to show what term 3 costs; this one is the number the
+  // invariant is actually read against.
+  console.log(
+    `  what the ORACLE now reports (shape B)         : ${shipped.uStructural}/${shipped.totalUnits}` +
+      ` = ${((100 * shipped.uStructural) / shipped.totalUnits).toFixed(1)}%` +
+      `   [note-single excluded: ${shipped.uNoteSingle}]`,
   )
 
   // ── THE CEILING, RE-DERIVED ──────────────────────────────────────────────
@@ -445,7 +486,30 @@ function report(label: string, docs: { name: string; code: string }[]) {
     console.log(`     ${r.doc.padEnd(34)} lanes=${JSON.stringify(r.lanes).slice(0, 60)} hits=${JSON.stringify(r.hitsPerLane).slice(0, 40)}`)
   }
 
-  return { rows, rollUnstructured, served, rollServed, skippedNoModel, of, a, ceiling, ceiling3, target }
+  return { rows, rollUnstructured, served, rollServed, skippedNoModel, of, a, shipped, ceiling, ceiling3, target }
+}
+
+/**
+ * The instrument and the shipped oracle must name the SAME units (#1260).
+ *
+ * This file walks the population itself, parses each unit and asks
+ * `hasStructure`; `classifyUnit` does the same thing inside the oracle and
+ * writes the answer into a status. Two derivations of one decision is the shape
+ * this seam has shipped wrong more than once ([[PV327]]) — so rather than trust
+ * that they agree, the count is compared. An equality of TOTALS is weaker than
+ * a per-item comparison ([[P561]]), and it is what this pair can offer: the
+ * oracle keeps no list, only a count. It is still the only free check available
+ * that the wiring reproduces the measurement it was derived from.
+ */
+function assertOracleAgrees(r: ReturnType<typeof report>): void {
+  const mine = r.rows.filter((x) => !x.structured).length + r.rollUnstructured.length
+  expect(
+    r.shipped.uNoteSingle,
+    `this file finds ${mine} units failing term 3; the oracle excluded ${r.shipped.uNoteSingle}. ` +
+      'Two derivations of one rule have come apart.',
+  ).toBe(mine)
+  // Non-vacuity: an equality of two zeros proves nothing.
+  expect(mine).toBeGreaterThan(0)
 }
 
 describe('#1256 — what kind of view the accepted units are drawn as', () => {
@@ -490,6 +554,7 @@ describe('#1256 — what kind of view the accepted units are drawn as', () => {
     const r = report('VENDORED CORPUS', docs)
     expect(docs.length).toBeGreaterThan(0)
     expect(r.skippedNoModel).toBe(0)
+    assertOracleAgrees(r)
     // The buckets partition the grid population exactly — no row counted twice,
     // none dropped.
     expect(r.of('ordinary').length + r.of('diagonal').length + r.of('one-cell').length + r.of('chord').length)
@@ -504,6 +569,7 @@ describe('#1256 — what kind of view the accepted units are drawn as', () => {
     const r = report('150 REAL TUNES', docs)
     expect(docs.length).toBe(150)
     expect(r.skippedNoModel).toBe(0)
+    assertOracleAgrees(r)
     // The four pools must partition the musical units — otherwise the ceiling
     // arithmetic above is over a population that was counted twice.
     expect(r.a.uStructural + r.a.uBroken + r.a.uKnobs + r.a.uCode).toBe(r.a.totalUnits)
