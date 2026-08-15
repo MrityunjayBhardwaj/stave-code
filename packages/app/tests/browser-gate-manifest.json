@@ -1,0 +1,766 @@
+{
+  "_1097-bare-track-maps.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "_1161-lane-survives.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "b-preflight-coep.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "b-preflight-hydra.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "b0-worker-spike.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "b1-coop-popout.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "b3-worker-observe.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "b5-hydra-heavy.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "b5-hydra-worker-observe.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "backdrop-crop.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "backdrop-hover-gated.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "backdrop-per-pane-settings.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "backdrop-split-live.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "backdrop-viz-chrome.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "backdrop-viz-span.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "bg-tab-audio-observe.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "binding-ref-editable-strip.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "binding-ref-knob-writeback.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "blit-spike.spec.ts": {
+    "runs": "ungated",
+    "why": "every test sits behind an env guard \u2014 it does not run unless that flag is set"
+  },
+  "boot-fails-loudly-on-stalled-required-import.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "boot-survives-stalled-sample-manifest.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "bottom-drawer.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "chord-chart-grid.spec.ts": {
+    "runs": "gate",
+    "why": "named in gate:editing:browser"
+  },
+  "click-to-source-test.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "copy-paste.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "counted-but-empty-views.spec.ts": {
+    "runs": "gate",
+    "why": "named in gate:editing:browser"
+  },
+  "cpu-gpu-observe.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "editor-track-colour-bar.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "engine-init-race-playhead.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "file-history.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "file-tree-badge.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-analysis-eval.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-aperiodic-notice.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-arrange-clips.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-arrange-delete.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-arrange-duplicate.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-arrange-extend.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-arrange-move.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-arrange-multitrack.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-arrange-nested.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-arrange-split.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-arrange-trim.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-bare-after-prelude.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-bare-arrange.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-bare-resize.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-bare-row.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-camera-persistence.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-canvas.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-clip-chain-then-grid.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-clip-keys-focus.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-clip-ops-e2e.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-cold-eval.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-cycle-bare-clip.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-eval-lanes.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-eval-on-load.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-expand-bind.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-fade-canvas-dim.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-follow.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-grid-focus-outline.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-gutter-collapse.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-lane-selection.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-lane-source-order.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-late-track.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-live-overlay.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-muted-lane-identity.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-pickrestart-clips.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-pickrestart-edit.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-pickrestart.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-row-height-setting.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-seek-marks.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-select-jump.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-silent-clip-outline.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-single-selection.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-single-voice-expand-scale.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-solo-mute-fade.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-stack-whitespace.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-stopped-edit.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-timeline.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-track-labels.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-vertical-scroll.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-voice-order-stable.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-voice-subrows.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-window-paging.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "full-song-zoom-ruler.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "getting-started-walkthrough.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "glsl-creation-4up.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "glsl-path-coverage.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "glsl-per-track.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "glsl-seeded-viz.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "grid-visual-identity.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "high-n-headroom.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "history-checkout.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "history-commit-store.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "history-diff.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "history-main-tab.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "history-panel.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "history-uncommitted.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "hydra-path-coverage.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "hydra-stave-bag.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "hydra-viz-options.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "inline-viz-res-observe.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "ir-inspector-debugger.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "ir-inspector-mode-toggle.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "ir-inspector-tier4.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "ir-inspector-timeline.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "ir339-inspector-crash.spec.ts": {
+    "runs": "ungated",
+    "why": "every test sits behind an env guard \u2014 it does not run unless that flag is set"
+  },
+  "keybindings-editor.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "live-banks.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "live-instruments.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "loading-hang-repro.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "menubar-restructure.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "menubar-transport-lcd.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "mixer-dial-range.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "mixer-guardrails.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "mixer-solo-writes-mutes.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "mixer-strip-select.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "mixer-strips.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "mixer-zoom.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "mixer.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "monaco-selfhost.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "monaco-warm.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "notation-spelling.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "pattern-grid-coverage.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "pattern-horizontal-strip.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "perf-matrix.spec.ts": {
+    "runs": "measurement",
+    "why": "measures real-time rendering \u2014 serialised alone on the GPU (MEASUREMENT_SPECS in playwright.config.ts)"
+  },
+  "perf-profiler.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "phase-b-verify.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "phase-c-pause-observe.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "phase3-cinema.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "piano-roll-column-cover.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "piano-roll-decorations.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "piano-roll-fractional-width.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "piano-roll-note-length.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "piano-roll-selection-ring.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "piano-roll.spec.ts": {
+    "runs": "gate",
+    "why": "named in gate:editing:browser"
+  },
+  "pre-gesture-transport.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "preset-clobber-regression.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "resolution.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "resolver-opens-a-grid.spec.ts": {
+    "runs": "gate",
+    "why": "named in gate:editing:browser"
+  },
+  "screenshot-p5-backdrop.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "selection-backdrop.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "sequencer-note-length-edit.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "sequencer-note-length.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "sequencer-projection.spec.ts": {
+    "runs": "gate",
+    "why": "named in gate:editing:browser"
+  },
+  "sequencer.spec.ts": {
+    "runs": "gate",
+    "why": "named in gate:editing:browser"
+  },
+  "set-bg-on-pattern-bar.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "set-bg-viz-file-outline.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "settings-shell.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "snap-division.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "sound-assignment.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "stave.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "strudel-highlighting.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "strudel-lint.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "strudel-viz-methods.spec.ts": {
+    "runs": "measurement",
+    "why": "measures real-time rendering \u2014 serialised alone on the GPU (MEASUREMENT_SPECS in playwright.config.ts)"
+  },
+  "surgery-preserves-spelling.spec.ts": {
+    "runs": "gate",
+    "why": "named in gate:editing:browser"
+  },
+  "synthwave-inline4-ab.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "tab-bar-overflow.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "tab-persistence.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "timeline-caret-lane-select.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "track-custom-color.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "track-identity-pattern.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "track-rename.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "velocity.spec.ts": {
+    "runs": "gate",
+    "why": "named in gate:editing:browser"
+  },
+  "visual-edit-tabs.spec.ts": {
+    "runs": "gate",
+    "why": "named in gate:editing:browser"
+  },
+  "viz-chain.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-chrome-button-order.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-density-lod.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-hot-reload.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-hover-preview.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-inputs-live-values.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-library.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-popout.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-scroll-jank-governor.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-scroll-jank.spec.ts": {
+    "runs": "measurement",
+    "why": "measures real-time rendering \u2014 serialised alone on the GPU (MEASUREMENT_SPECS in playwright.config.ts)"
+  },
+  "viz-shared-pump-observe.spec.ts": {
+    "runs": "measurement",
+    "why": "measures real-time rendering \u2014 serialised alone on the GPU (MEASUREMENT_SPECS in playwright.config.ts)"
+  },
+  "viz-single-source.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-stave-inputs.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-thumbnails.bake.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-worker-creategraphics.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-worker-draw-section.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-worker-font.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-worker-p5-direct.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-worker-pixels.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-worker-readback.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-worker-save.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-worker-storage.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "viz-worker-webgl.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "w1-quick-bugs.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "wave-delta-gate.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "worker-draw-error.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  },
+  "worker-reactivity-gate.spec.ts": {
+    "runs": "ungated",
+    "why": "not yet triaged for the browser gate \u2014 #1265"
+  }
+}
