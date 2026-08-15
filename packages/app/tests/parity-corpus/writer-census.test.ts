@@ -675,12 +675,14 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // exactly the confusion this filter was built to prevent.
     //
     // MEASURED AT THE OTHER CAP TOO, since P6 carries `LEAF_PROJECT_BARS.roll = 12` in
-    // its own diff: at cap 12 the blocker is 39 (grid 24 + roll 15), OBSERVED by running
-    // this census with the constant set rather than by subtracting the cap's known
-    // contribution from 54. (On the pre-#1037 corpus the same measurement read 34 =
-    // grid 19 + roll 15. The roll half is unchanged at 15, which is what you would
-    // expect of a cap whose reach the roll sweep found flat; the grid half moved with
-    // the corpus.)
+    // its own diff — but the figure does NOT live in this comment any more (#1046).
+    // ⚠ It used to, and it read "39 (grid 24 + roll 15)" while the observation had moved
+    // to 35 (grid 18 + roll 17): a fifth transcribed copy, sitting in the file that gates
+    // the shipped-cap half of the same pair. It is now `P6-CAP12.json`, taken by
+    // `scripts/p6-cap-census.mjs`, checked for currency by the arm below, and spliced into
+    // both documents. Read it from there — and note the reason it stayed an OBSERVATION
+    // rather than becoming a subtraction, which the deleted text was right about and is
+    // now written down in `p6Table.ts` instead of here.
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures):
     // coreStructured 50 -> 53, coreEdits 49 -> 53, the conjunction 48 -> 51. All
     // three rise together and the mechanism is the CORPUS, exactly as at #1037 —
