@@ -80,10 +80,26 @@ test.describe('Sequencer behaviour-projection (#922)', () => {
     await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
     await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'false')
     await expect(grid.locator('[data-seq-cell="1:2"]')).toHaveAttribute('aria-pressed', 'true')
-    // toggle bd off → hap-faithful re-emit (the @2 hold becomes two rests)
+    // TOGGLE bd OFF. The write is byte surgery, not a re-emit: the `bd` leaf is
+    // replaced where it stands and the `@2` hold it was carrying stays put, so a
+    // gesture that did not touch the elongation does not respell it (#1233/#1245).
+    //
+    // This assertion used to read `~ ~ hh`, which is what the ELEMENT writer
+    // produced — the same music, blown open into one column per step.
+    // `surgery-preserves-spelling.spec.ts` names that spelling as the destruction
+    // class the whole arc exists to stop: "it plays identically, it re-parses,
+    // every spelling assertion elsewhere still holds. It is simply not what they
+    // wrote." This was one of those assertions elsewhere (#1266).
     await grid.locator('[data-seq-cell="0:0"]').click()
     await page.waitForTimeout(80)
-    expect(await strudelValue(page)).toBe('$: s("~ ~ hh")')
+    expect(await strudelValue(page)).toBe('$: s("~@2 hh")')
+    // …AND THE MUSIC DID NOT MOVE. A rest emits no hap, so `~@2` and `~ ~` query
+    // identically and `hh` still lands two thirds of the way through the cycle.
+    // A string compare alone cannot tell a preserved spelling from a corrupted
+    // one, so ask the projection: re-opened on the written bytes, one cell is
+    // still lit in column 2. Asked by column rather than by `lane:col` because
+    // which lane survives an emptied row is a different question (#1161).
+    await expect(grid.locator('[data-seq-cell$=":2"][aria-pressed="true"]')).toHaveCount(1)
   })
 
   test('a nested group opens and an unrelated edit copies the group back verbatim', async ({
