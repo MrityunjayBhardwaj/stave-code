@@ -372,11 +372,24 @@ describe('writer census — how much of the syntactic core transfers to the deri
   const grid = census(SURFACES[0])
   const roll = census(SURFACES[1])
 
+  /**
+   * Hoisted so the three things that read this run can be three ARMS rather than one.
+   *
+   * They were one arm first, and a break matrix could not tell them apart: a stale
+   * observation, a document that had lost its markers, and a broken conjunction in the
+   * derivation all reddened the same `it` and differed only in their message. Splitting
+   * by DECISION is what makes the break signatures disjoint ([[P558]]) — and the middle
+   * one is the load-bearing case, because a generation step that silently stopped
+   * generating is the failure this whole issue is about.
+   */
+  const allAsks = [...grid, ...roll]
+  const p6 = readP6(allAsks, PROJECTION_PERIOD_BOUNDS.leaf.roll)
+
   it('counts every core-served ask, and enumerates the untransferable with a mechanism', () => {
     report('step grid', grid)
     report('piano roll', roll)
 
-    const all = [...grid, ...roll]
+    const all = allAsks
     const untransferable = all.filter(
       (r) => r.outcome === 'no-view' || r.outcome === 'view-corrupts',
     )
@@ -402,7 +415,6 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // documents retyped them; now the print, the emitted artifact, the generated document
     // sections and the cap-12 script all read `readP6`, so none of them can come to a
     // different view of the same run.
-    const p6 = readP6(all, PROJECTION_PERIOD_BOUNDS.leaf.roll)
     console.log(
       [
         `\n===== THE P6 BLOCKER   (roll cap ${p6.cap}) =====`,
@@ -436,33 +448,6 @@ describe('writer census — how much of the syntactic core transfers to the deri
         2,
       ) + '\n',
     )
-
-    // THE TWO DOCUMENTS ARE GENERATED, NOT TRANSCRIBED (#1046). Both carry a P6 section;
-    // both were typed out by hand from a run; three of the four rows in each had drifted
-    // and one was right by accident. Nothing below ASSERTS the documents' contents — a
-    // test that writes a file and then checks it is [[P578]]'s circularity in another
-    // costume. Splicing removes the drift by construction, and `writeGeneratedBlock`
-    // throws rather than silently appending if a document loses its markers ([[P497]]).
-    const observationPath = path.join(corpusDir, 'P6-CAP12.json')
-    if (!fs.existsSync(observationPath))
-      throw new Error(
-        'P6-CAP12.json is missing — the cap-12 column has no observation to splice.\n' +
-          '  Take one:  node scripts/p6-cap-census.mjs 12\n' +
-          '  (that script runs this census twice, so it reaches this point before this throw does)',
-      )
-    const observation: P6CapObservation = JSON.parse(fs.readFileSync(observationPath, 'utf8'))
-    const section = renderP6Table(observation, p6, minis.length)
-    for (const doc of ['ROLL-CAP-SWEEP.md', 'WRITER-CENSUS.md']) {
-      const at = path.join(corpusDir, doc)
-      fs.writeFileSync(at, writeGeneratedBlock(fs.readFileSync(at, 'utf8'), section, doc))
-    }
-
-    // …AND THE ONE COLUMN NO RUN CAN PRODUCE GETS AN EXPIRY. The cap-12 figure is an
-    // observation taken with the module constant rewritten, so it cannot be re-derived
-    // here; what CAN be re-derived is the cap-4 reading the same run recorded beside it.
-    // When that stops matching this tree, the observation is stale and this reddens with
-    // the script to re-run. Necessary, not sufficient — see `p6Table.ts`.
-    assertObservationCurrent(observation, all, p6.cap, minis.length)
 
     // THE DENOMINATOR IS PINNED TO writer-reach's COMPLEMENT. That gate sweeps the
     // asks the core REFUSES (744 grid / 1122 roll of 1535); this one sweeps the
@@ -731,6 +716,58 @@ describe('writer census — how much of the syntactic core transfers to the deri
       both: structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length,
     }).toEqual({ coreStructured: 53, coreEdits: 53, both: 51 })
   }, 900_000)
+
+  /**
+   * THE TWO DOCUMENTS ARE GENERATED, NOT TRANSCRIBED (#1046).
+   *
+   * Both carry a P6 section, both were typed out by hand from a run, and by the time this
+   * was written three of the four rows in each had drifted while one was right by
+   * accident. Nothing here ASSERTS the documents' contents — a test that writes a file and
+   * then checks it is [[P578]]'s circularity in another costume, and there would be
+   * nothing left for the assertion to catch anyway. Splicing removes the drift by
+   * construction.
+   *
+   * What CAN still fail is the splice silently doing nothing, which is the same class as
+   * the defect it replaces: an anchored edit whose anchor has gone appends instead, and
+   * every count-the-token check still passes ([[P497]]). So `writeGeneratedBlock` throws
+   * on a missing, duplicated or inverted marker, and this arm is where that lands.
+   */
+  it('generates the P6 table into both documents rather than letting them transcribe it', () => {
+    const observationPath = path.join(corpusDir, 'P6-CAP12.json')
+    if (!fs.existsSync(observationPath))
+      throw new Error(
+        'P6-CAP12.json is missing — the cap-12 column has no observation to splice.\n' +
+          '  Take one:  node scripts/p6-cap-census.mjs 12\n' +
+          '  (that script runs this census twice, so it reaches this point before this throw does)',
+      )
+    const observation: P6CapObservation = JSON.parse(fs.readFileSync(observationPath, 'utf8'))
+    const section = renderP6Table(observation, p6, minis.length)
+    for (const doc of ['ROLL-CAP-SWEEP.md', 'WRITER-CENSUS.md']) {
+      const at = path.join(corpusDir, doc)
+      fs.writeFileSync(at, writeGeneratedBlock(fs.readFileSync(at, 'utf8'), section, doc))
+    }
+  })
+
+  /**
+   * THE ONE COLUMN NO RUN CAN PRODUCE, AND ITS EXPIRY (#1046).
+   *
+   * The cap-12 figure is an observation taken with `LEAF_PROJECT_BARS.roll` rewritten, so
+   * it cannot be re-derived here and must not be — a subtraction standing in for a
+   * measurement is the same defect inverted, and that was refused when it was first
+   * proposed. What CAN be re-derived is the cap-4 reading recorded beside it by the same
+   * run. When that stops matching this tree the observation is stale, and this reddens
+   * with the script to re-take it.
+   *
+   * ⚠ Necessary, not sufficient — a change touching only periods in (4, 12] moves the
+   * observed column and leaves this green. The limit is stated in `p6Table.ts` and is why
+   * the roll's period gate is named there as a "re-run regardless" trigger.
+   */
+  it('the committed cap-12 observation is still about this tree', () => {
+    const observation: P6CapObservation = JSON.parse(
+      fs.readFileSync(path.join(corpusDir, 'P6-CAP12.json'), 'utf8'),
+    )
+    assertObservationCurrent(observation, allAsks, p6.cap, minis.length)
+  })
 
   /**
    * MECHANISM, NOT LABEL. The refusal label has overstated the opportunity every
