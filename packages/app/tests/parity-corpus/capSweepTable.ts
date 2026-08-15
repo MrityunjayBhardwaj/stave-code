@@ -159,6 +159,13 @@ export function assertSweepObservationCoherent(obs: SweepObservation): void {
         wrong.push(`cap ${r.cap} ${pop}: leaf-opened ${c.leafOpened} exceeds opened ${c.opened}`)
       if (c.leafAlive > c.leafProbed)
         wrong.push(`cap ${r.cap} ${pop}: alive ${c.leafAlive} exceeds probed ${c.leafProbed}`)
+      // added after a break matrix showed `leafStructured` sat in no identity at all, so a
+      // hand-edited value there survived every check — the negative-control row that turns
+      // a stated limit into a closed one
+      if (c.leafStructured > c.leafOpened)
+        wrong.push(
+          `cap ${r.cap} ${pop}: leaf-structured ${c.leafStructured} exceeds leaf-opened ${c.leafOpened}`,
+        )
     }
   const caps = obs.observed.map((r) => r.cap)
   if (caps.includes(obs.companion.cap))
