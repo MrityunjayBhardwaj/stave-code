@@ -77,6 +77,7 @@ import {
 import { truePeriod } from './enginePeriod'
 import {
   assertObservationCurrent,
+  p6Columns,
   readP6,
   renderP6Table,
   writeGeneratedBlock,
@@ -340,11 +341,14 @@ function report(name: string, rows: Ask[]): void {
   // because the projection cannot NAME a `word:index` value is a hole in one
   // function (#1019); an ask that fails because several onsets share one source
   // atom is the bijection ([[PV218]]) and no amount of patching moves it.
-  const fixable = untransferable.filter((r) => r.arrayValue)
+  // Counted by `p6Columns`, not re-filtered here (#1046). This block used to hold its own
+  // copy of the same four filters, and so did the pin below — so breaking the shared rule
+  // reddened nothing, which is a test that cannot fail on its own subject ([[P519]]).
+  const cols = p6Columns(rows)
   const structural = untransferable.filter((r) => !r.arrayValue)
   console.log(`  -- the untransferable set SPLIT BY WHETHER IT IS A HOLE OR A BOUND --`)
-  console.log(`      word:index array value (a naming hole, #1019)  ${fixable.length}`)
-  console.log(`      everything else (candidate structural bound)   ${structural.length}`)
+  console.log(`      word:index array value (a naming hole, #1019)  ${cols.arrayValue}`)
+  console.log(`      everything else (candidate structural bound)   ${cols.structural}`)
   console.log(...show(tallyBy(structural, (r) => `${r.shape}  /  gate ${r.gate}`)))
   // AND WHETHER THE VIEW BEING LOST IS WORTH KEEPING. A one-cell view of an
   // instrument name is a CORRECT model and a useless surface ([[P338]] clause 2),
@@ -359,12 +363,11 @@ function report(name: string, rows: Ask[]): void {
     reshaped.forEach((r) => console.log(`     ${r.writer}  ${JSON.stringify(r.mini).slice(0, 80)}`))
   }
   console.log(`  -- of the untransferable, what the core's OWN view is --`)
-  console.log(`      core view has STRUCTURE     ${untransferable.filter((r) => r.coreStructured).length}`)
-  console.log(`      core edit VERIFIED ok       ${untransferable.filter((r) => r.coreProbe === 'ok').length}`)
+  console.log(`      core view has STRUCTURE     ${cols.coreStructured}`)
+  console.log(`      core edit VERIFIED ok       ${cols.coreEdits}`)
   console.log(
-    `      structural AND structured AND core-edit-verified  ${
-      structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length
-    }   <-- the set that actually blocks deleting the core`,
+    `      structural AND structured AND core-edit-verified  ${cols.blocker}` +
+      `   <-- the set that actually blocks deleting the core`,
   )
 }
 
@@ -631,10 +634,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // Folded into one array assertion so BOTH columns report in a single run —
     // `expect` aborts a test at its first failure, and the whole point of this
     // pair is the split between the columns, which one value cannot show.
-    expect([
-      untransferable.filter((r) => r.arrayValue).length,
-      untransferable.filter((r) => !r.arrayValue).length,
-    ]).toEqual([9, 59])
+    expect([p6.both.arrayValue, p6.both.structural]).toEqual([9, 59])
 
     // THE NUMBER P6 IS SCOPED AGAINST, and it is a CONJUNCTION. "46 have a
     // structured core view" and "45 have a verified core edit" are different
@@ -709,12 +709,24 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // the number P6 is scoped against, and it only means anything read beside its two
     // conjuncts. Asserted apart, a population change reports the first and hides
     // whether the conjunction moved with it or independently of it.
-    const structural = untransferable.filter((r) => !r.arrayValue)
+    //
+    // ⚠ READ FROM `p6`, NOT RE-FILTERED HERE (#1046). This pin held its own copy of the
+    // three filters, and the break matrix for that issue is what showed what that cost:
+    // corrupting the shared rule's conjunction reddened the staleness arm and left THIS
+    // one green, so the number in the documents and the number in the pin were free to
+    // drift apart — which is the disease this issue exists to cure, reproduced one level
+    // in. A pin that cannot be made to fail by breaking the rule it pins is not a pin on
+    // that rule ([[P519]]).
     expect({
-      coreStructured: structural.filter((r) => r.coreStructured).length,
-      coreEdits: structural.filter((r) => r.coreProbe === 'ok').length,
-      both: structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length,
+      coreStructured: p6.both.coreStructured,
+      coreEdits: p6.both.coreEdits,
+      both: p6.both.blocker,
     }).toEqual({ coreStructured: 53, coreEdits: 53, both: 51 })
+
+    // …and the split the whole conjunction exists to keep visible. Asserted here rather
+    // than left to the generated document, because the document is an OUTPUT of this run
+    // and cannot testify about it.
+    expect([p6.grid.blocker, p6.roll.blocker]).toEqual([18, 33])
   }, 900_000)
 
   /**
