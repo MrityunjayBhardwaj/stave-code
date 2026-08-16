@@ -10,15 +10,25 @@
 # `diff` is deliberate, and `text` is deliberately absent: this marks the paths
 # readable without enabling end-of-line normalisation, which would rewrite
 # working trees across the repo for a problem that is only about display.
-*.ts    diff
-*.tsx   diff
-*.mjs   diff
-*.cjs   diff
-*.js    diff
-*.jsx   diff
-*.json  diff
-*.md    diff
-*.css   diff
-*.html  diff
-*.yml   diff
-*.yaml  diff
+*.ts       diff
+*.tsx      diff
+*.mts      diff
+*.cts      diff
+*.mjs      diff
+*.cjs      diff
+*.js       diff
+*.jsx      diff
+*.json     diff
+*.md       diff
+*.mdx      diff
+*.css      diff
+*.html     diff
+*.svg      diff
+*.astro    diff
+*.yml      diff
+*.yaml     diff
+*.txt      diff
+*.snap     diff
+
+# Corpus tunes are third-party source we read constantly and never want hidden.
+*.strudel  diff
