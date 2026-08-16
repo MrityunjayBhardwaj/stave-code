@@ -46,6 +46,13 @@
  * taken from the environment: a sweep that labels its rows from its own driver can
  * silently attribute one cap's numbers to another, and an instrument's label is exactly
  * the kind of claim that has been wrong here before ([[P347]]).
+ *
+ * ⚠ THE MACHINERY MOVED TO `capSweep.ts` AT #1041, when the grid got the same treatment.
+ * Nothing about this measurement changed in that move — the sweep, the report, the
+ * artifact and the table are the same code, now taking a surface. What did NOT move is
+ * the reading: the two halves of `LEAF_PROJECT_BARS` govern populations that respond to
+ * it differently, so the sentences interpreting these numbers live below rather than in
+ * the shared module. See the population-B floor in particular.
  */
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
@@ -57,18 +64,24 @@ import {
   parsePianoRollCore,
   projectPianoRollDerived,
 } from '../../../editor/src/visualEdit/notation/parse'
-import { hasStructure } from '../../../editor/src/visualEdit/notation/model'
-import type { PianoRollModel, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
-import { ROLL_SURFACE, liveness, probeEdit } from './engineEditOracle'
-import { truePeriod } from './enginePeriod'
+import { ROLL_SURFACE } from './engineEditOracle'
+import {
+  readObservation,
+  report,
+  shippedCap,
+  sweep,
+  writeRunArtifact,
+  type CapSurface,
+  type Row,
+} from './capSweep'
 import {
   assertSweepObservationCoherent,
   assertSweepObservationCurrent,
   readSweep,
   renderSweepTable,
   spliceSweepBlock,
-  type SweepObservation,
 } from './capSweepTable'
+import { blockMarkers } from './generatedDoc'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -76,185 +89,39 @@ const corpus: { minis: { mini: string }[] } = JSON.parse(
 )
 const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 
-/** the census's fallback: population B's asks have no core refusal to carry */
-const NO_CORE_REFUSAL = { ok: false as const, reason: '(core served this — no refusal)' }
-
-/**
- * The cap this run actually measured, read out of the shipped code.
- *
- * `gateReason('unstable-period', 'roll')` prints the LEAF cap verbatim, so a pattern
- * whose period is past any plausible cap makes the writer say its own bound out loud.
- * Asked of the writer rather than trusted from `process.env`, because the one thing a
- * sweep must not get wrong is which cap a row belongs to.
- */
-function shippedRollCap(): number {
-  // period 26 — past `PERIOD_SEARCH`, so past every admissible cap at every sweep value
-  const past = '<0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25>'
-  const r = projectPianoRollDerived(past, NO_CORE_REFUSAL)
-  if (r.ok) throw new Error('cap probe opened a view — the probe pattern is no longer past the cap')
-  if (r.gate !== 'unstable-period')
-    throw new Error(`cap probe stopped at ${r.gate}, not the period gate — cannot read the cap`)
-  const m = /within (\d+) bars/.exec(r.reason)
-  if (!m) throw new Error(`cap probe's sentence does not name a bound: ${r.reason}`)
-  return Number(m[1])
+const ROLL: CapSurface = {
+  cap: 'roll',
+  parse: (m) => parsePianoRoll(m),
+  core: (m) => parsePianoRollCore(m),
+  derived: (m, fallback) => projectPianoRollDerived(m, fallback),
+  oracle: ROLL_SURFACE,
+  // period 26 — past `PERIOD_SEARCH`, so past every admissible cap at every sweep value.
+  // Numbers, because that is the roll's own vocabulary; the grid needs a different probe
+  // for exactly that reason ([[PK99]]).
+  capProbe: '<0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25>',
+  runsDir: '.roll-cap-runs',
+  doc: 'ROLL-CAP-SWEEP.md',
+  observation: 'ROLL-CAP-SWEEP.json',
+  block: blockMarkers('SWEEP-TABLE', '#1270', 'roll-cap-sweep.test.ts'),
+  script: 'node scripts/roll-cap-sweep.mjs 4 6 8 12',
+  asksNoun: 'roll asks',
+  aNote:
+    'It is the population production reaches today, and it is the ' +
+    'reason the cap has not been raised: the gain there is a rounding error.',
+  bNote:
+    'every one served by the leaf writer, which is the writer this ' +
+    'cap governs. B is a counterfactual until the core is deleted.',
 }
 
-const CAP = shippedRollCap()
-
-type Pop = 'A-core-refused' | 'B-core-served'
-type Outcome = 'transfers' | 'no-view' | 'view-corrupts' | 'no-probe'
-
-interface Row {
-  pop: Pop
-  mini: string
-  outcome: Outcome
-  /** the gate that stopped it, when nothing opened */
-  gate?: string
-  /** which derived writer served it */
-  writer?: 'leaf' | 'element'
-  /**
-   * More than one note — a one-note roll is a correct model and a useless surface.
-   *
-   * SHARED, not restated (#1259). This was a copy: the census's `hasStructure` was
-   * surface-generic and unexported, so its roll clause was spelled out again here with
-   * a note saying the two must move together or the two documents start quoting
-   * different gains from the same run. That coupling is now structural — the predicate
-   * has one home in `notation/model.ts` and this file calls it with `'roll'`.
-   */
-  structured?: boolean
-  notes?: number
-  /** notes whose own delete round-trips / notes cleanly probeable; null when none are */
-  alive?: number
-  probed?: number
-  /** notes that MIS-WRITE — a dead cell and a lying cell are not the same fact */
-  liveCorrupt?: number
-  /** the engine's own period, for the asks the cap governs */
-  period?: number
-}
-
-/**
- * One population's rows.
- *
- * `A` asks the SHIPPED path (`parsePianoRoll`, core → projection) because that is what
- * a user gets. `B` asks `projectPianoRollDerived`, the writer chain BELOW the core,
- * because the question there is what survives the core being deleted — asking the
- * shipped path would just return the core's own model and measure nothing.
- */
-function sweep(pop: Pop): Row[] {
-  const out: Row[] = []
-  for (const mini of minis) {
-    const core = parsePianoRollCore(mini)
-    if (core.ok !== (pop === 'B-core-served')) continue
-
-    const r =
-      pop === 'A-core-refused' ? parsePianoRoll(mini) : projectPianoRollDerived(mini, NO_CORE_REFUSAL)
-
-    if (!r.ok) {
-      const gate = r.gate ?? '(no gate — did not reify)'
-      out.push({
-        pop,
-        mini,
-        outcome: 'no-view',
-        gate,
-        // the period is what the cap is ABOUT; computed only where it can decide
-        // something, because 48 engine queries per mini over 1500 minis is not free
-        ...(gate === 'unstable-period' ? { period: truePeriod(mini) } : {}),
-      })
-      continue
-    }
-    const m = r.model as StepGridModel & PianoRollModel
-    const writer = m.leafSource ? 'leaf' : 'element'
-    const probe = probeEdit(mini, m, ROLL_SURFACE)
-    const live = liveness(mini, m, ROLL_SURFACE)
-    out.push({
-      pop,
-      mini,
-      outcome:
-        probe.verdict === 'ok' ? 'transfers' : probe.verdict === 'corrupt' ? 'view-corrupts' : 'no-probe',
-      writer,
-      structured: hasStructure(m, 'roll'),
-      notes: m.notes?.length ?? 0,
-      ...(live ? { alive: live.alive, probed: live.probed, liveCorrupt: live.corrupt } : {}),
-      // a leaf-served view is one the cap could have decided; the element writer's own
-      // cap never moves in this sweep, so its rows are carried as the control arm
-      ...(writer === 'leaf' ? { period: truePeriod(mini) } : {}),
-    })
-  }
-  return out
-}
-
-const pct = (a: number, b: number): string => (b === 0 ? '   n/a' : `${((a / b) * 100).toFixed(1)}%`)
-
-function report(rows: Row[], pop: Pop): void {
-  const by = (o: Outcome) => rows.filter((r) => r.outcome === o)
-  const opened = rows.filter((r) => r.outcome !== 'no-view')
-  const leaf = opened.filter((r) => r.writer === 'leaf')
-  const gates = new Map<string, number>()
-  for (const r of by('no-view')) gates.set(r.gate!, (gates.get(r.gate!) ?? 0) + 1)
-
-  console.log(`\n===== ROLL CAP ${CAP} — POPULATION ${pop} (${rows.length} asks) =====`)
-  console.log(`  opened by a derived writer      ${opened.length}   (${leaf.length} leaf / ${opened.length - leaf.length} element)`)
-  console.log(`  transfers (edit survives)       ${by('transfers').length}   ${pct(by('transfers').length, rows.length)}`)
-  console.log(`  no view at all                  ${by('no-view').length}`)
-  console.log(`  view CORRUPTS                   ${by('view-corrupts').length}   <-- must be 0`)
-  console.log(`  unverified (no clean probe)     ${by('no-probe').length}`)
-  console.log(`  -- what stopped the ones with no view --`)
-  for (const [k, v] of [...gates.entries()].sort((a, b) => b[1] - a[1]))
-    console.log(`     ${String(v).padStart(4)}x  ${k}`)
-
-  // THE OTHER HALF OF THE DECISION: is the view worth showing? Reported for the LEAF
-  // writer only — it is the one this cap governs.
-  const withLive = leaf.filter((r) => r.probed !== undefined && r.probed > 0)
-  const alive = withLive.reduce((n, r) => n + r.alive!, 0)
-  const probed = withLive.reduce((n, r) => n + r.probed!, 0)
-  const liveCorrupt = withLive.reduce((n, r) => n + (r.liveCorrupt ?? 0), 0)
-  console.log(`  -- LEAF-served views: is the view worth showing --`)
-  console.log(`     structured (>1 note)         ${leaf.filter((r) => r.structured).length} of ${leaf.length}`)
-  console.log(`     notes that respond to a drag ${alive} of ${probed}   ${pct(alive, probed)} live`)
-  console.log(`     notes that MIS-WRITE         ${liveCorrupt}   <-- the one-note probe cannot see these`)
-  if (withLive.length) {
-    const per = withLive
-      .map((r) => ({ r, f: r.alive! / r.probed! }))
-      .sort((a, b) => a.f - b.f)
-    console.log(`     least-live views:`)
-    for (const { r, f } of per.slice(0, 8))
-      console.log(
-        `       ${pct(r.alive!, r.probed!)} (${r.alive}/${r.probed}) period=${r.period ?? '?'}  ${JSON.stringify(r.mini)}`,
-      )
-  }
-  // the asks the cap is ABOUT, by where their true period falls relative to it
-  const periodRows = by('no-view').filter((r) => r.gate === 'unstable-period')
-  const within = periodRows.filter((r) => r.period! > 0 && r.period! <= CAP)
-  const past = periodRows.filter((r) => r.period! > CAP)
-  const aperiodic = periodRows.filter((r) => r.period === 0)
-  console.log(`  -- refused for period: ${past.length} past cap ${CAP}, ${aperiodic.length} aperiodic, ${within.length} WITHIN the cap (must be 0) --`)
-}
-
-const rowsA = sweep('A-core-refused')
-const rowsB = sweep('B-core-served')
+const CAP = shippedCap(ROLL)
+const rowsA = sweep(ROLL, 'A-core-refused', minis)
+const rowsB = sweep(ROLL, 'B-core-served', minis)
 
 describe(`the roll's leaf period cap at ${CAP}, on both populations it governs`, () => {
   it('reports each population separately, and neither may corrupt', () => {
-    report(rowsA, 'A-core-refused')
-    report(rowsB, 'B-core-served')
-
-    // Emitted per ask so a sweep across caps can be diffed PER UNIT. "Additive only"
-    // is a claim about individual asks and netting two totals cannot check it — an
-    // ask lost and an ask gained show up as zero ([[PV233]]).
-    const dir = path.join(corpusDir, '.roll-cap-runs')
-    fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(
-      path.join(dir, `cap-${CAP}.json`),
-      JSON.stringify(
-        // `reading` rides along so `scripts/roll-cap-sweep.mjs` can record a cap's answer
-        // without deriving one of its own — a driver that re-implements these columns in
-        // JS to sweep them is a second oracle over the same question ([[P519]]), and this
-        // table has already been wrong once from having two derivations (#1046).
-        { cap: CAP, reading: readSweep([...rowsA, ...rowsB], CAP), rows: [...rowsA, ...rowsB] },
-        null,
-        1,
-      ),
-    )
+    report(ROLL, rowsA, 'A-core-refused', CAP)
+    report(ROLL, rowsB, 'B-core-served', CAP)
+    writeRunArtifact(ROLL, corpusDir, CAP, [...rowsA, ...rowsB])
 
     // THE MUST-NOT, at every cap: a derived view that mis-writes is worse than no view.
     for (const rows of [rowsA, rowsB])
@@ -317,6 +184,11 @@ describe(`the roll's leaf period cap at ${CAP}, on both populations it governs`,
     // the leaf. So this floor, unlike A's, is not a guard on the constant this file
     // sweeps. It guards the element writer, which nothing here varies.
     //
+    // ⚠ THIS SENTENCE IS ABOUT THE ROLL AND DOES NOT TRAVEL. The grid's population B has
+    // 74 of 820 leaf-served rather than 16 of 415, and it DOES move with the cap — its
+    // floor in `grid-cap-sweep.test.ts` carries a real differential. Sibling surfaces do
+    // not share a constant's sensitivity even where they share the constant (#1041).
+    //
     // It is raised anyway, because a floor thirty below its observation is headroom
     // whatever it guards. But do not read a green run here as evidence about the roll's
     // period cap: the number is real and the cap is not what it is sensitive to. A
@@ -366,14 +238,14 @@ describe(`the roll's leaf period cap at ${CAP}, on both populations it governs`,
    * mislabelling this gate reads its own cap back out of the refusal sentence to avoid.
    */
   it('generates the sweep table into its document rather than letting it transcribe one', () => {
-    const obs = readObservation()
+    const obs = readObservation(ROLL, corpusDir)
     if (CAP !== obs.companion.cap) {
       console.log(`  (cap ${CAP} is not the shipped ${obs.companion.cap} — not splicing a sweep run into the document)`)
       return
     }
-    const at = path.join(corpusDir, 'ROLL-CAP-SWEEP.md')
-    const body = renderSweepTable(obs, readSweep([...rowsA, ...rowsB], CAP))
-    fs.writeFileSync(at, spliceSweepBlock(fs.readFileSync(at, 'utf8'), body, 'ROLL-CAP-SWEEP.md'))
+    const at = path.join(corpusDir, ROLL.doc)
+    const body = renderSweepTable(ROLL, obs, readSweep([...rowsA, ...rowsB], CAP))
+    fs.writeFileSync(at, spliceSweepBlock(ROLL, fs.readFileSync(at, 'utf8'), body))
   })
 
   /**
@@ -390,19 +262,8 @@ describe(`the roll's leaf period cap at ${CAP}, on both populations it governs`,
    * mechanism in `generatedDoc.ts`.
    */
   it('the committed sweep observation is still about this tree', () => {
-    const obs = readObservation()
-    assertSweepObservationCoherent(obs)
-    assertSweepObservationCurrent(obs, [...rowsA, ...rowsB], CAP)
+    const obs = readObservation(ROLL, corpusDir)
+    assertSweepObservationCoherent(ROLL, obs)
+    assertSweepObservationCurrent(ROLL, obs, [...rowsA, ...rowsB], CAP)
   })
 })
-
-function readObservation(): SweepObservation {
-  const at = path.join(corpusDir, 'ROLL-CAP-SWEEP.json')
-  if (!fs.existsSync(at))
-    throw new Error(
-      'ROLL-CAP-SWEEP.json is missing — the non-shipped cap columns have no observation.\n' +
-        '  Take one:  node scripts/roll-cap-sweep.mjs 4 6 8 12\n' +
-        '  (the driver reads each run\'s emitted `reading`, so it reaches this point before this throw does)',
-    )
-  return JSON.parse(fs.readFileSync(at, 'utf8'))
-}

@@ -54,6 +54,7 @@ packages/**/tsconfig.tsbuildinfo
 # the 6 reviewed bakery-*.strudel fixtures are the tracked CI floor.
 packages/app/tests/parity-corpus/.bakery-runs/
 packages/app/tests/parity-corpus/.roll-cap-runs/
+packages/app/tests/parity-corpus/.grid-cap-runs/
 test-results/
 packages/**/test-results/
 playwright-report/
