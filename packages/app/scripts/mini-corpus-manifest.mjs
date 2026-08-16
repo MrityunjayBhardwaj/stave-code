@@ -213,11 +213,16 @@ async function restore(outDir) {
   if (exact !== manifest.inputs.length) throw new Error('rebuild is not byte-exact')
 }
 
-const [cmd, ...rest] = process.argv.slice(2)
-const outFlag = rest.indexOf('--out')
-if (cmd === 'generate') await generate()
-else if (cmd === 'restore') await restore(outFlag >= 0 ? path.resolve(rest[outFlag + 1]) : runsDir)
-else {
-  console.error('usage: mini-corpus-manifest.mjs generate | restore [--out DIR]')
-  process.exit(2)
+// Run the CLI only when INVOKED as one. `mini-corpus-inputs.test.ts` imports
+// `isInputFile` from here so the two live consumers share ONE input rule
+// rather than each keeping a copy — importing must not start a fetch.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const [cmd, ...rest] = process.argv.slice(2)
+  const outFlag = rest.indexOf('--out')
+  if (cmd === 'generate') await generate()
+  else if (cmd === 'restore') await restore(outFlag >= 0 ? path.resolve(rest[outFlag + 1]) : runsDir)
+  else {
+    console.error('usage: mini-corpus-manifest.mjs generate | restore [--out DIR]')
+    process.exit(2)
+  }
 }

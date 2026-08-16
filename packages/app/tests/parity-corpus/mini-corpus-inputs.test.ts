@@ -36,6 +36,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
+// The generator's OWN rule, imported rather than restated — a second copy here
+// could drift from the manifest it is checking, silently. Three ungated `_*`
+// probes still carry their own copies; they read the directory but assert
+// nothing about its membership.
+import { isInputFile } from '../../scripts/mini-corpus-manifest.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const manifest = JSON.parse(fs.readFileSync(path.join(here, 'mini-corpus-inputs.json'), 'utf8'))
@@ -43,9 +48,6 @@ const corpus = JSON.parse(fs.readFileSync(path.join(here, 'mini-corpus.json'), '
 
 const runsDir = path.join(here, '.bakery-runs')
 const hasArchive = fs.existsSync(runsDir)
-
-/** The input-file rule. `mini-corpus-manifest.mjs` and the harvest apply the same test. */
-const isInputFile = (f: string) => f.startsWith('edit-samples-') && f.endsWith('.json')
 
 describe('mini-corpus inputs — provenance and reproducibility', () => {
   it('the manifest and the harvested corpus name the SAME inputs, in the same order', () => {
