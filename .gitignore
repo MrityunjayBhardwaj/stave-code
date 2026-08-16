@@ -51,7 +51,13 @@ packages/**/tsconfig.tsbuildinfo
 # Raw live community code pulled by `pnpm parity:bakery` (20-15 V-1).
 # Never vendored — it is unreviewed third-party source; only the dated
 # `result-*.json` % is transcribed by hand into the phase SUMMARY, and
-# the 6 reviewed bakery-*.strudel fixtures are the tracked CI floor.
+# the reviewed *.strudel fixtures are the tracked CI floor.
+#
+# The inputs behind mini-corpus.json stay ignored for that reason, but they
+# are no longer irreplaceable: tests/parity-corpus/mini-corpus-inputs.json
+# records each file's sha256 and its tunes' hashes, titles, licences and
+# permalinks, and `scripts/mini-corpus-manifest.mjs restore` rebuilds this
+# directory byte-exactly from it. Provenance is tracked; the code is not.
 packages/app/tests/parity-corpus/.bakery-runs/
 packages/app/tests/parity-corpus/.roll-cap-runs/
 packages/app/tests/parity-corpus/.grid-cap-runs/

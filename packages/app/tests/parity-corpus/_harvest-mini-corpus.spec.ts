@@ -280,6 +280,34 @@ describe('harvest — regenerate mini-corpus.json from .bakery-runs', () => {
       .sort()
     expect(files.length, `No edit-samples-*.json in ${inDir}`).toBeGreaterThan(0)
 
+    /*
+     * The input set may not change by accident (#1281). `.bakery-runs/` is
+     * gitignored and the live sampler writes MORE `edit-samples-*.json` into
+     * it, so without this the next harvest silently absorbs them and the
+     * corpus 25 gates read widens inside a diff that looks like a refresh.
+     *
+     * Checked against the committed `mini-corpus.json` — the artifact this
+     * run is about to replace — so it compares what the corpus WAS built from
+     * against what it is about to be built from. Set HARVEST_REFRESH=1 when
+     * the widening is the point; then update mini-corpus-inputs.json too
+     * (`node packages/app/scripts/mini-corpus-manifest.mjs generate`).
+     */
+    const committedPath = path.join(here, 'mini-corpus.json')
+    if (process.env.HARVEST_REFRESH !== '1' && fs.existsSync(committedPath)) {
+      const was: string[] = (JSON.parse(fs.readFileSync(committedPath, 'utf8')).harvestedFrom ?? []).map(
+        (h: any) => h.file,
+      )
+      const added = files.filter((f) => !was.includes(f))
+      const gone = was.filter((f) => !files.includes(f))
+      expect(
+        files,
+        `The input set has changed — ${added.length} added, ${gone.length} missing.\n` +
+          `  added:   ${added.join(', ') || '(none)'}\n` +
+          `  missing: ${gone.join(', ') || '(none)'}\n` +
+          `If that is deliberate, re-run with HARVEST_REFRESH=1.`,
+      ).toEqual(was)
+    }
+
     /** tune hash → document source. Re-fetches of one tune collapse here. */
     const byHash = new Map<string, string>()
     const sources: { file: string; upstreamSha: string | null; offset: number | null; rows: number }[] = []
