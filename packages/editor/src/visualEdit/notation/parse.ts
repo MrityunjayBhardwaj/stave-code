@@ -1121,28 +1121,39 @@ const MAX_PROJECT_BARS = 4
  * copying the rest costs the same at twelve bars as at one. So the leaf path is
  * free to look further — where looking further is measured to BUY something.
  *
- * GRID 12. Worth **+17 writer-reach over the 1500-unit corpus (109 → 126)**, and
- * the views it opens are slow single samples — `hacking/8`, `drm/9`, `<vox1 -
- * [vox2] ->/2` — which expand to eight or nine columns TOTAL and are 100% live:
- * every sounding cell accepts an edit.
+ * GRID 12. The measurement behind the 12 is GATED, not written here (#1041) —
+ * `grid-cap-sweep.test.ts` and `GRID-CAP-SWEEP.md` sweep 4/6/8/10/12 on BOTH
+ * populations this constant governs, per ask rather than by netting totals, with
+ * a floor per population that reddens when the cap goes backwards. What the raise
+ * buys is real reach on the population production reaches today, and the views it
+ * opens are slow single samples — `hacking/8`, `drm/9`, `<vox1 - [vox2] ->/2` —
+ * which expand to eight or nine columns TOTAL and where every sounding cell
+ * accepts an edit. Both claims are re-derived on every run; the figures live in
+ * the generated table.
  *
- * ⚠ RE-MEASURED 2026-07-27 (#1038). This line read "+9 (95 → 104)" — taken at
- * #991, on an oracle that probed cycle 0 only and compared onsets only. Both
- * changed since: the probe now advances to the first bar that sounds (#1022) and
- * the oracle compares duration (#1026). Re-run on the current tree, setting the
- * constant to 4 and back exactly as a ship would: 109 against 126, projected 161
- * against 186. The gain nearly doubled rather than eroding, and the reason is
- * legible — #1022 was specifically about alternations whose first cycle is
- * silent, which is where long-period patterns live, which is the only material
- * this cap governs. Losses stay 29 (leaf 0 / element 29) at BOTH values, which is
- * the leaf path being structurally incapable of changing a length it was not
- * asked to change rather than a coincidence.
+ * ⚠ THIS PARAGRAPH USED TO CARRY THE FIGURE, AND IT WAS STALE BOTH TIMES ANYONE
+ * CHECKED. It read "+9 (95 → 104)" from #991, then "+17 (109 → 126)" from #1038.
+ * Neither pair of endpoints survives on this tree, and the second pair went stale
+ * without the headline moving at all: #1242 widened the corpus underneath the line
+ * and shifted both terms by nearly the same amount. A DELTA is exactly the shape a
+ * population change preserves, so the number most likely to be quoted here was the
+ * one least likely to look stale — a reader who confirmed the gain would have
+ * confirmed the one part of the line that drift cannot touch, and walked away
+ * having certified two wrong figures. Today's values are deliberately absent from
+ * this comment: read them off the generated table, which cannot disagree with the
+ * run that produced it.
  *
- * Reproduce: set `grid` below to 4, run
- * `pnpm --filter @stave/app exec vitest run tests/parity-corpus/writer-reach.test.ts`,
- * restore. The roll has a real sweep harness for this (`scripts/roll-cap-sweep.mjs`
- * + `roll-cap-sweep.test.ts`); the grid has no equivalent, so this figure is
- * re-measured by hand and dated rather than gated — see #1041.
+ * ⚠ Second edge, for anyone hunting stale copies of these dead figures: this line's
+ * old cap-4 projection collides with a live reading elsewhere in the sweep, so
+ * searching by digits pairs the wrong two things. Enumerate by meaning.
+ *
+ * The mechanism is unchanged and is why the gain held up rather than eroding:
+ * #1022 taught the probe to advance to the first bar that sounds, and alternations
+ * whose first cycle is silent are where long-period patterns live, which is the
+ * only material this cap governs. And the raise is additive: the sweep diffs PER
+ * ASK and no ask moves to a worse outcome at any swept value, on either
+ * population — the leaf path is structurally incapable of changing a length it
+ * was not asked to change.
  *
  * ROLL 4, deliberately unchanged — and written as a literal, not as an alias of
  * `MAX_PROJECT_BARS`. The two are equal today by coincidence of measurement, not
