@@ -37,7 +37,7 @@
  * HOW A SWEEP IS RUN. The cap is a module constant, deliberately — it is a shipped bound,
  * not a knob, and threading a parameter through the writer to sweep it would mean measuring
  * a code path production never takes. To sweep, set the constant, run this file, repeat.
- * `scripts/roll-cap-sweep.mjs grid 4 6 8 10 12` drives that and diffs the emitted rows PER
+ * `scripts/cap-sweep.mjs grid 4 6 8 10 12` drives that and diffs the emitted rows PER
  * ASK, which is what makes "additive only" checkable rather than assertable.
  *
  * The cap this run measured is READ BACK OUT OF THE SHIPPED REFUSAL SENTENCE rather than
@@ -104,8 +104,9 @@ const GRID: CapSurface = {
   doc: 'GRID-CAP-SWEEP.md',
   observation: 'GRID-CAP-SWEEP.json',
   block: blockMarkers('GRID-SWEEP-TABLE', '#1041', 'grid-cap-sweep.test.ts'),
-  script: 'node scripts/roll-cap-sweep.mjs grid 4 6 8 10 12',
+  script: 'node scripts/cap-sweep.mjs grid 4 6 8 10 12',
   asksNoun: 'grid asks',
+  unitNoun: 'cell',
   aNote:
     'It is the population production reaches today, and unlike the roll it is the whole ' +
     'justification for the shipped value: this is the gain the comment on ' +

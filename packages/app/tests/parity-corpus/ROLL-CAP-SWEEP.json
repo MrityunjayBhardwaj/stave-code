@@ -1,6 +1,6 @@
 {
   "note": "The roll cap sweep at caps this tree does not ship — OBSERVATIONS, taken by rewriting LEAF_PROJECT_BARS.roll and running the real writers. No gate can re-derive them. `companion` is the same sweep's reading at the shipped cap 4, which every run re-takes; when it stops matching, these are stale.",
-  "script": "node scripts/roll-cap-sweep.mjs 4 6 8 12",
+  "script": "node scripts/cap-sweep.mjs 4 6 8 12",
   "observed": [
     {
       "cap": 6,

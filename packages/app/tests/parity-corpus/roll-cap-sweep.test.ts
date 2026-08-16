@@ -39,7 +39,7 @@
  * HOW A SWEEP IS RUN. The cap is a module constant, deliberately — it is a shipped
  * bound, not a knob, and threading a parameter through the writer to sweep it would mean
  * measuring a code path production never takes. To sweep, set the constant, run this
- * file, repeat. `scripts/roll-cap-sweep.mjs` drives that and diffs the emitted rows PER
+ * file, repeat. `scripts/cap-sweep.mjs` drives that and diffs the emitted rows PER
  * ASK, which is what makes "additive only" checkable rather than assertable.
  *
  * The cap this run measured is READ BACK OUT OF THE SHIPPED REFUSAL SENTENCE rather than
@@ -103,8 +103,9 @@ const ROLL: CapSurface = {
   doc: 'ROLL-CAP-SWEEP.md',
   observation: 'ROLL-CAP-SWEEP.json',
   block: blockMarkers('SWEEP-TABLE', '#1270', 'roll-cap-sweep.test.ts'),
-  script: 'node scripts/roll-cap-sweep.mjs 4 6 8 12',
+  script: 'node scripts/cap-sweep.mjs 4 6 8 12',
   asksNoun: 'roll asks',
+  unitNoun: 'note',
   aNote:
     'It is the population production reaches today, and it is the ' +
     'reason the cap has not been raised: the gain there is a rounding error.',

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * roll-cap-sweep.mjs — drive a cap sweep across candidate values of one field of
+ * cap-sweep.mjs — drive a cap sweep across candidate values of one field of
  * `LEAF_PROJECT_BARS`, then diff the emitted rows PER ASK (#1020; grid arm #1041).
  *
  * WHY IT EDITS THE SOURCE. The cap is a module constant on purpose — it is a shipped
@@ -21,8 +21,8 @@
  * is a number about no population at all, and the null result that set this cap to 4 came
  * from reading one population's answer as general ([[P345]]).
  *
- *   node scripts/roll-cap-sweep.mjs 4 6 8 12          # the roll (the default)
- *   node scripts/roll-cap-sweep.mjs grid 4 6 8 10 12  # the grid
+ *   node scripts/cap-sweep.mjs 4 6 8 12          # the roll (the default)
+ *   node scripts/cap-sweep.mjs grid 4 6 8 10 12  # the grid
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -42,9 +42,13 @@ const PARSE = path.resolve(appDir, '../editor/src/visualEdit/notation/parse.ts')
  * be labelled for a cap it did not set — which is the class of error the gate's
  * read-the-cap-back-out-of-the-refusal-sentence discipline exists to catch.
  *
- * ⚠ The grid arm was added at #1041 and this file kept its name, so `roll-cap-sweep.mjs`
- * now drives both. The roll stays the default so the command recorded in
- * `ROLL-CAP-SWEEP.json` keeps working verbatim.
+ * ⚠ This file drives BOTH surfaces. The grid arm was added at #1041 and it kept the
+ * roll's name until #1279, when it was renamed and both committed observations were
+ * re-taken so the command each one records stays runnable verbatim.
+ *
+ * The roll remains the DEFAULT — `cap-sweep.mjs 4 6 8 12`, with no surface word, sweeps
+ * it — so the grid names itself and the roll does not. That asymmetry is in the
+ * recorded commands too, which is why they are not interchangeable.
  */
 const SURFACES = {
   roll: {
@@ -67,15 +71,15 @@ const argv = process.argv.slice(2)
 const surface = argv[0] in SURFACES ? argv.shift() : 'roll'
 const S = SURFACES[surface]
 /** what the observation records as the command that re-takes it */
-const invocation = `node scripts/roll-cap-sweep.mjs ${surface === 'roll' ? '' : `${surface} `}`
+const invocation = `node scripts/cap-sweep.mjs ${surface === 'roll' ? '' : `${surface} `}`
 const RUNS = path.resolve(appDir, S.runs)
 const CAP_RE = S.re
 
 const caps = argv.map(Number)
 if (!caps.length || caps.some((c) => !Number.isInteger(c) || c < 1)) {
-  console.error(`usage: node scripts/roll-cap-sweep.mjs [roll|grid] <caps…>`)
-  console.error(`   eg: node scripts/roll-cap-sweep.mjs ${S.defaults}            (the roll)`)
-  console.error(`       node scripts/roll-cap-sweep.mjs grid ${SURFACES.grid.defaults}   (the grid)`)
+  console.error(`usage: node scripts/cap-sweep.mjs [roll|grid] <caps…>`)
+  console.error(`   eg: node scripts/cap-sweep.mjs ${S.defaults}            (the roll)`)
+  console.error(`       node scripts/cap-sweep.mjs grid ${SURFACES.grid.defaults}   (the grid)`)
   process.exit(2)
 }
 // `detectPeriod` confirms period p only once 2p cycles were probed, and PERIOD_PROBE is
@@ -190,7 +194,7 @@ if (!caps.includes(shipped)) {
     JSON.stringify(
       {
         note:
-          `The roll cap sweep at caps this tree does not ship — OBSERVATIONS, taken by ` +
+          `The ${surface} cap sweep at caps this tree does not ship — OBSERVATIONS, taken by ` +
           `rewriting LEAF_PROJECT_BARS.${surface} and running the real writers. No gate can ` +
           `re-derive them. \`companion\` is the same sweep's reading at the shipped cap ` +
           `${shipped}, which every run re-takes; when it stops matching, these are stale.`,
