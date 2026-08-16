@@ -146,15 +146,40 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
  * the gate still green. Raise it in the SAME commit as the gain, or the gain quietly
  * buys nothing but headroom for a future regression.
  *
+ * ⚠ RAISED 153 -> 161 STEP and 85 -> 95 ROLL at #1273, and this is the rule directly
+ * above catching its own file. Neither writer moved. The CORPUS did, at #1242, and both
+ * floors stayed where the 1535-unit corpus left them.
+ *
+ * The step floor had lost the exact catch the paragraph below demonstrates. Dropping
+ * `LEAF_PROJECT_BARS.grid` 12 -> 8 still costs six units, but from a higher base —
+ * 161 -> 155 — and 155 clears 153, so the gate passed on the one regression it was
+ * calibrated to redden on. Slack does not degrade a floor gradually; it removes a
+ * specific catch, and which catch it removes is not visible from the slack alone.
+ *
+ * The roll floor was worse than loose: it never fired at all. Sweeping
+ * `LEAF_PROJECT_BARS.roll` down to 1 leaves reach at 89, still above 85. Those runs DO
+ * go red below cap 4 — on the SURGERY floor, a tighter neighbour — so this floor's
+ * protection was entirely borrowed, and there was no value of the constant it names at
+ * which it fired. A floor that cannot be made to redden by moving its own subject is
+ * decoration, and a green run past it says nothing. #1270 raised this same quantity —
+ * the same 1180 core-refused asks, the same 95 — in `roll-cap-sweep.test.ts`; this copy
+ * is the one that was left behind, because a floor does not look like a consumer.
+ *
  * DEMONSTRATED, not asserted, because a raise you cannot show catching something is
- * just a larger number. Paired differential on one tree in one session: dropping
- * `LEAF_PROJECT_BARS.grid` 12 -> 8 is a genuine regression worth six units (153 ->
- * 147). At floor 141 the gate PASSES on it. At 153 it reddens — "147 fell below floor
- * 153". The roll arm stays green through all three runs, which is the control: the
- * break is grid-only and only the grid arm moved.
+ * just a larger number. Paired differentials on one tree in one session, each with the
+ * other surface as its control:
+ *
+ *     STEP: `LEAF_PROJECT_BARS.grid` 12 -> 8 costs six units (161 -> 155). At floor 153
+ *     the gate PASSES on it; at 161 it reddens — "155 fell below floor 161". The roll
+ *     arm reads 95 at grid 12, 8, 6 and 4 alike: the break is grid-only.
+ *
+ *     ROLL: `LEAF_PROJECT_BARS.roll` 4 -> 3 costs two units (95 -> 93). At floor 85 this
+ *     assertion PASSES while the surgery floor does the reddening; at 95 it reddens on
+ *     its own terms. The step arm reads 161 at roll 4, 3, 2 and 1 alike, so the control
+ *     closes in both directions.
  */
-const FLOOR_STEP = 153
-const FLOOR_ROLL = 85
+const FLOOR_STEP = 161
+const FLOOR_ROLL = 95
 
 /**
  * THE OTHER HALF OF THE SCORE: how many deletes are written as BYTE SURGERY (#1010 P4d).
@@ -212,8 +237,14 @@ const FLOOR_ROLL = 85
  * exactly what happened at #1235, and no figure that only goes up can catch that. The
  * claim lives in the byte-change sweep, and what asks "did the document actually move?"
  * is `op-admissibility`'s handle count.
+ *
+ * ⚠ RAISED 657 -> 685 at #1273, with the rest of this file's floors, and not because
+ * anything was gained: the observation has been 685 since the corpus widened at #1242
+ * and this floor stayed where #1233 left it. The slack was load-bearing. At 657 the only
+ * grid cap that reddens it is 4 (655); at 685 the drop from 12 to 10 does (684) — a
+ * one-unit regression the old floor slept through by twenty-eight.
  */
-const FLOOR_SURGICAL = 657
+const FLOOR_SURGICAL = 685
 
 /**
  * THE ROLL'S HALF OF THE SAME SCORE (#1231), and it starts as a BASELINE rather than
@@ -274,8 +305,19 @@ const FLOOR_SURGICAL = 657
  * The two figures are not comparable line for line — this census asks one delete per unit
  * and the sweep asks every note — which is itself the reason to keep both and to quote the
  * sweep when the question is what a user's document does.
+ *
+ * ⚠ RAISED 334 -> 365 at #1273 — and this is the ONE raise in this file with no
+ * demonstrated new catch. The roll cap is the only lever that moves this number, and it
+ * steps 365 -> 332 at cap 3: straight past the entire band between the old floor and the
+ * new one. There is no value of it at which 365 reddens and 334 does not, so the
+ * differential the other three raises carry cannot be built for this one.
+ *
+ * Raised anyway, on the rule rather than on a demonstration: 365 is strictly stronger
+ * than 334 and closes thirty-one units of slack. Said out loud rather than glossed,
+ * because a raise whose differential is assumed instead of shown is exactly how the other
+ * three floors in this file went quiet.
  */
-const FLOOR_ROLL_SURGICAL = 334
+const FLOOR_ROLL_SURGICAL = 365
 
 /**
  * The units whose edit survives the engine on every axis EXCEPT duration.
@@ -302,6 +344,12 @@ const FLOOR_ROLL_SURGICAL = 334
  * ones without (a shared leaf, `!16`) become honest refusals. Either outcome removes
  * the silent rewrite, which is the whole point. When that lands, this array goes to
  * empty and `FLOOR_STEP` returns toward 155.
+ *
+ * ⚠ RESOLVED AHEAD OF #1010, and left in future tense here for two sessions. P4c already
+ * emptied this array, and `FLOOR_STEP` did not merely return toward 155 — it is 161 as
+ * of #1273, past the predicted mark, with #1010 still open. A prediction that has come
+ * true reads exactly like one still pending, so it goes on collecting agreement from
+ * every reader who checks the mechanism and not the tense.
  *
  * ⚠ 29 -> 30 at #1037, again a corpus change and not a writer change: five of the
  * 29 were commented-out code and six real ones arrived with the backtick material.
