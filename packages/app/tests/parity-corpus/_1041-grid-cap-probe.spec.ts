@@ -21,7 +21,7 @@ import {
   projectStepGridDerived,
 } from '../../../editor/src/visualEdit/notation/parse'
 import { hasStructure } from '../../../editor/src/visualEdit/notation/model'
-import type { StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+import type { PianoRollModel, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
 import { GRID_SURFACE, liveness, probeEdit } from './engineEditOracle'
 import { truePeriod } from './enginePeriod'
 
@@ -79,7 +79,9 @@ describe('#1041 grid cap probe', () => {
           gates.set(g, (gates.get(g) ?? 0) + 1)
           continue
         }
-        const m = r.model as StepGridModel
+        // the intersection the oracle types its own parameters against; a grid model has
+        // no `notes`, so the plain `StepGridModel` does not satisfy it
+        const m = r.model as StepGridModel & PianoRollModel
         if ((m as { leafSource?: unknown }).leafSource) leaf++
         else element++
         if (hasStructure(m, 'step')) structured++
