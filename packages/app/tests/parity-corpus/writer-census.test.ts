@@ -75,6 +75,15 @@ import {
   type Surface as EditSurface,
 } from './engineEditOracle'
 import { truePeriod } from './enginePeriod'
+import {
+  assertObservationCoherent,
+  assertObservationCurrent,
+  p6Columns,
+  readP6,
+  renderP6Table,
+  writeGeneratedBlock,
+  type P6CapObservation,
+} from './p6Table'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -333,11 +342,14 @@ function report(name: string, rows: Ask[]): void {
   // because the projection cannot NAME a `word:index` value is a hole in one
   // function (#1019); an ask that fails because several onsets share one source
   // atom is the bijection ([[PV218]]) and no amount of patching moves it.
-  const fixable = untransferable.filter((r) => r.arrayValue)
+  // Counted by `p6Columns`, not re-filtered here (#1046). This block used to hold its own
+  // copy of the same four filters, and so did the pin below — so breaking the shared rule
+  // reddened nothing, which is a test that cannot fail on its own subject ([[P519]]).
+  const cols = p6Columns(rows)
   const structural = untransferable.filter((r) => !r.arrayValue)
   console.log(`  -- the untransferable set SPLIT BY WHETHER IT IS A HOLE OR A BOUND --`)
-  console.log(`      word:index array value (a naming hole, #1019)  ${fixable.length}`)
-  console.log(`      everything else (candidate structural bound)   ${structural.length}`)
+  console.log(`      word:index array value (a naming hole, #1019)  ${cols.arrayValue}`)
+  console.log(`      everything else (candidate structural bound)   ${cols.structural}`)
   console.log(...show(tallyBy(structural, (r) => `${r.shape}  /  gate ${r.gate}`)))
   // AND WHETHER THE VIEW BEING LOST IS WORTH KEEPING. A one-cell view of an
   // instrument name is a CORRECT model and a useless surface ([[P338]] clause 2),
@@ -352,12 +364,11 @@ function report(name: string, rows: Ask[]): void {
     reshaped.forEach((r) => console.log(`     ${r.writer}  ${JSON.stringify(r.mini).slice(0, 80)}`))
   }
   console.log(`  -- of the untransferable, what the core's OWN view is --`)
-  console.log(`      core view has STRUCTURE     ${untransferable.filter((r) => r.coreStructured).length}`)
-  console.log(`      core edit VERIFIED ok       ${untransferable.filter((r) => r.coreProbe === 'ok').length}`)
+  console.log(`      core view has STRUCTURE     ${cols.coreStructured}`)
+  console.log(`      core edit VERIFIED ok       ${cols.coreEdits}`)
   console.log(
-    `      structural AND structured AND core-edit-verified  ${
-      structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length
-    }   <-- the set that actually blocks deleting the core`,
+    `      structural AND structured AND core-edit-verified  ${cols.blocker}` +
+      `   <-- the set that actually blocks deleting the core`,
   )
 }
 
@@ -365,11 +376,24 @@ describe('writer census — how much of the syntactic core transfers to the deri
   const grid = census(SURFACES[0])
   const roll = census(SURFACES[1])
 
+  /**
+   * Hoisted so the three things that read this run can be three ARMS rather than one.
+   *
+   * They were one arm first, and a break matrix could not tell them apart: a stale
+   * observation, a document that had lost its markers, and a broken conjunction in the
+   * derivation all reddened the same `it` and differed only in their message. Splitting
+   * by DECISION is what makes the break signatures disjoint ([[P558]]) — and the middle
+   * one is the load-bearing case, because a generation step that silently stopped
+   * generating is the failure this whole issue is about.
+   */
+  const allAsks = [...grid, ...roll]
+  const p6 = readP6(allAsks, PROJECTION_PERIOD_BOUNDS.leaf.roll)
+
   it('counts every core-served ask, and enumerates the untransferable with a mechanism', () => {
     report('step grid', grid)
     report('piano roll', roll)
 
-    const all = [...grid, ...roll]
+    const all = allAsks
     const untransferable = all.filter(
       (r) => r.outcome === 'no-view' || r.outcome === 'view-corrupts',
     )
@@ -390,31 +414,38 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // makes it readable when a pin BELOW is red — including the deliberate red of running
     // this census with `LEAF_PROJECT_BARS.roll = 12` to measure the figure at the other
     // cap, which is otherwise unobservable because the cap-4 pins fail first.
-    {
-      const structuralNow = untransferable.filter((r) => !r.arrayValue)
-      const both = structuralNow.filter((r) => r.coreStructured && r.coreProbe === 'ok')
-      console.log(
-        [
-          `\n===== THE P6 BLOCKER   (roll cap ${PROJECTION_PERIOD_BOUNDS.leaf.roll}) =====`,
-          `  structural untransferable        ${structuralNow.length}`,
-          `  ...core view has STRUCTURE       ${structuralNow.filter((r) => r.coreStructured).length}`,
-          `  ...core edit VERIFIED ok         ${structuralNow.filter((r) => r.coreProbe === 'ok').length}`,
-          `  ...BOTH (blocks deleting core)   ${both.length}` +
-            `   [grid ${both.filter((r) => r.surface === 'step').length}` +
-            ` + roll ${both.filter((r) => r.surface === 'roll').length}]`,
-        ].join('\n'),
-      )
-    }
+    //
+    // DERIVED ONCE (#1046). This block used to compute the columns inline and the two
+    // documents retyped them; now the print, the emitted artifact, the generated document
+    // sections and the cap-12 script all read `readP6`, so none of them can come to a
+    // different view of the same run.
+    console.log(
+      [
+        `\n===== THE P6 BLOCKER   (roll cap ${p6.cap}) =====`,
+        `  structural untransferable        ${p6.both.structural}`,
+        `  ...core view has STRUCTURE       ${p6.both.coreStructured}`,
+        `  ...core edit VERIFIED ok         ${p6.both.coreEdits}`,
+        `  ...BOTH (blocks deleting core)   ${p6.both.blocker}` +
+          `   [grid ${p6.grid.blocker} + roll ${p6.roll.blocker}]`,
+      ].join('\n'),
+    )
 
     // Dump the enumeration so it can be hand-read and quoted per entry. The
     // deliverable of this phase is the NAMED residual, not the count — a count
     // without a classification is the error the previous phase corrected.
+    //
+    // `p6` and `cap` ride along so `scripts/p6-cap-census.mjs` can read a run's answer
+    // without deriving anything of its own: a driver that re-implements the columns in
+    // JS to sweep them is a second oracle over the same question ([[P519]]), and the one
+    // thing this table must not have is two derivations.
     fs.writeFileSync(
       path.join(corpusDir, 'WRITER-CENSUS.json'),
       JSON.stringify(
         {
           note: 'Generated by writer-census.test.ts (#1009). One row per surface-ask the syntactic core serves.',
+          corpusUnits: minis.length,
           coreServed: { grid: grid.length, roll: roll.length },
+          p6,
           rows: all,
         },
         null,
@@ -604,10 +635,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // Folded into one array assertion so BOTH columns report in a single run —
     // `expect` aborts a test at its first failure, and the whole point of this
     // pair is the split between the columns, which one value cannot show.
-    expect([
-      untransferable.filter((r) => r.arrayValue).length,
-      untransferable.filter((r) => !r.arrayValue).length,
-    ]).toEqual([9, 59])
+    expect([p6.both.arrayValue, p6.both.structural]).toEqual([9, 59])
 
     // THE NUMBER P6 IS SCOPED AGAINST, and it is a CONJUNCTION. "46 have a
     // structured core view" and "45 have a verified core edit" are different
@@ -647,12 +675,14 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // exactly the confusion this filter was built to prevent.
     //
     // MEASURED AT THE OTHER CAP TOO, since P6 carries `LEAF_PROJECT_BARS.roll = 12` in
-    // its own diff: at cap 12 the blocker is 39 (grid 24 + roll 15), OBSERVED by running
-    // this census with the constant set rather than by subtracting the cap's known
-    // contribution from 54. (On the pre-#1037 corpus the same measurement read 34 =
-    // grid 19 + roll 15. The roll half is unchanged at 15, which is what you would
-    // expect of a cap whose reach the roll sweep found flat; the grid half moved with
-    // the corpus.)
+    // its own diff — but the figure does NOT live in this comment any more (#1046).
+    // ⚠ It used to, and it read "39 (grid 24 + roll 15)" while the observation had moved
+    // to 35 (grid 18 + roll 17): a fifth transcribed copy, sitting in the file that gates
+    // the shipped-cap half of the same pair. It is now `P6-CAP12.json`, taken by
+    // `scripts/p6-cap-census.mjs`, checked for currency by the arm below, and spliced into
+    // both documents. Read it from there — and note the reason it stayed an OBSERVATION
+    // rather than becoming a subtraction, which the deleted text was right about and is
+    // now written down in `p6Table.ts` instead of here.
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures):
     // coreStructured 50 -> 53, coreEdits 49 -> 53, the conjunction 48 -> 51. All
     // three rise together and the mechanism is the CORPUS, exactly as at #1037 —
@@ -682,13 +712,78 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // the number P6 is scoped against, and it only means anything read beside its two
     // conjuncts. Asserted apart, a population change reports the first and hides
     // whether the conjunction moved with it or independently of it.
-    const structural = untransferable.filter((r) => !r.arrayValue)
+    //
+    // ⚠ READ FROM `p6`, NOT RE-FILTERED HERE (#1046). This pin held its own copy of the
+    // three filters, and the break matrix for that issue is what showed what that cost:
+    // corrupting the shared rule's conjunction reddened the staleness arm and left THIS
+    // one green, so the number in the documents and the number in the pin were free to
+    // drift apart — which is the disease this issue exists to cure, reproduced one level
+    // in. A pin that cannot be made to fail by breaking the rule it pins is not a pin on
+    // that rule ([[P519]]).
     expect({
-      coreStructured: structural.filter((r) => r.coreStructured).length,
-      coreEdits: structural.filter((r) => r.coreProbe === 'ok').length,
-      both: structural.filter((r) => r.coreStructured && r.coreProbe === 'ok').length,
+      coreStructured: p6.both.coreStructured,
+      coreEdits: p6.both.coreEdits,
+      both: p6.both.blocker,
     }).toEqual({ coreStructured: 53, coreEdits: 53, both: 51 })
+
+    // …and the split the whole conjunction exists to keep visible. Asserted here rather
+    // than left to the generated document, because the document is an OUTPUT of this run
+    // and cannot testify about it.
+    expect([p6.grid.blocker, p6.roll.blocker]).toEqual([18, 33])
   }, 900_000)
+
+  /**
+   * THE TWO DOCUMENTS ARE GENERATED, NOT TRANSCRIBED (#1046).
+   *
+   * Both carry a P6 section, both were typed out by hand from a run, and by the time this
+   * was written three of the four rows in each had drifted while one was right by
+   * accident. Nothing here ASSERTS the documents' contents — a test that writes a file and
+   * then checks it is [[P578]]'s circularity in another costume, and there would be
+   * nothing left for the assertion to catch anyway. Splicing removes the drift by
+   * construction.
+   *
+   * What CAN still fail is the splice silently doing nothing, which is the same class as
+   * the defect it replaces: an anchored edit whose anchor has gone appends instead, and
+   * every count-the-token check still passes ([[P497]]). So `writeGeneratedBlock` throws
+   * on a missing, duplicated or inverted marker, and this arm is where that lands.
+   */
+  it('generates the P6 table into both documents rather than letting them transcribe it', () => {
+    const observationPath = path.join(corpusDir, 'P6-CAP12.json')
+    if (!fs.existsSync(observationPath))
+      throw new Error(
+        'P6-CAP12.json is missing — the cap-12 column has no observation to splice.\n' +
+          '  Take one:  node scripts/p6-cap-census.mjs 12\n' +
+          '  (that script runs this census twice, so it reaches this point before this throw does)',
+      )
+    const observation: P6CapObservation = JSON.parse(fs.readFileSync(observationPath, 'utf8'))
+    const section = renderP6Table(observation, p6, minis.length)
+    for (const doc of ['ROLL-CAP-SWEEP.md', 'WRITER-CENSUS.md']) {
+      const at = path.join(corpusDir, doc)
+      fs.writeFileSync(at, writeGeneratedBlock(fs.readFileSync(at, 'utf8'), section, doc))
+    }
+  })
+
+  /**
+   * THE ONE COLUMN NO RUN CAN PRODUCE, AND ITS EXPIRY (#1046).
+   *
+   * The cap-12 figure is an observation taken with `LEAF_PROJECT_BARS.roll` rewritten, so
+   * it cannot be re-derived here and must not be — a subtraction standing in for a
+   * measurement is the same defect inverted, and that was refused when it was first
+   * proposed. What CAN be re-derived is the cap-4 reading recorded beside it by the same
+   * run. When that stops matching this tree the observation is stale, and this reddens
+   * with the script to re-take it.
+   *
+   * ⚠ Necessary, not sufficient — a change touching only periods in (4, 12] moves the
+   * observed column and leaves this green. The limit is stated in `p6Table.ts` and is why
+   * the roll's period gate is named there as a "re-run regardless" trigger.
+   */
+  it('the committed cap-12 observation is still about this tree', () => {
+    const observation: P6CapObservation = JSON.parse(
+      fs.readFileSync(path.join(corpusDir, 'P6-CAP12.json'), 'utf8'),
+    )
+    assertObservationCoherent(observation)
+    assertObservationCurrent(observation, allAsks, p6.cap, minis.length)
+  })
 
   /**
    * MECHANISM, NOT LABEL. The refusal label has overstated the opportunity every

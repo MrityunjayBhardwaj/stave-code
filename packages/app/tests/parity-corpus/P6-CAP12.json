@@ -1,0 +1,71 @@
+{
+  "note": "The P6 blocker at roll cap 12 — an OBSERVATION, taken by rewriting LEAF_PROJECT_BARS.roll and running the real census. No gate can re-derive it. `companion` is the same run's reading at the shipped cap 4, which every census run re-takes; when it stops matching, this observation is stale.",
+  "script": "node scripts/p6-cap-census.mjs 12",
+  "corpusUnits": 1633,
+  "observed": {
+    "cap": 12,
+    "both": {
+      "asks": 1273,
+      "transfers": 1113,
+      "untransferable": 50,
+      "arrayValue": 9,
+      "structural": 41,
+      "coreStructured": 36,
+      "coreEdits": 36,
+      "blocker": 35
+    },
+    "grid": {
+      "asks": 820,
+      "transfers": 727,
+      "untransferable": 30,
+      "arrayValue": 9,
+      "structural": 21,
+      "coreStructured": 18,
+      "coreEdits": 18,
+      "blocker": 18
+    },
+    "roll": {
+      "asks": 453,
+      "transfers": 386,
+      "untransferable": 20,
+      "arrayValue": 0,
+      "structural": 20,
+      "coreStructured": 18,
+      "coreEdits": 18,
+      "blocker": 17
+    }
+  },
+  "companion": {
+    "cap": 4,
+    "both": {
+      "asks": 1273,
+      "transfers": 1096,
+      "untransferable": 68,
+      "arrayValue": 9,
+      "structural": 59,
+      "coreStructured": 53,
+      "coreEdits": 53,
+      "blocker": 51
+    },
+    "grid": {
+      "asks": 820,
+      "transfers": 727,
+      "untransferable": 30,
+      "arrayValue": 9,
+      "structural": 21,
+      "coreStructured": 18,
+      "coreEdits": 18,
+      "blocker": 18
+    },
+    "roll": {
+      "asks": 453,
+      "transfers": 369,
+      "untransferable": 38,
+      "arrayValue": 0,
+      "structural": 38,
+      "coreStructured": 35,
+      "coreEdits": 35,
+      "blocker": 33
+    }
+  }
+}
