@@ -144,14 +144,15 @@ export function assertSweepObservationCurrent(
  *
  * The currency check cannot see the observed readings at all — they are the un-derivable
  * part, which is the whole reason they are committed. What it can insist on is that each
- * one adds up and that the set is actually a set of OTHER caps: a single hand-edited field
- * then fails, which is the realistic failure this discipline exists to stop. A wholly
- * self-consistent fabrication still would not be caught, and nothing short of re-running
- * the script would catch it.
+ * one adds up, that the set is actually a set of OTHER caps, and that every row describes
+ * the SAME population: a single hand-edited field then fails, which is the realistic
+ * failure this discipline exists to stop. A wholly self-consistent fabrication still would
+ * not be caught, and nothing short of re-running the script would catch it.
  */
 export function assertSweepObservationCoherent(s: CapSurface, obs: SweepObservation): void {
   const wrong: string[] = []
-  for (const r of [...obs.observed, obs.companion])
+  const rows = [...obs.observed, obs.companion]
+  for (const r of rows)
     for (const [pop, c] of [
       ['A', r.A],
       ['B', r.B],
@@ -175,6 +176,29 @@ export function assertSweepObservationCoherent(s: CapSurface, obs: SweepObservat
           `cap ${r.cap} ${pop}: leaf-structured ${c.leafStructured} exceeds leaf-opened ${c.leafOpened}`,
         )
     }
+  /*
+   * The one CROSS-ROW reading, and the strongest available: both populations are
+   * carved by the surface's CORE parse, which never reads the period cap, so their
+   * sizes are cap-independent BY CONSTRUCTION and must be identical in every row —
+   * companion included.
+   *
+   * Every check above is confined to a single row, and that is exactly what an edited
+   * `asks` survives: drop `asks` and `no-view` together and the row still sums. The
+   * currency check cannot see it either, because it only re-derives the companion. The
+   * sweep DRIVER already refuses to diff two runs whose populations differ — a
+   * population that quietly changed size turns a real loss into a silently dropped row.
+   * This is the gate's half of that same refusal.
+   */
+  for (const [pop, asksOf] of [
+    ['A', (r: SweepReading) => r.A.asks],
+    ['B', (r: SweepReading) => r.B.asks],
+  ] as const)
+    if (new Set(rows.map(asksOf)).size > 1)
+      wrong.push(
+        `${pop} population is not cap-independent, so a row's asks was edited rather than ` +
+          `observed: ${rows.map((r) => `cap ${r.cap} asks ${asksOf(r)}`).join(', ')}`,
+      )
+
   const caps = obs.observed.map((r) => r.cap)
   if (caps.includes(obs.companion.cap))
     wrong.push(`the shipped cap ${obs.companion.cap} also appears among the observed caps`)
