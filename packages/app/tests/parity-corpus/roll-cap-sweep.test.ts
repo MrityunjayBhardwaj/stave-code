@@ -61,6 +61,14 @@ import { hasStructure } from '../../../editor/src/visualEdit/notation/model'
 import type { PianoRollModel, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
 import { ROLL_SURFACE, liveness, probeEdit } from './engineEditOracle'
 import { truePeriod } from './enginePeriod'
+import {
+  assertSweepObservationCoherent,
+  assertSweepObservationCurrent,
+  readSweep,
+  renderSweepTable,
+  spliceSweepBlock,
+  type SweepObservation,
+} from './capSweepTable'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -237,7 +245,15 @@ describe(`the roll's leaf period cap at ${CAP}, on both populations it governs`,
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(
       path.join(dir, `cap-${CAP}.json`),
-      JSON.stringify({ cap: CAP, rows: [...rowsA, ...rowsB] }, null, 1),
+      JSON.stringify(
+        // `reading` rides along so `scripts/roll-cap-sweep.mjs` can record a cap's answer
+        // without deriving one of its own — a driver that re-implements these columns in
+        // JS to sweep them is a second oracle over the same question ([[P519]]), and this
+        // table has already been wrong once from having two derivations (#1046).
+        { cap: CAP, reading: readSweep([...rowsA, ...rowsB], CAP), rows: [...rowsA, ...rowsB] },
+        null,
+        1,
+      ),
     )
 
     // THE MUST-NOT, at every cap: a derived view that mis-writes is worse than no view.
@@ -271,7 +287,17 @@ describe(`the roll's leaf period cap at ${CAP}, on both populations it governs`,
     // over the same population would mean one of them is measuring something else.
     // ⚠ 75 -> 85 at #1037 (corpus rebuilt: backtick minis in, commented-out code
     // out). No runtime code changed in that diff, so the move is the population's.
-    expect(transfers(rowsA), 'population A reach fell below the committed roll floor').toBeGreaterThanOrEqual(85)
+    // ⚠⚠ 85 -> 95 at #1270, and the raise is that issue's point rather than a side
+    // effect of it. #1242 widened the corpus 1535 -> 1633 and the observed value went to
+    // 95 while this line stayed at 85 — ten units of headroom a real regression could
+    // have consumed with the gate still green ([[P541]]).
+    //
+    // PROVED AS A PAIRED DIFFERENTIAL, not typed in. The regression this floor exists to
+    // catch is this cap going backwards, and it lands exactly where a differential needs
+    // it to: LEAF_PROJECT_BARS.roll 4 -> 3 or 2 gives **93**, and 4 -> 1 gives **89** —
+    // every one of them PASSES at the old 85 and REDDENS at the new 95. Raised in the
+    // same change as the measurement that found the gap.
+    expect(transfers(rowsA), 'population A reach fell below the committed roll floor').toBeGreaterThanOrEqual(95)
 
     // Population B's is what the core's deletion would inherit (#1012). It is a floor
     // and not a target: it only becomes user-facing when the core stops answering first.
@@ -279,7 +305,24 @@ describe(`the roll's leaf period cap at ${CAP}, on both populations it governs`,
     // the core-SERVED arm, and the commented-out strings this corpus stopped
     // harvesting were disproportionately simple ones the core served and the
     // projection transferred. Losing fiction lowers a count; it does not lower reach.
-    expect(transfers(rowsB), 'population B transfer count fell').toBeGreaterThanOrEqual(339)
+    // ⚠⚠ 339 -> 369 at #1270 — thirty units of headroom, the wider of the two, opened by
+    // #1242's corpus widening and never closed.
+    //
+    // ⚠⚠ AND THE DIFFERENTIAL THAT PROVES THE OTHER FLOOR CANNOT BE BUILT FOR THIS ONE —
+    // the inability is the finding ([[P532]]). Population B reads **369 at cap 4, 3, 2 AND
+    // 1**, and 370 with `PERIOD_PROBE` cut from 24 to 8. Nothing this file's own constant
+    // can do moves it DOWN; the only direction it moves is up (386 at cap 12). The reason
+    // is in the run's own report: of B's 415 opened views at the shipped cap, **399 are
+    // served by the ELEMENT writer and 16 by the leaf writer** — and this cap governs only
+    // the leaf. So this floor, unlike A's, is not a guard on the constant this file
+    // sweeps. It guards the element writer, which nothing here varies.
+    //
+    // It is raised anyway, because a floor thirty below its observation is headroom
+    // whatever it guards. But do not read a green run here as evidence about the roll's
+    // period cap: the number is real and the cap is not what it is sensitive to. A
+    // regression that would redden it has to come from `projectPianoRollDerived`'s element
+    // path or from the corpus, and neither is exercised by this sweep.
+    expect(transfers(rowsB), 'population B transfer count fell').toBeGreaterThanOrEqual(369)
   })
 
   it('never admits a period it has not verified — the cap stays within half the probe window', () => {
@@ -302,4 +345,64 @@ describe(`the roll's leaf period cap at ${CAP}, on both populations it governs`,
       expect(within, 'refused for period, but the period is within the cap').toEqual([])
     }
   })
+
+  /**
+   * THE SWEEP TABLE IS GENERATED, NOT TRANSCRIBED (#1270).
+   *
+   * `ROLL-CAP-SWEEP.md`'s headline table was typed out of a run on the 1535-unit corpus
+   * and #1242 moved the world underneath it. Every figure had drifted: populations
+   * 1086/414 against 1180/453, A reach 85/85/86/86 against 95/95/96/96, B transfers
+   * 339/340/352/355 against 369/371/383/386.
+   *
+   * ⚠ AND THE CLAIMS AROUND IT SURVIVED THE DRIFT INTACT — "A's reach moves by exactly one
+   * ask", "zero asks moved to a worse outcome" — so the DECISION the document reaches was
+   * still right while all four of the numbers under it were wrong. A conclusion that
+   * outlives its evidence is the worst thing to leave transcribed, because nothing about
+   * it looks stale. Nothing here asserts the document's text; splicing removes the drift
+   * by construction, and the splice throws rather than silently appending ([[P497]]).
+   *
+   * Only at the shipped cap: a sweep run at 6, 8 or 12 has a live column for a cap this
+   * tree does not ship, and writing that into the document as "shipped" is the
+   * mislabelling this gate reads its own cap back out of the refusal sentence to avoid.
+   */
+  it('generates the sweep table into its document rather than letting it transcribe one', () => {
+    const obs = readObservation()
+    if (CAP !== obs.companion.cap) {
+      console.log(`  (cap ${CAP} is not the shipped ${obs.companion.cap} — not splicing a sweep run into the document)`)
+      return
+    }
+    const at = path.join(corpusDir, 'ROLL-CAP-SWEEP.md')
+    const body = renderSweepTable(obs, readSweep([...rowsA, ...rowsB], CAP))
+    fs.writeFileSync(at, spliceSweepBlock(fs.readFileSync(at, 'utf8'), body, 'ROLL-CAP-SWEEP.md'))
+  })
+
+  /**
+   * THE THREE COLUMNS NO RUN CAN PRODUCE, AND THEIR EXPIRY (#1270).
+   *
+   * Caps 6, 8 and 12 are observations: the cap is a module constant, so reading the sweep
+   * at any of them means rewriting `parse.ts` and running again, which no gate can do.
+   * What every run DOES produce is the shipped cap's reading, recorded beside them by the
+   * same sweep — so when that stops matching this tree, the three observed columns are
+   * stale and this says so.
+   *
+   * ⚠ Necessary, not sufficient: a change touching only patterns whose period falls in
+   * (4, 12] moves the observed columns and leaves this green. The limit travels with the
+   * mechanism in `generatedDoc.ts`.
+   */
+  it('the committed sweep observation is still about this tree', () => {
+    const obs = readObservation()
+    assertSweepObservationCoherent(obs)
+    assertSweepObservationCurrent(obs, [...rowsA, ...rowsB], CAP)
+  })
 })
+
+function readObservation(): SweepObservation {
+  const at = path.join(corpusDir, 'ROLL-CAP-SWEEP.json')
+  if (!fs.existsSync(at))
+    throw new Error(
+      'ROLL-CAP-SWEEP.json is missing — the non-shipped cap columns have no observation.\n' +
+        '  Take one:  node scripts/roll-cap-sweep.mjs 4 6 8 12\n' +
+        '  (the driver reads each run\'s emitted `reading`, so it reaches this point before this throw does)',
+    )
+  return JSON.parse(fs.readFileSync(at, 'utf8'))
+}

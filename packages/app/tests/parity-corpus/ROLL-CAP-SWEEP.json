@@ -1,0 +1,114 @@
+{
+  "note": "The roll cap sweep at caps this tree does not ship — OBSERVATIONS, taken by rewriting LEAF_PROJECT_BARS.roll and running the real writers. No gate can re-derive them. `companion` is the same sweep's reading at the shipped cap 4, which every run re-takes; when it stops matching, these are stale.",
+  "script": "node scripts/roll-cap-sweep.mjs 4 6 8 12",
+  "observed": [
+    {
+      "cap": 6,
+      "A": {
+        "asks": 1180,
+        "opened": 145,
+        "leafOpened": 57,
+        "transfers": 95,
+        "noView": 1035,
+        "noProbe": 50,
+        "viewCorrupts": 0,
+        "leafStructured": 57,
+        "leafAlive": 155,
+        "leafProbed": 376
+      },
+      "B": {
+        "asks": 453,
+        "opened": 417,
+        "leafOpened": 18,
+        "transfers": 371,
+        "noView": 36,
+        "noProbe": 46,
+        "viewCorrupts": 0,
+        "leafStructured": 17,
+        "leafAlive": 40,
+        "leafProbed": 40
+      }
+    },
+    {
+      "cap": 8,
+      "A": {
+        "asks": 1180,
+        "opened": 155,
+        "leafOpened": 67,
+        "transfers": 96,
+        "noView": 1025,
+        "noProbe": 59,
+        "viewCorrupts": 0,
+        "leafStructured": 67,
+        "leafAlive": 214,
+        "leafProbed": 489
+      },
+      "B": {
+        "asks": 453,
+        "opened": 429,
+        "leafOpened": 30,
+        "transfers": 383,
+        "noView": 24,
+        "noProbe": 46,
+        "viewCorrupts": 0,
+        "leafStructured": 28,
+        "leafAlive": 176,
+        "leafProbed": 200
+      }
+    },
+    {
+      "cap": 12,
+      "A": {
+        "asks": 1180,
+        "opened": 156,
+        "leafOpened": 68,
+        "transfers": 96,
+        "noView": 1024,
+        "noProbe": 60,
+        "viewCorrupts": 0,
+        "leafStructured": 68,
+        "leafAlive": 218,
+        "leafProbed": 501
+      },
+      "B": {
+        "asks": 453,
+        "opened": 433,
+        "leafOpened": 34,
+        "transfers": 386,
+        "noView": 20,
+        "noProbe": 47,
+        "viewCorrupts": 0,
+        "leafStructured": 32,
+        "leafAlive": 217,
+        "leafProbed": 252
+      }
+    }
+  ],
+  "companion": {
+    "cap": 4,
+    "A": {
+      "asks": 1180,
+      "opened": 144,
+      "leafOpened": 56,
+      "transfers": 95,
+      "noView": 1036,
+      "noProbe": 49,
+      "viewCorrupts": 0,
+      "leafStructured": 56,
+      "leafAlive": 152,
+      "leafProbed": 363
+    },
+    "B": {
+      "asks": 453,
+      "opened": 415,
+      "leafOpened": 16,
+      "transfers": 369,
+      "noView": 38,
+      "noProbe": 46,
+      "viewCorrupts": 0,
+      "leafStructured": 15,
+      "leafAlive": 5,
+      "leafProbed": 5
+    }
+  }
+}

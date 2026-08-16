@@ -81,7 +81,7 @@ import {
   p6Columns,
   readP6,
   renderP6Table,
-  writeGeneratedBlock,
+  spliceP6Block,
   type P6CapObservation,
 } from './p6Table'
 
@@ -759,7 +759,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
     const section = renderP6Table(observation, p6, minis.length)
     for (const doc of ['ROLL-CAP-SWEEP.md', 'WRITER-CENSUS.md']) {
       const at = path.join(corpusDir, doc)
-      fs.writeFileSync(at, writeGeneratedBlock(fs.readFileSync(at, 'utf8'), section, doc))
+      fs.writeFileSync(at, spliceP6Block(fs.readFileSync(at, 'utf8'), section, doc))
     }
   })
 
