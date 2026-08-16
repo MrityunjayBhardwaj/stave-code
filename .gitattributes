@@ -1,0 +1,24 @@
+# Source is always text for diff and grep purposes.
+#
+# Git decides binary-ness by looking for a NUL in the first 8000 bytes. A source
+# file that legitimately holds one — a composite-key separator written as a raw
+# byte rather than the escape `\0` — is then excluded from every content-bearing
+# diff and grep, silently. That happened here: `scripts/roll-cap-sweep.mjs` went
+# into the repo as `Bin 0 -> 7316 bytes`, and none of the three commits that
+# touched it ever showed a line (#1282).
+#
+# `diff` is deliberate, and `text` is deliberately absent: this marks the paths
+# readable without enabling end-of-line normalisation, which would rewrite
+# working trees across the repo for a problem that is only about display.
+*.ts    diff
+*.tsx   diff
+*.mjs   diff
+*.cjs   diff
+*.js    diff
+*.jsx   diff
+*.json  diff
+*.md    diff
+*.css   diff
+*.html  diff
+*.yml   diff
+*.yaml  diff

@@ -218,7 +218,7 @@ for (const mini of minis) {
     // The GRID half above needs no equivalent change — it already clears by (lane, step),
     // which is exactly `toggleCell`'s signature.
     const cells = new Map<string, { start: number; pitch: string }>()
-    for (const n of p.notes) cells.set(`${n.start} ${n.pitch}`, { start: n.start, pitch: n.pitch })
+    for (const n of p.notes) cells.set(`${n.start}\0${n.pitch}`, { start: n.start, pitch: n.pitch })
     for (const cell of cells.values()) {
       t.asks++
       // the cell's own anchor — same start AND same pitch, so a chord member's
