@@ -12,7 +12,7 @@
  * scoped against — it has been quoted as 34, then 39, then 34 again across three
  * documents and one test comment, all of them stale.
  *
- * WHY IT EDITS THE SOURCE. Same reason `roll-cap-sweep.mjs` does. The cap is a shipped
+ * WHY IT EDITS THE SOURCE. Same reason `cap-sweep.mjs` does. The cap is a shipped
  * bound, not a knob; threading a parameter through the writer so a sweep could vary it
  * would measure a code path production never takes, which is the failure mode that put a
  * wrong cap in the tree to begin with. So it sets the constant to exactly the value a

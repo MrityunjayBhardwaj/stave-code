@@ -62,18 +62,24 @@ export interface Row {
   /** which derived writer served it */
   writer?: 'leaf' | 'element'
   /**
-   * More than one note — a one-note view is a correct model and a useless surface.
+   * More than one unit — a one-unit view is a correct model and a useless surface.
    *
    * SHARED, not restated (#1259). `hasStructure` has one home in `notation/model.ts`, and
    * the surface descriptor's oracle key is the same key it takes, so a sweep cannot
    * disagree with the census about what "worth showing" means.
    */
   structured?: boolean
+  /**
+   * ⚠ ROLL ONLY — the roll model's note count. A grid model has no equivalent scalar;
+   * it carries lanes of cells, so this is absent on every grid row rather than 0. The
+   * driver's per-ask diff omits it for that reason, and the surface's `unitNoun` — not
+   * this field — is what the shared report should ask for a noun.
+   */
   notes?: number
-  /** notes whose own delete round-trips / notes cleanly probeable; null when none are */
+  /** units whose own delete round-trips / units cleanly probeable; null when none are */
   alive?: number
   probed?: number
-  /** notes that MIS-WRITE — a dead cell and a lying cell are not the same fact */
+  /** units that MIS-WRITE — a dead unit and a lying unit are not the same fact */
   liveCorrupt?: number
   /** the engine's own period, for the asks the cap governs */
   period?: number
@@ -120,6 +126,16 @@ export interface CapSurface {
   script: string
   /** what the table calls one ask of this surface: `roll asks` / `grid asks` */
   asksNoun: string
+  /**
+   * What ONE editable unit of this surface is called, singular: `note` / `cell`.
+   *
+   * Separate from `asksNoun` because they count different things — an ask is one
+   * pattern put to the surface, a unit is one thing inside the view it opened. The
+   * report counts units and used to call them notes on both surfaces, which is the
+   * roll's vocabulary; a grid model carries lanes of cells (#1279). The counts were
+   * right and only the noun was wrong, which is the harder kind to notice.
+   */
+  unitNoun: string
   /**
    * ⚠ The two clauses [[PV338]] forbids sharing: what population A's movement MEANS for
    * this surface, and what population B's does. The figures around them are generated.
@@ -224,10 +240,14 @@ export function report(s: CapSurface, rows: Row[], pop: Pop, cap: number): void 
   const alive = withLive.reduce((n, r) => n + r.alive!, 0)
   const probed = withLive.reduce((n, r) => n + r.probed!, 0)
   const liveCorrupt = withLive.reduce((n, r) => n + (r.liveCorrupt ?? 0), 0)
+  // the noun comes from the surface: a roll model carries notes, a grid model carries
+  // lanes of cells. The column width is held so the two surfaces stay comparable.
+  const unit = s.unitNoun
+  const label = (t: string): string => t.padEnd(29)
   console.log(`  -- LEAF-served views: is the view worth showing --`)
-  console.log(`     structured (>1 note)         ${leaf.filter((r) => r.structured).length} of ${leaf.length}`)
-  console.log(`     notes that respond to a drag ${alive} of ${probed}   ${pct(alive, probed)} live`)
-  console.log(`     notes that MIS-WRITE         ${liveCorrupt}   <-- the one-note probe cannot see these`)
+  console.log(`     ${label(`structured (>1 ${unit})`)}${leaf.filter((r) => r.structured).length} of ${leaf.length}`)
+  console.log(`     ${label(`${unit}s that respond to a drag`)}${alive} of ${probed}   ${pct(alive, probed)} live`)
+  console.log(`     ${label(`${unit}s that MIS-WRITE`)}${liveCorrupt}   <-- the one-${unit} probe cannot see these`)
   if (withLive.length) {
     const per = withLive.map((r) => ({ r, f: r.alive! / r.probed! })).sort((a, b) => a.f - b.f)
     console.log(`     least-live views:`)
