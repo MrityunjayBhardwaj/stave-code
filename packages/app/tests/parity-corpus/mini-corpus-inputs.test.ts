@@ -1,0 +1,108 @@
+/**
+ * mini-corpus-inputs.test.ts — the corpus's inputs are what the corpus says
+ * they are (#1281).
+ *
+ * WHY THIS GATE EXISTS. `mini-corpus.json` is read by every parity-corpus
+ * gate, and until now its input set was chosen by a bare glob over the gitignored
+ * `.bakery-runs/`. Two things could go wrong in silence:
+ *
+ *   - the inputs could be LOST, and nothing recorded enough to rebuild them
+ *   - the inputs could WIDEN, because one run of the live sampler drops a new
+ *     `edit-samples-*.json` into the same directory and the next harvest's
+ *     glob simply picks it up — inside a diff that looks like a refresh
+ *
+ * `mini-corpus-inputs.json` closes both: it records each input's sha256 and
+ * the ordered tune hashes it holds, which is enough to rebuild the inputs
+ * exactly (`mini-corpus-manifest.mjs restore`), and it gives this gate a
+ * committed answer key to check the directory against.
+ *
+ * THE THREE-WAY CHECK, AND WHY IT IS NOT CIRCULAR. The manifest is generated
+ * FROM the directory, so "directory matches manifest" alone would certify
+ * whatever the generator last wrote. The third party is `mini-corpus.json`'s
+ * own `harvestedFrom`, which only a full harvest can rewrite. Requiring all
+ * three to agree means regenerating the manifest cannot quietly bless a
+ * changed input set — the harvested artifact has to move too, and that is a
+ * reviewable diff in the file the 25 gates actually read.
+ *
+ * WHAT THE LAST ARM CANNOT DO. `.bakery-runs/` is gitignored — deliberately,
+ * because these are unreviewed community tunes and the overwhelming majority
+ * declare no licence (see mini-corpus-manifest.mjs). So on any machine without the
+ * archive that arm SKIPS, and vitest reports it as skipped rather than
+ * passing. That is the honest shape: the arm guards the maintainer machine,
+ * which is the only place the directory can widen in the first place.
+ */
+import { describe, it, expect } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
+import crypto from 'node:crypto'
+import { fileURLToPath } from 'node:url'
+
+const here = path.dirname(fileURLToPath(import.meta.url))
+const manifest = JSON.parse(fs.readFileSync(path.join(here, 'mini-corpus-inputs.json'), 'utf8'))
+const corpus = JSON.parse(fs.readFileSync(path.join(here, 'mini-corpus.json'), 'utf8'))
+
+const runsDir = path.join(here, '.bakery-runs')
+const hasArchive = fs.existsSync(runsDir)
+
+/** The input-file rule. `mini-corpus-manifest.mjs` and the harvest apply the same test. */
+const isInputFile = (f: string) => f.startsWith('edit-samples-') && f.endsWith('.json')
+
+describe('mini-corpus inputs — provenance and reproducibility', () => {
+  it('the manifest and the harvested corpus name the SAME inputs, in the same order', () => {
+    // harvestedFrom can only be rewritten by a full harvest, so this is the
+    // arm that stops a regenerated manifest from blessing a changed input set.
+    expect(manifest.inputs.map((i: { file: string }) => i.file)).toEqual(
+      corpus.harvestedFrom.map((h: { file: string }) => h.file),
+    )
+    expect(manifest.inputs.map((i: { rows: number }) => i.rows)).toEqual(
+      corpus.harvestedFrom.map((h: { rows: number }) => h.rows),
+    )
+    expect(manifest.inputs.map((i: { offset: number }) => i.offset)).toEqual(
+      corpus.harvestedFrom.map((h: { offset: number }) => h.offset),
+    )
+  })
+
+  it('the manifest reconciles with itself — totals, row counts and credit coverage', () => {
+    const rows = manifest.inputs.reduce((n: number, i: { rows: number }) => n + i.rows, 0)
+    const hashLists = manifest.inputs.reduce((n: number, i: { hashes: string[] }) => n + i.hashes.length, 0)
+    const distinct = new Set(manifest.inputs.flatMap((i: { hashes: string[] }) => i.hashes))
+
+    // A hand-edited total, or a row count that stopped matching the hashes
+    // recorded beside it, fails here rather than at the next restore.
+    expect(hashLists).toBe(rows)
+    expect(manifest.totals.rows).toBe(rows)
+    expect(manifest.totals.inputFiles).toBe(manifest.inputs.length)
+    expect(manifest.totals.distinctTunes).toBe(distinct.size)
+    expect(manifest.credits).toHaveLength(distinct.size)
+    expect(new Set(manifest.credits.map((c: { hash: string }) => c.hash))).toEqual(distinct)
+  })
+
+  it('every tune carries a permalink so any use of it can credit its author', () => {
+    for (const credit of manifest.credits as { hash: string; url: string }[]) {
+      expect(credit.url).toBe(`https://strudel.cc/?${credit.hash}`)
+    }
+    // Recorded only where the tune itself states them — `null` is the honest
+    // answer and is the reason these files are not vendored into the repo.
+    const declared = manifest.credits.filter((c: { licence: string | null }) => c.licence).length
+    const titled = manifest.credits.filter((c: { title: string | null }) => c.title).length
+    expect(manifest.totals.withLicence).toBe(declared)
+    expect(manifest.totals.withTitle).toBe(titled)
+    expect(declared).toBeLessThan(manifest.credits.length) // most state nothing — see the docblock
+  })
+
+  it.skipIf(!hasArchive)('the archive on disk is exactly the input set the manifest records', () => {
+    const onDisk = fs.readdirSync(runsDir).filter(isInputFile).sort()
+
+    // A live sampler run drops a NEW edit-samples-*.json here. That is the
+    // silent widening this arm exists to catch, and it fails by name.
+    expect(onDisk).toEqual(manifest.inputs.map((i: { file: string }) => i.file))
+
+    for (const input of manifest.inputs as { file: string; sha256: string; bytes: number }[]) {
+      const raw = fs.readFileSync(path.join(runsDir, input.file))
+      expect(`${input.file} ${raw.length}`).toBe(`${input.file} ${input.bytes}`)
+      expect(`${input.file} ${crypto.createHash('sha256').update(raw).digest('hex')}`).toBe(
+        `${input.file} ${input.sha256}`,
+      )
+    }
+  })
+})
