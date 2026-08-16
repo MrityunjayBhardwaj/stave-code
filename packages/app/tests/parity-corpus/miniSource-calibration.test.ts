@@ -222,7 +222,27 @@ describe('miniSource calibration over 150 real tunes', () => {
     // #1240 raised this by 66 (534 → 600): units whose content span the resolver
     // names now classify as `note`, so they enter this population. Raised in the
     // same commit as the gain it measures.
-    expect(known).toBeGreaterThanOrEqual(580)
+    //
+    // ⚠ RAISED 580 → 600 at #1275. That commit recorded the gain and left twenty
+    // units underneath it unaccounted for — the timing rule was followed and the
+    // magnitude was never argued. Twenty units could go dark with every assertion
+    // in this file green: `exact === known` is RELATIVE, so a population that
+    // quietly shrinks takes both sides down together and the equality still holds.
+    // Unlike `evalOk` above, which pairs its floor with the exact named residual
+    // precisely so a silent dropout cannot be absorbed, this number had no
+    // companion instrument at all.
+    //
+    // Pinned to the observation rather than left blunt because the usual reason
+    // for slack does not apply here: `docs.length` is asserted to be exactly 150,
+    // so a corpus change already reddens this file on purpose. Nothing routine
+    // moves this number.
+    //
+    // NO CONSTRUCTIBLE DIFFERENTIAL, said plainly rather than implied. The only
+    // lever on this population is the `hasKnownContent` / `status === 'note'`
+    // distinction above, and that one drops it 600 → 446 — straight past the whole
+    // band between the old floor and the new, so no value of it reddens at 600 and
+    // passes at 580. The raise rests on the rule, not on a demonstration.
+    expect(known).toBeGreaterThanOrEqual(600)
     // Exactness: no wrong answers, nothing withheld.
     expect(wrong).toBe(0)
     expect(refused).toBe(0)
