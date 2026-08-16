@@ -25,19 +25,24 @@ That figure was taken twice and was wrong both times it was checked.
 |---|---|---|
 | #991 | +9 (95 → 104) | an oracle that probed cycle 0 and compared onsets only |
 | #1038 | +17 (109 → 126) | after the probe widening (#1022) and the duration axis (#1026) |
-| #1041 | **+17 (144 → 161)** | this tree, after the corpus widening at #1242 |
+| #1041 | *see the generated table below* | this tree, after the corpus widening at #1242 |
+
+Those two rows are DEAD figures, kept because the trap is worth leaving visible. **Today's
+row is deliberately not written out**: it is the one this section would otherwise be
+transcribing, and transcribing it here — in the document whose whole argument is that the
+figures belong in a generated block — is the defect rather than a smaller version of it.
 
 ⚠⚠ **The headline stayed exact while both figures under it drifted, and that is the whole
-reason this document exists.** The gain is `+17` in two of the three takings and the
-endpoints agree in none of them. A delta is precisely the shape that survives a population
-change — #1242 moved both terms by nearly the same amount — so the number most likely to
-be quoted is the number least likely to look stale. A reader who confirmed "+17" against
-this tree would have confirmed the one part of the line that drift preserves, and walked
-away having certified two wrong endpoints.
+reason this document exists.** The gain is `+17` in both the #1038 row and the current
+reading, and the endpoints agree in neither. A delta is precisely the shape that survives a
+population change — #1242 moved both terms by nearly the same amount — so the number most
+likely to be quoted is the number least likely to look stale. A reader who confirmed "+17"
+against this tree would have confirmed the one part of the line that drift preserves, and
+walked away having certified two wrong endpoints.
 
-⚠ There is a second trap on the same comment: its projected value at cap 4 is **161**,
-which is this tree's cap-12 *reach*. Searching for stale copies of a figure by its digits
-pairs the wrong two things. Enumerate by meaning.
+⚠ There is a second trap on the same comment: its dead cap-4 projection collides with a
+reading that is still live in the sweep. Searching for stale copies of a figure by its
+digits pairs the wrong two things. Enumerate by meaning.
 
 The comment no longer carries the number. It points here, exactly as its roll half already
 pointed at `ROLL-CAP-SWEEP.md`.
@@ -123,6 +128,11 @@ serves:
 |---|---|---|---|
 | roll, population B | 415 | **16** | barely — B reads the same transfer count at caps 4, 3, 2 **and** 1 |
 | grid, population B | 820 | **74** | yes — B moves across the swept range |
+
+⚠ The grid row's two figures are also produced by the generated block above, which is the
+copy to trust; they are repeated here only because the comparison is the point of the
+section. The roll row comes from `ROLL-CAP-SWEEP.md`'s own run and is pinned in that
+gate's population-B floor comment — it is a cross-reference, not a reading this file takes.
 
 So both of this surface's floors carry a real paired differential, where the roll could
 only build one. **Sibling surfaces do not share a constant's sensitivity even where they

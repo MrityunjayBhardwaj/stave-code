@@ -8,12 +8,13 @@
  * re-took that figure it had moved: it was recorded at #991 as "+9 (95 → 104)".
  *
  * ⚠⚠ AND THE HEADLINE WAS STILL EXACT WHILE BOTH FIGURES UNDER IT HAD DRIFTED. Re-measured
- * on this tree the same comment reads **+17 (144 → 161)**: the GAIN is identical to the
- * digit and neither endpoint is. A delta is precisely the shape a population change
- * preserves — #1242 moved both terms by nearly the same amount — so the number most likely
- * to be quoted is the one least likely to look stale, and a reader who spot-checks "+17"
- * walks away having certified two wrong endpoints. That is why the comment on the constant
- * now points at this gate instead of carrying the number.
+ * on this tree the GAIN is still the same digit and neither endpoint is. A delta is
+ * precisely the shape a population change preserves — #1242 moved both terms by nearly the
+ * same amount — so the number most likely to be quoted is the one least likely to look
+ * stale, and a reader who spot-checks the gain walks away having certified two wrong
+ * endpoints. That is why the comment on the constant now points at this gate instead of
+ * carrying the number, and why today's pair is not written out here either: the floor
+ * below is asserted, and the rest is in the generated table.
  *
  * THE TWO POPULATIONS, the same carve the roll sweep uses:
  *
