@@ -1,0 +1,130 @@
+{
+  "note": "FINGERPRINT of the vendored parity corpus. `files` covers the UPSTREAM tunes, whose contract is byte-faithfulness to the SHA below and whose licence and attribution live in comments; `corpus` is every fixture in the directory, because that directory is the denominator of the parity, loc-fidelity, structural-walk and edit-coverage gates and a stray arrival widens all of them. The IR snapshots beside this file see through comments, so they cannot catch either.",
+  "upstreamSha": "f73b395648645aabe699f91ba0989f35a6fd8a3c",
+  "regenerate": "node scripts/corpus-pin.mjs  <-- a deliberate RE-PIN, never a repair",
+  "files": {
+    "amensister.strudel": {
+      "bytes": 993,
+      "sha256": "b174dc539dd9b193ea520d1621784c951e23f4de5a03a0daea5543748458bb74"
+    },
+    "arpoon.strudel": {
+      "bytes": 792,
+      "sha256": "fc1aca905923085e3c179019ffa762922d66ce22730895746291b29b0ebfe919"
+    },
+    "barryHarris.strudel": {
+      "bytes": 184,
+      "sha256": "0c768ee53c4633bf10ab34968af8ed2a7743125e9bcb21458f607daeacda3d77"
+    },
+    "bassFuge.strudel": {
+      "bytes": 1005,
+      "sha256": "e5ac83c25fb9b3962d34806453073625be9601427718722b6cbe2fa541dc29ee"
+    },
+    "belldub.strudel": {
+      "bytes": 1355,
+      "sha256": "559b6962b8cbf0d7ec8a760db8f8726586814ad31a9d27895a6a122cdb93dc37"
+    },
+    "chop.strudel": {
+      "bytes": 279,
+      "sha256": "cba8fded9abcf7666b95fa0c15d32cfa24be8c26cd90e029a86e4132a956160a"
+    },
+    "delay.strudel": {
+      "bytes": 247,
+      "sha256": "1cbefaa7f52be9131880abf45d7d33684cf95f2454add44e00671892e77d2e1c"
+    },
+    "dinofunk.strudel": {
+      "bytes": 807,
+      "sha256": "37ac80a3ca005b2e7d0f1b269db6bbdc5f42f7099e0064999fce6787b36155c0"
+    },
+    "echoPiano.strudel": {
+      "bytes": 312,
+      "sha256": "57d8d9e09a859a1bf2826e7da915da29496d3a22fccb8ff1b4a45c40c573b81c"
+    },
+    "flatrave.strudel": {
+      "bytes": 860,
+      "sha256": "afe6b251badccdd0f88c252e489da6811968e532a65727ef5180aceedbad22e9"
+    },
+    "holyflute.strudel": {
+      "bytes": 411,
+      "sha256": "04d28931bbee75e184452228112a3d3db346cf2e5a3bf6f899a6b894cfae6324"
+    },
+    "juxUndTollerei.strudel": {
+      "bytes": 430,
+      "sha256": "c8bed8e8d9b589df2d05c6ccb0aa5fb3008fd28baf790e0273f834d33bcb4124"
+    },
+    "meltingsubmarine.strudel": {
+      "bytes": 1525,
+      "sha256": "93ae4f5a7981ad11063a65f767f6197e62f3208b36a5846029a6e790901ba902"
+    },
+    "orbit.strudel": {
+      "bytes": 313,
+      "sha256": "a5cdabb6b973ddda6f9c86ae5f5656ee71c91c7d38bcd148f547f70926ec7299"
+    },
+    "randomBells.strudel": {
+      "bytes": 653,
+      "sha256": "825ca43192de4a619b18550592119c82e638192c8adfc219df3198af024f1d15"
+    },
+    "sampleDrums.strudel": {
+      "bytes": 287,
+      "sha256": "df0dca06e37cae7a4c1ae10d11373a4000224591c08a7a1335ee1844bd05d89d"
+    }
+  },
+  "corpus": [
+    "amensister.strudel",
+    "arpoon.strudel",
+    "bakery-132-recursive-args.strudel",
+    "bakery-140-binding-transitive.strudel",
+    "bakery-141-arith-rhs.strudel",
+    "bakery-141-arith-unreferenced.strudel",
+    "bakery-141-binding-arg-text.strudel",
+    "bakery-141-irand-chain-root.strudel",
+    "bakery-142-samples-objlit.strudel",
+    "bakery-143-NEGATIVE-no-apostrophe-comment.strudel",
+    "bakery-143-apostrophe-in-chain-arg-comment.strudel",
+    "bakery-143-guarded-boot.strudel",
+    "bakery-144-paren-root.strudel",
+    "bakery-148-leading-dot-chain.strudel",
+    "bakery-150-eq-continuation.strudel",
+    "bakery-151-comment-only.strudel",
+    "bakery-152-block-comment.strudel",
+    "bakery-158-NEGATIVE-no-sideeffect.strudel",
+    "bakery-158-aliasBank-shape-fence.strudel",
+    "bakery-158-all-shape-fence.strudel",
+    "bakery-158-initAudio-shape-fence.strudel",
+    "bakery-158-samples-shape-fence.strudel",
+    "bakery-158-setCpm-camel-shape-fence.strudel",
+    "bakery-158-setCps-camel-shape-fence.strudel",
+    "bakery-158-setVoicingRange-shape-fence.strudel",
+    "bakery-158-setcpm-shape-fence.strudel",
+    "bakery-158-setcps-shape-fence.strudel",
+    "bakery-158-useRNG-shape-fence.strudel",
+    "bakery-159-NEGATIVE-no-whitespace.strudel",
+    "bakery-159-tokenizer-whitespace.strudel",
+    "bakery-901-stack-newline-paren.strudel",
+    "bakery-901-stack-space-paren.strudel",
+    "bakery-903-chord-multiplier.strudel",
+    "bakery-903-patterned-variant.strudel",
+    "bakery-G1-let-binding.strudel",
+    "bakery-G2-setCpm-camel.strudel",
+    "bakery-G2-setCps-camel.strudel",
+    "bakery-G2-setcpm.strudel",
+    "bakery-G3-backtick.strudel",
+    "bakery-G4-comment-args.strudel",
+    "bakery-G5-named-label.strudel",
+    "bakery-arrange-root.strudel",
+    "bakery-chord-voicing-root.strudel",
+    "barryHarris.strudel",
+    "bassFuge.strudel",
+    "belldub.strudel",
+    "chop.strudel",
+    "delay.strudel",
+    "dinofunk.strudel",
+    "echoPiano.strudel",
+    "flatrave.strudel",
+    "holyflute.strudel",
+    "juxUndTollerei.strudel",
+    "meltingsubmarine.strudel",
+    "orbit.strudel",
+    "randomBells.strudel",
+    "sampleDrums.strudel"
+  ]
+}

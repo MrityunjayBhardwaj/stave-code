@@ -4,7 +4,7 @@
  *
  * Reads the SHA pin from `packages/app/tests/parity-corpus/CORPUS-SOURCE.md`
  * (or accepts `--sha <new>`), fetches `website/src/repl/tunes.mjs` from
- * upstream `uzu/strudel` on Codeberg, re-extracts the 16 curated tunes
+ * upstream `uzu/strudel` on Codeberg, re-extracts the curated tunes in `TARGETS`
  * by named export, and prints a unified diff for every tune whose body
  * differs from the currently-vendored `.strudel` copy.
  *
@@ -46,7 +46,7 @@ const sourceFile = path.join(corpusDir, 'CORPUS-SOURCE.md')
 // "missing upstream" drift forever. The list below is upstream-only by
 // construction; the assertion further down enforces it so a future edit
 // can't accidentally add a `bakery-*` entry.
-const TARGETS = [
+export const TARGETS = [
   'chop',
   'delay',
   'orbit',
@@ -114,8 +114,8 @@ async function fetchUpstream(sha) {
 function extractTune(source, name) {
   // Mirrors the γ-1 extractor — match `export const <name> = \`...\`;`
   // tolerating any chars (including newlines) inside backticks. Escaped
-  // backticks inside template literals would break this; none of the 16
-  // tunes currently use them.
+  // backticks inside template literals would break this; no tune in
+  // `TARGETS` currently uses them.
   const re = new RegExp(`export const ${name} = \`([\\s\\S]*?)\`;`, 'm')
   const m = source.match(re)
   if (!m) return null
@@ -203,7 +203,16 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('parity:refresh failed:', err.message)
-  process.exit(1)
-})
+// Guarded so `TARGETS` — the one list of which fixtures have an upstream origin — can be
+// imported by the corpus pin (#1290) without this tool's `main()` firing a network fetch
+// on import. Restating the list there instead would make a second answer to "which of
+// these came from upstream?", and the two would drift apart silently.
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+) {
+  main().catch((err) => {
+    console.error('parity:refresh failed:', err.message)
+    process.exit(1)
+  })
+}
