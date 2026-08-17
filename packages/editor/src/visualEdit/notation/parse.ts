@@ -1280,6 +1280,13 @@ function gateReason(gate: Gate, surface: Surface): string {
       // just cannot draw this one any finer. Kept surface-neutral because the
       // total gate that raises it is generic over both models (#1132).
       return 'this pattern does not offer a finer view yet'
+    case 'escaped-source':
+      // Says what is observable in the STRING, not what only the reader could know.
+      // For a double-quoted literal the backslash is ours — the transpiler reified
+      // the cooked value and we sliced the document — while for a backtick it is
+      // genuinely in the pattern. Both are true of this sentence; a sentence about
+      // the editor and the engine disagreeing would be false of the second (#1254).
+      return 'the source spells this content with a backslash escape, which mini-notation has no syntax for'
     case 'not-a-pattern':
       return 'unsupported mini-notation syntax'
   }
@@ -1310,8 +1317,26 @@ function refused<M>(
   surface: Surface,
   core: { ok: false; reason: string },
   gate: Gate,
+  src: string,
 ): ParseResult<M> {
-  if (gate === 'not-a-pattern') return core
+  if (gate === 'not-a-pattern') {
+    // ⚠ ONE EXCEPTION TO "KEEP THE CORE'S MESSAGE" (#1254). Nothing reified, so the
+    // core's own message normally wins — it names the actual syntax. It cannot be the
+    // better answer when the offending character is a backslash, because mini-notation
+    // has no backslash syntax at all (asked of krill, which refuses one anywhere,
+    // comments included) and because for a double-quoted literal the backslash is not
+    // in the pattern the engine plays: the transpiler reifies `node.value`, the cooked
+    // string, while we model the document slice. "Unsupported syntax" then points the
+    // author at notation they did not write.
+    //
+    // `src` is REQUIRED rather than defaulted on purpose. A default would make this
+    // invisible at every call site that forgot it, and the refusal would silently go
+    // back to being anonymous — which is exactly the failure this gate exists to end.
+    if (src.includes('\\')) {
+      return { ok: false, reason: gateReason('escaped-source', surface), gate: 'escaped-source' }
+    }
+    return core
+  }
   return { ok: false, reason: gateReason(gate, surface), gate }
 }
 
@@ -2582,7 +2607,7 @@ export function projectStepGridDerived(
   const asOwner = (ok: { ok: true; model: StepGridModel }): ParseResult<StepGridModel> => {
     if (viewScale === UNREFINED) return ok
     const scaled = projectStepGrid(mini, viewScale)
-    return scaled.ok ? scaled : refused('grid', fallbackReason, scaled.gate)
+    return scaled.ok ? scaled : refused('grid', fallbackReason, scaled.gate, mini)
   }
   if (owner.ok && !vacuousLocality(owner.model.altSource)) return withSurgery(mini, asOwner(owner))
   const leaf = projectStepGridByLeaf(mini)
@@ -2591,7 +2616,7 @@ export function projectStepGridDerived(
   // …and if nothing opened it, report the gate that actually stopped the general
   // write-back (#990) — not the core's syntactic message, which names the first
   // writer to decline
-  return refused('grid', fallbackReason, leaf.gate)
+  return refused('grid', fallbackReason, leaf.gate, mini)
 }
 
 /**
@@ -3767,7 +3792,7 @@ export function projectPianoRollDerived(
   const asOwner = (ok: { ok: true; model: PianoRollModel }): ParseResult<PianoRollModel> => {
     if (viewScale === UNREFINED) return ok
     const scaled = projectPianoRoll(mini, viewScale)
-    return scaled.ok ? scaled : refused('roll', fallbackReason, scaled.gate)
+    return scaled.ok ? scaled : refused('roll', fallbackReason, scaled.gate, mini)
   }
   // NOT gated on `vacuousLocality` the way the grid is, and that asymmetry is
   // measured rather than assumed: preferring the leaf writer here costs the roll
@@ -3789,7 +3814,7 @@ export function projectPianoRollDerived(
   if (leaf.ok) return leaf
   // …and if nothing opened it, report the gate that actually stopped the general
   // write-back (#990)
-  return refused('roll', fallbackReason, leaf.gate)
+  return refused('roll', fallbackReason, leaf.gate, mini)
 }
 
 /**

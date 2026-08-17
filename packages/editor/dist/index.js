@@ -28043,13 +28043,20 @@ function gateReason(gate, surface) {
       return "nothing in this view could be edited on its own";
     case "no-finer-view":
       return "this pattern does not offer a finer view yet";
+    case "escaped-source":
+      return "the source spells this content with a backslash escape, which mini-notation has no syntax for";
     case "not-a-pattern":
       return "unsupported mini-notation syntax";
   }
 }
 __name(gateReason, "gateReason");
-function refused(surface, core, gate) {
-  if (gate === "not-a-pattern") return core;
+function refused(surface, core, gate, src) {
+  if (gate === "not-a-pattern") {
+    if (src.includes("\\")) {
+      return { ok: false, reason: gateReason("escaped-source", surface), gate: "escaped-source" };
+    }
+    return core;
+  }
   return { ok: false, reason: gateReason(gate, surface), gate };
 }
 __name(refused, "refused");
@@ -28588,13 +28595,13 @@ function projectStepGridDerived(mini, fallbackReason, viewScale = UNREFINED) {
   const asOwner = /* @__PURE__ */ __name((ok) => {
     if (viewScale === UNREFINED) return ok;
     const scaled = projectStepGrid(mini, viewScale);
-    return scaled.ok ? scaled : refused("grid", fallbackReason, scaled.gate);
+    return scaled.ok ? scaled : refused("grid", fallbackReason, scaled.gate, mini);
   }, "asOwner");
   if (owner.ok && !vacuousLocality(owner.model.altSource)) return withSurgery(mini, asOwner(owner));
   const leaf = projectStepGridByLeaf(mini);
   if (leaf.ok) return leaf;
   if (owner.ok) return asOwner(owner);
-  return refused("grid", fallbackReason, leaf.gate);
+  return refused("grid", fallbackReason, leaf.gate, mini);
 }
 __name(projectStepGridDerived, "projectStepGridDerived");
 function parseStepGrid(mini, viewScale = UNREFINED) {
@@ -29264,12 +29271,12 @@ function projectPianoRollDerived(mini, fallbackReason, viewScale = UNREFINED) {
   const asOwner = /* @__PURE__ */ __name((ok) => {
     if (viewScale === UNREFINED) return ok;
     const scaled = projectPianoRoll(mini, viewScale);
-    return scaled.ok ? scaled : refused("roll", fallbackReason, scaled.gate);
+    return scaled.ok ? scaled : refused("roll", fallbackReason, scaled.gate, mini);
   }, "asOwner");
   if (owner.ok) return withRollSurgery(mini, asOwner(owner));
   const leaf = projectPianoRollByLeaf(mini);
   if (leaf.ok) return leaf;
-  return refused("roll", fallbackReason, leaf.gate);
+  return refused("roll", fallbackReason, leaf.gate, mini);
 }
 __name(projectPianoRollDerived, "projectPianoRollDerived");
 function parsePianoRoll(mini, viewScale = UNREFINED) {

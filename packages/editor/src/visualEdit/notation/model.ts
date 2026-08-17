@@ -1242,6 +1242,23 @@ export type Gate =
   | 'edit-unsafe'
   | 'view-unusable'
   | 'no-finer-view'
+  /**
+   * The source spells this content with a backslash escape (#1254). Narrower than
+   * `not-a-pattern`, and separated from it deliberately: that gate means "nothing
+   * reified, and the core's own message names the syntax", which is the better
+   * answer and is why an unreified refusal is allowed to stay unnamed. This one is
+   * the case where the core's message CANNOT be the better answer, because the
+   * backslash is not something the author wrote into the pattern.
+   *
+   * A double-quoted literal is reified by the transpiler from `node.value`, the
+   * JS-COOKED string, while the editor models the DOCUMENT SLICE between the quotes
+   * — so every JS escape leaves a backslash on our side that the engine never sees.
+   * A backtick literal cannot diverge (the raw text is what runs), and there the
+   * backslash really is in the pattern and krill really does refuse it. The sentence
+   * below is therefore written to be true of both, naming what is observable in the
+   * string rather than a cause only the reader could know.
+   */
+  | 'escaped-source'
   | 'not-a-pattern'
 
 /**

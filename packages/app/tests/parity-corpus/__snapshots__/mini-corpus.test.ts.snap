@@ -2845,10 +2845,10 @@ a5 e5 c#5
     "roll": "the pattern does not repeat within 4 bars",
   },
   {
-    "grid": "unsupported mini-notation syntax",
+    "grid": "the source spells this content with a backslash escape, which mini-notation has no syntax for",
     "mini": "<[a3,c4,e4]!2 [f3,a3,c4]!2 [g3,b3,d4]!2 [e3,g3,b3]!2 \\
     [a3,c4,e4]!2 [f3,a3,d4]!2 [g3,b3,d4]!2 [c4,e4,g4]!2>",
-    "roll": "unsupported mini-notation syntax",
+    "roll": "the source spells this content with a backslash escape, which mini-notation has no syntax for",
   },
   {
     "grid": "the pattern does not repeat within 12 bars",
