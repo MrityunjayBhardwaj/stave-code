@@ -976,7 +976,7 @@ const MAX_PROJECT_BARS = 4
  *
  * Reproduce: set `grid` below to 4, run
  * `pnpm --filter @stave/app exec vitest run tests/parity-corpus/writer-reach.test.ts`,
- * restore. The roll has a real sweep harness for this (`scripts/cap-sweep.mjs`
+ * restore. The roll has a real sweep harness for this (`scripts/roll-cap-sweep.mjs`
  * + `roll-cap-sweep.test.ts`); the grid has no equivalent, so this figure is
  * re-measured by hand and dated rather than gated — see #1041.
  *
