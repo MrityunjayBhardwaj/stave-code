@@ -313,8 +313,9 @@ function rebuildGrid(model: StepGridModel): string | null {
  * ⚠ A DATED OBSERVATION, not a live gate, and there is nothing left to re-run it
  * with. Measured 2026-08-17 on `0c785cf4` with a THROWAWAY probe: a counter at each
  * of the five sites, driven over `mini-corpus.json` (1,633 minis → 1,021 opening a
- * step grid, 597 a piano roll) with ≤2 deletes, ≤2 placements, 1 resize and one
- * "double the resolution, then place in the new slot" per unit. That is the recipe,
+ * step grid, 597 a piano roll). Gestures per unit, and they differ by surface: on
+ * the grid ≤2 deletes, ≤2 placements, 1 resize and one "double the resolution, then
+ * place in the new slot"; on the roll ≤2 deletes, 1 resize, 1 placement. Recipe,
  * not a receipt — the probe is deleted because it can only run against an
  * instrumented copy of this file, and a committed instrument that cannot run is
  * worse than none ([[P592]]). Re-take it before quoting these digits as current.
@@ -329,12 +330,18 @@ function rebuildGrid(model: StepGridModel): string | null {
  *     roll place        537    leaf    0 · splice 467 · alt 56 · rebuild 14 → 523 re-emit
  *     roll resize       596    leaf  239 · splice 146 · alt 29 · rebuild 182→ 301 re-emit
  *
+ * ⚠ THE LAST COLUMN IS ASKS REACHING A SITE, NOT ASKS IT ANSWERED. A re-emit can run
+ * and the write still end in a rebuild, so the two coincide on six rows and diverge
+ * on the seventh: roll resize reaches a site 301 times against a splice+alt total of
+ * 175. Do not read the column as a sum of the two before it.
+ *
  * THE MAPPING, and two of the three cases do not land where the issue supposes:
  *
  *   CASE 3 — `@n` duration. Every resize that reaches a writer at all reaches one of
  *     these five; on the grid byte surgery answers ZERO of 156, because a length is
- *     not a location and there are no bytes to replace at one. `:499` is EXCLUSIVELY
- *     this case (64 of 64 asks were resizes) and maps to it alone.
+ *     not a location and there are no bytes to replace at one. One site is EXCLUSIVELY
+ *     this case (64 of 64 asks were resizes) — the sustain-ABSORB fallback maps to
+ *     one case and one only, the only site of the five that does.
  *
  *   CASE 1 — structure with no leaf. The PLACEMENT population: 894 grid and 523 roll
  *     asks, a new note in a slot the source never indexed (#1154 — a leaf-anchored
@@ -1022,8 +1029,8 @@ function spliceAltGrid(model: StepGridModel): string | null {
       out += r.raw
       continue
     }
-    // #1010 P4e — MAPPED. The grid's alternation half of `:443`, same three
-    // populations in the same proportions (map: the block above `spliceGrid`).
+    // #1010 P4e — MAPPED. The grid's alternation half of `spliceRegions`' re-emit,
+    // same three populations (map: the block above `spliceGrid`).
     // Asks reaching here, 2026-08-17: 112 placements = case 1 · 22 resizes = case 3 ·
     // 96 deletes = NONE OF THE THREE → #1295. ⚠ This path has no rebuild to fall to,
     // so a re-emit that declines here refuses the write outright.
@@ -1714,8 +1721,9 @@ function spliceRoll(model: PianoRollModel): string | null {
       // an edited region on a fractional grid can't be re-emitted safely — decline
       // the whole splice so the caller no-ops rather than dropping the note
       if (!integral) return null
-      // #1010 P4e — MAPPED. The roll's `:443`, and the one site where case 3 is a
-      // large share rather than a tail (map: the block above `spliceGrid`). Asks
+      // #1010 P4e — MAPPED. The roll's counterpart to `spliceRegions`' re-emit, and
+      // the one site where case 3 is a large share rather than a tail (map: the
+      // block above `spliceGrid`). Asks
       // reaching here, 2026-08-17: 467 placements = case 1 · 287 resizes = case 3 ·
       // 206 deletes = NONE OF THE THREE → #1295. ⚠ The roll differs from the grid on
       // case 3: byte surgery answers 239 of 596 resizes here (the grid's own figure
@@ -1798,11 +1806,11 @@ function spliceAltRoll(model: PianoRollModel): string | null {
       continue
     }
     if (!integral) return null
-    // #1010 P4e — MAPPED. The roll's alternation half, and the smallest of the five
-    // (map: the block above `spliceGrid`). Asks reaching here, 2026-08-17: 56
+    // #1010 P4e — MAPPED. The roll's alternation half (map: the block above
+    // `spliceGrid`). Asks reaching here, 2026-08-17: 56
     // placements = case 1 · 14 resizes = case 3 · 81 deletes = NONE OF THE THREE →
-    // #1295. ⚠ Deletes are the LARGEST share at this site, where they are the
-    // smallest at its grid twin — the per-surface asymmetry #1010 warns to expect.
+    // #1295. ⚠ Deletes LEAD here where placements lead at its grid twin (112 place
+    // against 96 delete) — the per-surface asymmetry #1010 warns to expect.
     const re = reemitAltRoll(perBarNow, r.from, r.to, a.div)
     if (re === null) return null
     out += r.leading + re + r.trailing
