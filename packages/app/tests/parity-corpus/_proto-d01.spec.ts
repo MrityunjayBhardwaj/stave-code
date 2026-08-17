@@ -11,7 +11,7 @@
  * It vendors byte-for-byte copies of `splitTopLevelStatements` / `BINDING_RE`
  * + the proposed fixpoint variant; it does NOT edit parseStrudel.ts. The
  * per-iteration diagnostic console.log is the wave-by-wave observation
- * evidence — do NOT silence it. The 6 #141 repros live alongside this spec
+ * evidence — do NOT silence it. The #141 repros live alongside this spec
  * under bakery-runs/ (was /tmp/ in the throwaway prototype).
  */
 import { describe, it } from 'vitest'
@@ -20,8 +20,14 @@ import path from 'node:path'
 import { parseExpression, skipWhitespaceAndLineComments, parseStrudel } from '../../../editor/src/ir/parseStrudel'
 import type { PatternIR } from '../../../editor/src/ir/PatternIR'
 
-// Vendored Wave-0 oracle: the 6 #141 repros live alongside this spec under
-// bakery-runs/ (was /tmp/ in the throwaway prototype). Loaded verbatim.
+// Vendored Wave-0 oracle: the #141 repros live alongside this spec under bakery-runs/
+// (was /tmp/ in the throwaway prototype). Loaded verbatim.
+//
+// ⚠ THIS ORACLE IS NARROWER THAN IT WAS. Six repros were vendored here in 20-17; five
+// declared no licence and were removed in #1292, leaving the one that declares CC0. The
+// verdicts the prototype recorded were taken over all six and are not re-derivable from
+// this tree — treat the run below as an exercise of the classifier, not as the Wave-0
+// measurement. Nothing depends on it: this spec is `_`-prefixed and the suite excludes it.
 const REPRO_DIR = path.join(__dirname, 'bakery-runs')
 const readRepro = (r: string): string =>
   fs.readFileSync(path.join(REPRO_DIR, `repro${r}.strudel`), 'utf8')
@@ -235,13 +241,12 @@ function classify(code: string, relax: boolean, diagTag = ''): { verdict: 'struc
 }
 
 describe('D-01 fixpoint HARD GATE prototype', () => {
-  it('runs the 6 #141 repros + synthetics under BOTH OQ1 dispositions', () => {
-    const repros = [
-      '__LsnlgQ6osk', '_1j62z5xjyCN', '_72eEl7NwK9e',
-      '_CyO42BOyp5a', '_L13nBhrqGR_', '_LHtBlF8peGC',
-    ]
+  it('runs the surviving #141 repro + synthetics under BOTH OQ1 dispositions', () => {
+    // Was six; the five that declared no licence were removed in #1292. See the note on
+    // REPRO_DIR — the original six-way verdict cannot be re-taken from this tree.
+    const repros = ['__LsnlgQ6osk']
     const out: string[] = []
-    out.push('=== 6 REPROS (proto buildBindingMap variant) ===')
+    out.push(`=== ${repros.length} REPRO(S) (proto buildBindingMap variant) ===`)
     for (const r of repros) {
       const code = readRepro(r)
       const noRelax = classify(code, false)
@@ -250,7 +255,7 @@ describe('D-01 fixpoint HARD GATE prototype', () => {
       out.push(`${' '.repeat(14)} | relax  =${relax.verdict.padEnd(10)} (${relax.reason})`)
     }
     out.push('')
-    out.push('=== 6 REPROS (PRODUCTION parseStrudel — current source with Wave 0 bundle) ===')
+    out.push(`=== ${repros.length} REPRO(S) (PRODUCTION parseStrudel — current source with Wave 0 bundle) ===`)
     for (const r of repros) {
       const code = readRepro(r)
       const ir = parseStrudel(code) as Record<string, unknown>

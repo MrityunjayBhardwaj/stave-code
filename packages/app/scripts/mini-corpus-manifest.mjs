@@ -15,10 +15,18 @@
  * hundred distinct tunes — and the overwhelming majority declare no licence
  * at all (`totals.withLicence` against `totals.distinctTunes` is the current
  * count; do not restate it here). `.gitignore` refuses that vendoring by name
- * ("Never vendored — it is unreviewed third-party source"), and the one
- * live-community tune this repo HAS vendored
- * (`bakery-runs/repro__LsnlgQ6osk.strudel`) is the only tune in the archive
- * that declares CC0. That policy is deliberate and is kept here.
+ * ("Never vendored — it is unreviewed third-party source"), and the only
+ * live-community tune this repo vendors (`bakery-runs/repro__LsnlgQ6osk.strudel`)
+ * declares CC0. That policy is deliberate and is kept here.
+ *
+ * ⚠ THAT SENTENCE WAS ONCE COUNTED AGAINST THE WRONG SET (#1292). It read "the ONE
+ * live-community tune this repo HAS vendored", offered as evidence that the fence was
+ * deliberate rather than incidental — a one-in-hundreds coincidence if it were not. Six
+ * were vendored, and five of them declared no licence; they were removed in #1292, which
+ * is the only reason the sentence is true today. The conclusion it supported did not
+ * depend on it: publishing the inputs would buy re-derivability this repo already has,
+ * and upstream grants nothing (`util.mjs`, checked). A claim about a closed set is
+ * countable and therefore gets counted — check WHICH set before leaning on it.
  *
  * WHAT THIS WRITES INSTEAD. `mini-corpus-inputs.json` — facts about the
  * inputs rather than the inputs themselves:
