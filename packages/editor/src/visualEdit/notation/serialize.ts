@@ -198,6 +198,13 @@ export function serializeStepGridWithExtent(model: StepGridModel): {
   // therefore safe by construction; this one runs FIRST and can pre-empt alt / splice /
   // rebuild, so it is safe only by the corpus:
   //
+  // ⚠ A DATED RECORD, NOT CURRENT READINGS. These are what the corpus said when this rung
+  // landed (#1236, 2026-08-13), and the claim they support is "this hoist moved nothing".
+  // Restating them against today's corpus would falsify that measurement rather than
+  // refresh it, so they are deliberately left at their measured values. For today's
+  // writer-reach read `writer-reach.test.ts`, which holds the live floors and is swept by
+  // the cap sweeps; nothing here is a floor and nothing re-derives it.
+  //
   //   surgical deletes  64 -> 103     placements  18,929 -> 18,929 (unchanged)
   //   writer-reach      153 / 85      view scale  890 -> 890 honoured
   //   shared-leaf refusals 275, unchanged — 27 documents preserved
@@ -1419,6 +1426,11 @@ export function serializePianoRollWithExtent(model: PianoRollModel): {
   // nothing to check. This rung runs FIRST and can pre-empt alt / splice / rebuild, so
   // it inherits none of that. Its safety is bought by MEASUREMENT instead, and the
   // measurement is the price of the placement rather than a formality:
+  //
+  // ⚠ A DATED RECORD, NOT CURRENT READINGS — same terms as the grid writer's block above.
+  // Measured when this rung landed (#1236, 2026-08-13); the claim is that nothing moved,
+  // so these digits must not be refreshed against today's corpus. `writer-reach.test.ts`
+  // holds the live floors.
   //
   //   corpus deletes switching to surgery   26  =  22 whose bytes change  +  4 identical
   //   writer-reach (engine oracle)          153 / 85, unchanged
