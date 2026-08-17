@@ -236,6 +236,31 @@ describe('refusal gates — a refusal names what stopped it, not who spoke first
     }
   })
 
+  it('escaped-source fires, and says so from the string alone (#1254)', () => {
+    // Deliberately NOT in the list above. That list rests on the corpus exercising
+    // each gate, and this one is exercised by exactly ONE corpus member — so a
+    // refresh that dropped that tune would redden it for no defect. Asserted against
+    // a synthetic string instead, which makes the gate non-vacuous by construction
+    // and independent of what the corpus happens to hold.
+    //
+    // The signal is the backslash, and it is complete: every JS escape leaves one in
+    // the document slice, and mini-notation has no backslash syntax anywhere — asked
+    // of krill, which refuses one even inside a `//` comment. So this cannot be a
+    // regex standing in for the grammar's answer; it is the grammar's answer.
+    for (const [surface, r] of [
+      ['step', parseStepGrid('bd \\ sd', 1)],
+      ['roll', parsePianoRoll('c3 \\ e3', 1)],
+    ] as const) {
+      expect(r.ok, `${surface}: an escaped mini must not open a view`).toBe(false)
+      if (r.ok) continue
+      expect(r.gate, `${surface}: an escaped mini must name its gate`).toBe('escaped-source')
+    }
+    // Reported, not asserted: the corpus count is a fact about today's corpus, and
+    // pinning it is what the carve-out this replaced was already doing wrong.
+    const inCorpus = refinedRows.filter((r) => r.gate === 'escaped-source').length
+    console.log(`\n  escaped-source over the corpus: ${inCorpus} refined refusals`)
+  })
+
   it('a REFINED refusal names its gate too — the ask the vocabulary was blind to', () => {
     const ungated = refinedRows.filter((r) => r.gate === null)
     const sample = [...new Set(ungated.map((r) => r.reason))]
@@ -252,29 +277,19 @@ describe('refusal gates — a refusal names what stopped it, not who spoke first
     // strings nothing could reify; every mini here ALREADY reified (it is the same
     // corpus), so a refined refusal has no honest reason to be anonymous.
     //
-    // ⚠ ONE EXCEPTION, ENUMERATED RATHER THAN TOLERATED (#1254, found at #1242).
-    // The editor models a unit's content as the DOCUMENT SLICE; the transpiler
-    // reifies a double-quoted literal from `node.value`, the JS-COOKED one
-    // (transpiler.mjs:84). For a literal carrying a JS line continuation the two
-    // are different strings, and the slice keeps a stray backslash that krill
-    // cannot name — so the refusal comes back anonymous. Measured: 1 diverging
-    // unit in 1,883 over 360 tunes, and the engine plays neither spelling (the
-    // cooked one is refused for `unstable-period`), so no editor is lost today.
-    // The corpus holds BOTH spellings, which is why this is visible at all.
-    //
-    // Pinned two ways on purpose: the CLASS is excused, and its SIZE is exact.
-    // A second string in the same class reddens the count; anything outside the
-    // class reddens the first assertion. Neither is a tolerance.
-    const isRawContinuation = (m: string) => m.includes('\\\n')
-    const unexplained = ungated.filter((r) => !isRawContinuation(r.mini))
-    expect(
-      unexplained.length,
-      `ungated refined refusals outside the known class:\n${sample.join('\n')}`,
-    ).toBe(0)
+    // ⚠ THIS ARM ONCE CARRIED AN ENUMERATED EXCEPTION, AND #1254 REMOVED IT. The
+    // editor models a unit's content as the DOCUMENT SLICE while the transpiler
+    // reifies a double-quoted literal from `node.value`, the JS-COOKED one — so a
+    // literal carrying any JS escape leaves a backslash on our side that the engine
+    // never sees, and krill (which has no backslash syntax anywhere, comments
+    // included) refused it with the core's own message and no gate. That was the
+    // sole reason this number was not zero: 8 refusals, one string × 4 scales × 2
+    // surfaces. It is now the `escaped-source` gate, so the claim below is whole
+    // again and needs no carve-out to stand.
     expect(
       ungated.length,
-      'the #1254 residual changed size — a new escaped literal entered the corpus',
-    ).toBe(8)
+      `ungated refined refusals:\n${sample.join('\n')}`,
+    ).toBe(0)
   })
 
   it('the two refine-only gates actually fire — they are unreachable from the sweep above', () => {

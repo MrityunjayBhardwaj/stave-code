@@ -3,6 +3,15 @@
  * EDITOR read differently from the ENGINE, because one takes the document slice
  * and the other takes the JS-cooked value?
  *
+ * ⚠ CLOSED BY #1254 — READ THIS AS A DATED INVESTIGATION, NOT AS CURRENT STATE.
+ * The divergence below is real and still described correctly, but the anonymous
+ * refusal it ends on is gone: an escaped literal now refuses through the
+ * `escaped-source` gate, named from the string alone. What has NOT changed is
+ * which string the editor models — it still reads the document slice, because
+ * that is what makes byte surgery possible. The line reference below has also
+ * drifted; the double-quoted reification is `transpiler.mjs:85`/`:88` in
+ * `@strudel/transpiler@1.2.6`, and the backtick case is `:76-77`.
+ *
  * Found while widening the harvest (#1242): one corpus string arrives with a
  * stray backslash and both surfaces refuse it as "unsupported mini-notation
  * syntax", while Strudel plays it perfectly.
