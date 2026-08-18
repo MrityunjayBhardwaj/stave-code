@@ -365,6 +365,27 @@ function rebuildGrid(model: StepGridModel): string | null {
  * ⚠ ONE INVARIANT OBSERVED RATHER THAN ASSUMED: across all 2,801 hits, NOT ONE had
  * `leafSource` set. The terminal field never falls through to a re-emit, which is
  * the safety property both ladders above assert in prose and nothing else measures.
+ *
+ * ⚠⚠ THIS FAMILY IS A SUBSET OF THE AUTHORING SURFACE, AND EVERY FIGURE ABOVE IS
+ * SCOPED TO THE FAMILY (#1298). #1007 defines the concern as a PROPERTY — emitting
+ * Strudel text from a model — and then locates it at these functions. The two are not
+ * the same set. Three emitters satisfy the property and are named by neither #1007's
+ * list nor #1010's: `gridColumns` reached from `rebuildGrid` and from the part rebuild
+ * in `spliceGrid` (`out += rebuilt.join(' ')`), and `serializeRollLanes` on the roll's
+ * rebuild path.
+ *
+ * SO DO NOT READ "REACHES NO RE-EMIT SITE" AS "DOES NOT AUTHOR" — the subdivide row
+ * above is exactly that trap. Its 934 asks reach none of these five sites and are
+ * nonetheless the most destructive write the grid has: measured over the corpus, a
+ * subdivide+place moves a p50 of 0.987 of a document ≥40 chars (n=74) where a delete
+ * answered by leaf surgery moves 0.036 (n=64), and the neighbouring parts the user
+ * never touched are re-spelled with it. Brackets, lanes and sustain do not survive.
+ *
+ * ⚠ AND CHECK WHAT A CALL DOES BEFORE COUNTING IT. `serializeStepGain` also calls
+ * `gridColumns` and is NOT authoring — it uses the result as a predicate (which
+ * columns carry an audible gain) and never emits it. An edge to an emitter is not an
+ * authoring site; that distinction is the whole reason the family and the property
+ * diverge. CASE 2 above stands unchanged for this reason.
  */
 
 /* ── span surgery (#913) ───────────────────────────────────────── */
