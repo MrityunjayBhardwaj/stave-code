@@ -112,6 +112,18 @@
  * `[[g3 g3] f#3]` would touch four bytes. No writer in the tree spells the nested form,
  * so that floor is DERIVED and has no witness — it is what a correct answer could cost.
  *
+ * ⚠⚠ THIS FILE ASSUMES THE WRITE IS CORRECT AND CANNOT CHECK IT — the precondition is
+ * named here rather than left implicit, because a writer that SWALLOWED the placement
+ * would move few bytes and score zero slack, and this instrument would call that optimal.
+ * `wrote nothing` is printed per arm and reads 0 everywhere, so no write was a no-op —
+ * but "changed something" is not "changed the right thing". Correctness for exactly this
+ * route and gesture is established elsewhere, on a superset of this population:
+ * `_1052-resolution-truth.spec.ts` poses 934 placements through route A with the engine
+ * on both sides and finds 0 notes destroyed. ⚠ That spec is on `chore/1052-resolution-
+ * truth` and is not merged, so this cross-reference is a claim about a branch and not
+ * about the tree — check it is still true before quoting this file's numbers as a
+ * statement about a correct writer.
+ *
  * TWO CHOICES IN THE PAIRING, both deliberate and both making the result harder rather
  * than easier to reach:
  *   - THE SAME COORDINATES, not the same rule. The target (lane, column) is chosen once
