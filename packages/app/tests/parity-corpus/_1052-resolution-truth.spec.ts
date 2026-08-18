@@ -171,6 +171,69 @@ function firstOddPlacement(m: StepGridModel): StepGridModel | null {
   return null
 }
 
+
+/* ── THE WINDOW HOLE ──────────────────────────────────────────────────────────
+ *
+ * Every engine comparison in this file — and in `writer-reach`, `1058` and the rest —
+ * runs over the model's own `bars`. That is a claim about a PREFIX of what the pattern
+ * plays, not about what it plays. `<a b c>` against `<x y>` repeats every 6 cycles; a
+ * one-bar window sees a sixth of it. This is not a randomness problem (Strudel's RNG is
+ * deterministic per time, so a given cycle always plays the same thing) — it is a
+ * COVERAGE problem, which is worse, because it fails silently and identically on every
+ * run.
+ *
+ * PERIOD IS OBSERVED, NOT INFERRED. Deriving it from `<>` nesting would be a second
+ * model of Strudel's own semantics ([[PV192]]) and would be wrong exactly where the
+ * grammar is subtle. Instead: query cycles 0..15, take each cycle's signature with
+ * onsets normalised into [0,1), and find the smallest p for which cycle k and cycle k+p
+ * agree for every k in view. No such p means the pattern does not repeat inside 16
+ * cycles, and that is reported as UNVERIFIABLE rather than folded into either verdict.
+ */
+const MAX_CYCLES = 16
+/** escalation bound — paid only by the units the cheap pass cannot settle */
+const DEEP_CYCLES = 72
+
+/** one cycle's content, onsets normalised into [0,1) so two cycles can be compared */
+function cycleSig(src: string, c: number): string | null {
+  const rows = enginePlayedCycle(src, c)
+  if (rows === null) return null
+  return collapse(rows)
+    .map((n) => `${Math.round((n.pos - c) * HRES)}|${Math.round(n.dur * HRES)}|${n.atom}`)
+    .sort()
+    .join(',')
+}
+
+/**
+ * smallest p with cycle k === cycle k+p for every visible k; null = none within view.
+ *
+ * ⚠ A NULL HERE MEANS "PERIOD EXCEEDS THE SEARCH BOUND", NOT "APERIODIC" — and the two
+ * read identically unless the bound is named. The first pass ran at 16 cycles (so
+ * p <= 8) and returned null for 9 units; every one was a long `<...>` alternation —
+ * `<c4 ~ ~ e4 ~ g4 ~ ~ b4 ~ g4 ~ e4 ~>` has 14 arms and therefore period 14, which is
+ * perfectly periodic and simply larger than the window looking for it. Calling those
+ * "no period" would have been a fact about the instrument reported as a fact about the
+ * music. So the bound is explicit and the escalation is paid only by the units the
+ * cheap pass cannot settle.
+ */
+function periodWithin(src: string, span: number): number | null {
+  const sigs: (string | null)[] = []
+  for (let c = 0; c < span; c++) {
+    const s = cycleSig(src, c)
+    if (s === null) return null
+    sigs.push(s)
+  }
+  for (let p = 1; p <= span / 2; p++) {
+    let ok = true
+    for (let k = 0; k + p < span && ok; k++) if (sigs[k] !== sigs[k + p]) ok = false
+    if (ok) return p
+  }
+  return null
+}
+
+function periodOf(src: string): number | null {
+  return periodWithin(src, MAX_CYCLES) ?? periodWithin(src, DEEP_CYCLES)
+}
+
 describe('#1052 — is the grid FREE to look at, TRUE to the document, and HONEST when written?', () => {
   it('measures all three claims over the corpus', () => {
     let units = 0
@@ -426,5 +489,148 @@ describe('#1052 — is the grid FREE to look at, TRUE to the document, and HONES
     // ---- and the CONTROLS must have run on a real population ----
     expect(ctlTruthAsked, 'claim 2 control never ran').toBeGreaterThan(100)
     expect(ctlBqueried, 'claim 3 control never ran on route B').toBeGreaterThan(300)
+  })
+
+  it('CLOSES THE WINDOW HOLE — re-asks claim 3 over each pattern own period', () => {
+    // POSITIVE CONTROL FIRST, on patterns whose period is known by construction. A
+    // period detector that cannot be shown to read a known answer is not evidence.
+    expect(periodOf('bd sd'), 'a plain sequence repeats every cycle').toBe(1)
+    expect(periodOf('<bd sd>'), 'a two-arm alternation').toBe(2)
+    expect(periodOf('<bd sd cp>'), 'a three-arm alternation').toBe(3)
+    // ⚠ THE CONTROL CAUGHT THE CONTROL. This line first read `<bd sd> <cp cp cp>`
+    // expecting 6, and the detector answered 2 — correctly. Three arms all spelling
+    // `cp` are indistinguishable cycle to cycle, so that element has period 1 and the
+    // pair has period 2. The arms must differ for the alternation to have a period at
+    // all, which is a fact about what PLAYS rather than about what is written.
+    expect(periodOf('<bd sd> <cp hh sd>'), 'lcm(2,3)').toBe(6)
+    // and the escalation must actually reach past the cheap bound
+    expect(periodWithin('<a b c d e f g h i j k>', MAX_CYCLES), 'past the cheap bound').toBe(null)
+    expect(periodOf('<a b c d e f g h i j k>'), 'eleven arms, found by escalating').toBe(11)
+
+    let posed = 0
+    let unverifiable = 0
+    let windowWasShort = 0
+    // WHY the window is never short is the part worth measuring. If `bars` already
+    // equals the period, the old arm was total by construction rather than by luck —
+    // and that is a fact about the bar-expanded projection (#930), not a coincidence.
+    let barsEqPeriod = 0
+    let barsGtPeriod = 0
+    let nonTrivialPeriod = 0
+    const periodDist = new Map<number, number>()
+    const exUnverifiable: string[] = []
+
+    let queried = 0
+    let vanished = 0
+    let vanishedNotes = 0
+    let clamped = 0
+    let clean = 0
+    let other = 0
+    let shortQueried = 0
+    let shortVanished = 0
+    const exShort: [string, string, string][] = []
+
+    for (const mini of minis) {
+      const base = parseStepGrid(mini)
+      if (!base.ok) continue
+      const m = base.model as StepGridModel
+      if (serializeStepGrid(m) !== mini) continue
+      const fine = parseStepGrid(mini, 2)
+      if (!fine.ok) continue
+      const f = fine.model as StepGridModel
+      const placed = firstOddPlacement(f)
+      if (placed === null) continue
+      posed++
+
+      const period = periodOf(mini)
+      if (period === null) {
+        unverifiable++
+        if (exUnverifiable.length < 5) exUnverifiable.push(mini)
+        continue
+      }
+      periodDist.set(period, (periodDist.get(period) ?? 0) + 1)
+      const bars = f.bars ?? 1
+      const short = period > bars
+      if (short) windowWasShort++
+      if (bars === period) barsEqPeriod++
+      else if (bars > period) barsGtPeriod++
+      if (period > 1) nonTrivialPeriod++
+
+      const atDocument = collapseStepGridToDocument(placed)
+      const { mini: out } = serializeStepGridWithExtent(atDocument ?? placed)
+      if (out === null) continue
+
+      // THE WIDENED WINDOW: every cycle of the pattern's own period, and never fewer
+      // than the model's bars, so this can only ever see MORE than the old arm did.
+      const W = Math.max(bars, period)
+      let added: Note[] = []
+      let removed: Note[] = []
+      let queryable = true
+      for (let b = 0; b < W; b++) {
+        const want = enginePlayedCycle(mini, b)
+        const got = enginePlayedCycle(out, b)
+        if (want === null || got === null) { queryable = false; break }
+        const d = diffNotes(collapse(want), collapse(got))
+        added = added.concat(d.added)
+        removed = removed.concat(d.removed)
+      }
+      if (!queryable) continue
+      queried++
+      if (short) shortQueried++
+      const gone = removed.filter(
+        (r) => !added.some((a) => Math.round(a.pos * HRES) === Math.round(r.pos * HRES) && a.atom === r.atom),
+      )
+      if (gone.length > 0) {
+        vanished++
+        vanishedNotes += gone.length
+        if (short) {
+          shortVanished++
+          if (exShort.length < 4) exShort.push([mini, out, `period ${period} > bars ${bars}, vanished ${gone.length}`])
+        }
+      } else if (removed.length > 0) clamped++
+      else if (added.length === 1) clean++
+      else other++
+    }
+
+    const pc = (a: number, b: number) => (b === 0 ? 'n/a' : `${((a / b) * 100).toFixed(1)}%`)
+    console.log(`\n===== #1052 window hole: does claim 3 survive a window as wide as the period? =====`)
+    console.log(`  placements posed                              ${posed}`)
+    console.log(`  period exceeds ${DEEP_CYCLES} cycles -> UNVERIFIABLE       ${unverifiable}   ${pc(unverifiable, posed)}`)
+    console.log(`  OLD window (bars) SHORTER than the period     ${windowWasShort}   ${pc(windowWasShort, posed)}`)
+    console.log(`  period distribution:  ${[...periodDist.entries()].sort((a, b) => a[0] - b[0]).map(([k, v]) => `${k}:${v}`).join('  ')}`)
+    console.log(`  ...of which period > 1 (a real alternation)   ${nonTrivialPeriod}`)
+    console.log(`  bars == period  ${barsEqPeriod}     bars > period  ${barsGtPeriod}     bars < period  ${windowWasShort}`)
+    console.log(`     -> the model's own bars is the bar-expanded projection (#930), so the`)
+    console.log(`        old window already covered the period. Total by construction, not luck.`)
+    if (exUnverifiable.length) {
+      console.log(`  -- period exceeds ${DEEP_CYCLES} cycles (a finite window cannot settle these) --`)
+      for (const s of exUnverifiable) console.log(`       ${JSON.stringify(s.slice(0, 110))}`)
+    }
+    console.log(`\n  -- claim 3, re-asked over max(bars, period) --`)
+    console.log(`     engine answered                  ${queried}`)
+    console.log(`     VANISHED                         ${vanished}   ${pc(vanished, queried)}   (${vanishedNotes} notes)`)
+    console.log(`     clamped                          ${clamped}   ${pc(clamped, queried)}`)
+    console.log(`     clean                            ${clean}   ${pc(clean, queried)}`)
+    console.log(`     other                            ${other}   ${pc(other, queried)}`)
+    console.log(`  -- the subset the OLD window under-covered --`)
+    console.log(`     re-asked wide                    ${shortQueried}`)
+    console.log(`     VANISHED among them              ${shortVanished}   ${pc(shortVanished, shortQueried)}`)
+    for (const [b, a, why] of exShort) {
+      console.log(`     ${why}`)
+      console.log(`       before  ${JSON.stringify(b)}`)
+      console.log(`       after   ${JSON.stringify(a)}`)
+    }
+
+    // ⚠ THE HOLE IS EMPTY, AND THAT IS THE RESULT — not a reason to weaken the arm.
+    // This assertion first read `windowWasShort > 0`, written on the assumption that
+    // the hole was real. It is 0: for every unit posed, the model's `bars` already
+    // covers the pattern's observed period, because `bars` IS the bar-expanded
+    // projection of the alternation (#930). So every engine comparison in this file
+    // and its siblings was TOTAL over the grid population, by construction.
+    // What must be asserted instead is NON-VACUITY — that the detector saw patterns
+    // whose period is genuinely greater than one, so "never short" is a finding about
+    // the population and not about a detector that only ever answered 1.
+    expect(nonTrivialPeriod, 'every unit had period 1 — the check could not have seen a short window').toBeGreaterThan(50)
+    expect(windowWasShort, 'a unit whose period outruns its bars would break the totality claim').toBe(0)
+    expect(queried, 'too few asks answered to read the widened arm').toBeGreaterThan(300)
   })
 })
