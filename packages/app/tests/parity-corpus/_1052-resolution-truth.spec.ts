@@ -68,8 +68,35 @@
  * (`_1007-subdivide-route`). If any moves, this instrument is measuring a different
  * population and its treatment columns mean nothing.
  *
+ * ── CONTROLS, AND THE DISTINCTION CALIBRATION DOES NOT COVER ──────────────────
+ * The three anchors above prove the POPULATION is the one other instruments measured.
+ * They say nothing about whether the CHECKS work — and claims 2 and 3 both come back
+ * clean, which is exactly the shape that cannot be told from a check that never looked
+ * ([[P525]]). So each is put in a position where it must fail:
+ *
+ *   claim 2  asked of a x3 view while still expecting a x2 doubling
+ *            -> fires 935 of 935 (100%)
+ *   claim 3  the identical engine check run on ROUTE B, the model-rescale road
+ *            -> fires: 72 units lose 568 notes outright
+ *
+ * THE SECOND CONTROL IS ALSO A FINDING, and a larger one than the byte ratio it was
+ * built to check. Route B does not merely move more of the document (p50 0.988 against
+ * route A's 0.298) — it DESTROYS MUSIC: 72 of 934 units come back with notes that no
+ * longer sound at all, where the shipped road loses none. So the two roads differ in
+ * SAFETY and not only in tidiness, and "the subdivide is destructive" is true of the
+ * road nobody ships and false of the one everybody uses.
+ *
  * ⚠ ONE ASK PER UNIT, first admissible odd column, scanned col-then-lane — the SAME
- * order the route probe uses, so the two runs describe the same 934 asks.
+ * order the route probe uses, so the two runs describe the same 934 asks. This is a
+ * SYSTEMATIC position, not a sample of where users click: the first empty odd column
+ * sits early in the document, usually inside the first element. Damage that only
+ * appears at later positions would not be seen here.
+ *
+ * ⚠ SCOPE, stated rather than implied: x2 only, GRID only, mini strings rather than
+ * whole documents, and the engine window is the model's own `bars` — a pattern whose
+ * period exceeds that is compared on a PREFIX of its denotation. The corpus is 1633
+ * entries / 1625 distinct (duplication is negligible), p50 16 chars, and only 17% are
+ * >= 40 chars, so the long-doc rows quoted elsewhere rest on n=84 of 934.
  */
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
@@ -82,6 +109,8 @@ import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
 import {
   collapseStepGridToDocument,
   stepSlotState,
+  scaleStepGrid,
+  canDoubleStepGrid,
 } from '../../../editor/src/visualEdit/notation/resolution'
 import {
   serializeStepGrid,
@@ -168,6 +197,16 @@ describe('#1052 — is the grid FREE to look at, TRUE to the document, and HONES
     let unqueryable = 0
     let vanishedNotes = 0
     const exVanish: [string, string, string][] = []
+    // ---- CONTROLS. A detector that has never been shown to FIRE cannot tell a clean
+    // result from one that was never looked at ([[P525]]). Calibration proves the
+    // POPULATION is right; it says nothing about whether the check works.
+    let ctlTruthFired = 0 // claim 2 asked with the WRONG expectation — must fail widely
+    let ctlTruthAsked = 0
+    let ctlBqueried = 0
+    let ctlBvanished = 0 // claim 3's check run on route B — the verbose road
+    let ctlBvanishedNotes = 0
+    let ctlBclamped = 0
+    let ctlBclean = 0
 
     for (const mini of minis) {
       const base = parseStepGrid(mini)
@@ -206,6 +245,25 @@ describe('#1052 — is the grid FREE to look at, TRUE to the document, and HONES
               ok = false // silence at N became sound at 2N — invented content
             }
           }
+        // CONTROL: the same check, asked of a x3 view while still expecting a x2
+        // doubling. A checker that cannot distinguish these two is not checking.
+        const wrong = parseStepGrid(mini, 3)
+        if (wrong.ok) {
+          const w = wrong.model as StepGridModel
+          ctlTruthAsked++
+          let wok = w.steps === m.steps * 2 && w.lanes.length === m.lanes.length
+          if (wok)
+            for (let lane = 0; lane < m.lanes.length && wok; lane++)
+              for (let i = 0; i < m.steps && wok; i++) {
+                const b = m.lanes[lane].cells[i]
+                const a0 = w.lanes[lane].cells[2 * i]
+                const a1 = w.lanes[lane].cells[2 * i + 1]
+                if (isCellOn(b)) {
+                  if (!isCellOn(a0) || a0.duration !== b.duration * 2 || isCellOn(a1)) wok = false
+                } else if (isCellOn(a0) || isCellOn(a1)) wok = false
+              }
+          if (!wok) ctlTruthFired++
+        }
         if (ok) truthExact++
         else {
           truthWrong.push(mini)
@@ -273,6 +331,44 @@ describe('#1052 — is the grid FREE to look at, TRUE to the document, and HONES
       } else if (removed.length > 0) clamped++
       else if (added.length === 1) cleanOne++
       else oddAdds++
+
+      // ---- CONTROL ARM: the SAME engine check on ROUTE B, the road that moves 0.988
+      // of the document. This is the control the claim-3 zero needs. Two outcomes and
+      // both are informative: if route B destroys notes, the detector is proven able to
+      // fire and route A's zero means something; if route B destroys nothing either,
+      // then the byte difference between the roads is TIDINESS and not safety, and the
+      // word "destructive" has to come off both of them.
+      if (canDoubleStepGrid(m)) {
+        const wide = scaleStepGrid(m, 'double')
+        if (wide !== m && wide.steps === m.steps * 2) {
+          const placedB = firstOddPlacement(wide)
+          if (placedB !== null) {
+            const { mini: outB } = serializeStepGridWithExtent(placedB)
+            if (outB !== null) {
+              let addedB: Note[] = []
+              let removedB: Note[] = []
+              let qb = true
+              for (let b = 0; b < bars; b++) {
+                const want = enginePlayedCycle(mini, b)
+                const got = enginePlayedCycle(outB, b)
+                if (want === null || got === null) { qb = false; break }
+                const d = diffNotes(collapse(want), collapse(got))
+                addedB = addedB.concat(d.added)
+                removedB = removedB.concat(d.removed)
+              }
+              if (qb) {
+                ctlBqueried++
+                const goneB = removedB.filter(
+                  (r) => !addedB.some((a) => Math.round(a.pos * HRES) === Math.round(r.pos * HRES) && a.atom === r.atom),
+                )
+                if (goneB.length > 0) { ctlBvanished++; ctlBvanishedNotes += goneB.length }
+                else if (removedB.length > 0) ctlBclamped++
+                else if (addedB.length === 1) ctlBclean++
+              }
+            }
+          }
+        }
+      }
     }
 
     const pct = (a: number, b: number) => (b === 0 ? 'n/a' : `${((a / b) * 100).toFixed(1)}%`)
@@ -303,6 +399,11 @@ describe('#1052 — is the grid FREE to look at, TRUE to the document, and HONES
     console.log(`     other:   played but not exactly one added   ${oddAdds}   ${pct(oddAdds, queried)}`)
     console.log(`     -> UNDISTURBED (clean + clamped) = ${cleanOne + clamped}   ${pct(cleanOne + clamped, queried)}`)
 
+    console.log(`\n  -- CONTROLS: is each check able to FIRE? --`)
+    console.log(`     claim 2 asked of a x3 view expecting x2:  fired ${ctlTruthFired} of ${ctlTruthAsked}   ${pct(ctlTruthFired, ctlTruthAsked)}`)
+    console.log(`     claim 3 run on ROUTE B (the 0.988 road), engine answered ${ctlBqueried}:`)
+    console.log(`        VANISHED ${ctlBvanished}  (${ctlBvanishedNotes} notes)   clamped ${ctlBclamped}   clean ${ctlBclean}`)
+
     if (exTruth.length) {
       console.log(`\n  -- where the x2 VIEW is not a faithful doubling --`)
       for (const s of exTruth) console.log(`     ${JSON.stringify(s)}`)
@@ -322,5 +423,8 @@ describe('#1052 — is the grid FREE to look at, TRUE to the document, and HONES
     expect(posed, 'route-A placements posed — _1007-subdivide-route').toBe(934)
     // and the engine must have answered for a real share, or claim 3 is vacuous
     expect(queried, 'engine answered too few asks to read claim 3').toBeGreaterThan(300)
+    // ---- and the CONTROLS must have run on a real population ----
+    expect(ctlTruthAsked, 'claim 2 control never ran').toBeGreaterThan(100)
+    expect(ctlBqueried, 'claim 3 control never ran on route B').toBeGreaterThan(300)
   })
 })
