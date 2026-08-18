@@ -375,11 +375,29 @@ function rebuildGrid(model: StepGridModel): string | null {
  * rebuild path.
  *
  * SO DO NOT READ "REACHES NO RE-EMIT SITE" AS "DOES NOT AUTHOR" — the subdivide row
- * above is exactly that trap. Its 934 asks reach none of these five sites and are
- * nonetheless the most destructive write the grid has: measured over the corpus, a
- * subdivide+place moves a p50 of 0.987 of a document ≥40 chars (n=74) where a delete
- * answered by leaf surgery moves 0.036 (n=64), and the neighbouring parts the user
- * never touched are re-spelled with it. Brackets, lanes and sustain do not survive.
+ * above is exactly that trap. Its 934 asks reach none of these five sites and author
+ * anyway: a subdivide+place spells one element as a GROUP in place, which is authoring
+ * at a smaller scale than this family covers.
+ *
+ * ⚠⚠ AND THE COST OF THAT AUTHORING IS A PROPERTY OF THE ROUTE, NOT OF THE GESTURE
+ * (#1300) — the same confusion as the paragraph above, one level down, and it very
+ * nearly shipped here as a figure about the product. Measured paired over the same 934
+ * units, bytes moved p50 on documents ≥40 chars (n=84):
+ *
+ *   SHIPPED road   `parseStepGrid(mini, k)` — a refined VIEW whose model still
+ *                  carries the source regions, so the splice subdivides ONE element
+ *                  and copies the rest .......................................  0.298
+ *   model rescale  `scaleStepGrid`, which no production code outside `resolution.ts`
+ *                  calls; the source description does not survive it, so the line is
+ *                  re-derived whole ..........................................  0.988
+ *   leaf surgery   a delete written at the note's own span (the local anchor)...  0.036
+ *
+ * The neighbouring parts a user never touched come back BYTE-IDENTICAL on the shipped
+ * road. So the shipped subdivide sits at roughly 8x the most local write available
+ * rather than 27x, and whichever figure is quoted has to name the road it was taken
+ * on. The ÷k guard is not what buys this: it answered at document resolution 0 times
+ * of 934, because a placement into a column only the finer view has is precisely the
+ * case `collapseStepGridToDocument` should decline.
  *
  * ⚠ AND CHECK WHAT A CALL DOES BEFORE COUNTING IT. `serializeStepGain` also calls
  * `gridColumns` and is NOT authoring — it uses the result as a predicate (which

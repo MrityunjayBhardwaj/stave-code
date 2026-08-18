@@ -14,6 +14,17 @@
  * author": the splice path's own comment says it re-reads the part at a finer width
  * and spells ONE element as a group, which is authoring at a smaller scale.
  *
+ * ⚠⚠ THIS PROBE DRIVES ONE OF TWO ROUTES, AND IT IS NOT THE SHIPPED ONE (#1300 —
+ * measured after this file was written, by `_1007-subdivide-route.spec.ts`). It reaches
+ * the refined model through `scaleStepGrid(model, 'double')`, a model-space rescale
+ * that no production code outside `resolution.ts` calls. The panel takes the other
+ * road: a refined VIEW, `parseStepGrid(mini, k)`, whose model still carries the source
+ * regions — and on that road the same 934 asks move p50 0.298 of a document >= 40 chars
+ * rather than 0.987, leaving every neighbouring part byte-identical. Every figure below
+ * is SOUND and is scoped to the model-rescale road. Read the paired run for the
+ * product's cost; read this one for what a writer does once the source description is
+ * gone.
+ *
  * WHAT IS MEASURED, and why it is not a second oracle. Not "did it author" — that
  * would be a rule of my own, re-deciding what the writer decided ([[P519]]). Only the
  * DOCUMENT: how many bytes moved, as the span between the common prefix and the common
