@@ -291,6 +291,82 @@ function rebuildGrid(model: StepGridModel): string | null {
   return lines.some((l) => l === undefined) ? null : lines.join(', ')
 }
 
+/* ── WHAT STILL AUTHORS SYNTAX, AND WHY (#1010 P4e) ─────────────── */
+
+/**
+ * THE MAP FOR EVERY SURVIVING `reemit*` DECISION POINT. Eight invocations, five of
+ * which decide anything: `spliceRegions`' own re-emit and its sustain-ABSORB
+ * fallback (both inside `spliceGrid`), plus one each in `spliceAltGrid`,
+ * `spliceRoll` and `spliceAltRoll`. Each carries a one-line pointer back here.
+ * (`reemitAltRegion` → `reemitRegion`, `reemitRegion` → `reemitStep` and
+ * `reemitAltRoll` → `reemitRollRegion` are internal to those five and decide
+ * nothing; they are annotated as such.) Named rather than numbered on purpose —
+ * a line citation in this file is stale by the next edit.
+ *
+ * #1010's claim is that once every edit WITH A SPAN routes through byte surgery,
+ * what still authors notation reduces to three irreducible cases:
+ *
+ *   1. adding structure where the source has no leaf
+ *   2. the signal tail, which has no source span at all
+ *   3. `@n` duration, which is never a location
+ *
+ * ⚠ A DATED OBSERVATION, not a live gate, and there is nothing left to re-run it
+ * with. Measured 2026-08-17 on `0c785cf4` with a THROWAWAY probe: a counter at each
+ * of the five sites, driven over `mini-corpus.json` (1,633 minis → 1,021 opening a
+ * step grid, 597 a piano roll). Gestures per unit, and they differ by surface: on
+ * the grid ≤2 deletes, ≤2 placements, 1 resize and one "double the resolution, then
+ * place in the new slot"; on the roll ≤2 deletes, 1 resize, 1 placement. Recipe,
+ * not a receipt — the probe is deleted because it can only run against an
+ * instrumented copy of this file, and a committed instrument that cannot run is
+ * worse than none ([[P592]]). Re-take it before quoting these digits as current.
+ *
+ * WHO ANSWERED EACH GESTURE (asks posed → the writer that answered):
+ *
+ *     grid delete      1663    leaf 1087 · splice 480 · alt  96             → 576 re-emit
+ *     grid place       1030    leaf  136 · splice 782 · alt 112             → 894 re-emit
+ *     grid resize       156    leaf    0 · splice 134 · alt  22             → 156 re-emit
+ *     grid subdivide     934   leaf    0 · splice 873 · rebuild 61          →   0 re-emit
+ *     roll delete      1097    leaf  802 · splice 206 · alt 81 · rebuild  8 → 287 re-emit
+ *     roll place        537    leaf    0 · splice 467 · alt 56 · rebuild 14 → 523 re-emit
+ *     roll resize       596    leaf  239 · splice 146 · alt 29 · rebuild 182→ 301 re-emit
+ *
+ * ⚠ THE LAST COLUMN IS ASKS REACHING A SITE, NOT ASKS IT ANSWERED. A re-emit can run
+ * and the write still end in a rebuild, so the two coincide on six rows and diverge
+ * on the seventh: roll resize reaches a site 301 times against a splice+alt total of
+ * 175. Do not read the column as a sum of the two before it.
+ *
+ * THE MAPPING, and two of the three cases do not land where the issue supposes:
+ *
+ *   CASE 3 — `@n` duration. Every resize that reaches a writer at all reaches one of
+ *     these five; on the grid byte surgery answers ZERO of 156, because a length is
+ *     not a location and there are no bytes to replace at one. One site is EXCLUSIVELY
+ *     this case (64 of 64 asks were resizes) — the sustain-ABSORB fallback maps to
+ *     one case and one only, the only site of the five that does.
+ *
+ *   CASE 1 — structure with no leaf. The PLACEMENT population: 894 grid and 523 roll
+ *     asks, a new note in a slot the source never indexed (#1154 — a leaf-anchored
+ *     view takes one only where a rest was indexed, which is the 136 surgery does
+ *     answer). ⚠ But case 1's own parenthetical — "a resolution change, subdividing"
+ *     — reaches NO re-emit site at all: 934 asks, 0 hits, answered by the part
+ *     rebuild inside the splice path (873) and by `rebuildGrid` (61). The mapping
+ *     rests entirely on the OTHER half of that sentence.
+ *
+ *   CASE 2 — the signal tail. Reaches no site here. `serializeStepGain` and
+ *     `serializeRollGain` call nothing in this family; the tail was never one of
+ *     these writers' populations.
+ *
+ *   ⚠⚠ NONE OF THE THREE — the DELETE population, 576 grid + 287 roll asks. A delete
+ *     HAS a span (the note's own bytes) and surgery answers most of them (1087 and
+ *     802). The remainder fall through where the leaf is SHARED between columns
+ *     (#1160) or where the unit carries no leaf index at all, and notation is
+ *     authored for an edit that had bytes to replace. That is a fourth case, it is
+ *     not irreducible, and it is filed rather than left as a silent survivor: #1295.
+ *
+ * ⚠ ONE INVARIANT OBSERVED RATHER THAN ASSUMED: across all 2,801 hits, NOT ONE had
+ * `leafSource` set. The terminal field never falls through to a re-emit, which is
+ * the safety property both ladders above assert in prose and nothing else measures.
+ */
+
 /* ── span surgery (#913) ───────────────────────────────────────── */
 
 /**
@@ -440,6 +516,12 @@ function spliceGrid(
         }
         reemitted++
         const div = sole ? 1 : p.div * growth
+        // #1010 P4e — MAPPED. This is the widest of the five decision points and it
+        // carries every population at once (the map is the block above `spliceGrid`).
+        // Asks REACHING here, 2026-08-17: 782 placements = case 1 · 134 resizes =
+        // case 3 · 480 deletes = NONE OF THE THREE → #1295. Reaching is not
+        // answering: a re-emit here can still return null and hand the part to the
+        // rebuild below.
         const re = reemitRegion(now, div, model.viewScale !== undefined)
         if (re !== null) {
           body += r.leading + re + r.trailing
@@ -496,6 +578,13 @@ function spliceGrid(
         }
         if (end === ri || at(p.regions[end].to) < reach) return 'decline'
         const last = p.regions[end]
+        // #1010 P4e — MAPPED, and this is the one site that maps to a SINGLE case.
+        // All 64 asks reaching here (2026-08-17) were resizes: case 3, `@n` duration,
+        // which has no location for surgery to anchor at. That is what the absorb
+        // exists for — a note outlasting its own element needs its `_` written into
+        // the NEXT element's bytes, which is a length with no span rather than a
+        // note with one. ⚠ Reached only where the call above already declined, so
+        // those 64 asks are counted at BOTH sites in the map's per-site figures.
         const merged = reemitRegion(cols.slice(at(r.from), at(last.to)), div, model.viewScale !== undefined)
         if (merged === null) return 'decline'
         reemitted += end - ri
@@ -940,6 +1029,11 @@ function spliceAltGrid(model: StepGridModel): string | null {
       out += r.raw
       continue
     }
+    // #1010 P4e — MAPPED. The grid's alternation half of `spliceRegions`' re-emit,
+    // same three populations (map: the block above `spliceGrid`).
+    // Asks reaching here, 2026-08-17: 112 placements = case 1 · 22 resizes = case 3 ·
+    // 96 deletes = NONE OF THE THREE → #1295. ⚠ This path has no rebuild to fall to,
+    // so a re-emit that declines here refuses the write outright.
     const re = reemitAltRegion(now, a.div, model.viewScale !== undefined)
     if (re === null) return null
     out += r.leading + re + r.trailing
@@ -949,6 +1043,8 @@ function spliceAltGrid(model: StepGridModel): string | null {
 
 /** re-emit an edited alt element: `<b0 b1 …>` when its bars differ, plain when equal */
 function reemitAltRegion(perBar: GridCells[], div: number, refined = false): string | null {
+  // #1010 P4e — INTERNAL, decides nothing: reached only from the alt site above, and
+  // inherits its mapping. (Map: the block above `spliceGrid`.)
   const barTokens = perBar.map((bar) => reemitRegion(bar, div, refined))
   if (barTokens.some((t) => t === null)) return null
   return barTokens.every((t) => t === barTokens[0]) ? barTokens[0]! : `<${barTokens.join(' ')}>`
@@ -1081,6 +1177,8 @@ function reemitRegion(cols: GridCells, div: number, refined = false): string | n
   const spelled = sustainTokens(cols, div)
   if (spelled === null) return refined ? stackedRegion(cols, div) : null
   const steps: string[] = []
+  // #1010 P4e — INTERNAL, decides nothing: how one region's columns are grouped,
+  // reached only from the two grid sites. (Map: the block above `spliceGrid`.)
   for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(spelled.slice(i, i + div)))
   return steps.join(' ')
 }
@@ -1623,6 +1721,15 @@ function spliceRoll(model: PianoRollModel): string | null {
       // an edited region on a fractional grid can't be re-emitted safely — decline
       // the whole splice so the caller no-ops rather than dropping the note
       if (!integral) return null
+      // #1010 P4e — MAPPED. The roll's counterpart to `spliceRegions`' re-emit, and
+      // the one site where case 3 is a large share rather than a tail (map: the
+      // block above `spliceGrid`). Asks
+      // reaching here, 2026-08-17: 467 placements = case 1 · 287 resizes = case 3 ·
+      // 206 deletes = NONE OF THE THREE → #1295. ⚠ The roll differs from the grid on
+      // case 3: byte surgery answers 239 of 596 resizes here (the grid's own figure
+      // is 0 of 156), because the roll's atom carries its `@n` in the bytes the
+      // anchor covers. So case 3 is irreducible on this surface only where the
+      // length cannot be said at the note's own span.
       const re = reemitRollRegion(now, r.from, r.to, p.div)
       body = re === null ? null : body + r.leading + re + r.trailing
     }
@@ -1699,6 +1806,11 @@ function spliceAltRoll(model: PianoRollModel): string | null {
       continue
     }
     if (!integral) return null
+    // #1010 P4e — MAPPED. The roll's alternation half (map: the block above
+    // `spliceGrid`). Asks reaching here, 2026-08-17: 56
+    // placements = case 1 · 14 resizes = case 3 · 81 deletes = NONE OF THE THREE →
+    // #1295. ⚠ Deletes LEAD here where placements lead at its grid twin (112 place
+    // against 96 delete) — the per-surface asymmetry #1010 warns to expect.
     const re = reemitAltRoll(perBarNow, r.from, r.to, a.div)
     if (re === null) return null
     out += r.leading + re + r.trailing
@@ -1715,6 +1827,8 @@ function reemitAltRoll(
 ): string | null {
   const barTokens: string[] = []
   for (const notes of perBar) {
+    // #1010 P4e — INTERNAL, decides nothing: reached only from the roll alt site
+    // above, and inherits its mapping. (Map: the block above `spliceGrid`.)
     const re = reemitRollRegion(notes, from, to, div)
     if (re === null) return null
     barTokens.push(re)
