@@ -101,7 +101,11 @@
  *
  * THE ANSWER TO #1300's LAST ITEM: the shipped 0.298 is NOT reach. Route A left the
  * element it had to touch on ZERO of 873 asks, where the same detector catches route B
- * leaving it on 445. The residue over the delete anchor is the ask, not the writer.
+ * leaving it on 445. ⚠ READ THAT ZERO AT ITS REAL STRENGTH: on 420 of the 873 the floor
+ * IS the whole document (a single top-level element), where a zero is trivially true and
+ * says nothing. The load-bearing part is the other 453, counted per leg because the
+ * delete's floor and the subdivide's floor are different regions and quoting one for the
+ * other is the mechanism-for-property slip this arc keeps finding. The residue over the delete anchor is the ask, not the writer.
  * What IS avoidable sits one level down and is a SPELLING question: on 84 of 585 the
  * write spreads beyond the atom it subdivides, re-spelling the whole element flat at the
  * line's shared division (`[g3 f#3]` -> `[g3 g3 ~ ~ ~ ~ f#3 _ _ _ _ _]`) where a nested
@@ -369,7 +373,8 @@ describe('#1301 — is the shipped subdivide cost forced by the ask, or slack in
     let tilingBad = 0
     let uncoveredAlt = 0
     let noSource = 0
-    let strictSubset = 0 // C4
+    let strictSubset = 0 // C4, delete leg
+    let strictSubsetSub = 0 // C4, subject leg — counted separately, see below
     let floorMissing = 0
     let posedSub = 0
     let posedDel = 0
@@ -526,6 +531,12 @@ describe('#1301 — is the shipped subdivide cost forced by the ask, or slack in
         continue
       }
       posedSub++
+      // ⚠ C4 IS COUNTED PER LEG. The delete's floor and the subdivide's floor are two
+      // different regions, and quoting one leg's non-vacuity for the other is exactly
+      // the mechanism-for-property slip this arc keeps finding. Where the floor IS the
+      // whole document (a single-element source) a zero slack is trivially true, so the
+      // headline is only as strong as this count.
+      if (fr.core.end - fr.core.start < mini.length) strictSubsetSub++
 
       // THE TIGHT FLOOR FOR A SUBDIVIDE, and it is a DERIVED bound rather than an
       // achieved one — say so wherever it is quoted. The created note has no bytes, but
@@ -588,7 +599,10 @@ describe('#1301 — is the shipped subdivide cost forced by the ask, or slack in
     console.log(`     no source at all           ${noSource}`)
     console.log(`  floor could not be located    ${floorMissing}`)
     console.log(`  deletes posed                 ${posedDel}   (floor a STRICT subset of the doc on ${strictSubset}   <- C4)`)
-    console.log(`  subdivide+place posed         ${posedSub}   <- denominator; a dead gesture is 0`)
+    console.log(
+      `  subdivide+place posed         ${posedSub}   <- denominator; a dead gesture is 0` +
+        `  (floor a STRICT subset of the doc on ${strictSubsetSub}   <- C4, this leg's own)`,
+    )
     console.log(`  deletes with BOTH answers     ${witnessed}   <- the witness population`)
     console.log(`  leaf-answered deletes over ALL units  ${leafAnsweredEverywhere}   <- must be writer-reach's gated 685`)
     console.log(
@@ -635,7 +649,8 @@ describe('#1301 — is the shipped subdivide cost forced by the ask, or slack in
     expect(posedSub, 'the subdivide gesture was never posed — check the ResolutionDir literal').toBeGreaterThan(100)
     expect(witnessed, 'no delete had two answers — the witness leg is empty').toBeGreaterThan(100)
     // C4 — a floor equal to the whole document makes every excess trivially 0
-    expect(strictSubset, 'the floor is never a strict subset — excess is 0 for an uninteresting reason').toBeGreaterThan(100)
+    expect(strictSubset, 'delete: the floor is never a strict subset — slack is 0 for an uninteresting reason').toBeGreaterThan(100)
+    expect(strictSubsetSub, 'subdivide: the floor is never a strict subset — slack is 0 for an uninteresting reason').toBeGreaterThan(100)
     // C5 — the floor must be located where krill says the note's own bytes are
     expect(leafSpanFound, 'no note span was located — C5 never ran').toBeGreaterThan(100)
     expect(leafOutsideRegion, "a note's own span fell outside the element containing its column — the column-to-region mapping is wrong").toBe(0)
