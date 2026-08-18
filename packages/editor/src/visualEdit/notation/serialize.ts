@@ -365,6 +365,45 @@ function rebuildGrid(model: StepGridModel): string | null {
  * ⚠ ONE INVARIANT OBSERVED RATHER THAN ASSUMED: across all 2,801 hits, NOT ONE had
  * `leafSource` set. The terminal field never falls through to a re-emit, which is
  * the safety property both ladders above assert in prose and nothing else measures.
+ *
+ * ⚠⚠ THIS FAMILY IS A SUBSET OF THE AUTHORING SURFACE, AND EVERY FIGURE ABOVE IS
+ * SCOPED TO THE FAMILY (#1298). #1007 defines the concern as a PROPERTY — emitting
+ * Strudel text from a model — and then locates it at these functions. The two are not
+ * the same set. Three emitters satisfy the property and are named by neither #1007's
+ * list nor #1010's: `gridColumns` reached from `rebuildGrid` and from the part rebuild
+ * in `spliceGrid` (`out += rebuilt.join(' ')`), and `serializeRollLanes` on the roll's
+ * rebuild path.
+ *
+ * SO DO NOT READ "REACHES NO RE-EMIT SITE" AS "DOES NOT AUTHOR" — the subdivide row
+ * above is exactly that trap. Its 934 asks reach none of these five sites and author
+ * anyway: a subdivide+place spells one element as a GROUP in place, which is authoring
+ * at a smaller scale than this family covers.
+ *
+ * ⚠⚠ AND THE COST OF THAT AUTHORING IS A PROPERTY OF THE ROUTE, NOT OF THE GESTURE
+ * (#1300) — the same confusion as the paragraph above, one level down, and it very
+ * nearly shipped here as a figure about the product. Measured paired over the same 934
+ * units, bytes moved p50 on documents ≥40 chars (n=84):
+ *
+ *   SHIPPED road   `parseStepGrid(mini, k)` — a refined VIEW whose model still
+ *                  carries the source regions, so the splice subdivides ONE element
+ *                  and copies the rest .......................................  0.298
+ *   model rescale  `scaleStepGrid`, which no production code outside `resolution.ts`
+ *                  calls; the source description does not survive it, so the line is
+ *                  re-derived whole ..........................................  0.988
+ *   leaf surgery   a delete written at the note's own span (the local anchor)...  0.036
+ *
+ * The neighbouring parts a user never touched come back BYTE-IDENTICAL on the shipped
+ * road. So the shipped subdivide sits at roughly 8x the most local write available
+ * rather than 27x, and whichever figure is quoted has to name the road it was taken
+ * on. The ÷k guard is not what buys this: it answered at document resolution 0 times
+ * of 934, because a placement into a column only the finer view has is precisely the
+ * case `collapseStepGridToDocument` should decline.
+ *
+ * ⚠ AND CHECK WHAT A CALL DOES BEFORE COUNTING IT. `serializeStepGain` also calls
+ * `gridColumns` and is NOT authoring — it uses the result as a predicate (which
+ * columns carry an audible gain) and never emits it. An edge to an emitter is not an
+ * authoring site; that distinction is the whole reason the family and the property
+ * diverge. CASE 2 above stands unchanged for this reason.
  */
 
 /* ── span surgery (#913) ───────────────────────────────────────── */
