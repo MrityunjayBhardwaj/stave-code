@@ -127,9 +127,14 @@ describe('mini-corpus inputs — provenance and reproducibility', () => {
     // and vitest truncates the display at ~40 characters, so a row identifier
     // placed first pushes the two numbers — the only part that differs — off
     // the end, and the arm reddens without saying what is wrong.
+    // `?? []` rather than a bare `.length`: a row that lost the KEY entirely —
+    // a corpus written by a pre-#1305 harvest, or a hand-truncation — would
+    // otherwise throw a bare TypeError from inside the loop, which names no row
+    // and defeats the message this arm is built around. Absent reads as 0 here,
+    // and 0 is exactly the failure the arm wants to report.
     rows.forEach((row, i) => {
       const id = `citations for row ${i} ${JSON.stringify(row.mini.slice(0, 24))}`
-      expect(`${row.tuneHashes.length} ${id}`).toBe(`${row.tunes} ${id}`)
+      expect(`${(row.tuneHashes ?? []).length} ${id}`).toBe(`${row.tunes} ${id}`)
     })
 
     const cited = new Set(rows.flatMap((r) => r.tuneHashes))
@@ -140,16 +145,29 @@ describe('mini-corpus inputs — provenance and reproducibility', () => {
     // all, so the population is asserted rather than assumed. Unlike in the
     // harvest, these CAN fail here: this arm reads a committed file it did not
     // write, so an emptied or truncated `tuneHashes` reaches it.
+    //
+    // These read `.tuneHashes` bare, and that is safe only because the count
+    // arm above uses `?? []` and therefore reddens FIRST on a row that lost the
+    // key entirely — `tunes` is never 0, so absent-reads-as-0 always mismatches
+    // there and aborts. The safety is in the ORDER, which is why it is written
+    // down rather than left for the next reader to rediscover from a TypeError.
     expect(rows.every((r) => r.tuneHashes.length > 0), 'a fragment cites no tune at all').toBe(true)
     expect(rows.reduce((n, r) => n + r.tuneHashes.length, 0)).toBeGreaterThan(2000)
     expect(cited.size).toBeGreaterThan(300)
 
     // CONTROL — the membership test must be able to say no, or `unresolvable`
     // is empty for a reason that has nothing to do with the corpus. Mutating a
-    // hash the corpus really cites is the cheapest thing that MUST fail.
+    // hash the corpus really cites is the cheapest thing that MUST fail: every
+    // credit hash is 12 characters, so the 13-character mutant cannot collide
+    // with a real one.
+    //
+    // The positive half of this pair — asserting the UNMUTATED hash IS credited
+    // — was deliberately not written. `real` is drawn from `cited`, so with
+    // `unresolvable` empty above it that assertion cannot fail, and this file
+    // already dropped three of exactly that kind. A control needs the direction
+    // that can say no; the direction that says yes is the arm above.
     const real = rows[0].tuneHashes[0]
-    expect(credited.has(real)).toBe(true)
-    expect(credited.has(`${real}x`)).toBe(false)
+    expect(credited.has(`${real}x`), 'the membership test cannot say no').toBe(false)
 
     // Not every tune contributes a fragment, and that is the admission rule
     // rather than a loss: measured 2026-08-20, 349 of 360 are cited and the
