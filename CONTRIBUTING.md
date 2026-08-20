@@ -69,6 +69,36 @@ pnpm gate:editing:app      # corpus reach/round-trip only
 `pnpm gate:editing` runs both halves unconditionally — it deliberately does not stop at the first
 failure, so one package's breakage can never hide the other's. It exits non-zero if either fails.
 
+#### Five corpus tests skip on a fresh clone — that is expected
+
+Some of the app-package sweeps are measured over an archive of real community tunes cached in
+`packages/app/tests/parity-corpus/.bakery-runs/`. That directory is **gitignored on purpose**: the
+tunes are unreviewed third-party source and the overwhelming majority declare no licence, so the
+repo records how to fetch them rather than redistributing them.
+
+So on a fresh clone five tests report **skipped**, and the gate is still green:
+
+| test | what it measures |
+|---|---|
+| `miniSource-calibration.test.ts` | the resolver over 150 real tunes |
+| `writer-census-eval.test.ts` | the reach transfer over the eval-first ask population |
+| `1240-resolver-anchor-agreement.test.ts` | parse-only resolutions agree with eval-first ones |
+| `song-period-sweep.test.ts` | the pinned per-document display-period baseline |
+| `song-period-abstention.test.ts` | lane-abstention candidates against that baseline |
+
+Skipped is the honest report here — the archive's absence is a fact about your machine, not a
+failure of the code. If you are changing the resolver, the notation model, or display-period
+detection, rebuild the archive first so those five actually run:
+
+```bash
+node packages/app/scripts/mini-corpus-manifest.mjs restore
+```
+
+It refetches every input by hash from the committed manifest
+(`packages/app/tests/parity-corpus/mini-corpus-inputs.json`) and verifies each rebuilt file against
+the sha256 recorded there, so the result is byte-exact or it fails loudly. It needs network access,
+and it will refuse rather than half-rebuild if an upstream tune has since been deleted.
+
 ### Commit Style
 
 We use [gitmoji](https://gitmoji.dev/) prefixes in commit messages:

@@ -69,14 +69,23 @@
  */
 import { describe, it, expect } from 'vitest'
 import { unitsWithStatus, hasKnownContent } from './editCoverage'
-import { boot, evalLocations, loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
+import {
+  boot,
+  evalLocations,
+  hasCorpusArchive,
+  loadCorpus,
+} from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
 import { admitProposals } from '../../../editor/src/visualEdit/miniSource/evalProposals'
 import { QUERY_CYCLES } from '../../../editor/src/visualEdit/miniSource/evalProposals'
 import { resolveMiniSource } from '../../../editor/src/visualEdit/miniSource/resolveMiniSource'
 import { SpanIndex } from '../../../editor/src/visualEdit/miniSource/spanRole'
 
 describe('miniSource calibration over 150 real tunes', () => {
-  it('resolves every known content span, and every miss is a silent statement', async () => {
+  // `.bakery-runs/` is gitignored — unreviewed third-party tunes (#1307). On a
+  // machine without it this SKIPS and vitest reports it as skipped, rather than
+  // dying on an ENOENT naming a path git refuses to track. The rule is imported,
+  // never restated, so it cannot drift from the read it guards.
+  it.skipIf(!hasCorpusArchive())('resolves every known content span, and every miss is a silent statement', async () => {
     const docs = await loadCorpus()
     expect(docs.length).toBe(150)
     // A module the engine registers and we could not is a DEVIATION, and it

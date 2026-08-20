@@ -70,6 +70,15 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+// The only static imports in this otherwise fully-deferred module, and all node
+// built-ins: `hasCorpusArchive()` below has to answer SYNCHRONOUSLY, because
+// `it.skipIf(...)` is evaluated when a test is DECLARED rather than when it
+// runs. This module is test support and is never bundled — `packages/editor/dist`
+// contains no reference to it.
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 let ready: Promise<any> | null = null
 
 /**
@@ -407,23 +416,74 @@ async function evalSongTracksInner(code: string): Promise<SongTracksResult> {
   return { ok: true, tracks }
 }
 
+/**
+ * The exact three files the corpus is made of. Named rather than globbed, so a
+ * stray `edit-samples-*.json` dropped into the directory by a later sampler run
+ * cannot silently widen what the calibration is measured over.
+ *
+ * Resolved from THIS file, not from the cwd — the calibration runs from
+ * @stave/app while the harness lives in @stave/editor.
+ */
+const CORPUS_FILES = [
+  'edit-samples-2026-07-24T17-49-00-172Z.json',
+  'edit-samples-offset250-2026-07-24T17-49-04-301Z.json',
+  'edit-samples-offset500-2026-07-24T17-49-08-639Z.json',
+] as const
+
+// ⚠ `fileURLToPath` + `path.resolve`, NOT `new URL(rel, import.meta.url)`.
+// Vite REWRITES that second form at transform time — it treats it as an asset
+// reference — and it came back as `http://localhost:3000/@fs/…` against a
+// truncated path, so `existsSync` was false with the archive plainly present
+// and all five tests skipped while claiming to be guarded. Observed, not
+// reasoned about; the skip looked exactly like a correct guard.
+const CORPUS_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../../../app/tests/parity-corpus/.bakery-runs',
+)
+
+const corpusFilePath = (f: string) => path.join(CORPUS_DIR, f)
+
+/**
+ * What to do about a missing archive, carried next to every report of its
+ * absence — `restore` rebuilds all three files from `mini-corpus-inputs.json`
+ * by hash, and fails loudly rather than partially if upstream has lost a row.
+ */
+export const CORPUS_RESTORE_HINT =
+  '`.bakery-runs/` is gitignored on purpose — unreviewed third-party tunes, almost all\n' +
+  'declaring no licence. Rebuild it from the committed manifest with:\n' +
+  '  node packages/app/scripts/mini-corpus-manifest.mjs restore'
+
+/**
+ * Is the corpus archive on THIS machine?
+ *
+ * THE ONE COPY OF THE RULE (#1307). Every gated test that needs the corpus
+ * imports this rather than writing its own `existsSync`, exactly as
+ * `mini-corpus-inputs.test.ts` imports `isInputFile` rather than restating the
+ * generator's rule. Five copies could drift from `loadCorpus` and from each
+ * other, and the drift would show up as a test that fails on a fresh clone
+ * — which is the very thing this predicate exists to prevent.
+ *
+ * It checks the three FILES rather than the directory, because that is what
+ * `loadCorpus` actually reads: a directory that exists but is missing one input
+ * still ENOENTs, and a predicate coarser than the read it guards would let that
+ * through.
+ */
+export function hasCorpusArchive(): boolean {
+  return CORPUS_FILES.every((f) => existsSync(corpusFilePath(f)))
+}
+
 /** The 150 saved #986-P3 tunes (3 offsets × 50). */
 export async function loadCorpus(): Promise<{ name: string; code: string }[]> {
   const fs = await import('node:fs')
-  const path = await import('node:path')
-  const { fileURLToPath } = await import('node:url')
-  // Resolved from THIS file, not from the cwd — the calibration runs from
-  // @stave/app while the harness lives in @stave/editor.
-  const here = path.dirname(fileURLToPath(import.meta.url))
-  const dir = path.resolve(here, '../../../../../app/tests/parity-corpus/.bakery-runs')
-  const files = [
-    'edit-samples-2026-07-24T17-49-00-172Z.json',
-    'edit-samples-offset250-2026-07-24T17-49-04-301Z.json',
-    'edit-samples-offset500-2026-07-24T17-49-08-639Z.json',
-  ]
+  // The gated tests skip via `hasCorpusArchive()` and never reach this. The
+  // hand-run `_*` probes do not, so they get a next step instead of a bare
+  // ENOENT naming a path `.gitignore` refuses to track.
+  if (!hasCorpusArchive()) {
+    throw new Error(`the Bakery corpus archive is not on this machine.\n${CORPUS_RESTORE_HINT}`)
+  }
   const out: { name: string; code: string }[] = []
-  for (const f of files) {
-    const j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'))
+  for (const f of CORPUS_FILES) {
+    const j = JSON.parse(fs.readFileSync(corpusFilePath(f), 'utf8'))
     for (const s of j.samples) out.push({ name: `${j.offset}/${s.hash}`, code: s.code })
   }
   return out

@@ -43,7 +43,12 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { sweepCorpus, abstainingDetector, type PeriodVerdict } from './songPeriodSweep'
+import {
+  abstainingDetector,
+  hasCorpusArchive,
+  sweepCorpus,
+  type PeriodVerdict,
+} from './songPeriodSweep'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 /**
@@ -158,7 +163,11 @@ interface Priced {
 }
 
 describe('Song display period — lane-abstention candidates (#1104)', () => {
-  it('prices each candidate per document against the pinned production baseline', async () => {
+  // `.bakery-runs/` is gitignored — unreviewed third-party tunes (#1307). On a
+  // machine without it this SKIPS and vitest reports it as skipped, rather than
+  // dying on an ENOENT naming a path git refuses to track. The rule is imported,
+  // never restated, so it cannot drift from the read it guards.
+  it.skipIf(!hasCorpusArchive())('prices each candidate per document against the pinned production baseline', async () => {
     const before: Record<string, BaselineRow> = JSON.parse(fs.readFileSync(BASELINE, 'utf8'))
     const capBefore = Object.values(before).filter((b) => b.reachedCap).length
     const priced: Priced[] = []
