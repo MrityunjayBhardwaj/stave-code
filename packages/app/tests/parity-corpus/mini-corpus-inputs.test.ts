@@ -136,8 +136,10 @@ describe('mini-corpus inputs — provenance and reproducibility', () => {
     const unresolvable = [...cited].filter((h) => !credited.has(h))
     expect(unresolvable, 'fragments cite tunes the manifest cannot credit').toEqual([])
 
-    // NON-VACUOUS. An empty or near-empty citation set would satisfy every
-    // assertion above, so the population is asserted rather than assumed.
+    // NON-VACUOUS. `unresolvable` is empty for a corpus that cites nothing at
+    // all, so the population is asserted rather than assumed. Unlike in the
+    // harvest, these CAN fail here: this arm reads a committed file it did not
+    // write, so an emptied or truncated `tuneHashes` reaches it.
     expect(rows.every((r) => r.tuneHashes.length > 0), 'a fragment cites no tune at all').toBe(true)
     expect(rows.reduce((n, r) => n + r.tuneHashes.length, 0)).toBeGreaterThan(2000)
     expect(cited.size).toBeGreaterThan(300)
@@ -154,8 +156,10 @@ describe('mini-corpus inputs — provenance and reproducibility', () => {
     // 11 that are not are documents with no note content to harvest — two are
     // `// @version 1.1` and nothing else, several are bytebeat/`dough` DSP or
     // plain JS helpers, and two are entirely commented out, which the AST
-    // proposer never sees (see the harvest's docblock).
-    expect(cited.size).toBeLessThanOrEqual(credited.size)
+    // proposer never sees (see the harvest's docblock). Stated rather than
+    // asserted: `cited.size <= credited.size` follows from `unresolvable`
+    // being empty, so pinning it would add a line that cannot fail, and
+    // pinning 349 would fail on the next legitimate refresh.
   })
 
   it.skipIf(!hasArchive)('the archive on disk is exactly the input set the manifest records', () => {

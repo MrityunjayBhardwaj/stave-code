@@ -437,13 +437,20 @@ describe('harvest — regenerate mini-corpus.json from .bakery-runs', () => {
     expect(minis.length).toBeGreaterThan(1000)
     expect(byHash.size).toBeGreaterThan(300)
 
-    // The join key must be non-vacuous and must cite tunes this run actually
-    // read. Both are cheap here and neither is provable from the committed
-    // file alone — that side is gated in `mini-corpus-inputs.test.ts`, against
-    // the manifest rather than against this run's own memory.
+    // The join key must be non-vacuous. Only ONE of the three things worth
+    // saying here can actually fail, and the other two are written down as
+    // reasoning rather than as assertions that would only look like rigour:
+    // "every fragment cites at least one tune" and "every cited hash was read
+    // this run" are both true BY CONSTRUCTION — a `seen` entry exists only
+    // once a hash has been added to it, and every hash added came from a
+    // `byHash` key. An assertion that cannot fail reports on itself.
+    //
+    // This one can: `cited` is a subset of `byHash`, so it would fall below the
+    // floor if most tunes stopped contributing a fragment even while the tune
+    // count held. The cross-artifact half — do these hashes resolve to a real
+    // credit — is not provable from this run's own memory at all, and is gated
+    // in `mini-corpus-inputs.test.ts` against the manifest.
     const cited = new Set(minis.flatMap((m) => m.tuneHashes))
-    expect(minis.every((m) => m.tuneHashes.length > 0), 'a fragment cites no tune').toBe(true)
-    expect([...cited].every((h) => byHash.has(h)), 'a cited hash was never read').toBe(true)
-    expect(cited.size).toBeGreaterThan(300)
+    expect(cited.size, 'the join key cites almost no tunes').toBeGreaterThan(300)
   })
 })
