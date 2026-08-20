@@ -70,14 +70,6 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-let ready: Promise<any> | null = null
-
-/**
- * Deliberate degradations, so every recovery mechanism in here can be proved
- * LOAD-BEARING by breaking it rather than by reading it. A coverage gate whose
- * only evidence is "the code looks right" is the gate this phase was filed to
- * replace.
- */
 // The only static imports in this otherwise fully-deferred module, and all node
 // built-ins: `hasCorpusArchive()` below has to answer SYNCHRONOUSLY, because
 // `it.skipIf(...)` is evaluated when a test is DECLARED rather than when it
@@ -87,6 +79,14 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+let ready: Promise<any> | null = null
+
+/**
+ * Deliberate degradations, so every recovery mechanism in here can be proved
+ * LOAD-BEARING by breaking it rather than by reading it. A coverage gate whose
+ * only evidence is "the code looks right" is the gate this phase was filed to
+ * replace.
+ */
 export interface EvalOptions {
   /** install the hydra globals for a document that calls `initHydra` (default true) */
   hydra?: boolean
