@@ -83,7 +83,7 @@ interface Corpus {
   distinct: number
   /** how many strings each proposer contributed — see the floor below */
   via: { literal: number; unit: number; both: number }
-  minis: { mini: string; tunes: number; via: 'literal' | 'unit' | 'both' }[]
+  minis: { mini: string; tunes: number; tuneHashes: string[]; via: 'literal' | 'unit' | 'both' }[]
 }
 
 const corpus: Corpus = JSON.parse(

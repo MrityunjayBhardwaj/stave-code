@@ -143,6 +143,28 @@
  * ⚠ Verified before any of this: the harvested mini LIST is byte-identical
  * across the 7-file and 24-file input sets, so the input set is CONTENT-NEUTRAL
  * and this run's diff is attributable to the RULE alone.
+ *
+ * ── AND EACH ROW CARRIES ITS JOIN KEY (#1305) ─────────────────────────────
+ * `tunes` answers "how many", which is the number anyone wanted for coverage
+ * and the wrong one for provenance. This file is tracked and public: 73,709
+ * characters of verbatim mini-notation from 360 community tunes, 350 of which
+ * declare no licence. Attribution and takedown are per-ITEM operations, and a
+ * cardinality cannot answer either — before this, honouring a request naming
+ * one tune meant regenerating the whole corpus.
+ *
+ * The key was never missing, only discarded: the `Set` two lines up held the
+ * hashes and was reduced to its `.size`. `tuneHashes` writes it out, and it
+ * resolves against `mini-corpus-inputs.json`'s `credits` (title, licence
+ * where the tune declares one, permalink) — the artifact #1281 already built
+ * for exactly this and which nothing could join to.
+ *
+ * Most of the corpus raises no question at all: p50 is 16 characters and
+ * 1562 of 1633 rows are at or under 100, which is idiom rather than
+ * expression. The skew is the point — 11 rows exceed 500 characters, every
+ * one of them from a tune declaring no licence, and the two largest are
+ * ~11.5KB word lists reproduced essentially whole. Those stay, now credited;
+ * whether the largest should stay at all is #1305's stated open question and
+ * is deliberately not decided by this file.
  */
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
@@ -349,6 +371,16 @@ describe('harvest — regenerate mini-corpus.json from .bakery-runs', () => {
       .map(([mini, e]) => ({
         mini,
         tunes: e.tunes.size,
+        // The JOIN KEY (#1305). `tunes` alone is a cardinality, so the corpus
+        // could cite the SET and never the fragment — and attribution and
+        // takedown are both per-ITEM operations. The Set was already here and
+        // was being reduced to its size on the line above; these are the same
+        // hashes, sorted so the committed order is stable across refreshes.
+        // They resolve against `mini-corpus-inputs.json`'s `credits`, which
+        // carries each tune's title, licence-where-declared and permalink.
+        // `tunes` is KEPT rather than replaced: two derivations of one fact
+        // that `mini-corpus-inputs.test.ts` holds against each other.
+        tuneHashes: [...e.tunes].sort(),
         via: e.via.has('literal') ? (e.via.has('unit') ? 'both' : 'literal') : 'unit',
       }))
 
@@ -361,7 +393,11 @@ describe('harvest — regenerate mini-corpus.json from .bakery-runs', () => {
         'Committed so the notation parsers are gated against what people actually ' +
         'write, not only against the curated .strudel fixtures. Regenerate with ' +
         'tests/parity-corpus/_harvest-mini-corpus.spec.ts; a refresh is its own PR ' +
-        'and its snapshot diff must be read BY DIRECTION, never -u past.',
+        'and its snapshot diff must be read BY DIRECTION, never -u past. ' +
+        'Each row carries `tuneHashes` — the distinct tunes that string was ' +
+        'harvested from — which join to mini-corpus-inputs.json `credits` for ' +
+        'title, licence and permalink, so any fragment here can be credited or ' +
+        'withdrawn on its own.',
       harvestedFrom: sources,
       // DISTINCT, not the sum over `sources` — several sample files are
       // re-fetches of the same offset window, so summing double-counts. Every
@@ -400,5 +436,21 @@ describe('harvest — regenerate mini-corpus.json from .bakery-runs', () => {
     expect(viaTally.unit + viaTally.both, 'unit proposer found nothing').toBeGreaterThan(500)
     expect(minis.length).toBeGreaterThan(1000)
     expect(byHash.size).toBeGreaterThan(300)
+
+    // The join key must be non-vacuous. Only ONE of the three things worth
+    // saying here can actually fail, and the other two are written down as
+    // reasoning rather than as assertions that would only look like rigour:
+    // "every fragment cites at least one tune" and "every cited hash was read
+    // this run" are both true BY CONSTRUCTION — a `seen` entry exists only
+    // once a hash has been added to it, and every hash added came from a
+    // `byHash` key. An assertion that cannot fail reports on itself.
+    //
+    // This one can: `cited` is a subset of `byHash`, so it would fall below the
+    // floor if most tunes stopped contributing a fragment even while the tune
+    // count held. The cross-artifact half — do these hashes resolve to a real
+    // credit — is not provable from this run's own memory at all, and is gated
+    // in `mini-corpus-inputs.test.ts` against the manifest.
+    const cited = new Set(minis.flatMap((m) => m.tuneHashes))
+    expect(cited.size, 'the join key cites almost no tunes').toBeGreaterThan(300)
   })
 })
