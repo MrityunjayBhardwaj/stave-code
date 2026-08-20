@@ -36,6 +36,14 @@
  *   - per tune: its `code_v1` hash, title and declared licence where the tune
  *     states them, and a permalink, so every use can credit its author.
  *
+ * AND SINCE #1305 THE OTHER SIDE CAN ACTUALLY JOIN TO IT. "so every use can
+ * credit its author" was a promise this file could not keep on its own: each
+ * `mini-corpus.json` row recorded only how MANY tunes a string came from, so
+ * the credits below were reachable for the input SET and for no individual
+ * fragment. Rows now carry `tuneHashes`, and `mini-corpus-inputs.test.ts`
+ * gates that every one of them resolves to a credit here. Crediting an author
+ * or honouring a takedown is a lookup rather than a regeneration.
+ *
  * WHY THE HASHES MAKE IT A RECIPE, NOT ONLY A RECEIPT. The rows are still
  * live and public in `code_v1`, and hash lookup is exact where the sampler's
  * offset paging is not. OBSERVED 2026-08-17, and stated as a dated reading
