@@ -56,13 +56,22 @@
  */
 import { describe, it, expect } from 'vitest'
 import { unitsWithStatus } from './editCoverage'
-import { boot, evalLocations, loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
+import {
+  boot,
+  evalLocations,
+  hasCorpusArchive,
+  loadCorpus,
+} from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
 import { admitProposals, QUERY_CYCLES } from '../../../editor/src/visualEdit/miniSource/evalProposals'
 import { resolveMiniSource } from '../../../editor/src/visualEdit/miniSource/resolveMiniSource'
 import { SpanIndex } from '../../../editor/src/visualEdit/miniSource/spanRole'
 
 describe('#1240 — the synchronous wiring names the span evaluation would have', () => {
-  it('every UNAMBIGUOUS parse-only resolution agrees with the eval-first one', async () => {
+  // `.bakery-runs/` is gitignored — unreviewed third-party tunes (#1307). On a
+  // machine without it this SKIPS and vitest reports it as skipped, rather than
+  // dying on an ENOENT naming a path git refuses to track. The rule is imported,
+  // never restated, so it cannot drift from the read it guards.
+  it.skipIf(!hasCorpusArchive())('every UNAMBIGUOUS parse-only resolution agrees with the eval-first one', async () => {
     const docs = await loadCorpus()
     await boot()
 

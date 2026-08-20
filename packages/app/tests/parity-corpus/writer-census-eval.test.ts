@@ -83,6 +83,7 @@ import { unitsWithStatus, hasKnownContent } from './editCoverage'
 import {
   boot,
   evalLocations,
+  hasCorpusArchive,
   loadCorpus,
 } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
 import {
@@ -146,7 +147,11 @@ const SURFACES = [
 ]
 
 describe('the reach transfer over the EVAL-FIRST ask population', () => {
-  it('re-derives the ask population from evaluation and reports how the rate moves', async () => {
+  // `.bakery-runs/` is gitignored — unreviewed third-party tunes (#1307). On a
+  // machine without it this SKIPS and vitest reports it as skipped, rather than
+  // dying on an ENOENT naming a path git refuses to track. The rule is imported,
+  // never restated, so it cannot drift from the read it guards.
+  it.skipIf(!hasCorpusArchive())('re-derives the ask population from evaluation and reports how the rate moves', async () => {
     const docs = await loadCorpus()
     expect(docs.length).toBe(150)
     const { missingModules } = (await boot()) as { missingModules: string[] }

@@ -58,11 +58,15 @@ import type { IREvent } from '../../../editor/src/ir/IREvent'
 import { normalizeStrudelHap } from '../../../editor/src/engine/NormalizedHap'
 import {
   evalSongTracks,
+  hasCorpusArchive,
   loadCorpus,
   type SongTrack,
 } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
 
-export { loadCorpus }
+// Re-exported so the two sweep tests can guard themselves without reaching
+// across packages for a rule this file already depends on (#1307). One copy,
+// two import paths — not a second copy.
+export { loadCorpus, hasCorpusArchive }
 
 /** One document's Song-timeline verdict. */
 export interface PeriodVerdict {

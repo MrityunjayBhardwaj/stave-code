@@ -88,7 +88,12 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { periodHistogram, sweepCorpus, type PeriodVerdict } from './songPeriodSweep'
+import {
+  hasCorpusArchive,
+  periodHistogram,
+  sweepCorpus,
+  type PeriodVerdict,
+} from './songPeriodSweep'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const BASELINE = path.join(HERE, 'SONG-PERIOD-BASELINE.json')
@@ -125,7 +130,11 @@ const EVAL_FAILURES = [
 ]
 
 describe('Song display period — corpus baseline (#1102)', () => {
-  it('every document reports the period it reported when this was pinned', async () => {
+  // `.bakery-runs/` is gitignored — unreviewed third-party tunes (#1307). On a
+  // machine without it this SKIPS and vitest reports it as skipped, rather than
+  // dying on an ENOENT naming a path git refuses to track. The rule is imported,
+  // never restated, so it cannot drift from the read it guards.
+  it.skipIf(!hasCorpusArchive())('every document reports the period it reported when this was pinned', async () => {
     const verdicts = await sweepCorpus()
     const evaluated = verdicts.filter((v) => v.ok)
 
