@@ -599,7 +599,11 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // ⚠ 4842 -> 5433 at #1242 — the corpus widened 1535 -> 1633 units
     // (98 arrivals, 0 departures): the harvest gained the product's own
     // resolver, so every figure here is over a wider population. Upward only.
-    expect(integral).toBe(5433)
+    // ⚠ 5433 -> 5505 at #1310 (region-local parallel lanes): `parse.ts` uses the writer
+    // as an admissibility oracle, so a writer that can spell more opens one more roll
+    // unit — `[-7 2,<4 5 6>]*8` — and it brings its own 72 notes. Population, not
+    // drawing: every zero below is unmoved.
+    expect(integral).toBe(5505)
     expect(invisible).toBe(0)
     expect(misdrawn).toBe(0)
     expect(affected.size).toBe(0)
@@ -651,10 +655,18 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // ⚠ 4842 -> 5433 at #1242 — the corpus widened 1535 -> 1633 units
     // (98 arrivals, 0 departures): the harvest gained the product's own
     // resolver, so every figure here is over a wider population. Upward only.
-    expect(notes).toBe(5433)
+    // ⚠ 5433 -> 5505 at #1310 (region-local parallel lanes): `parse.ts` uses the writer
+    // as an admissibility oracle, so a writer that can spell more opens one more roll
+    // unit — `[-7 2,<4 5 6>]*8` — and it brings its own 72 notes. Population, not
+    // drawing: every zero below is unmoved.
+    expect(notes).toBe(5505)
     expect(silent).toBe(0)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    expect(checked).toBe(5433)
+    // ⚠ 5433 -> 5505 at #1310 (region-local parallel lanes): `parse.ts` uses the writer
+    // as an admissibility oracle, so a writer that can spell more opens one more roll
+    // unit — `[-7 2,<4 5 6>]*8` — and it brings its own 72 notes. Population, not
+    // drawing: every zero below is unmoved.
+    expect(checked).toBe(5505)
     expect(headBad).toBe(0)
     expect(tailBad).toBe(0)
   })
@@ -723,7 +735,8 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // ⚠ 544 -> 596 at #1242 — the corpus widened 1535 -> 1633 units
     // (98 arrivals, 0 departures): the harvest gained the product's own
     // resolver, so every figure here is over a wider population. Upward only.
-    expect(models).toBe(596)
+    // ⚠ 596 -> 597 at #1310 — the one roll unit the widened writer lets the parser open.
+    expect(models).toBe(597)
     expect(fractional).toBe(0)
     expect(uncovered).toEqual([])
   })

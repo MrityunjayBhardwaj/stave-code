@@ -27274,7 +27274,7 @@ function toPlaced(notes) {
 __name(toPlaced, "toPlaced");
 function reemitRollRegion(notes, from, to, div) {
   const groups = toPlaced(notes);
-  if (groups === null) return null;
+  if (groups === null) return laneWrapRegion(notes, from, to, div);
   if (columnSplit((to - from) / div).remainder > 0) return null;
   const at = new Map(groups.map((g) => [g.start, g]));
   const starts = groups.map((g) => g.start).sort((a, b) => a - b);
@@ -27318,6 +27318,31 @@ function reemitRollRegion(notes, from, to, div) {
   return tokens.join(" ");
 }
 __name(reemitRollRegion, "reemitRollRegion");
+function laneWrapRegion(notes, from, to, div) {
+  const width = to - from;
+  const steps = width / div;
+  if (!Number.isInteger(steps) || steps < 1) return null;
+  const byKey = /* @__PURE__ */ new Map();
+  for (const n of [...notes].sort((a, b) => a.start - b.start)) {
+    const start = n.start - from;
+    if (start < 0 || n.duration < 1 || start + n.duration > width) return null;
+    const key2 = `${start}:${n.duration}`;
+    const g = byKey.get(key2);
+    if (g) g.pitches.push(n.pitch);
+    else byKey.set(key2, { pitches: [n.pitch], start, duration: n.duration });
+  }
+  const lanes = packLanes([...byKey.values()]);
+  if (lanes.length < 2) return null;
+  const strings = [];
+  for (const lane of lanes) {
+    const s = laneString(lane, width);
+    if (s === null) return null;
+    strings.push(s);
+  }
+  const body = `[${strings.join(", ")}]`;
+  return steps === 1 ? body : `${body}@${steps}`;
+}
+__name(laneWrapRegion, "laneWrapRegion");
 function groupWrapRegion(at, starts, from, to, div) {
   const inner = [];
   let c = from;

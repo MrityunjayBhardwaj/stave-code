@@ -350,11 +350,15 @@ describe('#1054 — document, layout and haps are three separate readings', () =
       ...roll.byOutcome,
       hapsUnevaluable: roll.hapsUnevaluable,
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633); `unwritable` stays ZERO across +304 asks.
+    // ⚠ MOVED at #1310 (region-local parallel lanes): one more roll unit opens because
+    // `parse.ts` asks the writer whether a view is safe, so a wider writer admits one
+    // more document — +1 unit, +2 asks, +4 coarsen skips, +2 no-offer. `unwritable`
+    // stays ZERO, which is the arm that matters: the widening added asks, not failures.
     }).toEqual({
-      units: 596,
-      asks: 3768,
-      coarsenSkipped: 1096,
-      'no-offer': 813,
+      units: 597,
+      asks: 3770,
+      coarsenSkipped: 1100,
+      'no-offer': 815,
       unwritable: 0,
       measured: 2955,
       hapsUnevaluable: 0,

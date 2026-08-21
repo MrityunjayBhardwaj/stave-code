@@ -716,11 +716,28 @@ describe('#1058 — the roll, gated separately', () => {
       // ⚠ 542 -> 594 at #1242 — the corpus widened 1535 -> 1633 units
       // (98 arrivals, 0 departures): the harvest gained the product's own
       // resolver, so every figure here is over a wider population. Upward only.
-      expect(opens, `k=${k} opens`).toBe(594)
-      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-      expect(admits, `k=${k} admits`).toBe(k === 2 ? 538 : 537)
-      // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-      expect(gates.get('no-finer-view'), `k=${k} leaf refusals`).toBe(56)
+      // ⚠ MOVED at #1310 (region-local parallel lanes), and all three of the next pins
+      // move together because they are one identity: `opens` == `admits` + the gate
+      // tallies, at both scales, before and after. `parse.ts` consults the writer to
+      // decide admissibility, so a writer that can spell more moves REACH:
+      //
+      //     k=2   opens 594 -> 595   admits 538 -> 541   no-finer-view 56 -> 54
+      //     k=4   opens 594 -> 595   admits 537 -> 540   no-finer-view 56 -> 54
+      //                                                  view-resolution 1 -> 1
+      //
+      // +1 open is the one unit the parser newly admits at all, `[-7 2,<4 5 6>]*8`, and
+      // it refines at both scales. The other +2 admits are not arrivals to the corpus:
+      // they are the two units that stopped needing the LEAF projection, so the refine
+      // gate stops refusing them — the same 56 -> 54 that `delete-admissibility` records
+      // from the delete side, which is what identifies them as one fact and not two.
+      // 595 = 541 + 54 and 595 = 540 + 54 + 1: nothing is unaccounted for on either side.
+      //
+      // ⚠ These were first moved with a comment claiming `admits` and the leaf refusals
+      // were UNMOVED. That was inferred from the arrival's shape and never measured, and
+      // it was wrong by 3. The figures above are read off a run.
+      expect(opens, `k=${k} opens`).toBe(595)
+      expect(admits, `k=${k} admits`).toBe(k === 2 ? 541 : 540)
+      expect(gates.get('no-finer-view'), `k=${k} leaf refusals`).toBe(54)
       expect(asks, `k=${k} asks`).toBeGreaterThan(4000)
       // the roll's notes carry a duration natively, so a finer column is never
       // unspellable for it the way a `_` run can be for the grid

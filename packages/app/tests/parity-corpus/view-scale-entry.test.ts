@@ -261,7 +261,9 @@ describe('#1116 the view scale, through the public entries', () => {
       rolls.length,
       grids.filter((m) => parseStepGridCore(m).ok).length,
       rolls.filter((m) => parsePianoRollCore(m).ok).length,
-    ]).toEqual([1013, 596, 812, 452])
+      // ⚠ roll 596 -> 597 at #1310: the widened writer lets the parser open one more
+      // roll document. The grid figures are untouched — this is the roll writer alone.
+    ]).toEqual([1013, 597, 812, 452])
 
     expect(
       grids.filter((m) => JSON.stringify(parseStepGrid(m, 1)) !== JSON.stringify(parseStepGrid(m))),
@@ -316,8 +318,13 @@ describe('#1116 the view scale, through the public entries', () => {
     // `rolls.length` = 596.
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     // Folded into one array assertion so both scales report in a single run.
+    // ⚠ MOVED at #1310 (region-local parallel lanes). +1 unit opens and 2 units move
+    // off the leaf projection, so honoured rises and refused falls at both scales:
+    // 543/54 at ×2 against 542/55 at ×4. Each pair still sums to `rolls.length` = 597,
+    // and the ×2/×4 gap is still exactly ONE — the VIEW ceiling doing its job, which is
+    // the property this pin is really guarding.
     expect([honoured.get(2), refused.get(2), honoured.get(4), refused.get(4)]).toEqual([
-      540, 56, 539, 57,
+      543, 54, 542, 55,
     ])
   })
 

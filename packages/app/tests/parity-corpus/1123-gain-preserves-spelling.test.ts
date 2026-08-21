@@ -166,7 +166,12 @@ const rollSurface: Surface<PianoRollModel> = {
  * surfaces, so nothing was traded for it.
  */
 // ⚠ 972/541 -> 1012/593 at #1242 — the corpus widened 1535 -> 1633 units.
-const ASKED = { grid: 1012, roll: 593 }
+// ⚠ roll 593 -> 594 at #1310 (region-local parallel lanes): `parse.ts` uses the writer
+// as an admissibility oracle, so the widened writer lets one more roll unit into the
+// population — `[-7 2,<4 5 6>]*8`. The grid is untouched. `respelled` and `play-changed`
+// stay at 0 on both surfaces, which is this file's actual property: the arrival brought
+// asks, not a notation move.
+const ASKED = { grid: 1012, roll: 594 }
 
 describe('#1123 — a velocity drag leaves the notation alone', () => {
   it('grid', () => {

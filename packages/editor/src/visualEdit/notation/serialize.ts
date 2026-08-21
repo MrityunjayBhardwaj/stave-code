@@ -1933,9 +1933,13 @@ function toPlaced(notes: RollNote[]): PlacedGroup[] | null {
  * timing. So a region owning `w` columns must come back as exactly `w / div`
  * steps' worth of weight, or not at all.
  *
- * Returns null only when these notes truly can't be said in that space — a chord
- * whose members have different lengths (that needs parallel lanes, a restructure
- * of the whole line) or notes that overlap in time.
+ * Returns null only when these notes truly can't be said in that space — notes that
+ * overlap in time, or a width the step walk cannot tile.
+ *
+ * ⚠ A CHORD WHOSE MEMBERS HAVE DIFFERENT LENGTHS USED TO BE ON THAT LIST, described as
+ * needing "parallel lanes, a restructure of the whole line". The first half was right and
+ * the second half was too pessimistic: the lanes fit inside the region's OWN bracket, so
+ * `laneWrapRegion` below answers it without touching a byte outside the region (#1310).
  */
 function reemitRollRegion(
   notes: RollNote[],
@@ -1944,7 +1948,9 @@ function reemitRollRegion(
   div: number,
 ): string | null {
   const groups = toPlaced(notes)
-  if (groups === null) return null
+  // Same start, different lengths — one voice of a chord subdivided while its siblings
+  // hold. Not sayable as a single lane, so hand it to the parallel-lane form (#1310).
+  if (groups === null) return laneWrapRegion(notes, from, to, div)
   // "or not at all", said of the region's own span (#1092). Everything below walks
   // `c` forward one whole step at a time, so a region that is not a whole number of
   // steps wide — `c4@1.5` next to `~@0.5` — cannot be tiled by it: the walk emits a
@@ -2000,6 +2006,87 @@ function reemitRollRegion(
   }
   if (crossed) return groupWrapRegion(at, starts, from, to, div)
   return tokens.join(' ')
+}
+
+/**
+ * Re-emit a region as PARALLEL LANES inside its own bracket: `[c c ~ ~, [g,a,e4]@4]@2`.
+ *
+ * WHY THIS EXISTS (#1310). Place a note in a slot a refined view just opened, inside a
+ * chord, and one member of that chord is subdivided while its siblings hold. That model
+ * has two notes sharing a start with different lengths, which `toPlaced` cannot lane —
+ * and until this rung, the whole splice declined and the document was rebuilt end to end.
+ * The rebuild is what made the edit visible everywhere instead of where it happened.
+ *
+ * THE LANES FIT INSIDE THE REGION. Nothing outside `[from, to)` is consulted or emitted,
+ * so a splice that reaches here still puts back every byte the user did not edit. This is
+ * the same trio the whole-document writer uses — bucket by (start, duration), pack into
+ * non-overlapping lanes, emit each lane full width — run in region-local coordinates.
+ *
+ * ⚠ THE REGION'S WEIGHT IS THE INVARIANT, exactly as for `groupWrapRegion`: a region
+ * owning `w` columns comes back as `w / div` steps' worth or not at all, because a region
+ * handed back heavier re-divides the cycle and retimes neighbours the edit never touched.
+ * That is what the trailing `@steps` buys, and why a non-integer step count declines.
+ *
+ * ⚠ A SINGLE LANE IS NOT THIS FUNCTION'S BUSINESS. It declines below two lanes so the
+ * per-step and group-wrap forms above keep every case they already answer.
+ *
+ * ⚠⚠ AND THAT IS NOT A SAFETY PROOF, THOUGH IT LOOKS EXACTLY LIKE ONE. "It runs only
+ * where the previous rung returned null, so nothing that writes today can change shape"
+ * is the ladder argument every other widening here relies on, and it is TRUE of the bytes
+ * written FOR A GIVEN MODEL and FALSE of which models exist. The writer is also an
+ * ADMISSIBILITY ORACLE: `parse.ts:3507` refuses a view outright when the writer cannot
+ * reproduce the source, `parse.ts:3703` asks it per note, and `ifRollSpellable` gates
+ * every op. So widening the writer widens which EDITS are offered and which PROJECTION a
+ * document gets — reach, not spelling — and the ladder says nothing about that. It was
+ * asserted here from the ladder and the corpus refuted it.
+ *
+ * ⚠ A DATED MEASUREMENT, NOT A LIVE READING — same terms as the other write-path blocks.
+ * Taken when this landed (#1310, 2026-08-21), per-ask rather than as a tally, because a
+ * count cannot tell an admitted ask from a no-longer-posed one:
+ *
+ *   roll DELETE asks, refused -> written        7      of 5405
+ *   ...written -> refused                       0
+ *   ...admitted on both, bytes changed          3
+ *   units whose PROJECTION changed              2      leaf -> alt, leaf -> source
+ *   units the parser newly opens at all         1      `[-7 2,<4 5 6>]*8`
+ *   subdivide placements newly reached          3
+ *
+ * EVERY ONE OF THOSE WAS JUDGED, against the standard `delete-admissibility.test.ts`
+ * sets — a delete may remove haps of the pitch deleted and nothing else, and may never
+ * invent one: 7 of 7 new writes clean, 3 of 3 changed writes clean, and all 3 reprojected
+ * units still round-trip byte-identically, so leaving the leaf projection costs them no
+ * notation. The refusals that vanished were not needed: parallel lanes CAN say two things
+ * at once, which is the one thing the shared-leaf refusal exists because the old writer
+ * could not do.
+ */
+function laneWrapRegion(
+  notes: RollNote[],
+  from: number,
+  to: number,
+  div: number,
+): string | null {
+  const width = to - from
+  const steps = width / div
+  if (!Number.isInteger(steps) || steps < 1) return null
+  const byKey = new Map<string, PlacedGroup>()
+  for (const n of [...notes].sort((a, b) => a.start - b.start)) {
+    const start = n.start - from
+    if (start < 0 || n.duration < 1 || start + n.duration > width) return null
+    const key = `${start}:${n.duration}`
+    const g = byKey.get(key)
+    if (g) g.pitches.push(n.pitch)
+    else byKey.set(key, { pitches: [n.pitch], start, duration: n.duration })
+  }
+  const lanes = packLanes([...byKey.values()])
+  if (lanes.length < 2) return null
+  const strings: string[] = []
+  for (const lane of lanes) {
+    const s = laneString(lane, width)
+    if (s === null) return null
+    strings.push(s)
+  }
+  const body = `[${strings.join(', ')}]`
+  return steps === 1 ? body : `${body}@${steps}`
 }
 
 /**

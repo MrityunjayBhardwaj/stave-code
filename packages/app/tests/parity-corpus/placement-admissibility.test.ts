@@ -595,7 +595,13 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // ⚠ 57 -> 59 at #1242 — the corpus widened 1535 -> 1633 units
     // (98 arrivals, 0 departures): the harvest gained the product's own
     // resolver, so every figure here is over a wider population. Upward only.
-    expect(saidNo, 'rolls answering "places nothing"').toBe(59)
+    // ⚠ 59 -> 57 at #1310 (region-local parallel lanes). This is the PLACEMENT side of
+    // the same two units that left the leaf projection in `delete-admissibility` — a leaf
+    // roll refuses every placement, so a unit that stops needing the leaf projection stops
+    // answering "places nothing". The count fell because the refusals left with their
+    // units, not because a view that still refuses started claiming otherwise: the leak
+    // arm above is the check on that, and it is still empty over the same swept rows.
+    expect(saidNo, 'rolls answering "places nothing"').toBe(57)
     expect(rowsSwept, 'padded-range placements swept on them').toBeGreaterThan(1000)
   })
 
@@ -695,11 +701,18 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // asserted as ONE clause so every part carries its own denominator and a
     // later assertion cannot be skipped by an earlier failure
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633), every part upward and in proportion.
+    // ⚠ MOVED at #1310 (region-local parallel lanes), and every part moves for one of two
+    // reasons already established: `rolls` 597 -> 598 is the single unit the widened writer
+    // lets the parser open (`[-7 2,<4 5 6>]*8`), and `saidNothing` 59 -> 57 is the two
+    // units that left the leaf projection. `probeAsks` (+216) and `fullSurfaceAsks` (+768)
+    // are those three units' own cells arriving with them. The property this arm actually
+    // guards is UNMOVED: `disagreements` is still empty, so the cheap probe and the whole
+    // drawn surface still answer alike over the wider population.
     expect({ rolls, saidNothing, probeAsks, fullSurfaceAsks }).toEqual({
-      rolls: 597,
-      saidNothing: 59,
-      probeAsks: 46159,
-      fullSurfaceAsks: 134340,
+      rolls: 598,
+      saidNothing: 57,
+      probeAsks: 46375,
+      fullSurfaceAsks: 135108,
     })
   })
 })
