@@ -399,6 +399,32 @@ function rebuildGrid(model: StepGridModel): string | null {
  * of 934, because a placement into a column only the finer view has is precisely the
  * case `collapseStepGridToDocument` should decline.
  *
+ * ⚠⚠ AND EVERY FIGURE ABOVE IS SCOPED TO THE STEP GRID (#1309) — the same confusion a
+ * third time, and the one that survived longest, because the ROAD is named here and the
+ * SURFACE is not. All of it was posed of `parseStepGrid`, which refuses 282 corpus minis
+ * the piano roll opens; 244 movable units, 14.9% of the corpus, are outside every figure
+ * above BY CONSTRUCTION rather than by sampling, and a further 296 were seen by a grid
+ * probe asking a grid question of them.
+ *
+ * Asked of the roll in the same instrument shape, it answers the same — which is what
+ * licenses reading these as facts about the GESTURE rather than about the grid:
+ *
+ *                                          grid        roll
+ *   shipped road, docs >= 40 ...........   0.298       0.255
+ *   model rescale ......................   0.988       0.978
+ *   delete at the note's own span ......   0.036       0.036
+ *   left the element it had to touch ...   0 of 873    0 of 470
+ *   ÷k guard answered at document ......   0 of 934    0 of 538
+ *
+ * TWO DIFFERENCES THE AGREEMENT DOES NOT COVER, and neither is a defect claim. The model
+ * rescale REBUILDS all 539 roll units where on the grid it still splices 873 of 934, so
+ * that road destroys roll notation universally and grid notation only sometimes. And the
+ * spelling residue one level down is about twice as common: the write spreads beyond the
+ * atom it subdivides on 104 of 375 roll asks (27.7%) against 84 of 585 on the grid
+ * (14.4%). Measured by `_1309-roll-subdivide-route.spec.ts` and
+ * `_1309-roll-floor-and-witness.spec.ts`, with the denominator in
+ * `_roll-subdivide-denominator.spec.ts`.
+ *
  * ⚠ AND CHECK WHAT A CALL DOES BEFORE COUNTING IT. `serializeStepGain` also calls
  * `gridColumns` and is NOT authoring — it uses the result as a predicate (which
  * columns carry an audible gain) and never emits it. An edge to an emitter is not an
