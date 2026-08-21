@@ -358,9 +358,14 @@ describe('#1054 — document, layout and haps are three separate readings', () =
       units: 597,
       asks: 3770,
       coarsenSkipped: 1100,
-      'no-offer': 815,
+      // ⚠ MOVED at #1312 (per-bar lanes + the region ladder): six asks move from `no-offer`
+      // to `measured`, 815 -> 809 and 2955 -> 2961. They are the same six — the writer now
+      // has an answer where it previously had none — so `units` and `asks` do not move at
+      // all. `unwritable` stays ZERO, which is the arm that matters: the widening turned
+      // silence into measurements, not into failures.
+      'no-offer': 809,
       unwritable: 0,
-      measured: 2955,
+      measured: 2961,
       hapsUnevaluable: 0,
     })
     // A FINDING, not a prediction — this key was written expecting `[]` and the corpus
@@ -378,12 +383,18 @@ describe('#1054 — document, layout and haps are three separate readings', () =
     // roll needs less work than the grid here, and these 83 are the units where the two
     // worlds are already indistinguishable — which makes them a poor place to look for
     // Phase 4 regressions, and a good place to look for what the target feels like.
+    // ⚠ MOVED at #1312, and it is the SAME SIX ASKS the arm above records leaving
+    // `no-offer` for `measured` — they land 3 in `lossless (doc,layout,----)` and 3 in
+    // `quantize (doc,layout,haps)`, which is what makes these two arms one fact rather
+    // than two coincidences. The two triples that carry no document reading are unmoved,
+    // as they must be: this widening changed what the WRITER can say, so only asks with a
+    // document axis could move at all.
     expect(roll.triples).toEqual({
       'lossless (---,layout,----)': 92,
-      'lossless (doc,layout,----)': 1182,
+      'lossless (doc,layout,----)': 1185,
       'lossless (doc,layout,haps)': 87,
       'quantize (doc,layout,----)': 5,
-      'quantize (doc,layout,haps)': 1589,
+      'quantize (doc,layout,haps)': 1592,
     })
   })
 

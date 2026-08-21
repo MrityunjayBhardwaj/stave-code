@@ -82,8 +82,14 @@ export function ungatedPlace(
     ...model.notes.filter((n) => n.start > start).map((n) => n.start),
     model.steps,
   )
+  // The same-pitch scope is #1310's EDIT, not its gate, so the control arm carries it
+  // too — see the warning at the top of this file. Left unscoped, this would go on asking
+  // "would the writer have taken it?" about a model `placeNote` no longer builds, and the
+  // disagreement it reported would be its own staleness rather than a divergence.
   const notes = model.notes.map((n) =>
-    n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n,
+    n.pitch === pitch && n.start < start && n.start + n.duration > start
+      ? { ...n, duration: start - n.start }
+      : n,
   )
   notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) })
   return { ...model, notes }

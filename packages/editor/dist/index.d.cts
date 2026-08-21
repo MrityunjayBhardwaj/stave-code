@@ -9100,7 +9100,10 @@ declare function isBlackKey(midi: number): boolean;
  * tileable sequence (what the serializer requires). DAW-style resolution:
  *  - a group already at `start` → the note joins the chord, adopting its
  *    duration (chord members share one);
- *  - an earlier note sustaining across `start` → it trims to end at `start`;
+ *  - an earlier note OF THE SAME PITCH sustaining across `start` → it trims to end at
+ *    `start`. Other pitches sustaining through the column are left alone (#1310): they
+ *    are voices the gesture did not touch, and the region writer can now spell a chord
+ *    whose members have different lengths, so nothing forces them shorter;
  *  - the next group (or the grid end) caps the new note's duration.
  */
 declare function placeNote(model: PianoRollModel, pitch: string, start: number, duration: number): PianoRollModel;

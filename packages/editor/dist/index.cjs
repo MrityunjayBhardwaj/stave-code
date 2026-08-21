@@ -27159,8 +27159,9 @@ function serializePianoRollWithExtent(model) {
   const bars = model.bars ?? 1;
   if (bars > 1) {
     const groups = buildGroups(model);
-    if (groups === null) return { mini: null, extent: { path: "rebuild" } };
-    return { mini: rollBars(groups, model.steps, bars), extent: { path: "rebuild" } };
+    const flat = groups === null ? null : rollBars(groups, model.steps, bars);
+    if (flat !== null) return { mini: flat, extent: { path: "rebuild" } };
+    return { mini: rollBarLanes(model, bars), extent: { path: "rebuild" } };
   }
   return { mini: serializeRollLanes(model), extent: { path: "rebuild" } };
 }
@@ -27298,9 +27299,9 @@ function toPlaced(notes) {
   return [...byStart.values()];
 }
 __name(toPlaced, "toPlaced");
-function reemitRollRegion(notes, from, to, div) {
+function reemitRollRegionFlat(notes, from, to, div) {
   const groups = toPlaced(notes);
-  if (groups === null) return laneWrapRegion(notes, from, to, div);
+  if (groups === null) return null;
   if (columnSplit((to - from) / div).remainder > 0) return null;
   const at = new Map(groups.map((g) => [g.start, g]));
   const starts = groups.map((g) => g.start).sort((a, b) => a - b);
@@ -27342,6 +27343,12 @@ function reemitRollRegion(notes, from, to, div) {
   }
   if (crossed) return groupWrapRegion(at, starts, from, to, div);
   return tokens.join(" ");
+}
+__name(reemitRollRegionFlat, "reemitRollRegionFlat");
+function reemitRollRegion(notes, from, to, div) {
+  const flat = reemitRollRegionFlat(notes, from, to, div);
+  if (flat !== null) return flat;
+  return laneWrapRegion(notes, from, to, div);
 }
 __name(reemitRollRegion, "reemitRollRegion");
 function laneWrapRegion(notes, from, to, div) {
@@ -27492,6 +27499,56 @@ function rollBars(groups, steps, bars) {
   return `<${slots.join(" ")}>`;
 }
 __name(rollBars, "rollBars");
+function rollBarLanes(model, bars) {
+  const perBar2 = model.steps / bars;
+  if (!Number.isInteger(perBar2)) return null;
+  const E = 1e-9;
+  const notes = [...model.notes].sort((a, b2) => a.start - b2.start || a.duration - b2.duration);
+  for (const n of notes)
+    if (n.start < 0 || n.duration < 1 || n.start + n.duration > model.steps + E) return null;
+  const slots = [];
+  let b = 0;
+  while (b < bars) {
+    const barStart = b * perBar2;
+    const barEnd = barStart + perBar2;
+    const over = notes.filter((n) => n.start < barEnd - E && n.start + n.duration > barStart + E);
+    if (over.length === 0) {
+      slots.push("~");
+      b++;
+      continue;
+    }
+    if (over.every((n) => n.start > barStart - E && n.start + n.duration < barEnd + E)) {
+      const byKey = /* @__PURE__ */ new Map();
+      for (const n of over) {
+        const key2 = `${n.start - barStart}:${n.duration}`;
+        const g = byKey.get(key2);
+        if (g) g.pitches.push(n.pitch);
+        else byKey.set(key2, { pitches: [n.pitch], start: n.start - barStart, duration: n.duration });
+      }
+      const strings = [];
+      for (const lane of packLanes([...byKey.values()])) {
+        const str = laneString(lane, perBar2);
+        if (str === null) return null;
+        strings.push(str);
+      }
+      slots.push(`[${strings.join(", ")}]`);
+      b++;
+      continue;
+    }
+    const held = over.filter((n) => Math.abs(n.start - barStart) < E);
+    if (held.length === 0 || held.length !== over.length) return null;
+    const dur = held[0].duration;
+    if (held.some((n) => Math.abs(n.duration - dur) > E)) return null;
+    const k = dur / perBar2;
+    if (!Number.isInteger(k) || k < 1) return null;
+    if (notes.some((n) => n.start > barStart + E && n.start < barStart + dur - E)) return null;
+    const body = groupBody({ pitches: held.map((n) => n.pitch), duration: dur });
+    slots.push(k === 1 ? body : `${body}@${k}`);
+    b += k;
+  }
+  return `<${slots.join(" ")}>`;
+}
+__name(rollBarLanes, "rollBarLanes");
 function serializeRollGain(model) {
   if (model.gainForeign) return { kind: "skip" };
   if (model.leafSource) return { kind: "skip" };
@@ -29830,7 +29887,7 @@ function placeNote(model, pitch, start, duration) {
     model.steps
   );
   const notes = model.notes.map(
-    (n) => n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
+    (n) => n.pitch === pitch && n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
   );
   notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
   return ifRollSpellable(model, { ...model, notes });

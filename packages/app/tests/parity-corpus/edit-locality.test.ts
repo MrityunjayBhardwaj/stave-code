@@ -719,20 +719,39 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
   })
 
   /**
-   * Fractional columns (`@2.5` / `@3.5`, #628) don't sit on the integer grid the
-   * writer re-emits onto. An UNEDITED such pattern still round-trips by copying
-   * its own bytes; an EDITED one must decline to `null` — the panel then keeps
-   * the document untouched (the #628 no-op), NEVER a rebuild that drops the note.
-   * Before this guard, deleting a note wrote `<~ ~>` and lost the other.
+   * Fractional columns (`@2.5` / `@3.5`, #628) don't sit on the integer grid the OLD
+   * per-step walk re-emitted onto, so an edited pattern declined to `null` and the panel
+   * kept the document untouched. The refusal existed to prevent a specific harm, stated
+   * here when it was written: before it, deleting a note wrote `<~ ~>` and LOST the other.
+   *
+   * ⚠ THE HARM IS NOW UNREACHABLE, so the refusal became a write at #1312 — and this arm
+   * asserts the write rather than being deleted, because "it stopped refusing" and "it
+   * still keeps the survivor" are different claims and only the second one matters.
+   * Lane emission measures every gap from the group's own start and spells the remainder
+   * as a weighted rest (`~@0.5`), so a fractional bar is expressible after all.
+   *
+   * VERIFIED AGAINST THE ENGINE, not against the bytes: the surviving `d2` plays at
+   * 2.4375 for 0.25 both before and after the delete — nothing dropped, nothing invented.
+   * That is the property the old `toBeNull()` was standing in for.
    */
-  it('roll: an edit on a fractional-weight pattern no-ops (null), never drops a note', () => {
+  it('roll: an edit on a fractional-weight pattern keeps the survivor, never drops a note', () => {
     const src = '<~ [~@3.5 d2@2 c#2@2.5]>'
     const r = parsePianoRoll(src)
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(serializePianoRoll(r.model)).toBe(src) // unedited: round-trips
     const last = r.model.notes[r.model.notes.length - 1]
+    expect(last.pitch, 'the note being deleted').toBe('c#2')
     const deleted = { ...r.model, notes: r.model.notes.filter((n) => n !== last) }
-    expect(serializePianoRoll(deleted)).toBeNull() // edited: safe no-op
+    const out = serializePianoRoll(deleted)
+    // the deleted voice is gone and the survivor is still at 3.5 for 2 in an 8-weight bar
+    expect(out).toBe('<~ [~ ~ ~ ~@0.5 d2@2 ~ ~ ~@0.5]>')
+    expect(out).not.toContain('c#2')
+    const back = parsePianoRoll(out!)
+    expect(back.ok).toBe(true)
+    if (!back.ok) return
+    expect(back.model.notes.map((n) => `${n.pitch}@${n.start}+${n.duration}`)).toEqual([
+      'd2@11.5+2',
+    ])
   })
 })

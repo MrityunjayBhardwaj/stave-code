@@ -401,8 +401,15 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
             if (next === m) continue
             if (m.notes.some((n) => n.start === step)) { joinedAChord++; continue }
             rollChecks++
+            // ⚠ SCOPED TO THE PITCH at #1310, mirroring the grid arm above, which has
+            // always scoped to the `,`-part. This asked about notes of EVERY pitch and so
+            // asserted the roll's old rule: that placing a note cuts whatever was sounding
+            // through the column. It no longer does, deliberately — a pitch the gesture
+            // did not touch is a voice the user did not touch. What survives, and is still
+            // checked here, is that nothing OF THE PLACED PITCH sustains across its own
+            // new onset, which would be two onsets of one voice inside one span.
             for (const n of next.notes)
-              if (n.start < step && n.start + n.duration > step + 1e-6 && violations.length < 8)
+              if (n.pitch === pitch && n.start < step && n.start + n.duration > step + 1e-6 && violations.length < 8)
                 violations.push(`roll ${JSON.stringify(mini)} pitch=${pitch} step=${step} sustain@${n.start}`)
           }
       }
@@ -601,7 +608,11 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // answering "places nothing". The count fell because the refusals left with their
     // units, not because a view that still refuses started claiming otherwise: the leak
     // arm above is the check on that, and it is still empty over the same swept rows.
-    expect(saidNo, 'rolls answering "places nothing"').toBe(57)
+    // ⚠ 57 -> 56 at #1312 (per-bar lanes + the region ladder catching EVERY null): one
+    // more view can place somewhere, so it stops answering "places nothing". The leak arm
+    // above is the check that this is a real gain rather than a view that still refuses
+    // claiming otherwise, and it is still empty over the same swept rows.
+    expect(saidNo, 'rolls answering "places nothing"').toBe(56)
     expect(rowsSwept, 'padded-range placements swept on them').toBeGreaterThan(1000)
   })
 
@@ -710,7 +721,10 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // drawn surface still answer alike over the wider population.
     expect({ rolls, saidNothing, probeAsks, fullSurfaceAsks }).toEqual({
       rolls: 598,
-      saidNothing: 57,
+      // ⚠ 57 -> 56 at #1312 — the same single view as the arm above, seen from the probe
+      // side. `rolls`, `probeAsks` and `fullSurfaceAsks` are UNMOVED: this widening opened
+      // no new document, it only let an existing one accept a placement.
+      saidNothing: 56,
       probeAsks: 46375,
       fullSurfaceAsks: 135108,
     })

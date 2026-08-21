@@ -450,6 +450,12 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // (`<[c3, [eb5, eb6, f7] [bb6 d7]] …>`) lands here with its 12 asks. `refused` is
     // UNMOVED at 31 — the widening brought asks to this path and not one new refusal,
     // so the roll's non-leaf residue is the same branch it was, over a wider population.
-    expect({ asks: rs.asks, refused: rs.refused }).toEqual({ asks: 3968, refused: 31 })
+    // ⚠ 31 -> 29 at #1312, and `asks` is UNMOVED at 3968 — the population is identical and
+    // exactly two asks moved from refused to written. Both are on `<~ [~@3.5 d2@2 c#2@2.5]>`,
+    // whose fractional bar the per-bar lane form can now spell with weighted rests. Both
+    // were judged against this file's own standard by a per-ask diff across the two builds:
+    // 2 of 2 remove haps of the deleted pitch and touch nothing else, 0 went written ->
+    // refused, and 0 of the previously written deletes changed a single byte.
+    expect({ asks: rs.asks, refused: rs.refused }).toEqual({ asks: 3968, refused: 29 })
   })
 })
