@@ -65,6 +65,8 @@ import { resizeRoll } from '../../../editor/src/visualEdit/notation/resize'
 // one (#1048).
 import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
 import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { enginePlayedCycle } from './engineEditOracle'
+import { truePeriod } from './enginePeriod'
 import type {
   PianoRollModel,
   RollNote,
@@ -753,5 +755,28 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
     expect(back.model.notes.map((n) => `${n.pitch}@${n.start}+${n.duration}`)).toEqual([
       'd2@11.5+2',
     ])
+
+    // ⚠ AND THE CLAIM THAT ACTUALLY JUSTIFIES THE WRITE, asked of the ENGINE. The two
+    // round-trips above prove OUR parser agrees with itself; they cannot prove Strudel
+    // does, and the rewrite changes the string Strudel evaluates. So query the haps.
+    //
+    // ⚠ ASK THE PERIOD FIRST. This document is a two-slot `<...>`, so cycle 0 is silent
+    // and every note lives in cycle 1 — a one-cycle window would report NOTHING for both
+    // spellings and read as a clean pass while proving nothing at all.
+    const period = truePeriod(src)
+    expect(period, 'the window has to cover the document').toBe(2)
+    expect(truePeriod(out!), 'the rewrite must not change the period').toBe(period)
+    const hapsOf = (m: string, c: number) =>
+      (enginePlayedCycle(m, c) ?? []).map((r) => `${r.atom}@${r.pos}+${r.dur}`)
+    for (const c of [0, 1]) {
+      const before = hapsOf(src, c)
+      const after = hapsOf(out!, c)
+      // the survivor is untouched: same pitch, same onset, same length, same cycle
+      expect(after, `cycle ${c}: nothing invented, survivor unmoved`).toEqual(
+        before.filter((h) => !h.startsWith('c#2@')),
+      )
+    }
+    expect(hapsOf(src, 1)).toEqual(['d2@1.4375+0.25', 'c#2@1.6875+0.3125'])
+    expect(hapsOf(out!, 1)).toEqual(['d2@1.4375+0.25'])
   })
 })

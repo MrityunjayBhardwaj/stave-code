@@ -237,8 +237,19 @@ export function toggleCell(
 /**
  * Insert a note into a roll, resolving overlaps so the result stays a flat,
  * tileable sequence (what the serializer requires). DAW-style resolution:
- *  - a group already at `start` → the note joins the chord, adopting its
- *    duration (chord members share one);
+ *  - a group already at `start` → the note joins the chord, adopting its duration.
+ *    ⚠ THAT IS A PRODUCT RULING, NOT A WRITER CONSTRAINT, and the distinction is the
+ *    one #1310 was about. "Chord members share one duration" was true of what this
+ *    file could SPELL, and since the region writer learned parallel lanes it is not:
+ *    `[g3@2 ~ ~, [c3,e3]@4]` says a chord whose members differ, and round-trips. So
+ *    honouring a different requested length is available and we decline it — adding a
+ *    voice to a chord is a gesture that shares the chord's length, and the compact
+ *    spelling is the one the user wrote. Chosen, not forced;
+ *    ⚠ where the notes at `start` DISAGREE about their length there is no single
+ *    duration to adopt, and today the answer is whichever note the array holds first.
+ *    That is live and pre-existing — 856 asks over the corpus reach such a start — and
+ *    it is #1314, to be fixed with #1315 since both change what the writer is asked to
+ *    spell and need one reach measurement between them;
  *  - an earlier note OF THE SAME PITCH sustaining across `start` → it trims to end at
  *    `start`. Other pitches sustaining through the column are left alone (#1310): they
  *    are voices the gesture did not touch, and the region writer can now spell a chord
