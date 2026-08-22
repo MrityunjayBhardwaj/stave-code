@@ -1035,11 +1035,23 @@ export function sequentialColumnGroups(notes: RollNote[], col: number): ColumnGr
  * always going to accept: a silent musical change with no notational need, which
  * is the one thing this op must not do.
  *
- * This SHORTENS A DIFFERENT SOUND'S NOTE, and that is the deliberate product
- * ruling behind phase 2 rather than a side effect: uniformly, on both surfaces,
- * without conditioning on whether the shortening is audible. The piano roll's
- * `placeNote` has always resolved across pitches this way; the grid resolving
- * over a narrower scope than its sibling was the defect.
+ * This SHORTENS A DIFFERENT SOUND'S NOTE, and that is a deliberate product ruling
+ * rather than a side effect — but the reason is the WRITER, not symmetry. Within a
+ * part the columns are serialized together, so a `_` sustaining in one lane really
+ * does occupy the column another lane's onset needs. The shortening is the price of
+ * writing the edit down at all.
+ *
+ * ⚠ THE RULING WAS ONCE STATED AS UNIFORM ACROSS BOTH SURFACES, on the grounds that
+ * the roll's `placeNote` "has always resolved across pitches this way" — and #1310
+ * withdrew that half. The roll's trim was never forced by a writer constraint the way
+ * this one is; it merely looked identical. A roll chord lives inside ONE part, and
+ * once the region writer learned parallel lanes it could spell members of different
+ * lengths, so trimming the siblings bought nothing and changed voices the user never
+ * touched — 61 of 541 placements, measured. The roll now trims same-pitch only.
+ *
+ * What survives, and is the real principle: each surface resolves over exactly the
+ * scope ITS writer forces, and neither trims for taste. The scopes differ because the
+ * constraints differ, not because one surface is behind the other.
  *
  * Still only a WIDENING, never a promise. Anything it cannot make spellable —
  * a trim that lands on a fraction of the part's own coarser grid, a `_` with

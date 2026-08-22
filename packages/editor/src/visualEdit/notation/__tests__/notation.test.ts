@@ -855,10 +855,22 @@ describe('piano roll — bare note names (#467)', () => {
 })
 
 describe('placeNote', () => {
-  it('trims an earlier sustaining note', () => {
+  it('trims an earlier sustaining note OF THE SAME PITCH', () => {
+    const model: PianoRollModel = { steps: 4, notes: [{ pitch: 'c3', start: 0, duration: 4 }] }
+    const next = placeNote(model, 'c3', 2, 2)
+    const [held, placed] = [...next.notes].sort((a, b) => a.start - b.start)
+    expect(held).toEqual({ pitch: 'c3', start: 0, duration: 2 })
+    expect(placed).toEqual({ pitch: 'c3', start: 2, duration: 2 })
+  })
+  // ⚠ THIS ASSERTED THE OPPOSITE UNTIL #1310, and it was the only trim case in the file —
+  // it placed `e3` over a sustaining `c3` and required the `c3` to be cut. A pitch the
+  // gesture never touched is a voice the user never touched; cutting it changes what the
+  // document plays away from where the click landed. Measured on the corpus before the
+  // rule changed: 61 of 541 placements did this, trimming 128 collateral notes.
+  it('leaves a DIFFERENT pitch sustaining through the column alone', () => {
     const model: PianoRollModel = { steps: 4, notes: [{ pitch: 'c3', start: 0, duration: 4 }] }
     const next = placeNote(model, 'e3', 2, 2)
-    expect(next.notes.find((n) => n.pitch === 'c3')!.duration).toBe(2)
+    expect(next.notes.find((n) => n.pitch === 'c3')!.duration).toBe(4)
     expect(next.notes.find((n) => n.pitch === 'e3')).toEqual({ pitch: 'e3', start: 2, duration: 2 })
   })
   it('joins a chord at the same start, adopting its duration', () => {

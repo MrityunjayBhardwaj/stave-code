@@ -1638,11 +1638,15 @@ export function serializePianoRollWithExtent(model: PianoRollModel): {
 
   const bars = model.bars ?? 1
   if (bars > 1) {
-    // Multi-bar `<...>` keeps the shared-duration chord path (parallel lanes are
-    // single-bar only for now, #628): chord members must share a duration there.
+    // Multi-bar `<...>` takes the shared-duration chord path FIRST, so every document
+    // that writes today keeps its exact bytes. Where that has no answer — overlap inside
+    // a bar, or a chord whose members differ in length — the bar slots carry parallel
+    // lanes instead (#1312). `rollBarLanes` declines the cross-bar case, which needs
+    // lanes at the document level and is not attempted.
     const groups = buildGroups(model)
-    if (groups === null) return { mini: null, extent: { path: 'rebuild' } }
-    return { mini: rollBars(groups, model.steps, bars), extent: { path: 'rebuild' } }
+    const flat = groups === null ? null : rollBars(groups, model.steps, bars)
+    if (flat !== null) return { mini: flat, extent: { path: 'rebuild' } }
+    return { mini: rollBarLanes(model, bars), extent: { path: 'rebuild' } }
   }
   return { mini: serializeRollLanes(model), extent: { path: 'rebuild' } }
 }
@@ -1933,17 +1937,30 @@ function toPlaced(notes: RollNote[]): PlacedGroup[] | null {
  * timing. So a region owning `w` columns must come back as exactly `w / div`
  * steps' worth of weight, or not at all.
  *
- * Returns null only when these notes truly can't be said in that space — a chord
- * whose members have different lengths (that needs parallel lanes, a restructure
- * of the whole line) or notes that overlap in time.
+ * Returns null only when these notes truly can't be said in that space — notes that
+ * overlap in time, or a width the step walk cannot tile.
+ *
+ * ⚠ A CHORD WHOSE MEMBERS HAVE DIFFERENT LENGTHS USED TO BE ON THAT LIST, described as
+ * needing "parallel lanes, a restructure of the whole line". The first half was right and
+ * the second half was too pessimistic: the lanes fit inside the region's OWN bracket, so
+ * `laneWrapRegion` below answers it without touching a byte outside the region (#1310).
  */
-function reemitRollRegion(
+/**
+ * The region as ONE lane — the shape the user most likely wrote, and the rung that must
+ * answer first so every document that writes today keeps its exact bytes.
+ *
+ * Every `null` here means "this region has two things sounding at once, or a width this
+ * walk cannot tile". The caller turns that into a parallel-lane attempt (#1312).
+ */
+function reemitRollRegionFlat(
   notes: RollNote[],
   from: number,
   to: number,
   div: number,
 ): string | null {
   const groups = toPlaced(notes)
+  // Same start, different lengths — one voice of a chord subdivided while its siblings
+  // hold. Not sayable as a single lane (#1310).
   if (groups === null) return null
   // "or not at all", said of the region's own span (#1092). Everything below walks
   // `c` forward one whole step at a time, so a region that is not a whole number of
@@ -2000,6 +2017,114 @@ function reemitRollRegion(
   }
   if (crossed) return groupWrapRegion(at, starts, from, to, div)
   return tokens.join(' ')
+}
+
+/**
+ * Re-emit one changed region: the single-lane form if it can be said that way, parallel
+ * lanes otherwise.
+ *
+ * ⚠ THE ORDER IS THE SAFETY ARGUMENT for the bytes. The flat walk runs first and is
+ * untouched, so a region that writes today writes exactly what it wrote before; lanes are
+ * an answer to regions that previously had none.
+ *
+ * ⚠ IT WAS NOT ENOUGH TO CATCH ONLY `toPlaced`'s null, which is what #1310 first did.
+ * That covers one overlap shape — same start, different lengths — and misses the other:
+ * notes at DIFFERENT starts whose spans cross, which sails past `toPlaced` and dies later
+ * in the walk at `starts.some(s => s > c && s < end)`. Measured, the miss was 87% of the
+ * remaining refusals: the `<...>`-as-element writer reaches this function for every bar
+ * it re-emits, and a held note with another starting inside it is its commonest shape.
+ * Routing EVERY null here, rather than one named one, is what makes the rung complete.
+ */
+function reemitRollRegion(
+  notes: RollNote[],
+  from: number,
+  to: number,
+  div: number,
+): string | null {
+  const flat = reemitRollRegionFlat(notes, from, to, div)
+  if (flat !== null) return flat
+  return laneWrapRegion(notes, from, to, div)
+}
+
+/**
+ * Re-emit a region as PARALLEL LANES inside its own bracket: `[c c ~ ~, [g,a,e4]@4]@2`.
+ *
+ * WHY THIS EXISTS (#1310). Place a note in a slot a refined view just opened, inside a
+ * chord, and one member of that chord is subdivided while its siblings hold. That model
+ * has two notes sharing a start with different lengths, which `toPlaced` cannot lane —
+ * and until this rung, the whole splice declined and the document was rebuilt end to end.
+ * The rebuild is what made the edit visible everywhere instead of where it happened.
+ *
+ * THE LANES FIT INSIDE THE REGION. Nothing outside `[from, to)` is consulted or emitted,
+ * so a splice that reaches here still puts back every byte the user did not edit. This is
+ * the same trio the whole-document writer uses — bucket by (start, duration), pack into
+ * non-overlapping lanes, emit each lane full width — run in region-local coordinates.
+ *
+ * ⚠ THE REGION'S WEIGHT IS THE INVARIANT, exactly as for `groupWrapRegion`: a region
+ * owning `w` columns comes back as `w / div` steps' worth or not at all, because a region
+ * handed back heavier re-divides the cycle and retimes neighbours the edit never touched.
+ * That is what the trailing `@steps` buys, and why a non-integer step count declines.
+ *
+ * ⚠ A SINGLE LANE IS NOT THIS FUNCTION'S BUSINESS. It declines below two lanes so the
+ * per-step and group-wrap forms above keep every case they already answer.
+ *
+ * ⚠⚠ AND THAT IS NOT A SAFETY PROOF, THOUGH IT LOOKS EXACTLY LIKE ONE. "It runs only
+ * where the previous rung returned null, so nothing that writes today can change shape"
+ * is the ladder argument every other widening here relies on, and it is TRUE of the bytes
+ * written FOR A GIVEN MODEL and FALSE of which models exist. The writer is also an
+ * ADMISSIBILITY ORACLE: `parse.ts:3507` refuses a view outright when the writer cannot
+ * reproduce the source, `parse.ts:3703` asks it per note, and `ifRollSpellable` gates
+ * every op. So widening the writer widens which EDITS are offered and which PROJECTION a
+ * document gets — reach, not spelling — and the ladder says nothing about that. It was
+ * asserted here from the ladder and the corpus refuted it.
+ *
+ * ⚠ A DATED MEASUREMENT, NOT A LIVE READING — same terms as the other write-path blocks.
+ * Taken when this landed (#1310, 2026-08-21), per-ask rather than as a tally, because a
+ * count cannot tell an admitted ask from a no-longer-posed one:
+ *
+ *   roll DELETE asks, refused -> written        7      of 5405
+ *   ...written -> refused                       0
+ *   ...admitted on both, bytes changed          3
+ *   units whose PROJECTION changed              2      leaf -> alt, leaf -> source
+ *   units the parser newly opens at all         1      `[-7 2,<4 5 6>]*8`
+ *   subdivide placements newly reached          3
+ *
+ * EVERY ONE OF THOSE WAS JUDGED, against the standard `delete-admissibility.test.ts`
+ * sets — a delete may remove haps of the pitch deleted and nothing else, and may never
+ * invent one: 7 of 7 new writes clean, 3 of 3 changed writes clean, and all 3 reprojected
+ * units still round-trip byte-identically, so leaving the leaf projection costs them no
+ * notation. The refusals that vanished were not needed: parallel lanes CAN say two things
+ * at once, which is the one thing the shared-leaf refusal exists because the old writer
+ * could not do.
+ */
+function laneWrapRegion(
+  notes: RollNote[],
+  from: number,
+  to: number,
+  div: number,
+): string | null {
+  const width = to - from
+  const steps = width / div
+  if (!Number.isInteger(steps) || steps < 1) return null
+  const byKey = new Map<string, PlacedGroup>()
+  for (const n of [...notes].sort((a, b) => a.start - b.start)) {
+    const start = n.start - from
+    if (start < 0 || n.duration < 1 || start + n.duration > width) return null
+    const key = `${start}:${n.duration}`
+    const g = byKey.get(key)
+    if (g) g.pitches.push(n.pitch)
+    else byKey.set(key, { pitches: [n.pitch], start, duration: n.duration })
+  }
+  const lanes = packLanes([...byKey.values()])
+  if (lanes.length < 2) return null
+  const strings: string[] = []
+  for (const lane of lanes) {
+    const s = laneString(lane, width)
+    if (s === null) return null
+    strings.push(s)
+  }
+  const body = `[${strings.join(', ')}]`
+  return steps === 1 ? body : `${body}@${steps}`
 }
 
 /**
@@ -2184,6 +2309,95 @@ function rollBars(groups: Map<number, Group>, steps: number, bars: number): stri
     if (consumed !== starts.filter((s) => s >= barStart && s < barEnd).length) return null
     slots.push(tokens.every((t) => t === '~') ? '~' : `[${tokens.join(' ')}]`)
     b++
+  }
+  return `<${slots.join(' ')}>`
+}
+
+/**
+ * Re-emit a MULTI-BAR roll with PARALLEL LANES INSIDE EACH BAR: `<[c3 ~, e3@2] d3>`.
+ *
+ * WHY THIS EXISTS (#1312). `rollBars` above walks each bar as ONE flat lane, so any two
+ * notes sounding together inside a bar make it return null — and because the multi-bar
+ * path buckets by START ALONE (`buildGroups`), a chord whose members differ in length
+ * dies one step earlier still. Neither is a limit of the notation: `<[c3 ~, e3@2] d3>`
+ * parses, opens on the roll, and round-trips byte-identically today. It is a limit of
+ * this file, and it cost 4,464 placements once `placeNote` stopped trimming notes at
+ * pitches the user never touched (#1310).
+ *
+ * ⚠ EVERY NOTE MUST FIT INSIDE ONE BAR. A note held across a bar line with another
+ * starting inside it cannot be said this way — it needs lanes at the DOCUMENT level,
+ * `<a b c>, <~ d ~>`, which is a different shape and is NOT attempted here. Measured on
+ * the corpus, that residue is 340 asks against the 4,464 this answers. A note that
+ * crosses a bar line PARTWAY has no spelling at all, and the corpus holds none.
+ *
+ * ⚠ THIS IS A RUNG, and the rung below it is the whole of `rollBars`. It is reached only
+ * where the flat walk already returned null, so every multi-bar document that writes
+ * today writes exactly the bytes it wrote before — the lanes are an answer to questions
+ * that previously had none.
+ *
+ * ⚠⚠ AND THAT IS NOT A SAFETY PROOF ON ITS OWN, for the reason this file now records in
+ * `laneWrapRegion`: the writer is also an ADMISSIBILITY ORACLE (`parse.ts:3507`, `:3703`,
+ * `ifRollSpellable`), so spelling more means ADMITTING more — different documents open,
+ * different projections, different edits offered. The ladder argument covers the bytes
+ * for a given model and says nothing about which models exist. Reach has to be measured
+ * per ask across both builds, and every newly admitted ask judged against the standard
+ * the refusal itself states.
+ */
+function rollBarLanes(model: PianoRollModel, bars: number): string | null {
+  const perBar = model.steps / bars
+  if (!Number.isInteger(perBar)) return null
+  const E = 1e-9
+  const notes = [...model.notes].sort((a, b) => a.start - b.start || a.duration - b.duration)
+  for (const n of notes)
+    if (n.start < 0 || n.duration < 1 || n.start + n.duration > model.steps + E) return null
+
+  const slots: string[] = []
+  let b = 0
+  while (b < bars) {
+    const barStart = b * perBar
+    const barEnd = barStart + perBar
+    const over = notes.filter((n) => n.start < barEnd - E && n.start + n.duration > barStart + E)
+    if (over.length === 0) {
+      slots.push('~')
+      b++
+      continue
+    }
+
+    // Everything here fits inside this bar → pack it into lanes. A bar holding one
+    // voice packs to ONE lane and reads exactly like the flat form.
+    if (over.every((n) => n.start > barStart - E && n.start + n.duration < barEnd + E)) {
+      const byKey = new Map<string, PlacedGroup>()
+      for (const n of over) {
+        const key = `${n.start - barStart}:${n.duration}`
+        const g = byKey.get(key)
+        if (g) g.pitches.push(n.pitch)
+        else byKey.set(key, { pitches: [n.pitch], start: n.start - barStart, duration: n.duration })
+      }
+      const strings: string[] = []
+      for (const lane of packLanes([...byKey.values()])) {
+        const str = laneString(lane, perBar)
+        if (str === null) return null
+        strings.push(str)
+      }
+      slots.push(`[${strings.join(', ')}]`)
+      b++
+      continue
+    }
+
+    // Otherwise the bar is covered by a group HELD across whole bars from this boundary.
+    // That is `rollBars`'s bare `@k` slot and it survives here unchanged — but only when
+    // the held voices are alone in their span. A note starting inside the hold needs
+    // lanes at the DOCUMENT level (`<a b c>, <~ d ~>`), which this rung does not attempt.
+    const held = over.filter((n) => Math.abs(n.start - barStart) < E)
+    if (held.length === 0 || held.length !== over.length) return null
+    const dur = held[0].duration
+    if (held.some((n) => Math.abs(n.duration - dur) > E)) return null
+    const k = dur / perBar
+    if (!Number.isInteger(k) || k < 1) return null
+    if (notes.some((n) => n.start > barStart + E && n.start < barStart + dur - E)) return null
+    const body = groupBody({ pitches: held.map((n) => n.pitch), duration: dur })
+    slots.push(k === 1 ? body : `${body}@${k}`)
+    b += k
   }
   return `<${slots.join(' ')}>`
 }

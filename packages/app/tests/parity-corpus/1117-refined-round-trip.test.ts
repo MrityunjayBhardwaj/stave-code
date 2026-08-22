@@ -401,8 +401,18 @@ const GRID_PINS: Record<string, [number, number, number]> = {
   element: [781, 780, 0],
 }
 const ROLL_PINS: Record<string, [number, number, number]> = {
-  'alt-element': [56, 39, 0],
-  'alt-whole': [105, 54, 2],
+  // ⚠ MOVED at #1310 (region-local parallel lanes). The two units that stopped needing
+  // the leaf projection land in `alt-element` (56 -> 58) and the one unit the parser
+  // newly opens lands in `alt-whole` (105 -> 106). The `alt-element` residual goes
+  // 0 -> 1: one of the arrivals is a placement admissible at one scale and refused at
+  // the other, which is the FIRST of the three residual causes this file already
+  // records below — an arrival carrying a known category, not a new one.
+  // ⚠ MOVED at #1312: 39 -> 40 compared, and the residual 1 -> 0. The unit that used to
+  // sit in the residual is a placement admissible at one scale and refused at the other —
+  // it is now admissible at BOTH, so it leaves the residue by being answered rather than
+  // by being excluded. `alt-whole` and `element` are untouched.
+  'alt-element': [58, 40, 0],
+  'alt-whole': [106, 54, 2],
   element: [379, 136, 2],
 }
 /*

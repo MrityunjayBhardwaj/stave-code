@@ -308,10 +308,20 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // this PR: +2 units carry +82 asks and +81 refusals, because the newly admitted
     // melodic strings are long multi-cycle chord charts where one token backs many
     // columns — exactly the shape this arm is about. The rate goes 50% -> 56%.
+    // ⚠ MOVED at #1310 (region-local parallel lanes). The roll writer can now spell a
+    // region whose same-start notes have different lengths, and `parse.ts` uses the
+    // writer as an ADMISSIBILITY ORACLE — so this moves REACH, not spelling: 2 units no
+    // longer need the leaf projection (56 -> 54) and take their 24 asks with them
+    // (659 -> 635), carrying 7 refusals (369 -> 362). Judged per ask rather than by
+    // tally, because 7 fewer refusals reads identically whether asks were admitted or
+    // stopped being posed: 0 asks went written -> refused, and the 7 newly written
+    // deletes each remove haps of the deleted pitch only and invent none. The refusal
+    // was not needed — parallel lanes CAN say two things at once, which is the one
+    // thing the old writer could not do and the whole reason this branch refuses.
     expect({ units: t.units, asks: t.asks, refused: t.refused }).toEqual({
-      units: 56,
-      asks: 659,
-      refused: 369,
+      units: 54,
+      asks: 635,
+      refused: 362,
     })
   })
 
@@ -328,7 +338,12 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // ⚠ 275/288 -> 285/369 at #1242, and this is the load-bearing half: recomputed
     // from the SOURCE without consulting the writer, it still equals the writer's own
     // refusal count on both surfaces. The widening added asks, not a new branch.
-    expect({ grid: g.refusedShared, roll: r.refusedShared }).toEqual({ grid: 285, roll: 369 })
+    // ⚠ MOVED at #1310, and this arm is why the move is readable rather than alarming:
+    // recomputed from the SOURCE without consulting the writer, it STILL equals the
+    // writer's own count (362). The 7 that vanished left with their units, so no new
+    // refusal branch appeared — had the writer started guessing inside the population,
+    // these two numbers would have parted.
+    expect({ grid: g.refusedShared, roll: r.refusedShared }).toEqual({ grid: 285, roll: 362 })
   })
 
   it('GRID: sharing is not merely necessary but SUFFICIENT — an exact iff, no residue', () => {
@@ -394,7 +409,11 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // essentially unchanged on the grid (77/300 -> 81/306, a fifth either way) and
     // FALLS on the roll (72/303 -> 90/506, 19% -> 15%) — the new material is more
     // enclosing-multiplier, not less, so "keep refusing" reads stronger, not weaker.
-    expect(split).toEqual({ gridOn: 81, gridOff: 306, rollOn: 90, rollOff: 506 })
+    // ⚠ MOVED at #1310: the roll loses 3 on-token and 4 off-token shares with the 2
+    // units that left the leaf projection (90/506 -> 87/502). The ratio the design call
+    // rests on is unmoved at 15%, and the grid is untouched — this widening is the
+    // roll writer's alone.
+    expect(split).toEqual({ gridOn: 81, gridOff: 306, rollOn: 87, rollOff: 502 })
   })
 
   it('POSITIVE CONTROL — the non-leaf paths take the same gesture', () => {
@@ -414,14 +433,29 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
       // is what this control exists to show: the widening added asks to the accepting
       // paths too, so the leaf refusal rate above is not an artefact of a shrinking
       // positive control.
+      // ⚠ rollAlt MOVED at #1310: 790 -> 874. Two units arrive here — one that stopped
+      // needing the leaf projection (`4 ~ ~ <6!3 [6,8 9 10 12]>`) and the one the parser
+      // newly opens (`[-7 2,<4 5 6>]*8`) — and `refused` stays ZERO. The accepting paths
+      // grew by exactly what the refusing path shed, which is the shape this control
+      // exists to make visible. The third mover went to `source`, pinned below.
       gridSource: { asks: 4443, refused: 0 },
       gridAlt: { asks: 619, refused: 0 },
-      rollAlt: { asks: 790, refused: 0 },
+      rollAlt: { asks: 874, refused: 0 },
     })
     // The roll's `source` path refuses a little, and it is NOT this issue's branch —
     // these sit outside both leaf splicers. Pinned here so the residue has a number
     // instead of hiding inside a "non-leaf accepts everything" claim that is false.
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    expect({ asks: rs.asks, refused: rs.refused }).toEqual({ asks: 3956, refused: 31 })
+    // ⚠ MOVED at #1310: 3956 -> 3968. The second unit off the leaf projection
+    // (`<[c3, [eb5, eb6, f7] [bb6 d7]] …>`) lands here with its 12 asks. `refused` is
+    // UNMOVED at 31 — the widening brought asks to this path and not one new refusal,
+    // so the roll's non-leaf residue is the same branch it was, over a wider population.
+    // ⚠ 31 -> 29 at #1312, and `asks` is UNMOVED at 3968 — the population is identical and
+    // exactly two asks moved from refused to written. Both are on `<~ [~@3.5 d2@2 c#2@2.5]>`,
+    // whose fractional bar the per-bar lane form can now spell with weighted rests. Both
+    // were judged against this file's own standard by a per-ask diff across the two builds:
+    // 2 of 2 remove haps of the deleted pitch and touch nothing else, 0 went written ->
+    // refused, and 0 of the previously written deletes changed a single byte.
+    expect({ asks: rs.asks, refused: rs.refused }).toEqual({ asks: 3968, refused: 29 })
   })
 })

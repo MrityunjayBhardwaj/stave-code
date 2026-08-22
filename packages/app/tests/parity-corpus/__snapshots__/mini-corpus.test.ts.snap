@@ -4081,7 +4081,7 @@ a5 e5 c#5
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "[-7 2,<4 5 6>]*8",
-    "roll": "nothing in this view could be edited on its own",
+    "roll": "ok",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",

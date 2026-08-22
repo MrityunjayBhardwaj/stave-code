@@ -8,12 +8,25 @@
  * a new onset takes the room an earlier note was sounding through, so that
  * earlier note ends where the new one starts.
  *
- * "An earlier note" means ANY of them, not the one in the lane or pitch that was
- * clicked. The roll has always read it that way (`placeNote` trims across
- * pitches); the grid read it per lane, which is narrower than the notation it has
- * to produce, and that mismatch was #1064. Both now resolve over the scope the
- * WRITER constrains — the `,`-part's column — and both do it unconditionally,
- * without asking whether the shortening is one the listener will hear.
+ * HOW WIDE IS "AN EARLIER NOTE"? The answer is the WRITER'S CONSTRAINT, and it is not
+ * the same on the two surfaces — which is the part that took three issues to get right.
+ *
+ * The grid resolves over the `,`-part's whole column, every lane in it, whatever sound
+ * the lane carries. That is forced: a part's columns are serialized together, so a `_`
+ * sustaining in one lane really does occupy the column an onset in another lane needs.
+ * Reading it per lane was narrower than the notation it has to produce, and that was
+ * #1064.
+ *
+ * The roll resolves over the PITCH placed, and nothing else (#1310). Its trim looked
+ * like the grid's and was assumed to be forced by the same constraint, so #1064's ruling
+ * was written as uniform across both surfaces. It was not forced. A roll chord lives
+ * inside ONE part, and since #1310's region writer learned parallel lanes, the notation
+ * can say `[c c ~ ~, [g,a,e4]@4]` — two lengths at once, in the region's own bracket. The
+ * moment that became spellable, trimming the siblings stopped being the price of writing
+ * the edit down and became a silent musical change with no notational need.
+ *
+ * So the surfaces differ on the PITCH axis on purpose, and agree on the principle: each
+ * resolves over exactly the scope its writer forces, and neither trims for taste.
  *
  * This is the ONE definition of each gesture. The panels are callers, and so
  * are the corpus sweeps: a test that models the edit itself is a second oracle
@@ -224,9 +237,23 @@ export function toggleCell(
 /**
  * Insert a note into a roll, resolving overlaps so the result stays a flat,
  * tileable sequence (what the serializer requires). DAW-style resolution:
- *  - a group already at `start` → the note joins the chord, adopting its
- *    duration (chord members share one);
- *  - an earlier note sustaining across `start` → it trims to end at `start`;
+ *  - a group already at `start` → the note joins the chord, adopting its duration.
+ *    ⚠ THAT IS A PRODUCT RULING, NOT A WRITER CONSTRAINT, and the distinction is the
+ *    one #1310 was about. "Chord members share one duration" was true of what this
+ *    file could SPELL, and since the region writer learned parallel lanes it is not:
+ *    `[g3@2 ~ ~, [c3,e3]@4]` says a chord whose members differ, and round-trips. So
+ *    honouring a different requested length is available and we decline it — adding a
+ *    voice to a chord is a gesture that shares the chord's length, and the compact
+ *    spelling is the one the user wrote. Chosen, not forced;
+ *    ⚠ where the notes at `start` DISAGREE about their length there is no single
+ *    duration to adopt, and today the answer is whichever note the array holds first.
+ *    That is live and pre-existing — 856 asks over the corpus reach such a start — and
+ *    it is #1314, to be fixed with #1315 since both change what the writer is asked to
+ *    spell and need one reach measurement between them;
+ *  - an earlier note OF THE SAME PITCH sustaining across `start` → it trims to end at
+ *    `start`. Other pitches sustaining through the column are left alone (#1310): they
+ *    are voices the gesture did not touch, and the region writer can now spell a chord
+ *    whose members have different lengths, so nothing forces them shorter;
  *  - the next group (or the grid end) caps the new note's duration.
  */
 
@@ -252,8 +279,16 @@ export function placeNote(
     ...model.notes.filter((n) => n.start > start).map((n) => n.start),
     model.steps,
   )
+  // ⚠ SAME PITCH ONLY (#1310). A note sustaining across this column that is NOT the pitch
+  // being placed is a voice the user did not touch — a sibling member of the chord being
+  // subdivided, or a different `,`-part entirely — and shortening it changes what the
+  // document plays somewhere the gesture never reached. Measured before this line existed:
+  // 61 of 541 placements on the shipped subdivide road did exactly that, trimming 128
+  // collateral notes. With the conjunct: 541 posed, 541 written, 0 refused, 0 damaged.
   const notes = model.notes.map((n) =>
-    n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n,
+    n.pitch === pitch && n.start < start && n.start + n.duration > start
+      ? { ...n, duration: start - n.start }
+      : n,
   )
   notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) })
   return ifRollSpellable(model, { ...model, notes })

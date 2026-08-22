@@ -258,7 +258,10 @@ describe('the roll writer emits what the model says, on whole columns and off th
     // ⚠ 544 -> 596 at #1242 — the corpus widened 1535 -> 1633 units
     // (98 arrivals, 0 departures): the harvest gained the product's own
     // resolver, so every figure here is over a wider population. Upward only.
-    expect(rolls).toBe(596)
+    // ⚠ 596 -> 597 at #1310 — the one roll unit the widened writer lets the parser open.
+    // `flat.length` and `fractionalRolls` below are unmoved: the arrival is neither flat
+    // nor fractional, so the reason this arm cannot fire is exactly what it was.
+    expect(rolls).toBe(597)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     expect(flat.length).toBe(98)
     expect(fractionalRolls).toBe(4) // and NONE of the 4 is flat — see the next arm
