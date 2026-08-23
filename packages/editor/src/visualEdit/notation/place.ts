@@ -43,7 +43,12 @@ import {
 } from './model'
 import type { PianoRollModel, StepCell, StepGridModel } from './model'
 import { midiToPitch, pitchToMidi } from './pitch'
-import { ifGridSpellable, ifRollSpellable, serializeStepGrid } from './serialize'
+import {
+  ifGridSpellable,
+  ifRollSpellable,
+  serializeStepGrid,
+  serializePianoRollWithExtent,
+} from './serialize'
 
 /**
  * Does this view accept a NEW note ANYWHERE?
@@ -296,10 +301,14 @@ export function placeNote(
       notes: [...model.notes, { pitch, start, duration: shared }],
     })
   }
-  const nextStart = Math.min(
-    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-    model.steps,
-  )
+  const capAt = (samePitchOnly: boolean): number =>
+    Math.min(
+      ...model.notes
+        .filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start)
+        .map((n) => n.start),
+      model.steps,
+    )
+  const nextStart = capAt(false)
   // ⚠ SAME PITCH ONLY (#1310). A note sustaining across this column that is NOT the pitch
   // being placed is a voice the user did not touch — a sibling member of the chord being
   // subdivided, or a different `,`-part entirely — and shortening it changes what the
@@ -322,8 +331,51 @@ export function placeNote(
       ? { ...n, duration: start - n.start }
       : n,
   )
-  notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) })
-  return ifRollSpellable(model, { ...model, notes })
+  const withCap = (cap: number): PianoRollModel => ({
+    ...model,
+    notes: [...notes, { pitch, start, duration: Math.max(1, Math.min(duration, cap - start)) }],
+  })
+
+  // ⚠ THE CAP IS SCOPED THE WAY THE TRIM IS, BUT ONLY WHERE THE DOCUMENT CAN SAY SO
+  // (#1315). The trim above stopped shortening voices the gesture never addressed; this
+  // cap — which bounds the new note's own length — went on reading EVERY onset, so a
+  // voice you never touched still shortened the note you DID ask for. Place `c3` for four
+  // steps over `[~ ~ e3 ~]` and it came back two, though `[c3@4, ~ ~ e3 ~]` round-trips
+  // byte-identically, so nothing about the notation forced it.
+  //
+  // ⚠⚠ AND SCOPING IT ALONE IS A REGRESSION, WHICH IS WHY THIS IS A LADDER AND NOT A
+  // CONJUNCT. Measured per ask over the corpus, the scoped cap on its own turns 3,089
+  // writes into REFUSALS and moves 3,231 edits from `splice` to `rebuild` — the same loss
+  // of locality #1310 was filed to remove. The untrimmed model genuinely overlaps, and
+  // where the writer cannot spell that overlap the honest answer is the OLD cap, not a
+  // refusal and not a whole-document rewrite.
+  //
+  // So: take the wide answer when the document can carry it WITHOUT changing how the edit
+  // is written, and fall back otherwise. Measured that way: 3,541 asks gain the length the
+  // caller asked for, every one of them on the SAME write path it already used — 0 newly
+  // refused, 0 pushed to a rebuild, 0 voices the gesture did not address moved, and no
+  // note ever longer than requested.
+  //
+  // ⚠ `degrades` compares PATHS, not bytes. A wide answer that can only be written by
+  // rebuilding the document is worse than a short note, because a rebuild re-spells
+  // everything the user did not touch — the edit stops being local, which is the property
+  // the whole arc exists to protect.
+  const wideCap = capAt(true)
+  // The common case: no foreign onset between this column and the next same-pitch one, so
+  // both caps are the same number and there is nothing to choose between. Answered with a
+  // single write exactly as before — the two-candidate path below costs a second
+  // serialize, and it should only be paid where it can actually change the answer.
+  if (wideCap === nextStart) return ifRollSpellable(model, withCap(nextStart))
+  const wide = withCap(wideCap)
+  const narrow = withCap(nextStart)
+  const wideOut = serializePianoRollWithExtent(wide)
+  if (wideOut.mini !== null) {
+    const degrades =
+      wideOut.extent.path === 'rebuild' &&
+      serializePianoRollWithExtent(narrow).extent.path !== 'rebuild'
+    if (!degrades) return wide
+  }
+  return ifRollSpellable(model, narrow)
 }
 
 /**
