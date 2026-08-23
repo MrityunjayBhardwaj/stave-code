@@ -33,7 +33,14 @@
  * for what an edit *is*, and it cannot catch a change in the edit — it quietly
  * keeps testing the old one (#1048).
  */
-import { cellOn, clampLane, clampPartAtOnset, isCellOn, rollContentRange } from './model'
+import {
+  cellOn,
+  clampLane,
+  clampPartAtOnset,
+  columnOverlap,
+  isCellOn,
+  rollContentRange,
+} from './model'
 import type { PianoRollModel, StepCell, StepGridModel } from './model'
 import { midiToPitch, pitchToMidi } from './pitch'
 import { ifGridSpellable, ifRollSpellable, serializeStepGrid } from './serialize'
@@ -268,11 +275,25 @@ export function placeNote(
   // this is cheap here; what it buys is that the roll cannot drift back into
   // offering a gesture the writer refuses, and that `canPlaceNote` is derivable
   // rather than a second predicate. Leaf rolls refuse all 18,386 (#1070).
-  const groupAt = model.notes.find((n) => n.start === start)
-  if (groupAt) {
+  // ⚠ ADOPTION NEEDS A CHORD THAT AGREES (#1314). A `find` here was safe while every note
+  // at a start shared a duration, and the models where that fails arrive straight from the
+  // source — two `,`-parts of different lengths put different durations at step 0. So the
+  // adopted length was whichever note the array happened to hold first: same document,
+  // same gesture, two answers. Measured over the corpus as parsed: 76 such starts, 856
+  // asks reaching one.
+  //
+  // Where the chord AGREES this is byte-for-byte what it always did — that is the product
+  // ruling above, kept. Where it does not, there is no single duration to adopt, so the
+  // general path runs and the requested length stands, capped as any other placement is.
+  // Measured: 84 asks change bytes, no voice the gesture did not address moves, nothing
+  // is newly refused, and no projection shifts.
+  const at = model.notes.filter((n) => n.start === start)
+  const shared =
+    at.length > 0 && at.every((n) => n.duration === at[0].duration) ? at[0].duration : null
+  if (shared !== null) {
     return ifRollSpellable(model, {
       ...model,
-      notes: [...model.notes, { pitch, start, duration: groupAt.duration }],
+      notes: [...model.notes, { pitch, start, duration: shared }],
     })
   }
   const nextStart = Math.min(
@@ -286,7 +307,18 @@ export function placeNote(
   // 61 of 541 placements on the shipped subdivide road did exactly that, trimming 128
   // collateral notes. With the conjunct: 541 posed, 541 written, 0 refused, 0 damaged.
   const notes = model.notes.map((n) =>
-    n.pitch === pitch && n.start < start && n.start + n.duration > start
+    // "does this note reach into this column?" is `columnOverlap`'s question, and this file
+    // had been answering it with an inline twin. `model.ts` records what happened the last
+    // time that predicate lived in two places: two thresholds a hundred lines apart. The
+    // `n.start < start` conjunct stays because it asks something DIFFERENT — a note
+    // starting exactly here is the chord-join case handled above, not something to trim.
+    // What the shared rule adds is the sliver threshold, so a length that merely ENDS at
+    // the onset is no longer counted as sounding through it. Measured across every ask in
+    // the corpus: this moves NOTHING, which is the only kind of consolidation worth making
+    // quietly — and it is the same result the grid's own consolidation measured.
+    n.pitch === pitch &&
+    n.start < start &&
+    columnOverlap(n.start, n.start + n.duration, start) !== null
       ? { ...n, duration: start - n.start }
       : n,
   )
