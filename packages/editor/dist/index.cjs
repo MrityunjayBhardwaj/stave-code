@@ -29875,11 +29875,12 @@ function toggleCell(model, laneIndex, stepIndex, value) {
 }
 __name(toggleCell, "toggleCell");
 function placeNote(model, pitch, start, duration) {
-  const groupAt = model.notes.find((n) => n.start === start);
-  if (groupAt) {
+  const at = model.notes.filter((n) => n.start === start);
+  const shared = at.length > 0 && at.every((n) => n.duration === at[0].duration) ? at[0].duration : null;
+  if (shared !== null) {
     return ifRollSpellable(model, {
       ...model,
-      notes: [...model.notes, { pitch, start, duration: groupAt.duration }]
+      notes: [...model.notes, { pitch, start, duration: shared }]
     });
   }
   const nextStart = Math.min(
@@ -29887,7 +29888,18 @@ function placeNote(model, pitch, start, duration) {
     model.steps
   );
   const notes = model.notes.map(
-    (n) => n.pitch === pitch && n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
+    (n) => (
+      // "does this note reach into this column?" is `columnOverlap`'s question, and this file
+      // had been answering it with an inline twin. `model.ts` records what happened the last
+      // time that predicate lived in two places: two thresholds a hundred lines apart. The
+      // `n.start < start` conjunct stays because it asks something DIFFERENT — a note
+      // starting exactly here is the chord-join case handled above, not something to trim.
+      // What the shared rule adds is the sliver threshold, so a length that merely ENDS at
+      // the onset is no longer counted as sounding through it. Measured across every ask in
+      // the corpus: this moves NOTHING, which is the only kind of consolidation worth making
+      // quietly — and it is the same result the grid's own consolidation measured.
+      n.pitch === pitch && n.start < start && columnOverlap(n.start, n.start + n.duration, start) !== null ? { ...n, duration: start - n.start } : n
+    )
   );
   notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
   return ifRollSpellable(model, { ...model, notes });
