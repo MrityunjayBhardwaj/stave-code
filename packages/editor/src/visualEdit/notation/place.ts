@@ -689,6 +689,18 @@ export function resizeNote(
     // used to be written as null and dropped — 110 asks reach only this line.
     if (sameCap === anyCap && model.notes.filter((n) => n.start === start).length < 2)
       return ifRollSpellable(model, legacy)
+    // COST, and it is worth stating because resize runs on every pointermove of a drag.
+    // The slow path below serializes up to three times, and the fast path above only
+    // covers 21% of multi-bar asks — measured per ask over the corpus:
+    //
+    //   multi, fast path   p50 0.005ms  p99 0.029ms  worst 1.6ms   (1,440 asks)
+    //   multi, ladder      p50 0.014ms  p99 0.100ms  worst 4.3ms   (5,508 asks)
+    //   single, gated      p50 0.006ms  p99 0.119ms  worst 7.4ms   (9,492 asks)
+    //
+    // Against what the panel already pays per frame — `viewPlacesNotes` at roll p99 1.0ms
+    // and the grid's per-cell map at p99 2.25ms — the ladder is an order of magnitude
+    // under the existing budget, and the single-bar branch's one serialize is the more
+    // expensive of the two at the tail.
     const floor = serializePianoRollWithExtent(legacy)
     for (const rung of [build(sameCap, true), build(anyCap, true)]) {
       const out = serializePianoRollWithExtent(rung)
