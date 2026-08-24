@@ -740,3 +740,48 @@ export function resizeNote(
     ),
   })
 }
+
+/**
+ * Is there anything at this cell that DELETE would actually remove and write?
+ *
+ * Derived from the op, never predicted alongside it — the rule the surface's own
+ * catalogue makes the standing one, because a predicate that computes the promise
+ * some other way drifts the moment the writer's reach changes.
+ */
+export const canRemoveNote = (model: PianoRollModel, start: number, pitch: string): boolean =>
+  removeNote(model, start, pitch) !== model
+
+/**
+ * Remove the note(s) the gesture addressed at (`start`, `pitch`).
+ *
+ * PLURAL BY CONTRACT (#1321), and that is a decision rather than an accident. A comma-stack
+ * can hold the same pitch twice at one start, and `overlapAt` returns the FIRST note
+ * covering a cell — so under a singular reading the second twin is unreachable by click,
+ * drag or keyboard, and would sit in the document, audible, with nothing able to touch it.
+ * Addressing the CELL leaves no such state. `(start, pitch)` is therefore the cell's
+ * address here, not a note's identity, and taking every note at it is the promise.
+ *
+ * ⚠ WHY THIS FUNCTION EXISTS AT ALL — delete was the one roll gesture with no writer.
+ * Both call sites were inline `filter`s in `PianoRollGrid.tsx`, so this op never passed
+ * through the spellability gate every other op on the surface already had, and it could not
+ * have inherited one: an op that never became a function cannot inherit a fix made to the
+ * functions. Measured over the corpus before this existed, 595 units / 5,480 asks:
+ *
+ *     serialized to null   382  (7.0%)   -> the document was left alone and nothing said so
+ *     a SURVIVING note changed  0        -> removal never re-spells what it keeps
+ *
+ * That first number is the same defect, on the same surface, that the step grid's cell
+ * gesture had before it was gated — 1,748 of 11,633 there, where a declined click "wrote
+ * nothing, toggled nothing and said nothing". The roll's Delete key did exactly that 382
+ * times, and the second number is why the fix is a gate rather than a ladder: there is no
+ * better spelling to reach for, so the honest answer is to decline and let the panel say so.
+ *
+ * DECLINES BY RETURNING ITS INPUT, which is what this op family means by "could not apply"
+ * and what `canRemoveNote` reads. Two cases decline: nothing at the cell, and a result the
+ * document cannot spell.
+ */
+export function removeNote(model: PianoRollModel, start: number, pitch: string): PianoRollModel {
+  const notes = model.notes.filter((n) => !(n.pitch === pitch && n.start === start))
+  if (notes.length === model.notes.length) return model
+  return ifRollSpellable(model, { ...model, notes })
+}

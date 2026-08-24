@@ -29986,6 +29986,12 @@ function resizeNote(model, start, pitch, duration) {
   });
 }
 __name(resizeNote, "resizeNote");
+function removeNote(model, start, pitch) {
+  const notes = model.notes.filter((n) => !(n.pitch === pitch && n.start === start));
+  if (notes.length === model.notes.length) return model;
+  return ifRollSpellable(model, { ...model, notes });
+}
+__name(removeNote, "removeNote");
 
 // src/visualEdit/panels/soundCatalog.ts
 var INSTRUMENTS = [
@@ -32233,10 +32239,7 @@ function PianoRollGrid({
       if (!d) return;
       dragRef.current = null;
       if (!d.moved && d.mode === "move") {
-        mutate((prev) => ({
-          ...prev,
-          notes: prev.notes.filter((n) => !(n.pitch === d.origPitch && n.start === d.origStart))
-        }));
+        mutate((prev) => removeNote(prev, d.origStart, d.origPitch));
       }
       endGesture();
     }, "onUp");
@@ -32386,10 +32389,7 @@ function PianoRollGrid({
   const removeSelected = /* @__PURE__ */ __name(() => {
     const sel = selectedRef.current;
     if (!sel || sel.kind !== "roll") return;
-    mutate((prev) => ({
-      ...prev,
-      notes: prev.notes.filter((n) => !(n.pitch === sel.pitch && n.start === sel.start))
-    }));
+    mutate((prev) => removeNote(prev, sel.start, sel.pitch));
     select(null);
   }, "removeSelected");
   const copySelected = /* @__PURE__ */ __name(() => {

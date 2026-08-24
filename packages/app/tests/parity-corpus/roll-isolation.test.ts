@@ -32,7 +32,13 @@ import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import { canResizeNote, placeNote, resizeNote } from '../../../editor/src/visualEdit/notation/place'
+import {
+  canRemoveNote,
+  canResizeNote,
+  placeNote,
+  removeNote,
+  resizeNote,
+} from '../../../editor/src/visualEdit/notation/place'
 import { serializePianoRoll } from '../../../editor/src/visualEdit/notation/serialize'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
@@ -363,5 +369,154 @@ describe('surface isolation — the roll, every placement it can be asked', () =
     expect(new Set(sweep.answers.values()).size, 'answers are not all one value').toBeGreaterThan(
       1,
     )
+  })
+})
+
+/** measured 2026-08-24 on studio_v0.2.0 + the delete writer */
+const DELETE_UNITS = 595
+const DELETE_ASKS = 5480
+
+/**
+ * ⚠ PINNED WITH ITS ARGUMENT, because a bare number here reads as a defect and is not one.
+ * Delete declines on 382 of 5,480 asks, and every one of them WROTE NULL before this op
+ * existed — the panel's inline `filter` produced a model the document cannot spell,
+ * `useGridModel` dropped it, and the note stayed on screen with nothing said. Measured
+ * head-to-head over this population: 5,098 answers byte-identical, 0 answers changed,
+ * 0 asks that previously wrote real bytes now refuse.
+ *
+ * So this number is the silent no-ops becoming nameable, not capability lost. If it FALLS,
+ * something learned to spell a case it could not — good, re-pin and say which. If it RISES,
+ * the writer lost reach and that is a regression.
+ */
+const DELETE_REFUSED = 382
+
+const DELETE_ANSWERS = '7f3696bdde0bb4ee'
+
+interface DeleteSweep extends Sweep {
+  /** asks whose written bytes serialize to null — must be 0, the whole point of the op */
+  unspellable: number
+  /** asks where a note the delete KEPT came back different — must be 0 */
+  survivorChanged: number
+  /** asks where `canRemoveNote` disagreed with the op it is derived from — must be 0 */
+  canDisagreed: number
+  /** asks that removed more than one note: the plural contract, correct, counted not tolerated */
+  plural: number
+  survivorExample: string | null
+}
+
+/**
+ * Every note the roll holds, deleted.
+ *
+ * ⚠ THE ASK IS THE CELL, NOT THE NOTE, and the sweep is keyed by INDEX anyway. Under the
+ * plural contract a delete addresses a cell and takes every note in it, so two asks at a
+ * twin pair are the same ask twice — keyed by index they stay distinguishable, which is
+ * what lets `plural` be counted rather than inferred.
+ */
+function sweepDelete(): DeleteSweep {
+  const answers = new Map<string, string>()
+  let units = 0
+  let asks = 0
+  let refused = 0
+  let unspellable = 0
+  let survivorChanged = 0
+  let canDisagreed = 0
+  let plural = 0
+  let survivorExample: string | null = null
+  const sig = (n: { pitch: string; start: number; duration: number }): string =>
+    `${n.pitch}@${n.start}+${n.duration}`
+  for (const mini of minis) {
+    const r = parsePianoRoll(mini)
+    if (!r.ok) continue
+    const m = r.model
+    if (serializePianoRoll(m) !== mini) continue
+    if (m.notes.length === 0) continue
+    units++
+    const before = m.notes.map(sig)
+    for (let j = 0; j < m.notes.length; j++) {
+      const n = m.notes[j]
+      asks++
+      const key = [mini, j, n.start, n.pitch].join('␟')
+      const next = removeNote(m, n.start, n.pitch)
+
+      // the predicate is DERIVED from the op; assert that rather than trusting it
+      if (canRemoveNote(m, n.start, n.pitch) !== (next !== m)) canDisagreed++
+
+      if (next === m) {
+        answers.set(key, 'REFUSED')
+        refused++
+        continue
+      }
+
+      const removed = m.notes.length - next.notes.length
+      if (removed > 1) plural++
+
+      // ⚠ REMOVAL IS NOT A CHANGE; RE-SPELLING IS. Compare the notes the delete KEPT,
+      // by index on the source side, against what came back. Deleting must never alter
+      // a voice it leaves standing — measured 0 before this op existed, and the reason
+      // the fix here is a gate rather than a ladder: there is no better spelling to seek.
+      const kept = m.notes
+        .map((x, i) => i)
+        .filter((i) => !(m.notes[i].pitch === n.pitch && m.notes[i].start === n.start))
+      const after = next.notes.map(sig)
+      const moved = kept.filter((i, k) => after[k] !== before[i])
+      if (moved.length > 0) {
+        survivorChanged++
+        if (survivorExample === null)
+          survivorExample = `${mini} — delete ${n.pitch}@${n.start} altered ${moved
+            .map((i) => before[i])
+            .join(', ')}`
+      }
+
+      const out = serializePianoRoll(next)
+      if (out === null) unspellable++
+      answers.set(key, out === null ? 'NULL' : shortHash(out))
+    }
+  }
+  return {
+    units,
+    asks,
+    refused,
+    answers,
+    unspellable,
+    survivorChanged,
+    canDisagreed,
+    plural,
+    survivorExample,
+  }
+}
+
+describe('surface isolation — the roll, every delete it can be asked', () => {
+  const sweep = sweepDelete()
+
+  it('sweeps the population it claims to', () => {
+    expect(sweep.units).toBe(DELETE_UNITS)
+    expect(sweep.asks).toBe(DELETE_ASKS)
+  })
+
+  it('never writes a model that cannot be spelled', () => {
+    // 382 asks did before this op existed, and each showed the user a note that stayed
+    // put with no refusal — the same shape the step grid's cell gesture had before it
+    // was gated. The honest answer is to decline, which is what `refused` counts.
+    expect(sweep.unspellable, 'deletes whose result serializes to null').toBe(0)
+  })
+
+  it('never alters a note it leaves standing', () => {
+    expect(
+      sweep.survivorChanged,
+      `a surviving note was re-spelled — ${sweep.survivorExample}`,
+    ).toBe(0)
+  })
+
+  it('offers exactly what it will accept', () => {
+    // `canRemoveNote` IS the op — asserted rather than assumed, so the two cannot drift.
+    expect(sweep.canDisagreed, 'canRemoveNote disagreed with removeNote').toBe(0)
+  })
+
+  it('declines only where the document cannot carry the result', () => {
+    expect(sweep.refused).toBe(DELETE_REFUSED)
+  })
+
+  it('answers every delete the same way', () => {
+    expect(aggregate(sweep.answers)).toBe(DELETE_ANSWERS)
   })
 })

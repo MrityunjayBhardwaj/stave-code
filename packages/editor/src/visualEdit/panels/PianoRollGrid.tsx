@@ -35,7 +35,14 @@ import { PIANO_ROLL_TAB_ID } from './tabs'
 import { opensPianoRoll } from './surfaceRoute'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
-import { pasteNote, placeNote, resizeNote, viewPlacesNotes } from '../notation/place'
+import {
+  canRemoveNote,
+  pasteNote,
+  placeNote,
+  removeNote,
+  resizeNote,
+  viewPlacesNotes,
+} from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
@@ -324,10 +331,7 @@ export function PianoRollGrid({
       // click empty adds, click a note removes). A no-move on the resize handle
       // does nothing; a real drag already moved/resized it.
       if (!d.moved && d.mode === 'move') {
-        mutate((prev) => ({
-          ...prev,
-          notes: prev.notes.filter((n) => !(n.pitch === d.origPitch && n.start === d.origStart)),
-        }))
+        mutate((prev) => removeNote(prev, d.origStart, d.origPitch))
       }
       endGesture()
     }
@@ -554,10 +558,7 @@ export function PianoRollGrid({
   const removeSelected = (): void => {
     const sel = selectedRef.current
     if (!sel || sel.kind !== 'roll') return
-    mutate((prev) => ({
-      ...prev,
-      notes: prev.notes.filter((n) => !(n.pitch === sel.pitch && n.start === sel.start)),
-    }))
+    mutate((prev) => removeNote(prev, sel.start, sel.pitch))
     select(null)
   }
 
