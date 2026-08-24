@@ -120,6 +120,9 @@ const RESIZE_ANSWERS = '35db149654f900c6'
  */
 const RESIZE_DUPLICATE_STRAYS = 20
 
+/** #1324, characterized in the assertion below — pinned so it cannot grow unnoticed */
+const RESIZE_UNREOPENABLE = 119
+
 interface ResizeSweep extends Sweep {
   /** asks that changed a note the gesture did not name AND could have named — must be 0 */
   strayed: number
@@ -127,6 +130,8 @@ interface ResizeSweep extends Sweep {
   strayedTwin: number
   /** asks whose result cannot be written down at all */
   unspellable: number
+  /** asks whose written bytes the PARSER REJECTS — a different property (#1324) */
+  unreadable: number
   strayExample: string | null
 }
 
@@ -155,6 +160,7 @@ function sweepResize(): ResizeSweep {
   let strayed = 0
   let strayedTwin = 0
   let unspellable = 0
+  let unreadable = 0
   let strayExample: string | null = null
   const sig = (n: { pitch: string; start: number; duration: number }): string =>
     `${n.pitch}@${n.start}+${n.duration}`
@@ -202,11 +208,24 @@ function sweepResize(): ResizeSweep {
         }
         const out = serializePianoRoll(next)
         if (out === null) unspellable++
+        // ⚠ A DIFFERENT PROPERTY FROM `unspellable`, and the reason #1324 hid under a
+        // green arm: "the writer returned bytes" is not "the view can reopen them".
+        else if (!parsePianoRoll(out).ok) unreadable++
         answers.set(key, out === null ? 'NULL' : shortHash(out))
       }
     }
   }
-  return { units, asks, refused, answers, strayed, strayedTwin, unspellable, strayExample }
+  return {
+    units,
+    asks,
+    refused,
+    answers,
+    strayed,
+    strayedTwin,
+    unspellable,
+    unreadable,
+    strayExample,
+  }
 }
 
 describe('surface isolation — the roll, every resize it can be asked', () => {
@@ -239,6 +258,31 @@ describe('surface isolation — the roll, every resize it can be asked', () => {
     // 1,069 asks did before #1318, and every one of them showed the user a length the
     // document never received. The honest answer for those is a refusal.
     expect(sweep.unspellable, 'resizes whose result serializes to null').toBe(0)
+  })
+
+  it('the writes the roll can no longer REOPEN are exactly the known 119', () => {
+    // ⚠ A DIFFERENT PROPERTY FROM `unspellable`, and 0 for that one while this was 119 —
+    // which is how #1324 stayed invisible under a green arm. "The writer returned bytes"
+    // is not "the view can reopen them".
+    //
+    // ⚠ AND THE BYTES ARE VALID. Every one of the 119 is the parser's `unstable-period`
+    // ADMISSION gate — "the pattern does not repeat within 4 bars" — across 5 units, with
+    // zero syntax errors. Strudel plays these documents; the roll just declines to draw
+    // them, so the surface falls back to code after the edit.
+    //
+    // ⚠ PINNED, NOT FIXED, AND DELIBERATELY. Gating the writer on a reparse removes all
+    // 119 and costs p99 0.100ms -> 549ms, worst 4.3ms -> 2,155ms, because resize runs on
+    // every pointermove and `parsePianoRoll` runs the real grammar. No parse-free
+    // discriminator survives measurement either: the write path does not separate them
+    // (all 119 are `splice`, so are 5,890 healthy writes), and a comma-count proxy catches
+    // 3 of 119 while refusing 2,624 good writes. The affordable fix is one parse when the
+    // GESTURE COMMITS rather than one per frame, which belongs to #1324.
+    //
+    // 1 of the 119 predates #1318; 118 are its ladder reaching pitch-scoped spellings the
+    // whole-chord answer never produced. Placement is 0 on both builds.
+    expect(sweep.unreadable, 'resizes the roll can no longer reopen — see #1324').toBe(
+      RESIZE_UNREOPENABLE,
+    )
   })
 
   it('every resize the roll can be asked answers exactly as pinned', () => {
