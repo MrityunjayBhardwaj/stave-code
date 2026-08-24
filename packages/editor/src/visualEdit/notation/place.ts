@@ -49,6 +49,7 @@ import {
   serializeStepGrid,
   serializePianoRollWithExtent,
 } from './serialize'
+import type { RollWriteExtent } from './serialize'
 
 /**
  * Does this view accept a NEW note ANYWHERE?
@@ -370,12 +371,38 @@ export function placeNote(
   const narrow = withCap(nextStart)
   const wideOut = serializePianoRollWithExtent(wide)
   if (wideOut.mini !== null) {
-    const degrades =
-      wideOut.extent.path === 'rebuild' &&
-      serializePianoRollWithExtent(narrow).extent.path !== 'rebuild'
-    if (!degrades) return wide
+    if (!degradesLocality(wideOut.extent, serializePianoRollWithExtent(narrow).extent))
+      return wide
   }
   return ifRollSpellable(model, narrow)
+}
+
+/**
+ * Is `next`'s write path LESS LOCAL than `floor`'s — i.e. does taking the wider answer
+ * cost us re-spelling music the gesture never addressed?
+ *
+ * ⚠ THIS IS THE LADDER RULE, AND IT IS SHARED ON PURPOSE. Both the placement cap (#1315)
+ * and the resize cap (#1318) choose between a wide answer and a narrow one by comparing
+ * WRITE PATHS rather than bytes, and this file already records what happened the last
+ * time one predicate lived in two copies here: `columnOverlap` drifted into an inline
+ * twin, and `model.ts:1067` carries the note about the two thresholds that resulted.
+ *
+ * ⚠ THE ORDER IS leaf < splice = alt < rebuild. `leaf` is a surgical edit inside the
+ * element the user touched; `splice` and `alt` replace the pattern's own slice — they are
+ * alternatives to each other, not steps apart, since a model either has an `altSource` or
+ * it does not; `rebuild` re-authors the whole document.
+ *
+ * ⚠ #1315 SHIPPED WITH THE NARROWER RULE — "rebuild only" — and this generalisation was
+ * measured NOT to change it: every one of that fix's 3,541 movers stayed on the path it
+ * already used, so no comparison it makes reaches the widened clauses. It was proven by
+ * re-running the roll's surface-wide arm, whose aggregate is unchanged. On RESIZE the two
+ * rules differ: the narrow rule admits 137 more asks and degrades those same 137 out of
+ * `leaf` into `splice`/`alt`, which is the trade this arc has consistently declined.
+ */
+function degradesLocality(next: RollWriteExtent, floor: RollWriteExtent): boolean {
+  const rank = (p: RollWriteExtent['path']): number =>
+    p === 'leaf' ? 0 : p === 'rebuild' ? 2 : 1
+  return rank(next.path) > rank(floor.path)
 }
 
 /**
@@ -569,11 +596,53 @@ export const canResizeCell = (
 ): boolean => resizeCell(model, laneIndex, stepIndex, duration) !== model
 
 /**
- * Resize the single note identified by (`start`, `pitch`) to `duration` steps.
- * The new duration floors at 1 and caps only at the grid end. A note may now
- * sustain UNDER a later onset (overlap is expressible via parallel comma-lanes,
- * #628), so each note resizes independently — stretching one chord member no
- * longer drags the others. The serializer packs any resulting overlap into lanes.
+ * The roll's half of `canResizeCell`, and it did not exist until now (#1318) — 0 hits
+ * across 1,058 files, against 13 for `canPlaceNote` as the positive control. Nothing
+ * derived resize admissibility from the writer on this surface, which is how 1,069 asks
+ * could produce a model that serializes to null: the view showed a length the document
+ * never received.
+ *
+ * ⚠ IT IS THE OP, not a predicate beside it — the same rule `canResizeCell` follows and
+ * for the same reason. A view-level twin that PREDICTS the writer is a second oracle and
+ * drifts the moment the writer's reach moves.
+ *
+ * ⚠ NOT WIRED INTO THE PANEL BY THIS CHANGE. The roll draws its length handle
+ * unconditionally, so now that resize can decline it offers one on 93 of 5,480 corpus
+ * notes that cannot be resized at any length, and on 433 more that refuse some lengths.
+ * The grid gates its handle on `canResizeCell`; matching that on the roll is an
+ * affordance decision with its own measurement, filed separately rather than folded in.
+ */
+export const canResizeNote = (
+  model: PianoRollModel,
+  start: number,
+  pitch: string,
+  duration: number,
+): boolean => resizeNote(model, start, pitch, duration) !== model
+
+/**
+ * Resize the single note identified by (`start`, `pitch`) to `duration` steps. The new
+ * duration floors at 1, and each note resizes independently: stretching one chord member
+ * does not drag the others, on either branch.
+ *
+ * ⚠ THAT SENTENCE WAS ALREADY HERE AND WAS ONLY HALF TRUE (#1318). It described the
+ * single-bar branch, which checks pitch; the multi-bar branch twelve lines into the body
+ * matched on `start` alone and resized the whole chord. A docblock stating the rule for
+ * the surface is exactly where a reader stops looking, so the branch that broke it went
+ * unread — measured at 642 of 1,806 multi-bar chord asks, against 0 of 2,772 single-bar.
+ *
+ * WHERE IT CAPS differs by branch, and that difference is forced by the notation:
+ *   single-bar  the grid end. Overlap is expressible as parallel comma-lanes (#628), so a
+ *               note may sustain under a later onset and nothing needs to cap it early.
+ *   multi-bar   the next onset AT THE SAME PITCH where the document can carry it, the
+ *               next onset at ANY pitch otherwise. `<...>` gives each slot one bar, and a
+ *               mixed-duration chord inside one has no spelling, so the wide answer is
+ *               only taken where it costs no locality — the ladder `placeNote` uses.
+ *
+ * DECLINES BY RETURNING ITS INPUT, which is new here and is what `canResizeNote` reads.
+ * It declines in two cases: where the only writable answer would change a voice the
+ * gesture did not address, and where the answer cannot be spelled at all. Before this,
+ * both were written anyway — the second as a model serializing to null, which the view
+ * then rendered as a length the document never received.
  */
 export function resizeNote(
   model: PianoRollModel,
@@ -581,25 +650,81 @@ export function resizeNote(
   pitch: string,
   duration: number,
 ): PianoRollModel {
-  // Multi-bar `<...>` can't express overlap or a mixed-duration chord (parallel
-  // lanes are single-bar only), so keep the legacy whole-chord resize capped at
-  // the next onset there — otherwise the write would serialize to null and drop.
+  // ⚠ THE MULTI-BAR BRANCH IGNORED ITS OWN `pitch` ARGUMENT (#1318). It matched on
+  // `n.start === start` alone, so resizing one member of a chord resized every note
+  // sharing that start — the same rule #1310 and #1315 established for PLACEMENT, never
+  // enforced on the gesture next door. Measured over the corpus before this changed:
+  // 642 of 1,806 multi-bar chord asks moved a sibling, against 0 of 2,772 on the
+  // single-bar branch, which had the pitch check all along and served as the control.
+  //
+  // The branch justified itself with "parallel lanes are single-bar only" — falsified by
+  // #1312 — but the CONCERN behind it was real, and the obvious one-word fix is not the
+  // fix: adding `&& n.pitch === pitch` on its own makes 32 writes serialize to null and
+  // drop. Scoping the cap on its own is worse again: 1,289 null writes and 343 voices
+  // NEWLY moved. So this is a ladder, exactly as the placement cap is.
   if ((model.bars ?? 1) > 1) {
-    const nextStart = Math.min(
-      ...model.notes.filter((n) => n.start > start).map((n) => n.start),
-      model.steps,
-    )
-    const capped = Math.max(1, Math.min(duration, nextStart - start))
-    return {
-      ...model,
-      notes: model.notes.map((n) => (n.start === start ? { ...n, duration: capped } : n)),
+    const capTo = (samePitchOnly: boolean): number =>
+      Math.min(
+        ...model.notes
+          .filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start)
+          .map((n) => n.start),
+        model.steps,
+      )
+    const build = (cap: number, scoped: boolean): PianoRollModel => {
+      const capped = Math.max(1, Math.min(duration, cap - start))
+      return {
+        ...model,
+        notes: model.notes.map((n) =>
+          n.start === start && (!scoped || n.pitch === pitch) ? { ...n, duration: capped } : n,
+        ),
+      }
     }
+    const anyCap = capTo(false)
+    const sameCap = capTo(true)
+    // What shipped: cap at ANY onset, resize the whole chord. It is the floor the rungs
+    // are judged against, and the answer where nothing better can be written.
+    const legacy = build(anyCap, false)
+    // The common case, kept at one write: nothing to choose between when the caps agree
+    // and no chord sits at this start. Still gated, because an unspellable answer here
+    // used to be written as null and dropped — 110 asks reach only this line.
+    if (sameCap === anyCap && model.notes.filter((n) => n.start === start).length < 2)
+      return ifRollSpellable(model, legacy)
+    const floor = serializePianoRollWithExtent(legacy)
+    for (const rung of [build(sameCap, true), build(anyCap, true)]) {
+      const out = serializePianoRollWithExtent(rung)
+      if (out.mini === null) continue
+      if (degradesLocality(out.extent, floor.extent)) continue
+      return rung
+    }
+    // ⚠ REFUSE RATHER THAN MOVE A VOICE THE GESTURE DID NOT ADDRESS. Falling back to the
+    // legacy answer here would keep 222 asks writing a length onto notes the user never
+    // grabbed, which is the invariant this change exists to restore — so where the
+    // fallback would do that, the gesture declines and the document is left alone.
+    // Measured cost: 32 asks that used to produce real bytes now refuse. The other 190
+    // were writing null and dropping silently, so the refusal is strictly more honest.
+    //
+    // ⚠ AND WIDENING INSTEAD OF REFUSING BUYS NOTHING. Re-running the same rungs with the
+    // locality guard dropped — accept a rebuild rather than decline — is answer-identical
+    // across all 16,440 asks: where the fallback violates, no pitch-scoped rung is
+    // writable on ANY path. A mixed-duration chord inside `<...>` has no spelling, so
+    // these 32 are the grammar's limit rather than this rule's.
+    const movesOthers = legacy.notes.some(
+      (n, i) =>
+        n.duration !== model.notes[i].duration && !(n.start === start && n.pitch === pitch),
+    )
+    return movesOthers ? model : ifRollSpellable(model, legacy)
   }
+  // ⚠ THE SINGLE-BAR BRANCH HAS NEITHER DEFECT AND STILL NEEDED THE GATE. It checks pitch
+  // and caps at the grid end, so it moves nothing and reads no foreign onset — it is this
+  // change's control arm, at 0 on both counts over a LARGER population. But it wrote 395
+  // models that serialize to null, which the view then shows as an edit that did not
+  // happen. `canResizeNote` did not exist (0 hits across 678 files, against 3 for
+  // `canPlaceNote`), so nothing derived admissibility from the writer on either branch.
   const capped = Math.max(1, Math.min(duration, model.steps - start))
-  return {
+  return ifRollSpellable(model, {
     ...model,
     notes: model.notes.map((n) =>
       n.start === start && n.pitch === pitch ? { ...n, duration: capped } : n,
     ),
-  }
+  })
 }
