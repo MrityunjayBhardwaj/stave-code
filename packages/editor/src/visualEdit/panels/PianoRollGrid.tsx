@@ -36,7 +36,6 @@ import { opensPianoRoll } from './surfaceRoute'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import {
-  canRemoveNote,
   moveNote,
   pasteNote,
   placeNote,
