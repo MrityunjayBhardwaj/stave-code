@@ -111,12 +111,20 @@ const RESIZE_ASKS = 16440
 const RESIZE_ANSWERS = '35db149654f900c6'
 
 /**
- * ⚠ THE RESIDUAL, PINNED RATHER THAN TOLERATED (#1321). Twenty asks still move a note the
- * gesture did not name, and every one of them moves a note sharing the target's `start`
- * AND `pitch` — a comma-stack holding the same pitch twice. `resizeNote` names its note by
- * that value tuple and the drag passes the same one, so neither can tell the two apart;
- * the identity is missing from the API rather than misread by the writer. Measured: 20 of
- * that shape, 0 of any other, which is why the two are counted separately below.
+ * ⚠ THE PLURAL CONTRACT, PINNED — NOT A DEFECT (#1321). Twenty asks move a second note,
+ * and every one of them shares the target's `start` AND `pitch` — a comma-stack holding
+ * the same pitch twice. That is the editor's stated rule: a gesture acts on every note at
+ * the cell it addresses, which is what delete already does by construction and what paste
+ * promises in its own docstring. `(start, pitch)` is the CELL ADDRESS here, not a note
+ * identity, and taking it is correct rather than a misread.
+ *
+ * The alternative was measured and rejected: under a singular reading the second twin is
+ * unreachable by any gesture — `overlapAt` returns the first note covering a cell — so it
+ * would sit in the document, audible, with no way to select, resize or delete it.
+ *
+ * Pinned anyway, because the NUMBER is still worth guarding: 20 of that shape and 0 of any
+ * other, counted separately below so a violation of the real rule cannot hide in here.
+ * ⚠ Do not "fix" this to 0 — that would strand notes. See #1321 for the decision.
  */
 const RESIZE_DUPLICATE_STRAYS = 20
 
@@ -126,7 +134,7 @@ const RESIZE_UNREOPENABLE = 119
 interface ResizeSweep extends Sweep {
   /** asks that changed a note the gesture did not name AND could have named — must be 0 */
   strayed: number
-  /** asks that changed only an indistinguishable twin of the target — #1321 */
+  /** asks that changed only a note sharing the target's cell — the plural contract, #1321 */
   strayedTwin: number
   /** asks whose result cannot be written down at all */
   unspellable: number
@@ -245,10 +253,11 @@ describe('surface isolation — the roll, every resize it can be asked', () => {
     )
   })
 
-  it('the only notes it still moves are ones it cannot tell from the target', () => {
-    // Pinned, not tolerated (#1321): equal on both sides means the writer cannot name
-    // which one was grabbed, so this cannot be fixed here — but it must not GROW, and a
-    // regression of the #1318 kind would land in `strayed` above rather than here.
+  it('a resize acts on every note sharing the addressed cell, as the contract says', () => {
+    // The plural contract (#1321), pinned rather than merely allowed: these notes share the
+    // target's start AND pitch, so the gesture addressed a cell holding both and acting on
+    // both is correct. It must not GROW, and a regression of the #1318 kind — moving a note
+    // the gesture COULD have named — lands in `strayed` above rather than here.
     expect(sweep.strayedTwin, 'strays that share the target start AND pitch').toBe(
       RESIZE_DUPLICATE_STRAYS,
     )
