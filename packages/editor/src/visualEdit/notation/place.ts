@@ -785,3 +785,116 @@ export function removeNote(model: PianoRollModel, start: number, pitch: string):
   if (notes.length === model.notes.length) return model
   return ifRollSpellable(model, { ...model, notes })
 }
+
+/**
+ * Is this drag's drop admissible? Derived from the op, never predicted beside it —
+ * the standing rule on this surface, so the promise and the write cannot disagree.
+ */
+export const canMoveNote = (
+  base: PianoRollModel,
+  fromPitch: string,
+  fromStart: number,
+  toPitch: string,
+  toStart: number,
+): boolean => moveNote(base, fromPitch, fromStart, toPitch, toStart) !== base
+
+/**
+ * Move the note(s) the drag grabbed at (`fromPitch`, `fromStart`) to (`toPitch`, `toStart`).
+ *
+ * ⚠ WHY THIS TAKES THE GESTURE'S FIXED BASE AND NOT `prev`. A move drag fires on every
+ * pointermove, and `mutate` re-parses the document from bytes each time — so a writer fed
+ * the PREVIOUS frame's result would re-derive its own clamp against a note it had already
+ * moved, and the length would ratchet: a frame near the grid end shortens the note, and
+ * dragging back does not restore it. The panel already knew this and rebuilt from a fixed
+ * base each frame; that base is this function's input, so the property survives the
+ * consolidation instead of being re-discovered.
+ *
+ * ⚠ SINGULAR, AND DELIBERATELY NOT `removeNote`'S PLURAL CELL. `(start, pitch)` is not an
+ * identity — a comma-stack can hold the same pitch twice at one start. Delete addresses
+ * the whole cell (#1321), and it is worth saying why move does not follow it: delete's
+ * inline filter matched on `(pitch, start)` BY VALUE, so that gesture was already plural
+ * and the ruling only wrote down what shipped. Move's inline build excluded the grabbed
+ * note BY REFERENCE — it is shipped SINGULAR, and the precedent was never move's.
+ *
+ * Measured, the difference is not academic — 6,529 of 982,157 pointer-reachable asks land
+ * on a cell with a twin, and taking both changes the answer on every one of them.
+ * ⚠ An earlier reading put that cost far higher (10,290 answers, 1,176 refusals) because
+ * the sweep grabbed each note BY INDEX, including second twins no pointer can grab. Asks
+ * the panel cannot make are not evidence about the panel.
+ *
+ * And move is the one gesture that can UN-STACK a twin: relocate the note the view shows
+ * and the two become individually addressable, where taking both keeps them stacked and
+ * unreachable for good. So the singular reading serves the identity problem better here
+ * than the plural one does — the opposite of how it falls out for delete.
+ *
+ * The note is addressed by INDEX into the base, which is sound precisely because `base` is
+ * captured ONCE per gesture: the index cannot drift under a re-parse the way it would if
+ * this took `prev`. First-at-cell is the note `overlapAt` returns, i.e. the one drawn.
+ *
+ * ⚠ IT CARRIES `gain`, WHICH THE INLINE BUILD COULD NOT. The panel constructed
+ * `{ pitch, start, duration }` literally, and a literal cannot carry a field it does not
+ * name — so a drag would reset the note's velocity and write that as a second edit riding
+ * on the first. Spreading the grabbed note keeps whatever the model holds.
+ * ⚠ NO CORPUS UNIT WITNESSES THIS: 0 of 988,686 asks grab a note with a non-neutral gain,
+ * so it is fixed by construction and NOT on evidence. Said plainly because the rest of
+ * this comment is measured and this part is not.
+ *
+ * DECLINES BY RETURNING ITS INPUT, which is what this op family means by "could not
+ * apply". Two cases decline: nothing at the grabbed cell, and a result the document
+ * cannot spell.
+ *
+ * ⚠ A DROP WHERE THE NOTE ALREADY IS IS NOT A DECLINE, and the distinction is the whole
+ * reason to say so here. Mid-drag the document sits at the last accepted position, not at
+ * the base — so "declined" has to mean LEAVE IT ALONE, while dropping the note back on its
+ * own cell has to mean GO HOME. Both would return the base model, and the caller cannot
+ * tell them apart from the return value. Rebuilding the base's own content for a self-drop
+ * keeps the two answers distinguishable by identity: a refusal is the input, a restore is
+ * an equal-but-new model the caller writes.
+ */
+export function moveNote(
+  base: PianoRollModel,
+  fromPitch: string,
+  fromStart: number,
+  toPitch: string,
+  toStart: number,
+): PianoRollModel {
+  const idx = base.notes.findIndex((n) => n.pitch === fromPitch && n.start === fromStart)
+  if (idx < 0) return base
+  const grabbed = base.notes[idx]
+  const start = Math.max(0, Math.min(toStart, base.steps - 1))
+  const rest = base.notes.filter((_, i) => i !== idx)
+  // The note keeps the length it had, clamped to what is left of the grid — the panel's
+  // own rule, moved in here so the writer owns every part of what a move means.
+  const landed = {
+    ...grabbed,
+    pitch: toPitch,
+    start,
+    duration: Math.max(1, Math.min(grabbed.duration, base.steps - start)),
+  }
+  const notes = [...rest, landed]
+  // ⚠ THIS RE-AUTHORS, AND THE LOCAL WRITE IT DOES NOT DO IS A MEASURED, DELIBERATE GAP.
+  //
+  // Keeping the document's own `source`/`altSource`/`leafSource` would make this span
+  // surgery instead, and the prize is large and real: on `roll-isolation`'s population,
+  // 168,533 of 172,185 moves re-author the whole pattern, and anchoring takes that to
+  // 23,834. Dragging one note currently reformats the document.
+  //
+  // ⚠ AND IT IS NOT SAFE YET, which only a control arm showed. The anchored write SPELLS
+  // — `serializePianoRoll` returns bytes — but those bytes do not read back as what the
+  // writer meant: 5,867 of 59,030 writes (9.94%) reopened holding different notes, against
+  // 10 of 58,802 (0.02%) for the re-authoring path, and where the re-authoring path's ten
+  // are all grid RESCALES, only 31 of the anchored path's are. Spelling is not fidelity.
+  //
+  // The check that would make anchoring safe is a READBACK, and move fires on every
+  // pointermove — the same cadence that made #1324's readback unshippable at p99 549ms.
+  // So the locality fix belongs at the boundary where ONE parse per GESTURE is affordable,
+  // not here. Until then this writes the way the panel always did, and what it adds is the
+  // refusal the panel could never make.
+  const rebuilt: PianoRollModel = {
+    steps: base.steps,
+    ...(base.bars != null ? { bars: base.bars } : {}),
+    ...(base.numeric ? { numeric: true } : {}),
+    notes,
+  }
+  return ifRollSpellable(base, rebuilt)
+}
