@@ -29883,10 +29883,11 @@ function placeNote(model, pitch, start, duration) {
       notes: [...model.notes, { pitch, start, duration: shared }]
     });
   }
-  const nextStart = Math.min(
-    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+  const capAt = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
+    ...model.notes.filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start).map((n) => n.start),
     model.steps
-  );
+  ), "capAt");
+  const nextStart = capAt(false);
   const notes = model.notes.map(
     (n) => (
       // "does this note reach into this column?" is `columnOverlap`'s question, and this file
@@ -29901,8 +29902,20 @@ function placeNote(model, pitch, start, duration) {
       n.pitch === pitch && n.start < start && columnOverlap(n.start, n.start + n.duration, start) !== null ? { ...n, duration: start - n.start } : n
     )
   );
-  notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
-  return ifRollSpellable(model, { ...model, notes });
+  const withCap = /* @__PURE__ */ __name((cap) => ({
+    ...model,
+    notes: [...notes, { pitch, start, duration: Math.max(1, Math.min(duration, cap - start)) }]
+  }), "withCap");
+  const wideCap = capAt(true);
+  if (wideCap === nextStart) return ifRollSpellable(model, withCap(nextStart));
+  const wide = withCap(wideCap);
+  const narrow = withCap(nextStart);
+  const wideOut = serializePianoRollWithExtent(wide);
+  if (wideOut.mini !== null) {
+    const degrades = wideOut.extent.path === "rebuild" && serializePianoRollWithExtent(narrow).extent.path !== "rebuild";
+    if (!degrades) return wide;
+  }
+  return ifRollSpellable(model, narrow);
 }
 __name(placeNote, "placeNote");
 function pasteNote(model, pitch, start, duration) {
