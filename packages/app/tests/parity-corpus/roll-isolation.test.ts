@@ -32,7 +32,7 @@ import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import { placeNote } from '../../../editor/src/visualEdit/notation/place'
+import { canResizeNote, placeNote, resizeNote } from '../../../editor/src/visualEdit/notation/place'
 import { serializePianoRoll } from '../../../editor/src/visualEdit/notation/serialize'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
@@ -104,6 +104,238 @@ const aggregate = (answers: Map<string, string>): string => {
   }
   return h.digest('hex').slice(0, 16)
 }
+
+/** measured 2026-08-24 on the same tree, resizing every note the roll holds */
+const RESIZE_UNITS = 595
+const RESIZE_ASKS = 16440
+const RESIZE_ANSWERS = '35db149654f900c6'
+
+/**
+ * ⚠ THE PLURAL CONTRACT, PINNED — NOT A DEFECT (#1321). Twenty asks move a second note,
+ * and every one of them shares the target's `start` AND `pitch` — a comma-stack holding
+ * the same pitch twice. That is the editor's stated rule: a gesture acts on every note at
+ * the cell it addresses, which is what delete already does by construction and what paste
+ * promises in its own docstring. `(start, pitch)` is the CELL ADDRESS here, not a note
+ * identity, and taking it is correct rather than a misread.
+ *
+ * The alternative was measured and rejected: under a singular reading the second twin is
+ * unreachable by any gesture — `overlapAt` returns the first note covering a cell — so it
+ * would sit in the document, audible, with no way to select, resize or delete it.
+ *
+ * Pinned anyway, because the NUMBER is still worth guarding: 20 of that shape and 0 of any
+ * other, counted separately below so a violation of the real rule cannot hide in here.
+ * ⚠ Do not "fix" this to 0 — that would strand notes. See #1321 for the decision.
+ */
+const RESIZE_DUPLICATE_STRAYS = 20
+
+/** #1324, characterized in the assertion below — pinned so it cannot grow unnoticed */
+const RESIZE_UNREOPENABLE = 119
+
+interface ResizeSweep extends Sweep {
+  /** asks that changed a note the gesture did not name AND could have named — must be 0 */
+  strayed: number
+  /** asks that changed only a note sharing the target's cell — the plural contract, #1321 */
+  strayedTwin: number
+  /** asks whose result cannot be written down at all */
+  unspellable: number
+  /** asks whose written bytes the PARSER REJECTS — a different property (#1324) */
+  unreadable: number
+  strayExample: string | null
+}
+
+/**
+ * THE SAME SWEEP FOR THE GESTURE NEXT DOOR (#1318).
+ *
+ * ⚠ WHY A SECOND ARM RATHER THAN TRUST IN THE FIRST. "An edit may not change what the
+ * user did not touch" was established on PLACEMENT and enforced there twice — the
+ * same-pitch trim (#1310) and the cap ladder (#1315). Resize, the neighbouring function
+ * in the same file on the same surface, broke it the whole time: its multi-bar branch
+ * accepted a `pitch` argument and never read it. An invariant enforced where it was
+ * discovered is not enforced across the gestures that can violate it, so every op that
+ * can break one needs its own sweep rather than an argument that it probably behaves.
+ *
+ * ⚠ THE HASH IS NOT THE WHOLE GATE HERE. A pinned aggregate is re-pinned whenever someone
+ * changes the writer deliberately, and a re-pin would happily absorb the defect coming
+ * back. So the invariant is asserted BY NAME — `strayed` must be 0 — and that assertion
+ * survives any re-pin. Same for `unspellable`: this surface used to write 1,069 models
+ * that serialize to null, which the view showed as a length the document never received.
+ */
+function sweepResize(): ResizeSweep {
+  const answers = new Map<string, string>()
+  let units = 0
+  let asks = 0
+  let refused = 0
+  let strayed = 0
+  let strayedTwin = 0
+  let unspellable = 0
+  let unreadable = 0
+  let strayExample: string | null = null
+  const sig = (n: { pitch: string; start: number; duration: number }): string =>
+    `${n.pitch}@${n.start}+${n.duration}`
+  for (const mini of minis) {
+    const r = parsePianoRoll(mini)
+    if (!r.ok) continue
+    const m = r.model
+    if (serializePianoRoll(m) !== mini) continue
+    if (m.notes.length === 0) continue
+    units++
+    // ⚠ KEYED BY INDEX, NOT BY (start, pitch). A comma-stack can hold the same pitch twice
+    // at one start, so the value tuple is not an identity — keying on it merged 84 asks
+    // and made this sweep disagree with the census that shares its population.
+    const before = m.notes.map(sig)
+    for (let j = 0; j < m.notes.length; j++) {
+      const n = m.notes[j]
+      for (const duration of DURATIONS) {
+        asks++
+        const key = [mini, j, n.start, n.pitch, duration].join('␟')
+        const next = resizeNote(m, n.start, n.pitch, duration)
+        if (next === m) {
+          answers.set(key, 'REFUSED')
+          refused++
+          continue
+        }
+        // ⚠ COMPARED BY INDEX, not by filtering the value tuple out. Filtering
+        // `(start, pitch)` hides exactly the notes #1321 is about — the target's
+        // indistinguishable twin drops out of both sides and its movement is invisible.
+        // The throwaway census did it that way and reported 0 where this reports 20.
+        const moved = next.notes
+          .map((x, i) => ({ i, sig: sig(x) }))
+          .filter((e) => e.i !== j && e.sig !== before[e.i])
+        if (moved.length > 0) {
+          const twinsOnly = moved.every(
+            (e) => m.notes[e.i].start === n.start && m.notes[e.i].pitch === n.pitch,
+          )
+          if (twinsOnly) strayedTwin++
+          else {
+            strayed++
+            if (strayExample === null)
+              strayExample = `${mini} — resize ${n.pitch}@${n.start} to ${duration} moved ${moved
+                .map((e) => `${before[e.i]}→${e.sig}`)
+                .join(', ')}`
+          }
+        }
+        const out = serializePianoRoll(next)
+        if (out === null) unspellable++
+        // ⚠ A DIFFERENT PROPERTY FROM `unspellable`, and the reason #1324 hid under a
+        // green arm: "the writer returned bytes" is not "the view can reopen them".
+        else if (!parsePianoRoll(out).ok) unreadable++
+        answers.set(key, out === null ? 'NULL' : shortHash(out))
+      }
+    }
+  }
+  return {
+    units,
+    asks,
+    refused,
+    answers,
+    strayed,
+    strayedTwin,
+    unspellable,
+    unreadable,
+    strayExample,
+  }
+}
+
+describe('surface isolation — the roll, every resize it can be asked', () => {
+  const sweep = sweepResize()
+
+  it('the sweep actually ran — denominators before verdicts', () => {
+    expect(sweep.units, 'roll units that round-trip and hold a note').toBe(RESIZE_UNITS)
+    expect(sweep.asks, 'resizes posed').toBe(RESIZE_ASKS)
+    expect(sweep.answers.size).toBeGreaterThan(0)
+  })
+
+  it('a resize never changes a note the gesture did not name', () => {
+    // Asserted by name so a future re-pin of the aggregate cannot absorb the defect
+    // coming back. 642 of these were real before #1318.
+    expect(sweep.strayed, `notes moved that the gesture never named — ${sweep.strayExample}`).toBe(
+      0,
+    )
+  })
+
+  it('a resize acts on every note sharing the addressed cell, as the contract says', () => {
+    // The plural contract (#1321), pinned rather than merely allowed: these notes share the
+    // target's start AND pitch, so the gesture addressed a cell holding both and acting on
+    // both is correct. It must not GROW, and a regression of the #1318 kind — moving a note
+    // the gesture COULD have named — lands in `strayed` above rather than here.
+    expect(sweep.strayedTwin, 'strays that share the target start AND pitch').toBe(
+      RESIZE_DUPLICATE_STRAYS,
+    )
+  })
+
+  it('a resize never writes a model that cannot be spelled', () => {
+    // 1,069 asks did before #1318, and every one of them showed the user a length the
+    // document never received. The honest answer for those is a refusal.
+    expect(sweep.unspellable, 'resizes whose result serializes to null').toBe(0)
+  })
+
+  it('the writes the roll can no longer REOPEN are exactly the known 119', () => {
+    // ⚠ A DIFFERENT PROPERTY FROM `unspellable`, and 0 for that one while this was 119 —
+    // which is how #1324 stayed invisible under a green arm. "The writer returned bytes"
+    // is not "the view can reopen them".
+    //
+    // ⚠ AND THE BYTES ARE VALID. Every one of the 119 is the parser's `unstable-period`
+    // ADMISSION gate — "the pattern does not repeat within 4 bars" — across 5 units, with
+    // zero syntax errors. Strudel plays these documents; the roll just declines to draw
+    // them, so the surface falls back to code after the edit.
+    //
+    // ⚠ PINNED, NOT FIXED, AND DELIBERATELY. Gating the writer on a reparse removes all
+    // 119 and costs p99 0.100ms -> 549ms, worst 4.3ms -> 2,155ms, because resize runs on
+    // every pointermove and `parsePianoRoll` runs the real grammar. No parse-free
+    // discriminator survives measurement either: the write path does not separate them
+    // (all 119 are `splice`, so are 5,890 healthy writes), and a comma-count proxy catches
+    // 3 of 119 while refusing 2,624 good writes. The affordable fix is one parse when the
+    // GESTURE COMMITS rather than one per frame, which belongs to #1324.
+    //
+    // 1 of the 119 predates #1318; 118 are its ladder reaching pitch-scoped spellings the
+    // whole-chord answer never produced. Placement is 0 on both builds.
+    expect(sweep.unreadable, 'resizes the roll can no longer reopen — see #1324').toBe(
+      RESIZE_UNREOPENABLE,
+    )
+  })
+
+  it('every resize the roll can be asked answers exactly as pinned', () => {
+    expect(aggregate(sweep.answers), 'aggregate over every roll resize').toBe(RESIZE_ANSWERS)
+  })
+
+  it('canResizeNote IS the op, not a predicate beside it', () => {
+    // The same assertion `cellResize.test.ts` makes of `canResizeCell`, and the reason
+    // the roll's twin exists at all (#1318): a view-level predicate that PREDICTS the
+    // writer is a second oracle and drifts the moment the writer's reach moves. Asked of
+    // every ask in the sweep, so agreement is measured rather than argued.
+    //
+    // ⚠ THIS IS ALSO ITS ONLY CALLER TODAY, and that is stated rather than hidden — the
+    // roll's panel still draws its length handle unconditionally, so `canResizeNote` is
+    // tree-shaken out of the shipped bundle while `canResizeCell` is not. Wiring the
+    // handle is #1322; until then this keeps the predicate from drifting unseen.
+    let asked = 0
+    let disagreeing = 0
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok) continue
+      const m = r.model
+      if (serializePianoRoll(m) !== mini) continue
+      for (const n of m.notes)
+        for (const duration of DURATIONS) {
+          asked++
+          if (canResizeNote(m, n.start, n.pitch, duration) !== (resizeNote(m, n.start, n.pitch, duration) !== m))
+            disagreeing++
+        }
+    }
+    expect(asked, 'asks the predicate was compared on').toBe(RESIZE_ASKS)
+    expect(disagreeing, 'canResizeNote disagrees with the op it stands for').toBe(0)
+  })
+
+  it('POSITIVE CONTROL — the aggregate can tell two sweeps apart', () => {
+    const perturbed = new Map(sweep.answers)
+    const first = [...perturbed.keys()].sort()[0]
+    perturbed.set(first, 'DELIBERATELY-DIFFERENT')
+    expect(aggregate(perturbed)).not.toBe(RESIZE_ANSWERS)
+    expect(new Set(sweep.answers.values()).size, 'answers are not all one value').toBeGreaterThan(
+      1,
+    )
+  })
+})
 
 describe('surface isolation — the roll, every placement it can be asked', () => {
   const sweep = sweepRoll()

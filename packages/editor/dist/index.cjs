@@ -29912,12 +29912,17 @@ function placeNote(model, pitch, start, duration) {
   const narrow = withCap(nextStart);
   const wideOut = serializePianoRollWithExtent(wide);
   if (wideOut.mini !== null) {
-    const degrades = wideOut.extent.path === "rebuild" && serializePianoRollWithExtent(narrow).extent.path !== "rebuild";
-    if (!degrades) return wide;
+    if (!degradesLocality(wideOut.extent, serializePianoRollWithExtent(narrow).extent))
+      return wide;
   }
   return ifRollSpellable(model, narrow);
 }
 __name(placeNote, "placeNote");
+function degradesLocality(next, floor) {
+  const rank = /* @__PURE__ */ __name((p) => p === "leaf" ? 0 : p === "rebuild" ? 2 : 1, "rank");
+  return rank(next.path) > rank(floor.path);
+}
+__name(degradesLocality, "degradesLocality");
 function pasteNote(model, pitch, start, duration) {
   const cleared = {
     ...model,
@@ -29968,23 +29973,43 @@ __name(resizeCell, "resizeCell");
 var canResizeCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, duration) => resizeCell(model, laneIndex, stepIndex, duration) !== model, "canResizeCell");
 function resizeNote(model, start, pitch, duration) {
   if ((model.bars ?? 1) > 1) {
-    const nextStart = Math.min(
-      ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+    const capTo = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
+      ...model.notes.filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start).map((n) => n.start),
       model.steps
+    ), "capTo");
+    const build = /* @__PURE__ */ __name((cap, scoped) => {
+      const capped2 = Math.max(1, Math.min(duration, cap - start));
+      return {
+        ...model,
+        notes: model.notes.map(
+          (n) => n.start === start && (!scoped || n.pitch === pitch) ? { ...n, duration: capped2 } : n
+        )
+      };
+    }, "build");
+    const anyCap = capTo(false);
+    const sameCap = capTo(true);
+    const legacy = build(anyCap, false);
+    if (sameCap === anyCap && model.notes.filter((n) => n.start === start).length < 2)
+      return ifRollSpellable(model, legacy);
+    const floor = serializePianoRollWithExtent(legacy);
+    for (const rung of [build(sameCap, true), build(anyCap, true)]) {
+      const out = serializePianoRollWithExtent(rung);
+      if (out.mini === null) continue;
+      if (degradesLocality(out.extent, floor.extent)) continue;
+      return rung;
+    }
+    const movesOthers = legacy.notes.some(
+      (n, i) => n.duration !== model.notes[i].duration && !(n.start === start && n.pitch === pitch)
     );
-    const capped2 = Math.max(1, Math.min(duration, nextStart - start));
-    return {
-      ...model,
-      notes: model.notes.map((n) => n.start === start ? { ...n, duration: capped2 } : n)
-    };
+    return movesOthers ? model : ifRollSpellable(model, legacy);
   }
   const capped = Math.max(1, Math.min(duration, model.steps - start));
-  return {
+  return ifRollSpellable(model, {
     ...model,
     notes: model.notes.map(
       (n) => n.start === start && n.pitch === pitch ? { ...n, duration: capped } : n
     )
-  };
+  });
 }
 __name(resizeNote, "resizeNote");
 

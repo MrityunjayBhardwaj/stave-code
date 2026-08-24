@@ -513,8 +513,20 @@ export function PianoRollGrid({
     if (d.mode === 'resize') {
       // duration = columns from the note start through the hovered column;
       // snap the END edge to the division line (min one division when snapping).
-      // resizeNote floors at 1 and caps at the grid end; only the grabbed note
-      // (by pitch) resizes — a note may sustain under a later onset (#628).
+      // resizeNote floors at 1 and resizes only the grabbed note, by pitch — a note may
+      // sustain under a later onset (#628). Where it caps depends on the model: the grid
+      // end in a single-bar roll, the next onset in a multi-bar one, since `<...>` cannot
+      // spell a mixed-duration chord inside one slot.
+      //
+      // ⚠ THIS COMMENT DOCUMENTED THE OPPOSITE OF WHAT HAPPENED until #1318. Multi-bar
+      // rolls resized the whole chord and capped at any pitch's onset, so a drag on one
+      // voice silently restretched its neighbours. The comment was right about the
+      // intent and wrong about the code, which is the direction that gets believed.
+      //
+      // ⚠ IT CAN NOW DECLINE, returning the model unchanged — `mutate` treats that as no
+      // edit, so the drag simply does not move, which is the right answer for a length
+      // the document cannot carry. The handle is still drawn unconditionally though; the
+      // grid gates its own on `canResizeCell` and the roll does not yet.
       let dur = step - d.origStart + 1
       if (interval) dur = Math.max(interval, snapColumn(d.origStart + dur, interval) - d.origStart)
       mutate((prev) => resizeNote(prev, d.origStart, d.origPitch, dur))
