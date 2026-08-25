@@ -29945,6 +29945,21 @@ function resizeCell(model, laneIndex, stepIndex, duration) {
 }
 __name(resizeCell, "resizeCell");
 var canResizeCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, duration) => resizeCell(model, laneIndex, stepIndex, duration) !== model, "canResizeCell");
+var resizableNotes = /* @__PURE__ */ __name((model) => {
+  const out = /* @__PURE__ */ new Set();
+  const now2 = serializePianoRoll(model);
+  if (now2 === null) return out;
+  for (const n of model.notes) {
+    const writes2 = /* @__PURE__ */ __name((duration) => {
+      const next = resizeNote(model, n.start, n.pitch, duration);
+      if (next === model) return false;
+      const s = serializePianoRoll(next);
+      return s !== null && s !== now2;
+    }, "writes");
+    if (writes2(n.duration + 1) || writes2(Math.max(1, n.duration - 1))) out.add(n);
+  }
+  return out;
+}, "resizableNotes");
 function resizeNote(model, start, pitch, duration) {
   if ((model.bars ?? 1) > 1) {
     const capTo = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
@@ -32250,6 +32265,7 @@ function PianoRollGrid({
     }
   }, [model]);
   const placesNotes = React36.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
+  const resizable = React36.useMemo(() => model ? resizableNotes(model) : null, [model]);
   const cols = model ? columnCount(model) : 0;
   const gainWritable = React36.useMemo(
     () => model ? serializeRollGain(model).kind !== "skip" : false,
@@ -32352,6 +32368,7 @@ function PianoRollGrid({
       const barW = ov ? ov.extent * rect.width : rect.width;
       const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX2, barW * 0.4));
       if (isTail && e.clientX - rect.left >= barEnd - zone) {
+        if (!resizable?.has(note)) return;
         onResizeDown(note);
         return;
       }
@@ -32609,6 +32626,7 @@ function PianoRollGrid({
                             const isTail = on && tailColumn(note) === step;
                             const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
                             const canPlace = on || placesNotes;
+                            const resizeInert = on && isTail && resizable?.has(note) === false;
                             return /* @__PURE__ */ jsxs(
                               "button",
                               {
@@ -32620,8 +32638,9 @@ function PianoRollGrid({
                                 "data-roll-selected": isSel ? "true" : void 0,
                                 "data-playing": step === playingStep ? "true" : void 0,
                                 "data-roll-cell-inert": canPlace ? void 0 : "true",
+                                "data-roll-resize-inert": resizeInert ? "true" : void 0,
                                 "aria-disabled": canPlace ? void 0 : true,
-                                title: canPlace ? void 0 : "This pattern edits its existing notes \u2014 add notes in the code view.",
+                                title: !canPlace ? "This pattern edits its existing notes \u2014 add notes in the code view." : resizeInert ? "This note has no other length the pattern can hold \u2014 change its length in the code view." : void 0,
                                 onPointerDown: (e) => {
                                   e.preventDefault();
                                   if (!canPlace && !(e.metaKey || e.ctrlKey)) return;
@@ -32712,7 +32731,13 @@ function PianoRollGrid({
                                       children: model.numeric ? String(midi) : noteDisplayName(midi)
                                     }
                                   ),
-                                  isTail && // The resize handle sits at the BAR's trailing edge, not the
+                                  isTail && resizable?.has(note) && // RENDERED ONLY WHERE A DRAG WOULD WRITE (`resizable`, #1322),
+                                  // which is the standing rule for every affordance this panel
+                                  // draws (#1064/#1070/#1089). 1,861 of 5,480 corpus notes have no
+                                  // length the document can carry, and until now every one of them
+                                  // drew a handle that took the cursor and did nothing.
+                                  //
+                                  // The resize handle sits at the BAR's trailing edge, not the
                                   // cell's (#1078). A note that ends mid-column used to put its
                                   // handle at the far side of the column — floating in empty
                                   // background past the end of the note it resizes, which is a
