@@ -30012,6 +30012,34 @@ function resizeNote(model, start, pitch, duration) {
   });
 }
 __name(resizeNote, "resizeNote");
+function removeNote(model, start, pitch) {
+  const notes = model.notes.filter((n) => !(n.pitch === pitch && n.start === start));
+  if (notes.length === model.notes.length) return model;
+  return ifRollSpellable(model, { ...model, notes });
+}
+__name(removeNote, "removeNote");
+function moveNote(base, fromPitch, fromStart, toPitch, toStart) {
+  const idx = base.notes.findIndex((n) => n.pitch === fromPitch && n.start === fromStart);
+  if (idx < 0) return base;
+  const grabbed = base.notes[idx];
+  const start = Math.max(0, Math.min(toStart, base.steps - 1));
+  const rest = base.notes.filter((_, i) => i !== idx);
+  const landed = {
+    ...grabbed,
+    pitch: toPitch,
+    start,
+    duration: Math.max(1, Math.min(grabbed.duration, base.steps - start))
+  };
+  const notes = [...rest, landed];
+  const rebuilt = {
+    steps: base.steps,
+    ...base.bars != null ? { bars: base.bars } : {},
+    ...base.numeric ? { numeric: true } : {},
+    notes
+  };
+  return ifRollSpellable(base, rebuilt);
+}
+__name(moveNote, "moveNote");
 
 // src/visualEdit/panels/soundCatalog.ts
 var INSTRUMENTS = [
@@ -32259,10 +32287,7 @@ function PianoRollGrid({
       if (!d) return;
       dragRef.current = null;
       if (!d.moved && d.mode === "move") {
-        mutate((prev) => ({
-          ...prev,
-          notes: prev.notes.filter((n) => !(n.pitch === d.origPitch && n.start === d.origStart))
-        }));
+        mutate((prev) => removeNote(prev, d.origStart, d.origPitch));
       }
       endGesture();
     }, "onUp");
@@ -32358,9 +32383,7 @@ function PianoRollGrid({
       }
       dragRef.current = {
         mode: "move",
-        baseNotes: model.notes.filter((n) => n !== note),
-        duration: note.duration,
-        steps: model.steps,
+        base: model,
         grabOffset: step - note.start,
         origPitch: note.pitch,
         origStart: note.start,
@@ -32375,9 +32398,7 @@ function PianoRollGrid({
     if (!model) return;
     dragRef.current = {
       mode: "resize",
-      baseNotes: model.notes.filter((n) => n !== note),
-      duration: note.duration,
-      steps: model.steps,
+      base: model,
       grabOffset: 0,
       origPitch: note.pitch,
       origStart: note.start,
@@ -32390,32 +32411,24 @@ function PianoRollGrid({
     if (!d || !model) return;
     const interval = snapInterval(stepsPerBar(model.steps, model.bars), division2);
     if (d.mode === "resize") {
-      let dur2 = step - d.origStart + 1;
-      if (interval) dur2 = Math.max(interval, snapColumn(d.origStart + dur2, interval) - d.origStart);
-      mutate((prev) => resizeNote(prev, d.origStart, d.origPitch, dur2));
+      let dur = step - d.origStart + 1;
+      if (interval) dur = Math.max(interval, snapColumn(d.origStart + dur, interval) - d.origStart);
+      mutate((prev) => resizeNote(prev, d.origStart, d.origPitch, dur));
       d.moved = true;
       return;
     }
-    let newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1));
-    if (interval) newStart = Math.max(0, Math.min(snapColumn(newStart, interval), d.steps - 1));
-    const newPitch = tokenForRow(!!model.numeric, midi);
-    const dur = Math.max(1, Math.min(d.duration, d.steps - newStart));
-    const moved = {
-      steps: d.steps,
-      ...model.bars != null ? { bars: model.bars } : {},
-      ...model.numeric ? { numeric: true } : {},
-      notes: [...d.baseNotes, { pitch: newPitch, start: newStart, duration: dur }]
-    };
-    mutate(() => moved);
+    let newStart = Math.max(0, Math.min(step - d.grabOffset, d.base.steps - 1));
+    if (interval) newStart = Math.max(0, Math.min(snapColumn(newStart, interval), d.base.steps - 1));
+    const newPitch = tokenForRow(!!d.base.numeric, midi);
+    const next = moveNote(d.base, d.origPitch, d.origStart, newPitch, newStart);
     d.moved = true;
+    if (next === d.base) return;
+    mutate(() => next);
   }, "onCellEnter");
   const removeSelected = /* @__PURE__ */ __name(() => {
     const sel = selectedRef.current;
     if (!sel || sel.kind !== "roll") return;
-    mutate((prev) => ({
-      ...prev,
-      notes: prev.notes.filter((n) => !(n.pitch === sel.pitch && n.start === sel.start))
-    }));
+    mutate((prev) => removeNote(prev, sel.start, sel.pitch));
     select(null);
   }, "removeSelected");
   const copySelected = /* @__PURE__ */ __name(() => {

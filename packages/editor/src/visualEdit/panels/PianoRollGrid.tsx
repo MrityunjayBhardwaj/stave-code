@@ -35,7 +35,14 @@ import { PIANO_ROLL_TAB_ID } from './tabs'
 import { opensPianoRoll } from './surfaceRoute'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
-import { pasteNote, placeNote, resizeNote, viewPlacesNotes } from '../notation/place'
+import {
+  moveNote,
+  pasteNote,
+  placeNote,
+  removeNote,
+  resizeNote,
+  viewPlacesNotes,
+} from '../notation/place'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
@@ -146,10 +153,18 @@ function noteAt(model: PianoRollModel, midi: number, step: number): RollNote | u
 interface DragState {
   /** 'move' drags the note in pitch+time; 'resize' grows/shrinks its duration */
   mode: 'move' | 'resize'
-  /** notes other than the one being dragged — the stable base each move rebuilds from */
-  baseNotes: RollNote[]
-  duration: number
-  steps: number
+  /**
+   * The document AS AT GESTURE START — the fixed base every frame rebuilds from.
+   *
+   * ⚠ IT IS THE WHOLE MODEL, not the complement of the grabbed note, and that is the
+   * point. `mutate` re-parses the document between frames, so a note REFERENCE cannot
+   * survive a drag; the panel used to carry `model.notes.filter((n) => n !== note)` to
+   * work around that. Carrying the base model instead keeps the same no-drift property,
+   * hands the writer the source anchors span surgery needs, and lets the grabbed note be
+   * addressed by INDEX — sound here precisely because the base is captured ONCE, so the
+   * index cannot drift under a re-parse the way it would against `prev`.
+   */
+  base: PianoRollModel
   /** how far into the note the grab landed (step − note.start) */
   grabOffset: number
   /** the original note's pitch/start, for a click (no-move) removal / resize anchor */
@@ -324,10 +339,7 @@ export function PianoRollGrid({
       // click empty adds, click a note removes). A no-move on the resize handle
       // does nothing; a real drag already moved/resized it.
       if (!d.moved && d.mode === 'move') {
-        mutate((prev) => ({
-          ...prev,
-          notes: prev.notes.filter((n) => !(n.pitch === d.origPitch && n.start === d.origStart)),
-        }))
+        mutate((prev) => removeNote(prev, d.origStart, d.origPitch))
       }
       endGesture()
     }
@@ -471,9 +483,7 @@ export function PianoRollGrid({
       // a note: start a move drag; a press with no drag deletes it (onUp).
       dragRef.current = {
         mode: 'move',
-        baseNotes: model.notes.filter((n) => n !== note),
-        duration: note.duration,
-        steps: model.steps,
+        base: model,
         grabOffset: step - note.start,
         origPitch: note.pitch,
         origStart: note.start,
@@ -492,9 +502,7 @@ export function PianoRollGrid({
     if (!model) return
     dragRef.current = {
       mode: 'resize',
-      baseNotes: model.notes.filter((n) => n !== note),
-      duration: note.duration,
-      steps: model.steps,
+      base: model,
       grabOffset: 0,
       origPitch: note.pitch,
       origStart: note.start,
@@ -533,20 +541,25 @@ export function PianoRollGrid({
       d.moved = true
       return
     }
-    let newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1))
-    if (interval) newStart = Math.max(0, Math.min(snapColumn(newStart, interval), d.steps - 1))
-    const newPitch = tokenForRow(!!model.numeric, midi)
-    const dur = Math.max(1, Math.min(d.duration, d.steps - newStart))
-    const moved: PianoRollModel = {
-      steps: d.steps,
-      ...(model.bars != null ? { bars: model.bars } : {}),
-      ...(model.numeric ? { numeric: true } : {}),
-      notes: [...d.baseNotes, { pitch: newPitch, start: newStart, duration: dur }],
-    }
-    // rebuild from the fixed base each time → no accumulation drift; a move
-    // that can't serialize (overlap) is dropped by useGridModel.
-    mutate(() => moved)
+    let newStart = Math.max(0, Math.min(step - d.grabOffset, d.base.steps - 1))
+    if (interval) newStart = Math.max(0, Math.min(snapColumn(newStart, interval), d.base.steps - 1))
+    const newPitch = tokenForRow(!!d.base.numeric, midi)
+    // ⚠ THE BASE, NOT `prev`, and still rebuilt every frame — that part was always right.
+    // What the inline build got wrong was everything it did NOT copy: it constructed a
+    // bare `{ steps, bars, numeric, notes }`, so the model's `source`/`altSource`/
+    // `leafSource` never reached the writer and EVERY drag re-authored the whole pattern
+    // instead of editing the note's own bytes. Measured over 988,686 asks: 97.4% of moves
+    // came back on the `rebuild` path, and 2.1% serialized to null and were dropped in
+    // silence by `mutate`. The same literal also could not carry `gain` — a field it does
+    // not name — though no corpus unit witnesses that one, so it is fixed by construction
+    // rather than on evidence.
+    const next = moveNote(d.base, d.origPitch, d.origStart, newPitch, newStart)
     d.moved = true
+    // A refusal leaves the document exactly as it was — which is what used to happen
+    // anyway when the write serialized to null, only now the op says so and
+    // `canMoveNote` can be asked the same question.
+    if (next === d.base) return
+    mutate(() => next)
   }
 
   // Delete/Backspace removes the selected note (#432 — removal moved off the
@@ -554,10 +567,7 @@ export function PianoRollGrid({
   const removeSelected = (): void => {
     const sel = selectedRef.current
     if (!sel || sel.kind !== 'roll') return
-    mutate((prev) => ({
-      ...prev,
-      notes: prev.notes.filter((n) => !(n.pitch === sel.pitch && n.start === sel.start)),
-    }))
+    mutate((prev) => removeNote(prev, sel.start, sel.pitch))
     select(null)
   }
 

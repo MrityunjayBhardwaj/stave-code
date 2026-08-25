@@ -32,8 +32,19 @@ import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import { canResizeNote, placeNote, resizeNote } from '../../../editor/src/visualEdit/notation/place'
-import { serializePianoRoll } from '../../../editor/src/visualEdit/notation/serialize'
+import {
+  canMoveNote,
+  canRemoveNote,
+  canResizeNote,
+  moveNote,
+  placeNote,
+  removeNote,
+  resizeNote,
+} from '../../../editor/src/visualEdit/notation/place'
+import {
+  serializePianoRoll,
+  serializePianoRollWithExtent,
+} from '../../../editor/src/visualEdit/notation/serialize'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -362,6 +373,325 @@ describe('surface isolation — the roll, every placement it can be asked', () =
     expect(aggregate(perturbed)).not.toBe(ROLL_ANSWERS)
     expect(new Set(sweep.answers.values()).size, 'answers are not all one value').toBeGreaterThan(
       1,
+    )
+  })
+})
+
+/** measured 2026-08-24 on studio_v0.2.0 + the delete writer */
+const DELETE_UNITS = 595
+const DELETE_ASKS = 5480
+
+/**
+ * ⚠ PINNED WITH ITS ARGUMENT, because a bare number here reads as a defect and is not one.
+ * Delete declines on 382 of 5,480 asks, and every one of them WROTE NULL before this op
+ * existed — the panel's inline `filter` produced a model the document cannot spell,
+ * `useGridModel` dropped it, and the note stayed on screen with nothing said. Measured
+ * head-to-head over this population: 5,098 answers byte-identical, 0 answers changed,
+ * 0 asks that previously wrote real bytes now refuse.
+ *
+ * So this number is the silent no-ops becoming nameable, not capability lost. If it FALLS,
+ * something learned to spell a case it could not — good, re-pin and say which. If it RISES,
+ * the writer lost reach and that is a regression.
+ */
+const DELETE_REFUSED = 382
+
+const DELETE_ANSWERS = '7f3696bdde0bb4ee'
+
+interface DeleteSweep extends Sweep {
+  /** asks whose written bytes serialize to null — must be 0, the whole point of the op */
+  unspellable: number
+  /** asks where a note the delete KEPT came back different — must be 0 */
+  survivorChanged: number
+  /** asks where `canRemoveNote` disagreed with the op it is derived from — must be 0 */
+  canDisagreed: number
+  /** asks that removed more than one note: the plural contract, correct, counted not tolerated */
+  plural: number
+  survivorExample: string | null
+}
+
+/**
+ * Every note the roll holds, deleted.
+ *
+ * ⚠ THE ASK IS THE CELL, NOT THE NOTE, and the sweep is keyed by INDEX anyway. Under the
+ * plural contract a delete addresses a cell and takes every note in it, so two asks at a
+ * twin pair are the same ask twice — keyed by index they stay distinguishable, which is
+ * what lets `plural` be counted rather than inferred.
+ */
+function sweepDelete(): DeleteSweep {
+  const answers = new Map<string, string>()
+  let units = 0
+  let asks = 0
+  let refused = 0
+  let unspellable = 0
+  let survivorChanged = 0
+  let canDisagreed = 0
+  let plural = 0
+  let survivorExample: string | null = null
+  const sig = (n: { pitch: string; start: number; duration: number }): string =>
+    `${n.pitch}@${n.start}+${n.duration}`
+  for (const mini of minis) {
+    const r = parsePianoRoll(mini)
+    if (!r.ok) continue
+    const m = r.model
+    if (serializePianoRoll(m) !== mini) continue
+    if (m.notes.length === 0) continue
+    units++
+    const before = m.notes.map(sig)
+    for (let j = 0; j < m.notes.length; j++) {
+      const n = m.notes[j]
+      asks++
+      const key = [mini, j, n.start, n.pitch].join('␟')
+      const next = removeNote(m, n.start, n.pitch)
+
+      // the predicate is DERIVED from the op; assert that rather than trusting it
+      if (canRemoveNote(m, n.start, n.pitch) !== (next !== m)) canDisagreed++
+
+      if (next === m) {
+        answers.set(key, 'REFUSED')
+        refused++
+        continue
+      }
+
+      const removed = m.notes.length - next.notes.length
+      if (removed > 1) plural++
+
+      // ⚠ REMOVAL IS NOT A CHANGE; RE-SPELLING IS. Compare the notes the delete KEPT,
+      // by index on the source side, against what came back. Deleting must never alter
+      // a voice it leaves standing — measured 0 before this op existed, and the reason
+      // the fix here is a gate rather than a ladder: there is no better spelling to seek.
+      const kept = m.notes
+        .map((x, i) => i)
+        .filter((i) => !(m.notes[i].pitch === n.pitch && m.notes[i].start === n.start))
+      const after = next.notes.map(sig)
+      const moved = kept.filter((i, k) => after[k] !== before[i])
+      if (moved.length > 0) {
+        survivorChanged++
+        if (survivorExample === null)
+          survivorExample = `${mini} — delete ${n.pitch}@${n.start} altered ${moved
+            .map((i) => before[i])
+            .join(', ')}`
+      }
+
+      const out = serializePianoRoll(next)
+      if (out === null) unspellable++
+      answers.set(key, out === null ? 'NULL' : shortHash(out))
+    }
+  }
+  return {
+    units,
+    asks,
+    refused,
+    answers,
+    unspellable,
+    survivorChanged,
+    canDisagreed,
+    plural,
+    survivorExample,
+  }
+}
+
+describe('surface isolation — the roll, every delete it can be asked', () => {
+  const sweep = sweepDelete()
+
+  it('sweeps the population it claims to', () => {
+    expect(sweep.units).toBe(DELETE_UNITS)
+    expect(sweep.asks).toBe(DELETE_ASKS)
+  })
+
+  it('never writes a model that cannot be spelled', () => {
+    // 382 asks did before this op existed, and each showed the user a note that stayed
+    // put with no refusal — the same shape the step grid's cell gesture had before it
+    // was gated. The honest answer is to decline, which is what `refused` counts.
+    expect(sweep.unspellable, 'deletes whose result serializes to null').toBe(0)
+  })
+
+  it('never alters a note it leaves standing', () => {
+    expect(
+      sweep.survivorChanged,
+      `a surviving note was re-spelled — ${sweep.survivorExample}`,
+    ).toBe(0)
+  })
+
+  it('offers exactly what it will accept', () => {
+    // `canRemoveNote` IS the op — asserted rather than assumed, so the two cannot drift.
+    expect(sweep.canDisagreed, 'canRemoveNote disagreed with removeNote').toBe(0)
+  })
+
+  it('declines only where the document cannot carry the result', () => {
+    expect(sweep.refused).toBe(DELETE_REFUSED)
+  })
+
+  it('answers every delete the same way', () => {
+    expect(aggregate(sweep.answers)).toBe(DELETE_ANSWERS)
+  })
+})
+
+/* ── move ───────────────────────────────────────────────────────────────────────
+ *
+ * Move was the roll's LAST gesture without a writer: the panel built a whole
+ * `PianoRollModel` inline and called `mutate(() => moved)`. Its comment was right about
+ * accumulation ("rebuild from the fixed base each time") and silent about everything else.
+ *
+ * ⚠ THE DEFECT THIS ARM EXISTS FOR IS THE REFUSAL. Over the exhaustive plane (982,157
+ * reachable asks) 20,092 moves used to serialize to null, and `mutate` dropped each in
+ * silence — the note stayed put and nothing said why, the same shape delete had 382 of.
+ * On THIS arm's smaller axes population the same defect is 3,652 asks. Two populations,
+ * quoted separately on purpose: the figures are not interchangeable.
+ *
+ * ⚠ LOCALITY IS A SEPARATE, MEASURED, DELIBERATELY UNFIXED GAP. The inline literal built a
+ * bare `{ steps, bars, numeric, notes }`, so `source`/`altSource`/`leafSource` never reach
+ * the writer and every drag re-authors the whole pattern — 168,533 of this arm's 172,185
+ * asks. Anchoring the write takes that to 23,834, and a control arm showed it is not safe
+ * yet: the anchored bytes SPELL but do not read back as meant (9.94% against the
+ * re-authoring path's 0.02%). `rebuilds` is pinned here so that gap stays visible and so
+ * whoever closes it has to move this number deliberately.
+ *
+ * ⚠ THE POPULATION HERE IS THE TWO DRAG AXES, NOT THE PLANE, and that is a stated bound:
+ * every reachable note moved along time (its own pitch, every column) and along pitch
+ * (its own column, every pitch present). The exhaustive note x pitch x step cross product
+ * is 988,686 asks and ~51s — a probe, not a gate. The axes carry the same properties at a
+ * fraction of the cost, and the aggregate still discriminates.
+ *
+ * ⚠ ONLY POINTER-REACHABLE GESTURES. `overlapAt` returns the FIRST note covering a cell,
+ * so a second twin at one cell cannot be grabbed by click, drag or keyboard. Sweeping it
+ * asks the writer for gestures the panel cannot make — and doing so is what made an
+ * earlier measurement read 1,176 lost writes that no user could ever have performed.
+ */
+const MOVE_UNITS = 595
+const MOVE_ASKS = 172185
+const MOVE_REFUSED = 3652
+const MOVE_REBUILDS = 168533
+const MOVE_ANSWERS = '0c199f19f63db9e2'
+
+interface MoveSweep extends Sweep {
+  unspellable: number
+  bystanderChanged: number
+  canDisagreed: number
+  rebuilds: number
+  bystanderExample: string | null
+}
+
+function sweepMove(): MoveSweep {
+  const answers = new Map<string, string>()
+  let units = 0
+  let asks = 0
+  let refused = 0
+  let unspellable = 0
+  let bystanderChanged = 0
+  let canDisagreed = 0
+  let rebuilds = 0
+  let bystanderExample: string | null = null
+  const sig = (n: { pitch: string; start: number; duration: number; gain?: number }): string =>
+    `${n.pitch}@${n.start}+${n.duration}${n.gain != null && n.gain !== 1 ? `g${n.gain}` : ''}`
+
+  for (const mini of minis) {
+    const r = parsePianoRoll(mini)
+    if (!r.ok) continue
+    const m = r.model
+    if (serializePianoRoll(m) !== mini) continue
+    if (m.notes.length === 0) continue
+    units++
+    const pitches = [...new Set(m.notes.map((n) => n.pitch))]
+
+    for (let j = 0; j < m.notes.length; j++) {
+      const g = m.notes[j]
+      if (m.notes.findIndex((n) => n.pitch === g.pitch && n.start === g.start) !== j) continue
+      // the voices this gesture never addressed, by INDEX — the tuple is not an identity
+      const bystanders = m.notes.filter((_, i) => i !== j).map(sig)
+
+      const targets: Array<[string, number]> = []
+      for (let s = 0; s < m.steps; s++) targets.push([g.pitch, s]) // drag through time
+      for (const p of pitches) if (p !== g.pitch) targets.push([p, g.start]) // drag through pitch
+
+      for (const [p, s] of targets) {
+        asks++
+        const key = [mini, j, g.pitch, g.start, p, s].join('␟')
+        const next = moveNote(m, g.pitch, g.start, p, s)
+
+        // ⚠ A DRIFT GUARD, NOT A MEASUREMENT. `canMoveNote` is DEFINED as
+        // `moveNote(...) !== base`, so today this cannot fail and proves nothing about the
+        // current code. What it pins is the DERIVATION: the day someone reimplements the
+        // predicate as an independent rule — which is exactly how this surface's other
+        // predicates went wrong — this reddens. Cheap once here; it was pure cost in the
+        // one-off sweep, where it doubled the run for no signal.
+        if (canMoveNote(m, g.pitch, g.start, p, s) !== (next !== m)) canDisagreed++
+
+        if (next === m) {
+          answers.set(key, 'REFUSED')
+          refused++
+          continue
+        }
+
+        // moving must never re-spell a voice the drag did not touch
+        // the writer appends the landed note last, so the bystanders are everything before
+        const after = next.notes.slice(0, -1).map(sig)
+        if (after.length === bystanders.length) {
+          const moved = bystanders.filter((x, i) => after[i] !== x)
+          if (moved.length > 0) {
+            bystanderChanged++
+            if (bystanderExample === null)
+              bystanderExample = `${mini} — move ${g.pitch}@${g.start} -> ${p}@${s} altered ${moved.join(', ')}`
+          }
+        }
+
+        const out = serializePianoRollWithExtent(next)
+        if (out.mini === null) unspellable++
+        else if (out.extent.path === 'rebuild') rebuilds++
+        answers.set(key, out.mini === null ? 'NULL' : shortHash(out.mini))
+      }
+    }
+  }
+  return {
+    units,
+    asks,
+    refused,
+    answers,
+    unspellable,
+    bystanderChanged,
+    canDisagreed,
+    rebuilds,
+    bystanderExample,
+  }
+}
+
+describe('surface isolation — the roll, every move a pointer can make', () => {
+  const sweep = sweepMove()
+
+  it('sweeps the population it claims to', () => {
+    expect(sweep.units).toBe(MOVE_UNITS)
+    expect(sweep.asks).toBe(MOVE_ASKS)
+  })
+
+  it('never writes a model that cannot be spelled', () => {
+    // 16,312 asks did before this op existed. `mutate` dropped each one on a null
+    // serialize, so the note sat still and nothing said why — the same silence delete
+    // had 382 of, on the gesture next door.
+    expect(sweep.unspellable, 'moves whose result serializes to null').toBe(0)
+  })
+
+  it('never re-spells a voice the drag did not touch', () => {
+    expect(sweep.bystanderChanged, `a bystander moved — ${sweep.bystanderExample}`).toBe(0)
+  })
+
+  it('offers exactly what it will accept', () => {
+    expect(sweep.canDisagreed, 'canMoveNote disagreed with moveNote').toBe(0)
+  })
+
+  it('declines only where the document cannot carry the result', () => {
+    expect(sweep.refused).toBe(MOVE_REFUSED)
+  })
+
+  it('writes locally — a drag does not re-author the document', () => {
+    // ⚠ THIS PIN RECORDS A GAP, NOT A WIN. Every move re-authors the document today, and
+    // that is what this number says. It is pinned so the gap cannot be closed by accident
+    // and cannot be forgotten: anchoring the write drops it to 23,834, and doing so is
+    // only safe behind a readback this gesture's cadence cannot afford.
+    expect(sweep.rebuilds, 'moves that re-authored the whole pattern').toBe(MOVE_REBUILDS)
+  })
+
+  it('answers every move the same way', () => {
+    expect(aggregate(sweep.answers), 'aggregate over every reachable roll move').toBe(
+      MOVE_ANSWERS,
     )
   })
 })
