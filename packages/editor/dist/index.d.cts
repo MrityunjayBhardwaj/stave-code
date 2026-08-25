@@ -9117,7 +9117,16 @@ declare function isBlackKey(midi: number): boolean;
  *    whose members have different lengths, so nothing forces them shorter;
  *  - the next group (or the grid end) caps the new note's duration.
  */
-declare function placeNote(model: PianoRollModel, pitch: string, start: number, duration: number): PianoRollModel;
+declare function placeNote(model: PianoRollModel, pitch: string, start: number, duration: number, opts?: RollWriteOptions): PianoRollModel;
+/** Options a caller may tighten a roll write with. */
+interface RollWriteOptions {
+    /**
+     * Require the result to READ BACK, not merely to spell (#1331). Off by default because
+     * it parses, and the roll's writers run per drag frame; the panel turns it on once at
+     * gesture commit, where one parse is affordable.
+     */
+    readback?: boolean;
+}
 
 type ResizeMode = 'spread' | 'pad';
 /**
