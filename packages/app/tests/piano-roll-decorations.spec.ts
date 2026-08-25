@@ -123,8 +123,26 @@ async function geometry(page: Page): Promise<CellGeom[]> {
 }
 
 const FIXTURE = '$: note("[c5@0.5 f4@0.5 f5@3]")'
-/** the same shape with a bar narrower than the handle's own width — 5.3px, measured */
-const NARROW = '$: note("[c5@0.125 f4@0.875 f5@3]")'
+/**
+ * THE HANDLE FIXTURE, AND WHY IT IS NOT `FIXTURE` ANY MORE (#1322).
+ *
+ * Every note in `[c5@0.5 f4@0.5 f5@3]` is `@`-spelled, and the roll now draws a length
+ * handle only where a drag could change the length. Asked for any length at all, on any
+ * of its three notes, `resizeNote` REFUSES — so that fixture has zero handles and the two
+ * arms below lost their subject entirely. They were pinning the geometry of a control
+ * that never worked: #1078 predates #1318, which is what first let resize decline, so
+ * until now the refusal was silent and the handle looked functional.
+ *
+ * `[c2@6 c2 d2@0.75]*2` is the replacement, chosen by measuring rather than by guessing —
+ * only three notes in the whole round-tripping corpus end mid-column AND keep a handle,
+ * and all three are in this unit. At a 900px viewport its columns sit at their 12px floor
+ * (10px client box) and the three partial bars render 5px wide, which is narrower than
+ * the handle's own 8px — so ONE fixture carries both arms, and the clamp below is
+ * genuinely exercised rather than trivially satisfied.
+ */
+const PARTIAL = '$: note("[c2@6 c2 d2@0.75]*2")'
+/** Pins the column width at its floor, which is what makes the sub-handle bars appear. */
+const NARROW_VIEWPORT = { width: 900, height: 900 }
 /** the handle's unclamped width, mirrored from `PianoRollGrid.tsx` */
 const RESIZE_ZONE_PX = 8
 
@@ -152,8 +170,9 @@ test.describe('roll decorations follow the note, not the column (#1078)', () => 
   })
 
   test("the handle of a note ending mid-column sits at the BAR's trailing edge", async ({ page }) => {
+    await page.setViewportSize(NARROW_VIEWPORT)
     await boot(page)
-    await setStrudelCode(page, FIXTURE)
+    await setStrudelCode(page, PARTIAL)
     await openRoll(page)
     await expect(page.locator('[data-roll-fill]').first()).toBeVisible()
 
@@ -186,13 +205,20 @@ test.describe('roll decorations follow the note, not the column (#1078)', () => 
     // than the handle's own 8px, and a fixed-width handle would be wider than the
     // note it resizes — overhanging backwards past its own start.
     //
-    // THIS ARM NEEDS ITS OWN FIXTURE. On the `@0.5` fixture every bar is ~21px and
-    // the handle 8px, so `8 <= 21` holds however the code is written: the arm went
-    // green under BOTH handle breaks, which makes it a gate that cannot fail
-    // ([[P370]]). `c5@0.125` in a 42px column is a 5.3px bar, which is the only
-    // shape that exercises the clamp at all.
+    // THIS ARM NEEDS A BAR NARROWER THAN THE HANDLE, or `8 <= bar` holds however the
+    // code is written and the arm goes green under every handle break — a gate that
+    // cannot fail. Its old fixture reached that shape with `c5@0.125`, and #1322 took
+    // it away: `@`-spelled notes are refused by the writer, so they draw no handle now
+    // and there is nothing to measure.
+    //
+    // The subject is restored by NARROWING THE VIEWPORT rather than by weakening the
+    // assertion. At 900px this fixture's 33 columns sit at their 12px floor, and its
+    // three partial bars render 5px — measured, with the handle clamped to 5px against
+    // an unclamped 8px. Widen the window and the clamp stops binding, which is why the
+    // viewport is pinned here and the count below is asserted before the geometry.
+    await page.setViewportSize(NARROW_VIEWPORT)
     await boot(page)
-    await setStrudelCode(page, NARROW)
+    await setStrudelCode(page, PARTIAL)
     await openRoll(page)
     await expect(page.locator('[data-roll-fill]').first()).toBeVisible()
 
@@ -227,6 +253,21 @@ test.describe('roll decorations follow the note, not the column (#1078)', () => 
       expect(Math.abs(g.fx - g.cx), `${g.cell}: bar fills its column`).toBeLessThanOrEqual(1)
       expect(Math.abs(g.fw - g.cw), `${g.cell}: bar fills its column`).toBeLessThanOrEqual(1)
       expect(Math.abs(g.nx! - g.cx), `${g.cell}: name still at the cell's left`).toBeLessThanOrEqual(1)
+    }
+
+    // ⚠ THE HANDLE POPULATION IS NO LONGER ALL FOUR (#1322). The last note has nowhere
+    // to grow — there is nothing past the grid end — and cannot shrink, because the
+    // writer floors a duration at 1. So the roll withholds its handle, and asserting
+    // handle geometry over every cell would read `undefined` for that one and fail on a
+    // change that is correct. Which cells keep a handle is asserted here rather than
+    // filtered silently, so the split is a claim and not an accommodation.
+    const handled = geom.filter((g) => g.hx !== undefined)
+    expect(
+      handled.map((g) => g.cell).sort(),
+      'the first three notes keep a handle; the last one has no writable length',
+    ).toEqual(['60:0', '64:1', '67:2'])
+
+    for (const g of handled) {
       expect(
         Math.abs(g.hx! + g.hw! - (g.cx + g.cw)),
         `${g.cell}: handle still at the cell's right`,
