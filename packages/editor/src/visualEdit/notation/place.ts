@@ -652,9 +652,16 @@ export const canResizeNote = (
  * does. Checked against an exhaustive sweep of every column the drag can reach — 1,861
  * inert of 5,480, with 0 notes classified differently by the two.
  *
- * ⚠ `Math.max(1, d - 1)`, not `d - 1`: for a sub-1 note (`@0.5`) the shrink ask floors UP
- * to 1, which is that note's only length change. Guarding the sub-1 ask away instead
- * calls 6 notes inert that genuinely resize.
+ * ⚠ `Math.max(1, d - 1)`, not `d - 1` behind a `< 1` guard. Where `1 < d < 2` the shrink
+ * ask is a fraction below 1, and guarding it away loses a real shrink the writer would
+ * take — `d2@29.5+1.5` shrinking to 1. It changes exactly ONE note of 5,480.
+ *
+ * ⚠ AN EARLIER VERSION OF THIS COMMENT SAID SIX, AND SAID "sub-1 note (`@0.5`)". Both
+ * wrong, from the same mistake: the six came from subtracting two counts that differed
+ * for TWO reasons — this ask (1) and a `(pitch, start)` key collision (5) — and the
+ * mechanism was guessed rather than measured. There are ZERO sub-1 duration notes in the
+ * population, so the case the comment described does not occur at all. Split a difference
+ * by cause before attributing it.
  *
  * COST, because this hangs off the model and `mutate` fires per `pointermove`, so it is
  * paid per accepted FRAME of a drag, not once per gesture — the axis #1324 was reverted
