@@ -39,12 +39,14 @@ import {
   moveNote,
   placeNote,
   removeNote,
+  resizableNotes,
   resizeNote,
 } from '../../../editor/src/visualEdit/notation/place'
 import {
   serializePianoRoll,
   serializePianoRollWithExtent,
 } from '../../../editor/src/visualEdit/notation/serialize'
+import type { PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -693,5 +695,117 @@ describe('surface isolation — the roll, every move a pointer can make', () => 
     expect(aggregate(sweep.answers), 'aggregate over every reachable roll move').toBe(
       MOVE_ANSWERS,
     )
+  })
+})
+
+
+/** measured 2026-08-25 on `f60985dc`, over the same units every other roll sweep uses */
+const OFFER_UNITS = 595
+const OFFER_NOTES = 5480
+/**
+ * ⚠ THIS PIN IS A THIRD OF THE SURFACE, AND #1322 WAS FILED AT 93.
+ *
+ * That figure asked `canResizeNote` over durations {1,2,4}. `canResizeNote` is
+ * `resizeNote(...) !== model` — an IDENTITY check — so it answers true whenever the
+ * writer accepted the ask, including the 5,440 no-ops that rebuild byte-identical
+ * output. Scored on what the document actually receives, 1,861 notes have no length the
+ * drag can reach and the pattern can hold.
+ *
+ * It is pinned exactly, in both directions: the affordance must not silently widen (a
+ * handle returning to a note that cannot use it) or narrow (a handle taken from one that
+ * can). Deliberate changes to `resizeNote`'s reach WILL move it — say which change moved
+ * it and why, then re-pin.
+ */
+const OFFER_INERT = 1861
+
+/**
+ * The exhaustive form of the question the panel asks cheaply: is there ANY column the
+ * drag can reach that leaves a spellable document with different bytes?
+ *
+ * `PianoRollGrid.tsx` computes `dur = step - origStart + 1` from the hovered column, so
+ * the reachable durations are exactly `1 .. steps - start`. Nothing outside that range is
+ * offerable however the writer would answer it.
+ */
+function offerableExhaustively(
+  m: PianoRollModel,
+  n: { start: number; pitch: string },
+): boolean {
+  const now = serializePianoRoll(m)
+  if (now === null) return false
+  const span = Math.max(1, m.steps - n.start)
+  for (let x = 1; x <= span; x++) {
+    const next = resizeNote(m, n.start, n.pitch, x)
+    if (next === m) continue
+    const out = serializePianoRoll(next)
+    if (out !== null && out !== now) return true
+  }
+  return false
+}
+
+describe('surface isolation — the roll, which notes may be offered a length handle', () => {
+  const models = minis
+    .map((mini) => ({ mini, r: parsePianoRoll(mini) }))
+    .filter((u) => u.r.ok)
+    .map((u) => ({ mini: u.mini, m: (u.r as { ok: true; model: PianoRollModel }).model }))
+    .filter((u) => serializePianoRoll(u.m) === u.mini && u.m.notes.length > 0)
+
+  const sets = models.map((u) => ({ ...u, offer: resizableNotes(u.m) }))
+  const notes = sets.reduce((a, u) => a + u.m.notes.length, 0)
+  const offered = sets.reduce((a, u) => a + u.offer.size, 0)
+
+  it('the sweep actually ran — denominators before verdicts', () => {
+    expect(sets.length, 'roll units that round-trip and hold a note').toBe(OFFER_UNITS)
+    expect(notes, 'notes the roll draws a tail for').toBe(OFFER_NOTES)
+    // ⚠ A DETECTOR THAT NEVER CLEARS IS AS USELESS AS ONE THAT NEVER FIRES. Both ends are
+    // asserted so neither an all-inert nor an all-offered regression reads as green.
+    expect(offered, 'notes offered a handle').toBeGreaterThan(0)
+    expect(offered).toBeLessThan(notes)
+  })
+
+  it('offers a handle on exactly the notes a drag can resize', () => {
+    expect(notes - offered, 'notes with no writable length').toBe(OFFER_INERT)
+  })
+
+  it('never takes a handle from a note that some reachable column would resize', () => {
+    // THE EXPENSIVE DIRECTION. A false inert removes a control the user could have used,
+    // and unlike a false offer nothing about the running app would reveal it. Checked
+    // against every column the drag can reach, not against the cheap rule restated.
+    const wrong: string[] = []
+    for (const u of sets) {
+      for (const n of u.m.notes) {
+        if (u.offer.has(n)) continue
+        if (offerableExhaustively(u.m, n)) {
+          wrong.push(`${u.mini} — ${n.pitch}@${n.start}+${n.duration}`)
+        }
+      }
+    }
+    expect(wrong.slice(0, 5), 'handles wrongly withheld').toEqual([])
+  })
+
+  it('never keeps a handle on a note no reachable column would resize', () => {
+    const wrong: string[] = []
+    for (const u of sets) {
+      for (const n of u.m.notes) {
+        if (!u.offer.has(n)) continue
+        if (!offerableExhaustively(u.m, n)) {
+          wrong.push(`${u.mini} — ${n.pitch}@${n.start}+${n.duration}`)
+        }
+      }
+    }
+    expect(wrong.slice(0, 5), 'dead handles kept').toEqual([])
+  })
+
+  it('keys the set by note identity, because (pitch, start) is not one', () => {
+    // ⚠ A COMMA-STACK HOLDS THE SAME PITCH TWICE AT ONE START (#1321) — `[d4,f4,d4]`. The
+    // grid keys its own resizable set by start column and is right to; a lane cannot hold
+    // two notes at one step. Keying the roll's the same way merged 5 offerable notes into
+    // 4 entries, which would have shown up as 5 handles quietly missing.
+    let byTuple = 0
+    for (const u of sets) {
+      const k = new Set<string>()
+      for (const n of u.m.notes) if (u.offer.has(n)) k.add(`${n.pitch}:${n.start}`)
+      byTuple += k.size
+    }
+    expect(offered - byTuple, 'offerable notes a (pitch,start) key would have merged').toBe(5)
   })
 })

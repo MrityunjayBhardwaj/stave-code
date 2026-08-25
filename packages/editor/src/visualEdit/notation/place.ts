@@ -41,12 +41,13 @@ import {
   isCellOn,
   rollContentRange,
 } from './model'
-import type { PianoRollModel, StepCell, StepGridModel } from './model'
+import type { PianoRollModel, RollNote, StepCell, StepGridModel } from './model'
 import { midiToPitch, pitchToMidi } from './pitch'
 import {
   ifGridSpellable,
   ifRollSpellable,
   serializeStepGrid,
+  serializePianoRoll,
   serializePianoRollWithExtent,
 } from './serialize'
 import type { RollWriteExtent } from './serialize'
@@ -618,6 +619,66 @@ export const canResizeNote = (
   pitch: string,
   duration: number,
 ): boolean => resizeNote(model, start, pitch, duration) !== model
+
+/**
+ * WHICH NOTES A RESIZE HANDLE WOULD DO SOMETHING TO (#1322).
+ *
+ * The panel draws a length handle on every note's tail. Since #1318 gave resize the
+ * ability to decline, some of those handles take the cursor, accept the drag, and write
+ * nothing — a control that promises an edit that cannot happen. This is the set the panel
+ * gates on, and it belongs here rather than beside the render for the same reason
+ * `canResizeCell` does: the admissibility of a gesture is the writer's answer, and a
+ * predicate written next to the view is a second oracle that drifts the moment the
+ * writer's reach moves.
+ *
+ * ⚠ IT CANNOT BE BUILT FROM `canResizeNote`, which is the obvious thing to reach for and
+ * is wrong here. That predicate is `resizeNote(...) !== model` — IDENTITY — so it answers
+ * "did the writer accept the ask", not "did the document change". Asked for the length a
+ * note already has, `resizeNote` rebuilds an equal model in 5,440 of 5,480 corpus notes
+ * and the bytes differ in NONE of them, so an offer-set built on it counts no-ops as
+ * affordances. Measured: `canResizeNote` over `{1,2,4}` keeps a dead handle on 1,768
+ * notes, and over `d±1` on 1,726. Scored on BYTES the same `d±1` shape is exact.
+ *
+ * ⚠ THE GRID DOES NOT MEET THIS because its rule only ever asks `d+1` and `d-1`, which
+ * are never no-ops. What does not port is the KEY: `SequencerGrid` collects a
+ * `Set<number>` of start columns, sound because a lane cannot hold two notes at one step.
+ * A roll comma-stack can — `[d4,f4,d4]` — so `(pitch, start)` is not an identity here and
+ * keying on it silently merged 5 of 3,619 offerable notes. The set is keyed by NOTE
+ * OBJECT, which is what `overlapAt` hands the render back.
+ *
+ * WHY `d±1` IS EXACT rather than a lucky proxy: `resizeNote` floors the new duration at 1
+ * and caps it at a maximum, so the writable lengths form one contiguous run around the
+ * note's own. If any longer length writes, `d+1` writes; if any shorter one does, `d-1`
+ * does. Checked against an exhaustive sweep of every column the drag can reach — 1,861
+ * inert of 5,480, with 0 notes classified differently by the two.
+ *
+ * ⚠ `Math.max(1, d - 1)`, not `d - 1`: for a sub-1 note (`@0.5`) the shrink ask floors UP
+ * to 1, which is that note's only length change. Guarding the sub-1 ask away instead
+ * calls 6 notes inert that genuinely resize.
+ *
+ * COST, because this hangs off the model and `mutate` fires per `pointermove`, so it is
+ * paid per accepted FRAME of a drag, not once per gesture — the axis #1324 was reverted
+ * on. Over the 595 corpus units: p50 0.05ms, p90 0.45ms, p99 3.61ms, worst 15.88ms on a
+ * 144-note × 64-column model. That sits in the envelope of the grid's own `placeable`
+ * memo (p99 2.54ms, worst 14.4ms), which shipped, and well inside the roll's per-CELL map
+ * (p99 21.67ms, worst 50ms), which #1072 declined. It asks once per NOTE, which is why —
+ * the declined map asked once per empty cell.
+ */
+export const resizableNotes = (model: PianoRollModel): Set<RollNote> => {
+  const out = new Set<RollNote>()
+  const now = serializePianoRoll(model)
+  if (now === null) return out
+  for (const n of model.notes) {
+    const writes = (duration: number): boolean => {
+      const next = resizeNote(model, n.start, n.pitch, duration)
+      if (next === model) return false
+      const s = serializePianoRoll(next)
+      return s !== null && s !== now
+    }
+    if (writes(n.duration + 1) || writes(Math.max(1, n.duration - 1))) out.add(n)
+  }
+  return out
+}
 
 /**
  * Resize the single note identified by (`start`, `pitch`) to `duration` steps. The new

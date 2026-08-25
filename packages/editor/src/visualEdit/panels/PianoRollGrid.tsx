@@ -40,6 +40,7 @@ import {
   pasteNote,
   placeNote,
   removeNote,
+  resizableNotes,
   resizeNote,
   viewPlacesNotes,
 } from '../notation/place'
@@ -302,6 +303,39 @@ export function PianoRollGrid({
   // the model, because a leaf roll (which refuses everything and is therefore
   // scanned in full) would otherwise pay for that scan on every render.
   const placesNotes = React.useMemo(() => (model ? viewPlacesNotes(model) : false), [model])
+  /**
+   * WHICH NOTES A LENGTH HANDLE WOULD ACTUALLY RESIZE (#1322).
+   *
+   * The roll drew its right-edge handle on every note's tail. #1318 gave resize the
+   * ability to decline — where the only writable answer would move a voice the gesture
+   * never touched, and where the answer cannot be spelled — so since then some of those
+   * handles have taken the cursor, accepted the drag and written nothing. The gesture was
+   * offered and then silently did nothing, which is what #1064/#1070 removed from the
+   * cell and #1089 removed from the velocity lane; this is the same rule reaching the one
+   * affordance that still promised more than it could keep.
+   *
+   * ASKED OF THE WRITER, not predicted beside it — `resizableNotes` is in `place.ts` for
+   * the same reason `canResizeCell` is, and its docblock carries the measurement.
+   *
+   * ⚠ MEASURED AT 1,861 OF 5,480 CORPUS NOTES (33.96%), not the 93 the issue was filed
+   * with. That figure came from asking `canResizeNote` over durations {1,2,4}; that
+   * predicate is an IDENTITY check, so it answers true for a resize that rebuilds the
+   * same bytes, and it kept a dead handle on 1,768 notes. The commonest inert note is an
+   * ordinary one: a duration-1 note in a dense pattern cannot grow (the next onset caps
+   * it) and cannot shrink (the writer floors at 1).
+   *
+   * ⚠ KEYED BY NOTE OBJECT. `overlapAt` hands the render the note out of `model.notes`,
+   * so identity is exact and free. `(pitch, start)` is NOT an identity on this surface —
+   * a comma-stack holds the same pitch twice at one start (#1321) — and keying on it
+   * merged 5 of 3,619 offerable notes. The grid keys its own set by start column and is
+   * right to: a lane cannot hold two notes at one step.
+   *
+   * Memoized on the model. It is a per-FRAME cost during a drag, not a per-gesture one,
+   * because `mutate` fires on every `pointermove` that changes the model — p99 3.61ms,
+   * worst 15.88ms over the corpus, against the grid's shipped `placeable` memo at p99
+   * 2.54ms / worst 14.4ms.
+   */
+  const resizable = React.useMemo(() => (model ? resizableNotes(model) : null), [model])
   // How many columns this roll DRAWS — not `model.steps`, which is the pattern's length
   // and need not be a whole number of columns (#1087). See `columnCount`.
   const cols = model ? columnCount(model) : 0
@@ -477,6 +511,12 @@ export function PianoRollGrid({
       const barW = ov ? ov.extent * rect.width : rect.width
       const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4))
       if (isTail && e.clientX - rect.left >= barEnd - zone) {
+        // ⚠ THE ZONE IS SUPPRESSED, AND THE PRESS STAYS INERT (#1322). Falling through
+        // to the move branch below would be the tidier code and the wrong behaviour: on
+        // this surface a press with no drag DELETES the note, so removing a handle that
+        // did nothing would install a destructive gesture exactly where the user had
+        // learned nothing happens. Offering less must not mean doing more.
+        if (!resizable?.has(note)) return
         onResizeDown(note)
         return
       }
@@ -823,6 +863,13 @@ export function PianoRollGrid({
                   // move, resize, delete, velocity — and so does ⌘-click, which
                   // selects a paste target without editing anything.
                   const canPlace = on || placesNotes
+                  // THE NOTE'S LENGTH IS FIXED HERE, THOUGH THE CELL IS NOT (#1322).
+                  // Move, delete, select and the velocity drag all still work on this
+                  // note — only the length handle is gone, because no length this drag
+                  // can reach writes anything. So this marks the missing affordance and
+                  // must NOT disable the cell: `aria-disabled` would announce that
+                  // nothing works, which is false and is the louder error of the two.
+                  const resizeInert = on && isTail && resizable?.has(note!) === false
                   return (
                     <button
                       key={step}
@@ -850,13 +897,24 @@ export function PianoRollGrid({
                       data-roll-selected={isSel ? 'true' : undefined}
                       data-playing={step === playingStep ? 'true' : undefined}
                       data-roll-cell-inert={canPlace ? undefined : 'true'}
+                      data-roll-resize-inert={resizeInert ? 'true' : undefined}
                       aria-disabled={canPlace ? undefined : true}
-                      // `canPlace` is false only when the view takes no new note
-                      // at all, so there is one reason to give, not two.
+                      // Two different absences, and a cell can only carry one tooltip.
+                      // `canPlace` false is the wider one — the view takes no new note
+                      // anywhere — so it wins; a cell in that state holds no note and
+                      // therefore has no length handle to explain either.
+                      //
+                      // ⚠ THE SECOND REASON IS WHY #1322 EXISTS. A refused resize left
+                      // the document alone, correctly, and said nothing — so a note whose
+                      // length is fixed looked exactly like one whose drag was broken.
+                      // Removing the handle makes the absence visible; this makes it
+                      // legible.
                       title={
-                        canPlace
-                          ? undefined
-                          : 'This pattern edits its existing notes — add notes in the code view.'
+                        !canPlace
+                          ? 'This pattern edits its existing notes — add notes in the code view.'
+                          : resizeInert
+                            ? 'This note has no other length the pattern can hold — change its length in the code view.'
+                            : undefined
                       }
                       onPointerDown={(e) => {
                         e.preventDefault()
@@ -965,7 +1023,13 @@ export function PianoRollGrid({
                           {model.numeric ? String(midi) : noteDisplayName(midi)}
                         </span>
                       )}
-                      {isTail && (
+                      {isTail && resizable?.has(note!) && (
+                        // RENDERED ONLY WHERE A DRAG WOULD WRITE (`resizable`, #1322),
+                        // which is the standing rule for every affordance this panel
+                        // draws (#1064/#1070/#1089). 1,861 of 5,480 corpus notes have no
+                        // length the document can carry, and until now every one of them
+                        // drew a handle that took the cursor and did nothing.
+                        //
                         // The resize handle sits at the BAR's trailing edge, not the
                         // cell's (#1078). A note that ends mid-column used to put its
                         // handle at the far side of the column — floating in empty
