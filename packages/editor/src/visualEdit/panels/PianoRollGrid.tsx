@@ -740,15 +740,25 @@ export function PianoRollGrid({
     // rather than on evidence.
     const next = moveNote(d.base, d.origPitch, d.origStart, newPitch, newStart)
     d.moved = true
-    // Kept for the commit-time re-run on release (#1340), exactly as a resize keeps its
-    // asked length. The per-frame write stays cheap and unchecked.
-    d.askedPitch = newPitch
-    d.askedStart = newStart
     // A refusal leaves the document exactly as it was — which is what used to happen
     // anyway when the write serialized to null, only now the op says so and
     // `canMoveNote` can be asked the same question.
     if (next === d.base) return
     mutate(() => next)
+    // Kept for the commit-time re-run on release (#1340), exactly as a resize keeps its
+    // asked length. The per-frame write stays cheap and unchecked.
+    //
+    // ⚠ RECORDED ONLY FOR A FRAME THAT WAS ACCEPTED, and the ordering is the whole point.
+    // A DECLINED drop must hold the last accepted position rather than snap home — that is
+    // #1325/#1326's ruling and it is right: nothing lossy was written, so there is nothing
+    // to undo, and going home would throw away a good intermediate the user can see.
+    // Recording the ask above the decline check instead made every declined drag re-run its
+    // refused position at commit and write the base back, which reverted exactly that.
+    //
+    // A resize does not face this: its frames DO land under the cheap rule, so its commit
+    // re-run is undoing a write that happened. A move's declined frames never landed.
+    d.askedPitch = newPitch
+    d.askedStart = newStart
   }
 
   // Delete/Backspace removes the selected note (#432 — removal moved off the

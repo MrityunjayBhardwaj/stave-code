@@ -144,23 +144,33 @@ test.describe('roll writers decline instead of quietly doing nothing (#1325/#132
   })
 
   test('a refused DELETE leaves the document alone — and the same row deletes fine elsewhere', async ({ page }) => {
-    // Numeric rows, so the row token IS the number. Deleting 0@0 is declined and
-    // 0@11 is taken — one row, so the pair differs only in the step.
+    // Numeric rows, so the row token IS the number. Deleting 4@3 is declined and
+    // 4@0 is taken — one row, so the pair differs only in the step.
     //
     // A PIN, not a discriminator: delete fires once, so there is no accepted
     // intermediate for a refusal to be told apart from, and before the writer the
     // null write was dropped to the same effect. What it holds is that a declined
     // delete never starts writing, while the paired accepted one still does.
-    const code = '$: note("<0 - - - - <- 0>>*6")'
+    //
+    // ⚠ THE FIXTURE MOVED, AND THE OLD ONE WAS PINNING A DEFECT (#1340). It was
+    // `<0 - - - - <- 0>>*6`, whose delete at 0@11 this test asserted "must write" —
+    // and that write is one of the five the readback gate now refuses, because the
+    // rest lands inside the nested alternation and the document reopens holding
+    // fewer notes than the model meant. Re-fixtured rather than re-expected: the
+    // property under test is the accepted/declined PAIR, and that property is real,
+    // so it needs a fixture whose accepted half is genuinely admissible. On the old
+    // fixture no delete is — all three are refused — so the pair cannot be shown
+    // there at all any more.
+    const code = '$: note("<0 2 0 4>*4, <4 6 4 8>*2, -4*4")'
     await openRoll(page, code)
 
-    await cell(page, '0:0') // assert it is addressable before clicking it
-    await page.locator('[data-bottom-panel-tab="piano-roll"] [data-roll-cell="0:0"]').click()
+    await cell(page, '4:3') // assert it is addressable before clicking it
+    await page.locator('[data-bottom-panel-tab="piano-roll"] [data-roll-cell="4:3"]').click()
     await expect(await editorValue(page), 'a declined delete must not touch the document').toBe(code)
 
-    await page.locator('[data-bottom-panel-tab="piano-roll"] [data-roll-cell="0:11"]').click()
+    await page.locator('[data-bottom-panel-tab="piano-roll"] [data-roll-cell="4:0"]').click()
     await expect
       .poll(() => editorValue(page), { message: 'the paired accepted delete must write' })
-      .toBe('$: note("<0 - - - - <- ~>>*6")')
+      .toBe('$: note("<0 2 0 4>*4, <~ 6 4 8>*2, -4*4")')
   })
 })

@@ -32480,10 +32480,10 @@ function PianoRollGrid({
     const newPitch = tokenForRow(!!d.base.numeric, midi);
     const next = moveNote(d.base, d.origPitch, d.origStart, newPitch, newStart);
     d.moved = true;
-    d.askedPitch = newPitch;
-    d.askedStart = newStart;
     if (next === d.base) return;
     mutate(() => next);
+    d.askedPitch = newPitch;
+    d.askedStart = newStart;
   }, "onCellEnter");
   const removeSelected = /* @__PURE__ */ __name(() => {
     const sel = selectedRef.current;
