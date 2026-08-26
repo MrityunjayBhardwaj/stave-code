@@ -30019,13 +30019,14 @@ function resizeNote(model, start, pitch, duration, opts = {}) {
   });
 }
 __name(resizeNote, "resizeNote");
-function removeNote(model, start, pitch) {
+function removeNote(model, start, pitch, opts = {}) {
   const notes = model.notes.filter((n) => !(n.pitch === pitch && n.start === start));
   if (notes.length === model.notes.length) return model;
-  return ifRollSpellable(model, { ...model, notes });
+  const next = { ...model, notes };
+  return opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next);
 }
 __name(removeNote, "removeNote");
-function moveNote(base, fromPitch, fromStart, toPitch, toStart) {
+function moveNote(base, fromPitch, fromStart, toPitch, toStart, opts = {}) {
   const idx = base.notes.findIndex((n) => n.pitch === fromPitch && n.start === fromStart);
   if (idx < 0) return base;
   const grabbed = base.notes[idx];
@@ -30044,7 +30045,7 @@ function moveNote(base, fromPitch, fromStart, toPitch, toStart) {
     ...base.numeric ? { numeric: true } : {},
     notes
   };
-  return ifRollSpellable(base, rebuilt);
+  return opts.readback ? rollReadsBack(rebuilt) ? rebuilt : base : ifRollSpellable(base, rebuilt);
 }
 __name(moveNote, "moveNote");
 
@@ -32303,7 +32304,13 @@ function PianoRollGrid({
       if (!d) return;
       dragRef.current = null;
       if (!d.moved && d.mode === "move") {
-        mutate((prev) => removeNote(prev, d.origStart, d.origPitch));
+        let refused2 = false;
+        mutate((prev) => {
+          const next = removeNote(prev, d.origStart, d.origPitch, { readback: true });
+          refused2 = next === prev;
+          return next;
+        });
+        if (refused2) reportRefusal("Couldn't delete that note");
       }
       if (d.mode === "resize" && d.moved && d.askedDur != null) {
         const asked = d.askedDur;
@@ -32316,6 +32323,19 @@ function PianoRollGrid({
           return settled;
         });
         if (refused2) reportRefusal("Couldn't set that length");
+      }
+      if (d.mode === "move" && d.moved && d.askedPitch != null && d.askedStart != null) {
+        const toPitch = d.askedPitch;
+        const toStart = d.askedStart;
+        let refused2 = false;
+        mutate(() => {
+          const settled = moveNote(d.base, d.origPitch, d.origStart, toPitch, toStart, {
+            readback: true
+          });
+          refused2 = settled === d.base;
+          return settled;
+        });
+        if (refused2) reportRefusal("Couldn't move that note there");
       }
       endGesture();
     }, "onUp");
@@ -32460,13 +32480,24 @@ function PianoRollGrid({
     const newPitch = tokenForRow(!!d.base.numeric, midi);
     const next = moveNote(d.base, d.origPitch, d.origStart, newPitch, newStart);
     d.moved = true;
+    d.askedPitch = newPitch;
+    d.askedStart = newStart;
     if (next === d.base) return;
     mutate(() => next);
   }, "onCellEnter");
   const removeSelected = /* @__PURE__ */ __name(() => {
     const sel = selectedRef.current;
     if (!sel || sel.kind !== "roll") return;
-    mutate((prev) => removeNote(prev, sel.start, sel.pitch));
+    let refused2 = false;
+    mutate((prev) => {
+      const next = removeNote(prev, sel.start, sel.pitch, { readback: true });
+      refused2 = next === prev;
+      return next;
+    });
+    if (refused2) {
+      reportRefusal("Couldn't delete that note");
+      return;
+    }
     select(null);
   }, "removeSelected");
   const copySelected = /* @__PURE__ */ __name(() => {

@@ -22,7 +22,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import { resizeNote, placeNote, pasteNote } from '../../../editor/src/visualEdit/notation/place'
+import {
+  resizeNote,
+  placeNote,
+  pasteNote,
+  moveNote,
+  removeNote,
+} from '../../../editor/src/visualEdit/notation/place'
 import { serializePianoRoll } from '../../../editor/src/visualEdit/notation/serialize'
 import { columnOverlap } from '../../../editor/src/visualEdit/notation/model'
 import { pitchToMidi, midiToPitch } from '../../../editor/src/visualEdit/notation/pitch'
@@ -174,10 +180,17 @@ describe('the roll reopens as what it wrote (#1331)', () => {
  * offender AND the more visible one: the note it loses is usually the one the click just
  * created, after re-spelling the pattern around it for nothing.
  *
- * ⚠ MOVE AND DELETE ARE CLEAN on this axis and are deliberately NOT gated — 0 lost notes
- * across 21,307 and 5,480 asks respectively. Gating them would buy nothing and cost a
- * parse per gesture. The negative result is part of the finding, so it is stated here
- * rather than left as an absence.
+ * ⚠ THIS PARAGRAPH USED TO SAY MOVE AND DELETE WERE CLEAN AT 0 AND IT WAS WRONG (#1340).
+ * It read: "0 lost notes across 21,307 and 5,480 asks respectively. Gating them would buy
+ * nothing and cost a parse per gesture." Both writers do lose notes, and the reason the
+ * claim survived is that it was a COMMENT — nothing asserted it, so nothing could fail,
+ * and the instrument behind it was not kept, so it was never re-checked. Every POSITIVE
+ * figure this arc produced is pinned (1,861 · 1,099 · 4,376 · 87) because those fired.
+ * The one negative carrying a closure argument was not.
+ *
+ * Both are now gated at the cadence their gesture allows and the numbers are ASSERTED
+ * below, the zeros included, so the negative stays checkable instead of decaying back
+ * into a sentence.
  */
 
 /**
@@ -294,5 +307,136 @@ describe('placement and paste reopen as what they wrote (#1333)', () => {
     expect(o.pasteLoose, 'pastes whose reopen differs, under the spellable-only rule').toBe(
       PASTE_LOSSY_UNDER_DEFAULT,
     )
+  })
+})
+
+
+/* ── move and delete take the same rule (#1340) ───────────────────────────────────────
+ *
+ * Swept last, and only because the sentence certifying them could not fail. Delete's
+ * denominator here reproduces the retracted comment's exactly (5,480); its numerator does
+ * not. Move's differs because this population is built from the gestures the PANEL can
+ * make — `tokenForRow`'s vocabulary and the overlap resolver — and the original
+ * instrument no longer exists to reconcile against. A first pass that enumerated pitches
+ * directly reported 4,398 move losses, nearly all of them drops the panel cannot offer.
+ */
+
+/** measured 2026-08-26 on `33c6c166`, one delete per note */
+const DELETE_ASKS = 5480
+/** what the CHEAP rule ships: deletes whose reopen holds different notes */
+const DELETE_LOSSY_UNDER_DEFAULT = 5
+/** measured 2026-08-26, each note dragged one column either way and one semitone either way */
+const MOVE_ASKS = 20587
+/** what the CHEAP rule ships: moves whose reopen holds different notes */
+const MOVE_LOSSY_UNDER_DEFAULT = 14
+
+interface PlainSweep {
+  units: number
+  asks: number
+  lossyDefault: number
+  lossyStrict: number
+  refusals: number
+  saves: number
+}
+
+function sweepDelete(): PlainSweep {
+  let units = 0, asks = 0, lossyDefault = 0, lossyStrict = 0, refusals = 0, saves = 0
+  for (const mini of minis) {
+    const r = parsePianoRoll(mini)
+    if (!r.ok) continue
+    const m = r.model
+    if (serializePianoRoll(m) !== mini) continue
+    if (m.notes.length === 0) continue
+    units++
+    for (const n of m.notes) {
+      asks++
+      const loose = removeNote(m, n.start, n.pitch)
+      const strict = removeNote(m, n.start, n.pitch, { readback: true })
+      const looseLossy = loose !== m && !readsBack(loose)
+      if (looseLossy) lossyDefault++
+      if (strict !== m && !readsBack(strict)) lossyStrict++
+      if (looseLossy) {
+        if (strict === m) refusals++
+        else saves++
+      }
+    }
+  }
+  return { units, asks, lossyDefault, lossyStrict, refusals, saves }
+}
+
+function sweepMove(): PlainSweep {
+  let units = 0, asks = 0, lossyDefault = 0, lossyStrict = 0, refusals = 0, saves = 0
+  for (const mini of minis) {
+    const r = parsePianoRoll(mini)
+    if (!r.ok) continue
+    const m = r.model
+    if (serializePianoRoll(m) !== mini) continue
+    if (m.notes.length === 0) continue
+    units++
+    for (const n of m.notes) {
+      const midi = pitchToMidi(n.pitch)
+      const targets: [string, number][] = []
+      for (const ds of [-1, 1]) {
+        const st = n.start + ds
+        if (st >= 0 && st < m.steps) targets.push([n.pitch, st])
+      }
+      if (midi != null) {
+        for (const dp of [-1, 1]) targets.push([tokenForRow(!!m.numeric, midi + dp), n.start])
+      }
+      for (const [tp, ts] of targets) {
+        asks++
+        const loose = moveNote(m, n.pitch, n.start, tp, ts)
+        const strict = moveNote(m, n.pitch, n.start, tp, ts, { readback: true })
+        const looseLossy = loose !== m && !readsBack(loose)
+        if (looseLossy) lossyDefault++
+        if (strict !== m && !readsBack(strict)) lossyStrict++
+        if (looseLossy) {
+          if (strict === m) refusals++
+          else saves++
+        }
+      }
+    }
+  }
+  return { units, asks, lossyDefault, lossyStrict, refusals, saves }
+}
+
+describe('delete and move reopen as what they wrote (#1340)', () => {
+  const d = sweepDelete()
+  const mv = sweepMove()
+
+  it('the delete sweep actually ran — denominators before verdicts', () => {
+    expect(d.asks, 'deletes asked').toBe(DELETE_ASKS)
+  })
+
+  it('the move sweep actually ran — denominators before verdicts', () => {
+    expect(mv.asks, 'moves asked').toBe(MOVE_ASKS)
+  })
+
+  it('⚠ THE INVARIANT: no DELETE is accepted that the document reopens changed', () => {
+    expect(d.lossyStrict, 'deletes accepted under readback that do not reopen intact').toBe(0)
+  })
+
+  it('⚠ THE INVARIANT: no MOVE is accepted that the document reopens changed', () => {
+    expect(mv.lossyStrict, 'moves accepted under readback that do not reopen intact').toBe(0)
+  })
+
+  it('the CONTROL: the cheap rule still ships the DELETE defect, so the rules differ', () => {
+    expect(d.lossyDefault, 'deletes the spelling rule accepts and the document loses').toBe(
+      DELETE_LOSSY_UNDER_DEFAULT,
+    )
+  })
+
+  it('the CONTROL: the cheap rule still ships the MOVE defect, so the rules differ', () => {
+    expect(mv.lossyDefault, 'moves the spelling rule accepts and the document loses').toBe(
+      MOVE_LOSSY_UNDER_DEFAULT,
+    )
+  })
+
+  it('delete is a pure GATE — no rung rescues a refused delete', () => {
+    expect(d.saves, 'deletes rescued by a different spelling').toBe(0)
+  })
+
+  it('move is a pure GATE — no rung rescues a refused move', () => {
+    expect(mv.saves, 'moves rescued by a different spelling').toBe(0)
   })
 })
