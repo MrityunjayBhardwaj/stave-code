@@ -83,3 +83,70 @@ test.describe('a placed note is only written where the document keeps it (#1333)
       .toBe(CODE)
   })
 })
+
+/**
+ * AND THE REFUSAL SAYS SO (#1336).
+ *
+ * #1322 removed the invisible decline from this surface by gating the length handle, so
+ * the gesture was never offered where it could not write. The readback gate reinstated the
+ * same experience through a different door: the affordance is legitimately offered, the
+ * writer accepts the gesture, and then the document declines to keep it — silently.
+ *
+ * ⚠ WHY REPORTING RATHER THAN GATING THE AFFORDANCE, measured rather than preferred. There
+ * is no per-cell admissibility seam on this panel at all (`viewPlacesNotes` once per view,
+ * `overlapAt` per cell), and building one costs p99 8,482ms with readback in it — against
+ * the p99 21.7ms at which #1072 already declined a per-cell map here. The per-column lever
+ * #1072 suggested is sound (2 of 7,984 columns are mixed) and still lands at p99 546ms,
+ * the figure that made #1324 unshippable, recomputed every drag frame. Both gates are off
+ * the table for different reasons, and resize could not be gated at offer time regardless
+ * — its refusal depends on the length the drag ends at.
+ *
+ * ⚠ THE COUNT IS READ AS A DELTA, never as an absolute. Boot emits its own warnings (a
+ * slow sample manifest will add more), so pinning "1 warning" would be pinning the
+ * environment. The pair of arms is what makes the delta mean something: the refused click
+ * adds one, and the accepted click on the same fixture adds none.
+ */
+const warnCount = async (page: Page): Promise<number> => {
+  const title = await page
+    .locator('[data-testid="statusbar-console-chip"]')
+    .getAttribute('title')
+  const m = /(\d+) warnings/.exec(title ?? '')
+  return m ? Number(m[1]) : 0
+}
+
+test.describe('a refused roll gesture is reported, not swallowed (#1336)', () => {
+  test('the refused placement raises exactly one warning', async ({ page }) => {
+    await openRoll(page, CODE)
+    const before = await warnCount(page)
+
+    const refused = await cell(page, '36:11')
+    await page.mouse.click(refused.x, refused.y)
+
+    await expect
+      .poll(() => warnCount(page), {
+        message: 'a refused placement must tell the user it did not happen',
+      })
+      .toBe(before + 1)
+  })
+
+  test('the accepted placement raises none — the report tracks the refusal, not the click', async ({
+    page,
+  }) => {
+    await openRoll(page, CODE)
+    const before = await warnCount(page)
+
+    const ok = await cell(page, '36:10')
+    await page.mouse.click(ok.x, ok.y)
+    // PRECONDITION, not an independent pin: if the click never landed, "no warning was
+    // raised" would be satisfied by a gesture that did nothing at all.
+    await expect
+      .poll(() => editorValue(page), { message: 'the accepted click must reach the writer' })
+      .toBe(ACCEPTED)
+
+    await expect
+      .poll(() => warnCount(page), {
+        message: 'an accepted placement must stay quiet',
+      })
+      .toBe(before)
+  })
+})

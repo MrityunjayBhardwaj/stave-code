@@ -34,6 +34,7 @@ import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID } from './tabs'
 import { opensPianoRoll } from './surfaceRoute'
 import { useGridModel } from './useGridModel'
+import { emitLog } from '../../engine/engineLog'
 import { usePlayingStep } from './usePlayingStep'
 import {
   moveNote,
@@ -117,6 +118,45 @@ function gainInScope(model: PianoRollModel): boolean {
  */
 const tokenForRow = (numeric: boolean, midi: number): string =>
   numeric ? String(midi) : midiToPitch(midi)
+
+/**
+ * SAY THAT THE EDIT DID NOT HAPPEN (#1336).
+ *
+ * The readback gate (#1331/#1333) refuses a write the document would not reopen holding —
+ * correctly, because the alternative is losing a note. But a refusal that changes nothing
+ * and says nothing is the invisible-decline shape #1322 removed from this surface, and the
+ * gate reinstated it on three writers at once.
+ *
+ * ⚠ REPORTING IS THE ANSWER RATHER THAN GATING THE AFFORDANCE, and that is measured, not
+ * preferred. Gating needs a per-cell admissibility map, and there is no per-cell seam here
+ * at all: the panel asks `viewPlacesNotes` ONCE per view and `overlapAt` per cell, so a
+ * writer-side rule cannot reach a cell without one being built. Priced over the corpus:
+ *
+ *     per-CELL map with readback     p50 7.5ms   p99 8,482ms   worst 31,019ms
+ *     per-COLUMN map with readback   p50 0.31ms  p99   546ms   worst  2,228ms
+ *
+ * #1072 already declined a per-cell map on this surface at p99 21.7ms, and the per-column
+ * lever it suggested lands on 546ms — the same p99 that made #1324's readback unshippable,
+ * and it recomputes every drag frame because `mutate` makes a new model per frame. The
+ * lever is SOUND (2 of 7,984 columns hold both a refusal and an accept) and still
+ * unaffordable, so the two failed for different reasons and both are recorded.
+ *
+ * ⚠ AND RESIZE COULD NOT BE GATED AT OFFER TIME EVEN IF A MAP WERE FREE — the refusal
+ * depends on the length the user drags to, which does not exist until the gesture ends.
+ * So a message is not the cheap substitute for the gate; for the worst-looking case it is
+ * the only available answer.
+ *
+ * Levelled `warn` rather than `error`: nothing is broken, the notation simply cannot spell
+ * this edit. `emitLog` coalesces identical entries into a count, so a user repeatedly
+ * trying the same impossible edit gets one row that ticks up rather than a flood.
+ */
+function reportRefusal(attempted: string): void {
+  emitLog({
+    level: 'warn',
+    runtime: 'stave',
+    message: `${attempted} — writing it would change the pattern in ways you didn't ask for, so it was left unchanged.`,
+  })
+}
 
 /**
  * The note covering (midi, step), if any — asked as an INTERVAL, not as an integer walk
@@ -405,7 +445,20 @@ export function PianoRollGrid({
       // where the user grabbed it; doing nothing would leave the lossy write standing.
       if (d.mode === 'resize' && d.moved && d.askedDur != null) {
         const asked = d.askedDur
-        mutate(() => resizeNote(d.base, d.origStart, d.origPitch, asked, { readback: true }))
+        // ⚠ THE REFUSAL IS READ OFF THE WRITER, NOT OFF `mutate` (#1336). Mid-drag the
+        // document sits at the last accepted frame, so a refusal RETURNS THE BASE and
+        // `mutate` writes it — a real write that puts the note back. `next === prev` is
+        // therefore false here, and asking `mutate` whether anything changed would report
+        // nothing. Only `settled === d.base` distinguishes "went home" from "accepted".
+        let refused = false
+        mutate(() => {
+          const settled = resizeNote(d.base, d.origStart, d.origPitch, asked, {
+            readback: true,
+          })
+          refused = settled === d.base
+          return settled
+        })
+        if (refused) reportRefusal("Couldn't set that length")
       }
       endGesture()
     }
@@ -570,9 +623,15 @@ export function PianoRollGrid({
       // commit — the check runs on the write. Ungated, 4,362 of 35,601 placements the
       // panel offers wrote a document that reopens without the note the click just made,
       // after re-spelling the pattern around it for nothing.
-      mutate((prev) =>
-        placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1, { readback: true }),
-      )
+      let refused = false
+      mutate((prev) => {
+        const next = placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1, {
+          readback: true,
+        })
+        refused = next === prev
+        return next
+      })
+      if (refused) reportRefusal("Couldn't add that note")
     }
   }
 
@@ -670,6 +729,7 @@ export function PianoRollGrid({
     const clip = getNoteClip()
     const sel = selectedRef.current
     if (!model || !clip || !sel || sel.kind !== 'roll') return
+    let pasteRefused = false
     mutate((prev) => {
       // Replace-at-target is ONE op (`pasteNote`), so a refusal takes the clear
       // back with it instead of leaving a deletion behind. The gain is applied
@@ -679,9 +739,13 @@ export function PianoRollGrid({
       // Readback for the same reason placement takes it (#1333) — one gesture, one parse.
       // A refusal takes the clear back with it, which is the whole reason paste is one op.
       const pasted = pasteNote(prev, sel.pitch, sel.start, clip.duration, { readback: true })
-      if (pasted === prev) return prev
+      if (pasted === prev) {
+        pasteRefused = true
+        return prev
+      }
       return setGroupGain(pasted, sel.start, clip.gain)
     })
+    if (pasteRefused) reportRefusal("Couldn't paste that note")
   }
 
   // PROVE, DON'T PREDICT — ask `parsePianoRoll` whether it really draws this

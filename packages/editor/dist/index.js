@@ -32212,6 +32212,14 @@ function gainInScope2(model) {
 }
 __name(gainInScope2, "gainInScope");
 var tokenForRow = /* @__PURE__ */ __name((numeric, midi) => numeric ? String(midi) : midiToPitch(midi), "tokenForRow");
+function reportRefusal(attempted) {
+  emitLog({
+    level: "warn",
+    runtime: "stave",
+    message: `${attempted} \u2014 writing it would change the pattern in ways you didn't ask for, so it was left unchanged.`
+  });
+}
+__name(reportRefusal, "reportRefusal");
 function overlapAt(model, midi, step) {
   for (const n of model.notes) {
     if (pitchToMidi(n.pitch) !== midi) continue;
@@ -32299,7 +32307,15 @@ function PianoRollGrid({
       }
       if (d.mode === "resize" && d.moved && d.askedDur != null) {
         const asked = d.askedDur;
-        mutate(() => resizeNote(d.base, d.origStart, d.origPitch, asked, { readback: true }));
+        let refused2 = false;
+        mutate(() => {
+          const settled = resizeNote(d.base, d.origStart, d.origPitch, asked, {
+            readback: true
+          });
+          refused2 = settled === d.base;
+          return settled;
+        });
+        if (refused2) reportRefusal("Couldn't set that length");
       }
       endGesture();
     }, "onUp");
@@ -32404,9 +32420,15 @@ function PianoRollGrid({
       };
       beginGesture();
     } else {
-      mutate(
-        (prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1, { readback: true })
-      );
+      let refused2 = false;
+      mutate((prev) => {
+        const next = placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1, {
+          readback: true
+        });
+        refused2 = next === prev;
+        return next;
+      });
+      if (refused2) reportRefusal("Couldn't add that note");
     }
   }, "onCellDown");
   const onResizeDown = /* @__PURE__ */ __name((note) => {
@@ -32458,11 +32480,16 @@ function PianoRollGrid({
     const clip2 = getNoteClip();
     const sel = selectedRef.current;
     if (!model || !clip2 || !sel || sel.kind !== "roll") return;
+    let pasteRefused = false;
     mutate((prev) => {
       const pasted = pasteNote(prev, sel.pitch, sel.start, clip2.duration, { readback: true });
-      if (pasted === prev) return prev;
+      if (pasted === prev) {
+        pasteRefused = true;
+        return prev;
+      }
       return setGroupGain(pasted, sel.start, clip2.gain);
     });
+    if (pasteRefused) reportRefusal("Couldn't paste that note");
   }, "pasteClip");
   const canDrawView = useViewProver(chunk?.miniString, parsePianoRoll);
   const scaleToSlots = /* @__PURE__ */ __name((target) => {
