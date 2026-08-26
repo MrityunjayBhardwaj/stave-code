@@ -172,6 +172,16 @@ interface DragState {
   origPitch: string
   origStart: number
   moved: boolean
+  /**
+   * The last length a resize drag ASKED for, kept so the gesture can be re-run once on
+   * release under the readback check (#1331).
+   *
+   * ⚠ IT IS THE ASK, NOT THE OUTCOME. `resizeNote` caps, so the length that reached the
+   * document is routinely shorter than this; re-running from the outcome would pose a
+   * different gesture than the user made. Undefined for a move drag, and until the first
+   * frame of a resize.
+   */
+  askedDur?: number
 }
 
 export interface PianoRollGridProps {
@@ -374,6 +384,28 @@ export function PianoRollGrid({
       // does nothing; a real drag already moved/resized it.
       if (!d.moved && d.mode === 'move') {
         mutate((prev) => removeNote(prev, d.origStart, d.origPitch))
+      }
+      // ⚠ SETTLE A RESIZE AGAINST WHAT THE DOCUMENT WILL REOPEN AS (#1331). Every frame
+      // of the drag wrote under the cheap rule — the bytes spell — and that rule lets a
+      // stretch re-spell a comma-stack as `[g3@4 ~ ~]`, dropping the sibling voice. The
+      // document then holds one fewer note than the user can see, silently. Measured at
+      // 1,099 of 10,960 ordinary d±1 asks, touching 1,095 of 5,480 notes.
+      //
+      // Re-running here rather than per frame is the whole point: the check parses, and
+      // gating the writer on it per pointermove took p99 to 549ms (#1324). Once per
+      // gesture it is one parse, and the gesture is already exactly one undo step, so the
+      // correction coalesces into it — there is no second entry to undo.
+      //
+      // ⚠ RE-RUN FROM `d.base`, THE GESTURE'S OWN START, not from `prev`. `prev` holds
+      // the last frame's answer, so re-asking against it would pose the question about a
+      // note this gesture has already changed.
+      //
+      // ⚠ AND A REFUSAL MUST GO HOME, not merely be left alone. Mid-drag the document
+      // sits at the last accepted frame, so returning the base is what puts the note back
+      // where the user grabbed it; doing nothing would leave the lossy write standing.
+      if (d.mode === 'resize' && d.moved && d.askedDur != null) {
+        const asked = d.askedDur
+        mutate(() => resizeNote(d.base, d.origStart, d.origPitch, asked, { readback: true }))
       }
       endGesture()
     }
@@ -579,6 +611,9 @@ export function PianoRollGrid({
       if (interval) dur = Math.max(interval, snapColumn(d.origStart + dur, interval) - d.origStart)
       mutate((prev) => resizeNote(prev, d.origStart, d.origPitch, dur))
       d.moved = true
+      // Kept for the commit-time re-run on release (#1331). The per-frame write stays
+      // cheap and unchecked; the gesture is settled once, where a parse is affordable.
+      d.askedDur = dur
       return
     }
     let newStart = Math.max(0, Math.min(step - d.grabOffset, d.base.steps - 1))

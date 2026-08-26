@@ -29986,7 +29986,20 @@ var resizableNotes = /* @__PURE__ */ __name((model) => {
   }
   return out;
 }, "resizableNotes");
-function resizeNote(model, start, pitch, duration) {
+var rollReadsBack = /* @__PURE__ */ __name((next) => {
+  const out = serializePianoRoll(next);
+  if (out === null) return false;
+  const back = parsePianoRoll(out);
+  if (!back.ok) return false;
+  if (back.model.steps !== next.steps) return false;
+  if (back.model.notes.length !== next.notes.length) return false;
+  const key2 = /* @__PURE__ */ __name((n) => `${n.pitch}@${n.start}+${n.duration}`, "key");
+  const meant = next.notes.map(key2).sort();
+  const got = back.model.notes.map(key2).sort();
+  return meant.every((s, i) => s === got[i]);
+}, "rollReadsBack");
+function resizeNote(model, start, pitch, duration, opts = {}) {
+  const accept = /* @__PURE__ */ __name((next) => opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next), "accept");
   if ((model.bars ?? 1) > 1) {
     const capTo = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
       ...model.notes.filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start).map((n) => n.start),
@@ -30005,21 +30018,22 @@ function resizeNote(model, start, pitch, duration) {
     const sameCap = capTo(true);
     const legacy = build(anyCap, false);
     if (sameCap === anyCap && model.notes.filter((n) => n.start === start).length < 2)
-      return ifRollSpellable(model, legacy);
+      return accept(legacy);
     const floor = serializePianoRollWithExtent(legacy);
     for (const rung of [build(sameCap, true), build(anyCap, true)]) {
       const out = serializePianoRollWithExtent(rung);
       if (out.mini === null) continue;
       if (degradesLocality(out.extent, floor.extent)) continue;
+      if (opts.readback && !rollReadsBack(rung)) continue;
       return rung;
     }
     const movesOthers = legacy.notes.some(
       (n, i) => n.duration !== model.notes[i].duration && !(n.start === start && n.pitch === pitch)
     );
-    return movesOthers ? model : ifRollSpellable(model, legacy);
+    return movesOthers ? model : accept(legacy);
   }
   const capped = Math.max(1, Math.min(duration, model.steps - start));
-  return ifRollSpellable(model, {
+  return accept({
     ...model,
     notes: model.notes.map(
       (n) => n.start === start && n.pitch === pitch ? { ...n, duration: capped } : n
@@ -32305,6 +32319,10 @@ function PianoRollGrid({
       if (!d.moved && d.mode === "move") {
         mutate((prev) => removeNote(prev, d.origStart, d.origPitch));
       }
+      if (d.mode === "resize" && d.moved && d.askedDur != null) {
+        const asked = d.askedDur;
+        mutate(() => resizeNote(d.base, d.origStart, d.origPitch, asked, { readback: true }));
+      }
       endGesture();
     }, "onUp");
     window.addEventListener("pointerup", onUp);
@@ -32432,6 +32450,7 @@ function PianoRollGrid({
       if (interval) dur = Math.max(interval, snapColumn(d.origStart + dur, interval) - d.origStart);
       mutate((prev) => resizeNote(prev, d.origStart, d.origPitch, dur));
       d.moved = true;
+      d.askedDur = dur;
       return;
     }
     let newStart = Math.max(0, Math.min(step - d.grabOffset, d.base.steps - 1));

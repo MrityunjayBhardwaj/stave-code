@@ -51,6 +51,7 @@ import {
   serializePianoRollWithExtent,
 } from './serialize'
 import type { RollWriteExtent } from './serialize'
+import { parsePianoRoll } from './parse'
 
 /**
  * Does this view accept a NEW note ANYWHERE?
@@ -712,12 +713,72 @@ export const resizableNotes = (model: PianoRollModel): Set<RollNote> => {
  * both were written anyway — the second as a model serializing to null, which the view
  * then rendered as a length the document never received.
  */
+/**
+ * Does this model survive the round trip the panel will actually make (#1331)?
+ *
+ * `ifRollSpellable` asks whether the writer can produce BYTES. This asks the strictly
+ * harder question the document actually poses: do those bytes, reopened, hold the same
+ * notes? They are not the same question, and the gap between them is where a voice goes
+ * missing — stretching one member of a comma-stack re-spells the group as `[g3@4 ~ ~]`
+ * and the sibling `f#3` is simply gone. The bytes serialize, they parse, and they come
+ * back one note short.
+ *
+ * Measured over the corpus at the lengths an ordinary drag asks for (`d±1`, 10,960 asks
+ * over 595 units): 58 results do not parse at all, and 1,037 parse and lose a note. Every
+ * one of the 1,037 is a note COUNT change — none is a duration or position being nudged.
+ * That is 1 ask in 10, touching 1,095 of 5,480 notes.
+ *
+ * ⚠ IT ASKS THE PARSER RATHER THAN MODELLING IT. A predicate that reasoned about which
+ * shapes round-trip would be a second description of the grammar and would drift from it;
+ * the only trustworthy answer to "will this reopen" is to reopen it.
+ *
+ * ⚠ COMPARED AS A MULTISET, not a set. A comma-stack can hold the same pitch twice at one
+ * start, so keying notes by value would merge twins and hide exactly the loss this is
+ * built to catch (#1321). Sorting and comparing pairwise counts duplicates.
+ *
+ * ⚠ AND IT IS FAR TOO EXPENSIVE FOR THE HOT PATH — this runs the real grammar, and resize
+ * fires on every pointermove. Gating the writer on it per frame took p99 from 0.100ms to
+ * 549ms and was reverted (#1324). It is affordable once per GESTURE, which is the cadence
+ * the caller chooses via `resizeNote`'s `readback` option, never a default.
+ */
+const rollReadsBack = (next: PianoRollModel): boolean => {
+  const out = serializePianoRoll(next)
+  if (out === null) return false
+  const back = parsePianoRoll(out)
+  if (!back.ok) return false
+  if (back.model.steps !== next.steps) return false
+  if (back.model.notes.length !== next.notes.length) return false
+  const key = (n: RollNote): string => `${n.pitch}@${n.start}+${n.duration}`
+  const meant = next.notes.map(key).sort()
+  const got = back.model.notes.map(key).sort()
+  return meant.every((s, i) => s === got[i])
+}
+
+/** Options a caller may tighten a roll write with. */
+export interface RollWriteOptions {
+  /**
+   * Require the result to READ BACK, not merely to spell (#1331). Off by default because
+   * it parses, and the roll's writers run per drag frame; the panel turns it on once at
+   * gesture commit, where one parse is affordable.
+   */
+  readback?: boolean
+}
+
 export function resizeNote(
   model: PianoRollModel,
   start: number,
   pitch: string,
   duration: number,
+  opts: RollWriteOptions = {},
 ): PianoRollModel {
+  // The acceptance test, in one place so both branches and every rung use the same rule:
+  // spellable always, and readable too when the caller asked for it.
+  const accept = (next: PianoRollModel): PianoRollModel =>
+    opts.readback
+      ? rollReadsBack(next)
+        ? next
+        : model
+      : ifRollSpellable(model, next)
   // ⚠ THE MULTI-BAR BRANCH IGNORED ITS OWN `pitch` ARGUMENT (#1318). It matched on
   // `n.start === start` alone, so resizing one member of a chord resized every note
   // sharing that start — the same rule #1310 and #1315 established for PLACEMENT, never
@@ -756,7 +817,7 @@ export function resizeNote(
     // and no chord sits at this start. Still gated, because an unspellable answer here
     // used to be written as null and dropped — 110 asks reach only this line.
     if (sameCap === anyCap && model.notes.filter((n) => n.start === start).length < 2)
-      return ifRollSpellable(model, legacy)
+      return accept(legacy)
     // COST, and it is worth stating because resize runs on every pointermove of a drag.
     // The slow path below serializes up to three times, and the fast path above only
     // covers 21% of multi-bar asks — measured per ask over the corpus:
@@ -774,6 +835,11 @@ export function resizeNote(
       const out = serializePianoRollWithExtent(rung)
       if (out.mini === null) continue
       if (degradesLocality(out.extent, floor.extent)) continue
+      // ⚠ A RUNG THAT SPELLS MAY STILL LOSE A VOICE (#1331). Where the caller asked for
+      // readback, keep walking rather than taking the first spellable answer — measured
+      // over the corpus, preferring a rung that reopens intact rescues 54 of the 436
+      // multi-bar losses that would otherwise have to refuse.
+      if (opts.readback && !rollReadsBack(rung)) continue
       return rung
     }
     // ⚠ REFUSE RATHER THAN MOVE A VOICE THE GESTURE DID NOT ADDRESS. Falling back to the
@@ -792,7 +858,7 @@ export function resizeNote(
       (n, i) =>
         n.duration !== model.notes[i].duration && !(n.start === start && n.pitch === pitch),
     )
-    return movesOthers ? model : ifRollSpellable(model, legacy)
+    return movesOthers ? model : accept(legacy)
   }
   // ⚠ THE SINGLE-BAR BRANCH HAS NEITHER DEFECT AND STILL NEEDED THE GATE. It checks pitch
   // and caps at the grid end, so it moves nothing and reads no foreign onset — it is this
@@ -801,7 +867,12 @@ export function resizeNote(
   // happen. `canResizeNote` did not exist (0 hits across 678 files, against 3 for
   // `canPlaceNote`), so nothing derived admissibility from the writer on either branch.
   const capped = Math.max(1, Math.min(duration, model.steps - start))
-  return ifRollSpellable(model, {
+  // ⚠ THE SINGLE-BAR BRANCH HAS ONE CANDIDATE AND THEREFORE NO LADDER (#1331). Under
+  // readback it can only accept or decline, and it is the larger half of the loss — 663
+  // of the 1,099 lossy landings, none of them rescuable, because there is no second
+  // spelling to reach for. Whether one could be BUILT is unmeasured; until it is, the
+  // honest answer here is to refuse rather than write a document short of a voice.
+  return accept({
     ...model,
     notes: model.notes.map((n) =>
       n.start === start && n.pitch === pitch ? { ...n, duration: capped } : n,
