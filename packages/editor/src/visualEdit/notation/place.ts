@@ -277,7 +277,23 @@ export function placeNote(
   pitch: string,
   start: number,
   duration: number,
+  opts: RollWriteOptions = {},
 ): PianoRollModel {
+  // ⚠ THE SAME RULE RESIZE TAKES, AND CHEAPER HERE (#1333). `ifRollSpellable` asks only
+  // whether the writer can produce bytes; asked the harder question the document actually
+  // poses, 4,362 of 35,601 placements the panel would offer write a document that does not
+  // reopen as what was meant — and the note LOST is usually the one the click just created.
+  // 1,071 of those do not parse at all.
+  //
+  // Resize had to defer this to gesture commit because it runs per pointermove (#1324).
+  // A placement is ONE CLICK, so there is no cadence question: the check runs on the write
+  // itself, and the caller pays a single parse.
+  const accept = (next: PianoRollModel): PianoRollModel =>
+    opts.readback
+      ? rollReadsBack(next)
+        ? next
+        : model
+      : ifRollSpellable(model, next)
   // Gated by the real writer, exactly as `toggleCell` is — same rule, the other
   // surface. The roll's own paths are near-clean (element 0.9%, alt 0.0%), so
   // this is cheap here; what it buys is that the roll cannot drift back into
@@ -299,7 +315,7 @@ export function placeNote(
   const shared =
     at.length > 0 && at.every((n) => n.duration === at[0].duration) ? at[0].duration : null
   if (shared !== null) {
-    return ifRollSpellable(model, {
+    return accept({
       ...model,
       notes: [...model.notes, { pitch, start, duration: shared }],
     })
@@ -368,15 +384,21 @@ export function placeNote(
   // both caps are the same number and there is nothing to choose between. Answered with a
   // single write exactly as before — the two-candidate path below costs a second
   // serialize, and it should only be paid where it can actually change the answer.
-  if (wideCap === nextStart) return ifRollSpellable(model, withCap(nextStart))
+  if (wideCap === nextStart) return accept(withCap(nextStart))
   const wide = withCap(wideCap)
   const narrow = withCap(nextStart)
   const wideOut = serializePianoRollWithExtent(wide)
   if (wideOut.mini !== null) {
-    if (!degradesLocality(wideOut.extent, serializePianoRollWithExtent(narrow).extent))
-      return wide
+    const local = !degradesLocality(
+      wideOut.extent,
+      serializePianoRollWithExtent(narrow).extent,
+    )
+    // ⚠ The wide answer is preferred on LOCALITY, which says nothing about fidelity — so
+    // under readback it has to clear the same bar as the narrow one, or the ladder would
+    // hand back a more local write that loses a note (#1333).
+    if (local && (!opts.readback || rollReadsBack(wide))) return wide
   }
-  return ifRollSpellable(model, narrow)
+  return accept(narrow)
 }
 
 /**
@@ -426,12 +448,16 @@ export function pasteNote(
   pitch: string,
   start: number,
   duration: number,
+  opts: RollWriteOptions = {},
 ): PianoRollModel {
   const cleared = {
     ...model,
     notes: model.notes.filter((n) => !(n.start === start && n.pitch === pitch)),
   }
-  const placed = placeNote(cleared, pitch, start, duration)
+  // The option rides through to the placement this composes, which is where the write is
+  // actually decided — so a paste that could not reopen intact refuses as one gesture and
+  // takes its own clear back with it, exactly as an unspellable one already did (#1333).
+  const placed = placeNote(cleared, pitch, start, duration, opts)
   return placed === cleared ? model : placed
 }
 

@@ -29874,11 +29874,12 @@ function toggleCell(model, laneIndex, stepIndex, value) {
   return ifGridSpellable(model, { ...model, lanes });
 }
 __name(toggleCell, "toggleCell");
-function placeNote(model, pitch, start, duration) {
+function placeNote(model, pitch, start, duration, opts = {}) {
+  const accept = /* @__PURE__ */ __name((next) => opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next), "accept");
   const at = model.notes.filter((n) => n.start === start);
   const shared = at.length > 0 && at.every((n) => n.duration === at[0].duration) ? at[0].duration : null;
   if (shared !== null) {
-    return ifRollSpellable(model, {
+    return accept({
       ...model,
       notes: [...model.notes, { pitch, start, duration: shared }]
     });
@@ -29907,15 +29908,18 @@ function placeNote(model, pitch, start, duration) {
     notes: [...notes, { pitch, start, duration: Math.max(1, Math.min(duration, cap - start)) }]
   }), "withCap");
   const wideCap = capAt(true);
-  if (wideCap === nextStart) return ifRollSpellable(model, withCap(nextStart));
+  if (wideCap === nextStart) return accept(withCap(nextStart));
   const wide = withCap(wideCap);
   const narrow = withCap(nextStart);
   const wideOut = serializePianoRollWithExtent(wide);
   if (wideOut.mini !== null) {
-    if (!degradesLocality(wideOut.extent, serializePianoRollWithExtent(narrow).extent))
-      return wide;
+    const local = !degradesLocality(
+      wideOut.extent,
+      serializePianoRollWithExtent(narrow).extent
+    );
+    if (local && (!opts.readback || rollReadsBack(wide))) return wide;
   }
-  return ifRollSpellable(model, narrow);
+  return accept(narrow);
 }
 __name(placeNote, "placeNote");
 function degradesLocality(next, floor) {
@@ -29923,12 +29927,12 @@ function degradesLocality(next, floor) {
   return rank(next.path) > rank(floor.path);
 }
 __name(degradesLocality, "degradesLocality");
-function pasteNote(model, pitch, start, duration) {
+function pasteNote(model, pitch, start, duration, opts = {}) {
   const cleared = {
     ...model,
     notes: model.notes.filter((n) => !(n.start === start && n.pitch === pitch))
   };
-  const placed = placeNote(cleared, pitch, start, duration);
+  const placed = placeNote(cleared, pitch, start, duration, opts);
   return placed === cleared ? model : placed;
 }
 __name(pasteNote, "pasteNote");
@@ -32426,7 +32430,9 @@ function PianoRollGrid({
       };
       beginGesture();
     } else {
-      mutate((prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1));
+      mutate(
+        (prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1, { readback: true })
+      );
     }
   }, "onCellDown");
   const onResizeDown = /* @__PURE__ */ __name((note) => {
@@ -32479,7 +32485,7 @@ function PianoRollGrid({
     const sel = selectedRef.current;
     if (!model || !clip2 || !sel || sel.kind !== "roll") return;
     mutate((prev) => {
-      const pasted = pasteNote(prev, sel.pitch, sel.start, clip2.duration);
+      const pasted = pasteNote(prev, sel.pitch, sel.start, clip2.duration, { readback: true });
       if (pasted === prev) return prev;
       return setGroupGain(pasted, sel.start, clip2.gain);
     });

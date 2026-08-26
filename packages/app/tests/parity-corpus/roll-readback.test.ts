@@ -22,9 +22,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import { resizeNote } from '../../../editor/src/visualEdit/notation/place'
+import { resizeNote, placeNote, pasteNote } from '../../../editor/src/visualEdit/notation/place'
 import { serializePianoRoll } from '../../../editor/src/visualEdit/notation/serialize'
-import type { PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
+import { columnOverlap } from '../../../editor/src/visualEdit/notation/model'
+import { pitchToMidi, midiToPitch } from '../../../editor/src/visualEdit/notation/pitch'
+import type { PianoRollModel, RollNote } from '../../../editor/src/visualEdit/notation/model'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -162,5 +164,135 @@ describe('the roll reopens as what it wrote (#1331)', () => {
       'lossy asks a different rung rescues — 0 today, because every faithful rung degrades locality',
     ).toBe(READBACK_SAVES)
     expect(s.refusals + s.saves).toBe(s.lossyDefault)
+  })
+})
+
+/* ── placement and paste take the same rule (#1333) ──────────────────────────────────
+ *
+ * Swept after resize, because all five roll writers pass through `ifRollSpellable` and
+ * only resize had ever been asked the harder question. Place turned out to be the worse
+ * offender AND the more visible one: the note it loses is usually the one the click just
+ * created, after re-spelling the pattern around it for nothing.
+ *
+ * ⚠ MOVE AND DELETE ARE CLEAN on this axis and are deliberately NOT gated — 0 lost notes
+ * across 21,307 and 5,480 asks respectively. Gating them would buy nothing and cost a
+ * parse per gesture. The negative result is part of the finding, so it is stated here
+ * rather than left as an absence.
+ */
+
+/**
+ * measured 2026-08-26; placements over the cells the panel's resolver would offer.
+ *
+ * ⚠ THESE COUNT EVERY WRITE THAT DOES NOT REOPEN INTACT, grid rescales included, exactly
+ * as the resize pin above does (1,099 = 58 + 1,037 + 4). #1333's table splits the three
+ * causes out — place 1,071 that do not parse + 3,291 that lose notes + 14 rescales — so
+ * the issue's 4,362 and this 4,376 are the same measurement reported at different cuts.
+ * Stated because the difference is exactly the rescales and would otherwise read as drift.
+ */
+const PLACE_ASKS = 35601
+const PLACE_LOSSY_UNDER_DEFAULT = 4376
+/** pastes over a cell that already holds a note — the case placement does not cover */
+const PASTE_ASKS = 5480
+/** 3 that do not parse + 83 that lose notes + 1 rescale */
+const PASTE_LOSSY_UNDER_DEFAULT = 87
+
+/** verbatim from PianoRollGrid.tsx — the resolver the panel gates placement on */
+function overlapAt(model: PianoRollModel, midi: number, step: number): RollNote | undefined {
+  for (const n of model.notes) {
+    if (pitchToMidi(n.pitch) !== midi) continue
+    if (columnOverlap(n.start, n.start + n.duration, step)) return n
+  }
+  return undefined
+}
+const tokenForRow = (numeric: boolean, midi: number): string =>
+  numeric ? String(midi) : midiToPitch(midi)
+
+interface OpSweep {
+  placeAsks: number
+  placeLoose: number
+  placeStrict: number
+  pasteAsks: number
+  pasteLoose: number
+  pasteStrict: number
+  placeExample: string | null
+}
+
+function sweepPlaceAndPaste(): OpSweep {
+  const o: OpSweep = {
+    placeAsks: 0, placeLoose: 0, placeStrict: 0,
+    pasteAsks: 0, pasteLoose: 0, pasteStrict: 0, placeExample: null,
+  }
+  for (const mini of minis) {
+    const r = parsePianoRoll(mini)
+    if (!r.ok) continue
+    const m = r.model
+    if (serializePianoRoll(m) !== mini) continue
+    if (m.notes.length === 0) continue
+    const numeric = !!m.numeric
+    const clip = m.notes[0].duration
+
+    for (const n of m.notes) {
+      o.pasteAsks++
+      const loose = pasteNote(m, n.pitch, n.start, clip)
+      if (loose !== m && !readsBack(loose)) o.pasteLoose++
+      const strict = pasteNote(m, n.pitch, n.start, clip, { readback: true })
+      if (strict !== m && !readsBack(strict)) o.pasteStrict++
+    }
+
+    const rows = [...new Set(m.notes.map((n) => pitchToMidi(n.pitch)))].filter(
+      (x): x is number => x !== null,
+    )
+    for (const midi of rows)
+      for (let step = 0; step < m.steps; step++) {
+        if (overlapAt(m, midi, step)) continue
+        o.placeAsks++
+        const token = tokenForRow(numeric, midi)
+        const loose = placeNote(m, token, step, 1)
+        if (loose !== m && !readsBack(loose)) {
+          o.placeLoose++
+          if (o.placeExample === null)
+            o.placeExample = `${mini} — click ${token}@${step} wrote ${serializePianoRoll(loose)}`
+        }
+        const strict = placeNote(m, token, step, 1, { readback: true })
+        if (strict !== m && !readsBack(strict)) o.placeStrict++
+      }
+  }
+  return o
+}
+
+describe('placement and paste reopen as what they wrote (#1333)', () => {
+  const o = sweepPlaceAndPaste()
+
+  it('the sweep actually ran — denominators before verdicts', () => {
+    expect(o.placeAsks, 'placements the resolver would offer').toBe(PLACE_ASKS)
+    expect(o.pasteAsks, 'pastes over an existing note').toBe(PASTE_ASKS)
+  })
+
+  it('⚠ THE INVARIANT: no PLACEMENT is accepted that the document reopens changed', () => {
+    expect(o.placeStrict, 'placements accepted under readback that do not reopen intact').toBe(0)
+  })
+
+  it('⚠ THE INVARIANT: no PASTE is accepted that the document reopens changed', () => {
+    // Split from placement for the same reason the controls are: paste COMPOSES
+    // `placeNote`, so a break in the shared acceptance point fails placement first and
+    // this assertion would never execute — leaving paste looking checked when it was not.
+    expect(o.pasteStrict, 'pastes accepted under readback that do not reopen intact').toBe(0)
+  })
+
+  // ⚠ ONE CONTROL PER `it`, deliberately. These were written as two assertions in one
+  // block and the first failed, so the second NEVER RAN — and the run still reported the
+  // other blocks as passed, which reads as "paste was checked". A pin that never executed
+  // is not a pin.
+  it('the CONTROL: the cheap rule still ships the PLACE defect, so the rules differ', () => {
+    expect(
+      o.placeLoose,
+      `placements whose reopen differs, under the spellable-only rule — ${o.placeExample}`,
+    ).toBe(PLACE_LOSSY_UNDER_DEFAULT)
+  })
+
+  it('the CONTROL: the cheap rule still ships the PASTE defect, so the rules differ', () => {
+    expect(o.pasteLoose, 'pastes whose reopen differs, under the spellable-only rule').toBe(
+      PASTE_LOSSY_UNDER_DEFAULT,
+    )
   })
 })

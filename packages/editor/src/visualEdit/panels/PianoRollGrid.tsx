@@ -564,7 +564,15 @@ export function PianoRollGrid({
       beginGesture()
     } else {
       // empty cell → place a one-step note (its own undo). Direct edit, no select.
-      mutate((prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1))
+      //
+      // ⚠ GATED ON READBACK, and unlike resize it costs nothing to do it here (#1333). A
+      // placement is ONE CLICK, so there is no per-frame cadence to defer to gesture
+      // commit — the check runs on the write. Ungated, 4,362 of 35,601 placements the
+      // panel offers wrote a document that reopens without the note the click just made,
+      // after re-spelling the pattern around it for nothing.
+      mutate((prev) =>
+        placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1, { readback: true }),
+      )
     }
   }
 
@@ -668,7 +676,9 @@ export function PianoRollGrid({
       // only once the paste itself is known to have happened — `setGroupGain`
       // cannot decline, so composing it onto a refusal would write a gain
       // change for a note that was never pasted.
-      const pasted = pasteNote(prev, sel.pitch, sel.start, clip.duration)
+      // Readback for the same reason placement takes it (#1333) — one gesture, one parse.
+      // A refusal takes the clear back with it, which is the whole reason paste is one op.
+      const pasted = pasteNote(prev, sel.pitch, sel.start, clip.duration, { readback: true })
       if (pasted === prev) return prev
       return setGroupGain(pasted, sel.start, clip.gain)
     })
