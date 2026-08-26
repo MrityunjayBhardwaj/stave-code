@@ -87,6 +87,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "bounce-paths.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "chord-chart-grid.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"

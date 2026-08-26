@@ -96,6 +96,7 @@ import {
   readPersistedActiveTabId,
 } from "@stave/editor";
 import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
+import { installBounceProbe } from "../e2e/bounceProbe";
 
 
 // Phase 19-07 (#79) — 4-stage parser pipeline. Each stage emits its own
@@ -1401,6 +1402,11 @@ export default function StrudelEditorClient({
       return true;
     };
   }, [handleSaveFile]);
+
+  // E2E-only handle onto the three audio-bounce paths (#1344/#1345/#1346).
+  // Same dead-code-eliminated gate as the other `__stave*` hooks — both checks
+  // live inside installBounceProbe, which returns its own teardown.
+  useEffect(() => installBounceProbe(), []);
 
   // editorExtrasForTab: play/stop keybindings + error squiggles
   const editorExtrasForTab = useCallback((tab: WorkspaceTab & { kind: "editor" }) => {
