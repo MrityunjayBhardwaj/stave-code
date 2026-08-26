@@ -33,6 +33,21 @@ function starterCode(): string {
 /** No `setcps`, no `$:`, no `.viz` — the shape the offline path can render. */
 const NO_SETCPS = 'note("c3 e3 g3 b3").s("sawtooth").gain(0.5)'
 
+/**
+ * The same shape, but sample-based. Nothing here trips any of the three rungs,
+ * so it reaches the renderer — and comes back silent (#1353).
+ */
+const DRUMS_ONLY = 's("bd*4 hh*8")'
+const SYNTH_ONLY = 'note("c3 e3 g3 b3").s("sine")'
+const DRUMS_PLUS_SYNTH = 'stack(s("bd*4"), note("c3 e3 g3 b3").s("sine"))'
+
+/** Non-zero sample count — the sharpest available reading of "is this silent". */
+function nonZeroCount(mono: Float64Array): number {
+  let n = 0
+  for (const v of mono) if (v !== 0) n++
+  return n
+}
+
 async function openApp(page: Page): Promise<void> {
   await page.addInitScript(() => {
     ;(window as unknown as { __STAVE_E2E__: boolean }).__STAVE_E2E__ = true
@@ -215,5 +230,40 @@ test.describe('the three audio-bounce paths', () => {
     // observed. Measured on trunk: 31 offline against 16 live over 8s. The
     // threshold sits between the two so it flips when #1345 is fixed.
     expect(onsetCount(mono, sampleRate)).toBeGreaterThanOrEqual(24)
+  })
+
+  test('a drum-only bounce comes back silent, and says nothing (#1353)', async ({
+    page,
+  }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const out = await call(page, 'exportLikeButton', DRUMS_ONLY, 4)
+    // toOscType returns null for every sample-based sound and the hap is
+    // `continue`d (OfflineRenderer.ts:65) with no counter and no diagnostic.
+    // Measured on trunk: 0 of 192,000 samples non-zero, zero console errors.
+    // Asserting the SUCCESS as well as the silence is the point — an error
+    // would be a lesser bug than a well-formed empty file.
+    expect({
+      ok: out.ok,
+      nonZero: out.wav ? nonZeroCount(readWav(out.wav).mono) : -1,
+    }).toEqual({ ok: true, nonZero: 0 })
+  })
+
+  test('adding drums to a working render changes nothing at all (#1353)', async ({
+    page,
+  }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const synth = await call(page, 'exportLikeButton', SYNTH_ONLY, 4)
+    const mixed = await call(page, 'exportLikeButton', DRUMS_PLUS_SYNTH, 4)
+    if (!synth.ok || !mixed.ok) {
+      throw new Error(`render failed: ${synth.error ?? ''} ${mixed.error ?? ''}`)
+    }
+    // The contrast that makes the drop undeniable: a render that plainly WORKS,
+    // with drums stacked into it, is byte-identical to the same render without
+    // them. This is a stronger control than a live comparison because it needs
+    // no real-time capture and cannot be blamed on a missing sample fetch.
+    expect(Buffer.from(mixed.wav!, 'base64').equals(Buffer.from(synth.wav!, 'base64')))
+      .toBe(true)
   })
 })
