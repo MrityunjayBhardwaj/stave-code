@@ -112,3 +112,65 @@ test.describe('a roll resize is settled against the reopened document (#1331)', 
       .toBe(CODE)
   })
 })
+
+/**
+ * AND THE SNAP-BACK IS EXPLAINED (#1336).
+ *
+ * Resize is the case that most needs saying and the ONE THAT CANNOT BE GATED AT OFFER
+ * TIME AT ALL: the refusal depends on the length the drag ends at, which does not exist
+ * when the handle is drawn. #1322 could gate the handle on whether a resize was possible;
+ * nothing can gate it on whether THIS resize will reopen intact.
+ *
+ * It is also the most confusing refusal to receive, because something visibly happens —
+ * the drag tracks the pointer the whole way, the bar grows, and then the note returns to
+ * its original length on release. Without a message that reads as the editor breaking.
+ */
+const warnCount = async (page: Page): Promise<number> => {
+  const title = await page
+    .locator('[data-testid="statusbar-console-chip"]')
+    .getAttribute('title')
+  const m = /(\d+) warnings/.exec(title ?? '')
+  return m ? Number(m[1]) : 0
+}
+
+test.describe('a refused resize says why the note went back (#1336)', () => {
+  test('the refused resize raises exactly one warning', async ({ page }) => {
+    await openRoll(page, CODE)
+    const before = await warnCount(page)
+
+    const from = await tailEdge(page, '43:6')
+    const to = await cell(page, '43:7')
+    await page.mouse.move(from.x, from.y)
+    await page.mouse.down()
+    await page.mouse.move(to.x, to.y, { steps: 6 })
+    await page.mouse.up()
+
+    await expect
+      .poll(() => warnCount(page), {
+        message: 'a resize taken back on commit must tell the user it did not stick',
+      })
+      .toBe(before + 1)
+  })
+
+  test('the accepted resize raises none', async ({ page }) => {
+    await openRoll(page, CODE)
+    const before = await warnCount(page)
+
+    const from = await tailEdge(page, '48:2')
+    const to = await cell(page, '48:3')
+    await page.mouse.move(from.x, from.y)
+    await page.mouse.down()
+    await page.mouse.move(to.x, to.y, { steps: 6 })
+    await page.mouse.up()
+
+    // PRECONDITION, not an independent pin: a drag that never reached the writer would
+    // satisfy "no warning" for the wrong reason.
+    await expect
+      .poll(() => editorValue(page), { message: 'the accepted resize must reach the writer' })
+      .toBe(ACCEPTED)
+
+    await expect
+      .poll(() => warnCount(page), { message: 'an accepted resize must stay quiet' })
+      .toBe(before)
+  })
+})
