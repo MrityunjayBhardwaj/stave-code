@@ -950,13 +950,35 @@ export const canRemoveNote = (model: PianoRollModel, start: number, pitch: strin
  * better spelling to reach for, so the honest answer is to decline and let the panel say so.
  *
  * DECLINES BY RETURNING ITS INPUT, which is what this op family means by "could not apply"
- * and what `canRemoveNote` reads. Two cases decline: nothing at the cell, and a result the
- * document cannot spell.
+ * and what `canRemoveNote` reads. Three cases decline: nothing at the cell, a result the
+ * document cannot spell, and — when the caller asks for it — a result the document would
+ * not reopen holding.
+ *
+ * ⚠ "a SURVIVING note changed 0" ABOVE IS A SPELLING FIGURE, AND DELETE WAS CERTIFIED
+ * CLEAN ON THE WRONG QUESTION (#1340). Removal does not re-spell what it keeps, which is
+ * what that zero measured; it can still write bytes that REOPEN holding fewer notes. The
+ * rest lands inside a nested `<...>` or a `,`-stack and takes the structure with it:
+ * deleting `g` from `<[<[b,g] b> a] e>` writes `<[<[b,~] b> a] e>`, which the model means
+ * as six notes and the document reopens as three. Measured at 5 of the same 5,480 asks.
+ *
+ * That the number is small is not why it was missed. The readback sweep concluded delete
+ * was clean at 0 and recorded that in a COMMENT rather than an assertion, so the claim
+ * could never fail and the instrument behind it was not kept. Every positive figure this
+ * surface produced is pinned; the one negative carrying a closure argument was not.
  */
-export function removeNote(model: PianoRollModel, start: number, pitch: string): PianoRollModel {
+export function removeNote(
+  model: PianoRollModel,
+  start: number,
+  pitch: string,
+  opts: RollWriteOptions = {},
+): PianoRollModel {
   const notes = model.notes.filter((n) => !(n.pitch === pitch && n.start === start))
   if (notes.length === model.notes.length) return model
-  return ifRollSpellable(model, { ...model, notes })
+  const next = { ...model, notes }
+  // Spellable always, and readable too when the caller asked for it — the same acceptance
+  // test `resizeNote` uses, so the five writers cannot drift apart on what "admissible"
+  // means.
+  return opts.readback ? (rollReadsBack(next) ? next : model) : ifRollSpellable(model, next)
 }
 
 /**
@@ -1030,6 +1052,7 @@ export function moveNote(
   fromStart: number,
   toPitch: string,
   toStart: number,
+  opts: RollWriteOptions = {},
 ): PianoRollModel {
   const idx = base.notes.findIndex((n) => n.pitch === fromPitch && n.start === fromStart)
   if (idx < 0) return base
@@ -1063,11 +1086,19 @@ export function moveNote(
   // So the locality fix belongs at the boundary where ONE parse per GESTURE is affordable,
   // not here. Until then this writes the way the panel always did, and what it adds is the
   // refusal the panel could never make.
+  //
+  // ⚠ AND THE RE-AUTHORING PATH IS NOT ITSELF CLEAN — "10 of 58,802 (0.02%)" above is
+  // not zero, and move was still carried as clean at 0 and left ungated (#1340). Measured
+  // over the gestures the panel's own `tokenForRow` vocabulary and overlap resolver can
+  // actually produce, 14 of 20,587 asks write a document that reopens holding different
+  // notes. `readback` is what the commit-time re-run turns on.
   const rebuilt: PianoRollModel = {
     steps: base.steps,
     ...(base.bars != null ? { bars: base.bars } : {}),
     ...(base.numeric ? { numeric: true } : {}),
     notes,
   }
-  return ifRollSpellable(base, rebuilt)
+  // Same acceptance test as every other writer here. Off by default because a move fires
+  // per pointermove; the panel turns it on once, at gesture commit.
+  return opts.readback ? (rollReadsBack(rebuilt) ? rebuilt : base) : ifRollSpellable(base, rebuilt)
 }

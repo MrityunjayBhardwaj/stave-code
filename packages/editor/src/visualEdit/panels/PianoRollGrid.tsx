@@ -222,6 +222,16 @@ interface DragState {
    * frame of a resize.
    */
   askedDur?: number
+  /**
+   * The pitch/column a move drag last ASKED for, kept so the gesture can be re-run once
+   * on release under the readback check (#1340) — the same shape as `askedDur`.
+   *
+   * ⚠ THE ASK, NOT THE OUTCOME, for the same reason: `moveNote` clamps the landing column
+   * to the grid, so what reached the document may be short of what the pointer asked for,
+   * and re-running from the outcome would settle a gesture the user did not make.
+   */
+  askedPitch?: string
+  askedStart?: number
 }
 
 export interface PianoRollGridProps {
@@ -423,7 +433,18 @@ export function PianoRollGrid({
       // click empty adds, click a note removes). A no-move on the resize handle
       // does nothing; a real drag already moved/resized it.
       if (!d.moved && d.mode === 'move') {
-        mutate((prev) => removeNote(prev, d.origStart, d.origPitch))
+        // ⚠ GATED ON READBACK, and like a placement it costs nothing here (#1340). A
+        // click-delete is ONE gesture, so the check runs on the write rather than being
+        // deferred. Ungated, 5 of 5,480 corpus deletes wrote bytes that spell and reopen
+        // holding FEWER notes than the model meant — the rest lands inside a nested
+        // `<...>` or a `,`-stack and takes the structure with it.
+        let refused = false
+        mutate((prev) => {
+          const next = removeNote(prev, d.origStart, d.origPitch, { readback: true })
+          refused = next === prev
+          return next
+        })
+        if (refused) reportRefusal("Couldn't delete that note")
       }
       // ⚠ SETTLE A RESIZE AGAINST WHAT THE DOCUMENT WILL REOPEN AS (#1331). Every frame
       // of the drag wrote under the cheap rule — the bytes spell — and that rule lets a
@@ -459,6 +480,28 @@ export function PianoRollGrid({
           return settled
         })
         if (refused) reportRefusal("Couldn't set that length")
+      }
+      // ⚠ SETTLE A MOVE THE SAME WAY (#1340). A move drag fires per pointermove and wrote
+      // under the cheap spelling rule at every frame, so it could land the note on bytes
+      // the document reopens holding different notes — 14 of 20,587 asks the panel can
+      // actually make. Same cadence argument as the resize above: one parse per gesture,
+      // re-run from `d.base` so the question is about the note the user grabbed, and a
+      // refusal RETURNS THE BASE so the note goes home rather than being left mid-drag.
+      //
+      // ⚠ READ OFF THE WRITER, not off `mutate`, for the same reason resize is: a refused
+      // move writes the base back, so `next === prev` is false exactly when it matters.
+      if (d.mode === 'move' && d.moved && d.askedPitch != null && d.askedStart != null) {
+        const toPitch = d.askedPitch
+        const toStart = d.askedStart
+        let refused = false
+        mutate(() => {
+          const settled = moveNote(d.base, d.origPitch, d.origStart, toPitch, toStart, {
+            readback: true,
+          })
+          refused = settled === d.base
+          return settled
+        })
+        if (refused) reportRefusal("Couldn't move that note there")
       }
       endGesture()
     }
@@ -702,6 +745,20 @@ export function PianoRollGrid({
     // `canMoveNote` can be asked the same question.
     if (next === d.base) return
     mutate(() => next)
+    // Kept for the commit-time re-run on release (#1340), exactly as a resize keeps its
+    // asked length. The per-frame write stays cheap and unchecked.
+    //
+    // ⚠ RECORDED ONLY FOR A FRAME THAT WAS ACCEPTED, and the ordering is the whole point.
+    // A DECLINED drop must hold the last accepted position rather than snap home — that is
+    // #1325/#1326's ruling and it is right: nothing lossy was written, so there is nothing
+    // to undo, and going home would throw away a good intermediate the user can see.
+    // Recording the ask above the decline check instead made every declined drag re-run its
+    // refused position at commit and write the base back, which reverted exactly that.
+    //
+    // A resize does not face this: its frames DO land under the cheap rule, so its commit
+    // re-run is undoing a write that happened. A move's declined frames never landed.
+    d.askedPitch = newPitch
+    d.askedStart = newStart
   }
 
   // Delete/Backspace removes the selected note (#432 — removal moved off the
@@ -709,7 +766,17 @@ export function PianoRollGrid({
   const removeSelected = (): void => {
     const sel = selectedRef.current
     if (!sel || sel.kind !== 'roll') return
-    mutate((prev) => removeNote(prev, sel.start, sel.pitch))
+    // Same gate as the click-delete above — one gesture, one parse (#1340).
+    let refused = false
+    mutate((prev) => {
+      const next = removeNote(prev, sel.start, sel.pitch, { readback: true })
+      refused = next === prev
+      return next
+    })
+    if (refused) {
+      reportRefusal("Couldn't delete that note")
+      return
+    }
     select(null)
   }
 
