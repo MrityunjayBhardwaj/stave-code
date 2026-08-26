@@ -862,9 +862,17 @@ export function resizeNote(
       if (out.mini === null) continue
       if (degradesLocality(out.extent, floor.extent)) continue
       // ⚠ A RUNG THAT SPELLS MAY STILL LOSE A VOICE (#1331). Where the caller asked for
-      // readback, keep walking rather than taking the first spellable answer — measured
-      // over the corpus, preferring a rung that reopens intact rescues 54 of the 436
-      // multi-bar losses that would otherwise have to refuse.
+      // readback, skip a rung that does not reopen intact rather than taking the first
+      // spellable answer. Measured over the corpus this is a pure GATE and not a rescue:
+      // it stops the ladder handing back a lossy spelling for the 436 multi-bar losses,
+      // and all 436 then refuse below. Faithful rungs DO exist for 54 of them, and every
+      // one is discarded by the `degradesLocality` check above before readback is ever
+      // consulted — so walking on rescues NOTHING. Pinned at 0 as `READBACK_SAVES` in
+      // `roll-readback.test.ts`, which is what makes it visible if that guard ever moves.
+      //
+      // Recovering those 54 means preferring a write that re-authors the whole pattern
+      // over one that edits the note's own bytes, to save 0.5% of asks from refusing.
+      // That trade belongs to the locality arc (#1327), and is deliberately not taken.
       if (opts.readback && !rollReadsBack(rung)) continue
       return rung
     }
