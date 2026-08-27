@@ -71,6 +71,18 @@ function scaled(cycles: number, factor: number): number {
  *   walked (to learn WHETHER an arrangement exists) but any arrangement found
  *   under it is reported as `opaque` rather than measured.
  *
+ * ⚠ WHAT THE WALK DELIBERATELY DOES NOT FOLLOW. Only `body`, `Stack.tracks` and
+ * `Code.via.inner` are traversed — not `Seq.children`, `Cycle.items`,
+ * `Choice.then`/`else_`, or the `Pick`/`NamedPick` selectors. Every one of those
+ * constructs repeats once per cycle (a `Seq` is fastcat, which COMPRESSES its
+ * children into a single cycle; a `Cycle` alternates between them), so a
+ * document whose only arrangement sits inside one still loops forever and `loop`
+ * is the correct verdict, not a miss. Checked rather than assumed: a probe
+ * walking EVERY object field finds arrangements in the same 5 corpus documents
+ * this walk classifies, so the narrower traversal loses nothing on real code.
+ * `Sleep.duration` is likewise unmodelled — it contributes time that this
+ * function does not count.
+ *
  * ⚠ TAINT IS DOCUMENT-WIDE ONCE ANY ARRANGEMENT IS TAINTED, deliberately. The
  * result is a MAX, so one unmeasurable arm invalidates the maximum — the
  * untrusted arrangement could be the longest. Being wrong towards `opaque` costs
