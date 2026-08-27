@@ -75,6 +75,7 @@ import {
 } from "@stave/editor";
 import StrudelEditorClient, { type BounceHandle } from "./StrudelEditorClient";
 import { BounceModal, type BounceState } from "./BounceModal";
+import type { BounceSizing } from "./songLength";
 import { DocsSearchPalette } from "./DocsSearchPalette";
 import { MusicalTimeline } from "./MusicalTimeline";
 import {
@@ -430,6 +431,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const bounceRef = useRef<BounceHandle | null>(null);
   const [bounceOpen, setBounceOpen] = useState(false);
   const [bounceState, setBounceState] = useState<BounceState>({ phase: "choosing" });
+  /** What the active document says about its length; `null` until measured. */
+  const [bounceSizing, setBounceSizing] = useState<BounceSizing | null>(null);
+  /** Supersedes an in-flight measurement when the modal is reopened. */
+  const bounceSizingToken = useRef(0);
   // Held outside state: aborting must work from the Stop handler without
   // waiting for a render, and the ticker must be clearable from two places.
   const bounceAbortRef = useRef<AbortController | null>(null);
@@ -524,6 +529,26 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const openBounceModal = useCallback(() => {
     setBounceState({ phase: "choosing" });
     setBounceOpen(true);
+    // Measure asynchronously and let the modal open immediately (#1365). The
+    // analysis walks a growing horizon and can take a moment; blocking the modal
+    // on it would make Bounce feel broken for the documents it cannot size
+    // anyway. `null` renders as the plain seconds picker, so a slow or failed
+    // measurement costs the user nothing they had before.
+    setBounceSizing(null);
+    const token = ++bounceSizingToken.current;
+    const handle = bounceRef.current;
+    if (!handle) return;
+    handle
+      .songSizing()
+      .then((s) => {
+        // A later open (or a tab switch that re-opened the modal) supersedes
+        // this one; without the token an older, slower measurement could land
+        // last and size the bounce by the wrong document.
+        if (token === bounceSizingToken.current) setBounceSizing(s);
+      })
+      .catch(() => {
+        /* sizing is best-effort — the seconds picker still works */
+      });
   }, []);
 
   // A bounce holds the transport and an AbortController; unmounting mid-take
@@ -1607,6 +1632,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       <BounceModal
         open={bounceOpen}
         state={bounceState}
+        sizing={bounceSizing}
         onClose={() => setBounceOpen(false)}
         onStart={handleBounceStart}
         onStop={handleBounceStop}

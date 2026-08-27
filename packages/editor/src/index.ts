@@ -8,6 +8,8 @@ export type { LaneSkeleton, LaneItem, WalkWindow } from './ir'
 // Full-song analysis (#385)
 export { analyzeSong, analyzeEvents, accumulateLanes, cycleFingerprints, detectPeriod, computeSections, laneKeyOf, analyzeWindow, accumulateLanesInWindow, computeSectionsInWindow } from './ir'
 export type { SongAnalysis, DisplaySpan, LaneActivity, SongSection, AnalyzeSongOptions, WindowAnalysis, AnalyzeWindowOptions } from './ir'
+export { songExtent } from './ir'
+export type { SongExtent } from './ir'
 export { parseMini, parseStrudel, classifyLiteralRhs } from './ir'
 
 // Phase 19-07 (#79) — parser stage helpers. PK10 propagation: re-exported

@@ -1,6 +1,11 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  bounceOffers,
+  formatDuration,
+  type BounceSizing,
+} from "./songLength";
 
 /**
  * #1346 — "Bounce to WAV": the first way to get audio out of Stave.
@@ -15,8 +20,15 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
  * Stop yields a shorter file rather than nothing.
  */
 
-/** Offered lengths, in seconds. Real-time, so each is also its own cost. */
-const DURATIONS = [8, 16, 30, 60] as const;
+/**
+ * Fixed lengths, in seconds. Real-time, so each is also its own cost.
+ *
+ * These are the fallback, not the point: they are the only thing on offer for a
+ * document whose length cannot be measured (56 of 142 real documents have no
+ * measurable period, #1365). The 60s ceiling is gone — it existed only because
+ * every option had to be a number someone picked by hand.
+ */
+const DURATIONS = [8, 16, 30, 60, 120, 300] as const;
 
 export type BounceState =
   | { phase: "choosing" }
@@ -34,14 +46,44 @@ interface BounceModalProps {
   open: boolean;
   /** Progress state, owned by the caller so the timer survives re-renders. */
   state: BounceState;
+  /**
+   * What the document says about its own length, or `null` while that is still
+   * being measured — which is NOT the same as "it has no length", and renders as
+   * the plain seconds picker rather than as a refusal.
+   */
+  sizing: BounceSizing | null;
   onClose: () => void;
   onStart: (seconds: number) => void;
   onStop: () => void;
 }
 
-export function BounceModal({ open, state, onClose, onStart, onStop }: BounceModalProps) {
+export function BounceModal({
+  open,
+  state,
+  sizing,
+  onClose,
+  onStart,
+  onStop,
+}: BounceModalProps) {
   const [selected, setSelected] = useState<number>(DURATIONS[0]);
   const startBtnRef = useRef<HTMLButtonElement>(null);
+
+  const { offers, note } = useMemo(() => bounceOffers(sizing), [sizing]);
+
+  // When the measurement lands, move the default onto the document's own answer
+  // — the whole point is that the user should not have to translate bars into
+  // seconds. Only while CHOOSING, and only until they touch something: re-running
+  // this after a manual pick would fight the user for the selection.
+  const tookSongDefault = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      tookSongDefault.current = false;
+      return;
+    }
+    if (tookSongDefault.current || offers.length === 0) return;
+    tookSongDefault.current = true;
+    setSelected(offers[0].seconds);
+  }, [open, offers]);
 
   useEffect(() => {
     if (open && state.phase === "choosing") startBtnRef.current?.focus();
@@ -93,7 +135,37 @@ export function BounceModal({ open, state, onClose, onStart, onStop }: BounceMod
         <div style={styles.body}>
           {state.phase === "choosing" && (
             <>
-              <div style={styles.sectionLabel}>Length</div>
+              {offers.length > 0 && (
+                <>
+                  <div style={styles.sectionLabel}>This song</div>
+                  <div style={styles.grid} data-testid="bounce-song-offers">
+                    {offers.map((o) => (
+                      <button
+                        key={o.id}
+                        onClick={() => setSelected(o.seconds)}
+                        aria-pressed={o.seconds === selected}
+                        style={{
+                          ...styles.card,
+                          ...(o.seconds === selected ? styles.cardSelected : {}),
+                        }}
+                      >
+                        <div style={styles.cardName}>{o.label}</div>
+                        <div style={styles.cardSub}>{formatDuration(o.seconds)}</div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {note && (
+                <p style={styles.note} data-testid="bounce-length-note">
+                  {note}
+                </p>
+              )}
+
+              <div style={styles.sectionLabel}>
+                {offers.length > 0 ? "Or a fixed length" : "Length"}
+              </div>
               <div style={styles.grid}>
                 {DURATIONS.map((d) => (
                   <button
@@ -111,7 +183,9 @@ export function BounceModal({ open, state, onClose, onStart, onStop }: BounceMod
               </div>
               <p style={styles.note}>
                 Bouncing records the live output, so it takes as long as it plays —
-                a {selected}-second bounce takes {selected} seconds. Playback starts
+                this one will take{" "}
+                {selected < 60 ? `${selected} seconds` : formatDuration(selected)}.
+                Playback starts
                 automatically and stops again when the bounce finishes.
               </p>
             </>
@@ -241,6 +315,7 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: "0 0 0 1px var(--accent)",
   },
   cardName: { fontSize: 14, fontWeight: 600 },
+  cardSub: { fontSize: 12, opacity: 0.7, marginTop: 2 },
   note: {
     margin: "14px 0 0",
     fontSize: 12,

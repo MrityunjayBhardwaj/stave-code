@@ -1114,6 +1114,61 @@ async function analyzeWindow(originCycle, spanCycles, opts = {}) {
 }
 __name(analyzeWindow, "analyzeWindow");
 
+// src/ir/songExtent.ts
+function scaled(cycles, factor) {
+  return factor > 0 && Number.isFinite(factor) ? cycles * factor : cycles;
+}
+__name(scaled, "scaled");
+function songExtent(ir) {
+  if (ir == null) return { kind: "loop" };
+  let best = 0;
+  let found = false;
+  let tainted = false;
+  const walk4 = /* @__PURE__ */ __name((node, factor, opaque) => {
+    if (!node || typeof node !== "object") return;
+    switch (node.tag) {
+      case "Arrange": {
+        found = true;
+        if (opaque) {
+          tainted = true;
+          return;
+        }
+        const sum = node.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
+        if (sum > 0) best = Math.max(best, scaled(sum, factor));
+        return;
+      }
+      case "Stack":
+        for (const t of node.tracks) walk4(t, factor, opaque);
+        return;
+      case "Track":
+      case "Loop":
+        walk4(node.body, factor, opaque);
+        return;
+      case "Slow":
+        walk4(node.body, scaled(factor, node.factor), opaque);
+        return;
+      case "Fast":
+        walk4(node.body, node.factor > 0 && Number.isFinite(node.factor) ? factor / node.factor : factor, opaque);
+        return;
+      case "Code": {
+        const via = node.via;
+        if (via && "inner" in via) walk4(via.inner, factor, true);
+        return;
+      }
+      default: {
+        const body = node.body;
+        if (body && typeof body === "object") walk4(body, factor, true);
+        return;
+      }
+    }
+  }, "walk");
+  walk4(ir, 1, false);
+  if (!found) return { kind: "loop" };
+  if (tainted || best <= 0) return { kind: "opaque" };
+  return { kind: "arranged", cycles: best };
+}
+__name(songExtent, "songExtent");
+
 // src/ir/serialize.ts
 var PATTERN_IR_SCHEMA_VERSION = "1.0";
 function patternToJSON(ir, pretty) {
@@ -7994,6 +8049,27 @@ var _StrudelEngine = class _StrudelEngine {
   }
   getHapStream() {
     return this.hapStream;
+  }
+  /**
+   * The tempo the scheduler is ACTUALLY running at, in cycles per second, or
+   * `null` when there is no scheduler yet (engine not initialised).
+   *
+   * ⚠ WHY THIS EXISTS ALONGSIDE `extractBpmFromCode`. That helper regex-matches
+   * a literal `setcps(...)` in the source and is what feeds the status bar's BPM
+   * readout. It cannot see three things the scheduler knows: `setcpm(...)`,
+   * which the repl routes through the same setter (`repl.mjs` — `setCpm = (cpm)
+   * => scheduler.setCps(cpm/60)`); a tempo left at Strudel's default of `0.5`
+   * (`cyclist.mjs:24`) by a document that sets none; and a cps CHANGED mid-
+   * pattern from a hap value (`cyclist.mjs:72-74`). So `undefined` from the
+   * regex means "the code did not spell setcps", never "there is no tempo" —
+   * a distinction that matters the moment anything converts cycles to seconds.
+   *
+   * Deliberately NOT folded into `PatternScheduler`: that adapter is consumed by
+   * ~10 visualiser modules, and a tempo read does not need their blast radius.
+   */
+  getCps() {
+    const cps = this.repl?.scheduler?.cps;
+    return typeof cps === "number" && Number.isFinite(cps) && cps > 0 ? cps : null;
   }
   /**
    * Returns a thin PatternScheduler wrapper around the Strudel scheduler.
@@ -28854,8 +28930,8 @@ function projectStepGridDerived(mini, fallbackReason, viewScale = UNREFINED) {
   const owner = projectStepGrid(mini);
   const asOwner = /* @__PURE__ */ __name((ok) => {
     if (viewScale === UNREFINED) return ok;
-    const scaled = projectStepGrid(mini, viewScale);
-    return scaled.ok ? scaled : refused("grid", fallbackReason, scaled.gate, mini);
+    const scaled2 = projectStepGrid(mini, viewScale);
+    return scaled2.ok ? scaled2 : refused("grid", fallbackReason, scaled2.gate, mini);
   }, "asOwner");
   if (owner.ok && !vacuousLocality(owner.model.altSource)) return withSurgery(mini, asOwner(owner));
   const leaf = projectStepGridByLeaf(mini);
@@ -29530,8 +29606,8 @@ function projectPianoRollDerived(mini, fallbackReason, viewScale = UNREFINED) {
   const owner = projectPianoRoll(mini);
   const asOwner = /* @__PURE__ */ __name((ok) => {
     if (viewScale === UNREFINED) return ok;
-    const scaled = projectPianoRoll(mini, viewScale);
-    return scaled.ok ? scaled : refused("roll", fallbackReason, scaled.gate, mini);
+    const scaled2 = projectPianoRoll(mini, viewScale);
+    return scaled2.ok ? scaled2 : refused("roll", fallbackReason, scaled2.gate, mini);
   }, "asOwner");
   if (owner.ok) return withRollSurgery(mini, asOwner(owner));
   const leaf = projectPianoRollByLeaf(mini);
@@ -30539,8 +30615,8 @@ function quantizeStepGridToWithEffect(model, target) {
   const unchanged = { model, effect: NO_EFFECT };
   if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return unchanged;
   if ((model.bars ?? 1) > 1) {
-    const scaled = scaleStepGridTo(model, target);
-    return scaled === model ? unchanged : { model: scaled, effect: NO_EFFECT };
+    const scaled2 = scaleStepGridTo(model, target);
+    return scaled2 === model ? unchanged : { model: scaled2, effect: NO_EFFECT };
   }
   const from = model.steps;
   const addingSlots = target > from;
@@ -30554,11 +30630,11 @@ function quantizeStepGridToWithEffect(model, target) {
       const b = bucket(c, from, target);
       if (b !== c * target / from) snapped++;
       const exact = addingSlots ? cell.duration : cell.duration * (target / from);
-      const scaled = addingSlots ? exact : Math.max(COARSEN_FLOOR, exact);
-      if (scaled !== exact) lengthened++;
+      const scaled2 = addingSlots ? exact : Math.max(COARSEN_FLOOR, exact);
+      if (scaled2 !== exact) lengthened++;
       const prev = cells[b];
       if (isCellOn(prev)) merged++;
-      cells[b] = cellOn(isCellOn(prev) ? Math.min(prev.duration, scaled) : scaled);
+      cells[b] = cellOn(isCellOn(prev) ? Math.min(prev.duration, scaled2) : scaled2);
     });
     return { ...lane, cells: clampLane(cells, target) };
   });
@@ -40578,6 +40654,29 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     return this.currentBpm;
   }
   /**
+   * The tempo the engine is actually running at, in cycles per second, or
+   * `null` when the engine cannot report one (not initialised, or not a
+   * Strudel engine).
+   *
+   * ⚠ THIS IS NOT `getBpm()` IN OTHER UNITS. `getBpm()` returns
+   * `extractBpmFromCode`, a regex over the source that matches only a literal
+   * `setcps(...)`; it is `undefined` for a document that sets no tempo, that
+   * uses `setcpm(...)`, or that changes cps mid-pattern — none of which mean
+   * the music has no tempo. Anything converting CYCLES to SECONDS must use
+   * this and not the readout, or it will size a document by a number the
+   * source text happened to spell. See `StrudelEngine.getCps`.
+   *
+   * Duck-typed on the engine for the same reason `record`/`canRecord` are
+   * (#1346): the capability is Strudel-specific and the engine interface is
+   * shared with runtimes that have no scheduler at all.
+   */
+  getCps() {
+    const fn = this.engine?.getCps;
+    if (typeof fn !== "function") return null;
+    const v = fn.call(this.engine);
+    return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
+  }
+  /**
    * Current cycle position from the engine's pattern scheduler, or `null`
    * when the scheduler is unavailable (engine not initialized, transport
    * stopped, non-Strudel runtime). The IR Inspector timeline strip's
@@ -45022,7 +45121,7 @@ function resizeRoll(model, nextSteps, mode) {
     });
   }
   const factor = nextSteps / model.steps;
-  const scaled = model.notes.map((n) => {
+  const scaled2 = model.notes.map((n) => {
     const start = Math.floor(n.start * factor);
     const end = Math.max(start + 1, Math.round((n.start + n.duration) * factor));
     return { ...n, start, duration: Math.min(end, nextSteps) - start };
@@ -45031,7 +45130,7 @@ function resizeRoll(model, nextSteps, mode) {
   return ifRollSpellable(model, {
     ...model,
     steps: nextSteps,
-    notes: scaled.filter((n) => {
+    notes: scaled2.filter((n) => {
       const key2 = `${n.pitch}@${n.start}`;
       if (seen.has(key2)) return false;
       seen.add(key2);
@@ -45735,6 +45834,7 @@ exports.setZoneCropOverride = setZoneCropOverride;
 exports.setZoneHeightOverride = setZoneHeightOverride;
 exports.shellStateKeyFor = shellStateKeyFor;
 exports.silenceArm = silenceArm;
+exports.songExtent = songExtent;
 exports.soundfontGroupLabel = soundfontGroupLabel;
 exports.splitArm = splitArm;
 exports.startAudition = startAudition;
