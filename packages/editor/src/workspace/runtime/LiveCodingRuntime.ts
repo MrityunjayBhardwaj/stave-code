@@ -638,18 +638,34 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
    * re-evaluates the current file on every call, so "just call play to be
    * safe" would restart the audio we are about to record, mid-take.
    */
-  async record(seconds: number, signal?: AbortSignal): Promise<Blob | null> {
+  async record(
+    seconds: number,
+    signal?: AbortSignal,
+    onCaptureStart?: () => void
+  ): Promise<Blob | null> {
     const engine = this.engine as {
       record?: (s: number, sig?: AbortSignal) => Promise<Blob>
+      waitUntilQuiet?: () => Promise<boolean>
     }
     if (this.isDisposed || typeof engine.record !== 'function') return null
 
     const startedHere = !this.isPlayingState
     if (startedHere) {
+      // #1356 — the graph may still be RINGING from a take the user just
+      // stopped: stopping halts the scheduler but does not cancel Web Audio
+      // nodes already scheduled, and that tail survives into the capture,
+      // summing the previous take under the opening of the new one. Wait for
+      // the analyser to actually read silent rather than assuming it does.
+      // Costs one hold window when the graph is already quiet, which is the
+      // common case.
+      await engine.waitUntilQuiet?.()
       const { error } = await this.play()
       if (error) throw error
     }
     try {
+      // Signalled AFTER the settle and the play, so a progress display measures
+      // the capture rather than the preparation.
+      onCaptureStart?.()
       return await engine.record(seconds, signal)
     } finally {
       if (startedHere) this.stop()

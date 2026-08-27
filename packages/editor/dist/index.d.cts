@@ -979,6 +979,21 @@ declare class StrudelEngine implements LiveCodingEngine {
      */
     private setPaused;
     /**
+     * Resolve once the master output has been QUIET for a sustained window, or
+     * when `maxMs` elapses. Returns whether quiet was actually reached (#1356).
+     *
+     * `stop()` halts Strudel's scheduler but does not cancel Web Audio nodes
+     * already scheduled in the lookahead window, so the graph keeps sounding
+     * after the transport reads stopped — measured at near-full level for a full
+     * second, gone by 1.25s. A bounce started in that window sums the previous
+     * take under the opening of the new one (+24% RMS over the first 1.5s).
+     *
+     * Waiting on the ANALYSER rather than on a fixed delay means the common case
+     * — a graph that is already silent — costs one hold window, and the wait can
+     * never be shorter than the tail actually is.
+     */
+    waitUntilQuiet(maxMs?: number, threshold?: number): Promise<boolean>;
+    /**
      * Capture `durationSeconds` of the LIVE master output as a WAV Blob.
      *
      * This is the honest bounce: it taps the same analyser the meters read, so
@@ -6944,7 +6959,7 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
      * re-evaluates the current file on every call, so "just call play to be
      * safe" would restart the audio we are about to record, mid-take.
      */
-    record(seconds: number, signal?: AbortSignal): Promise<Blob | null>;
+    record(seconds: number, signal?: AbortSignal, onCaptureStart?: () => void): Promise<Blob | null>;
     stop(): void;
     dispose(): void;
     /**
