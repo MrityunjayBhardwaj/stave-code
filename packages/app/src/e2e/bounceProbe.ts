@@ -33,6 +33,14 @@ export interface BounceProbe {
   offlineAfterEvaluate(code: string, secs: number): Promise<BounceOutcome>;
   /** init → evaluate → play → record: the live graph, i.e. what you hear. */
   recordLive(code: string, secs: number): Promise<BounceOutcome>;
+  /**
+   * #1356 — init -> evaluate -> play -> settle -> STOP -> record, with NO
+   * playback restart. The take therefore contains only what the graph is still
+   * sounding after the transport reads stopped, which is the decay curve of the
+   * lookahead tail. Measuring it is what decides whether the tail is long
+   * enough to contaminate a bounce started right after a stop.
+   */
+  recordAfterStop(code: string, secs: number): Promise<BounceOutcome>;
   /** Which Strudel globals exist right now. Grounds the #1344 diagnosis. */
   globalsCensus(): Record<string, string>;
 }
@@ -113,6 +121,19 @@ export function installBounceProbe(): () => void {
             /* stop() on an engine that never started is not a failure */
           }
         }
+      }),
+
+    recordAfterStop: (code, secs) =>
+      attempt(async () => {
+        const e = await booted();
+        const res = await e.evaluate(code);
+        if (res?.error) throw res.error;
+        e.play();
+        // Let playback genuinely establish before stopping, so the tail we
+        // measure is a real take's ring-out and not a graph that never sounded.
+        await new Promise((r) => setTimeout(r, 2000));
+        e.stop();
+        return e.record(secs);
       }),
 
     globalsCensus: () => {

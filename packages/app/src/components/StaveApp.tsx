@@ -461,18 +461,25 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     }
     const controller = new AbortController();
     bounceAbortRef.current = controller;
-    setBounceState({ phase: "recording", seconds, elapsed: 0 });
+    // #1356 — the runtime lets the graph fall silent before it starts playing,
+    // so Start is not the first captured sample. Show that, and start the
+    // clock on `onCaptureStart`, or the bar would run ahead of the audio and
+    // sit at 100% while the take was still finishing.
+    setBounceState({ phase: "preparing" });
 
-    const startedAt = Date.now();
-    bounceTickRef.current = setInterval(() => {
-      const elapsed = (Date.now() - startedAt) / 1000;
-      setBounceState((prev) =>
-        prev.phase === "recording" ? { ...prev, elapsed } : prev,
-      );
-    }, 200);
+    const beginTicking = () => {
+      setBounceState({ phase: "recording", seconds, elapsed: 0 });
+      const startedAt = Date.now();
+      bounceTickRef.current = setInterval(() => {
+        const elapsed = (Date.now() - startedAt) / 1000;
+        setBounceState((prev) =>
+          prev.phase === "recording" ? { ...prev, elapsed } : prev,
+        );
+      }, 200);
+    };
 
     void handle
-      .bounce(seconds, controller.signal)
+      .bounce(seconds, controller.signal, beginTicking)
       .then((blob) => {
         if (bounceTickRef.current) {
           clearInterval(bounceTickRef.current);
@@ -1400,6 +1407,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         }}
         onImportProject={triggerImportPicker}
         onBounceToWav={openBounceModal}
+        canBounceToWav={() => bounceRef.current?.canBounce() ?? false}
         onShareProject={handleShareProject}
         onVersionHistory={openSnapshotPanel}
         onToggleSidebar={() => setSidebarCollapsed((c) => !c)}

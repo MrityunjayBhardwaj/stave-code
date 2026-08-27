@@ -19,6 +19,15 @@ interface MenuBarProps {
   onExportProject: () => void;
   /** #1346 — real-time bounce of the live output to a .wav. */
   onBounceToWav: () => void;
+  /**
+   * #1356 — whether the active tab HAS a recordable runtime. Read at render,
+   * i.e. when the menu opens, so it reflects the tab in front of the user.
+   *
+   * The palette entry for the same command already gates on this via `when`.
+   * Without it here the two entry points disagreed: the menu let the user open
+   * the modal and choose a length before telling them it could not bounce.
+   */
+  canBounceToWav: () => boolean;
   onImportProject: () => void;
   onShareProject: () => void;
   onVersionHistory: () => void;
@@ -47,6 +56,7 @@ export function MenuBar({
   onRenameProject,
   onExportProject,
   onBounceToWav,
+  canBounceToWav,
   onImportProject,
   onShareProject,
   onVersionHistory,
@@ -101,7 +111,11 @@ export function MenuBar({
         <MenuDivider />
         <MenuItem label="Import from .zip..." onClick={() => clickItem(onImportProject)} />
         <MenuItem label="Export as .zip" onClick={() => clickItem(onExportProject)} />
-        <MenuItem label="Bounce to WAV..." onClick={() => clickItem(onBounceToWav)} />
+        <MenuItem
+          label="Bounce to WAV..."
+          onClick={() => clickItem(onBounceToWav)}
+          disabled={!canBounceToWav()}
+        />
         <MenuDivider />
         <MenuItem label="Copy Share Link" onClick={() => clickItem(onShareProject)} />
         <MenuDivider />

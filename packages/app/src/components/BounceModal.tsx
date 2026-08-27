@@ -20,6 +20,13 @@ const DURATIONS = [8, 16, 30, 60] as const;
 
 export type BounceState =
   | { phase: "choosing" }
+  /**
+   * #1356 — between Start and the first captured sample. The graph is allowed
+   * to fall silent first, because a take started while the previous one is
+   * still ringing records both. Usually imperceptible; up to ~1.3s when the
+   * user bounces straight after stopping.
+   */
+  | { phase: "preparing" }
   | { phase: "recording"; seconds: number; elapsed: number }
   | { phase: "encoding" };
 
@@ -48,7 +55,7 @@ export function BounceModal({ open, state, onClose, onStart, onStop }: BounceMod
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (state.phase === "choosing") onClose();
-      else if (state.phase === "recording") onStop();
+      else if (state.phase === "recording" || state.phase === "preparing") onStop();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
@@ -130,6 +137,10 @@ export function BounceModal({ open, state, onClose, onStart, onStop }: BounceMod
             </>
           )}
 
+          {state.phase === "preparing" && (
+            <div style={styles.sectionLabel}>Waiting for the audio to settle…</div>
+          )}
+
           {state.phase === "encoding" && (
             <div style={styles.sectionLabel}>Encoding WAV…</div>
           )}
@@ -149,6 +160,9 @@ export function BounceModal({ open, state, onClose, onStart, onStop }: BounceMod
             <button
               style={styles.cancelBtn}
               onClick={onStop}
+              // Live during `preparing` too: aborting before the first sample is
+              // well-defined (the recorder sees an already-aborted signal and
+              // resolves at once), so the user is never stranded in the settle.
               disabled={state.phase === "encoding"}
             >
               Stop

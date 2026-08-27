@@ -64,7 +64,11 @@ type Outcome = { ok: boolean; error?: string; wav?: string }
 
 function call(
   page: Page,
-  method: 'exportLikeButton' | 'offlineAfterEvaluate' | 'recordLive',
+  method:
+    | 'exportLikeButton'
+    | 'offlineAfterEvaluate'
+    | 'recordLive'
+    | 'recordAfterStop',
   code: string,
   secs: number,
 ): Promise<Outcome> {
@@ -266,4 +270,41 @@ test.describe('the three audio-bounce paths', () => {
     expect(Buffer.from(mixed.wav!, 'base64').equals(Buffer.from(synth.wav!, 'base64')))
       .toBe(true)
   })
+})
+
+/**
+ * #1356 — how long does the graph keep sounding AFTER the transport stops?
+ *
+ * Stopping halts Strudel's scheduler but does not cancel Web Audio nodes
+ * already scheduled in the lookahead window. If that tail is long, a bounce
+ * started right after a stop records the previous take under the opening of the
+ * new one. If it is short, the modal interaction alone outlasts it and there is
+ * nothing to fix. The number decides whether the reported bug binds.
+ */
+test('#1356 the tail after stop decays quickly', async ({ page }) => {
+  test.setTimeout(120_000)
+  await openApp(page)
+  const out = await call(page, 'recordAfterStop', starterCode(), 8)
+  expect(out.ok, out.error ?? '').toBe(true)
+  const { sampleRate, mono } = readWav(out.wav!)
+
+  // Per-250ms RMS, so the decay is visible as a curve rather than one number.
+  const win = Math.floor(sampleRate / 4)
+  const curve: string[] = []
+  for (let i = 0; i + win <= mono.length; i += win) {
+    let sum = 0
+    for (let j = i; j < i + win; j++) sum += mono[j] * mono[j]
+    curve.push((Math.sqrt(sum / win)).toFixed(4))
+  }
+  // Last window above an audible floor, in ms.
+  let lastAudible = 0
+  curve.forEach((v, i) => { if (Number(v) > 0.005) lastAudible = (i + 1) * 250 })
+
+  // Measured: near-full level for a full second, then silence.
+  //   0.1280 0.1146 0.1042 0.0894 0.0120 0.0000 0.0000 ...   lastAudible 1250ms
+  // This is the budget `StrudelEngine.waitUntilQuiet` has to cover before a
+  // bounce may start. If the tail ever outgrew that 2500ms ceiling the settle
+  // would time out and contamination would return silently — which is what
+  // this arm is here to catch.
+  expect(lastAudible).toBeLessThan(2500)
 })

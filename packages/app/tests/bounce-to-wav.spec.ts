@@ -148,3 +148,92 @@ test('the modal closes once the bounce has been saved', async ({ page }) => {
 
   await expect(page.getByRole('dialog', { name: 'Bounce to WAV' })).toBeHidden({ timeout: 10_000 })
 })
+
+/** RMS over the first `ms` of a 16-bit stereo WAV. */
+function headRmsOf(path: string, ms: number): number {
+  const buf = readFileSync(path)
+  const end = Math.min(buf.length, 44 + Math.floor((48000 * ms) / 1000) * 4)
+  let sum = 0
+  let n = 0
+  for (let i = 44; i + 1 < end; i += 2) {
+    const v = buf.readInt16LE(i) / 32768
+    sum += v * v
+    n++
+  }
+  return n === 0 ? 0 : Math.sqrt(sum / n)
+}
+
+/**
+ * #1356 — the product path, which is the only one that can answer this.
+ *
+ * Stopping halts Strudel's scheduler but does not cancel Web Audio nodes
+ * already scheduled, so the graph keeps sounding for ~1.25s after the transport
+ * reads stopped. A bounce started inside that window SUMS the previous take
+ * under the opening of the new file: louder, doubled, no error.
+ *
+ * Measured on the engine path with zero delay the head ran 24% hot. This arm
+ * asks the question through the menu, where the user's own clicks are part of
+ * the timing — the only version of it that describes the shipped product.
+ */
+test('a bounce started right after a stop is not thickened by the previous take', async ({ page }) => {
+  test.setTimeout(120_000)
+
+  // Give the graph a real take to ring from.
+  await page.locator('[data-testid="strudel-chrome-transport"]').click()
+  await expect(page.locator('[data-stave-transport-lcd]')).toContainText('PLAY', { timeout: 15_000 })
+  await page.waitForTimeout(2500)
+  await page.locator('[data-testid="strudel-chrome-transport"]').click()
+  await expect(page.locator('[data-stave-transport-lcd]')).toContainText('STOP', { timeout: 10_000 })
+
+  // No settling pause here on purpose: straight into the bounce.
+  await openBounceModal(page)
+  await page.getByRole('button', { name: `${BOUNCE_SECONDS}s` }).click()
+  const downloadPromise = page.waitForEvent('download', { timeout: 60_000 })
+  await page.getByRole('button', { name: 'Start Bounce' }).click()
+  const download = await downloadPromise
+
+  // Measured on this exact path, 3 runs each, spread 0.1% — so these are
+  // signal, not variance:
+  //   clean, no prior playback        0.1400
+  //   after a stop, NO settle         0.1623   (+15.8%)
+  //   after a stop, WITH the settle   0.1499   (+7.0%)
+  // 0.155 sits between the last two: it passes with the settle and fails
+  // without it, which is what makes this arm worth having.
+  //
+  // The remaining +7.0% is REAL and is NOT the tail — adding three further
+  // seconds of proven silence leaves it at 0.1506. Different defect, tracked
+  // separately; do not widen this threshold to absorb it.
+  expect(headRmsOf((await download.path())!, 1500)).toBeLessThan(0.155)
+})
+
+test('a bounce from a quiet graph reads at the reference level', async ({ page }) => {
+  test.setTimeout(120_000)
+  await openBounceModal(page)
+  await page.getByRole('button', { name: `${BOUNCE_SECONDS}s` }).click()
+  const downloadPromise = page.waitForEvent('download', { timeout: 60_000 })
+  await page.getByRole('button', { name: 'Start Bounce' }).click()
+  const download = await downloadPromise
+  // The reference the arm above is measured against. Pinned as a band so a
+  // gain or pattern change moves this arm first, rather than silently
+  // invalidating the +15.8% / +7.0% figures that depend on it.
+  expect(headRmsOf((await download.path())!, 1500)).toBeGreaterThan(0.130)
+})
+
+/**
+ * #1356 item 2 — the menu and the palette must agree about availability.
+ *
+ * `stave.audio.bounce` has always been gated (`when: canBounce()`), so the
+ * palette hides it on a tab with no recordable runtime. The menu item was not:
+ * it opened the modal and let the user pick a length before admitting, via a
+ * toast, that it could not bounce. Only strudel and sonicpi are wired to a
+ * runtime, so a hydra tab is the case.
+ */
+test('the Bounce menu item is disabled on a tab with no audio runtime', async ({ page }) => {
+  const hydra = page.locator('[data-file-tree-item*="hydra"]').first()
+  await expect(hydra).toHaveCount(1)
+  await hydra.dblclick()
+  await page.waitForTimeout(800)
+
+  await page.getByRole('button', { name: 'File', exact: true }).click()
+  await expect(page.getByText('Bounce to WAV...')).toBeDisabled()
+})

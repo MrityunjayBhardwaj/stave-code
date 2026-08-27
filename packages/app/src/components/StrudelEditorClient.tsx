@@ -254,8 +254,16 @@ export interface BounceHandle {
    * Capture `seconds` of the active file's live output. Resolves to null when
    * there is no active recordable runtime. Pass `signal` to stop early and
    * keep what was captured.
+   *
+   * `onCaptureStart` fires once the graph has settled and playback is running,
+   * i.e. at the first captured sample — so a progress display measures the
+   * capture and not the preparation before it (#1356).
    */
-  bounce(seconds: number, signal?: AbortSignal): Promise<Blob | null>;
+  bounce(
+    seconds: number,
+    signal?: AbortSignal,
+    onCaptureStart?: () => void,
+  ): Promise<Blob | null>;
 }
 
 interface StrudelEditorClientProps {
@@ -1561,10 +1569,10 @@ export default function StrudelEditorClient({
     };
     const handle: BounceHandle = {
       canBounce: () => activeRuntime()?.canRecord() ?? false,
-      bounce: async (seconds, signal) => {
+      bounce: async (seconds, signal, onCaptureStart) => {
         const rt = activeRuntime();
         if (!rt) return null;
-        return rt.record(seconds, signal);
+        return rt.record(seconds, signal, onCaptureStart);
       },
     };
     bounceRef.current = handle;
