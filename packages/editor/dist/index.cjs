@@ -7883,6 +7883,42 @@ var _StrudelEngine = class _StrudelEngine {
     }
   }
   /**
+   * Resolve once the master output has been QUIET for a sustained window, or
+   * when `maxMs` elapses. Returns whether quiet was actually reached (#1356).
+   *
+   * `stop()` halts Strudel's scheduler but does not cancel Web Audio nodes
+   * already scheduled in the lookahead window, so the graph keeps sounding
+   * after the transport reads stopped — measured at near-full level for a full
+   * second, gone by 1.25s. A bounce started in that window sums the previous
+   * take under the opening of the new one (+24% RMS over the first 1.5s).
+   *
+   * Waiting on the ANALYSER rather than on a fixed delay means the common case
+   * — a graph that is already silent — costs one hold window, and the wait can
+   * never be shorter than the tail actually is.
+   */
+  async waitUntilQuiet(maxMs = 2500, threshold = 5e-3) {
+    const analyser = this.analyserNode;
+    if (!analyser) return true;
+    const buf = new Float32Array(analyser.fftSize);
+    const HOLD_MS = 150;
+    const STEP_MS = 25;
+    const need = Math.ceil(HOLD_MS / STEP_MS);
+    const deadline = Date.now() + maxMs;
+    let streak = 0;
+    for (; ; ) {
+      analyser.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      if (Math.sqrt(sum / buf.length) <= threshold) {
+        if (++streak >= need) return true;
+      } else {
+        streak = 0;
+      }
+      if (Date.now() >= deadline) return false;
+      await new Promise((r) => setTimeout(r, STEP_MS));
+    }
+  }
+  /**
    * Capture `durationSeconds` of the LIVE master output as a WAV Blob.
    *
    * This is the honest bounce: it taps the same analyser the meters read, so
@@ -40269,15 +40305,17 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    * re-evaluates the current file on every call, so "just call play to be
    * safe" would restart the audio we are about to record, mid-take.
    */
-  async record(seconds, signal) {
+  async record(seconds, signal, onCaptureStart) {
     const engine = this.engine;
     if (this.isDisposed || typeof engine.record !== "function") return null;
     const startedHere = !this.isPlayingState;
     if (startedHere) {
+      await engine.waitUntilQuiet?.();
       const { error } = await this.play();
       if (error) throw error;
     }
     try {
+      onCaptureStart?.();
       return await engine.record(seconds, signal);
     } finally {
       if (startedHere) this.stop();
