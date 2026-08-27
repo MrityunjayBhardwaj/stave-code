@@ -73,7 +73,8 @@ import {
   setContent,
   revealLineInFile,
 } from "@stave/editor";
-import StrudelEditorClient from "./StrudelEditorClient";
+import StrudelEditorClient, { type BounceHandle } from "./StrudelEditorClient";
+import { BounceModal, type BounceState } from "./BounceModal";
 import { MusicalTimeline } from "./MusicalTimeline";
 import {
   registerBottomPanelTab,
@@ -421,6 +422,107 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   //   onActiveTabChange. Passed to FileTree so it highlights the active
   //   file in the tree.
   const shellRef = useRef<WorkspaceShellHandle | null>(null);
+  // #1346 — the File menu's "Bounce to WAV" needs the LIVE audio graph, which
+  // lives in StrudelEditorClient's runtime map. Same shape as `shellRef`: we
+  // own the ref, the child attaches the handle.
+  const bounceRef = useRef<BounceHandle | null>(null);
+  const [bounceOpen, setBounceOpen] = useState(false);
+  const [bounceState, setBounceState] = useState<BounceState>({ phase: "choosing" });
+  // Held outside state: aborting must work from the Stop handler without
+  // waiting for a render, and the ticker must be clearable from two places.
+  const bounceAbortRef = useRef<AbortController | null>(null);
+  const bounceTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /**
+   * #1346 — run a bounce and hand the user a .wav.
+   *
+   * The capture taps the live master output, so this is real-time by nature:
+   * the modal shows a progress bar driven from here (the duration is known up
+   * front, so no engine-side progress channel is needed) and a Stop that
+   * aborts. Stop is not a discard — the recorder resolves with what it has, so
+   * the user still gets a shorter file.
+   */
+  const finishBounceUi = useCallback(() => {
+    if (bounceTickRef.current) {
+      clearInterval(bounceTickRef.current);
+      bounceTickRef.current = null;
+    }
+    bounceAbortRef.current = null;
+    setBounceOpen(false);
+    setBounceState({ phase: "choosing" });
+  }, []);
+
+  const handleBounceStart = useCallback((seconds: number) => {
+    const handle = bounceRef.current;
+    if (!handle) {
+      showToast("Open a pattern file before bouncing.", "error");
+      setBounceOpen(false);
+      return;
+    }
+    const controller = new AbortController();
+    bounceAbortRef.current = controller;
+    setBounceState({ phase: "recording", seconds, elapsed: 0 });
+
+    const startedAt = Date.now();
+    bounceTickRef.current = setInterval(() => {
+      const elapsed = (Date.now() - startedAt) / 1000;
+      setBounceState((prev) =>
+        prev.phase === "recording" ? { ...prev, elapsed } : prev,
+      );
+    }, 200);
+
+    void handle
+      .bounce(seconds, controller.signal)
+      .then((blob) => {
+        if (bounceTickRef.current) {
+          clearInterval(bounceTickRef.current);
+          bounceTickRef.current = null;
+        }
+        if (!blob) {
+          showToast("This file has no audio engine to bounce.", "error");
+          return;
+        }
+        setBounceState({ phase: "encoding" });
+        const safeName = activeProject.name.replace(/[^a-z0-9_-]+/gi, "_");
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${safeName || "stave-bounce"}.wav`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // Revoke on next tick so the download stream can start (matches
+        // exportProjectAsZip).
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast(
+          controller.signal.aborted
+            ? "Bounce stopped early — saved what was recorded."
+            : "Bounce saved.",
+          "info",
+        );
+      })
+      .catch((err: unknown) => {
+        console.error("[stave] bounce failed:", err);
+        showToast("Bounce failed — see console for details.", "error");
+      })
+      .finally(finishBounceUi);
+  }, [activeProject, finishBounceUi]);
+
+  const handleBounceStop = useCallback(() => {
+    bounceAbortRef.current?.abort();
+  }, []);
+
+  const openBounceModal = useCallback(() => {
+    setBounceState({ phase: "choosing" });
+    setBounceOpen(true);
+  }, []);
+
+  // A bounce holds the transport and an AbortController; unmounting mid-take
+  // would leave both running with nothing listening.
+  useEffect(() => () => {
+    bounceAbortRef.current?.abort();
+    if (bounceTickRef.current) clearInterval(bounceTickRef.current);
+  }, []);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [activeRuntime, setActiveRuntime] = useState<StatusBarRuntimeState | null>(null);
 
@@ -1039,6 +1141,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       },
     }));
     unregs.push(registerCommand({
+      id: "stave.audio.bounce",
+      title: "Bounce to WAV...",
+      category: "File",
+      description: "Record the live output to a .wav file. Real-time.",
+      when: () => bounceRef.current?.canBounce() ?? false,
+      run: () => { openBounceModal(); },
+    }));
+    unregs.push(registerCommand({
       id: "stave.project.import",
       title: "Import Project from .zip...",
       category: "File",
@@ -1289,6 +1399,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           });
         }}
         onImportProject={triggerImportPicker}
+        onBounceToWav={openBounceModal}
         onShareProject={handleShareProject}
         onVersionHistory={openSnapshotPanel}
         onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
@@ -1373,6 +1484,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 key={activeProject.id}
                 projectId={activeProject.id}
                 shellRef={shellRef}
+                bounceRef={bounceRef}
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}
                 onCodeBackdropChange={handleCodeBackdropChange}
@@ -1473,6 +1585,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           </div>
         </div>
       </div>
+
+      <BounceModal
+        open={bounceOpen}
+        state={bounceState}
+        onClose={() => setBounceOpen(false)}
+        onStart={handleBounceStart}
+        onStop={handleBounceStop}
+      />
 
       <TemplateModal
         open={templateModalOpen}

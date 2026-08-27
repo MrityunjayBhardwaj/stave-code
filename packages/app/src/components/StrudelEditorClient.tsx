@@ -238,6 +238,26 @@ function ensureProviders() {
 // Component
 // ---------------------------------------------------------------------------
 
+/**
+ * #1346 — the app-facing contract for bouncing the live mix to a WAV.
+ *
+ * `LiveRecorder` taps the master analyser, so a bounce records whatever the
+ * graph is playing — including nothing. `bounce` therefore guarantees playback
+ * for the take and restores the transport afterwards; callers do not sequence
+ * that themselves, and must still treat a returned Blob as audio to verify
+ * rather than audio to trust.
+ */
+export interface BounceHandle {
+  /** True when the active tab has a runtime whose engine can capture audio. */
+  canBounce(): boolean;
+  /**
+   * Capture `seconds` of the active file's live output. Resolves to null when
+   * there is no active recordable runtime. Pass `signal` to stop early and
+   * keep what was captured.
+   */
+  bounce(seconds: number, signal?: AbortSignal): Promise<Blob | null>;
+}
+
 interface StrudelEditorClientProps {
   /**
    * Active project id — used to scope the workspace-shell state
@@ -248,6 +268,16 @@ interface StrudelEditorClientProps {
    */
   projectId: string;
   shellRef?: React.RefObject<WorkspaceShellHandle | null>;
+  /**
+   * #1346 — populated with a handle onto the ACTIVE file's live audio graph so
+   * StaveApp can offer "Bounce to WAV" from the File menu.
+   *
+   * StaveApp owns the File commands and every modal, but has no engine of its
+   * own; the runtimes live here in `runtimesRef`. This is the narrowest seam
+   * that closes that gap — the same shape as `shellRef`: StaveApp creates the
+   * ref, this component attaches to it.
+   */
+  bounceRef?: React.RefObject<BounceHandle | null>;
   onActiveFileChange?: (fileId: string | null) => void;
   /**
    * Reports the runtime state (playing / bpm / error) for the currently
@@ -452,6 +482,7 @@ function SetBackdropButton({
 export default function StrudelEditorClient({
   projectId,
   shellRef,
+  bounceRef,
   onActiveFileChange,
   onActiveRuntimeStateChange,
   onTabContextMenu,
@@ -1514,6 +1545,33 @@ export default function StrudelEditorClient({
   // switches because `play` / `stop` / error events mutate runtimeStates
   // without changing the active tab.
   const activeFileIdRef = useRef<string | null>(null);
+
+  // #1346 — publish the bounce handle to StaveApp. Both reads go through refs
+  // (`activeFileIdRef`, `runtimesRef`) rather than state, so the handle stays
+  // correct across tab switches without re-running this effect and without
+  // StaveApp ever holding an engine. Deliberately resolves the active file at
+  // CALL time: a bounce started from the menu should record the tab that is
+  // active when the user confirms, not the one that was active at mount.
+  useEffect(() => {
+    if (!bounceRef) return;
+    const activeRuntime = (): LiveCodingRuntime | null => {
+      const fid = activeFileIdRef.current;
+      if (!fid) return null;
+      return runtimesRef.current.get(fid) ?? null;
+    };
+    const handle: BounceHandle = {
+      canBounce: () => activeRuntime()?.canRecord() ?? false,
+      bounce: async (seconds, signal) => {
+        const rt = activeRuntime();
+        if (!rt) return null;
+        return rt.record(seconds, signal);
+      },
+    };
+    bounceRef.current = handle;
+    return () => {
+      if (bounceRef.current === handle) bounceRef.current = null;
+    };
+  }, [bounceRef]);
 
   // #977 — visibility poll for eval-on-load. The snapshot cadence effect covers
   // file switches + edits, and onRequestSnapshot covers a cold song-view entry —

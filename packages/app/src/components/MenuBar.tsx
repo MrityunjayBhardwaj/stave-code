@@ -17,6 +17,8 @@ interface MenuBarProps {
   onOpenProject: () => void;
   onRenameProject: () => void;
   onExportProject: () => void;
+  /** #1346 — real-time bounce of the live output to a .wav. */
+  onBounceToWav: () => void;
   onImportProject: () => void;
   onShareProject: () => void;
   onVersionHistory: () => void;
@@ -44,6 +46,7 @@ export function MenuBar({
   onOpenProject,
   onRenameProject,
   onExportProject,
+  onBounceToWav,
   onImportProject,
   onShareProject,
   onVersionHistory,
@@ -98,6 +101,7 @@ export function MenuBar({
         <MenuDivider />
         <MenuItem label="Import from .zip..." onClick={() => clickItem(onImportProject)} />
         <MenuItem label="Export as .zip" onClick={() => clickItem(onExportProject)} />
+        <MenuItem label="Bounce to WAV..." onClick={() => clickItem(onBounceToWav)} />
         <MenuDivider />
         <MenuItem label="Copy Share Link" onClick={() => clickItem(onShareProject)} />
         <MenuDivider />
