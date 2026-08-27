@@ -75,6 +75,7 @@ import {
 } from "@stave/editor";
 import StrudelEditorClient, { type BounceHandle } from "./StrudelEditorClient";
 import { BounceModal, type BounceState } from "./BounceModal";
+import { DocsSearchPalette } from "./DocsSearchPalette";
 import { MusicalTimeline } from "./MusicalTimeline";
 import {
   registerBottomPanelTab,
@@ -149,6 +150,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // Unified settings window (#739) — one shell, two tabs. `settingsTab`
   // decides which surface opens; both File-menu items reuse it.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [docsSearchOpen, setDocsSearchOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("settings");
   const [cropTarget, setCropTarget] = useState<
     | { mode: "inline"; vizId: string; presetId: string; fileId: string; trackKey: string; renderSize?: { w: number; h: number } }
@@ -1117,6 +1119,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       run: () => setPaletteOpen(true),
     }));
     unregs.push(registerCommand({
+      id: "stave.docs.search",
+      title: "Search Documentation",
+      category: "Help",
+      description: "Fuzzy-search the 900+ docs entries across all runtimes.",
+      keybinding: "mod+shift+d",
+      run: () => setDocsSearchOpen(true),
+    }));
+    unregs.push(registerCommand({
       id: "stave.project.new",
       title: "New Project...",
       category: "File",
@@ -1699,6 +1709,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onClose={() => setSettingsOpen(false)}
         tab={settingsTab}
         onTabChange={setSettingsTab}
+      />
+
+      <DocsSearchPalette
+        open={docsSearchOpen}
+        onClose={() => setDocsSearchOpen(false)}
       />
 
       {/* Perf overlay (#228) — renders only when profiling is enabled. */}

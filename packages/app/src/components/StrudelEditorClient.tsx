@@ -216,6 +216,12 @@ function captureAndPublishSnapshot(
 const BUNDLED_VIZ_NATIVE_SIZE: Record<string, { w: number; h: number }> = {
   "Piano Roll": { w: 1200, h: 200 },
   "Piano Roll (Hydra)": { w: 1400, h: 400 },
+  // Pitchwheel — a centred wheel. Without a declared native it falls to
+  // DEFAULT_NATIVE (1200x600 -> a ~530px-tall strip), which paired with the
+  // createCanvas(stave.width,stave.height) behaviour would fill that whole box
+  // with a giant wheel. A wide-ish 5:1 strip keeps it a comfortable inline
+  // height. Key is the PRESET NAME, which is lowercase for this one.
+  pitchwheel: { w: 1200, h: 240 },
 };
 
 
