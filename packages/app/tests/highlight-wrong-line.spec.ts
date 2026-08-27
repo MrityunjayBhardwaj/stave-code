@@ -35,6 +35,10 @@ async function boot(page: Page): Promise<void> {
     } catch { /* ignore */ }
   })
   await page.goto('/', { waitUntil: 'domcontentloaded' })
+  // Studio mounts the workspace shell BEFORE monaco, so waiting only on
+  // `.monaco-editor` races the shell and times out on a perfectly healthy app.
+  // Mirrors the boot every other studio-era spec uses.
+  await page.locator('[data-workspace-shell="root"]').waitFor({ timeout: 20000 })
   await page.locator('.monaco-editor').first().waitFor({ timeout: 20000 })
   await page.waitForTimeout(800)
 }
