@@ -978,7 +978,19 @@ declare class StrudelEngine implements LiveCodingEngine {
      * second call so listeners never see a redundant transition.
      */
     private setPaused;
-    record(durationSeconds: number): Promise<Blob>;
+    /**
+     * Capture `durationSeconds` of the LIVE master output as a WAV Blob.
+     *
+     * This is the honest bounce: it taps the same analyser the meters read, so
+     * what you hear is what you get — unlike `renderOffline`, which re-evaluates
+     * the code in an OfflineAudioContext and cannot currently reach a Stave
+     * document at all (#1344).
+     *
+     * ⚠ It records the graph as it is. If nothing is playing this resolves with
+     * a valid WAV of silence and no error, so the caller must start playback
+     * first. Pass `signal` to stop early and keep what was captured.
+     */
+    record(durationSeconds: number, signal?: AbortSignal): Promise<Blob>;
     renderOffline(code: string, duration: number, sampleRate?: number): Promise<Blob>;
     renderStems(stems: Record<string, string>, duration: number, onProgress?: (stem: string, i: number, total: number) => void): Promise<Record<string, Blob>>;
     getAnalyser(): AnalyserNode;
@@ -1338,9 +1350,24 @@ declare class OfflineRenderer {
  *
  * Note: ScriptProcessorNode is deprecated but remains the most reliable cross-browser
  * option for in-browser audio capture without MediaRecorder latency issues.
+ *
+ * ⚠ This taps the master analyser, so it records whatever the graph is playing —
+ * including nothing. With playback stopped it resolves with a valid WAV of pure
+ * silence and no error, which is the same silent-failure shape the offline
+ * renderer has. Callers must guarantee audio is flowing before capturing, and
+ * assert the result is non-silent rather than merely non-empty.
  */
 declare class LiveRecorder {
-    static capture(analyser: AnalyserNode, ctx: AudioContext, duration: number): Promise<Blob>;
+    /**
+     * Capture `duration` seconds of `analyser`'s output as a WAV Blob.
+     *
+     * Capture is real-time: eight seconds of audio costs eight seconds of wall
+     * clock, and holds roughly 11.5 MB of Float32 chunks per minute until the
+     * encode. Pass `signal` to stop early — the recorder disconnects and resolves
+     * with the audio captured so far, so a cancelled bounce still yields a
+     * playable (shorter) file rather than throwing away the take.
+     */
+    static capture(analyser: AnalyserNode, ctx: AudioContext, duration: number, signal?: AbortSignal): Promise<Blob>;
 }
 
 /**
@@ -6896,6 +6923,28 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     }>;
     /** Whether this runtime is currently playing (for the time-travel re-eval, #204). */
     getIsPlaying(): boolean;
+    /**
+     * Whether this runtime's engine can capture live audio (#1346).
+     *
+     * Duck-typed, matching how the app reads `getLastAliasResolutions` off the
+     * engine: only `StrudelEngine` implements `record`, and a runtime whose
+     * engine doesn't simply reports false rather than the caller casting.
+     */
+    canRecord(): boolean;
+    /**
+     * Capture `seconds` of this runtime's LIVE output as a WAV Blob (#1346).
+     * Returns null when the engine cannot record — see `canRecord`.
+     *
+     * Playback is guaranteed for the duration of the take, because the capture
+     * taps the master analyser: with the transport stopped it would return a
+     * valid WAV of pure silence and no error. If we started playback we stop it
+     * again afterwards, so a bounce leaves the transport as it found it.
+     *
+     * ⚠ We deliberately do NOT call `play()` when already playing. `play()`
+     * re-evaluates the current file on every call, so "just call play to be
+     * safe" would restart the audio we are about to record, mid-take.
+     */
+    record(seconds: number, signal?: AbortSignal): Promise<Blob | null>;
     stop(): void;
     dispose(): void;
     /**

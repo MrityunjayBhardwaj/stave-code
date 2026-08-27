@@ -613,6 +613,49 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     return this.isPlayingState
   }
 
+  /**
+   * Whether this runtime's engine can capture live audio (#1346).
+   *
+   * Duck-typed, matching how the app reads `getLastAliasResolutions` off the
+   * engine: only `StrudelEngine` implements `record`, and a runtime whose
+   * engine doesn't simply reports false rather than the caller casting.
+   */
+  canRecord(): boolean {
+    if (this.isDisposed) return false
+    return typeof (this.engine as { record?: unknown }).record === 'function'
+  }
+
+  /**
+   * Capture `seconds` of this runtime's LIVE output as a WAV Blob (#1346).
+   * Returns null when the engine cannot record — see `canRecord`.
+   *
+   * Playback is guaranteed for the duration of the take, because the capture
+   * taps the master analyser: with the transport stopped it would return a
+   * valid WAV of pure silence and no error. If we started playback we stop it
+   * again afterwards, so a bounce leaves the transport as it found it.
+   *
+   * ⚠ We deliberately do NOT call `play()` when already playing. `play()`
+   * re-evaluates the current file on every call, so "just call play to be
+   * safe" would restart the audio we are about to record, mid-take.
+   */
+  async record(seconds: number, signal?: AbortSignal): Promise<Blob | null> {
+    const engine = this.engine as {
+      record?: (s: number, sig?: AbortSignal) => Promise<Blob>
+    }
+    if (this.isDisposed || typeof engine.record !== 'function') return null
+
+    const startedHere = !this.isPlayingState
+    if (startedHere) {
+      const { error } = await this.play()
+      if (error) throw error
+    }
+    try {
+      return await engine.record(seconds, signal)
+    } finally {
+      if (startedHere) this.stop()
+    }
+  }
+
   stop(): void {
     // Invalidate any in-flight play() so it aborts after its await instead of
     // restarting the scheduler we're about to stop (#811). Bump first, before

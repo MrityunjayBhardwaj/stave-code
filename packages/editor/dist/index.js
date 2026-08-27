@@ -3640,7 +3640,16 @@ __name(floatToInt16, "floatToInt16");
 
 // src/engine/LiveRecorder.ts
 var _LiveRecorder = class _LiveRecorder {
-  static capture(analyser, ctx, duration) {
+  /**
+   * Capture `duration` seconds of `analyser`'s output as a WAV Blob.
+   *
+   * Capture is real-time: eight seconds of audio costs eight seconds of wall
+   * clock, and holds roughly 11.5 MB of Float32 chunks per minute until the
+   * encode. Pass `signal` to stop early — the recorder disconnects and resolves
+   * with the audio captured so far, so a cancelled bounce still yields a
+   * playable (shorter) file rather than throwing away the take.
+   */
+  static capture(analyser, ctx, duration, signal) {
     return new Promise((resolve) => {
       const bufferSize = 4096;
       const processor = ctx.createScriptProcessor(bufferSize, 2, 2);
@@ -3654,14 +3663,24 @@ var _LiveRecorder = class _LiveRecorder {
       };
       analyser.connect(processor);
       processor.connect(ctx.destination);
-      setTimeout(() => {
+      let settled = false;
+      const finish = /* @__PURE__ */ __name(() => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", finish);
         processor.disconnect();
         try {
           analyser.disconnect(processor);
         } catch {
         }
         resolve(WavEncoder.encodeChunks(chunksL, chunksR, ctx.sampleRate));
-      }, duration * 1e3);
+      }, "finish");
+      const timer = setTimeout(finish, duration * 1e3);
+      if (signal) {
+        if (signal.aborted) finish();
+        else signal.addEventListener("abort", finish, { once: true });
+      }
     });
   }
 };
@@ -7837,11 +7856,28 @@ var _StrudelEngine = class _StrudelEngine {
       }
     }
   }
-  async record(durationSeconds) {
+  /**
+   * Capture `durationSeconds` of the LIVE master output as a WAV Blob.
+   *
+   * This is the honest bounce: it taps the same analyser the meters read, so
+   * what you hear is what you get — unlike `renderOffline`, which re-evaluates
+   * the code in an OfflineAudioContext and cannot currently reach a Stave
+   * document at all (#1344).
+   *
+   * ⚠ It records the graph as it is. If nothing is playing this resolves with
+   * a valid WAV of silence and no error, so the caller must start playback
+   * first. Pass `signal` to stop early and keep what was captured.
+   */
+  async record(durationSeconds, signal) {
     if (!this.analyserNode || !this.audioCtx) {
       throw new Error("StrudelEngine not initialized \u2014 call init() first");
     }
-    return LiveRecorder.capture(this.analyserNode, this.audioCtx, durationSeconds);
+    return LiveRecorder.capture(
+      this.analyserNode,
+      this.audioCtx,
+      durationSeconds,
+      signal
+    );
   }
   async renderOffline(code, duration, sampleRate) {
     return OfflineRenderer.render(
@@ -40182,6 +40218,44 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
   /** Whether this runtime is currently playing (for the time-travel re-eval, #204). */
   getIsPlaying() {
     return this.isPlayingState;
+  }
+  /**
+   * Whether this runtime's engine can capture live audio (#1346).
+   *
+   * Duck-typed, matching how the app reads `getLastAliasResolutions` off the
+   * engine: only `StrudelEngine` implements `record`, and a runtime whose
+   * engine doesn't simply reports false rather than the caller casting.
+   */
+  canRecord() {
+    if (this.isDisposed) return false;
+    return typeof this.engine.record === "function";
+  }
+  /**
+   * Capture `seconds` of this runtime's LIVE output as a WAV Blob (#1346).
+   * Returns null when the engine cannot record — see `canRecord`.
+   *
+   * Playback is guaranteed for the duration of the take, because the capture
+   * taps the master analyser: with the transport stopped it would return a
+   * valid WAV of pure silence and no error. If we started playback we stop it
+   * again afterwards, so a bounce leaves the transport as it found it.
+   *
+   * ⚠ We deliberately do NOT call `play()` when already playing. `play()`
+   * re-evaluates the current file on every call, so "just call play to be
+   * safe" would restart the audio we are about to record, mid-take.
+   */
+  async record(seconds, signal) {
+    const engine = this.engine;
+    if (this.isDisposed || typeof engine.record !== "function") return null;
+    const startedHere = !this.isPlayingState;
+    if (startedHere) {
+      const { error } = await this.play();
+      if (error) throw error;
+    }
+    try {
+      return await engine.record(seconds, signal);
+    } finally {
+      if (startedHere) this.stop();
+    }
   }
   stop() {
     this.playGeneration++;

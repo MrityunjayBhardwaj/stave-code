@@ -1659,11 +1659,28 @@ export class StrudelEngine implements LiveCodingEngine {
     }
   }
 
-  async record(durationSeconds: number): Promise<Blob> {
+  /**
+   * Capture `durationSeconds` of the LIVE master output as a WAV Blob.
+   *
+   * This is the honest bounce: it taps the same analyser the meters read, so
+   * what you hear is what you get — unlike `renderOffline`, which re-evaluates
+   * the code in an OfflineAudioContext and cannot currently reach a Stave
+   * document at all (#1344).
+   *
+   * ⚠ It records the graph as it is. If nothing is playing this resolves with
+   * a valid WAV of silence and no error, so the caller must start playback
+   * first. Pass `signal` to stop early and keep what was captured.
+   */
+  async record(durationSeconds: number, signal?: AbortSignal): Promise<Blob> {
     if (!this.analyserNode || !this.audioCtx) {
       throw new Error('StrudelEngine not initialized — call init() first')
     }
-    return LiveRecorder.capture(this.analyserNode, this.audioCtx, durationSeconds)
+    return LiveRecorder.capture(
+      this.analyserNode,
+      this.audioCtx,
+      durationSeconds,
+      signal
+    )
   }
 
   async renderOffline(
