@@ -94,7 +94,12 @@ import {
   onActiveEditorChange,
   readPersistedOpen,
   readPersistedActiveTabId,
+  getIRSnapshot,
+  analyzeSong,
+  songExtent,
 } from "@stave/editor";
+import { createSongCollector } from "./musicalTimeline/songCollector";
+import { measureSongLength, type BounceSizing } from "./songLength";
 import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 import { installBounceProbe } from "../e2e/bounceProbe";
 
@@ -270,6 +275,16 @@ export interface BounceHandle {
     signal?: AbortSignal,
     onCaptureStart?: () => void,
   ): Promise<Blob | null>;
+  /**
+   * How long the active document is, and at what tempo — so the bounce modal can
+   * offer a real length instead of a list of guessed durations (#1365).
+   *
+   * Answered HERE rather than read off the Song timeline, which computes the same
+   * analysis but may not be mounted when someone bounces. Resolves to a
+   * `{kind:'unknown'}` length rather than rejecting: not knowing how long a
+   * document is must never be the reason a bounce cannot happen.
+   */
+  songSizing(signal?: { aborted: boolean }): Promise<BounceSizing>;
 }
 
 interface StrudelEditorClientProps {
@@ -1579,6 +1594,40 @@ export default function StrudelEditorClient({
         const rt = activeRuntime();
         if (!rt) return null;
         return rt.record(seconds, signal, onCaptureStart);
+      },
+      songSizing: async (signal) => {
+        const fid = activeFileIdRef.current;
+        const rt = fid ? (runtimesRef.current.get(fid) ?? null) : null;
+        // ⚠ ONE snapshot store, one snapshot. `source` is the fileId that
+        // published it, and the bounce deliberately resolves its file at CALL
+        // time — so without this equality the modal could size a bounce of THIS
+        // tab by the IR of whichever tab last evaluated. A mismatch is treated
+        // as no document rather than as a length, because a wrong length is
+        // silent: the WAV is still valid, just not the song.
+        const snap = getIRSnapshot();
+        const ir = snap && fid && snap.source === fid ? snap.ir : null;
+        const length = await measureSongLength(
+          ir,
+          {
+            songExtent,
+            analyzeSong,
+            // The SHARED factory the timeline uses, threaded with this file's
+            // accessors — not a second collector, whose key space would drift.
+            createCollector: (nodeIr) =>
+              createSongCollector(nodeIr, {
+                getTimelineEvents: (cycles: number) =>
+                  runtimesRef.current.get(fid!)?.getTimelineEvents?.(cycles) ?? [],
+                getTimelineEventsBand: (startCycle: number, endCycle: number) =>
+                  runtimesRef.current
+                    .get(fid!)
+                    ?.getTimelineEventsBand?.(startCycle, endCycle) ?? [],
+                getSongTrackIds: () =>
+                  runtimesRef.current.get(fid!)?.getSongTrackIds?.() ?? [],
+              }),
+          },
+          signal,
+        );
+        return { length, cps: rt?.getCps() ?? null };
       },
     };
     bounceRef.current = handle;

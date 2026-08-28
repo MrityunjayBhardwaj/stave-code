@@ -54,6 +54,13 @@ export type {
   AnalyzeWindowOptions,
 } from './songAnalysis'
 
+// Structural song extent (#1359) — the length question answered off the IR,
+// with no evaluation and no window. Exported for the bounce (#1365), which is
+// the first production caller; `songExtent`'s own header says why the display
+// span cannot size a render.
+export { songExtent } from './songExtent'
+export type { SongExtent } from './songExtent'
+
 // Event identity (#1102) — exported so the NEXT consumer asking "are these two
 // events the same sound" finds the one answer instead of curating its own field
 // list, which is exactly how the period bug got in.

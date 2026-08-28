@@ -912,6 +912,32 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   }
 
   /**
+   * The tempo the engine is actually running at, in cycles per second, or
+   * `null` when the engine cannot report one (not initialised, or not a
+   * Strudel engine).
+   *
+   * ⚠ THIS IS NOT `getBpm()` IN OTHER UNITS. `getBpm()` returns
+   * `extractBpmFromCode`, a regex over the source that matches only a literal
+   * `setcps(...)`; it is `undefined` for a document that sets no tempo, that
+   * uses `setcpm(...)`, or that changes cps mid-pattern — none of which mean
+   * the music has no tempo. Anything converting CYCLES to SECONDS must use
+   * this and not the readout, or it will size a document by a number the
+   * source text happened to spell. See `StrudelEngine.getCps`.
+   *
+   * Duck-typed on the engine for the same reason `record`/`canRecord` are
+   * (#1346): the capability is Strudel-specific and the engine interface is
+   * shared with runtimes that have no scheduler at all.
+   */
+  getCps(): number | null {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fn = (this.engine as any)?.getCps
+    if (typeof fn !== 'function') return null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = fn.call(this.engine)
+    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null
+  }
+
+  /**
    * Current cycle position from the engine's pattern scheduler, or `null`
    * when the scheduler is unavailable (engine not initialized, transport
    * stopped, non-Strudel runtime). The IR Inspector timeline strip's
