@@ -107,6 +107,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "console-badge.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "copy-paste.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
@@ -440,6 +444,10 @@
     "why": "collected by the gate; every test sits behind an env guard, so it reports as skipped unless that flag is set"
   },
   "keybindings-editor.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "left-panel-width.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },

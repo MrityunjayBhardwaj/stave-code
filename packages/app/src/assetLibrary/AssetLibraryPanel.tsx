@@ -716,7 +716,10 @@ function AssetCard({
 
 const styles: Record<string, React.CSSProperties> = {
   root: {
-    width: 260,
+    // Width is owned by SidePanel (#1367) — and this panel already
+    // re-measures its content width on every panel resize, so it wants a
+    // width it does not choose.
+    width: "100%",
     height: "100%",
     background: "var(--bg-panel)",
     borderRight: "1px solid var(--border-subtle)",

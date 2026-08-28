@@ -54,7 +54,8 @@ import { showPrompt, showToast, showConfirm } from "../dialogs/host";
 import { CommandPalette, type PaletteRow } from "./CommandPalette";
 import { WorkspaceSearchView, type WorkspaceSearchViewHandle } from "./WorkspaceSearchView";
 import { ActivityBar } from "./ActivityBar";
-import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
+import { SidePanel } from "./SidePanel";
+import { consoleBadge } from "../lib/unreadLog";
 import { ConsolePanel } from "./ConsolePanel";
 import { IRInspectorPanel } from "./IRInspectorPanel";
 import { registerCommand } from "../commands/registry";
@@ -187,9 +188,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   // Toast bridge — every new error-level engineLog entry also surfaces
   // as a transient toast so the user notices even when the Console panel
-  // isn't open. Warnings stay in the LED + Console only (noisier to
-  // toast every warn, and live coders warn themselves a lot). The toast
-  // auto-dismisses in ~4s; the Console entry + status-bar LED persist.
+  // isn't open. Warnings get no toast (noisier to toast every warn, and
+  // live coders warn themselves a lot). The toast auto-dismisses in ~4s;
+  // what persists is the Console entry and the unread badge on the
+  // Console's activity-bar button, which counts errors AND warnings and
+  // is the only standing surface a warning has.
   useEffect(() => {
     return subscribeLog((entry) => {
       if (!entry) return;
@@ -558,7 +561,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     if (bounceTickRef.current) clearInterval(bounceTickRef.current);
   }, []);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
-  const [activeRuntime, setActiveRuntime] = useState<StatusBarRuntimeState | null>(null);
+  // Mirror of the active tab's runtime, narrowed to what the chrome actually
+  // reads. It used to also carry `bpm` and `error` for the status bar; with the
+  // bar gone (#1368) the Transport LCD is the only consumer and it takes tempo
+  // from `getCps`, so keeping those fields would be state nobody looks at.
+  const [activeRuntime, setActiveRuntime] = useState<{ isPlaying: boolean } | null>(null);
 
   // Tell the history service which file is focused so the History panel's
   // File scope targets it (Phase G, #197).
@@ -815,15 +822,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       onPauseChangedRef.current = s?.onPauseChanged ?? (() => () => {});
       setActiveRuntime((prev) => {
         if (!s) return prev === null ? prev : null;
-        if (
-          prev &&
-          prev.isPlaying === s.isPlaying &&
-          prev.bpm === s.bpm &&
-          prev.error === s.error
-        ) {
-          return prev; // same values — skip re-render
-        }
-        return { isPlaying: s.isPlaying, bpm: s.bpm, error: s.error };
+        if (prev && prev.isPlaying === s.isPlaying) return prev; // skip re-render
+        return { isPlaying: s.isPlaying };
       });
     },
     [],
@@ -1348,6 +1348,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       icon: "terminal",
       order: 50,
       render: () => null,
+      // Errors and warnings since this panel was last opened. Errors also
+      // raise a toast (below); warnings have no other persistent surface.
+      badge: consoleBadge,
     }));
     // IR debugger (IR Inspector) — hidden from the left activity bar until the
     // full breakpoint-driven music debugger flow lands (re-enable: #680). The panel, its
@@ -1471,52 +1474,58 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             }}
           />
         )}
-        {!zenMode && activePanelId === "explorer" && (
-          <FileTree
-            ref={fileTreeRef}
-            projectName={activeProject.name}
-            onOpenFile={handleOpenFile}
-            activeFileId={activeFileId}
-            onToggleCollapse={() => setActivePanelId(null)}
-            onImportZipProject={handleImportZip}
-            onFileHistory={(fileId) => {
-              setFileHistoryTarget(fileId);
-              setActivePanelId("snapshots");
-            }}
-          />
-        )}
-        {!zenMode && activePanelId === "search" && (
-          <div style={styles.panelRoot} data-sidebar>
-            <div style={styles.panelHeader}>SEARCH</div>
-            <WorkspaceSearchView
-              ref={searchViewRef}
-              compact
-              onOpenFile={(id) => handleOpenFile(id, { preview: true })}
-            />
-          </div>
-        )}
-        {!zenMode && activePanelId === "snapshots" && (
-          <div style={styles.panelRoot} data-sidebar>
-            <div style={styles.panelHeader}>VERSION HISTORY</div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <HistoryPanel
-                onOpenHistoryTab={(req) => shellRef.current?.openHistoryTab(req)}
+        {/* One owner for the left region's width (#1367) — switching tabs
+            swaps only the content; the width, handle, drag-to-collapse and
+            persistence stay put. */}
+        {!zenMode && activePanelId !== null && (
+          <SidePanel onCollapse={() => setActivePanelId(null)}>
+            {activePanelId === "explorer" && (
+              <FileTree
+                ref={fileTreeRef}
+                projectName={activeProject.name}
+                onOpenFile={handleOpenFile}
+                activeFileId={activeFileId}
+                onImportZipProject={handleImportZip}
+                onFileHistory={(fileId) => {
+                  setFileHistoryTarget(fileId);
+                  setActivePanelId("snapshots");
+                }}
               />
-            </div>
-          </div>
-        )}
-        {!zenMode && activePanelId === "library" && (
-          <AssetLibraryPanel onClose={() => setActivePanelId(null)} />
-        )}
-        {!zenMode && activePanelId === "console" && <ConsolePanel />}
-        {!zenMode && activePanelId === "ir-inspector" && (
-          <IRInspectorPanel
-            getHapStream={() => getHapStreamRef.current()}
-            getBreakpointStore={() => getBreakpointStoreRef.current()}
-            getIsPaused={() => getIsPausedRef.current()}
-            onResume={() => onResumeRef.current()}
-            onPauseChanged={(cb) => onPauseChangedRef.current(cb)}
-          />
+            )}
+            {activePanelId === "search" && (
+              <div style={styles.panelRoot} data-sidebar>
+                <div style={styles.panelHeader}>SEARCH</div>
+                <WorkspaceSearchView
+                  ref={searchViewRef}
+                  compact
+                  onOpenFile={(id) => handleOpenFile(id, { preview: true })}
+                />
+              </div>
+            )}
+            {activePanelId === "snapshots" && (
+              <div style={styles.panelRoot} data-sidebar>
+                <div style={styles.panelHeader}>VERSION HISTORY</div>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <HistoryPanel
+                    onOpenHistoryTab={(req) => shellRef.current?.openHistoryTab(req)}
+                  />
+                </div>
+              </div>
+            )}
+            {activePanelId === "library" && (
+              <AssetLibraryPanel onClose={() => setActivePanelId(null)} />
+            )}
+            {activePanelId === "console" && <ConsolePanel />}
+            {activePanelId === "ir-inspector" && (
+              <IRInspectorPanel
+                getHapStream={() => getHapStreamRef.current()}
+                getBreakpointStore={() => getBreakpointStoreRef.current()}
+                getIsPaused={() => getIsPausedRef.current()}
+                onResume={() => onResumeRef.current()}
+                onPauseChanged={(cb) => onPauseChangedRef.current(cb)}
+              />
+            )}
+          </SidePanel>
         )}
         <div style={styles.editorArea}>
           <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
@@ -1764,19 +1773,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
       <DialogHost />
 
-      {!zenMode && <StatusBar
-        projectName={activeProject.name}
-        activeFilePath={
-          activeFileId
-            ? listWorkspaceFiles().find((f) => f.id === activeFileId)?.path ?? null
-            : null
-        }
-        runtime={activeRuntime}
-        canUndo={undoState.canUndo}
-        canRedo={undoState.canRedo}
-        onOpenConsole={() => setActivePanelId("console")}
-      />}
-
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
@@ -1860,7 +1856,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
   },
   panelRoot: {
-    width: 240,
+    // Width is owned by SidePanel (#1367); panels fill the region.
+    width: "100%",
     height: "100%",
     background: "var(--bg-panel)",
     borderRight: "1px solid var(--border-subtle)",
