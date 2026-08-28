@@ -55,6 +55,7 @@ import { CommandPalette, type PaletteRow } from "./CommandPalette";
 import { WorkspaceSearchView, type WorkspaceSearchViewHandle } from "./WorkspaceSearchView";
 import { ActivityBar } from "./ActivityBar";
 import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
+import { SidePanel } from "./SidePanel";
 import { ConsolePanel } from "./ConsolePanel";
 import { IRInspectorPanel } from "./IRInspectorPanel";
 import { registerCommand } from "../commands/registry";
@@ -1446,52 +1447,58 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             }}
           />
         )}
-        {!zenMode && activePanelId === "explorer" && (
-          <FileTree
-            ref={fileTreeRef}
-            projectName={activeProject.name}
-            onOpenFile={handleOpenFile}
-            activeFileId={activeFileId}
-            onToggleCollapse={() => setActivePanelId(null)}
-            onImportZipProject={handleImportZip}
-            onFileHistory={(fileId) => {
-              setFileHistoryTarget(fileId);
-              setActivePanelId("snapshots");
-            }}
-          />
-        )}
-        {!zenMode && activePanelId === "search" && (
-          <div style={styles.panelRoot} data-sidebar>
-            <div style={styles.panelHeader}>SEARCH</div>
-            <WorkspaceSearchView
-              ref={searchViewRef}
-              compact
-              onOpenFile={(id) => handleOpenFile(id, { preview: true })}
-            />
-          </div>
-        )}
-        {!zenMode && activePanelId === "snapshots" && (
-          <div style={styles.panelRoot} data-sidebar>
-            <div style={styles.panelHeader}>VERSION HISTORY</div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <HistoryPanel
-                onOpenHistoryTab={(req) => shellRef.current?.openHistoryTab(req)}
+        {/* One owner for the left region's width (#1367) — switching tabs
+            swaps only the content; the width, handle, drag-to-collapse and
+            persistence stay put. */}
+        {!zenMode && activePanelId !== null && (
+          <SidePanel onCollapse={() => setActivePanelId(null)}>
+            {activePanelId === "explorer" && (
+              <FileTree
+                ref={fileTreeRef}
+                projectName={activeProject.name}
+                onOpenFile={handleOpenFile}
+                activeFileId={activeFileId}
+                onImportZipProject={handleImportZip}
+                onFileHistory={(fileId) => {
+                  setFileHistoryTarget(fileId);
+                  setActivePanelId("snapshots");
+                }}
               />
-            </div>
-          </div>
-        )}
-        {!zenMode && activePanelId === "library" && (
-          <AssetLibraryPanel onClose={() => setActivePanelId(null)} />
-        )}
-        {!zenMode && activePanelId === "console" && <ConsolePanel />}
-        {!zenMode && activePanelId === "ir-inspector" && (
-          <IRInspectorPanel
-            getHapStream={() => getHapStreamRef.current()}
-            getBreakpointStore={() => getBreakpointStoreRef.current()}
-            getIsPaused={() => getIsPausedRef.current()}
-            onResume={() => onResumeRef.current()}
-            onPauseChanged={(cb) => onPauseChangedRef.current(cb)}
-          />
+            )}
+            {activePanelId === "search" && (
+              <div style={styles.panelRoot} data-sidebar>
+                <div style={styles.panelHeader}>SEARCH</div>
+                <WorkspaceSearchView
+                  ref={searchViewRef}
+                  compact
+                  onOpenFile={(id) => handleOpenFile(id, { preview: true })}
+                />
+              </div>
+            )}
+            {activePanelId === "snapshots" && (
+              <div style={styles.panelRoot} data-sidebar>
+                <div style={styles.panelHeader}>VERSION HISTORY</div>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <HistoryPanel
+                    onOpenHistoryTab={(req) => shellRef.current?.openHistoryTab(req)}
+                  />
+                </div>
+              </div>
+            )}
+            {activePanelId === "library" && (
+              <AssetLibraryPanel onClose={() => setActivePanelId(null)} />
+            )}
+            {activePanelId === "console" && <ConsolePanel />}
+            {activePanelId === "ir-inspector" && (
+              <IRInspectorPanel
+                getHapStream={() => getHapStreamRef.current()}
+                getBreakpointStore={() => getBreakpointStoreRef.current()}
+                getIsPaused={() => getIsPausedRef.current()}
+                onResume={() => onResumeRef.current()}
+                onPauseChanged={(cb) => onPauseChangedRef.current(cb)}
+              />
+            )}
+          </SidePanel>
         )}
         <div style={styles.editorArea}>
           <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
@@ -1834,7 +1841,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
   },
   panelRoot: {
-    width: 240,
+    // Width is owned by SidePanel (#1367); panels fill the region.
+    width: "100%",
     height: "100%",
     background: "var(--bg-panel)",
     borderRight: "1px solid var(--border-subtle)",

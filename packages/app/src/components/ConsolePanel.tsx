@@ -424,8 +424,10 @@ function shortenPath(p: string): string {
 
 const styles: Record<string, React.CSSProperties> = {
   root: {
-    width: 360,
-    maxWidth: 360,
+    // Width is owned by SidePanel (#1367). This panel used to pin itself to
+    // 360, which is what made the left region a different size on the Console
+    // tab than on every other one.
+    width: "100%",
     height: "100%",
     display: "flex",
     flexDirection: "column",
