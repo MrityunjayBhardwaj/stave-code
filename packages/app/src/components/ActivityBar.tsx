@@ -15,6 +15,18 @@ export function ActivityBar({ activePanelId, onSelect }: ActivityBarProps) {
   useEffect(() => subscribeToPanels(() => setTick((t) => t + 1)), []);
   const panels: Panel[] = React.useMemo(() => listPanels(), [tick]);
 
+  // Badges — one effect subscribing to every panel that declares one, rather
+  // than a hook per panel: the panel list is a runtime registry, so hooks in a
+  // loop over it would change in number between renders. The rail knows how to
+  // draw a count and nothing about what it counts.
+  const [, setBadgeTick] = useState(0);
+  useEffect(() => {
+    const unsubs = panels
+      .filter((p) => p.badge)
+      .map((p) => p.badge!.subscribe(() => setBadgeTick((t) => t + 1)));
+    return () => { for (const u of unsubs) u(); };
+  }, [panels]);
+
   return (
     <div style={styles.bar} data-activity-bar>
       {panels.map((p) => {
@@ -24,19 +36,43 @@ export function ActivityBar({ activePanelId, onSelect }: ActivityBarProps) {
         // full accent; hover previews it at reduced intensity via a CSS
         // transition on opacity for the slow fade-in feel.
         const edgeOpacity = isActive ? 1 : isHovered ? 0.45 : 0;
+        // Read live during render — `badgeTick` above is what schedules the
+        // re-render, so by the time we get here the value is current.
+        const count = p.badge?.get() ?? 0;
+        const tone = count > 0 ? p.badge?.tone?.() ?? "danger" : "danger";
         return (
           <button
             key={p.id}
+            data-panel-id={p.id}
             style={{ ...styles.item, ...(isActive ? styles.itemActive : {}) }}
-            title={p.title}
-            aria-label={p.title}
-            onClick={() => onSelect(isActive ? null : p.id)}
+            title={(count > 0 ? p.badge?.describe?.() : undefined) ?? p.title}
+            aria-label={count > 0 ? `${p.title}, ${count} unread` : p.title}
+            onClick={() => {
+              const opening = !isActive;
+              // Opening the panel is what marks its work as seen.
+              if (opening) p.badge?.clear?.();
+              onSelect(opening ? p.id : null);
+            }}
             onMouseEnter={() => setHoveredId(p.id)}
             onMouseLeave={() => setHoveredId((cur) => (cur === p.id ? null : cur))}
           >
             <span style={styles.icon}>
               <Icon name={p.icon} size="var(--ui-icon-size, 25px)" />
             </span>
+            {count > 0 && (
+              <span
+                data-panel-badge={p.id}
+                data-badge-tone={tone}
+                // The button above announces the count; this is decoration.
+                aria-hidden="true"
+                style={{
+                  ...styles.badge,
+                  ...(tone === "warning" ? styles.badgeWarning : styles.badgeDanger),
+                }}
+              >
+                {count > 99 ? "99+" : count}
+              </span>
+            )}
             <span style={{ ...styles.activeBar, opacity: edgeOpacity }} />
           </button>
         );
@@ -81,6 +117,28 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+  },
+  badge: {
+    position: "absolute",
+    top: 4,
+    right: 5,
+    minWidth: 15,
+    height: 15,
+    padding: "0 3px",
+    borderRadius: 8,
+    color: "var(--bg-chrome)",
+    fontSize: 9,
+    fontWeight: 700,
+    fontFamily: 'var(--font-mono), ui-monospace, monospace',
+    lineHeight: "15px",
+    textAlign: "center",
+    pointerEvents: "none",
+  },
+  badgeDanger: {
+    background: "var(--danger-fg)",
+  },
+  badgeWarning: {
+    background: "#f59e0b",
   },
   activeBar: {
     position: "absolute",
