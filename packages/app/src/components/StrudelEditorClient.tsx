@@ -95,6 +95,7 @@ import {
   readPersistedOpen,
   readPersistedActiveTabId,
   getIRSnapshot,
+  parseStrudel,
   analyzeSong,
   songExtent,
 } from "@stave/editor";
@@ -1598,6 +1599,27 @@ export default function StrudelEditorClient({
       songSizing: async (signal) => {
         const fid = activeFileIdRef.current;
         const rt = fid ? (runtimesRef.current.get(fid) ?? null) : null;
+        // ⚠ TWO IRs, TWO QUESTIONS (#1373). "Does this document END?" and
+        // "what does it REPEAT at?" come from different pipelines, and only one
+        // of them can answer each. See `SongIRs` for the measured divergence.
+
+        // STRUCTURE, from this file's own text. The published snapshot cannot
+        // answer it: its final pass leaves a top-level `arrange(...)` as an
+        // opaque `Code`, so it returned `loop` for every document ever bounced
+        // and the `arranged` branch never fired in the running app.
+        // `parseStrudel` is pure and cheap on the source, and falls back to a
+        // Code node rather than throwing.
+        // Language-gated like `publishIRSnapshot` does: `parseStrudel` reads
+        // its input as JS, so pointing it at a Sonic Pi buffer could in
+        // principle find an `arrange(...)` that means nothing there.
+        const fileNow = fid ? getFile(fid) : null;
+        const structuralIr =
+          fileNow && fileNow.language !== "sonicpi"
+            ? parseStrudel(fileNow.content)
+            : null;
+
+        // MEASUREMENT, from the snapshot — its lane keys match the runtime
+        // accessors the collector below is threaded with.
         // ⚠ ONE snapshot store, one snapshot. `source` is the fileId that
         // published it, and the bounce deliberately resolves its file at CALL
         // time — so without this equality the modal could size a bounce of THIS
@@ -1605,9 +1627,9 @@ export default function StrudelEditorClient({
         // as no document rather than as a length, because a wrong length is
         // silent: the WAV is still valid, just not the song.
         const snap = getIRSnapshot();
-        const ir = snap && fid && snap.source === fid ? snap.ir : null;
+        const analysisIr = snap && fid && snap.source === fid ? snap.ir : null;
         const length = await measureSongLength(
-          ir,
+          { structural: structuralIr, analysis: analysisIr },
           {
             songExtent,
             analyzeSong,

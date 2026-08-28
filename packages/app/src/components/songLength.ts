@@ -77,6 +77,46 @@ export interface BounceSizing {
   readonly cps: number | null
 }
 
+/**
+ * The two views of a document a bounce needs, kept apart because they answer
+ * DIFFERENT questions from DIFFERENT sources (#1373).
+ *
+ * ⚠ THEY ARE NOT INTERCHANGEABLE, and treating them as one is the bug this
+ * type exists to prevent. Two pipelines build a `PatternIR` from the same
+ * source and they disagree about arrangements:
+ *
+ *   parseStrudel(code)                    ->  Track → Arrange(arms)   measurable
+ *   runPasses(IR.code(code), PASSES)      ->  Track → Code            opaque
+ *
+ * The published IR snapshot is the SECOND. Its final pass leaves a top-level
+ * `arrange(...)` as an opaque `Code` node, so a caller that asks it "does this
+ * document have an arrangement" is asking something it structurally cannot
+ * answer — and gets `loop` every time. That is how `measureSongLength`'s
+ * `arranged` branch went its whole life without firing in the running app.
+ *
+ * It stayed hidden because for a simple arrangement the loop branch lands on
+ * the right number anyway: `arrange([4, a], [8, b], [4, c])` has a measured
+ * period of 16 cycles, which is also Σ weights. The two only part company when
+ * something inside repeats faster than the arrangement does — a song whose bass
+ * alternates over 4 cycles reports 4, and a 3:28 song offers an 8-second bounce.
+ */
+export interface SongIRs {
+  /**
+   * STRUCTURE — "does this document have a definite end?" Must come from
+   * `parseStrudel`, the parser that models `arrange`/`cat`/`slowcat`. Needs no
+   * evaluation and no playback, so an arrangement can be sized before a note
+   * has sounded.
+   */
+  readonly structural: PatternIR | null
+  /**
+   * MEASUREMENT — "what period does this document repeat at?" Must come from
+   * the published snapshot, whose lane keys match the runtime accessors the
+   * collector is threaded with. Substituting the structural IR here would
+   * re-key the collector and silently change what the period path measures.
+   */
+  readonly analysis: PatternIR | null
+}
+
 /** One analysis run's onset source, as `createSongCollector` returns it. */
 export interface SongCollectorParts {
   readonly collectFn: ((startCycle: number, endCycle: number) => IREvent[]) | undefined
@@ -105,16 +145,19 @@ export interface SongLengthDeps {
  * whose header explains the key space.
  */
 export async function measureSongLength(
-  ir: PatternIR | null,
+  irs: SongIRs,
   deps: SongLengthDeps,
   signal?: { aborted: boolean },
 ): Promise<SongLength> {
-  if (ir == null) return { kind: 'unknown', why: 'no-document' }
+  if (irs.structural == null && irs.analysis == null) {
+    return { kind: 'unknown', why: 'no-document' }
+  }
 
-  // Structure first: an arrangement is a definite end, and it does not depend on
-  // anything having been evaluated or heard. Only ~2 of 150 real documents take
-  // this branch today, but it is the one answer that needs no measurement.
-  const extent = deps.songExtent(ir)
+  // Structure first, off the PARSED source: an arrangement is a definite end,
+  // and it does not depend on anything having been evaluated or heard — so this
+  // branch can answer before a note has sounded, and it is asked of the one IR
+  // that can actually contain an `Arrange` (see `SongIRs`).
+  const extent = deps.songExtent(irs.structural)
   if (extent.kind === 'arranged' && extent.cycles > 0) {
     return { kind: 'arranged', cycles: extent.cycles }
   }
@@ -124,11 +167,16 @@ export async function measureSongLength(
   // loop, which is exactly the distinction `songExtent` kept the kind for.
   if (extent.kind === 'opaque') return { kind: 'unknown', why: 'no-period' }
 
-  const { collectFn, hasUnheardTrack } = deps.createCollector(ir)
+  // Everything below measures the EVALUATED document, so it needs the snapshot.
+  // A document that has never been evaluated has no period to find — which is a
+  // different answer from "we measured it and there was none".
+  if (irs.analysis == null) return { kind: 'unknown', why: 'no-document' }
+
+  const { collectFn, hasUnheardTrack } = deps.createCollector(irs.analysis)
 
   let analysis: SongAnalysis
   try {
-    analysis = await deps.analyzeSong(ir, { signal, collectFn, hasUnheardTrack })
+    analysis = await deps.analyzeSong(irs.analysis, { signal, collectFn, hasUnheardTrack })
   } catch {
     return { kind: 'unknown', why: 'no-period' }
   }
