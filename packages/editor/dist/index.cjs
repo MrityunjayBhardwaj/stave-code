@@ -40454,27 +40454,52 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    *
    * Playback is guaranteed for the duration of the take, because the capture
    * taps the master analyser: with the transport stopped it would return a
-   * valid WAV of pure silence and no error. If we started playback we stop it
-   * again afterwards, so a bounce leaves the transport as it found it.
+   * valid WAV of pure silence and no error.
    *
-   * ⚠ We deliberately do NOT call `play()` when already playing. `play()`
-   * re-evaluates the current file on every call, so "just call play to be
-   * safe" would restart the audio we are about to record, mid-take.
+   * ⚠ THE CAPTURE ALWAYS BEGINS AT THE TOP OF THE SONG (#1371). The recorder
+   * taps the master analyser in real time, so it records whatever the transport
+   * is playing AT THAT MOMENT — and the transport is wherever the listening
+   * left it. Measured on a three-section arrangement: bouncing after 4s of
+   * listening rotated the exported song by 4s, and after 12s by 12s, so the
+   * verse arrived early and the file opened mid-chorus. Nothing surfaced it,
+   * because a rotated take is still valid, still full-length and still not
+   * silent. So a bounce rewinds first and the export is reproducible: the same
+   * document bounces to the same audio however long you had been playing it.
+   *
+   * The rewind is three steps and each is load-bearing:
+   *   1. `stop()` — resets the scheduler's query cursor (`cyclist.stop()` sets
+   *      `lastEnd = 0`, and each tick queries from `lastEnd`). `pause()` does
+   *      NOT, which is exactly why this cannot be a pause.
+   *   2. `setTransportOffset(0)` — clears any earlier seek. Song position is
+   *      `scheduler.now() - transportOffset`, applied as a `.late()` wrap, so
+   *      resetting the clock WITHOUT resetting the offset would rewind the
+   *      scheduler and leave the pattern shifted — a subtler version of the
+   *      same bug. Optional-chained: non-Strudel engines have no seek.
+   *   3. `play()` — re-evaluates and starts from cycle 0.
+   *
+   * ⚠ The old comment here warned against calling `play()` when already
+   * playing, because `play()` re-evaluates and would restart the audio
+   * mid-take. That hazard is real and still respected: the restart happens
+   * BEFORE the capture opens, never during it.
+   *
+   * The transport is stopped afterwards in every case, which is what the
+   * modal has always told the user ("playback starts automatically and stops
+   * again when the bounce finishes") and was previously true only when the
+   * bounce had started it.
    */
   async record(seconds, signal, onCaptureStart) {
     const engine = this.engine;
     if (this.isDisposed || typeof engine.record !== "function") return null;
-    const startedHere = !this.isPlayingState;
-    if (startedHere) {
-      await engine.waitUntilQuiet?.();
-      const { error } = await this.play();
-      if (error) throw error;
-    }
+    this.stop();
+    await engine.waitUntilQuiet?.();
+    engine.setTransportOffset?.(0);
+    const { error } = await this.play();
+    if (error) throw error;
     try {
       onCaptureStart?.();
       return await engine.record(seconds, signal);
     } finally {
-      if (startedHere) this.stop();
+      this.stop();
     }
   }
   stop() {

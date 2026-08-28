@@ -1349,3 +1349,132 @@ describe('LiveCodingRuntime.getTimelineEventsBand degradation (#1197)', () => {
     runtime.dispose()
   })
 })
+
+// ---------------------------------------------------------------------------
+// #1371 — a bounce begins at the top of the song.
+//
+// The recorder taps the master analyser in real time, so it captures whatever
+// the transport is playing at that instant. Before this, a bounce taken while
+// listening began at the PLAYHEAD: measured on a three-section arrangement,
+// 4s of listening rotated the export by 4s and 12s rotated it by 12s. The take
+// was still valid, still full-length and still not silent — nothing could see
+// it but a listener.
+//
+// These arms pin the REWIND SEQUENCE rather than the audio (the audio half is
+// observed end-to-end in `_songpass-arranged-bounce`). Order is the whole
+// point, so they assert the call log, not just that the calls happened: a
+// rewind that lands AFTER the capture opens would satisfy every membership
+// check and still export the wrong song.
+// ---------------------------------------------------------------------------
+describe('bounce rewinds to the top of the song (#1371)', () => {
+  /** A mock engine that can record, settle and carry a transport offset. */
+  function makeRecordEngine() {
+    const engine = createMockEngine()
+    let offset = 0
+    const anyEngine = engine as unknown as Record<string, unknown>
+    anyEngine.record = vi.fn(async () => {
+      engine.callLog.push('record')
+      return new Blob([new Uint8Array(8)])
+    })
+    anyEngine.waitUntilQuiet = vi.fn(async () => {
+      engine.callLog.push('waitUntilQuiet')
+      return true
+    })
+    anyEngine.setTransportOffset = vi.fn((o: number) => {
+      engine.callLog.push(`setTransportOffset(${o})`)
+      offset = Number.isFinite(o) ? o : 0
+    })
+    anyEngine.getTransportOffset = () => offset
+    return { engine, getOffset: () => offset }
+  }
+
+  it('rewinds BEFORE the capture opens, when the transport was already playing', async () => {
+    const { engine } = makeRecordEngine()
+    const runtime = new LiveCodingRuntime('rec-1', engine, () => 'code')
+    await runtime.play()
+    engine.callLog.length = 0
+
+    const blob = await runtime.record(1)
+    expect(blob).not.toBeNull()
+
+    // The sequence that makes the export reproducible. `record` must come last
+    // of the four — that is the assertion the old behaviour fails.
+    expect(engine.callLog).toEqual([
+      'stop',
+      'waitUntilQuiet',
+      'setTransportOffset(0)',
+      'evaluate',
+      'play',
+      'record',
+      'stop',
+    ])
+    runtime.dispose()
+  })
+
+  it('takes the same path when the transport was stopped', async () => {
+    const { engine } = makeRecordEngine()
+    const runtime = new LiveCodingRuntime('rec-2', engine, () => 'code')
+    engine.callLog.length = 0
+
+    await runtime.record(1)
+
+    // Both entry states converge: stopping an already-stopped transport is a
+    // no-op, so there is one path to reason about rather than two.
+    expect(engine.callLog.indexOf('play')).toBeLessThan(engine.callLog.indexOf('record'))
+    expect(engine.callLog).toContain('setTransportOffset(0)')
+    runtime.dispose()
+  })
+
+  it('clears an earlier seek, so song cycle 0 is scheduler cycle 0', async () => {
+    const { engine, getOffset } = makeRecordEngine()
+    const runtime = new LiveCodingRuntime('rec-3', engine, () => 'code')
+    await runtime.play()
+    // Pretend the user dragged the playhead into the second section.
+    ;(engine as unknown as { setTransportOffset: (n: number) => void }).setTransportOffset(7)
+    expect(getOffset()).toBe(7)
+
+    await runtime.record(1)
+
+    // Resetting the clock without resetting the offset would rewind the
+    // scheduler and leave the PATTERN shifted by 7 cycles — the same bug wearing
+    // a different hat.
+    expect(getOffset()).toBe(0)
+    runtime.dispose()
+  })
+
+  it('leaves the transport stopped, which is what the modal has always promised', async () => {
+    const { engine } = makeRecordEngine()
+    const runtime = new LiveCodingRuntime('rec-4', engine, () => 'code')
+    await runtime.play()
+    expect(runtime.getIsPlaying()).toBe(true)
+
+    await runtime.record(1)
+
+    expect(runtime.getIsPlaying()).toBe(false)
+    runtime.dispose()
+  })
+
+  it('stops the transport even when the capture throws', async () => {
+    const { engine } = makeRecordEngine()
+    const runtime = new LiveCodingRuntime('rec-5', engine, () => 'code')
+    ;(engine as unknown as Record<string, unknown>).record = vi.fn(async () => {
+      throw new Error('capture failed')
+    })
+    await runtime.play()
+
+    await expect(runtime.record(1)).rejects.toThrow('capture failed')
+    expect(runtime.getIsPlaying()).toBe(false)
+    runtime.dispose()
+  })
+
+  it('an engine with no seek support still bounces (non-Strudel)', async () => {
+    const { engine } = makeRecordEngine()
+    delete (engine as unknown as Record<string, unknown>).setTransportOffset
+    const runtime = new LiveCodingRuntime('rec-6', engine, () => 'code')
+    await runtime.play()
+
+    const blob = await runtime.record(1)
+    expect(blob).not.toBeNull()
+    runtime.dispose()
+  })
+})
