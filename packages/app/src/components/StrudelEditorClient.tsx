@@ -154,8 +154,8 @@ const TIMELINE_VISIBILITY_POLL_MS = 500;
  *
  * This is the ONLY thing that decides how much of the song's restart is audible
  * before it stops: at Strudel's default 0.5 cps a cycle lasts two seconds, so
- * 50 ms is ~2.5% of a cycle. The loop body is a handful of map reads and does
- * no work at all while nothing is playing.
+ * 50 ms is ~2.5% of a cycle. The loop body is a handful of map reads, and the
+ * timer does not exist at all while nothing is playing — see the effect below.
  */
 const END_OF_SONG_POLL_MS = 50;
 
@@ -1425,7 +1425,16 @@ export default function StrudelEditorClient({
   // background tab (a song left playing in another tab would never end) and it
   // is gated on the timeline drawer being open, which has nothing to do with
   // whether a song should stop.
+  //
+  // ⚠ AND IT ONLY EXISTS WHILE SOMETHING IS PLAYING. An unconditional 50ms
+  // interval is the tightest timer in the app (the timeline's polls are 250ms
+  // and 500ms) and it would wake twenty times a second forever, on a stopped
+  // editor, to discover there is nothing to stop. Gating on `anyPlaying` costs
+  // one re-created watcher per transport transition — and a fresh watcher is
+  // what a new run wants anyway, since its first sample must re-baseline.
+  const anyPlaying = [...runtimeStates.values()].some((st) => st.isPlaying);
   useEffect(() => {
+    if (!anyPlaying) return;
     const watcher = createEndOfSongWatcher({
       playingFileIds: () => {
         const ids: string[] = [];
@@ -1446,7 +1455,7 @@ export default function StrudelEditorClient({
     });
     const id = setInterval(() => watcher.tick(), END_OF_SONG_POLL_MS);
     return () => clearInterval(id);
-  }, [handleStop]);
+  }, [anyPlaying, handleStop]);
 
   // Live-mode toggle. The runtime owns the subscription + debounce; we
   // just flip the flag and let runtime.onAutoRefreshChanged drive the
