@@ -3247,9 +3247,14 @@ function runRawStage(input) {
 __name(runRawStage, "runRawStage");
 function runMiniExpandedStage(input) {
   if (input.tag === "Code") {
-    if (!input.code.trim()) return IR.pure();
     const base = input.loc?.[0]?.start ?? 0;
     const cMeta = input;
+    const withTrackMeta = /* @__PURE__ */ __name((node) => cMeta.trackLabel === void 0 ? node : {
+      ...node,
+      trackLabel: cMeta.trackLabel,
+      ...cMeta.dollarStart !== void 0 && cMeta.dollarEnd !== void 0 ? { dollarStart: cMeta.dollarStart, dollarEnd: cMeta.dollarEnd } : {}
+    }, "withTrackMeta");
+    if (!input.code.trim()) return withTrackMeta(IR.pure());
     if (cMeta.trackLabel === void 0 && cMeta.dollarStart === void 0) {
       const bound = buildBindingMap(input.code, base);
       if (bound) {
@@ -3262,15 +3267,7 @@ function runMiniExpandedStage(input) {
         if (!isBareCode) return boundParsed;
       }
     }
-    const parsed = parseRootWithChainMeta(input.code, base);
-    if (cMeta.trackLabel !== void 0) {
-      return {
-        ...parsed,
-        trackLabel: cMeta.trackLabel,
-        ...cMeta.dollarStart !== void 0 && cMeta.dollarEnd !== void 0 ? { dollarStart: cMeta.dollarStart, dollarEnd: cMeta.dollarEnd } : {}
-      };
-    }
-    return parsed;
+    return withTrackMeta(parseRootWithChainMeta(input.code, base));
   }
   if (input.tag === "Stack" && input.userMethod === void 0) {
     const tracks = input.tracks.map((t) => {
@@ -3300,7 +3297,8 @@ function parseRootWithChainMeta(expr, baseOffset, bindings) {
   const trimmed = expr.trim();
   const { root, chain } = splitRootAndChain(trimmed);
   const rootIR = parseRoot(root, trimmedOffset, void 0, bindings);
-  if (rootIR.tag === "Code") {
+  const rootIsBareCode = rootIR.tag === "Code" && rootIR.via === void 0;
+  if (rootIsBareCode) {
     return IR.code(expr);
   }
   if (chain.trim()) {
