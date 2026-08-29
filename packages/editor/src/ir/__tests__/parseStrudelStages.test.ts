@@ -145,6 +145,42 @@ export function assertNoStageMeta(node: PatternIR): void {
 // clean checkout nothing would cover this fix at all.
 // ---------------------------------------------------------------------------
 
+describe('MINI-EXPANDED — top-level bindings resolve (#1375)', () => {
+  // The D-06 sentinel had 13 fixtures and NOT ONE contained a `const` or
+  // `let`, which is how this survived three separate bug reports. The corpus
+  // sweep skips without `.bakery-runs/`, so these carry the fix on a clean
+  // checkout.
+  const parity = (code: string) =>
+    expect(stripStageMeta(pipeline(code))).toEqual(stripStageMeta(parseStrudel(code)))
+
+  it('const then a bare use', () => parity('const a = s("bd hh")\na'))
+  it('const then a stack', () => parity('const a = s("bd")\nconst b = s("hh")\nstack(a, b)'))
+  it('const then a chain — bindings must reach applyChain too', () =>
+    parity('const a = s("bd hh")\na.fast(2)'))
+  it('let, not just const', () => parity('let a = s("bd")\nstack(a, s("hh"))'))
+  it('a binding alongside a side-effect statement', () =>
+    parity('setcps(120/240)\nconst a = s("bd hh")\na'))
+
+  it('arrange() behind a const — the shape that sized a 3:28 song at 0:08 (#1373)', () => {
+    const code = 'const a = s("bd*4")\nconst b = s("hh*8")\narrange([4, a], [8, b])'
+    parity(code)
+    // The point of the fix: the arrangement is VISIBLE, not an opaque blob.
+    expect(unwrapD1(stripStageMeta(pipeline(code))).tag).toBe('Arrange')
+  })
+
+  it('an unresolvable binding keeps the opaque fallback, it does not throw', () => {
+    // P67 — if the map does not help, the whole-document Code fallback is
+    // still the right answer and must be preserved byte-for-byte.
+    parity('const a = someUnknownThing()\na')
+  })
+
+  it('a $: track is NOT given bindings — matching parseStrudel', () => {
+    // parseStrudel's multi-track path passes no binding map; the staged path
+    // must not either, or the two diverge in the opposite direction.
+    parity('const a = s("bd")\n$: s("hh")')
+  })
+})
+
 describe('RAW — a bare document with several top-level statements (#1376)', () => {
   it('gives every statement its own track, and loses none', () => {
     const code = 'sound ("hh hh hh hh")\nsound ("[bd bd][sd bd] bd sd")'

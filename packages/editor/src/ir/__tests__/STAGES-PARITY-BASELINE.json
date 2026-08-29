@@ -1,12 +1,8 @@
 {
   "0/--LsnlgQ6osk": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Track→[Stack→[Param→[…],Degrade→[…],Param→[…,…],Code]]",
-    "staged": "Track→[Code]",
-    "cls": "A-opaque-collapse",
-    "at": "$.body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "0/--cHhfOZ6ON1": {
     "match": false,
@@ -18,13 +14,9 @@
     "at": "$"
   },
   "0/-1j62z5xjyCN": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Track→[Code]",
-    "staged": "Track→[Code]",
-    "cls": "C-via-vs-blob",
-    "at": "$.body"
+    "tagMatch": true
   },
   "0/-1poFQwaznQK": {
     "match": true,
@@ -66,22 +58,14 @@
     "tagMatch": true
   },
   "0/-6c1hEXe8Agi": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Track→[Pick→[Cycle→[…,…,…,…,…,…,+30],Stack→[…,…,…,…],Stack→[…,…,…,…,…,…,+1],Stack→[…,…,…,…],Stack→[…,…],Stack→[…,…],+1]]",
-    "staged": "Track→[Code]",
-    "cls": "A-opaque-collapse",
-    "at": "$.body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "0/-72eEl7NwK9e": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Track→[Code]",
-    "staged": "Track→[Code]",
-    "cls": "C-via-vs-blob",
-    "at": "$.body"
+    "tagMatch": true
   },
   "0/-7LU6zgzViSM": {
     "match": true,
@@ -133,13 +117,9 @@
     "tagMatch": true
   },
   "0/-CyO42BOyp5a": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Track→[Code]",
-    "staged": "Track→[Code]",
-    "cls": "C-via-vs-blob",
-    "at": "$.body"
+    "tagMatch": true
   },
   "0/-D3D3jXo_jWm": {
     "match": true,
@@ -204,13 +184,9 @@
     "at": "$.tracks[0].body"
   },
   "0/-JX1LueRKyYw": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Track→[Param→[Param→[…]]]",
-    "staged": "Track→[Code]",
-    "cls": "A-opaque-collapse",
-    "at": "$.body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "0/-JZA8OSsd2NG": {
     "match": true,
@@ -223,13 +199,9 @@
     "tagMatch": true
   },
   "0/-KLGNJUtyyj1": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Track→[Code]",
-    "staged": "Track→[Code]",
-    "cls": "C-via-vs-blob",
-    "at": "$.body"
+    "tagMatch": true
   },
   "0/-KsW6fVLkxAn": {
     "match": true,
@@ -237,22 +209,14 @@
     "tagMatch": true
   },
   "0/-L13nBhrqGR_": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Track→[Param→[Code]]",
-    "staged": "Track→[Code]",
-    "cls": "A-opaque-collapse",
-    "at": "$.body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "0/-LHtBlF8peGC": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Track→[Stack→[Code,Code,Param→[…],Param→[…]]]",
-    "staged": "Track→[Code]",
-    "cls": "A-opaque-collapse",
-    "at": "$.body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "0/-LMuxBHkr4IA": {
     "match": true,
@@ -311,13 +275,9 @@
     "at": "$.tracks[5].body"
   },
   "0/-P398OK_eprf": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Track→[Stack→[Code,Code,Code]]",
-    "staged": "Track→[Code]",
-    "cls": "A-opaque-collapse",
-    "at": "$.body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "0/-P5TIfAEmiGv": {
     "match": true,
@@ -482,13 +442,9 @@
     "tagMatch": true
   },
   "250/19iySfKDfQK5": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Track→[Code]",
-    "staged": "Track→[Code]",
-    "cls": "C-via-vs-blob",
-    "at": "$.body"
+    "tagMatch": true
   },
   "250/19poBD28I-Rx": {
     "match": true,
@@ -505,13 +461,9 @@
     "at": "$.tracks[0].body"
   },
   "250/1APcTv7DyEkW": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Track→[Stack→[Code,Code]]",
-    "staged": "Track→[Code]",
-    "cls": "A-opaque-collapse",
-    "at": "$.body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "250/1Blofe-rrvDH": {
     "match": true,
@@ -559,31 +511,19 @@
     "tagMatch": true
   },
   "250/1HLg86x7rhVo": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Track→[Code]",
-    "staged": "Track→[Code]",
-    "cls": "C-via-vs-blob",
-    "at": "$.body"
+    "tagMatch": true
   },
   "250/1HuE2qcvhtT9": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Track→[Code]",
-    "staged": "Track→[Code]",
-    "cls": "C-via-vs-blob",
-    "at": "$.body"
+    "tagMatch": true
   },
   "250/1IcDAF1qbl33": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Track→[Stack→[When→[…],When→[…],When→[…],When→[…],When→[…],When→[…],+12]]",
-    "staged": "Track→[Code]",
-    "cls": "A-opaque-collapse",
-    "at": "$.body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "250/1IjczOoeyWgT": {
     "match": true,
@@ -591,13 +531,9 @@
     "tagMatch": true
   },
   "250/1IzkPdcMeG5M": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Track→[Code]",
-    "staged": "Track→[Code]",
-    "cls": "C-via-vs-blob",
-    "at": "$.body"
+    "tagMatch": true
   },
   "250/1J0KTN4g3M3h": {
     "match": true,
@@ -625,13 +561,9 @@
     "tagMatch": true
   },
   "500/35x7a83sHq7w": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Track→[Code]",
-    "staged": "Track→[Code]",
-    "cls": "C-via-vs-blob",
-    "at": "$.body"
+    "tagMatch": true
   },
   "500/361866lgM4YU": {
     "match": true,
@@ -654,13 +586,9 @@
     "tagMatch": true
   },
   "500/37KhOWISAcNM": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Track→[Slow→[Stack→[…,…]]]",
-    "staged": "Track→[Code]",
-    "cls": "A-opaque-collapse",
-    "at": "$.body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "500/37nYUycrx0_w": {
     "match": true,
@@ -687,13 +615,9 @@
     "at": "$.tracks[3].body"
   },
   "500/3AQWzhu339V6": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Track→[Code]",
-    "staged": "Track→[Code]",
-    "cls": "C-via-vs-blob",
-    "at": "$.body"
+    "tagMatch": true
   },
   "500/3Bn1wuXR0EYq": {
     "match": true,

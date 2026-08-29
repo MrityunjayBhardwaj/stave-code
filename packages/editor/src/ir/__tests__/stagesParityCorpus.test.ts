@@ -15,19 +15,21 @@
  * Measured over the 150-tune corpus, "diverges" has three defensible readings,
  * and they differ by 2.6×:
  *
- *   39  deep equality      — the stated contract, and what D-06 asserts
- *   21  full shape tree    — the two sides disagree on structure anywhere
- *   12  top-level tag only — they disagree at the FIRST node inside Track
+ *   20  deep equality      — the stated contract, and what D-06 asserts
+ *   12  full shape tree    — the two sides disagree on structure anywhere
+ *    3  top-level tag only — they disagree at the FIRST node inside Track
  *
- * (They were 44 / 26 / 17 when first pinned. #1376 ported `parseStrudel`'s
- * multi-statement track split to the RAW stage, which fixed 5 documents and
- * moved nothing else.)
+ * They were 44 / 26 / 17 when first pinned. Two fixes since, each scored
+ * against the class it claimed:
+ *   #1376  ported the multi-statement track split to RAW  → 44 → 39, B 8 → 3
+ *   #1375  resolved top-level bindings at MINI-EXPANDED   → 39 → 20, A 18 → 9,
+ *          C 16 → 6, and B UNCHANGED at 3 exactly as predicted
  *
  * #1375's body quotes 17, measured before #1376 landed. That reading is the
  * weakest of the three: it counts a
  * document only when the very top node changed, so a document whose structure
  * is wrong three levels down does not appear in it at all. The contract the file
- * actually states is byte-identity, and by that measure **39 of 150 (26%)**
+ * actually states is byte-identity, and by that measure **20 of 150 (13%)**
  * diverge. All three are pinned below so no fix can improve one while quietly
  * worsening another.
  *
@@ -102,9 +104,9 @@ const CORPUS_SIZE = 150
  * so neither can drift, and so that a fix which improves one while worsening
  * the other cannot report success.
  */
-const DEEP_DIVERGENCE = 39
-const SHAPE_DIVERGENCE = 21
-const TAG_DIVERGENCE = 12
+const DEEP_DIVERGENCE = 20
+const SHAPE_DIVERGENCE = 12
+const TAG_DIVERGENCE = 3
 
 /**
  * The four measured mechanisms behind the 44 (#1375 step 1) — see
@@ -118,8 +120,8 @@ const TAG_DIVERGENCE = 12
  * should empty most of A and C, and is expected to move B by roughly nothing.
  */
 const BY_CLASS: Record<string, number> = {
-  'A-opaque-collapse': 18,
-  'C-via-vs-blob': 16,
+  'A-opaque-collapse': 9,
+  'C-via-vs-blob': 6,
   'B-track-count': 3,
   'D-metadata': 2,
 }

@@ -673,7 +673,7 @@ export function stripSideEffectStatements(
 
 export const BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/
 
-function buildBindingMap(
+export function buildBindingMap(
   body: string,
   baseOffset: number,
 ):

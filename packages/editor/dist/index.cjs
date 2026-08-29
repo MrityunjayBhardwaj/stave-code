@@ -3248,8 +3248,21 @@ __name(runRawStage, "runRawStage");
 function runMiniExpandedStage(input) {
   if (input.tag === "Code") {
     if (!input.code.trim()) return IR.pure();
-    const parsed = parseRootWithChainMeta(input.code, input.loc?.[0]?.start ?? 0);
+    const base = input.loc?.[0]?.start ?? 0;
     const cMeta = input;
+    if (cMeta.trackLabel === void 0 && cMeta.dollarStart === void 0) {
+      const bound = buildBindingMap(input.code, base);
+      if (bound) {
+        const boundParsed = parseRootWithChainMeta(
+          bound.finalExpr,
+          bound.finalOffset,
+          bound.bindings
+        );
+        const isBareCode = boundParsed.tag === "Code" && boundParsed.via === void 0;
+        if (!isBareCode) return boundParsed;
+      }
+    }
+    const parsed = parseRootWithChainMeta(input.code, base);
     if (cMeta.trackLabel !== void 0) {
       return {
         ...parsed,
@@ -3280,13 +3293,13 @@ function runMiniExpandedStage(input) {
   return input;
 }
 __name(runMiniExpandedStage, "runMiniExpandedStage");
-function parseRootWithChainMeta(expr, baseOffset) {
+function parseRootWithChainMeta(expr, baseOffset, bindings) {
   if (!expr.trim()) return IR.pure();
   const leadingWs = expr.length - expr.trimStart().length;
   const trimmedOffset = baseOffset + leadingWs;
   const trimmed = expr.trim();
   const { root, chain } = splitRootAndChain(trimmed);
-  const rootIR = parseRoot(root, trimmedOffset);
+  const rootIR = parseRoot(root, trimmedOffset, void 0, bindings);
   if (rootIR.tag === "Code") {
     return IR.code(expr);
   }
@@ -3295,7 +3308,8 @@ function parseRootWithChainMeta(expr, baseOffset) {
     return {
       ...rootIR,
       unresolvedChain: chain,
-      chainOffset
+      chainOffset,
+      ...bindings ? { unresolvedBindings: bindings } : {}
     };
   }
   return rootIR;
@@ -3355,18 +3369,19 @@ function applyOnTrack(node) {
   const chainOffset = m.chainOffset ?? 0;
   const clean = stripStageMeta(node);
   if (chain.trim()) {
-    return applyChain(clean, chain, chainOffset);
+    return applyChain(clean, chain, chainOffset, m.unresolvedBindings);
   }
   return clean;
 }
 __name(applyOnTrack, "applyOnTrack");
 function stripStageMeta(node) {
   const n = node;
-  if (!("unresolvedChain" in n) && !("chainOffset" in n) && !("dollarStart" in n) && !("dollarEnd" in n) && !("trackLabel" in n)) {
+  if (!("unresolvedChain" in n) && !("unresolvedBindings" in n) && !("chainOffset" in n) && !("dollarStart" in n) && !("dollarEnd" in n) && !("trackLabel" in n)) {
     return node;
   }
   const {
     unresolvedChain: _u,
+    unresolvedBindings: _ub,
     chainOffset: _o,
     dollarStart: _ds,
     dollarEnd: _de,
