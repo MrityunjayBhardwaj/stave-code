@@ -28,28 +28,13 @@ import {
   runChainAppliedStage,
   runFinalStage,
 } from '../parseStrudelStages'
-import type { Pass } from '../passes'
 import { runPasses } from '../passes'
 import { unwrapD1 } from './helpers/unwrapD1'
-
-const PASSES: readonly Pass<PatternIR>[] = [
-  { name: 'RAW',           run: runRawStage           },
-  { name: 'MINI-EXPANDED', run: runMiniExpandedStage  },
-  { name: 'CHAIN-APPLIED', run: runChainAppliedStage  },
-  { name: 'Parsed',        run: runFinalStage         },
-]
-
-// Phase 20-11 γ-4 — pipeline returns the FINAL stage's IR directly,
-// unchanged. For tests that compare `pipeline(code)` to `parseStrudel(code)`
-// (regression sentinel + Tier-4 round-trip), BOTH sides now carry the
-// synthetic Track('d1', ...) wrapper so deep-equal still holds. For tests
-// that assert on the inner-most IR tag (e.g. `pipeline(...).tag === 'Param'`),
-// callers can wrap with `unwrapD1(...)` at the call site.
-function pipeline(code: string): PatternIR {
-  const seed = IR.code(code)
-  const passes = runPasses(seed, PASSES)
-  return passes[passes.length - 1].ir
-}
+// #1375 — PASSES / pipeline / stripStageMeta moved to the shared helper so the
+// corpus sweep asserts the contract through the SAME comparison this sentinel
+// uses. Two copies of a parity check can drift apart and both stay green, which
+// is the defect class the sweep exists to measure.
+import { PASSES, pipeline, stripStageMeta } from './helpers/stagesParity'
 
 // ---------------------------------------------------------------------------
 // Helpers — exported for PR-B's T-10.c reuse (REV-6).
@@ -153,87 +138,6 @@ export function assertNoStageMeta(node: PatternIR): void {
   visit(node)
 }
 
-/**
- * Recursive deep-clone that drops `unresolvedChain` + `chainOffset` on
- * every node. Used for cross-stage byte-equality comparisons where the
- * MINI-EXPANDED snapshot still carries metadata that FINAL doesn't.
- */
-function stripStageMeta(node: PatternIR): PatternIR {
-  const rec = node as Record<string, unknown>
-  const cloned: Record<string, unknown> = {}
-  for (const k of Object.keys(rec)) {
-    // Phase 20-11 α-4 — Track-loc threading metadata.
-    if (
-      k === 'unresolvedChain' ||
-      k === 'chainOffset' ||
-      k === 'dollarStart' ||
-      k === 'dollarEnd' ||
-      k === 'trackLabel' // #671
-    ) {
-      continue
-    }
-    const v = rec[k]
-    cloned[k] = v
-  }
-  // Deep-clone child IR nodes.
-  switch (node.tag) {
-    case 'Seq':
-      cloned.children = node.children.map(stripStageMeta)
-      break
-    case 'Stack':
-      cloned.tracks = node.tracks.map(stripStageMeta)
-      break
-    case 'Cycle':
-      cloned.items = node.items.map(stripStageMeta)
-      break
-    case 'Choice':
-      cloned.then = stripStageMeta(node.then)
-      cloned.else_ = stripStageMeta(node.else_)
-      break
-    case 'Every':
-      cloned.body = stripStageMeta(node.body)
-      if (node.default_) cloned.default_ = stripStageMeta(node.default_)
-      break
-    case 'When':
-    case 'Ramp':
-    case 'Fast':
-    case 'Slow':
-    case 'Elongate':
-    case 'Late':
-    case 'Degrade':
-    case 'Ply':
-    case 'Struct':
-    case 'Swing':
-    case 'Shuffle':
-    case 'Scramble':
-    case 'Chop':
-    case 'Loop':
-      cloned.body = stripStageMeta(node.body)
-      break
-    case 'Param':
-      // Phase 20-10 — body + (optionally) sub-IR value.
-      cloned.body = stripStageMeta(node.body)
-      if (typeof node.value === 'object' && node.value !== null) {
-        cloned.value = stripStageMeta(node.value as PatternIR)
-      }
-      break
-    case 'Track':
-      // Phase 20-11 wave α-1 — single-body wrapper; clone child.
-      cloned.body = stripStageMeta(node.body)
-      break
-    case 'Chunk':
-      cloned.transform = stripStageMeta(node.transform)
-      cloned.body = stripStageMeta(node.body)
-      break
-    case 'Pick':
-      cloned.selector = stripStageMeta(node.selector)
-      cloned.lookup = node.lookup.map(stripStageMeta)
-      break
-    default:
-      break
-  }
-  return cloned as PatternIR
-}
 
 // ---------------------------------------------------------------------------
 // T-05.a — RAW: per-track Code lifts preserve loc (PV25, P39)
