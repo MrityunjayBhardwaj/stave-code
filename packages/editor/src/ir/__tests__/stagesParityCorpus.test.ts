@@ -12,25 +12,31 @@
  * **0 contain `arrange(` / `cat(` / `slowcat(`**.
  *
  * ── THREE NUMBERS, AND WHY THE ISSUE'S 17 IS THE SMALLEST ────────────────────
- * Measured over the 150-tune corpus, "diverges" has three defensible readings,
- * and they differ by 2.6×:
+ * Measured over the 150-tune corpus, "diverges" has three defensible readings.
+ * They were 44 / 26 / 17 when first pinned, a 2.6× spread over one corpus:
  *
- *   20  deep equality      — the stated contract, and what D-06 asserts
- *   12  full shape tree    — the two sides disagree on structure anywhere
- *    3  top-level tag only — they disagree at the FIRST node inside Track
+ *    3  deep equality      — the stated contract, and what D-06 asserts
+ *    3  full shape tree    — the two sides disagree on structure anywhere
+ *    2  top-level tag only — they disagree at the FIRST node inside Track
  *
- * They were 44 / 26 / 17 when first pinned. Two fixes since, each scored
- * against the class it claimed:
+ * Four fixes since, each scored against the class it claimed:
  *   #1376  ported the multi-statement track split to RAW  → 44 → 39, B 8 → 3
  *   #1375  resolved top-level bindings at MINI-EXPANDED   → 39 → 20, A 18 → 9,
  *          C 16 → 6, and B UNCHANGED at 3 exactly as predicted
+ *   #1383  discriminated a structured `Code` wrapper from  → 20 → 5, A 9 → 0
+ *          the parse's give-up fallback                        C 6 → 0
+ *   #1384  kept a COMMENTED track's label and range        →  5 → 3, D 2 → 0
+ *
+ * ⚠ ALL THREE SURVIVORS ARE `B-track-count`, and every one of them is FALSE
+ * BY DESIGN (see below). On every corpus document where the contract is
+ * actually meant to hold, it now does.
  *
  * #1375's body quotes 17, measured before #1376 landed. That reading is the
  * weakest of the three: it counts a
  * document only when the very top node changed, so a document whose structure
  * is wrong three levels down does not appear in it at all. The contract the file
- * actually states is byte-identity, and by that measure **20 of 150 (13%)**
- * diverge. All three are pinned below so no fix can improve one while quietly
+ * actually states is byte-identity, and by that measure **3 of 150 (2%)**
+ * diverge, all three deliberately. All three are pinned below so no fix can improve one while quietly
  * worsening another.
  *
  * A gate is only as wide as its fixture list. This is the third bug of the class
@@ -55,12 +61,22 @@
  * skipped, for the same reason.
  *
  * ── WHAT THEY ARE, as of this pin ────────────────────────────────────────────
- * The mechanisms are classified per document (see `classifyDivergence`); the
- * largest remaining group is bindings. `parseStrudel` threads a
- * `bindings` map through its parse (`parseStrudel.ts:849-854`); the staged copy
- * never builds one — `parseRootWithChainMeta` (`parseStrudelStages.ts:218`)
- * calls `parseRoot` directly and stops — so a document that NAMES anything
- * collapses to an opaque `Code` node at MINI-EXPANDED.
+ * The mechanisms are classified per document (see `classifyDivergence`). The
+ * `A-opaque-collapse` and `C-via-vs-blob` classes are now EMPTY: measuring all
+ * 20 residual documents showed those two were never two mechanisms. Both were
+ * `parseRootWithChainMeta` discarding a `Code` node that carried a structured
+ * `via`, and the classifier split them only by whether the difference surfaced
+ * first as a changed tag (A) or a changed field (C). One predicate emptied
+ * both — 15 documents, no regressions (#1383).
+ *
+ * ⚠ That is worth remembering when reading the classes below: a class boundary
+ * can itself carry an unverified claim about mechanism. The counts here are
+ * measured; the names are a hypothesis about what groups them.
+ *
+ * `D-metadata` is empty too. Both its documents were a COMMENTED track losing
+ * its label and its `$:`-line range at this stage's empty-code guard, which
+ * returned before reading the metadata RAW had threaded through — so a track
+ * named `PR` renamed itself to `d1` the moment it was commented out (#1384).
  *
  * ⚠ The 3 remaining `B-track-count` documents are NOT a bug to be fixed by
  * making the staged path match `parseStrudel`. They are #950's deliberate
@@ -98,32 +114,37 @@ const CORPUS_SIZE = 150
  * TWO headline numbers, because the contract and the damage are different
  * questions — see `ParityRow`.
  *
- * ⚠ #1375's body quotes 17. That is the SHAPE number. Measured deeply — which
- * is what `parseStrudelStages.ts:6` actually promises and what the D-06
- * sentinel asserts with `toEqual` — the corpus diverges on 44. Both are pinned
- * so neither can drift, and so that a fix which improves one while worsening
- * the other cannot report success.
+ * ⚠ #1375's body quotes 17. That is the SHAPE number, and it was measured
+ * before #1376 landed. Measured deeply — which is what
+ * `parseStrudelStages.ts:6` actually promises and what the D-06 sentinel
+ * asserts with `toEqual` — the corpus diverged on 44 at the first pin and on
+ * 3 now. All three are pinned so none can drift, and so that a fix which
+ * improves one while worsening another cannot report success.
  */
-const DEEP_DIVERGENCE = 20
-const SHAPE_DIVERGENCE = 12
-const TAG_DIVERGENCE = 3
+const DEEP_DIVERGENCE = 3
+const SHAPE_DIVERGENCE = 3
+const TAG_DIVERGENCE = 2
 
 /**
- * The four measured mechanisms behind the 44 (#1375 step 1) — see
- * `classifyDivergence`. Pinned per class so a fix is scored against the
- * mechanism it claims to address, instead of against one total that three
- * different changes could move by the same amount.
+ * The measured mechanisms behind what remains — see `classifyDivergence`.
+ * Pinned per class so a fix is scored against the mechanism it claims to
+ * address, instead of against one total that three different changes could
+ * move by the same amount.
  *
- * Bindings are NOT a class of their own — they cut across these. 28 of the 44
- * documents carry a top-level `const`/`let`/`var`, concentrated in A (15/18)
- * and C (10/16) and nearly absent from B (1/8). So the binding fix in step 2
- * should empty most of A and C, and is expected to move B by roughly nothing.
+ * A class that reaches 0 STAYS IN THIS MAP AS 0. Dropping the key would let
+ * the class come back without the literal moving, which is the drift this
+ * whole file exists to prevent.
+ *
+ * The one survivor is understood and is not a defect in this file's sense:
+ * `B-track-count` is #950's deliberate comma-arm lane split (see above).
+ * Matching `parseStrudel` on those three would REVERT #950, so this number is
+ * a floor, not a backlog.
  */
 const BY_CLASS: Record<string, number> = {
-  'A-opaque-collapse': 9,
-  'C-via-vs-blob': 6,
+  'A-opaque-collapse': 0,
+  'C-via-vs-blob': 0,
   'B-track-count': 3,
-  'D-metadata': 2,
+  'D-metadata': 0,
 }
 
 describe('staged pipeline vs parseStrudel — corpus parity baseline (#1375)', () => {
@@ -194,7 +215,12 @@ describe('staged pipeline vs parseStrudel — corpus parity baseline (#1375)', (
       expect(shapeDiverging).toBe(SHAPE_DIVERGENCE)
       expect(tagDiverging).toBe(TAG_DIVERGENCE)
 
-      const byClass: Record<string, number> = {}
+      // Seeded from BY_CLASS's own keys so a class pinned at 0 is COMPARED at
+      // 0 rather than being absent. An emptied class keeps its row, and a
+      // regression that refills it has to move a literal a reviewer can see.
+      const byClass: Record<string, number> = Object.fromEntries(
+        Object.keys(BY_CLASS).map((k) => [k, 0]),
+      )
       for (const r of Object.values(expected)) {
         if (!r.match && r.cls) byClass[r.cls] = (byClass[r.cls] ?? 0) + 1
       }

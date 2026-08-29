@@ -207,13 +207,40 @@ export function runRawStage(input: PatternIR): PatternIR {
  */
 export function runMiniExpandedStage(input: PatternIR): PatternIR {
   if (input.tag === 'Code') {
-    // 0-track or 1-track from RAW. Empty Code (empty source from RAW)
-    // → IR.pure() to mirror parseStrudel's empty-source behavior.
-    if (!input.code.trim()) return IR.pure()
     const base = input.loc?.[0]?.start ?? 0
     // #671 — carry a lone track's `name:`/`$:` label AND `$:`-line range
     // through to CHAIN-APPLIED (mirrors the multi-track threading below).
     const cMeta = input as unknown as { trackLabel?: string; dollarStart?: number; dollarEnd?: number }
+
+    // #1384 — the ONE place this stage re-attaches a lone track's stage-meta.
+    // Both exits below go through it: the empty-code exit and the parsed exit.
+    // It used to be inline on the parsed exit only, which is how the empty one
+    // came to forget (see the guard below).
+    const withTrackMeta = (node: PatternIR): PatternIR =>
+      cMeta.trackLabel === undefined
+        ? node
+        : ({
+            ...(node as object),
+            trackLabel: cMeta.trackLabel,
+            ...(cMeta.dollarStart !== undefined && cMeta.dollarEnd !== undefined
+              ? { dollarStart: cMeta.dollarStart, dollarEnd: cMeta.dollarEnd }
+              : {}),
+          } as unknown as PatternIR)
+
+    // 0-track or 1-track from RAW. Empty Code (empty source from RAW)
+    // → IR.pure() to mirror parseStrudel's empty-source behavior.
+    //
+    // #1384 — a COMMENTED track is empty-bodied but is still a track.
+    // `extractTracks` deliberately keeps `// PR: s("bd")` so the numbering
+    // stays stable when a comment prefix is toggled, and `parseStrudel` gives
+    // it an `IR.pure()` body while KEEPING its trackId and its `$:`-line loc
+    // (parseStrudel.ts:928). RAW threads label/dollarStart/dollarEnd here
+    // correctly — but this guard returned before `cMeta` was ever read, so
+    // CHAIN-APPLIED got a bare `Pure` and had nothing to build the wrapper
+    // from: no loc, and `trackIdFromLabel(undefined, 0)` fell back to the
+    // synthetic `d1`. A track named `PR` renamed itself the moment it was
+    // commented out — #671's failure mode, narrowed to commented tracks.
+    if (!input.code.trim()) return withTrackMeta(IR.pure())
 
     // #1375 step 2 — resolve top-level `const`/`let`/`var` bindings.
     //
@@ -248,17 +275,7 @@ export function runMiniExpandedStage(input: PatternIR): PatternIR {
       }
     }
 
-    const parsed = parseRootWithChainMeta(input.code, base)
-    if (cMeta.trackLabel !== undefined) {
-      return {
-        ...(parsed as object),
-        trackLabel: cMeta.trackLabel,
-        ...(cMeta.dollarStart !== undefined && cMeta.dollarEnd !== undefined
-          ? { dollarStart: cMeta.dollarStart, dollarEnd: cMeta.dollarEnd }
-          : {}),
-      } as unknown as PatternIR
-    }
-    return parsed
+    return withTrackMeta(parseRootWithChainMeta(input.code, base))
   }
   if (input.tag === 'Stack' && input.userMethod === undefined) {
     // Multi-track from RAW — apply parseRootWithChainMeta to each Code.
@@ -318,11 +335,32 @@ function parseRootWithChainMeta(
   const { root, chain } = splitRootAndChain(trimmed)
   const rootIR = parseRoot(root, trimmedOffset, undefined, bindings)
 
-  // Mirror parseExpression's Code-fallback branches (parseStrudel.ts:140-146):
+  // Mirror parseExpression's Code-fallback branch (parseStrudel.ts:1371-1379):
   // when parseRoot couldn't parse the root, the entire expression is opaque
   // — return Code(expr) (no chain stash). This guarantees PR-A regression
   // sentinel byte-equality vs today's parseStrudel for opaque inputs.
-  if (rootIR.tag === 'Code') {
+  //
+  // #1383 — the test must ask about `via`, not the tag alone. `Code` is TWO
+  // nodes wearing one tag: the parse's give-up fallback (`via === undefined`),
+  // and `wrapAsOpaque`'s STRUCTURED wrapper, which keeps the parsed chain in
+  // `via` precisely so the subtree is not dropped (PV37 wrap-never-drop). Only
+  // the first is opaque. `parseExpression` has discriminated between them since
+  // Phase 20-14 — its own comment records that checking the tag alone "treated
+  // those wrappers as opaque and discarded the entire structure" — and this
+  // parallel copy never received the port, so it discarded a real subtree and
+  // replaced it with the raw expression text plus a document-wide `loc`.
+  //
+  // That is 15 of the 20 remaining corpus divergences, and it is the quieter
+  // failure of the two: the staged node is still a legal `Code`, so a
+  // structural comparison calls both sides identical while `MusicalTimeline`
+  // — which anchors marks by `loc` containment — collapses every hap in the
+  // document onto one anchor.
+  //
+  // The binding call site 80 lines above (`isBareCode`) already uses this
+  // form. Same discrimination, other entry.
+  const rootIsBareCode =
+    rootIR.tag === 'Code' && (rootIR as { via?: unknown }).via === undefined
+  if (rootIsBareCode) {
     return IR.code(expr)
   }
 

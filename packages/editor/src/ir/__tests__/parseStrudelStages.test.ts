@@ -181,6 +181,129 @@ describe('MINI-EXPANDED — top-level bindings resolve (#1375)', () => {
   })
 })
 
+describe('MINI-EXPANDED — a commented track keeps its name and its range (#1384)', () => {
+  // `extractTracks` deliberately keeps a commented `$:`/`name:` line as an
+  // empty-bodied track so the numbering stays stable when a user toggles the
+  // comment prefix. RAW threads its label and `$:`-line range through; the
+  // empty-code guard returned before reading them, so CHAIN-APPLIED had
+  // nothing to build the wrapper from.
+  const parity = (code: string) =>
+    expect(stripStageMeta(pipeline(code))).toEqual(stripStageMeta(parseStrudel(code)))
+
+  it('a lone commented labelled track keeps its trackId', () => {
+    const code = '// PR: s("bd hh")'
+    parity(code)
+    // The user-visible half: the row was renaming itself to `d1` the moment
+    // the line was commented out — #671's failure mode, still live here.
+    const ir = stripStageMeta(pipeline(code)) as { trackId?: string }
+    expect(ir.trackId).toBe('PR')
+  })
+
+  it('and keeps its source range, which is what the timeline anchors on', () => {
+    const code = '// PR: s("bd hh")'
+    expect(stripStageMeta(pipeline(code)).loc).toEqual(
+      stripStageMeta(parseStrudel(code)).loc,
+    )
+    expect(stripStageMeta(pipeline(code)).loc).toBeDefined()
+  })
+
+  it('a lone commented $: keeps d1 and still gets its range', () =>
+    parity('// $: s("bd hh")'))
+
+  it('a commented track among live ones holds its slot', () =>
+    parity('drums: s("bd")\n// PR: s("hh")\nbass: s("cp")'))
+
+  it('an uncommented labelled track is unchanged (control)', () =>
+    parity('PR: s("bd hh")'))
+
+  // CONTROLS — these reach the SAME empty-code guard with no label to attach.
+  // They passed before the fix and must still pass: the guard must not start
+  // inventing metadata where RAW threaded none.
+  it('an all-prelude document has no label or loc (control)', () => {
+    parity('setcps(120/240)')
+    expect(stripStageMeta(pipeline('setcps(120/240)')).loc).toBeUndefined()
+  })
+
+  it('a comment-only document has no label or loc (control)', () => {
+    parity('// just a comment')
+    expect(stripStageMeta(pipeline('// just a comment')).loc).toBeUndefined()
+  })
+
+  it('PINNED: an EMPTY document diverges, and predates this fix', () => {
+    // Found while choosing a control, and deliberately not fixed here.
+    // `parseStrudel('')` returns a bare `IR.pure()` from its own top guard,
+    // with NO synthetic Track wrapper; the staged pipeline wraps every
+    // non-multi-track shape in `Track('d1', …)` at CHAIN-APPLIED. Verified
+    // identical before and after this change by stashing it.
+    //
+    // A real breach of the byte-identity contract, with no reachable
+    // consequence: no corpus document is empty, and an empty editor produces
+    // no haps either way. Pinned rather than left silent so it cannot drift
+    // in either direction unnoticed.
+    expect(stripStageMeta(parseStrudel('')).tag).toBe('Pure')
+    expect(stripStageMeta(pipeline('')).tag).toBe('Track')
+  })
+})
+
+describe('MINI-EXPANDED — a structured Code wrapper is not opaque (#1383)', () => {
+  // `Code` is TWO nodes wearing one tag. `wrapAsOpaque` returns tag 'Code' for
+  // an unrecognised method arg but keeps the parsed chain in `via` (PV37
+  // wrap-never-drop), so only `via === undefined` means the parse gave up.
+  // `parseRootWithChainMeta` tested the tag alone and threw the structure away
+  // — 15 of the 20 remaining corpus divergences, and the corpus sweep skips
+  // without `.bakery-runs/`, so these carry the fix on a clean checkout.
+  const parity = (code: string) =>
+    expect(stripStageMeta(pipeline(code))).toEqual(stripStageMeta(parseStrudel(code)))
+
+  // Each of these has a root that parses to Code WITH a `via`. All four
+  // diverged before the fix; verified by restoring the tag-only predicate.
+  it('a method call inside a mini-string arg', () =>
+    parity('note("c d".sub(12)).s("sawtooth")'))
+  it('the same shape behind a $: label', () =>
+    parity('$: note("c d".sub(12)).s("sawtooth")'))
+  it('a longer chain past the wrapper', () =>
+    parity('note("e3 d2 g4 a3".sub(12)).s("sawtooth").lpf("333:2")'))
+  it('an arg-side pattern operator', () =>
+    parity('n("0 2".add("<0 1>")).scale("C:minor")'))
+
+  it('the structure survives — it is not replaced by a blob', () => {
+    // The count is not the point; what the consumers receive is. Before the
+    // fix this was a bare `Code` carrying the whole expression as text.
+    const code = 'note("c d".sub(12)).s("sawtooth")'
+    expect(unwrapD1(stripStageMeta(pipeline(code))).tag).toBe('Param')
+  })
+
+  it('the loc stays narrow, which is what the timeline anchors on', () => {
+    // The quieter half of the defect: both sides emit a legal node, so a
+    // structural check cannot see it, while a document-wide `loc` collapses
+    // every hap onto one anchor in MusicalTimeline.
+    const code = 'note("c d".sub(12)).s("sawtooth")'
+    const staged = unwrapD1(stripStageMeta(pipeline(code)))
+    const direct = unwrapD1(stripStageMeta(parseStrudel(code)))
+    expect(staged.loc).toEqual(direct.loc)
+    // 19..33 — the `.s("sawtooth")` span, not 0..33. The whole-expression
+    // fallback this branch used to take spans the entire document.
+    const span = staged.loc![0]
+    expect(span.end - span.start).toBeLessThan(code.length)
+  })
+
+  // NEGATIVE CONTROL — a chained root that parses cleanly (no `via` wrapper).
+  // These passed BEFORE the fix too. Without them this block could be green
+  // because chains work at all, rather than because `via` is discriminated.
+  it('a plainly-parsed root is unaffected (control)', () =>
+    parity('n("0 2 4 7").fast(2).scale("C:minor")'))
+  it('a template-literal root is unaffected (control)', () =>
+    parity('note(`<c d>`).s("square")'))
+
+  it('a genuinely opaque root still falls back to whole-expression Code', () => {
+    // The branch must still fire for its real case, or the fix has simply
+    // deleted the fallback. `via === undefined` is what opaque means.
+    const code = 'someUnknownThing().s("bd")'
+    parity(code)
+    expect(unwrapD1(stripStageMeta(pipeline(code))).tag).toBe('Code')
+  })
+})
+
 describe('RAW — a bare document with several top-level statements (#1376)', () => {
   it('gives every statement its own track, and loses none', () => {
     const code = 'sound ("hh hh hh hh")\nsound ("[bd bd][sd bd] bd sd")'

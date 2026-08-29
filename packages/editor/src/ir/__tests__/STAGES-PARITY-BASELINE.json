@@ -44,13 +44,9 @@
     "tagMatch": true
   },
   "0/-5WeGy0LynXi": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[Play],Track→[Param→[…]],Track→[When→[…]],Track→[Param→[…]],Track→[Param→[…]],Track→[When→[…]]]",
-    "staged": "Stack→[Track→[Play],Track→[Code],Track→[When→[…]],Track→[Param→[…]],Track→[Param→[…]],Track→[When→[…]]]",
-    "cls": "A-opaque-collapse",
-    "at": "$.tracks[1].body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "0/-6KOcCDkJcMT": {
     "match": true,
@@ -98,13 +94,9 @@
     "tagMatch": true
   },
   "0/-9BuEqUq3uzT": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[Code],Track→[Code],Track→[Code],Track→[Code],Track→[Code],Track→[Param→[…]],+9]",
-    "staged": "Stack→[Track→[Code],Track→[Code],Track→[Code],Track→[Code],Track→[Code],Track→[Param→[…]],+9]",
-    "cls": "A-opaque-collapse",
-    "at": "$.tracks[13].body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "0/-A4RqH2KfssX": {
     "match": true,
@@ -142,13 +134,9 @@
     "tagMatch": true
   },
   "0/-HB2AUFfae4D": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Track→[Pure]",
-    "staged": "Track→[Pure]",
-    "cls": "D-metadata",
-    "at": "$"
+    "tagMatch": true
   },
   "0/-HurO9HkqR6X": {
     "match": true,
@@ -161,13 +149,9 @@
     "tagMatch": true
   },
   "0/-Hx1rNCmeyD8": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]",
-    "staged": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]",
-    "cls": "C-via-vs-blob",
-    "at": "$.tracks[5].body"
+    "tagMatch": true
   },
   "0/-HyFCSbuSlq5": {
     "match": true,
@@ -175,13 +159,9 @@
     "tagMatch": true
   },
   "0/-IsQGTchux6n": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[Param→[…,…]],Track→[Struct→[…]],Track→[Choice→[…,…]],Track→[Struct→[…]],Track→[Code],Track→[Param→[…,…]]]",
-    "staged": "Stack→[Track→[Code],Track→[Struct→[…]],Track→[Choice→[…,…]],Track→[Struct→[…]],Track→[Code],Track→[Param→[…,…]]]",
-    "cls": "A-opaque-collapse",
-    "at": "$.tracks[0].body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "0/-JX1LueRKyYw": {
     "match": true,
@@ -224,13 +204,9 @@
     "tagMatch": true
   },
   "0/-M2i6h--w2cN": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[Param→[…,…]],Track→[When→[…]],Track→[Param→[…]],Track→[When→[…]],Track→[Code],Track→[Code]]",
-    "staged": "Stack→[Track→[Code],Track→[When→[…]],Track→[Param→[…]],Track→[When→[…]],Track→[Code],Track→[Code]]",
-    "cls": "A-opaque-collapse",
-    "at": "$.tracks[0].body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "0/-ME6cUGs8L79": {
     "match": true,
@@ -252,13 +228,9 @@
     "at": "$"
   },
   "0/-O273nbizm2n": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]",
-    "staged": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]",
-    "cls": "C-via-vs-blob",
-    "at": "$.tracks[5].body"
+    "tagMatch": true
   },
   "0/-O2kvC5Ofx5J": {
     "match": true,
@@ -266,13 +238,9 @@
     "tagMatch": true
   },
   "0/-OjVBeIeW1LU": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]",
-    "staged": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]",
-    "cls": "C-via-vs-blob",
-    "at": "$.tracks[5].body"
+    "tagMatch": true
   },
   "0/-P398OK_eprf": {
     "match": true,
@@ -345,13 +313,9 @@
     "tagMatch": true
   },
   "250/0yNJ2M8qhtS3": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[Code],Track→[Code],Track→[Code],Track→[Code]]",
-    "staged": "Stack→[Track→[Code],Track→[Code],Track→[Code],Track→[Code]]",
-    "cls": "C-via-vs-blob",
-    "at": "$.tracks[0].body"
+    "tagMatch": true
   },
   "250/0yTnyRdCRDtG": {
     "match": true,
@@ -359,13 +323,9 @@
     "tagMatch": true
   },
   "250/0zGIYzShEPbP": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[Slow→[…]],Track→[Code],Track→[Param→[…]],Track→[Code]]",
-    "staged": "Stack→[Track→[Code],Track→[Code],Track→[Param→[…]],Track→[Code]]",
-    "cls": "A-opaque-collapse",
-    "at": "$.tracks[0].body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "250/0zQH4ThmEaeZ": {
     "match": true,
@@ -403,13 +363,9 @@
     "tagMatch": true
   },
   "250/1253yCaYbxTk": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[Param→[…]],Track→[When→[…]],Track→[Param→[…,…]],Track→[Param→[…]]]",
-    "staged": "Stack→[Track→[Param→[…]],Track→[When→[…]],Track→[Param→[…,…]],Track→[Code]]",
-    "cls": "A-opaque-collapse",
-    "at": "$.tracks[3].body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "250/12k-m0Mql3lG": {
     "match": true,
@@ -452,13 +408,9 @@
     "tagMatch": true
   },
   "250/19zJsdzELxuf": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[Param→[…,…]],Track→[When→[…]],Track→[Param→[…]],Track→[When→[…]],Track→[Code],Track→[Code]]",
-    "staged": "Stack→[Track→[Code],Track→[When→[…]],Track→[Param→[…]],Track→[When→[…]],Track→[Code],Track→[Code]]",
-    "cls": "A-opaque-collapse",
-    "at": "$.tracks[0].body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "250/1APcTv7DyEkW": {
     "match": true,
@@ -606,13 +558,9 @@
     "tagMatch": true
   },
   "500/38eh7DdPyYBP": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[Code],Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Param→[…]],+5]",
-    "staged": "Stack→[Track→[Code],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[When→[…]],Track→[Param→[…]],+5]",
-    "cls": "A-opaque-collapse",
-    "at": "$.tracks[3].body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "500/3AQWzhu339V6": {
     "match": true,
@@ -649,22 +597,14 @@
     "tagMatch": true
   },
   "500/3GcY2IiOEL99": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[Code],Track→[Code],Track→[Code]]",
-    "staged": "Stack→[Track→[Code],Track→[Code],Track→[Code]]",
-    "cls": "C-via-vs-blob",
-    "at": "$.tracks[1].body"
+    "tagMatch": true
   },
   "500/3HJc0swD3JX0": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": true,
-    "direct": "Track→[Param→[Param→[…]]]",
-    "staged": "Track→[Code]",
-    "cls": "A-opaque-collapse",
-    "at": "$.body"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "500/3HWHF_ZUbZD_": {
     "match": true,
@@ -812,21 +752,13 @@
     "tagMatch": true
   },
   "500/3Y6Nw-c4WlmA": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": false,
-    "direct": "Track→[Pure]",
-    "staged": "Track→[Pure]",
-    "cls": "D-metadata",
-    "at": "$"
+    "tagMatch": true
   },
   "500/3Y7PNnQdXy4F": {
-    "match": false,
+    "match": true,
     "shapeMatch": true,
-    "tagMatch": true,
-    "direct": "Stack→[Track→[Code],Track→[Code]]",
-    "staged": "Stack→[Track→[Code],Track→[Code]]",
-    "cls": "C-via-vs-blob",
-    "at": "$.tracks[0].body"
+    "tagMatch": true
   }
 }
