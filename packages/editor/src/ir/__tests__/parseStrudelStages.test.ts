@@ -140,6 +140,51 @@ export function assertNoStageMeta(node: PatternIR): void {
 
 
 // ---------------------------------------------------------------------------
+// #1376 — bare multi-statement documents. Fixtures, not just the corpus sweep:
+// the sweep SKIPS when `.bakery-runs/` is absent (it is gitignored), so on a
+// clean checkout nothing would cover this fix at all.
+// ---------------------------------------------------------------------------
+
+describe('RAW — a bare document with several top-level statements (#1376)', () => {
+  it('gives every statement its own track, and loses none', () => {
+    const code = 'sound ("hh hh hh hh")\nsound ("[bd bd][sd bd] bd sd")'
+    // The defect was a DISAPPEARANCE, not a degraded shape: statement 2 was
+    // absent from the IR entirely, with no opaque node standing in for it.
+    expect(JSON.stringify(pipeline(code))).toContain('sd')
+    expect(stripStageMeta(pipeline(code))).toEqual(stripStageMeta(parseStrudel(code)))
+  })
+
+  it('a single bare statement is untouched', () => {
+    const code = 'sound ("hh hh hh hh")'
+    expect(stripStageMeta(pipeline(code))).toEqual(stripStageMeta(parseStrudel(code)))
+  })
+
+  it('side-effect statements do not take a track', () => {
+    const code = 'setcps(120/240)\nsound ("bd hh")\nsound ("cp cp")'
+    const out = unwrapD1(stripStageMeta(pipeline(code)))
+    expect(out.tag).toBe('Stack')
+    if (out.tag !== 'Stack') throw new Error('unreachable')
+    expect(out.tracks).toHaveLength(2)
+    expect(stripStageMeta(pipeline(code))).toEqual(stripStageMeta(parseStrudel(code)))
+  })
+
+  it('a document with a binding keeps the single-track shape', () => {
+    // Deliberately narrow, mirroring parseStrudel: per-statement binding
+    // semantics here would be a second, weaker binding map.
+    const code = 'const a = sound("bd")\na'
+    expect(stripStageMeta(pipeline(code)).tag).toBe('Track')
+  })
+
+  it('statements are split depth- and string-aware, not by newline', () => {
+    // A multi-line stack( is ONE statement; a wrong split would fabricate
+    // tracks the document never declared.
+    const code = 'stack(\n  sound("bd"),\n  sound("cp")\n)'
+    expect(stripStageMeta(pipeline(code))).toEqual(stripStageMeta(parseStrudel(code)))
+    expect(unwrapD1(stripStageMeta(pipeline(code))).tag).toBe('Stack')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // T-05.a — RAW: per-track Code lifts preserve loc (PV25, P39)
 // ---------------------------------------------------------------------------
 

@@ -26,6 +26,9 @@ import {
   applyChain,
   splitRootAndChain,
   stripParserPrelude,
+  splitTopLevelStatements,
+  stripSideEffectStatements,
+  BINDING_RE,
 } from './parseStrudel'
 
 /**
@@ -83,6 +86,52 @@ export function runRawStage(input: PatternIR): PatternIR {
         code: '',
         lang: 'strudel' as const,
         loc: [{ start: stripped.offset, end: code.length }],
+      }
+    }
+    // #1376 — a bare document with SEVERAL top-level statements declares
+    // several tracks, and every one of them gets a row.
+    //
+    // `parseStrudel` learned this in #1096; the staged pipeline did not, and
+    // the failure was not a degraded shape but a DISAPPEARANCE. Handed the
+    // whole body, `parseRoot` kept ONE expression, so
+    // `sound("hh hh hh hh")\nsound("[bd bd][sd bd] bd sd")` produced an IR in
+    // which the second statement did not appear at all — no opaque `Code` node
+    // standing in for it, nothing to notice. Every consumer of the published
+    // snapshot then drew a song with fewer parts than the user wrote.
+    //
+    // REUSES `splitTopLevelStatements` + `stripSideEffectStatements` +
+    // `BINDING_RE` from `parseStrudel` rather than re-deriving them here. A
+    // second, hand-kept splitter is exactly the defect this whole issue is
+    // about — one list, two readers.
+    //
+    // Deliberately as NARROW as its counterpart: taken only when every
+    // remaining statement is a plain expression. A `let`/`const` needs
+    // substitution to be meaningful, and inventing per-statement binding
+    // semantics here would be a second, weaker binding map. One candidate
+    // keeps the existing single-Code path untouched, so every single-statement
+    // bare document stays byte-identical.
+    const bareStmts = stripSideEffectStatements(
+      splitTopLevelStatements(stripped.body, stripped.offset),
+    )
+    if (bareStmts.length > 1 && !bareStmts.some((st) => BINDING_RE.test(st.text))) {
+      return {
+        tag: 'Stack' as const,
+        tracks: bareStmts.map((st) => ({
+          tag: 'Code' as const,
+          code: st.text,
+          lang: 'strudel' as const,
+          loc: [{ start: st.offset, end: st.offset + st.text.length }],
+          // The statement's OWN range, threaded through the EXISTING
+          // dollarStart/dollarEnd channel so CHAIN-APPLIED builds
+          // `Track(d{i+1}, …, {loc})` with no new metadata path.
+          // `trackLabel` stays undefined → `trackIdFromLabel` yields d{i+1},
+          // matching parseStrudel.ts's `IR.track(\`d${i + 1}\`, …)`.
+          dollarStart: st.offset,
+          dollarEnd: st.offset + st.text.length,
+        } as PatternIR)),
+        loc: [{ start: 0, end: code.length }],
+        // userMethod intentionally undefined — synthetic-from-RAW wrapper,
+        // same as the multi-`$:` return below.
       }
     }
     const bodyTrimStart = stripped.body.search(/\S/)

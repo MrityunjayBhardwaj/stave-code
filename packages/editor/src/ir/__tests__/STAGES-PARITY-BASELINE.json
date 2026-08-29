@@ -157,13 +157,9 @@
     "tagMatch": true
   },
   "0/-G2drHRNFueu": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Stack→[Track→[Seq→[…,…,…,…]],Track→[Seq→[…,…,…,…]]]",
-    "staged": "Track→[Seq→[Play,Play,Play,Play]]",
-    "cls": "B-track-count",
-    "at": "$"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "0/-HB2AUFfae4D": {
     "match": false,
@@ -369,13 +365,9 @@
     "tagMatch": true
   },
   "250/0wcQYjshS6ho": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Stack→[Track→[Seq→[…,…,…,…]],Track→[Seq→[…,…,…,…]]]",
-    "staged": "Track→[Seq→[Play,Play,Seq→[…,…],Play]]",
-    "cls": "B-track-count",
-    "at": "$"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "250/0wqOJhlE-Fn8": {
     "match": true,
@@ -388,13 +380,9 @@
     "tagMatch": true
   },
   "250/0xt_O6UrjF71": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Stack→[Track→[Param→[…]],Track→[Code],Track→[Param→[…]],Track→[Param→[…]],Track→[Param→[…]]]",
-    "staged": "Track→[Param→[Param→[…]]]",
-    "cls": "B-track-count",
-    "at": "$"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "250/0yNJ2M8qhtS3": {
     "match": false,
@@ -755,13 +743,9 @@
     "at": "$.body"
   },
   "500/3HWHF_ZUbZD_": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Stack→[Track→[Code],Track→[Code]]",
-    "staged": "Track→[Code]",
-    "cls": "B-track-count",
-    "at": "$"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "500/3H_LAkg97Urt": {
     "match": true,
@@ -834,13 +818,9 @@
     "tagMatch": true
   },
   "500/3OGQAQ5-jyOE": {
-    "match": false,
-    "shapeMatch": false,
-    "tagMatch": false,
-    "direct": "Stack→[Track→[Code],Track→[Stack→[…,…]]]",
-    "staged": "Track→[Code]",
-    "cls": "B-track-count",
-    "at": "$"
+    "match": true,
+    "shapeMatch": true,
+    "tagMatch": true
   },
   "500/3OH2P5x4J4fc": {
     "match": true,
