@@ -236,6 +236,10 @@ export interface ParityRow {
   direct?: string
   /** Present only when they differ — the pipeline's FINAL shape. */
   staged?: string
+  /** Present only when they differ — the measured mechanism (step 1). */
+  cls?: string
+  /** Present only when they differ — where in the tree they first disagree. */
+  at?: string
 }
 
 /**
@@ -262,5 +266,100 @@ export function parityRow(code: string): ParityRow {
   const shapeMatch = shapeOf(direct, Infinity) === shapeOf(staged, Infinity)
   const tagMatch = unwrapD1(direct).tag === unwrapD1(staged).tag
   if (deepEqual(direct, staged)) return { match: true, shapeMatch, tagMatch }
-  return { match: false, shapeMatch, tagMatch, direct: displayShape(direct), staged: displayShape(staged) }
+  const d = firstDivergence(direct, staged)
+  return {
+    match: false, shapeMatch, tagMatch,
+    direct: displayShape(direct), staged: displayShape(staged),
+    cls: classifyDivergence(d),
+    at: 'path' in d ? d.path : '',
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Divergence classification (#1375 step 1)
+// ---------------------------------------------------------------------------
+
+/** Named child slots, so a divergence can be reported at a readable path. */
+function childSlots(n: PatternIR): [string, PatternIR][] {
+  const N = n as unknown as Record<string, unknown>
+  switch (n.tag) {
+    case 'Seq':   return n.children.map((c, i) => [`children[${i}]`, c])
+    case 'Stack': return n.tracks.map((c, i) => [`tracks[${i}]`, c])
+    case 'Cycle': return n.items.map((c, i) => [`items[${i}]`, c])
+    case 'Choice': return [['then', n.then], ['else_', n.else_]]
+    case 'Every': return n.default_ ? [['body', n.body], ['default_', n.default_]] : [['body', n.body]]
+    case 'When': case 'Ramp': case 'Fast': case 'Slow': case 'Elongate':
+    case 'Late': case 'Degrade': case 'Ply': case 'Struct': case 'Swing':
+    case 'Shuffle': case 'Scramble': case 'Chop': case 'Loop': case 'Track':
+      return [['body', n.body]]
+    case 'Param':
+      return typeof N.value === 'object' && N.value !== null
+        ? [['body', n.body], ['value', N.value as PatternIR]]
+        : [['body', n.body]]
+    case 'Chunk': return [['transform', n.transform], ['body', n.body]]
+    case 'Pick':  return [['selector', n.selector], ...n.lookup.map((c, i) => [`lookup[${i}]`, c] as [string, PatternIR])]
+    default: return []
+  }
+}
+
+export type DivergenceKind =
+  | { kind: 'none' }
+  | { kind: 'tag'; path: string; a: string; b: string }
+  | { kind: 'arity'; path: string; a: number; b: number }
+  | { kind: 'field'; path: string; fields: string[] }
+
+/**
+ * The FIRST point at which the two trees disagree, depth-first, scalar fields
+ * before children.
+ *
+ * Reports EVERY differing field at that node, not just one. Reporting only the
+ * first understated this badly: the 16 documents in class C differ in
+ * `code` AND `loc` AND `via` at once, and seeing only `code` made them look
+ * like cosmetic text noise when they are nothing of the kind.
+ */
+export function firstDivergence(a: PatternIR, b: PatternIR, path = '$'): DivergenceKind {
+  if (a.tag !== b.tag) return { kind: 'tag', path, a: a.tag, b: b.tag }
+  const ra = a as unknown as Record<string, unknown>
+  const rb = b as unknown as Record<string, unknown>
+  const kidsA = childSlots(a)
+  const kidsB = childSlots(b)
+  const childKeys = new Set([...kidsA, ...kidsB].map(([k]) => k.replace(/\[\d+\]$/, '')))
+  const fields: string[] = []
+  for (const k of new Set([...Object.keys(ra), ...Object.keys(rb)])) {
+    if (k === 'tag' || childKeys.has(k)) continue
+    if (ra[k] === undefined && rb[k] === undefined) continue
+    if (!deepEqual(ra[k], rb[k])) fields.push(k)
+  }
+  if (fields.length > 0) return { kind: 'field', path, fields: fields.sort() }
+  if (kidsA.length !== kidsB.length) return { kind: 'arity', path, a: kidsA.length, b: kidsB.length }
+  for (let i = 0; i < kidsA.length; i++) {
+    const d = firstDivergence(kidsA[i][1], kidsB[i][1], `${path}.${kidsA[i][0]}`)
+    if (d.kind !== 'none') return d
+  }
+  return { kind: 'none' }
+}
+
+/**
+ * The four mechanisms behind the 44, measured (#1375 step 1) — NOT guessed.
+ *
+ *   A-opaque-collapse   the pipeline replaces a real subtree with opaque `Code`
+ *   B-track-count       the two sides disagree on how many tracks exist, at the root
+ *   C-via-vs-blob       both emit `Code`, but one carries a structured `via` + a
+ *                       narrow `loc` and the other carries raw text
+ *   D-metadata          `loc`/`trackId` only
+ *
+ * ⚠ C is the one to distrust most. Those documents AGREE on shape, so the
+ * structural check calls them identical — while `0/-1j62z5xjyCN`'s direct node
+ * describes a 9-character span and its staged node describes all 1912. A
+ * structural comparison cannot see a 200x difference in what a node covers.
+ */
+export function classifyDivergence(d: DivergenceKind): string {
+  switch (d.kind) {
+    case 'none':  return ''
+    case 'arity': return 'B-track-count'
+    case 'tag':   return d.b === 'Code' ? 'A-opaque-collapse'
+                       : d.a === 'Code' ? 'A-opaque-collapse-inverted'
+                       : 'B-track-count'
+    case 'field': return d.fields.includes('via') ? 'C-via-vs-blob' : 'D-metadata'
+  }
 }

@@ -4,21 +4,27 @@
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Track→[Stack→[Param→[…],Degrade→[…],Param→[…,…],Code]]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "A-opaque-collapse",
+    "at": "$.body"
   },
   "0/--cHhfOZ6ON1": {
     "match": false,
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Track→[Code]",
-    "staged": "Stack→[Track→[Fast→[…]],Track→[Fast→[…]],Track→[Fast→[…]],Track→[Fast→[…]],Track→[Fast→[…]],Track→[Fast→[…]],+94]"
+    "staged": "Stack→[Track→[Fast→[…]],Track→[Fast→[…]],Track→[Fast→[…]],Track→[Fast→[…]],Track→[Fast→[…]],Track→[Fast→[…]],+94]",
+    "cls": "B-track-count",
+    "at": "$"
   },
   "0/-1j62z5xjyCN": {
     "match": false,
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Track→[Code]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "C-via-vs-blob",
+    "at": "$.body"
   },
   "0/-1poFQwaznQK": {
     "match": true,
@@ -50,7 +56,9 @@
     "shapeMatch": false,
     "tagMatch": true,
     "direct": "Stack→[Track→[Play],Track→[Param→[…]],Track→[When→[…]],Track→[Param→[…]],Track→[Param→[…]],Track→[When→[…]]]",
-    "staged": "Stack→[Track→[Play],Track→[Code],Track→[When→[…]],Track→[Param→[…]],Track→[Param→[…]],Track→[When→[…]]]"
+    "staged": "Stack→[Track→[Play],Track→[Code],Track→[When→[…]],Track→[Param→[…]],Track→[Param→[…]],Track→[When→[…]]]",
+    "cls": "A-opaque-collapse",
+    "at": "$.tracks[1].body"
   },
   "0/-6KOcCDkJcMT": {
     "match": true,
@@ -62,14 +70,18 @@
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Track→[Pick→[Cycle→[…,…,…,…,…,…,+30],Stack→[…,…,…,…],Stack→[…,…,…,…,…,…,+1],Stack→[…,…,…,…],Stack→[…,…],Stack→[…,…],+1]]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "A-opaque-collapse",
+    "at": "$.body"
   },
   "0/-72eEl7NwK9e": {
     "match": false,
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Track→[Code]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "C-via-vs-blob",
+    "at": "$.body"
   },
   "0/-7LU6zgzViSM": {
     "match": true,
@@ -106,7 +118,9 @@
     "shapeMatch": false,
     "tagMatch": true,
     "direct": "Stack→[Track→[Code],Track→[Code],Track→[Code],Track→[Code],Track→[Code],Track→[Param→[…]],+9]",
-    "staged": "Stack→[Track→[Code],Track→[Code],Track→[Code],Track→[Code],Track→[Code],Track→[Param→[…]],+9]"
+    "staged": "Stack→[Track→[Code],Track→[Code],Track→[Code],Track→[Code],Track→[Code],Track→[Param→[…]],+9]",
+    "cls": "A-opaque-collapse",
+    "at": "$.tracks[13].body"
   },
   "0/-A4RqH2KfssX": {
     "match": true,
@@ -123,7 +137,9 @@
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Track→[Code]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "C-via-vs-blob",
+    "at": "$.body"
   },
   "0/-D3D3jXo_jWm": {
     "match": true,
@@ -145,14 +161,18 @@
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Stack→[Track→[Seq→[…,…,…,…]],Track→[Seq→[…,…,…,…]]]",
-    "staged": "Track→[Seq→[Play,Play,Play,Play]]"
+    "staged": "Track→[Seq→[Play,Play,Play,Play]]",
+    "cls": "B-track-count",
+    "at": "$"
   },
   "0/-HB2AUFfae4D": {
     "match": false,
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Track→[Pure]",
-    "staged": "Track→[Pure]"
+    "staged": "Track→[Pure]",
+    "cls": "D-metadata",
+    "at": "$"
   },
   "0/-HurO9HkqR6X": {
     "match": true,
@@ -169,7 +189,9 @@
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]",
-    "staged": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]"
+    "staged": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]",
+    "cls": "C-via-vs-blob",
+    "at": "$.tracks[5].body"
   },
   "0/-HyFCSbuSlq5": {
     "match": true,
@@ -181,14 +203,18 @@
     "shapeMatch": false,
     "tagMatch": true,
     "direct": "Stack→[Track→[Param→[…,…]],Track→[Struct→[…]],Track→[Choice→[…,…]],Track→[Struct→[…]],Track→[Code],Track→[Param→[…,…]]]",
-    "staged": "Stack→[Track→[Code],Track→[Struct→[…]],Track→[Choice→[…,…]],Track→[Struct→[…]],Track→[Code],Track→[Param→[…,…]]]"
+    "staged": "Stack→[Track→[Code],Track→[Struct→[…]],Track→[Choice→[…,…]],Track→[Struct→[…]],Track→[Code],Track→[Param→[…,…]]]",
+    "cls": "A-opaque-collapse",
+    "at": "$.tracks[0].body"
   },
   "0/-JX1LueRKyYw": {
     "match": false,
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Track→[Param→[Param→[…]]]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "A-opaque-collapse",
+    "at": "$.body"
   },
   "0/-JZA8OSsd2NG": {
     "match": true,
@@ -205,7 +231,9 @@
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Track→[Code]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "C-via-vs-blob",
+    "at": "$.body"
   },
   "0/-KsW6fVLkxAn": {
     "match": true,
@@ -217,14 +245,18 @@
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Track→[Param→[Code]]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "A-opaque-collapse",
+    "at": "$.body"
   },
   "0/-LHtBlF8peGC": {
     "match": false,
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Track→[Stack→[Code,Code,Param→[…],Param→[…]]]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "A-opaque-collapse",
+    "at": "$.body"
   },
   "0/-LMuxBHkr4IA": {
     "match": true,
@@ -236,7 +268,9 @@
     "shapeMatch": false,
     "tagMatch": true,
     "direct": "Stack→[Track→[Param→[…,…]],Track→[When→[…]],Track→[Param→[…]],Track→[When→[…]],Track→[Code],Track→[Code]]",
-    "staged": "Stack→[Track→[Code],Track→[When→[…]],Track→[Param→[…]],Track→[When→[…]],Track→[Code],Track→[Code]]"
+    "staged": "Stack→[Track→[Code],Track→[When→[…]],Track→[Param→[…]],Track→[When→[…]],Track→[Code],Track→[Code]]",
+    "cls": "A-opaque-collapse",
+    "at": "$.tracks[0].body"
   },
   "0/-ME6cUGs8L79": {
     "match": true,
@@ -253,14 +287,18 @@
     "shapeMatch": false,
     "tagMatch": true,
     "direct": "Track→[Stack→[Seq→[…,…,…,…],Fast→[…]]]",
-    "staged": "Stack→[Track→[Seq→[…,…,…,…]],Track→[Fast→[…]]]"
+    "staged": "Stack→[Track→[Seq→[…,…,…,…]],Track→[Fast→[…]]]",
+    "cls": "B-track-count",
+    "at": "$"
   },
   "0/-O273nbizm2n": {
     "match": false,
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]",
-    "staged": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]"
+    "staged": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]",
+    "cls": "C-via-vs-blob",
+    "at": "$.tracks[5].body"
   },
   "0/-O2kvC5Ofx5J": {
     "match": true,
@@ -272,14 +310,18 @@
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]",
-    "staged": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]"
+    "staged": "Stack→[Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[Code],Track→[Code],+1]",
+    "cls": "C-via-vs-blob",
+    "at": "$.tracks[5].body"
   },
   "0/-P398OK_eprf": {
     "match": false,
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Track→[Stack→[Code,Code,Code]]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "A-opaque-collapse",
+    "at": "$.body"
   },
   "0/-P5TIfAEmiGv": {
     "match": true,
@@ -331,7 +373,9 @@
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Stack→[Track→[Seq→[…,…,…,…]],Track→[Seq→[…,…,…,…]]]",
-    "staged": "Track→[Seq→[Play,Play,Seq→[…,…],Play]]"
+    "staged": "Track→[Seq→[Play,Play,Seq→[…,…],Play]]",
+    "cls": "B-track-count",
+    "at": "$"
   },
   "250/0wqOJhlE-Fn8": {
     "match": true,
@@ -348,14 +392,18 @@
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Stack→[Track→[Param→[…]],Track→[Code],Track→[Param→[…]],Track→[Param→[…]],Track→[Param→[…]]]",
-    "staged": "Track→[Param→[Param→[…]]]"
+    "staged": "Track→[Param→[Param→[…]]]",
+    "cls": "B-track-count",
+    "at": "$"
   },
   "250/0yNJ2M8qhtS3": {
     "match": false,
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Stack→[Track→[Code],Track→[Code],Track→[Code],Track→[Code]]",
-    "staged": "Stack→[Track→[Code],Track→[Code],Track→[Code],Track→[Code]]"
+    "staged": "Stack→[Track→[Code],Track→[Code],Track→[Code],Track→[Code]]",
+    "cls": "C-via-vs-blob",
+    "at": "$.tracks[0].body"
   },
   "250/0yTnyRdCRDtG": {
     "match": true,
@@ -367,7 +415,9 @@
     "shapeMatch": false,
     "tagMatch": true,
     "direct": "Stack→[Track→[Slow→[…]],Track→[Code],Track→[Param→[…]],Track→[Code]]",
-    "staged": "Stack→[Track→[Code],Track→[Code],Track→[Param→[…]],Track→[Code]]"
+    "staged": "Stack→[Track→[Code],Track→[Code],Track→[Param→[…]],Track→[Code]]",
+    "cls": "A-opaque-collapse",
+    "at": "$.tracks[0].body"
   },
   "250/0zQH4ThmEaeZ": {
     "match": true,
@@ -409,7 +459,9 @@
     "shapeMatch": false,
     "tagMatch": true,
     "direct": "Stack→[Track→[Param→[…]],Track→[When→[…]],Track→[Param→[…,…]],Track→[Param→[…]]]",
-    "staged": "Stack→[Track→[Param→[…]],Track→[When→[…]],Track→[Param→[…,…]],Track→[Code]]"
+    "staged": "Stack→[Track→[Param→[…]],Track→[When→[…]],Track→[Param→[…,…]],Track→[Code]]",
+    "cls": "A-opaque-collapse",
+    "at": "$.tracks[3].body"
   },
   "250/12k-m0Mql3lG": {
     "match": true,
@@ -446,7 +498,9 @@
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Track→[Code]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "C-via-vs-blob",
+    "at": "$.body"
   },
   "250/19poBD28I-Rx": {
     "match": true,
@@ -458,14 +512,18 @@
     "shapeMatch": false,
     "tagMatch": true,
     "direct": "Stack→[Track→[Param→[…,…]],Track→[When→[…]],Track→[Param→[…]],Track→[When→[…]],Track→[Code],Track→[Code]]",
-    "staged": "Stack→[Track→[Code],Track→[When→[…]],Track→[Param→[…]],Track→[When→[…]],Track→[Code],Track→[Code]]"
+    "staged": "Stack→[Track→[Code],Track→[When→[…]],Track→[Param→[…]],Track→[When→[…]],Track→[Code],Track→[Code]]",
+    "cls": "A-opaque-collapse",
+    "at": "$.tracks[0].body"
   },
   "250/1APcTv7DyEkW": {
     "match": false,
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Track→[Stack→[Code,Code]]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "A-opaque-collapse",
+    "at": "$.body"
   },
   "250/1Blofe-rrvDH": {
     "match": true,
@@ -517,21 +575,27 @@
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Track→[Code]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "C-via-vs-blob",
+    "at": "$.body"
   },
   "250/1HuE2qcvhtT9": {
     "match": false,
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Track→[Code]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "C-via-vs-blob",
+    "at": "$.body"
   },
   "250/1IcDAF1qbl33": {
     "match": false,
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Track→[Stack→[When→[…],When→[…],When→[…],When→[…],When→[…],When→[…],+12]]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "A-opaque-collapse",
+    "at": "$.body"
   },
   "250/1IjczOoeyWgT": {
     "match": true,
@@ -543,7 +607,9 @@
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Track→[Code]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "C-via-vs-blob",
+    "at": "$.body"
   },
   "250/1J0KTN4g3M3h": {
     "match": true,
@@ -575,7 +641,9 @@
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Track→[Code]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "C-via-vs-blob",
+    "at": "$.body"
   },
   "500/361866lgM4YU": {
     "match": true,
@@ -602,7 +670,9 @@
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Track→[Slow→[Stack→[…,…]]]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "A-opaque-collapse",
+    "at": "$.body"
   },
   "500/37nYUycrx0_w": {
     "match": true,
@@ -624,14 +694,18 @@
     "shapeMatch": false,
     "tagMatch": true,
     "direct": "Stack→[Track→[Code],Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[When→[…]],Track→[Param→[…]],+5]",
-    "staged": "Stack→[Track→[Code],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[When→[…]],Track→[Param→[…]],+5]"
+    "staged": "Stack→[Track→[Code],Track→[When→[…]],Track→[When→[…]],Track→[Code],Track→[When→[…]],Track→[Param→[…]],+5]",
+    "cls": "A-opaque-collapse",
+    "at": "$.tracks[3].body"
   },
   "500/3AQWzhu339V6": {
     "match": false,
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Track→[Code]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "C-via-vs-blob",
+    "at": "$.body"
   },
   "500/3Bn1wuXR0EYq": {
     "match": true,
@@ -643,7 +717,9 @@
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Track→[Param→[Stack→[…,…]]]",
-    "staged": "Stack→[Track→[Seq→[…,…]],Track→[Seq→[…,…,…,…]]]"
+    "staged": "Stack→[Track→[Seq→[…,…]],Track→[Seq→[…,…,…,…]]]",
+    "cls": "B-track-count",
+    "at": "$"
   },
   "500/3DK_gSN85Z_4": {
     "match": true,
@@ -665,21 +741,27 @@
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Stack→[Track→[Code],Track→[Code],Track→[Code]]",
-    "staged": "Stack→[Track→[Code],Track→[Code],Track→[Code]]"
+    "staged": "Stack→[Track→[Code],Track→[Code],Track→[Code]]",
+    "cls": "C-via-vs-blob",
+    "at": "$.tracks[1].body"
   },
   "500/3HJc0swD3JX0": {
     "match": false,
     "shapeMatch": false,
     "tagMatch": true,
     "direct": "Track→[Param→[Param→[…]]]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "A-opaque-collapse",
+    "at": "$.body"
   },
   "500/3HWHF_ZUbZD_": {
     "match": false,
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Stack→[Track→[Code],Track→[Code]]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "B-track-count",
+    "at": "$"
   },
   "500/3H_LAkg97Urt": {
     "match": true,
@@ -756,7 +838,9 @@
     "shapeMatch": false,
     "tagMatch": false,
     "direct": "Stack→[Track→[Code],Track→[Stack→[…,…]]]",
-    "staged": "Track→[Code]"
+    "staged": "Track→[Code]",
+    "cls": "B-track-count",
+    "at": "$"
   },
   "500/3OH2P5x4J4fc": {
     "match": true,
@@ -828,13 +912,17 @@
     "shapeMatch": true,
     "tagMatch": false,
     "direct": "Track→[Pure]",
-    "staged": "Track→[Pure]"
+    "staged": "Track→[Pure]",
+    "cls": "D-metadata",
+    "at": "$"
   },
   "500/3Y7PNnQdXy4F": {
     "match": false,
     "shapeMatch": true,
     "tagMatch": true,
     "direct": "Stack→[Track→[Code],Track→[Code]]",
-    "staged": "Stack→[Track→[Code],Track→[Code]]"
+    "staged": "Stack→[Track→[Code],Track→[Code]]",
+    "cls": "C-via-vs-blob",
+    "at": "$.tracks[0].body"
   }
 }

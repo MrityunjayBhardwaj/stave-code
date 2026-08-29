@@ -97,6 +97,24 @@ const DEEP_DIVERGENCE = 44
 const SHAPE_DIVERGENCE = 26
 const TAG_DIVERGENCE = 17
 
+/**
+ * The four measured mechanisms behind the 44 (#1375 step 1) — see
+ * `classifyDivergence`. Pinned per class so a fix is scored against the
+ * mechanism it claims to address, instead of against one total that three
+ * different changes could move by the same amount.
+ *
+ * Bindings are NOT a class of their own — they cut across these. 28 of the 44
+ * documents carry a top-level `const`/`let`/`var`, concentrated in A (15/18)
+ * and C (10/16) and nearly absent from B (1/8). So the binding fix in step 2
+ * should empty most of A and C, and is expected to move B by roughly nothing.
+ */
+const BY_CLASS: Record<string, number> = {
+  'A-opaque-collapse': 18,
+  'C-via-vs-blob': 16,
+  'B-track-count': 8,
+  'D-metadata': 2,
+}
+
 describe('staged pipeline vs parseStrudel — corpus parity baseline (#1375)', () => {
   // `.bakery-runs/` is gitignored — unreviewed third-party tunes (#1307). On a
   // machine without it this SKIPS rather than dying on an ENOENT naming a path
@@ -164,6 +182,13 @@ describe('staged pipeline vs parseStrudel — corpus parity baseline (#1375)', (
       expect(diverging).toBe(DEEP_DIVERGENCE)
       expect(shapeDiverging).toBe(SHAPE_DIVERGENCE)
       expect(tagDiverging).toBe(TAG_DIVERGENCE)
+
+      const byClass: Record<string, number> = {}
+      for (const r of Object.values(expected)) {
+        if (!r.match && r.cls) byClass[r.cls] = (byClass[r.cls] ?? 0) + 1
+      }
+      expect(byClass).toEqual(BY_CLASS)
+      expect(Object.values(BY_CLASS).reduce((a, b) => a + b, 0)).toBe(DEEP_DIVERGENCE)
       expect(Object.keys(expected)).toHaveLength(CORPUS_SIZE)
     },
   )
