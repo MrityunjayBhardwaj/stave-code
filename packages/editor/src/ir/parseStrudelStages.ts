@@ -318,11 +318,32 @@ function parseRootWithChainMeta(
   const { root, chain } = splitRootAndChain(trimmed)
   const rootIR = parseRoot(root, trimmedOffset, undefined, bindings)
 
-  // Mirror parseExpression's Code-fallback branches (parseStrudel.ts:140-146):
+  // Mirror parseExpression's Code-fallback branch (parseStrudel.ts:1371-1379):
   // when parseRoot couldn't parse the root, the entire expression is opaque
   // — return Code(expr) (no chain stash). This guarantees PR-A regression
   // sentinel byte-equality vs today's parseStrudel for opaque inputs.
-  if (rootIR.tag === 'Code') {
+  //
+  // #1383 — the test must ask about `via`, not the tag alone. `Code` is TWO
+  // nodes wearing one tag: the parse's give-up fallback (`via === undefined`),
+  // and `wrapAsOpaque`'s STRUCTURED wrapper, which keeps the parsed chain in
+  // `via` precisely so the subtree is not dropped (PV37 wrap-never-drop). Only
+  // the first is opaque. `parseExpression` has discriminated between them since
+  // Phase 20-14 — its own comment records that checking the tag alone "treated
+  // those wrappers as opaque and discarded the entire structure" — and this
+  // parallel copy never received the port, so it discarded a real subtree and
+  // replaced it with the raw expression text plus a document-wide `loc`.
+  //
+  // That is 15 of the 20 remaining corpus divergences, and it is the quieter
+  // failure of the two: the staged node is still a legal `Code`, so a
+  // structural comparison calls both sides identical while `MusicalTimeline`
+  // — which anchors marks by `loc` containment — collapses every hap in the
+  // document onto one anchor.
+  //
+  // The binding call site 80 lines above (`isBareCode`) already uses this
+  // form. Same discrimination, other entry.
+  const rootIsBareCode =
+    rootIR.tag === 'Code' && (rootIR as { via?: unknown }).via === undefined
+  if (rootIsBareCode) {
     return IR.code(expr)
   }
 

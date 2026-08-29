@@ -181,6 +181,65 @@ describe('MINI-EXPANDED — top-level bindings resolve (#1375)', () => {
   })
 })
 
+describe('MINI-EXPANDED — a structured Code wrapper is not opaque (#1383)', () => {
+  // `Code` is TWO nodes wearing one tag. `wrapAsOpaque` returns tag 'Code' for
+  // an unrecognised method arg but keeps the parsed chain in `via` (PV37
+  // wrap-never-drop), so only `via === undefined` means the parse gave up.
+  // `parseRootWithChainMeta` tested the tag alone and threw the structure away
+  // — 15 of the 20 remaining corpus divergences, and the corpus sweep skips
+  // without `.bakery-runs/`, so these carry the fix on a clean checkout.
+  const parity = (code: string) =>
+    expect(stripStageMeta(pipeline(code))).toEqual(stripStageMeta(parseStrudel(code)))
+
+  // Each of these has a root that parses to Code WITH a `via`. All four
+  // diverged before the fix; verified by restoring the tag-only predicate.
+  it('a method call inside a mini-string arg', () =>
+    parity('note("c d".sub(12)).s("sawtooth")'))
+  it('the same shape behind a $: label', () =>
+    parity('$: note("c d".sub(12)).s("sawtooth")'))
+  it('a longer chain past the wrapper', () =>
+    parity('note("e3 d2 g4 a3".sub(12)).s("sawtooth").lpf("333:2")'))
+  it('an arg-side pattern operator', () =>
+    parity('n("0 2".add("<0 1>")).scale("C:minor")'))
+
+  it('the structure survives — it is not replaced by a blob', () => {
+    // The count is not the point; what the consumers receive is. Before the
+    // fix this was a bare `Code` carrying the whole expression as text.
+    const code = 'note("c d".sub(12)).s("sawtooth")'
+    expect(unwrapD1(stripStageMeta(pipeline(code))).tag).toBe('Param')
+  })
+
+  it('the loc stays narrow, which is what the timeline anchors on', () => {
+    // The quieter half of the defect: both sides emit a legal node, so a
+    // structural check cannot see it, while a document-wide `loc` collapses
+    // every hap onto one anchor in MusicalTimeline.
+    const code = 'note("c d".sub(12)).s("sawtooth")'
+    const staged = unwrapD1(stripStageMeta(pipeline(code)))
+    const direct = unwrapD1(stripStageMeta(parseStrudel(code)))
+    expect(staged.loc).toEqual(direct.loc)
+    // 19..33 — the `.s("sawtooth")` span, not 0..33. The whole-expression
+    // fallback this branch used to take spans the entire document.
+    const span = staged.loc![0]
+    expect(span.end - span.start).toBeLessThan(code.length)
+  })
+
+  // NEGATIVE CONTROL — a chained root that parses cleanly (no `via` wrapper).
+  // These passed BEFORE the fix too. Without them this block could be green
+  // because chains work at all, rather than because `via` is discriminated.
+  it('a plainly-parsed root is unaffected (control)', () =>
+    parity('n("0 2 4 7").fast(2).scale("C:minor")'))
+  it('a template-literal root is unaffected (control)', () =>
+    parity('note(`<c d>`).s("square")'))
+
+  it('a genuinely opaque root still falls back to whole-expression Code', () => {
+    // The branch must still fire for its real case, or the fix has simply
+    // deleted the fallback. `via === undefined` is what opaque means.
+    const code = 'someUnknownThing().s("bd")'
+    parity(code)
+    expect(unwrapD1(stripStageMeta(pipeline(code))).tag).toBe('Code')
+  })
+})
+
 describe('RAW — a bare document with several top-level statements (#1376)', () => {
   it('gives every statement its own track, and loses none', () => {
     const code = 'sound ("hh hh hh hh")\nsound ("[bd bd][sd bd] bd sd")'
