@@ -181,6 +181,70 @@ describe('MINI-EXPANDED — top-level bindings resolve (#1375)', () => {
   })
 })
 
+describe('MINI-EXPANDED — a commented track keeps its name and its range (#1384)', () => {
+  // `extractTracks` deliberately keeps a commented `$:`/`name:` line as an
+  // empty-bodied track so the numbering stays stable when a user toggles the
+  // comment prefix. RAW threads its label and `$:`-line range through; the
+  // empty-code guard returned before reading them, so CHAIN-APPLIED had
+  // nothing to build the wrapper from.
+  const parity = (code: string) =>
+    expect(stripStageMeta(pipeline(code))).toEqual(stripStageMeta(parseStrudel(code)))
+
+  it('a lone commented labelled track keeps its trackId', () => {
+    const code = '// PR: s("bd hh")'
+    parity(code)
+    // The user-visible half: the row was renaming itself to `d1` the moment
+    // the line was commented out — #671's failure mode, still live here.
+    const ir = stripStageMeta(pipeline(code)) as { trackId?: string }
+    expect(ir.trackId).toBe('PR')
+  })
+
+  it('and keeps its source range, which is what the timeline anchors on', () => {
+    const code = '// PR: s("bd hh")'
+    expect(stripStageMeta(pipeline(code)).loc).toEqual(
+      stripStageMeta(parseStrudel(code)).loc,
+    )
+    expect(stripStageMeta(pipeline(code)).loc).toBeDefined()
+  })
+
+  it('a lone commented $: keeps d1 and still gets its range', () =>
+    parity('// $: s("bd hh")'))
+
+  it('a commented track among live ones holds its slot', () =>
+    parity('drums: s("bd")\n// PR: s("hh")\nbass: s("cp")'))
+
+  it('an uncommented labelled track is unchanged (control)', () =>
+    parity('PR: s("bd hh")'))
+
+  // CONTROLS — these reach the SAME empty-code guard with no label to attach.
+  // They passed before the fix and must still pass: the guard must not start
+  // inventing metadata where RAW threaded none.
+  it('an all-prelude document has no label or loc (control)', () => {
+    parity('setcps(120/240)')
+    expect(stripStageMeta(pipeline('setcps(120/240)')).loc).toBeUndefined()
+  })
+
+  it('a comment-only document has no label or loc (control)', () => {
+    parity('// just a comment')
+    expect(stripStageMeta(pipeline('// just a comment')).loc).toBeUndefined()
+  })
+
+  it('PINNED: an EMPTY document diverges, and predates this fix', () => {
+    // Found while choosing a control, and deliberately not fixed here.
+    // `parseStrudel('')` returns a bare `IR.pure()` from its own top guard,
+    // with NO synthetic Track wrapper; the staged pipeline wraps every
+    // non-multi-track shape in `Track('d1', …)` at CHAIN-APPLIED. Verified
+    // identical before and after this change by stashing it.
+    //
+    // A real breach of the byte-identity contract, with no reachable
+    // consequence: no corpus document is empty, and an empty editor produces
+    // no haps either way. Pinned rather than left silent so it cannot drift
+    // in either direction unnoticed.
+    expect(stripStageMeta(parseStrudel('')).tag).toBe('Pure')
+    expect(stripStageMeta(pipeline('')).tag).toBe('Track')
+  })
+})
+
 describe('MINI-EXPANDED — a structured Code wrapper is not opaque (#1383)', () => {
   // `Code` is TWO nodes wearing one tag. `wrapAsOpaque` returns tag 'Code' for
   // an unrecognised method arg but keeps the parsed chain in `via` (PV37
