@@ -786,6 +786,28 @@ export interface ChromeContext {
    * displays) opt out cleanly.
    */
   readonly onToggleAutoRefresh?: () => void
+
+  /**
+   * Cycle/Loop state for a document that ENDS ON ITS OWN (#1388). `true` means
+   * the user has asked an arranged song to keep repeating instead of stopping
+   * at its last cycle.
+   *
+   * Only meaningful alongside `onToggleLoop` — see below.
+   */
+  readonly loopEnabled?: boolean
+
+  /**
+   * Toggle handler for Cycle/Loop. Supplied by the embedder ONLY for documents
+   * that have a definite end; when omitted the button is hidden, exactly like
+   * the live-mode toggle above.
+   *
+   * ⚠ THE OMISSION IS THE FEATURE, not an oversight. 96.7% of real documents
+   * have no arrangement and already loop forever, so a Loop toggle on them
+   * would be a control that visibly does nothing — and a control that does
+   * nothing teaches the user that the ones that DO work might not. The button
+   * appears exactly when it changes what happens.
+   */
+  readonly onToggleLoop?: () => void
 }
 
 /**

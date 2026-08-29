@@ -106,6 +106,64 @@ function LiveModeToggle({
 }
 
 /**
+ * Cycle/Loop toggle — the transport control every DAW has, shown only for a
+ * document that would otherwise STOP at its end (#1388).
+ *
+ * Default OFF, so an arranged song plays through once. With it on, the song
+ * repeats the way it always did. Rendered only when `onToggleLoop` is supplied
+ * (see `ChromeContext.onToggleLoop`): the embedder omits it for the 96.7% of
+ * documents that have no arrangement, where the button would change nothing.
+ */
+function LoopToggle({
+  loopEnabled,
+  onToggle,
+}: {
+  loopEnabled: boolean
+  onToggle: () => void
+}): React.ReactElement {
+  const baseStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: '3px 8px',
+    borderRadius: 3,
+    fontSize: 10,
+    fontFamily: 'inherit',
+    cursor: 'pointer',
+    userSelect: 'none',
+  }
+  return (
+    <button
+      data-testid="strudel-chrome-loop-toggle"
+      data-loop={loopEnabled ? 'on' : 'off'}
+      onClick={onToggle}
+      title={
+        loopEnabled
+          ? 'Loop ON — this arranged song repeats instead of stopping at its end'
+          : 'Loop OFF — this arranged song plays through once and stops'
+      }
+      style={
+        loopEnabled
+          ? {
+              ...baseStyle,
+              background: 'var(--accent-dim)',
+              color: 'var(--accent-strong, var(--accent))',
+              border: '1px solid var(--accent-dim)',
+            }
+          : {
+              ...baseStyle,
+              background: 'none',
+              color: 'var(--foreground-muted)',
+              border: '1px solid var(--border)',
+            }
+      }
+    >
+      {loopEnabled ? '↻ loop' : '↻ once'}
+    </button>
+  )
+}
+
+/**
  * Transport chrome for `.strudel` files. Renders inside
  * `EditorView.chromeSlot` via the embedder. Subscribes to nothing — every
  * piece of state comes through `ctx`.
@@ -120,6 +178,8 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
     chromeExtras,
     autoRefresh,
     onToggleAutoRefresh,
+    loopEnabled,
+    onToggleLoop,
   } = ctx
   return (
     <div
@@ -176,6 +236,10 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
           autoRefresh={autoRefresh ?? false}
           onToggle={onToggleAutoRefresh}
         />
+      )}
+
+      {onToggleLoop && (
+        <LoopToggle loopEnabled={loopEnabled ?? false} onToggle={onToggleLoop} />
       )}
 
       {chromeExtras && (

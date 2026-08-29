@@ -43369,6 +43369,44 @@ function LiveModeToggle({
   );
 }
 __name(LiveModeToggle, "LiveModeToggle");
+function LoopToggle({
+  loopEnabled,
+  onToggle
+}) {
+  const baseStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "3px 8px",
+    borderRadius: 3,
+    fontSize: 10,
+    fontFamily: "inherit",
+    cursor: "pointer",
+    userSelect: "none"
+  };
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "button",
+    {
+      "data-testid": "strudel-chrome-loop-toggle",
+      "data-loop": loopEnabled ? "on" : "off",
+      onClick: onToggle,
+      title: loopEnabled ? "Loop ON \u2014 this arranged song repeats instead of stopping at its end" : "Loop OFF \u2014 this arranged song plays through once and stops",
+      style: loopEnabled ? {
+        ...baseStyle,
+        background: "var(--accent-dim)",
+        color: "var(--accent-strong, var(--accent))",
+        border: "1px solid var(--accent-dim)"
+      } : {
+        ...baseStyle,
+        background: "none",
+        color: "var(--foreground-muted)",
+        border: "1px solid var(--border)"
+      },
+      children: loopEnabled ? "\u21BB loop" : "\u21BB once"
+    }
+  );
+}
+__name(LoopToggle, "LoopToggle");
 function StrudelChrome(ctx) {
   const {
     isPlaying,
@@ -43378,7 +43416,9 @@ function StrudelChrome(ctx) {
     onStop,
     chromeExtras,
     autoRefresh,
-    onToggleAutoRefresh
+    onToggleAutoRefresh,
+    loopEnabled,
+    onToggleLoop
   } = ctx;
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
@@ -43438,6 +43478,7 @@ function StrudelChrome(ctx) {
             onToggle: onToggleAutoRefresh
           }
         ),
+        onToggleLoop && /* @__PURE__ */ jsxRuntime.jsx(LoopToggle, { loopEnabled: loopEnabled ?? false, onToggle: onToggleLoop }),
         chromeExtras && /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
