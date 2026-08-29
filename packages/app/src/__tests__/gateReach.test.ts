@@ -29,6 +29,21 @@
  * would fail on every honest addition and teach the next person to update the
  * number without reading why. What must not silently change is the gate's
  * REACH: whether the command restricts vitest to a subdirectory.
+ *
+ * ── #1379: THE ENTRY POINT MOVED ─────────────────────────────────────────────
+ * The gate no longer spells `vitest run` literally — it runs `vitest-guard.mjs`,
+ * a wrapper that raises the worker heap ceiling and makes a killed run legible,
+ * and that passes every argument through untouched. The PROPERTY is unchanged
+ * (no positional path filter); only the token the read anchors on moved.
+ *
+ * That change broke this test's READ before it broke anything real, and the way
+ * it broke is worth keeping in mind: `indexOf('vitest run')` returned -1, the
+ * slice ran from the wrong offset, and the assertion failed on garbage tokens.
+ * It failed loudly only by luck — a slightly different command string would have
+ * sliced to `[]` and PASSED, reporting "no filter" for a command the read no
+ * longer understood. So the parse now returns an explicit sentinel when it finds
+ * no entry point at all, and a control arm pins that. A read that cannot find
+ * what it is reading must fail, never agree.
  */
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -44,14 +59,29 @@ describe('#1175 — the app gate reaches this package, not a subdirectory of it'
     }
   ).scripts
 
+  /**
+   * The vitest entry point in a gate command: vitest itself, or the #1379 guard
+   * that wraps it and forwards every argument. Anything after it that is not a
+   * flag is a path filter — and a path filter is what put 646 tests outside
+   * every gate.
+   */
+  const ENTRY = /vitest run|vitest-guard\.mjs/
+
+  /** `NO_ENTRY` rather than `[]`: a read that cannot find its anchor must FAIL. */
+  const NO_ENTRY = ['<no vitest entry point found in the command>']
+
+  const positionalsAfterEntry = (cmd: string): string[] => {
+    const m = ENTRY.exec(cmd)
+    if (!m) return NO_ENTRY
+    const after = cmd.slice(m.index + m[0].length).trim()
+    return after.split(/\s+/).filter((t) => t.length > 0 && !t.startsWith('-'))
+  }
+
   it('gate:editing:app runs vitest with no path filter', () => {
     const cmd = scripts['gate:editing:app']
     expect(cmd, 'the root package.json no longer defines gate:editing:app').toBeTruthy()
 
-    // Everything after `vitest run` that is not a flag (or a flag's value) is a
-    // path filter, and a path filter is what put 646 tests outside every gate.
-    const after = cmd.slice(cmd.indexOf('vitest run') + 'vitest run'.length).trim()
-    const positional = after.split(/\s+/).filter((t) => t.length > 0 && !t.startsWith('-'))
+    const positional = positionalsAfterEntry(cmd)
 
     expect(
       positional,
@@ -64,9 +94,26 @@ describe('#1175 — the app gate reaches this package, not a subdirectory of it'
   it('control arm: the same read would SEE a path filter if one were there', () => {
     // Without this, a broken read (wrong path, renamed key, changed shape) would
     // report "no filter" and look exactly like the property holding.
-    const withFilter = 'pnpm --filter @stave/app exec vitest run tests/parity-corpus'
-    const after = withFilter.slice(withFilter.indexOf('vitest run') + 'vitest run'.length).trim()
-    const positional = after.split(/\s+/).filter((t) => t.length > 0 && !t.startsWith('-'))
-    expect(positional).toEqual(['tests/parity-corpus'])
+    expect(
+      positionalsAfterEntry('pnpm --filter @stave/app exec vitest run tests/parity-corpus'),
+    ).toEqual(['tests/parity-corpus'])
+  })
+
+  it('control arm: it sees a filter through the #1379 guard too', () => {
+    // The guard forwards arguments, so a filter smuggled in behind it is just
+    // as excluding as one after a bare `vitest run`.
+    expect(
+      positionalsAfterEntry(
+        'pnpm --filter @stave/app exec node scripts/vitest-guard.mjs tests/parity-corpus',
+      ),
+    ).toEqual(['tests/parity-corpus'])
+  })
+
+  it('control arm: a command it cannot parse FAILS rather than reporting "no filter"', () => {
+    // The #1379 lesson. When the entry token moved, the old read sliced from
+    // offset -1 and could have agreed with itself on garbage.
+    expect(positionalsAfterEntry('pnpm --filter @stave/app exec some-other-runner')).toEqual(
+      NO_ENTRY,
+    )
   })
 })
