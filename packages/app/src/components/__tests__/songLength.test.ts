@@ -27,6 +27,7 @@ import {
   MAX_BOUNCE_SECONDS,
   type SongLengthDeps,
   type BounceSizing,
+  type SongIRs,
 } from '../songLength'
 
 const bd = IR.play('bd')
@@ -62,6 +63,14 @@ function depsWith(onsets: IREvent[]): SongLengthDeps {
   }
 }
 
+/**
+ * The same IR for both views — the shape every pre-#1373 caller assumed.
+ * Only tests about the STRUCTURE/MEASUREMENT split pass the two apart.
+ */
+function both(ir: PatternIR): SongIRs {
+  return { structural: ir, analysis: ir }
+}
+
 /** `n` cycles of the SAME sound — fingerprints repeat, so a period is findable. */
 function repeating(cycles: number): IREvent[] {
   return Array.from({ length: cycles }, (_, c) => ev(c, 'bd'))
@@ -76,7 +85,7 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
   it('a document with no IR is `no-document`, not a zero-length song', async () => {
     // The same distinction `songExtent` is typed for, one layer up: a bounce
     // must not read "nothing to measure" as "measured zero".
-    expect(await measureSongLength(null, depsWith([]))).toEqual({
+    expect(await measureSongLength({ structural: null, analysis: null }, depsWith([]))).toEqual({
       kind: 'unknown',
       why: 'no-document',
     })
@@ -93,11 +102,52 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
       },
       createCollector: () => ({ collectFn: undefined, hasUnheardTrack: undefined }),
     }
-    expect(await measureSongLength(ir, deps)).toEqual({ kind: 'arranged', cycles: 28 })
+    expect(await measureSongLength({ structural: ir, analysis: null }, deps)).toEqual({
+      kind: 'arranged',
+      cycles: 28,
+    })
+  })
+
+  it('an arrangement wins over a period that disagrees with it (#1373)', async () => {
+    // THE ARM THAT WOULD HAVE CAUGHT #1373. Before it, the structural question
+    // was asked of the published snapshot, whose pass pipeline leaves a
+    // top-level `arrange(...)` as an opaque `Code` — so `songExtent` answered
+    // `loop` for every document and this branch never fired in the running app.
+    //
+    // It hid because on a simple arrangement the two numbers COINCIDE:
+    // `arrange([4,a],[8,b],[4,c])` has Σ weights 16 and a measured period of
+    // 16. Here they are deliberately pulled apart — a 28-cycle arrangement over
+    // content that repeats every cycle — so only a reader of the STRUCTURAL IR
+    // can get 28. Measured live: a 104-cycle song whose bass alternates over 4
+    // was offered an 8-second bounce.
+    const arranged = IR.arrange('arrange', [arm(4), arm(8), arm(16)])
+    const result = await measureSongLength(
+      { structural: arranged, analysis: bd },
+      depsWith(repeating(64)),
+    )
+    expect(result).toEqual({ kind: 'arranged', cycles: 28 })
+  })
+
+  it('sizes an arrangement that has never been evaluated', async () => {
+    // Structure needs no playback, so a song can be sized before a note sounds.
+    // The old shape could not express this: one IR meant no analysis IR was the
+    // same as no document.
+    const arranged = IR.arrange('arrange', [arm(2), arm(2)])
+    expect(
+      await measureSongLength({ structural: arranged, analysis: null }, depsWith([])),
+    ).toEqual({ kind: 'arranged', cycles: 4 })
+  })
+
+  it('an unevaluated document with no arrangement is `no-document`, not `silent`', async () => {
+    // The period path genuinely needs the snapshot. Absent it there is nothing
+    // to measure, which is not the same as measuring and hearing nothing.
+    expect(
+      await measureSongLength({ structural: bd, analysis: null }, depsWith([])),
+    ).toEqual({ kind: 'unknown', why: 'no-document' })
   })
 
   it('a repeating loop yields its MEASURED period', async () => {
-    const result = await measureSongLength(bd, depsWith(repeating(64)))
+    const result = await measureSongLength(both(bd), depsWith(repeating(64)))
     expect(result.kind).toBe('loop')
     if (result.kind === 'loop') expect(result.periodCycles).toBeGreaterThan(0)
   })
@@ -106,14 +156,14 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     // This is the arm the module exists for. The analysis still returns a span
     // for this document; that span is where it gave up, and a bounce driven off
     // it renders a length nobody asked for. `unknown` is the honest answer.
-    const result = await measureSongLength(bd, depsWith(everChanging(300)))
+    const result = await measureSongLength(both(bd), depsWith(everChanging(300)))
     expect(result).toEqual({ kind: 'unknown', why: 'no-period' })
   })
 
   it('a document with no onsets at all is `silent`, distinct from unmeasurable', async () => {
     // Two different situations for the user: nothing to bounce, versus something
     // to bounce whose length we cannot name. Collapsing them loses the message.
-    expect(await measureSongLength(bd, depsWith([]))).toEqual({
+    expect(await measureSongLength(both(bd), depsWith([]))).toEqual({
       kind: 'unknown',
       why: 'silent',
     })
@@ -127,7 +177,7 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
       ...depsWith(repeating(64)),
       songExtent: () => ({ kind: 'opaque' }),
     }
-    expect(await measureSongLength(bd, deps)).toEqual({
+    expect(await measureSongLength(both(bd), deps)).toEqual({
       kind: 'unknown',
       why: 'no-period',
     })
@@ -138,7 +188,7 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
       ...depsWith([]),
       analyzeSong: () => Promise.reject(new Error('boom')),
     }
-    expect(await measureSongLength(bd, deps)).toEqual({
+    expect(await measureSongLength(both(bd), deps)).toEqual({
       kind: 'unknown',
       why: 'no-period',
     })
