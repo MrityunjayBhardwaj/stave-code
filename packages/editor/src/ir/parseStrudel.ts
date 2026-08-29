@@ -529,7 +529,7 @@ const STMT_CONTINUATION_STARTS = new Set([
   '.', '(', '[', '`', ',', '+', '-', '*', '/', '%', '?', ':', '&', '|', '<', '>', '=',
 ])
 
-function splitTopLevelStatements(
+export function splitTopLevelStatements(
   body: string,
   baseOffset: number,
 ): { text: string; offset: number }[] {
@@ -665,13 +665,13 @@ function splitTopLevelStatements(
  * PV49 loc-additive by construction (filter() removes items; the remaining
  * items' `offset` fields are untouched; the source string is never mutated).
  */
-function stripSideEffectStatements(
+export function stripSideEffectStatements(
   stmts: { text: string; offset: number }[],
 ): { text: string; offset: number }[] {
   return stmts.filter((s) => !NON_TRACK_HEAD_RE.test(s.text))
 }
 
-const BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/
+export const BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/
 
 function buildBindingMap(
   body: string,

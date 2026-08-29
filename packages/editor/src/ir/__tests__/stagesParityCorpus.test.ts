@@ -15,14 +15,19 @@
  * Measured over the 150-tune corpus, "diverges" has three defensible readings,
  * and they differ by 2.6×:
  *
- *   44  deep equality      — the stated contract, and what D-06 asserts
- *   26  full shape tree    — the two sides disagree on structure anywhere
- *   17  top-level tag only — they disagree at the FIRST node inside Track
+ *   39  deep equality      — the stated contract, and what D-06 asserts
+ *   21  full shape tree    — the two sides disagree on structure anywhere
+ *   12  top-level tag only — they disagree at the FIRST node inside Track
  *
- * #1375's body quotes **17**. That is the weakest of the three: it counts a
+ * (They were 44 / 26 / 17 when first pinned. #1376 ported `parseStrudel`'s
+ * multi-statement track split to the RAW stage, which fixed 5 documents and
+ * moved nothing else.)
+ *
+ * #1375's body quotes 17, measured before #1376 landed. That reading is the
+ * weakest of the three: it counts a
  * document only when the very top node changed, so a document whose structure
  * is wrong three levels down does not appear in it at all. The contract the file
- * actually states is byte-identity, and by that measure **44 of 150 (29%)**
+ * actually states is byte-identity, and by that measure **39 of 150 (26%)**
  * diverge. All three are pinned below so no fix can improve one while quietly
  * worsening another.
  *
@@ -48,16 +53,20 @@
  * skipped, for the same reason.
  *
  * ── WHAT THEY ARE, as of this pin ────────────────────────────────────────────
- * Of the 17 tag-level divergences, 10 have a top-level `const`/`let` binding
- * (the 44 deep divergences are not yet classified). `parseStrudel` threads a
+ * The mechanisms are classified per document (see `classifyDivergence`); the
+ * largest remaining group is bindings. `parseStrudel` threads a
  * `bindings` map through its parse (`parseStrudel.ts:849-854`); the staged copy
  * never builds one — `parseRootWithChainMeta` (`parseStrudelStages.ts:218`)
  * calls `parseRoot` directly and stops — so a document that NAMES anything
  * collapses to an opaque `Code` node at MINI-EXPANDED.
  *
- * The remaining 7 tag-level cases, and the 18 documents that diverge deeply
- * while agreeing on shape, are UNCHARACTERISED at the time of this pin. They are
- * not guessed at here; step 1 of #1375 classifies them from these rows.
+ * ⚠ The 3 remaining `B-track-count` documents are NOT a bug to be fixed by
+ * making the staged path match `parseStrudel`. They are #950's deliberate
+ * behaviour: a top-level comma expands to separate Track lanes in the staged
+ * path so the timeline can anchor marks per arm, while `parseStrudel` keeps one
+ * Track containing a Stack. For those documents the contract at
+ * `parseStrudelStages.ts:6` is false BY DESIGN, and reconciling it is a
+ * decision about #950, not a defect to patch here.
  *
  * ⚠ The `Stack→Seq` and `Param→Stack` rows deserve more alarm than the
  * `→Code` ones. An opaque blob is visibly nothing and fails loudly downstream;
@@ -93,9 +102,9 @@ const CORPUS_SIZE = 150
  * so neither can drift, and so that a fix which improves one while worsening
  * the other cannot report success.
  */
-const DEEP_DIVERGENCE = 44
-const SHAPE_DIVERGENCE = 26
-const TAG_DIVERGENCE = 17
+const DEEP_DIVERGENCE = 39
+const SHAPE_DIVERGENCE = 21
+const TAG_DIVERGENCE = 12
 
 /**
  * The four measured mechanisms behind the 44 (#1375 step 1) — see
@@ -111,7 +120,7 @@ const TAG_DIVERGENCE = 17
 const BY_CLASS: Record<string, number> = {
   'A-opaque-collapse': 18,
   'C-via-vs-blob': 16,
-  'B-track-count': 8,
+  'B-track-count': 3,
   'D-metadata': 2,
 }
 

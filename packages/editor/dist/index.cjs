@@ -3163,6 +3163,30 @@ function runRawStage(input) {
         loc: [{ start: stripped.offset, end: code.length }]
       };
     }
+    const bareStmts = stripSideEffectStatements(
+      splitTopLevelStatements(stripped.body, stripped.offset)
+    );
+    if (bareStmts.length > 1 && !bareStmts.some((st) => BINDING_RE.test(st.text))) {
+      return {
+        tag: "Stack",
+        tracks: bareStmts.map((st) => ({
+          tag: "Code",
+          code: st.text,
+          lang: "strudel",
+          loc: [{ start: st.offset, end: st.offset + st.text.length }],
+          // The statement's OWN range, threaded through the EXISTING
+          // dollarStart/dollarEnd channel so CHAIN-APPLIED builds
+          // `Track(d{i+1}, …, {loc})` with no new metadata path.
+          // `trackLabel` stays undefined → `trackIdFromLabel` yields d{i+1},
+          // matching parseStrudel.ts's `IR.track(\`d${i + 1}\`, …)`.
+          dollarStart: st.offset,
+          dollarEnd: st.offset + st.text.length
+        })),
+        loc: [{ start: 0, end: code.length }]
+        // userMethod intentionally undefined — synthetic-from-RAW wrapper,
+        // same as the multi-`$:` return below.
+      };
+    }
     const bodyTrimStart = stripped.body.search(/\S/);
     const start = stripped.offset + (bodyTrimStart >= 0 ? bodyTrimStart : 0);
     return {
