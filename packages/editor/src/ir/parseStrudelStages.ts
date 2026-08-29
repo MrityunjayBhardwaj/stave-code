@@ -29,6 +29,7 @@ import {
   splitTopLevelStatements,
   stripSideEffectStatements,
   BINDING_RE,
+  buildBindingMap,
 } from './parseStrudel'
 
 /**
@@ -209,10 +210,45 @@ export function runMiniExpandedStage(input: PatternIR): PatternIR {
     // 0-track or 1-track from RAW. Empty Code (empty source from RAW)
     // → IR.pure() to mirror parseStrudel's empty-source behavior.
     if (!input.code.trim()) return IR.pure()
-    const parsed = parseRootWithChainMeta(input.code, input.loc?.[0]?.start ?? 0)
+    const base = input.loc?.[0]?.start ?? 0
     // #671 — carry a lone track's `name:`/`$:` label AND `$:`-line range
     // through to CHAIN-APPLIED (mirrors the multi-track threading below).
     const cMeta = input as unknown as { trackLabel?: string; dollarStart?: number; dollarEnd?: number }
+
+    // #1375 step 2 — resolve top-level `const`/`let`/`var` bindings.
+    //
+    // `parseStrudel` runs `buildBindingMap` as its stage 0.5 in the no-`$:`
+    // branch (parseStrudel.ts:853-871) and re-parses the final expression with
+    // the resolved map. The staged pipeline never did, so `parseRoot` met a
+    // bare identifier it could not resolve and the whole document fell to an
+    // opaque `Code` node — the single largest group of divergences on the
+    // corpus, and the reason `arrange()` behind a `const` sized a 3:28 song at
+    // 0:08 (#1373).
+    //
+    // ONLY the bare branch, matching `parseStrudel`: a `$:`/`name:` track is
+    // parsed by the multi-track path, which passes no bindings. RAW marks those
+    // with `trackLabel`/`dollarStart`, so their absence IS the discriminator —
+    // no new signal, and no risk of applying bindings where the reference
+    // implementation does not.
+    if (cMeta.trackLabel === undefined && cMeta.dollarStart === undefined) {
+      const bound = buildBindingMap(input.code, base)
+      if (bound) {
+        const boundParsed = parseRootWithChainMeta(
+          bound.finalExpr,
+          bound.finalOffset,
+          bound.bindings,
+        )
+        // P67 (parseStrudel.ts:864-871) — if the final expression STILL
+        // resolves to bare Code the map did not help, and wrapping an opaque
+        // body would be worse than the existing whole-document fallback. A
+        // structured `Code.via` is not bare, and is kept.
+        const isBareCode =
+          boundParsed.tag === 'Code' && (boundParsed as { via?: unknown }).via === undefined
+        if (!isBareCode) return boundParsed
+      }
+    }
+
+    const parsed = parseRootWithChainMeta(input.code, base)
     if (cMeta.trackLabel !== undefined) {
       return {
         ...(parsed as object),
@@ -264,13 +300,23 @@ export function runMiniExpandedStage(input: PatternIR): PatternIR {
  * Both branches preserve PR-A regression sentinel (T-05.c byte-equal vs
  * parseStrudel).
  */
-function parseRootWithChainMeta(expr: string, baseOffset: number): PatternIR {
+function parseRootWithChainMeta(
+  expr: string,
+  baseOffset: number,
+  // #1375 step 2 — the resolved top-level bindings, when this expression came
+  // from a `bindings*, finalExpr` document. Threaded into `parseRoot` exactly
+  // as `parseExpression` threads it (parseStrudel.ts:1367), and stashed for
+  // CHAIN-APPLIED so `applyChain` resolves bound identifiers inside method
+  // chains too (parseStrudel.ts:1388). `undefined` everywhere else keeps every
+  // existing call byte-identical.
+  bindings?: ReadonlyMap<string, PatternIR>,
+): PatternIR {
   if (!expr.trim()) return IR.pure()
   const leadingWs = expr.length - expr.trimStart().length
   const trimmedOffset = baseOffset + leadingWs
   const trimmed = expr.trim()
   const { root, chain } = splitRootAndChain(trimmed)
-  const rootIR = parseRoot(root, trimmedOffset)
+  const rootIR = parseRoot(root, trimmedOffset, undefined, bindings)
 
   // Mirror parseExpression's Code-fallback branches (parseStrudel.ts:140-146):
   // when parseRoot couldn't parse the root, the entire expression is opaque
@@ -287,6 +333,7 @@ function parseRootWithChainMeta(expr: string, baseOffset: number): PatternIR {
       ...rootIR,
       unresolvedChain: chain,
       chainOffset,
+      ...(bindings ? { unresolvedBindings: bindings } : {}),
     } as PatternIR
   }
   return rootIR
@@ -431,7 +478,11 @@ export function runChainAppliedStage(input: PatternIR): PatternIR {
  * metadata. Returns a clean PatternIR with no unresolvedChain/chainOffset.
  */
 function applyOnTrack(node: PatternIR): PatternIR {
-  const m = node as { unresolvedChain?: string; chainOffset?: number }
+  const m = node as {
+    unresolvedChain?: string
+    chainOffset?: number
+    unresolvedBindings?: ReadonlyMap<string, PatternIR>
+  }
   if (m.unresolvedChain === undefined) {
     // No chain to apply — but the metadata fields may still exist as
     // `undefined` after a `{ ...rootIR, unresolvedChain: x }` spread that
@@ -444,7 +495,7 @@ function applyOnTrack(node: PatternIR): PatternIR {
   // applyChain's output is metadata-free by construction.
   const clean = stripStageMeta(node)
   if (chain.trim()) {
-    return applyChain(clean, chain, chainOffset)
+    return applyChain(clean, chain, chainOffset, m.unresolvedBindings)
   }
   return clean
 }
@@ -459,6 +510,7 @@ function stripStageMeta(node: PatternIR): PatternIR {
   const n = node as Record<string, unknown>
   if (
     !('unresolvedChain' in n) &&
+    !('unresolvedBindings' in n) &&
     !('chainOffset' in n) &&
     !('dollarStart' in n) &&
     !('dollarEnd' in n) &&
@@ -468,6 +520,7 @@ function stripStageMeta(node: PatternIR): PatternIR {
   }
   const {
     unresolvedChain: _u,
+    unresolvedBindings: _ub,
     chainOffset: _o,
     dollarStart: _ds,
     dollarEnd: _de,
@@ -477,6 +530,7 @@ function stripStageMeta(node: PatternIR): PatternIR {
     ...clean
   } = n
   void _u
+  void _ub
   void _o
   void _ds
   void _de
