@@ -22,6 +22,10 @@ import {
   LOCALSTORAGE_KEY,
 } from '../irProjection'
 import { unwrapD1 } from '../../../../editor/src/ir/__tests__/helpers/unwrapD1'
+// The staged pipeline as the app publishes it (#1375) — the SHARED helper the
+// corpus parity gate uses, not a second copy: the defect that issue tracked was
+// a parallel reimplementation kept in sync by hand.
+import { pipeline, stripStageMeta } from '../../../../editor/src/ir/__tests__/helpers/stagesParity'
 
 // Phase 20-11 γ-4 — drill through the synthetic d1 Track wrapper. The
 // projection tests assert on the inner shape (Stack, Late, Degrade, ...);
@@ -917,5 +921,60 @@ describe('#475 — NamedPick projection (object/named-key pick family)', () => {
     expect(projectedChildren(ghost)).toEqual([])
     expect(() => projectedLabel(ghost)).not.toThrow()
     expect(projectedLabel(ghost)).toBe('FutureTag')
+  })
+})
+
+/**
+ * #1375 step 5 — the Inspector's downstream payoff, at the last reachable layer.
+ *
+ * ── WHY THIS ARM EXISTS AND WHY IT IS HERE ───────────────────────────────────
+ * #1375 opened on a real complaint about this file's neighbours: `irProjection`
+ * carries `Arrange` cases that "are written to display arrangements they can
+ * never be handed", because the STAGED pipeline — the one whose snapshot the
+ * Inspector actually reads — collapsed an arrangement behind a `const` into an
+ * opaque `Code`. The issue's own example:
+ *
+ *   arrange([4, s("bd")], [8, s("hh")])          FINAL = Track→[Arrange(2)]  ✓
+ *   const a = …; arrange([4, a], [8, b])         FINAL = Track→[Code]        ✗
+ *
+ * ⚠ THE CORPUS PARITY GATE CANNOT SEE THIS. That gate pins the staged pipeline
+ * against `parseStrudel`, so it asks whether the two AGREE — and if both
+ * regressed to `Code` together it would stay green while the Inspector showed a
+ * blob. This arm asks the different question: is the projection handed
+ * STRUCTURE at all. Every other test in this file feeds the projection an IR it
+ * built itself, which cannot answer that either.
+ *
+ * ⚠ AND IT STOPS AT THE PROJECTION, deliberately. The rendered panel is NOT
+ * asserted here and was not observed: the Inspector's tab registration is
+ * commented out in `StaveApp` (#680), so no user can open it and its four
+ * browser specs are all `test.skip`ped for that reason. What is provable today
+ * is that the projection receives an `Arrange` rather than a blob; that the
+ * panel then draws it is the acceptance criterion of #680, not of this arm.
+ */
+describe('#1375 — the staged pipeline hands the Inspector structure, not a blob', () => {
+  const projectedTags = (root: PatternIR): string[] => {
+    const out: string[] = []
+    const walk = (n: PatternIR): void => {
+      out.push(n.tag)
+      for (const c of projectedChildren(n)) walk(c)
+    }
+    walk(root)
+    return out
+  }
+
+  it.each([
+    ['inline', 'arrange([4, s("bd")], [8, s("hh")])'],
+    ['behind a binding', 'const a = s("bd")\nconst b = s("hh")\narrange([4, a], [8, b])'],
+  ])('projects an Arrange for an arrangement %s', (_name, code) => {
+    const staged = stripStageMeta(pipeline(code))
+    const tags = projectedTags(staged)
+
+    expect(tags).toContain('Arrange')
+    // The point of the issue: no opaque node anywhere on the projected path.
+    expect(tags).not.toContain('Code')
+
+    const arrange = [staged, ...projectedChildren(staged)].find((n) => n.tag === 'Arrange')!
+    expect(projectedLabel(arrange)).toBe('arrange')
+    expect(projectedChildren(arrange)).toHaveLength(2)
   })
 })
