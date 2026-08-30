@@ -98,9 +98,15 @@ import {
   parseStrudel,
   analyzeSong,
   songExtent,
+  type SongExtent,
 } from "@stave/editor";
 import { createSongCollector } from "./musicalTimeline/songCollector";
 import { measureSongLength, type BounceSizing } from "./songLength";
+import {
+  createEndOfSongWatcher,
+  hasDefiniteEnd,
+  sameExtent,
+} from "./songTermination";
 import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 import { installBounceProbe } from "../e2e/bounceProbe";
 
@@ -142,6 +148,16 @@ function isSongTimelineVisible(): boolean {
 // does work — one evaluate per open, never per tick. Mirrors the timeline's
 // own ~250ms visibility poke; 500ms is imperceptible for "open tab → see marks".
 const TIMELINE_VISIBILITY_POLL_MS = 500;
+
+/**
+ * How often the end-of-song watcher samples the transport (#1388).
+ *
+ * This is the ONLY thing that decides how much of the song's restart is audible
+ * before it stops: at Strudel's default 0.5 cps a cycle lasts two seconds, so
+ * 50 ms is ~2.5% of a cycle. The loop body is a handful of map reads, and the
+ * timer does not exist at all while nothing is playing — see the effect below.
+ */
+const END_OF_SONG_POLL_MS = 50;
 
 // #457 — debounce for republishing the IR snapshot on a stopped code edit, so
 // the Song timeline / IR Inspector track the source as the user types without
@@ -942,6 +958,16 @@ export default function StrudelEditorClient({
   onCodeBackdropChangeRef.current = onCodeBackdropChange;
   const [runtimeStates, setRuntimeStates] = useState<Map<string, {
     isPlaying: boolean; error: Error | null; bpm?: number; autoRefresh: boolean;
+    // #1388 — the document's own answer to "does this end?", refreshed on every
+    // successful evaluate. Kept HERE rather than in a ref beside it because two
+    // consumers read it and they must not disagree: the chrome (which shows the
+    // Loop toggle only for a document that would otherwise stop) and the
+    // end-of-song watcher (which stops it). A ref would not re-render the
+    // chrome, so the toggle would appear a beat late — or not at all.
+    songExtent?: SongExtent | null;
+    // Cycle/Loop, user-set, default OFF. Only consulted for a document with a
+    // definite end; everything else already loops.
+    loopEnabled?: boolean;
   }>>(new Map());
   // Latest-value ref so the content-change subscription (#457, below) can read
   // the active file's play/live state without re-binding the subscription on
@@ -1158,6 +1184,19 @@ export default function StrudelEditorClient({
     // every successful evaluate gives the "fix-and-continue" flow its natural
     // feedback: marker appears while broken, disappears the moment it parses.
     runtime.onEvaluateSuccess((evaluatedCode: string) => {
+      // #1388 — does this document END? Measured off the EXACT code that was
+      // just evaluated, not a fresh `getFile()` read: that content is a lagging
+      // snapshot racing the next eval, and an extent measured from the wrong
+      // revision would stop the song at the previous arrangement's length.
+      // Language-gated exactly like the bounce's structural parse — `parseStrudel`
+      // reads its input as JS, so pointing it at a Sonic Pi buffer could in
+      // principle find an `arrange(...)` that means nothing there.
+      // Cheap enough to do per eval (pure, on a source string) and NOT done in
+      // the watcher's poll loop, which runs ~20x a second.
+      const evalLanguage = getFile(fileId)?.language;
+      const nextExtent: SongExtent | null =
+        evalLanguage !== "sonicpi" ? songExtent(parseStrudel(evaluatedCode)) : null;
+
       setRuntimeStates(prev => {
         const next = new Map(prev);
         const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
@@ -1167,8 +1206,18 @@ export default function StrudelEditorClient({
         // reflects the just-evaluated code. Keep the no-op fast path when
         // nothing the chrome renders (error / bpm) actually changed.
         const nextBpm = runtime.getBpm();
-        if (cur.error === null && cur.bpm === nextBpm) return prev;
-        next.set(fileId, { ...cur, error: null, bpm: nextBpm });
+        // The extent joins the no-op fast path (#1388): without it a live edit
+        // that only changed the ARRANGEMENT would keep the previous length,
+        // because neither the error nor the BPM moved — and the song would then
+        // stop at the length it used to have.
+        if (
+          cur.error === null &&
+          cur.bpm === nextBpm &&
+          sameExtent(cur.songExtent, nextExtent)
+        ) {
+          return prev;
+        }
+        next.set(fileId, { ...cur, error: null, bpm: nextBpm, songExtent: nextExtent });
         return next;
       });
       // Record a fix marker so the Console panel's Live mode can hide
@@ -1348,6 +1397,66 @@ export default function StrudelEditorClient({
     if (rt) rt.stop();
   }, []);
 
+  // #1388 — Cycle/Loop. Per file, user-set, default OFF: an arranged song plays
+  // through once. Only reachable from the chrome for a document that HAS a
+  // definite end, so a stray toggle cannot put a looping document into a state
+  // that means nothing.
+  const handleToggleLoop = useCallback((fileId: string) => {
+    setRuntimeStates(prev => {
+      const next = new Map(prev);
+      const cur = prev.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
+      next.set(fileId, { ...cur, loopEnabled: !cur.loopEnabled });
+      return next;
+    });
+  }, []);
+
+  // #1388 — PLAYBACK THAT ENDS. Before this, nothing in the app compared the
+  // song's length against the clock, so an arranged song wrapped and restarted
+  // forever; the gap was found by listening to a bounce, not by reading code.
+  //
+  // Every ingredient already existed and was simply never brought together —
+  // the extent (measured on eval, above), the transport-offset-aware position
+  // (the same clock the playhead is drawn from) and Stop. The decision itself
+  // lives in `songTermination` so it can be driven by a test without a
+  // scheduler; this effect is only the sampler.
+  //
+  // ⚠ A TIMER, NOT `requestAnimationFrame`. The playhead's rAF loop is the
+  // obvious host and it is the wrong one twice over: rAF is suspended in a
+  // background tab (a song left playing in another tab would never end) and it
+  // is gated on the timeline drawer being open, which has nothing to do with
+  // whether a song should stop.
+  //
+  // ⚠ AND IT ONLY EXISTS WHILE SOMETHING IS PLAYING. An unconditional 50ms
+  // interval is the tightest timer in the app (the timeline's polls are 250ms
+  // and 500ms) and it would wake twenty times a second forever, on a stopped
+  // editor, to discover there is nothing to stop. Gating on `anyPlaying` costs
+  // one re-created watcher per transport transition — and a fresh watcher is
+  // what a new run wants anyway, since its first sample must re-baseline.
+  const anyPlaying = [...runtimeStates.values()].some((st) => st.isPlaying);
+  useEffect(() => {
+    if (!anyPlaying) return;
+    const watcher = createEndOfSongWatcher({
+      playingFileIds: () => {
+        const ids: string[] = [];
+        for (const [fid, st] of runtimeStatesRef.current) {
+          if (st.isPlaying) ids.push(fid);
+        }
+        return ids;
+      },
+      extentOf: (fid) => runtimeStatesRef.current.get(fid)?.songExtent ?? null,
+      positionOf: (fid) =>
+        runtimesRef.current.get(fid)?.getSongPosition?.() ?? null,
+      isLoopEnabled: (fid) =>
+        runtimeStatesRef.current.get(fid)?.loopEnabled ?? false,
+      // The same Stop the transport button issues — one path stops a file, so
+      // the runtime teardown, the bus unpublish and the playing-state edge all
+      // happen exactly as they do when the user presses the button.
+      stop: handleStop,
+    });
+    const id = setInterval(() => watcher.tick(), END_OF_SONG_POLL_MS);
+    return () => clearInterval(id);
+  }, [anyPlaying, handleStop]);
+
   // Live-mode toggle. The runtime owns the subscription + debounce; we
   // just flip the flag and let runtime.onAutoRefreshChanged drive the
   // React state update (handled by the listener registered in
@@ -1395,6 +1504,16 @@ export default function StrudelEditorClient({
       onStop: () => handleStop(tab.fileId),
       autoRefresh: state.autoRefresh,
       onToggleAutoRefresh: () => handleToggleAutoRefresh(tab.fileId),
+      // #1388 — the Loop toggle is offered ONLY for a document that would
+      // otherwise stop at its end. `hasDefiniteEnd` is the same predicate the
+      // watcher stops on, so the set of documents showing the button and the
+      // set of documents that end are the same set by construction — they
+      // cannot drift into a button that does nothing, or a song that ends with
+      // no way to ask it not to.
+      loopEnabled: state.loopEnabled ?? false,
+      onToggleLoop: hasDefiniteEnd(state.songExtent)
+        ? () => handleToggleLoop(tab.fileId)
+        : undefined,
       chromeExtras: (
         <>
           {/* #755 — ruler units moved into Settings › Pattern & Timeline. */}
@@ -1407,7 +1526,7 @@ export default function StrudelEditorClient({
       ),
     };
     return runtimeProvider.renderChrome(ctx);
-  }, [getOrCreateRuntime, runtimeStates, handlePlay, handleStop, handleToggleAutoRefresh, tabBackdrops, backdropName]);
+  }, [getOrCreateRuntime, runtimeStates, handlePlay, handleStop, handleToggleAutoRefresh, handleToggleLoop, tabBackdrops, backdropName]);
 
   // onSaveFile: Cmd+S / Save button handler. For viz files, flush the
   // current in-memory content back to VizPresetStore via the bridge,
