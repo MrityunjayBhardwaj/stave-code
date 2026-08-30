@@ -50,6 +50,9 @@ const DEFAULT_THEME: DrawTheme = {
   sectionAlt: 'rgba(255,255,255,0.07)',
   gridline: 'rgba(255,255,255,0.06)',
   clipFill: 'rgba(255,255,255,0.035)',
+  // #1391 — the section name. Dimmer than a note mark on purpose: it identifies
+  // the clip without competing with the music drawn inside it.
+  clipCaption: 'rgba(255,255,255,0.45)',
   clipBorder: 'rgba(255,255,255,0.18)',
 }
 

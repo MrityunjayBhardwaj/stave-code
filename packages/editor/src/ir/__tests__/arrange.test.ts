@@ -133,6 +133,23 @@ describe('Phase 5a — structural walk: arm bucketing + armIndex', () => {
     ])
   })
 
+  it('a nested arm inherits the outer arm RANGE with the outer index (#1391)', () => {
+    // The companion of #451 above, for the other half of the arm's identity.
+    // `armIndex` and `armRange` name the SAME arm — the index says which clip,
+    // the range says what it is called — so a nested arrange must not be able to
+    // supply one while the outer supplies the other. Pinned with the outer arms'
+    // `loc` REMOVED, which is the only shape that can tell the two apart: with
+    // both present the outer range wins either way, and the arm proves nothing.
+    const ir = parse('arrange([2, arrange([1, note("c3")], [1, note("e3")])], [1, note("g3")])')
+    for (const arm of ir.tag === 'Arrange' ? ir.arms : []) delete (arm as { loc?: unknown }).loc
+    const items = walkLeafItems(ir, 3)
+    // Outer arm 0 spans both inner arms. Neither may lend it a name.
+    const outer0 = items.filter((e) => e.armIndex === 0)
+    expect(outer0.map((e) => e.labelValue)).toEqual(['c3', 'e3'])
+    expect(outer0.every((e) => e.armRange === undefined)).toBe(true)
+    expect(items.find((e) => e.labelValue === 'g3')?.armRange).toBeUndefined()
+  })
+
   it('the OUTER index does NOT leak to a sibling track without an arrange (#451)', () => {
     // childCtx.armIndex is scoped to the arrange's own subtree — a sibling track
     // (here a bare note) is walked from the stack's ctx, so it must carry NO

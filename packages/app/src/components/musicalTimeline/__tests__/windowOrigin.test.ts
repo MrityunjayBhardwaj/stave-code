@@ -38,7 +38,7 @@ const THEME: DrawTheme = {
   sectionAlt: '#sectAlt',
   gridline: '#grid',
   clipFill: '#clipFill',
-  clipBorder: '#clipBorder',
+  clipCaption: '#fff', clipBorder: '#clipBorder',
 }
 const TRANSFORM: DrawTransform = {
   scrollLeft: 0,
@@ -105,7 +105,7 @@ function marksWith(notes: SceneNote[], clips = true): CollectedMarks {
     arrangeByLane: new Map(),
     labelOffsetByLane: new Map(),
     clipsByLane: clips
-      ? new Map([['bass', [{ armIndex: 0, startCycle: ORIGIN, endCycle: ORIGIN + SPAN, label: null }]]])
+      ? new Map([['bass', [{ armIndex: 0, startCycle: ORIGIN, endCycle: ORIGIN + SPAN, label: null, nameRange: null, sectionName: '' }]]])
       : new Map(),
     capped: false,
   }
@@ -138,7 +138,7 @@ describe('the scene at a non-zero window origin (#1201)', () => {
       marksWith([], false),
     )
     expect(scene.lanes[0]!.clips).toEqual([
-      { armIndex: -1, startCycle: ORIGIN, endCycle: ORIGIN + SPAN, label: null },
+      { armIndex: -1, startCycle: ORIGIN, endCycle: ORIGIN + SPAN, label: null, nameRange: null, sectionName: '' },
     ])
   })
 

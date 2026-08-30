@@ -63,6 +63,9 @@ export interface LaneSkeleton {
   armByCycle?: Array<number | undefined>
   /** Arm index → its display label (first arm event's sample/note; `armLabelByLane`). */
   armLabels?: Map<number, string>
+  /** Arm index → the `[n, pat]` tuple's source range (#1391). The consumer slices
+   *  the user's code at it to resolve the section's NAME. */
+  armRanges?: Map<number, readonly [number, number]>
 }
 
 /**
@@ -80,6 +83,12 @@ export interface LaneItem {
   loc?: readonly SourceLocation[]
   /** `s ?? String(note)` — the arm-label source (`armLabelByLane`). */
   labelValue?: string
+  /** SOURCE RANGE of the arrange arm this leaf plays under — the `[n, pat]`
+   *  tuple's `[start, end)` (#1391). Carries the arm's own provenance out of the
+   *  walk so a consumer can read the SECTION NAME off the source, the way
+   *  `dollarPos` lets it read a track's label. Absent when the arm has no `loc`
+   *  (hand-built fixtures) or the leaf plays under no arrangement. */
+  armRange?: readonly [number, number]
 }
 
 /**
@@ -130,6 +139,7 @@ export function aggregateLaneItems(items: readonly LaneItem[], window: WalkWindo
   const byKey = new Map<string, LaneSkeleton>()
   const armByCycle = new Map<string, Array<number | undefined>>()
   const armLabels = new Map<string, Map<number, string>>()
+  const armRanges = new Map<string, Map<number, readonly [number, number]>>()
 
   for (const it of items) {
     let lane = byKey.get(it.laneKey)
@@ -172,6 +182,14 @@ export function aggregateLaneItems(items: readonly LaneItem[], window: WalkWindo
         armLabels.set(it.laneKey, labels)
       }
       if (!labels.has(it.armIndex) && it.labelValue != null) labels.set(it.armIndex, it.labelValue)
+      if (it.armRange !== undefined) {
+        let ranges = armRanges.get(it.laneKey)
+        if (!ranges) {
+          ranges = new Map()
+          armRanges.set(it.laneKey, ranges)
+        }
+        if (!ranges.has(it.armIndex)) ranges.set(it.armIndex, it.armRange)
+      }
     }
   }
 
@@ -181,6 +199,8 @@ export function aggregateLaneItems(items: readonly LaneItem[], window: WalkWindo
     if (byCycle) lane.armByCycle = byCycle
     const labels = armLabels.get(key)
     if (labels) lane.armLabels = labels
+    const ranges = armRanges.get(key)
+    if (ranges) lane.armRanges = ranges
     return lane
   })
 }
@@ -202,6 +222,11 @@ interface StructCtx {
   dollarPos?: number
   leafIndex?: number
   armIndex?: number
+  /** Source range of the arm `armIndex` refers to (#1391). Travels WITH
+   *  `armIndex` and follows the same outermost-wins rule — a nested `arrange`
+   *  keeps the outer arm's identity, so it must keep the outer arm's name too,
+   *  or the clip would be captioned by a section it is not a section of. */
+  armRange?: readonly [number, number]
   params: Record<string, number | string>
 }
 
@@ -328,6 +353,7 @@ function walkCycle(ir: PatternIR, ctx: StructCtx): LaneItem[] {
         ...(ctx.armIndex !== undefined ? { armIndex: ctx.armIndex } : {}),
         ...(ir.loc && ir.loc.length > 0 ? { loc: ir.loc } : {}),
         ...(labelValue !== undefined ? { labelValue } : {}),
+        ...(ctx.armRange !== undefined ? { armRange: ctx.armRange } : {}),
       }
       return [item]
     }
@@ -417,10 +443,26 @@ function walkCycle(ir: PatternIR, ctx: StructCtx): LaneItem[] {
         }
         acc += w
       }
+      // The arm's OWN source range — `ArrangeArm.loc` is the `[n, pat]` tuple, so
+      // these bytes contain the section's name as the musician wrote it (#1391).
+      //
+      // ⚠ INDEX AND RANGE ARE ONE IDENTITY, SO THEY ARE INHERITED TOGETHER, on a
+      // single test. Two independent `??`s would look equivalent and are not: an
+      // outer arm with an index but NO `loc` would keep its index while a nested
+      // arrange supplied the range, captioning the outer clip with an inner
+      // section's name. Observed on a stripped parse — outer arm 0 came back
+      // named `[1, a]`. Whichever arrange node names the arm names it wholly.
+      const inherited = ctx.armIndex !== undefined
+      const armLoc = ir.arms[armIndex].loc?.[0]
       const childCtx: StructCtx = {
         ...ctx,
         cycle: localCycle,
-        armIndex: ctx.armIndex ?? armIndex,
+        armIndex: inherited ? ctx.armIndex : armIndex,
+        armRange: inherited
+          ? ctx.armRange
+          : armLoc
+            ? ([armLoc.start, armLoc.end] as const)
+            : undefined,
       }
       return withWrapperLoc(recurse(ir.arms[armIndex].pattern, childCtx), ir.loc)
     }

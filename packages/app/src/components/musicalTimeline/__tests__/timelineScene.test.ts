@@ -293,30 +293,39 @@ describe('clips (#386)', () => {
     const scene = sceneOf(analysisFixture, 0, null) // no clipsByLane
     for (const lane of scene.lanes) {
       expect(lane.clips).toEqual([
-        { armIndex: -1, startCycle: 0, endCycle: 4, label: null },
+        { armIndex: -1, startCycle: 0, endCycle: 4, label: null, nameRange: null, sectionName: '' },
       ])
     }
   })
 
   it('uses the derived per-arm clips when the track is an arrangement', () => {
     const bdClips: SceneClip[] = [
-      { armIndex: 0, startCycle: 0, endCycle: 2, label: 'bd' },
-      { armIndex: 1, startCycle: 2, endCycle: 4, label: 'sd' },
+      { armIndex: 0, startCycle: 0, endCycle: 2, label: 'bd', nameRange: null, sectionName: '' },
+      { armIndex: 1, startCycle: 2, endCycle: 4, label: 'sd', nameRange: null, sectionName: '' },
     ]
     const scene = sceneOf(analysisFixture, 0, null, marks({}, false, {}, { bd: bdClips }))
     const bd = scene.lanes.find((l) => l.laneKey === 'bd')!
-    expect(bd.clips).toEqual(bdClips)
+    // Geometry and identity pass through untouched; the NAME is resolved by the
+    // builder (#1391). With no `code` and no `nameRange` there is nothing to
+    // read, so each arm gets its ordinal — never an empty string, which a
+    // caption would render as a blank clip.
+    expect(bd.clips.map((c) => ({ ...c, sectionName: undefined }))).toEqual(
+      bdClips.map((c) => ({ ...c, sectionName: undefined })),
+    )
+    expect(bd.clips.map((c) => c.sectionName)).toEqual(['§1', '§2'])
     // the other lane has no derived clips → still one implicit clip
     const lead = scene.lanes.find((l) => l.laneKey === 'lead')!
-    expect(lead.clips).toEqual([{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }])
+    // A bare track is not an arrangement: its implicit clip carries no section
+    // name at all, so nothing is captioned over it.
+    expect(lead.clips).toEqual([{ armIndex: -1, startCycle: 0, endCycle: 4, label: null, nameRange: null, sectionName: '' }])
   })
 })
 
 describe('clipAtCycle', () => {
   const lane = {
     clips: [
-      { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a' },
-      { armIndex: 1, startCycle: 2, endCycle: 3, label: 'b' },
+      { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a', nameRange: null, sectionName: '' },
+      { armIndex: 1, startCycle: 2, endCycle: 3, label: 'b', nameRange: null, sectionName: '' },
     ],
   } as unknown as SceneLane
   it('returns the clip whose [start, end) contains the cycle', () => {
@@ -356,7 +365,7 @@ describe('eval-backed lanes (#864 / P1b)', () => {
     expect(d2.pitchMax).toBe(55)
     expect(d2.displayName).toBe('d2')
     // One implicit clip spanning the display span (no armIndex on eval marks).
-    expect(d2.clips).toEqual([{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }])
+    expect(d2.clips).toEqual([{ armIndex: -1, startCycle: 0, endCycle: 4, label: null, nameRange: null, sectionName: '' }])
   })
 
   it('folds eval-lane density into peakDensity', () => {
@@ -525,7 +534,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
     // Every lane has >= 1 clip; with no clips of its own it gets the whole-song
     // implicit one, so clip hit-testing and geometry behave normally.
     expect(lane.clips).toEqual([
-      { armIndex: -1, startCycle: 0, endCycle: 4, label: null },
+      { armIndex: -1, startCycle: 0, endCycle: 4, label: null, nameRange: null, sectionName: '' },
     ])
   })
 
@@ -611,7 +620,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
       { bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] },
       false,
       { ghost: 12 },
-      { ghost: [{ armIndex: 0, startCycle: 0, endCycle: 2, label: 'A' }] },
+      { ghost: [{ armIndex: 0, startCycle: 0, endCycle: 2, label: 'A', nameRange: null, sectionName: '' }] },
       { ghost: 12 },
       { ghost: 12, bd: 0, lead: 40 },
     )

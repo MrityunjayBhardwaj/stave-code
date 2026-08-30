@@ -50,6 +50,10 @@ export interface DrawTheme {
   /** Border at clip boundaries (left/right edges) — makes segments read as
    *  discrete clips (design §4.2). */
   readonly clipBorder: string
+  /** Section-name caption drawn inside a clip (#1391). Muted on purpose: the
+   *  name identifies the section, it does not compete with the note marks the
+   *  clip exists to show. */
+  readonly clipCaption: string
 }
 
 /** Below this per-cycle width, individual note marks would smear sub-pixel, so
@@ -64,6 +68,22 @@ export const COARSEN_PX = 28
  *  per-mark alpha) keeps the fade a single self-contained draw — the mark/density
  *  helpers stay untouched. */
 export const SILENCED_LANE_SCRIM = 0.55
+
+/**
+ * A clip narrower than this draws no section caption (#1391).
+ *
+ * Below it there is no width for even a truncated name plus its padding, and a
+ * caption clipped to one glyph is worse than none — it reads as a different
+ * section's name rather than as "too narrow to say". Silence is the honest
+ * degradation.
+ */
+export const CLIP_CAPTION_MIN_W = 34
+/** Inset from the clip's left edge to the caption's first glyph. */
+const CLIP_CAPTION_PAD_X = 4
+/** Canvas cannot read CSS custom properties, so the mono stack is literal here.
+ *  Kept in sync with the app's `--font-mono` by eye; a drift shows as a font
+ *  change in the timeline only, never as a wrong name. */
+const CLIP_CAPTION_FONT = '10px ui-monospace, SFMono-Regular, Menlo, monospace'
 
 /** Minimum mark width (px) so a zero/near-zero-duration trigger still shows and
  *  stays clickable — mirrors the live view's `MIN_BLOCK_PX` (timeAxis.ts). */
@@ -304,6 +324,50 @@ function clipHasContent(lane: SceneLane, clip: SceneClip, windowOriginCycles: nu
  *  band, so the same outline lands dimmer there for free, by the mechanism that
  *  already expresses "silenced" for marks and density. A second encoding at the
  *  clip would say the same thing twice and could disagree with the first. */
+/**
+ * Draw a clip's section name, truncated to fit (#1391).
+ *
+ * ⚠ TRUNCATION IS MEASURED, NOT ESTIMATED. Cutting at a character count
+ * computed from an assumed glyph width is how a proportional font silently
+ * overflows its clip and bleeds into the next section's name — so this measures
+ * the real string with `measureText` and drops one character at a time. The cost
+ * is a few measurements per visible clip; the alternative is a caption that is
+ * wrong exactly when two sections are adjacent, which is always.
+ */
+function drawClipCaption(
+  ctx: CanvasRenderingContext2D,
+  clip: SceneClip,
+  left: number,
+  right: number,
+  top: number,
+  rowHeight: number,
+  theme: DrawTheme,
+): void {
+  // A bare track is not an arrangement and has no section to name.
+  if (clip.sectionName === '') return
+  const box = right - left - CLIP_CAPTION_PAD_X * 2
+  if (box < CLIP_CAPTION_MIN_W - CLIP_CAPTION_PAD_X * 2) return
+
+  ctx.save()
+  ctx.font = CLIP_CAPTION_FONT
+  ctx.fillStyle = theme.clipCaption
+  ctx.textBaseline = 'middle'
+
+  let text = clip.sectionName
+  if (ctx.measureText(text).width > box) {
+    // Shrink until the ellipsised form fits. Bail to nothing rather than draw a
+    // lone ellipsis, which names no section.
+    while (text.length > 0 && ctx.measureText(`${text}…`).width > box) {
+      text = text.slice(0, -1)
+    }
+    text = text.length > 0 ? `${text}…` : ''
+  }
+  if (text !== '') {
+    ctx.fillText(text, left + CLIP_CAPTION_PAD_X, top + rowHeight / 2)
+  }
+  ctx.restore()
+}
+
 function drawClips(
   ctx: CanvasRenderingContext2D,
   lane: SceneLane,
@@ -329,6 +393,13 @@ function drawClips(
     ctx.fillStyle = theme.clipBorder
     if (x0 >= 0 && x0 <= viewportWidth) ctx.fillRect(x0, top, 1, rowHeight)
     if (x1 >= 0 && x1 <= viewportWidth) ctx.fillRect(x1 - 1, top, 1, rowHeight)
+    // The SECTION NAME (#1391) — `intro`, `verse`, else the positional `§{n}`.
+    // Drawn here, ABOVE the empty-clip branch below, so an empty section is
+    // named too: "which section is this silence in" is exactly the question an
+    // empty clip raises. Anchored to the clip's real left edge when it is on
+    // screen, else to the viewport, so a section scrolled half off still says
+    // what it is instead of losing its name off the left.
+    drawClipCaption(ctx, clip, left, right, top, rowHeight, theme)
     if (clipHasContent(lane, clip, windowOriginCycles)) continue
     // Empty clip: outline it in the lane's own colour. Top/bottom run the
     // CLAMPED width (they follow what's on screen); the verticals stay at the
