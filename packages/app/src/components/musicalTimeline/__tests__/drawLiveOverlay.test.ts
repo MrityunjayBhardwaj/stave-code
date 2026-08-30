@@ -52,7 +52,7 @@ function sceneFixture(): TimelineScene {
         pitchMin: 60,
         pitchMax: 67,
         voices: [{ key: 'saw', label: 'saw', melodic: true, pitchMin: 60, pitchMax: 67 }],
-        clips: [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }],
+        clips: [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null, nameRange: null, sectionName: '' }],
         sourceOffset: null,
         arrangeOffset: null,
         labelOffset: null,

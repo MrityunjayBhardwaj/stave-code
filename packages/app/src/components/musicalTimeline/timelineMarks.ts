@@ -10,6 +10,7 @@
  */
 
 import type { IREvent, PatternIR } from '@stave/editor'
+import { positionalSectionName } from './sectionLabel'
 import { structuralWalk, wholeWalkWindow } from '@stave/editor'
 import { extractPitch } from './pitch'
 import { containingAnchor } from './laneIdentity'
@@ -179,6 +180,7 @@ export function collectNoteMarks(
   const nCycles = Math.ceil(displayCycles)
   const armByCycleByLane = new Map<string, Array<number | undefined>>()
   const armLabelByLane = new Map<string, Map<number, string>>()
+  const armRangeByLane = new Map<string, Map<number, readonly [number, number]>>()
   let capped = false
   // STRUCTURE — lane anchors from the resilient structural walk (#945/#974), NOT reduced from
   // `collectCycles` events. The walk derives the SAME anchors from source structure — proven
@@ -197,6 +199,7 @@ export function collectNoteMarks(
     if (lane.arrangeOffset !== undefined) arrangeByLane.set(key, lane.arrangeOffset)
     if (lane.armByCycle) armByCycleByLane.set(key, lane.armByCycle)
     if (lane.armLabels) armLabelByLane.set(key, lane.armLabels)
+    if (lane.armRanges) armRangeByLane.set(key, lane.armRanges)
   }
   // #1209 — ANCHORS for lanes this window never reaches. A lane silent through
   // the visible stretch (an `arrange` arm that rests, a track that has not
@@ -276,6 +279,7 @@ export function collectNoteMarks(
   const clipsByLane = new Map<string, SceneClip[]>()
   for (const [key, byCycle] of armByCycleByLane) {
     const labels = armLabelByLane.get(key)
+    const ranges = armRangeByLane.get(key)
     const clips: SceneClip[] = []
     let runArm: number | undefined
     // Never read: `runArm` starts undefined, so the first slot always opens a
@@ -290,6 +294,16 @@ export function collectNoteMarks(
           startCycle: runStart,
           endCycle,
           label: labels?.get(runArm) ?? null,
+          // The arm's own source range (#1391) — the NAME is resolved later, in
+          // the pure builder, which is the layer that holds the user's code.
+          // Carrying the range rather than the resolved string keeps this module
+          // free of source-reading, exactly as `labelOffsetByLane` does for lanes.
+          nameRange: ranges?.get(runArm) ?? null,
+          // The POSITIONAL name, always. The pure builder upgrades it to the
+          // source identifier when it has the user's code — so a clip that never
+          // reaches that layer still carries a true name rather than an empty
+          // string a caption would render as a blank.
+          sectionName: positionalSectionName(runArm),
         })
       }
     }

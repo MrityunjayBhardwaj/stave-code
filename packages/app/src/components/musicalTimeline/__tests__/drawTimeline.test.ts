@@ -10,10 +10,13 @@ const theme: DrawTheme = {
   sectionAlt: '#333',
   gridline: '#444',
   clipFill: '#555',
-  clipBorder: '#666',
+  clipCaption: '#fff', clipBorder: '#666',
 }
 
 interface Rect { x: number; y: number; w: number; h: number; style: string; alpha: number }
+/** A drawn caption (#1391) — the text AND where it landed, because a name drawn
+ *  outside its own clip is a name on the wrong section. */
+interface Text { text: string; x: number; y: number; style: string; font: string }
 
 /** Recording mock 2D context — captures every fillRect (the only primitive the
  *  renderer uses) so tests can assert positions/counts without a real canvas.
@@ -26,15 +29,30 @@ interface Rect { x: number; y: number; w: number; h: number; style: string; alph
  *  that is not the same question as "can it be seen". */
 function mockCtx() {
   const rects: Rect[] = []
+  const texts: Text[] = []
   const ctx = {
     fillStyle: '' as string,
     globalAlpha: 1,
+    font: '' as string,
+    textBaseline: '' as string,
     clearRect() {},
+    save() {},
+    restore() {},
     fillRect(x: number, y: number, w: number, h: number) {
       rects.push({ x, y, w, h, style: ctx.fillStyle, alpha: ctx.globalAlpha })
     },
+    fillText(text: string, x: number, y: number) {
+      texts.push({ text, x, y, style: ctx.fillStyle, font: ctx.font })
+    },
+    // A stand-in metric, NOT a real font measurement: 6px per glyph. The
+    // truncation logic under test only needs a width that GROWS with the string,
+    // and a deterministic one makes the fit boundary assertable. What this cannot
+    // check is whether the real font agrees — that is what the browser arm is for.
+    measureText(text: string) {
+      return { width: text.length * 6 } as TextMetrics
+    },
   }
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, rects }
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, rects, texts }
 }
 
 const scene: TimelineScene = {
@@ -233,8 +251,8 @@ describe('drawClips (#386)', () => {
           ...scene.lanes[0],
           notes: [],
           clips: [
-            { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a' },
-            { armIndex: 1, startCycle: 2, endCycle: 4, label: 'b' },
+            { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a', nameRange: null, sectionName: '' },
+            { armIndex: 1, startCycle: 2, endCycle: 4, label: 'b', nameRange: null, sectionName: '' },
           ],
         },
       ],
@@ -254,7 +272,7 @@ describe('drawClips (#386)', () => {
   it('an implicit single clip fills the whole lane (bare track, seamless)', () => {
     const oneClip: TimelineScene = {
       ...scene,
-      lanes: [{ ...scene.lanes[0], notes: [], clips: [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }] }],
+      lanes: [{ ...scene.lanes[0], notes: [], clips: [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null, nameRange: null, sectionName: '' }] }],
     }
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, oneClip, { scrollLeft: 0, contentWidth: 400, viewportWidth: vw }, theme, flat)
@@ -282,7 +300,7 @@ describe('drawClips — empty clip outline (#1100)', () => {
     // that supplies a note a type error rather than a fixture.
     notes: [] as readonly SceneNote[],
     density: [0, 0, 0, 0] as readonly number[],
-    clips: [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }],
+    clips: [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null, nameRange: null, sectionName: '' }],
   }
   const emptyScene: TimelineScene = { ...scene, lanes: [emptyLane] }
   const draw = (s: TimelineScene, silenced?: ReadonlySet<string>) => {
@@ -327,7 +345,7 @@ describe('drawClips — empty clip outline (#1100)', () => {
   // that never outlines anything, and prove nothing about the discriminator.
   it('leaves a clip WITH content untouched — no outline on a sounding lane', () => {
     // `scene.lanes[0]` carries density [1,0,2,0]; same clip, same geometry.
-    const clips = [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }]
+    const clips = [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null, nameRange: null, sectionName: '' }]
     const sounding: TimelineScene = { ...scene, lanes: [{ ...scene.lanes[0], clips }] }
     expect(horizontalEdges(draw(sounding), scene.lanes[0].color)).toHaveLength(0)
     // CONTROL: identical but silent → the outline must appear.
@@ -339,7 +357,7 @@ describe('drawClips — empty clip outline (#1100)', () => {
   })
 
   it('counts DENSITY as content even with no notes, and notes with no density', () => {
-    const clips = [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }]
+    const clips = [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null, nameRange: null, sectionName: '' }]
     const lane = (over: Partial<typeof emptyLane>) =>
       draw({ ...scene, lanes: [{ ...emptyLane, clips, ...over }] })
     // Either source alone suppresses the outline…
@@ -354,8 +372,8 @@ describe('drawClips — empty clip outline (#1100)', () => {
 
   it('counts a ZERO-DURATION trigger, and does not count one ending ON the seam', () => {
     const arms = [
-      { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a' },
-      { armIndex: 1, startCycle: 2, endCycle: 4, label: 'b' },
+      { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a', nameRange: null, sectionName: '' },
+      { armIndex: 1, startCycle: 2, endCycle: 4, label: 'b', nameRange: null, sectionName: '' },
     ]
     const withNote = (n: SceneNote) =>
       horizontalEdges(
@@ -382,8 +400,8 @@ describe('drawClips — empty clip outline (#1100)', () => {
         ...emptyLane,
         density: [1, 1, 0, 0],
         clips: [
-          { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a' },
-          { armIndex: 1, startCycle: 2, endCycle: 4, label: 'b' },
+          { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a', nameRange: null, sectionName: '' },
+          { armIndex: 1, startCycle: 2, endCycle: 4, label: 'b', nameRange: null, sectionName: '' },
         ],
       }],
     }
@@ -397,8 +415,8 @@ describe('drawClips — empty clip outline (#1100)', () => {
 
   it('a note SUSTAINING across a boundary leaves neither arm reading as empty', () => {
     const arms = [
-      { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a' },
-      { armIndex: 1, startCycle: 2, endCycle: 4, label: 'b' },
+      { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a', nameRange: null, sectionName: '' },
+      { armIndex: 1, startCycle: 2, endCycle: 4, label: 'b', nameRange: null, sectionName: '' },
     ]
     const withNote = (n: SceneNote) =>
       draw({ ...scene, lanes: [{ ...emptyLane, density: [0, 0, 0, 0], notes: [n], clips: arms }] })
@@ -418,5 +436,86 @@ describe('drawClips — empty clip outline (#1100)', () => {
     expect(lastEdge).toBeDefined()
     expect(scrim).toBeDefined()
     expect(scrim!.i).toBeGreaterThan(lastEdge!.i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Section-name captions (#1391)
+// ---------------------------------------------------------------------------
+
+describe('clip captions — the section name on the canvas', () => {
+  const clipScene = (
+    sectionName: string,
+    startCycle = 0,
+    endCycle = 4,
+  ): TimelineScene => ({
+    ...scene,
+    lanes: [
+      {
+        ...scene.lanes[0]!,
+        clips: [
+          { armIndex: 0, startCycle, endCycle, label: 'bd', nameRange: null, sectionName },
+        ],
+      },
+    ],
+  })
+
+  it('draws the section name inside its clip', () => {
+    const { ctx, texts } = mockCtx()
+    drawTimeline(ctx, clipScene('verse'), { scrollLeft: 0, contentWidth: 400, viewportWidth: 400 }, theme, flat)
+    const caption = texts.find((t) => t.text === 'verse')
+    expect(caption, `no caption drawn — got ${JSON.stringify(texts)}`).toBeDefined()
+    // Inside the clip's own horizontal span, not at the canvas origin.
+    expect(caption!.x).toBeGreaterThanOrEqual(0)
+    expect(caption!.x).toBeLessThan(400)
+    expect(caption!.style).toBe(theme.clipCaption)
+  })
+
+  it('draws the positional name for an unnamed section', () => {
+    const { ctx, texts } = mockCtx()
+    drawTimeline(ctx, clipScene('§2'), { scrollLeft: 0, contentWidth: 400, viewportWidth: 400 }, theme, flat)
+    expect(texts.map((t) => t.text)).toContain('§2')
+  })
+
+  it('draws NOTHING for a bare track — it is not an arrangement', () => {
+    // The implicit whole-song clip of a non-arranged lane carries `''`, and a
+    // caption there would invent a section the document does not have.
+    const { ctx, texts } = mockCtx()
+    drawTimeline(ctx, clipScene(''), { scrollLeft: 0, contentWidth: 400, viewportWidth: 400 }, theme, flat)
+    expect(texts).toEqual([])
+  })
+
+  it('truncates a name too long for its clip rather than overflowing it', () => {
+    // A clip WIDE ENOUGH to caption (60px, over the 34px floor) but far too
+    // narrow for a 20-glyph name at the stand-in 6px/glyph. The
+    // caption must shrink and mark itself elided, never spill into the section
+    // next door.
+    const { ctx, texts } = mockCtx()
+    drawTimeline(
+      ctx,
+      clipScene('averylongsectionname', 0, 1),
+      { scrollLeft: 0, contentWidth: 240, viewportWidth: 240 },
+      theme,
+      flat,
+    )
+    const caption = texts[0]
+    expect(caption).toBeDefined()
+    expect(caption!.text).not.toBe('averylongsectionname')
+    expect(caption!.text.endsWith('…')).toBe(true)
+    expect(caption!.text.length).toBeLessThan('averylongsectionname'.length)
+  })
+
+  it('draws no caption at all in a clip too narrow to hold one', () => {
+    // A one-glyph caption reads as a DIFFERENT section's name; silence is the
+    // honest degradation.
+    const { ctx, texts } = mockCtx()
+    drawTimeline(
+      ctx,
+      clipScene('verse', 0, 4),
+      { scrollLeft: 0, contentWidth: 12, viewportWidth: 12 },
+      theme,
+      flat,
+    )
+    expect(texts).toEqual([])
   })
 })

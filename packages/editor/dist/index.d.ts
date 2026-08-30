@@ -117,6 +117,9 @@ interface LaneSkeleton {
     armByCycle?: Array<number | undefined>;
     /** Arm index → its display label (first arm event's sample/note; `armLabelByLane`). */
     armLabels?: Map<number, string>;
+    /** Arm index → the `[n, pat]` tuple's source range (#1391). The consumer slices
+     *  the user's code at it to resolve the section's NAME. */
+    armRanges?: Map<number, readonly [number, number]>;
 }
 /**
  * A single structural leaf hit — the raw input to `aggregateLaneItems`. Both structuralWalk
@@ -133,6 +136,12 @@ interface LaneItem {
     loc?: readonly SourceLocation[];
     /** `s ?? String(note)` — the arm-label source (`armLabelByLane`). */
     labelValue?: string;
+    /** SOURCE RANGE of the arrange arm this leaf plays under — the `[n, pat]`
+     *  tuple's `[start, end)` (#1391). Carries the arm's own provenance out of the
+     *  walk so a consumer can read the SECTION NAME off the source, the way
+     *  `dollarPos` lets it read a track's label. Absent when the arm has no `loc`
+     *  (hand-built fixtures) or the leaf plays under no arrangement. */
+    armRange?: readonly [number, number];
 }
 /**
  * The stretch of song a walk covers (#1209).

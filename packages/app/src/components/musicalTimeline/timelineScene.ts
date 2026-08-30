@@ -21,6 +21,7 @@ import type { SongWindow } from './songAxis'
 import { trackIdentity } from './colors'
 import { containingAnchor } from './laneIdentity'
 import { resolveLaneName } from './trackLabel'
+import { resolveSectionName } from './sectionLabel'
 import type { DeclaredTrack } from './trackOrder'
 
 /** Grouping key for marks with no sample name (`s == null`) — synth notes that
@@ -117,6 +118,18 @@ export interface SceneClip {
   /** A representative voice/sample/note label for the clip (the first event's
    *  `s` or `note`), or null when none — drives an optional clip caption. */
   readonly label: string | null
+  /** Source range of the arm's `[n, pat]` tuple, or null with no provenance
+   *  (#1391). Raw range rather than a resolved string because this module is the
+   *  only layer that holds the user's code — see `sectionName`. */
+  readonly nameRange: readonly [number, number] | null
+  /** The SECTION NAME (#1391) — the identifier the musician bound the arm to
+   *  (`intro`, `verse`), or a positional `§{n}` when the arm is an inline
+   *  expression with no name to read.
+   *
+   *  ⚠ IDENTITY STAYS `armIndex`, exactly as `SceneLane` keeps `laneKey` while
+   *  `displayName` resolves to the source label. Only the NAME resolves here, so
+   *  a section that is renamed is still the same clip. */
+  readonly sectionName: string
 }
 
 /** One timeline row. */
@@ -477,14 +490,28 @@ export function buildTimelineScene(
     // (no combinator → no `armIndex` events) gets ONE implicit clip spanning the
     // whole song (design §5 option b). The implicit clip is synthesised here
     // (the pure builder owns `displayCycles`) so every lane has ≥1 clip.
-    const clips: SceneClip[] = marks.clipsByLane.get(laneKey) ?? [
+    const rawClips: SceneClip[] = marks.clipsByLane.get(laneKey) ?? [
       {
         armIndex: -1,
         startCycle: windowOriginCycles,
         endCycle: windowOriginCycles + displayCycles,
         label: null,
+        nameRange: null,
+        // A bare track is not an arrangement, so it has no section to name. The
+        // implicit clip spans the whole song and says so.
+        sectionName: '',
       },
     ]
+    // #1391 — resolve each arm's NAME from the user's code, here rather than in
+    // the collector, because this is the layer that holds `code`. Same division
+    // of labour as a lane's `displayName`: the walk carries an offset, the pure
+    // builder reads the source at it.
+    const clips: SceneClip[] = marks.clipsByLane.has(laneKey)
+      ? rawClips.map((c) => ({
+          ...c,
+          sectionName: resolveSectionName(c.armIndex, c.nameRange, code),
+        }))
+      : rawClips
     // Display name (#579 STEP 2): a NAMED track's source label, else the
     // positional `d{N}`. Both the name AND the colour key on it, so a named
     // lane reads + colours identically to its Mixer strip (one `trackIdentity`).

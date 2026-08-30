@@ -432,6 +432,7 @@ function aggregateLaneItems(items, window2) {
   const byKey = /* @__PURE__ */ new Map();
   const armByCycle = /* @__PURE__ */ new Map();
   const armLabels = /* @__PURE__ */ new Map();
+  const armRanges = /* @__PURE__ */ new Map();
   for (const it of items) {
     let lane = byKey.get(it.laneKey);
     if (!lane) {
@@ -469,6 +470,14 @@ function aggregateLaneItems(items, window2) {
         armLabels.set(it.laneKey, labels);
       }
       if (!labels.has(it.armIndex) && it.labelValue != null) labels.set(it.armIndex, it.labelValue);
+      if (it.armRange !== void 0) {
+        let ranges = armRanges.get(it.laneKey);
+        if (!ranges) {
+          ranges = /* @__PURE__ */ new Map();
+          armRanges.set(it.laneKey, ranges);
+        }
+        if (!ranges.has(it.armIndex)) ranges.set(it.armIndex, it.armRange);
+      }
     }
   }
   return order.map((key2) => {
@@ -477,6 +486,8 @@ function aggregateLaneItems(items, window2) {
     if (byCycle) lane.armByCycle = byCycle;
     const labels = armLabels.get(key2);
     if (labels) lane.armLabels = labels;
+    const ranges = armRanges.get(key2);
+    if (ranges) lane.armRanges = ranges;
     return lane;
   });
 }
@@ -580,7 +591,8 @@ function walkCycle(ir, ctx) {
         ...ctx.leafIndex !== void 0 ? { leafIndex: ctx.leafIndex } : {},
         ...ctx.armIndex !== void 0 ? { armIndex: ctx.armIndex } : {},
         ...ir.loc && ir.loc.length > 0 ? { loc: ir.loc } : {},
-        ...labelValue !== void 0 ? { labelValue } : {}
+        ...labelValue !== void 0 ? { labelValue } : {},
+        ...ctx.armRange !== void 0 ? { armRange: ctx.armRange } : {}
       };
       return [item];
     }
@@ -656,10 +668,12 @@ function walkCycle(ir, ctx) {
         }
         acc += w;
       }
+      const armLoc = ir.arms[armIndex].loc?.[0];
       const childCtx = {
         ...ctx,
         cycle: localCycle,
-        armIndex: ctx.armIndex ?? armIndex
+        armIndex: ctx.armIndex ?? armIndex,
+        armRange: ctx.armRange ?? (armLoc ? [armLoc.start, armLoc.end] : void 0)
       };
       return withWrapperLoc(recurse(ir.arms[armIndex].pattern, childCtx), ir.loc);
     }
