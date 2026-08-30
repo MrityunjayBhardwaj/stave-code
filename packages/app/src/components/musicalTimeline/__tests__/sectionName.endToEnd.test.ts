@@ -50,14 +50,20 @@ const pipeline = (code: string): PatternIR => {
   return passes[passes.length - 1].ir
 }
 
-// ⚠ NO `$:` PREFIX, and that is not incidental. Measured: with `$:` in front,
-// BOTH `parseStrudel` and the staged pipeline leave the arms as opaque `Code`,
-// so the arrangement produces no leaves, no `armIndex` items, and therefore no
-// clips at all — there is nothing to name. That is a real gap and it is filed
-// separately; naming cannot be tested through a path that yields no clips.
+// This document has no `$:` prefix, and until #1392 that was FORCED rather than
+// chosen: with `$:` in front, both parsers left every arm an opaque `Code`, so
+// the arrangement produced no leaves, no `armIndex`, and no clips at all —
+// there was nothing to name, and naming could not be tested through a path that
+// yielded none. That gap is fixed, and `DOLLAR_SONG` below is the same song in
+// the form a musician actually writes; both must name identically.
 const SONG = `const intro = s("bd")
 const verse = s("hh")
 arrange([4, intro], [8, verse])`
+
+/** The SAME song behind a `$:` track prefix — the ordinary way to declare one. */
+const DOLLAR_SONG = `const intro = s("bd")
+const verse = s("hh")
+$: arrange([4, intro], [8, verse])`
 
 /**
  * A minimal activity carrying just the lane the clips hang off.
@@ -97,6 +103,15 @@ describe('#1391 — the section name reaches the scene', () => {
     // The whole point: `intro` and `verse` are the identifiers the musician
     // wrote, recovered without any new syntax.
     expect(sectionNames(SONG, 12)).toEqual(['intro', 'verse'])
+  })
+
+  it('names them identically behind a `$:` prefix (#1392)', () => {
+    // The form a musician writes. It named NOTHING before #1392 — the whole
+    // arrangement collapsed to one unnamed implicit clip — so this arm is the
+    // one that says the feature reaches the ordinary document, not just the
+    // bare one the other arms use.
+    expect(sectionNames(DOLLAR_SONG, 12)).toEqual(['intro', 'verse'])
+    expect(sectionNames(DOLLAR_SONG, 12)).toEqual(sectionNames(SONG, 12))
   })
 
   it('the arm RANGES arrive on the clips — the link that had to be built', () => {

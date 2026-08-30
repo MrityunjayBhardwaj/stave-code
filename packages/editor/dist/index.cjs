@@ -1992,19 +1992,19 @@ function stripSideEffectStatements(stmts) {
 }
 __name(stripSideEffectStatements, "stripSideEffectStatements");
 var BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/;
-function buildBindingMap(body, baseOffset) {
+function collectTopLevelBindings(body, baseOffset) {
   const stmts = stripSideEffectStatements(
     splitTopLevelStatements(body, baseOffset)
   );
   if (stmts.length < 2) return null;
   const descs = [];
   const seen = /* @__PURE__ */ new Set();
-  let finalIdx = -1;
+  let tailIdx = -1;
   for (let s = 0; s < stmts.length; s++) {
     const { text, offset } = stmts[s];
     const bm = text.match(BINDING_RE);
     if (!bm) {
-      finalIdx = s;
+      tailIdx = s;
       break;
     }
     const name = bm[1];
@@ -2015,8 +2015,8 @@ function buildBindingMap(body, baseOffset) {
     const rhsOffset = offset + rhsStartInText;
     descs.push({ name, rhs, rhsOffset });
   }
-  if (finalIdx === -1) return null;
-  if (finalIdx !== stmts.length - 1) return null;
+  if (tailIdx === -1) return null;
+  if (descs.length === 0) return null;
   const bindings = /* @__PURE__ */ new Map();
   const pending = new Set(descs.map((_, i) => i));
   for (let iter = 0; iter < descs.length && pending.size > 0; iter++) {
@@ -2037,10 +2037,16 @@ function buildBindingMap(body, baseOffset) {
     if (!progress) break;
   }
   if (pending.size > 0) return null;
+  return { bindings, tail: stmts.slice(tailIdx) };
+}
+__name(collectTopLevelBindings, "collectTopLevelBindings");
+function buildBindingMap(body, baseOffset) {
+  const got = collectTopLevelBindings(body, baseOffset);
+  if (!got || got.tail.length !== 1) return null;
   return {
-    bindings,
-    finalExpr: stmts[finalIdx].text,
-    finalOffset: stmts[finalIdx].offset
+    bindings: got.bindings,
+    finalExpr: got.tail[0].text,
+    finalOffset: got.tail[0].offset
   };
 }
 __name(buildBindingMap, "buildBindingMap");
@@ -2049,6 +2055,7 @@ function parseStrudel(code, _opts) {
   const opts = _opts;
   try {
     const tracks = extractTracks(code);
+    const trackBindings = tracks.length > 0 ? collectTopLevelBindings(code, 0)?.bindings ?? void 0 : void 0;
     if (tracks.length === 0) {
       const stripped = stripParserPrelude(code);
       if (!stripped.body.trim()) {
@@ -2087,7 +2094,7 @@ function parseStrudel(code, _opts) {
     }
     if (tracks.length === 1) {
       const t = tracks[0];
-      const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, void 0, opts);
+      const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, trackBindings, opts);
       const trackId0 = trackIdFromLabel(t.label, 0);
       return IR.track(trackId0, body, {
         loc: [{ start: t.dollarStart, end: t.end }]
@@ -2095,7 +2102,7 @@ function parseStrudel(code, _opts) {
     }
     return IR.stack(
       ...tracks.map((t, i) => {
-        const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, void 0, opts);
+        const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, trackBindings, opts);
         const trackId = trackIdFromLabel(t.label, i);
         return IR.track(trackId, body, {
           loc: [{ start: t.dollarStart, end: t.end }]
@@ -3211,6 +3218,8 @@ function runRawStage(input) {
       loc: [{ start, end: code.length }]
     };
   }
+  const docBindings = collectTopLevelBindings(code, 0)?.bindings;
+  const bindingMeta = docBindings ? { trackBindings: docBindings } : {};
   if (tracks.length === 1) {
     const t = tracks[0];
     return {
@@ -3218,6 +3227,7 @@ function runRawStage(input) {
       code: t.expr,
       lang: "strudel",
       loc: [{ start: t.offset, end: t.offset + t.expr.length }],
+      ...bindingMeta,
       // #671 — a lone `name: …` / `$:` track threads its label AND its
       // `$:`-line range so CHAIN-APPLIED's single-track wrap mirrors
       // parseStrudel.ts:857 exactly: `trackId = label` (not synthetic `d1`)
@@ -3227,6 +3237,9 @@ function runRawStage(input) {
       trackLabel: t.label,
       dollarStart: t.dollarStart,
       dollarEnd: t.end
+      // `unknown` hop: the stage-meta stash is deliberately off-type (D-03
+      // narrow union), and `trackBindings` carries it past the point where a
+      // direct assertion still overlaps. Same idiom as `withTrackMeta` below.
     };
   }
   const trackCodes = tracks.map((t) => ({
@@ -3234,6 +3247,8 @@ function runRawStage(input) {
     code: t.expr,
     lang: "strudel",
     loc: [{ start: t.offset, end: t.offset + t.expr.length }],
+    // #1392 — the document's bindings, same map on every track (see above).
+    ...bindingMeta,
     // Phase 20-11 α-4 — stage-transition metadata. Stash the `$:` line
     // range (dollarStart..end-of-track-body-slice) so runChainAppliedStage
     // can construct the Track wrapper with the same loc parseStrudel main
@@ -3282,13 +3297,13 @@ function runMiniExpandedStage(input) {
         if (!isBareCode) return boundParsed;
       }
     }
-    return withTrackMeta(parseRootWithChainMeta(input.code, base));
+    return withTrackMeta(parseRootWithChainMeta(input.code, base, cMeta.trackBindings));
   }
   if (input.tag === "Stack" && input.userMethod === void 0) {
     const tracks = input.tracks.map((t) => {
       if (t.tag !== "Code") return t;
-      const parsed = parseRootWithChainMeta(t.code, t.loc?.[0]?.start ?? 0);
       const tMeta = t;
+      const parsed = parseRootWithChainMeta(t.code, t.loc?.[0]?.start ?? 0, tMeta.trackBindings);
       if (tMeta.dollarStart !== void 0 && tMeta.dollarEnd !== void 0) {
         return {
           ...parsed,
@@ -3389,12 +3404,15 @@ function applyOnTrack(node) {
 __name(applyOnTrack, "applyOnTrack");
 function stripStageMeta(node) {
   const n = node;
-  if (!("unresolvedChain" in n) && !("unresolvedBindings" in n) && !("chainOffset" in n) && !("dollarStart" in n) && !("dollarEnd" in n) && !("trackLabel" in n)) {
+  if (!("unresolvedChain" in n) && !("unresolvedBindings" in n) && !("trackBindings" in n) && !("chainOffset" in n) && !("dollarStart" in n) && !("dollarEnd" in n) && !("trackLabel" in n)) {
     return node;
   }
   const {
     unresolvedChain: _u,
     unresolvedBindings: _ub,
+    // #1392 — RAW's document-level binding map. Consumed in MINI-EXPANDED;
+    // stripped here so it can never reach a FINAL node body.
+    trackBindings: _tb,
     chainOffset: _o,
     dollarStart: _ds,
     dollarEnd: _de,

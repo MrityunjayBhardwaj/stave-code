@@ -673,16 +673,47 @@ export function stripSideEffectStatements(
 
 export const BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/
 
-export function buildBindingMap(
+/**
+ * The leading run of top-level bindings, resolved — the ENGINE half of
+ * `buildBindingMap`, with the "and exactly one expression follows" fence lifted
+ * off it (#1392).
+ *
+ * ── WHY THE SPLIT EXISTS ────────────────────────────────────────────────────
+ * What an identifier MEANS is a property of the DOCUMENT. It was a property of
+ * one branch of `parseStrudel`'s track dispatch: the no-`$:` branch called
+ * `buildBindingMap`, and both `$:` branches passed `undefined` for `bindings`,
+ * so every `$:`-declared track lost binding resolution entirely. Measured on
+ * `76e42d9e` — opaque `Code` nodes left in the tree:
+ *
+ *   arrange([4, a], [8, b])        0      $: arrange([4, a], [8, b])     2
+ *   stack(a, b)                    0      $: stack(a, b)                 2
+ *                                         $: a                           1
+ *                                         drums: stack(a, b)             2
+ *
+ * `$:` is the ordinary way to declare a track, so the ordinary document lost
+ * its bindings — and an arm that stays `Code` yields no leaves, hence no
+ * `armIndex`, hence NO CLIPS on the timeline at all.
+ *
+ * ⚠ ONE ENGINE, NOT TWO. The fixpoint below is the only place bindings resolve.
+ * This file already warns that inventing per-statement binding semantics beside
+ * it would be "a second, weaker `buildBindingMap`" — so the fix EXTRACTS rather
+ * than reimplements, and `buildBindingMap` is now a caller of it.
+ *
+ * Returns `null` on every shape the old fence rejected: no bindings at all, no
+ * trailing statement, a duplicate name (reassignment/shadowing), or an RHS that
+ * stays opaque once every other binding has resolved (cyclic or genuinely
+ * unparseable). `null` means "resolve nothing", never a partial map.
+ */
+export function collectTopLevelBindings(
   body: string,
   baseOffset: number,
 ):
-  | { bindings: ReadonlyMap<string, PatternIR>; finalExpr: string; finalOffset: number }
+  | { bindings: ReadonlyMap<string, PatternIR>; tail: readonly { text: string; offset: number }[] }
   | null {
   const stmts = stripSideEffectStatements(
     splitTopLevelStatements(body, baseOffset),
   )
-  if (stmts.length < 2) return null // need ≥1 binding + 1 final expr
+  if (stmts.length < 2) return null // need ≥1 binding + ≥1 trailing statement
 
   // 20-17 E-1 — descriptor list + bounded least-fixpoint.
   //
@@ -690,8 +721,11 @@ export function buildBindingMap(
   //   - `< 2 statements` (above)
   //   - dup-key (`bindings.has(name)` → `seen.has(name)` keyed on the
   //     in-progress descriptor list, first-dup-wins)
-  //   - shape (`finalIdx !== stmts.length - 1`)
   //   - BINDING_RE LHS filter
+  // The one fence that MOVED (#1392) is the shape check
+  // (`finalIdx !== stmts.length - 1`): it now lives in `buildBindingMap`, which
+  // still wants exactly one trailing expression, while the engine itself
+  // accepts N — a `$:` document's tail is one statement per track.
   // Build `descs = [{ name, rhs, rhsOffset }, …]`. The RHS-absolute
   // offset (`rhsOffset = offset + rhsStartInText`) is computed ONCE here
   // and STORED on the descriptor — never recomputed inside the fixpoint
@@ -699,15 +733,16 @@ export function buildBindingMap(
   // mid-loop; the def-site arithmetic is fixed at first pass).
   const descs: { name: string; rhs: string; rhsOffset: number }[] = []
   const seen = new Set<string>()
-  let finalIdx = -1
+  let tailIdx = -1
   for (let s = 0; s < stmts.length; s++) {
     const { text, offset } = stmts[s]
     const bm = text.match(BINDING_RE)
     if (!bm) {
-      // First non-binding statement is the final expression. Anything
-      // AFTER it (a trailing binding) makes this not a clean
-      // "bindings then expr" shape → D-02 fallback.
-      finalIdx = s
+      // First non-binding statement opens the TAIL. Bindings are the leading
+      // run only; anything binding-shaped after this point is not part of the
+      // map (a trailing binding is what `buildBindingMap`'s shape fence
+      // rejects, and the tail is what a `$:` document's tracks live in).
+      tailIdx = s
       break
     }
     const name = bm[1]
@@ -720,10 +755,8 @@ export function buildBindingMap(
     const rhsOffset = offset + rhsStartInText
     descs.push({ name, rhs, rhsOffset })
   }
-  if (finalIdx === -1) return null // all statements were bindings, no final expr
-  // Everything AFTER finalIdx must NOT exist (no trailing bindings /
-  // multiple final expressions — keep the shape strictly "bindings*, expr").
-  if (finalIdx !== stmts.length - 1) return null
+  if (tailIdx === -1) return null // all statements were bindings, nothing to play
+  if (descs.length === 0) return null // no bindings → nothing to resolve
 
   // BOUNDED LEAST-FIXPOINT (Datalog discipline: total + PTIME +
   // order-independent + occurs-check stratified):
@@ -780,10 +813,29 @@ export function buildBindingMap(
   // OTHER bindings resolved = cyclic or genuinely opaque — into the
   // same whole-program fallback the old single-pass produced inline).
   if (pending.size > 0) return null
+  return { bindings, tail: stmts.slice(tailIdx) }
+}
+
+/**
+ * The clean `bindings*, ONE final expression` shape — `collectTopLevelBindings`
+ * plus the shape fence that has always guarded this caller.
+ *
+ * Unchanged in behaviour (#1392 moved the fence here, it did not loosen it):
+ * every document this returned a map for still gets one, and every document it
+ * rejected — trailing bindings, several final expressions — is still rejected.
+ */
+export function buildBindingMap(
+  body: string,
+  baseOffset: number,
+):
+  | { bindings: ReadonlyMap<string, PatternIR>; finalExpr: string; finalOffset: number }
+  | null {
+  const got = collectTopLevelBindings(body, baseOffset)
+  if (!got || got.tail.length !== 1) return null
   return {
-    bindings,
-    finalExpr: stmts[finalIdx].text,
-    finalOffset: stmts[finalIdx].offset,
+    bindings: got.bindings,
+    finalExpr: got.tail[0].text,
+    finalOffset: got.tail[0].offset,
   }
 }
 
@@ -812,6 +864,20 @@ export function parseStrudel(
     // char offset of `expr[0]` within `code` so parseMini can attach
     // `loc` (source ranges) to Play nodes.
     const tracks = extractTracks(code)
+    // #1392 — WHAT AN IDENTIFIER MEANS IS A PROPERTY OF THE DOCUMENT, so it is
+    // resolved ONCE, here, above the track dispatch. It used to be computed
+    // inside the no-`$:` branch alone, which meant every `$:`-declared track —
+    // the ordinary way to declare one — parsed its body with no bindings at all
+    // and left each reference an opaque `Code` node. Downstream that is not a
+    // cosmetic gap: an opaque arm yields no leaves, so no `armIndex`, so the
+    // timeline drew NO CLIPS for an arranged song.
+    //
+    // `null` when there is nothing to resolve (no bindings, or a shape the
+    // engine rejects), which is exactly the `undefined` these branches passed
+    // before — so a document without bindings is byte-identical.
+    const trackBindings = tracks.length > 0
+      ? (collectTopLevelBindings(code, 0)?.bindings ?? undefined)
+      : undefined
     if (tracks.length === 0) {
       // No $: prefix — parse as a single expression and wrap in a
       // synthetic Track('d1', ...). 20-11 D-04 option (a): every parseStrudel
@@ -925,7 +991,7 @@ export function parseStrudel(
       // empty-body Track wrapper so d{N} numbering stays stable when
       // the user toggles a line's comment prefix.
       const t = tracks[0]
-      const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, undefined, undefined, opts)
+      const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, undefined, trackBindings, opts)
       // 20-15 G5 (#138 / D-01) — a named label becomes the trackId so the
       // label IS the timeline row name (no `.p()` needed). `$` (the legacy
       // `$:` marker) keeps the synthetic `d1` numbering — byte-identical to
@@ -945,7 +1011,7 @@ export function parseStrudel(
     // they keep their slot in the numbering.
     return IR.stack(
       ...tracks.map((t, i) => {
-        const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, undefined, undefined, opts)
+        const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, undefined, trackBindings, opts)
         // 20-15 G5 (#138 / D-01) — labelled tracks carry trackId = label;
         // legacy `$:` (label === '$') keeps `d{i+1}` so existing multi-$:
         // tunes are byte-identical. dollarStart (label-line start) is the
