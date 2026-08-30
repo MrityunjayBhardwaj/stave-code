@@ -788,26 +788,34 @@ export interface ChromeContext {
   readonly onToggleAutoRefresh?: () => void
 
   /**
-   * Cycle/Loop state for a document that ENDS ON ITS OWN (#1388). `true` means
-   * the user has asked an arranged song to keep repeating instead of stopping
-   * at its last cycle.
+   * End-behaviour state for a document that CAN end on its own (#1388,
+   * inverted by #1396). `true` means the user has asked an arranged song to
+   * stop at its last cycle instead of repeating.
    *
-   * Only meaningful alongside `onToggleLoop` — see below.
+   * ⚠ DEFAULT IS `false` — LOOPING. #1388 had this the other way round and
+   * #1396 flipped it: every reference DAW runs past the end of the arrangement
+   * (REAPER stops, but as a preference), and a document that acquires an
+   * `arrange(...)` should not silently gain the ability to stop under someone
+   * mid-edit. Stopping is the specialised choice, so it is the one you ask for.
+   *
+   * Only meaningful alongside `onToggleStopAtEnd` — see below.
    */
-  readonly loopEnabled?: boolean
+  readonly stopAtEnd?: boolean
 
   /**
-   * Toggle handler for Cycle/Loop. Supplied by the embedder ONLY for documents
-   * that have a definite end; when omitted the button is hidden, exactly like
-   * the live-mode toggle above.
+   * Toggle handler for the end behaviour. Supplied by the embedder ONLY for
+   * documents that have a definite end; when omitted the button is hidden,
+   * exactly like the live-mode toggle above.
    *
    * ⚠ THE OMISSION IS THE FEATURE, not an oversight. 96.7% of real documents
-   * have no arrangement and already loop forever, so a Loop toggle on them
+   * have no arrangement and loop forever no matter what, so the toggle on them
    * would be a control that visibly does nothing — and a control that does
    * nothing teaches the user that the ones that DO work might not. The button
-   * appears exactly when it changes what happens.
+   * appears exactly when it changes what happens. That reasoning is unchanged
+   * by #1396: what a document with no end lacks is an END, which is what both
+   * settings are about, so neither of them means anything there.
    */
-  readonly onToggleLoop?: () => void
+  readonly onToggleStopAtEnd?: () => void
 }
 
 /**

@@ -967,7 +967,7 @@ export default function StrudelEditorClient({
     songExtent?: SongExtent | null;
     // Cycle/Loop, user-set, default OFF. Only consulted for a document with a
     // definite end; everything else already loops.
-    loopEnabled?: boolean;
+    stopAtEnd?: boolean;
   }>>(new Map());
   // Latest-value ref so the content-change subscription (#457, below) can read
   // the active file's play/live state without re-binding the subscription on
@@ -1397,15 +1397,16 @@ export default function StrudelEditorClient({
     if (rt) rt.stop();
   }, []);
 
-  // #1388 — Cycle/Loop. Per file, user-set, default OFF: an arranged song plays
-  // through once. Only reachable from the chrome for a document that HAS a
-  // definite end, so a stray toggle cannot put a looping document into a state
-  // that means nothing.
-  const handleToggleLoop = useCallback((fileId: string) => {
+  // #1388, inverted by #1396 — Cycle/Loop. Per file, user-set, default OFF,
+  // and OFF now means LOOPING: an arranged song repeats unless the user asks it
+  // to stop. Only reachable from the chrome for a document that HAS a definite
+  // end, so a stray toggle cannot put an endless document into a state that
+  // means nothing.
+  const handleToggleStopAtEnd = useCallback((fileId: string) => {
     setRuntimeStates(prev => {
       const next = new Map(prev);
       const cur = prev.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
-      next.set(fileId, { ...cur, loopEnabled: !cur.loopEnabled });
+      next.set(fileId, { ...cur, stopAtEnd: !cur.stopAtEnd });
       return next;
     });
   }, []);
@@ -1446,8 +1447,8 @@ export default function StrudelEditorClient({
       extentOf: (fid) => runtimeStatesRef.current.get(fid)?.songExtent ?? null,
       positionOf: (fid) =>
         runtimesRef.current.get(fid)?.getSongPosition?.() ?? null,
-      isLoopEnabled: (fid) =>
-        runtimeStatesRef.current.get(fid)?.loopEnabled ?? false,
+      isStopAtEnd: (fid) =>
+        runtimeStatesRef.current.get(fid)?.stopAtEnd ?? false,
       // The same Stop the transport button issues — one path stops a file, so
       // the runtime teardown, the bus unpublish and the playing-state edge all
       // happen exactly as they do when the user presses the button.
@@ -1504,15 +1505,16 @@ export default function StrudelEditorClient({
       onStop: () => handleStop(tab.fileId),
       autoRefresh: state.autoRefresh,
       onToggleAutoRefresh: () => handleToggleAutoRefresh(tab.fileId),
-      // #1388 — the Loop toggle is offered ONLY for a document that would
-      // otherwise stop at its end. `hasDefiniteEnd` is the same predicate the
-      // watcher stops on, so the set of documents showing the button and the
-      // set of documents that end are the same set by construction — they
-      // cannot drift into a button that does nothing, or a song that ends with
-      // no way to ask it not to.
-      loopEnabled: state.loopEnabled ?? false,
-      onToggleLoop: hasDefiniteEnd(state.songExtent)
-        ? () => handleToggleLoop(tab.fileId)
+      // #1388 — the toggle is offered ONLY for a document that HAS an end to
+      // stop at. `hasDefiniteEnd` is the same predicate the watcher stops on,
+      // so the set of documents showing the button and the set of documents
+      // that CAN end are the same set by construction — they cannot drift into
+      // a button that does nothing, or a song that ends with no way to ask it
+      // not to. #1396 inverted which way the button starts, not which
+      // documents it appears on.
+      stopAtEnd: state.stopAtEnd ?? false,
+      onToggleStopAtEnd: hasDefiniteEnd(state.songExtent)
+        ? () => handleToggleStopAtEnd(tab.fileId)
         : undefined,
       chromeExtras: (
         <>
@@ -1526,7 +1528,7 @@ export default function StrudelEditorClient({
       ),
     };
     return runtimeProvider.renderChrome(ctx);
-  }, [getOrCreateRuntime, runtimeStates, handlePlay, handleStop, handleToggleAutoRefresh, handleToggleLoop, tabBackdrops, backdropName]);
+  }, [getOrCreateRuntime, runtimeStates, handlePlay, handleStop, handleToggleAutoRefresh, handleToggleStopAtEnd, tabBackdrops, backdropName]);
 
   // onSaveFile: Cmd+S / Save button handler. For viz files, flush the
   // current in-memory content back to VizPresetStore via the bridge,
