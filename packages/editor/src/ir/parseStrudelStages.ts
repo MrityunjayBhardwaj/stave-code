@@ -30,6 +30,7 @@ import {
   stripSideEffectStatements,
   BINDING_RE,
   buildBindingMap,
+  collectTopLevelBindings,
 } from './parseStrudel'
 
 /**
@@ -144,6 +145,16 @@ export function runRawStage(input: PatternIR): PatternIR {
       loc: [{ start, end: code.length }],
     }
   }
+  // #1392 — the document's top-level bindings, resolved ONCE for every track.
+  //
+  // A track's lifted `code` is its expression ALONE (`t.expr`), so the
+  // `const intro = …` lines are not in it and no later stage can recover them
+  // from what it is handed. RAW is the only stage that still holds the whole
+  // document, so this is the only place the map can be built — it then travels
+  // as stage-meta on each lift, exactly as `trackLabel` and `dollarStart` do.
+  // Stripped from FINAL by `stripStageMeta` with the rest of the meta.
+  const docBindings = collectTopLevelBindings(code, 0)?.bindings
+  const bindingMeta = docBindings ? { trackBindings: docBindings } : {}
   if (tracks.length === 1) {
     const t = tracks[0]
     return {
@@ -151,6 +162,7 @@ export function runRawStage(input: PatternIR): PatternIR {
       code: t.expr,
       lang: 'strudel' as const,
       loc: [{ start: t.offset, end: t.offset + t.expr.length }],
+      ...bindingMeta,
       // #671 — a lone `name: …` / `$:` track threads its label AND its
       // `$:`-line range so CHAIN-APPLIED's single-track wrap mirrors
       // parseStrudel.ts:857 exactly: `trackId = label` (not synthetic `d1`)
@@ -160,13 +172,18 @@ export function runRawStage(input: PatternIR): PatternIR {
       trackLabel: t.label,
       dollarStart: t.dollarStart,
       dollarEnd: t.end,
-    } as PatternIR
+      // `unknown` hop: the stage-meta stash is deliberately off-type (D-03
+      // narrow union), and `trackBindings` carries it past the point where a
+      // direct assertion still overlaps. Same idiom as `withTrackMeta` below.
+    } as unknown as PatternIR
   }
   const trackCodes: PatternIR[] = tracks.map((t) => ({
     tag: 'Code' as const,
     code: t.expr,
     lang: 'strudel' as const,
     loc: [{ start: t.offset, end: t.offset + t.expr.length }],
+    // #1392 — the document's bindings, same map on every track (see above).
+    ...bindingMeta,
     // Phase 20-11 α-4 — stage-transition metadata. Stash the `$:` line
     // range (dollarStart..end-of-track-body-slice) so runChainAppliedStage
     // can construct the Track wrapper with the same loc parseStrudel main
@@ -183,7 +200,7 @@ export function runRawStage(input: PatternIR): PatternIR {
     // staged pipeline, not monolithic parseStrudel) dropped labelled-track
     // names → `d1/d2/d3`. `$:` carries label === '$' → d{N} unchanged.
     trackLabel: t.label,
-  } as PatternIR))
+  } as unknown as PatternIR))
   return {
     tag: 'Stack' as const,
     tracks: trackCodes,
@@ -210,7 +227,14 @@ export function runMiniExpandedStage(input: PatternIR): PatternIR {
     const base = input.loc?.[0]?.start ?? 0
     // #671 — carry a lone track's `name:`/`$:` label AND `$:`-line range
     // through to CHAIN-APPLIED (mirrors the multi-track threading below).
-    const cMeta = input as unknown as { trackLabel?: string; dollarStart?: number; dollarEnd?: number }
+    const cMeta = input as unknown as {
+      trackLabel?: string
+      dollarStart?: number
+      dollarEnd?: number
+      // #1392 — the document's bindings, put here by RAW (the only stage that
+      // still holds the `const` lines a track's own `code` does not contain).
+      trackBindings?: ReadonlyMap<string, PatternIR>
+    }
 
     // #1384 — the ONE place this stage re-attaches a lone track's stage-meta.
     // Both exits below go through it: the empty-code exit and the parsed exit.
@@ -252,11 +276,18 @@ export function runMiniExpandedStage(input: PatternIR): PatternIR {
     // corpus, and the reason `arrange()` behind a `const` sized a 3:28 song at
     // 0:08 (#1373).
     //
-    // ONLY the bare branch, matching `parseStrudel`: a `$:`/`name:` track is
-    // parsed by the multi-track path, which passes no bindings. RAW marks those
-    // with `trackLabel`/`dollarStart`, so their absence IS the discriminator —
-    // no new signal, and no risk of applying bindings where the reference
-    // implementation does not.
+    // ⚠ THIS ARM IS THE BARE DOCUMENT'S ONLY. A `$:`/`name:` track takes the
+    // `trackBindings` route on the exit below instead, because its `code` is
+    // the track expression alone and `buildBindingMap` would find no `const`
+    // lines in it. RAW marks a track with `trackLabel`/`dollarStart`, so their
+    // absence is still the discriminator.
+    //
+    // It used to mean something stronger — "a `$:` track resolves NO bindings,
+    // matching `parseStrudel`" — and that mirrored a real gap in the reference
+    // rather than a decision (#1392). Both parsers agreeing is what kept the
+    // corpus gate silent about it: a differential gate proves agreement, never
+    // correctness. `parseStrudel` resolves them for every branch now, and so
+    // does this pipeline.
     if (cMeta.trackLabel === undefined && cMeta.dollarStart === undefined) {
       const bound = buildBindingMap(input.code, base)
       if (bound) {
@@ -275,7 +306,10 @@ export function runMiniExpandedStage(input: PatternIR): PatternIR {
       }
     }
 
-    return withTrackMeta(parseRootWithChainMeta(input.code, base))
+    // #1392 — a `$:`/`name:` track parses its expression WITH the document's
+    // bindings. `undefined` for a document that declares none, which is what
+    // this call passed unconditionally before.
+    return withTrackMeta(parseRootWithChainMeta(input.code, base, cMeta.trackBindings))
   }
   if (input.tag === 'Stack' && input.userMethod === undefined) {
     // Multi-track from RAW — apply parseRootWithChainMeta to each Code.
@@ -284,8 +318,15 @@ export function runMiniExpandedStage(input: PatternIR): PatternIR {
     // Track wrapper with the correct loc.
     const tracks = input.tracks.map((t) => {
       if (t.tag !== 'Code') return t // defensive
-      const parsed = parseRootWithChainMeta(t.code, t.loc?.[0]?.start ?? 0)
-      const tMeta = t as unknown as { dollarStart?: number; dollarEnd?: number; trackLabel?: string }
+      const tMeta = t as unknown as {
+        dollarStart?: number
+        dollarEnd?: number
+        trackLabel?: string
+        trackBindings?: ReadonlyMap<string, PatternIR>
+      }
+      // #1392 — every track in a multi-`$:` document resolves against the same
+      // document-level map RAW built.
+      const parsed = parseRootWithChainMeta(t.code, t.loc?.[0]?.start ?? 0, tMeta.trackBindings)
       if (tMeta.dollarStart !== undefined && tMeta.dollarEnd !== undefined) {
         return {
           ...(parsed as object),
@@ -549,6 +590,7 @@ function stripStageMeta(node: PatternIR): PatternIR {
   if (
     !('unresolvedChain' in n) &&
     !('unresolvedBindings' in n) &&
+    !('trackBindings' in n) &&
     !('chainOffset' in n) &&
     !('dollarStart' in n) &&
     !('dollarEnd' in n) &&
@@ -559,6 +601,9 @@ function stripStageMeta(node: PatternIR): PatternIR {
   const {
     unresolvedChain: _u,
     unresolvedBindings: _ub,
+    // #1392 — RAW's document-level binding map. Consumed in MINI-EXPANDED;
+    // stripped here so it can never reach a FINAL node body.
+    trackBindings: _tb,
     chainOffset: _o,
     dollarStart: _ds,
     dollarEnd: _de,
@@ -569,6 +614,7 @@ function stripStageMeta(node: PatternIR): PatternIR {
   } = n
   void _u
   void _ub
+  void _tb
   void _o
   void _ds
   void _de
