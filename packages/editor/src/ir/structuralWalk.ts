@@ -445,16 +445,24 @@ function walkCycle(ir: PatternIR, ctx: StructCtx): LaneItem[] {
       }
       // The arm's OWN source range — `ArrangeArm.loc` is the `[n, pat]` tuple, so
       // these bytes contain the section's name as the musician wrote it (#1391).
-      // Paired with `armIndex` under the same outermost-wins `??`: the two are
-      // one identity and must never come from different arrange nodes.
+      //
+      // ⚠ INDEX AND RANGE ARE ONE IDENTITY, SO THEY ARE INHERITED TOGETHER, on a
+      // single test. Two independent `??`s would look equivalent and are not: an
+      // outer arm with an index but NO `loc` would keep its index while a nested
+      // arrange supplied the range, captioning the outer clip with an inner
+      // section's name. Observed on a stripped parse — outer arm 0 came back
+      // named `[1, a]`. Whichever arrange node names the arm names it wholly.
+      const inherited = ctx.armIndex !== undefined
       const armLoc = ir.arms[armIndex].loc?.[0]
       const childCtx: StructCtx = {
         ...ctx,
         cycle: localCycle,
-        armIndex: ctx.armIndex ?? armIndex,
-        armRange:
-          ctx.armRange ??
-          (armLoc ? ([armLoc.start, armLoc.end] as const) : undefined),
+        armIndex: inherited ? ctx.armIndex : armIndex,
+        armRange: inherited
+          ? ctx.armRange
+          : armLoc
+            ? ([armLoc.start, armLoc.end] as const)
+            : undefined,
       }
       return withWrapperLoc(recurse(ir.arms[armIndex].pattern, childCtx), ir.loc)
     }

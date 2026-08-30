@@ -694,12 +694,13 @@ function walkCycle(ir, ctx) {
         }
         acc += w;
       }
+      const inherited = ctx.armIndex !== void 0;
       const armLoc = ir.arms[armIndex].loc?.[0];
       const childCtx = {
         ...ctx,
         cycle: localCycle,
-        armIndex: ctx.armIndex ?? armIndex,
-        armRange: ctx.armRange ?? (armLoc ? [armLoc.start, armLoc.end] : void 0)
+        armIndex: inherited ? ctx.armIndex : armIndex,
+        armRange: inherited ? ctx.armRange : armLoc ? [armLoc.start, armLoc.end] : void 0
       };
       return withWrapperLoc(recurse(ir.arms[armIndex].pattern, childCtx), ir.loc);
     }
