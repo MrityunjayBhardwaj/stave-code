@@ -43377,7 +43377,7 @@ function LiveModeToggle({
 }
 __name(LiveModeToggle, "LiveModeToggle");
 function LoopToggle({
-  loopEnabled,
+  stopAtEnd,
   onToggle
 }) {
   const baseStyle = {
@@ -43395,10 +43395,10 @@ function LoopToggle({
     "button",
     {
       "data-testid": "strudel-chrome-loop-toggle",
-      "data-loop": loopEnabled ? "on" : "off",
+      "data-loop": stopAtEnd ? "off" : "on",
       onClick: onToggle,
-      title: loopEnabled ? "Loop ON \u2014 this arranged song repeats instead of stopping at its end" : "Loop OFF \u2014 this arranged song plays through once and stops",
-      style: loopEnabled ? {
+      title: stopAtEnd ? "Loop OFF \u2014 this arranged song plays through once and stops at its end" : "Loop ON \u2014 this arranged song repeats; click to stop at its end instead",
+      style: !stopAtEnd ? {
         ...baseStyle,
         background: "var(--accent-dim)",
         color: "var(--accent-strong, var(--accent))",
@@ -43409,7 +43409,7 @@ function LoopToggle({
         color: "var(--foreground-muted)",
         border: "1px solid var(--border)"
       },
-      children: loopEnabled ? "\u21BB loop" : "\u21BB once"
+      children: stopAtEnd ? "\u21BB once" : "\u21BB loop"
     }
   );
 }
@@ -43424,8 +43424,8 @@ function StrudelChrome(ctx) {
     chromeExtras,
     autoRefresh,
     onToggleAutoRefresh,
-    loopEnabled,
-    onToggleLoop
+    stopAtEnd,
+    onToggleStopAtEnd
   } = ctx;
   return /* @__PURE__ */ jsxs(
     "div",
@@ -43485,7 +43485,7 @@ function StrudelChrome(ctx) {
             onToggle: onToggleAutoRefresh
           }
         ),
-        onToggleLoop && /* @__PURE__ */ jsx(LoopToggle, { loopEnabled: loopEnabled ?? false, onToggle: onToggleLoop }),
+        onToggleStopAtEnd && /* @__PURE__ */ jsx(LoopToggle, { stopAtEnd: stopAtEnd ?? false, onToggle: onToggleStopAtEnd }),
         chromeExtras && /* @__PURE__ */ jsx(
           "div",
           {

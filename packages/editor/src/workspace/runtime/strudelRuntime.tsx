@@ -107,18 +107,23 @@ function LiveModeToggle({
 
 /**
  * Cycle/Loop toggle — the transport control every DAW has, shown only for a
- * document that would otherwise STOP at its end (#1388).
+ * document that HAS an end to stop at (#1388, default inverted by #1396).
  *
- * Default OFF, so an arranged song plays through once. With it on, the song
- * repeats the way it always did. Rendered only when `onToggleLoop` is supplied
- * (see `ChromeContext.onToggleLoop`): the embedder omits it for the 96.7% of
- * documents that have no arrangement, where the button would change nothing.
+ * `stopAtEnd` defaults to FALSE, so an arranged song loops like everything else
+ * and playing it through once is what the user asks for. Rendered only when
+ * `onToggleStopAtEnd` is supplied (see `ChromeContext.onToggleStopAtEnd`): the
+ * embedder omits it for the 96.7% of documents that have no arrangement, where
+ * neither setting would change anything.
+ *
+ * `data-loop` keeps saying what it says — whether this document is LOOPING —
+ * so it reads as the transport state rather than as the flag's storage. It is
+ * therefore the negation of `stopAtEnd`.
  */
 function LoopToggle({
-  loopEnabled,
+  stopAtEnd,
   onToggle,
 }: {
-  loopEnabled: boolean
+  stopAtEnd: boolean
   onToggle: () => void
 }): React.ReactElement {
   const baseStyle: React.CSSProperties = {
@@ -135,15 +140,15 @@ function LoopToggle({
   return (
     <button
       data-testid="strudel-chrome-loop-toggle"
-      data-loop={loopEnabled ? 'on' : 'off'}
+      data-loop={stopAtEnd ? 'off' : 'on'}
       onClick={onToggle}
       title={
-        loopEnabled
-          ? 'Loop ON — this arranged song repeats instead of stopping at its end'
-          : 'Loop OFF — this arranged song plays through once and stops'
+        stopAtEnd
+          ? 'Loop OFF — this arranged song plays through once and stops at its end'
+          : 'Loop ON — this arranged song repeats; click to stop at its end instead'
       }
       style={
-        loopEnabled
+        !stopAtEnd
           ? {
               ...baseStyle,
               background: 'var(--accent-dim)',
@@ -158,7 +163,7 @@ function LoopToggle({
             }
       }
     >
-      {loopEnabled ? '↻ loop' : '↻ once'}
+      {stopAtEnd ? '↻ once' : '↻ loop'}
     </button>
   )
 }
@@ -178,8 +183,8 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
     chromeExtras,
     autoRefresh,
     onToggleAutoRefresh,
-    loopEnabled,
-    onToggleLoop,
+    stopAtEnd,
+    onToggleStopAtEnd,
   } = ctx
   return (
     <div
@@ -238,8 +243,8 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
         />
       )}
 
-      {onToggleLoop && (
-        <LoopToggle loopEnabled={loopEnabled ?? false} onToggle={onToggleLoop} />
+      {onToggleStopAtEnd && (
+        <LoopToggle stopAtEnd={stopAtEnd ?? false} onToggle={onToggleStopAtEnd} />
       )}
 
       {chromeExtras && (

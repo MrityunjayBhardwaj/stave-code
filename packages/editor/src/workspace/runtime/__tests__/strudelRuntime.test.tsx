@@ -182,32 +182,23 @@ describe('STRUDEL_RUNTIME renderChrome', () => {
     expect(onToggleAutoRefresh).toHaveBeenCalledTimes(1)
   })
 
-  // ── Cycle/Loop toggle (#1388) ────────────────────────────────────────────
-  it('hides the loop toggle when onToggleLoop is not supplied', () => {
+  // ── Cycle/Loop toggle (#1388, default inverted by #1396) ─────────────────
+  it('hides the toggle when onToggleStopAtEnd is not supplied', () => {
     // The omission is the feature: the embedder passes no handler for a
-    // document with no definite end, which is 96.7% of them. A Loop button on
-    // a document that already loops forever would do nothing.
+    // document with no definite end, which is 96.7% of them. Neither setting
+    // means anything on a document that has no end either way.
     const { queryByTestId } = render(
       STRUDEL_RUNTIME.renderChrome(makeCtx()) as React.ReactElement,
     )
     expect(queryByTestId('strudel-chrome-loop-toggle')).toBeNull()
   })
 
-  it('renders the loop toggle OFF by default — an arranged song plays once', () => {
+  it('⚠ reads LOOP by default — the #1396 inversion, at the chrome', () => {
+    // The twin of the watcher's default arm. Both halves have to agree or the
+    // button says one thing while the transport does another.
     const { getByTestId } = render(
       STRUDEL_RUNTIME.renderChrome(
-        makeCtx({ onToggleLoop: () => {} }),
-      ) as React.ReactElement,
-    )
-    const btn = getByTestId('strudel-chrome-loop-toggle')
-    expect(btn.getAttribute('data-loop')).toBe('off')
-    expect(btn.textContent).toContain('once')
-  })
-
-  it('renders the loop toggle ON when loopEnabled=true', () => {
-    const { getByTestId } = render(
-      STRUDEL_RUNTIME.renderChrome(
-        makeCtx({ onToggleLoop: () => {}, loopEnabled: true }),
+        makeCtx({ onToggleStopAtEnd: () => {} }),
       ) as React.ReactElement,
     )
     const btn = getByTestId('strudel-chrome-loop-toggle')
@@ -215,13 +206,24 @@ describe('STRUDEL_RUNTIME renderChrome', () => {
     expect(btn.textContent).toContain('loop')
   })
 
-  it('calls onToggleLoop exactly once per click', () => {
-    const onToggleLoop = vi.fn()
+  it('reads ONCE when stopAtEnd=true', () => {
     const { getByTestId } = render(
-      STRUDEL_RUNTIME.renderChrome(makeCtx({ onToggleLoop })) as React.ReactElement,
+      STRUDEL_RUNTIME.renderChrome(
+        makeCtx({ onToggleStopAtEnd: () => {}, stopAtEnd: true }),
+      ) as React.ReactElement,
+    )
+    const btn = getByTestId('strudel-chrome-loop-toggle')
+    expect(btn.getAttribute('data-loop')).toBe('off')
+    expect(btn.textContent).toContain('once')
+  })
+
+  it('calls onToggleStopAtEnd exactly once per click', () => {
+    const onToggleStopAtEnd = vi.fn()
+    const { getByTestId } = render(
+      STRUDEL_RUNTIME.renderChrome(makeCtx({ onToggleStopAtEnd })) as React.ReactElement,
     )
     fireEvent.click(getByTestId('strudel-chrome-loop-toggle'))
-    expect(onToggleLoop).toHaveBeenCalledTimes(1)
+    expect(onToggleStopAtEnd).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -1,13 +1,17 @@
 import { test, expect, type Page } from '@playwright/test'
 
 /**
- * #1388 — an ARRANGED song plays through once and stops. In the real app.
+ * #1388 — an ARRANGED song CAN stop at its end. In the real app.
+ *
+ * ⚠ #1396 inverted the default: it loops unless the user asks it to stop, so
+ * the arm that presses the toggle and the arm that leaves it alone have swapped
+ * which behaviour they expect.
  *
  * ── WHY THIS IS AN E2E ARM AND NOT ONLY A UNIT ONE ───────────────────────────
  * The gap was found by LISTENING: the first bounce of an arranged document
  * anyone played wrapped and restarted mid-capture. `songTermination.test.ts`
  * pins the decision — which extent kinds end, when a crossing counts, what the
- * Loop toggle overrides — with a position sequence it controls. What it cannot
+ * toggle overrides — with a position sequence it controls. What it cannot
  * see is whether that decision is ever REACHED: whether the extent is measured
  * on eval, whether the position accessor is wired to the playing runtime,
  * whether the sampler runs at all. Every one of those can be missing while all
@@ -168,22 +172,26 @@ test.use({
   launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] },
 })
 
-test.describe('#1388 — playback that ends', () => {
-  test('an arranged song stops itself at its last cycle', async ({ page }) => {
+test.describe('#1388/#1396 — playback that can end', () => {
+  test('an arranged song stops at its last cycle once asked to', async ({ page }) => {
     test.setTimeout(180_000)
 
     await boot(page)
     await setStrudelCode(page, SONG)
     await pressPlay(page)
 
-    // The Loop toggle is offered because this document HAS a definite end —
-    // the same predicate the watcher stops on. Its presence here is the
-    // cheapest evidence that the extent was measured at all.
+    // The toggle is offered because this document HAS a definite end — the
+    // same predicate the watcher stops on. Its presence here is the cheapest
+    // evidence that the extent was measured at all.
+    const toggle = page.getByTestId('strudel-chrome-loop-toggle')
     await expect(
-      page.getByTestId('strudel-chrome-loop-toggle'),
-      'no Loop toggle — the document was not recognised as arranged',
+      toggle,
+      'no end-behaviour toggle — the document was not recognised as arranged',
     ).toBeVisible()
-    await expect(page.getByTestId('strudel-chrome-loop-toggle')).toHaveAttribute('data-loop', 'off')
+    // #1396 — it starts LOOPING. Ask it to stop, and only then expect an end.
+    await expect(toggle).toHaveAttribute('data-loop', 'on')
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('data-loop', 'off')
 
     const { stoppedAtS, profile } = await watchTransport(page, WATCH_SECONDS, 'arranged')
 
@@ -207,7 +215,7 @@ test.describe('#1388 — playback that ends', () => {
     await setStrudelCode(page, LOOP_DOC)
     await pressPlay(page)
 
-    // No definite end, so no Loop toggle: a control that changes nothing would
+    // No definite end, so no toggle: a control that changes nothing would
     // teach the user that the ones that do work might not.
     await expect(page.getByTestId('strudel-chrome-loop-toggle')).toHaveCount(0)
 
@@ -218,7 +226,10 @@ test.describe('#1388 — playback that ends', () => {
     ).toBeNull()
   })
 
-  test('Loop ON keeps an arranged song going past its end', async ({ page }) => {
+  test('⚠ THE DEFAULT — an arranged song runs past its end untouched', async ({ page }) => {
+    // The #1396 arm, in the running app. Nothing is clicked: this is what a
+    // musician gets by writing an `arrange(...)` and pressing Play. Under
+    // #1388 this stopped at its last cycle.
     test.setTimeout(180_000)
 
     await boot(page)
@@ -226,13 +237,13 @@ test.describe('#1388 — playback that ends', () => {
     await pressPlay(page)
 
     const toggle = page.getByTestId('strudel-chrome-loop-toggle')
-    await toggle.click()
+    await expect(toggle).toBeVisible()
     await expect(toggle).toHaveAttribute('data-loop', 'on')
 
-    const { stoppedAtS, profile } = await watchTransport(page, WATCH_SECONDS, 'arranged+loop')
+    const { stoppedAtS, profile } = await watchTransport(page, WATCH_SECONDS, 'arranged+default')
     expect(
       stoppedAtS,
-      `Loop was ON and the song still stopped at ${stoppedAtS}s — profile: ${profile}`,
+      `an untouched arranged song stopped at ${stoppedAtS}s — profile: ${profile}`,
     ).toBeNull()
   })
 })

@@ -1,5 +1,19 @@
 /**
- * When does playback END? (#1388)
+ * When does playback END? (#1388, default inverted by #1396)
+ *
+ * ── WHICH WAY ROUND (#1396) ──────────────────────────────────────────────────
+ * #1388 made stopping the default and looping the opt-in. That is backwards
+ * against every reference: Ableton and Bitwig run the transport past the end of
+ * the arrangement, and REAPER stops only as a PREFERENCE the user sets. It also
+ * reads badly while writing, since live coding is a loop you edit inside of — a
+ * document that acquires an `arrange(...)` should not silently gain the ability
+ * to stop under you mid-edit.
+ *
+ * So the default LOOPS, and `stopAtEnd` is what the user opts into. The
+ * asymmetry below already argued for this and was only applied to the ambiguous
+ * extents; #1396 applies it to the unambiguous one too. Nothing else about the
+ * mechanism changes — the pass counting, the `pass < 1` guard and the
+ * stop-at-the-end-of-this-pass behaviour are all as #1388 built them.
  *
  * Nothing in this codebase ended playback before this module: a document was
  * started and it ran until someone pressed Stop. Measured on `b091ccc5` across
@@ -14,7 +28,8 @@
  * the distinction termination needs, in its own comments:
  *
  *   { kind: 'arranged', cycles }  "A definite end. Safe to bounce whole."
- *                                 → play through once, stop at `cycles`
+ *                                 → CAN stop at `cycles` — and does, but only
+ *                                   once the user asks for it (#1396)
  *   { kind: 'loop' }              "a loop has no end"  → keep looping
  *   { kind: 'opaque' }            "its length cannot be trusted" → keep looping
  *   null / not yet measured       → keep looping
@@ -36,9 +51,10 @@
  *    guaranteed to be near zero. A bare `position >= cycles` would then fire on
  *    the very first tick and Play would appear to do nothing — the worst
  *    possible failure, because the user cannot tell it from a broken transport.
- * 2. With the loop toggle ON the position runs past `cycles` and keeps going.
- *    Turning the toggle off afterwards would, under a bare comparison, stop
- *    instantly rather than at the end of the pass being played.
+ * 2. While looping — the DEFAULT (#1396) — the position runs past `cycles` and
+ *    keeps going. Turning `stopAtEnd` on afterwards would, under a bare
+ *    comparison, stop instantly rather than at the end of the pass being
+ *    played.
  *
  * Counting PASSES — `floor(position / cycles)` — removes both. The first sample
  * of a run only establishes a baseline, never a stop; termination is a
@@ -53,7 +69,8 @@
  */
 import type { SongExtent } from '@stave/editor'
 
-/** An extent that names a definite end — the only kind playback stops for. */
+/** An extent that names a definite end — the only kind playback CAN stop for.
+ *  Whether it does is the user's `stopAtEnd` choice (#1396). */
 export type DefiniteEnd = { readonly kind: 'arranged'; readonly cycles: number }
 
 /**
@@ -61,7 +78,7 @@ export type DefiniteEnd = { readonly kind: 'arranged'; readonly cycles: number }
  *
  * The single place that rule lives. Two consumers read it and they must not
  * drift: the watcher below (which stops playback) and the transport chrome
- * (which only offers a Loop toggle for documents that would otherwise stop).
+ * (which only offers the end-behaviour toggle for documents that HAVE an end).
  * A document the toggle appears on and a document that ends are by construction
  * the same set.
  */
@@ -104,8 +121,9 @@ export interface EndOfSongDeps {
   /** Transport-offset-aware song position in cycles — the same clock the
    *  playhead is drawn from — or `null` when unavailable. */
   readonly positionOf: (fileId: string) => number | null
-  /** Has the user asked this document to loop instead of ending? */
-  readonly isLoopEnabled: (fileId: string) => boolean
+  /** Has the user asked this document to stop at its end instead of looping?
+   *  Default is `false` — an unanswered document loops (#1396). */
+  readonly isStopAtEnd: (fileId: string) => boolean
   /** Stop this file's transport. */
   readonly stop: (fileId: string) => void
 }
@@ -180,10 +198,11 @@ export function createEndOfSongWatcher(deps: EndOfSongDeps): EndOfSongWatcher {
         // pass 1 is an ending.
         if (pass < 1) continue
 
-        // A crossing. With Loop on we swallow it and carry the new baseline
-        // forward, so turning the toggle off later stops at the end of the pass
-        // being played rather than immediately.
-        if (deps.isLoopEnabled(fileId)) continue
+        // A crossing. While the document is looping — which is the DEFAULT
+        // (#1396) — we swallow it and carry the new baseline forward, so
+        // turning `stopAtEnd` on later stops at the end of the pass being
+        // played rather than immediately.
+        if (!deps.isStopAtEnd(fileId)) continue
 
         baselines.delete(fileId)
         deps.stop(fileId)

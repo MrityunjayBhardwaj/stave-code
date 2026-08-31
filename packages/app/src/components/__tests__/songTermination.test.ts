@@ -50,21 +50,21 @@ const OPAQUE = songExtent({
 /** A one-file rig: set the position, tick, and see whether it stopped. */
 function rig(
   extent: SongExtent | null | undefined,
-  opts: { loop?: boolean; fileId?: string } = {},
+  opts: { stopAtEnd?: boolean; fileId?: string } = {},
 ) {
   const fileId = opts.fileId ?? 'f1'
   const state = {
     playing: true,
     position: 0 as number | null,
     extent,
-    loop: opts.loop ?? false,
+    stopAtEnd: opts.stopAtEnd ?? false,
     stops: [] as string[],
   }
   const deps: EndOfSongDeps = {
     playingFileIds: () => (state.playing ? [fileId] : []),
     extentOf: () => state.extent,
     positionOf: () => state.position,
-    isLoopEnabled: () => state.loop,
+    isStopAtEnd: () => state.stopAtEnd,
     stop: (id) => {
       state.stops.push(id)
       state.playing = false
@@ -145,9 +145,20 @@ describe('sameExtent — the no-op gate on the render path', () => {
   })
 })
 
-describe('an ARRANGED document plays through once and stops', () => {
-  it('stops on the tick that crosses its last cycle', () => {
+describe('an ARRANGED document LOOPS unless asked to stop (#1396)', () => {
+  it('⚠ THE DEFAULT — nothing stops a fresh arranged document', () => {
+    // The arm #1396 exists for. Nothing is set on this rig; it is an arranged
+    // document exactly as the app hands one over. Under #1388 this stopped at
+    // 16, and that was the wrong way round — every reference DAW runs past the
+    // end of the arrangement, and a document should not gain the ability to
+    // stop under someone mid-edit just by acquiring an `arrange(...)`.
     const { state, play } = rig(ARRANGED)
+    play(0, 8, 16.1, 24, 32.1, 48.1, 64.1)
+    expect(state.stops).toEqual([])
+  })
+
+  it('stops on the tick that crosses its last cycle, once asked to', () => {
+    const { state, play } = rig(ARRANGED, { stopAtEnd: true })
     play(0, 4, 8, 12, 15.9)
     expect(state.stops).toEqual([])
     play(16.02)
@@ -155,7 +166,7 @@ describe('an ARRANGED document plays through once and stops', () => {
   })
 
   it('does not stop before the end even after many samples', () => {
-    const { state, play } = rig(ARRANGED)
+    const { state, play } = rig(ARRANGED, { stopAtEnd: true })
     for (let c = 0; c < 16; c += 0.25) play(c)
     expect(state.stops).toEqual([])
   })
@@ -198,31 +209,42 @@ describe('a document with no trustworthy end keeps looping', () => {
   })
 })
 
-describe('the Loop toggle', () => {
-  it('overrides an arranged document back to looping', () => {
-    const { state, play } = rig(ARRANGED, { loop: true })
+describe('the end-behaviour toggle', () => {
+  it('left alone, an arranged document keeps looping', () => {
+    const { state, play } = rig(ARRANGED, { stopAtEnd: false })
     play(0, 8, 16, 24, 32, 48)
     expect(state.stops).toEqual([])
   })
 
-  it('does not make a looping document stop when switched off', () => {
-    const { state, play } = rig(LOOPING, { loop: false })
-    play(0, 16, 32)
+  it('cannot make a document with no end stop, even when switched on', () => {
+    // `stopAtEnd` is only ever offered for a document that HAS an end; this
+    // pins that the watcher ignores it otherwise, so a flag left behind by an
+    // edit cannot stop a document that has nowhere to stop.
+    const { state, play } = rig(LOOPING, { stopAtEnd: true })
+    play(0, 16, 32, 64)
     expect(state.stops).toEqual([])
   })
 
-  it('switching it OFF mid-flight stops at the NEXT end, not instantly', () => {
-    // The position has run well past `cycles` by then. A bare
-    // `position >= cycles` would stop on the very next tick, cutting the pass
-    // the user is listening to.
-    const { state, play } = rig(ARRANGED, { loop: true })
+  it('switching it ON mid-flight stops at the NEXT end, not instantly', () => {
+    // Starts LOOPING, which is the default, and runs well past `cycles` before
+    // the user asks it to stop. A bare `position >= cycles` would then stop on
+    // the very next tick, cutting the pass the user is listening to.
+    const { state, play } = rig(ARRANGED)
     play(0, 8, 16, 24, 32, 36)
     expect(state.stops).toEqual([])
-    state.loop = false
+    state.stopAtEnd = true
     play(40, 44, 47.9)
     expect(state.stops).toEqual([])
     play(48.1)
     expect(state.stops).toEqual(['f1'])
+  })
+
+  it('switching it back OFF mid-flight lets the song carry on', () => {
+    const { state, play } = rig(ARRANGED, { stopAtEnd: true })
+    play(0, 8, 15.9)
+    state.stopAtEnd = false
+    play(16.1, 32.1, 48.1, 64.1)
+    expect(state.stops).toEqual([])
   })
 })
 
@@ -232,7 +254,7 @@ describe('the baseline — why a pass counter and not `position >= cycles`', () 
     // offset, so the first sample of a run is not guaranteed to be near zero.
     // Stopping here would make Play look broken — the failure the user cannot
     // diagnose. Degrading to "stops one pass later" is the safe direction.
-    const { state, play } = rig(ARRANGED)
+    const { state, play } = rig(ARRANGED, { stopAtEnd: true })
     play(37)
     expect(state.stops).toEqual([])
     play(40, 47.9)
@@ -253,7 +275,7 @@ describe('the baseline — why a pass counter and not `position >= cycles`', () 
     // Every arm above starts its position sequence at exactly 0 or higher,
     // which is why none of them could see it. The end of a song is a POSITIVE
     // multiple of the length.
-    const { state, play } = rig(ARRANGED)
+    const { state, play } = rig(ARRANGED, { stopAtEnd: true })
     play(-0.017, 0.007, 0.05, 1, 4, 8, 15.9)
     expect(state.stops).toEqual([])
     play(16.1)
@@ -263,7 +285,7 @@ describe('the baseline — why a pass counter and not `position >= cycles`', () 
   it('a run that begins well before zero still ends at a real boundary', () => {
     // The general form: no crossing below pass 1 is an ending, however many of
     // them there are.
-    const { state, play } = rig(ARRANGED)
+    const { state, play } = rig(ARRANGED, { stopAtEnd: true })
     play(-40, -30, -20, -10, -0.5, 0.5, 8, 15.9)
     expect(state.stops).toEqual([])
     play(16.1)
@@ -271,7 +293,7 @@ describe('the baseline — why a pass counter and not `position >= cycles`', () 
   })
 
   it('a backwards seek re-arms rather than disarming', () => {
-    const { state, play } = rig(ARRANGED)
+    const { state, play } = rig(ARRANGED, { stopAtEnd: true })
     play(0, 12)
     play(2, 8, 15) // user seeks back to cycle 2, then plays on
     expect(state.stops).toEqual([])
@@ -282,7 +304,7 @@ describe('the baseline — why a pass counter and not `position >= cycles`', () 
   it('a null position holds the baseline instead of resetting it', () => {
     // Resetting on every blip would push the end one pass further away each
     // time and the song would never end.
-    const { state, play } = rig(ARRANGED)
+    const { state, play } = rig(ARRANGED, { stopAtEnd: true })
     play(0, 8, null, null, 12, null)
     expect(state.stops).toEqual([])
     play(16.1)
@@ -292,7 +314,7 @@ describe('the baseline — why a pass counter and not `position >= cycles`', () 
   it('a live edit that changes the arrangement length re-baselines', () => {
     // Comparing a pass counted in 16ths against one counted in 8ths would stop
     // playback at an arbitrary moment right after the edit.
-    const { state, watcher } = rig(ARRANGED)
+    const { state, watcher } = rig(ARRANGED, { stopAtEnd: true })
     state.position = 12
     watcher.tick()
     state.extent = { kind: 'arranged', cycles: 8 } // user shortened the song
@@ -305,7 +327,7 @@ describe('the baseline — why a pass counter and not `position >= cycles`', () 
   })
 
   it('a new run re-baselines from its own first sample', () => {
-    const { state, watcher } = rig(ARRANGED)
+    const { state, watcher } = rig(ARRANGED, { stopAtEnd: true })
     state.position = 0
     watcher.tick()
     state.position = 16.1
@@ -323,7 +345,7 @@ describe('the baseline — why a pass counter and not `position >= cycles`', () 
   })
 
   it('a document that BECOMES arranged starts counting from where it is', () => {
-    const { state, watcher } = rig(LOOPING)
+    const { state, watcher } = rig(LOOPING, { stopAtEnd: true })
     state.position = 40
     watcher.tick()
     state.extent = ARRANGED // user pastes in an `arrange(...)`
@@ -349,7 +371,7 @@ describe('several files playing at once', () => {
       playingFileIds: () => [...playing],
       extentOf: (id) => extents[id] ?? null,
       positionOf: (id) => positions[id] ?? null,
-      isLoopEnabled: () => false,
+      isStopAtEnd: () => true,
       stop: (id) => {
         stops.push(id)
         playing.delete(id)
