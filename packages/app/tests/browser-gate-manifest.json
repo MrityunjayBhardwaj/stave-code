@@ -291,6 +291,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "full-song-proving-run.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate; its one test sits behind an env guard (PROVING_RUN), so it reports as skipped unless that flag is set \u2014 the bounce is 3:28 of REAL-TIME capture"
+  },
   "full-song-row-height-setting.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
