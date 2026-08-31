@@ -8065,6 +8065,70 @@ var _StrudelEngine = class _StrudelEngine {
       sampleRate ?? this.audioCtx?.sampleRate ?? 44100
     );
   }
+  /**
+   * #1398 SPIKE — render through the REAL superdough graph into an
+   * `OfflineAudioContext`, so samples and effects apply.
+   *
+   * `OfflineRenderer` (the method above) skips every sample-based sound and
+   * states why in its header: "AudioWorklets cannot be re-registered in a fresh
+   * OfflineAudioContext." Upstream contradicts that — `@strudel/webaudio` ships
+   * `renderPatternAudio`, which builds an offline context, calls `initAudio()`
+   * against it and then the real `superdough()` per hap. This method runs that
+   * function so the claim can be measured rather than argued.
+   *
+   * ⚠ NOT A SHIPPING PATH YET. `renderPatternAudio` CLOSES the live audio
+   * context before rendering, so calling this kills playback until a new
+   * context is built. That is the main thing standing between the spike and a
+   * usable offline bounce, and it is why this is not wired to any UI.
+   *
+   * ⚠ It also hands its result straight to a browser download and resolves with
+   * nothing, so the Blob is caught on its way out by stubbing the two DOM calls
+   * it uses. The render itself is untouched.
+   */
+  async renderOfflineViaSuperdough(code, duration, cps = 0.5, sampleRate) {
+    const wa = await import('@strudel/webaudio');
+    const core = await import('@strudel/core');
+    const { transpiler } = await import('@strudel/transpiler');
+    const sr = sampleRate ?? this.audioCtx?.sampleRate ?? 44100;
+    const evaluated = await core.evaluate(code, transpiler);
+    const pattern = evaluated?.pattern;
+    if (!pattern) {
+      throw new Error("renderOfflineViaSuperdough: no pattern returned from evaluate()");
+    }
+    const haps = pattern.queryArc(0, duration * cps, { _cps: cps }).filter((h) => h.hasOnset()).length;
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    const origClick = HTMLAnchorElement.prototype.click;
+    let captured = null;
+    try {
+      URL.createObjectURL = (b) => {
+        captured = b;
+        return "blob:stave-offline-spike";
+      };
+      URL.revokeObjectURL = () => {
+      };
+      HTMLAnchorElement.prototype.click = /* @__PURE__ */ __name(function noop() {
+      }, "noop");
+      await wa.renderPatternAudio(
+        pattern,
+        cps,
+        0,
+        duration * cps,
+        sr,
+        void 0,
+        void 0,
+        void 0
+      );
+    } finally {
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
+      HTMLAnchorElement.prototype.click = origClick;
+    }
+    if (!captured) {
+      throw new Error("renderOfflineViaSuperdough: render produced no blob");
+    }
+    return { blob: captured, haps };
+  }
   async renderStems(stems, duration, onProgress) {
     const keys = Object.keys(stems);
     const sampleRate = this.audioCtx?.sampleRate ?? 44100;

@@ -43,6 +43,41 @@ export interface BounceProbe {
   recordAfterStop(code: string, secs: number): Promise<BounceOutcome>;
   /** Which Strudel globals exist right now. Grounds the #1344 diagnosis. */
   globalsCensus(): Record<string, string>;
+  /**
+   * #1398 spike — does the REAL superdough graph render into an
+   * `OfflineAudioContext`, with worklets registered and a SAMPLE audible?
+   *
+   * `OfflineRenderer` skips every sample and states the reason in its header:
+   * "AudioWorklets cannot be re-registered in a fresh OfflineAudioContext."
+   * If that is false, the hand-rolled oscillator renderer exists to work around
+   * a constraint that was never there.
+   *
+   * This mirrors `renderPatternAudio` from `@strudel/webaudio` step for step,
+   * with TWO DELIBERATE DIVERGENCES, both to keep it a measurement rather than
+   * a feature: it does NOT `close()` the live context (the probe shares a page
+   * with other arms), and it returns the rendered buffer instead of forcing a
+   * browser download. Everything that bears on the QUESTION — the offline
+   * context, `setAudioContext`, the controller, `initAudio`, and the real
+   * `superdough()` per hap — is the upstream sequence unchanged.
+   *
+   * ⚠ Reports `nonZero` and not merely `ok`. A silent render is the outcome
+   * that matters most and the one an `ok` flag cannot see: both `LiveRecorder`
+   * and `OfflineRenderer` already resolve with a valid, full-length WAV of
+   * pure silence and no error.
+   */
+  offlineSuperdough(code: string, secs: number): Promise<OfflineSpikeOutcome>;
+}
+
+/** #1398 — what the offline-superdough spike measured. */
+export interface OfflineSpikeOutcome {
+  ok: boolean;
+  error?: string;
+  /** Did the offline render get past `initAudio()`? The whole claim. */
+  workletOk?: boolean;
+  /** Onset haps the pattern produced, so a silent render can be told from an empty one. */
+  haps?: number;
+  /** base64 WAV, present only when `ok` — measured by the spec's own reader. */
+  wav?: string;
 }
 
 async function toBase64(blob: Blob): Promise<string> {
@@ -135,6 +170,22 @@ export function installBounceProbe(): () => void {
         e.stop();
         return e.record(secs);
       }),
+
+    offlineSuperdough: async (code, secs) => {
+      try {
+        // The engine owns this because `@strudel/webaudio` is the editor's
+        // dependency, not the app's — and because that is where the shipping
+        // path would live if the spike says yes.
+        const e = await booted();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { blob, haps } = await (e as any).renderOfflineViaSuperdough(code, secs);
+        return { ok: true, workletOk: true, haps, wav: await toBase64(blob) };
+      } catch (err) {
+        // A throw is the INTERESTING outcome, not a harness problem: it is
+        // where "worklets cannot be re-registered" would actually show up.
+        return { ok: false, workletOk: false, error: String(err) };
+      }
+    },
 
     globalsCensus: () => {
       const g = globalThis as unknown as Record<string, unknown>;
