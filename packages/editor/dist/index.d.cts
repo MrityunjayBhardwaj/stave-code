@@ -1106,6 +1106,30 @@ declare class StrudelEngine implements LiveCodingEngine {
      */
     record(durationSeconds: number, signal?: AbortSignal): Promise<Blob>;
     renderOffline(code: string, duration: number, sampleRate?: number): Promise<Blob>;
+    /**
+     * #1398 SPIKE — render through the REAL superdough graph into an
+     * `OfflineAudioContext`, so samples and effects apply.
+     *
+     * `OfflineRenderer` (the method above) skips every sample-based sound and
+     * states why in its header: "AudioWorklets cannot be re-registered in a fresh
+     * OfflineAudioContext." Upstream contradicts that — `@strudel/webaudio` ships
+     * `renderPatternAudio`, which builds an offline context, calls `initAudio()`
+     * against it and then the real `superdough()` per hap. This method runs that
+     * function so the claim can be measured rather than argued.
+     *
+     * ⚠ NOT A SHIPPING PATH YET. `renderPatternAudio` CLOSES the live audio
+     * context before rendering, so calling this kills playback until a new
+     * context is built. That is the main thing standing between the spike and a
+     * usable offline bounce, and it is why this is not wired to any UI.
+     *
+     * ⚠ It also hands its result straight to a browser download and resolves with
+     * nothing, so the Blob is caught on its way out by stubbing the two DOM calls
+     * it uses. The render itself is untouched.
+     */
+    renderOfflineViaSuperdough(code: string, duration: number, cps?: number, sampleRate?: number): Promise<{
+        blob: Blob;
+        haps: number;
+    }>;
     renderStems(stems: Record<string, string>, duration: number, onProgress?: (stem: string, i: number, total: number) => void): Promise<Record<string, Blob>>;
     getAnalyser(): AnalyserNode;
     getAudioContext(): AudioContext;

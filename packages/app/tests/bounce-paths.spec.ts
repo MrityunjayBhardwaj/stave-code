@@ -142,6 +142,78 @@ function onsetCount(mono: Float64Array, sampleRate: number): number {
   return count
 }
 
+type SpikeOutcome = {
+  ok: boolean
+  error?: string
+  workletOk?: boolean
+  haps?: number
+  wav?: string
+}
+
+/** #1398 — drive the offline-superdough spike in the page. */
+function callSpike(page: Page, code: string, secs: number): Promise<SpikeOutcome> {
+  return page.evaluate(
+    ([c, s]) =>
+      (
+        window as unknown as {
+          __staveBounceProbe: {
+            offlineSuperdough: (code: string, secs: number) => Promise<SpikeOutcome>
+          }
+        }
+      ).__staveBounceProbe.offlineSuperdough(c as string, s as number),
+    [code, secs] as const,
+  ) as Promise<SpikeOutcome>
+}
+
+test.describe('#1398 — can the REAL graph render offline?', () => {
+  /**
+   * The spike. `OfflineRenderer` skips every sample-based sound and gives the
+   * reason in its own header: "AudioWorklets cannot be re-registered in a fresh
+   * OfflineAudioContext." That claim decides whether an offline bounce is a
+   * small change or a second synthesis engine maintained forever — and the
+   * hand-rolled oscillator renderer, plus #1344/#1345/#1353, all descend from it.
+   *
+   * Upstream already contradicts it: `@strudel/webaudio` ships
+   * `renderPatternAudio`, which builds an OfflineAudioContext, calls
+   * `initAudio()` against it, and then the real `superdough()` per hap. Reading
+   * that is inference. This arm RUNS it.
+   *
+   * A DRUM, deliberately: `bd` is exactly the class `OfflineRenderer` drops, so
+   * a non-silent render here is the whole answer. No `setcps` in the document,
+   * so the arm does not depend on #1344's global-injection rungs.
+   */
+  test('a sample-based sound renders audibly into an OfflineAudioContext', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+    await openApp(page)
+
+    const out = await callSpike(page, 's("bd*4").bank("RolandTR909")', 4)
+
+    if (!out.ok) {
+      throw new Error(
+        `offline render failed (workletOk=${out.workletOk}, haps=${out.haps}): ${out.error}`,
+      )
+    }
+    // The pattern really produced events, so a silent buffer would mean the
+    // AUDIO failed rather than that there was nothing to render.
+    expect(out.haps, 'the pattern produced no onsets to render').toBeGreaterThanOrEqual(4)
+
+    const { sampleRate, mono } = readWav(out.wav!)
+    console.log(
+      `[#1398] haps=${out.haps} peak=${peak(mono).toFixed(4)} nonZero=${nonZeroCount(mono)}/${mono.length} onsets=${onsetCount(mono, sampleRate)}`,
+    )
+
+    // ⚠ NON-SILENCE, not non-emptiness. A valid, full-length WAV of pure
+    // silence is the failure shape BOTH existing renderers already have, and
+    // it is the outcome an `ok` flag cannot see.
+    expect(peak(mono), 'the offline render came back silent').toBeGreaterThan(0.01)
+    // Four onsets in four seconds at 0.5cps — the drums are actually THERE,
+    // not one click or a burst of noise.
+    expect(onsetCount(mono, sampleRate)).toBeGreaterThanOrEqual(3)
+  })
+})
+
 test.describe('the three audio-bounce paths', () => {
   test('the live path records audible audio from the Starter pattern (#1346)', async ({
     page,

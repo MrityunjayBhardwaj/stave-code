@@ -1749,6 +1749,87 @@ export class StrudelEngine implements LiveCodingEngine {
     )
   }
 
+  /**
+   * #1398 SPIKE — render through the REAL superdough graph into an
+   * `OfflineAudioContext`, so samples and effects apply.
+   *
+   * `OfflineRenderer` (the method above) skips every sample-based sound and
+   * states why in its header: "AudioWorklets cannot be re-registered in a fresh
+   * OfflineAudioContext." Upstream contradicts that — `@strudel/webaudio` ships
+   * `renderPatternAudio`, which builds an offline context, calls `initAudio()`
+   * against it and then the real `superdough()` per hap. This method runs that
+   * function so the claim can be measured rather than argued.
+   *
+   * ⚠ NOT A SHIPPING PATH YET. `renderPatternAudio` CLOSES the live audio
+   * context before rendering, so calling this kills playback until a new
+   * context is built. That is the main thing standing between the spike and a
+   * usable offline bounce, and it is why this is not wired to any UI.
+   *
+   * ⚠ It also hands its result straight to a browser download and resolves with
+   * nothing, so the Blob is caught on its way out by stubbing the two DOM calls
+   * it uses. The render itself is untouched.
+   */
+  async renderOfflineViaSuperdough(
+    code: string,
+    duration: number,
+    cps = 0.5,
+    sampleRate?: number
+  ): Promise<{ blob: Blob; haps: number }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wa: any = await import('@strudel/webaudio')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const core: any = await import('@strudel/core')
+    const { transpiler } = await import('@strudel/transpiler')
+
+    const sr = sampleRate ?? this.audioCtx?.sampleRate ?? 44100
+    const evaluated = await core.evaluate(code, transpiler)
+    const pattern = evaluated?.pattern
+    if (!pattern) {
+      throw new Error('renderOfflineViaSuperdough: no pattern returned from evaluate()')
+    }
+
+    // Counted BEFORE rendering, so a silent buffer can be told apart from a
+    // pattern that simply had nothing to play.
+    const haps = pattern
+      .queryArc(0, duration * cps, { _cps: cps })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((h: any) => h.hasOnset()).length
+
+    const origCreate = URL.createObjectURL
+    const origRevoke = URL.revokeObjectURL
+    const origClick = HTMLAnchorElement.prototype.click
+    let captured: Blob | null = null
+    try {
+      URL.createObjectURL = (b: Blob | MediaSource): string => {
+        captured = b as Blob
+        return 'blob:stave-offline-spike'
+      }
+      URL.revokeObjectURL = (): void => {}
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      HTMLAnchorElement.prototype.click = function noop(): void {}
+
+      await wa.renderPatternAudio(
+        pattern,
+        cps,
+        0,
+        duration * cps,
+        sr,
+        undefined,
+        undefined,
+        undefined
+      )
+    } finally {
+      URL.createObjectURL = origCreate
+      URL.revokeObjectURL = origRevoke
+      HTMLAnchorElement.prototype.click = origClick
+    }
+
+    if (!captured) {
+      throw new Error('renderOfflineViaSuperdough: render produced no blob')
+    }
+    return { blob: captured, haps }
+  }
+
   async renderStems(
     stems: Record<string, string>,
     duration: number,
