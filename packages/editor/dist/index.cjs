@@ -3811,6 +3811,25 @@ var _LiveRecorder = class _LiveRecorder {
    * encode. Pass `signal` to stop early — the recorder disconnects and resolves
    * with the audio captured so far, so a cancelled bounce still yields a
    * playable (shorter) file rather than throwing away the take.
+   *
+   * ⚠ THE LENGTH IS COUNTED IN FRAMES, NOT MEASURED BY THE CLOCK (#1401).
+   * `ScriptProcessorNode` delivers audio in fixed 4096-frame blocks, so ending
+   * the take when a timer fires kept only the whole blocks that had arrived by
+   * then and silently truncated the rest: the file came back short by
+   * `(duration * sampleRate) mod 4096` frames — up to 93ms at 44.1kHz, at ANY
+   * length. Measured before the fix: 4s→3.9938s, 8s→7.9877s, 16s→15.9753s,
+   * every one landing on an exact block boundary.
+   *
+   * The loss was small but it was not harmless: it is one frame-boundary short
+   * of the length the caller asked for, so a bounce could not be trusted to be
+   * its own stated duration, and anything reassembling sections would drift.
+   * ⚠ It was also invisible on hardware running at 48kHz, where a 32s take
+   * divides into exactly 375 blocks and nothing is lost — the same code is
+   * correct or wrong depending on the sample rate of the audio device.
+   *
+   * So the block counter is now what ends the take and the timer is only a
+   * BACKSTOP: if the graph stalls and blocks stop arriving, the timer still
+   * resolves with whatever exists rather than hanging forever.
    */
   static capture(analyser, ctx, duration, signal) {
     return new Promise((resolve) => {
@@ -3818,11 +3837,15 @@ var _LiveRecorder = class _LiveRecorder {
       const processor = ctx.createScriptProcessor(bufferSize, 2, 2);
       const chunksL = [];
       const chunksR = [];
+      const wantedFrames = Math.round(duration * ctx.sampleRate);
+      let capturedFrames = 0;
       processor.onaudioprocess = (e) => {
         chunksL.push(new Float32Array(e.inputBuffer.getChannelData(0)));
         chunksR.push(new Float32Array(e.inputBuffer.getChannelData(1)));
         e.outputBuffer.getChannelData(0).set(e.inputBuffer.getChannelData(0));
         e.outputBuffer.getChannelData(1).set(e.inputBuffer.getChannelData(1));
+        capturedFrames += e.inputBuffer.length;
+        if (capturedFrames >= wantedFrames) finish();
       };
       analyser.connect(processor);
       processor.connect(ctx.destination);
@@ -3837,9 +3860,13 @@ var _LiveRecorder = class _LiveRecorder {
           analyser.disconnect(processor);
         } catch {
         }
+        if (capturedFrames >= wantedFrames) {
+          trimToFrames(chunksL, wantedFrames);
+          trimToFrames(chunksR, wantedFrames);
+        }
         resolve(WavEncoder.encodeChunks(chunksL, chunksR, ctx.sampleRate));
       }, "finish");
-      const timer = setTimeout(finish, duration * 1e3);
+      const timer = setTimeout(finish, duration * 1e3 + 2e3);
       if (signal) {
         if (signal.aborted) finish();
         else signal.addEventListener("abort", finish, { once: true });
@@ -3849,6 +3876,19 @@ var _LiveRecorder = class _LiveRecorder {
 };
 __name(_LiveRecorder, "LiveRecorder");
 var LiveRecorder = _LiveRecorder;
+function trimToFrames(chunks, frames) {
+  let total = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    if (total + chunks[i].length <= frames) {
+      total += chunks[i].length;
+      continue;
+    }
+    chunks[i] = chunks[i].subarray(0, frames - total);
+    chunks.length = i + 1;
+    return;
+  }
+}
+__name(trimToFrames, "trimToFrames");
 
 // src/perf/profiler.ts
 var RING = 240;

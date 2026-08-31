@@ -259,6 +259,41 @@ test.describe('#1400 — does an offline render leave the live graph alive?', ()
   })
 })
 
+test.describe('#1401 — is a bounce the length it was asked for?', () => {
+  /**
+   * `ScriptProcessorNode` delivers audio in fixed 4096-frame blocks, so a take
+   * that ends on a timer keeps only the whole blocks that arrived and loses the
+   * remainder: `(duration * sampleRate) mod 4096` frames, up to 93ms at 44.1kHz,
+   * at ANY length. Measured on trunk: 4s→3.9938s, 8s→7.9877s, 16s→15.9753s,
+   * every one landing exactly on a block boundary.
+   *
+   * ⚠ FOUR SECONDS IS THE DELIBERATE CHOICE. 4s at 44.1kHz is 176400 frames =
+   * 43.07 blocks — it does NOT divide evenly, so the remainder exists to be
+   * lost. A duration that happens to land on a block boundary (32s at 48kHz is
+   * exactly 375) passes even against the bug, which is why this defect was
+   * invisible on some hardware and not others.
+   *
+   * Asserted as an EXACT frame count rather than a tolerance: "as long as it
+   * said it would be" is the actual promise, and a tolerance would re-admit the
+   * truncation it exists to catch.
+   */
+  test('a 4-second capture contains exactly 4 seconds of frames (#1401)', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+    await openApp(page)
+
+    const out = await call(page, 'recordLive', NO_SETCPS, 4)
+    expect(out.ok, `capture failed: ${out.error}`).toBe(true)
+
+    const { sampleRate, mono } = readWav(out.wav!)
+    console.log(`[#1401] sr=${sampleRate} frames=${mono.length} expected=${4 * sampleRate}`)
+
+    expect(mono.length, 'the bounce is not the length it was asked for').toBe(4 * sampleRate)
+  })
+})
+
+
 test.describe('the three audio-bounce paths', () => {
   test('the live path records audible audio from the Starter pattern (#1346)', async ({
     page,
