@@ -214,6 +214,51 @@ test.describe('#1398 — can the REAL graph render offline?', () => {
   })
 })
 
+test.describe('#1400 — does an offline render leave the live graph alive?', () => {
+  /**
+   * The survival arm, and the sharpest reading available of the failure shape
+   * this whole boundary keeps producing: a valid, full-length WAV of pure
+   * silence, returned as success.
+   *
+   * `renderPatternAudio` opens with `await getAudioContext().close()`. That is
+   * the LIVE context — `StrudelEngine` took it once at `init()` and built its
+   * analyser, its master tap and every per-track analyser on it, so nothing it
+   * holds survives the close and `init()` is guarded against rebuilding.
+   *
+   * ⚠ The trap is that the context APPEARS to recover: the render's `finally`
+   * calls `setAudioContext(null)`, so the next `getAudioContext()` hands back a
+   * fresh one and every "is there a context" check passes. Only the OUTPUT can
+   * see it. So this arm reads peaks either side of one render, on ONE engine —
+   * `booted()` reuses it, which is the entire point of measuring here rather
+   * than in two separate pages.
+   */
+  test('live capture still has audio after an offline render (#1400)', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000)
+    await openApp(page)
+
+    const before = await call(page, 'recordLive', starterCode(), 2)
+    const render = await callSpike(page, 's("bd*4").bank("RolandTR909")', 4)
+    const after = await call(page, 'recordLive', starterCode(), 2)
+
+    const beforePeak = before.wav ? peak(readWav(before.wav).mono) : 0
+    const afterPeak = after.wav ? peak(readWav(after.wav).mono) : 0
+    console.log(
+      `[#1400] beforePeak=${beforePeak.toFixed(4)} render.ok=${render.ok} ` +
+        `afterPeak=${afterPeak.toFixed(4)} after.ok=${after.ok} error=${after.error ?? 'none'}`,
+    )
+
+    // The `before` reading is the control: without it, a silent `after` could
+    // just as well mean the engine never sounded in this page at all.
+    expect({
+      beforeAudible: beforePeak > 0.05,
+      renderOk: render.ok,
+      afterAudible: afterPeak > 0.05,
+    }).toEqual({ beforeAudible: true, renderOk: true, afterAudible: true })
+  })
+})
+
 test.describe('the three audio-bounce paths', () => {
   test('the live path records audible audio from the Starter pattern (#1346)', async ({
     page,

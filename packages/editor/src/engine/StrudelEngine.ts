@@ -1760,10 +1760,29 @@ export class StrudelEngine implements LiveCodingEngine {
    * against it and then the real `superdough()` per hap. This method runs that
    * function so the claim can be measured rather than argued.
    *
-   * ⚠ NOT A SHIPPING PATH YET. `renderPatternAudio` CLOSES the live audio
-   * context before rendering, so calling this kills playback until a new
-   * context is built. That is the main thing standing between the spike and a
-   * usable offline bounce, and it is why this is not wired to any UI.
+   * ⚠ THE COUPLING (#1400): `renderPatternAudio` opens with
+   * `await getAudioContext().close()`. It closes whatever superdough's MODULE
+   * GLOBAL holds — not a context handed to it — so the live one is the one that
+   * dies unless the global is pointing somewhere expendable when upstream reads
+   * it. That is what the sacrificial context below is for, and it is the whole
+   * reason this method is more than a call.
+   *
+   * The live context cannot simply be rebuilt afterwards: this engine took it
+   * once at `init()` and built `analyserNode`, the master tap and every
+   * per-track analyser on it, `init()` is guarded against re-entry, and the
+   * context is already published on the workspace audio bus, so viz consumers
+   * hold the same nodes.
+   *
+   * ⚠ AND IT FAILS SILENTLY, which is why the guard is worth its weight: the
+   * render's `finally` calls `setAudioContext(null)`, so the next
+   * `getAudioContext()` returns a fresh context and every "is there a context"
+   * check passes — while everything already wired to the old one stays wired to
+   * a corpse. Measured before the fix, one page, one engine: live capture
+   * peak 0.7826 → render ok → live capture peak 0.0000, ok=true, no error. A
+   * valid full-length WAV of silence, reported as success. Looking at the
+   * context tells you nothing; only the OUTPUT does, which is why the arm that
+   * covers this reads peaks either side of a render
+   * (`bounce-paths.spec.ts`, '#1400').
    *
    * ⚠ It also hands its result straight to a browser download and resolves with
    * nothing, so the Blob is caught on its way out by stubbing the two DOM calls
@@ -1799,6 +1818,17 @@ export class StrudelEngine implements LiveCodingEngine {
     const origRevoke = URL.revokeObjectURL
     const origClick = HTMLAnchorElement.prototype.click
     let captured: Blob | null = null
+
+    // The sacrificial context — see THE COUPLING above. Upstream reads the
+    // global, closes it, then swaps in its offline context; handing it a
+    // context nothing is built on means the close lands harmlessly. It must be
+    // a real `AudioContext`: `close()` is not defined on `OfflineAudioContext`,
+    // so a cheaper stand-in would throw before the render ever started.
+    const liveCtx = wa.getAudioContext()
+    const liveController = wa.getSuperdoughAudioController()
+    const sacrificial = new AudioContext()
+    wa.setAudioContext(sacrificial)
+
     try {
       URL.createObjectURL = (b: Blob | MediaSource): string => {
         captured = b as Blob
@@ -1822,6 +1852,22 @@ export class StrudelEngine implements LiveCodingEngine {
       URL.createObjectURL = origCreate
       URL.revokeObjectURL = origRevoke
       HTMLAnchorElement.prototype.click = origClick
+
+      // Upstream's own `finally` nulls both globals, so restoring is not
+      // optional cleanup — without it the next live evaluate builds on a
+      // context this engine's analysers know nothing about.
+      wa.setAudioContext(liveCtx)
+      wa.setSuperdoughAudioController(liveController)
+      // Normally upstream already closed it. This covers the path where the
+      // render threw before reaching that line, so the sacrificial context
+      // cannot outlive the call it was made for.
+      if (sacrificial.state !== 'closed') {
+        try {
+          await sacrificial.close()
+        } catch {
+          /* closing an already-closing context is not a failure */
+        }
+      }
     }
 
     if (!captured) {
