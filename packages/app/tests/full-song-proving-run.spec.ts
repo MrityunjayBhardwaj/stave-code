@@ -39,6 +39,20 @@ import { readFileSync } from 'node:fs'
  *   thinning   80..88   rms 0.0747  quiet
  *   closing    88..104  rms 0.0211  quiet
  *
+ * ⚠ AND WHAT THE SECOND RUN ESTABLISHED (2026-09-02), WHICH MATTERS MORE.
+ * Re-run before merging, the audio device was at 16kHz rather than 48kHz and
+ * EVERY section read roughly double — while the arrangement's contour was
+ * untouched and the two repeats still matched each other exactly. The absolute
+ * thresholds this arm shipped with therefore failed a CORRECT bounce, which is
+ * the third time in three days that a measurement here has reported the sound
+ * card instead of the code.
+ *
+ * ⚠ THE SAMPLE RATE CHANGED TWICE IN ONE HOUR ON ONE MACHINE — 48k, 16k, 48k
+ * again — with no configuration touched. That is not an exotic condition to
+ * design against; it is Tuesday. Every assertion below is now a RATIO taken
+ * within a single run: each section against the song's own loudest section, and
+ * each repeat against its twin. Nothing here may carry an absolute level.
+ *
  * `allIn` and `allInAgain` reading IDENTICALLY at 0.1713 is the sharpest number
  * in that table: the same musical content, twenty-four cycles apart, rendered
  * the same both times. Reproducibility observed at song length rather than
@@ -229,19 +243,83 @@ test('a full-length song can be written, sized and bounced end to end', async ({
   // The sharpest of the four. A bounce can be the right LENGTH and still be the
   // wrong 208 seconds — the rotation bug fixed in #1371 produced exactly that.
   // Loud and quiet sections must land where the arrangement says they do.
-  const QUIET = 0.08
-  const LOUD = 0.12
-  for (const s of SECTIONS) {
+  //
+  // ⚠ MEASURED AS A FRACTION OF THE SONG'S OWN LOUDEST SECTION, NEVER AS AN
+  // ABSOLUTE LEVEL. This arm originally asserted `mean < 0.08` for quiet and
+  // `mean > 0.12` for loud, calibrated against one machine. Re-run on a
+  // different audio device — 16kHz rather than 48kHz — EVERY section read
+  // roughly double, and `thinning` (0.0747 -> 0.1487) crossed the quiet ceiling
+  // while the arrangement itself was perfectly intact:
+  //
+  //     section      48kHz    16kHz   factor
+  //     opening      0.0262   0.0524   2.00
+  //     grooving     0.1325   0.2309   1.74
+  //     allIn        0.1713   0.2875   1.68
+  //     stripped     0.0372   0.0745   2.00
+  //     allInAgain   0.1713   0.2875   1.68
+  //     thinning     0.0747   0.1487   1.99   <- failed the absolute ceiling
+  //     closing      0.0211   0.0423   2.00
+  //
+  // The shape survived exactly; only the LEVEL moved, so the arm had stopped
+  // measuring the arrangement and started measuring the sound card. Every
+  // section scales together, so dividing by the loudest cancels the device and
+  // leaves the only thing this question is about: the arrangement's contour.
+  const means = SECTIONS.map((s) => {
     const slice = windows.slice(s.from, s.to)
-    const mean = slice.reduce((a, b) => a + b, 0) / (slice.length || 1)
+    return slice.reduce((a, b) => a + b, 0) / (slice.length || 1)
+  })
+  const loudest = Math.max(...means)
+
+  // Guard the denominator, or the fractions below pass by dividing noise by
+  // noise: a bounce of pure silence would give every section a ratio of NaN or
+  // 1.0 and the contour check would say nothing at all.
+  expect(loudest, 'the whole bounce is silent — there is no contour to check').toBeGreaterThan(0.01)
+
+  // The band preserves the ORIGINAL arm's discriminating power rather than
+  // inventing one: 0.12 / 0.08 required loud to clear quiet by 1.5x, and
+  // 0.70 / 0.60 asks the same of the normalised readings. Both observed device
+  // states clear it with room — quiet tops out at 0.436 (48kHz) and 0.517
+  // (16kHz) against a 0.60 ceiling; loud bottoms out at 0.774 and 0.803
+  // against a 0.70 floor.
+  const QUIET_FRACTION = 0.6
+  const LOUD_FRACTION = 0.7
+  SECTIONS.forEach((s, i) => {
+    const fraction = means[i] / loudest
     if (s.loud) {
-      expect(mean, `section "${s.name}" (cycles ${s.from}..${s.to}) should be loud`).toBeGreaterThan(
-        LOUD,
-      )
+      expect(
+        fraction,
+        `section "${s.name}" (cycles ${s.from}..${s.to}) should be loud — ` +
+          `read ${means[i].toFixed(4)}, ${(fraction * 100).toFixed(1)}% of the loudest section`,
+      ).toBeGreaterThan(LOUD_FRACTION)
     } else {
-      expect(mean, `section "${s.name}" (cycles ${s.from}..${s.to}) should be quiet`).toBeLessThan(
-        QUIET,
-      )
+      expect(
+        fraction,
+        `section "${s.name}" (cycles ${s.from}..${s.to}) should be quiet — ` +
+          `read ${means[i].toFixed(4)}, ${(fraction * 100).toFixed(1)}% of the loudest section`,
+      ).toBeLessThan(QUIET_FRACTION)
     }
-  }
+  })
+
+  // ── QUESTION 5: is the same content rendered the same twice? ──────────────
+  // `allIn` and `allInAgain` are the SAME musical material twenty-four cycles
+  // apart. They read identically on the first run (0.1713 twice) and that was
+  // the strongest single number in the table — reproducibility observed at song
+  // length rather than argued from source. It was only ever printed, never
+  // asserted, which is precisely how an observation stops being able to fail.
+  //
+  // A ratio of the two, so this survives the device change that broke the
+  // absolute thresholds above. Observed: 0.1713/0.1713 at 48kHz, and
+  // 0.2875/0.2875 and 0.2873/0.2871 across two runs at 16kHz — a spread of
+  // 0.07%, so 1% is loose enough not to flake and tight enough that a genuine
+  // re-roll between repeats could not hide inside it.
+  const iA = SECTIONS.findIndex((s) => s.name === 'allIn')
+  const iB = SECTIONS.findIndex((s) => s.name === 'allInAgain')
+  const repeatDrift = Math.abs(means[iA] - means[iB]) / means[iA]
+  console.log(
+    `[proving-run] repeat: allIn ${means[iA].toFixed(4)} vs allInAgain ${means[iB].toFixed(4)} — drift ${(repeatDrift * 100).toFixed(3)}%`,
+  )
+  expect(
+    repeatDrift,
+    'the same section rendered differently the second time — a bounce is not reproducible',
+  ).toBeLessThan(0.01)
 })
