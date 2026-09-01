@@ -1721,9 +1721,13 @@ export class StrudelEngine implements LiveCodingEngine {
    * the code in an OfflineAudioContext and cannot currently reach a Stave
    * document at all (#1344).
    *
-   * ⚠ It records the graph as it is. If nothing is playing this resolves with
-   * a valid WAV of silence and no error, so the caller must start playback
-   * first. Pass `signal` to stop early and keep what was captured.
+   * ⚠ It records the graph as it is, so the caller must start playback first.
+   * If nothing is playing this now REJECTS with `SilentCaptureError` rather
+   * than resolving with a valid WAV of silence and no error (#1402) — the
+   * check lives at the capture boundary in `WavEncoder`, not here, because a
+   * rule addressed to callers is one every caller can decline. Pass `signal`
+   * to stop early and keep what was captured; a cancelled take is allowed to
+   * be silent.
    */
   async record(durationSeconds: number, signal?: AbortSignal): Promise<Blob> {
     if (!this.analyserNode || !this.audioCtx) {

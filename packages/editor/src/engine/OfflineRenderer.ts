@@ -10,8 +10,22 @@ import { installMiniStringParser } from './stringParser'
  * native WebAudio oscillators. This avoids touching superdough's global context.
  *
  * LIMITATION: Only oscillator-based sounds work (sine, sawtooth, square, triangle).
- * Sample-based sounds (bd, sd, hh, etc.) are silently skipped because AudioWorklets
- * cannot be re-registered in a fresh OfflineAudioContext.
+ * Sample-based sounds (bd, sd, hh, etc.) are skipped (#1353).
+ *
+ * ⚠ THE "AudioWorklets cannot be re-registered in a fresh OfflineAudioContext"
+ * REASON THIS USED TO GIVE IS FALSE, and it was load-bearing for three issues.
+ * Upstream's own `renderPatternAudio` builds an `OfflineAudioContext`, calls
+ * `initAudio()` against it and then the real `superdough()` per hap — measured
+ * audible, samples and all (#1398/#1399). `StrudelEngine.renderOfflineViaSuperdough`
+ * is that path; this hand-rolled oscillator renderer exists to work around a
+ * constraint that was never there.
+ *
+ * ⚠ THE SKIP IS NO LONGER SILENT (#1402). A drum-only document renders to
+ * nothing, and `WavEncoder` now REFUSES to hand back a file of silence as a
+ * success — so this throws `SilentCaptureError` where it used to return a
+ * well-formed, full-length WAV of zeros with no error at all. That is the
+ * intended change: #1353 is still unfixed, but it can no longer be mistaken for
+ * a working bounce.
  */
 export class OfflineRenderer {
   static async render(

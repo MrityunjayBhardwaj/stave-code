@@ -9,10 +9,17 @@ import { WavEncoder } from './WavEncoder'
  * option for in-browser audio capture without MediaRecorder latency issues.
  *
  * ⚠ This taps the master analyser, so it records whatever the graph is playing —
- * including nothing. With playback stopped it resolves with a valid WAV of pure
- * silence and no error, which is the same silent-failure shape the offline
- * renderer has. Callers must guarantee audio is flowing before capturing, and
- * assert the result is non-silent rather than merely non-empty.
+ * including nothing. With playback stopped it would otherwise resolve with a
+ * valid WAV of pure silence and no error, which is the same silent-failure
+ * shape the offline renderer has.
+ *
+ * ⚠ THAT RULE IS NOW ENFORCED RATHER THAN DELEGATED (#1402). It used to read
+ * "callers must guarantee audio is flowing […] and assert the result is
+ * non-silent" — a correct rule, written in a comment, addressed to four callers
+ * of which all four declined. `WavEncoder` refuses a silent take at the point
+ * the bytes are made, so `capture` now REJECTS instead of resolving with
+ * silence. Callers still should start playback first; they can no longer fail
+ * to notice that they didn't.
  */
 export class LiveRecorder {
   /**
@@ -49,7 +56,7 @@ export class LiveRecorder {
     duration: number,
     signal?: AbortSignal
   ): Promise<Blob> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const bufferSize = 4096
       const processor = ctx.createScriptProcessor(bufferSize, 2, 2)
       const chunksL: Float32Array[] = []
@@ -87,11 +94,14 @@ export class LiveRecorder {
       // run-once a local property of this function rather than one that emerges
       // from two teardown calls staying correct.
       let settled = false
+      // Set before `finish` runs on the abort paths, so the encoder can be told
+      // that this take's silence is a cancellation rather than a dead graph.
+      let aborted = false
       const finish = (): void => {
         if (settled) return
         settled = true
         clearTimeout(timer)
-        signal?.removeEventListener('abort', finish)
+        signal?.removeEventListener('abort', onAbort)
         processor.disconnect()
         try {
           analyser.disconnect(processor)
@@ -105,7 +115,29 @@ export class LiveRecorder {
           trimToFrames(chunksL, wantedFrames)
           trimToFrames(chunksR, wantedFrames)
         }
-        resolve(WavEncoder.encodeChunks(chunksL, chunksR, ctx.sampleRate))
+        // ⚠ THE TRY/CATCH IS LOAD-BEARING, NOT DEFENSIVE. `finish` is called
+        // from `onaudioprocess` and from a `setTimeout`, neither of which is on
+        // the promise's own call stack — so a throw from the encoder would
+        // escape as an unhandled error and leave this promise pending FOREVER,
+        // turning a silent bounce into a hung one. Route it to `reject`.
+        try {
+          resolve(
+            WavEncoder.encodeChunks(chunksL, chunksR, ctx.sampleRate, {
+              // A cancelled take is honestly whatever it managed to collect,
+              // including nothing. The guard exists to catch a bounce that
+              // believed it was recording; it should not second-guess a user
+              // who pressed Stop.
+              allowSilence: aborted,
+            })
+          )
+        } catch (e) {
+          reject(e)
+        }
+      }
+
+      const onAbort = (): void => {
+        aborted = true
+        finish()
       }
 
       // ⚠ The backstop must fire LATER than the frame counter can, or it wins
@@ -124,8 +156,8 @@ export class LiveRecorder {
         // An already-aborted signal never fires 'abort', so check it directly.
         // This resolves with zero chunks — an empty WAV, which is the honest
         // answer to "capture nothing".
-        if (signal.aborted) finish()
-        else signal.addEventListener('abort', finish, { once: true })
+        if (signal.aborted) onAbort()
+        else signal.addEventListener('abort', onAbort, { once: true })
       }
     })
   }

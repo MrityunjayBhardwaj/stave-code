@@ -388,21 +388,26 @@ test.describe('the three audio-bounce paths', () => {
     expect(onsetCount(mono, sampleRate)).toBeGreaterThanOrEqual(24)
   })
 
-  test('a drum-only bounce comes back silent, and says nothing (#1353)', async ({
+  test('a drum-only bounce still renders nothing — but now it SAYS so (#1353/#1402)', async ({
     page,
   }) => {
     test.setTimeout(120000)
     await openApp(page)
     const out = await call(page, 'exportLikeButton', DRUMS_ONLY, 4)
     // toOscType returns null for every sample-based sound and the hap is
-    // `continue`d (OfflineRenderer.ts:65) with no counter and no diagnostic.
-    // Measured on trunk: 0 of 192,000 samples non-zero, zero console errors.
-    // Asserting the SUCCESS as well as the silence is the point — an error
-    // would be a lesser bug than a well-formed empty file.
+    // `continue`d (OfflineRenderer.ts) with no counter and no diagnostic, so
+    // this document still renders to nothing. #1353 is NOT fixed.
+    //
+    // ⚠ RE-POINTED, NOT WIDENED. This arm used to assert `{ ok: true, nonZero:
+    // 0 }` — the success was the point, because a well-formed empty file is a
+    // worse bug than an error. #1402 put the check at the capture boundary, so
+    // the same silence now arrives as a refusal instead. That flip IS the
+    // notification: the arm goes on measuring the same defect and reports the
+    // one thing that changed about it.
     expect({
       ok: out.ok,
-      nonZero: out.wav ? nonZeroCount(readWav(out.wav).mono) : -1,
-    }).toEqual({ ok: true, nonZero: 0 })
+      saysSilent: /silent/i.test(out.error ?? ''),
+    }).toEqual({ ok: false, saysSilent: true })
   })
 
   test('adding drums to a working render changes nothing at all (#1353)', async ({
