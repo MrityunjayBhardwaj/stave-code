@@ -175,8 +175,54 @@ function headRmsOf(path: string, ms: number): number {
  * asks the question through the menu, where the user's own clicks are part of
  * the timing — the only version of it that describes the shipped product.
  */
+/**
+ * ⚠ THIS ARM ASSERTS A RATIO, NOT A LEVEL, AND THAT IS THE WHOLE POINT (#1357).
+ *
+ * It used to assert `headRms < 0.155` against figures measured once:
+ *
+ *     clean, no prior playback        0.1400
+ *     after a stop, NO settle         0.1623   (+15.8%)
+ *     after a stop, WITH the settle   0.1499   (+7.0%)
+ *
+ * That threshold went red without any code change, and the cause was not Stave.
+ * Re-measured on a different audio-device state the SAME actions on the SAME
+ * commit read roughly DOUBLE — 0.30621 clean, 0.31262 after a stop — and the
+ * doubling reproduced against a pre-fix `dist`, which rules out the code. An
+ * absolute level here measures the sound card as much as the defect, and at
+ * 0.155 the old arm failed a CLEAN bounce as surely as a contaminated one.
+ *
+ * ⚠ Same trap as #1401, one day apart: a threshold calibrated against one
+ * hardware property. There a 32s take divided evenly into 4096-frame blocks at
+ * 48kHz and not at 44.1kHz; here the level itself scales with the device. When
+ * an audio assertion goes red with no plausible code change, suspect the
+ * measurement's dependence on hardware BEFORE suspecting whatever shipped last.
+ *
+ * So both readings are taken in ONE run, on ONE device state, and compared to
+ * each other. The ratio band is chosen to preserve exactly the discriminating
+ * power the level had: 0.155/0.1400 = 1.107 sat between the with-settle (+7.0%)
+ * and no-settle (+15.8%) cases, so it passed with the settle and failed without
+ * it. That is what this arm exists to catch — the RINGING TAIL regression of
+ * #1356 — and 1.107 catches it identically while surviving a device change.
+ *
+ * ⚠ It deliberately does NOT catch #1357's residual, which is smaller than the
+ * band and always was. Do not tighten this to absorb that; tightening it past
+ * the residual makes the arm red for a defect it was never the detector for.
+ * Measured residual on the current device state: 0.30621 -> 0.31262, +2.1%.
+ *
+ * ⚠ The first bounce is itself a play/stop, so the second has TWO behind it.
+ * That is fine and deliberate: the elevation saturates after the first — 1, 2
+ * and 4 prior cycles all read 0.31262, identical to five decimals — which is
+ * also the measurement that ruled out state ACCUMULATING across evaluates.
+ */
 test('a bounce started right after a stop is not thickened by the previous take', async ({ page }) => {
-  test.setTimeout(120_000)
+  test.setTimeout(180_000)
+
+  // Reading 1: a clean bounce, before this page has played anything.
+  await openBounceModal(page)
+  await page.getByRole('button', { name: `${BOUNCE_SECONDS}s` }).click()
+  const cleanDl = page.waitForEvent('download', { timeout: 60_000 })
+  await page.getByRole('button', { name: 'Start Bounce' }).click()
+  const cleanRms = headRmsOf((await (await cleanDl).path())!, 1500)
 
   // Give the graph a real take to ring from.
   await page.locator('[data-testid="strudel-chrome-transport"]').click()
@@ -185,25 +231,22 @@ test('a bounce started right after a stop is not thickened by the previous take'
   await page.locator('[data-testid="strudel-chrome-transport"]').click()
   await expect(page.locator('[data-stave-transport-lcd]')).toContainText('STOP', { timeout: 10_000 })
 
-  // No settling pause here on purpose: straight into the bounce.
+  // Reading 2: no settling pause on purpose — straight into the bounce.
   await openBounceModal(page)
   await page.getByRole('button', { name: `${BOUNCE_SECONDS}s` }).click()
-  const downloadPromise = page.waitForEvent('download', { timeout: 60_000 })
+  const afterDl = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('button', { name: 'Start Bounce' }).click()
-  const download = await downloadPromise
+  const afterRms = headRmsOf((await (await afterDl).path())!, 1500)
 
-  // Measured on this exact path, 3 runs each, spread 0.1% — so these are
-  // signal, not variance:
-  //   clean, no prior playback        0.1400
-  //   after a stop, NO settle         0.1623   (+15.8%)
-  //   after a stop, WITH the settle   0.1499   (+7.0%)
-  // 0.155 sits between the last two: it passes with the settle and fails
-  // without it, which is what makes this arm worth having.
-  //
-  // The remaining +7.0% is REAL and is NOT the tail — adding three further
-  // seconds of proven silence leaves it at 0.1506. Different defect, tracked
-  // separately; do not widen this threshold to absorb it.
-  expect(headRmsOf((await download.path())!, 1500)).toBeLessThan(0.155)
+  const ratio = afterRms / cleanRms
+  console.log(
+    `[#1357] clean=${cleanRms.toFixed(5)} afterStop=${afterRms.toFixed(5)} ratio=${ratio.toFixed(4)}`,
+  )
+
+  // A clean bounce must be audible, or the ratio is a division by noise and
+  // would pass for the wrong reason.
+  expect(cleanRms, 'the clean reference bounce was silent').toBeGreaterThan(0.05)
+  expect(ratio, 'the bounce is thickened by the previous take').toBeLessThan(1.107)
 })
 
 test('a bounce from a quiet graph reads at the reference level', async ({ page }) => {
