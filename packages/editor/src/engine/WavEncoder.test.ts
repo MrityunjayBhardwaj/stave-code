@@ -9,7 +9,8 @@ describe('WavEncoder', () => {
     const L = new Float32Array(numSamples)
     const R = new Float32Array(numSamples)
 
-    const blob = WavEncoder.encodeChunks([L], [R], sampleRate)
+    // Silence is deliberate here — this arm is about the header, not the audio.
+    const blob = WavEncoder.encodeChunks([L], [R], sampleRate, { allowSilence: true })
 
     expect(blob.type).toBe('audio/wav')
 
@@ -75,7 +76,7 @@ describe('WavEncoder', () => {
       getChannelData: (ch: number) => new Float32Array(length),
     } as unknown as AudioBuffer
 
-    const blob = WavEncoder.encode(fakeBuffer)
+    const blob = WavEncoder.encode(fakeBuffer, { allowSilence: true })
     expect(blob.type).toBe('audio/wav')
 
     return blob.arrayBuffer().then((buf) => {
@@ -92,7 +93,7 @@ describe('WavEncoder', () => {
       getChannelData: (_ch: number) => new Float32Array(length),
     } as unknown as AudioBuffer
 
-    expect(() => WavEncoder.encode(fakeBuffer)).not.toThrow()
+    expect(() => WavEncoder.encode(fakeBuffer, { allowSilence: true })).not.toThrow()
   })
 
   it('handles multiple chunks correctly', () => {
@@ -108,5 +109,91 @@ describe('WavEncoder', () => {
       // 4 total samples * 2 channels * 2 bytes = 16 bytes data + 44 header
       expect(buf.byteLength).toBe(44 + 4 * 4)
     })
+  })
+})
+
+/**
+ * #1402 — the capture boundary refuses to hand back silence as a success.
+ *
+ * Four bugs shared one signature: a valid, full-length WAV that plays as
+ * nothing, returned with no error (`LiveRecorder` with playback stopped, #1353,
+ * #1400, #1395). `LiveRecorder`'s header already prescribed the cure and
+ * addressed it to "callers", of which there are four, and all four declined.
+ * These arms pin the rule where the bytes are instead.
+ */
+describe('WavEncoder silence guard (#1402)', () => {
+  it('refuses to encode a capture that is entirely silent', () => {
+    const L = new Float32Array(4410)
+    const R = new Float32Array(4410)
+
+    expect(() => WavEncoder.encodeChunks([L], [R], 44100)).toThrow(
+      /silent/i,
+    )
+  })
+
+  it('names the peak it measured, so the refusal is diagnosable', () => {
+    const L = new Float32Array(64)
+    const R = new Float32Array(64)
+
+    expect(() => WavEncoder.encodeChunks([L], [R], 44100)).toThrow(/peak/i)
+  })
+
+  it('refuses a capture whose peak is below one 16-bit step, because that IS silence', () => {
+    // Every sample here truncates to int16 0, so the encoded file is literally
+    // all zeros. The bound is the FORMAT's quantisation step, not a level
+    // calibrated against any audio device — which is what keeps it from being
+    // another absolute threshold that reports the sound card.
+    const belowOneStep = 1 / 65536
+    const L = new Float32Array(64).fill(belowOneStep)
+    const R = new Float32Array(64).fill(belowOneStep)
+
+    expect(() => WavEncoder.encodeChunks([L], [R], 44100)).toThrow(/silent/i)
+  })
+
+  it('encodes a capture that is barely audible — quiet is not silent', () => {
+    // Two steps: comfortably clear of the bound in both signs. A bounce that
+    // is merely QUIET is a valid bounce, and the guard must never be turned
+    // into a loudness threshold.
+    const L = new Float32Array(64).fill(2 / 32768)
+    const R = new Float32Array(64).fill(-2 / 32768)
+
+    expect(() => WavEncoder.encodeChunks([L], [R], 44100)).not.toThrow()
+  })
+
+  it('errs toward accepting, never toward refusing, in the one-step grey band', () => {
+    // `floatToInt16` scales by 0x7fff upward and 0x8000 downward, so the two
+    // signs do not quantise symmetrically. Measured:
+    //   +1/32768 -> int16  0   (encodes to silence, yet clears the bound)
+    //   -1/32768 -> int16 -1   (survives)
+    // A take sitting exactly on the bound therefore passes even though a
+    // positive-only one encodes to zeros. Pinned deliberately: the guard is
+    // built to never refuse a file that has audio, and this is the price.
+    const onBound = new Float32Array(64).fill(1 / 32768)
+
+    expect(() =>
+      WavEncoder.encodeChunks([onBound], [onBound], 44100),
+    ).not.toThrow()
+  })
+
+  it('encodes silence when the caller says the silence is intended', () => {
+    const L = new Float32Array(4410)
+    const R = new Float32Array(4410)
+
+    const blob = WavEncoder.encodeChunks([L], [R], 44100, { allowSilence: true })
+    expect(blob.type).toBe('audio/wav')
+  })
+
+  it('refuses a silent AudioBuffer through encode() too', () => {
+    const fakeBuffer = {
+      numberOfChannels: 2,
+      sampleRate: 48000,
+      getChannelData: () => new Float32Array(480),
+    } as unknown as AudioBuffer
+
+    expect(() => WavEncoder.encode(fakeBuffer)).toThrow(/silent/i)
+  })
+
+  it('refuses an EMPTY capture — nothing recorded is not a successful bounce', () => {
+    expect(() => WavEncoder.encodeChunks([], [], 44100)).toThrow(/silent/i)
   })
 })

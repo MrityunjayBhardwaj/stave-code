@@ -123,3 +123,57 @@ describe('LiveRecorder abort', () => {
     expect(await frameCount(await capture)).toBe(BUFFER)
   })
 })
+
+/**
+ * #1402 — a take that recorded nothing is not a successful bounce.
+ *
+ * The fake pumps at a constant amplitude, so `pump(0)` is exactly the shape the
+ * real recorder sees when it taps a graph that is not sounding: full-length
+ * buffers of zeros, arriving on schedule, with nothing wrong anywhere.
+ *
+ * ⚠ THESE TAKES END ON THE BACKSTOP TIMER, NOT THE FRAME COUNTER — see #1408.
+ * The fake's `inputBuffer` has no `length`, so `capturedFrames` is NaN and the
+ * counter can never fire. That does not weaken what these arms prove: the
+ * hazard is a throw raised OFF the promise's own call stack, and `setTimeout`
+ * is as off-stack as `onaudioprocess`. It does mean each one waits out the two
+ * second backstop, which #1408 would also remove.
+ */
+describe('LiveRecorder silence (#1402)', () => {
+  it('rejects a take that captured only silence, instead of resolving with it', async () => {
+    const fake = makeFake()
+    // The throw happens inside the recorder's `finish`, which runs from a
+    // timer — not from the promise executor. Without the try/catch that routes
+    // it to `reject`, it would escape as an unhandled error and leave this
+    // promise pending forever, so a silent bounce would become a HUNG one.
+    // This arm would then time out rather than pass.
+    const capture = LiveRecorder.capture(fake.analyser, fake.ctx, 0.01)
+
+    fake.pump(0)
+
+    await expect(capture).rejects.toThrow(/silent/i)
+  })
+
+  it('still disconnects the processor when it rejects', async () => {
+    const fake = makeFake()
+    const capture = LiveRecorder.capture(fake.analyser, fake.ctx, 0.01)
+
+    fake.pump(0)
+
+    await expect(capture).rejects.toThrow()
+    // A refused take must not leave the graph wired to a dead recorder.
+    expect(fake.disconnects()).toBe(1)
+  })
+
+  it('keeps a CANCELLED silent take, because that silence is the honest answer', async () => {
+    const fake = makeFake()
+    const controller = new AbortController()
+    const capture = LiveRecorder.capture(fake.analyser, fake.ctx, 60, controller.signal)
+
+    fake.pump(0)
+    controller.abort()
+
+    // A user who pressed Stop gets what the take managed to collect. The guard
+    // is for a bounce that believed it was recording, not for a cancellation.
+    expect(await frameCount(await capture)).toBe(BUFFER)
+  })
+})

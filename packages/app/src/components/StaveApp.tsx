@@ -99,6 +99,7 @@ import {
   applyPersistedAdaptivePerf,
 } from "@stave/editor";
 import { getLogHistory } from "@stave/editor";
+import { SilentCaptureError } from "@stave/editor";
 import { startAudition } from "@stave/editor";
 import { gmFamily, soundfontGroupLabel } from "@stave/editor";
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
@@ -520,7 +521,23 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       })
       .catch((err: unknown) => {
         console.error("[stave] bounce failed:", err);
-        showToast("Bounce failed — see console for details.", "error");
+        // #1402 — a bounce that recorded nothing used to download a valid,
+        // full-length WAV of silence and call it a success. The capture
+        // boundary refuses that now, and this is the one failure worth naming
+        // in the toast rather than filing under "see console": the user has a
+        // file they can act on if we tell them what was missing.
+        // ⚠ The wording names the SYMPTOM, not a cause. Two different things
+        // land here — a transport that never started, and a document that
+        // evaluates fine but makes no sound (`silence`, or an all-drums
+        // document through the offline renderer, #1353). Observed with the
+        // latter, which is why it does not say "nothing was playing".
+        const silent = err instanceof SilentCaptureError;
+        showToast(
+          silent
+            ? "Bounce produced no sound — check that the pattern evaluates and actually plays something."
+            : "Bounce failed — see console for details.",
+          "error",
+        );
       })
       .finally(finishBounceUi);
   }, [activeProject, finishBounceUi]);

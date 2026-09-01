@@ -3736,20 +3736,36 @@ __name(_BreakpointStore, "BreakpointStore");
 var BreakpointStore = _BreakpointStore;
 
 // src/engine/WavEncoder.ts
+var SILENCE_FLOOR = 1 / 32768;
+var _SilentCaptureError = class _SilentCaptureError extends Error {
+  constructor(peak, frames) {
+    super(
+      `capture is silent: peak ${peak} over ${frames} frames is below one 16-bit step (${SILENCE_FLOOR}), so the encoded file is all zeros. Pass { allowSilence: true } if this silence is intended.`
+    );
+    this.name = "SilentCaptureError";
+    this.peak = peak;
+    this.frames = frames;
+  }
+};
+__name(_SilentCaptureError, "SilentCaptureError");
+var SilentCaptureError = _SilentCaptureError;
 var _WavEncoder = class _WavEncoder {
   /**
    * Encode an AudioBuffer (e.g. from OfflineAudioContext) into a WAV Blob.
    */
-  static encode(buffer) {
+  static encode(buffer, opts) {
     const L = buffer.getChannelData(0);
     const R = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : L;
-    return this.encodeChunks([L], [R], buffer.sampleRate);
+    return this.encodeChunks([L], [R], buffer.sampleRate, opts);
   }
   /**
    * Encode interleaved stereo chunks (e.g. from ScriptProcessorNode) into a WAV Blob.
    * Samples are clamped to [-1, 1] then converted to 16-bit signed integers.
+   *
+   * Throws `SilentCaptureError` when nothing in the take survives quantisation,
+   * unless `opts.allowSilence` says the silence is intended.
    */
-  static encodeChunks(chunksL, chunksR, sampleRate) {
+  static encodeChunks(chunksL, chunksR, sampleRate, opts) {
     const totalSamples = chunksL.reduce((n, c) => n + c.length, 0);
     const numChannels = 2;
     const bitsPerSample = 16;
@@ -3774,15 +3790,23 @@ var _WavEncoder = class _WavEncoder {
     writeString(view, 36, "data");
     view.setUint32(40, dataSize, true);
     let offset = 44;
+    let peak = 0;
     for (let chunk = 0; chunk < chunksL.length; chunk++) {
       const l = chunksL[chunk];
       const r = chunksR[chunk] ?? l;
       for (let i = 0; i < l.length; i++) {
+        const al = l[i] < 0 ? -l[i] : l[i];
+        const ar = r[i] < 0 ? -r[i] : r[i];
+        if (al > peak) peak = al;
+        if (ar > peak) peak = ar;
         view.setInt16(offset, floatToInt16(l[i]), true);
         offset += 2;
         view.setInt16(offset, floatToInt16(r[i]), true);
         offset += 2;
       }
+    }
+    if (!opts?.allowSilence && peak < SILENCE_FLOOR) {
+      throw new SilentCaptureError(peak, totalSamples);
     }
     return new Blob([ab], { type: "audio/wav" });
   }
@@ -3832,7 +3856,7 @@ var _LiveRecorder = class _LiveRecorder {
    * resolves with whatever exists rather than hanging forever.
    */
   static capture(analyser, ctx, duration, signal) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const bufferSize = 4096;
       const processor = ctx.createScriptProcessor(bufferSize, 2, 2);
       const chunksL = [];
@@ -3850,11 +3874,12 @@ var _LiveRecorder = class _LiveRecorder {
       analyser.connect(processor);
       processor.connect(ctx.destination);
       let settled = false;
+      let aborted = false;
       const finish = /* @__PURE__ */ __name(() => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        signal?.removeEventListener("abort", finish);
+        signal?.removeEventListener("abort", onAbort);
         processor.disconnect();
         try {
           analyser.disconnect(processor);
@@ -3864,12 +3889,28 @@ var _LiveRecorder = class _LiveRecorder {
           trimToFrames(chunksL, wantedFrames);
           trimToFrames(chunksR, wantedFrames);
         }
-        resolve(WavEncoder.encodeChunks(chunksL, chunksR, ctx.sampleRate));
+        try {
+          resolve(
+            WavEncoder.encodeChunks(chunksL, chunksR, ctx.sampleRate, {
+              // A cancelled take is honestly whatever it managed to collect,
+              // including nothing. The guard exists to catch a bounce that
+              // believed it was recording; it should not second-guess a user
+              // who pressed Stop.
+              allowSilence: aborted
+            })
+          );
+        } catch (e) {
+          reject(e);
+        }
       }, "finish");
+      const onAbort = /* @__PURE__ */ __name(() => {
+        aborted = true;
+        finish();
+      }, "onAbort");
       const timer = setTimeout(finish, duration * 1e3 + 2e3);
       if (signal) {
-        if (signal.aborted) finish();
-        else signal.addEventListener("abort", finish, { once: true });
+        if (signal.aborted) onAbort();
+        else signal.addEventListener("abort", onAbort, { once: true });
       }
     });
   }
@@ -8109,9 +8150,13 @@ var _StrudelEngine = class _StrudelEngine {
    * the code in an OfflineAudioContext and cannot currently reach a Stave
    * document at all (#1344).
    *
-   * ⚠ It records the graph as it is. If nothing is playing this resolves with
-   * a valid WAV of silence and no error, so the caller must start playback
-   * first. Pass `signal` to stop early and keep what was captured.
+   * ⚠ It records the graph as it is, so the caller must start playback first.
+   * If nothing is playing this now REJECTS with `SilentCaptureError` rather
+   * than resolving with a valid WAV of silence and no error (#1402) — the
+   * check lives at the capture boundary in `WavEncoder`, not here, because a
+   * rule addressed to callers is one every caller can decline. Pass `signal`
+   * to stop early and keep what was captured; a cancelled take is allowed to
+   * be silent.
    */
   async record(durationSeconds, signal) {
     if (!this.analyserNode || !this.audioCtx) {
@@ -45735,6 +45780,7 @@ exports.SHELL_STATE_KEY_PREFIX = SHELL_STATE_KEY_PREFIX;
 exports.SHELL_STATE_VERSION = SHELL_STATE_VERSION;
 exports.SIGNALS_BACKDROP_P5_CODE = SIGNALS_BACKDROP_P5_CODE;
 exports.SIGNALS_SPECTRUM_P5_CODE = SIGNALS_SPECTRUM_P5_CODE;
+exports.SILENCE_FLOOR = SILENCE_FLOOR;
 exports.SONICPI_DOCS_INDEX = SONICPI_DOCS_INDEX;
 exports.SONICPI_RUNTIME = SONICPI_RUNTIME;
 exports.SOUND_ALIASES = SOUND_ALIASES;
@@ -45744,6 +45790,7 @@ exports.STRUDEL_DOCS_INDEX = STRUDEL_DOCS_INDEX;
 exports.STRUDEL_RUNTIME = STRUDEL_RUNTIME;
 exports.SequencerGrid = SequencerGrid;
 exports.SignalBus = SignalBus;
+exports.SilentCaptureError = SilentCaptureError;
 exports.SonicPiEngine = SonicPiEngine;
 exports.SplitPane = SplitPane;
 exports.StrudelEditor = StrudelEditor;
