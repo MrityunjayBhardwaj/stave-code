@@ -6022,13 +6022,17 @@ function revealOffsetInFile(fileId, offset) {
 __name(revealOffsetInFile, "revealOffsetInFile");
 function applyOffsetEditsToFile(fileId, edits, source, expectedDoc) {
   const editor = editors.get(fileId);
-  if (!editor || !monacoNs || edits.length === 0) return false;
-  if (expectedDoc != null && editor.getModel?.()?.getValue?.() !== expectedDoc) return false;
+  if (!editor) return "no-editor";
+  if (!monacoNs) return "no-monaco";
+  if (edits.length === 0) return "no-edits";
+  if (expectedDoc != null && editor.getModel?.()?.getValue?.() !== expectedDoc) {
+    return "stale-document";
+  }
   try {
     new Writeback(editor, monacoNs).replaceRanges(edits, source);
-    return true;
+    return "applied";
   } catch {
-    return false;
+    return "writeback-threw";
   }
 }
 __name(applyOffsetEditsToFile, "applyOffsetEditsToFile");

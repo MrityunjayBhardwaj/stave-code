@@ -39,6 +39,11 @@ import {
   subscribeIRSnapshot,
   revealOffsetInFile,
   applyOffsetEditsToFile,
+  emitLog,
+  type OffsetEdit,
+  type WriteSource,
+  type WriteOutcome,
+  type WriteRefusal,
   detectAllChunks,
   getActiveEditor,
   getActiveFileId,
@@ -71,6 +76,19 @@ import {
 } from '@stave/editor'
 import { FullSongTimeline } from './FullSongTimeline'
 import { createSongCollector } from './musicalTimeline/songCollector'
+
+/**
+ * Human-readable cause for each way the write-back can refuse (#1414). Kept
+ * beside the seam that reports them so a new `WriteRefusal` cannot be added
+ * without the compiler demanding a sentence for it.
+ */
+const REFUSAL_CAUSE: Record<WriteRefusal, string> = {
+  'no-editor': 'the editor for this document is not mounted',
+  'no-monaco': 'the editor core has not finished loading',
+  'no-edits': 'the change could not be expressed in the document',
+  'stale-document': 'the document changed underneath the gesture, so the edit was dropped rather than applied at stale offsets — try again',
+  'writeback-threw': 'the write-back itself failed',
+}
 
 export interface MusicalTimelineProps {
   /** Current cycle (post-collect coords) from the active runtime, or
@@ -564,6 +582,53 @@ export function MusicalTimeline(
     [snapshot],
   )
 
+  // ── The Song Timeline's ONE write seam (#1414) ──────────────────────────
+  //
+  // ⚠ WHY THIS EXISTS, AND WHY IT IS A FUNCTION AND NOT A CONVENTION.
+  // `applyOffsetEditsToFile` has always refused correctly and has always said so
+  // — it names five distinct refusals. Every one of its fourteen call sites threw
+  // the answer away, and twelve of them bailed out one line earlier on an empty
+  // edit list without telling anyone either. The result: a clip drag that was
+  // REFUSED and one that was APPLIED looked identical, to the user and to us.
+  //
+  // The fix is not a rule asking handlers to check; a rule addressed to callers is
+  // a wish, and this boundary has already proved it by being ignored fourteen
+  // times. It is this seam being the ONLY thing that calls the writer, with the
+  // empty-edits case folded IN — so "forget to check" stops being a thing a
+  // handler can do, because there is no longer a separate check to forget.
+  //
+  // Reporting is `warn`, deliberately: warnings reach the Console panel but do NOT
+  // raise a toast (StaveApp's bridge toasts errors only). A declined drag should
+  // be findable, not shouty — and the clip already snaps back on its own, because
+  // the canvas re-derives clip extents from the IR and drops the drag ghost before
+  // this is ever called. The snap-back was never the missing part; knowing WHICH
+  // refusal fired is.
+  const writeArrange = React.useCallback(
+    (edits: OffsetEdit[], source: WriteSource, gesture: string): WriteOutcome => {
+      const fileId = snapshot?.source
+      const outcome: WriteOutcome = !fileId
+        ? 'no-editor'
+        : applyOffsetEditsToFile(fileId, edits, source, snapshot.code)
+      // ⚠ `'applied'` compared explicitly. Every member of WriteOutcome is a
+      // non-empty string and therefore truthy, so `if (outcome)` is always true.
+      if (outcome !== 'applied') {
+        // emitLog coalesces on (level, runtime, source, message), so a repeated
+        // refusal bumps ONE row's count instead of flooding the Console — which
+        // also makes "how often, and which one" readable off the panel. That
+        // count is the instrument #1414 asked for; before it, any claim about
+        // how often this fires was unfalsifiable.
+        emitLog({
+          level: 'warn',
+          runtime: 'stave',
+          source: fileId,
+          message: `Timeline: ${gesture} was not applied — ${REFUSAL_CAUSE[outcome]}.`,
+        })
+      }
+      return outcome
+    },
+    [snapshot],
+  )
+
   // Trim a clip on the Song canvas (Phase 5b, #437): the timeline hands up the
   // dragged clip's source anchor (a lane offset inside the combinator call), its
   // arm index, and the new whole-cycle weight. We parse the arrangement at that
@@ -579,16 +644,14 @@ export function MusicalTimeline(
       if (call) {
         if (req.armIndex < 0 || req.armIndex >= call.arms.length) return
         const edits = setWeight(snapshot.code, call, req.armIndex, req.weight)
-        if (edits.length === 0) return
-        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.weights', snapshot.code)
+        writeArrange(edits, 'arrange.weights', 'trim clip')
         return
       }
       // #463 Stage 2 — a pick* track's clips are the `<…@w …>` control arms.
       const ctl = detectPickControlAt(snapshot.code, req.sourceOffset)
       if (!ctl || req.armIndex < 0 || req.armIndex >= ctl.arms.length) return
       const edits = pickSetWeight(snapshot.code, ctl, req.armIndex, req.weight)
-      if (edits.length === 0) return
-      applyOffsetEditsToFile(snapshot.source, edits, 'arrange.weights', snapshot.code)
+      writeArrange(edits, 'arrange.weights', 'trim clip')
     },
     [snapshot],
   )
@@ -612,7 +675,14 @@ export function MusicalTimeline(
       const taken = new Set(otherTrackNames(snapshot.code, labelOffset))
       const edit = renameEdit(chunk, newLabel, taken)
       if (!edit) return // invalid name / no-op / duplicate → no write
-      applyOffsetEditsToFile(snapshot.source, [edit], 'rename', snapshot.code)
+      // ⚠ GATED ON THE WRITE ACTUALLY LANDING (#1414). The colour migration below
+      // is keyed by DISPLAY NAME, so it is only correct once the document really
+      // says the new name. Before the outcome was read this ran unconditionally:
+      // a rename refused by the stale-document guard still moved the override to
+      // a name no track has and cleared it from the name that does — the track
+      // silently lost its colour because of an edit that never happened. This is
+      // the concrete cost of discarding the writer's answer, in one path.
+      if (writeArrange([edit], 'rename', 'rename track') !== 'applied') return
       // Migrate a custom-colour override from the OLD display name to the new
       // label (#581) — else the rename orphans the colour (the override is keyed
       // by display name, which the rename changes). snapshot.source === fileId.
@@ -642,8 +712,7 @@ export function MusicalTimeline(
       if (call) {
         if (req.armIndex < 0 || req.armIndex >= call.arms.length) return
         const edits = silenceArm(snapshot.code, call, req.armIndex)
-        if (edits.length === 0) return
-        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+        writeArrange(edits, 'arrange.structure', 'delete clip')
         return
       }
       // #463 Stage 2 — pick* section clip.
@@ -651,8 +720,7 @@ export function MusicalTimeline(
       if (ctl) {
         if (req.armIndex < 0 || req.armIndex >= ctl.arms.length) return
         const edits = pickRemoveArm(snapshot.code, ctl, req.armIndex)
-        if (edits.length === 0) return
-        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+        writeArrange(edits, 'arrange.structure', 'delete clip')
         return
       }
       // #489 — bare loop: silence the SELECTED bar (gap) by materializing an
@@ -665,8 +733,7 @@ export function MusicalTimeline(
       const bare = detectBarePattern(snapshot.code, req.sourceOffset)
       if (!bare) return
       const edits = materializeBareDelete(snapshot.code, bare.patternRange, req.barIndex, req.span)
-      if (edits.length === 0) return
-      applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+      writeArrange(edits, 'arrange.structure', 'delete clip')
     },
     [snapshot],
   )
@@ -685,16 +752,14 @@ export function MusicalTimeline(
       const call = detectArrangeAt(snapshot.code, req.sourceOffset)
       if (call) {
         const edits = reorderArm(snapshot.code, call, req.fromIndex, req.toIndex)
-        if (edits.length === 0) return
-        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+        writeArrange(edits, 'arrange.structure', 'move clip')
         return
       }
       // #463 Stage 2 — reorder pick* control sections.
       const ctl = detectPickControlAt(snapshot.code, req.sourceOffset)
       if (!ctl) return
       const edits = pickReorderArm(snapshot.code, ctl, req.fromIndex, req.toIndex)
-      if (edits.length === 0) return
-      applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+      writeArrange(edits, 'arrange.structure', 'move clip')
     },
     [snapshot],
   )
@@ -712,16 +777,14 @@ export function MusicalTimeline(
         const arm = call.arms[req.armIndex]
         const armSource = snapshot.code.slice(arm.armRange[0], arm.armRange[1])
         const edits = insertArm(snapshot.code, call, req.armIndex + 1, armSource)
-        if (edits.length === 0) return
-        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+        writeArrange(edits, 'arrange.structure', 'duplicate clip')
         return
       }
       // #463 Stage 2 — clone a pick* control section.
       const ctl = detectPickControlAt(snapshot.code, req.sourceOffset)
       if (!ctl || req.armIndex < 0 || req.armIndex >= ctl.arms.length) return
       const edits = pickDuplicateArm(snapshot.code, ctl, req.armIndex)
-      if (edits.length === 0) return
-      applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+      writeArrange(edits, 'arrange.structure', 'duplicate clip')
     },
     [snapshot],
   )
@@ -742,8 +805,7 @@ export function MusicalTimeline(
       if (call) {
         if (req.armIndex < 0 || req.armIndex >= call.arms.length) return
         const edits = splitArm(snapshot.code, call, req.armIndex, req.firstWeight)
-        if (edits.length === 0) return
-        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+        writeArrange(edits, 'arrange.structure', 'split clip')
         return
       }
       // #463 Stage 2 — split a pick* control section.
@@ -751,8 +813,7 @@ export function MusicalTimeline(
       if (ctl) {
         if (req.armIndex < 0 || req.armIndex >= ctl.arms.length) return
         const edits = pickSplitArm(snapshot.code, ctl, req.armIndex, req.firstWeight)
-        if (edits.length === 0) return
-        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+        writeArrange(edits, 'arrange.structure', 'split clip')
         return
       }
       // #489 — bare loop: materialize into an arrange by splitting (armIndex < 0).
@@ -760,8 +821,7 @@ export function MusicalTimeline(
       const bare = detectBarePattern(snapshot.code, req.sourceOffset)
       if (!bare) return
       const edits = materializeBareSplit(snapshot.code, bare.patternRange, req.firstWeight, req.span)
-      if (edits.length === 0) return
-      applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+      writeArrange(edits, 'arrange.structure', 'split clip')
     },
     [snapshot],
   )
