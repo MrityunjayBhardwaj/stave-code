@@ -39,11 +39,9 @@ import {
   subscribeIRSnapshot,
   revealOffsetInFile,
   applyOffsetEditsToFile,
-  emitLog,
   type OffsetEdit,
   type WriteSource,
   type WriteOutcome,
-  type WriteRefusal,
   detectAllChunks,
   getActiveEditor,
   getActiveFileId,
@@ -76,19 +74,7 @@ import {
 } from '@stave/editor'
 import { FullSongTimeline } from './FullSongTimeline'
 import { createSongCollector } from './musicalTimeline/songCollector'
-
-/**
- * Human-readable cause for each way the write-back can refuse (#1414). Kept
- * beside the seam that reports them so a new `WriteRefusal` cannot be added
- * without the compiler demanding a sentence for it.
- */
-const REFUSAL_CAUSE: Record<WriteRefusal, string> = {
-  'no-editor': 'the editor for this document is not mounted',
-  'no-monaco': 'the editor core has not finished loading',
-  'no-edits': 'the change could not be expressed in the document',
-  'stale-document': 'the document changed underneath the gesture, so the edit was dropped rather than applied at stale offsets — try again',
-  'writeback-threw': 'the write-back itself failed',
-}
+import { reportWriteRefusal } from '../lib/writeRefusal'
 
 export interface MusicalTimelineProps {
   /** Current cycle (post-collect coords) from the active runtime, or
@@ -611,19 +597,9 @@ export function MusicalTimeline(
         : applyOffsetEditsToFile(fileId, edits, source, snapshot.code)
       // ⚠ `'applied'` compared explicitly. Every member of WriteOutcome is a
       // non-empty string and therefore truthy, so `if (outcome)` is always true.
-      if (outcome !== 'applied') {
-        // emitLog coalesces on (level, runtime, source, message), so a repeated
-        // refusal bumps ONE row's count instead of flooding the Console — which
-        // also makes "how often, and which one" readable off the panel. That
-        // count is the instrument #1414 asked for; before it, any claim about
-        // how often this fires was unfalsifiable.
-        emitLog({
-          level: 'warn',
-          runtime: 'stave',
-          source: fileId,
-          message: `Timeline: ${gesture} was not applied — ${REFUSAL_CAUSE[outcome]}.`,
-        })
-      }
+      // The count this builds up in the Console IS the instrument #1414 asked
+      // for; before it, any claim about how often these fire was unfalsifiable.
+      if (outcome !== 'applied') reportWriteRefusal(fileId, `Timeline: ${gesture}`, outcome)
       return outcome
     },
     [snapshot],

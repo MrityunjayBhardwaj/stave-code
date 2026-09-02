@@ -100,6 +100,7 @@ import {
   songExtent,
   type SongExtent,
 } from "@stave/editor";
+import { reportWriteRefusal } from "../lib/writeRefusal";
 import { createSongCollector } from "./musicalTimeline/songCollector";
 import { measureSongLength, type BounceSizing } from "./songLength";
 import {
@@ -661,14 +662,7 @@ export default function StrudelEditorClient({
       // one most likely to be miscounted as safe, because it has an `if` in front
       // of it. `applyOffsetEditsToFile` names five refusals; report the one we got.
       const outcome = applyOffsetEditsToFile(fileId, [edit], "mixer", doc);
-      if (outcome !== "applied") {
-        emitLog({
-          level: "warn",
-          runtime: "stave",
-          source: fileId,
-          message: `Mixer: the backdrop was not written to the document (${outcome}).`,
-        });
-      }
+      if (outcome !== "applied") reportWriteRefusal(fileId, "Mixer: the backdrop", outcome);
     },
     [backdropName],
   );
