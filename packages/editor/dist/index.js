@@ -33043,7 +33043,7 @@ function PianoRollGrid({
           removeSelected();
           return;
         }
-        if (e.metaKey || e.ctrlKey) {
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
           if (e.key === "c" || e.key === "C") {
             e.preventDefault();
             copySelected();
