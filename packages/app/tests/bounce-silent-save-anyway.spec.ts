@@ -23,8 +23,14 @@
  * to save everything" — and an always-on offer would be a regression that reads
  * as a pass.
  *
- * ⚠ The toast is selected BY ITS MESSAGE TEXT because it carries no test handle
- * — the gap #1411 is about. When that lands, this should switch to the handle.
+ * ⚠ SELECTION IS BY HANDLE, ASSERTION IS ON TEXT (#1411). The toast now carries
+ * `data-testid` + `data-level`, so these arms no longer break silently when
+ * someone rewords the message. But the handle alone does NOT identify the
+ * refusal: the generic "Bounce failed — see console" fallback is an error toast
+ * too, and the specific message only renders because `err instanceof
+ * SilentCaptureError` survives the app↔editor package boundary. So the text is
+ * still asserted, precisely — a loose regex over both would pass while that
+ * silently broke.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
@@ -32,6 +38,8 @@ import { readFileSync } from 'node:fs'
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 const BOUNCE_SECONDS = 8
 const SAVE_ANYWAY = 'Click to save it anyway'
+const ERROR_TOAST = '[data-testid="toast"][data-level="error"]'
+const TOAST_ACTION = '[data-testid="toast-action"]'
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
@@ -68,8 +76,11 @@ test('a silent document is refused, then saved on request — full length and ho
   await page.getByRole('button', { name: 'Start Bounce' }).click()
 
   // The offer appears; the file does NOT arrive by itself.
-  const offer = page.getByText(SAVE_ANYWAY)
+  const offer = page.locator(ERROR_TOAST).locator(TOAST_ACTION)
   await expect(offer).toBeVisible({ timeout: 60_000 })
+  // Selected by handle, but pinned on the message: this must be the refusal
+  // the user can act on, not the generic "see console" fallback.
+  await expect(offer).toContainText(SAVE_ANYWAY)
   expect(autoDownloaded, 'a silent bounce must not save itself').toBe(false)
 
   // Taking the offer hands over the take.
@@ -109,5 +120,71 @@ test('CONTROL — an audible document still saves itself, with no offer to save 
   const download = await downloadPromise
 
   expect(download.suggestedFilename()).toMatch(/\.wav$/)
-  await expect(page.getByText(SAVE_ANYWAY)).toHaveCount(0)
+  // Nothing was refused, so there is no error toast at all — a stronger claim
+  // than "the offer text is absent", and one the handle makes cheap to state.
+  await expect(page.locator(ERROR_TOAST)).toHaveCount(0)
+})
+
+test('a keyboard-only user can retrieve a refused bounce (#1411)', async ({ page }) => {
+  test.setTimeout(120_000)
+
+  // ⚠ THIS IS THE PATH #1410 CREATED AND LEFT UNREACHABLE. The offer to keep a
+  // refused take exists ONLY on the toast — there is no menu item, no dialog,
+  // no second chance. Before #1411 the toast body had an `onClick` and nothing
+  // else: no tab stop, no key handler. Someone working without a mouse could
+  // watch their bounce be refused and have no way to ask for it, and the cost
+  // of missing it is re-recording the whole take in real time.
+  await page.locator('.monaco-editor').first().click()
+  await page.keyboard.press(`${MOD}+A`)
+  await page.keyboard.press('Backspace')
+  await page.keyboard.type('silence', { delay: 10 })
+  await page.waitForTimeout(300)
+  await page.keyboard.press(`${MOD}+Enter`)
+  await page.waitForTimeout(1500)
+
+  await openBounceModal(page)
+  await page.getByRole('button', { name: 'Start Bounce' }).click()
+
+  const offer = page.locator(ERROR_TOAST).locator(TOAST_ACTION)
+  await expect(offer).toBeVisible({ timeout: 60_000 })
+  await expect(offer).toContainText(SAVE_ANYWAY)
+
+  // Reach it the way a keyboard user does — by walking the tab order, not by
+  // calling focus() on it. Programmatic focus would prove the element accepts
+  // focus while saying nothing about whether anyone can GET there, which is
+  // the half that was actually missing. Bounded so a failure reports "never
+  // reached" instead of hanging; the toast lives 20s, this takes about one.
+  //
+  // ⚠ AND THE ORDER MATTERS, NOT JUST THE REACHABILITY. Record what the walk
+  // passes THROUGH: while the dismiss × came first in the DOM it took the
+  // earlier stop, so the first thing a keyboard user's hand landed on was the
+  // button that discards the take — one reflexive Enter and #1410's whole point
+  // is lost. Stated as "the offer comes before dismiss" rather than "the offer
+  // is one tab away", because the latter would also be pinning where focus
+  // happens to land when the Bounce modal closes, which is not the claim.
+  const dismiss = page.locator(ERROR_TOAST).getByRole('button', {
+    name: 'Dismiss notification',
+  })
+  let reachedOffer = false
+  let passedDismissFirst = false
+  for (let i = 0; i < 60 && !reachedOffer; i++) {
+    await page.keyboard.press('Tab')
+    reachedOffer = await offer.evaluate((el) => el === document.activeElement)
+    if (!reachedOffer && (await dismiss.evaluate((el) => el === document.activeElement))) {
+      passedDismissFirst = true
+    }
+  }
+  expect(reachedOffer, 'the offer must be reachable by Tab').toBe(true)
+  expect(passedDismissFirst, 'Tab must reach the offer before the discard').toBe(false)
+
+  // And Enter must activate it — the native <button> behaviour that a
+  // `div` with an onClick does not have.
+  const downloadPromise = page.waitForEvent('download', { timeout: 30_000 })
+  await page.keyboard.press('Enter')
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toMatch(/\.wav$/)
+
+  const buf = readFileSync((await download.path())!)
+  expect(buf.subarray(0, 4).toString()).toBe('RIFF')
+  expect((buf.length - 44) / 4).toBeGreaterThan(BOUNCE_SECONDS * 40_000)
 })

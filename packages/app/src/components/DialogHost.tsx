@@ -101,6 +101,15 @@ function ToastStack({ toasts }: { toasts: ToastState[] }) {
       {toasts.map((t) => (
         <div
           key={t.id}
+          // A stable handle for tests. Until #1411 the only way to address a
+          // toast was its message text, which couples an arm to prose — reword
+          // the message and the arm stops watching anything, silently. `level`
+          // rides along the same way the Console rows carry `data-level`.
+          // ⚠ The handle is for SELECTION, not for the assertion: an arm that
+          // only checks `[data-level="error"]` would pass on the generic
+          // "Bounce failed" fallback too. Select by handle, assert on text.
+          data-testid="toast"
+          data-level={t.level}
           style={{
             ...styles.toast,
             ...(t.level === "error" ? styles.toastError : {}),
@@ -118,6 +127,54 @@ function ToastStack({ toasts }: { toasts: ToastState[] }) {
             dismissToast(t.id);
           }}
         >
+          {/* Reserve right-edge space: ~20px clears the top-right × on every
+              toast; the bottom-right ×N count badge needs a touch more. */}
+          {t.onActivate ? (
+            // An ACTIONABLE toast renders its message as a real button, so the
+            // action is reachable by keyboard. The whole-body click above stays
+            // for the mouse; this adds the tab stop, the Enter/Space handling
+            // and the focus ring that a native button brings for free.
+            // ⚠ Deliberately a SIBLING of the × rather than `role="button"` on
+            // the container: a button nested inside a button is invalid, and
+            // assistive tech treats the inner one inconsistently.
+            // ⚠ This matters more since #1410. The offer to keep a refused
+            // bounce exists ONLY on this toast — miss it and a keyboard-only
+            // user cannot retrieve their take at all, and re-recording it costs
+            // the full length of the bounce in real time.
+            <button
+              type="button"
+              data-testid="toast-action"
+              style={{
+                ...styles.toastAction,
+                paddingRight: t.count > 1 ? 28 : 20,
+              }}
+              onClick={(e) => {
+                // The container's onClick would otherwise run the action a
+                // second time — and dismiss a toast that is already gone.
+                e.stopPropagation();
+                t.onActivate?.();
+                dismissToast(t.id);
+              }}
+            >
+              {t.message}
+            </button>
+          ) : (
+            <span style={{ paddingRight: t.count > 1 ? 28 : 20, display: "block" }}>
+              {t.message}
+            </span>
+          )}
+          {/* ⚠ THE × COMES AFTER THE MESSAGE IN THE DOM, AND THAT IS THE POINT.
+              It is `position: absolute` in the top-right corner, so its place
+              here changes nothing visually — what it changes is the TAB ORDER.
+              Measured: focus lands on `body` when the Bounce modal closes, and
+              the toast stack is the last thing in the document, so the toast is
+              two tab stops away. With the × first, the FIRST thing a keyboard
+              user's hand reached was the button that throws the refused bounce
+              away, and the offer to keep it was second. One reflexive Enter and
+              the take is gone — the exact loss #1410 exists to prevent.
+              Constructive before destructive; it also puts the DOM in reading
+              order, which is what the message-then-affordance layout looks
+              like anyway. */}
           <button
             type="button"
             aria-label="Dismiss notification"
@@ -130,11 +187,6 @@ function ToastStack({ toasts }: { toasts: ToastState[] }) {
           >
             ×
           </button>
-          {/* Reserve right-edge space: ~20px clears the top-right × on every
-              toast; the bottom-right ×N count badge needs a touch more. */}
-          <span style={{ paddingRight: t.count > 1 ? 28 : 20, display: "block" }}>
-            {t.message}
-          </span>
           {t.count > 1 && (
             <span
               style={{
@@ -258,6 +310,22 @@ const styles: Record<string, React.CSSProperties> = {
   },
   toastError: {
     borderLeftColor: "var(--danger-fg)",
+  },
+  // The message of an ACTIONABLE toast, rendered as a real button so it takes
+  // keyboard focus. Everything here is about looking exactly like the plain
+  // <span> it replaces — no chrome of its own; the toast IS the button's
+  // visible surface. `outline` is left alone so the focus ring still shows.
+  toastAction: {
+    display: "block",
+    width: "100%",
+    textAlign: "left",
+    background: "none",
+    border: "none",
+    padding: 0,
+    margin: 0,
+    color: "inherit",
+    font: "inherit",
+    cursor: "pointer",
   },
   toastClose: {
     position: "absolute",
