@@ -96,4 +96,45 @@ test.describe('Copy/paste notes (#528)', () => {
     expect(src).toContain('note("c3 ~ c3 ~")')
     expect(src).toContain('0.5') // the pasted note carries the copied 0.5 velocity
   })
+
+  test('⌘⇧C / ⌘⇧V do NOT copy or paste — those chords belong to the browser (#1425)', async ({
+    page,
+  }) => {
+    // `e.key` is the produced character, so Shift+c IS 'C'. Without a shift
+    // guard the handler answered to ⌘⇧C / ⌘⇧V as well, `preventDefault()` and
+    // all — and those chords are the platform's: ⌘⇧C is Chrome's element
+    // picker, ⌘⇧V is paste-without-formatting nearly everywhere. Reaching for
+    // either silently edited the pattern instead.
+    await boot(page)
+    const DOC = '$: note("c3 ~ ~ ~ ~ ~ ~ ~")'
+    await setStrudelCode(page, DOC)
+    const drawer = await openPattern(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+
+    await grid.locator('[data-roll-cell="48:0"]').click({ modifiers: ['Meta'] })
+    await expect(grid.locator('[data-roll-cell="48:0"]')).toHaveAttribute(
+      'data-roll-selected',
+      'true',
+    )
+    await page.keyboard.press('Meta+Shift+c')
+    await grid.locator('[data-roll-cell="48:5"]').click({ modifiers: ['Meta'] })
+    await page.keyboard.press('Meta+Shift+v')
+    await page.waitForTimeout(300)
+    expect(await strudelValue(page), 'the shifted chords must not touch the document').toBe(DOC)
+
+    // ⚠ THE CONTROL, AND IT IS NOT OPTIONAL. The assertion above is a silence,
+    // and a silence also passes when the handler is broken outright, when the
+    // selection was lost, or when the roll never mounted. Doing the same thing
+    // with the UNSHIFTED chord is what tells those apart.
+    // ⚠ Re-select the NOTE first: the shifted attempt above left the selection
+    // on the empty target cell, and copying THAT would prove nothing.
+    await grid.locator('[data-roll-cell="48:0"]').click({ modifiers: ['Meta'] })
+    await page.keyboard.press('Meta+c')
+    await grid.locator('[data-roll-cell="48:3"]').click({ modifiers: ['Meta'] })
+    await page.keyboard.press('Meta+v')
+    await page.waitForTimeout(300)
+    expect(await strudelValue(page), 'the unshifted chord still works').toBe(
+      '$: note("c3 ~ ~ c3 ~ ~ ~ ~")',
+    )
+  })
 })

@@ -874,7 +874,15 @@ export function PianoRollGrid({
           removeSelected()
           return
         }
-        if (e.metaKey || e.ctrlKey) {
+        // ⚠ `!e.shiftKey` is load-bearing (#1425). `e.key` is the produced
+        // character, so Shift+c IS `'C'` — without it, ⌘⇧C and ⌘⇧V ran copy and
+        // paste too, `preventDefault()` and all. Nothing in Stave owns those
+        // chords, but the platform does: ⌘⇧C is Chrome's element picker and
+        // ⌘⇧V is paste-without-formatting nearly everywhere. Reaching for
+        // either got you a silent edit to the pattern instead.
+        // The `|| 'C'` stays for capslock, which produces `'C'` with no
+        // shiftKey — the guard is about SHIFT, not about case.
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
           if (e.key === 'c' || e.key === 'C') {
             e.preventDefault()
             copySelected()
