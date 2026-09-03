@@ -78,6 +78,7 @@ import StrudelEditorClient, { type BounceHandle } from "./StrudelEditorClient";
 import { BounceModal, type BounceState } from "./BounceModal";
 import type { BounceSizing } from "./songLength";
 import { DocsSearchPalette } from "./DocsSearchPalette";
+import { isPerfOverlayToggle } from "./perfToggleKey";
 import { MusicalTimeline } from "./MusicalTimeline";
 import {
   registerBottomPanelTab,
@@ -436,8 +437,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     // Adaptive performance (the viz GPU-budget governor, P122/PV91) — restore the
     // persisted preference (ON by default) so the governor's live gate agrees.
     applyPersistedAdaptivePerf();
+    // Alt+P toggles the perf overlay. The match lives in `isPerfOverlayToggle`
+    // (#1423) — it used to test `e.key === "p"`, which on macOS is never true,
+    // because Option composes: Option+p produces `π`. The rule is a pure
+    // predicate now so it can be pinned without mounting this component.
     const onKey = (e: KeyboardEvent) => {
-      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "p" || e.key === "P")) {
+      if (isPerfOverlayToggle(e)) {
         e.preventDefault();
         togglePerfEnabled();
       }
