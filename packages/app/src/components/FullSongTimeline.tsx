@@ -1540,7 +1540,15 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // no-op the user can reach by split-then-edit).
       const bareClip = selected.armIndex < 0
       // ⌘/Ctrl-D duplicates the selected clip (insert a clone arm after it).
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
+      // ⚠ `!e.shiftKey` is load-bearing. `e.key` is the PRODUCED CHARACTER, so
+      // Shift+d is literally `'D'` — without the guard, ⌘⇧D fell through to
+      // here and duplicated (observed, #1421). Harmless in itself, but it was
+      // an undocumented binding that quietly edits the arrangement, and it sat
+      // on the chord an "add section" gesture would naturally want (#1347).
+      // ⚠ The bare-letter `S` check below deliberately does NOT get this guard:
+      // there, accepting `'S'` is capslock tolerance on an unmodified key,
+      // which is a different situation from widening a modifier chord.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'd' || e.key === 'D')) {
         if (!onDuplicateClip || bareClip) return
         e.preventDefault()
         onDuplicateClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
