@@ -672,6 +672,37 @@ describe('FullSongTimeline — duplicate a clip (select + ⌘/Ctrl-D → insert 
     expect(onDuplicateClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 1 })
   })
 
+  it('⌘⇧-D does NOT duplicate, while ⌘-D on the same selection does (#1421)', async () => {
+    // `e.key` is the produced character, so Shift+d is literally 'D' — the
+    // handler's `|| e.key === 'D'` used to swallow ⌘⇧D and duplicate on it.
+    // ⚠ Both halves in ONE arm on purpose. The negative alone would also pass
+    // if the whole handler were broken, which is the failure it is meant to
+    // exclude; the positive that follows is what makes the silence meaningful.
+    const onDuplicateClip = vi.fn()
+    const { grid } = renderDuplicatable(onDuplicateClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 }) // select arm 0
+    fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+
+    fireEvent.keyDown(grid, { key: 'D', metaKey: true, shiftKey: true })
+    expect(onDuplicateClip, '⌘⇧D must not duplicate').not.toHaveBeenCalled()
+
+    fireEvent.keyDown(grid, { key: 'd', metaKey: true })
+    expect(onDuplicateClip, 'the selection was live all along').toHaveBeenCalledTimes(1)
+  })
+
+  it('⌘-D still duplicates when Shift is absent but the key arrives capitalised', async () => {
+    // Capslock produces 'D' with no shiftKey. That case was always meant to
+    // work and must survive the guard — the guard is about SHIFT, not case.
+    const onDuplicateClip = vi.fn()
+    const { grid } = renderDuplicatable(onDuplicateClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.keyDown(grid, { key: 'D', metaKey: true })
+    expect(onDuplicateClip).toHaveBeenCalledTimes(1)
+  })
+
   it('⌘-D with nothing selected is a no-op', async () => {
     const onDuplicateClip = vi.fn()
     const { grid } = renderDuplicatable(onDuplicateClip)
