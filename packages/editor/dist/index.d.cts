@@ -1518,11 +1518,27 @@ declare class BufferedScheduler implements IRPattern {
  * Do not turn it into a loudness threshold; a quiet bounce is a valid bounce.
  */
 declare const SILENCE_FLOOR: number;
-/** Thrown when a capture path would hand back a well-formed file of silence. */
+/**
+ * Thrown when a capture path would hand back a well-formed file of silence.
+ *
+ * ⚠ IT CARRIES THE REFUSED TAKE (#1410). The check runs AFTER the sample loop,
+ * because the peak is not known until the samples have been walked — so by the
+ * time this is thrown the WAV is already fully encoded. Attaching it costs
+ * nothing and it is the difference between a user re-recording a three-minute
+ * bounce and clicking once.
+ *
+ * This does not soften the refusal. `refused` is never RETURNED: the promise
+ * still rejects, the default path still saves nothing, and reaching into a
+ * thrown error to pull bytes out of it is unmistakably deliberate at the call
+ * site — which is the same opt-OUT shape as `allowSilence`, not an opt-in that
+ * a caller can forget. A silent take still cannot arrive anywhere by accident.
+ */
 declare class SilentCaptureError extends Error {
     readonly peak: number;
     readonly frames: number;
-    constructor(peak: number, frames: number);
+    /** The encoded WAV that was refused. Complete and playable — just silent. */
+    readonly refused: Blob;
+    constructor(peak: number, frames: number, refused: Blob);
 }
 interface EncodeOptions {
     /**

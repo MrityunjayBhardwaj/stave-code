@@ -129,6 +129,36 @@ interface StaveAppProps {
  * The sidebar is a file tree for the CURRENT project only.
  * Switching projects remounts StrudelEditorClient via key={activeProject.id}.
  */
+/**
+ * How long the silent-bounce toast stays clickable (#1410). The default 4s is
+ * tuned for "here is what happened"; this one carries a DECISION, and a choice
+ * that vanishes before it is read is not a choice. Long enough to notice and
+ * act, short enough that an ignored offer still goes away on its own.
+ */
+const SILENT_BOUNCE_TOAST_MS = 20_000;
+
+/**
+ * Hand a finished WAV to the browser as a download (#1410).
+ *
+ * Extracted when the silent-bounce path became the SECOND caller — before that
+ * it was rightly inline. Both routes save the same way now, so a take kept
+ * deliberately is byte-for-byte the file a successful bounce would have written,
+ * and neither route can drift into naming or revoking differently.
+ */
+function saveWavBlob(blob: Blob, projectName: string): void {
+  const safeName = projectName.replace(/[^a-z0-9_-]+/gi, "_");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${safeName || "stave-bounce"}.wav`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Revoke on next tick so the download stream can start (matches
+  // exportProjectAsZip).
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function StaveApp({ initialProject }: StaveAppProps) {
   const [activeProject, setActiveProject] = useState<ProjectMeta>(initialProject);
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
@@ -501,17 +531,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           return;
         }
         setBounceState({ phase: "encoding" });
-        const safeName = activeProject.name.replace(/[^a-z0-9_-]+/gi, "_");
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${safeName || "stave-bounce"}.wav`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        // Revoke on next tick so the download stream can start (matches
-        // exportProjectAsZip).
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        saveWavBlob(blob, activeProject.name);
         showToast(
           controller.signal.aborted
             ? "Bounce stopped early — saved what was recorded."
@@ -531,13 +551,25 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         // evaluates fine but makes no sound (`silence`, or an all-drums
         // document through the offline renderer, #1353). Observed with the
         // latter, which is why it does not say "nothing was playing".
-        const silent = err instanceof SilentCaptureError;
-        showToast(
-          silent
-            ? "Bounce produced no sound — check that the pattern evaluates and actually plays something."
-            : "Bounce failed — see console for details.",
-          "error",
-        );
+        // #1410 — a document that is MEANT to be silent had no way past the
+        // guard. It still refuses by default, but the refused take rides on the
+        // error (already encoded when the check fires), so keeping it is one
+        // click rather than a re-record. Deliberately NOT a checkbox in the
+        // Bounce modal: 4 documents in 142 are silent, and a setting would ask
+        // every user to answer a question before they know it applies to them.
+        if (err instanceof SilentCaptureError) {
+          showToast(
+            "Bounce produced no sound — check that the pattern evaluates and actually plays something. Click to save it anyway.",
+            "error",
+            SILENT_BOUNCE_TOAST_MS,
+            () => {
+              saveWavBlob(err.refused, activeProject.name);
+              showToast("Silent bounce saved.", "info");
+            },
+          );
+          return;
+        }
+        showToast("Bounce failed — see console for details.", "error");
       })
       .finally(finishBounceUi);
   }, [activeProject, finishBounceUi]);

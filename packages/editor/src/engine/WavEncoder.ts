@@ -27,19 +27,37 @@
  */
 export const SILENCE_FLOOR = 1 / 32768
 
-/** Thrown when a capture path would hand back a well-formed file of silence. */
+/**
+ * Thrown when a capture path would hand back a well-formed file of silence.
+ *
+ * ⚠ IT CARRIES THE REFUSED TAKE (#1410). The check runs AFTER the sample loop,
+ * because the peak is not known until the samples have been walked — so by the
+ * time this is thrown the WAV is already fully encoded. Attaching it costs
+ * nothing and it is the difference between a user re-recording a three-minute
+ * bounce and clicking once.
+ *
+ * This does not soften the refusal. `refused` is never RETURNED: the promise
+ * still rejects, the default path still saves nothing, and reaching into a
+ * thrown error to pull bytes out of it is unmistakably deliberate at the call
+ * site — which is the same opt-OUT shape as `allowSilence`, not an opt-in that
+ * a caller can forget. A silent take still cannot arrive anywhere by accident.
+ */
 export class SilentCaptureError extends Error {
   readonly peak: number
   readonly frames: number
-  constructor(peak: number, frames: number) {
+  /** The encoded WAV that was refused. Complete and playable — just silent. */
+  readonly refused: Blob
+  constructor(peak: number, frames: number, refused: Blob) {
     super(
       `capture is silent: peak ${peak} over ${frames} frames is below one ` +
         `16-bit step (${SILENCE_FLOOR}), so the encoded file is all zeros. ` +
-        `Pass { allowSilence: true } if this silence is intended.`
+        `Pass { allowSilence: true } if this silence is intended, or read ` +
+        `\`refused\` to keep the take deliberately.`
     )
     this.name = 'SilentCaptureError'
     this.peak = peak
     this.frames = frames
+    this.refused = refused
   }
 }
 
@@ -148,11 +166,15 @@ export class WavEncoder {
     // Checked AFTER the loop rather than before it because the peak is not
     // known until the samples have been walked, and walking them twice to fail
     // slightly earlier would cost every successful bounce a second pass.
+    const wav = new Blob([ab], { type: 'audio/wav' })
     if (!opts?.allowSilence && peak < SILENCE_FLOOR) {
-      throw new SilentCaptureError(peak, totalSamples)
+      // The take rides on the refusal (#1410) — it is finished either way, and
+      // the alternative is asking someone to re-record a three-minute bounce to
+      // get bytes this function is already holding.
+      throw new SilentCaptureError(peak, totalSamples, wav)
     }
 
-    return new Blob([ab], { type: 'audio/wav' })
+    return wav
   }
 }
 
