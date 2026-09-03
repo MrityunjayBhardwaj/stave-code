@@ -3738,13 +3738,14 @@ var BreakpointStore = _BreakpointStore;
 // src/engine/WavEncoder.ts
 var SILENCE_FLOOR = 1 / 32768;
 var _SilentCaptureError = class _SilentCaptureError extends Error {
-  constructor(peak, frames) {
+  constructor(peak, frames, refused2) {
     super(
-      `capture is silent: peak ${peak} over ${frames} frames is below one 16-bit step (${SILENCE_FLOOR}), so the encoded file is all zeros. Pass { allowSilence: true } if this silence is intended.`
+      `capture is silent: peak ${peak} over ${frames} frames is below one 16-bit step (${SILENCE_FLOOR}), so the encoded file is all zeros. Pass { allowSilence: true } if this silence is intended, or read \`refused\` to keep the take deliberately.`
     );
     this.name = "SilentCaptureError";
     this.peak = peak;
     this.frames = frames;
+    this.refused = refused2;
   }
 };
 __name(_SilentCaptureError, "SilentCaptureError");
@@ -3805,10 +3806,11 @@ var _WavEncoder = class _WavEncoder {
         offset += 2;
       }
     }
+    const wav = new Blob([ab], { type: "audio/wav" });
     if (!opts?.allowSilence && peak < SILENCE_FLOOR) {
-      throw new SilentCaptureError(peak, totalSamples);
+      throw new SilentCaptureError(peak, totalSamples, wav);
     }
-    return new Blob([ab], { type: "audio/wav" });
+    return wav;
   }
 };
 __name(_WavEncoder, "WavEncoder");

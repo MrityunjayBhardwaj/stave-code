@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
-import { WavEncoder } from './WavEncoder'
+import { WavEncoder, SilentCaptureError } from './WavEncoder'
 
 describe('WavEncoder', () => {
   it('produces a valid RIFF WAV header', () => {
@@ -195,5 +195,85 @@ describe('WavEncoder silence guard (#1402)', () => {
 
   it('refuses an EMPTY capture — nothing recorded is not a successful bounce', () => {
     expect(() => WavEncoder.encodeChunks([], [], 44100)).toThrow(/silent/i)
+  })
+})
+
+describe('WavEncoder — the refused take rides on the refusal (#1410)', () => {
+  /**
+   * The guard is right by default and was, until now, absolute: a document that
+   * is MEANT to be silent had no way to be bounced at all. These arms pin the
+   * escape — the refusal carries the finished WAV, so keeping it deliberately
+   * costs a click instead of a re-record.
+   *
+   * ⚠ The one that matters is the EQUIVALENCE arm. "Save it anyway" is only
+   * honest if it hands over exactly the file a permitted encode would have
+   * written; a refusal that carried a truncated or differently-headed take
+   * would be worse than no escape at all.
+   */
+  const SR = 44100
+  const silent = (n = 512) => [new Float32Array(n)]
+
+  it('attaches the encoded take to the error', () => {
+    let err: unknown
+    try {
+      WavEncoder.encodeChunks(silent(), silent(), SR)
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(SilentCaptureError)
+    const refused = (err as SilentCaptureError).refused
+    expect(refused).toBeInstanceOf(Blob)
+    expect(refused.type).toBe('audio/wav')
+    expect(refused.size).toBeGreaterThan(44) // header + at least some samples
+  })
+
+  it('the refused take is BYTE-IDENTICAL to what allowSilence returns', async () => {
+    // ⚠ THE LOAD-BEARING ARM. If these ever diverge, "save it anyway" is
+    // handing the user a different file from the one they asked for.
+    let refused: Blob | null = null
+    try {
+      WavEncoder.encodeChunks(silent(), silent(), SR)
+    } catch (e) {
+      refused = (e as SilentCaptureError).refused
+    }
+    const permitted = WavEncoder.encodeChunks(silent(), silent(), SR, {
+      allowSilence: true,
+    })
+    expect(refused).not.toBeNull()
+    expect(refused!.size).toBe(permitted.size)
+    const a = new Uint8Array(await refused!.arrayBuffer())
+    const b = new Uint8Array(await permitted.arrayBuffer())
+    expect(Array.from(a)).toEqual(Array.from(b))
+  })
+
+  it('the refused take is a COMPLETE WAV — full length, not truncated at the throw', async () => {
+    const FRAMES = 1024
+    let refused: Blob | null = null
+    try {
+      WavEncoder.encodeChunks([new Float32Array(FRAMES)], [new Float32Array(FRAMES)], SR)
+    } catch (e) {
+      refused = (e as SilentCaptureError).refused
+    }
+    // 44-byte RIFF header + 2 channels × 2 bytes × frames.
+    expect(refused!.size).toBe(44 + FRAMES * 2 * 2)
+    const head = new Uint8Array(await refused!.arrayBuffer()).subarray(0, 4)
+    expect(String.fromCharCode(...head)).toBe('RIFF')
+  })
+
+  it('still REFUSES by default — the take is reachable, not returned', () => {
+    // The escape must not become the behaviour. A caller that does nothing
+    // special still gets a throw and no bytes back.
+    expect(() => WavEncoder.encodeChunks(silent(), silent(), SR)).toThrow(/silent/i)
+  })
+
+  it('reports the peak and frame count alongside the take', () => {
+    let err: SilentCaptureError | null = null
+    try {
+      WavEncoder.encodeChunks(silent(256), silent(256), SR)
+    } catch (e) {
+      err = e as SilentCaptureError
+    }
+    expect(err!.peak).toBe(0)
+    expect(err!.frames).toBe(256)
   })
 })
