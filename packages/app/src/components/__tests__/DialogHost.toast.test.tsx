@@ -118,6 +118,24 @@ describe("toast keyboard surface (#1411)", () => {
     expect(getToasts()).toHaveLength(0);
   });
 
+  it("puts the offer ahead of the × in the DOM, so Tab reaches it first", () => {
+    // Constructive before destructive. The × is `position: absolute`, so its
+    // place in the DOM is purely about tab order — and with it first, the first
+    // stop a keyboard user's hand reached was the button that throws a refused
+    // bounce away, with the offer to keep it second.
+    const { container } = render(<DialogHost />);
+    act(() => {
+      showToast("Click to save it anyway.", "error", 4000, () => {});
+    });
+
+    const buttons = [
+      ...container.querySelectorAll('[data-testid="toast"] button'),
+    ];
+    expect(buttons.map((b) => b.getAttribute("data-testid") ?? "dismiss")).toEqual(
+      ["toast-action", "dismiss"],
+    );
+  });
+
   it("still dismisses without acting when the × is used", () => {
     const onActivate = vi.fn();
     const { container } = render(<DialogHost />);

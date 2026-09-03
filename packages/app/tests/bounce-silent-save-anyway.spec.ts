@@ -154,12 +154,28 @@ test('a keyboard-only user can retrieve a refused bounce (#1411)', async ({ page
   // focus while saying nothing about whether anyone can GET there, which is
   // the half that was actually missing. Bounded so a failure reports "never
   // reached" instead of hanging; the toast lives 20s, this takes about one.
-  let reached = false
-  for (let i = 0; i < 60 && !reached; i++) {
+  //
+  // ⚠ AND THE ORDER MATTERS, NOT JUST THE REACHABILITY. Record what the walk
+  // passes THROUGH: while the dismiss × came first in the DOM it took the
+  // earlier stop, so the first thing a keyboard user's hand landed on was the
+  // button that discards the take — one reflexive Enter and #1410's whole point
+  // is lost. Stated as "the offer comes before dismiss" rather than "the offer
+  // is one tab away", because the latter would also be pinning where focus
+  // happens to land when the Bounce modal closes, which is not the claim.
+  const dismiss = page.locator(ERROR_TOAST).getByRole('button', {
+    name: 'Dismiss notification',
+  })
+  let reachedOffer = false
+  let passedDismissFirst = false
+  for (let i = 0; i < 60 && !reachedOffer; i++) {
     await page.keyboard.press('Tab')
-    reached = await offer.evaluate((el) => el === document.activeElement)
+    reachedOffer = await offer.evaluate((el) => el === document.activeElement)
+    if (!reachedOffer && (await dismiss.evaluate((el) => el === document.activeElement))) {
+      passedDismissFirst = true
+    }
   }
-  expect(reached, 'the offer must be reachable by Tab').toBe(true)
+  expect(reachedOffer, 'the offer must be reachable by Tab').toBe(true)
+  expect(passedDismissFirst, 'Tab must reach the offer before the discard').toBe(false)
 
   // And Enter must activate it — the native <button> behaviour that a
   // `div` with an onClick does not have.

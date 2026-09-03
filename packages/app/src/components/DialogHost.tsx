@@ -127,18 +127,6 @@ function ToastStack({ toasts }: { toasts: ToastState[] }) {
             dismissToast(t.id);
           }}
         >
-          <button
-            type="button"
-            aria-label="Dismiss notification"
-            title="Dismiss"
-            style={styles.toastClose}
-            onClick={(e) => {
-              e.stopPropagation();
-              dismissToast(t.id);
-            }}
-          >
-            ×
-          </button>
           {/* Reserve right-edge space: ~20px clears the top-right × on every
               toast; the bottom-right ×N count badge needs a touch more. */}
           {t.onActivate ? (
@@ -175,6 +163,30 @@ function ToastStack({ toasts }: { toasts: ToastState[] }) {
               {t.message}
             </span>
           )}
+          {/* ⚠ THE × COMES AFTER THE MESSAGE IN THE DOM, AND THAT IS THE POINT.
+              It is `position: absolute` in the top-right corner, so its place
+              here changes nothing visually — what it changes is the TAB ORDER.
+              Measured: focus lands on `body` when the Bounce modal closes, and
+              the toast stack is the last thing in the document, so the toast is
+              two tab stops away. With the × first, the FIRST thing a keyboard
+              user's hand reached was the button that throws the refused bounce
+              away, and the offer to keep it was second. One reflexive Enter and
+              the take is gone — the exact loss #1410 exists to prevent.
+              Constructive before destructive; it also puts the DOM in reading
+              order, which is what the message-then-affordance layout looks
+              like anyway. */}
+          <button
+            type="button"
+            aria-label="Dismiss notification"
+            title="Dismiss"
+            style={styles.toastClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              dismissToast(t.id);
+            }}
+          >
+            ×
+          </button>
           {t.count > 1 && (
             <span
               style={{
