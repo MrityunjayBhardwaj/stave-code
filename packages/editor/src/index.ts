@@ -268,6 +268,7 @@ export {
   resetUndoManager,
   withStructBatch,
 } from './workspace/undoManager'
+export type { WriteOutcome, WriteRefusal } from './workspace/editorRegistry'
 export {
   revealLineInFile,
   revealOffsetInFile,

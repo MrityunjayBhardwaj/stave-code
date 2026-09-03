@@ -100,6 +100,7 @@ import {
   songExtent,
   type SongExtent,
 } from "@stave/editor";
+import { reportWriteRefusal } from "../lib/writeRefusal";
 import { createSongCollector } from "./musicalTimeline/songCollector";
 import { measureSongLength, type BounceSizing } from "./songLength";
 import {
@@ -654,7 +655,14 @@ export default function StrudelEditorClient({
       const doc = getActiveEditor()?.getModel?.()?.getValue?.();
       if (doc == null) return;
       const edit = masterVizEdit(doc, vizId ? backdropName(vizId) : null);
-      if (edit) applyOffsetEditsToFile(fileId, [edit], "mixer", doc);
+      if (!edit) return;
+      // ⚠ THE OUTCOME IS READ, NOT THE EDIT (#1414). The `if` above guards whether
+      // there is anything to write; it says nothing about whether the write landed.
+      // This was the fourteenth call site discarding the writer's answer — and the
+      // one most likely to be miscounted as safe, because it has an `if` in front
+      // of it. `applyOffsetEditsToFile` names five refusals; report the one we got.
+      const outcome = applyOffsetEditsToFile(fileId, [edit], "mixer", doc);
+      if (outcome !== "applied") reportWriteRefusal(fileId, "Mixer: the backdrop", outcome);
     },
     [backdropName],
   );
