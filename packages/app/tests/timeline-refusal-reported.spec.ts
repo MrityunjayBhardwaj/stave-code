@@ -31,6 +31,10 @@
  * writer.
  */
 import { test, expect, type Page } from '@playwright/test'
+// ⚠ SHARED, not copied (#1443). This spec and the three roll readback specs read the
+// same surface; when they each owned a copy of the reader, retiring that surface broke
+// six tests and nothing said which reader was wrong.
+import { openConsole, staveWarnings } from './_console'
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 const SONG = 'arrange([2, s("bd")], [2, s("hh")])'
@@ -83,15 +87,6 @@ async function selectFirstClip(page: Page) {
   await page.mouse.click(box.x + box.width * 0.25, box.y + 8)
   await expect(page.locator('[data-full-song="clip-selection"]')).toBeVisible({ timeout: 5_000 })
   return grid
-}
-
-function staveWarnings(page: Page) {
-  return page.locator('[data-testid="console-row"][data-runtime="stave"][data-level="warn"]')
-}
-
-async function openConsole(page: Page): Promise<void> {
-  await page.locator('[data-activity-bar] [data-panel-id="console"]').click()
-  await expect(page.locator('[data-testid="console-panel"]')).toBeVisible({ timeout: 5_000 })
 }
 
 test('a delete refused by the stale-document guard says so, and changes nothing', async ({ page }) => {
