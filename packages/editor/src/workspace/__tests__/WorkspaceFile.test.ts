@@ -23,8 +23,12 @@ import {
   subscribe,
   __resetWorkspaceFilesForTests,
   setZoneCropOverride,
+  setZoneHeightOverride,
   pruneZoneOverrides,
   subscribeToZoneOverrides,
+  subscribeToFileList,
+  listWorkspaceFiles,
+  renameWorkspaceFile,
   getTrackMeta,
   setTrackMeta,
   subscribeToTrackMeta,
@@ -186,6 +190,93 @@ describe('WorkspaceFile store', () => {
     // mutation is internal bookkeeping, not a user-driven change.
     expect(overrideCb).not.toHaveBeenCalled()
     unsub()
+  })
+
+  // ── #1437 — a per-file SIDE CHANNEL is not a file-list change ─────────────
+  //
+  // `zoneOverrides` and `trackMeta` live inside the file's Y.Map, so the
+  // files-map observer used to count a write to either as a structural change
+  // and notify the file LIST. `StrudelEditorClient` answers a file-list change
+  // by re-registering every viz file, each of which notifies the named-viz
+  // registry, and `EditorView` answers THAT by remounting its inline zones.
+  // One drag on a resize bar produced thirteen remounts and the resize vanished
+  // from the screen.
+  //
+  // The controls matter as much as the arms here: `setContent` must still
+  // notify the FILE (and still not the list), and `createWorkspaceFile` must
+  // still notify the LIST — otherwise a guard that silenced everything would
+  // pass just as well as one that silences the right thing.
+  describe('#1437 — per-file side channels do not notify the file list', () => {
+    /** Wire the files-map observer the way the app does, then start counting. */
+    function watch(): {
+      list: ReturnType<typeof vi.fn>
+      file: ReturnType<typeof vi.fn>
+      stop: () => void
+    } {
+      listWorkspaceFiles()
+      const list = vi.fn()
+      const file = vi.fn()
+      const unsubL = subscribeToFileList(list)
+      const unsubF = subscribe('f1', file)
+      return { list, file, stop: () => { unsubL(); unsubF() } }
+    }
+
+    it('a zone HEIGHT write reaches neither the file list nor the file', () => {
+      createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+      const w = watch()
+      setZoneHeightOverride('f1', '$0', 370, 'hash')
+      expect(w.list, 'a dragged zone height is not a workspace change').not.toHaveBeenCalled()
+      expect(w.file, 'nor a change to the file itself').not.toHaveBeenCalled()
+      w.stop()
+    })
+
+    it('a zone CROP write reaches neither, on a file that has no side-channel map yet', () => {
+      // The FIRST write also creates the side channel's own map on the file map,
+      // which arrives as a separate 'add' event — a different shape from every
+      // later write, and the one a path-only guard would miss.
+      createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+      const w = watch()
+      setZoneCropOverride('f1', '$0', { x: 0, y: 0, w: 1, h: 1 }, 'wide')
+      expect(w.list).not.toHaveBeenCalled()
+      expect(w.file).not.toHaveBeenCalled()
+      w.stop()
+    })
+
+    it('a trackMeta write reaches neither — the same shape, the same channel', () => {
+      createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+      const w = watch()
+      setTrackMeta('f1', 'bd', { collapsed: true })
+      expect(w.list, 'a collapsed track is not a workspace change').not.toHaveBeenCalled()
+      expect(w.file).not.toHaveBeenCalled()
+      w.stop()
+    })
+
+    it('CONTROL — setContent still notifies the file, and still not the list', () => {
+      createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+      const w = watch()
+      setContent('f1', 'y')
+      expect(w.file, 'content edits must still reach the file').toHaveBeenCalledTimes(1)
+      expect(w.list, 'and must still not reach the list').not.toHaveBeenCalled()
+      w.stop()
+    })
+
+    it('CONTROL — creating a file still notifies the list', () => {
+      createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+      const w = watch()
+      createWorkspaceFile('f2', 'q.strudel', 'z', 'strudel')
+      expect(w.list, 'a real structural change must still get through').toHaveBeenCalled()
+      w.stop()
+    })
+
+    it('a side-channel write in the SAME transaction as a rename still notifies', () => {
+      // The guard skips a file-map event only when EVERY changed key is a side
+      // channel. A rename that happens to ride along must not be swallowed.
+      createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+      const w = watch()
+      renameWorkspaceFile('f1', 'renamed.strudel')
+      expect(w.list, 'a rename is a workspace change').toHaveBeenCalled()
+      w.stop()
+    })
   })
 
   it('setZoneCropOverride still notifies subscribers (user-driven path unaffected)', () => {

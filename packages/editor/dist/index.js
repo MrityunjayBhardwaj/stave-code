@@ -16610,6 +16610,7 @@ function ensureFolderOrderObserver() {
 }
 __name(ensureFolderOrderObserver, "ensureFolderOrderObserver");
 var wiredFilesMap = null;
+var FILE_SIDE_CHANNEL_KEYS = /* @__PURE__ */ new Set(["zoneOverrides", "trackMeta"]);
 function ensureFilesMapObserver() {
   const filesMap = getFilesMap();
   if (wiredFilesMap === filesMap) return;
@@ -16639,6 +16640,11 @@ function ensureFilesMapObserver() {
       const path = event.path;
       const ownerId = path.length > 0 ? String(path[0]) : null;
       if (!ownerId) continue;
+      if (path.length > 1 && FILE_SIDE_CHANNEL_KEYS.has(String(path[1]))) continue;
+      if (path.length === 1 && event instanceof Y3.YMapEvent) {
+        const changed = [...event.changes.keys.keys()];
+        if (changed.length > 0 && changed.every((k) => FILE_SIDE_CHANNEL_KEYS.has(k))) continue;
+      }
       if (filesMap.has(ownerId)) {
         rebuildSnapshot(ownerId);
         notify2(ownerId);
