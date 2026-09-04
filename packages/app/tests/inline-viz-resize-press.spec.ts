@@ -172,7 +172,17 @@ test.describe('#1438 — pressing the resize bar is not a resize', () => {
     await pressHandle(page, target - base.narrow.zoneH)
 
     const after = await atWidth(page, WIDE)
-    expect(after.zoneH, 'the dragged height should survive the widening').toBeCloseTo(target, 0)
+    // ±1px, not ±0.5. Zone heights became FRACTIONAL with #1439: the canvas is
+    // now pinned to its render size (512px tall) and scaled by a fractional
+    // factor, where before the transform ran against a measured, integral
+    // container height. `target` is rounded, the dragged height is not, so the
+    // two can differ by up to a pixel — measured 93.9 against a target of 93.
+    // Re-pointed deliberately rather than widened until it passed: the claim
+    // this arm actually makes is carried by the assertion BELOW, which stays at
+    // its original strength — 20px clear of the fit height, so a snap-back
+    // cannot hide inside the looser tolerance.
+    expect(Math.abs(after.zoneH - target), 'the dragged height should survive the widening')
+      .toBeLessThanOrEqual(1)
     expect(after.zoneH, 'and it should NOT have snapped back to the fit height')
       .toBeLessThan(base.wide.zoneH - 20)
   })

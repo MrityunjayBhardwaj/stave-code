@@ -25,13 +25,15 @@
  * (189.63px against a 190px zone at mount), so exact equality would fail on
  * rounding alone and teach the next person to widen it until it passed.
  *
- * ⚠ ROUTE B DOES NOT REACH ZERO, AND THAT IS NOT THIS CHANGE'S DEFECT. Narrowing
- * the editor leaves ~52px of gap even with NO override stored — the zone's
- * native size goes stale when the canvas re-creates itself at the new width, so
- * the scale is applied twice (#1439). Confirmed against trunk's bundle, where a
- * no-override zone measures the same 51.7px. Route B below therefore asserts a
- * COMPARISON — a stored height contributes nothing beyond that floor — rather
- * than an absolute it cannot honestly claim.
+ * ⚠ ROUTE B IS STATED AS A COMPARISON, AND STAYS THAT WAY. When these arms were
+ * written, narrowing left ~52px of gap even with NO override stored — a second,
+ * independent defect (#1439: a container-filling canvas has no intrinsic size,
+ * so `readCanvasNative` returned the container's size and the scale was applied
+ * twice). #1439 is now fixed and that floor is down to the deliberate
+ * `MIN_ZONE_HEIGHT` remainder, asserted by its own arm below. The comparison
+ * form is kept anyway: it says what this change actually claims — a stored
+ * height contributes NOTHING of its own — and it would have gone on holding if
+ * #1439 had never been fixed.
  */
 import { test, expect, type Page } from '@playwright/test'
 
@@ -149,14 +151,12 @@ test.describe('#1433 — the resize bar stays flush against its canvas', () => {
     const base = await measure(page)
 
     // The floor this arm compares against: what the narrow width does with NO
-    // override at all. It is NOT zero — #1439 (the zone's native size going
-    // stale, so a re-created canvas is scaled twice) leaves ~52px here, and that
-    // is a separate, pre-existing defect this change does not claim to fix.
-    //
-    // So the claim is stated as a COMPARISON of two readings in one run on one
-    // layout, not as an absolute: after the fix a stored height contributes
-    // NOTHING of its own. Before it, the same narrowing measured 123.7px against
-    // this same ~52px floor — the difference was the override, and it is gone.
+    // override at all. Two readings in one run on one layout, so the claim holds
+    // whatever the floor happens to be — after the fix a stored height
+    // contributes NOTHING of its own. Before it, the same narrowing measured
+    // 123.7px against a ~52px floor; the difference was the override, and it is
+    // gone. (That ~52px floor was #1439 and is itself fixed now — see the arm
+    // below — but this arm never depended on the number.)
     const noOverrideNarrow = await atWidth(page, NARROW_COL)
     await atWidth(page, WIDE_COL)
 
@@ -186,6 +186,55 @@ test.describe('#1433 — the resize bar stays flush against its canvas', () => {
     const back = await atWidth(page, WIDE_COL)
     expect(back.gap, 'flush again at the original width').toBeLessThanOrEqual(2)
     expect(back.zoneH, "the user's height comes back on widening").toBeCloseTo(target, -1)
+  })
+
+  /**
+   * #1439 — narrowing the editor with NO override stored leaves only the
+   * deliberate `MIN_ZONE_HEIGHT` remainder.
+   *
+   * `WorkerVizRenderer`, `GLSLVizRenderer` and `HydraVizRenderer` style their
+   * canvas `width:100%`, so it has no size of its own — it fills its container.
+   * `readCanvasNative` then reported the CONTAINER's size as the canvas's
+   * "native" size, i.e. the layout it was being used to compute. At the width
+   * where it was measured that made `scale` exactly 1 — the error cancelled by
+   * the measurement that caused it, not a healthy identity — and at every other
+   * width the canvas was shrunk twice. Measured at a 760px column: a canvas
+   * already down to 403px, scaled by a further 0.386 to 156px, 51.7px of gap.
+   *
+   * ⚠ THE ASSERTION IS THE GAP AT THE NARROW WIDTH, NOT A HEIGHT. A height would
+   * need a predicted number that drifts with the layout. And it must be checked
+   * at the NARROW width specifically: at the mount width the old code read
+   * scale 1 and looked perfectly flush, which is exactly why this survived so
+   * long. The scroll re-check matters for the same reason — `recomputeAllZones`
+   * runs on scroll as well as layout, and used to reach the same wrong answer.
+   *
+   * ⚠ THE FLOOR IS NOT ZERO AND MUST NOT BE. `MIN_ZONE_HEIGHT` (80) lifts a very
+   * short crop so it stays visible and clickable; at this width the canvas fits
+   * in ~73px, so ~7px of deliberate remainder is correct. The bound is set well
+   * under the 51.7px defect and well over the floor, so it can be passed only by
+   * a real fix and not by the floor moving a little.
+   */
+  test('#1439 — narrowing with no override leaves only the MIN floor, not a double-shrink', async ({ page }) => {
+    await boot(page)
+    const wide = await measure(page)
+    expect(wide.gap, 'flush at the mount width — the defect hid here').toBeLessThanOrEqual(2)
+
+    const narrow = await atWidth(page, NARROW_COL)
+    // Non-vacuous: the narrowing really did bind the height.
+    expect(narrow.zoneH, 'the narrow width must actually have bound the zone')
+      .toBeLessThan(wide.zoneH - 50)
+    expect(narrow.gap, 'a no-override zone must not be scaled twice when narrowed')
+      .toBeLessThan(20)
+
+    // The scroll path reaches the same recompute and used to re-open it.
+    await page.mouse.wheel(0, 120)
+    await page.waitForTimeout(700)
+    expect((await measure(page)).gap, 'and a scroll must not re-open it')
+      .toBeLessThan(20)
+
+    // Widening back was always correct — it must stay so.
+    expect((await atWidth(page, WIDE_COL)).gap, 'still flush on the way back')
+      .toBeLessThanOrEqual(2)
   })
 
   test('CONTROL — the fit-to-width path is flush, so "flush" is a reachable result', async ({ page }) => {
