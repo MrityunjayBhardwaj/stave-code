@@ -187,6 +187,63 @@ function readCanvasNative(container: HTMLElement): { w: number; h: number } | nu
   return { w, h }
 }
 
+/**
+ * Give a container-filling canvas a real, constant CSS size (#1439).
+ *
+ * `WorkerVizRenderer`, `GLSLVizRenderer` and `HydraVizRenderer` all style their
+ * canvas `width:100%; height:100%`. That is correct for `mountVizRenderer`'s
+ * seam — the picker, the backdrop and the crop preview all want a canvas that
+ * fills its box. The inline seam works the other way round: `applyLayout` wraps
+ * the canvas in a shrink-to-fit div and TRANSFORMS it down to the column, which
+ * needs the canvas to have a size of its own to be scaled FROM.
+ *
+ * Without one, `readCanvasNative` reports the CONTAINER's size — the very layout
+ * it is being used to compute. `scale` then comes out as exactly 1 at the width
+ * where it was measured, which is not a healthy identity but the error being
+ * cancelled by the measurement that caused it; at every other width the canvas
+ * is shrunk twice. Measured before this change, at a 760px column: a canvas
+ * already down to 403px was scaled by a further 0.386 to 156px, leaving 51.7px
+ * of empty space with the resize bar floating at the bottom of it.
+ *
+ * The size to pin is the one the renderer was handed. `renderSizeFor` states the
+ * contract exactly — "the renderer draws at this size and the existing layout
+ * STRETCHES it to the display rect" — and a stretch needs a source rect. The
+ * main-thread p5 path, which sets real pixel dimensions itself, has always
+ * behaved this way and is correct at every width; pinning makes the two paths
+ * run ONE arithmetic instead of adding a second.
+ *
+ * ⚠ Deliberately NOT in the renderers: they are shared with `mountVizRenderer`'s
+ * seam, where `100%` is what makes the picker and backdrop fill their boxes.
+ * This is the divergence `attachVizLifecycle`'s docblock already documents —
+ * resize belongs to the call site, and so does sizing.
+ *
+ * ⚠ CONSTANT, which is what makes it cheap: the column's width changes and the
+ * scale changes with it, but the canvas does not. Nothing has to maintain this
+ * on resize, and no synchronous layout is forced onto the scroll path.
+ */
+function pinCanvasIntrinsicSize(
+  container: HTMLElement,
+  size: { w: number; h: number },
+): void {
+  // ⚠ ONLY a canvas INSIDE the transform wrapper — by construction the one the
+  // scale acts on. The gate is a DOM fact, not a guess about mount timing.
+  // A hydra or GLSL zone's live canvas is a SIBLING of the wrapper: the wrapper
+  // sits empty at 0x0 while the canvas fills the container untransformed
+  // (observed on trunk — a separate, pre-existing defect). Pinning THAT canvas
+  // would give it a 2816px width inside a 1043px `overflow:hidden` container and
+  // show only its top-left third. Selecting through the wrapper makes that
+  // impossible on any machine and any mount order, rather than merely unlikely.
+  const canvas = container.querySelector<HTMLCanvasElement>(
+    '[data-viz-canvas-wrap] canvas',
+  )
+  if (!canvas) return
+  // A renderer that sets real pixel dimensions (main-thread p5) is already
+  // correct. Leave it alone — overwriting it would be the same mistake reversed.
+  if (!canvas.style.width.endsWith('%')) return
+  canvas.style.width = `${size.w}px`
+  canvas.style.height = `${size.h}px`
+}
+
 /** Apply the computed transform to the canvas inside the container.
  *  `zoneH` is optional — when provided, the container height is re-asserted
  *  in case Monaco reflowed it; otherwise the caller's pre-set height stands.
@@ -195,6 +252,11 @@ function applyLayout(
   container: HTMLElement,
   canvas: HTMLElement | null,
   layout: { scale: number; tx: number; ty: number; zoneH?: number },
+  /** Render size to pin onto a container-filling canvas (#1439). Supplied by
+   *  the inline seam, which knows what the renderer was asked to draw at.
+   *  Applied HERE because this is where the wrapper is owned, so the pin cannot
+   *  miss a canvas that appeared after some polling budget ran out. */
+  pinSize?: { w: number; h: number },
 ): void {
   if (typeof layout.zoneH === 'number') {
     container.style.height = `${layout.zoneH}px`
@@ -213,6 +275,7 @@ function applyLayout(
     wrapper.appendChild(canvas)
   }
   if (wrapper) {
+    if (pinSize) pinCanvasIntrinsicSize(container, pinSize)
     wrapper.style.transform = `translate(${layout.tx}px, ${layout.ty}px) scale(${layout.scale})`
   }
 }
@@ -275,6 +338,9 @@ interface ZoneEntry {
   renderer: VizDescriptor['renderer']
   presetId: string | null
   native: { w: number; h: number }
+  /** The size the renderer was asked to draw at. Pinned onto a canvas that has
+   *  none of its own, so the transform has a real rect to scale from (#1439). */
+  renderSize: { w: number; h: number }
   crop: CropRegion
   /** Decoration on the `.viz("<vizId>")` source line — the anchor that
    *  survives edits to surrounding blocks. Null when the call couldn't be
@@ -408,6 +474,10 @@ export function addInlineViewZones(
       // taller one so pitch lanes aren't squashed, #214 follow-up) + full crop;
       // refined async once the preset's measured canvas size lands.
       const native = descriptor.nativeSize ?? DEFAULT_NATIVE
+      // The backing store the renderer draws at, and — for a canvas with no size
+      // of its own — the CSS size pinned onto it (#1439). Computed ONCE so the
+      // mount, the refine and every recompute cannot disagree about it.
+      const renderSize = renderSizeFor(native)
       const crop = FULL_CROP
       const contentW = editor.getLayoutInfo().contentWidth || 400
       // Apply persisted height override immediately so remounted zones
@@ -461,7 +531,7 @@ export function addInlineViewZones(
       // choke point. `onMountError` keeps the prior inline behaviour — log + carry
       // on (one bad zone must not abort the others) and still wire visibility.
       visibilityCleanups.push(
-        attachVizLifecycle(renderer, container, zoneComponents, renderSizeFor(native), console.error, {
+        attachVizLifecycle(renderer, container, zoneComponents, renderSize, console.error, {
           teardownMs,
           onMountError: (e) => console.error('[stave] viz mount failed:', e),
         }),
@@ -471,9 +541,9 @@ export function addInlineViewZones(
       // to rAF). Apply layout now if the canvas is already present,
       // and again on next rAF to catch async p5 mounts.
       const canvas = container.querySelector<HTMLCanvasElement>('canvas')
-      applyLayout(container, canvas, layout)
+      applyLayout(container, canvas, layout, renderSize)
       requestAnimationFrame(() => {
-        applyLayout(container, container.querySelector('canvas'), layout)
+        applyLayout(container, container.querySelector('canvas'), layout, renderSize)
       })
 
       // Plant a decoration on the .viz("<vizId>") source line so the zone
@@ -507,7 +577,7 @@ export function addInlineViewZones(
       }
 
       const entry: ZoneEntry = {
-        zoneId, zoneDesc, afterLine, container, canvas, trackKey, vizId, renderer: descriptor.renderer, presetId: null, native, crop, vizDecoration,
+        zoneId, zoneDesc, afterLine, container, canvas, trackKey, vizId, renderer: descriptor.renderer, presetId: null, native, renderSize, crop, vizDecoration,
       }
       zoneEntries.push(entry)
 
@@ -527,10 +597,10 @@ export function addInlineViewZones(
         // container height here would desync Monaco's own record of it. The
         // height already IS this value — every site that sets it derives it the
         // same way — so re-asserting it buys nothing and risks that desync.
-        applyLayout(entry.container, entry.container.querySelector('canvas'), l)
+        applyLayout(entry.container, entry.container.querySelector('canvas'), l, entry.renderSize)
         // p5 (main path) creates its canvas async — re-apply next frame to catch it.
         requestAnimationFrame(() =>
-          applyLayout(entry.container, entry.container.querySelector('canvas'), l),
+          applyLayout(entry.container, entry.container.querySelector('canvas'), l, entry.renderSize),
         )
       }
 
@@ -585,7 +655,7 @@ export function addInlineViewZones(
           // reflow in real time (resizing flag prevents recomputeAllZones
           // from resetting the height).
           editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId))
-          applyLayout(entry.container, entry.container.querySelector('canvas'), l)
+          applyLayout(entry.container, entry.container.querySelector('canvas'), l, entry.renderSize)
         }
         const onUp = (ev: PointerEvent) => {
           resizeHandle.releasePointerCapture(ev.pointerId)
@@ -625,6 +695,10 @@ export function addInlineViewZones(
       let refineAttempts = 0
       const tryRefine = () => {
         refineAttempts++
+        // Pin before measuring, so `readCanvasNative` reports the canvas rather
+        // than the container it happens to be filling (#1439). Idempotent — once
+        // pinned the canvas no longer reports a percentage.
+        pinCanvasIntrinsicSize(entry.container, entry.renderSize)
         const actual = readCanvasNative(entry.container)
         if (actual && (actual.w !== entry.native.w || actual.h !== entry.native.h)) {
           entry.native = actual
@@ -641,7 +715,7 @@ export function addInlineViewZones(
             entry.container.style.height = `${refined.zoneH}px`
             acc.layoutZone(entry.zoneId)
           })
-          applyLayout(entry.container, entry.container.querySelector('canvas'), refined)
+          applyLayout(entry.container, entry.container.querySelector('canvas'), refined, entry.renderSize)
           return
         }
         if (refineAttempts < 10) requestAnimationFrame(tryRefine)
@@ -691,6 +765,9 @@ export function addInlineViewZones(
           // created — sketches author their own dimensions via createCanvas()
           // and those are what the transform math must use. Preset nativeSize
           // is the fallback when the canvas hasn't appeared yet.
+          // Same pin as the refine path (#1439) — whichever lands first, the
+          // measurement must not be the container's own size.
+          pinCanvasIntrinsicSize(entry.container, entry.renderSize)
           const actual = readCanvasNative(entry.container)
           entry.native = actual ?? (preset ? nativeSizeFor(preset) : entry.native)
           entry.crop = override ?? preset?.cropRegion ?? FULL_CROP
@@ -702,7 +779,7 @@ export function addInlineViewZones(
           entry.zoneDesc.heightInPx = layout.zoneH
           entry.container.style.height = `${layout.zoneH}px`
           accessor.layoutZone(entry.zoneId)
-          applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
+          applyLayout(entry.container, entry.container.querySelector('canvas'), layout, entry.renderSize)
         }
       })
       // After heights change, Monaco repositions zones — ensure the
@@ -713,7 +790,7 @@ export function addInlineViewZones(
         const layout = layoutForIntent(contentW, entry.native, entry.crop, intentH)
         entry.zoneDesc.heightInPx = layout.zoneH
         entry.container.style.height = `${layout.zoneH}px`
-        applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
+        applyLayout(entry.container, entry.container.querySelector('canvas'), layout, entry.renderSize)
       }
     } catch { /* ignore */ }
   })()
@@ -736,7 +813,7 @@ export function addInlineViewZones(
         entry.zoneDesc.heightInPx = layout.zoneH
         entry.container.style.height = `${layout.zoneH}px`
         accessor.layoutZone(entry.zoneId)
-        applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
+        applyLayout(entry.container, entry.container.querySelector('canvas'), layout, entry.renderSize)
       }
     })
   }

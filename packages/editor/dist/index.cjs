@@ -23626,7 +23626,17 @@ function readCanvasNative(container) {
   return { w, h };
 }
 __name(readCanvasNative, "readCanvasNative");
-function applyLayout(container, canvas, layout) {
+function pinCanvasIntrinsicSize(container, size) {
+  const canvas = container.querySelector(
+    "[data-viz-canvas-wrap] canvas"
+  );
+  if (!canvas) return;
+  if (!canvas.style.width.endsWith("%")) return;
+  canvas.style.width = `${size.w}px`;
+  canvas.style.height = `${size.h}px`;
+}
+__name(pinCanvasIntrinsicSize, "pinCanvasIntrinsicSize");
+function applyLayout(container, canvas, layout, pinSize) {
   if (typeof layout.zoneH === "number") {
     container.style.height = `${layout.zoneH}px`;
   }
@@ -23639,6 +23649,7 @@ function applyLayout(container, canvas, layout) {
     wrapper.appendChild(canvas);
   }
   if (wrapper) {
+    if (pinSize) pinCanvasIntrinsicSize(container, pinSize);
     wrapper.style.transform = `translate(${layout.tx}px, ${layout.ty}px) scale(${layout.scale})`;
   }
 }
@@ -23764,6 +23775,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         options: zoneOptions ?? {}
       };
       const native = descriptor.nativeSize ?? DEFAULT_NATIVE;
+      const renderSize = renderSizeFor(native);
       const crop = FULL_CROP;
       const contentW = editor.getLayoutInfo().contentWidth || 400;
       const initHOverride = fileId ? getZoneHeightOverride(fileId, trackKey) : void 0;
@@ -23794,15 +23806,15 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       }) : makeInner();
       renderers.push(renderer);
       visibilityCleanups.push(
-        attachVizLifecycle(renderer, container, zoneComponents, renderSizeFor(native), console.error, {
+        attachVizLifecycle(renderer, container, zoneComponents, renderSize, console.error, {
           teardownMs,
           onMountError: /* @__PURE__ */ __name((e) => console.error("[stave] viz mount failed:", e), "onMountError")
         })
       );
       const canvas = container.querySelector("canvas");
-      applyLayout(container, canvas, layout);
+      applyLayout(container, canvas, layout, renderSize);
       requestAnimationFrame(() => {
-        applyLayout(container, container.querySelector("canvas"), layout);
+        applyLayout(container, container.querySelector("canvas"), layout, renderSize);
       });
       let vizDecoration = null;
       const modelForMount = editor.getModel?.();
@@ -23838,6 +23850,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         renderer: descriptor.renderer,
         presetId: null,
         native,
+        renderSize,
         crop,
         vizDecoration
       };
@@ -23846,9 +23859,9 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         const cw = editor.getLayoutInfo().contentWidth || 400;
         const intentH = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
         const l = layoutForIntent(cw, entry.native, entry.crop, intentH);
-        applyLayout(entry.container, entry.container.querySelector("canvas"), l);
+        applyLayout(entry.container, entry.container.querySelector("canvas"), l, entry.renderSize);
         requestAnimationFrame(
-          () => applyLayout(entry.container, entry.container.querySelector("canvas"), l)
+          () => applyLayout(entry.container, entry.container.querySelector("canvas"), l, entry.renderSize)
         );
       }, "relayout");
       const resizeHandle = document.createElement("div");
@@ -23886,7 +23899,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           entry.container.style.height = `${l.zoneH}px`;
           entry.zoneDesc.heightInPx = l.zoneH;
           editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
-          applyLayout(entry.container, entry.container.querySelector("canvas"), l);
+          applyLayout(entry.container, entry.container.querySelector("canvas"), l, entry.renderSize);
         }, "onMove");
         const onUp = /* @__PURE__ */ __name((ev) => {
           resizeHandle.releasePointerCapture(ev.pointerId);
@@ -23909,6 +23922,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       let refineAttempts = 0;
       const tryRefine = /* @__PURE__ */ __name(() => {
         refineAttempts++;
+        pinCanvasIntrinsicSize(entry.container, entry.renderSize);
         const actual = readCanvasNative(entry.container);
         if (actual && (actual.w !== entry.native.w || actual.h !== entry.native.h)) {
           entry.native = actual;
@@ -23921,7 +23935,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
             entry.container.style.height = `${refined.zoneH}px`;
             acc.layoutZone(entry.zoneId);
           });
-          applyLayout(entry.container, entry.container.querySelector("canvas"), refined);
+          applyLayout(entry.container, entry.container.querySelector("canvas"), refined, entry.renderSize);
           return;
         }
         if (refineAttempts < 10) requestAnimationFrame(tryRefine);
@@ -23948,6 +23962,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           if (preset) {
             entry.presetId = preset.id;
           }
+          pinCanvasIntrinsicSize(entry.container, entry.renderSize);
           const actual = readCanvasNative(entry.container);
           entry.native = actual ?? (preset ? nativeSizeFor(preset) : entry.native);
           entry.crop = override ?? preset?.cropRegion ?? FULL_CROP;
@@ -23957,7 +23972,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           entry.zoneDesc.heightInPx = layout.zoneH;
           entry.container.style.height = `${layout.zoneH}px`;
           accessor2.layoutZone(entry.zoneId);
-          applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
+          applyLayout(entry.container, entry.container.querySelector("canvas"), layout, entry.renderSize);
         }
       });
       for (const entry of zoneEntries) {
@@ -23966,7 +23981,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         const layout = layoutForIntent(contentW, entry.native, entry.crop, intentH);
         entry.zoneDesc.heightInPx = layout.zoneH;
         entry.container.style.height = `${layout.zoneH}px`;
-        applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
+        applyLayout(entry.container, entry.container.querySelector("canvas"), layout, entry.renderSize);
       }
     } catch {
     }
@@ -23981,7 +23996,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         entry.zoneDesc.heightInPx = layout.zoneH;
         entry.container.style.height = `${layout.zoneH}px`;
         accessor2.layoutZone(entry.zoneId);
-        applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
+        applyLayout(entry.container, entry.container.querySelector("canvas"), layout, entry.renderSize);
       }
     });
   }, "recomputeAllZones");
