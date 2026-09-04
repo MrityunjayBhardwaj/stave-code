@@ -16941,7 +16941,7 @@ function getZoneHeightOverride(fileId, trackKey) {
   return entry?.heightPx;
 }
 __name(getZoneHeightOverride, "getZoneHeightOverride");
-function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash) {
+function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash, vizId) {
   ensureDoc();
   const overrides = ensureZoneOverridesMap(fileId);
   if (!overrides) return;
@@ -16953,7 +16953,12 @@ function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash) {
       if (Object.keys(rest).length === 0) overrides.delete(trackKey);
       else overrides.set(trackKey, rest);
     } else {
-      overrides.set(trackKey, { ...existing, heightPx, ...contentHash ? { contentHash } : {} });
+      overrides.set(trackKey, {
+        ...existing,
+        heightPx,
+        ...contentHash ? { contentHash } : {},
+        ...vizId ? { vizId } : {}
+      });
     }
   }, HEIGHT_RESIZE_ORIGIN);
 }
@@ -23599,6 +23604,19 @@ function computeLayout(contentW, native, crop) {
   };
 }
 __name(computeLayout, "computeLayout");
+function layoutForIntent(contentW, native, crop, intentH) {
+  const fit = computeLayout(contentW, native, crop);
+  if (intentH == null) return fit;
+  const denom2 = Math.max(0.01, crop.h) * native.h;
+  const scale = Math.min(fit.scale, intentH / denom2);
+  return {
+    zoneH: Math.max(MIN_ZONE_HEIGHT, denom2 * scale),
+    scale,
+    tx: -crop.x * native.w * scale,
+    ty: -crop.y * native.h * scale
+  };
+}
+__name(layoutForIntent, "layoutForIntent");
 function readCanvasNative(container) {
   const canvas = container.querySelector("canvas");
   if (!canvas) return null;
@@ -23748,9 +23766,9 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const native = descriptor.nativeSize ?? DEFAULT_NATIVE;
       const crop = FULL_CROP;
       const contentW = editor.getLayoutInfo().contentWidth || 400;
-      const layout = computeLayout(contentW, native, crop);
       const initHOverride = fileId ? getZoneHeightOverride(fileId, trackKey) : void 0;
-      const initH = initHOverride ?? layout.zoneH;
+      const layout = layoutForIntent(contentW, native, crop, initHOverride);
+      const initH = layout.zoneH;
       const container = document.createElement("div");
       container.setAttribute("data-viz-zone", "");
       container.setAttribute("data-viz-zone-track", trackKey);
@@ -23826,15 +23844,11 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       zoneEntries.push(entry);
       relayout = /* @__PURE__ */ __name(() => {
         const cw = editor.getLayoutInfo().contentWidth || 400;
-        const nw = entry.native.w, nh = entry.native.h;
-        const cropW = Math.max(0.01, entry.crop.w);
-        const cropH = Math.max(0.01, entry.crop.h);
-        const scale = Math.min(cw / (cropW * nw), entry.zoneDesc.heightInPx / (cropH * nh));
-        const tx3 = -entry.crop.x * nw * scale;
-        const ty = -entry.crop.y * nh * scale;
-        applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
+        const intentH = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
+        const l = layoutForIntent(cw, entry.native, entry.crop, intentH);
+        applyLayout(entry.container, entry.container.querySelector("canvas"), l);
         requestAnimationFrame(
-          () => applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty })
+          () => applyLayout(entry.container, entry.container.querySelector("canvas"), l)
         );
       }, "relayout");
       const resizeHandle = document.createElement("div");
@@ -23867,19 +23881,12 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         const onMove = /* @__PURE__ */ __name((ev) => {
           ev.preventDefault();
           const delta = ev.clientY - startY;
-          const newH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta));
-          entry.container.style.height = `${newH}px`;
-          entry.zoneDesc.heightInPx = newH;
+          const intentH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta));
+          const l = layoutForIntent(contentW2, entry.native, entry.crop, intentH);
+          entry.container.style.height = `${l.zoneH}px`;
+          entry.zoneDesc.heightInPx = l.zoneH;
           editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
-          const nw = entry.native.w, nh = entry.native.h;
-          const cropW = Math.max(0.01, entry.crop.w);
-          const cropH = Math.max(0.01, entry.crop.h);
-          const scaleByW = contentW2 / (cropW * nw);
-          const scaleByH = newH / (cropH * nh);
-          const scale = Math.min(scaleByW, scaleByH);
-          const tx3 = -entry.crop.x * nw * scale;
-          const ty = -entry.crop.y * nh * scale;
-          applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
+          applyLayout(entry.container, entry.container.querySelector("canvas"), l);
         }, "onMove");
         const onUp = /* @__PURE__ */ __name((ev) => {
           resizeHandle.releasePointerCapture(ev.pointerId);
@@ -23890,7 +23897,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           resizeHandle.style.opacity = "1";
           if (fileId && entry.zoneDesc.heightInPx !== startH) {
             const hash = entry.container.getAttribute("data-viz-zone-hash") ?? void 0;
-            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash);
+            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash, entry.vizId);
           }
           editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
           delete entry.container.dataset.resizing;
@@ -23907,7 +23914,8 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           entry.native = actual;
           entry.canvas = entry.container.querySelector("canvas");
           const contentW2 = editor.getLayoutInfo().contentWidth || 400;
-          const refined = computeLayout(contentW2, entry.native, entry.crop);
+          const intentH = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
+          const refined = layoutForIntent(contentW2, entry.native, entry.crop, intentH);
           editor.changeViewZones((acc) => {
             entry.zoneDesc.heightInPx = refined.zoneH;
             entry.container.style.height = `${refined.zoneH}px`;
@@ -23944,47 +23952,21 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           entry.native = actual ?? (preset ? nativeSizeFor(preset) : entry.native);
           entry.crop = override ?? preset?.cropRegion ?? FULL_CROP;
           const contentW = editor.getLayoutInfo().contentWidth || 400;
-          const layout = computeLayout(contentW, entry.native, entry.crop);
-          const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
-          const finalH = hOverride ?? layout.zoneH;
-          entry.zoneDesc.heightInPx = finalH;
-          entry.container.style.height = `${finalH}px`;
+          const intentH = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
+          const layout = layoutForIntent(contentW, entry.native, entry.crop, intentH);
+          entry.zoneDesc.heightInPx = layout.zoneH;
+          entry.container.style.height = `${layout.zoneH}px`;
           accessor2.layoutZone(entry.zoneId);
-          if (hOverride != null) {
-            const nw = entry.native.w, nh = entry.native.h;
-            const cropW = Math.max(0.01, entry.crop.w);
-            const cropH = Math.max(0.01, entry.crop.h);
-            const scaleByW = contentW / (cropW * nw);
-            const scaleByH = hOverride / (cropH * nh);
-            const scale = Math.min(scaleByW, scaleByH);
-            const tx3 = -entry.crop.x * nw * scale;
-            const ty = -entry.crop.y * nh * scale;
-            applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
-          } else {
-            applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
-          }
+          applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
         }
       });
       for (const entry of zoneEntries) {
         const contentW = editor.getLayoutInfo().contentWidth || 400;
-        const layout = computeLayout(contentW, entry.native, entry.crop);
-        const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
-        const finalH = hOverride ?? layout.zoneH;
-        entry.zoneDesc.heightInPx = finalH;
-        entry.container.style.height = `${finalH}px`;
-        if (hOverride != null) {
-          const nw = entry.native.w, nh = entry.native.h;
-          const cropW = Math.max(0.01, entry.crop.w);
-          const cropH = Math.max(0.01, entry.crop.h);
-          const scaleByW = contentW / (cropW * nw);
-          const scaleByH = hOverride / (cropH * nh);
-          const scale = Math.min(scaleByW, scaleByH);
-          const tx3 = -entry.crop.x * nw * scale;
-          const ty = -entry.crop.y * nh * scale;
-          applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
-        } else {
-          applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
-        }
+        const intentH = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
+        const layout = layoutForIntent(contentW, entry.native, entry.crop, intentH);
+        entry.zoneDesc.heightInPx = layout.zoneH;
+        entry.container.style.height = `${layout.zoneH}px`;
+        applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
       }
     } catch {
     }
@@ -23994,25 +23976,12 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       for (const entry of zoneEntries) {
         if (entry.container.dataset.resizing) continue;
         const contentW = editor.getLayoutInfo().contentWidth || 400;
-        const layout = computeLayout(contentW, entry.native, entry.crop);
-        const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
-        const finalH = hOverride ?? layout.zoneH;
-        entry.zoneDesc.heightInPx = finalH;
-        entry.container.style.height = `${finalH}px`;
+        const intentH = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
+        const layout = layoutForIntent(contentW, entry.native, entry.crop, intentH);
+        entry.zoneDesc.heightInPx = layout.zoneH;
+        entry.container.style.height = `${layout.zoneH}px`;
         accessor2.layoutZone(entry.zoneId);
-        if (hOverride != null) {
-          const nw = entry.native.w, nh = entry.native.h;
-          const cropW = Math.max(0.01, entry.crop.w);
-          const cropH = Math.max(0.01, entry.crop.h);
-          const scaleByW = contentW / (cropW * nw);
-          const scaleByH = hOverride / (cropH * nh);
-          const scale = Math.min(scaleByW, scaleByH);
-          const tx3 = -entry.crop.x * nw * scale;
-          const ty = -entry.crop.y * nh * scale;
-          applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
-        } else {
-          applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
-        }
+        applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
       }
     });
   }, "recomputeAllZones");

@@ -29,7 +29,15 @@
 import { test, expect, type Page } from '@playwright/test'
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
-const DRAG_BY = 180
+/**
+ * SHORTER, not taller (#1433 Part 2). A `.viz()` canvas is width-bound — it can
+ * never draw taller than the fit-to-width height — so dragging past that height
+ * now meets a wall instead of opening a gap, and the zone deliberately does NOT
+ * follow the cursor. A taller drag would make this spec assert the old, broken
+ * behaviour. Shrinking is expressible at any width, so it still asks the
+ * question this spec exists for: does a resize survive its own release?
+ */
+const DRAG_BY = -80
 
 /** 1100×200 — much wider than the editor column, so the fit-to-width height is
  *  small and a 180px drag lands well clear of it and well under MAX_ZONE_HEIGHT. */
@@ -96,8 +104,11 @@ test.describe('#1437 — a resize survives its own release', () => {
       return { h: Math.round(r.height * 10) / 10, x: r.x + r.width / 2, y: r.bottom - 3 }
     })
     // Non-vacuous: the drag has to be big enough that "held" and "snapped back"
-    // are far apart, and small enough to stay under MAX_ZONE_HEIGHT (600).
-    expect(start.h).toBeGreaterThan(80)
+    // are far apart, and must land clear of both bounds — a result sitting on
+    // MIN_ZONE_HEIGHT (80) or MAX_ZONE_HEIGHT (600) would be pinned by the clamp
+    // rather than by the fix, and would pass either way.
+    expect(start.h).toBeGreaterThan(80 - DRAG_BY)
+    expect(start.h + DRAG_BY).toBeGreaterThan(80)
     expect(start.h + DRAG_BY).toBeLessThan(600)
 
     await page.mouse.move(start.x, start.y)

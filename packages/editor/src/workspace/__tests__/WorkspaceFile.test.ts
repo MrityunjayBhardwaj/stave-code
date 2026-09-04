@@ -34,6 +34,8 @@ import {
   subscribeToTrackMeta,
   getTrackMetaMapSnapshot,
   pruneTrackMeta,
+  getZoneHeightOverride,
+  getZoneCropOverride,
 } from '../WorkspaceFile'
 
 describe('WorkspaceFile store', () => {
@@ -190,6 +192,70 @@ describe('WorkspaceFile store', () => {
     // mutation is internal bookkeeping, not a user-driven change.
     expect(overrideCb).not.toHaveBeenCalled()
     unsub()
+  })
+
+  // ── #1433 Part 1 — a height override is stamped with the viz it was for ───
+  //
+  // A height chosen for one viz's aspect ratio is meaningless for another, so
+  // `pruneZoneOverrides` drops an override whose `vizId` no longer matches — the
+  // same rule crops have always had. Without the stamp a height survived
+  // `.viz("A")` → `.viz("B")` and the zone stayed at A's size: a square viz at
+  // the 600px clamp, switched to a wide one, left 410px of empty space under
+  // the canvas with the resize bar floating at the bottom of it.
+  describe('#1433 — a zone height override carries its vizId', () => {
+    it('is pruned when the viz changes, with the contentHash UNCHANGED', () => {
+      // The hash is deliberately identical on both sides. A `.viz()` call past
+      // the ~120-char window changes the viz without changing the hash, so if
+      // this arm passed on the hash it would prove nothing about the stamp.
+      createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+      setZoneHeightOverride('f1', '$0', 600, 'same-hash', 'square')
+      expect(getZoneHeightOverride('f1', '$0')).toBe(600)
+
+      pruneZoneOverrides('f1', new Map([['$0', { vizId: 'wide', contentHash: 'same-hash' }]]))
+
+      expect(getZoneHeightOverride('f1', '$0'), 'a height sized for another viz must not survive')
+        .toBeUndefined()
+    })
+
+    it('SURVIVES when the viz is unchanged — the stamp must not prune everything', () => {
+      // The control. Prune fires on every evaluate, so a stamp that dropped the
+      // height each time would "fix" the bug by deleting the feature.
+      createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+      setZoneHeightOverride('f1', '$0', 370, 'same-hash', 'wide')
+
+      pruneZoneOverrides('f1', new Map([['$0', { vizId: 'wide', contentHash: 'same-hash' }]]))
+
+      expect(getZoneHeightOverride('f1', '$0'), 'the user\'s height must survive a re-evaluate')
+        .toBe(370)
+    })
+
+    it('does not clobber a crop stamped on the same trackKey', () => {
+      // Height and crop share ONE record. A resize after a crop must leave the
+      // crop, and its vizId, intact — the spread has to preserve them.
+      createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+      setZoneCropOverride('f1', '$0', { x: 0, y: 0, w: 0.5, h: 0.5 }, 'wide', 'h1')
+      setZoneHeightOverride('f1', '$0', 370, 'h1', 'wide')
+
+      expect(getZoneCropOverride('f1', '$0')).toEqual({ x: 0, y: 0, w: 0.5, h: 0.5 })
+      expect(getZoneHeightOverride('f1', '$0')).toBe(370)
+
+      // And the shared record still prunes on a viz change, as one unit.
+      pruneZoneOverrides('f1', new Map([['$0', { vizId: 'other', contentHash: 'h1' }]]))
+      expect(getZoneCropOverride('f1', '$0')).toBeUndefined()
+      expect(getZoneHeightOverride('f1', '$0')).toBeUndefined()
+    })
+
+    it('an UNSTAMPED height still prunes on a changed contentHash', () => {
+      // Back-compat: overrides written before the stamp existed carry no vizId.
+      // They must keep whatever protection they had rather than becoming
+      // immortal — the hash arm is the one that still applies to them.
+      createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+      setZoneHeightOverride('f1', '$0', 370, 'old-hash')
+
+      pruneZoneOverrides('f1', new Map([['$0', { vizId: 'wide', contentHash: 'new-hash' }]]))
+
+      expect(getZoneHeightOverride('f1', '$0')).toBeUndefined()
+    })
   })
 
   // ── #1437 — a per-file SIDE CHANNEL is not a file-list change ─────────────
