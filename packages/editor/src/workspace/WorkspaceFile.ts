@@ -134,6 +134,32 @@ function ensureFolderOrderObserver(): void {
 // observer bound to the soon-to-be-destroyed OLD filesMap.
 let wiredFilesMap: Y.Map<Y.Map<unknown>> | null = null
 
+/**
+ * Per-file SIDE CHANNELS (#1437). These live inside the file's Y.Map for
+ * storage convenience, but they are not part of the file: they are per-user
+ * view preferences (a zone's crop and dragged height, a track's colour swatch
+ * and collapse state), each with its own subscriber API and its own origin
+ * guards. A write to one is not an add, a remove or a rename, and it does not
+ * change the file snapshot — so it must not reach `notifyFileList`.
+ *
+ * WHAT WENT WRONG WITHOUT THIS. Dragging an inline viz zone taller wrote a
+ * height override; the observer below counted that as a structural change and
+ * notified the file list; `StrudelEditorClient` answers a file-list change by
+ * re-registering EVERY viz file in the workspace; each registration notifies
+ * the named-viz registry; and `EditorView` answers that by tearing down and
+ * remounting its inline zones. One drag produced THIRTEEN remounts — one per
+ * viz file — and the last fresh mount came up at the layout height, so the
+ * resize vanished from the screen while the stored override quietly survived
+ * to reappear at the next relayout.
+ *
+ * `zoneOverrides` already carries a `HEIGHT_RESIZE_ORIGIN` guard written to
+ * stop exactly that remount, and it works — the write simply reached the
+ * remount by a second route the guard doesn't cover. This closes that route.
+ * Same argument the observer already makes for `Y.Text` one branch below:
+ * this key has its own observer, so the generic path must keep its hands off.
+ */
+const FILE_SIDE_CHANNEL_KEYS: ReadonlySet<string> = new Set(['zoneOverrides', 'trackMeta'])
+
 function ensureFilesMapObserver(): void {
   const filesMap = getFilesMap()
   if (wiredFilesMap === filesMap) return
@@ -173,6 +199,16 @@ function ensureFilesMapObserver(): void {
       const path = event.path
       const ownerId = path.length > 0 ? String(path[0]) : null
       if (!ownerId) continue
+      // A change INSIDE a side channel — e.g. [fileId, 'zoneOverrides'].
+      if (path.length > 1 && FILE_SIDE_CHANNEL_KEYS.has(String(path[1]))) continue
+      // The side channel's own map being created on the file, which is what a
+      // FIRST resize or a first colour change looks like: an 'add' of the key
+      // itself on the file map. Only skipped when EVERY changed key is a side
+      // channel, so a rename riding in the same transaction still gets through.
+      if (path.length === 1 && event instanceof Y.YMapEvent) {
+        const changed = [...event.changes.keys.keys()]
+        if (changed.length > 0 && changed.every((k) => FILE_SIDE_CHANNEL_KEYS.has(k))) continue
+      }
       if (filesMap.has(ownerId)) {
         rebuildSnapshot(ownerId)
         notify(ownerId)
