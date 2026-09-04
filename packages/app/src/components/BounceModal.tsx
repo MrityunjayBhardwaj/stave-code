@@ -184,7 +184,17 @@ export function BounceModal({
               <p style={styles.note}>
                 Bouncing records the live output, so it takes as long as it plays —
                 this one will take{" "}
-                {selected < 60 ? `${selected} seconds` : formatDuration(selected)}.
+                {/* ROUNDED, not raw. Under a minute this deliberately reads
+                    "13 seconds" rather than "0:13" — natural for the fixed
+                    picks, which are whole numbers anyway. But a SONG-derived
+                    length is `cycles / cps`, so `selected` is usually a
+                    repeating decimal, and interpolating it bare printed
+                    "13.333333333333334 seconds" here. The `>= 60` branch hid
+                    this: it formats, so only songs under a minute showed it. */}
+                {selected < 60
+                  ? `${Math.round(selected)} seconds`
+                  : formatDuration(selected)}
+                .
                 Playback starts
                 automatically and stops again when the bounce finishes.
               </p>
@@ -194,7 +204,14 @@ export function BounceModal({
           {recording && (
             <>
               <div style={styles.sectionLabel}>
-                Recording — {Math.floor(state.elapsed)}s of {state.seconds}s
+                {/* Both sides go through `formatDuration`, which is what the
+                    chooser above already shows. A song's length is `cycles /
+                    cps` and is usually a repeating decimal — 40 cycles at 0.55
+                    cps is 72.72727272727272 — so an unformatted `state.seconds`
+                    put fifteen digits on screen for the whole take, next to a
+                    card that said "1:13". */}
+                Recording — {formatDuration(state.elapsed)} of{" "}
+                {formatDuration(state.seconds)}
               </div>
               <div
                 style={styles.track}
