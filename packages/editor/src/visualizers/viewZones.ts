@@ -34,9 +34,9 @@ export interface VizZoneActions {
  *  2:1 aspect (1200×600) — good generic default for most viz types. */
 const DEFAULT_NATIVE: { w: number; h: number } = { w: 1200, h: 600 }
 /** Hard cap on inline zone height to prevent runaway tall viz. */
-const MAX_ZONE_HEIGHT = 600
+export const MAX_ZONE_HEIGHT = 600
 /** Minimum zone height so short crops are still visible. */
-const MIN_ZONE_HEIGHT = 80
+export const MIN_ZONE_HEIGHT = 80
 
 function nativeSizeFor(preset: VizPreset | null): { w: number; h: number } {
   const s = preset?.nativeSize
@@ -110,6 +110,56 @@ function computeLayout(
   if (zoneH < MIN_ZONE_HEIGHT) zoneH = MIN_ZONE_HEIGHT
   return {
     zoneH,
+    scale,
+    tx: -crop.x * native.w * scale,
+    ty: -crop.y * native.h * scale,
+  }
+}
+
+/**
+ * The layout for a zone whose height the USER has set, as opposed to one sized
+ * by its content (#1433).
+ *
+ * The stored number is the user's INTENT. What gets rendered is derived from it
+ * on every layout, and never written back — which is the whole point. The canvas
+ * is width-bound: the cropped region fills the column, so it can never draw
+ * taller than the fit-to-width height no matter how tall the zone is. Assigning
+ * the intent straight to the zone therefore opened a gap between the bottom of
+ * the canvas and the resize bar pinned to the zone's bottom edge — 180px while
+ * dragging past the fit height, 124px after narrowing the editor, 410px after
+ * switching to a viz with a different aspect ratio. All three observed.
+ *
+ * So: render at the smaller of what the user asked for and what the width
+ * allows, and keep asking that question rather than answering it once.
+ *
+ *   display = min(intent, fit-to-width height)
+ *
+ * ⚠ Storing the DERIVED height instead — the shape this replaces — freezes one
+ * editor width into the record. Narrow the editor once and the user's height is
+ * gone for good, because the smaller number becomes the new intent. Deriving
+ * costs nothing and survives a resize in both directions.
+ *
+ * ⚠ The MIN_ZONE_HEIGHT floor can still leave a gap, and that is deliberate and
+ * pre-existing: `computeLayout` has always floored a very short crop to 80px so
+ * it stays visible and clickable rather than collapsing to a sliver. Flush beats
+ * tall, but usable beats flush.
+ */
+export function layoutForIntent(
+  contentW: number,
+  native: { w: number; h: number },
+  crop: CropRegion,
+  intentH: number | null | undefined,
+): { zoneH: number; scale: number; tx: number; ty: number } {
+  const fit = computeLayout(contentW, native, crop)
+  if (intentH == null) return fit
+  // Height of the cropped region at scale 1 — the divisor that turns a height
+  // in px into a scale, and back.
+  const denom = Math.max(0.01, crop.h) * native.h
+  // `fit.scale` already carries computeLayout's MAX_ZONE_HEIGHT cap, so taking
+  // the min with it bounds this above without repeating the clamp.
+  const scale = Math.min(fit.scale, intentH / denom)
+  return {
+    zoneH: Math.max(MIN_ZONE_HEIGHT, denom * scale),
     scale,
     tx: -crop.x * native.w * scale,
     ty: -crop.y * native.h * scale,
@@ -360,11 +410,11 @@ export function addInlineViewZones(
       const native = descriptor.nativeSize ?? DEFAULT_NATIVE
       const crop = FULL_CROP
       const contentW = editor.getLayoutInfo().contentWidth || 400
-      const layout = computeLayout(contentW, native, crop)
       // Apply persisted height override immediately so remounted zones
       // don't flash at the computed height before the async block corrects them.
       const initHOverride = fileId ? getZoneHeightOverride(fileId, trackKey) : undefined
-      const initH = initHOverride ?? layout.zoneH
+      const layout = layoutForIntent(contentW, native, crop, initHOverride)
+      const initH = layout.zoneH
 
       const container = document.createElement('div')
       container.setAttribute('data-viz-zone', '')
@@ -463,21 +513,24 @@ export function addInlineViewZones(
 
       // Re-apply the inline layout transform to the freshly-created canvas after
       // an off-screen teardown→reinit (#263 B). Reads the zone's CURRENT
-      // native/crop/height from `entry`, so a crop or drag-resize done before the
-      // teardown is preserved on return — same math as the resize handler below
-      // (no zoneH → container height is left untouched, honouring any override).
+      // native/crop from `entry` and the stored INTENT from the override store,
+      // so a crop or drag-resize done before the teardown is preserved on
+      // return — same derivation as every other site (#1433).
       relayout = () => {
         const cw = editor.getLayoutInfo().contentWidth || 400
-        const nw = entry.native.w, nh = entry.native.h
-        const cropW = Math.max(0.01, entry.crop.w)
-        const cropH = Math.max(0.01, entry.crop.h)
-        const scale = Math.min(cw / (cropW * nw), entry.zoneDesc.heightInPx / (cropH * nh))
-        const tx = -entry.crop.x * nw * scale
-        const ty = -entry.crop.y * nh * scale
-        applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty })
+        // Read the INTENT from the store, not `heightInPx` — that now holds the
+        // DERIVED height, and feeding a derived height back in as an intent is
+        // how a width gets baked in one reinit at a time.
+        const intentH = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : undefined
+        const l = layoutForIntent(cw, entry.native, entry.crop, intentH)
+        // No zoneH: this runs outside `changeViewZones`, so setting the
+        // container height here would desync Monaco's own record of it. The
+        // height already IS this value — every site that sets it derives it the
+        // same way — so re-asserting it buys nothing and risks that desync.
+        applyLayout(entry.container, entry.container.querySelector('canvas'), l)
         // p5 (main path) creates its canvas async — re-apply next frame to catch it.
         requestAnimationFrame(() =>
-          applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty }),
+          applyLayout(entry.container, entry.container.querySelector('canvas'), l),
         )
       }
 
@@ -519,22 +572,20 @@ export function addInlineViewZones(
         const onMove = (ev: PointerEvent) => {
           ev.preventDefault()
           const delta = ev.clientY - startY
-          const newH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta))
-          entry.container.style.height = `${newH}px`
-          entry.zoneDesc.heightInPx = newH
+          const intentH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta))
+          // Derive here too, so the bar stops where the canvas stops instead of
+          // running away from it. Dragging past the fit-to-width height now
+          // meets a wall rather than opening a growing gap — and because the
+          // height then doesn't change, the persist guard below stores nothing,
+          // so a drag into the wall leaves no record of a size never shown.
+          const l = layoutForIntent(contentW, entry.native, entry.crop, intentH)
+          entry.container.style.height = `${l.zoneH}px`
+          entry.zoneDesc.heightInPx = l.zoneH
           // Tell Monaco the zone height changed so lines below
           // reflow in real time (resizing flag prevents recomputeAllZones
           // from resetting the height).
           editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId))
-          const nw = entry.native.w, nh = entry.native.h
-          const cropW = Math.max(0.01, entry.crop.w)
-          const cropH = Math.max(0.01, entry.crop.h)
-          const scaleByW = contentW / (cropW * nw)
-          const scaleByH = newH / (cropH * nh)
-          const scale = Math.min(scaleByW, scaleByH)
-          const tx = -entry.crop.x * nw * scale
-          const ty = -entry.crop.y * nh * scale
-          applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty })
+          applyLayout(entry.container, entry.container.querySelector('canvas'), l)
         }
         const onUp = (ev: PointerEvent) => {
           resizeHandle.releasePointerCapture(ev.pointerId)
@@ -554,7 +605,7 @@ export function addInlineViewZones(
           // nothing, and should leave nothing behind either.
           if (fileId && entry.zoneDesc.heightInPx !== startH) {
             const hash = entry.container.getAttribute('data-viz-zone-hash') ?? undefined
-            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash)
+            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash, entry.vizId)
           }
           // Keep resizing flag ON during changeViewZones so the
           // triggered recomputeAllZones skips this zone. Clear after.
@@ -579,7 +630,12 @@ export function addInlineViewZones(
           entry.native = actual
           entry.canvas = entry.container.querySelector<HTMLCanvasElement>('canvas')
           const contentW = editor.getLayoutInfo().contentWidth || 400
-          const refined = computeLayout(contentW, entry.native, entry.crop)
+          // Honour the stored intent here too. `computeLayout` alone ignores it,
+          // so a zone with a saved height was re-fitted to its content the
+          // moment the real canvas size landed — throwing the user's resize away
+          // a few frames after mount, before they could see it had survived.
+          const intentH = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : undefined
+          const refined = layoutForIntent(contentW, entry.native, entry.crop, intentH)
           editor.changeViewZones((acc) => {
             entry.zoneDesc.heightInPx = refined.zoneH
             entry.container.style.height = `${refined.zoneH}px`
@@ -639,50 +695,25 @@ export function addInlineViewZones(
           entry.native = actual ?? (preset ? nativeSizeFor(preset) : entry.native)
           entry.crop = override ?? preset?.cropRegion ?? FULL_CROP
           const contentW = editor.getLayoutInfo().contentWidth || 400
-          const layout = computeLayout(contentW, entry.native, entry.crop)
-          // User height override (drag-to-resize) takes precedence.
-          const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : undefined
-          const finalH = hOverride ?? layout.zoneH
-          entry.zoneDesc.heightInPx = finalH
-          entry.container.style.height = `${finalH}px`
+          // User height override (drag-to-resize) takes precedence; the
+          // rendered height is derived from it against the CURRENT width.
+          const intentH = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : undefined
+          const layout = layoutForIntent(contentW, entry.native, entry.crop, intentH)
+          entry.zoneDesc.heightInPx = layout.zoneH
+          entry.container.style.height = `${layout.zoneH}px`
           accessor.layoutZone(entry.zoneId)
-          if (hOverride != null) {
-            const nw = entry.native.w, nh = entry.native.h
-            const cropW = Math.max(0.01, entry.crop.w)
-            const cropH = Math.max(0.01, entry.crop.h)
-            const scaleByW = contentW / (cropW * nw)
-            const scaleByH = hOverride / (cropH * nh)
-            const scale = Math.min(scaleByW, scaleByH)
-            const tx = -entry.crop.x * nw * scale
-            const ty = -entry.crop.y * nh * scale
-            applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty })
-          } else {
-            applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
-          }
+          applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
         }
       })
       // After heights change, Monaco repositions zones — ensure the
       // canvas still fills each container via transform reapplication.
       for (const entry of zoneEntries) {
         const contentW = editor.getLayoutInfo().contentWidth || 400
-        const layout = computeLayout(contentW, entry.native, entry.crop)
-        const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : undefined
-        const finalH = hOverride ?? layout.zoneH
-        entry.zoneDesc.heightInPx = finalH
-        entry.container.style.height = `${finalH}px`
-        if (hOverride != null) {
-          const nw = entry.native.w, nh = entry.native.h
-          const cropW = Math.max(0.01, entry.crop.w)
-          const cropH = Math.max(0.01, entry.crop.h)
-          const scaleByW = contentW / (cropW * nw)
-          const scaleByH = hOverride / (cropH * nh)
-          const scale = Math.min(scaleByW, scaleByH)
-          const tx = -entry.crop.x * nw * scale
-          const ty = -entry.crop.y * nh * scale
-          applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty })
-        } else {
-          applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
-        }
+        const intentH = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : undefined
+        const layout = layoutForIntent(contentW, entry.native, entry.crop, intentH)
+        entry.zoneDesc.heightInPx = layout.zoneH
+        entry.container.style.height = `${layout.zoneH}px`
+        applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
       }
     } catch { /* ignore */ }
   })()
@@ -696,27 +727,16 @@ export function addInlineViewZones(
       for (const entry of zoneEntries) {
         if (entry.container.dataset.resizing) continue
         const contentW = editor.getLayoutInfo().contentWidth || 400
-        const layout = computeLayout(contentW, entry.native, entry.crop)
-        const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : undefined
-        const finalH = hOverride ?? layout.zoneH
-        entry.zoneDesc.heightInPx = finalH
-        entry.container.style.height = `${finalH}px`
+        // This is the path a WIDTH CHANGE arrives on, and the one that made
+        // route B of #1433 visible: a height stored at one column width was
+        // re-asserted verbatim at another, while the canvas re-fitted itself to
+        // the new width. Deriving here is what keeps the two in step.
+        const intentH = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : undefined
+        const layout = layoutForIntent(contentW, entry.native, entry.crop, intentH)
+        entry.zoneDesc.heightInPx = layout.zoneH
+        entry.container.style.height = `${layout.zoneH}px`
         accessor.layoutZone(entry.zoneId)
-        // When a height override is active, recompute the canvas
-        // transform to fit the overridden height (aspect-ratio scale).
-        if (hOverride != null) {
-          const nw = entry.native.w, nh = entry.native.h
-          const cropW = Math.max(0.01, entry.crop.w)
-          const cropH = Math.max(0.01, entry.crop.h)
-          const scaleByW = contentW / (cropW * nw)
-          const scaleByH = hOverride / (cropH * nh)
-          const scale = Math.min(scaleByW, scaleByH)
-          const tx = -entry.crop.x * nw * scale
-          const ty = -entry.crop.y * nh * scale
-          applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty })
-        } else {
-          applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
-        }
+        applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
       }
     })
   }

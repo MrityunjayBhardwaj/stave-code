@@ -670,11 +670,29 @@ export function getZoneHeightOverride(
   return entry?.heightPx
 }
 
+/**
+ * Set the drag-to-resize height override for one (fileId, trackKey) pair.
+ *
+ * `vizId` is stamped for the same reason `setZoneCropOverride` stamps it
+ * (#1433): a height chosen for one viz's aspect ratio is meaningless for
+ * another, and `pruneZoneOverrides` drops an override whose `vizId` no longer
+ * matches. Without it a height survived `.viz("A")` → `.viz("B")` and the zone
+ * stayed at A's size until the user nudged it — a 400×400 viz sitting at the
+ * 600px clamp, switched to a 1100×200 one, left 410px of empty space under the
+ * canvas with the resize bar floating at the bottom of it.
+ *
+ * `contentHash` cannot cover this on its own. It is the block's first ~120
+ * characters, so a `.viz()` call past that window changes the viz without
+ * changing the hash. And because height and crop share ONE `ZoneOverride`
+ * record per `trackKey`, an unstamped height was pruned correctly only by
+ * accident — when the user happened to have cropped the same zone too.
+ */
 export function setZoneHeightOverride(
   fileId: string,
   trackKey: string,
   heightPx: number | null,
   contentHash?: string,
+  vizId?: string,
 ): void {
   ensureDoc()
   const overrides = ensureZoneOverridesMap(fileId)
@@ -687,7 +705,12 @@ export function setZoneHeightOverride(
       if (Object.keys(rest).length === 0) overrides.delete(trackKey)
       else overrides.set(trackKey, rest)
     } else {
-      overrides.set(trackKey, { ...existing, heightPx, ...(contentHash ? { contentHash } : {}) })
+      overrides.set(trackKey, {
+        ...existing,
+        heightPx,
+        ...(contentHash ? { contentHash } : {}),
+        ...(vizId ? { vizId } : {}),
+      })
     }
   }, HEIGHT_RESIZE_ORIGIN)
 }
