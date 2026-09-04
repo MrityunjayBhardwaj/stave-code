@@ -427,7 +427,7 @@ export {
   renameProject,
   deleteProject,
   duplicateProject,
-  setProjectBackgroundCrop,
+  dropLegacyBackgroundCrop,
   EPHEMERAL_ID_PREFIX,
   isEphemeralProjectId,
   type ProjectMeta,

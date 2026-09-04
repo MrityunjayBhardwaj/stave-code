@@ -18,6 +18,8 @@ import {
   canUndo,
   canRedo,
   subscribeToUndoState,
+  dropLegacyBackgroundCrop,
+  type CropRegion,
   type ProjectMeta,
   type WorkspaceShellHandle,
   type HapStream,
@@ -49,6 +51,10 @@ import {
 } from "@stave/editor";
 import { SettingsModal, type SettingsTab } from "./settings/SettingsModal";
 import { CropPopup, createBackdropCropAdapter } from "./CropPopup";
+import {
+  loadBackdropCrops,
+  withBackdropCrop,
+} from "./backdropCropStore";
 import { DialogHost } from "./DialogHost";
 import { showPrompt, showToast, showConfirm } from "../dialogs/host";
 import { CommandPalette, type PaletteRow } from "./CommandPalette";
@@ -284,15 +290,26 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [backgroundFileId, setBackgroundFileId] = useState<string | null>(
     null,
   );
-  // Backdrop crop — mirrors ProjectMeta.backgroundCrop. Restored on
-  // project load alongside backgroundFileId; persisted on Save in
-  // the crop popup. `null` means full-rect (default).
-  const [backgroundCrop, setBackgroundCropState] = useState<{
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-  } | null>(null);
+  // Backdrop crops, keyed by viz FILE id (#1435). A crop is cut for one
+  // sketch's aspect ratio, so it belongs to that file; the project-global slot
+  // it replaced applied whatever rect was last saved to whatever backdrop was
+  // pinned next. Loaded per project from localStorage, written through the crop
+  // popup's `persist` seam.
+  const [backdropCrops, setBackdropCrops] = useState<
+    ReadonlyMap<string, CropRegion>
+  >(() => new Map());
+  // A pre-#1435 project's project-global crop, held until we know which file was
+  // actually wearing it — the backdrop FILE is restored per tab by
+  // StrudelEditorClient, so at project-load time there is nothing to key it to
+  // yet. Carried over by the effect below, then drained.
+  //
+  // ⚠ STATE, NOT A REF, and that is the whole correctness of the migration. The
+  // legacy crop is read from IDB (async) while the backdrop file comes from
+  // localStorage (sync), so the file NORMALLY lands first. A ref set inside the
+  // IDB `.then()` re-renders nothing, so the carry-over effect below would never
+  // re-run and the crop would be silently dropped — which is exactly what the
+  // browser arm caught.
+  const [legacyCrop, setLegacyCrop] = useState<CropRegion | null>(null);
 
   // File-list revision counter — bumps whenever the workspace
   // file list mutates (add / remove / rename). Read by the MenuBar's
@@ -746,29 +763,78 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     [],
   );
 
-  // Restore the per-project backdrop CROP when the active project
-  // changes. The backdrop *file* itself is restored per-tab by
-  // StrudelEditorClient (#347 `tabBackdrops` → `setBackgroundFile` on
-  // the active-tab sync), which is the source of truth — so this effect
-  // no longer reads/pushes `backgroundFileId` (#371 retired the
-  // project-global slot, which used to double-restore and fight the
-  // per-tab path on reload). Crop stays project-global
-  // (`ProjectMeta.backgroundCrop`); it's plain React state consumed by
-  // the shell wrapper render, so no shell handle / rAF gating is needed.
+  // Restore this project's backdrop CROPS when the active project changes. The
+  // backdrop *file* itself is restored per-tab by StrudelEditorClient (#347
+  // `tabBackdrops` → `setBackgroundFile` on the active-tab sync), which is the
+  // source of truth — so this effect does not read/push `backgroundFileId`
+  // (#371 retired the project-global slot, which used to double-restore and
+  // fight the per-tab path on reload). Crops are per viz file (#1435) and live
+  // in localStorage beside that per-tab map; plain React state consumed by the
+  // shell wrapper render, so no shell handle / rAF gating is needed.
+  //
+  // The IDB read alongside it is the ONE-TIME migration off the old
+  // project-global slot. It is deliberately not dropped on the floor: silently
+  // ignoring a stored crop resets someone's framing with no error to notice.
   useEffect(() => {
     let cancelled = false;
-    getProject(activeProject.id)
+    const projectId = activeProject.id;
+    setBackdropCrops(loadBackdropCrops(projectId));
+    setLegacyCrop(null);
+    getProject(projectId)
       .then((meta) => {
         if (cancelled) return;
-        setBackgroundCropState(meta?.backgroundCrop ?? null);
+        setLegacyCrop(meta?.backgroundCrop ? { ...meta.backgroundCrop } : null);
       })
       .catch((err) =>
-        console.warn("[stave] backdrop crop restore failed:", err),
+        console.warn("[stave] legacy backdrop crop read failed:", err),
       );
     return () => {
       cancelled = true;
     };
   }, [activeProject.id]);
+
+  /**
+   * #1435 migration — hand the old project-global crop to the file that was
+   * actually wearing it, once that file is known.
+   *
+   * Ordering is why this is its own effect: `backgroundFileId` arrives after
+   * the project loads (per-tab restore, above), so the crop cannot be keyed at
+   * read time. The FIRST backdrop to resolve is the one that was on screen when
+   * the crop was saved, so it inherits it — the user sees exactly what they saw
+   * before the upgrade. Then the legacy slot is drained, so the rect can never
+   * travel onto a second sketch, which is the whole defect being fixed.
+   *
+   * An existing per-file entry always wins: a crop the user set AFTER upgrading
+   * must not be overwritten by the ghost of one they set before.
+   */
+  useEffect(() => {
+    if (!legacyCrop || !backgroundFileId) return;
+    const projectId = activeProject.id;
+    setLegacyCrop(null);
+    if (!backdropCrops.has(backgroundFileId)) {
+      setBackdropCrops(
+        withBackdropCrop(projectId, backdropCrops, backgroundFileId, legacyCrop),
+      );
+    }
+    dropLegacyBackgroundCrop(projectId).catch((err) =>
+      console.warn("[stave] legacy backdrop crop drain failed:", err),
+    );
+  }, [activeProject.id, backgroundFileId, backdropCrops, legacyCrop]);
+
+  /** The crop for whatever backdrop is actually showing, or null for full-rect. */
+  const backgroundCrop = backgroundFileId
+    ? backdropCrops.get(backgroundFileId) ?? null
+    : null;
+
+  /** Store (or forget) the ACTIVE backdrop file's crop — the popup's `persist`. */
+  const persistBackdropCrop = useCallback(
+    (fileId: string, crop: CropRegion | null) => {
+      setBackdropCrops((prev) =>
+        withBackdropCrop(activeProject.id, prev, fileId, crop),
+      );
+    },
+    [activeProject.id],
+  );
 
   // Phase 20-01 PR-B (DB-01) — refs hold the latest runtime accessors
   // so the registered MusicalTimeline element never re-registers when
@@ -1463,10 +1529,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     setCropTarget({
       mode: "backdrop",
       adapter: createBackdropCropAdapter({
-        projectId: activeProject.id,
         fileId: backgroundFileId,
         initialCrop: backgroundCrop,
-        onChange: (c) => setBackgroundCropState(c),
+        persist: (c) => persistBackdropCrop(backgroundFileId, c),
         renderSize,
       }),
     });

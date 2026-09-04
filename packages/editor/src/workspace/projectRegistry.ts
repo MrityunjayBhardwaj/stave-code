@@ -17,14 +17,18 @@ export interface ProjectMeta {
   readonly createdAt: number
   readonly lastOpenedAt: number
   /**
-   * Per-project crop region for the pinned backdrop. All values 0–1
-   * fractional of the viz's full viewport. Absent when the backdrop
-   * should render full-rect (default). Kept on project metadata (not in
-   * the Y.Doc) because the crop is a per-user view preference rather than
-   * authored content — shouldn't sync across collaborators when
-   * multi-user arrives. (The backdrop *file* is no longer stored here:
-   * #347 made it per-tab in StrudelEditorClient, and #371 retired the
-   * old project-global `backgroundFileId` slot.)
+   * @deprecated LEGACY, READ-ONLY (#1435). The backdrop crop is now stored per
+   * viz FILE, app-side, beside the per-tab backdrop file itself
+   * (`stave:backdropCrops:${projectId}`) — a crop is cut for one sketch's
+   * aspect ratio, so a single project-wide rect rode onto whatever backdrop was
+   * pinned next. Nothing writes this field any more; it survives ONLY so a
+   * project saved before the move can hand its crop over once, after which
+   * `dropLegacyBackgroundCrop` empties the slot. Safe to delete outright once
+   * no project in the wild still carries one.
+   *
+   * (This finishes the sequence that moved the backdrop *file* out: #347 made
+   * it per-tab, #371 retired the project-global `backgroundFileId`. The crop
+   * was the last neighbour left behind.)
    */
   readonly backgroundCrop?: {
     readonly x: number
@@ -111,24 +115,22 @@ export async function touchProject(id: string): Promise<void> {
 }
 
 /**
- * Save or clear the backdrop crop region. `null` removes the field
- * (backdrop renders full-rect). No-op when the project doesn't
- * exist or has no backdrop file pinned.
+ * Empty the legacy project-global backdrop crop slot (#1435). Called once, by
+ * the app, AFTER the stored rect has been carried over to the viz file that was
+ * actually wearing it — so the crop is never lost, and never applied a second
+ * time to some later backdrop.
+ *
+ * This is a one-way drain, not a setter: there is no way to put a crop back
+ * here, which is the point. No-op when the project is gone or the slot is
+ * already empty.
  */
-export async function setProjectBackgroundCrop(
-  id: string,
-  crop: { x: number; y: number; w: number; h: number } | null,
-): Promise<void> {
+export async function dropLegacyBackgroundCrop(id: string): Promise<void> {
   const db = await openDb()
   const store = tx(db, 'readwrite')
   const existing = await wrap<ProjectMeta | undefined>(store.get(id))
-  if (existing) {
-    const { backgroundCrop: _unused, ...rest } = existing
-    const next: ProjectMeta =
-      crop == null
-        ? (rest as ProjectMeta)
-        : { ...rest, backgroundCrop: crop }
-    await wrap(store.put(next))
+  if (existing && existing.backgroundCrop !== undefined) {
+    const { backgroundCrop: _drained, ...rest } = existing
+    await wrap(store.put(rest as ProjectMeta))
   }
   db.close()
 }

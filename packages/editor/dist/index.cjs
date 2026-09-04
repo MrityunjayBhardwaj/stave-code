@@ -24621,18 +24621,17 @@ async function touchProject(id) {
   db.close();
 }
 __name(touchProject, "touchProject");
-async function setProjectBackgroundCrop(id, crop) {
+async function dropLegacyBackgroundCrop(id) {
   const db = await openDb2();
   const store = tx2(db, "readwrite");
   const existing = await wrap2(store.get(id));
-  if (existing) {
-    const { backgroundCrop: _unused, ...rest } = existing;
-    const next = crop == null ? rest : { ...rest, backgroundCrop: crop };
-    await wrap2(store.put(next));
+  if (existing && existing.backgroundCrop !== void 0) {
+    const { backgroundCrop: _drained, ...rest } = existing;
+    await wrap2(store.put(rest));
   }
   db.close();
 }
-__name(setProjectBackgroundCrop, "setProjectBackgroundCrop");
+__name(dropLegacyBackgroundCrop, "dropLegacyBackgroundCrop");
 async function renameProject(id, name) {
   const db = await openDb2();
   const store = tx2(db, "readwrite");
@@ -45855,6 +45854,7 @@ exports.detectPeriod = detectPeriod;
 exports.detectPickControlAt = detectPickControlAt;
 exports.detectWorkerVizCapabilities = detectWorkerVizCapabilities;
 exports.docParses = docParses;
+exports.dropLegacyBackgroundCrop = dropLegacyBackgroundCrop;
 exports.duplicateProject = duplicateProject;
 exports.emitFixed = emitFixed;
 exports.emitLog = emitLog;
@@ -46117,7 +46117,6 @@ exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
 exports.setNoteColorMode = setNoteColorMode;
 exports.setPerfEnabled = setPerfEnabled;
 exports.setPlayVizOnHoverEnabled = setPlayVizOnHoverEnabled;
-exports.setProjectBackgroundCrop = setProjectBackgroundCrop;
 exports.setSignalAliases = setSignalAliases;
 exports.setSoundCatalogAccessor = setSoundCatalogAccessor;
 exports.setSubfolderOrder = setSubfolderOrder;

@@ -8,7 +8,6 @@ import {
   workspaceAudioBus,
   setZoneCropOverride,
   getZoneCropOverride,
-  setProjectBackgroundCrop,
   getFile,
   rendererForLanguage,
   type AudioSourceRef,
@@ -108,20 +107,25 @@ export function createInlineCropAdapter(opts: {
 }
 
 /**
- * Backdrop adapter — persists to ProjectMeta.backgroundCrop instead
- * of the per-zone override map. No audio narrowing: backdrop uses
- * the whole components bag so the sketch sees the same scheduler /
- * analyser the live backdrop does. Preset is synthesized from the
- * viz file's current content (live-reload applies after close).
+ * Backdrop adapter — REPORTS the crop, does not store it (#1435). No audio
+ * narrowing: backdrop uses the whole components bag so the sketch sees the
+ * same scheduler / analyser the live backdrop does. Preset is synthesized
+ * from the viz file's current content (live-reload applies after close).
+ *
+ * The adapter used to write `ProjectMeta.backgroundCrop` itself — one crop per
+ * project — so a rect cut for one sketch rode onto the next backdrop pinned,
+ * while the toast below named the file it was saved "for". The write now goes
+ * through `persist`, and the caller keys it by the viz FILE, which is what the
+ * toast has claimed all along.
  */
 export function createBackdropCropAdapter(opts: {
-  projectId: string;
   fileId: string;
   initialCrop: CropRegion | null;
-  onChange?: (crop: CropRegion | null) => void;
+  /** Store (or, with `null`, forget) this file's crop. Owned by the caller. */
+  persist: (crop: CropRegion | null) => void;
   renderSize?: { w: number; h: number };
 }): CropAdapter {
-  const { projectId, fileId, initialCrop, onChange, renderSize } = opts;
+  const { fileId, initialCrop, persist, renderSize } = opts;
   const displayName = (() => {
     const f = getFile(fileId);
     if (!f) return "Backdrop";
@@ -150,19 +154,11 @@ export function createBackdropCropAdapter(opts: {
     initialCrop: initialCrop ?? { x: 0, y: 0, w: 1, h: 1 },
     renderSize,
     saveCrop: (crop) => {
-      setProjectBackgroundCrop(projectId, crop).catch((err) =>
-        // eslint-disable-next-line no-console
-        console.warn("[stave] backdrop crop persist failed:", err),
-      );
-      onChange?.(crop);
+      persist(crop);
       showToast(`Backdrop crop saved for "${displayName}"`, "info");
     },
     clearCrop: () => {
-      setProjectBackgroundCrop(projectId, null).catch((err) =>
-        // eslint-disable-next-line no-console
-        console.warn("[stave] backdrop crop clear failed:", err),
-      );
-      onChange?.(null);
+      persist(null);
       showToast(`Backdrop crop cleared for "${displayName}"`, "info");
     },
   };

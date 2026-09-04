@@ -999,7 +999,10 @@ export interface WorkspaceShellProps {
    * shell's backdrop wrapper scales/positions its inner div so
    * only the cropped sub-rect fills the viewport, preserving the
    * quality-ladder transform math. Purely presentational; app
-   * owns persistence via ProjectMeta.backgroundCrop.
+   * owns persistence, keyed by the backdrop's viz FILE (#1435 —
+   * `stave:backdropCrops:${projectId}`, beside the per-tab backdrop
+   * file itself). The shell never stores it, so a crop can't outlive
+   * the sketch it was cut for.
    */
   readonly backgroundCrop?: {
     readonly x: number
