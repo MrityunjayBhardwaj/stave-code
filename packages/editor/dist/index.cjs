@@ -23882,7 +23882,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           delete resizeHandle.dataset.dragging;
           resizeHandle.style.background = "transparent";
           resizeHandle.style.opacity = "1";
-          if (fileId) {
+          if (fileId && entry.zoneDesc.heightInPx !== startH) {
             const hash = entry.container.getAttribute("data-viz-zone-hash") ?? void 0;
             setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash);
           }

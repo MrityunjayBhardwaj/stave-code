@@ -543,7 +543,16 @@ export function addInlineViewZones(
           delete resizeHandle.dataset.dragging
           resizeHandle.style.background = 'transparent'
           resizeHandle.style.opacity = '1'
-          if (fileId) {
+          // Persist ONLY if the gesture actually changed the height (#1438).
+          // A press with no movement is not a resize, and an override is not a
+          // passive record: it takes the zone OUT of the fit-to-width layout
+          // permanently, so it stops tracking the editor width and the viz's
+          // aspect ratio. Planting one by accident is how a zone ends up with
+          // empty space under its canvas (#1433) without anyone resizing it.
+          // Compared against `startH` rather than a "did onMove fire" flag: a
+          // drag that wanders and returns to where it began has changed
+          // nothing, and should leave nothing behind either.
+          if (fileId && entry.zoneDesc.heightInPx !== startH) {
             const hash = entry.container.getAttribute('data-viz-zone-hash') ?? undefined
             setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash)
           }
