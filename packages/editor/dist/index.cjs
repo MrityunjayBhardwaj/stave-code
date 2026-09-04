@@ -23864,6 +23864,21 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           () => applyLayout(entry.container, entry.container.querySelector("canvas"), l, entry.renderSize)
         );
       }, "relayout");
+      const canvasWatcher = new MutationObserver((records) => {
+        let orphan = false;
+        for (const r of records) {
+          for (const n of Array.from(r.addedNodes)) {
+            if (n instanceof HTMLCanvasElement && !n.closest("[data-viz-canvas-wrap]")) orphan = true;
+          }
+        }
+        if (!orphan) return;
+        const wrap5 = container.querySelector("[data-viz-canvas-wrap]");
+        if (wrap5?.querySelector("canvas")) return;
+        wrap5?.remove();
+        relayout();
+      });
+      canvasWatcher.observe(container, { childList: true });
+      visibilityCleanups.push(() => canvasWatcher.disconnect());
       const resizeHandle = document.createElement("div");
       resizeHandle.style.cssText = `
         position:absolute;bottom:0;left:0;right:0;height:6px;

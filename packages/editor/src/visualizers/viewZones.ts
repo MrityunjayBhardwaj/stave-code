@@ -604,6 +604,53 @@ export function addInlineViewZones(
         )
       }
 
+      // ── The wrapper must keep holding the LIVE canvas (#1444) ──
+      //
+      // `applyLayout` wraps "the canvas" ONCE — it creates the wrapper only when
+      // none exists — and from then on the TRANSFORM lives on the wrapper. That
+      // holds for the whole life of a zone whose renderer never changes.
+      //
+      // It does not hold when a renderer is SWAPPED under a live zone.
+      // `FallbackVizRenderer` hands over from the worker to the main thread when
+      // the worker renderer fails: it destroys the worker renderer (which takes
+      // its canvas out of the wrapper) and mounts a main-thread one, which
+      // appends a FRESH canvas to the container — as the wrapper's SIBLING.
+      // From that moment the transform scales an empty 0x0 div while the visible
+      // canvas just fills its box, so crop and aspect are silently dropped and
+      // the zone height is derived from a canvas reporting its own container.
+      //
+      // ⚠ MEASURED, not assumed: of hydra/glsl x worker on/off, THREE arms are
+      // healthy — including both main-thread renderer classes. Only the fallback
+      // handover breaks, so the renderer family is not the discriminator.
+      //
+      // `TeardownOnPauseRenderer` — the other place a renderer is swapped under a
+      // live zone — already does exactly this via its onAfterTeardown +
+      // onAfterReinit pair. The fallback path has no such callback and is built
+      // deep inside the renderer factories, out of this seam's reach. So the
+      // seam OBSERVES instead: the wrapper invariant belongs to whoever owns the
+      // wrapper, which is this file, not a renderer that should never have to
+      // know the selector exists.
+      //
+      // Acts only when the wrapper is genuinely EMPTY. A wrapper still holding a
+      // canvas while another appears is not a state anything has produced, and
+      // tearing a good wrapper down on a guess is how this seam grows its next
+      // cause.
+      const canvasWatcher = new MutationObserver((records) => {
+        let orphan = false
+        for (const r of records) {
+          for (const n of Array.from(r.addedNodes)) {
+            if (n instanceof HTMLCanvasElement && !n.closest('[data-viz-canvas-wrap]')) orphan = true
+          }
+        }
+        if (!orphan) return
+        const wrap = container.querySelector('[data-viz-canvas-wrap]')
+        if (wrap?.querySelector('canvas')) return // wrapper still holds one — leave it alone
+        wrap?.remove() // drop the empty shell so applyLayout re-wraps the live canvas
+        relayout()
+      })
+      canvasWatcher.observe(container, { childList: true })
+      visibilityCleanups.push(() => canvasWatcher.disconnect())
+
       // ── Resize handle (bottom edge) ──
       // Thin strip at the bottom of the zone — reveals on hover, drag
       // to resize the zone height. Persists via setZoneHeightOverride.
