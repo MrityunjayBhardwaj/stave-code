@@ -24,6 +24,7 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 import { bootApp, seedCode, editorValue } from './_appBoot'
+import { expectRefusalReported, expectNoRefusalReported } from './_console'
 
 const CODE = '$: note("<g1, c1> - <c3, g4 - - >")'
 /** the accepted delete — c3 goes, and the bar re-spells without it */
@@ -44,15 +45,6 @@ async function cell(page: Page, key: string): Promise<{ x: number; y: number }> 
   const b = await loc.boundingBox()
   if (!b) throw new Error(`roll cell ${key} has no box`)
   return { x: b.x + b.width / 2, y: b.y + b.height / 2 }
-}
-
-/** Warnings the status bar has coalesced so far. Read as a DELTA — boot raises its own. */
-async function warnCount(page: Page): Promise<number> {
-  const title = await page
-    .locator('[data-testid="statusbar-console-chip"]')
-    .getAttribute('title')
-  const m = /(\d+) warnings/.exec(title ?? '')
-  return m ? Number(m[1]) : 0
 }
 
 test.describe('a note is only deleted where the document keeps the rest (#1340)', () => {
@@ -78,26 +70,38 @@ test.describe('a note is only deleted where the document keeps the rest (#1340)'
   })
 })
 
+/**
+ * ⚠ THE REPORT IS READ OFF THE CONSOLE PANEL, not off a count (#1443).
+ *
+ * These two arms used to read a running warning total from the status bar's console
+ * chip as a DELTA, because that number mixed in every warning the session had raised.
+ * `718c9bb3` retired the status bar and the arms went on asking for the chip for
+ * months, timing out at 30s apiece while both vitest gates stayed green.
+ *
+ * The rows carry the level, the runtime and the TEXT, so the assertion can now say the
+ * message named this gesture rather than only that a number moved — and filtering to
+ * `runtime: 'stave'` makes the count absolute, with the accepted arm as its control.
+ * Helper shared in `_console.ts` so the next retirement breaks in one place.
+ */
 test.describe('a refused delete is reported, not swallowed (#1340)', () => {
-  test('the refused delete raises exactly one warning', async ({ page }) => {
+  test('the refused delete raises exactly one warning, and it names the gesture', async ({
+    page,
+  }) => {
     await openRoll(page, CODE)
-    const before = await warnCount(page)
 
     const at = await cell(page, '67:2')
     await page.mouse.click(at.x, at.y)
+    // The refusal is what we are reporting on, so pin it first: the document must be
+    // byte-identical, or "one warning" could be describing some other failure.
+    await expect.poll(() => editorValue(page)).toBe(CODE)
 
-    await expect
-      .poll(() => warnCount(page), {
-        message: 'a refused delete must tell the user it did not happen',
-      })
-      .toBe(before + 1)
+    await expectRefusalReported(page, "Couldn't delete that note")
   })
 
   test('the accepted delete raises none — the report tracks the refusal, not the click', async ({
     page,
   }) => {
     await openRoll(page, CODE)
-    const before = await warnCount(page)
 
     const at = await cell(page, '48:2')
     await page.mouse.click(at.x, at.y)
@@ -107,8 +111,6 @@ test.describe('a refused delete is reported, not swallowed (#1340)', () => {
       .poll(() => editorValue(page), { message: 'the accepted click must reach the writer' })
       .toBe(ACCEPTED)
 
-    await expect
-      .poll(() => warnCount(page), { message: 'an accepted delete must stay quiet' })
-      .toBe(before)
+    await expectNoRefusalReported(page)
   })
 })

@@ -24,6 +24,7 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 import { bootApp, seedCode, editorValue } from './_appBoot'
+import { expectRefusalReported, expectNoRefusalReported } from './_console'
 
 const CODE = '$: note("<c2*2 g2*5 [a g]>")'
 /** the accepted click — c2 joins the first g2 pair as a chord */
@@ -101,39 +102,36 @@ test.describe('a placed note is only written where the document keeps it (#1333)
  * the table for different reasons, and resize could not be gated at offer time regardless
  * — its refusal depends on the length the drag ends at.
  *
- * ⚠ THE COUNT IS READ AS A DELTA, never as an absolute. Boot emits its own warnings (a
- * slow sample manifest will add more), so pinning "1 warning" would be pinning the
- * environment. The pair of arms is what makes the delta mean something: the refused click
- * adds one, and the accepted click on the same fixture adds none.
+ * ⚠ THE REPORT IS READ OFF THE CONSOLE PANEL, not off a count (#1443). These arms used
+ * to read a running warning total from the status bar's console chip as a DELTA, because
+ * that number mixed in every warning the session had raised — boot's included. `718c9bb3`
+ * retired the status bar; the arms went on asking for the chip for months, timing out at
+ * 30s apiece while both vitest gates stayed green.
+ *
+ * The Console rows carry the level, the runtime and the TEXT, so the assertion can now
+ * say the message named THIS gesture rather than only that a number moved. Filtering to
+ * `runtime: 'stave'` also makes the count absolute — boot's chatter belongs to the engine
+ * runtimes — and the accepted arm below is the control that proves it.
  */
-const warnCount = async (page: Page): Promise<number> => {
-  const title = await page
-    .locator('[data-testid="statusbar-console-chip"]')
-    .getAttribute('title')
-  const m = /(\d+) warnings/.exec(title ?? '')
-  return m ? Number(m[1]) : 0
-}
-
 test.describe('a refused roll gesture is reported, not swallowed (#1336)', () => {
-  test('the refused placement raises exactly one warning', async ({ page }) => {
+  test('the refused placement raises exactly one warning, and it names the gesture', async ({
+    page,
+  }) => {
     await openRoll(page, CODE)
-    const before = await warnCount(page)
 
     const refused = await cell(page, '36:11')
     await page.mouse.click(refused.x, refused.y)
+    // The refusal is the thing being reported, so pin it first: an unchanged document,
+    // or "one warning" could be describing some other failure entirely.
+    await expect.poll(() => editorValue(page)).toBe(CODE)
 
-    await expect
-      .poll(() => warnCount(page), {
-        message: 'a refused placement must tell the user it did not happen',
-      })
-      .toBe(before + 1)
+    await expectRefusalReported(page, "Couldn't add that note")
   })
 
   test('the accepted placement raises none — the report tracks the refusal, not the click', async ({
     page,
   }) => {
     await openRoll(page, CODE)
-    const before = await warnCount(page)
 
     const ok = await cell(page, '36:10')
     await page.mouse.click(ok.x, ok.y)
@@ -143,10 +141,6 @@ test.describe('a refused roll gesture is reported, not swallowed (#1336)', () =>
       .poll(() => editorValue(page), { message: 'the accepted click must reach the writer' })
       .toBe(ACCEPTED)
 
-    await expect
-      .poll(() => warnCount(page), {
-        message: 'an accepted placement must stay quiet',
-      })
-      .toBe(before)
+    await expectNoRefusalReported(page)
   })
 })

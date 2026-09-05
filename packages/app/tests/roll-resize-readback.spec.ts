@@ -28,6 +28,7 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 import { bootApp, seedCode, editorValue } from './_appBoot'
+import { expectRefusalReported, expectNoRefusalReported } from './_console'
 
 const CODE = '$: note("[c3@3 e3] [~ g2@2 b2]")'
 /** what the per-frame rule writes for the refused ask — note that b2 is gone */
@@ -124,19 +125,20 @@ test.describe('a roll resize is settled against the reopened document (#1331)', 
  * It is also the most confusing refusal to receive, because something visibly happens —
  * the drag tracks the pointer the whole way, the bar grows, and then the note returns to
  * its original length on release. Without a message that reads as the editor breaking.
+ *
+ * ⚠ THE REPORT IS READ OFF THE CONSOLE PANEL, not off a count (#1443). These arms used to
+ * read a running warning total from the status bar's console chip as a DELTA, because that
+ * number mixed in every warning the session had raised. `718c9bb3` retired the status bar
+ * and the arms went on asking for the chip for months, timing out at 30s apiece while both
+ * vitest gates stayed green. The Console rows carry level, runtime and TEXT, so the
+ * assertion can now say the message named THIS gesture; `runtime: 'stave'` makes the count
+ * absolute, and the accepted arm below is the control that proves it.
  */
-const warnCount = async (page: Page): Promise<number> => {
-  const title = await page
-    .locator('[data-testid="statusbar-console-chip"]')
-    .getAttribute('title')
-  const m = /(\d+) warnings/.exec(title ?? '')
-  return m ? Number(m[1]) : 0
-}
-
 test.describe('a refused resize says why the note went back (#1336)', () => {
-  test('the refused resize raises exactly one warning', async ({ page }) => {
+  test('the refused resize raises exactly one warning, and it names the gesture', async ({
+    page,
+  }) => {
     await openRoll(page, CODE)
-    const before = await warnCount(page)
 
     const from = await tailEdge(page, '43:6')
     const to = await cell(page, '43:7')
@@ -145,16 +147,15 @@ test.describe('a refused resize says why the note went back (#1336)', () => {
     await page.mouse.move(to.x, to.y, { steps: 6 })
     await page.mouse.up()
 
-    await expect
-      .poll(() => warnCount(page), {
-        message: 'a resize taken back on commit must tell the user it did not stick',
-      })
-      .toBe(before + 1)
+    // The snap-back is what is being explained, so pin it first — a resize that never
+    // reached the writer would leave the document here too, and say nothing.
+    await expect.poll(() => editorValue(page)).toBe(CODE)
+
+    await expectRefusalReported(page, "Couldn't set that length")
   })
 
   test('the accepted resize raises none', async ({ page }) => {
     await openRoll(page, CODE)
-    const before = await warnCount(page)
 
     const from = await tailEdge(page, '48:2')
     const to = await cell(page, '48:3')
@@ -169,8 +170,6 @@ test.describe('a refused resize says why the note went back (#1336)', () => {
       .poll(() => editorValue(page), { message: 'the accepted resize must reach the writer' })
       .toBe(ACCEPTED)
 
-    await expect
-      .poll(() => warnCount(page), { message: 'an accepted resize must stay quiet' })
-      .toBe(before)
+    await expectNoRefusalReported(page)
   })
 })
