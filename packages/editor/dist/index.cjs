@@ -46479,6 +46479,7 @@ function listSectionParts(doc, call) {
       if (decl.id?.type !== "Identifier") continue;
       if (!isArrangeable(decl.init)) continue;
       if (decl.start <= callStart && decl.end >= callEnd) continue;
+      if (decl.start > callStart) continue;
       if (!names.includes(decl.id.name)) names.push(decl.id.name);
     }
   }
