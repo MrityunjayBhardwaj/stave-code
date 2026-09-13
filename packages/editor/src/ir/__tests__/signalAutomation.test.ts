@@ -55,9 +55,18 @@ describe('signalAutomations — only where the curve is handed a time a lane can
   const CURVE = '$: s("bd*8").gain(saw.slow(3))'
 
   it.each([
-    ['slow', `${CURVE}.slow(2)`],
-    ['fast', `${CURVE}.fast(2)`],
+    // `.slow` and `.fast` are applied now (#1595); `.early` is an opaque call.
     ['early', `${CURVE}.early(0.5)`],
+    ['a slow by 0', `${CURVE}.slow(0)`],
+    ['a fast by 0', `${CURVE}.fast(0)`],
+    // Each route alone is one the lane could draw; together they play two values
+    // at once, and only route disjointness declines them.
+    ['jux, with a fast', `${CURVE}.jux(x => x.fast(2))`],
+    // Hands the curve negative time before bar `o`, where the engine's `t % 1`
+    // plays a saw below its floor (engine test) and a lane would draw it wrapped.
+    ['a later shift', `${CURVE}.late(0.5)`],
+    ['a patterned slow', `${CURVE}.slow("<2 4>")`],
+    ['off, which plays the curve twice at once', `${CURVE}.off(0.25, x => x.speed(2))`],
     ['cpm', `${CURVE}.cpm(120)`],
     ['every, with a time transform', `${CURVE}.every(2, x => x.fast(2))`],
     ['jux, with a time transform', `${CURVE}.jux(x => x.late(.25))`],
@@ -86,6 +95,31 @@ describe('signalAutomations — only where the curve is handed a time a lane can
   it('cat gives each arm one cycle of a pass', () => {
     const [a] = read('$: cat(s("hh*8"), s("bd*8").gain(saw.slow(3)))')
     expect(a.placements).toEqual([[{ startCycle: 1, cycles: 1, total: 2 }]])
+  })
+})
+
+describe('signalAutomations — a whole-track time change is applied, not declined (#1595)', () => {
+  const CURVE = '$: s("bd*8").gain(saw.slow(3))'
+
+  it.each([
+    ['slow', `${CURVE}.slow(2)`, [{ times: 1, per: 2, shift: 0 }], [0, 0.5, 3], [0, 0.25, 1.5]],
+    ['fast', `${CURVE}.fast(2)`, [{ times: 2, per: 1, shift: 0 }], [0, 0.5, 3], [0, 1, 6]],
+    ['an earlier shift', `${CURVE}.late(-0.5)`, [{ times: 1, per: 1, shift: 0.5 }], [0, 0.5, 3], [0.5, 1, 3.5]],
+    ['a slow under a visualiser', `${CURVE}.slow(2)._scope()`, [{ times: 1, per: 2, shift: 0 }], [1], [0.5]],
+  ])('%s', (_label, src, steps, times, handed) => {
+    const [a] = read(src)
+    expect(a?.paramKey, 'the reader declined').toBe('gain')
+    expect(a.periodCycles, 'the signal\'s own rate is unchanged').toBe(3)
+    expect(a.placements).toEqual([steps])
+    expect(times.map((t) => signalTimeAt(a, t))).toEqual(handed)
+  })
+
+  it('composes outermost first, around a section', () => {
+    const [a] = read('$: arrange([1, s("hh*8")], [3, s("bd*8").gain(saw.slow(3))]).slow(2)')
+    expect(a.placements).toEqual([[{ times: 1, per: 2, shift: 0 }, { startCycle: 1, cycles: 3, total: 4 }]])
+    // Song time 3 is slowed time 1.5 → bar 1 of the pass → the section's cycle 0.
+    // Song time 8.5 is slowed 4.25 → bar 0 of the second pass, the hh section.
+    expect([0.5, 2.5, 3, 8.5, 10.5].map((t) => signalTimeAt(a, t))).toEqual([null, 0.25, 0.5, null, 3.25])
   })
 })
 

@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../parseStrudel'
-import { steppedAutomations, stepIndexAtCycle, stepValueEdit } from '../steppedAutomation'
+import { steppedAutomations, stepIndexAtCycle, stepValueEdit, type SteppedAutomation } from '../steppedAutomation'
 
 const read = (src: string) => steppedAutomations(parseStrudel(src) as never)
 const apply = (src: string, e: { range: [number, number]; text: string }) =>
@@ -135,7 +135,8 @@ describe('steppedAutomations — only where nothing above the parameter moves ti
   // Each shape here has an arm in the engine test: the declined ones play
   // something other than `cycle mod period`, the read ones play exactly that.
   it.each([
-    ['slow', '$: s("bd*2").gain("<0.2 0.8>").slow(2)'],
+    // A whole-number slow is applied now (#1595); a fast by 2 changes the step
+    // inside a bar, which no one-step-per-bar lane can draw.
     ['fast', '$: s("bd*2").gain("<0.2 0.8>").fast(2)'],
     ['early', '$: s("bd*2").gain("<0.2 0.8>").early(1)'],
     ['off', '$: s("bd*2").gain("<0.2 0.8>").off(0.25, x => x.speed(2))'],
@@ -144,6 +145,9 @@ describe('steppedAutomations — only where nothing above the parameter moves ti
     // The plain channel reaches the parameter cleanly; the other reaches the SAME
     // node through a Fast. One dirty route is enough.
     ['jux, with a time transform', '$: s("bd*2").gain("<0.2 0.8>").jux(x => x.fast(2))'],
+    // A whole-number slow keeps bars whole, so each route alone is drawable (#1595);
+    // only route disjointness declines the pair, which plays two values at once.
+    ['jux, with a slow', '$: s("bd*2").gain("<0.2 0.8>").jux(x => x.slow(2))'],
   ])('%s declines', (_label, src) => {
     expect(read(src)).toEqual([])
   })
@@ -195,7 +199,7 @@ describe('steppedAutomations — a visualiser call leaves the steps alone (#1592
     // `.viz` chains to Strudel's own `.viz` when one is loaded.
     ['viz(name)', `${PLAIN}.viz("pianoroll")`],
     // The visualiser is above the time change, not instead of it.
-    ['a time change under a visualiser', `${PLAIN}.slow(2)._pianoroll()`],
+    ['a time change under a visualiser', `${PLAIN}.fast(2)._pianoroll()`],
     // One underscore is the inline spelling; a second names nothing the engine installs.
     ['a name that only looks like one', `${PLAIN}.__pianoroll()`],
   ])('%s declines', (_label, src) => {
@@ -291,7 +295,7 @@ describe('steppedAutomations — a whole-number `/n` stretches every step (#1579
 
   it('the one-literal and nothing-above rules still hold over a `/n`', () => {
     expect(read('$: s("bd*2").gain("<0.2 0.8>/2" + "")')).toEqual([])
-    expect(read('$: s("bd*2").gain("<0.2 0.8>/2").slow(2)')).toEqual([])
+    expect(read('$: s("bd*2").gain("<0.2 0.8>/2").fast(2)')).toEqual([])
     expect(read('$: s("bd*2").gain("<0.2 0.8>/2").gain(0.5)')).toEqual([])
   })
 
@@ -465,10 +469,59 @@ describe('steppedAutomations — an arrangement section counts its own cycles (#
     ['a fractional weight', '$: arrange([1.5, s("bd*2").gain("<0.2 0.8>")], [0.5, s("hh*2")])'],
     ['weights that sum to 0', '$: arrange([0, s("bd*2").gain("<0.2 0.8>")])'],
     ['a negative weight', '$: arrange([-1, s("sd*2")], [3, s("bd*2").gain("<0.2 0.8 0.5>")], [1, s("hh*2")])'],
-    ['a time transform inside the section', '$: arrange([3, s("bd*2").gain("<0.2 0.8>").slow(2)], [1, s("hh*2")])'],
+    ['a time transform inside the section', '$: arrange([3, s("bd*2").gain("<0.2 0.8>").fast(2)], [1, s("hh*2")])'],
     // Two routes that do not part at the arms of one arrangement can overlap.
     ['a route inside a section and one outside it', 'const a = s("bd*2").gain("<0.2 0.8 0.5>")\n$: stack(a, arrange([1, a], [1, s("hh*2")]))'],
     ['one binding in two arrangements side by side', 'const a = s("bd*2").gain("<0.2 0.8 0.5>")\n$: stack(arrange([1, a], [1, s("hh*2")]), arrange([1, s("sd*2")], [2, a]))'],
+  ])('%s declines', (_label, src) => {
+    expect(read(src)).toEqual([])
+  })
+})
+
+describe('steppedAutomations — a whole-track time change that keeps each bar on one step is applied (#1595)', () => {
+  const idx = (a: SteppedAutomation, n: number) => Array.from({ length: n }, (_, c) => stepIndexAtCycle(a, c))
+  // The same automation with its time steps composed in the OTHER order — the
+  // rival an arm must tell apart from the reader, or it confirms nothing.
+  const reversed = (a: SteppedAutomation): SteppedAutomation => ({ ...a, placements: a.placements.map((p) => [...p].reverse()) })
+
+  it.each([
+    ['a slow by a whole number', '$: s("bd*2").gain("<0.2 0.8>").slow(2)', [0, 0, 1, 1, 0, 0, 1, 1]],
+    ['a fast by the inverse of a whole number', '$: s("bd*2").gain("<0.2 0.8>").fast(0.5)', [0, 0, 1, 1, 0, 0, 1, 1]],
+    ['a shift by a whole cycle', '$: s("bd*2").gain("<0.2 0.8>").late(1)', [1, 0, 1, 0, 1, 0, 1, 0]],
+    ['a slow over a `/n`', '$: s("bd*2").gain("<0.2 0.8>/2").slow(2)', [0, 0, 0, 0, 1, 1, 1, 1]],
+    ['a slow under a visualiser', '$: s("bd*2").gain("<0.2 0.8>").slow(2)._pianoroll()', [0, 0, 1, 1, 0, 0, 1, 1]],
+    ['a slow over a shift, applied outermost first', '$: s("bd*2").gain("<0.2 0.8>").late(1).slow(2)', [1, 1, 0, 0, 1, 1, 0, 0]],
+  ])('%s', (_label, src, expected) => {
+    const [a] = read(src)
+    expect(a?.paramKey, 'the reader declined').toBe('gain')
+    expect(idx(a, 8)).toEqual(expected)
+  })
+
+  it('records the time step on the route, outermost first', () => {
+    expect(read('$: s("bd*2").gain("<0.2 0.8>").late(1).slow(2)')[0].placements).toEqual([
+      [{ times: 1, per: 2, shift: 0 }, { times: 1, per: 1, shift: -1 }],
+    ])
+  })
+
+  it('the order matters — the reversed composition gives other steps on these inputs', () => {
+    const [a] = read('$: s("bd*2").gain("<0.2 0.8>").late(1).slow(2)')
+    expect(idx(reversed(a), 8)).not.toEqual(idx(a, 8))
+  })
+
+  it('a slow inside a section counts the section\'s cycles first, then slows them', () => {
+    const [a] = read('$: arrange([3, s("bd*2").gain("<0.2 0.8>").slow(2)], [1, s("hh*2")])')
+    expect(a.placements).toEqual([[{ startCycle: 0, cycles: 3, total: 4 }, { times: 1, per: 2, shift: 0 }]])
+    expect(idx(a, 8)).toEqual([0, 0, 1, null, 1, 0, 0, null])
+    expect(idx(reversed(a), 8)).not.toEqual(idx(a, 8))
+  })
+
+  it.each([
+    // Each of these changes the step partway through a bar (engine test).
+    ['a slow by a fraction', '$: s("bd*2").gain("<0.2 0.8>").slow(1.5)'],
+    ['a shift by part of a cycle', '$: s("bd*2").gain("<0.2 0.8>").late(0.5)'],
+    // The engine plays nothing for either.
+    ['a slow by 0', '$: s("bd*2").gain("<0.2 0.8>").slow(0)'],
+    ['a fast by 0', '$: s("bd*2").gain("<0.2 0.8>").fast(0)'],
   ])('%s declines', (_label, src) => {
     expect(read(src)).toEqual([])
   })

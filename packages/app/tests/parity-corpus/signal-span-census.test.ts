@@ -99,17 +99,26 @@ describe('signal span census over the sweep corpus', () => {
       // (`.slow`/`.fast`/`.early`/`cpm`, `every`/`jux` with one), an opaque call
       // the walk cannot see through (`add`, `mul`, `rarely`, …), or a later
       // same-key call. The shares barely moved: range 88%, rate 64%, neither 9%.
-      automations: 119,
-      rangeSpelled: 105,
-      rateSpelled: 76,
-      neitherSpelled: 11,
+      //
+      // #1595 — +14, every one added and none lost: a curve under a whole-track
+      // `.slow(n)` is now drawn at the time the slow hands it. Ten rows, nine
+      // documents: `0/-1poFQwaznQK` +5; `0/-2rI48Rcu-UZ` and its copy
+      // `250/0tjfqXVyaLfJ`, `0/-3cMJ6ZRfPGI`, `0/-EpG6XZkZ6aT`, `0/-KsW6fVLkxAn`,
+      // `250/0zGIYzShEPbP`, `250/1J0KTN4g3M3h`, `500/3GDNekbJ5rJr` and
+      // `500/3Pr9t15-rxs-` +1 each. The rate share fell to 59% because 12 of the 14
+      // spell no rate of their own (`rand.range(…)` under `.slow(8)`): the slow is
+      // the track's, not the signal's, so a rate control still inserts at `chainEnd`.
+      automations: 133,
+      rangeSpelled: 118,
+      rateSpelled: 78,
+      neitherSpelled: 12,
       // Never null on any real document today. The disabled-control path this
       // would trigger is therefore UNEXERCISED, not proven — if this leaves
       // zero, that path needs an arm before it is trusted.
       noChainEnd: 0,
       // Every automation a rate control cannot replace into is one that spells
       // NO rate at all — insertable at `chainEnd`, which is non-null throughout.
-      rateAbsent: 43,
+      rateAbsent: 55,
       // ZERO. The multi-arm guard in `readChain` protects a tree no real
       // document produces, which is what its own comment claims and this is the
       // evidence for. It stays: the cost is one integer and the failure it

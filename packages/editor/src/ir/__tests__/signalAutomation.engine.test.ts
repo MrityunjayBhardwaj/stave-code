@@ -91,6 +91,60 @@ describe('#1590 — a curve plays at the time the reader hands it, and the song-
   }, 60_000)
 })
 
+describe('#1595 — a whole-track time change is applied: the curve plays at the composed time, and neither rival does', () => {
+  // The second rival is the reader's own time steps composed in the OTHER order;
+  // it is only asked of an input with more than one step, where it can differ.
+  const reversed = (a: SignalAutomation): SignalAutomation => ({ ...a, placements: a.placements.map((p) => [...p].reverse()) })
+
+  it.each([
+    ['slow', 's("bd*8").gain(saw.slow(3)).slow(2)'],
+    ['fast', 's("bd*8").gain(saw.slow(3)).fast(2)'],
+    ['an earlier shift', 's("bd*8").gain(saw.slow(3)).late(-0.5)'],
+    // No visualiser arm here: bare `@strudel/core` has no `._scope` (Stave's engine
+    // installs it), so it throws. The unit file reads a slow under one, and the
+    // #1592 browser arm shows a visualiser leaves what plays unchanged.
+    // A shift under a slow — two pure scales commute, so they could not tell the
+    // orders apart. Handed `t/2 + 1`; the reversed order gives `(t + 1)/2`.
+    ['a slow over an earlier shift', 's("bd*8").gain(saw.slow(3)).late(-1).slow(2)'],
+    ['a slow around a section', 'arrange([1, s("hh*8")], [2, s("bd*8").gain(saw.slow(3))]).slow(2)'],
+    ['a slow inside a section', 'arrange([1, s("hh*8")], [2, s("bd*8").gain(saw.slow(3)).slow(2)])'],
+  ])('%s', async (_label, code) => {
+    const [a] = signalAutomations(parseStrudel(code) as never)
+    expect(a, 'the reader found no curve').toBeDefined()
+    const events = await bdOnsets(code)
+    expect(events.length, 'the engine played no bd at all').toBeGreaterThan(0)
+    for (const e of events) {
+      const v = drawn(a, e.t)
+      expect(v, `the reader calls t=${e.t} silent, and the engine plays bd there`).not.toBeNull()
+      expect(Math.abs(e.gain - (v as number)), `t=${e.t}`).toBeLessThan(1e-9)
+    }
+    for (let c = 0; c < CYCLES; c++) {
+      if (drawn(a, c + 0.5) !== null) continue
+      expect(events.filter((e) => Math.floor(e.t) === c), `bar ${c} is called silent`).toEqual([])
+    }
+    expect(worst(events.map((e) => Math.abs(e.gain - songTime(a, e.t)))), 'song time agrees').toBeGreaterThan(0.1)
+    if (a.placements[0].length > 1) {
+      const r = reversed(a)
+      const off = events.some((e) => {
+        const v = drawn(r, e.t)
+        return v === null || Math.abs(e.gain - v) > 0.1
+      })
+      expect(off, 'the reversed composition agrees — this input tells nothing apart').toBe(true)
+    }
+  }, 60_000)
+})
+
+describe('#1595 — a later shift declines: before bar `o` the engine plays the curve at negative time', () => {
+  it('a saw under `.late(0.5)` plays below its own floor in the first half bar — no wrapped curve is that', async () => {
+    const code = 's("bd*8").gain(saw.slow(3)).late(0.5)'
+    expect(signalAutomations(parseStrudel(code) as never)).toEqual([])
+    // `saw = signal(t => t % 1)` (`signal.mjs:35`), and `%` keeps the sign.
+    const early = (await bdOnsets(code, 1)).filter((e) => e.t < 0.5)
+    expect(early.length).toBeGreaterThan(0)
+    expect(early.every((e) => e.gain < 0), JSON.stringify(early)).toBe(true)
+  }, 60_000)
+})
+
 /** The smallest P at which every cycle's bd onsets (position in the cycle, gain)
  *  equal those P cycles later, over `cycles` cycles — or null. */
 function enginePeriod(events: { t: number; gain: number }[], cycles: number): number | null {
@@ -125,9 +179,10 @@ describe('#1590 — what the reader declines really does play something other th
   const PLAIN = 's("bd*8").gain(saw.slow(3))'
 
   it.each([
-    ['slow', `${PLAIN}.slow(2)`],
-    ['fast', `${PLAIN}.fast(2)`],
+    // `.slow` and `.fast` are applied since #1595 — their arms are in that block.
     ['early', `${PLAIN}.early(0.5)`],
+    // Both routes are drawable alone; only route disjointness declines the pair.
+    ['jux, with a fast', `${PLAIN}.jux(x => x.fast(2))`],
     // `cpm` is `fast(cpm / 60 / cps)`; in the bare core used here cps is 1.
     ['cpm', `${PLAIN}.cpm(120)`],
     ['every, with a time transform', `${PLAIN}.every(2, x => x.fast(2))`],

@@ -61,7 +61,7 @@ import type { PatternIR } from './PatternIR'
 import type { IREvent } from './IREvent'
 import { eventValueKey } from './eventValueKey'
 import { signalAutomations, signalCarryingParamKeys, hasTruePeriod } from './signalAutomation'
-import type { SectionWindow } from './parameterRoutes'
+import { isSectionWindow, type TimeStep } from './parameterRoutes'
 
 /**
  * Lane (row) key for an event. Mirrors `groupEventsByTrack`'s key so analysis
@@ -547,7 +547,7 @@ export function signalDimensionsOf(ir: PatternIR | null | undefined): SignalDime
  *
  * Under no section it is the signal's own period. Inside a section it is longer:
  * the curve advances only while its section plays, `cycles` per pass of `total`
- * (`parameterRoutes.ts`, `sectionTimeAt`), so its value repeats after the smallest
+ * (`parameterRoutes.ts`, `placementTimeAt`), so its value repeats after the smallest
  * number of passes `m` with `m·cycles` a multiple of `P` — `total · lcm(cycles, P) /
  * cycles` song cycles, applied from the innermost section out. Measured through the
  * engine: `arrange([1, hh], [3, saw.slow(3)])` repeats at 4, not 3;
@@ -557,13 +557,23 @@ export function signalDimensionsOf(ir: PatternIR | null | undefined): SignalDime
  * an arm of weight 0 never plays and contributes nothing. A pair `rationalLcm` cannot
  * resolve drops the period, the direction `PERIODIC_KINDS` already argues is safe.
  */
-function songPeriodOf(a: { readonly periodCycles: number; readonly placements: readonly (readonly SectionWindow[])[] }): number | null {
+function songPeriodOf(a: { readonly periodCycles: number; readonly placements: readonly (readonly TimeStep[])[] }): number | null {
   let out: number | null = null
   for (const placement of a.placements) {
-    if (placement.some((w) => w.cycles === 0)) continue
+    if (placement.some((w) => isSectionWindow(w) && w.cycles === 0)) continue
     let p: number | null = a.periodCycles
     for (let k = placement.length - 1; k >= 0 && p !== null; k--) {
-      const { cycles, total } = placement[k]
+      const step = placement[k]
+      // A warp hands the curve `t · times / per`, so the curve comes back round
+      // `per / times` times as late: `.slow(2)` doubles the period, `.fast(2)`
+      // halves it, and a shift moves where it starts but not how long it takes
+      // (#1595). Innermost first, like the sections: the engine repeats
+      // `arrange([1, hh], [2, saw.slow(3)]).slow(2)` at 18, and the other order gives 9.
+      if (!isSectionWindow(step)) {
+        p = (p * step.per) / step.times
+        continue
+      }
+      const { cycles, total } = step
       const l = rationalLcm(cycles, p)
       p = l === null ? null : (total * l) / cycles
     }

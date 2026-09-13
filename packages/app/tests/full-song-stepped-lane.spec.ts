@@ -389,6 +389,73 @@ test('a step of a slowed alternation retyped on the lane moves both bars that pl
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
 
+// ── #1595: a stepped parameter under a whole-track slow ──────────────────────
+
+/**
+ * `.slow(2)` on the whole track holds each step for two bars. The song-cycle
+ * reading — a lane that ignored the slow — alternates every bar, so bar 1 would
+ * open .9 and bar 2 .2. The second track keeps the song four bars long.
+ *
+ * ⚠ `bd*4`, NOT `bd*2`: under the slow that is two onsets a bar, eight over the four
+ * bars, and `gainsByBar` finds the kick lane by exactly that count (a `bd*2` draft
+ * read `{}` before measuring anything).
+ */
+const WHOLE_TRACK_SLOW_SONG = '$: s("bd*4").gain("<.2 .9>").slow(2)\n$: s("<hh cp hh cp>")'
+
+test('a stepped parameter under a whole-track slow opens and edits the step each bar plays, two bars to a step (#1595)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+
+  await bootShell(page)
+  await setSongAndEval(page, WHOLE_TRACK_SLOW_SONG)
+  await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
+  await page.waitForTimeout(500)
+
+  // (0) The engine holds each step for two bars — two bd a bar under the slow.
+  await expect.poll(() => gainsByBar(page), { timeout: 10_000 })
+    .toEqual({ 0: [0.2, 0.2], 1: [0.2, 0.2], 2: [0.9, 0.9], 3: [0.9, 0.9] })
+
+  const editor = page.locator('[data-full-song="automation-step"]')
+  const box = await page.locator('[data-full-song-canvas]').boundingBox()
+  if (!box) throw new Error('no canvas')
+  const barX = (bar: number) => Math.round(box.width * ((bar + 0.5) / 4))
+
+  await page.mouse.dblclick(box.x + barX(2), box.y + 8)
+  await page.waitForTimeout(800)
+
+  // (1) Bar 1 is still the FIRST step and bar 2 the second — the song cycle would
+  //     say the reverse of both.
+  expect(await openStepShowing(page, barX(1), '0.2'), 'no step editor showing 0.2 opened over bar 1').toBe(true)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(200)
+  expect(await openStepShowing(page, barX(2), '0.9'), 'no step editor showing 0.9 opened over bar 2').toBe(true)
+
+  // (2) Only that step's number is rewritten; the whole-track slow survives.
+  await page.keyboard.press(`${MOD}+A`)
+  await page.keyboard.type('0.4')
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(600)
+  const after = await readDoc(page)
+  expect(after, `the step did not reach the document: ${after}`).toContain('$: s("bd*4").gain("<.2 0.4>").slow(2)')
+  expect(await editor.count(), 'the editor lingered after its commit').toBe(0)
+
+  // (3) Both bars of the edited step moved; both bars of the other held.
+  await expect.poll(() => gainsByBar(page), { timeout: 10_000 })
+    .toEqual({ 0: [0.2, 0.2], 1: [0.2, 0.2], 2: [0.4, 0.4], 3: [0.4, 0.4] })
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})
+
 // ── #1585: a stepped parameter inside an arrangement section ────────────────
 
 /**

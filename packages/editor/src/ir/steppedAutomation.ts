@@ -48,7 +48,7 @@ import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import type { PatternIR } from './PatternIR'
 import type { SourceLocation } from './IREvent'
 import { atomSpan, type KElement, type KPattern } from './parseMini'
-import { placementsTimeAt, playableParameters, type SectionWindow } from './parameterRoutes'
+import { isSectionWindow, placementsTimeAt, playableParameters, type SectionWindow, type TimeStep, type TimeWarp } from './parameterRoutes'
 
 /** One step of a stepped parameter. */
 export interface SteppedStep {
@@ -82,16 +82,32 @@ export interface SteppedAutomation {
   readonly offset: number | null
   /**
    * Where the parameter plays, one entry per route to it: the arrangement sections
-   * that route passes through, OUTERMOST FIRST (#1585). A parameter under no
-   * section has one route through none — `[[]]` — and sees every song cycle as
-   * itself. A binding arranged twice has two routes, one per appearance.
+   * (#1585) and whole-track time changes (#1595) that route passes through,
+   * OUTERMOST FIRST. A parameter under neither has one route through none — `[[]]`
+   * — and sees every song cycle as itself. A binding arranged twice has two routes,
+   * one per appearance.
    */
-  readonly placements: readonly (readonly SectionWindow[])[]
+  readonly placements: readonly (readonly TimeStep[])[]
 }
 
-/** One arrangement section a parameter plays inside — owned by the shared walk
- *  (`parameterRoutes.ts`), re-exported so the barrel's name for it holds. */
-export type { SectionWindow }
+/** The steps of a route — owned by the shared walk (`parameterRoutes.ts`),
+ *  re-exported so the barrel's names for them hold. */
+export type { SectionWindow, TimeStep, TimeWarp }
+
+/**
+ * Whether every song bar stays inside ONE cycle of the time a route hands the
+ * parameter — the condition a lane drawing one step per bar needs (#1595).
+ *
+ * A section maps a whole cycle to a whole cycle. A warp `t · times / per + shift`
+ * keeps a bar inside one cycle when it slows by a whole number (`per / times` an
+ * integer) and shifts by whole cycles: the bar `[c, c + 1)` lands inside
+ * `[⌊c / k⌋, ⌊c / k⌋ + 1)`, and composing such steps keeps that true. Anything else
+ * — `.fast(2)`, `.slow(1.5)`, `.late(0.5)` — changes the step partway through a bar
+ * (engine test), which a one-step-per-bar lane cannot draw, so it declines.
+ */
+function keepsBarsWhole(placement: readonly TimeStep[]): boolean {
+  return placement.every((step) => isSectionWindow(step) || (Number.isInteger(step.per / step.times) && Number.isInteger(step.shift)))
+}
 
 const NUMBER = /^-?(?:\d+\.?\d*|\.\d+)$/
 
@@ -260,6 +276,7 @@ function slowFactor(el: KElement): number | null {
 export function steppedAutomations(ir: PatternIR | null | undefined): readonly SteppedAutomation[] {
   const out: SteppedAutomation[] = []
   for (const { trackId, param, placements } of playableParameters(ir)) {
+    if (!placements.every(keepsBarsWhole)) continue
     const steps = readSteps(param)
     if (!steps) continue
     const start = param.loc?.[0]?.start
@@ -281,11 +298,17 @@ export function steppedAutomations(ir: PatternIR | null | undefined): readonly S
  * silent then (#1585) — the same selection the engine makes: the cycle the
  * parameter's own section hands it, its position within the period, matched
  * against each step's weighted start. A parameter under no section sees the song
- * cycle itself. Negative cycles wrap like positive ones.
+ * cycle itself. Negative cycles wrap like positive ones — `<0.2 0.8>.late(1)` plays
+ * 0.8 at song cycle 0 (measured, #1595).
+ *
+ * The handed time is floored: under a whole-number slow the start of a bar lands
+ * partway into a cycle (`.slow(2)` hands bar 1 the time 0.5), and `keepsBarsWhole`
+ * is what guarantees the whole bar stays in that cycle.
  */
 export function stepIndexAtCycle(a: SteppedAutomation, cycle: number): number | null {
-  const own = placementsTimeAt(a.placements, Math.floor(cycle))
-  if (own === null) return null
+  const handed = placementsTimeAt(a.placements, Math.floor(cycle))
+  if (handed === null) return null
+  const own = Math.floor(handed)
   const period = a.periodCycles
   const pos = ((own % period) + period) % period
   for (let k = a.steps.length - 1; k >= 0; k--) {

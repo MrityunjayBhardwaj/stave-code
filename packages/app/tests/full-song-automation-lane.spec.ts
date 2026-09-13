@@ -250,6 +250,123 @@ test('a curve inside an arrangement section is drawn only over the bars its sect
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
 
+// ── #1595: a curve under a whole-track slow ──────────────────────────────────
+
+/**
+ * `.slow(2)` hands the saw half the song's time, so ONE ramp spans both bars. A lane
+ * that ignored the slow would draw the song-time reading instead: a ramp per bar,
+ * dropping back to its floor at bar 1. The second track only makes the song two
+ * bars long, so the constant-cutoff control spans the same bars as the subject.
+ */
+const SLOWED_CURVE_SONG = '$: s("bd*8").cutoff(saw.range(200, 2000)).slow(2)\n$: s("<hh cp>*8")'
+const SLOWED_CONSTANT_SONG = '$: s("bd*8").cutoff(800).slow(2)\n$: s("<hh cp>*8")'
+
+/** The canvas's blue channel, one value per pixel, row-major. */
+async function blueChannel(page: Page): Promise<{ W: number; H: number; blue: number[] }> {
+  return page.locator('[data-full-song-canvas]').evaluate((el) => {
+    const c = el as HTMLCanvasElement
+    const { width: W, height: H } = c
+    const img = c.getContext('2d')!.getImageData(0, 0, W, H).data
+    const blue = new Array<number>(W * H)
+    for (let p = 0; p < W * H; p++) blue[p] = img[p * 4 + 2]
+    return { W, H, blue }
+  })
+}
+
+/**
+ * The mean row of the curve over columns [x0, x1) — a pixel is curve where its blue
+ * is well above the same pixel of the control render — or null where there is none.
+ *
+ * ⚠ A DIFFERENCE, NOT THE ABSOLUTE COLOUR TEST `curveColumns` USES. The first draft
+ * used that test and read nothing just before bar 1, where the ramp crosses the
+ * middle rows: the lane's note marks sit there, and a translucent stroke over them
+ * blends to a colour the absolute test rejects — the same blindness
+ * `full-song-stepped-lane.spec.ts` documents on `strokeAgainst`. The curve itself was
+ * right (every other probe read one falling ramp).
+ */
+function curveRow(
+  subject: { W: number; H: number; blue: number[] },
+  control: { blue: number[] },
+  x0: number,
+  x1: number,
+): number | null {
+  let sum = 0
+  let n = 0
+  for (let y = 0; y < subject.H; y++) {
+    for (let x = Math.max(0, x0); x < Math.min(subject.W, x1); x++) {
+      const p = y * subject.W + x
+      if (subject.blue[p] - control.blue[p] > 60) {
+        sum += y
+        n++
+      }
+    }
+  }
+  return n ? sum / n : null
+}
+
+test('a curve under a whole-track slow is drawn at the slowed time: one ramp over two bars, not one per bar (#1595)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+  await bootShell(page)
+  const canvas = page.locator('[data-full-song-canvas]')
+
+  // ── CONTROL FIRST, over the same two bars.
+  await setSongAndEval(page, SLOWED_CONSTANT_SONG)
+  await canvas.waitFor({ timeout: 10_000 })
+  await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBeGreaterThan(0)
+  await page.waitForTimeout(500)
+  const controlBars = await barsOnView(page)
+  const control = await blueChannel(page)
+  const controlCurve = await curveColumns(page)
+
+  await setSongAndEval(page, SLOWED_CURVE_SONG)
+  await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBe(controlBars)
+  await page.waitForTimeout(800)
+  const subject = await blueChannel(page)
+
+  // (0) THE INSTRUMENT: whole ramps on both (the view spans the song's true period
+  //     — READ off the marks, never assumed: a first draft pinned 2 and read 4), the
+  //     same canvas, and no curve of the control's own.
+  expect(controlBars % 2, `the view spans ${controlBars} bars`).toBe(0)
+  expect([subject.W, subject.H]).toEqual([control.W, control.H])
+  expect(controlCurve.reduce((s, n) => s + n, 0), 'the curve colour is on a constant cutoff').toBeLessThan(20)
+  expect(curveRow(control, control, 0, control.W), 'the difference fires on an identical render').toBeNull()
+
+  // Everything below reads the FIRST ramp, bars 0 and 1.
+  const { W } = subject
+  const bar = W / controlBars
+  const at = (x0: number, x1: number) => curveRow(subject, control, Math.round(x0), Math.round(x1))
+  const quarter = at(0.5 * bar - 8, 0.5 * bar + 8)
+  const threeQuarters = at(1.5 * bar - 8, 1.5 * bar + 8)
+  const beforeBar1 = at(bar - 24, bar - 8)
+  const afterBar1 = at(bar + 8, bar + 24)
+  const first = at(8, 24)
+  const last = at(2 * bar - 24, 2 * bar - 8)
+  const rows = { first, quarter, beforeBar1, afterBar1, threeQuarters, last }
+  expect(Object.values(rows).every((r) => r !== null), `no curve at one of the probes: ${JSON.stringify(rows)}`).toBe(true)
+  // The ramp's vertical extent from its first bar to its last — the yardstick below.
+  const extent = Math.abs((first as number) - (last as number))
+  expect(extent, `the ramp barely moves: ${JSON.stringify(rows)}`).toBeGreaterThan(10)
+
+  // (1) ONE RAMP: the curve keeps rising from a quarter of the way to three quarters.
+  //     The song-time reading is at the same phase of its bar at both, so level.
+  expect(Math.abs((quarter as number) - (threeQuarters as number)), JSON.stringify(rows)).toBeGreaterThan(0.3 * extent)
+  // (2) NO DROP AT BAR 1: the song-time reading resets to its floor there.
+  expect(Math.abs((beforeBar1 as number) - (afterBar1 as number)), JSON.stringify(rows)).toBeLessThan(0.15 * extent)
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})
+
 /** Two automated parameters on ONE lane — the #1485 case. Both periods are slow
  *  enough to resolve as curves at the default zoom rather than as bands. */
 const TWO_PARAM_SONG = 's("bd*2").cutoff(saw.slow(4).range(200, 2000)).pan(sine.slow(3))'

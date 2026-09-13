@@ -25,7 +25,7 @@
  */
 import type { PatternIR } from './PatternIR'
 import type { SourceLocation } from './IREvent'
-import { placementsTimeAt, playableParameters, type SectionWindow } from './parameterRoutes'
+import { isSectionWindow, placementsTimeAt, playableParameters, type TimeStep } from './parameterRoutes'
 
 type SignalNode = PatternIR & { tag: 'Signal' }
 export type SignalKind = SignalNode['kind']
@@ -94,11 +94,12 @@ export interface SignalAutomation {
   /** WHERE each leg is written (#1464 Stage 2). Read the type's own doc. */
   readonly spans: SignalSpans
   /**
-   * Where the curve plays, one entry per route to it: the arrangement sections that
-   * route passes through, OUTERMOST FIRST (#1590) — the same shape the stepped
-   * reader carries. `[[]]` for a curve under no section.
+   * Where the curve plays, one entry per route to it: the arrangement sections
+   * (#1590) and whole-track time changes (#1595) that route passes through,
+   * OUTERMOST FIRST — the same shape the stepped reader carries. `[[]]` for a curve
+   * under neither.
    */
-  readonly placements: readonly (readonly SectionWindow[])[]
+  readonly placements: readonly (readonly TimeStep[])[]
 }
 
 /**
@@ -117,10 +118,12 @@ export interface SignalAutomation {
  * (insert a call at `chainEnd`), and the two must not be confused, because one
  * preserves every other byte and the other lengthens the document.
  *
- * Measured over the sweep corpus (`loadCorpus`, 150 documents, 119 drawable
- * automations since #1590): range spelled 105 (88%), rate spelled 76 (64%),
- * NEITHER 11 (9%). Before #1590 declined curves drawn on the wrong clock it was
- * 204: 184 (90%), 130 (64%), 16 (8%) — the shares held.
+ * Measured over the sweep corpus (`loadCorpus`, 150 documents, 133 drawable
+ * automations since #1595): range spelled 118 (89%), rate spelled 78 (59%),
+ * NEITHER 12 (9%). #1595 added 14 curves under a whole-track slow, 12 of which
+ * spell no rate of their own — the slow is the track's. Before that, #1590 took it
+ * from 204 (184 / 130 / 16) to 119 (105 / 76 / 11) by declining curves drawn on the
+ * wrong clock, and the shares held.
  * (#1468 moved the first three by +4/+4/+2: two documents whose top-level
  * bindings were discarded by the old leading-run rule now resolve, so their
  * chains are readable. The shares are unchanged.)
@@ -330,16 +333,23 @@ function childNodes(node: PatternIR): PatternIR[] {
  * and is why the drawing side must treat absence as ordinary.
  *
  * ⚠ ONLY WHERE THE CURVE IS HANDED A TIME A LANE CAN DRAW (#1590). A curve under
- * `.slow(2)`, `.early(0.5)`, `cpm`, or `jux(x => x.late(.25))` plays at a time the
- * song's clock does not give (measured through the engine: off by up to 0.917), and
- * one overridden by a later same-key call plays nothing at all. Those decline, by
- * the same walk the stepped reader uses (`parameterRoutes.ts`). A curve inside an
- * arrangement section is kept, with its placements, and is drawn at the section's
- * own time (`signalTimeAt`).
+ * `.early(0.5)`, `cpm`, or `jux(x => x.late(.25))` plays at a time the song's clock
+ * does not give (measured through the engine: off by up to 0.917), and one
+ * overridden by a later same-key call plays nothing at all. Those decline, by the
+ * same walk the stepped reader uses (`parameterRoutes.ts`). A curve inside an
+ * arrangement section, or under a whole-track `.slow`/`.fast` (#1595), is kept with
+ * its placements and drawn at the time they hand it (`signalTimeAt`).
+ *
+ * ⚠ A LATER SHIFT DECLINES (#1595). `.late(o)` hands the curve `t − o`, which is
+ * negative before bar `o`, and there the engine evaluates `saw = t % 1` with the
+ * sign kept (`signal.mjs:35`): `saw.slow(3)` under `.late(0.5)` plays −0.1667 at
+ * song time 0 (measured), below the floor a lane wraps its phase to. An earlier
+ * shift (`.late(−o)`) never goes negative and is kept.
  */
 export function signalAutomations(ir: PatternIR | null | undefined): readonly SignalAutomation[] {
   const out: SignalAutomation[] = []
   for (const { trackId, param, placements } of playableParameters(ir)) {
+    if (placements.some((p) => p.some((step) => !isSectionWindow(step) && step.shift < 0))) continue
     const value: unknown = param.value
     if (!value || typeof value !== 'object' || typeof (value as PatternIR).tag !== 'string') continue
     const read = readChain(value as PatternIR)
@@ -392,8 +402,9 @@ export function signalTimeAt(a: SignalAutomation, time: number): number | null {
  * nodes and this one 239. Answering the period question with the drawing reader
  * would silently under-report by those 40 — and by far more since #1590, which
  * made the drawing reader decline every curve the song does not hand its own
- * clock (the span census now counts 119 drawable automations there). This
- * reader is unchanged by it: a curve under `.slow(2)` still makes its control move.
+ * clock (the span census counted 119 drawable automations there after #1590, and
+ * 133 once #1595 drew the whole-track slows back). This reader is unchanged by
+ * either: a curve under `.early(0.5)` still makes its control move.
  *
  * Returns KEYS rather than nodes because that is what the consumer needs: the
  * cycle fingerprint reads an event's whole value partition (`eventValueKey.ts` —
