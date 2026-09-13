@@ -109,13 +109,15 @@ describe('#1584 — what the reader declines really does play something else', (
   // `undefined` is an event from another section or track that carries no gain —
   // not a disagreement. A disagreement is a value the plain reading would not give.
   it.each([
-    ['slow', 's("bd*4").gain("<0.2 0.8>").slow(2)'],
+    // A whole-number slow is applied now — its arm is in the #1595 block below.
     ['fast', 's("bd*4").gain("<0.2 0.8>").fast(2)'],
     ['early', 's("bd*4").gain("<0.2 0.8>").early(1)'],
     ['off', 's("bd*4").gain("<0.2 0.8>").off(0.25, x => x.speed(2))'],
     ['every, with a time transform', 's("bd*4").gain("<0.2 0.8>").every(2, x => x.fast(2))'],
     ['sometimesBy, with a time transform', 's("bd*4").gain("<0.2 0.8>").sometimesBy(0.5, x => x.late(0.25))'],
     ['jux, with a time transform', 's("bd*4").gain("<0.2 0.8>").jux(x => x.fast(2))'],
+    // Each route alone keeps bars whole (#1595); only disjointness declines the pair.
+    ['jux, with a slow', 's("bd*4").gain("<0.2 0.8>").jux(x => x.slow(2))'],
     ['an operator the parser drops: /[2]', 's("bd*4").gain("<0.2 0.8>/[2]")'],
     ['an operator the parser drops: /<2 1>', 's("bd*4").gain("<0.2 0.8>/<2 1>")'],
     ['an operator the parser drops: *<8 16>', 's("bd*4").gain("<0.2 0.8>*<8 16>")'],
@@ -124,6 +126,52 @@ describe('#1584 — what the reader declines really does play something else', (
     const rows = await valuesPerCycle(code, 'gain', 8)
     const disagrees = rows.some((row, c) => row.some((v) => v !== undefined && v !== PLAIN(c)))
     expect(disagrees, `the engine played the plain reading after all: ${JSON.stringify(rows)}`).toBe(true)
+  }, 60_000)
+})
+
+describe('#1595 — a whole-track time change that keeps each bar on one step is applied, and the engine agrees', () => {
+  // Two rivals, each a formula over the same steps: the song cycle (no time steps
+  // at all), and the reader's steps composed in the OTHER order. Every input is
+  // one where the engine disagrees with the rival, so an arm that stopped telling
+  // them apart would fail rather than confirm.
+  const songCycle = (a: SteppedAutomation): SteppedAutomation => ({ ...a, placements: [[]] })
+  const reversed = (a: SteppedAutomation): SteppedAutomation => ({ ...a, placements: a.placements.map((p) => [...p].reverse()) })
+
+  it.each([
+    // [label, code, bd onsets per playing bar]
+    ['a slow by 2', 's("bd*4").gain("<0.2 0.8>").slow(2)', 2],
+    ['a fast by a half', 's("bd*4").gain("<0.2 0.8>").fast(0.5)', 2],
+    ['a shift by a whole cycle', 's("bd*4").gain("<0.2 0.8>").late(1)', 4],
+    ['a slow over a shift', 's("bd*4").gain("<0.2 0.8>").late(1).slow(2)', 2],
+    ['a slow inside a section', 'arrange([3, s("bd*4").gain("<0.2 0.8>").slow(2)], [1, s("hh*4")])', 2],
+    // A later whole-cycle shift around an arrangement hands the section formula a
+    // NEGATIVE cycle before bar 1 — the engine's arrangement wraps it the same way.
+    ['a whole-cycle later shift around a section', 'arrange([2, s("bd*4").gain("<0.2 0.8 0.5>")], [1, s("hh*4")]).late(1)', 4],
+  ])('%s', async (_label, code, perBar) => {
+    const [a] = steppedAutomations(parseStrudel(code) as never)
+    expect(a, 'the reader found no stepped parameter').toBeDefined()
+    const cycles = 16
+    // `hh` carries no gain, so a silent bar of this parameter is an empty row.
+    const rows = (await valuesPerCycle(code, 'gain', cycles)).map((row) => row.filter((v) => v !== undefined))
+    const predict = (x: SteppedAutomation) =>
+      rows.map((_row, c) => {
+        const k = stepIndexAtCycle(x, c)
+        return k === null ? [] : Array.from({ length: perBar }, () => x.steps[k].value)
+      })
+    expect(rows).toEqual(predict(a))
+    expect(rows, 'the song-cycle reading agrees — this input tells nothing apart').not.toEqual(predict(songCycle(a)))
+    if (a.placements[0].length > 1) {
+      expect(rows, 'the reversed composition agrees — this input tells nothing apart').not.toEqual(predict(reversed(a)))
+    }
+  }, 60_000)
+
+  it.each([
+    ['a slow by a fraction', 's("bd*4").gain("<0.2 0.8>").slow(1.5)'],
+    ['a shift by part of a cycle', 's("bd*4").gain("<0.2 0.8>").late(0.5)'],
+  ])('%s declines, and the engine changes the step inside a bar', async (_label, code) => {
+    expect(steppedAutomations(parseStrudel(code) as never)).toEqual([])
+    const rows = await valuesPerCycle(code, 'gain', 8)
+    expect(rows.some((row) => new Set(row.filter((v) => v !== undefined)).size > 1), JSON.stringify(rows)).toBe(true)
   }, 60_000)
 })
 

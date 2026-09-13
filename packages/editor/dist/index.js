@@ -951,6 +951,10 @@ var STRUDEL_VIZ_METHODS = {
 };
 
 // src/ir/parameterRoutes.ts
+function isSectionWindow(step) {
+  return "total" in step;
+}
+__name(isSectionWindow, "isSectionWindow");
 var LEAVES_THE_CYCLE = /* @__PURE__ */ new Set([
   "Track",
   "Param",
@@ -969,6 +973,16 @@ function leavesTheCycle(node) {
   return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, node.via.method.replace(/^_/, ""));
 }
 __name(leavesTheCycle, "leavesTheCycle");
+function timeWarpOf(node) {
+  if (node.tag === "Fast" && Number.isFinite(node.factor) && node.factor > 0) {
+    const inverse = 1 / node.factor;
+    return Number.isInteger(inverse) ? { times: 1, per: inverse, shift: 0 } : { times: node.factor, per: 1, shift: 0 };
+  }
+  if (node.tag === "Slow" && Number.isFinite(node.factor) && node.factor > 0) return { times: 1, per: node.factor, shift: 0 };
+  if (node.tag === "Late" && Number.isFinite(node.offset)) return { times: 1, per: 1, shift: 0 - node.offset };
+  return null;
+}
+__name(timeWarpOf, "timeWarpOf");
 var SKIP_KEYS = /* @__PURE__ */ new Set(["loc", "keyLoc", "callSiteRange"]);
 function childNodes(node) {
   const out = [];
@@ -994,9 +1008,9 @@ function childNodes(node) {
   return out;
 }
 __name(childNodes, "childNodes");
-function collect(node, overridden, timeMoved, sections, found, seen, ids) {
+function collect(node, overridden, timeMoved, steps, found, seen, ids) {
   if (!node || typeof node !== "object") return;
-  const route = routeKey(sections, ids);
+  const route = routeKey(steps, ids);
   const state5 = `${timeMoved}|${[...overridden].sort().join(",")}|${route}`;
   const states = seen.get(node) ?? /* @__PURE__ */ new Set();
   if (states.has(state5)) return;
@@ -1006,31 +1020,36 @@ function collect(node, overridden, timeMoved, sections, found, seen, ids) {
   if (node.tag === "Param") {
     const entry = found.get(node) ?? { clean: true, routes: /* @__PURE__ */ new Map() };
     entry.clean = entry.clean && !timeMoved && !overridden.has(node.key);
-    entry.routes.set(route, sections);
+    entry.routes.set(route, steps);
     found.set(node, entry);
     passDown = new Set(overridden).add(node.key);
   }
-  const visit = /* @__PURE__ */ __name((child, childSections, childTimeMoved2) => {
+  const visit = /* @__PURE__ */ __name((child, childSteps, childTimeMoved2) => {
     if (child.tag === "Track") return;
-    collect(child, passDown, childTimeMoved2, childSections, found, seen, ids);
+    collect(child, passDown, childTimeMoved2, childSteps, found, seen, ids);
   }, "visit");
   if (node.tag === "Arrange") {
     const windows = sectionWindows(node);
     node.arms.forEach(
       (arm, i) => visit(
         arm.pattern,
-        windows ? [...sections, { node, arm: i, window: windows[i] }] : sections,
+        windows ? [...steps, { node, arm: i, step: windows[i] }] : steps,
         timeMoved || windows === null
       )
     );
     return;
   }
+  const warp = timeWarpOf(node);
+  if (warp) {
+    for (const child of childNodes(node)) visit(child, [...steps, { node, arm: -1, step: warp }], timeMoved);
+    return;
+  }
   const childTimeMoved = timeMoved || !leavesTheCycle(node);
-  for (const child of childNodes(node)) visit(child, sections, childTimeMoved);
+  for (const child of childNodes(node)) visit(child, steps, childTimeMoved);
 }
 __name(collect, "collect");
-function routeKey(sections, ids) {
-  return sections.map((s) => {
+function routeKey(steps, ids) {
+  return steps.map((s) => {
     let id = ids.get(s.node);
     if (id === void 0) {
       id = ids.size;
@@ -1078,27 +1097,32 @@ function playableParameters(ir) {
       if (!clean) continue;
       const chains = [...routes.values()];
       if (!routesAreDisjoint(chains)) continue;
-      out.push({ trackId, param, placements: chains.map((chain) => chain.map((s) => s.window)) });
+      out.push({ trackId, param, placements: chains.map((chain) => chain.map((s) => s.step)) });
     }
   }
   return out;
 }
 __name(playableParameters, "playableParameters");
-function sectionTimeAt(placement, time) {
-  let c = Math.floor(time);
-  const fraction = time - c;
-  for (const { startCycle, cycles, total } of placement) {
+function placementTimeAt(placement, time) {
+  let t = time;
+  for (const step of placement) {
+    if (!isSectionWindow(step)) {
+      t = t * step.times / step.per + step.shift;
+      continue;
+    }
+    const { startCycle, cycles, total } = step;
+    const c = Math.floor(t);
     const pass = Math.floor(c / total);
     const q = c - pass * total;
     if (q < startCycle || q >= startCycle + cycles) return null;
-    c = pass * cycles + (q - startCycle);
+    t = pass * cycles + (q - startCycle) + (t - c);
   }
-  return c + fraction;
+  return t;
 }
-__name(sectionTimeAt, "sectionTimeAt");
+__name(placementTimeAt, "placementTimeAt");
 function placementsTimeAt(placements, time) {
   for (const placement of placements) {
-    const own = sectionTimeAt(placement, time);
+    const own = placementTimeAt(placement, time);
     if (own !== null) return own;
   }
   return null;
@@ -1200,6 +1224,7 @@ __name(childNodes2, "childNodes");
 function signalAutomations(ir) {
   const out = [];
   for (const { trackId, param, placements } of playableParameters(ir)) {
+    if (placements.some((p) => p.some((step) => !isSectionWindow(step) && step.shift < 0))) continue;
     const value = param.value;
     if (!value || typeof value !== "object" || typeof value.tag !== "string") continue;
     const read5 = readChain(value);
@@ -1418,10 +1443,15 @@ __name(signalDimensionsOf, "signalDimensionsOf");
 function songPeriodOf(a) {
   let out = null;
   for (const placement of a.placements) {
-    if (placement.some((w) => w.cycles === 0)) continue;
+    if (placement.some((w) => isSectionWindow(w) && w.cycles === 0)) continue;
     let p = a.periodCycles;
     for (let k = placement.length - 1; k >= 0 && p !== null; k--) {
-      const { cycles, total } = placement[k];
+      const step = placement[k];
+      if (!isSectionWindow(step)) {
+        p = p * step.per / step.times;
+        continue;
+      }
+      const { cycles, total } = step;
       const l = rationalLcm(cycles, p);
       p = l === null ? null : total * l / cycles;
     }
@@ -1926,6 +1956,10 @@ function matchBracket(input, openPos) {
 __name(matchBracket, "matchBracket");
 
 // src/ir/steppedAutomation.ts
+function keepsBarsWhole(placement) {
+  return placement.every((step) => isSectionWindow(step) || Number.isInteger(step.per / step.times) && Number.isInteger(step.shift));
+}
+__name(keepsBarsWhole, "keepsBarsWhole");
 var NUMBER = /^-?(?:\d+\.?\d*|\.\d+)$/;
 function readSteps(param) {
   const raw = param.rawArgs.trim();
@@ -1993,6 +2027,7 @@ __name(slowFactor, "slowFactor");
 function steppedAutomations(ir) {
   const out = [];
   for (const { trackId, param, placements } of playableParameters(ir)) {
+    if (!placements.every(keepsBarsWhole)) continue;
     const steps = readSteps(param);
     if (!steps) continue;
     const start = param.loc?.[0]?.start;
@@ -2010,8 +2045,9 @@ function steppedAutomations(ir) {
 }
 __name(steppedAutomations, "steppedAutomations");
 function stepIndexAtCycle(a, cycle) {
-  const own = placementsTimeAt(a.placements, Math.floor(cycle));
-  if (own === null) return null;
+  const handed = placementsTimeAt(a.placements, Math.floor(cycle));
+  if (handed === null) return null;
+  const own = Math.floor(handed);
   const period = a.periodCycles;
   const pos = (own % period + period) % period;
   for (let k = a.steps.length - 1; k >= 0; k--) {

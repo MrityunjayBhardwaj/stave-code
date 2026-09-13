@@ -1,14 +1,17 @@
 /**
- * Which parameters of a track play the time the song hands them, and inside which
- * arrangement sections — the walk both automation readers share (#1590).
+ * Which parameters of a track play a time a lane can draw, and what that time is —
+ * the walk both automation readers share (#1590).
  *
- * A control's value is chosen by the time its pattern is queried at, and that is the
- * song's time only where nothing above the control moves time. `.slow(2)`,
- * `.early(1)` and `jux(x => x.fast(2))` hand it another time (#1584); an arm of
- * `arrange`, `cat` or `slowcat` hands it the time its SECTION has played (#1585); and
- * a same-key call above it replaces its value outright. A stepped parameter and a
- * continuous curve fail the same way under each, so the rule lives here once, and
- * `steppedAutomation.ts` and `signalAutomation.ts` decide only what a VALUE is.
+ * A control's value is chosen by the time its pattern is queried at. `.slow(2)`,
+ * `.fast(2)` and `.late(1)` hand it a scaled or shifted time (#1595); an arm of
+ * `arrange`, `cat` or `slowcat` hands it the time its SECTION has played (#1585).
+ * Both are arithmetic, so the walk records them on the route and a lane applies
+ * them. What the walk cannot follow declines the parameter: an opaque call that
+ * might move time, two routes that play the parameter at once (`jux(x =>
+ * x.fast(2))`), or a same-key call above it that replaces its value outright. A
+ * stepped parameter and a continuous curve fail the same way under each, so the
+ * rule lives here once, and `steppedAutomation.ts` and `signalAutomation.ts` decide
+ * only what a VALUE is and which times they can draw.
  *
  * Pure and structural, over the IR: no eval, no source scanning.
  */
@@ -28,25 +31,47 @@ export interface SectionWindow {
   readonly total: number
 }
 
-/** A parameter every route to which is clean, with where it plays. */
+/**
+ * A whole-track time change a parameter sits under (#1595): the pattern below it is
+ * handed `t · times / per + shift` when the pattern above is handed `t`.
+ *
+ * `@strudel/core@1.2.6` `pattern.mjs`: `fast(f)` queries its receiver at `t · f`
+ * (`:1931`, and plays silence for 0), `slow(f)` is `fast(1 / f)` (`:1962`), and
+ * `late(o)` is `early(−o)`, which queries at `t + (−o)` (`:2065`, `:2085`).
+ */
+export interface TimeWarp {
+  readonly times: number
+  readonly per: number
+  readonly shift: number
+}
+
+/** One step of a route from a track to its parameter: a section, or a time warp. */
+export type TimeStep = SectionWindow | TimeWarp
+
+export function isSectionWindow(step: TimeStep): step is SectionWindow {
+  return 'total' in step
+}
+
+/** A parameter every route to which the walk can follow, with where it plays. */
 export interface PlayableParameter {
   /** The lane it belongs to — the root `Track`'s id. */
   readonly trackId: string
   readonly param: ParamNode
   /**
-   * One entry per route to the parameter: the sections that route passes through,
-   * OUTERMOST FIRST. A parameter under no section has one route through none —
-   * `[[]]` — and sees the song's time as its own. A binding arranged twice has two
-   * routes, one per appearance.
+   * One entry per route to the parameter: the sections and time warps that route
+   * passes through, OUTERMOST FIRST. A parameter under neither has one route
+   * through none — `[[]]` — and sees the song's time as its own. A binding
+   * arranged twice has two routes, one per appearance.
    */
-  readonly placements: readonly (readonly SectionWindow[])[]
+  readonly placements: readonly (readonly TimeStep[])[]
 }
 
 /**
- * The nodes a parameter may sit under and still be handed the song's time (#1584).
- * Anything else — a time transform, or a node the parser left opaque — declines the
- * parameter, with one exception checked beside this list: an opaque call to one of
- * Strudel's visualisers (`leavesTheCycle`, #1592).
+ * The nodes a parameter may sit under and be handed the time above them unchanged
+ * (#1584). A time warp (`timeWarpOf`) and an arrangement (`sectionWindows`) change
+ * it by arithmetic the route records; anything else — a node the parser left
+ * opaque, say — declines the parameter, with one exception checked beside this
+ * list: an opaque call to one of Strudel's visualisers (`leavesTheCycle`, #1592).
  *
  * Every entry is an arm in `steppedAutomation.engine.test.ts`, which checks the
  * reader's prediction against what the engine plays; every time-changing shape it
@@ -67,9 +92,9 @@ export interface PlayableParameter {
  *
  * ⚠ A METHOD THAT TAKES A FUNCTION (`every`, `sometimesBy`, `layer`, `jux`) IS SAFE
  * ONLY BECAUSE THE FUNCTION'S BODY IS IN THE TREE. `jux(x => x.fast(2))` reaches the
- * parameter a second time through a `Fast`, and that route declines it (see
- * `collect`). A function the parser cannot model is an opaque `Code`, which declines
- * too.
+ * parameter a second time through a `Fast`, and the two routes play it at once, so
+ * it declines (`routesAreDisjoint`). A function the parser cannot model is an
+ * opaque `Code`, which declines too.
  */
 const LEAVES_THE_CYCLE: ReadonlySet<string> = new Set([
   'Track',
@@ -99,6 +124,28 @@ function leavesTheCycle(node: PatternIR): boolean {
   if (LEAVES_THE_CYCLE.has(node.tag)) return true
   if (node.tag !== 'Code' || !node.via || !('method' in node.via)) return false
   return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, node.via.method.replace(/^_/, ''))
+}
+
+/**
+ * The warp a `Fast`, `Slow` or `Late` node applies to its body, or null for any
+ * other node — and for a factor of 0, which plays silence (#1595).
+ *
+ * The parser builds these three from a whole numeric literal only (`numericValue`,
+ * #1480), so `.fast(8/7)` is an opaque call here, never `fast(8)`. A patterned
+ * argument (`.slow("<2 4>")`) is opaque too.
+ *
+ * A fast by the inverse of a whole number is kept as a division (`fast(0.5)` is
+ * `per: 2`), so a lane that floors the handed time is not left one float below a
+ * cycle boundary.
+ */
+function timeWarpOf(node: PatternIR): TimeWarp | null {
+  if (node.tag === 'Fast' && Number.isFinite(node.factor) && node.factor > 0) {
+    const inverse = 1 / node.factor
+    return Number.isInteger(inverse) ? { times: 1, per: inverse, shift: 0 } : { times: node.factor, per: 1, shift: 0 }
+  }
+  if (node.tag === 'Slow' && Number.isFinite(node.factor) && node.factor > 0) return { times: 1, per: node.factor, shift: 0 }
+  if (node.tag === 'Late' && Number.isFinite(node.offset)) return { times: 1, per: 1, shift: 0 - node.offset }
+  return null
 }
 
 const SKIP_KEYS: ReadonlySet<string> = new Set(['loc', 'keyLoc', 'callSiteRange'])
@@ -131,14 +178,15 @@ function childNodes(node: PatternIR): PatternIR[] {
 
 /**
  * Walk one track, recording for every `Param` it meets whether EVERY route to it
- * was clean: no same-key call above it, and nothing above it that moves time.
+ * could be followed — no same-key call above it, and nothing above it that moves
+ * time in a way the route cannot record — and the steps each route took.
  *
  * ⚠ EVERY ROUTE, NOT THE FIRST. A function-taking method puts one node in the tree
  * twice over: `jux(x => x.fast(2))` reaches the same `Param` once through the
- * plain channel and once through a `Fast`. The first route alone is clean, and the
- * engine plays two different values in a cycle (engine test). So a node is walked
- * again whenever it is reached in a state it has not been walked in, and one dirty
- * route declines it.
+ * plain channel and once through a `Fast`. Each route alone can be followed, and
+ * the engine plays two different values in a cycle (engine test). So a node is
+ * walked again whenever it is reached in a state it has not been walked in, and
+ * `routesAreDisjoint` then asks whether the routes can play at once.
  *
  * ⚠ `overridden` IS THE LOAD-BEARING ARGUMENT. Strudel's controls SET a value, so
  * the last call in a chain wins: `.gain("<0.2 0.8>").gain(0.5)` plays 0.5 on every
@@ -157,7 +205,7 @@ function collect(
   node: PatternIR,
   overridden: ReadonlySet<string>,
   timeMoved: boolean,
-  sections: readonly SectionStep[],
+  steps: readonly RouteStep[],
   found: Map<ParamNode, ParamRoutes>,
   seen: Map<PatternIR, Set<string>>,
   ids: Map<PatternIR, number>,
@@ -166,7 +214,7 @@ function collect(
   // ⚠ THE ROUTE IS PART OF THE STATE (#1585). A binding arranged twice is ONE node
   // reached through two arms; walked once, its second appearance would never be
   // recorded and the lane would draw half the bars that play it.
-  const route = routeKey(sections, ids)
+  const route = routeKey(steps, ids)
   const state = `${timeMoved}|${[...overridden].sort().join(',')}|${route}`
   const states = seen.get(node) ?? new Set<string>()
   if (states.has(state)) return
@@ -175,17 +223,17 @@ function collect(
 
   let passDown = overridden
   if (node.tag === 'Param') {
-    const entry = found.get(node) ?? { clean: true, routes: new Map<string, readonly SectionStep[]>() }
+    const entry = found.get(node) ?? { clean: true, routes: new Map<string, readonly RouteStep[]>() }
     entry.clean = entry.clean && !timeMoved && !overridden.has(node.key)
-    entry.routes.set(route, sections)
+    entry.routes.set(route, steps)
     found.set(node, entry)
     passDown = new Set(overridden).add(node.key)
   }
 
-  const visit = (child: PatternIR, childSections: readonly SectionStep[], childTimeMoved: boolean): void => {
+  const visit = (child: PatternIR, childSteps: readonly RouteStep[], childTimeMoved: boolean): void => {
     // A nested Track declares its own lane; its parameters are not this one's.
     if (child.tag === 'Track') return
-    collect(child, passDown, childTimeMoved, childSections, found, seen, ids)
+    collect(child, passDown, childTimeMoved, childSteps, found, seen, ids)
   }
 
   if (node.tag === 'Arrange') {
@@ -196,35 +244,42 @@ function collect(
     node.arms.forEach((arm, i) =>
       visit(
         arm.pattern,
-        windows ? [...sections, { node, arm: i, window: windows[i] }] : sections,
+        windows ? [...steps, { node, arm: i, step: windows[i] }] : steps,
         timeMoved || windows === null,
       ),
     )
     return
   }
+  const warp = timeWarpOf(node)
+  if (warp) {
+    // A warp has one child, its receiver, and hands it the warped time (#1595).
+    for (const child of childNodes(node)) visit(child, [...steps, { node, arm: -1, step: warp }], timeMoved)
+    return
+  }
   const childTimeMoved = timeMoved || !leavesTheCycle(node)
-  for (const child of childNodes(node)) visit(child, sections, childTimeMoved)
+  for (const child of childNodes(node)) visit(child, steps, childTimeMoved)
 }
 
-/** One section a route passes through: the arrangement, which of its arms, and
- *  the window that arm opens. */
-interface SectionStep {
+/** One step a route takes: the node, which of its arms (−1 for a warp, which has
+ *  one), and the time step that node applies. */
+interface RouteStep {
   readonly node: PatternIR
   readonly arm: number
-  readonly window: SectionWindow
+  readonly step: TimeStep
 }
 
-/** What the walk learned about one `Param`: whether every route to it was clean,
- *  and the distinct section chains those routes passed through. */
+/** What the walk learned about one `Param`: whether every route to it could be
+ *  followed, and the distinct step chains those routes took. */
 interface ParamRoutes {
   clean: boolean
-  readonly routes: Map<string, readonly SectionStep[]>
+  readonly routes: Map<string, readonly RouteStep[]>
 }
 
-/** A route's identity — the arms it took, arrangement by arrangement. Two routes
- *  through the same arms see the same cycles, so they are one placement. */
-function routeKey(sections: readonly SectionStep[], ids: Map<PatternIR, number>): string {
-  return sections
+/** A route's identity — the nodes it passed through that change time, and the arm
+ *  it took at each. Two routes through the same steps see the same time, so they
+ *  are one placement. */
+function routeKey(steps: readonly RouteStep[], ids: Map<PatternIR, number>): string {
+  return steps
     .map((s) => {
       let id = ids.get(s.node)
       if (id === undefined) {
@@ -274,12 +329,13 @@ function sectionWindows(node: PatternIR & { tag: 'Arrange' }): SectionWindow[] |
  * the arms of one pass are disjoint, and everything above the parting is shared.
  * Any other parting can play two values at once — a route that stays outside the
  * section another enters (`stack(a, arrange([1, a], [1, b]))` plays two gains in
- * a cycle, measured), or two arrangements side by side under a `stack`. Those
+ * a cycle, measured), two arrangements side by side under a `stack`, or one route
+ * through a time warp the other skips (`jux(x => x.fast(2))`, `off`, #1595). Those
  * decline rather than being checked cycle by cycle: the conservative answer, and
  * the one whose failure is a missing lane rather than a wrong one.
  */
-function routesAreDisjoint(routes: readonly (readonly SectionStep[])[]): boolean {
-  const partAtAnArm = (a: readonly SectionStep[], b: readonly SectionStep[]): boolean => {
+function routesAreDisjoint(routes: readonly (readonly RouteStep[])[]): boolean {
+  const partAtAnArm = (a: readonly RouteStep[], b: readonly RouteStep[]): boolean => {
     for (let k = 0; k < Math.min(a.length, b.length); k++) {
       if (a[k].node !== b[k].node) return false
       if (a[k].arm !== b[k].arm) return true
@@ -290,9 +346,10 @@ function routesAreDisjoint(routes: readonly (readonly SectionStep[])[]): boolean
 }
 
 /**
- * Every parameter of every track whose routes are all clean and disjoint, with its
- * placements, in the order the walk first met each one. A reader then decides
- * whether the parameter's VALUE is one it can draw.
+ * Every parameter of every track whose routes can all be followed and are
+ * disjoint, with its placements, in the order the walk first met each one. A reader
+ * then decides whether the parameter's VALUE is one it can draw, at the times its
+ * placements hand it.
  */
 export function playableParameters(ir: PatternIR | null | undefined): readonly PlayableParameter[] {
   if (!ir) return []
@@ -308,7 +365,7 @@ export function playableParameters(ir: PatternIR | null | undefined): readonly P
       if (!clean) continue
       const chains = [...routes.values()]
       if (!routesAreDisjoint(chains)) continue
-      out.push({ trackId, param, placements: chains.map((chain) => chain.map((s) => s.window)) })
+      out.push({ trackId, param, placements: chains.map((chain) => chain.map((s) => s.step)) })
     }
   }
   return out
@@ -316,29 +373,35 @@ export function playableParameters(ir: PatternIR | null | undefined): readonly P
 
 /**
  * The time a placement's parameter is handed at song time `time`, or null when one
- * of its sections is silent then (#1585, #1590) — `arrange`'s own arithmetic, one
- * section at a time, outermost first (`sectionWindows` gives the formula and its
- * grounding). The fraction of the cycle carries through unchanged: a section runs at
- * the song's rate, so only the whole cycles it has played differ.
+ * of its sections is silent then (#1585, #1590, #1595) — each step in turn,
+ * outermost first. A warp scales and shifts the time; a section applies
+ * `arrange`'s own arithmetic (`sectionWindows` gives the formula and its
+ * grounding) to the whole cycles and carries the fraction through unchanged, since
+ * a section runs at the rate of whatever is above it.
  */
-export function sectionTimeAt(placement: readonly SectionWindow[], time: number): number | null {
-  let c = Math.floor(time)
-  const fraction = time - c
-  for (const { startCycle, cycles, total } of placement) {
+export function placementTimeAt(placement: readonly TimeStep[], time: number): number | null {
+  let t = time
+  for (const step of placement) {
+    if (!isSectionWindow(step)) {
+      t = (t * step.times) / step.per + step.shift
+      continue
+    }
+    const { startCycle, cycles, total } = step
+    const c = Math.floor(t)
     const pass = Math.floor(c / total)
     const q = c - pass * total
     if (q < startCycle || q >= startCycle + cycles) return null
-    c = pass * cycles + (q - startCycle)
+    t = pass * cycles + (q - startCycle) + (t - c)
   }
-  return c + fraction
+  return t
 }
 
 /** The time a parameter is handed at song time `time` through whichever of its
  *  placements is playing then, or null when none is. Routes are disjoint, so at
  *  most one plays at a time. */
-export function placementsTimeAt(placements: readonly (readonly SectionWindow[])[], time: number): number | null {
+export function placementsTimeAt(placements: readonly (readonly TimeStep[])[], time: number): number | null {
   for (const placement of placements) {
-    const own = sectionTimeAt(placement, time)
+    const own = placementTimeAt(placement, time)
     if (own !== null) return own
   }
   return null

@@ -20,7 +20,7 @@ export { signalAutomations, signalCarryingParamKeys, signalTimeAt } from './ir'
 export type { SignalAutomation, SignalKind, SignalSpans } from './ir'
 // #1463 Stage 1 — the stepped class, for the same lane.
 export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './ir'
-export type { SteppedAutomation, SteppedStep, SectionWindow } from './ir'
+export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp } from './ir'
 
 // Phase 19-07 (#79) — parser stage helpers. PK10 propagation: re-exported
 // from the top-level barrel so the app can `import { runRawStage, ... }

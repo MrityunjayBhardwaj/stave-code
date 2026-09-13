@@ -81,7 +81,7 @@ export { signalAutomations, signalCarryingParamKeys, signalTimeAt } from './sign
 export type { SignalAutomation, SignalKind, SignalSpans } from './signalAutomation'
 // Stepped automation (#1463) — the per-cycle class beside #1464's continuous one.
 export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './steppedAutomation'
-export type { SteppedAutomation, SteppedStep, SectionWindow } from './steppedAutomation'
+export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp } from './steppedAutomation'
 
 // Event identity (#1102) — exported so the NEXT consumer asking "are these two
 // events the same sound" finds the one answer instead of curating its own field

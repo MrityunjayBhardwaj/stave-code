@@ -553,9 +553,26 @@ describe('signalDimensionsOf — a curve inside a section repeats on the song cl
   })
 
   it('a curve the reader declines contributes no period — it still strips its key', () => {
-    const d = signalDimensionsOf(parseStrudel('$: s("bd*8").gain(saw.slow(3)).slow(2)') as never)
+    // `.early` is an opaque call; `.slow` is applied since #1595.
+    const d = signalDimensionsOf(parseStrudel('$: s("bd*8").gain(saw.slow(3)).early(0.5)') as never)
     expect(d.periods).toEqual([])
     expect([...d.keys]).toEqual(['gain'])
+  })
+})
+
+describe('signalDimensionsOf — a whole-track time change stretches the period it repeats at (#1595)', () => {
+  const periods = (src: string) => signalDimensionsOf(parseStrudel(src) as never).periods
+
+  it.each([
+    ['a slow', '$: s("bd*8").gain(saw.slow(3)).slow(2)', [6]],
+    ['a fast', '$: s("bd*8").gain(saw.slow(3)).fast(2)', [1.5]],
+    // A shift moves where the curve starts, never how long it takes to come back.
+    ['a shift', '$: s("bd*8").gain(saw.slow(3)).late(-0.5)', [3]],
+    // Innermost first: the section makes 3 into 9, the slow makes 9 into 18. The
+    // other order (slow 3 into 6, then the section) gives 9, and the engine says 18.
+    ['a slow around a section', '$: arrange([1, s("hh*8")], [2, s("bd*8").gain(saw.slow(3))]).slow(2)', [18]],
+  ])('%s', (_label, src, expected) => {
+    expect(periods(src)).toEqual(expected)
   })
 })
 
