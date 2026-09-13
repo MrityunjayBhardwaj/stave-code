@@ -1886,25 +1886,76 @@ function childNodes2(node) {
   return out;
 }
 __name(childNodes2, "childNodes");
-function collect(node, overridden, timeMoved, clean, seen) {
+function collect(node, overridden, timeMoved, sections, found, seen, ids) {
   if (!node || typeof node !== "object") return;
-  const state5 = `${timeMoved}|${[...overridden].sort().join(",")}`;
+  const route = routeKey(sections, ids);
+  const state5 = `${timeMoved}|${[...overridden].sort().join(",")}|${route}`;
   const states = seen.get(node) ?? /* @__PURE__ */ new Set();
   if (states.has(state5)) return;
   states.add(state5);
   seen.set(node, states);
   let passDown = overridden;
   if (node.tag === "Param") {
-    clean.set(node, (clean.get(node) ?? true) && !timeMoved && !overridden.has(node.key));
+    const entry = found.get(node) ?? { clean: true, routes: /* @__PURE__ */ new Map() };
+    entry.clean = entry.clean && !timeMoved && !overridden.has(node.key);
+    entry.routes.set(route, sections);
+    found.set(node, entry);
     passDown = new Set(overridden).add(node.key);
   }
-  const childTimeMoved = timeMoved || !LEAVES_THE_CYCLE.has(node.tag);
-  for (const child of childNodes2(node)) {
-    if (child.tag === "Track") continue;
-    collect(child, passDown, childTimeMoved, clean, seen);
+  const visit = /* @__PURE__ */ __name((child, childSections, childTimeMoved2) => {
+    if (child.tag === "Track") return;
+    collect(child, passDown, childTimeMoved2, childSections, found, seen, ids);
+  }, "visit");
+  if (node.tag === "Arrange") {
+    const windows = sectionWindows(node);
+    node.arms.forEach(
+      (arm, i) => visit(
+        arm.pattern,
+        windows ? [...sections, { node, arm: i, window: windows[i] }] : sections,
+        timeMoved || windows === null
+      )
+    );
+    return;
   }
+  const childTimeMoved = timeMoved || !LEAVES_THE_CYCLE.has(node.tag);
+  for (const child of childNodes2(node)) visit(child, sections, childTimeMoved);
 }
 __name(collect, "collect");
+function routeKey(sections, ids) {
+  return sections.map((s) => {
+    let id = ids.get(s.node);
+    if (id === void 0) {
+      id = ids.size;
+      ids.set(s.node, id);
+    }
+    return `${id}.${s.arm}`;
+  }).join("/");
+}
+__name(routeKey, "routeKey");
+function sectionWindows(node) {
+  const weights = node.arms.map((arm) => arm.weight);
+  if (!weights.every((w) => Number.isInteger(w) && w >= 0)) return null;
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  if (total === 0) return null;
+  let at = 0;
+  return weights.map((cycles) => {
+    const window2 = { startCycle: at, cycles, total };
+    at += cycles;
+    return window2;
+  });
+}
+__name(sectionWindows, "sectionWindows");
+function routesAreDisjoint(routes) {
+  const partAtAnArm = /* @__PURE__ */ __name((a, b) => {
+    for (let k = 0; k < Math.min(a.length, b.length); k++) {
+      if (a[k].node !== b[k].node) return false;
+      if (a[k].arm !== b[k].arm) return true;
+    }
+    return false;
+  }, "partAtAnArm");
+  return routes.every((a, i) => routes.slice(i + 1).every((b) => partAtAnArm(a, b)));
+}
+__name(routesAreDisjoint, "routesAreDisjoint");
 function steppedAutomations(ir) {
   if (!ir) return [];
   const roots = ir.tag === "Stack" ? ir.tracks : [ir];
@@ -1913,10 +1964,12 @@ function steppedAutomations(ir) {
     if (node?.tag !== "Track") continue;
     const trackId = node.trackId;
     if (typeof trackId !== "string" || trackId.length === 0) continue;
-    const clean = /* @__PURE__ */ new Map();
-    collect(node, /* @__PURE__ */ new Set(), false, clean, /* @__PURE__ */ new Map());
-    for (const [param, ok] of clean) {
-      if (!ok) continue;
+    const found = /* @__PURE__ */ new Map();
+    collect(node, /* @__PURE__ */ new Set(), false, [], found, /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map());
+    for (const [param, { clean, routes }] of found) {
+      if (!clean) continue;
+      const chains = [...routes.values()];
+      if (!routesAreDisjoint(chains)) continue;
       const steps = readSteps(param);
       if (!steps) continue;
       const start = param.loc?.[0]?.start;
@@ -1926,16 +1979,34 @@ function steppedAutomations(ir) {
         method: param.userMethod ?? param.key,
         steps,
         periodCycles: steps.reduce((sum, s) => sum + s.weight, 0),
-        offset: typeof start === "number" && Number.isFinite(start) ? start : null
+        offset: typeof start === "number" && Number.isFinite(start) ? start : null,
+        placements: chains.map((chain) => chain.map((s) => s.window))
       });
     }
   }
   return out;
 }
 __name(steppedAutomations, "steppedAutomations");
+function sectionCycleAt(placement, cycle) {
+  let c = Math.floor(cycle);
+  for (const { startCycle, cycles, total } of placement) {
+    const pass = Math.floor(c / total);
+    const q = c - pass * total;
+    if (q < startCycle || q >= startCycle + cycles) return null;
+    c = pass * cycles + (q - startCycle);
+  }
+  return c;
+}
+__name(sectionCycleAt, "sectionCycleAt");
 function stepIndexAtCycle(a, cycle) {
+  let own = null;
+  for (const placement of a.placements) {
+    own = sectionCycleAt(placement, cycle);
+    if (own !== null) break;
+  }
+  if (own === null) return null;
   const period = a.periodCycles;
-  const pos = (Math.floor(cycle) % period + period) % period;
+  const pos = (own % period + period) % period;
   for (let k = a.steps.length - 1; k >= 0; k--) {
     if (pos >= a.steps[k].startCycle) return k;
   }

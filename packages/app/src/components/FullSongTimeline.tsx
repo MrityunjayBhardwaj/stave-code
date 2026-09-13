@@ -95,7 +95,7 @@ import {
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
-import { signalAutomations, steppedAutomations, stepValueEdit, knobRangeFor, type SignalAutomation } from '@stave/editor'
+import { signalAutomations, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, type SignalAutomation } from '@stave/editor'
 import { stepAxis, stepDragValue, stepEdit, stepHitAt, stepY, withStepValue, type StepBand, type StepHit } from './musicalTimeline/steppedLane'
 import type { SceneStepped } from './musicalTimeline/timelineScene'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
@@ -1176,7 +1176,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const steppedByTrack = useMemo(() => {
     const by = new Map<string, SceneStepped[]>()
     for (const automation of steppedAutomations(props.ir ?? null)) {
-      const entry: SceneStepped = { automation, axis: stepAxis(automation, knobRangeFor) }
+      const entry: SceneStepped = { automation, axis: stepAxis(automation, knobRangeFor), stepAt: stepIndexAtCycle }
       const list = by.get(automation.trackId)
       if (list) list.push(entry)
       else by.set(automation.trackId, [entry])

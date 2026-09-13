@@ -40,10 +40,11 @@ async function valuesPerCycle(code: string, key: string, cycles: number): Promis
   }
 }
 
-/** What the READER says each cycle plays, in the same row shape. */
+/** What the READER says each cycle plays, in the same row shape. For a parameter
+ *  under no section, which every caller of this passes: every cycle plays a step. */
 function predicted(a: SteppedAutomation, eventsPerCycle: number, cycles: number): unknown[][] {
   return Array.from({ length: cycles }, (_, c) =>
-    Array.from({ length: eventsPerCycle }, () => a.steps[stepIndexAtCycle(a, c)].value),
+    Array.from({ length: eventsPerCycle }, () => a.steps[stepIndexAtCycle(a, c)!].value),
   )
 }
 
@@ -112,8 +113,6 @@ describe('#1584 — what the reader declines really does play something else', (
     ['fast', 's("bd*4").gain("<0.2 0.8>").fast(2)'],
     ['early', 's("bd*4").gain("<0.2 0.8>").early(1)'],
     ['off', 's("bd*4").gain("<0.2 0.8>").off(0.25, x => x.speed(2))'],
-    ['cat', 'cat(s("bd*4").gain("<0.2 0.8>"), s("hh*4"))'],
-    ['an arrange section', 'arrange([3, s("bd*4").gain("<0.2 0.8>")], [1, s("hh*4")])'],
     ['every, with a time transform', 's("bd*4").gain("<0.2 0.8>").every(2, x => x.fast(2))'],
     ['sometimesBy, with a time transform', 's("bd*4").gain("<0.2 0.8>").sometimesBy(0.5, x => x.late(0.25))'],
     ['jux, with a time transform', 's("bd*4").gain("<0.2 0.8>").jux(x => x.fast(2))'],
@@ -151,7 +150,7 @@ describe('#1584 — what the reader still reads plays exactly what it predicts',
     // so it is left out of this row; every other event must carry the step.
     const ours = rows.map((row) => row.filter((v) => v !== 1))
     expect(ours.flat().length).toBeGreaterThan(0)
-    expect(ours).toEqual(ours.map((row, c) => row.map(() => a.steps[stepIndexAtCycle(a, c)].value)))
+    expect(ours).toEqual(ours.map((row, c) => row.map(() => a.steps[stepIndexAtCycle(a, c)!].value)))
   }, 60_000)
 })
 
@@ -279,6 +278,108 @@ describe('#1587 — the IR read these as steps, and the engine does not play the
     expect(after.map((row) => row[0])).toEqual([0.6, 0.6, 0.6, 0.8, 0.6, 0.6, 0.6, 0.8])
     const [b] = steppedAutomations(parseStrudel(next) as never)
     expect(after).toEqual(predicted(b, 2, 8))
+  }, 60_000)
+})
+
+/** Every distinct gain each cycle carries, sorted. An event with no gain belongs to
+ *  another section or track, so it contributes nothing. */
+async function gainSets(code: string, cycles: number): Promise<number[][]> {
+  const rows = await valuesPerCycle(code, 'gain', cycles)
+  return rows.map((row) => [...new Set(row.filter((v): v is number => typeof v === 'number'))].sort((x, y) => x - y))
+}
+
+/**
+ * What the reader says each cycle carries, over every automation found, in
+ * `gainSets`' shape. `own` is the reader. `song` is the rival #1584 corrected: the
+ * same bars, but each step chosen by the SONG's cycle rather than the section's.
+ */
+function predictedSets(found: readonly SteppedAutomation[], cycles: number, reading: 'own' | 'song'): number[][] {
+  return Array.from({ length: cycles }, (_, c) => {
+    const values = found.flatMap((a) => {
+      const k = stepIndexAtCycle(a, c)
+      if (k === null) return []
+      return [a.steps[reading === 'own' ? k : stepIndexAtCycle({ ...a, placements: [[]] }, c)!].value]
+    })
+    return [...new Set(values)].sort((x, y) => x - y)
+  })
+}
+
+describe('#1585 — a section counts its own cycles, and the engine agrees', () => {
+  // Every input is one where the song-cycle reading gives a different answer
+  // somewhere in 24 cycles, so a pass is evidence for the reader and not a
+  // coincidence both share. ⚠ `arrange([2, a], [1, b], [2, a])` with a three-step
+  // `a` is NOT such an input: a pass of 5 moves the song 3 cycles ahead of the
+  // section, which a period of 3 cannot see. Its restart has its own arm below.
+  it.each([
+    ['an arrange section', 'arrange([3, s("bd*4").gain("<0.2 0.8>")], [1, s("hh*4")])'],
+    ['a later section', 'arrange([1, s("hh*4")], [2, s("bd*4").gain("<0.2 0.8 0.5>")])'],
+    ['a slowed alternation inside a section', 'arrange([3, s("bd*4").gain("<0.2 0.8>/2")], [1, s("hh*4")])'],
+    ['a weighted step inside a section', 'arrange([3, s("bd*4").gain("<0.2@2 0.8>")], [1, s("hh*4")])'],
+    ['cat', 'cat(s("bd*4").gain("<0.2 0.8 0.5>"), s("hh*4"), s("sd*4"))'],
+    ['slowcat', 'slowcat(s("bd*4").gain("<0.2 0.8 0.5>"), s("hh*4"))'],
+    ['a nested arrangement', 'arrange([2, arrange([1, s("bd*4").gain("<0.2 0.8 0.5>")], [1, s("sd*4")])], [1, s("hh*4")])'],
+    ['an arrangement under stack', 'stack(arrange([3, s("bd*4").gain("<0.2 0.8>")], [1, s("hh*4")]), s("cp*4"))'],
+    ['a section of weight 0 beside it', 'arrange([0, s("sd*4")], [3, s("bd*4").gain("<0.2 0.8 0.5>")], [1, s("hh*4")])'],
+    ['a binding arranged twice', 'const a = s("bd*4").gain("<0.2 0.8 0.5>")\narrange([2, a], [2, s("hh*4")], [2, a])'],
+    ['the same section written out twice', 'arrange([2, s("bd*4").gain("<0.2 0.8 0.5>")], [2, s("hh*4")], [2, s("bd*4").gain("<0.2 0.8 0.5>")])'],
+    ['one binding in two adjacent sections', 'const a = s("bd*4").gain("<0.2 0.8 0.5>")\narrange([1, a], [1, a], [1, s("hh*4")])'],
+  ])('%s', async (_label, code) => {
+    const found = steppedAutomations(parseStrudel(code) as never)
+    expect(found.length, 'the reader declined').toBeGreaterThan(0)
+    const rows = await gainSets(code, 24)
+    expect(rows.flat().length, 'the engine played no gain at all').toBeGreaterThan(0)
+    expect(rows).toEqual(predictedSets(found, 24, 'own'))
+    expect(rows, 'the song-cycle reading predicts this input too — it is not evidence').not.toEqual(predictedSets(found, 24, 'song'))
+  }, 60_000)
+
+  it('a section that appears twice RESTARTS its count in each appearance — it does not carry on', async () => {
+    const code = 'const a = s("bd*4").gain("<0.2 0.8 0.5>")\narrange([2, a], [1, s("hh*4")], [2, a])'
+    // Carrying on would play 0.5 then 0.2 in bars 3 and 4. The engine starts again.
+    const rows = await gainSets(code, 10)
+    expect(rows).toEqual([[0.2], [0.8], [], [0.2], [0.8], [0.5], [0.2], [], [0.5], [0.2]])
+    expect(rows).toEqual(predictedSets(steppedAutomations(parseStrudel(code) as never), 10, 'own'))
+  }, 60_000)
+
+  it('editing a step of a binding arranged twice moves exactly the bars, in both appearances, that play it', async () => {
+    const code = 'const a = s("bd*4").gain("<0.2 0.8 0.5>")\narrange([2, a], [2, s("hh*4")], [2, a])'
+    const [a] = steppedAutomations(parseStrudel(code) as never)
+    const next = apply(code, stepValueEdit(a, 1, 0.4)!)
+    expect(next).toBe('const a = s("bd*4").gain("<0.2 0.4 0.5>")\narrange([2, a], [2, s("hh*4")], [2, a])')
+
+    const before = await gainSets(code, 18)
+    const after = await gainSets(next, 18)
+    const changed = before.flatMap((row, c) => (JSON.stringify(row) === JSON.stringify(after[c]) ? [] : [c]))
+    const playsStep1 = Array.from({ length: 18 }, (_, c) => c).filter((c) => stepIndexAtCycle(a, c) === 1)
+    expect(changed).toEqual(playsStep1)
+    // In both appearances: the first sits at bars 0–1 of each pass of 6, the second at 4–5.
+    expect(changed.some((c) => c % 6 < 2) && changed.some((c) => c % 6 >= 4), JSON.stringify(changed)).toBe(true)
+    expect(after).toEqual(predictedSets(steppedAutomations(parseStrudel(next) as never), 18, 'own'))
+  }, 60_000)
+
+  it('a fractional weight declines, and the engine changes the value inside a cycle', async () => {
+    const code = 'arrange([1.5, s("bd*4").gain("<0.2 0.8>")], [0.5, s("hh*4")])'
+    expect(steppedAutomations(parseStrudel(code) as never)).toEqual([])
+    const rows = await gainSets(code, 8)
+    expect(rows.some((row) => row.length > 1), JSON.stringify(rows)).toBe(true)
+  }, 60_000)
+
+  it('weights summing to 0, and a negative weight, decline — the engine never plays that section', async () => {
+    for (const code of [
+      'arrange([0, s("bd*4").gain("<0.2 0.8>")])',
+      'arrange([-1, s("sd*4")], [3, s("bd*4").gain("<0.2 0.8 0.5>")], [1, s("hh*4")])',
+    ]) {
+      expect(steppedAutomations(parseStrudel(code) as never)).toEqual([])
+      expect((await gainSets(code, 8)).flat(), code).toEqual([])
+    }
+  }, 60_000)
+
+  it.each([
+    ['a route inside a section and one outside it', 'const a = s("bd*4").gain("<0.2 0.8 0.5>")\nstack(a, arrange([1, a], [1, s("hh*4")]))'],
+    ['one binding in two arrangements side by side', 'const a = s("bd*4").gain("<0.2 0.8 0.5>")\nstack(arrange([1, a], [1, s("hh*4")]), arrange([1, s("sd*4")], [2, a]))'],
+  ])('%s declines, and the engine plays two values in one cycle', async (_label, code) => {
+    expect(steppedAutomations(parseStrudel(code) as never)).toEqual([])
+    const rows = await gainSets(code, 12)
+    expect(rows.some((row) => row.length > 1), JSON.stringify(rows)).toBe(true)
   }, 60_000)
 })
 

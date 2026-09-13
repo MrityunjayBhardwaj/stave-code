@@ -20,6 +20,7 @@ import { computeLaneLayout } from '../laneLayout'
 import { AUTOMATION_PAD_Y } from '../automationCaption'
 import { colorForAutomation } from '../colors'
 import { unitOnAxis, type StepAxis } from '../steppedLane'
+import { stepIndexAtCycle } from '../../../../../editor/src/ir/steppedAutomation'
 
 const THEME: DrawTheme = {
   background: '#bg', rowAlt: '#rowAlt', section: '#sect', sectionAlt: '#sectAlt',
@@ -29,11 +30,12 @@ const THEME: DrawTheme = {
 // 4 cycles over 400px → 100px per cycle, no scroll.
 const TRANSFORM: DrawTransform = { scrollLeft: 0, contentWidth: 400, viewportWidth: 400, meter: DEFAULT_METER }
 
-interface Path { points: { x: number; y: number }[]; style: string; dash: readonly number[] }
+/** `move` marks a `moveTo` — a lifted pen — so a gap can be told from a riser (#1585). */
+interface Path { points: { x: number; y: number; move?: boolean }[]; style: string; dash: readonly number[] }
 
 function mockCtx() {
   const paths: Path[] = []
-  let cur: { x: number; y: number }[] = []
+  let cur: { x: number; y: number; move?: boolean }[] = []
   const ctx = {
     fillStyle: '', strokeStyle: '', globalAlpha: 1, lineWidth: 1, lineJoin: '',
     font: '', textBaseline: '', _dash: [] as readonly number[],
@@ -42,7 +44,7 @@ function mockCtx() {
     measureText(t: string) { return { width: t.length * 6 } as TextMetrics },
     fillText() {},
     beginPath() { cur = [] },
-    moveTo(x: number, y: number) { cur.push({ x, y }) },
+    moveTo(x: number, y: number) { cur.push({ x, y, move: true }) },
     lineTo(x: number, y: number) { cur.push({ x, y }) },
     stroke() { paths.push({ points: cur, style: ctx.strokeStyle, dash: ctx._dash }) },
   }
@@ -57,10 +59,10 @@ function stepped(steps: [number, number?][], method = 'gain'): SteppedAutomation
     at += weight
     return s
   })
-  return { trackId: 'd1', paramKey: method, method, steps: built, periodCycles: at, offset: 0 }
+  return { trackId: 'd1', paramKey: method, method, steps: built, periodCycles: at, offset: 0, placements: [[]] }
 }
 const LINEAR: StepAxis = { lo: 0, hi: 1, scale: 'linear', step: 0.01 }
-const entry = (a: SteppedAutomation, axis: StepAxis = LINEAR): SceneStepped => ({ automation: a, axis })
+const entry = (a: SteppedAutomation, axis: StepAxis = LINEAR): SceneStepped => ({ automation: a, axis, stepAt: stepIndexAtCycle })
 
 const NO_SPANS = { shape: null, rate: null, range: null, chainEnd: null } as const
 const signal = (paramKey: string): SignalAutomation => ({
@@ -153,6 +155,35 @@ describe('stepped staircase — geometry', () => {
 
   it('is solid — a stepped value is the literal value, not an indication', () => {
     expect(run([entry(stepped([[0.2], [0.8]]))]).paths[0].dash).toEqual([])
+  })
+})
+
+describe('stepped staircase — a section that stops playing (#1585)', () => {
+  // `<0.2 0.8>` inside the first of two one-cycle sections: it plays cycles 0 and 2,
+  // and cycle 2 is the section's SECOND cycle, so step 1.
+  const inSection = (): SteppedAutomation => ({
+    ...stepped([[0.2], [0.8]]),
+    placements: [[{ startCycle: 0, cycles: 1, total: 2 }]],
+  })
+
+  it('draws a level only over the bars its section plays, by the section\'s own count', () => {
+    const { paths, yOf } = run([entry(inSection())])
+    expect(runs(paths[0])).toEqual([
+      [0, 100, yOf(0.2)],
+      [200, 300, yOf(0.8)],
+    ])
+  })
+
+  // Without the lift, the second level's first point is a `lineTo` from the first
+  // level's end: a slanted line through bar 1, which plays no gain at all.
+  it('lifts the pen across the silent bars, so no line joins the two sections', () => {
+    const { paths } = run([entry(inSection())])
+    expect(paths[0].points.map((p) => [p.x, p.move === true])).toEqual([
+      [0, true],
+      [100, false],
+      [200, true],
+      [300, false],
+    ])
   })
 })
 
