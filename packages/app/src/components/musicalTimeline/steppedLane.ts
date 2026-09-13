@@ -21,7 +21,39 @@
  * which knows the arrangement sections, #1585) are passed IN by the caller that already
  * holds the real one.
  */
-import type { OffsetEdit, SteppedAutomation } from '@stave/editor'
+import type { FixedParameter, OffsetEdit, SteppedAutomation } from '@stave/editor'
+
+/**
+ * Controls the knob table ranges that a lane still does not offer to automate
+ * (#1601). Each changes something other than a sound: `cps` is the tempo, so a
+ * dragged step would change how long the song plays, and the rest reshape time or
+ * probability rather than set a level. Kept beside the offer, not in the editor's
+ * table, because the table also serves the mixer, which does show these.
+ */
+const NOT_A_LANE_CONTROL: ReadonlySet<string> = new Set(['cps', 'slow', 'fast', 'degradeBy', 'sometimesBy'])
+
+/**
+ * The fixed values a lane's menu offers (#1601): the ones whose control has a knob
+ * range of its own, keyed by the method as TYPED (`lpf`, not `cutoff`) because that
+ * is how the table is keyed. `hasRange` is `hasKnownKnobRange`, injected (see the
+ * header).
+ */
+export function automatableFixed(
+  fixed: readonly FixedParameter[],
+  hasRange: (method: string) => boolean,
+): FixedParameter[] {
+  return fixed.filter((f) => hasRange(f.method) && !NOT_A_LANE_CONTROL.has(f.method))
+}
+
+/**
+ * How many steps automating `f` writes: one per bar its lane shows for a pass, so a
+ * drag on bar k changes bar k and no other (#1601). Inside a section that is the
+ * section's own length; under none it is the lane's span (`loopCycles` — the bare
+ * floor and a resize included, the transient extend-drag margin not).
+ */
+export function automateStepCount(f: FixedParameter, laneCycles: number): number {
+  return f.sectionCycles ?? Math.max(1, Math.round(laneCycles))
+}
 
 /** The value axis a stepped lane is drawn against. */
 export interface StepAxis {

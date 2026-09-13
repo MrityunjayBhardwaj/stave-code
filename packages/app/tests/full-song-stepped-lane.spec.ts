@@ -773,3 +773,98 @@ test('a step dragged on the lane previews without writing, then changes what the
 
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
+
+// ── #1601: automate a fixed value from its lane ─────────────────────────────
+
+/** A kick with a FIXED gain beside a four-cycle hat line, so the song is four bars
+ *  and each bar plays the same gain until a step is moved. */
+const FIXED_SONG = '$: s("bd*2").gain(.8)\n$: s("<hh cp hh cp>")'
+
+test('a fixed value chosen from the lane menu becomes a flat staircase, plays the same, and a drag moves only its bar (#1601)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+
+  await bootShell(page)
+  await setSongAndEval(page, FIXED_SONG)
+  await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
+  await page.waitForTimeout(500)
+
+  // (0) THE INSTRUMENT READS THE GAIN AT ALL — .8 in every bar before anything changes.
+  const FLAT = { 0: [0.8, 0.8], 1: [0.8, 0.8], 2: [0.8, 0.8], 3: [0.8, 0.8] }
+  await expect.poll(() => gainsByBar(page), { timeout: 10_000 }).toEqual(FLAT)
+
+  const canvas = page.locator('[data-full-song-canvas]')
+  const grid = page.locator('[data-full-song="grid"]')
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error('no canvas')
+  const barX = (bar: number) => Math.round(box.width * ((bar + 0.5) / 4))
+  const automate = page.locator('[data-full-song-lane-automate]')
+  const menu = page.locator('[data-full-song="automate-parameter"]')
+
+  // (1) COLLAPSED, NOTHING IS OFFERED.
+  expect(await automate.count(), 'a collapsed lane offered the menu').toBe(0)
+
+  // (2) EXPANDED, THE KICK LANE OFFERS ITS FIXED GAIN, AND OPENING THE MENU WRITES NOTHING.
+  await page.mouse.dblclick(box.x + barX(2), box.y + 8)
+  await page.waitForTimeout(800)
+  expect(await automate.count(), 'the expanded kick lane offered no menu').toBe(1)
+  await automate.click()
+  expect(await menu.count(), 'the menu did not open').toBe(1)
+  expect(await readDoc(page), 'opening the menu wrote').toBe(FIXED_SONG)
+
+  // (3) CHOOSING WRITES ONE STEP PER BAR, SPELLED AS WRITTEN — and the menu closes.
+  await menu.selectOption('0')
+  await expect.poll(() => readDoc(page), { timeout: 5_000 }).toBe('$: s("bd*2").gain("<.8 .8 .8 .8>")\n$: s("<hh cp hh cp>")')
+  expect(await menu.count(), 'the menu lingered after its commit').toBe(0)
+
+  // (4) THE ENGINE PLAYS WHAT IT PLAYED BEFORE.
+  await expect.poll(() => gainsByBar(page), { timeout: 10_000 }).toEqual(FLAT)
+
+  // (5) THE LANE NOW HOLDS A STEP OVER EVERY BAR, AT ONE LEVEL — read by the rows the
+  //     cursor promises a step drag on, so the check is the gesture's own hit test.
+  const dragRows = async (bar: number): Promise<number[]> => {
+    const rows: number[] = []
+    for (let y = 1; y <= 90; y++) {
+      await page.mouse.move(box.x + barX(bar), box.y + y)
+      if ((await grid.evaluate((el) => (el as HTMLElement).style.cursor)) === 'ns-resize') rows.push(y)
+    }
+    return rows
+  }
+  await expect.poll(async () => (await dragRows(1)).length, { timeout: 10_000 }).toBeGreaterThan(0)
+  const rows = await Promise.resolve([await dragRows(0), await dragRows(1), await dragRows(2), await dragRows(3)])
+  expect(rows[0].length, 'bar 0 has no step').toBeGreaterThan(0)
+  expect(rows.slice(1), `the staircase is not flat: ${JSON.stringify(rows)}`).toEqual([rows[0], rows[0], rows[0]])
+
+  // (6) DRAG BAR 1 DOWN about a third of the band. Travel read off the lane (see #1578).
+  const levelY = rows[1][Math.floor(rows[1].length / 2)]
+  const laneH = await page
+    .locator('[data-full-song-lane][data-expanded="true"]')
+    .first()
+    .evaluate((el) => parseFloat((el as HTMLElement).style.height))
+  const travel = Math.max(6, Math.round((laneH - 6) * 0.35))
+  await page.mouse.move(box.x + barX(1), box.y + levelY)
+  await page.mouse.down()
+  for (let dy = 1; dy <= travel; dy++) await page.mouse.move(box.x + barX(1), box.y + levelY + dy)
+  await page.waitForTimeout(300)
+  const shown = (await page.locator('[data-full-song="automation-step-drag"]').textContent()) ?? ''
+  const value = Number(shown.split(' ')[1])
+  expect(value, `label: ${shown}`).toBeLessThan(0.8)
+  await page.mouse.up()
+
+  // (7) ONE WRITE, TO BAR 1'S STEP ALONE — and the engine plays it in bar 1 only.
+  await expect.poll(() => readDoc(page), { timeout: 5_000 }).toBe(`$: s("bd*2").gain("<.8 ${value} .8 .8>")\n$: s("<hh cp hh cp>")`)
+  await expect.poll(() => gainsByBar(page), { timeout: 10_000 })
+    .toEqual({ 0: [0.8, 0.8], 1: [value, value], 2: [0.8, 0.8], 3: [0.8, 0.8] })
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})
