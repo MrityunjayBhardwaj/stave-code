@@ -101,7 +101,7 @@ export { useGridModel } from './panels/useGridModel'
 export type { GridModel, GridModelOptions } from './panels/useGridModel'
 export { Knob } from './panels/Knob'
 export type { KnobProps } from './panels/Knob'
-export { knobRangeFor } from './panels/knobRanges'
+export { knobRangeFor, hasKnownKnobRange } from './panels/knobRanges'
 export type { KnobRange } from './panels/knobRanges'
 export {
   VISUAL_EDIT_TABS,

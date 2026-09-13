@@ -1,6 +1,23 @@
 import { describe, it, expect } from 'vitest'
-import { knobRangeFor } from '../knobRanges'
+import { knobRangeFor, hasKnownKnobRange, isKnownControl } from '../knobRanges'
 import { EFFECTS } from '../effectCatalog'
+
+describe('hasKnownKnobRange (#1600)', () => {
+  it('is true for the table, both filter spellings included', () => {
+    for (const m of ['gain', 'pan', 'room', 'lpf', 'cutoff', 'hpf', 'crush', 'release']) {
+      expect(hasKnownKnobRange(m), m).toBe(true)
+    }
+  })
+
+  it('is false for a control with no range of its own — narrower than isKnownControl', () => {
+    // `orbit` is routing: a real control, but no dial a lane could draw honestly.
+    expect(isKnownControl('orbit')).toBe(true)
+    expect(hasKnownKnobRange('orbit')).toBe(false)
+    expect(hasKnownKnobRange('notAControl')).toBe(false)
+    // An inherited object key is not a table entry.
+    expect(hasKnownKnobRange('toString')).toBe(false)
+  })
+})
 
 describe('knobRangeFor', () => {
   it('uses sensible ranges for known methods (S4)', () => {
