@@ -723,8 +723,8 @@ function drawSteppedAutomation(
   ctx.lineWidth = 1.5
   ctx.lineJoin = 'miter'
   ctx.setLineDash([])
-  for (const { automation, axis } of stepped) {
-    const segments = stepSegments(automation, firstCycle, lastCycle)
+  for (const { automation, axis, stepAt } of stepped) {
+    const segments = stepSegments(automation, firstCycle, lastCycle, stepAt)
     if (segments.length === 0) continue
     ctx.strokeStyle = automationColorOnLane(automation.paramKey, laneAutomationCount, theme.automationLine)
     ctx.beginPath()
@@ -732,9 +732,12 @@ function drawSteppedAutomation(
       const y = stepY(s.value, axis, band)
       const x0 = toScreenX(s.startCycle)
       const x1 = toScreenX(s.endCycle)
-      // Every segment after the first starts where the previous one ended, so
-      // this `lineTo(x0, y)` IS the riser from the previous level.
-      if (i === 0) ctx.moveTo(x0, y)
+      // A segment that starts where the previous one ended gets a riser: this
+      // `lineTo(x0, y)` IS the riser from the previous level. One that starts
+      // later follows a GAP — bars where the parameter's section is silent
+      // (#1585) — so the pen lifts, or the two sections would be joined by a
+      // line through bars that play nothing.
+      if (i === 0 || s.startCycle !== segments[i - 1].endCycle) ctx.moveTo(x0, y)
       else ctx.lineTo(x0, y)
       ctx.lineTo(x1, y)
     })

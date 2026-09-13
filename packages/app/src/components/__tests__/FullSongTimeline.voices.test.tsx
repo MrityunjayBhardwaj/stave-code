@@ -33,11 +33,13 @@ vi.mock('@stave/editor', async () => {
   // function, from source: it is a pure IR walk, so there is nothing to stub.
   const { signalAutomations } = await import('../../../../editor/src/ir/signalAutomation')
   // #1463 Stage 2 — the component also reads stepped automation and its axis.
-  const { steppedAutomations } = await import('../../../../editor/src/ir/steppedAutomation')
+  // #1585 — and each lane entry carries `stepIndexAtCycle`.
+  const { steppedAutomations, stepIndexAtCycle } = await import('../../../../editor/src/ir/steppedAutomation')
   const { knobRangeFor } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
   return {
     signalAutomations,
     steppedAutomations,
+    stepIndexAtCycle,
     knobRangeFor,
     structuralWalk: (_ir: unknown, window: { originCycle: number; spanCycles: number }) =>
       skeletonsFromEvents(DRUM_EVENTS, window),

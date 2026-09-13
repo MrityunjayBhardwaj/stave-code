@@ -24,8 +24,8 @@ import { containingAnchor } from './laneIdentity'
 import { resolveLaneName } from './trackLabel'
 import { resolveSectionName } from './sectionLabel'
 import type { DeclaredTrack } from './trackOrder'
-import type { SignalAutomation, SteppedAutomation } from '@stave/editor'
-import type { StepAxis } from './steppedLane'
+import type { SignalAutomation } from '@stave/editor'
+import type { SteppedEntry } from './steppedLane'
 
 /** Grouping key for marks with no sample name (`s == null`) — synth notes that
  *  carry only a `note`. Shared by the scene builder and the renderer so a
@@ -41,11 +41,9 @@ const EMPTY_STEPPED: readonly SceneStepped[] = []
 /** One stepped automation on a lane (#1463 Stage 2), with the value axis it is
  *  drawn against. The axis travels WITH the automation because it is resolved by
  *  the caller that can reach the mixer's knob ranges at runtime — this module and
- *  the renderer import only types from `@stave/editor`. */
-export interface SceneStepped {
-  readonly automation: SteppedAutomation
-  readonly axis: StepAxis
-}
+ *  the renderer import only types from `@stave/editor`. The step selection travels
+ *  with it for the same reason (#1585). */
+export type SceneStepped = SteppedEntry
 
 /** A single read-only mini-note mark within a lane. */
 export interface SceneNote {

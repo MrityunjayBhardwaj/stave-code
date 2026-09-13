@@ -74,7 +74,8 @@ vi.mock('@stave/editor', async () => {
   // automation and resolves each one's axis. Both real, from source (the knob
   // table imports nothing but its own control list).
   // Stage 3 adds the write: a press on a step commits through `stepValueEdit`.
-  const { steppedAutomations, stepValueEdit } = await import('../../../../editor/src/ir/steppedAutomation')
+  // #1585 adds the read: each lane entry carries `stepIndexAtCycle`.
+  const { steppedAutomations, stepValueEdit, stepIndexAtCycle } = await import('../../../../editor/src/ir/steppedAutomation')
   const { knobRangeFor } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
   const eventsForIr = (ir: { bare?: boolean; nested?: boolean } | null) =>
     ir?.bare ? BARE_EVENTS : ir?.nested ? NESTED_EVENTS : ir ? TRIM_EVENTS : []
@@ -82,6 +83,7 @@ vi.mock('@stave/editor', async () => {
     signalAutomations,
     steppedAutomations,
     stepValueEdit,
+    stepIndexAtCycle,
     knobRangeFor,
     collectCycles: (ir: { bare?: boolean; nested?: boolean } | null) => eventsForIr(ir),
     structuralWalk: (ir: { bare?: boolean; nested?: boolean } | null, window: { originCycle: number; spanCycles: number }) =>
@@ -1574,6 +1576,41 @@ describe('FullSongTimeline — edit a STEP on a stepped lane (#1463 Stage 3)', (
     expect(onEditAutomation).toHaveBeenCalledTimes(1)
     expect(onEditAutomation).toHaveBeenCalledWith({ range: [44, 47], text: '0.4' }, 'automation gain step 1')
     expect(stepEditor(container), 'the editor lingered after its commit').toBeNull()
+  })
+
+  it('inside an arrangement section a press picks the step by the SECTION\'s count, and a bar the section is silent in has none (#1585)', async () => {
+    // `arrange([1, s("hh")], [3, bd.gain("<0.2 0.8>")])`, the stepped `Param` being
+    // the one above with its parser spans. Bars 1–3 are the section's cycles 0–2, so
+    // bar 1 plays 0.2 where the song's own cycle would say 0.8, and bar 0 plays
+    // nothing of it. The lane must be handed the reader's selection, not a copy.
+    const SECTION_IR = {
+      tag: 'Stack',
+      tracks: [
+        {
+          tag: 'Track',
+          trackId: 'bd',
+          body: {
+            tag: 'Arrange',
+            mode: 'arrange',
+            arms: [
+              { weight: 1, pattern: { tag: 'Play', note: 'hh' } },
+              { weight: 3, pattern: STEPPED_IR.tracks[0].body },
+            ],
+          },
+        },
+      ],
+    }
+    const onEditAutomation = vi.fn()
+    const { grid, container } = renderStepped({ ir: SECTION_IR as never, onEditAutomation })
+    await expandBd(container)
+    press(grid, 100, levelY(container, 0.2))
+    press(grid, 100, levelY(container, 0.8))
+    expect(stepEditor(container), 'a bar where the section is silent opened a step').toBeNull()
+    press(grid, 300, levelY(container, 0.2))
+    expect(stepEditor(container)?.value, 'bar 1 did not open the section\'s first step').toBe('0.2')
+    fireEvent.change(stepEditor(container)!, { target: { value: '0.5' } })
+    fireEvent.keyDown(stepEditor(container)!, { key: 'Enter' })
+    expect(onEditAutomation.mock.calls.map((c) => c[0])).toEqual([{ range: [40, 43], text: '0.5' }])
   })
 
   it('the pressed bar only chooses WHICH step — a later bar playing it opens the same one', async () => {

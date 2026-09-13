@@ -26,6 +26,7 @@ import {
   type StepAxis,
   type StepBand,
 } from '../steppedLane'
+import { stepIndexAtCycle } from '../../../../../editor/src/ir/steppedAutomation'
 
 describe('stepHitAt — which step a press lands on (Stage 3\'s claim)', () => {
   const LIN: StepAxis = { lo: 0, hi: 1, scale: 'linear', step: 0.01 }
@@ -38,11 +39,11 @@ describe('stepHitAt — which step a press lands on (Stage 3\'s claim)', () => {
       at += weight
       return s
     })
-    return { trackId: 'd1', paramKey: method, method, steps: built, periodCycles: at, offset: 0 }
+    return { trackId: 'd1', paramKey: method, method, steps: built, periodCycles: at, offset: 0, placements: [[]] }
   }
 
   it('hits the step playing at the pointer\'s cycle, on its level', () => {
-    const entry = { automation: mk([[0.2], [0.8]]), axis: LIN }
+    const entry = { automation: mk([[0.2], [0.8]]), axis: LIN, stepAt: stepIndexAtCycle }
     const y08 = stepY(0.8, LIN, BAND)
     const hit = stepHitAt([entry], BAND, true, 1.4, y08 + 2)
     expect(hit?.index).toBe(1)
@@ -51,33 +52,33 @@ describe('stepHitAt — which step a press lands on (Stage 3\'s claim)', () => {
 
   it('misses a level that is not playing at that cycle, even when the y matches', () => {
     // At cycle 0 the staircase is at 0.2; pressing at 0.8's height there is empty space.
-    const entry = { automation: mk([[0.2], [0.8]]), axis: LIN }
+    const entry = { automation: mk([[0.2], [0.8]]), axis: LIN, stepAt: stepIndexAtCycle }
     expect(stepHitAt([entry], BAND, true, 0.5, stepY(0.8, LIN, BAND))).toBeNull()
   })
 
   it('maps a press inside a weighted step to that step', () => {
-    const entry = { automation: mk([[0.2, 2], [0.8]]), axis: LIN }
+    const entry = { automation: mk([[0.2, 2], [0.8]]), axis: LIN, stepAt: stepIndexAtCycle }
     // Cycle 1 is still inside step 0's weight of 2.
     expect(stepHitAt([entry], BAND, true, 1.9, stepY(0.2, LIN, BAND))?.index).toBe(0)
   })
 
   it('stops at the tolerance, both sides of the edge', () => {
-    const entry = { automation: mk([[0.5]]), axis: LIN }
+    const entry = { automation: mk([[0.5]]), axis: LIN, stepAt: stepIndexAtCycle }
     const y = stepY(0.5, LIN, BAND)
     expect(stepHitAt([entry], BAND, true, 0, y + STEP_HIT_TOLERANCE_PX)).not.toBeNull()
     expect(stepHitAt([entry], BAND, true, 0, y + STEP_HIT_TOLERANCE_PX + 0.5)).toBeNull()
   })
 
   it('picks the NEAREST level when two parameters share the band', () => {
-    const gain = { automation: mk([[0.5]]), axis: LIN }
-    const room = { automation: mk([[0.52]], 'room'), axis: LIN }
+    const gain = { automation: mk([[0.5]]), axis: LIN, stepAt: stepIndexAtCycle }
+    const room = { automation: mk([[0.52]], 'room'), axis: LIN, stepAt: stepIndexAtCycle }
     const yRoom = stepY(0.52, LIN, BAND)
     expect(stepHitAt([gain, room], BAND, true, 0, yRoom)?.entry).toBe(room)
     expect(stepHitAt([room, gain], BAND, true, 0, yRoom)?.entry).toBe(room)
   })
 
   it('claims nothing on a collapsed lane, or a band too short to draw', () => {
-    const entry = { automation: mk([[0.5]]), axis: LIN }
+    const entry = { automation: mk([[0.5]]), axis: LIN, stepAt: stepIndexAtCycle }
     const y = stepY(0.5, LIN, BAND)
     expect(stepHitAt([entry], BAND, false, 0, y)).toBeNull()
     expect(stepHitAt([entry], { ...BAND, rowHeight: 14 }, true, 0, stepY(0.5, LIN, { ...BAND, rowHeight: 14 }))).toBeNull()
@@ -94,11 +95,11 @@ function stepped(steps: [value: number, weight?: number][], method = 'gain'): St
     at += weight
     return s
   })
-  return { trackId: 'd1', paramKey: method, method, steps: built, periodCycles: at, offset: 0 }
+  return { trackId: 'd1', paramKey: method, method, steps: built, periodCycles: at, offset: 0, placements: [[]] }
 }
 
 const seg = (a: SteppedAutomation, from: number, to: number) =>
-  stepSegments(a, from, to).map((s) => [s.index, s.value, s.startCycle, s.endCycle])
+  stepSegments(a, from, to, stepIndexAtCycle).map((s) => [s.index, s.value, s.startCycle, s.endCycle])
 
 describe('stepSegments — one segment per step, over absolute cycles', () => {
   it('a two-step alternation is one segment per cycle', () => {
@@ -152,8 +153,51 @@ describe('stepSegments — one segment per step, over absolute cycles', () => {
   })
 
   it('draws nothing for an empty or inverted span', () => {
-    expect(stepSegments(stepped([[0.2], [0.8]]), 3, 3)).toEqual([])
-    expect(stepSegments(stepped([[0.2], [0.8]]), 4, 2)).toEqual([])
+    expect(stepSegments(stepped([[0.2], [0.8]]), 3, 3, stepIndexAtCycle)).toEqual([])
+    expect(stepSegments(stepped([[0.2], [0.8]]), 4, 2, stepIndexAtCycle)).toEqual([])
+  })
+})
+
+describe('stepSegments and stepHitAt inside an arrangement section (#1585)', () => {
+  // `<0.2 0.8>` in a 3-cycle section followed by a 1-cycle one: it plays cycles 0–2
+  // and 4–6 by its OWN count, and nothing in cycles 3 and 7. The placements are the
+  // reader's (`steppedAutomation.test.ts`); this file owns what the lane does with them.
+  const inSection = (): SteppedAutomation => ({
+    ...stepped([[0.2], [0.8]]),
+    placements: [[{ startCycle: 0, cycles: 3, total: 4 }]],
+  })
+
+  it('a silent bar has no segment, and the next pass carries on from the section\'s own count', () => {
+    // Cycle 4 is the section's fourth cycle: step 1, where the song's cycle says step 0.
+    expect(seg(inSection(), 0, 8)).toEqual([
+      [0, 0.2, 0, 1],
+      [1, 0.8, 1, 2],
+      [0, 0.2, 2, 3],
+      [1, 0.8, 4, 5],
+      [0, 0.2, 5, 6],
+      [1, 0.8, 6, 7],
+    ])
+  })
+
+  it('two appearances side by side holding the same step are one segment across the seam', () => {
+    // `arrange([1, a], [1, a], [1, b])`: bars 0 and 1 are each appearance's first cycle.
+    const twice: SteppedAutomation = {
+      ...stepped([[0.2], [0.8]]),
+      placements: [[{ startCycle: 0, cycles: 1, total: 3 }], [{ startCycle: 1, cycles: 1, total: 3 }]],
+    }
+    expect(seg(twice, 0, 6)).toEqual([
+      [0, 0.2, 0, 2],
+      [1, 0.8, 3, 5],
+    ])
+  })
+
+  it('a press lands on the section\'s own step, and over a silent bar on nothing', () => {
+    const LIN: StepAxis = { lo: 0, hi: 1, scale: 'linear', step: 0.01 }
+    const BAND: StepBand = { top: 100, rowHeight: 96, padY: 3, minBandH: 10 }
+    const entry = { automation: inSection(), axis: LIN, stepAt: stepIndexAtCycle }
+    expect(stepHitAt([entry], BAND, true, 4.5, stepY(0.8, LIN, BAND))?.index).toBe(1)
+    expect(stepHitAt([entry], BAND, true, 3.5, stepY(0.8, LIN, BAND))).toBeNull()
+    expect(stepHitAt([entry], BAND, true, 3.5, stepY(0.2, LIN, BAND))).toBeNull()
   })
 })
 
@@ -230,8 +274,9 @@ describe('stepEdit — what typed text may become (Stage 3)', () => {
     ],
     periodCycles: 2,
     offset: 0,
+    placements: [[]],
   }
-  const hit = { entry: { automation, axis: LIN }, index: 1, y: 0 }
+  const hit = { entry: { automation, axis: LIN, stepAt: stepIndexAtCycle }, index: 1, y: 0 }
   const spy = () => {
     const calls: [SteppedAutomation, number, number][] = []
     const edit = (a: SteppedAutomation, index: number, value: number) => {
@@ -320,10 +365,14 @@ describe('the drag geometry — a level that follows the pointer (#1578)', () =>
   it('previews ONE step of ONE automation, matched by identity, and keeps every axis', () => {
     const a = stepped([[0.2], [0.8]])
     const twin = stepped([[0.2], [0.8]], 'room')
-    const entries = [{ automation: a, axis: LIN }, { automation: twin, axis: LOG }]
+    const entries = [{ automation: a, axis: LIN, stepAt: stepIndexAtCycle }, { automation: twin, axis: LOG, stepAt: stepIndexAtCycle }]
     const out = withStepValue(entries, a, 1, 0.4)
     expect(out[0].automation.steps.map((s) => s.value)).toEqual([0.2, 0.4])
     expect(out[0].axis).toBe(LIN)
+    // The preview keeps the step selection too — without it the dragged staircase
+    // would have no way to place its steps, and would vanish mid-drag (#1585).
+    expect(out[0].stepAt).toBe(stepIndexAtCycle)
+    expect(out[0].automation.placements).toBe(a.placements)
     // The document's automation is not mutated — the preview is a copy.
     expect(a.steps.map((s) => s.value)).toEqual([0.2, 0.8])
     // Equal steps on another parameter are a different automation.

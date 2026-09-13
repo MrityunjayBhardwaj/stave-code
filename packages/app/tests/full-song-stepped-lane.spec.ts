@@ -389,6 +389,159 @@ test('a step of a slowed alternation retyped on the lane moves both bars that pl
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
 
+// ── #1585: a stepped parameter inside an arrangement section ────────────────
+
+/**
+ * One binding arranged twice around a one-bar break, so `a` plays bars 0, 1 and 3.
+ * Each appearance counts ITS OWN cycles: bar 3 is the second appearance's first
+ * cycle, so it plays step 0 (.2), where the song's cycle would say step 1 (.9). Bar
+ * 2 is where nothing of `a` plays, between two levels, so a staircase joined across
+ * the break would cross it.
+ *
+ * ⚠ TWO STEPS, NOT THREE. The view spans the arrangement's 4 bars times the pattern's
+ * period, so a three-step `a` made a 12-bar song: no lane had the 8 onsets the marks
+ * reader looks for, and the arm read `{}` before measuring anything (observed with a
+ * probe of the marks). Two steps divide 4.
+ */
+const SECTION_SONG = 'const a = s("bd*2").gain("<.2 .9>")\n$: arrange([2, a], [1, s("hh*2").gain(1)], [1, a])'
+/**
+ * The control: the same arrangement with `a`'s level held all but still.
+ *
+ * ⚠ ITS TWO STEPS DIFFER BY .01 ON PURPOSE. The subject song is 8 bars long, not 4:
+ * bar 3 plays .2 on one pass and .9 on the next (the second appearance keeps its
+ * own count), so the view spans the song's real period of 8 (observed with a probe
+ * of the marks). A constant gain made a 4-bar control, which puts every mark at a
+ * different x, and the pixel difference would have measured the layout. Two steps
+ * that differ keep the control at 8 bars; the arm checks that before comparing.
+ * Its own near-flat staircase sits at .5, where the subject draws nothing, so it
+ * cannot add to the subject's stroke.
+ */
+const SECTION_CONSTANT = 'const a = s("bd*2").gain("<.5 .51>")\n$: arrange([2, a], [1, s("hh*2").gain(1)], [1, a])'
+
+/** The one lane's gains by bar, and how many bars the view spans — READ off the
+ *  marks, never assumed (the first draft assumed 4 and read `{}`). */
+async function laneGainsByBar(page: Page): Promise<{ bars: number; byBar: Record<number, number[]> }> {
+  const probe = await page.evaluate(
+    () => (window as unknown as { __staveTimelineMarks?: MarksProbe }).__staveTimelineMarks ?? null,
+  )
+  const lanes = probe ? Object.values(probe.byLane) : []
+  if (lanes.length !== 1) return { bars: 0, byBar: {} }
+  const byBar: Record<number, number[]> = {}
+  lanes[0].onsets.forEach((onset, i) => {
+    ;(byBar[Math.floor(onset)] ??= []).push(Math.round(lanes[0].gains[i] * 100) / 100)
+  })
+  return { bars: Object.keys(byBar).length, byBar }
+}
+
+/** Stroke pixels, against the control, in the columns of one of `bars` bars — a few
+ *  columns in from each edge, so a level ending on a bar line cannot antialias into
+ *  its neighbour. */
+function strokeInBar(
+  subject: { W: number; H: number; blue: number[] },
+  control: { W: number; H: number; blue: number[] },
+  bar: number,
+  bars: number,
+): number {
+  const { W, H } = subject
+  const x0 = Math.floor((W * bar) / bars) + 4
+  const x1 = Math.floor((W * (bar + 1)) / bars) - 4
+  let hits = 0
+  for (let y = 0; y < H; y++) {
+    for (let x = x0; x < x1; x++) if (subject.blue[y * W + x] - control.blue[y * W + x] > 60) hits++
+  }
+  return hits
+}
+
+test('a stepped parameter inside an arrangement section is drawn and edited by the section\'s own count (#1585)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+
+  await bootShell(page)
+  const canvas = page.locator('[data-full-song-canvas]')
+
+  await setSongAndEval(page, SECTION_CONSTANT)
+  await canvas.waitFor({ timeout: 10_000 })
+  // The control must span the SAME 8 bars as the subject, or the difference below
+  // measures where the marks moved to rather than the staircase.
+  await expect.poll(async () => (await laneGainsByBar(page)).bars, { timeout: 15_000 }).toBe(8)
+  await page.waitForTimeout(500)
+  const controlPixels = await readBlue(page)
+
+  await setSongAndEval(page, SECTION_SONG)
+
+  // (0) WHAT THE ENGINE PLAYS — by each appearance's own count. Bar 3 is the second
+  //     appearance's first cycle (.2), where the song's cycle would say .9; bar 7 is
+  //     its second (.9). Bars 2 and 6 are the break.
+  const BEFORE = { 0: [0.2, 0.2], 1: [0.9, 0.9], 2: [1, 1], 3: [0.2, 0.2], 4: [0.2, 0.2], 5: [0.9, 0.9], 6: [1, 1], 7: [0.9, 0.9] }
+  await expect.poll(() => laneGainsByBar(page), { timeout: 15_000 }).toEqual({ bars: 8, byBar: BEFORE })
+  await page.waitForTimeout(500)
+
+  const subjectPixels = await readBlue(page)
+  expect([subjectPixels.W, subjectPixels.H]).toEqual([controlPixels.W, controlPixels.H])
+
+  // (1) THE INSTRUMENT IS CLEAN, and the staircase holds its two levels.
+  expect(strokeAgainst(controlPixels, controlPixels).hits, 'the detector fires on an identical render').toBe(0)
+  const stroke = strokeAgainst(subjectPixels, controlPixels)
+  expect(stroke.levels, `expected two flat levels (.2 and .9): ${JSON.stringify(stroke)}`).toBe(2)
+
+  // (2) ONLY IN THE BARS THE SECTION PLAYS — nothing over the break, which sits
+  //     between a .9 and a .2, so a line joined across it would cross it.
+  const silent = [2, 6]
+  const perBar = Array.from({ length: 8 }, (_, bar) => strokeInBar(subjectPixels, controlPixels, bar, 8))
+  expect(silent.map((bar) => perBar[bar]), `a staircase was drawn over a bar where \`a\` is silent: ${perBar}`).toEqual([0, 0])
+  expect(perBar.filter((_, bar) => !silent.includes(bar)).every((n) => n > 0), `a bar that plays \`a\` has no staircase: ${perBar}`).toBe(true)
+
+  const editor = page.locator('[data-full-song="automation-step"]')
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error('no canvas')
+  const barX = (bar: number) => Math.round(box.width * ((bar + 0.5) / 8))
+
+  await page.mouse.dblclick(box.x + barX(2), box.y + 8)
+  await page.waitForTimeout(800)
+
+  // (3) BAR 3 IS STEP 0 — the second appearance restarted its count.
+  expect(await openStepShowing(page, barX(3), '0.2'), 'no step editor showing 0.2 opened over bar 3').toBe(true)
+
+  // (4) ONE WRITTEN NUMBER, SO THE EDIT REACHES BOTH APPEARANCES: bars 0, 3 and 4.
+  await page.keyboard.press(`${MOD}+A`)
+  await page.keyboard.type('0.4')
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(600)
+  const after = await readDoc(page)
+  expect(after, `the step did not reach the document: ${after}`).toBe(
+    'const a = s("bd*2").gain("<0.4 .9>")\n$: arrange([2, a], [1, s("hh*2").gain(1)], [1, a])',
+  )
+  await expect.poll(() => laneGainsByBar(page), { timeout: 15_000 }).toEqual({
+    bars: 8,
+    byBar: { ...BEFORE, 0: [0.4, 0.4], 3: [0.4, 0.4], 4: [0.4, 0.4] },
+  })
+
+  // (5) BAR 7 IS STEP 1 — the second appearance, one pass on.
+  expect(await openStepShowing(page, barX(7), '0.9'), 'no step editor showing 0.9 opened over bar 7').toBe(true)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(200)
+
+  // (6) THE BREAK HAS NO STEP TO PRESS — either time it comes round.
+  for (const bar of silent) for (let y = 1; y <= 40; y += 2) {
+    await page.mouse.click(box.x + barX(bar), box.y + y)
+    await page.waitForTimeout(40)
+    expect(await editor.count(), `a press over the break opened a step editor at y=${y}`).toBe(0)
+  }
+  expect(await readDoc(page), 'a press over the break wrote to the document').toBe(after)
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})
+
 // ── #1578: drag a step's level ───────────────────────────────────────────────
 
 /** Rows (in CSS px of the canvas) where column `x` differs by more than the

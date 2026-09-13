@@ -139,9 +139,6 @@ describe('steppedAutomations — only where nothing above the parameter moves ti
     ['fast', '$: s("bd*2").gain("<0.2 0.8>").fast(2)'],
     ['early', '$: s("bd*2").gain("<0.2 0.8>").early(1)'],
     ['off', '$: s("bd*2").gain("<0.2 0.8>").off(0.25, x => x.speed(2))'],
-    ['cat', '$: cat(s("bd*2").gain("<0.2 0.8>"), s("hh*2"))'],
-    // A section counts its OWN cycles — drawing it that way is #1585.
-    ['an arrange section', 'lead: arrange([3, s("bd*2").gain("<0.2 0.8>")], [1, s("hh*2")])'],
     ['every, with a time transform', '$: s("bd*2").gain("<0.2 0.8>").every(2, x => x.fast(2))'],
     ['sometimesBy, with a time transform', '$: s("bd*2").gain("<0.2 0.8>").sometimesBy(0.5, x => x.late(0.25))'],
     // The plain channel reaches the parameter cleanly; the other reaches the SAME
@@ -361,6 +358,88 @@ describe('steppedAutomations — only what the engine plays one value per cycle 
 
   it('a template literal with an interpolation declines', () => {
     expect(read('$: s("bd*2").gain(`<${x} 0.8>`)')).toEqual([])
+  })
+})
+
+describe('steppedAutomations — an arrangement section counts its own cycles (#1585)', () => {
+  // Each read shape has an arm in the engine test checking this prediction against
+  // what plays, on an input where the song's own cycle gives a different answer.
+  const idx = (a: ReturnType<typeof read>[number], cycles: number) =>
+    Array.from({ length: cycles }, (_, c) => stepIndexAtCycle(a, c))
+
+  it('an arrange section plays its steps only in its own bars, by its own count', () => {
+    const [a] = read('lead: arrange([3, s("bd*2").gain("<0.2 0.8>")], [1, s("hh*2")])')
+    expect(a.placements).toEqual([[{ startCycle: 0, cycles: 3, total: 4 }]])
+    // Cycle 4 is the section's fourth cycle — step 1, where the song's cycle says step 0.
+    expect(idx(a, 8)).toEqual([0, 1, 0, null, 1, 0, 1, null])
+  })
+
+  it('a later section starts its count at its own first bar', () => {
+    const [a] = read('lead: arrange([1, s("hh*2")], [2, s("bd*2").gain("<0.2 0.8 0.5>")])')
+    expect(a.placements).toEqual([[{ startCycle: 1, cycles: 2, total: 3 }]])
+    expect(idx(a, 9)).toEqual([null, 0, 1, null, 2, 0, null, 1, 2])
+  })
+
+  it('a negative cycle wraps like a positive one', () => {
+    const [a] = read('lead: arrange([3, s("bd*2").gain("<0.2 0.8>")], [1, s("hh*2")])')
+    expect([-1, -2].map((c) => stepIndexAtCycle(a, c))).toEqual([stepIndexAtCycle(a, 7), stepIndexAtCycle(a, 6)])
+  })
+
+  it('a binding arranged twice is ONE parameter with a placement per appearance, and each restarts', () => {
+    const found = read('const a = s("bd*2").gain("<0.2 0.8 0.5>")\nlead: arrange([2, a], [1, s("hh*2")], [2, a])')
+    expect(found).toHaveLength(1)
+    const [a] = found
+    expect(a.placements).toEqual([
+      [{ startCycle: 0, cycles: 2, total: 5 }],
+      [{ startCycle: 3, cycles: 2, total: 5 }],
+    ])
+    expect(idx(a, 10)).toEqual([0, 1, null, 0, 1, 2, 0, null, 2, 0])
+    // One written number per step: an edit reaches both appearances by construction.
+    expect(stepValueEdit(a, 2, 0.9)).toEqual({ range: [a.steps[2].valueSpan.start, a.steps[2].valueSpan.end], text: '0.9' })
+  })
+
+  it('the same section written out twice is two parameters, each in its own bars', () => {
+    const found = read('lead: arrange([2, s("bd*2").gain("<0.2 0.8 0.5>")], [1, s("hh*2")], [2, s("bd*2").gain("<0.2 0.8 0.5>")])')
+    expect(found.map((a) => a.placements)).toEqual([
+      [[{ startCycle: 0, cycles: 2, total: 5 }]],
+      [[{ startCycle: 3, cycles: 2, total: 5 }]],
+    ])
+  })
+
+  it('cat and slowcat are sections of one cycle each', () => {
+    const [c] = read('$: cat(s("bd*2").gain("<0.2 0.8 0.5>"), s("hh*2"), s("sd*2"))')
+    expect(idx(c, 7)).toEqual([0, null, null, 1, null, null, 2])
+    const [s] = read('$: slowcat(s("bd*2").gain("<0.2 0.8 0.5>"), s("hh*2"))')
+    expect(idx(s, 6)).toEqual([0, null, 1, null, 2, null])
+  })
+
+  it('a nested arrangement applies each section in turn, outermost first', () => {
+    const [a] = read('$: arrange([2, arrange([1, s("bd*2").gain("<0.2 0.8 0.5>")], [1, s("sd*2")])], [1, s("hh*2")])')
+    expect(a.placements).toEqual([[{ startCycle: 0, cycles: 2, total: 3 }, { startCycle: 0, cycles: 1, total: 2 }]])
+    expect(idx(a, 9)).toEqual([0, null, null, 1, null, null, 2, null, null])
+  })
+
+  it('a section of weight 0 never plays, and moves nothing else', () => {
+    const [a] = read('$: arrange([0, s("sd*2")], [3, s("bd*2").gain("<0.2 0.8 0.5>")], [1, s("hh*2")])')
+    expect(idx(a, 8)).toEqual([0, 1, 2, null, 0, 1, 2, null])
+  })
+
+  it('a parameter outside the arrangement still sees the song cycle', () => {
+    const [a] = read('$: arrange([3, s("bd*2")], [1, s("hh*2")]).gain("<0.2 0.8>")')
+    expect(a.placements).toEqual([[]])
+    expect(idx(a, 4)).toEqual([0, 1, 0, 1])
+  })
+
+  it.each([
+    ['a fractional weight', '$: arrange([1.5, s("bd*2").gain("<0.2 0.8>")], [0.5, s("hh*2")])'],
+    ['weights that sum to 0', '$: arrange([0, s("bd*2").gain("<0.2 0.8>")])'],
+    ['a negative weight', '$: arrange([-1, s("sd*2")], [3, s("bd*2").gain("<0.2 0.8 0.5>")], [1, s("hh*2")])'],
+    ['a time transform inside the section', '$: arrange([3, s("bd*2").gain("<0.2 0.8>").slow(2)], [1, s("hh*2")])'],
+    // Two routes that do not part at the arms of one arrangement can overlap.
+    ['a route inside a section and one outside it', 'const a = s("bd*2").gain("<0.2 0.8 0.5>")\n$: stack(a, arrange([1, a], [1, s("hh*2")]))'],
+    ['one binding in two arrangements side by side', 'const a = s("bd*2").gain("<0.2 0.8 0.5>")\n$: stack(arrange([1, a], [1, s("hh*2")]), arrange([1, s("sd*2")], [2, a]))'],
+  ])('%s declines', (_label, src) => {
+    expect(read(src)).toEqual([])
   })
 })
 

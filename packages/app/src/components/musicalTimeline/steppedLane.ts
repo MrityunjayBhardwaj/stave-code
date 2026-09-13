@@ -17,7 +17,8 @@
  *
  * Pure, and it imports only TYPES from `@stave/editor`. A runtime import from the
  * barrel drags a CommonJS dependency into the app's test loader and the file fails
- * to collect — so the range function is passed IN by the caller that already
+ * to collect — so the range function and the step selection (`stepIndexAtCycle`,
+ * which knows the arrangement sections, #1585) are passed IN by the caller that already
  * holds the real one.
  */
 import type { OffsetEdit, SteppedAutomation } from '@stave/editor'
@@ -38,6 +39,18 @@ export type RangeFor = (
   method: string,
   value: number,
 ) => { readonly min: number; readonly max: number; readonly step: number; readonly scale: 'linear' | 'log' }
+
+/** The shape of `stepIndexAtCycle` — injected, see the header. Which step plays in
+ *  a song cycle, or null where the parameter's arrangement section is silent (#1585). */
+export type StepAt = (a: SteppedAutomation, cycle: number) => number | null
+
+/** A stepped automation as a lane holds it: the axis it is drawn against and the
+ *  selection that places its steps, both resolved by the caller that can reach them. */
+export interface SteppedEntry {
+  readonly automation: SteppedAutomation
+  readonly axis: StepAxis
+  readonly stepAt: StepAt
+}
 
 /**
  * The axis for one stepped automation: the mixer knob's range for this control,
@@ -136,16 +149,16 @@ export function stepDragValue(startValue: number, dyPx: number, axis: StepAxis, 
  * other staircase on it.
  */
 export function withStepValue(
-  entries: readonly { readonly automation: SteppedAutomation; readonly axis: StepAxis }[],
+  entries: readonly SteppedEntry[],
   automation: SteppedAutomation,
   index: number,
   value: number,
-): { automation: SteppedAutomation; axis: StepAxis }[] {
+): SteppedEntry[] {
   return entries.map((entry) =>
     entry.automation !== automation || !automation.steps[index]
       ? entry
       : {
-          axis: entry.axis,
+          ...entry,
           automation: {
             ...automation,
             steps: automation.steps.map((s, k) => (k === index ? { ...s, value } : s)),
@@ -172,7 +185,7 @@ export function stepY(value: number, axis: StepAxis, band: StepBand): number {
 
 /** What a press on a stepped staircase hit. */
 export interface StepHit {
-  readonly entry: { readonly automation: SteppedAutomation; readonly axis: StepAxis }
+  readonly entry: SteppedEntry
   /** Index into `entry.automation.steps` — the step an edit writes. */
   readonly index: number
   /** Canvas y of that step's level, for placing an editor over it. */
@@ -187,7 +200,8 @@ export const STEP_HIT_TOLERANCE_PX = 4
  *
  * `cycle` is the song-absolute cycle under the pointer (the caller inverts x with
  * the same map the ruler uses). Only the step PLAYING at that cycle can be hit —
- * the staircase has exactly one level there — and when several parameters share
+ * the staircase has one level there, or none where the parameter's arrangement
+ * section is silent (#1585) — and when several parameters share
  * the band the nearest level wins, so overlapping staircases stay reachable.
  *
  * ⚠ EXPANDED LANES ONLY, the rule the bounds caption already follows. A collapsed
@@ -195,7 +209,7 @@ export const STEP_HIT_TOLERANCE_PX = 4
  * press there must keep selecting the clip it always selected.
  */
 export function stepHitAt(
-  entries: readonly { readonly automation: SteppedAutomation; readonly axis: StepAxis }[],
+  entries: readonly SteppedEntry[],
   band: StepBand,
   expanded: boolean,
   cycle: number,
@@ -209,7 +223,8 @@ export function stepHitAt(
   for (const entry of entries) {
     const a = entry.automation
     if (!(a.periodCycles > 0) || a.steps.length === 0) continue
-    const [segment] = stepSegments(a, Math.floor(cycle), Math.floor(cycle) + 1)
+    // A bar where the parameter's section is silent has no segment, so no level to press.
+    const [segment] = stepSegments(a, Math.floor(cycle), Math.floor(cycle) + 1, entry.stepAt)
     if (!segment) continue
     const levelY = stepY(segment.value, entry.axis, band)
     const dist = Math.abs(levelY - y)
@@ -266,32 +281,34 @@ export interface StepSegment {
  * all of cycle 0), and joins consecutive cycles only when they play the SAME STEP
  * — a weighted step becomes one segment across its weight. The first and last
  * segments are clipped to the requested span, so a paged window draws its own part
- * of the song and nothing outside it.
+ * of the song and nothing outside it. A cycle where the parameter's section is
+ * silent (#1585) has no segment, so a staircase inside an arrangement is drawn
+ * only over the bars that play it.
  *
- * ⚠ THE INDEX IS THE WHOLE RULE. With two or more steps, the cycle just before
- * step k begins always plays a DIFFERENT step, so "same index as the previous
- * cycle" already separates every step, including the same step met again on the
- * next pass. A second clause for "a new pass" was written, broken alone, and
- * turned nothing red — it re-stated this one. A single-step pattern (`<0.8>`) is
- * index 0 every cycle and draws as one line, which is what it sounds like, with
- * no special case.
+ * ⚠ THE INDEX IS THE WHOLE RULE. Within one section, the cycle just before step k
+ * begins always plays a DIFFERENT step, so "same index as the previous cycle"
+ * already separates every step, including the same step met again on the next
+ * pass. A second clause for "a new pass" was written, broken alone, and turned
+ * nothing red — it re-stated this one. A single-step pattern (`<0.8>`) is index 0
+ * every cycle and draws as one line, which is what it sounds like, with no special
+ * case. Two appearances of one section side by side can hold the same step across
+ * their seam (`arrange([1, a], [1, a])` plays step 0 in both bars) — one written
+ * number held for two bars, and one segment is what that is.
+ *
+ * `stepAt` is `stepIndexAtCycle`, injected like `RangeFor`, so this module keeps
+ * no second copy of the engine's selection.
  */
 export function stepSegments(
   a: SteppedAutomation,
   firstCycle: number,
   lastCycle: number,
+  stepAt: StepAt,
 ): StepSegment[] {
   if (!(lastCycle > firstCycle) || !(a.periodCycles > 0) || a.steps.length === 0) return []
-  const period = a.periodCycles
-  const posOf = (cycle: number): number => ((cycle % period) + period) % period
-  const stepAt = (cycle: number): number => {
-    const pos = posOf(cycle)
-    for (let k = a.steps.length - 1; k >= 0; k--) if (pos >= a.steps[k].startCycle) return k
-    return 0
-  }
   const out: StepSegment[] = []
   for (let c = Math.floor(firstCycle); c < lastCycle; c++) {
-    const index = stepAt(c)
+    const index = stepAt(a, c)
+    if (index === null) continue
     const start = Math.max(c, firstCycle)
     const end = Math.min(c + 1, lastCycle)
     const prev = out[out.length - 1]
