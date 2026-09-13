@@ -191,14 +191,30 @@ async function curveColumns(page: Page): Promise<number[]> {
   })
 }
 
-/** Subject curve pixels beyond the control's, per bar — a few columns in from each
- *  bar line, so antialiasing across a line cannot count for its neighbour. */
-function curveByBar(subject: number[], control: number[], bars: number): number[] {
-  const W = subject.length
+/**
+ * Curve pixels per bar — a pixel whose blue is well above the same pixel of the
+ * control render — counted a few columns in from each bar line, so antialiasing
+ * across a line cannot count for its neighbour.
+ *
+ * ⚠ A DIFFERENCE, NOT THE ABSOLUTE COLOUR TEST `curveColumns` USES (#1596). In the
+ * section's second bar the saw sits mid-range, so the stroke runs over the lane's
+ * note marks, and a translucent stroke over them blends to a colour the absolute test
+ * rejects: measured, it read about a third of the stroke there at every viewport
+ * width from 1000 to 1920px, while this difference read the whole of it.
+ */
+function strokeByBar(
+  subject: { W: number; H: number; blue: number[] },
+  control: { blue: number[] },
+  bars: number,
+): number[] {
+  const { W, H } = subject
   return Array.from({ length: bars }, (_, bar) => {
     let n = 0
     for (let x = Math.floor((W * bar) / bars) + 4; x < Math.floor((W * (bar + 1)) / bars) - 4; x++) {
-      n += Math.max(0, subject[x] - control[x])
+      for (let y = 0; y < H; y++) {
+        const p = y * W + x
+        if (subject.blue[p] - control.blue[p] > 60) n++
+      }
     }
     return n
   })
@@ -228,24 +244,32 @@ test('a curve inside an arrangement section is drawn only over the bars its sect
   const controlBars = await barsOnView(page)
   const control = await curveColumns(page)
 
+  const controlBlue = await blueChannel(page)
+
   await setSongAndEval(page, SECTION_CURVE_SONG)
   await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBe(controlBars)
   await page.waitForTimeout(800)
-  const subject = await curveColumns(page)
+  const subject = await blueChannel(page)
 
   // (0) THE INSTRUMENT: the span is whole passes of the four-bar arrangement, the
-  //     control spans the same bars, and it draws no curve of its own.
+  //     control spans the same bars and the same canvas, it draws no curve of its
+  //     own, and the difference finds nothing in a render against itself.
   expect(controlBars % 4, `the view spans ${controlBars} bars`).toBe(0)
-  expect(control.length).toBe(subject.length)
+  expect([subject.W, subject.H]).toEqual([controlBlue.W, controlBlue.H])
   expect(control.reduce((s, n) => s + n, 0), 'the detector fires on a constant cutoff').toBeLessThan(20)
+  expect(strokeByBar(controlBlue, controlBlue, controlBars).every((n) => n === 0), 'the difference fires on an identical render').toBe(true)
 
   // (1) THE CURVE IS DRAWN IN EVERY BAR `a` PLAYS, and in NONE where the hh section
   //     plays. Before #1590 it was drawn straight across the hh bars.
-  const perBar = curveByBar(subject, control, controlBars)
+  //     A playing bar must hold at least half a stroke pixel per column: a curve drawn
+  //     only where it misses the note marks would fall short of that (the absolute
+  //     colour test read a third of the stroke in the section's second bar, #1596).
+  const perBar = strokeByBar(subject, controlBlue, controlBars)
+  const barInterior = Math.floor(subject.W / controlBars) - 8
   const silent = perBar.filter((_, bar) => bar % 4 === 0)
   const playing = perBar.filter((_, bar) => bar % 4 !== 0)
   expect(silent.every((n) => n < 5), `a curve was drawn over the hh section: ${perBar}`).toBe(true)
-  expect(playing.every((n) => n > 20), `a bar that plays \`a\` has no curve: ${perBar}`).toBe(true)
+  expect(playing.every((n) => n > 0.5 * barInterior), `a bar that plays \`a\` has no curve (need > ${0.5 * barInterior}): ${perBar}`).toBe(true)
 
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
