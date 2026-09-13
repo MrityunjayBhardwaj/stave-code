@@ -172,6 +172,37 @@ describe('steppedAutomations — only where nothing above the parameter moves ti
   })
 })
 
+describe('steppedAutomations — a visualiser call leaves the steps alone (#1592)', () => {
+  // Stave's engine returns the pattern itself for every Strudel visualiser, in both
+  // spellings; the browser arm checks the engine plays the same gains with one.
+  const PLAIN = '$: s("bd*2").gain("<0.2 0.8>")'
+
+  it.each([
+    ['_pianoroll', `${PLAIN}._pianoroll()`],
+    ['pianoroll', `${PLAIN}.pianoroll()`],
+    ['_scope', `${PLAIN}._scope()`],
+    ['scope', `${PLAIN}.scope()`],
+    ['_punchcard, with options', `${PLAIN}._punchcard({labels: 1})`],
+    ['_spiral', `${PLAIN}._spiral()`],
+    ['a visualiser followed by an effect', `${PLAIN}._pianoroll().lpf(400)`],
+  ])('%s is read, with the same steps as without it', (_label, src) => {
+    const [a] = read(src)
+    expect(a?.paramKey).toBe('gain')
+    expect(a.steps).toEqual(read(PLAIN)[0].steps)
+  })
+
+  it.each([
+    // `.viz` chains to Strudel's own `.viz` when one is loaded.
+    ['viz(name)', `${PLAIN}.viz("pianoroll")`],
+    // The visualiser is above the time change, not instead of it.
+    ['a time change under a visualiser', `${PLAIN}.slow(2)._pianoroll()`],
+    // One underscore is the inline spelling; a second names nothing the engine installs.
+    ['a name that only looks like one', `${PLAIN}.__pianoroll()`],
+  ])('%s declines', (_label, src) => {
+    expect(read(src)).toEqual([])
+  })
+})
+
 describe('steppedAutomations — the parsed node must be the whole literal (#1584)', () => {
   // The parser reads each of these as the bare `<0.2 0.8>` and drops the operator;
   // the engine does not (engine test).

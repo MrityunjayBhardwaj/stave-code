@@ -18,6 +18,7 @@ import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
 import { installMiniStringParser } from './stringParser'
 import { resolveBareCaptureId } from './bareCapture'
 import { normalizeLoopRange, type LoopRange } from './transportFrame'
+import { STRUDEL_VIZ_METHODS } from './strudelVizMethods'
 
 type HapHandler = (event: HapEvent) => void
 
@@ -83,38 +84,9 @@ export function extractVizName(rawArg: unknown): string | undefined {
   return out === '' ? undefined : out
 }
 
-/**
- * Strudel's official inline-visualization vocabulary → the Stave renderer
- * id each one maps to. The keys are Strudel's Pattern viz methods (verified
- * against `@strudel/draw` + `@strudel/webaudio` source): `pianoroll`,
- * `punchcard`, `spiral`, `pitchwheel` (draw); `scope`, `tscope`, `fscope`,
- * `spectrum` (webaudio); `wordfall` (draw).
- *
- * Each method is intercepted in BOTH chain forms so pasted Strudel code
- * works out of the gate:
- *   - `._name()` (underscore) → inline viz zone (mini, in-REPL form)
- *   - `.name()`  (non-underscore) → Stave backdrop (the "big"/fullscreen form)
- *
- * Aliases map to the nearest Stave renderer that exists today:
- *   - `tscope` → `scope`     (Strudel itself aliases tscope = scope)
- *   - `punchcard` → `pianoroll` (no PunchcardSketch yet — approximation;
- *      a real punchcard renderer is a tracked follow-up)
- *
- * We deliberately do NOT chain to Strudel's real method: `@strudel/draw`
- * isn't loaded, and the webaudio `scope`/`spectrum`/`fscope` would draw
- * strudel's own fullscreen `#test-canvas` — the very thing Stave avoids.
- */
-export const STRUDEL_VIZ_METHODS: Record<string, string> = {
-  pianoroll: 'pianoroll',
-  punchcard: 'pianoroll',
-  wordfall: 'wordfall',
-  scope: 'scope',
-  tscope: 'scope',
-  fscope: 'fscope',
-  spectrum: 'spectrum',
-  spiral: 'spiral',
-  pitchwheel: 'pitchwheel',
-}
+// The vocabulary lives in its own module so the static-IR readers can use it
+// without importing the engine (#1592); re-exported so every existing import holds.
+export { STRUDEL_VIZ_METHODS }
 
 /**
  * Deadline for any third-party manifest fetch during engine boot (#1214).

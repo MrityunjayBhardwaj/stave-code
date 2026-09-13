@@ -542,6 +542,53 @@ test('a stepped parameter inside an arrangement section is drawn and edited by t
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
 
+// ── #1592: a visualiser call above the parameter ─────────────────────────────
+
+const VIZ_SONG = '$: s("bd*2").gain("<.2 .9>")._pianoroll()\n$: s("<hh cp hh cp>")'
+
+test('a stepped parameter under a visualiser call plays and is drawn exactly as without it (#1592)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+
+  await bootShell(page)
+  const PLAYS = { 0: [0.2, 0.2], 1: [0.9, 0.9], 2: [0.2, 0.2], 3: [0.9, 0.9] }
+
+  // (0) THE CONTROL — the same song with no visualiser, read by the same instrument.
+  await setSongAndEval(page, EDIT_SONG)
+  await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
+  await expect.poll(() => gainsByBar(page), { timeout: 15_000 }).toEqual(PLAYS)
+
+  // (1) THE ENGINE PLAYS THE SAME GAINS WITH `._pianoroll()` — what makes it safe to draw.
+  await setSongAndEval(page, VIZ_SONG)
+  await expect.poll(() => gainsByBar(page), { timeout: 15_000 }).toEqual(PLAYS)
+  await page.waitForTimeout(500)
+
+  const box = await page.locator('[data-full-song-canvas]').boundingBox()
+  if (!box) throw new Error('no canvas')
+  const barX = (bar: number) => Math.round(box.width * ((bar + 0.5) / 4))
+  await page.mouse.dblclick(box.x + barX(2), box.y + 8)
+  await page.waitForTimeout(800)
+
+  // (2) THE LANE HAS THE STEPS — each bar opens the step it plays.
+  expect(await openStepShowing(page, barX(1), '0.9'), 'no step editor showing 0.9 opened over bar 1').toBe(true)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(200)
+  expect(await openStepShowing(page, barX(0), '0.2'), 'no step editor showing 0.2 opened over bar 0').toBe(true)
+  await page.keyboard.press('Escape')
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})
+
 // ── #1578: drag a step's level ───────────────────────────────────────────────
 
 /** Rows (in CSS px of the canvas) where column `x` differs by more than the
